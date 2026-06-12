@@ -64,6 +64,19 @@ function serialize(value) {
   return EJSON.serialize(value, { relaxed: true });
 }
 
+// Tipi ammessi da $convert per la conversione dei campi.
+const MONGO_CONVERT_TYPES = new Set(['string', 'int', 'long', 'double', 'decimal', 'bool', 'date', 'objectId']);
+
+// Valore "libero" digitato dall'utente: prova il parse EJSON/JSON
+// (numeri, booleani, {"$date": ...}), altrimenti è una stringa semplice.
+function parseLooseValue(text) {
+  try {
+    return EJSON.parse(String(text), { relaxed: false });
+  } catch {
+    return String(text);
+  }
+}
+
 function assertDbName(name) {
   if (!name || /[\\/. "$*<>:|?]/.test(name)) {
     throw new Error(`Nome di database non valido: "${name}"`);
@@ -238,6 +251,107 @@ class MongoDbStrategy extends DbStrategy {
     );
     result.sort((a, b) => a.name.localeCompare(b.name));
     return result;
+  }
+
+  async createCollection(db, name) {
+    const client = this.requireClient();
+    const coll = String(name || '').trim();
+    if (!coll) throw new Error('Nome della collection mancante.');
+    await client.db(db).createCollection(coll);
+  }
+
+  async renameCollection(db, coll, newName) {
+    const client = this.requireClient();
+    const to = String(newName || '').trim();
+    if (!to) throw new Error('Nuovo nome della collection mancante.');
+    await client.db(db).renameCollection(coll, to);
+  }
+
+  async dropCollection(db, coll) {
+    const client = this.requireClient();
+    const ok = await client.db(db).collection(coll).drop();
+    if (!ok) throw new Error(`Impossibile eliminare la collection "${coll}".`);
+  }
+
+  /* "Colonne" in MongoDB = campi dei documenti: le operazioni agiscono su
+   * tutti i documenti della collection. */
+
+  // Aggiunge il campo (con un eventuale valore iniziale) ai documenti che
+  // non lo hanno già.
+  async addColumn(db, coll, column) {
+    const client = this.requireClient();
+    const name = String((column && column.name) || '').trim();
+    if (!name) throw new Error('Nome del campo mancante.');
+    if (name === '_id') throw new Error('Il campo "_id" esiste già in ogni documento.');
+    let value = null;
+    if (column.default != null && String(column.default).trim() !== '') {
+      value = parseLooseValue(column.default);
+    }
+    const res = await client.db(db).collection(coll)
+      .updateMany({ [name]: { $exists: false } }, { $set: { [name]: value } });
+    return { modified: res.modifiedCount };
+  }
+
+  // Rinomina il campo ($rename) e/o ne converte il tipo ($convert via update
+  // con pipeline, MongoDB >= 4.2). I valori non convertibili restano invariati.
+  async alterColumn(db, coll, payload) {
+    const client = this.requireClient();
+    const oldName = String((payload && payload.oldName) || '').trim();
+    const column = (payload && payload.column) || {};
+    const newName = String(column.name || '').trim() || oldName;
+    if (!oldName) throw new Error('Nome del campo da modificare mancante.');
+    if (oldName === '_id' || newName === '_id') throw new Error('Il campo "_id" non può essere modificato.');
+
+    const collection = client.db(db).collection(coll);
+    let modified = 0;
+    if (newName !== oldName) {
+      const res = await collection.updateMany({ [oldName]: { $exists: true } }, { $rename: { [oldName]: newName } });
+      modified = Math.max(modified, res.modifiedCount);
+    }
+    const to = String(column.type || '').trim();
+    if (to) {
+      if (!MONGO_CONVERT_TYPES.has(to)) {
+        throw new Error(`Tipo di conversione non valido: "${to}". Tipi ammessi: ${[...MONGO_CONVERT_TYPES].join(', ')}.`);
+      }
+      const res = await collection.updateMany(
+        { [newName]: { $exists: true } },
+        [{ $set: { [newName]: { $convert: { input: `$${newName}`, to, onError: `$${newName}`, onNull: null } } } }]
+      );
+      modified = Math.max(modified, res.modifiedCount);
+    }
+    if (newName === oldName && !to) throw new Error('Nessuna modifica da applicare.');
+    return { modified };
+  }
+
+  // Rimuove il campo da tutti i documenti ($unset).
+  async dropColumn(db, coll, name) {
+    const client = this.requireClient();
+    const field = String(name || '').trim();
+    if (!field) throw new Error('Nome del campo da eliminare mancante.');
+    if (field === '_id') throw new Error('Il campo "_id" non può essere eliminato.');
+    const res = await client.db(db).collection(coll)
+      .updateMany({ [field]: { $exists: true } }, { $unset: { [field]: '' } });
+    return { modified: res.modifiedCount };
+  }
+
+  async createIndex(db, coll, payload) {
+    const client = this.requireClient();
+    const spec = parseQueryObject(payload.fields, null);
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec) || !Object.keys(spec).length) {
+      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
+    }
+    const options = {};
+    if (payload.unique) options.unique = true;
+    const name = String(payload.name || '').trim();
+    if (name) options.name = name;
+    const created = await client.db(db).collection(coll).createIndex(spec, options);
+    return { name: created };
+  }
+
+  async dropIndex(db, coll, name) {
+    const client = this.requireClient();
+    if (name === '_id_') throw new Error('L\'indice "_id_" non può essere eliminato.');
+    await client.db(db).collection(coll).dropIndex(name);
   }
 
   async collectionStats(db, coll) {

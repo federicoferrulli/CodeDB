@@ -146,6 +146,50 @@ socket.on('connect', async () => {
     const del = await emit('doc:delete', { db: DB, coll: TABLE, id });
     assert(del.ok && del.deleted === 1, 'riga eliminata');
 
+    console.log('12b. collection:create con schema + gestione colonne e indici');
+    const tcre = await emit('collection:create', {
+      db: DB, name: 'gadgets',
+      columns: [
+        { name: 'id', type: 'INT UNSIGNED', nullable: false, autoIncrement: true, primaryKey: true },
+        { name: 'sku', type: 'VARCHAR(40)', nullable: false },
+        { name: 'price', type: 'DECIMAL(10,2)', nullable: true, default: '0' },
+      ],
+    });
+    assert(tcre.ok, `tabella "gadgets" creata con schema${tcre.ok ? '' : ' (' + tcre.error + ')'}`);
+    const gs1 = await emit('collection:stats', { db: DB, coll: 'gadgets' });
+    assert(gs1.ok && gs1.fields.some((f) => f.name === 'sku' && !f.nullable), 'colonna "sku" NOT NULL presente');
+    assert(gs1.ok && gs1.indexes.some((i) => i.name === 'PRIMARY' && i.unique), 'chiave primaria su "id"');
+    assert(gs1.ok && gs1.fields.some((f) => f.name === 'id' && f.autoIncrement && f.key === 'PRI'),
+      'colonna "id" marcata AUTO_INCREMENT e PRI (per il modulo di inserimento)');
+
+    const cadd = await emit('column:add', { db: DB, coll: 'gadgets', column: { name: 'note', type: 'TEXT', nullable: true } });
+    assert(cadd.ok, `colonna "note" aggiunta${cadd.ok ? '' : ' (' + cadd.error + ')'}`);
+    const calt = await emit('column:alter', {
+      db: DB, coll: 'gadgets', oldName: 'note',
+      column: { name: 'descrizione', type: 'VARCHAR(200)', nullable: true },
+    });
+    assert(calt.ok, `colonna rinominata in "descrizione"${calt.ok ? '' : ' (' + calt.error + ')'}`);
+    const gs2 = await emit('collection:stats', { db: DB, coll: 'gadgets' });
+    assert(gs2.ok && gs2.fields.some((f) => f.name === 'descrizione' && f.types[0].startsWith('varchar')),
+      'modifica riflessa nello schema');
+
+    const gidx = await emit('index:create', { db: DB, coll: 'gadgets', fields: '{"sku": 1}', unique: true, name: 'sku_unique' });
+    assert(gidx.ok && gidx.name === 'sku_unique', `indice unico creato (${gidx.ok ? gidx.name : gidx.error})`);
+    const gs3 = await emit('collection:stats', { db: DB, coll: 'gadgets' });
+    assert(gs3.ok && gs3.indexes.some((i) => i.name === 'sku_unique' && i.unique), 'indice presente e unico');
+    const gdel = await emit('index:drop', { db: DB, coll: 'gadgets', name: 'sku_unique' });
+    assert(gdel.ok, 'indice eliminato');
+
+    const cdel = await emit('column:drop', { db: DB, coll: 'gadgets', name: 'descrizione' });
+    assert(cdel.ok, 'colonna eliminata');
+    const tren = await emit('collection:rename', { db: DB, coll: 'gadgets', newName: 'widgets' });
+    assert(tren.ok, `tabella rinominata in "widgets"${tren.ok ? '' : ' (' + tren.error + ')'}`);
+    const tlist = await emit('db:collections', { db: DB });
+    assert(tlist.ok && tlist.collections.some((c) => c.name === 'widgets') && !tlist.collections.some((c) => c.name === 'gadgets'),
+      'rinomina riflessa nell\'elenco');
+    const tdrop = await emit('collection:drop', { db: DB, coll: 'widgets' });
+    assert(tdrop.ok, 'tabella eliminata');
+
     console.log('13. collection:watch non disponibile su MySQL');
     const watch = await emit('collection:watch', { db: DB, coll: TABLE });
     assert(!watch.ok, 'watch rifiutato (nessun change stream)');

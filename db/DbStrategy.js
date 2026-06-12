@@ -32,6 +32,23 @@ class DbStrategy {
   /** @returns {Promise<Array<{name: string, type: string, count: number|null}>>} */
   async listCollections(_db) { throw unsupported(); }
 
+  /** payload.columns (solo SQL): [{ name, type, nullable, default, autoIncrement, primaryKey }] */
+  async createCollection(_db, _name, _payload) { throw unsupported(); }
+  async renameCollection(_db, _coll, _newName) { throw unsupported(); }
+  async dropCollection(_db, _coll) { throw unsupported(); }
+
+  /**
+   * Gestione delle colonne/campi: per i database SQL agisce sullo schema
+   * (ALTER TABLE), per quelli a documenti sui campi di tutti i documenti.
+   */
+  async addColumn(_db, _coll, _column) { throw unsupported(); }
+  async alterColumn(_db, _coll, _payload) { throw unsupported(); }
+  async dropColumn(_db, _coll, _name) { throw unsupported(); }
+
+  /** payload: { fields: '{"campo": 1}', name?, unique? } */
+  async createIndex(_db, _coll, _payload) { throw unsupported(); }
+  async dropIndex(_db, _coll, _name) { throw unsupported(); }
+
   /** @returns {Promise<{stats, indexes, fields, sampled}>} */
   async collectionStats(_db, _coll) { throw unsupported(); }
 

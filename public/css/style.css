@@ -416,6 +416,45 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .del-btn:hover { color: var(--danger); }
 
+/* Pulsante "＋" accanto ai titoli delle sezioni (indici, colonne) */
+.mini-btn {
+  background: transparent;
+  border: 1px solid var(--accent-2);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0 7px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.mini-btn:hover { background: var(--accent-2); color: var(--fg); }
+
+.info-table td.row-actions { text-align: right; white-space: nowrap; }
+
+/* Editor di colonne nel modale "Nuova tabella" (MySQL) */
+.cols-editor td { padding: 3px 4px; }
+.cols-editor input[type='text'] { width: 100%; }
+.cols-editor td:nth-child(n+3):not(:nth-child(4)),
+.cols-editor th:nth-child(n+3):not(:nth-child(4)) { text-align: center; width: 44px; }
+#collcreate-addcol { margin-top: 8px; }
+
+/* Label con checkbox affiancata (modali colonna e indice) */
+.form-row label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
+
+/* Modulo di inserimento guidato dallo schema */
+.insert-form-wrap { max-height: 50vh; overflow-y: auto; }
+.insert-form td { padding: 4px 6px; vertical-align: middle; }
+.insert-form td:first-child { width: 28%; white-space: nowrap; }
+.insert-form td.insert-type { width: 22%; }
+.insert-form input:not([type='checkbox']),
+.insert-form select { width: 100%; }
+.insert-form input[type='datetime-local'],
+.insert-form input[type='date'] { color-scheme: dark; }
+.insert-form .req { color: var(--danger); font-weight: 700; }
+#insert-addfield { margin-top: 8px; }
+#insert-form-empty { padding: 10px 4px; }
+
 .edit-btn {
   background: transparent;
   border: none;

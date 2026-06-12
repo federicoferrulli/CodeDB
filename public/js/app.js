@@ -195,12 +195,12 @@ document.addEventListener('keydown', (e) => {
  * ========================================================================= */
 
 function selectConnTab(name) {
-  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   $('#tab-fields').classList.toggle('hidden', name !== 'fields');
   $('#tab-uri').classList.toggle('hidden', name !== 'uri');
 }
 
-document.querySelectorAll('.tab').forEach((tab) =>
+document.querySelectorAll('.tab[data-tab]').forEach((tab) =>
   tab.addEventListener('click', () => selectConnTab(tab.dataset.tab))
 );
 
@@ -274,6 +274,11 @@ function doConnect(cfg) {
 
 function dbTypeIcon(dbType) {
   return dbType === 'mysql' ? '🐬' : '🍃';
+}
+
+// Termine usato in UI per le collection/tabelle, in base al DBMS connesso.
+function collWord() {
+  return state.dbType === 'mysql' ? 'tabella' : 'collection';
 }
 
 // Adatta etichette e suggerimenti del workspace al DBMS connesso.
@@ -516,6 +521,7 @@ function renderDbTree(databases) {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
+        { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: '＋ Nuovo database…', action: openCreateDb },
         { label: '✎ Rinomina database…', action: () => renameDb(db.name) },
         { label: '⟳ Aggiorna elenco', action: refreshDbTree },
@@ -565,8 +571,11 @@ function loadCollections(dbName, container) {
         e.stopPropagation();
         showContextMenu(e.clientX, e.clientY, [
           { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name, label) },
-          { label: 'ℹ Dettagli collection', action: () => { selectCollection(dbName, coll.name, label); setView('details'); } },
+          { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name, label); setView('details'); } },
           { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name, label); setView('uml'); } },
+          '---',
+          { label: `✎ Rinomina ${collWord()}…`, action: () => renameColl(dbName, coll.name) },
+          { label: `🗑 Elimina ${collWord()}…`, danger: true, action: () => dropColl(dbName, coll.name) },
         ]);
       });
       li.appendChild(label);
@@ -703,6 +712,145 @@ function dropDb(name) {
     toast(`Database "${name}" eliminato`);
     state.expandedDbs.delete(name);
     if (state.db === name) resetWorkspace();
+    refreshDbTree();
+  });
+}
+
+/* ===========================================================================
+ * Gestione collection / tabelle (crea con schema, rinomina, elimina)
+ * ========================================================================= */
+
+let creatingCollDb = null; // database di destinazione della collection in creazione
+
+// Aggiunge una riga all'editor di colonne del modale di creazione (solo MySQL).
+function addColRow(values = {}) {
+  const tr = document.createElement('tr');
+  const cell = (el) => {
+    const td = document.createElement('td');
+    td.appendChild(el);
+    return td;
+  };
+  const text = (cls, value, placeholder, list) => {
+    const i = document.createElement('input');
+    i.type = 'text';
+    i.className = cls;
+    i.value = value || '';
+    if (placeholder) i.placeholder = placeholder;
+    if (list) i.setAttribute('list', list);
+    i.spellcheck = false;
+    return i;
+  };
+  const check = (cls, checked) => {
+    const i = document.createElement('input');
+    i.type = 'checkbox';
+    i.className = cls;
+    i.checked = !!checked;
+    return i;
+  };
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'del-btn';
+  del.textContent = '✕';
+  del.title = 'Rimuovi colonna';
+  del.addEventListener('click', () => tr.remove());
+
+  tr.append(
+    cell(text('col-name', values.name, 'nome')),
+    cell(text('col-type', values.type, 'es. VARCHAR(255)', 'mysql-types')),
+    cell(check('col-null', values.nullable !== false)),
+    cell(text('col-default', values.default, '')),
+    cell(check('col-ai', values.autoIncrement)),
+    cell(check('col-pk', values.primaryKey)),
+    cell(del)
+  );
+  $('#collcreate-cols tbody').appendChild(tr);
+}
+
+function readColRows() {
+  return [...$('#collcreate-cols tbody').querySelectorAll('tr')]
+    .map((tr) => ({
+      name: tr.querySelector('.col-name').value.trim(),
+      type: tr.querySelector('.col-type').value.trim(),
+      nullable: tr.querySelector('.col-null').checked,
+      default: tr.querySelector('.col-default').value,
+      autoIncrement: tr.querySelector('.col-ai').checked,
+      primaryKey: tr.querySelector('.col-pk').checked,
+    }))
+    .filter((c) => c.name || c.type); // le righe lasciate vuote vengono ignorate
+}
+
+function openCreateColl(dbName) {
+  creatingCollDb = dbName;
+  const isMysql = state.dbType === 'mysql';
+  $('#collcreate-title').textContent = isMysql ? 'Nuova tabella' : 'Nuova collection';
+  $('#collcreate-subtitle').textContent = `Database: ${dbName}`;
+  $('#collcreate-name').value = '';
+  $('#collcreate-schema').classList.toggle('hidden', !isMysql);
+  $('#collcreate-cols tbody').innerHTML = '';
+  if (isMysql) addColRow({ name: 'id', type: 'INT UNSIGNED', nullable: false, autoIncrement: true, primaryKey: true });
+  $('#collcreate-error').classList.add('hidden');
+  $('#collcreate-overlay').classList.remove('hidden');
+  $('#collcreate-name').focus();
+}
+
+$('#collcreate-addcol').addEventListener('click', () => addColRow());
+$('#collcreate-cancel').addEventListener('click', () => $('#collcreate-overlay').classList.add('hidden'));
+
+$('#collcreate-save').addEventListener('click', () => {
+  const name = $('#collcreate-name').value.trim();
+  const payload = { db: creatingCollDb, name };
+  if (state.dbType === 'mysql') payload.columns = readColRows();
+  socket.emit('collection:create', payload, (res) => {
+    if (!res.ok) {
+      const err = $('#collcreate-error');
+      err.textContent = res.error;
+      err.classList.remove('hidden');
+      return;
+    }
+    $('#collcreate-overlay').classList.add('hidden');
+    toast(`${state.dbType === 'mysql' ? 'Tabella' : 'Collection'} "${name}" creata`);
+    state.expandedDbs.add(creatingCollDb);
+    state.dbSchema = null;
+    refreshDbTree();
+  });
+});
+
+$('#collcreate-name').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') $('#collcreate-save').click();
+});
+
+function renameColl(dbName, collName) {
+  const input = prompt(`Nuovo nome per la ${collWord()} "${collName}":`, collName);
+  if (input == null) return;
+  const newName = input.trim();
+  if (!newName || newName === collName) return;
+  socket.emit('collection:rename', { db: dbName, coll: collName, newName }, (res) => {
+    if (!res.ok) {
+      toast(res.error, true);
+      return;
+    }
+    toast(`Rinominata in "${newName}"`);
+    state.dbSchema = null;
+    if (state.db === dbName && state.coll === collName) {
+      state.coll = newName;
+      $('#breadcrumb').textContent = `${dbName} ▸ ${newName}`;
+      runQuery();
+      startWatch();
+    }
+    refreshDbTree();
+  });
+}
+
+function dropColl(dbName, collName) {
+  if (!confirm(`Eliminare la ${collWord()} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
+  socket.emit('collection:drop', { db: dbName, coll: collName }, (res) => {
+    if (!res.ok) {
+      toast(res.error, true);
+      return;
+    }
+    toast(`"${collName}" eliminata`);
+    state.dbSchema = null;
+    if (state.db === dbName && state.coll === collName) resetWorkspace();
     refreshDbTree();
   });
 }
@@ -1070,20 +1218,280 @@ $('#editdoc-save').addEventListener('click', () => {
  * Inserimento / eliminazione documenti
  * ========================================================================= */
 
+/* ---------- Modulo di inserimento guidato dallo schema ---------- */
+
+let insertRows = [];           // righe del modulo: { tr, kind, input, nameInput, fixedName, auto, required }
+let insertJsonTouched = false; // il tab JSON è stato modificato a mano: non rigenerarlo dal modulo
+
+// Tipo di controllo del modulo a partire dal tipo dichiarato (MySQL) o
+// campionato (BSON) del campo.
+function insertKindOf(typeName) {
+  const t = String(typeName || '').toLowerCase();
+  if (state.dbType === 'mysql') {
+    if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
+    if (/^decimal/.test(t)) return 'decimal';
+    if (/int|float|double|year/.test(t)) return 'number';
+    if (/^datetime|^timestamp/.test(t)) return 'datetime';
+    if (/^date$/.test(t)) return 'date';
+    if (/^json/.test(t)) return 'json';
+    return 'text';
+  }
+  if (t === 'int' || t === 'double' || t === 'long') return 'number';
+  if (t === 'decimal') return 'decimal';
+  if (t === 'date') return 'datetime';
+  if (t === 'boolean') return 'bool';
+  if (t === 'objectid') return 'oid';
+  if (t === 'array' || t === 'object') return 'json';
+  return 'text';
+}
+
+function insertInputFor(kind) {
+  if (kind === 'bool') {
+    const s = document.createElement('select');
+    for (const v of ['', 'true', 'false']) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = v === '' ? '(vuoto)' : v;
+      s.appendChild(o);
+    }
+    return s;
+  }
+  const i = document.createElement('input');
+  if (kind === 'number') { i.type = 'number'; i.step = 'any'; }
+  else if (kind === 'datetime') { i.type = 'datetime-local'; i.step = '0.001'; }
+  else if (kind === 'date') { i.type = 'date'; }
+  else {
+    i.type = 'text';
+    if (kind === 'oid') i.placeholder = '24 caratteri esadecimali';
+    if (kind === 'json') i.placeholder = 'JSON, es. {"a": 1} oppure [1, 2]';
+  }
+  i.spellcheck = false;
+  return i;
+}
+
+function addInsertRow(opts) {
+  const tr = document.createElement('tr');
+  const row = {
+    tr,
+    kind: opts.kind || 'text',
+    input: null,
+    nameInput: null,
+    fixedName: opts.name || null,
+    auto: !!opts.auto,
+    required: !!opts.required,
+  };
+
+  const nameTd = document.createElement('td');
+  if (opts.nameEditable) {
+    row.nameInput = document.createElement('input');
+    row.nameInput.type = 'text';
+    row.nameInput.placeholder = 'nome campo';
+    row.nameInput.spellcheck = false;
+    nameTd.appendChild(row.nameInput);
+  } else {
+    nameTd.innerHTML = `<span class="mono">${esc(opts.name)}</span>` +
+      (opts.required ? '<span class="req" title="Obbligatorio: NOT NULL senza default"> *</span>' : '');
+  }
+  tr.appendChild(nameTd);
+
+  const typeTd = document.createElement('td');
+  typeTd.className = 'insert-type';
+  if (opts.nameEditable) {
+    // Campo aggiunto a mano (MongoDB): il tipo lo sceglie l'utente.
+    const sel = document.createElement('select');
+    const kinds = [['text', 'testo'], ['number', 'numero'], ['bool', 'booleano'],
+                   ['datetime', 'data'], ['oid', 'ObjectId'], ['json', 'JSON']];
+    for (const [v, label] of kinds) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => {
+      row.kind = sel.value;
+      const fresh = insertInputFor(row.kind);
+      row.input.replaceWith(fresh);
+      row.input = fresh;
+    });
+    typeTd.appendChild(sel);
+  } else {
+    typeTd.innerHTML = `<span class="dim">${esc(opts.typeLabel || '')}</span>`;
+  }
+  tr.appendChild(typeTd);
+
+  const valTd = document.createElement('td');
+  valTd.className = 'insert-value';
+  if (row.auto) {
+    const i = document.createElement('input');
+    i.type = 'text';
+    i.disabled = true;
+    i.placeholder = '(auto)';
+    row.input = i;
+  } else {
+    row.input = insertInputFor(row.kind);
+  }
+  valTd.appendChild(row.input);
+  tr.appendChild(valTd);
+
+  const delTd = document.createElement('td');
+  delTd.className = 'row-actions';
+  if (opts.removable) {
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del-btn';
+    del.textContent = '✕';
+    del.title = 'Rimuovi campo';
+    del.addEventListener('click', () => {
+      tr.remove();
+      insertRows = insertRows.filter((r) => r !== row);
+    });
+    delTd.appendChild(del);
+  }
+  tr.appendChild(delTd);
+
+  $('#insert-form tbody').appendChild(tr);
+  insertRows.push(row);
+  return row;
+}
+
+// Valore EJSON di una riga del modulo; undefined = campo lasciato vuoto (omesso).
+function insertRowValue(row) {
+  const raw = row.input.value;
+  const t = String(raw == null ? '' : raw).trim();
+  if (t === '') return undefined;
+  switch (row.kind) {
+    case 'number': {
+      const n = Number(t);
+      if (Number.isNaN(n)) throw new Error('numero non valido');
+      return n;
+    }
+    case 'decimal':
+      return state.dbType === 'mysql' ? t : { $numberDecimal: t };
+    case 'bool':
+      return t === 'true';
+    case 'datetime': {
+      const d = new Date(t + 'Z'); // input interpretato come UTC, come l'editing inline
+      if (Number.isNaN(d.getTime())) throw new Error('data non valida');
+      return { $date: d.toISOString() };
+    }
+    case 'date':
+      return t; // YYYY-MM-DD per le colonne DATE di MySQL
+    case 'oid':
+      if (!/^[0-9a-fA-F]{24}$/.test(t)) throw new Error('ObjectId non valido (24 caratteri esadecimali)');
+      return { $oid: t };
+    case 'json':
+      try { return JSON.parse(t); } catch { throw new Error('JSON non valido'); }
+    default:
+      return raw; // testo: si preserva anche con spazi iniziali/finali
+  }
+}
+
+function buildInsertDoc() {
+  const doc = {};
+  for (const row of insertRows) {
+    if (row.auto) continue;
+    const name = row.nameInput ? row.nameInput.value.trim() : row.fixedName;
+    if (!name) {
+      if (String(row.input.value).trim() !== '') throw new Error('C\'è un campo con un valore ma senza nome.');
+      continue; // riga aggiunta e lasciata vuota: ignorata
+    }
+    let value;
+    try {
+      value = insertRowValue(row);
+    } catch (err) {
+      throw new Error(`Campo "${name}": ${err.message}`);
+    }
+    if (value === undefined) {
+      if (row.required) throw new Error(`Il campo "${name}" è obbligatorio (NOT NULL senza default).`);
+      continue;
+    }
+    if (name in doc) throw new Error(`Campo duplicato: "${name}".`);
+    doc[name] = value;
+  }
+  return doc;
+}
+
+function selectInsertTab(name) {
+  // Passando al tab JSON lo si rigenera dal modulo, ma solo se l'utente non
+  // lo ha già modificato a mano.
+  if (name === 'json' && !insertJsonTouched && !$('#insert-tab-form').classList.contains('hidden')) {
+    try {
+      $('#insert-json').value = JSON.stringify(buildInsertDoc(), null, 2);
+    } catch { /* modulo incompleto: il JSON resta com'è */ }
+  }
+  document.querySelectorAll('[data-instab]').forEach((t) => t.classList.toggle('active', t.dataset.instab === name));
+  $('#insert-tab-form').classList.toggle('hidden', name !== 'form');
+  $('#insert-tab-json').classList.toggle('hidden', name !== 'json');
+}
+
+document.querySelectorAll('[data-instab]').forEach((tab) =>
+  tab.addEventListener('click', () => selectInsertTab(tab.dataset.instab))
+);
+
+$('#insert-json').addEventListener('input', () => { insertJsonTouched = true; });
+
+$('#insert-addfield').addEventListener('click', () => {
+  $('#insert-form-empty').classList.add('hidden');
+  const row = addInsertRow({ nameEditable: true, kind: 'text', removable: true });
+  row.nameInput.focus();
+});
+
 $('#insert-btn').addEventListener('click', () => {
+  const isMysql = state.dbType === 'mysql';
+  $('#insert-title').textContent = isMysql ? 'Nuova riga' : 'Nuovo documento';
   $('#insert-json').value = '{\n  \n}';
+  insertJsonTouched = false;
+  insertRows = [];
+  $('#insert-form tbody').innerHTML = '';
+  $('#insert-form-empty').classList.add('hidden');
+  $('#insert-addfield').classList.toggle('hidden', isMysql); // i campi liberi sono solo per Mongo
   $('#insert-error').classList.add('hidden');
+  selectInsertTab('form');
   $('#insert-overlay').classList.remove('hidden');
-  $('#insert-json').focus();
+
+  // Il modulo si costruisce dallo schema: colonne reali per MySQL, campi
+  // campionati per MongoDB.
+  socket.emit('collection:stats', { db: state.db, coll: state.coll }, (res) => {
+    if (res.ok) {
+      for (const f of res.fields) {
+        if (f.name === '_id' && !isMysql) continue; // l'_id lo genera MongoDB
+        const mainType = f.types.find((t) => t !== 'null') || 'null';
+        addInsertRow({
+          name: f.name,
+          typeLabel: f.types.join(', '),
+          kind: insertKindOf(mainType),
+          auto: !!f.autoIncrement,
+          required: isMysql && !f.nullable && f.default == null && !f.autoIncrement,
+        });
+      }
+    }
+    if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
+    const first = insertRows.find((r) => !r.auto);
+    if (first) first.input.focus();
+  });
 });
 
 $('#insert-cancel').addEventListener('click', () => $('#insert-overlay').classList.add('hidden'));
 
 $('#insert-save').addEventListener('click', () => {
+  const usingForm = !$('#insert-tab-form').classList.contains('hidden');
+  let docText;
+  if (usingForm) {
+    try {
+      docText = JSON.stringify(buildInsertDoc());
+    } catch (err) {
+      const el = $('#insert-error');
+      el.textContent = err.message;
+      el.classList.remove('hidden');
+      return;
+    }
+  } else {
+    docText = $('#insert-json').value;
+  }
   socket.emit('doc:insert', {
     db: state.db,
     coll: state.coll,
-    doc: $('#insert-json').value,
+    doc: docText,
   }, (res) => {
     if (!res.ok) {
       const err = $('#insert-error');
@@ -1092,7 +1500,7 @@ $('#insert-save').addEventListener('click', () => {
       return;
     }
     $('#insert-overlay').classList.add('hidden');
-    toast('Documento inserito');
+    toast(state.dbType === 'mysql' ? 'Riga inserita' : 'Documento inserito');
     runQuery();
   });
 });
@@ -1130,11 +1538,12 @@ function loadDetails() {
 }
 
 function renderDetails({ stats, indexes, fields, sampled }) {
+  const isMysql = state.dbType === 'mysql';
   const rows = [
-    ['Documenti', stats.count == null ? '—' : stats.count],
+    [isMysql ? 'Righe (stima)' : 'Documenti', stats.count == null ? '—' : stats.count],
     ['Dimensione dati', fmtBytes(stats.size)],
     ['Dimensione su disco', fmtBytes(stats.storageSize)],
-    ['Media per documento', fmtBytes(stats.avgObjSize)],
+    [isMysql ? 'Media per riga' : 'Media per documento', fmtBytes(stats.avgObjSize)],
     ['Dimensione indici', fmtBytes(stats.totalIndexSize)],
     ['Numero di indici', stats.nindexes == null ? indexes.length : stats.nindexes],
   ];
@@ -1142,21 +1551,178 @@ function renderDetails({ stats, indexes, fields, sampled }) {
     .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`)
     .join('');
 
-  $('#index-table thead').innerHTML = '<tr><th>Nome</th><th>Chiavi</th><th>Unico</th></tr>';
+  $('#index-table thead').innerHTML = '<tr><th>Nome</th><th>Chiavi</th><th>Unico</th><th></th></tr>';
   $('#index-table tbody').innerHTML = indexes.length
     ? indexes
-        .map((i) => `<tr><td>${esc(i.name)}</td><td class="mono">${esc(JSON.stringify(i.key))}</td><td>${i.unique ? 'sì' : ''}</td></tr>`)
+        .map((i) => {
+          // L'indice _id_ di MongoDB è obbligatorio e non eliminabile.
+          const del = i.name === '_id_'
+            ? ''
+            : `<button type="button" class="del-btn idx-del" data-name="${esc(i.name)}" title="Elimina indice">✕</button>`;
+          return `<tr><td>${esc(i.name)}</td><td class="mono">${esc(JSON.stringify(i.key))}</td>` +
+                 `<td>${i.unique ? 'sì' : ''}</td><td class="row-actions">${del}</td></tr>`;
+        })
         .join('')
-    : '<tr><td colspan="3" class="dim">Nessun indice</td></tr>';
+    : '<tr><td colspan="4" class="dim">Nessun indice</td></tr>';
 
-  $('#schema-note').textContent = `(campione di ${sampled} documenti)`;
-  $('#schema-table thead').innerHTML = '<tr><th>Campo</th><th>Tipi</th><th>Presenza</th></tr>';
+  $('#schema-title').textContent = isMysql ? 'Colonne' : 'Schema rilevato';
+  $('#schema-note').textContent = isMysql ? '' : `(campione di ${sampled} documenti)`;
+  $('#column-add-btn').classList.remove('hidden');
+  $('#column-add-btn').title = isMysql ? 'Aggiungi colonna' : 'Aggiungi campo a tutti i documenti';
+  $('#schema-table thead').innerHTML =
+    `<tr><th>Campo</th><th>Tipi</th><th>${isMysql ? 'NULL' : 'Presenza'}</th><th></th></tr>`;
   $('#schema-table tbody').innerHTML = fields.length
     ? fields
-        .map((f) => `<tr><td class="mono">${esc(f.name)}</td><td>${esc(f.types.join(', '))}</td><td>${f.presence}%</td></tr>`)
+        .map((f) => {
+          const third = isMysql ? (f.nullable ? 'sì' : 'no') : `${f.presence}%`;
+          // L'_id di MongoDB non è né modificabile né eliminabile.
+          const actions = (!isMysql && f.name === '_id')
+            ? '<td class="row-actions"></td>'
+            : `<td class="row-actions">` +
+              `<button type="button" class="edit-btn col-edit" data-field="${esc(JSON.stringify(f))}" title="${isMysql ? 'Modifica colonna' : 'Rinomina/converti il campo in tutti i documenti'}">✎</button>` +
+              `<button type="button" class="del-btn col-del" data-name="${esc(f.name)}" title="${isMysql ? 'Elimina colonna' : 'Rimuovi il campo da tutti i documenti'}">✕</button></td>`;
+          return `<tr><td class="mono">${esc(f.name)}</td><td>${esc(f.types.join(', '))}</td><td>${third}</td>${actions}</tr>`;
+        })
         .join('')
-    : '<tr><td colspan="3" class="dim">Collection vuota</td></tr>';
+    : `<tr><td colspan="4" class="dim">${isMysql ? 'Nessuna colonna' : 'Collection vuota'}</td></tr>`;
 }
+
+/* ---------- Gestione indici (entrambi i DBMS) ---------- */
+
+$('#index-table').addEventListener('click', (e) => {
+  const btn = e.target.closest('.idx-del');
+  if (!btn) return;
+  const name = btn.dataset.name;
+  const extra = name.toUpperCase() === 'PRIMARY' ? '\nAttenzione: è la chiave primaria della tabella.' : '';
+  if (!confirm(`Eliminare l'indice "${name}"?${extra}`)) return;
+  socket.emit('index:drop', { db: state.db, coll: state.coll, name }, (res) => {
+    if (!res.ok) return toast(res.error, true);
+    toast(`Indice "${name}" eliminato`);
+    loadDetails();
+  });
+});
+
+$('#index-add-btn').addEventListener('click', () => {
+  $('#idxcreate-name').value = '';
+  $('#idxcreate-fields').value = '';
+  $('#idxcreate-unique').checked = false;
+  $('#idxcreate-error').classList.add('hidden');
+  $('#idxcreate-overlay').classList.remove('hidden');
+  $('#idxcreate-fields').focus();
+});
+
+$('#idxcreate-cancel').addEventListener('click', () => $('#idxcreate-overlay').classList.add('hidden'));
+
+$('#idxcreate-save').addEventListener('click', () => {
+  socket.emit('index:create', {
+    db: state.db,
+    coll: state.coll,
+    name: $('#idxcreate-name').value,
+    fields: $('#idxcreate-fields').value,
+    unique: $('#idxcreate-unique').checked,
+  }, (res) => {
+    if (!res.ok) {
+      const err = $('#idxcreate-error');
+      err.textContent = res.error;
+      err.classList.remove('hidden');
+      return;
+    }
+    $('#idxcreate-overlay').classList.add('hidden');
+    toast(`Indice "${res.name}" creato`);
+    loadDetails();
+  });
+});
+
+/* ---------- Gestione colonne (MySQL) / campi (MongoDB) ---------- */
+
+let colEditOldName = null; // nome attuale della colonna in modifica (null = nuova)
+
+// Termine usato nel modale e nei toast: "colonna" per SQL, "campo" per Mongo.
+function colWord(capital) {
+  const w = state.dbType === 'mysql' ? 'colonna' : 'campo';
+  return capital ? w[0].toUpperCase() + w.slice(1) : w;
+}
+
+function openColumnModal(field) {
+  const isMysql = state.dbType === 'mysql';
+  colEditOldName = field ? field.name : null;
+  $('#coledit-title').textContent = field ? `Modifica ${colWord()} "${field.name}"` : `Aggiungi ${colWord()}`;
+  $('#coledit-name').value = field ? field.name : '';
+
+  // MySQL: tipo SQL, NULL e default. MongoDB: conversione di tipo solo in
+  // modifica, valore iniziale solo in aggiunta.
+  $('#coledit-type-row').classList.toggle('hidden', !isMysql);
+  $('#coledit-bsontype-row').classList.toggle('hidden', isMysql || !field);
+  $('#coledit-null-row').classList.toggle('hidden', !isMysql);
+  $('#coledit-default-row').classList.toggle('hidden', !isMysql && !!field);
+  $('#coledit-default-label').textContent = isMysql ? 'Default' : 'Valore iniziale per i documenti esistenti';
+  $('#coledit-default').placeholder = isMysql
+    ? '(nessuno; testo, numero o CURRENT_TIMESTAMP)'
+    : '(vuoto = null; testo, numero o EJSON come {"$date": "..."})';
+
+  $('#coledit-type').value = field && isMysql ? field.types[0] : '';
+  $('#coledit-bsontype').value = '';
+  $('#coledit-null').checked = field ? !!field.nullable : true;
+  $('#coledit-default').value = field && field.default != null ? field.default : '';
+  $('#coledit-error').classList.add('hidden');
+  $('#coledit-overlay').classList.remove('hidden');
+  $('#coledit-name').focus();
+}
+
+$('#column-add-btn').addEventListener('click', () => openColumnModal(null));
+$('#coledit-cancel').addEventListener('click', () => $('#coledit-overlay').classList.add('hidden'));
+
+$('#schema-table').addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.col-edit');
+  if (editBtn) return openColumnModal(JSON.parse(editBtn.dataset.field));
+  const delBtn = e.target.closest('.col-del');
+  if (!delBtn) return;
+  const name = delBtn.dataset.name;
+  const msg = state.dbType === 'mysql'
+    ? `Eliminare la colonna "${name}" e tutti i suoi dati?\nL'operazione non è reversibile.`
+    : `Rimuovere il campo "${name}" da TUTTI i documenti della collection?\nL'operazione non è reversibile.`;
+  if (!confirm(msg)) return;
+  socket.emit('column:drop', { db: state.db, coll: state.coll, name }, (res) => {
+    if (!res.ok) return toast(res.error, true);
+    toast(`${colWord(true)} "${name}" eliminat${state.dbType === 'mysql' ? 'a' : 'o'}` +
+      (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
+    state.dbSchema = null;
+    loadDetails();
+  });
+});
+
+$('#coledit-save').addEventListener('click', () => {
+  const isMysql = state.dbType === 'mysql';
+  const column = isMysql
+    ? {
+        name: $('#coledit-name').value.trim(),
+        type: $('#coledit-type').value.trim(),
+        nullable: $('#coledit-null').checked,
+        default: $('#coledit-default').value,
+      }
+    : colEditOldName
+      ? { name: $('#coledit-name').value.trim(), type: $('#coledit-bsontype').value } // rinomina/converti
+      : { name: $('#coledit-name').value.trim(), default: $('#coledit-default').value }; // nuovo campo
+  const event = colEditOldName ? 'column:alter' : 'column:add';
+  const payload = colEditOldName
+    ? { db: state.db, coll: state.coll, oldName: colEditOldName, column }
+    : { db: state.db, coll: state.coll, column };
+  socket.emit(event, payload, (res) => {
+    if (!res.ok) {
+      const err = $('#coledit-error');
+      err.textContent = res.error;
+      err.classList.remove('hidden');
+      return;
+    }
+    $('#coledit-overlay').classList.add('hidden');
+    const done = colEditOldName
+      ? `${colWord(true)} "${column.name}" modificat${isMysql ? 'a' : 'o'}`
+      : `${colWord(true)} "${column.name}" aggiunt${isMysql ? 'a' : 'o'}`;
+    toast(done + (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
+    state.dbSchema = null;
+    loadDetails();
+  });
+});
 
 /* ===========================================================================
  * Vista UML

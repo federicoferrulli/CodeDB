@@ -67,6 +67,28 @@ function whereFromId(id) {
   return { sql, params };
 }
 
+// DEFAULT di colonna: numeri e parole chiave (NULL, CURRENT_TIMESTAMP...)
+// passano così come sono, il resto viene quotato come stringa.
+function defaultSql(v) {
+  const t = String(v).trim();
+  if (/^(NULL|CURRENT_TIMESTAMP(\(\d*\))?|NOW\(\)|TRUE|FALSE)$/i.test(t)) return t.toUpperCase();
+  if (/^-?\d+(\.\d+)?$/.test(t)) return t;
+  return mysql.escape(t);
+}
+
+// Definizione SQL di una colonna a partire dall'oggetto del form:
+// { name, type, nullable, default, autoIncrement }.
+function columnSql(c) {
+  const name = String((c && c.name) || '').trim();
+  const type = String((c && c.type) || '').trim();
+  if (!name || !type) throw new Error('Ogni colonna deve avere nome e tipo.');
+  let s = `${qid(name)} ${type}`;
+  if (c.nullable === false) s += ' NOT NULL';
+  if (c.default != null && String(c.default).trim() !== '') s += ` DEFAULT ${defaultSql(c.default)}`;
+  if (c.autoIncrement) s += ' AUTO_INCREMENT';
+  return s;
+}
+
 /* ---------------------------------------------------------------------------
  * Strategia MySQL: un pool dedicato per istanza (cioè per socket)
  * ------------------------------------------------------------------------- */
@@ -355,10 +377,91 @@ class MySqlStrategy extends DbStrategy {
     return { deleted: res.affectedRows };
   }
 
+  async createCollection(db, name, payload = {}) {
+    const pool = this.requirePool();
+    const table = String(name || '').trim();
+    if (!table) throw new Error('Nome della tabella mancante.');
+    const cols = Array.isArray(payload.columns) ? payload.columns : [];
+    let defs;
+    if (!cols.length) {
+      defs = [`${qid('id')} INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY`];
+    } else {
+      defs = cols.map(columnSql);
+      const pk = cols.filter((c) => c.primaryKey).map((c) => qid(String(c.name).trim()));
+      if (pk.length) defs.push(`PRIMARY KEY (${pk.join(', ')})`);
+    }
+    await pool.query(`CREATE TABLE ${qtable(db, table)} (${defs.join(', ')})`);
+  }
+
+  async renameCollection(db, coll, newName) {
+    const pool = this.requirePool();
+    const to = String(newName || '').trim();
+    if (!to) throw new Error('Nuovo nome della tabella mancante.');
+    await pool.query(`RENAME TABLE ${qtable(db, coll)} TO ${qtable(db, to)}`);
+  }
+
+  async dropCollection(db, coll) {
+    const pool = this.requirePool();
+    await pool.query(`DROP TABLE ${qtable(db, coll)}`);
+  }
+
+  async addColumn(db, coll, column) {
+    const pool = this.requirePool();
+    await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
+  }
+
+  // payload: { oldName, column: { name, type, nullable, default } }
+  async alterColumn(db, coll, payload) {
+    const pool = this.requirePool();
+    const oldName = String((payload && payload.oldName) || '').trim();
+    if (!oldName) throw new Error('Nome della colonna da modificare mancante.');
+    await pool.query(
+      `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${columnSql(payload.column || {})}`
+    );
+  }
+
+  async dropColumn(db, coll, name) {
+    const pool = this.requirePool();
+    const column = String(name || '').trim();
+    if (!column) throw new Error('Nome della colonna da eliminare mancante.');
+    await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP COLUMN ${qid(column)}`);
+  }
+
+  async createIndex(db, coll, payload) {
+    const pool = this.requirePool();
+    let spec;
+    try {
+      spec = JSON.parse(String(payload.fields || ''));
+    } catch {
+      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
+    }
+    if (!spec || typeof spec !== 'object' || Array.isArray(spec) || !Object.keys(spec).length) {
+      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
+    }
+    const cols = Object.entries(spec).map(([c, dir]) => `${qid(c)} ${Number(dir) < 0 ? 'DESC' : 'ASC'}`);
+    const name = String(payload.name || '').trim() || `${Object.keys(spec).join('_')}_idx`;
+    await pool.query(
+      `CREATE ${payload.unique ? 'UNIQUE ' : ''}INDEX ${qid(name)} ON ${qtable(db, coll)} (${cols.join(', ')})`
+    );
+    return { name };
+  }
+
+  async dropIndex(db, coll, name) {
+    const pool = this.requirePool();
+    const idx = String(name || '').trim();
+    if (!idx) throw new Error('Nome dell\'indice da eliminare mancante.');
+    if (idx.toUpperCase() === 'PRIMARY') {
+      await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP PRIMARY KEY`);
+    } else {
+      await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP INDEX ${qid(idx)}`);
+    }
+  }
+
   async tableFields(db, table) {
     const pool = this.requirePool();
     const [cols] = await pool.query(
-      `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable
+      `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable,
+              COLUMN_DEFAULT AS cdefault, EXTRA AS extra, COLUMN_KEY AS ckey
          FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
      ORDER BY ORDINAL_POSITION`,
@@ -368,6 +471,10 @@ class MySqlStrategy extends DbStrategy {
       name: c.name,
       types: [String(c.ctype)],
       presence: c.nullable === 'YES' ? 0 : 100, // 100 = NOT NULL
+      nullable: c.nullable === 'YES',
+      default: c.cdefault == null ? null : String(c.cdefault),
+      autoIncrement: /auto_increment/i.test(String(c.extra || '')),
+      key: String(c.ckey || ''),
     }));
   }
 

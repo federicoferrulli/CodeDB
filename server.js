@@ -290,6 +290,17 @@ io.on('connection', (socket) => {
   delegate('db:drop', async ({ db }) => { await strategy.dropDatabase(db); return {}; });
   delegate('db:schema', ({ db }) => strategy.dbSchema(db));
 
+  // --- Gestione collection/tabelle, colonne e indici ---------------------------
+
+  delegate('collection:create', async (p) => { await strategy.createCollection(p.db, p.name, p); return {}; });
+  delegate('collection:rename', async (p) => { await strategy.renameCollection(p.db, p.coll, p.newName); return {}; });
+  delegate('collection:drop', async (p) => { await strategy.dropCollection(p.db, p.coll); return {}; });
+  delegate('column:add', (p) => strategy.addColumn(p.db, p.coll, p.column));
+  delegate('column:alter', (p) => strategy.alterColumn(p.db, p.coll, p));
+  delegate('column:drop', (p) => strategy.dropColumn(p.db, p.coll, p.name));
+  delegate('index:create', (p) => strategy.createIndex(p.db, p.coll, p));
+  delegate('index:drop', async (p) => { await strategy.dropIndex(p.db, p.coll, p.name); return {}; });
+
   // --- Query, dettagli e mutazioni --------------------------------------------
 
   delegate('collection:stats', ({ db, coll }) => strategy.collectionStats(db, coll));

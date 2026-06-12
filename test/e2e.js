@@ -109,6 +109,46 @@ socket.on('connect', async () => {
     const del = await emit('doc:delete', { db: DB, coll: COLL, id: JSON.stringify(all.docs[0]._id) });
     assert(del.ok && del.deleted === 1, 'documento eliminato');
 
+    console.log('11b. collection:create/rename/drop + indici');
+    const ccre = await emit('collection:create', { db: DB, name: 'gadgets' });
+    assert(ccre.ok, `collection "gadgets" creata${ccre.ok ? '' : ' (' + ccre.error + ')'}`);
+    const idx = await emit('index:create', { db: DB, coll: 'gadgets', fields: '{"sku": 1}', unique: true, name: 'sku_unique' });
+    assert(idx.ok && idx.name === 'sku_unique', `indice creato (${idx.ok ? idx.name : idx.error})`);
+    const idxStats = await emit('collection:stats', { db: DB, coll: 'gadgets' });
+    assert(idxStats.ok && idxStats.indexes.some((i) => i.name === 'sku_unique' && i.unique), 'indice presente e unico');
+    const idDel = await emit('index:drop', { db: DB, coll: 'gadgets', name: '_id_' });
+    assert(!idDel.ok, 'eliminazione di "_id_" rifiutata');
+    const idxDel = await emit('index:drop', { db: DB, coll: 'gadgets', name: 'sku_unique' });
+    assert(idxDel.ok, 'indice eliminato');
+    const cren = await emit('collection:rename', { db: DB, coll: 'gadgets', newName: 'widgets' });
+    assert(cren.ok, `collection rinominata in "widgets"${cren.ok ? '' : ' (' + cren.error + ')'}`);
+    const cls2 = await emit('db:collections', { db: DB });
+    assert(cls2.ok && cls2.collections.some((c) => c.name === 'widgets') && !cls2.collections.some((c) => c.name === 'gadgets'),
+      'rinomina riflessa nell\'elenco');
+    const cdrop = await emit('collection:drop', { db: DB, coll: 'widgets' });
+    assert(cdrop.ok, 'collection eliminata');
+
+    console.log('11c. gestione campi su tutti i documenti (column:add/alter/drop)');
+    const fadd = await emit('column:add', { db: DB, coll: COLL, column: { name: 'status', default: 'new' } });
+    assert(fadd.ok && fadd.modified === 1, `campo "status" aggiunto (${fadd.ok ? fadd.modified + ' documenti' : fadd.error})`);
+    const fchk1 = await emit('collection:find', { db: DB, coll: COLL, filter: '' });
+    assert(fchk1.ok && fchk1.docs[0].status === 'new', 'valore iniziale applicato');
+    const fren = await emit('column:alter', { db: DB, coll: COLL, oldName: 'status', column: { name: 'stato', type: '' } });
+    assert(fren.ok && fren.modified === 1, 'campo rinominato in "stato" ($rename)');
+    const fconv = await emit('column:alter', { db: DB, coll: COLL, oldName: 'age', column: { name: 'age', type: 'string' } });
+    assert(fconv.ok, 'campo "age" convertito a string ($convert)');
+    const fchk2 = await emit('collection:find', { db: DB, coll: COLL, filter: '' });
+    assert(fchk2.ok && fchk2.docs[0].stato === 'new' && typeof fchk2.docs[0].age === 'string',
+      `rinomina e conversione persistite (age = ${fchk2.ok ? JSON.stringify(fchk2.docs[0].age) : '?'})`);
+    const fbad = await emit('column:alter', { db: DB, coll: COLL, oldName: 'age', column: { name: 'age', type: 'tipo_inventato' } });
+    assert(!fbad.ok, 'tipo di conversione non valido rifiutato');
+    const fdrop = await emit('column:drop', { db: DB, coll: COLL, name: 'stato' });
+    assert(fdrop.ok && fdrop.modified === 1, 'campo rimosso da tutti i documenti ($unset)');
+    const fchk3 = await emit('collection:find', { db: DB, coll: COLL, filter: '' });
+    assert(fchk3.ok && !('stato' in fchk3.docs[0]), 'campo assente dopo la rimozione');
+    const fid = await emit('column:drop', { db: DB, coll: COLL, name: '_id' });
+    assert(!fid.ok, 'eliminazione di "_id" rifiutata');
+
     console.log('12. db:create / db:list / db:rename / db:drop');
     const create = await emit('db:create', { db: TMP_DB, coll: 'c1' });
     assert(create.ok, `database "${TMP_DB}" creato${create.ok ? '' : ' (' + create.error + ')'}`);

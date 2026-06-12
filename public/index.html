@@ -183,11 +183,12 @@
                 <table class="info-table kv-table" id="stats-table"><tbody></tbody></table>
               </section>
               <section>
-                <h3>Indici</h3>
+                <h3>Indici <button type="button" id="index-add-btn" class="mini-btn" title="Nuovo indice">＋</button></h3>
                 <table class="info-table" id="index-table"><thead></thead><tbody></tbody></table>
               </section>
               <section class="full">
-                <h3>Schema rilevato <span id="schema-note" class="hint"></span></h3>
+                <h3><span id="schema-title">Schema rilevato</span> <span id="schema-note" class="hint"></span>
+                  <button type="button" id="column-add-btn" class="mini-btn hidden" title="Aggiungi colonna">＋</button></h3>
                 <table class="info-table" id="schema-table"><thead></thead><tbody></tbody></table>
               </section>
             </div>
@@ -212,10 +213,27 @@
   <!-- ===================== Modale inserimento documento ===================== -->
   <div id="insert-overlay" class="overlay hidden">
     <div class="modal wide">
-      <h2>Nuovo documento</h2>
-      <textarea id="insert-json" rows="14" spellcheck="false">{
+      <h2 id="insert-title">Nuovo documento</h2>
+
+      <div class="tabs">
+        <button type="button" class="tab active" data-instab="form">Modulo</button>
+        <button type="button" class="tab" data-instab="json">JSON</button>
+      </div>
+
+      <div id="insert-tab-form" class="tab-panel">
+        <div class="insert-form-wrap">
+          <table class="info-table insert-form" id="insert-form"><tbody></tbody></table>
+          <div id="insert-form-empty" class="dim hidden">Nessun campo noto: aggiungi un campo oppure usa il tab JSON.</div>
+        </div>
+        <button type="button" id="insert-addfield" class="ghost hidden">＋ Aggiungi campo</button>
+      </div>
+
+      <div id="insert-tab-json" class="tab-panel hidden">
+        <textarea id="insert-json" rows="14" spellcheck="false">{
 
 }</textarea>
+      </div>
+
       <div id="insert-error" class="error hidden"></div>
       <div class="modal-actions">
         <button id="insert-cancel" class="ghost">Annulla</button>
@@ -260,6 +278,124 @@
       </div>
     </div>
   </div>
+
+  <!-- ===================== Modale nuova collection / tabella ===================== -->
+  <div id="collcreate-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="collcreate-title">Nuova collection</h2>
+      <p class="subtitle" id="collcreate-subtitle"></p>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="collcreate-name" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div id="collcreate-schema" class="hidden">
+        <table class="info-table cols-editor" id="collcreate-cols">
+          <thead>
+            <tr><th>Colonna</th><th>Tipo</th><th title="Ammetti NULL">NULL</th><th>Default</th>
+                <th title="AUTO_INCREMENT">AI</th><th title="Chiave primaria">PK</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button type="button" id="collcreate-addcol" class="ghost">＋ Aggiungi colonna</button>
+      </div>
+      <div id="collcreate-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="collcreate-cancel" class="ghost">Annulla</button>
+        <button id="collcreate-save" class="primary">Crea</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale aggiungi / modifica colonna (MySQL) ===================== -->
+  <div id="coledit-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="coledit-title">Aggiungi colonna</h2>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="coledit-name" spellcheck="false" autocomplete="off" />
+        </label>
+        <label id="coledit-type-row">Tipo
+          <input type="text" id="coledit-type" list="mysql-types" placeholder="es. VARCHAR(255)"
+                 spellcheck="false" autocomplete="off" />
+        </label>
+        <label id="coledit-bsontype-row" class="hidden">Converti in
+          <select id="coledit-bsontype">
+            <option value="">(non convertire)</option>
+            <option value="string">string</option>
+            <option value="int">int</option>
+            <option value="long">long</option>
+            <option value="double">double</option>
+            <option value="decimal">decimal</option>
+            <option value="bool">bool</option>
+            <option value="date">date</option>
+            <option value="objectId">objectId</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label id="coledit-default-row"><span id="coledit-default-label">Default</span>
+          <input type="text" id="coledit-default" placeholder="(nessuno; testo, numero o CURRENT_TIMESTAMP)"
+                 spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="small checkbox-label" id="coledit-null-row">
+          <span>Ammetti NULL</span>
+          <input type="checkbox" id="coledit-null" checked />
+        </label>
+      </div>
+      <div id="coledit-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="coledit-cancel" class="ghost">Annulla</button>
+        <button id="coledit-save" class="primary">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale nuovo indice ===================== -->
+  <div id="idxcreate-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Nuovo indice</h2>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="idxcreate-name" placeholder="(opzionale)" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Campi (JSON, 1 = crescente, -1 = decrescente)
+          <input type="text" id="idxcreate-fields" placeholder='{"email": 1}' spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="small checkbox-label">
+          <span>Unico</span>
+          <input type="checkbox" id="idxcreate-unique" />
+        </label>
+      </div>
+      <div id="idxcreate-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="idxcreate-cancel" class="ghost">Annulla</button>
+        <button id="idxcreate-save" class="primary">Crea</button>
+      </div>
+    </div>
+  </div>
+
+  <datalist id="mysql-types">
+    <option value="INT"></option>
+    <option value="INT UNSIGNED"></option>
+    <option value="BIGINT"></option>
+    <option value="DECIMAL(10,2)"></option>
+    <option value="FLOAT"></option>
+    <option value="DOUBLE"></option>
+    <option value="VARCHAR(255)"></option>
+    <option value="CHAR(36)"></option>
+    <option value="TEXT"></option>
+    <option value="DATE"></option>
+    <option value="DATETIME"></option>
+    <option value="TIMESTAMP"></option>
+    <option value="BOOLEAN"></option>
+    <option value="JSON"></option>
+    <option value="BLOB"></option>
+  </datalist>
 
   <!-- ===================== Menu contestuale ===================== -->
   <ul id="context-menu" class="context-menu hidden"></ul>
