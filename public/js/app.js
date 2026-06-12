@@ -72,6 +72,21 @@ function simplify(v) {
   return v;
 }
 
+// Tipo "editabile" di un valore EJSON: decide quale controllo usare
+// nell'editing inline della cella (vedi startEdit).
+function valueType(v) {
+  if (typeof v === 'string') return 'string';
+  if (typeof v === 'number') return 'number';
+  if (typeof v === 'boolean') return 'bool';
+  if (isPlainObject(v)) {
+    if ('$date' in v) return 'date';
+    if ('$oid' in v) return 'oid';
+    if ('$numberInt' in v || '$numberLong' in v || '$numberDouble' in v) return 'number';
+    if ('$numberDecimal' in v) return 'decimal';
+  }
+  return 'json'; // array, oggetti, binary, null/undefined: JSON libero
+}
+
 // Rappresentazione testuale usata quando si modifica una cella.
 function editValue(v) {
   if (v === undefined) return '';
@@ -807,17 +822,99 @@ function renderGrid() {
  * Editing inline delle celle
  * ========================================================================= */
 
+// Crea il controllo di editing adatto al tipo del valore corrente.
+// Ritorna { input, original, buildValue } dove buildValue produce il valore
+// EJSON da inviare al server (o lancia un Error con il messaggio per l'utente).
+function buildEditor(current) {
+  const type = valueType(current);
+
+  if (type === 'date') {
+    const input = document.createElement('input');
+    input.type = 'datetime-local';
+    input.step = '0.001'; // millisecondi
+    const raw = isPlainObject(current.$date) ? Number(current.$date.$numberLong) : current.$date;
+    const d = new Date(raw);
+    // Le date sono mostrate e inserite in UTC, come nella griglia.
+    if (!Number.isNaN(d.getTime())) input.value = d.toISOString().slice(0, 23);
+    return {
+      input,
+      original: input.value,
+      buildValue: () => {
+        const d2 = new Date(input.value + 'Z'); // input interpretato come UTC
+        if (input.value === '' || Number.isNaN(d2.getTime())) throw new Error('Data non valida');
+        return { $date: d2.toISOString() };
+      },
+    };
+  }
+
+  if (type === 'bool') {
+    const input = document.createElement('select');
+    for (const v of ['true', 'false']) {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      input.appendChild(opt);
+    }
+    input.value = String(current);
+    return { input, original: input.value, buildValue: () => input.value === 'true' };
+  }
+
+  if (type === 'number') {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = 'any';
+    input.value = displayValue(current).text;
+    return {
+      input,
+      original: input.value,
+      buildValue: () => {
+        const n = Number(input.value);
+        if (input.value.trim() === '' || Number.isNaN(n)) throw new Error('Numero non valido');
+        return n;
+      },
+    };
+  }
+
+  if (type === 'decimal') {
+    const input = document.createElement('input');
+    input.value = current.$numberDecimal;
+    return {
+      input,
+      original: input.value,
+      // Decimal128 resta stringa per non perdere precisione.
+      buildValue: () => ({ $numberDecimal: input.value.trim() }),
+    };
+  }
+
+  if (type === 'oid') {
+    const input = document.createElement('input');
+    input.value = current.$oid;
+    return {
+      input,
+      original: input.value,
+      buildValue: () => {
+        const t = input.value.trim();
+        if (!/^[0-9a-fA-F]{24}$/.test(t)) throw new Error('ObjectId non valido: servono 24 caratteri esadecimali');
+        return { $oid: t };
+      },
+    };
+  }
+
+  // string e json: testo libero come prima (per cambiare tipo usare la modale ✎)
+  const input = document.createElement('input');
+  input.value = editValue(current);
+  return { input, original: input.value, buildValue: () => parseEdited(input.value) };
+}
+
 function startEdit(td, doc, field) {
   if (td.classList.contains('editing')) return;
-  const original = editValue(doc[field]);
+  const { input, original, buildValue } = buildEditor(doc[field]);
 
   td.classList.add('editing');
   td.innerHTML = '';
-  const input = document.createElement('input');
-  input.value = original;
   td.appendChild(input);
   input.focus();
-  input.select();
+  if (input.select) input.select();
 
   let finished = false;
 
@@ -834,7 +931,14 @@ function startEdit(td, doc, field) {
       renderGrid();
       return;
     }
-    const value = parseEdited(input.value);
+    let value;
+    try {
+      value = buildValue();
+    } catch (err) {
+      toast(err.message, true);
+      renderGrid();
+      return;
+    }
     socket.emit('doc:update', {
       db: state.db,
       coll: state.coll,
@@ -856,6 +960,7 @@ function startEdit(td, doc, field) {
     if (e.key === 'Escape') cancel();
   });
   input.addEventListener('blur', save);
+  if (input.tagName === 'SELECT') input.addEventListener('change', save);
 }
 
 /* ===========================================================================

@@ -391,7 +391,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid td .type-obj { color: #d8c27a; }
 
 #grid td.editing { padding: 0; }
-#grid td.editing input {
+#grid td.editing input,
+#grid td.editing select {
   width: 100%;
   border: 2px solid var(--accent);
   border-radius: 0;
@@ -399,6 +400,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   font-size: 0.85rem;
   padding: 3px 8px;
 }
+
+/* Il datepicker nativo resta leggibile sul tema scuro */
+#grid td.editing input[type='datetime-local'] { color-scheme: dark; }
 
 #grid td.row-actions { text-align: center; }
 
