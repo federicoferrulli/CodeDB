@@ -218,6 +218,24 @@ class MySqlStrategy extends DbStrategy {
     }));
   }
 
+  async search(query) {
+    this.requirePool();
+    const term = `%${(query || '').toLowerCase()}%`;
+    const sql = `
+      SELECT table_schema as db, table_name as coll
+      FROM information_schema.tables
+      WHERE table_schema NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')
+        AND (LOWER(table_schema) LIKE ? OR LOWER(table_name) LIKE ?)
+    `;
+    const [rows] = await this.pool.query(sql, [term, term]);
+    const dbs = new Map();
+    for (const r of rows) {
+      if (!dbs.has(r.db)) dbs.set(r.db, []);
+      dbs.get(r.db).push({ name: r.coll });
+    }
+    return Array.from(dbs.entries()).map(([name, collections]) => ({ name, collections }));
+  }
+
   // Colonne della chiave primaria, nell'ordine della definizione.
   async primaryKey(db, table) {
     const pool = this.requirePool();

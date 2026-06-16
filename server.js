@@ -394,6 +394,7 @@ io.on('connection', (socket) => {
   // --- Esplorazione e gestione database (delegati alla strategia) ------------
 
   delegate('db:list', async () => ({ databases: await strategy.listDatabases() }));
+  delegate('db:search', async ({ query }) => ({ databases: await strategy.search(query) }));
   delegate('db:collections', async ({ db }) => ({ collections: await strategy.listCollections(db) }));
   delegate('db:create', async ({ db, coll }) => { await strategy.createDatabase(db, coll); return {}; });
   delegate('db:rename', async ({ db, newName }) => { await strategy.renameDatabase(db, newName); return {}; });

@@ -189,6 +189,44 @@ class MongoDbStrategy extends DbStrategy {
     }
   }
 
+  async search(query) {
+    const term = (query || '').toLowerCase();
+    const client = this.requireClient();
+    
+    let databases = [];
+    try {
+      const res = await client.db('admin').admin().listDatabases({ nameOnly: false });
+      databases = res.databases || [];
+    } catch {
+      const dbName = new URL(this.uri.replace(/^mongodb(\+srv)?:\/\//, 'http://')).pathname.replace('/', '');
+      if (dbName) databases = [{ name: dbName }];
+    }
+
+    const promises = databases
+      .filter((d) => !SYSTEM_DBS.has(d.name))
+      .map(async (dbInfo) => {
+        const dbMatches = dbInfo.name.toLowerCase().includes(term);
+        const db = client.db(dbInfo.name);
+        try {
+          const collections = await db.listCollections().toArray();
+          const matchedCols = collections
+            .filter((c) => !c.name.startsWith('system.'))
+            .filter((c) => dbMatches || c.name.toLowerCase().includes(term))
+            .map((c) => ({ name: c.name }));
+            
+          if (dbMatches || matchedCols.length > 0) {
+            return { name: dbInfo.name, collections: matchedCols };
+          }
+        } catch (err) {
+          // Ignora DB senza permessi
+        }
+        return null;
+      });
+
+    const results = await Promise.all(promises);
+    return results.filter(Boolean);
+  }
+
   async createDatabase(db, firstColl) {
     const client = this.requireClient();
     const name = String(db || '').trim();

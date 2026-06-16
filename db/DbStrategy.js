@@ -25,6 +25,12 @@ class DbStrategy {
   /** @returns {Promise<Array<{name: string, sizeOnDisk: number}>>} */
   async listDatabases() { throw unsupported(); }
 
+  /**
+   * Cerca database e collection in base a una stringa.
+   * @returns {Promise<Array<{name: string, collections: Array<{name: string, count?: number}>}>>}
+   */
+  async search(_query) { throw unsupported(); }
+
   async createDatabase(_db, _firstColl) { throw unsupported(); }
   async renameDatabase(_db, _newName) { throw unsupported(); }
   async dropDatabase(_db) { throw unsupported(); }
