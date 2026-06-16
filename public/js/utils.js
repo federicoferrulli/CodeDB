@@ -51,6 +51,7 @@ export function displayValue(v) {
 }
 
 export function simplify(v) {
+  if (v === null || v === undefined) return v;
   if (Array.isArray(v)) return v.map(simplify);
   const kind = ejsonKind(v);
   if (kind === 'oid') return v.$oid;
