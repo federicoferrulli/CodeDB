@@ -1,8 +1,6 @@
 import { state } from './state.js';
-import { socket } from './socket.js';
 import { $, emit, displayValue, idOf, toast, showQueryError } from './utils.js';
-import { setView } from './main.js';
-import { startWatch } from './live.js';
+import { openCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 
@@ -35,24 +33,9 @@ export function applyQueryPlaceholders() {
   $('#sort-input').classList.toggle('hidden', aggregate);
 }
 
-export function selectCollection(dbName, collName, labelEl) {
-  document.querySelectorAll('.node-label.selected').forEach((el) => el.classList.remove('selected'));
-  if (labelEl) labelEl.classList.add('selected');
-
-  state.db = dbName;
-  state.coll = collName;
-  state.skip = 0;
-  $('#filter-input').value = '';
-  $('#sort-input').value = '';
-  $('#query-mode').value = 'find';
-  applyQueryPlaceholders();
-  $('#breadcrumb').textContent = `${dbName} ▸ ${collName}`;
-  $('#placeholder').classList.add('hidden');
-  $('#workspace').classList.remove('hidden');
-  setView('data');
-
-  runQuery();
-  startWatch();
+// Apre la collection in un coll-tab (o attiva quello già aperto).
+export function selectCollection(dbName, collName) {
+  openCollTab(dbName, collName);
 }
 
 export function runQuery() {

@@ -1,7 +1,8 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
 import { $, emit, toast, openModal, closeModal, invalidateSchema, colDone } from './utils.js';
-import { refreshDbTree, resetWorkspace, collWord } from './dbtree.js';
+import { refreshDbTree, collWord } from './dbtree.js';
+import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
 
 let creatingCollDb = null;
@@ -30,14 +31,13 @@ export function renameDb(name) {
     toast(`Database rinominato in "${newName}"`);
     state.expandedDbs.delete(name);
     state.expandedDbs.add(newName);
+    // I coll-tab aperti sul vecchio nome seguono la rinomina.
+    updateCollTabs((ct) => { if (ct.db === name) ct.db = newName; });
     if (state.db === name) {
       state.db = newName;
       invalidateSchema();
       state.dbSchemaFor = null;
       $('#breadcrumb').textContent = `${newName} ▸ ${state.coll}`;
-      // Needs runQuery and startWatch from grid.js, but since we are refactoring, we'll dispatch an event or import it.
-      // Wait, we can't easily import runQuery if we have circular dependencies.
-      // Let's just import them. ES modules support circular dependencies if used carefully.
       import('./grid.js').then(({ runQuery }) => runQuery());
       import('./live.js').then(({ startWatch }) => startWatch());
     }
@@ -50,7 +50,7 @@ export function dropDb(name) {
   emit('db:drop', { db: name }).then(() => {
     toast(`Database "${name}" eliminato`);
     state.expandedDbs.delete(name);
-    if (state.db === name) resetWorkspace();
+    closeCollTabsWhere((ct) => ct.db === name);
     refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }
@@ -133,6 +133,7 @@ export function renameColl(dbName, collName) {
   emit('collection:rename', { db: dbName, coll: collName, newName }).then(() => {
     toast(`Rinominata in "${newName}"`);
     invalidateSchema();
+    updateCollTabs((ct) => { if (ct.db === dbName && ct.coll === collName) ct.coll = newName; });
     if (state.db === dbName && state.coll === collName) {
       state.coll = newName;
       $('#breadcrumb').textContent = `${dbName} ▸ ${newName}`;
@@ -148,7 +149,7 @@ export function dropColl(dbName, collName) {
   emit('collection:drop', { db: dbName, coll: collName }).then(() => {
     toast(`"${collName}" eliminata`);
     invalidateSchema();
-    if (state.db === dbName && state.coll === collName) resetWorkspace();
+    closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName);
     refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }

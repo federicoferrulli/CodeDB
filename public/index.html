@@ -8,23 +8,10 @@
 </head>
 <body>
   <!-- ===================== Modale di connessione ===================== -->
-  <div id="connect-overlay" class="overlay">
+  <div id="connect-overlay" class="overlay hidden">
     <div class="modal">
-      <h1>🍃 Mongo Web GUI</h1>
-      <p class="subtitle">Inserisci le credenziali di connessione</p>
-
-      <div id="saved-conns-section" class="saved-conns">
-        <div class="saved-conns-title">
-          <span>Connessioni salvate</span>
-          <span class="saved-conns-tools">
-            <button type="button" id="conn-export-btn" title="Scarica connections.ini (contiene le password in chiaro)">⤓ Esporta</button>
-            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini">⤒ Importa</button>
-          </span>
-        </div>
-        <ul id="saved-conns"></ul>
-        <div id="saved-conns-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
-        <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
-      </div>
+      <h2>Connessione</h2>
+      <p class="subtitle">Inserisci i dati di connessione al database</p>
 
       <form id="connect-form">
         <div id="conn-edit-banner" class="conn-edit-banner hidden">
@@ -125,13 +112,19 @@
 
         <div class="form-row">
           <label>Salva come
-            <input type="text" name="saveAs" placeholder="(opzionale: salva la connessione con questo nome)"
+            <input type="text" name="saveAs" placeholder="(opzionale: salva con questo nome)"
                    autocomplete="off" spellcheck="false" />
           </label>
+          <label>Cartella
+            <input type="text" name="folder" list="conn-folders"
+                   placeholder="(opzionale, es. Produzione)" autocomplete="off" spellcheck="false" />
+          </label>
         </div>
+        <datalist id="conn-folders"></datalist>
 
         <div id="connect-error" class="error hidden"></div>
         <div class="connect-actions">
+          <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
           <button type="button" id="conn-save-btn" class="hidden" title="Salva la connessione senza connetterti">💾 Salva</button>
           <button type="submit" id="connect-btn" class="primary">Connetti</button>
         </div>
@@ -140,34 +133,63 @@
   </div>
 
   <!-- ===================== Layout principale ===================== -->
-  <div id="app" class="hidden">
+  <div id="app">
     <header>
-      <span class="brand">🍃 Mongo Web GUI</span>
+      <span class="brand">🗄 DB Web GUI</span>
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
       <label id="polling-toggle" class="hidden" style="margin-left: 15px; font-size: 0.9em; cursor: pointer; color: var(--fg-dim);">
         <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
       </label>
-      <button id="disconnect-btn" class="ghost">Disconnetti</button>
+      <button id="disconnect-btn" class="ghost hidden" title="Chiude il tab attivo e la sua connessione">Disconnetti</button>
     </header>
 
     <div class="body">
-      <aside id="sidebar">
+      <!-- ------------------- Connection manager ------------------- -->
+      <aside id="conn-sidebar">
         <div class="sidebar-title">
-          <span>Database</span>
-          <button id="new-db-btn" title="Nuovo database">＋</button>
+          <span>Connessioni</span>
+          <span class="saved-conns-tools">
+            <button type="button" id="conn-export-btn" title="Scarica connections.ini (segreti cifrati)">⤓</button>
+            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini">⤒</button>
+          </span>
         </div>
-        <div class="sidebar-search" style="padding: 0 15px 10px 15px;">
-          <input type="text" id="db-search" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
-        </div>
-        <ul id="db-tree"></ul>
+        <ul id="conn-tree"></ul>
+        <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
+        <button type="button" id="conn-add-btn">＋ Aggiungi connessione</button>
+        <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
       </aside>
+      <div class="resizer" data-resize="conn-sidebar"></div>
 
-      <main>
+      <div class="main-area">
+        <div id="tab-bar"></div>
+
+        <div id="welcome" class="placeholder">
+          Nessuna connessione aperta.<br />
+          <span class="placeholder-hint">Clicca una connessione salvata nella barra a sinistra
+            (tasto destro per testarla o modificarla) oppure ＋ per crearne una nuova.</span>
+        </div>
+
+        <div id="tab-body" class="tab-body hidden">
+          <aside id="sidebar">
+            <div class="sidebar-title">
+              <span>Database</span>
+              <button id="new-db-btn" title="Nuovo database">＋</button>
+            </div>
+            <div class="sidebar-search" style="padding: 0 15px 10px 15px;">
+              <input type="text" id="db-search" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
+            </div>
+            <ul id="db-tree"></ul>
+          </aside>
+          <div class="resizer" data-resize="sidebar"></div>
+
+          <main>
         <div id="placeholder" class="placeholder">
           Seleziona una collection dalla barra laterale per visualizzare i dati.<br />
           <span class="placeholder-hint">Tasto destro su un database per crearlo, rinominarlo o eliminarlo.</span>
         </div>
+
+        <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
 
         <div id="workspace" class="hidden">
           <div class="workspace-head">
@@ -250,9 +272,11 @@
             <div id="uml-canvas" class="uml-canvas"></div>
           </div>
         </div>
-      </main>
-    </div>
-  </div>
+          </main>
+        </div><!-- /#tab-body -->
+      </div><!-- /.main-area -->
+    </div><!-- /.body -->
+  </div><!-- /#app -->
 
   <!-- ===================== Modale inserimento documento ===================== -->
   <div id="insert-overlay" class="overlay hidden">

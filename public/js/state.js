@@ -1,19 +1,21 @@
-export const state = {
-  connected: false,
-  connLabel: '',
-  dbType: 'mongodb',     // 'mongodb' | 'mysql'
-  db: null,
-  coll: null,
-  skip: 0,
-  limit: 50,
-  total: 0,
-  docs: [],
-  columns: [],
-  liveTimer: null,
-  pollingInterval: null,
-  view: 'data',
-  expandedDbs: new Set(), // db espansi nella sidebar
-  editingDoc: null,       // documento aperto nella modale di modifica riga
-  dbSchema: null,         // cache dello schema per la vista UML
-  dbSchemaFor: null,      // db a cui si riferisce la cache
-};
+import { activeTab, freshState } from './tabs.js';
+
+// `state` è un Proxy che delega allo stato del tab attivo: i moduli storici
+// continuano a leggere/scrivere un singolo oggetto, ma il cambio tab scambia
+// l'oggetto sottostante. La forma dello stato è definita in freshState()
+// (tabs.js). Lo stato "staccato" copre l'istante in cui nessun tab è aperto.
+const detached = freshState();
+
+function target() {
+  const tab = activeTab();
+  return tab ? tab.state : detached;
+}
+
+export const state = new Proxy({}, {
+  get: (_, key) => target()[key],
+  set: (_, key, value) => { target()[key] = value; return true; },
+  has: (_, key) => key in target(),
+  deleteProperty: (_, key) => { delete target()[key]; return true; },
+  ownKeys: () => Reflect.ownKeys(target()),
+  getOwnPropertyDescriptor: (_, key) => Object.getOwnPropertyDescriptor(target(), key),
+});

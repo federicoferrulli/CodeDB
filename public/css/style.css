@@ -124,9 +124,7 @@ button.ghost { background: transparent; }
   word-break: break-word;
 }
 
-/* ---------- Connessioni salvate (modale di connessione) ---------- */
-
-.saved-conns { margin-bottom: 18px; }
+/* ---------- Connessioni salvate (sidebar) ---------- */
 
 .saved-conns-title {
   display: flex;
@@ -183,40 +181,6 @@ button.ghost { background: transparent; }
 }
 
 .conn-edit-banner button:hover { color: var(--danger); }
-
-.saved-conns ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-}
-
-.saved-conns li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border);
-}
-
-.saved-conns li:last-child { border-bottom: none; }
-.saved-conns li:hover { background: var(--sel); }
-
-.saved-conn-name { font-weight: 600; white-space: nowrap; }
-
-.saved-conn-label {
-  flex: 1;
-  color: var(--fg-dim);
-  font-size: 0.8rem;
-  font-family: Consolas, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 /* ---------- Layout ---------- */
 
@@ -654,3 +618,155 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .grid-actions-col { width: 56px; }
 .loading { color: var(--fg-dim); }
+
+/* ---------- Connection manager (sidebar sinistra) ---------- */
+
+#conn-sidebar {
+  width: 240px;
+  min-width: 150px;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 10px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#conn-sidebar .saved-conns-title { margin-bottom: 0; padding: 4px 14px 8px; }
+
+#conn-tree { list-style: none; margin: 0; padding: 0; flex: 1; }
+#conn-tree ul { list-style: none; margin: 0; padding-left: 12px; }
+
+#conn-tree .folder-label { color: var(--fg-dim); font-size: 0.85rem; user-select: none; }
+
+.conn-item .node-label { flex-direction: column; align-items: flex-start; gap: 1px; }
+.conn-name { font-weight: 600; font-size: 0.9rem; }
+.conn-detail {
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  font-family: Consolas, monospace;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#conn-empty { margin: 8px 14px; }
+
+#conn-add-btn {
+  margin: 10px 14px 4px;
+  border-style: dashed;
+  color: var(--fg-dim);
+}
+#conn-add-btn:hover { color: var(--accent); border-color: var(--accent-2); }
+
+/* ---------- Maniglie di ridimensionamento ---------- */
+
+.resizer {
+  flex: 0 0 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+.resizer:hover, .resizer.dragging { background: var(--accent-2); }
+
+/* ---------- Tab bar delle connessioni aperte ---------- */
+
+.main-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+#tab-bar {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  min-height: 34px;
+}
+
+.conn-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px 6px 12px;
+  border-right: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  font-size: 0.85rem;
+}
+
+.conn-tab:hover { background: var(--bg-2); }
+.conn-tab.active {
+  background: var(--bg-2);
+  color: var(--fg);
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.conn-tab .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.conn-tab .dot.mongodb { background: var(--accent); }
+.conn-tab .dot.mysql { background: #3d9bd4; }
+
+.conn-tab-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  padding: 0 3px;
+  font-size: 0.8rem;
+  border-radius: 4px;
+}
+.conn-tab-close:hover { color: var(--danger); background: var(--bg-3); }
+
+#tab-add-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  padding: 0 12px;
+  font-size: 1rem;
+}
+#tab-add-btn:hover { color: var(--accent); }
+
+.tab-body { display: flex; flex: 1; min-height: 0; }
+
+/* ---------- Tab delle collection/tabelle aperte (dentro un tab di connessione) ---------- */
+
+.coll-tab-bar {
+  display: flex;
+  align-items: stretch;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  min-height: 28px;
+  flex: 0 0 auto;
+}
+
+.coll-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 11px;
+  border-right: 1px solid var(--border);
+  color: var(--fg-dim);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  font-size: 0.8rem;
+}
+
+.coll-tab::before { content: "▤ "; opacity: 0.7; }
+.coll-tab:hover { background: var(--bg-2); }
+.coll-tab.active {
+  background: var(--bg-2);
+  color: var(--fg);
+  box-shadow: inset 0 -2px 0 var(--accent-2);
+}
+
+.coll-tab-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  padding: 0 3px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+}
+.coll-tab-close:hover { color: var(--danger); background: var(--bg-3); }

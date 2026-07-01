@@ -202,7 +202,11 @@ socket.on('connect', async () => {
     assert(cpw1.ok && cpw2.ok, 'connections:save crea e aggiorna "e2e-pw"');
     const cexp = await emit('connections:export', {});
     assert(cexp.ok && cexp.ini.includes(`[${CONN_NAME2}]`) && cexp.ini.includes('host=127.0.0.1'), 'export contiene la connessione rinominata');
-    assert(cexp.ok && cexp.ini.includes('username=u2') && cexp.ini.includes('password=segreta'), 'update senza password preserva quella salvata');
+    const cpwGet = await emit('connections:get', { name: 'e2e-pw' });
+    assert(
+      cexp.ok && cexp.ini.includes('username=u2') && cexp.ini.includes('password=ENC:') && cpwGet.ok && cpwGet.hasPassword,
+      'update senza password preserva quella salvata (cifrata nell\'export)'
+    );
 
     await emit('connections:delete', { name: CONN_NAME2 });
     const cimp = await emit('connections:import', { ini: cexp.ini });
@@ -222,6 +226,29 @@ socket.on('connect', async () => {
     console.log('16. mongo:disconnect');
     const disc = await emit('mongo:disconnect', {});
     assert(disc.ok, 'disconnessione pulita');
+
+    console.log('17. sessioni multiple per tab (tabId)');
+    const tabA = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'tabA' });
+    const tabB = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'tabB' });
+    assert(tabA.ok && tabA.tabId === 'tabA' && tabB.ok && tabB.tabId === 'tabB', 'due tab connessi in parallelo sullo stesso socket');
+    const insA = await emit('doc:insert', { tabId: 'tabA', db: DB, coll: COLL, doc: '{ "who": "tabA" }' });
+    const findB = await emit('collection:find', { tabId: 'tabB', db: DB, coll: COLL, filter: '{ "who": "tabA" }' });
+    assert(insA.ok && findB.ok && findB.total === 1, 'sessioni separate sullo stesso server');
+    const noTab = await emit('collection:find', { tabId: 'tabZ', db: DB, coll: COLL, filter: '' });
+    assert(!noTab.ok, 'tabId senza sessione rifiutato');
+    const discA = await emit('mongo:disconnect', { tabId: 'tabA' });
+    const findA = await emit('collection:find', { tabId: 'tabA', db: DB, coll: COLL, filter: '' });
+    const findB2 = await emit('collection:find', { tabId: 'tabB', db: DB, coll: COLL, filter: '' });
+    assert(discA.ok && !findA.ok && findB2.ok, 'chiusura di un tab: gli altri restano attivi');
+    const dropTab = await emit('db:drop', { tabId: 'tabB', db: DB });
+    assert(dropTab.ok, 'pulizia del database di test dal tab B');
+    await emit('mongo:disconnect', { tabId: 'tabB' });
+
+    console.log('18. connections:test');
+    const tOk = await emit('connections:test', { host: 'localhost', port: 27017 });
+    assert(tOk.ok && tOk.dbType === 'mongodb' && tOk.databases >= 1, `test connessione riuscito (${tOk.ok ? tOk.databases + ' db' : tOk.error})`);
+    const tBad = await emit('connections:test', { host: 'localhost', port: 1 });
+    assert(!tBad.ok, 'test connessione verso porta chiusa fallisce');
 
     console.log(process.exitCode ? '\nTEST FALLITI' : '\nTUTTI I TEST SUPERATI');
   } catch (err) {

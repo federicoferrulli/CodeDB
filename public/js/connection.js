@@ -1,14 +1,14 @@
-import { state } from './state.js';
 import { socket } from './socket.js';
+import { tabs, activeTab, createTab, closeTab, closeAllTabs } from './tabs.js';
 import { $, emit, toast } from './utils.js';
-import { renderDbTree } from './dbtree.js';
-import { applyDbTypeToWorkspace } from './grid.js';
+import { loadSavedConnections } from './connmanager.js';
+import { renderTabBar } from './tabbar.js';
+import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
+
+// Modale di connessione (nuova connessione o modifica di una salvata).
+// L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
 
 let editingConn = null;
-
-function dbTypeIcon(dbType) {
-  return dbType === 'mysql' ? '🐬' : '🍃';
-}
 
 function selectConnTab(name) {
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
@@ -23,11 +23,11 @@ export function syncConnForm() {
 
   $('#row-authsource').classList.toggle('hidden', isMysql);
   $('#row-database').classList.toggle('hidden', !isMysql);
-  
+
   // SSH fields
   $('#ssh-fields').classList.toggle('hidden', !sshOn);
   $('#tab-uri-btn').classList.toggle('hidden', isMysql || sshOn);
-  
+
   if ((isMysql || sshOn) && !$('#tab-uri').classList.contains('hidden')) {
     selectConnTab('fields');
   }
@@ -55,6 +55,7 @@ function readConnForm() {
   }
   cfg.dbType = form.elements.dbType.value;
   cfg.saveAs = form.elements.saveAs.value;
+  cfg.folder = form.elements.folder.value;
   const sshOn = form.elements.ssh.checked;
   cfg.ssh = sshOn ? 'true' : '';
   if (sshOn) {
@@ -68,88 +69,50 @@ function readConnForm() {
   return cfg;
 }
 
-function doConnect(cfg) {
-  const btn = $('#connect-btn');
-  btn.disabled = true;
-  btn.textContent = 'Connessione…';
+export function openConnModal() {
+  cancelEditConn();
   $('#connect-error').classList.add('hidden');
+  $('#connect-overlay').classList.remove('hidden');
+}
 
-  emit('mongo:connect', cfg).then((res) => {
-    btn.disabled = false;
-    btn.textContent = 'Connetti';
-    state.connected = true;
-    state.connLabel = res.label || '';
-    state.dbType = res.dbType || 'mongodb';
-    $('#conn-info').textContent = `${dbTypeIcon(state.dbType)} ${state.connLabel}`;
-    $('#connect-overlay').classList.add('hidden');
-    $('#app').classList.remove('hidden');
-    applyDbTypeToWorkspace();
+function closeConnModal() {
+  $('#connect-overlay').classList.add('hidden');
+}
+
+// Connette e apre un tab: il tabId viene generato prima (è la chiave della
+// sessione server) ma il tab compare solo a connessione riuscita. Se il tab
+// attivo non è connesso (stato iniziale) viene riusato il suo posto.
+// Socket diretta e non emit(): la risposta va gestita anche se nel frattempo
+// l'utente ha chiuso il tab attivo (emit la scarterebbe).
+export function connectAndOpenTab(cfg) {
+  const current = activeTab();
+  const reuse = current && !current.state.connected ? current : null;
+  const tabId = reuse ? reuse.id : crypto.randomUUID();
+  saveWorkspaceInputs(); // snapshot del tab che (forse) si lascia
+  return new Promise((resolve, reject) => {
+    socket.emit('mongo:connect', { ...cfg, tabId }, (res) =>
+      res.ok ? resolve(res) : reject(new Error(res.error))
+    );
+  }).then((res) => {
+    const tab = reuse || createTab({ id: tabId });
+    tab.connName = cfg.saved || cfg.saveAs || null;
+    tab.dbType = res.dbType || 'mongodb';
+    tab.label = tab.connName || res.label || 'Connessione';
+    Object.assign(tab.state, {
+      connected: true,
+      connLabel: res.label || '',
+      dbType: tab.dbType,
+      databases: res.databases || [],
+    });
+    tabs.activeId = tab.id;
+    renderTabBar();
+    renderWorkspace();
     if (cfg.saveAs) loadSavedConnections();
-    renderDbTree(res.databases);
-  }).catch((err) => {
-    btn.disabled = false;
-    btn.textContent = 'Connetti';
-    const errorEl = $('#connect-error');
-    errorEl.textContent = err.message;
-    errorEl.classList.remove('hidden');
+    return res;
   });
 }
 
-export function loadSavedConnections() {
-  emit('connections:list', {}).then((res) => {
-    renderSavedConnections(res.connections);
-  }).catch((err) => toast(err.message, true));
-}
-
-function renderSavedConnections(connections) {
-  const list = $('#saved-conns');
-  list.innerHTML = '';
-  list.classList.toggle('hidden', !connections.length);
-  $('#saved-conns-empty').classList.toggle('hidden', !!connections.length);
-  $('#conn-export-btn').disabled = !connections.length;
-  for (const conn of connections) {
-    const li = document.createElement('li');
-    li.title = `Connetti a "${conn.name}"`;
-
-    const name = document.createElement('span');
-    name.className = 'saved-conn-name';
-    name.textContent = `${dbTypeIcon(conn.dbType)} ${conn.name}`;
-
-    const label = document.createElement('span');
-    label.className = 'saved-conn-label';
-    label.textContent = conn.label;
-
-    const edit = document.createElement('button');
-    edit.type = 'button';
-    edit.className = 'edit-btn';
-    edit.title = 'Modifica la connessione salvata';
-    edit.textContent = '✎';
-    edit.addEventListener('click', (e) => {
-      e.stopPropagation();
-      startEditConn(conn.name);
-    });
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'del-btn';
-    del.title = 'Elimina la connessione salvata';
-    del.textContent = '✕';
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!confirm(`Eliminare la connessione salvata "${conn.name}"?`)) return;
-      emit('connections:delete', { name: conn.name }).then(() => {
-        if (editingConn === conn.name) cancelEditConn();
-        loadSavedConnections();
-      }).catch((err) => toast(err.message, true));
-    });
-
-    li.append(name, label, edit, del);
-    li.addEventListener('click', () => doConnect({ saved: conn.name }));
-    list.appendChild(li);
-  }
-}
-
-function startEditConn(name) {
+export function startEditConn(name) {
   emit('connections:get', { name }).then((res) => {
     const f = res.fields;
     const form = $('#connect-form');
@@ -164,6 +127,7 @@ function startEditConn(name) {
     form.elements.password.placeholder = res.hasPassword ? '(invariata se lasciata vuota)' : '';
     form.elements.authSource.value = f.authSource || 'admin';
     form.elements.database.value = f.database || '';
+    form.elements.folder.value = f.folder || '';
     form.elements.ssh.checked = (f.ssh || '').toLowerCase() === 'true';
     form.elements.sshHost.value = f.sshHost || '';
     form.elements.sshPort.value = f.sshPort || '22';
@@ -180,6 +144,7 @@ function startEditConn(name) {
     $('#conn-edit-banner').classList.remove('hidden');
     $('#conn-save-btn').classList.remove('hidden');
     $('#connect-error').classList.add('hidden');
+    $('#connect-overlay').classList.remove('hidden');
   }).catch((err) => toast(err.message, true));
 }
 
@@ -207,10 +172,37 @@ export function initConnection() {
     e.preventDefault();
     const cfg = readConnForm();
     if (editingConn) cfg.keepPasswordFrom = editingConn;
-    doConnect(cfg);
+    const btn = $('#connect-btn');
+    btn.disabled = true;
+    btn.textContent = 'Connessione…';
+    $('#connect-error').classList.add('hidden');
+    connectAndOpenTab(cfg).then(() => {
+      btn.disabled = false;
+      btn.textContent = 'Connetti';
+      cancelEditConn();
+      closeConnModal();
+    }).catch((err) => {
+      btn.disabled = false;
+      btn.textContent = 'Connetti';
+      const errorEl = $('#connect-error');
+      errorEl.textContent = err.message;
+      errorEl.classList.remove('hidden');
+    });
   });
 
   $('#conn-edit-cancel').addEventListener('click', cancelEditConn);
+
+  $('#conn-cancel-btn').addEventListener('click', () => {
+    cancelEditConn();
+    closeConnModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !$('#connect-overlay').classList.contains('hidden')) {
+      cancelEditConn();
+      closeConnModal();
+    }
+  });
 
   $('#conn-save-btn').addEventListener('click', () => {
     const cfg = readConnForm();
@@ -224,6 +216,7 @@ export function initConnection() {
     emit('connections:save', { name, oldName: editingConn, cfg }).then(() => {
       toast(`Connessione "${name}" salvata`);
       cancelEditConn();
+      closeConnModal();
       loadSavedConnections();
     }).catch((err) => {
       const errorEl = $('#connect-error');
@@ -240,7 +233,7 @@ export function initConnection() {
       a.download = 'connections.ini';
       a.click();
       URL.revokeObjectURL(a.href);
-      toast('Connessioni esportate: il file contiene le password in chiaro');
+      toast('Connessioni esportate (segreti cifrati)');
     }).catch((err) => toast(err.message, true));
   });
 
@@ -261,16 +254,32 @@ export function initConnection() {
     });
   });
 
+  // "Disconnetti" = chiudi il tab attivo (la sessione server viene chiusa).
   $('#disconnect-btn').addEventListener('click', () => {
-    socket.emit('mongo:disconnect', {}, () => {});
-    location.reload();
+    const tab = activeTab();
+    if (!tab) return;
+    closeTab(tab.id);
+    renderTabBar();
+    renderWorkspace();
   });
 
+  let hadSession = false;
   socket.on('connect', () => {
-    if (!state.connected) loadSavedConnections();
+    loadSavedConnections();
+    // Riconnessione del socket: le sessioni server sono andate perse, i tab
+    // aperti non sono più validi.
+    if (hadSession && tabs.list.length) {
+      closeAllTabs();
+      renderTabBar();
+      renderWorkspace();
+      toast('Sessione persa: i tab sono stati chiusi, riconnettiti.', true);
+    }
+    hadSession = true;
   });
 
   socket.on('disconnect', () => {
-    if (state.connected) toast('Connessione al server persa, riconnessione…', true);
+    if (tabs.list.some((t) => t.state.connected)) {
+      toast('Connessione al server persa, riconnessione…', true);
+    }
   });
 }

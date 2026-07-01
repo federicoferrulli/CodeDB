@@ -1,5 +1,6 @@
 import { socket } from './socket.js';
 import { state } from './state.js';
+import { tabs, activeTab } from './tabs.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -27,9 +28,20 @@ export function displayValue(v) {
   if (kind === 'oid') return { text: v.$oid, cls: 'type-oid' };
   if (kind === 'date') {
     const d = isPlainObject(v.$date) ? Number(v.$date.$numberLong) : v.$date;
-    return { text: new Date(d).toISOString(), cls: 'type-date' };
+    const date = new Date(d);
+    // Data invalida (es. DATETIME azzerati): non deve far saltare il render
+    // dell'intera griglia con il RangeError di toISOString().
+    if (isNaN(date.getTime())) return { text: String(d), cls: 'type-date' };
+    return { text: date.toISOString(), cls: 'type-date' };
   }
-  if (kind === 'number') return { text: v.$numberInt || v.$numberLong || v.$numberDouble, cls: 'type-num' };
+  if (kind === 'number') {
+    // 'number' copre sia le forme EJSON canoniche ({"$numberLong": "..."})
+    // sia i numeri JS puri (il server serializza relaxed): vanno distinti.
+    const text = isPlainObject(v)
+      ? String(v.$numberInt ?? v.$numberLong ?? v.$numberDouble)
+      : String(v);
+    return { text, cls: 'type-num' };
+  }
   if (kind === 'decimal') return { text: String(v.$numberDecimal), cls: 'type-num' };
   if (kind === 'binary') {
     const b64 = v.$binary.base64 || '';
@@ -45,7 +57,6 @@ export function displayValue(v) {
     return { text: `[BLOB ${fmtBytes(size)}] ${hex.trim()}`, cls: 'type-obj' };
   }
   if (kind === 'object') return { text: JSON.stringify(simplify(v)), cls: 'type-obj' };
-  if (kind === 'number') return { text: String(v), cls: 'type-num' };
   if (kind === 'boolean') return { text: String(v), cls: 'type-bool' };
   return { text: String(v), cls: '' };
 }
@@ -56,7 +67,7 @@ export function simplify(v) {
   const kind = ejsonKind(v);
   if (kind === 'oid') return v.$oid;
   if (kind === 'date') return displayValue(v).text;
-  if (kind === 'number') return Number(Object.values(v)[0]);
+  if (kind === 'number') return isPlainObject(v) ? Number(Object.values(v)[0]) : v;
   if (kind === 'decimal') return Number(v.$numberDecimal);
   if (kind === 'object') {
     const out = {};
@@ -175,12 +186,24 @@ export function showError(id, msg) {
   }
 }
 
+// Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
+// momento della chiamata (non alla risposta: l'utente può cambiare tab mentre
+// la query è in volo). La risposta porta il tab di origine in `_tab`; se nel
+// frattempo il tab è stato chiuso, la risposta viene scartata.
 export function emit(event, payload) {
+  const tab = activeTab();
   return new Promise((resolve, reject) => {
-    socket.emit(event, payload, (res) =>
-      res.ok ? resolve(res) : reject(new Error(res.error))
-    );
+    socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) }, (res) => {
+      if (tab && !tabs.list.includes(tab)) return; // tab chiuso: risposta orfana
+      res.ok ? resolve(Object.assign(res, { _tab: tab })) : reject(new Error(res.error));
+    });
   });
+}
+
+// Evento senza risposta (fire-and-forget), sempre col tabId del tab attivo.
+export function notify(event, payload) {
+  const tab = activeTab();
+  socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) });
 }
 
 export function invalidateSchema() {
@@ -189,4 +212,8 @@ export function invalidateSchema() {
 
 export function colDone(verb) {
   return verb + 'a';
+}
+
+export function dbTypeIcon(dbType) {
+  return dbType === 'mysql' ? '🐬' : '🍃';
 }

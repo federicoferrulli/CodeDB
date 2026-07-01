@@ -33,6 +33,8 @@ function errMsg(err) {
 const CONNECTIONS_FILE = path.join(__dirname, 'connections.ini');
 const CONN_FIELDS = [
   'dbType', 'uri', 'host', 'port', 'username', 'password', 'authSource', 'database',
+  // Cartella/gruppo di appartenenza nella sidebar del connection manager.
+  'folder',
   // Tunnel SSH (ortogonale al dbType): 'ssh' = "true" per abilitarlo.
   'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshPassword', 'sshKeyFile', 'sshPassphrase',
 ];
@@ -164,44 +166,121 @@ function connLabel(cfg) {
 }
 
 /* ---------------------------------------------------------------------------
- * Socket handling — una strategia (e quindi una connessione DB) per socket
+ * Apertura di una connessione DB (comune a mongo:connect e connections:test)
  * ------------------------------------------------------------------------- */
 
-io.on('connection', (socket) => {
-  /** @type {import('./db/DbStrategy')|null} */
-  let strategy = null;
-  /** @type {{ close: () => void }|null} */
+// Risolve la configurazione effettiva: cfg.saved = usa una connessione salvata
+// (i parametri, password inclusa, restano lato server); cfg.keepPasswordFrom =
+// riusa i segreti di una connessione salvata quando il form li lascia vuoti
+// (non vengono mai rimandati al browser, quindi il client non può reinviarli).
+function resolveEffectiveCfg(cfg) {
+  let effective = cfg;
+  if (cfg.saved) {
+    const saved = loadConnections()[cfg.saved];
+    if (!saved) throw new Error(`Connessione salvata "${cfg.saved}" non trovata.`);
+    effective = saved;
+  }
+  if (cfg.keepPasswordFrom) {
+    const prev = loadConnections()[cfg.keepPasswordFrom];
+    if (prev) {
+      const merged = { ...effective };
+      for (const f of SECRET_FIELDS) {
+        if (!merged[f] && prev[f]) merged[f] = prev[f];
+      }
+      effective = merged;
+    }
+  }
+  return effective;
+}
+
+// Apre tunnel SSH (se richiesto) e connette la strategia. In caso di errore
+// chiude quanto già aperto e rilancia; altrimenti restituisce le risorse
+// aperte, la cui chiusura è a carico del chiamante (teardownConnection).
+async function establishConnection(cfg) {
+  const effective = resolveEffectiveCfg(cfg);
+  const dbType = connDbType(effective);
   let tunnel = null;
+  try {
+    // Tunnel SSH (solo in modalità "Parametri"): la strategia si connette al
+    // capo locale del tunnel anziché direttamente all'host del database.
+    let connectCfg = effective;
+    if (sshEnabled(effective)) {
+      if (effective.uri && effective.uri.trim()) {
+        throw new Error('Il tunnel SSH è disponibile solo in modalità "Parametri", non con URI completa.');
+      }
+      const defaultPort = dbType === 'mysql' ? 3306 : 27017;
+      const target = {
+        host: (effective.host || 'localhost').trim(),
+        port: parseInt(effective.port, 10) || defaultPort,
+      };
+      tunnel = await openSshTunnel(effective, target);
+      connectCfg = { ...effective, host: tunnel.host, port: String(tunnel.port) };
+      // Per MongoDB dietro tunnel: evita la topology discovery verso host del
+      // replica set non raggiungibili attraverso il tunnel.
+      if (dbType === 'mongodb') connectCfg.directConnection = true;
+    }
+    const strategy = DbFactory.getStrategy(dbType);
+    await strategy.connect(connectCfg);
+    return { strategy, tunnel, effective, dbType };
+  } catch (err) {
+    if (tunnel) try { tunnel.close(); } catch { /* ignora */ }
+    throw err;
+  }
+}
 
-  async function closeStrategy() {
-    if (strategy) {
-      const s = strategy;
-      strategy = null;
-      await s.disconnect().catch(() => {});
-    }
-    // Il tunnel va chiuso dopo la strategia, che lo usa per il traffico DB.
-    if (tunnel) {
-      const t = tunnel;
-      tunnel = null;
-      try { t.close(); } catch { /* ignora */ }
-    }
+async function teardownConnection({ strategy, tunnel }) {
+  await strategy.disconnect().catch(() => {});
+  // Il tunnel va chiuso dopo la strategia, che lo usa per il traffico DB.
+  if (tunnel) {
+    try { tunnel.close(); } catch { /* ignora */ }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Socket handling — una sessione (strategia + eventuale tunnel) per ogni tab
+ * aperto nel browser; il tabId viaggia in ogni payload. Client storici senza
+ * tabId ricadono sulla sessione "default" (stesso comportamento di prima).
+ * ------------------------------------------------------------------------- */
+
+// Massimo numero di connessioni DB contemporanee per socket (cioè per browser).
+const MAX_SESSIONS_PER_SOCKET = 8;
+
+// Normalizza il tabId ricevuto dal client (input non fidato): è solo la chiave
+// della mappa di sessioni del proprio socket, mai usato per accedere ad altro.
+function normTabId(tabId) {
+  const id = String(tabId == null ? '' : tabId).trim();
+  return id || 'default';
+}
+
+io.on('connection', (socket) => {
+  /** @type {Map<string, { strategy: import('./db/DbStrategy'), tunnel: { close: () => void }|null }>} */
+  const sessions = new Map();
+
+  async function closeSession(tabId) {
+    const sess = sessions.get(tabId);
+    if (!sess) return;
+    // Rimuovi prima di await: evita doppie chiusure su chiamate concorrenti.
+    sessions.delete(tabId);
+    await teardownConnection(sess);
   }
 
-  function requireStrategy(cb) {
-    if (!strategy) {
-      cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
-      return false;
-    }
-    return true;
+  async function closeAllSessions() {
+    for (const tabId of [...sessions.keys()]) await closeSession(tabId);
   }
 
-  // Registra un evento che delega alla strategia attiva e adatta il risultato
-  // (o l'errore) al formato di risposta { ok, ... } usato dal frontend.
+  // Registra un evento che delega alla strategia della sessione indicata dal
+  // tabId nel payload e adatta il risultato (o l'errore) al formato di
+  // risposta { ok, ... } usato dal frontend.
   function delegate(event, fn) {
     socket.on(event, async (payload, cb) => {
-      if (!requireStrategy(cb)) return;
+      payload = payload || {};
+      const sess = sessions.get(normTabId(payload.tabId));
+      if (!sess) {
+        cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+        return;
+      }
       try {
-        cb({ ok: true, ...(await fn(payload || {})) });
+        cb({ ok: true, ...(await fn(sess.strategy, payload)) });
       } catch (err) {
         cb({ ok: false, error: errMsg(err) });
       }
@@ -212,75 +291,61 @@ io.on('connection', (socket) => {
 
   socket.on('mongo:connect', async (cfg, cb) => {
     try {
-      await closeStrategy();
       cfg = cfg || {};
-      // cfg.saved = nome di una connessione salvata in connections.ini:
-      // i parametri (password inclusa) restano lato server.
-      let effective = cfg;
-      if (cfg.saved) {
-        const saved = loadConnections()[cfg.saved];
-        if (!saved) throw new Error(`Connessione salvata "${cfg.saved}" non trovata.`);
-        effective = saved;
+      if (cfg.tabId != null && String(cfg.tabId).length > 100) {
+        throw new Error('tabId non valido.');
       }
-      // cfg.keepPasswordFrom = nome di una connessione salvata da cui riusare i
-      // segreti (password DB e credenziali SSH) quando il form di modifica li
-      // lascia vuoti (non vengono mai rimandati al browser, quindi il client
-      // non può reinviarli).
-      if (cfg.keepPasswordFrom) {
-        const prev = loadConnections()[cfg.keepPasswordFrom];
-        if (prev) {
-          const merged = { ...effective };
-          for (const f of SECRET_FIELDS) {
-            if (!merged[f] && prev[f]) merged[f] = prev[f];
-          }
-          effective = merged;
+      const tabId = normTabId(cfg.tabId);
+      if (!sessions.has(tabId) && sessions.size >= MAX_SESSIONS_PER_SOCKET) {
+        throw new Error(`Raggiunto il limite di ${MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
+      }
+      // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
+      await closeSession(tabId);
+      const conn = await establishConnection(cfg);
+      sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel });
+      try {
+        // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
+        const saveAs = String(cfg.saveAs || '').trim();
+        if (saveAs) {
+          assertConnName(saveAs);
+          const conns = loadConnections();
+          conns[saveAs] = sanitizeConnCfg(conn.effective);
+          saveConnections(conns);
         }
+        cb({
+          ok: true,
+          tabId,
+          label: connLabel(conn.effective),
+          dbType: conn.dbType,
+          databases: await conn.strategy.listDatabases(),
+        });
+      } catch (err) {
+        await closeSession(tabId);
+        throw err;
       }
-      const dbType = connDbType(effective);
-      // Tunnel SSH (solo in modalità "Parametri"): la strategia si connette al
-      // capo locale del tunnel anziché direttamente all'host del database.
-      let connectCfg = effective;
-      if (sshEnabled(effective)) {
-        if (effective.uri && effective.uri.trim()) {
-          throw new Error('Il tunnel SSH è disponibile solo in modalità "Parametri", non con URI completa.');
-        }
-        const defaultPort = dbType === 'mysql' ? 3306 : 27017;
-        const target = {
-          host: (effective.host || 'localhost').trim(),
-          port: parseInt(effective.port, 10) || defaultPort,
-        };
-        tunnel = await openSshTunnel(effective, target);
-        connectCfg = { ...effective, host: tunnel.host, port: String(tunnel.port) };
-        // Per MongoDB dietro tunnel: evita la topology discovery verso host del
-        // replica set non raggiungibili attraverso il tunnel.
-        if (dbType === 'mongodb') connectCfg.directConnection = true;
-      }
-      const newStrategy = DbFactory.getStrategy(dbType);
-      await newStrategy.connect(connectCfg);
-      strategy = newStrategy;
-      // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
-      const saveAs = String(cfg.saveAs || '').trim();
-      if (saveAs) {
-        assertConnName(saveAs);
-        const conns = loadConnections();
-        conns[saveAs] = sanitizeConnCfg(effective);
-        saveConnections(conns);
-      }
-      cb({
-        ok: true,
-        label: connLabel(effective),
-        dbType,
-        databases: await strategy.listDatabases(),
-      });
     } catch (err) {
-      await closeStrategy();
       cb({ ok: false, error: errMsg(err) });
     }
   });
 
-  socket.on('mongo:disconnect', async (_payload, cb) => {
-    await closeStrategy();
+  socket.on('mongo:disconnect', async (payload, cb) => {
+    await closeSession(normTabId(payload && payload.tabId));
     if (cb) cb({ ok: true });
+  });
+
+  // Prova una configurazione (o una connessione salvata) senza tenere aperto
+  // nulla: connect + listDatabases + disconnect. Serve al pulsante "Testa".
+  socket.on('connections:test', async (cfg, cb) => {
+    let conn = null;
+    try {
+      conn = await establishConnection(cfg || {});
+      const databases = await conn.strategy.listDatabases();
+      cb({ ok: true, dbType: conn.dbType, label: connLabel(conn.effective), databases: databases.length });
+    } catch (err) {
+      cb({ ok: false, error: errMsg(err) });
+    } finally {
+      if (conn) await teardownConnection(conn);
+    }
   });
 
   // --- Connessioni salvate ----------------------------------------------------
@@ -289,7 +354,7 @@ io.on('connection', (socket) => {
   socket.on('connections:list', (_payload, cb) => {
     try {
       const connections = Object.entries(loadConnections())
-        .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c) }));
+        .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c), folder: c.folder || '' }));
       cb({ ok: true, connections });
     } catch (err) {
       cb({ ok: false, error: errMsg(err) });
@@ -393,45 +458,52 @@ io.on('connection', (socket) => {
 
   // --- Esplorazione e gestione database (delegati alla strategia) ------------
 
-  delegate('db:list', async () => ({ databases: await strategy.listDatabases() }));
-  delegate('db:search', async ({ query }) => ({ databases: await strategy.search(query) }));
-  delegate('db:collections', async ({ db }) => ({ collections: await strategy.listCollections(db) }));
-  delegate('db:create', async ({ db, coll }) => { await strategy.createDatabase(db, coll); return {}; });
-  delegate('db:rename', async ({ db, newName }) => { await strategy.renameDatabase(db, newName); return {}; });
-  delegate('db:drop', async ({ db }) => { await strategy.dropDatabase(db); return {}; });
-  delegate('db:schema', ({ db }) => strategy.dbSchema(db));
+  delegate('db:list', async (strategy) => ({ databases: await strategy.listDatabases() }));
+  delegate('db:search', async (strategy, { query }) => ({ databases: await strategy.search(query) }));
+  delegate('db:collections', async (strategy, { db }) => ({ collections: await strategy.listCollections(db) }));
+  delegate('db:create', async (strategy, { db, coll }) => { await strategy.createDatabase(db, coll); return {}; });
+  delegate('db:rename', async (strategy, { db, newName }) => { await strategy.renameDatabase(db, newName); return {}; });
+  delegate('db:drop', async (strategy, { db }) => { await strategy.dropDatabase(db); return {}; });
+  delegate('db:schema', (strategy, { db }) => strategy.dbSchema(db));
 
   // --- Gestione collection/tabelle, colonne e indici ---------------------------
 
-  delegate('collection:create', async (p) => { await strategy.createCollection(p.db, p.name, p); return {}; });
-  delegate('collection:rename', async (p) => { await strategy.renameCollection(p.db, p.coll, p.newName); return {}; });
-  delegate('collection:drop', async (p) => { await strategy.dropCollection(p.db, p.coll); return {}; });
-  delegate('column:add', (p) => strategy.addColumn(p.db, p.coll, p.column));
-  delegate('column:alter', (p) => strategy.alterColumn(p.db, p.coll, p));
-  delegate('column:drop', (p) => strategy.dropColumn(p.db, p.coll, p.name));
-  delegate('index:create', (p) => strategy.createIndex(p.db, p.coll, p));
-  delegate('index:drop', async (p) => { await strategy.dropIndex(p.db, p.coll, p.name); return {}; });
+  delegate('collection:create', async (strategy, p) => { await strategy.createCollection(p.db, p.name, p); return {}; });
+  delegate('collection:rename', async (strategy, p) => { await strategy.renameCollection(p.db, p.coll, p.newName); return {}; });
+  delegate('collection:drop', async (strategy, p) => { await strategy.dropCollection(p.db, p.coll); return {}; });
+  delegate('column:add', (strategy, p) => strategy.addColumn(p.db, p.coll, p.column));
+  delegate('column:alter', (strategy, p) => strategy.alterColumn(p.db, p.coll, p));
+  delegate('column:drop', (strategy, p) => strategy.dropColumn(p.db, p.coll, p.name));
+  delegate('index:create', (strategy, p) => strategy.createIndex(p.db, p.coll, p));
+  delegate('index:drop', async (strategy, p) => { await strategy.dropIndex(p.db, p.coll, p.name); return {}; });
 
   // --- Query, dettagli e mutazioni --------------------------------------------
 
-  delegate('collection:stats', ({ db, coll }) => strategy.collectionStats(db, coll));
-  delegate('collection:find', (p) => strategy.collectionFind(p.db, p.coll, p));
-  delegate('collection:aggregate', (p) => strategy.collectionAggregate(p.db, p.coll, p));
-  delegate('doc:insert', (p) => strategy.docInsert(p.db, p.coll, p));
-  delegate('doc:update', (p) => strategy.docUpdate(p.db, p.coll, p));
-  delegate('doc:replace', (p) => strategy.docReplace(p.db, p.coll, p));
-  delegate('doc:delete', (p) => strategy.docDelete(p.db, p.coll, p));
+  delegate('collection:stats', (strategy, { db, coll }) => strategy.collectionStats(db, coll));
+  delegate('collection:find', (strategy, p) => strategy.collectionFind(p.db, p.coll, p));
+  delegate('collection:aggregate', (strategy, p) => strategy.collectionAggregate(p.db, p.coll, p));
+  delegate('doc:insert', (strategy, p) => strategy.docInsert(p.db, p.coll, p));
+  delegate('doc:update', (strategy, p) => strategy.docUpdate(p.db, p.coll, p));
+  delegate('doc:replace', (strategy, p) => strategy.docReplace(p.db, p.coll, p));
+  delegate('doc:delete', (strategy, p) => strategy.docDelete(p.db, p.coll, p));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde
   // semplicemente il badge LIVE.
 
-  socket.on('collection:watch', ({ db, coll }, cb) => {
-    if (!requireStrategy(cb)) return;
+  socket.on('collection:watch', (payload, cb) => {
+    const { db, coll } = payload || {};
+    const tabId = normTabId(payload && payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) {
+      cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+      return;
+    }
     try {
-      strategy.watch(db, coll, {
-        onChange: (change) => socket.emit('collection:changed', { db, coll, ...change }),
-        onUnavailable: () => socket.emit('watch:unavailable', { db, coll }),
+      // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
+      sess.strategy.watch(db, coll, {
+        onChange: (change) => socket.emit('collection:changed', { tabId, db, coll, ...change }),
+        onUnavailable: () => socket.emit('watch:unavailable', { tabId, db, coll }),
       });
       cb({ ok: true });
     } catch (err) {
@@ -439,12 +511,13 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('collection:unwatch', () => {
-    if (strategy) strategy.unwatch();
+  socket.on('collection:unwatch', (payload) => {
+    const sess = sessions.get(normTabId(payload && payload.tabId));
+    if (sess) sess.strategy.unwatch();
   });
 
   socket.on('disconnect', () => {
-    closeStrategy();
+    closeAllSessions();
   });
 });
 

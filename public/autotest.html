@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<!-- Pagina temporanea di verifica UI: carica l'app in un iframe same-origin e
+     simula click (connessione, espansione db, apertura collection). -->
+<html><body style="margin:0">
+<iframe id="f" src="/" style="width:1400px;height:880px;border:0"></iframe>
+<script>
+const f = document.getElementById('f');
+f.addEventListener('load', () => {
+  const d = () => f.contentDocument;
+  setTimeout(() => {
+    const item = [...d().querySelectorAll('.conn-item .node-label')]
+      .find((el) => el.textContent.includes('mongo-locale'));
+    if (item) item.click();
+    setTimeout(() => {
+      const db = [...d().querySelectorAll('#db-tree .db > .node-label')]
+        .find((el) => el.textContent.trim() === 'gui_ui_test');
+      if (db) db.click();
+      setTimeout(() => {
+        const coll = [...d().querySelectorAll('#db-tree .coll .node-label')]
+          .find((el) => el.textContent.includes('people'));
+        if (coll) coll.click();
+      }, 2000);
+    }, 2500);
+  }, 1200);
+});
+</script>
+</body></html>

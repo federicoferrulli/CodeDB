@@ -1,6 +1,5 @@
 import { state } from './state.js';
-import { socket } from './socket.js';
-import { $, showContextMenu, toast } from './utils.js';
+import { $, emit, showContextMenu, toast } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
@@ -11,6 +10,7 @@ export function collWord(capital) {
 }
 
 export function renderDbTree(databases) {
+  state.databases = databases; // cache per il ri-render al cambio tab
   const tree = $('#db-tree');
   tree.innerHTML = '';
   for (const db of databases) {
@@ -75,6 +75,9 @@ export function renderCollectionsList(dbName, container, collections) {
     const name = document.createElement('span');
     name.textContent = coll.name;
     label.appendChild(name);
+    label.dataset.db = dbName;
+    label.dataset.coll = coll.name;
+    if (dbName === state.db && coll.name === state.coll) label.classList.add('selected');
 
     if (coll.count !== null && coll.count !== undefined) {
       const count = document.createElement('span');
@@ -103,38 +106,18 @@ export function renderCollectionsList(dbName, container, collections) {
 
 export function loadCollections(dbName, container) {
   container.innerHTML = '<li class="node-label loading">caricamento…</li>';
-  socket.emit('db:collections', { db: dbName }, (res) => {
-    if (!res.ok) {
-      container.innerHTML = '';
-      toast(res.error, true);
-      return;
-    }
+  emit('db:collections', { db: dbName }).then((res) => {
     renderCollectionsList(dbName, container, res.collections);
+  }).catch((err) => {
+    container.innerHTML = '';
+    toast(err.message, true);
   });
 }
 
 export function refreshDbTree() {
-  socket.emit('db:list', {}, (res) => {
-    if (!res.ok) {
-      toast(res.error, true);
-      return;
-    }
+  emit('db:list', {}).then((res) => {
     renderDbTree(res.databases);
-  });
-}
-
-export function resetWorkspace() {
-  socket.emit('collection:unwatch');
-  state.db = null;
-  state.coll = null;
-  $('#workspace').classList.add('hidden');
-  $('#placeholder').classList.remove('hidden');
-  $('#live-badge').classList.add('hidden');
-  $('#polling-toggle').classList.add('hidden');
-  if (state.pollingInterval) {
-    clearInterval(state.pollingInterval);
-    state.pollingInterval = null;
-  }
+  }).catch((err) => toast(err.message, true));
 }
 
 export function initDbTree() {
@@ -158,13 +141,9 @@ export function initDbTree() {
         return;
       }
       $('#db-tree').innerHTML = '<li class="node-label loading">ricerca in corso…</li>';
-      socket.emit('db:search', { query: q }, (res) => {
-        if (!res.ok) {
-          toast(res.error, true);
-          return;
-        }
+      emit('db:search', { query: q }).then((res) => {
         renderDbTree(res.databases);
-      });
+      }).catch((err) => toast(err.message, true));
     }, 300);
   });
 }

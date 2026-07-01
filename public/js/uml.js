@@ -1,6 +1,5 @@
 import { state } from './state.js';
-import { socket } from './socket.js';
-import { $, esc, cut } from './utils.js';
+import { $, emit, esc, cut } from './utils.js';
 
 const UML = { W: 230, ROW: 17, HEAD: 26, PAD: 10, GAP: 30, COLGAP: 140, MAXF: 11 };
 
@@ -11,14 +10,12 @@ export function loadUml(force) {
     return;
   }
   $('#uml-canvas').innerHTML = '<div class="uml-msg">Analisi dello schema del database…</div>';
-  socket.emit('db:schema', { db: state.db }, (res) => {
-    if (!res.ok) {
-      $('#uml-canvas').innerHTML = `<div class="error">${esc(res.error)}</div>`;
-      return;
-    }
-    state.dbSchema = res;
-    state.dbSchemaFor = state.db;
+  emit('db:schema', { db: state.db }).then((res) => {
+    res._tab.state.dbSchema = res;
+    res._tab.state.dbSchemaFor = res._tab.state.db;
     renderUml();
+  }).catch((err) => {
+    $('#uml-canvas').innerHTML = `<div class="error">${esc(err.message)}</div>`;
   });
 }
 
