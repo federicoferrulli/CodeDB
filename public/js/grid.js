@@ -64,6 +64,13 @@ export function runQuery() {
     state.total = res.total;
     state.skip = res.skip;
     state.limit = res.limit;
+    // Mantiene selezionati solo i documenti ancora presenti nella pagina:
+    // la selezione sopravvive ai refresh (live/polling) ma si svuota al
+    // cambio di pagina o di filtro.
+    const visible = new Set(res.docs.filter((d) => '_id' in d).map(idOf));
+    for (const id of [...state.selectedDocs]) {
+      if (!visible.has(id)) state.selectedDocs.delete(id);
+    }
     renderGrid();
   }).catch((err) => showQueryError(err.message));
 }
@@ -74,7 +81,43 @@ export function renderGrid() {
   thead.innerHTML = '';
   tbody.innerHTML = '';
 
+  // In aggregate/SQL Raw i risultati non sono documenti reali (es. output di
+  // $group): niente selezione né bulk delete, gli _id sarebbero fuorvianti.
+  const canSelect = $('#query-mode').value !== 'aggregate';
+
   const headRow = document.createElement('tr');
+  const selectTh = document.createElement('th');
+  selectTh.className = 'grid-select-col';
+  if (canSelect && state.docs.some((d) => '_id' in d)) {
+    const checkAll = document.createElement('input');
+    checkAll.type = 'checkbox';
+    checkAll.title = 'Seleziona/deseleziona tutti i documenti della pagina';
+
+    // Sincronizza lo stato del checkbox con le selezioni attuali
+    const docsWithId = state.docs.filter(d => '_id' in d);
+    checkAll.checked = docsWithId.length > 0 && docsWithId.every(doc => state.selectedDocs.has(idOf(doc)));
+    checkAll.indeterminate = !checkAll.checked && docsWithId.some(doc => state.selectedDocs.has(idOf(doc)));
+
+    checkAll.addEventListener('change', () => {
+      checkAll.indeterminate = false;
+      if (checkAll.checked) {
+        state.docs.forEach((doc) => {
+          if ('_id' in doc) state.selectedDocs.add(idOf(doc));
+        });
+      } else {
+        state.docs.forEach((doc) => {
+          if ('_id' in doc) state.selectedDocs.delete(idOf(doc));
+        });
+      }
+      document.querySelectorAll('#grid tbody tr td.grid-select-col input[type="checkbox"]').forEach(cb => {
+        cb.checked = checkAll.checked;
+      });
+      updateBulkDeleteUI();
+    });
+    selectTh.appendChild(checkAll);
+  }
+  headRow.appendChild(selectTh);
+
   const actionsTh = document.createElement('th');
   actionsTh.className = 'grid-actions-col';
   headRow.appendChild(actionsTh);
@@ -99,6 +142,33 @@ export function renderGrid() {
 
   for (const doc of state.docs) {
     const tr = document.createElement('tr');
+
+    const selectTd = document.createElement('td');
+    selectTd.className = 'grid-select-col';
+    if (canSelect && '_id' in doc) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      const docId = idOf(doc);
+      checkbox.checked = state.selectedDocs.has(docId);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) {
+          state.selectedDocs.add(docId);
+        } else {
+          state.selectedDocs.delete(docId);
+        }
+        // Sincronizza il checkbox "select all"
+        const docsWithId = state.docs.filter(d => '_id' in d);
+        const allSelected = docsWithId.length > 0 && docsWithId.every(d => state.selectedDocs.has(idOf(d)));
+        const selectAllCheckbox = document.querySelector('#grid thead th.grid-select-col input[type="checkbox"]');
+        if (selectAllCheckbox) {
+          selectAllCheckbox.checked = allSelected;
+          selectAllCheckbox.indeterminate = !allSelected && docsWithId.some((d) => state.selectedDocs.has(idOf(d)));
+        }
+        updateBulkDeleteUI();
+      });
+      selectTd.appendChild(checkbox);
+    }
+    tr.appendChild(selectTd);
 
     const actions = document.createElement('td');
     actions.className = 'row-actions';
@@ -140,11 +210,14 @@ export function renderGrid() {
   const from = state.total === 0 ? 0 : state.skip + 1;
   const to = Math.min(state.skip + state.docs.length, state.skip + state.limit);
   const docWord = state.dbType === 'mysql' ? 'righe' : 'documenti';
-  
+
   $('#result-info').textContent = `${state.total} ${docWord} — ${state.docs.length} mostrati`;
   $('#page-info').textContent = `${from}–${Math.min(to, state.total) || state.docs.length}`;
   $('#prev-btn').disabled = state.skip === 0;
   $('#next-btn').disabled = state.skip + state.limit >= state.total;
+
+  $('.bulk-delete-toolbar').classList.toggle('hidden', !canSelect || state.total === 0);
+  updateBulkDeleteUI();
 }
 
 export function deleteDoc(doc) {
@@ -158,6 +231,76 @@ export function deleteDoc(doc) {
     toast('Documento eliminato');
     runQuery();
   }).catch((err) => toast(err.message, true));
+}
+
+export function deleteSelectedDocs() {
+  // Elimina solo i documenti realmente presenti in pagina: protegge da
+  // selezioni rimaste orfane dopo un refresh o un cambio di risultati.
+  const visible = new Set(state.docs.filter((d) => '_id' in d).map(idOf));
+  const ids = [...state.selectedDocs].filter((id) => visible.has(id));
+  if (ids.length === 0) {
+    toast('Nessun documento selezionato', true);
+    return;
+  }
+  if (!confirm(`Eliminare i ${ids.length} documenti selezionati? Questa azione non si può annullare.`)) return;
+
+  Promise.allSettled(ids.map((id) =>
+    emit('doc:delete', {
+      db: state.db,
+      coll: state.coll,
+      id,
+    })
+  )).then((results) => {
+    const failed = results.filter((r) => r.status === 'rejected');
+    const ok = results.length - failed.length;
+    state.selectedDocs.clear();
+    if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
+    else toast(`${ok} documenti eliminati`);
+    runQuery();
+  });
+}
+
+export function deleteAllWithFilter() {
+  if ($('#query-mode').value === 'aggregate') return; // solo in modalità find
+  const filter = $('#filter-input').value.trim();
+  const total = state.total;
+  if (total === 0) {
+    toast('Nessun documento da eliminare', true);
+    return;
+  }
+  if (state.dbType === 'mysql' && !filter) {
+    toast('Su MySQL serve una clausola WHERE per l\'eliminazione di massa (es. 1=1 per tutto).', true);
+    return;
+  }
+  const msg = filter
+    ? `Eliminare tutti i ${total} documenti con questo filtro? Questa azione non si può annullare.`
+    : `Nessun filtro impostato: eliminare TUTTI i ${total} documenti di "${state.coll}"? Questa azione non si può annullare.`;
+  if (!confirm(msg)) return;
+
+  emit('collection:deleteMany', {
+    db: state.db,
+    coll: state.coll,
+    filter,
+  }).then((res) => {
+    state.selectedDocs.clear();
+    toast(`${res.deleted} documenti eliminati`);
+    runQuery();
+  }).catch((err) => toast(err.message, true));
+}
+
+export function updateBulkDeleteUI() {
+  const selected = state.selectedDocs.size;
+  const deleteSelectedBtn = $('#delete-selected-btn');
+  const deleteAllBtn = $('#delete-all-btn');
+
+  if (deleteSelectedBtn) {
+    deleteSelectedBtn.disabled = selected === 0;
+    deleteSelectedBtn.textContent = `🗑 Elimina (${selected})`;
+  }
+
+  if (deleteAllBtn) {
+    deleteAllBtn.disabled = state.total === 0;
+  }
 }
 
 export function initGrid() {
@@ -180,12 +323,14 @@ export function initGrid() {
 
   $('#prev-btn').addEventListener('click', () => {
     state.skip = Math.max(0, state.skip - state.limit);
+    state.selectedDocs.clear(); // reset selezione al cambio pagina
     runQuery();
   });
 
   $('#next-btn').addEventListener('click', () => {
     if (state.skip + state.limit < state.total) {
       state.skip += state.limit;
+      state.selectedDocs.clear(); // reset selezione al cambio pagina
       runQuery();
     }
   });
@@ -194,4 +339,7 @@ export function initGrid() {
     state.skip = 0;
     runQuery();
   });
+
+  $('#delete-selected-btn').addEventListener('click', deleteSelectedDocs);
+  $('#delete-all-btn').addEventListener('click', deleteAllWithFilter);
 }

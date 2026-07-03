@@ -770,3 +770,27 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   border-radius: 4px;
 }
 .coll-tab-close:hover { color: var(--danger); background: var(--bg-3); }
+
+/* ---------- Selezione multipla e bulk delete ---------- */
+
+.grid-select-col { width: 32px; text-align: center; }
+.grid-select-col input[type="checkbox"] { cursor: pointer; }
+
+.bulk-delete-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.bulk-delete-toolbar button {
+  padding: 6px 12px;
+  font-size: 0.85rem;
+}
+
+.bulk-delete-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

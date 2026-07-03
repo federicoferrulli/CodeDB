@@ -71,6 +71,7 @@ class DbStrategy {
   async docUpdate(_db, _coll, _payload) { throw unsupported(); }
   async docReplace(_db, _coll, _payload) { throw unsupported(); }
   async docDelete(_db, _coll, _payload) { throw unsupported(); }
+  async collectionDeleteMany(_db, _coll, _payload) { throw unsupported(); }
 
   /**
    * Aggiornamenti in tempo reale: handlers = { onChange, onUnavailable }.
@@ -81,6 +82,16 @@ class DbStrategy {
   }
 
   unwatch() { /* niente da fermare di default */ }
+
+  /**
+   * Aggiornamenti in tempo reale sullo schema (database/collection creati,
+   * rinominati o eliminati): handlers = { onChange, onUnavailable }.
+   * I DBMS senza change stream degradano subito segnalando onUnavailable:
+   * il frontend ripiega su un polling della sidebar.
+   */
+  watchSchema(handlers) { handlers.onUnavailable(); }
+
+  unwatchSchema() { /* niente da fermare di default */ }
 }
 
 /* ---------------------------------------------------------------------------

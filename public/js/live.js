@@ -3,6 +3,7 @@ import { socket } from './socket.js';
 import { tabs } from './tabs.js';
 import { $, emit } from './utils.js';
 import { runQuery } from './grid.js';
+import { renderDbTree } from './dbtree.js';
 
 export function togglePolling() {
   const isEnabled = $('#polling-checkbox').checked;
@@ -34,6 +35,25 @@ export function startWatch() {
   });
 }
 
+// Watch dello schema: attivato una volta per tab dopo il connect. Dove il
+// change stream non c'è (MySQL, Mongo standalone) arriva schema:unavailable
+// e si ripiega su un polling silenzioso della sidebar.
+export function startSchemaWatch() {
+  emit('schema:watch', {}).then((res) => {
+    res._tab.state.schemaPolling = false;
+  }).catch(() => {
+    // Errore lato server: nessun auto-update dello schema, resta l'aggiornamento manuale.
+  });
+}
+
+// Aggiorna la sidebar senza disturbare: salta se l'utente sta usando la
+// ricerca (il tree mostrerebbe i risultati filtrati) e non mostra toast.
+function refreshTreeAuto() {
+  const search = $('#db-search');
+  if (search.value.trim() || document.activeElement === search) return;
+  emit('db:list', {}).then((res) => renderDbTree(res.databases)).catch(() => {});
+}
+
 export function initLive() {
   $('#polling-checkbox').addEventListener('change', togglePolling);
 
@@ -45,6 +65,34 @@ export function initLive() {
     clearTimeout(state.liveTimer);
     state.liveTimer = setTimeout(runQuery, 300);
   });
+
+  let schemaTimer = null;
+  socket.on('schema:changed', (info) => {
+    const tab = tabs.list.find((t) => t.id === info.tabId);
+    if (!tab) return;
+    // Tab in background: si segna lo schema come sporco e si aggiorna
+    // alla riattivazione (vedi renderWorkspace).
+    if (tab.id !== tabs.activeId) {
+      tab.state.schemaDirty = true;
+      return;
+    }
+    clearTimeout(schemaTimer);
+    schemaTimer = setTimeout(refreshTreeAuto, 300);
+  });
+
+  socket.on('schema:unavailable', (info) => {
+    const tab = tabs.list.find((t) => t.id === (info && info.tabId));
+    if (tab) tab.state.schemaPolling = true;
+  });
+
+  // Polling di riserva per i tab senza change stream: aggiorna la sidebar
+  // del tab attivo ogni 10 secondi.
+  setInterval(() => {
+    if (document.hidden) return;
+    const tab = tabs.list.find((t) => t.id === tabs.activeId);
+    if (!tab || !tab.state.connected || !tab.state.schemaPolling) return;
+    refreshTreeAuto();
+  }, 10000);
 
   socket.on('watch:unavailable', (info) => {
     const tab = info && info.tabId

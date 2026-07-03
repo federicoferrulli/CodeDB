@@ -48,6 +48,9 @@ function activate(ct, { fresh }) {
   state.db = ct.db;
   state.coll = ct.coll;
   state.watching = false;
+  // La selezione bulk è legata alla pagina corrente: un _id (es. PK intera
+  // MySQL) potrebbe coincidere tra tabelle diverse, quindi si azzera.
+  state.selectedDocs.clear();
   $('#live-badge').classList.add('hidden');
 
   const s = ct.snap;

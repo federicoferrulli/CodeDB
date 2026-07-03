@@ -395,6 +395,16 @@ class MySqlStrategy extends DbStrategy {
     return { deleted: res.affectedRows };
   }
 
+  async collectionDeleteMany(db, coll, payload) {
+    const pool = this.requirePool();
+    const filter = String(payload.filter || '').trim();
+    if (!filter) throw new Error('Filtro WHERE mancante.');
+    const [res] = await pool.query(
+      `DELETE FROM ${qtable(db, coll)} WHERE ${filter}`
+    );
+    return { deleted: res.affectedRows };
+  }
+
   async createCollection(db, name, payload = {}) {
     const pool = this.requirePool();
     const table = String(name || '').trim();

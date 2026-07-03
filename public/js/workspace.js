@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, dbTypeIcon } from './utils.js';
-import { renderDbTree } from './dbtree.js';
+import { renderDbTree, refreshDbTree } from './dbtree.js';
 import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
 import { renderCollTabBar } from './colltabs.js';
 import { setView } from './main.js';
@@ -38,6 +38,11 @@ export function renderWorkspace() {
 
   applyDbTypeToWorkspace();
   renderDbTree(state.databases);
+  // Lo schema è cambiato mentre il tab era in background: ricarica il tree.
+  if (state.schemaDirty) {
+    state.schemaDirty = false;
+    refreshDbTree();
+  }
   renderCollTabBar();
 
   $('#query-mode').value = state.queryMode || 'find';

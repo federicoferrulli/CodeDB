@@ -146,6 +146,7 @@ class MongoDbStrategy extends DbStrategy {
     this.client = null;
     this.uri = '';
     this.changeStream = null;
+    this.schemaStream = null;
   }
 
   get type() { return 'mongodb'; }
@@ -170,6 +171,7 @@ class MongoDbStrategy extends DbStrategy {
 
   async disconnect() {
     this.unwatch();
+    this.unwatchSchema();
     if (this.client) {
       const c = this.client;
       this.client = null;
@@ -524,6 +526,13 @@ class MongoDbStrategy extends DbStrategy {
     return { deleted: res.deletedCount };
   }
 
+  async collectionDeleteMany(db, coll, payload) {
+    const client = this.requireClient();
+    const filter = parseQueryObject(payload.filter, {});
+    const res = await client.db(db).collection(coll).deleteMany(filter);
+    return { deleted: res.deletedCount };
+  }
+
   // Change stream: richiede un replica set; su server standalone degrada
   // segnalando onUnavailable.
   watch(db, coll, { onChange, onUnavailable }) {
@@ -546,6 +555,43 @@ class MongoDbStrategy extends DbStrategy {
     if (this.changeStream) {
       this.changeStream.close().catch(() => {});
       this.changeStream = null;
+    }
+  }
+
+  // Change stream a livello di cluster filtrato sulle sole operazioni DDL:
+  // tiene aggiornata la sidebar quando lo schema cambia dall'esterno.
+  // Richiede un replica set; su server standalone degrada con onUnavailable.
+  watchSchema({ onChange, onUnavailable }) {
+    const client = this.requireClient();
+    this.unwatchSchema();
+    const pipeline = [{ $match: { operationType: { $in: ['create', 'drop', 'rename', 'dropDatabase'] } } }];
+    const open = (expanded) => {
+      // showExpandedEvents (MongoDB ≥ 6.0) aggiunge l'evento "create"; sui
+      // server più vecchi lo stream fallirebbe: si riprova senza l'opzione.
+      const stream = client.watch(pipeline, expanded ? { showExpandedEvents: true } : {});
+      stream.on('change', (change) => {
+        onChange({
+          operationType: change.operationType,
+          db: change.ns ? change.ns.db : null,
+          coll: (change.ns && change.ns.coll) || null,
+        });
+      });
+      stream.on('error', () => {
+        stream.close().catch(() => {});
+        if (this.schemaStream !== stream) return;
+        this.schemaStream = null;
+        if (expanded) this.schemaStream = open(false);
+        else onUnavailable();
+      });
+      return stream;
+    };
+    this.schemaStream = open(true);
+  }
+
+  unwatchSchema() {
+    if (this.schemaStream) {
+      this.schemaStream.close().catch(() => {});
+      this.schemaStream = null;
     }
   }
 }

@@ -4,6 +4,7 @@ import { $, emit, toast } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
+import { startSchemaWatch } from './live.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -107,6 +108,7 @@ export function connectAndOpenTab(cfg) {
     tabs.activeId = tab.id;
     renderTabBar();
     renderWorkspace();
+    startSchemaWatch(); // auto-update della sidebar (db/collection) per questo tab
     if (cfg.saveAs) loadSavedConnections();
     return res;
   });

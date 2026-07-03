@@ -37,6 +37,9 @@ export function freshState() {
     pollingShown: false,    // watch non disponibile: mostra il toggle auto-refresh
     collTabs: [],           // collection/tabelle aperte in questo tab (vedi colltabs.js)
     activeCollId: null,     // coll-tab attivo
+    selectedDocs: new Set(), // _id dei documenti selezionati per la delete multipla
+    schemaPolling: false,   // watch dello schema non disponibile: polling della sidebar
+    schemaDirty: false,     // schema cambiato mentre il tab era in background
   };
 }
 

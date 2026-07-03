@@ -520,6 +520,7 @@ io.on('connection', (socket) => {
   delegate('doc:update', (strategy, p) => strategy.docUpdate(p.db, p.coll, p));
   delegate('doc:replace', (strategy, p) => strategy.docReplace(p.db, p.coll, p));
   delegate('doc:delete', (strategy, p) => strategy.docDelete(p.db, p.coll, p));
+  delegate('collection:deleteMany', (strategy, p) => strategy.collectionDeleteMany(p.db, p.coll, p));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde
@@ -548,6 +549,32 @@ io.on('connection', (socket) => {
   socket.on('collection:unwatch', (payload) => {
     const sess = sessions.get(normTabId(payload && payload.tabId));
     if (sess) sess.strategy.unwatch();
+  });
+
+  // Watch dello schema (database/collection creati, rinominati o eliminati):
+  // dove il change stream non c'è (MySQL, Mongo standalone) arriva subito
+  // schema:unavailable e il frontend ripiega sul polling della sidebar.
+  socket.on('schema:watch', (payload, cb) => {
+    const tabId = normTabId(payload && payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) {
+      cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+      return;
+    }
+    try {
+      sess.strategy.watchSchema({
+        onChange: (change) => socket.emit('schema:changed', { tabId, ...change }),
+        onUnavailable: () => socket.emit('schema:unavailable', { tabId }),
+      });
+      cb({ ok: true });
+    } catch (err) {
+      cb({ ok: false, error: errMsg(err) });
+    }
+  });
+
+  socket.on('schema:unwatch', (payload) => {
+    const sess = sessions.get(normTabId(payload && payload.tabId));
+    if (sess) sess.strategy.unwatchSchema();
   });
 
   socket.on('disconnect', () => {
