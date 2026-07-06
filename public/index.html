@@ -135,6 +135,8 @@
   <!-- ===================== Layout principale ===================== -->
   <div id="app">
     <header>
+      <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate">☰</button>
+      <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo">🗄</button>
       <span class="brand">🗄 DB Web GUI</span>
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
@@ -470,6 +472,9 @@
     <option value="JSON"></option>
     <option value="BLOB"></option>
   </datalist>
+
+  <!-- Sfondo scuro dietro le sidebar-drawer su mobile/tablet -->
+  <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
 
   <!-- ===================== Menu contestuale ===================== -->
   <ul id="context-menu" class="context-menu hidden"></ul>

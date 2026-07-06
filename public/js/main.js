@@ -16,6 +16,7 @@ import { initInlineEdit } from './inlineEdit.js';
 import { initInsert } from './insert.js';
 import { initDetails, loadDetails } from './details.js';
 import { initLive } from './live.js';
+import { initResponsive } from './responsive.js';
 
 export function setView(view) {
   state.view = view;
@@ -78,6 +79,7 @@ initInsert();
 initDetails();
 initLive();
 initResizers();
+initResponsive();
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

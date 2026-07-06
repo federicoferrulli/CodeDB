@@ -42,6 +42,10 @@ html, body {
   border-radius: 10px;
   padding: 28px 32px;
   width: 420px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -184,7 +188,8 @@ button.ghost { background: transparent; }
 
 /* ---------- Layout ---------- */
 
-#app { display: flex; flex-direction: column; height: 100vh; }
+/* 100dvh: su mobile esclude le barre del browser (fallback 100vh) */
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
 header {
   display: flex;
@@ -801,4 +806,102 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .bulk-delete-toolbar button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ============================================================
+   Responsive: tablet e mobile
+   ============================================================ */
+
+/* Hamburger nell'header: visibili solo in modalità drawer */
+.menu-btn {
+  display: none;
+  font-size: 1.05rem;
+  padding: 6px 10px;
+  background: transparent;
+}
+
+/* Sfondo scuro dietro un drawer aperto */
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 140;
+}
+
+/* --- Tablet portrait e telefoni: sidebar a scomparsa ------------------- */
+@media (max-width: 900px) {
+  .menu-btn { display: inline-block; }
+  .resizer { display: none; }
+
+  /* Le sidebar escono dal flusso e diventano drawer (il width !important
+     vince sul width inline salvato dai resizer del desktop). */
+  #conn-sidebar, #sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 150;
+    width: min(85vw, 320px) !important;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    border-right: 1px solid var(--border);
+    box-shadow: 0 0 30px rgba(0, 0, 0, 0.55);
+  }
+  #conn-sidebar.open, #sidebar.open { transform: translateX(0); }
+
+  header { flex-wrap: wrap; gap: 8px; row-gap: 4px; padding: 8px 10px; }
+  .conn-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* La barra query va a capo: filtro e sort su righe piene se serve */
+  .toolbar { flex-wrap: wrap; row-gap: 8px; }
+  .toolbar .ac-wrap { flex: 1 1 220px; }
+
+  .workspace-head { flex-wrap: wrap; gap: 8px; }
+  .breadcrumb { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+  .statusbar { flex-wrap: wrap; row-gap: 6px; }
+  .bulk-delete-toolbar { flex-wrap: wrap; }
+
+  /* Dettagli: statistiche e indici in colonna singola */
+  .details-wrap { grid-template-columns: 1fr; padding: 12px; }
+}
+
+/* --- Telefoni stretti --------------------------------------------------- */
+@media (max-width: 600px) {
+  .brand { display: none; }
+  #polling-toggle { font-size: 0.8em; }
+
+  .view-tabs { margin-left: 0; }
+  .view-tab { padding: 5px 10px; }
+
+  .modal { padding: 20px 16px; }
+  .form-row { flex-direction: column; gap: 8px; }
+  .form-row label.small { flex: 1; }
+  .connect-actions { flex-wrap: wrap; }
+}
+
+/* --- Telefoni in landscape: poca altezza, interfaccia compatta ---------- */
+@media (max-width: 1000px) and (max-height: 520px) and (orientation: landscape) {
+  header { padding: 4px 10px; }
+  .toolbar { padding: 6px 10px; }
+  .statusbar { padding: 4px 10px; }
+  .workspace-head { padding: 5px 12px; }
+  #tab-bar { min-height: 28px; }
+  #conn-sidebar, #sidebar { width: min(55vw, 300px) !important; }
+}
+
+/* --- Touch: target più grandi e niente auto-zoom iOS -------------------- */
+@media (pointer: coarse) {
+  button { padding: 9px 14px; }
+  .menu-btn { padding: 8px 12px; }
+  .node-label { padding: 9px 14px; }
+  .context-menu li { padding: 11px 14px; }
+  .conn-tab { padding: 9px 12px; }
+  .coll-tab { padding: 7px 10px; }
+  .grid-select-col { width: 40px; }
+  .del-btn, .edit-btn { font-size: 1.1rem; padding: 2px 8px; }
+  #grid th, #grid td { padding: 8px 12px; }
+
+  /* iOS Safari zooma sugli input con font < 16px: evitiamolo */
+  input, select, textarea, .toolbar input { font-size: 16px; }
 }
