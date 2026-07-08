@@ -484,6 +484,33 @@ class MongoDbStrategy extends DbStrategy {
     return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: 500 };
   }
 
+  // Piano di esecuzione: explain() sul find o sull'aggregate corrente,
+  // con gli stessi parametri di collectionFind/collectionAggregate.
+  // Un filtro vuoto è valido: è l'explain del find senza condizioni.
+  async collectionExplain(db, coll, payload) {
+    const client = this.requireClient();
+    const collection = client.db(db).collection(coll);
+    let explanation;
+    if (payload.mode === 'aggregate') {
+      const pipeline = parseQueryObject(payload.pipeline, []);
+      if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
+      explanation = await collection.aggregate(pipeline).explain('executionStats');
+    } else {
+      const filter = parseQueryObject(payload.filter, {});
+      const sort = parseQueryObject(payload.sort, {});
+      const projection = parseQueryObject(payload.projection, {});
+      const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+      const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
+      explanation = await collection
+        .find(filter, { projection })
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .explain('executionStats');
+    }
+    return { format: 'json', plan: serialize(explanation) };
+  }
+
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
     const doc = parseQueryObject(payload.doc, null);

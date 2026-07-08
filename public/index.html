@@ -215,6 +215,7 @@
               <input id="sort-input" type="text" spellcheck="false" class="narrow"
                      placeholder='Sort, es. { "name": 1 }' />
               <button id="run-btn" class="primary" title="Esegui (Invio)">▶ Esegui</button>
+              <button id="explain-btn" title="Piano di esecuzione della query corrente">🧭 Piano</button>
               <button id="insert-btn" title="Inserisci un nuovo documento">+ Documento</button>
               <button id="refresh-btn" title="Ricarica">⟳</button>
             </div>
@@ -423,6 +424,18 @@
       <div class="modal-actions">
         <button id="coledit-cancel" class="ghost">Annulla</button>
         <button id="coledit-save" class="primary">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale piano di esecuzione ===================== -->
+  <div id="explain-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Piano di esecuzione</h2>
+      <p id="explain-query" class="subtitle"></p>
+      <div id="explain-body" class="explain-body"></div>
+      <div class="modal-actions">
+        <button id="explain-close" class="ghost">Chiudi</button>
       </div>
     </div>
   </div>
