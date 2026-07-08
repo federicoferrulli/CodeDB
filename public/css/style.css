@@ -1005,3 +1005,31 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   color: var(--fg-dim);
 }
 .import-failed { color: #e5534b; }
+/* ===================== Piano di esecuzione (EXPLAIN) ===================== */
+.explain-body {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-top: 8px;
+}
+.explain-body pre {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre;
+}
+.explain-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+.explain-table th,
+.explain-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 5px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+.explain-table th { position: sticky; top: 0; background: var(--panel, #22262b); }

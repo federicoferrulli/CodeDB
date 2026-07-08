@@ -335,6 +335,44 @@ class MySqlStrategy extends DbStrategy {
     }
   }
 
+  // Piano di esecuzione: EXPLAIN sulla SELECT costruita da filter/sort correnti
+  // (modalità find) o sulla SQL Raw (modalità aggregate). Prova prima
+  // EXPLAIN FORMAT=JSON, con ripiego sull'EXPLAIN classico tabellare
+  // (versioni vecchie o statement non supportati dal formato JSON).
+  async collectionExplain(db, coll, payload) {
+    const pool = this.requirePool();
+    let sql;
+    if (payload.mode === 'aggregate') {
+      sql = String(payload.pipeline || '').trim();
+      if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
+    } else {
+      const where = String(payload.filter || '').trim();
+      const whereSql = where ? ` WHERE ${where}` : '';
+      const orderSql = this.buildOrderBy(payload.sort);
+      const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+      const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
+      sql = `SELECT * FROM ${qtable(db, coll)}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.query(`USE ${qid(db)}`);
+      try {
+        const [rows] = await conn.query(`EXPLAIN FORMAT=JSON ${sql}`);
+        const raw = rows && rows[0] && (rows[0].EXPLAIN || rows[0][Object.keys(rows[0])[0]]);
+        return { format: 'json', plan: JSON.parse(String(raw)), query: sql };
+      } catch (err) {
+        // Ripiego: EXPLAIN classico in forma tabellare.
+        const [rows, fields] = await conn.query(`EXPLAIN ${sql}`);
+        if (!Array.isArray(rows)) throw err;
+        const columns = (fields || []).map((f) => f.name);
+        return { format: 'table', rows: rows.map(serializeRow), columns, query: sql };
+      }
+    } finally {
+      conn.release();
+    }
+  }
+
   async docInsert(db, coll, payload) {
     const pool = this.requirePool();
     const doc = parseClientValue(payload.doc);

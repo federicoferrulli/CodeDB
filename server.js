@@ -516,6 +516,7 @@ io.on('connection', (socket) => {
   delegate('collection:stats', (strategy, { db, coll }) => strategy.collectionStats(db, coll));
   delegate('collection:find', (strategy, p) => strategy.collectionFind(p.db, p.coll, p));
   delegate('collection:aggregate', (strategy, p) => strategy.collectionAggregate(p.db, p.coll, p));
+  delegate('collection:explain', (strategy, p) => strategy.collectionExplain(p.db, p.coll, p));
   delegate('doc:insert', (strategy, p) => strategy.docInsert(p.db, p.coll, p));
   delegate('doc:update', (strategy, p) => strategy.docUpdate(p.db, p.coll, p));
   delegate('doc:replace', (strategy, p) => strategy.docReplace(p.db, p.coll, p));

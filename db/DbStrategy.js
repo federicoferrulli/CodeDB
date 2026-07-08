@@ -67,6 +67,14 @@ class DbStrategy {
   /** Pipeline di aggregazione (MongoDB) o query SQL libera (MySQL). */
   async collectionAggregate(_db, _coll, _payload) { throw unsupported(); }
 
+  /**
+   * Piano di esecuzione (EXPLAIN) della query corrente. Accetta gli stessi
+   * parametri di collectionFind/collectionAggregate più `mode`
+   * ('find' | 'aggregate'); un filtro vuoto è valido (explain del find pieno).
+   * @returns {Promise<{format: 'json'|'table', plan?, rows?, columns?}>}
+   */
+  async collectionExplain(_db, _coll, _payload) { throw unsupported(); }
+
   async docInsert(_db, _coll, _payload) { throw unsupported(); }
   async docUpdate(_db, _coll, _payload) { throw unsupported(); }
   async docReplace(_db, _coll, _payload) { throw unsupported(); }

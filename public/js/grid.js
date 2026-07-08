@@ -85,6 +85,76 @@ export function runQuery() {
   }).catch((err) => showQueryError(err.message));
 }
 
+// Piano di esecuzione (EXPLAIN) della query corrente: stessi parametri di
+// runQuery più la modalità. Un filtro vuoto è valido (explain del find pieno).
+export function explainQuery() {
+  if (!state.db || !state.coll) return;
+  showQueryError(null);
+  const mode = $('#query-mode').value;
+
+  const payload = mode === 'aggregate'
+    ? {
+        db: state.db,
+        coll: state.coll,
+        mode,
+        pipeline: $('#filter-input').value || '[]',
+      }
+    : {
+        db: state.db,
+        coll: state.coll,
+        mode,
+        filter: $('#filter-input').value,
+        sort: $('#sort-input').value,
+        limit: $('#page-size').value,
+        skip: state.skip,
+      };
+
+  emit('collection:explain', payload)
+    .then(showExplainResult)
+    .catch((err) => showQueryError(err.message));
+}
+
+// Mostra il piano nella modale: JSON formattato (Mongo e MySQL FORMAT=JSON)
+// oppure tabella (EXPLAIN classico MySQL).
+function showExplainResult(res) {
+  const body = $('#explain-body');
+  body.innerHTML = '';
+  $('#explain-query').textContent = res.query || `${state.db}.${state.coll}`;
+
+  if (res.format === 'table') {
+    const table = document.createElement('table');
+    table.className = 'explain-table';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const col of res.columns || []) {
+      const th = document.createElement('th');
+      th.textContent = col;
+      headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    for (const row of res.rows || []) {
+      const tr = document.createElement('tr');
+      for (const col of res.columns || []) {
+        const td = document.createElement('td');
+        const { text, cls } = displayValue(row[col]);
+        if (cls) td.className = cls;
+        td.textContent = row[col] === undefined ? '' : text;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    body.appendChild(table);
+  } else {
+    const pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(res.plan, null, 2);
+    body.appendChild(pre);
+  }
+  $('#explain-overlay').classList.remove('hidden');
+}
+
 export function renderGrid() {
   const thead = $('#grid thead');
   const tbody = $('#grid tbody');
@@ -319,6 +389,11 @@ export function updateBulkDeleteUI() {
 export function initGrid() {
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });
   $('#refresh-btn').addEventListener('click', runQuery);
+  $('#explain-btn').addEventListener('click', explainQuery);
+  $('#explain-close').addEventListener('click', () => $('#explain-overlay').classList.add('hidden'));
+  $('#explain-overlay').addEventListener('click', (e) => {
+    if (e.target === $('#explain-overlay')) $('#explain-overlay').classList.add('hidden');
+  });
 
   attachAutocomplete($('#filter-input'));
   attachAutocomplete($('#sort-input'), { keywords: false });
