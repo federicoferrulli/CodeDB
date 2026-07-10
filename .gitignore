@@ -1,3 +1,5 @@
 node_modules/
 # Connessioni salvate: contiene password in chiaro, non versionare.
 connections.ini
+# Audit log delle scritture eseguite via MCP.
+mcp-audit.log

@@ -36,6 +36,9 @@ const CONN_FIELDS = [
   'dbType', 'uri', 'host', 'port', 'username', 'password', 'authSource', 'database',
   // Cartella/gruppo di appartenenza nella sidebar del connection manager.
   'folder',
+  // Fase 3 MCP: le scritture via execute_write sono consentite solo se la
+  // connessione dichiara esplicitamente readOnly=false (default: sola lettura).
+  'readOnly',
   // Tunnel SSH (ortogonale al dbType): 'ssh' = "true" per abilitarlo.
   'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshPassword', 'sshKeyFile', 'sshPassphrase',
 ];

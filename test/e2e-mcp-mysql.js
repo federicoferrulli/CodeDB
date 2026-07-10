@@ -17,6 +17,7 @@ const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
 const DB = 'gui_mysql_e2e_mcp';
 const CONN_NAME = 'e2e-mcp-mysql';
+const RW_NAME = 'e2e-mcp-mysql-rw';
 
 function assert(cond, label) {
   if (cond) {
@@ -103,6 +104,35 @@ async function call(client, name, args) {
     assert(uiWrite.ok && uiWrite.docs[0].righeCoinvolte === 1, 'UPDATE dalla UI eseguito (nessuna regressione)');
     await emit(socket, 'mongo:disconnect', { tabId: 'ui' });
 
+    console.log('7b. Fase 3: execute_write con conferma');
+    const wDenied = await call(client, 'execute_write', { connection_id: cid, db: DB, sql: "DELETE FROM people WHERE name = 'Ada'" });
+    assert(!wDenied.ok && /sola lettura/i.test(wDenied.text), 'scrittura rifiutata su connessione read-only (default)');
+
+    const savedRw = await emit(socket, 'connections:save', {
+      name: RW_NAME,
+      cfg: { dbType: 'mysql', host: '127.0.0.1', port: MYSQL_PORT, username: 'root', password: MYSQL_PASSWORD, readOnly: 'false' },
+    });
+    assert(savedRw.ok, `connections:save "${RW_NAME}" con readOnly=false`);
+    const rw = await call(client, 'connect_database', { saved: RW_NAME });
+    assert(rw.ok && rw.data.writable === true, 'connessione scrivibile aperta');
+    const cid2 = rw.ok ? rw.data.connection_id : '';
+
+    const noWhere = await call(client, 'execute_write', { connection_id: cid2, db: DB, sql: 'DELETE FROM people' });
+    assert(!noWhere.ok && /WHERE/i.test(noWhere.text), 'DELETE senza WHERE rifiutata');
+    const ddl = await call(client, 'execute_write', { connection_id: cid2, db: DB, sql: 'DROP TABLE people' });
+    assert(!ddl.ok, 'DDL rifiutato da execute_write');
+
+    const w1 = await call(client, 'execute_write', { connection_id: cid2, db: DB, sql: "UPDATE people SET age = 42 WHERE name = 'Bruno'" });
+    assert(w1.ok && w1.data.requires_confirmation && w1.data.confirm_token, 'primo passo: anteprima + confirm_token');
+    const w2 = await call(client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: w1.data.confirm_token });
+    assert(w2.ok && w2.data.executed && w2.data.result.docs[0].righeCoinvolte === 1, 'UPDATE confermato ed eseguito');
+    const checkW = await call(client, 'execute_query', { connection_id: cid2, db: DB, sql: "SELECT age FROM people WHERE name = 'Bruno'" });
+    assert(checkW.ok && Number(checkW.data.docs[0].age) === 42, 'modifica persistita');
+    const qGuard = await call(client, 'execute_query', { connection_id: cid2, db: DB, sql: 'DELETE FROM people WHERE age > 0' });
+    assert(!qGuard.ok, 'execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)');
+
+    await call(client, 'disconnect_database', { connection_id: cid2 });
+
     console.log('8. disconnect_database');
     const disc = await call(client, 'disconnect_database', { connection_id: cid });
     assert(disc.ok && disc.data.disconnected, 'disconnessione riuscita');
@@ -114,7 +144,10 @@ async function call(client, name, args) {
   } finally {
     if (transport) await transport.terminateSession().catch(() => {});
     if (client) await client.close().catch(() => {});
-    if (socket && socket.connected) await emit(socket, 'connections:delete', { name: CONN_NAME });
+    if (socket && socket.connected) {
+      await emit(socket, 'connections:delete', { name: CONN_NAME });
+      await emit(socket, 'connections:delete', { name: RW_NAME });
+    }
     if (socket) socket.close();
     if (admin) {
       await admin.query(`DROP DATABASE IF EXISTS ${DB}`).catch(() => {});

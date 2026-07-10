@@ -5,6 +5,8 @@
 // Richiede il server già avviato su :3030 (env PORT) e MongoDB su :27017.
 // Uso: node test/e2e-mcp.js
 
+const fs = require('fs');
+const path = require('path');
 const { io } = require('socket.io-client');
 const { MongoClient } = require('mongodb');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
@@ -15,6 +17,7 @@ const PORT = process.env.PORT || 3030;
 const BASE = `http://127.0.0.1:${PORT}`;
 const DB = 'gui_mongodb_e2e_mcp';
 const CONN_NAME = 'e2e-mcp';
+const RW_NAME = 'e2e-mcp-rw';
 
 function assert(cond, label) {
   if (cond) {
@@ -107,7 +110,7 @@ async function newMcpClient() {
     mcp1 = await newMcpClient();
     const tools = await mcp1.client.listTools();
     const names = tools.tools.map((t) => t.name);
-    for (const t of ['list_saved_connections', 'connect_database', 'disconnect_database', 'get_databases_and_collections', 'get_schema', 'execute_query']) {
+    for (const t of ['list_saved_connections', 'connect_database', 'disconnect_database', 'get_databases_and_collections', 'get_schema', 'execute_query', 'execute_write']) {
       assert(names.includes(t), `tool "${t}" esposto`);
     }
 
@@ -188,6 +191,54 @@ async function newMcpClient() {
     const afterDisc = await call(mcp1.client, 'execute_query', { connection_id: cid, db: DB, collection: 'people' });
     assert(!afterDisc.ok, 'query dopo la disconnessione rifiutata');
 
+    console.log('13. Fase 3: execute_write rifiutata su connessione read-only (default)');
+    const roConn = await call(mcp1.client, 'connect_database', { saved: CONN_NAME });
+    const roCid = roConn.ok ? roConn.data.connection_id : '';
+    assert(roConn.ok && roConn.data.writable === false, 'connessione di default non scrivibile');
+    const wDenied = await call(mcp1.client, 'execute_write', { connection_id: roCid, db: DB, collection: 'people', operation: 'insert', doc: '{ "name": "X" }' });
+    assert(!wDenied.ok && /sola lettura/i.test(wDenied.text), 'scrittura rifiutata con messaggio esplicativo');
+    await call(mcp1.client, 'disconnect_database', { connection_id: roCid });
+
+    console.log('14. Fase 3: scritture con conferma su connessione readOnly=false');
+    const savedRw = await emit(socket, 'connections:save', { name: RW_NAME, cfg: { host: '127.0.0.1', port: 27017, readOnly: 'false' } });
+    assert(savedRw.ok, `connections:save "${RW_NAME}" con readOnly=false`);
+    const listRw = await call(mcp1.client, 'list_saved_connections', {});
+    assert(listRw.ok && listRw.data.connections.some((c) => c.name === RW_NAME && c.readOnly === false), 'flag readOnly esposto in list_saved_connections');
+    const rw = await call(mcp1.client, 'connect_database', { saved: RW_NAME });
+    assert(rw.ok && rw.data.writable === true, 'connessione scrivibile aperta');
+    const cid2 = rw.ok ? rw.data.connection_id : '';
+
+    const ins1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'insert', doc: '{ "name": "Carla", "age": 29 }' });
+    assert(ins1.ok && ins1.data.requires_confirmation && ins1.data.confirm_token, 'primo passo: anteprima + confirm_token');
+    const ins2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: ins1.data.confirm_token });
+    assert(ins2.ok && ins2.data.executed, 'secondo passo: insert eseguito col token');
+    const afterIns = await call(mcp1.client, 'execute_query', { connection_id: cid2, db: DB, collection: 'people', filter: '{ "name": "Carla" }' });
+    assert(afterIns.ok && afterIns.data.total === 1, 'documento inserito e rileggibile');
+    const reuse = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: ins1.data.confirm_token });
+    assert(!reuse.ok, 'confirm_token monouso: riuso rifiutato');
+    const fake = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: 'token-inventato' });
+    assert(!fake.ok, 'confirm_token inventato rifiutato');
+
+    const upd1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'update', filter: '{ "name": "Carla" }', set: '{ "age": 30 }' });
+    assert(upd1.ok && upd1.data.affected_estimate === 1, `stima documenti interessati = ${upd1.ok ? upd1.data.affected_estimate : upd1.text}`);
+    const upd2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: upd1.data.confirm_token });
+    assert(upd2.ok && upd2.data.result.modified === 1, 'update confermato ed eseguito');
+
+    const delEmpty = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'delete', filter: '{}' });
+    assert(!delEmpty.ok, 'delete con filtro vuoto rifiutata subito');
+    const del1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'delete', filter: '{ "name": "Carla" }' });
+    const del2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: del1.ok ? del1.data.confirm_token : '' });
+    assert(del1.ok && del2.ok && del2.data.result.deleted === 1, 'delete confermata ed eseguita');
+
+    const qGuard = await call(mcp1.client, 'execute_query', { connection_id: cid2, db: DB, collection: 'people', pipeline: '[{ "$out": "x" }]' });
+    assert(!qGuard.ok, 'execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)');
+
+    const auditPath = path.join(__dirname, '..', 'mcp-audit.log');
+    const auditText = fs.existsSync(auditPath) ? fs.readFileSync(auditPath, 'utf8') : '';
+    assert(auditText.includes(`"connection":"${RW_NAME}"`) && auditText.includes('"event":"executed"'), 'audit log con eventi requested/executed');
+
+    await call(mcp1.client, 'disconnect_database', { connection_id: cid2 });
+
     console.log(process.exitCode ? '\nTEST FALLITI' : '\nTUTTI I TEST SUPERATI');
   } catch (err) {
     console.error('Errore inatteso:', err);
@@ -197,7 +248,10 @@ async function newMcpClient() {
     // connessione salvata e il database di test.
     if (mcp1) { await mcp1.transport.terminateSession().catch(() => {}); await mcp1.client.close().catch(() => {}); }
     if (mcp2) { await mcp2.transport.terminateSession().catch(() => {}); await mcp2.client.close().catch(() => {}); }
-    if (socket && socket.connected) await emit(socket, 'connections:delete', { name: CONN_NAME });
+    if (socket && socket.connected) {
+      await emit(socket, 'connections:delete', { name: CONN_NAME });
+      await emit(socket, 'connections:delete', { name: RW_NAME });
+    }
     if (socket) socket.close();
     if (mongo) {
       await mongo.db(DB).dropDatabase().catch(() => {});

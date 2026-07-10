@@ -72,11 +72,17 @@ Flusso tipico dei 6 tools esposti:
 5. `execute_query` — MongoDB: `filter`/`sort`/`projection` o `pipeline` (Extended JSON); MySQL: `sql` (solo SELECT e simili).
 6. `disconnect_database` — chiude la connessione.
 
+In più: la risorsa `schema://{connection_id}/{db}` (UML Mermaid + dizionario dati sempre aggiornati) e i prompt `genera-report` / `esplora-database`.
+
+### Scritture (opzionali, con conferma)
+
+Di default ogni connessione è in **sola lettura**. Per abilitare le scritture su una connessione, aggiungi `readOnly=false` alla sua sezione in `connections.ini` (consigliato: usa un utente DB con privilegi minimi). Il tool `execute_write` lavora in due passaggi: la prima chiamata restituisce un'anteprima e un `confirm_token` (monouso, 5 minuti); l'esecuzione avviene solo richiamandolo col token, che l'AI deve usare **solo dopo la tua conferma esplicita**. UPDATE/DELETE senza WHERE (MySQL) e filtri vuoti (MongoDB) sono rifiutati; niente DDL. Ogni operazione è tracciata in `mcp-audit.log`.
+
 Esempio di prompt: *"Connettiti alla connessione 'Produzione', guarda lo schema del db `shop` e dimmi i 10 clienti con più ordini."*
 
-## 5. Limiti e sicurezza (Fase 1)
+## 5. Limiti e sicurezza
 
-- **Sola lettura**: niente insert/update/delete/DDL. Su MongoDB sono vietati gli stage `$out`/`$merge`; su MySQL la query deve iniziare con SELECT/WITH/SHOW/DESCRIBE/EXPLAIN e gira comunque in una transazione `READ ONLY` (timeout 30 s), che blocca anche il DML annidato.
+- **Sola lettura di default**: `execute_query` non può mai scrivere, nemmeno sulle connessioni scrivibili. Su MongoDB sono vietati gli stage `$out`/`$merge`; su MySQL la query deve iniziare con SELECT/WITH/SHOW/DESCRIBE/EXPLAIN e gira comunque in una transazione `READ ONLY` (timeout 30 s), che blocca anche il DML annidato. Le scritture passano solo da `execute_write`, solo su connessioni con `readOnly=false`, e con conferma a due passaggi.
 - Le credenziali non transitano mai verso l'AI: si connette solo per nome di connessione salvata.
 - Max 8 connessioni DB per sessione MCP, 32 sessioni MCP; le sessioni inattive da 30 minuti vengono chiuse.
 - Con bind su loopback (default) l'endpoint rifiuta richieste con header `Host` non locale (anti DNS-rebinding). Se esponi il server in rete (`HOST=0.0.0.0`), ricorda che **non c'è autenticazione**: fallo solo su reti fidate.

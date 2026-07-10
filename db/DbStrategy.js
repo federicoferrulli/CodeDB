@@ -76,6 +76,13 @@ class DbStrategy {
   async collectionExplain(_db, _coll, _payload) { throw unsupported(); }
 
   async docInsert(_db, _coll, _payload) { throw unsupported(); }
+
+  /**
+   * Aggiornamento di massa: payload = { filter, set } (per il gateway MCP).
+   * Il filtro vuoto va rifiutato: mai aggiornare tutto per sbaglio.
+   */
+  async collectionUpdateMany(_db, _coll, _payload) { throw unsupported(); }
+
   async docUpdate(_db, _coll, _payload) { throw unsupported(); }
   async docReplace(_db, _coll, _payload) { throw unsupported(); }
   async docDelete(_db, _coll, _payload) { throw unsupported(); }

@@ -122,7 +122,7 @@ app.post("/mcp/messages", async (req, res) => {
    - Definire una convenzione di naming e descrizioni chiare per ogni prompt/resource:
      la qualità delle descrizioni è ciò che permette all'AI di scegliere lo strumento giusto.
 
-3. **Fase 3: Operazioni di scrittura (opzionale, con misure di sicurezza)**
+3. **Fase 3: Operazioni di scrittura (opzionale, con misure di sicurezza)** ✅ *(implementata, 10/07/2026 — vedi §7)*
    - Introdurre un flag `read_only = true` per connessione in `connections.ini`,
      attivo di default: le scritture vanno abilitate esplicitamente, mai il contrario.
    - Applicare il vincolo a livello di connessione DB (utente SQL con soli permessi
@@ -136,9 +136,17 @@ app.post("/mcp/messages", async (req, res) => {
      numero di righe interessate (es. rifiutare `DELETE` senza `WHERE`).
 ---
 
-## 7. Stato dell'implementazione (Fasi 1 e 2 — 10/07/2026)
+## 7. Stato dell'implementazione (Fasi 1, 2 e 3 — 10/07/2026)
 
-Le Fasi 1 e 2 sono implementate in `mcp/McpGateway.js` (montato da `server.js` con `attachMcp(app, deps)`); test e2e in `test/e2e-mcp.js` (MongoDB, tools + prompts + resources) e `test/e2e-mcp-mysql.js` (MySQL), entrambi superati in locale.
+Tutte e tre le fasi sono implementate in `mcp/McpGateway.js` (montato da `server.js` con `attachMcp(app, deps)`); test e2e in `test/e2e-mcp.js` (MongoDB, tools + prompts + resources + scritture) e `test/e2e-mcp-mysql.js` (MySQL), entrambi superati in locale.
+
+**Fase 3 — Scritture con misure di sicurezza:**
+
+- **Flag `readOnly` per connessione** in `connections.ini` (camelCase come gli altri campi): le scritture via MCP sono consentite **solo** se la sezione dichiara esplicitamente `readOnly=false`; flag assente = sola lettura, come richiesto ("mai il contrario"). Il flag è esposto da `list_saved_connections` e la scrivibilità (`writable`) da `connect_database`, valutata al momento della connessione.
+- **Tool separato `execute_write`** (il tool di lettura resta `execute_query`, che rimane blindato anche sulle connessioni scrivibili: policy per-tool). MongoDB: `operation` insert/update/delete con `doc`/`filter`/`set` in EJSON, filtri vuoti rifiutati (nuovo `collectionUpdateMany` in `MongoDbStrategy` per l'update di massa); MySQL: `sql` con solo INSERT/UPDATE/DELETE/REPLACE (niente DDL) e **UPDATE/DELETE senza WHERE rifiutati**.
+- **Conferma human-in-the-loop a due passaggi**: la prima chiamata restituisce anteprima (con stima best-effort dei documenti interessati su MongoDB) + `confirm_token` monouso (scadenza 5 minuti, legato a sessione e connessione); l'esecuzione avviene solo richiamando il tool col token, che l'AI è istruita a usare solo dopo l'approvazione esplicita dell'utente. Scelto il token a due passaggi al posto dell'*elicitation* MCP perché funziona con qualunque client e non richiede lo stream SSE (le risposte del transport sono JSON).
+- **Audit log**: ogni richiesta/esecuzione/fallimento è registrato in `mcp-audit.log` (JSON Lines: timestamp, sessione MCP, connessione, statement/operazione, esito; file in `.gitignore`).
+- **Vincolo a livello di motore**: resta la raccomandazione di usare per le connessioni scrivibili un utente DB con privilegi minimi (per quelle in sola lettura, un utente con soli `SELECT`), così il vincolo non dipende solo dal codice del gateway.
 
 **Fase 2 — Prompts & Resources:**
 

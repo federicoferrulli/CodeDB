@@ -16,6 +16,8 @@
  * quella sessione MCP. L'AI non vede mai credenziali: si connette per nome.
  * ------------------------------------------------------------------------- */
 
+const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
@@ -56,6 +58,36 @@ function assertReadOnlySql(sql) {
   }
 }
 
+/* Fase 3: guardie del tool di scrittura (execute_write). Solo DML esplicito,
+ * niente DDL; UPDATE e DELETE devono avere una clausola WHERE. */
+const SQL_WRITE_START = /^\s*(insert|update|delete|replace)\b/i;
+const SQL_NEEDS_WHERE = /^\s*(update|delete)\b/i;
+
+function assertWriteSql(sql) {
+  const text = String(sql || '');
+  if (!SQL_WRITE_START.test(text)) {
+    throw new Error('execute_write ammette solo INSERT, UPDATE, DELETE o REPLACE (niente DDL).');
+  }
+  if (SQL_NEEDS_WHERE.test(text) && !/\bwhere\b/i.test(text)) {
+    throw new Error('UPDATE e DELETE senza clausola WHERE non sono ammessi: specifica sempre le righe interessate.');
+  }
+}
+
+// Parse di un oggetto EJSON che deve esistere e non essere vuoto (filtri e
+// $set delle scritture: mai operare "su tutto" per omissione).
+function parseNonEmptyObject(text, label) {
+  let obj;
+  try {
+    obj = EJSON.parse(String(text || ''), { relaxed: false });
+  } catch (err) {
+    throw new Error(`${label} non valido: ${errMsg(err)}`);
+  }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj) || !Object.keys(obj).length) {
+    throw new Error(`${label} mancante o vuoto: specifica un oggetto esplicito.`);
+  }
+  return obj;
+}
+
 // Pipeline MongoDB: $out e $merge sono gli unici stage che scrivono e sono
 // ammessi solo al livello superiore della pipeline (mai nei sub-pipeline di
 // $lookup/$facet/$unionWith), quindi basta controllare gli stage top-level.
@@ -72,6 +104,18 @@ function assertReadOnlyPipeline(pipelineText) {
       throw new Error('Gli stage $out e $merge non sono ammessi in modalità MCP (sola lettura).');
     }
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Audit log delle scritture (Fase 3): una riga JSON per evento in
+ * mcp-audit.log nella root del progetto (file in .gitignore).
+ * ------------------------------------------------------------------------- */
+
+const AUDIT_FILE = path.join(__dirname, '..', 'mcp-audit.log');
+
+function audit(entry) {
+  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+  fs.appendFile(AUDIT_FILE, line + '\n', () => { /* l'audit non deve mai bloccare */ });
 }
 
 /* ---------------------------------------------------------------------------
@@ -168,7 +212,14 @@ function buildMcpServer(session, deps) {
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => {
     const connections = Object.entries(deps.loadConnections())
-      .map(([name, c]) => ({ name, dbType: deps.connDbType(c), label: deps.connLabel(c), folder: c.folder || '' }));
+      .map(([name, c]) => ({
+        name,
+        dbType: deps.connDbType(c),
+        label: deps.connLabel(c),
+        folder: c.folder || '',
+        // Scritture consentite solo con readOnly=false esplicito nel .ini.
+        readOnly: String(c.readOnly || '').trim().toLowerCase() !== 'false',
+      }));
     return jsonResult({ connections });
   });
 
@@ -197,10 +248,19 @@ function buildMcpServer(session, deps) {
       throw err;
     }
     const connectionId = crypto.randomUUID();
-    session.dbSessions.set(connectionId, { strategy: conn.strategy, tunnel: conn.tunnel, dbType: conn.dbType });
+    // writesAllowed valutato al momento della connessione: serve readOnly=false
+    // esplicito nella connessione salvata (default: sola lettura).
+    const writesAllowed = String(conn.effective.readOnly || '').trim().toLowerCase() === 'false';
+    session.dbSessions.set(connectionId, {
+      strategy: conn.strategy,
+      tunnel: conn.tunnel,
+      dbType: conn.dbType,
+      name: String(saved || ''),
+      writesAllowed,
+    });
     let databases = [];
     try { databases = await conn.strategy.listDatabases(); } catch { /* la lista è facoltativa */ }
-    return jsonResult({ connection_id: connectionId, dbType: conn.dbType, label: deps.connLabel(conn.effective), databases });
+    return jsonResult({ connection_id: connectionId, dbType: conn.dbType, label: deps.connLabel(conn.effective), writable: writesAllowed, databases });
   });
 
   tool('disconnect_database', {
@@ -302,6 +362,146 @@ function buildMcpServer(session, deps) {
       skip: args.skip,
       limit: args.limit == null ? 50 : args.limit,
     }));
+  });
+
+  // --- Fase 3: scritture con conferma esplicita (human-in-the-loop) -----------
+  // Primo passo: execute_write senza confirm_token valida l'operazione e
+  // restituisce anteprima + token monouso (5 minuti). Secondo passo: la stessa
+  // chiamata con confirm_token esegue l'operazione registrata. Il token è la
+  // conferma: va richiesto all'utente umano, mai autogenerato dall'AI.
+
+  const CONFIRM_TTL_MS = 5 * 60 * 1000;
+
+  const sweepPendingWrites = () => {
+    const now = Date.now();
+    for (const [token, p] of session.pendingWrites) {
+      if (p.expiresAt <= now) session.pendingWrites.delete(token);
+    }
+  };
+
+  // Valida gli argomenti e costruisce l'operazione di scrittura: { summary,
+  // exec }. exec viene eseguita solo alla conferma.
+  const buildWriteOp = (sess, args, db) => {
+    if (sess.dbType === 'mysql') {
+      const sql = String(args.sql || '').trim();
+      if (!sql) throw new Error('Per MySQL usa il parametro "sql" con uno statement INSERT/UPDATE/DELETE/REPLACE.');
+      assertWriteSql(sql);
+      return {
+        summary: { dbType: 'mysql', db, sql },
+        exec: () => sess.strategy.collectionAggregate(db, null, { pipeline: sql }),
+      };
+    }
+    if (args.sql && String(args.sql).trim()) {
+      throw new Error('Il parametro "sql" vale solo per MySQL: su MongoDB usa "operation" con "doc"/"filter"/"set".');
+    }
+    const coll = String(args.collection || '').trim();
+    if (!coll) throw new Error('Parametro "collection" mancante.');
+    const operation = String(args.operation || '').trim().toLowerCase();
+    if (operation === 'insert') {
+      if (!String(args.doc || '').trim()) throw new Error('Parametro "doc" mancante per l\'insert.');
+      return {
+        summary: { dbType: 'mongodb', db, collection: coll, operation, doc: args.doc },
+        exec: () => sess.strategy.docInsert(db, coll, { doc: args.doc }),
+      };
+    }
+    if (operation === 'update') {
+      parseNonEmptyObject(args.filter, 'Filtro');
+      parseNonEmptyObject(args.set, 'Oggetto "set"');
+      return {
+        summary: { dbType: 'mongodb', db, collection: coll, operation, filter: args.filter, set: args.set },
+        exec: () => sess.strategy.collectionUpdateMany(db, coll, { filter: args.filter, set: args.set }),
+      };
+    }
+    if (operation === 'delete') {
+      parseNonEmptyObject(args.filter, 'Filtro');
+      return {
+        summary: { dbType: 'mongodb', db, collection: coll, operation, filter: args.filter },
+        exec: () => sess.strategy.collectionDeleteMany(db, coll, { filter: args.filter }),
+      };
+    }
+    throw new Error('Parametro "operation" mancante o non valido: usa "insert", "update" o "delete" (oppure "sql" su MySQL).');
+  };
+
+  tool('execute_write', {
+    title: 'Esegui scrittura (con conferma)',
+    description:
+      'Esegue una scrittura sul database in due passaggi. Funziona solo su connessioni salvate con readOnly=false ' +
+      'esplicito in connections.ini (default: sola lettura). ' +
+      'Primo passo: chiama SENZA confirm_token per ottenere l\'anteprima dell\'operazione e un token di conferma. ' +
+      'Mostra l\'anteprima all\'utente umano e chiedi la sua approvazione esplicita: solo dopo richiama con confirm_token. ' +
+      'NON confermare mai di tua iniziativa. Il token scade dopo 5 minuti ed è monouso. ' +
+      'MongoDB: "operation" (insert|update|delete) con "doc" (insert) o "filter"+"set" (update) o "filter" (delete), in Extended JSON; ' +
+      'filtri vuoti rifiutati. MySQL: "sql" con INSERT/UPDATE/DELETE/REPLACE (niente DDL); UPDATE/DELETE richiedono WHERE. ' +
+      'Ogni richiesta ed esecuzione viene registrata in un audit log sul server.',
+    inputSchema: {
+      connection_id: z.string(),
+      db: z.string().describe('Database (MySQL: schema) su cui operare'),
+      collection: z.string().optional().describe('Solo MongoDB: collection su cui operare'),
+      operation: z.enum(['insert', 'update', 'delete']).optional().describe('Solo MongoDB: tipo di scrittura'),
+      doc: z.string().optional().describe('Solo MongoDB insert: documento in Extended JSON'),
+      filter: z.string().optional().describe('Solo MongoDB update/delete: filtro esplicito in Extended JSON (mai vuoto)'),
+      set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
+      sql: z.string().optional().describe('Solo MySQL: statement INSERT/UPDATE/DELETE/REPLACE (UPDATE/DELETE con WHERE)'),
+      confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  }, async (args) => {
+    const sess = requireDbSession(args.connection_id);
+    if (!sess.writesAllowed) {
+      throw new Error(`La connessione "${sess.name}" è in sola lettura: per abilitare le scritture imposta readOnly=false nella sua sezione di connections.ini.`);
+    }
+    const db = String(args.db || '').trim();
+    if (!db) throw new Error('Parametro "db" mancante.');
+    sweepPendingWrites();
+
+    const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType };
+
+    // Secondo passo: esecuzione dell'operazione registrata col token.
+    const token = String(args.confirm_token || '').trim();
+    if (token) {
+      const pending = session.pendingWrites.get(token);
+      if (!pending || pending.connectionId !== String(args.connection_id)) {
+        throw new Error('confirm_token sconosciuto, scaduto o di un\'altra connessione: ripeti la richiesta senza token.');
+      }
+      session.pendingWrites.delete(token); // monouso
+      try {
+        const result = await pending.exec();
+        audit({ ...auditBase, event: 'executed', ...pending.summary, result });
+        return jsonResult({ executed: true, ...pending.summary, result });
+      } catch (err) {
+        audit({ ...auditBase, event: 'failed', ...pending.summary, error: errMsg(err) });
+        throw err;
+      }
+    }
+
+    // Primo passo: validazione, anteprima e token di conferma.
+    const op = buildWriteOp(sess, args, db);
+
+    // Stima best-effort dei documenti interessati (solo MongoDB update/delete).
+    let affectedEstimate;
+    if (op.summary.operation === 'update' || op.summary.operation === 'delete') {
+      try {
+        const probe = await sess.strategy.collectionFind(db, op.summary.collection, { filter: op.summary.filter, limit: 1 });
+        affectedEstimate = probe.total;
+      } catch { /* la stima è facoltativa */ }
+    }
+
+    const confirmToken = crypto.randomUUID();
+    session.pendingWrites.set(confirmToken, {
+      connectionId: String(args.connection_id),
+      exec: op.exec,
+      summary: op.summary,
+      expiresAt: Date.now() + CONFIRM_TTL_MS,
+    });
+    audit({ ...auditBase, event: 'requested', ...op.summary, affectedEstimate });
+    return jsonResult({
+      requires_confirmation: true,
+      confirm_token: confirmToken,
+      expires_in_seconds: CONFIRM_TTL_MS / 1000,
+      preview: op.summary,
+      ...(affectedEstimate != null ? { affected_estimate: affectedEstimate } : {}),
+      istruzioni: 'Mostra l\'anteprima all\'utente umano e chiedi conferma esplicita. Solo se l\'utente approva, richiama execute_write con questo confirm_token. Se l\'utente rifiuta, non richiamare il tool.',
+    });
   });
 
   // --- Resources (Fase 2): schema come risorsa markdown -----------------------
@@ -461,7 +661,7 @@ function attachMcp(app, deps) {
 
       // Nuova sessione: un McpServer e un transport dedicati, registrati
       // nella mappa quando l'SDK assegna il session id.
-      const session = { id: null, transport: null, dbSessions: new Map(), lastActivity: Date.now(), destroyed: false };
+      const session = { id: null, transport: null, dbSessions: new Map(), pendingWrites: new Map(), lastActivity: Date.now(), destroyed: false };
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
         enableJsonResponse: true, // risposte JSON semplici: nessun push server→client
