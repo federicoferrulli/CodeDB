@@ -159,6 +159,24 @@ async function newMcpClient() {
     const badFilter = await call(mcp1.client, 'execute_query', { connection_id: cid, db: DB, collection: 'people', filter: '{ non valido }' });
     assert(!badFilter.ok, 'filtro con sintassi errata: errore riportato');
 
+    console.log('10b. Fase 2: prompts');
+    const prompts = await mcp1.client.listPrompts();
+    const pnames = prompts.prompts.map((p) => p.name);
+    assert(pnames.includes('genera-report') && pnames.includes('esplora-database'), `prompts esposti (${pnames.join(', ')})`);
+    const prompt = await mcp1.client.getPrompt({ name: 'genera-report', arguments: { connessione: CONN_NAME, db: DB, periodo: '2026' } });
+    const ptext = prompt.messages[0].content.text;
+    assert(ptext.includes(CONN_NAME) && ptext.includes(DB) && ptext.includes('2026'), 'prompt parametrizzato con connessione, db e periodo');
+
+    console.log('10c. Fase 2: resource schema://');
+    const tmpl = await mcp1.client.listResourceTemplates();
+    assert(tmpl.resourceTemplates.some((t) => t.uriTemplate === 'schema://{connectionId}/{db}'), 'template schema:// pubblicato');
+    const resr = await mcp1.client.readResource({ uri: `schema://${cid}/${DB}` });
+    const rtext = resr.contents[0].text;
+    assert(resr.contents[0].mimeType === 'text/markdown' && rtext.includes('erDiagram'), 'risorsa markdown con diagramma Mermaid');
+    assert(rtext.includes('people') && /orders\.people_id.*people/.test(rtext.replace(/`/g, '')), 'dizionario dati con relazione orders.people_id -> people');
+    const resrBad = await mcp1.client.readResource({ uri: `schema://sconosciuto/${DB}` }).then(() => true, () => false);
+    assert(!resrBad, 'risorsa con connection_id sconosciuto rifiutata');
+
     console.log('11. isolamento tra sessioni MCP');
     mcp2 = await newMcpClient();
     const cross = await call(mcp2.client, 'execute_query', { connection_id: cid, db: DB, collection: 'people' });

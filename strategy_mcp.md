@@ -111,17 +111,39 @@ app.post("/mcp/messages", async (req, res) => {
 1. **Fase 1: Proof of Concept (PoC) in sola lettura** ✅ *(implementata, luglio 2026 — vedi §7)*
    - Implementare il server MCP via SSE nel `server.js` esistente.
    - Esporre unicamente strumenti di *lettura*: lettura connessioni salvate, esplorazione schema e query SELECT/find limitate.
-2. **Fase 2: Prompts & Resources**
-   - Definire dei *Prompts* standardizzati in MCP per agevolare l'AI (es. "Genera report dal database X").
-   - Restituire il diagramma UML come risorsa testuale per l'AI.
-3. **Fase 3: Operazioni di Scrittura (Opzionale e con cautele)**
-   - Abilitare update/delete o l'esecuzione di script completi, assicurandosi di aggiungere policy o un flag di *read-only* nel `connections.ini` per impedire all'AI di fare danni accidentali.
+2. **Fase 2: Prompts & Resources** ✅ *(implementata, 10/07/2026 — vedi §7)*
+   - Esporre *Prompts* MCP standardizzati e parametrizzati (es. `genera-report`
+     con argomenti `database` e `periodo`), così l'AI riceve istruzioni coerenti
+     invece di prompt improvvisati dall'utente.
+   - Pubblicare lo schema del database come *Resource* MCP: diagramma UML in
+     formato testuale (Mermaid o PlantUML) più un dizionario dati sintetico
+     (tabelle, colonne, relazioni, vincoli). Aggiornare la risorsa automaticamente
+     a ogni cambio di schema per evitare che l'AI ragioni su una struttura obsoleta.
+   - Definire una convenzione di naming e descrizioni chiare per ogni prompt/resource:
+     la qualità delle descrizioni è ciò che permette all'AI di scegliere lo strumento giusto.
 
+3. **Fase 3: Operazioni di scrittura (opzionale, con misure di sicurezza)**
+   - Introdurre un flag `read_only = true` per connessione in `connections.ini`,
+     attivo di default: le scritture vanno abilitate esplicitamente, mai il contrario.
+   - Applicare il vincolo a livello di connessione DB (utente SQL con soli permessi
+     `SELECT`), non solo a livello applicativo: se il controllo sta solo nel codice
+     del server MCP, un bug lo aggira.
+   - Separare i tool: `query` (sola lettura) ed `execute` (scrittura) come strumenti
+     distinti, così le policy si applicano per-tool e l'AI non può "scivolare" in
+     una scrittura tramite il tool di lettura.
+   - Per update/delete: richiedere conferma esplicita (human-in-the-loop), loggare
+     ogni statement eseguito con timestamp e connessione, e valutare un limite sul
+     numero di righe interessate (es. rifiutare `DELETE` senza `WHERE`).
 ---
 
-## 7. Stato dell'implementazione (Fase 1 — 10/07/2026)
+## 7. Stato dell'implementazione (Fasi 1 e 2 — 10/07/2026)
 
-La Fase 1 è implementata in `mcp/McpGateway.js` (montato da `server.js` con `attachMcp(app, deps)`); test e2e in `test/e2e-mcp.js` (MongoDB) e `test/e2e-mcp-mysql.js` (MySQL), entrambi superati in locale.
+Le Fasi 1 e 2 sono implementate in `mcp/McpGateway.js` (montato da `server.js` con `attachMcp(app, deps)`); test e2e in `test/e2e-mcp.js` (MongoDB, tools + prompts + resources) e `test/e2e-mcp-mysql.js` (MySQL), entrambi superati in locale.
+
+**Fase 2 — Prompts & Resources:**
+
+- **Resource** `schema://{connectionId}/{db}` (ResourceTemplate, `text/markdown`): diagramma UML in **Mermaid** (`erDiagram`) + dizionario dati (campi, tipi, presenza %, relazioni). Invece di aggiornare la risorsa a ogni cambio di schema (che richiederebbe notifiche push, non disponibili con le risposte JSON), il contenuto è **generato al momento della lettura** da `dbSchema(db)`: mai obsoleto per costruzione.
+- **Prompts** parametrizzati: `genera-report` (argomenti `connessione`, `db`, `periodo` opzionale) ed `esplora-database` (`connessione`, `db` opzionale). Entrambi guidano l'AI sul flusso corretto (connect → schema → query mirate in sola lettura → output markdown → disconnect).
 
 **Scostamenti rispetto alla bozza di questo documento:**
 

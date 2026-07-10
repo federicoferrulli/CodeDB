@@ -20,7 +20,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { z } = require('zod');
 const { EJSON } = require('bson');
-const { McpServer } = require('@modelcontextprotocol/sdk/server/mcp.js');
+const { McpServer, ResourceTemplate } = require('@modelcontextprotocol/sdk/server/mcp.js');
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
@@ -75,7 +75,48 @@ function assertReadOnlyPipeline(pipelineText) {
 }
 
 /* ---------------------------------------------------------------------------
- * Definizione dei tools su un McpServer legato a una sessione MCP
+ * Resource "schema": diagramma UML (Mermaid) + dizionario dati in markdown,
+ * generati al momento della lettura così da non essere mai obsoleti.
+ * ------------------------------------------------------------------------- */
+
+// Identificatore compatibile con la sintassi erDiagram di Mermaid.
+function mermaidId(name) {
+  return String(name || '').replace(/[^A-Za-z0-9_]/g, '_') || '_';
+}
+
+function renderSchemaMarkdown(db, schema) {
+  const lines = [`# Schema di \`${db}\``, '', '## Diagramma UML (Mermaid)', '', '```mermaid', 'erDiagram'];
+  for (const c of schema.collections) {
+    lines.push(`  ${mermaidId(c.name)} {`);
+    for (const f of c.fields) {
+      lines.push(`    ${mermaidId(f.types.join('_'))} ${mermaidId(f.name)}`);
+    }
+    lines.push('  }');
+  }
+  for (const r of schema.relations) {
+    lines.push(`  ${mermaidId(r.from)} ${r.many ? '}o--o{' : '}o--||'} ${mermaidId(r.to)} : "${r.field}"`);
+  }
+  lines.push('```', '', '## Dizionario dati', '');
+  for (const c of schema.collections) {
+    lines.push(`### ${c.name}`, '', '| Campo | Tipi | Presenza % |', '| --- | --- | --- |');
+    for (const f of c.fields) {
+      lines.push(`| ${f.name} | ${f.types.join(', ')} | ${f.presence} |`);
+    }
+    lines.push('');
+  }
+  if (schema.relations.length) {
+    lines.push('## Relazioni', '');
+    for (const r of schema.relations) {
+      lines.push(`- \`${r.from}.${r.field}\` → \`${r.to}\`${r.many ? ' (uno-a-molti)' : ''}`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n');
+}
+
+/* ---------------------------------------------------------------------------
+ * Definizione di tools, prompts e resources su un McpServer legato a una
+ * sessione MCP
  * ------------------------------------------------------------------------- */
 
 function jsonResult(obj) {
@@ -95,7 +136,9 @@ function buildMcpServer(session, deps) {
       instructions:
         'Gateway di sola lettura verso i database (MongoDB e MySQL) gestiti da Mongo Web GUI. ' +
         'Flusso tipico: list_saved_connections → connect_database → get_databases_and_collections ' +
-        '→ get_schema → execute_query. Chiudi le connessioni con disconnect_database quando hai finito.',
+        '→ get_schema → execute_query. Chiudi le connessioni con disconnect_database quando hai finito. ' +
+        'La risorsa schema://{connection_id}/{db} fornisce UML Mermaid e dizionario dati sempre aggiornati; ' +
+        'i prompt genera-report ed esplora-database guidano i flussi ricorrenti.',
     }
   );
 
@@ -260,6 +303,84 @@ function buildMcpServer(session, deps) {
       limit: args.limit == null ? 50 : args.limit,
     }));
   });
+
+  // --- Resources (Fase 2): schema come risorsa markdown -----------------------
+
+  server.registerResource(
+    'schema',
+    new ResourceTemplate('schema://{connectionId}/{db}', { list: undefined }),
+    {
+      title: 'Schema del database (UML + dizionario dati)',
+      description:
+        'Diagramma UML in formato Mermaid (erDiagram) e dizionario dati del database indicato, ' +
+        'con campi, tipi, presenza % e relazioni (foreign key reali ed euristiche). ' +
+        'Generato al momento della lettura, quindi sempre aggiornato allo schema corrente. ' +
+        'URI: schema://{connectionId}/{db}, dove connectionId è quello restituito da connect_database.',
+      mimeType: 'text/markdown',
+    },
+    async (uri, { connectionId, db }) => {
+      const sess = requireDbSession(connectionId);
+      const dbName = String(db || '').trim();
+      if (!dbName) throw new Error('Nome del database mancante nell\'URI (schema://{connectionId}/{db}).');
+      const schema = await sess.strategy.dbSchema(dbName);
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderSchemaMarkdown(dbName, schema) }] };
+    }
+  );
+
+  // --- Prompts (Fase 2): template parametrizzati per i flussi ricorrenti ------
+
+  server.registerPrompt('genera-report', {
+    title: 'Genera report da un database',
+    description: 'Produce un report analitico in markdown su un database, usando i tools di sola lettura del server.',
+    argsSchema: {
+      connessione: z.string().describe('Nome della connessione salvata (vedi list_saved_connections)'),
+      db: z.string().describe('Database da analizzare'),
+      periodo: z.string().optional().describe('Periodo di interesse, es. "ultimo mese" o "2026"'),
+    },
+  }, ({ connessione, db, periodo }) => ({
+    messages: [{
+      role: 'user',
+      content: {
+        type: 'text',
+        text:
+          `Genera un report analitico sul database "${db}" della connessione salvata "${connessione}"` +
+          (periodo ? `, limitato al periodo: ${periodo}` : '') + '.\n\n' +
+          'Procedi così:\n' +
+          `1. Apri la connessione con connect_database (saved: "${connessione}").\n` +
+          `2. Studia la struttura con get_schema (o la risorsa schema://{connection_id}/${db}) prima di scrivere query.\n` +
+          '3. Esegui con execute_query solo interrogazioni di sola lettura mirate (limit bassi, proiezioni/SELECT dei soli campi utili): volumi per collection/tabella, distribuzioni e metriche significative' +
+          (periodo ? ' filtrate sul periodo indicato usando i campi data disponibili' : '') + '.\n' +
+          '4. Componi un report in markdown con: panoramica delle entità e delle relazioni, numeri chiave, eventuali anomalie (campi poco presenti, valori sospetti) e osservazioni finali.\n' +
+          '5. Alla fine chiudi la connessione con disconnect_database.',
+      },
+    }],
+  }));
+
+  server.registerPrompt('esplora-database', {
+    title: 'Esplora una connessione',
+    description: 'Esplorazione guidata di una connessione: topologia, schema e campioni, con dizionario dati commentato come risultato.',
+    argsSchema: {
+      connessione: z.string().describe('Nome della connessione salvata (vedi list_saved_connections)'),
+      db: z.string().optional().describe('Database specifico; se assente, esplora la topologia e scegli i più rilevanti'),
+    },
+  }, ({ connessione, db }) => ({
+    messages: [{
+      role: 'user',
+      content: {
+        type: 'text',
+        text:
+          `Esplora la connessione salvata "${connessione}"${db ? `, concentrandoti sul database "${db}"` : ''}.\n\n` +
+          'Procedi così:\n' +
+          `1. Apri la connessione con connect_database (saved: "${connessione}").\n` +
+          (db
+            ? `2. Elenca le collection/tabelle di "${db}" con get_databases_and_collections.\n`
+            : '2. Elenca i database con get_databases_and_collections e individua quelli applicativi (ignora quelli di sistema).\n') +
+          '3. Per il database di interesse leggi lo schema con get_schema e osserva qualche documento/riga reale con execute_query (limit 5).\n' +
+          '4. Produci un dizionario dati commentato in markdown: per ogni collection/tabella scopo presunto, campi principali con tipi, relazioni con le altre entità e note su qualità/particolarità dei dati.\n' +
+          '5. Alla fine chiudi la connessione con disconnect_database.',
+      },
+    }],
+  }));
 
   return server;
 }
