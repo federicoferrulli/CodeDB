@@ -130,6 +130,16 @@ function saveConnections(sections) {
       if (sec[f]) sec[f] = encryptSecret(sec[f]);
     }
   }
+  // Prima di riscrivere, conserva le due versioni precedenti (.bak e .bak2):
+  // il file è l'unica copia dei segreti sul disco e la migrazione all'avvio con
+  // una passphrase sbagliata li azzererebbe; due generazioni proteggono anche
+  // se dopo una migrazione corrotta arriva un ulteriore salvataggio dalla UI.
+  try {
+    fs.copyFileSync(CONNECTIONS_FILE + '.bak', CONNECTIONS_FILE + '.bak2');
+  } catch { /* nessun .bak precedente: niente da ruotare */ }
+  try {
+    fs.copyFileSync(CONNECTIONS_FILE, CONNECTIONS_FILE + '.bak');
+  } catch { /* file ancora inesistente: nessun backup da fare */ }
   fs.writeFileSync(CONNECTIONS_FILE, stringifyIni(toSave), 'utf8');
 }
 

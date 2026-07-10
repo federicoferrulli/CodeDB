@@ -86,7 +86,9 @@ node test/e2e-mcp-mysql.js # gateway MCP su MySQL (env MYSQL_PORT/MYSQL_PASSWORD
 - Le **connessioni salvate** vivono in `connections.ini` nella root (file in
   `.gitignore`): **password e segreti SSH sono in chiaro**, sia nel file sia
   nell'export. Nessun segreto viene mai rimandato al browser: nel form, lasciando
-  vuoto il campo, resta quello già salvato.
+  vuoto il campo, resta quello già salvato. A ogni riscrittura il server conserva
+  le due versioni precedenti in `connections.ini.bak` e `.bak2` (stessa cartella):
+  se i segreti si corrompono (es. avvio con passphrase sbagliata), recuperale da lì.
 - La **rinomina di un database MongoDB** non è nativa: l'app copia le collection
   nel nuovo database (`$out` cross-database, richiede MongoDB ≥ 4.4) e poi elimina
   l'originale.
