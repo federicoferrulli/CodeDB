@@ -31,7 +31,10 @@ function errMsg(err) {
  * Connessioni salvate (connections.ini)
  * ------------------------------------------------------------------------- */
 
-const CONNECTIONS_FILE = path.join(__dirname, 'connections.ini');
+// CODEDB_CONNECTIONS_FILE: override usato dai test per lavorare su un file
+// temporaneo senza mai toccare il connections.ini reale (stesso env della CLI
+// di backup, vedi backup/lib/connstore.js).
+const CONNECTIONS_FILE = process.env.CODEDB_CONNECTIONS_FILE || path.join(__dirname, 'connections.ini');
 const CONN_FIELDS = [
   'dbType', 'uri', 'host', 'port', 'username', 'password', 'authSource', 'database',
   // Cartella/gruppo di appartenenza nella sidebar del connection manager.
@@ -579,6 +582,9 @@ io.on('connection', (socket) => {
 
   delegate('collection:export', (strategy, p) => strategy.collectionExport(p.db, p.coll, p));
   delegate('collection:import', (strategy, p) => strategy.collectionImport(p.db, p.coll, p));
+  // DDL della tabella (CREATE TABLE, solo MySQL; null per MongoDB): usato
+  // dall'export di interi database per rendere il file auto-contenuto.
+  delegate('collection:ddl', async (strategy, p) => ({ ddl: await strategy.tableDdl(p.db, p.coll) }));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde

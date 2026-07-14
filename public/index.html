@@ -459,6 +459,40 @@
     </div>
   </div>
 
+  <!-- ===================== Modale import database intero ===================== -->
+  <div id="dbimport-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Importa database</h2>
+      <p class="subtitle" id="dbimport-subtitle"></p>
+      <div class="form-row">
+        <label>File esportato (.codedb.json)
+          <input type="file" id="dbimport-file" accept=".json,application/json" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Database di destinazione
+          <input type="text" id="dbimport-target" placeholder="nome del database" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="dbimport-drop" />
+          Elimina e ricrea le collection/tabelle già esistenti nella destinazione
+        </label>
+      </div>
+      <div id="dbimport-progress" class="import-progress hidden">
+        <div class="import-progress-track"><div id="dbimport-progress-bar" class="import-progress-bar"></div></div>
+        <span id="dbimport-progress-label" class="hint"></span>
+      </div>
+      <div id="dbimport-report" class="import-report hidden"></div>
+      <div id="dbimport-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="dbimport-cancel" class="ghost">Chiudi</button>
+        <button id="dbimport-run" class="primary">Importa</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== Modale piano di esecuzione ===================== -->
   <div id="explain-overlay" class="overlay hidden">
     <div class="modal wide">

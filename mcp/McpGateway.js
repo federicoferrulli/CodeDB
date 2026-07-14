@@ -26,7 +26,16 @@ const { McpServer, ResourceTemplate } = require('@modelcontextprotocol/sdk/serve
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
+const { runBackup } = require('../backup/lib/engine');
+const { runRestore, resolveChain } = require('../backup/lib/restore');
+const { createLogger } = require('../backup/lib/logger');
+const { readCatalog, safeName, formatBytes } = require('../backup/lib/util');
+const { notifySlack } = require('../backup/lib/notify');
+
 const MCP_PATH = '/mcp';
+// Radice dei backup creati via MCP: la stessa della CLI (backup/cli.js),
+// così catalogo e catene incrementali sono condivisi tra i due canali.
+const BACKUP_ROOT = path.join(__dirname, '..', 'backups');
 const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
 const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -184,7 +193,9 @@ function buildMcpServer(session, deps) {
         'Flusso tipico: list_saved_connections → connect_database → get_databases_and_collections ' +
         '→ get_schema → execute_query. Chiudi le connessioni con disconnect_database quando hai finito. ' +
         'La risorsa schema://{connection_id}/{db} fornisce UML Mermaid e dizionario dati sempre aggiornati; ' +
-        'i prompt genera-report ed esplora-database guidano i flussi ricorrenti.',
+        'i prompt genera-report ed esplora-database guidano i flussi ricorrenti. ' +
+        'Backup e ripristino: backup_database (full/incremental/differential), list_backups e restore_backup ' +
+        '(il restore richiede una connessione con readOnly=false e la conferma esplicita dell\'utente umano).',
     }
   );
 
@@ -611,6 +622,186 @@ function buildMcpServer(session, deps) {
       expires_in_seconds: CONFIRM_TTL_MS / 1000,
       preview: { connection: name, readOnly: { da: current, a: args.read_only } },
       istruzioni: 'Mostra l\'anteprima all\'utente umano e chiedi conferma esplicita. Solo se l\'utente approva, richiama set_connection_read_only con questo confirm_token. Se l\'utente rifiuta, non richiamare il tool.',
+    });
+  });
+
+  // --- Backup e ripristino (stesso motore della CLI backup/cli.js) ------------
+  // backup_database legge soltanto dal DB (scrive file locali sotto backups/),
+  // quindi non richiede conferma né readOnly=false. restore_backup invece
+  // scrive sul database: stesse guardie di execute_write (connessione con
+  // readOnly=false + conferma human-in-the-loop a due passaggi).
+
+  tool('backup_database', {
+    title: 'Backup di un database',
+    description:
+      'Esegue il backup di un database della connessione aperta (MongoDB o MySQL) nella cartella backups/ del server, ' +
+      'con lo stesso motore della CLI (npm run backup): file NDJSON Extended JSON compressi gzip, checksum SHA-256, ' +
+      'manifest e catalogo. "type": full (tutto), incremental (modifiche dall\'ultimo backup), differential ' +
+      '(modifiche dall\'ultimo full); incremental/differential richiedono un backup full precedente e individuano le ' +
+      'modifiche col campo data "since_field" (senza: MongoDB usa il timestamp degli ObjectId — solo nuovi inserimenti; ' +
+      'MySQL cerca colonne come updated_at, altrimenti includono la tabella per intero). Le cancellazioni non vengono catturate. ' +
+      'L\'operazione legge soltanto dal database; l\'attività è registrata in backups/backup.log.',
+    inputSchema: {
+      connection_id: z.string(),
+      db: z.string().describe('Database da salvare'),
+      type: z.enum(['full', 'incremental', 'differential']).optional().describe('Tipo di backup (default: full)'),
+      collections: z.string().optional().describe('Elenco separato da virgole per limitare il backup ad alcune collection/tabelle'),
+      since_field: z.string().optional().describe('Campo data che individua le modifiche per incremental/differential (es. updatedAt)'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async (args) => {
+    const sess = requireDbSession(args.connection_id);
+    const db = String(args.db || '').trim();
+    if (!db) throw new Error('Parametro "db" mancante.');
+    const type = String(args.type || 'full').toLowerCase();
+    const onlyCollections = args.collections
+      ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+    const log = createLogger(path.join(BACKUP_ROOT, 'backup.log'), { quiet: true });
+    const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType, operation: 'backup', db, type };
+    try {
+      const summary = await log.run(`backup ${type} conn=${sess.name} db=${db} (via MCP)`, () => runBackup({
+        session: sess, connName: sess.name, db, type, onlyCollections,
+        sinceField: args.since_field ? String(args.since_field).trim() : null,
+        destRoot: BACKUP_ROOT, compress: true, level: 6, log,
+      }));
+      audit({ ...auditBase, event: 'executed', backupId: summary.id });
+      await notifySlack(process.env.SLACK_WEBHOOK_URL, `✅ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
+      return jsonResult({
+        backup_id: summary.id,
+        group: `${safeName(sess.name)}_${safeName(db)}`,
+        dir: summary.backupDir,
+        collections: summary.collections,
+        docs: summary.totalDocs,
+        bytes: summary.totalBytes,
+      });
+    } catch (err) {
+      audit({ ...auditBase, event: 'failed', error: errMsg(err) });
+      await notifySlack(process.env.SLACK_WEBHOOK_URL, `❌ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
+      throw err;
+    }
+  });
+
+  tool('list_backups', {
+    title: 'Elenca i backup',
+    description:
+      'Elenca i backup presenti nella cartella backups/ del server (creati dalla CLI o via MCP), raggruppati per ' +
+      'connessione_database. Ogni voce ha id, tipo (full/incremental/differential), db, dbType, date e backup di base. ' +
+      'Usa "group" e "backup_id" restituiti qui come parametri di restore_backup.',
+    inputSchema: {
+      group: z.string().optional().describe('Limita a un gruppo, es. "mongo-locale_shop"'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ group }) => {
+    const groups = {};
+    if (fs.existsSync(BACKUP_ROOT)) {
+      for (const entry of fs.readdirSync(BACKUP_ROOT, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        if (group && entry.name !== String(group).trim()) continue;
+        const { backups } = readCatalog(path.join(BACKUP_ROOT, entry.name));
+        if (backups.length) groups[entry.name] = backups;
+      }
+    }
+    return jsonResult({ groups });
+  });
+
+  tool('restore_backup', {
+    title: 'Ripristina un backup (con conferma)',
+    description:
+      'Ripristina un database da un backup della cartella backups/ del server, in due passaggi come execute_write. ' +
+      'Funziona solo su connessioni salvate con readOnly=false esplicito in connections.ini. ' +
+      'Primo passo: chiama SENZA confirm_token per avere l\'anteprima (catena di layer, database di destinazione) e il token. ' +
+      'Mostra l\'anteprima all\'utente umano e richiama col token solo dopo la sua approvazione esplicita: NON confermare mai di tua iniziativa. ' +
+      'Se il backup è incrementale/differenziale la catena fino al full viene applicata in ordine (i layer successivi al primo come upsert). ' +
+      '"collections" limita il ripristino ad alcune collection/tabelle; "drop" elimina le collection/tabelle di destinazione prima di ricrearle.',
+    inputSchema: {
+      connection_id: z.string(),
+      group: z.string().describe('Gruppo del backup, es. "mongo-locale_shop" (vedi list_backups)'),
+      backup_id: z.string().describe('Id del backup, es. "20260714-100000_full" (vedi list_backups)'),
+      target_db: z.string().optional().describe('Database di destinazione (default: quello di origine del backup)'),
+      collections: z.string().optional().describe('Elenco separato da virgole per il restore selettivo'),
+      drop: z.boolean().optional().describe('Elimina le collection/tabelle di destinazione prima del ripristino'),
+      confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  }, async (args) => {
+    const sess = requireDbSession(args.connection_id);
+    if (!sess.writesAllowed) {
+      throw new Error(`La connessione "${sess.name}" è in sola lettura: il restore scrive sul database e richiede readOnly=false in connections.ini (vedi set_connection_read_only).`);
+    }
+    // Il percorso è ricostruito da componenti validati: niente path traversal.
+    const group = String(args.group || '').trim();
+    const backupId = String(args.backup_id || '').trim();
+    if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
+      throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
+    }
+    const backupDir = path.join(BACKUP_ROOT, group, backupId);
+    if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
+      throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
+    }
+    sweepPendingWrites();
+    const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType, operation: 'restore', group, backupId };
+
+    // Secondo passo: esecuzione del restore registrato col token.
+    const token = String(args.confirm_token || '').trim();
+    if (token) {
+      const pending = session.pendingWrites.get(token);
+      if (!pending || pending.kind !== 'restore' || pending.connectionId !== String(args.connection_id)) {
+        throw new Error('confirm_token sconosciuto, scaduto o di un\'altra connessione: ripeti la richiesta senza token.');
+      }
+      session.pendingWrites.delete(token); // monouso
+      const log = createLogger(path.join(BACKUP_ROOT, 'backup.log'), { quiet: true });
+      try {
+        const summary = await log.run(`restore conn=${sess.name} da=${group}/${backupId} (via MCP)`, () => runRestore({
+          session: sess,
+          backupDir: pending.backupDir,
+          targetDb: pending.targetDb,
+          onlyCollections: pending.onlyCollections,
+          drop: pending.drop,
+          log,
+        }));
+        audit({ ...auditBase, event: 'executed', targetDb: summary.targetDb, docs: summary.totalDocs });
+        await notifySlack(process.env.SLACK_WEBHOOK_URL, `✅ CodeDB restore di \`${summary.targetDb}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe da ${summary.layers} layer.`, log);
+        return jsonResult({ executed: true, target_db: summary.targetDb, layers: summary.layers, docs: summary.totalDocs });
+      } catch (err) {
+        audit({ ...auditBase, event: 'failed', error: errMsg(err) });
+        await notifySlack(process.env.SLACK_WEBHOOK_URL, `❌ CodeDB restore da \`${group}/${backupId}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
+        throw err;
+      }
+    }
+
+    // Primo passo: anteprima della catena e token di conferma.
+    const chain = resolveChain(backupDir); // valida anche la catena incrementale
+    const first = chain[0].manifest;
+    if (first.dbType !== sess.dbType) {
+      throw new Error(`Il backup è di tipo "${first.dbType}" ma la connessione è "${sess.dbType}".`);
+    }
+    const onlyCollections = args.collections
+      ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+    const targetDb = String(args.target_db || '').trim() || first.db;
+    const confirmToken = crypto.randomUUID();
+    session.pendingWrites.set(confirmToken, {
+      kind: 'restore',
+      connectionId: String(args.connection_id),
+      backupDir,
+      targetDb,
+      onlyCollections,
+      drop: !!args.drop,
+      expiresAt: Date.now() + CONFIRM_TTL_MS,
+    });
+    audit({ ...auditBase, event: 'requested', targetDb });
+    return jsonResult({
+      requires_confirmation: true,
+      confirm_token: confirmToken,
+      expires_in_seconds: CONFIRM_TTL_MS / 1000,
+      preview: {
+        catena: chain.map((l) => l.manifest.id),
+        target_db: targetDb,
+        collections: onlyCollections || 'tutte',
+        drop: !!args.drop,
+      },
+      istruzioni: 'Mostra l\'anteprima all\'utente umano e chiedi conferma esplicita. Solo se l\'utente approva, richiama restore_backup con questo confirm_token. Se l\'utente rifiuta, non richiamare il tool.',
     });
   });
 

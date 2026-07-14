@@ -55,6 +55,12 @@ class DbStrategy {
   async createIndex(_db, _coll, _payload) { throw unsupported(); }
   async dropIndex(_db, _coll, _name) { throw unsupported(); }
 
+  /**
+   * DDL della collection/tabella (es. CREATE TABLE), usato dall'export di
+   * interi database; null per i DBMS senza schema dichiarativo (MongoDB).
+   */
+  async tableDdl(_db, _coll) { return null; }
+
   /** @returns {Promise<{stats, indexes, fields, sampled}>} */
   async collectionStats(_db, _coll) { throw unsupported(); }
 

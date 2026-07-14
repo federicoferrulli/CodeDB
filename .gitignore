@@ -8,3 +8,5 @@ mcp-audit.log
 # Log del server avviato in background dal launcher desktop.
 codedb.log
 codedb.err.log
+# Backup dei database creati da backup/cli.js (dati + log delle operazioni).
+backups/

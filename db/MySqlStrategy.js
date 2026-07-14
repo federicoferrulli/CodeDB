@@ -211,11 +211,15 @@ class MySqlStrategy extends DbStrategy {
      ORDER BY TABLE_NAME`,
       [db]
     );
-    return rows.map((r) => ({
-      name: r.name,
-      type: r.ttype === 'VIEW' ? 'view' : 'collection',
-      count: r.ttype === 'VIEW' ? null : Number(r.cnt) || 0, // stima InnoDB
-    }));
+    // TABLE_TYPE: 'BASE TABLE', 'VIEW' oppure 'SYSTEM VIEW' (information_schema).
+    return rows.map((r) => {
+      const isView = String(r.ttype || '').toUpperCase().includes('VIEW');
+      return {
+        name: r.name,
+        type: isView ? 'view' : 'collection',
+        count: isView ? null : Number(r.cnt) || 0, // stima InnoDB
+      };
+    });
   }
 
   async search(query) {
@@ -465,11 +469,25 @@ class MySqlStrategy extends DbStrategy {
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
-  // Esporta un blocco di righe come CSV (format: 'csv', header a parte) o
-  // come statement INSERT (format: 'sql'). Paginazione con skip/limit.
+  // CREATE TABLE della tabella: usato dall'export di interi database per
+  // ricreare lo schema all'import.
+  async tableDdl(db, coll) {
+    const pool = this.requirePool();
+    const [[row]] = await pool.query(`SHOW CREATE TABLE ${qtable(db, coll)}`);
+    // Le view (anche di sistema) restituiscono 'Create View': niente DDL da
+    // esportare, il chiamante le tratta come le collection senza schema.
+    const ddl = row && row['Create Table'];
+    return ddl == null ? null : String(ddl);
+  }
+
+  // Esporta un blocco di righe come CSV (format: 'csv', header a parte),
+  // come statement INSERT (format: 'sql') o come righe Extended JSON
+  // (format: 'json', una riga-oggetto per riga di tabella: è il formato
+  // dell'export di interi database, reimportabile con collectionImport).
+  // Paginazione con skip/limit.
   async collectionExport(db, coll, payload) {
     const pool = this.requirePool();
-    const format = payload.format === 'sql' ? 'sql' : 'csv';
+    const format = ['sql', 'json'].includes(payload.format) ? payload.format : 'csv';
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
     const table = qtable(db, coll);
@@ -483,6 +501,10 @@ class MySqlStrategy extends DbStrategy {
         const vals = columns.map((c) => mysql.escape(r[c]));
         return `INSERT INTO ${table} (${columns.map(qid).join(', ')}) VALUES (${vals.join(', ')});`;
       });
+    } else if (format === 'json') {
+      // EJSON relaxed: le DATETIME diventano { $date } e il roundtrip
+      // export → import preserva i tipi (vedi collectionImport).
+      lines = rows.map((r) => EJSON.stringify(r, { relaxed: true }));
     } else {
       lines = rows.map((r) => columns.map((c) => MySqlStrategy.csvCell(r[c])).join(','));
     }

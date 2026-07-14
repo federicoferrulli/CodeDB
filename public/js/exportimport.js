@@ -251,6 +251,283 @@ export function initExportImport() {
     reader.onerror = () => showError('#import-error', 'Impossibile leggere il file selezionato.');
     reader.readAsText(file);
   });
+
+  // --- Import di interi database ---------------------------------------------
+  $('#dbimport-cancel').addEventListener('click', () => {
+    if (!dbImporting) closeModal('#dbimport-overlay');
+  });
+  $('#dbimport-run').addEventListener('click', runDbImport);
+  $('#dbimport-file').addEventListener('change', (e) => {
+    dbImportData = null;
+    showError('#dbimport-error', '');
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        dbImportData = validateDbExport(String(reader.result || ''));
+        if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
+        const docs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0);
+        $('#dbimport-subtitle').textContent =
+          `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
+          `${dbImportData.collections.length} ${collWord()}, ${docs} ${state.dbType === 'mysql' ? 'righe' : 'documenti'}.`;
+      } catch (err) {
+        showError('#dbimport-error', err.message);
+      }
+    };
+    reader.onerror = () => showError('#dbimport-error', 'Impossibile leggere il file selezionato.');
+    reader.readAsText(file);
+  });
+}
+
+// Voci di menu contestuale per un intero database (sidebar).
+export function dbExportImportMenuItems(db) {
+  return [
+    { label: '⤓ Esporta database (JSON)…', action: () => exportDatabase(db) },
+    { label: '⤒ Importa database…', action: openDbImportModal },
+  ];
+}
+
+/* ---------------------------------------------------------------------------
+ * Export/import di INTERI database: un unico file .codedb.json auto-contenuto
+ * { formato, versione, dbType, db, collections: [{ name, ddl, indexes, docs }] }
+ * con i documenti/righe in Extended JSON (relaxed). L'export riusa i blocchi
+ * di collection:export (formato json per entrambi i dbType) più il CREATE
+ * TABLE (collection:ddl, MySQL) e gli indici (collection:stats, MongoDB);
+ * l'import ricrea schema e indici e invia i dati con collection:import.
+ * ------------------------------------------------------------------------- */
+
+const DB_EXPORT_FORMAT = 'codedb-database';
+
+// Database di sistema: metadati generati dal server, non dati dell'utente.
+// Esportarli produce viste non ricreabili, importarci sopra è distruttivo.
+const SYSTEM_DBS = {
+  mysql: ['information_schema', 'mysql', 'performance_schema', 'sys'],
+  mongodb: ['admin', 'config', 'local'],
+};
+
+function isSystemDb(name) {
+  return (SYSTEM_DBS[state.dbType] || []).includes(String(name).toLowerCase());
+}
+
+export async function exportDatabase(db) {
+  const isMysql = state.dbType === 'mysql';
+  if (isSystemDb(db)) {
+    toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
+    return;
+  }
+  let collections;
+  try {
+    // Solo collection/tabelle "vere": le view sono derivate.
+    collections = (await emit('db:collections', { db })).collections.filter((c) => c.type !== 'view');
+  } catch (err) {
+    toast(`Esportazione fallita: ${err.message}`, true);
+    return;
+  }
+  if (!collections.length) {
+    toast(`Il database "${db}" non contiene ${collWord()} da esportare.`, true);
+    return;
+  }
+
+  // Il file viene assemblato come testo per non ri-parsare i blocchi EJSON.
+  const parts = [];
+  let exported = 0;
+  try {
+    for (const c of collections) {
+      let ddl = null;
+      let indexes = null;
+      if (isMysql) {
+        ddl = (await emit('collection:ddl', { db, coll: c.name })).ddl;
+      } else {
+        const stats = await emit('collection:stats', { db, coll: c.name });
+        indexes = (stats.indexes || []).filter((i) => i.name !== '_id_');
+      }
+      const lines = [];
+      let skip = 0;
+      for (;;) {
+        const res = await emit('collection:export', { db, coll: c.name, skip, limit: CHUNK, format: 'json' });
+        lines.push(...res.lines);
+        skip += res.count;
+        toast(`Esportazione di "${db}"… ${c.name}: ${Math.min(skip, res.total)}/${res.total}`);
+        if (res.count < CHUNK || skip >= res.total) break;
+      }
+      exported += lines.length;
+      parts.push(
+        `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
+        `"indexes": ${JSON.stringify(indexes)}, "docs": [\n    ` +
+        lines.join(',\n    ') + '\n  ] }'
+      );
+    }
+  } catch (err) {
+    toast(`Esportazione fallita: ${err.message}`, true);
+    return;
+  }
+
+  const text =
+    `{ "formato": ${JSON.stringify(DB_EXPORT_FORMAT)}, "versione": 1, ` +
+    `"dbType": ${JSON.stringify(state.dbType)}, "db": ${JSON.stringify(db)},\n"collections": [\n` +
+    parts.join(',\n') + '\n] }\n';
+  downloadBlob(text, `${db}.codedb.json`, 'application/json;charset=utf-8');
+  toast(`Esportato il database "${db}": ${collections.length} ${collWord()}, ${exported} ${state.dbType === 'mysql' ? 'righe' : 'documenti'}`);
+}
+
+/* --- Import di un intero database ----------------------------------------- */
+
+let dbImportData = null; // contenuto validato del file selezionato
+let dbImporting = false;
+
+function setDbImportProgress(pct, label) {
+  $('#dbimport-progress').classList.remove('hidden');
+  $('#dbimport-progress-bar').style.width = `${Math.min(100, Math.round(pct))}%`;
+  $('#dbimport-progress-label').textContent = label || '';
+}
+
+function validateDbExport(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`JSON non valido: ${err.message}`);
+  }
+  if (!parsed || parsed.formato !== DB_EXPORT_FORMAT || !Array.isArray(parsed.collections)) {
+    throw new Error('Il file non è un export di database di CodeDB (atteso "formato": "codedb-database").');
+  }
+  if (parsed.dbType !== state.dbType) {
+    throw new Error(`Il file è un export ${parsed.dbType}, ma questa connessione è ${state.dbType}.`);
+  }
+  for (const c of parsed.collections) {
+    if (!c || typeof c.name !== 'string' || !Array.isArray(c.docs)) {
+      throw new Error('File malformato: ogni collection deve avere "name" e l\'array "docs".');
+    }
+  }
+  return parsed;
+}
+
+export function openDbImportModal() {
+  dbImportData = null;
+  dbImporting = false;
+  $('#dbimport-subtitle').textContent = state.dbType === 'mysql'
+    ? 'Ricrea tabelle (CREATE TABLE del file) e righe in uno schema di destinazione.'
+    : 'Ricrea collection, documenti e indici in un database di destinazione.';
+  $('#dbimport-file').value = '';
+  $('#dbimport-target').value = '';
+  $('#dbimport-drop').checked = false;
+  $('#dbimport-progress').classList.add('hidden');
+  $('#dbimport-progress-bar').style.width = '0%';
+  $('#dbimport-progress-label').textContent = '';
+  $('#dbimport-report').classList.add('hidden');
+  $('#dbimport-report').innerHTML = '';
+  showError('#dbimport-error', '');
+  $('#dbimport-run').disabled = false;
+  openModal('#dbimport-overlay');
+}
+
+async function runDbImport() {
+  if (dbImporting) return;
+  showError('#dbimport-error', '');
+  $('#dbimport-report').classList.add('hidden');
+  if (!dbImportData) {
+    showError('#dbimport-error', 'Seleziona prima un file .codedb.json valido.');
+    return;
+  }
+  const target = $('#dbimport-target').value.trim();
+  if (!target) {
+    showError('#dbimport-error', 'Indica il database di destinazione.');
+    return;
+  }
+  if (isSystemDb(target)) {
+    showError('#dbimport-error', `"${target}" è un database di sistema: scegli un'altra destinazione.`);
+    return;
+  }
+  const drop = $('#dbimport-drop').checked;
+  const isMysql = state.dbType === 'mysql';
+  const totalDocs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0) || 1;
+
+  dbImporting = true;
+  $('#dbimport-run').disabled = true;
+  let inserted = 0;
+  let failed = 0;
+  let done = 0;
+  const errors = [];
+  const pushErr = (msg) => { if (errors.length < 20) errors.push(msg); };
+  try {
+    // MySQL: lo schema di destinazione deve esistere (MongoDB lo crea da solo
+    // al primo insert). "esiste già" non è un errore.
+    if (isMysql) {
+      try {
+        await emit('db:create', { db: target });
+      } catch (err) {
+        if (!/esiste già/i.test(err.message)) throw err;
+      }
+    }
+
+    for (const c of dbImportData.collections) {
+      setDbImportProgress((done / totalDocs) * 100, `${c.name}…`);
+      try {
+        if (drop) {
+          await emit('collection:drop', { db: target, coll: c.name }).catch(() => { /* non esisteva */ });
+        }
+        if (isMysql && c.ddl) {
+          // CREATE TABLE dal file; se la tabella esiste già (senza drop) si
+          // prosegue con il solo inserimento delle righe.
+          await emit('collection:aggregate', { db: target, coll: c.name, pipeline: c.ddl })
+            .catch((err) => {
+              if (!/already exists/i.test(err.message)) throw err;
+            });
+        }
+      } catch (err) {
+        failed += c.docs.length;
+        done += c.docs.length;
+        pushErr(`${c.name}: ${err.message}`);
+        continue;
+      }
+
+      for (let i = 0; i < c.docs.length; i += CHUNK) {
+        const batch = c.docs.slice(i, i + CHUNK);
+        setDbImportProgress((done / totalDocs) * 100, `${c.name}: ${i}/${c.docs.length}…`);
+        try {
+          const res = await emit('collection:import', { db: target, coll: c.name, docs: batch });
+          inserted += res.inserted;
+          failed += res.failed;
+          for (const e of res.errors || []) pushErr(`${c.name}: ${e}`);
+        } catch (err) {
+          failed += batch.length;
+          pushErr(`${c.name}: ${err.message}`);
+        }
+        done += batch.length;
+      }
+
+      // MongoDB: ricrea gli indici della collection (dopo i dati).
+      for (const idx of c.indexes || []) {
+        try {
+          await emit('index:create', {
+            db: target, coll: c.name,
+            fields: JSON.stringify(idx.key), unique: !!idx.unique, name: idx.name,
+          });
+        } catch (err) {
+          pushErr(`${c.name}, indice "${idx.name}": ${err.message}`);
+        }
+      }
+    }
+  } catch (err) {
+    pushErr(err.message);
+  } finally {
+    dbImporting = false;
+    $('#dbimport-run').disabled = false;
+  }
+  setDbImportProgress(100, 'completato');
+
+  const report = $('#dbimport-report');
+  const word = isMysql ? 'righe' : 'documenti';
+  let html = `<strong>${inserted}</strong> ${word} importati in "${esc(target)}"` +
+    (failed ? `, <strong class="import-failed">${failed}</strong> con errori.` : '.');
+  if (errors.length) {
+    html += '<ul>' + errors.map((e) => `<li>${esc(e)}</li>`).join('') + '</ul>';
+  }
+  report.innerHTML = html;
+  report.classList.remove('hidden');
+  toast(failed || errors.length ? 'Import del database completato con errori' : `Database "${target}" importato`, !!(failed || errors.length));
+  refreshDbTree();
 }
 
 // Voci di menu contestuale per una collection/tabella, condivise tra la

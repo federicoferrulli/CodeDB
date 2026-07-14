@@ -3,7 +3,7 @@ import { $, emit, showContextMenu, toast } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
-import { exportImportMenuItems } from './exportimport.js';
+import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
 
 export function collWord(capital) {
   const w = state.dbType === 'mysql' ? 'tabella' : 'collection';
@@ -45,6 +45,8 @@ export function renderDbTree(databases) {
         { label: '＋ Nuovo database…', action: openCreateDb },
         { label: '✎ Rinomina database…', action: () => renameDb(db.name) },
         { label: '⟳ Aggiorna elenco', action: refreshDbTree },
+        '---',
+        ...dbExportImportMenuItems(db.name),
         '---',
         { label: '🗑 Elimina database…', danger: true, action: () => dropDb(db.name) },
       ]);
@@ -129,6 +131,7 @@ export function initDbTree() {
     e.preventDefault();
     showContextMenu(e.clientX, e.clientY, [
       { label: '＋ Nuovo database…', action: openCreateDb },
+      { label: '⤒ Importa database…', action: openDbImportModal },
       { label: '⟳ Aggiorna elenco', action: refreshDbTree },
     ]);
   });

@@ -73,6 +73,7 @@ Flusso tipico dei tools esposti (i primi 6 sono di sola lettura):
 6. `disconnect_database` — chiude la connessione.
 7. `execute_write` — scritture DML e drop di database/collection, solo su connessioni scrivibili e con doppia conferma (vedi sotto).
 8. `set_connection_read_only` — cambia il flag `readOnly` di una connessione salvata, con doppia conferma (vedi sotto).
+9. `backup_database` / `list_backups` / `restore_backup` — backup e ripristino dei database (vedi sotto).
 
 In più: la risorsa `schema://{connection_id}/{db}` (UML Mermaid + dizionario dati sempre aggiornati) e i prompt `genera-report` / `esplora-database`.
 
@@ -83,6 +84,16 @@ Di default ogni connessione è in **sola lettura**. Per abilitare le scritture s
 ### Flag readOnly modificabile dall'AI (solo con doppia conferma)
 
 L'AI **non può modificare `connections.ini`**, con una sola eccezione controllata: il tool `set_connection_read_only` cambia il flag `readOnly` di una connessione salvata (mai credenziali o altri campi). Anche qui vale la doppia conferma: la prima chiamata restituisce l'anteprima del cambio e un `confirm_token`; l'applicazione avviene solo col token, dopo la tua approvazione esplicita — in **entrambe** le direzioni (anche per tornare a sola lettura). Il nuovo valore vale per le connessioni aperte da quel momento: l'AI deve riconnettersi con `connect_database` per usarlo. Tutto finisce nell'audit log.
+
+### Backup e ripristino via MCP
+
+I tool di backup usano lo stesso motore della CLI (`npm run backup`) e la stessa cartella `backups/` del progetto, quindi CLI e AI vedono lo stesso catalogo:
+
+- `backup_database` — backup `full`, `incremental` o `differential` di un database della connessione aperta (MongoDB o MySQL). Legge soltanto dal database (scrive file locali sotto `backups/`), quindi **non** richiede conferma né `readOnly=false`. Le modifiche per incremental/differential sono individuate da un campo data (`since_field`); le cancellazioni non vengono catturate.
+- `list_backups` — elenca i backup per gruppo (`connessione_database`), con id, tipo e date.
+- `restore_backup` — ripristina un backup (catena incrementale risolta automaticamente, restore selettivo con `collections`, opzione `drop`). **Scrive sul database**: vale tutto quanto sopra — solo connessioni con `readOnly=false` e doppia conferma con `confirm_token`.
+
+Le attività finiscono in `backups/backup.log` e nell'audit log; con la variabile d'ambiente `SLACK_WEBHOOK_URL` il server invia anche una notifica Slack a fine operazione.
 
 Esempio di prompt: *"Connettiti alla connessione 'Produzione', guarda lo schema del db `shop` e dimmi i 10 clienti con più ordini."*
 

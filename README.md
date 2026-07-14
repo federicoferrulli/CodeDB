@@ -60,7 +60,41 @@ node test/e2e.js           # MongoDB su localhost:27017
 node test/e2e-mysql.js     # MySQL locale (root, password vuota; porta env MYSQL_PORT, default 3306)
 node test/e2e-mcp.js       # gateway MCP su MongoDB
 node test/e2e-mcp-mysql.js # gateway MCP su MySQL (env MYSQL_PORT/MYSQL_PASSWORD)
+node test/e2e-backup.js       # CLI di backup su MongoDB (non richiede il server)
+node test/e2e-backup-mysql.js # CLI di backup su MySQL (env MYSQL_PORT/MYSQL_PASSWORD; non richiede il server)
 ```
+
+### Backup e ripristino
+
+CLI dedicata (non serve il server avviato), stessa per MongoDB e MySQL; riusa le
+connessioni salvate in `connections.ini` (in sola lettura) e il tunnel SSH:
+
+```bash
+npm run backup -- backup  --conn mongo-locale --db shop --type full
+npm run backup -- backup  --conn mongo-locale --db shop --type incremental --since-field updatedAt
+npm run backup -- restore --conn mongo-locale --from backups/mongo-locale_shop/<id> --target-db shop_copia
+npm run backup -- list
+npm run backup -- verify  --from backups/mongo-locale_shop/<id>
+npm run backup -- help    # guida completa
+```
+
+- **Tipi**: `full`, `incremental` (modifiche dall'ultimo backup), `differential`
+  (modifiche dall'ultimo full); al restore la catena viene applicata da sola.
+  Le cancellazioni non vengono catturate dai backup incrementali/differenziali.
+- **Formato**: una cartella per backup con `manifest.json` (checksum SHA-256),
+  dati NDJSON Extended JSON compressi gzip (`--no-compress` per disattivare),
+  indici (Mongo) e `CREATE TABLE` (MySQL); dump ed elaborazione in streaming,
+  adatti a database grandi.
+- **Storage cloud** opzionale: `--storage s3://bucket/prefisso` (o `gs://`,
+  `azure://`); gli SDK dei provider vanno installati a parte e le credenziali
+  arrivano dai canali standard (env/config del provider).
+- **Log e notifiche**: attività in `backups/backup.log`; notifica Slack di fine
+  operazione con `--slack-webhook <url>` o env `SLACK_WEBHOOK_URL`.
+- **Restore selettivo**: `--collections a,b` limita il ripristino; `--drop`
+  ricrea da zero le collection/tabelle di destinazione.
+- Gli stessi backup sono disponibili via **MCP** con i tool `backup_database`,
+  `list_backups` e `restore_backup` (il restore richiede `readOnly=false` e
+  doppia conferma umana).
 
 ## Funzionalità
 
@@ -85,6 +119,7 @@ node test/e2e-mcp-mysql.js # gateway MCP su MySQL (env MYSQL_PORT/MYSQL_PASSWORD
 | Eliminazione | ✕ sulla riga, oppure **bulk delete** su selezione multipla |
 | Selezione celle | selezione stile Excel, copia multi-formato (TSV/JSON/CSV/Markdown/SQL), incolla, export CSV |
 | Export/Import collection | export EJSON/CSV/SQL INSERT; import batch con barra di progresso e report errori |
+| Export/Import database interi | tasto destro sul database: export in un file `.codedb.json` auto-contenuto (dati EJSON + CREATE TABLE MySQL + indici Mongo) e import con db di destinazione, drop&ricrea opzionale, progresso e report |
 | Gestione database/collection | tasto destro nella sidebar: crea, rinomina, elimina |
 | Gestione colonne (MySQL) | aggiungi/modifica/elimina colonna (DDL) |
 | Dettagli collection | tab "Dettagli": statistiche, indici, schema/colonne |
@@ -92,6 +127,7 @@ node test/e2e-mcp-mysql.js # gateway MCP su MySQL (env MYSQL_PORT/MYSQL_PASSWORD
 | Aggiornamenti live | change stream MongoDB (badge "● LIVE"); auto-refresh dello schema in sidebar |
 | Layout responsive | drawer laterale ≤900px, supporto touch/orientamento |
 | Gateway MCP per agenti AI | endpoint `/mcp` (Streamable HTTP): esplorazione e query in sola lettura; scritture, drop e cambio del flag `readOnly` solo con doppia conferma umana — vedi `docs/MCP.md` |
+| Backup e ripristino | CLI `npm run backup` (full/incrementale/differenziale, gzip + SHA-256, cloud S3/GCS/Azure, log e notifiche Slack, restore selettivo) e tool MCP `backup_database`/`list_backups`/`restore_backup` |
 
 ### Note
 
