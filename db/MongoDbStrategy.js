@@ -54,6 +54,51 @@ function promoteObjectIds(obj) {
   }
 }
 
+const HEX24_RE = /^[0-9a-fA-F]{24}$/;
+// Operatori il cui valore (o i cui elementi) sono confronti col campo corrente.
+const COMPARISON_OPS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte']);
+const LIST_OPS = new Set(['$in', '$nin', '$all']);
+const LOGICAL_OPS = new Set(['$and', '$or', '$nor']);
+const OID_PROBE_SAMPLE = 100; // documenti letti al massimo dal probe
+const OID_PROBE_TTL_MS = 60_000;
+
+// Oggetto "semplice" del filtro: esclude array, Date e tipi BSON già
+// tipizzati (ObjectId, Long, Binary...), dentro cui non bisogna ricorrere.
+function isPlainFilterObject(v) {
+  return !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && !v._bsontype;
+}
+
+// Cammina il filtro e promuove in loco a ObjectId le stringhe di 24
+// esadecimali (valore diretto, $eq/$ne/$gt/... o $in/$nin/$all — mai $regex
+// e simili) i cui campi risultano memorizzati come ObjectId secondo
+// isOidField(percorso). Gli operatori non estendono il percorso campo
+// ($not, $elemMatch...); $and/$or/$nor lo azzerano perché i loro elementi
+// sono sotto-filtri completi.
+async function promoteHexStrings(node, path, isOidField) {
+  const promote = async (holder, key, fieldPath) => {
+    if (fieldPath && HEX24_RE.test(holder[key]) && (await isOidField(fieldPath))) {
+      holder[key] = new ObjectId(holder[key]);
+    }
+  };
+  for (const [key, val] of Object.entries(node)) {
+    const isOp = key.startsWith('$');
+    const fieldPath = isOp ? path : path ? `${path}.${key}` : key;
+    if (typeof val === 'string') {
+      if (!isOp || COMPARISON_OPS.has(key)) await promote(node, key, fieldPath);
+    } else if (Array.isArray(val)) {
+      for (let i = 0; i < val.length; i++) {
+        if (typeof val[i] === 'string') {
+          if (!isOp || LIST_OPS.has(key)) await promote(val, i, fieldPath);
+        } else if (isPlainFilterObject(val[i])) {
+          await promoteHexStrings(val[i], LOGICAL_OPS.has(key) ? '' : fieldPath, isOidField);
+        }
+      }
+    } else if (isPlainFilterObject(val)) {
+      await promoteHexStrings(val, fieldPath, isOidField);
+    }
+  }
+}
+
 // Parses the _id sent by the client (serialized as relaxed EJSON string).
 function parseId(rawId) {
   const val = EJSON.parse(rawId, { relaxed: false });
@@ -149,6 +194,8 @@ class MongoDbStrategy extends DbStrategy {
     /** @type {MongoClient|null} */
     this.client = null;
     this.uri = '';
+    // Cache dei probe "campo → è ObjectId?" (chiave db.coll.campo, con TTL).
+    this.oidFieldCache = new Map();
     this.changeStream = null;
     this.schemaStream = null;
   }
@@ -444,6 +491,40 @@ class MongoDbStrategy extends DbStrategy {
     return { collections, relations: DbStrategy.detectRelations(collections) };
   }
 
+  // Il campo è memorizzato come ObjectId? Probe a costo fisso pensato per
+  // collection grandi ($limit prima del $match: legge al più i primi
+  // OID_PROBE_SAMPLE documenti, mai una scansione completa), con cache TTL
+  // così la paginazione non lo ripete a ogni pagina.
+  async isObjectIdField(collection, path) {
+    const key = `${collection.dbName}.${collection.collectionName}.${path}`;
+    const cached = this.oidFieldCache.get(key);
+    if (cached && cached.expires > Date.now()) return cached.isOid;
+
+    let isOid = false;
+    try {
+      const hit = await collection
+        .aggregate([
+          { $limit: OID_PROBE_SAMPLE },
+          { $match: { [path]: { $type: 'objectId' } } },
+          { $limit: 1 },
+        ])
+        .toArray();
+      isOid = hit.length > 0;
+    } catch {
+      /* campo non sondabile: nessuna promozione */
+    }
+    if (this.oidFieldCache.size > 500) this.oidFieldCache.clear();
+    this.oidFieldCache.set(key, { isOid, expires: Date.now() + OID_PROBE_TTL_MS });
+    return isOid;
+  }
+
+  // Promozione consapevole del tipo: le stringhe di 24 esadecimali del
+  // filtro diventano ObjectId se il campo confrontato è memorizzato così.
+  async promoteFilterObjectIds(collection, filter) {
+    if (!isPlainFilterObject(filter)) return;
+    await promoteHexStrings(filter, '', (path) => this.isObjectIdField(collection, path));
+  }
+
   async collectionFind(db, coll, payload) {
     const client = this.requireClient();
     const filter = parseQueryObject(payload.filter, {});
@@ -453,6 +534,7 @@ class MongoDbStrategy extends DbStrategy {
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
 
     const collection = client.db(db).collection(coll);
+    await this.promoteFilterObjectIds(collection, filter);
     const cursor = collection.find(filter, { projection }).sort(sort).skip(skip).limit(limit);
     const [docs, total] = await Promise.all([
       cursor.toArray(),
@@ -505,6 +587,7 @@ class MongoDbStrategy extends DbStrategy {
       const projection = parseQueryObject(payload.projection, {});
       const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
+      await this.promoteFilterObjectIds(collection, filter);
       explanation = await collection
         .find(filter, { projection })
         .sort(sort)
