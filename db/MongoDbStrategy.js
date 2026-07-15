@@ -538,7 +538,9 @@ class MongoDbStrategy extends DbStrategy {
     const cursor = collection.find(filter, { projection }).sort(sort).skip(skip).limit(limit);
     const [docs, total] = await Promise.all([
       cursor.toArray(),
-      collection.countDocuments(filter),
+      // Con filtro vuoto countDocuments è una scansione completa: sulle
+      // collection grandi si usa il conteggio dai metadati, istantaneo.
+      Object.keys(filter).length ? collection.countDocuments(filter) : collection.estimatedDocumentCount(),
     ]);
 
     // Union of the keys of all returned documents -> table columns.

@@ -66,24 +66,29 @@ function encryptSecret(text) {
   return `ENC:${iv.toString('hex')}:${authTag}:${encrypted}`;
 }
 
+// Decifra un segreto ENC:iv:tag:testo; lancia se la chiave non è quella giusta.
+function decryptRaw(text) {
+  const parts = text.split(':');
+  if (parts.length !== 4) return text;
+  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(parts[1], 'hex'));
+  decipher.setAuthTag(Buffer.from(parts[2], 'hex'));
+  let decrypted = decipher.update(parts[3], 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  return decrypted;
+}
+
 function decryptSecret(text) {
   if (!text || typeof text !== 'string') return text;
   if (!text.startsWith('ENC:')) return text; // non cifrato (plain text)
   try {
-    const parts = text.split(':');
-    if (parts.length !== 4) return text;
-    const iv = Buffer.from(parts[1], 'hex');
-    const authTag = Buffer.from(parts[2], 'hex');
-    const encryptedText = parts[3];
-    const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, iv);
-    decipher.setAuthTag(authTag);
-    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
-    decrypted += decipher.final('utf8');
-    return decrypted;
+    return decryptRaw(text);
   } catch (e) {
-    console.error("Errore decrittazione segreto:", e.message);
+    console.error('Errore decrittazione segreto:', e.message);
     decryptFailures += 1;
-    return "";
+    // Conserva il testo cifrato: così un eventuale salvataggio successivo
+    // riscrive il file col cifrato originale intatto, mai col segreto azzerato
+    // (encryptSecret lascia passare i valori già "ENC:").
+    return text;
   }
 }
 
@@ -344,203 +349,196 @@ io.on('connection', (socket) => {
     for (const tabId of [...sessions.keys()]) await closeSession(tabId);
   }
 
-  // Registra un evento che delega alla strategia della sessione indicata dal
-  // tabId nel payload e adatta il risultato (o l'errore) al formato di
-  // risposta { ok, ... } usato dal frontend.
-  function delegate(event, fn) {
-    socket.on(event, async (payload, cb) => {
-      payload = payload || {};
-      const sess = sessions.get(normTabId(payload.tabId));
-      if (!sess) {
-        cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
-        return;
-      }
+  // Registrazione sicura di un evento: payload sempre oggetto e ack sempre
+  // funzione monouso — un client senza callback o con payload malformato non
+  // deve mai abbattere il processo. Gli errori del handler, sincroni o async,
+  // diventano la risposta { ok: false, error }.
+  function safeOn(event, fn) {
+    socket.on(event, async (payload, ack) => {
+      let done = false;
+      const cb = (res) => {
+        if (!done && typeof ack === 'function') ack(res);
+        done = true;
+      };
       try {
-        cb({ ok: true, ...(await fn(sess.strategy, payload)) });
+        await fn(payload || {}, cb);
       } catch (err) {
         cb({ ok: false, error: errMsg(err) });
       }
     });
   }
 
+  // Registra un evento che delega alla strategia della sessione indicata dal
+  // tabId nel payload e adatta il risultato (o l'errore) al formato di
+  // risposta { ok, ... } usato dal frontend.
+  function delegate(event, fn) {
+    safeOn(event, async (payload, cb) => {
+      const sess = sessions.get(normTabId(payload.tabId));
+      if (!sess) {
+        cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+        return;
+      }
+      cb({ ok: true, ...(await fn(sess.strategy, payload)) });
+    });
+  }
+
   // --- Connection -----------------------------------------------------------
 
-  socket.on('mongo:connect', async (cfg, cb) => {
+  safeOn('mongo:connect', async (cfg, cb) => {
+    if (cfg.tabId != null && String(cfg.tabId).length > 100) {
+      throw new Error('tabId non valido.');
+    }
+    const tabId = normTabId(cfg.tabId);
+    if (!sessions.has(tabId) && sessions.size >= MAX_SESSIONS_PER_SOCKET) {
+      throw new Error(`Raggiunto il limite di ${MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
+    }
+    if (!sessions.has(tabId) && activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
+      throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
+    }
+    // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
+    await closeSession(tabId);
+    const conn = await establishConnection(cfg);
+    sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel });
+    activeGlobalSessions++;
     try {
-      cfg = cfg || {};
-      if (cfg.tabId != null && String(cfg.tabId).length > 100) {
-        throw new Error('tabId non valido.');
+      // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
+      const saveAs = String(cfg.saveAs || '').trim();
+      if (saveAs) {
+        assertConnName(saveAs);
+        const conns = loadConnections();
+        conns[saveAs] = sanitizeConnCfg(conn.effective);
+        saveConnections(conns);
       }
-      const tabId = normTabId(cfg.tabId);
-      if (!sessions.has(tabId) && sessions.size >= MAX_SESSIONS_PER_SOCKET) {
-        throw new Error(`Raggiunto il limite di ${MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
-      }
-      if (!sessions.has(tabId) && activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
-        throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
-      }
-      // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
-      await closeSession(tabId);
-      const conn = await establishConnection(cfg);
-      sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel });
-      activeGlobalSessions++;
-      try {
-        // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
-        const saveAs = String(cfg.saveAs || '').trim();
-        if (saveAs) {
-          assertConnName(saveAs);
-          const conns = loadConnections();
-          conns[saveAs] = sanitizeConnCfg(conn.effective);
-          saveConnections(conns);
-        }
-        cb({
-          ok: true,
-          tabId,
-          label: connLabel(conn.effective),
-          dbType: conn.dbType,
-          databases: await conn.strategy.listDatabases(),
-        });
-      } catch (err) {
-        await closeSession(tabId);
-        throw err;
-      }
+      cb({
+        ok: true,
+        tabId,
+        label: connLabel(conn.effective),
+        dbType: conn.dbType,
+        databases: await conn.strategy.listDatabases(),
+      });
     } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
+      await closeSession(tabId);
+      throw err;
     }
   });
 
-  socket.on('mongo:disconnect', async (payload, cb) => {
-    await closeSession(normTabId(payload && payload.tabId));
-    if (cb) cb({ ok: true });
+  safeOn('mongo:disconnect', async (payload, cb) => {
+    await closeSession(normTabId(payload.tabId));
+    cb({ ok: true });
   });
 
   // Prova una configurazione (o una connessione salvata) senza tenere aperto
   // nulla: connect + listDatabases + disconnect. Serve al pulsante "Testa".
-  socket.on('connections:test', async (cfg, cb) => {
+  safeOn('connections:test', async (cfg, cb) => {
+    if (activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
+      throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
+    }
+    activeGlobalSessions++;
     let conn = null;
-    let sessionIncremented = false;
     try {
-      if (activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
-        throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
-      }
-      activeGlobalSessions++;
-      sessionIncremented = true;
-      conn = await establishConnection(cfg || {});
+      conn = await establishConnection(cfg);
       const databases = await conn.strategy.listDatabases();
       cb({ ok: true, dbType: conn.dbType, label: connLabel(conn.effective), databases: databases.length });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
     } finally {
       if (conn) await teardownConnection(conn);
-      if (sessionIncremented) activeGlobalSessions--;
+      activeGlobalSessions--;
     }
   });
 
   // --- Connessioni salvate ----------------------------------------------------
   // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
-  socket.on('connections:list', (_payload, cb) => {
-    try {
-      const connections = Object.entries(loadConnections())
-        .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c), folder: c.folder || '' }));
-      cb({ ok: true, connections });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
-    }
+  safeOn('connections:list', (_payload, cb) => {
+    const connections = Object.entries(loadConnections())
+      .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c), folder: c.folder || '' }));
+    cb({ ok: true, connections });
   });
 
-  socket.on('connections:delete', ({ name }, cb) => {
-    try {
-      const conns = loadConnections();
-      if (!conns[name]) throw new Error(`Connessione salvata "${name}" non trovata.`);
-      delete conns[name];
-      saveConnections(conns);
-      cb({ ok: true });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
-    }
+  safeOn('connections:delete', ({ name }, cb) => {
+    const conns = loadConnections();
+    if (!conns[name]) throw new Error(`Connessione salvata "${name}" non trovata.`);
+    delete conns[name];
+    saveConnections(conns);
+    cb({ ok: true });
   });
 
   // Campi di una connessione salvata per popolarne il form di modifica.
   // La password non viene mai rimandata al browser: si segnala solo se esiste.
-  socket.on('connections:get', ({ name }, cb) => {
-    try {
-      const conn = loadConnections()[name];
-      if (!conn) throw new Error(`Connessione salvata "${name}" non trovata.`);
-      const fields = { ...conn };
-      const has = (f) => conn[f] != null && conn[f] !== '';
-      const flags = { hasPassword: has('password'), hasSshPassword: has('sshPassword'), hasSshPassphrase: has('sshPassphrase') };
-      for (const f of SECRET_FIELDS) delete fields[f];
-      cb({ ok: true, fields, ...flags });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
-    }
+  safeOn('connections:get', ({ name }, cb) => {
+    const conn = loadConnections()[name];
+    if (!conn) throw new Error(`Connessione salvata "${name}" non trovata.`);
+    const fields = { ...conn };
+    const has = (f) => conn[f] != null && conn[f] !== '';
+    const flags = { hasPassword: has('password'), hasSshPassword: has('sshPassword'), hasSshPassphrase: has('sshPassphrase') };
+    for (const f of SECRET_FIELDS) delete fields[f];
+    cb({ ok: true, fields, ...flags });
   });
 
   // Crea o aggiorna una connessione salvata senza connettersi. oldName, se
   // diverso da name, rinomina la connessione. Password vuota nel form =
   // mantieni quella già salvata.
-  socket.on('connections:save', ({ name, oldName, cfg }, cb) => {
-    try {
-      name = String(name || '').trim();
-      assertConnName(name);
-      const conns = loadConnections();
-      const previous = oldName ? conns[oldName] : conns[name];
-      if (oldName && !previous) throw new Error(`Connessione salvata "${oldName}" non trovata.`);
-      const next = sanitizeConnCfg(cfg || {});
-      if (previous) {
-        for (const f of SECRET_FIELDS) {
-          if (!next[f] && previous[f]) next[f] = previous[f];
-        }
+  safeOn('connections:save', ({ name, oldName, cfg }, cb) => {
+    name = String(name || '').trim();
+    assertConnName(name);
+    const conns = loadConnections();
+    const previous = oldName ? conns[oldName] : conns[name];
+    if (oldName && !previous) throw new Error(`Connessione salvata "${oldName}" non trovata.`);
+    const next = sanitizeConnCfg(cfg || {});
+    if (previous) {
+      for (const f of SECRET_FIELDS) {
+        if (!next[f] && previous[f]) next[f] = previous[f];
       }
-      if (oldName && oldName !== name) delete conns[oldName];
-      conns[name] = next;
-      saveConnections(conns);
-      cb({ ok: true });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
     }
+    if (oldName && oldName !== name) delete conns[oldName];
+    conns[name] = next;
+    saveConnections(conns);
+    cb({ ok: true });
   });
 
   // Esporta il file .ini completo (password incluse, ma cifrate).
-  socket.on('connections:export', (_payload, cb) => {
-    try {
-      const conns = loadConnections();
-      if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
-      const toSave = JSON.parse(JSON.stringify(conns));
-      for (const sec of Object.values(toSave)) {
-        for (const f of SECRET_FIELDS) {
-          if (sec[f]) sec[f] = encryptSecret(sec[f]);
-        }
+  safeOn('connections:export', (_payload, cb) => {
+    const conns = loadConnections();
+    if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
+    const toSave = JSON.parse(JSON.stringify(conns));
+    for (const sec of Object.values(toSave)) {
+      for (const f of SECRET_FIELDS) {
+        if (sec[f]) sec[f] = encryptSecret(sec[f]);
       }
-      cb({ ok: true, ini: stringifyIni(toSave) });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
     }
+    cb({ ok: true, ini: stringifyIni(toSave) });
   });
 
   // Importa connessioni da un file .ini: le sezioni con lo stesso nome di una
   // connessione esistente vengono sovrascritte, le altre aggiunte.
-  socket.on('connections:import', ({ ini }, cb) => {
-    try {
-      const incoming = parseIni(String(ini || ''));
-      const names = Object.keys(incoming);
-      if (!names.length) throw new Error('Nessuna connessione trovata nel file importato.');
-      const conns = loadConnections();
-      let imported = 0;
-      let overwritten = 0;
-      for (const name of names) {
-        assertConnName(name);
-        const cfg = sanitizeConnCfg(incoming[name]);
-        if (!Object.keys(cfg).length) continue; // sezione senza campi utili
-        if (conns[name]) overwritten += 1; else imported += 1;
-        conns[name] = cfg;
+  safeOn('connections:import', ({ ini }, cb) => {
+    const incoming = parseIni(String(ini || ''));
+    const names = Object.keys(incoming);
+    if (!names.length) throw new Error('Nessuna connessione trovata nel file importato.');
+    const conns = loadConnections();
+    let imported = 0;
+    let overwritten = 0;
+    for (const name of names) {
+      assertConnName(name);
+      const cfg = sanitizeConnCfg(incoming[name]);
+      if (!Object.keys(cfg).length) continue; // sezione senza campi utili
+      // I segreti cifrati devono decifrarsi con la passphrase corrente: un
+      // "ENC:" estraneo verrebbe scoperto solo al riavvio, e con
+      // decryptFailures > 0 il server rifiuterebbe di partire.
+      for (const f of SECRET_FIELDS) {
+        if (cfg[f] && cfg[f].startsWith('ENC:')) {
+          try {
+            decryptRaw(cfg[f]);
+          } catch {
+            throw new Error(`Il segreto "${f}" della connessione "${name}" è cifrato con un'altra passphrase: esporta/importa con la stessa passphrase, oppure rimuovi i segreti dal file e reinseriscili dopo l'import.`);
+          }
+        }
       }
-      if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
-      saveConnections(conns);
-      cb({ ok: true, imported, overwritten });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
+      if (conns[name]) overwritten += 1; else imported += 1;
+      conns[name] = cfg;
     }
+    if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
+    saveConnections(conns);
+    cb({ ok: true, imported, overwritten });
   });
 
   // --- Esplorazione e gestione database (delegati alla strategia) ------------
@@ -590,54 +588,45 @@ io.on('connection', (socket) => {
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde
   // semplicemente il badge LIVE.
 
-  socket.on('collection:watch', (payload, cb) => {
-    const { db, coll } = payload || {};
-    const tabId = normTabId(payload && payload.tabId);
-    const sess = sessions.get(tabId);
+  safeOn('collection:watch', ({ db, coll, tabId }, cb) => {
+    const tab = normTabId(tabId);
+    const sess = sessions.get(tab);
     if (!sess) {
       cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
       return;
     }
-    try {
-      // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
-      sess.strategy.watch(db, coll, {
-        onChange: (change) => socket.emit('collection:changed', { tabId, db, coll, ...change }),
-        onUnavailable: () => socket.emit('watch:unavailable', { tabId, db, coll }),
-      });
-      cb({ ok: true });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
-    }
+    // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
+    sess.strategy.watch(db, coll, {
+      onChange: (change) => socket.emit('collection:changed', { tabId: tab, db, coll, ...change }),
+      onUnavailable: () => socket.emit('watch:unavailable', { tabId: tab, db, coll }),
+    });
+    cb({ ok: true });
   });
 
-  socket.on('collection:unwatch', (payload) => {
-    const sess = sessions.get(normTabId(payload && payload.tabId));
+  safeOn('collection:unwatch', (payload) => {
+    const sess = sessions.get(normTabId(payload.tabId));
     if (sess) sess.strategy.unwatch();
   });
 
   // Watch dello schema (database/collection creati, rinominati o eliminati):
   // dove il change stream non c'è (MySQL, Mongo standalone) arriva subito
   // schema:unavailable e il frontend ripiega sul polling della sidebar.
-  socket.on('schema:watch', (payload, cb) => {
-    const tabId = normTabId(payload && payload.tabId);
+  safeOn('schema:watch', (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
     const sess = sessions.get(tabId);
     if (!sess) {
       cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
       return;
     }
-    try {
-      sess.strategy.watchSchema({
-        onChange: (change) => socket.emit('schema:changed', { tabId, ...change }),
-        onUnavailable: () => socket.emit('schema:unavailable', { tabId }),
-      });
-      cb({ ok: true });
-    } catch (err) {
-      cb({ ok: false, error: errMsg(err) });
-    }
+    sess.strategy.watchSchema({
+      onChange: (change) => socket.emit('schema:changed', { tabId, ...change }),
+      onUnavailable: () => socket.emit('schema:unavailable', { tabId }),
+    });
+    cb({ ok: true });
   });
 
-  socket.on('schema:unwatch', (payload) => {
-    const sess = sessions.get(normTabId(payload && payload.tabId));
+  safeOn('schema:unwatch', (payload) => {
+    const sess = sessions.get(normTabId(payload.tabId));
     if (sess) sess.strategy.unwatchSchema();
   });
 

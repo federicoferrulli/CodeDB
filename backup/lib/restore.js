@@ -22,9 +22,12 @@ const BATCH_SIZE = 500;
 // Catena dei backup da applicare, dal full iniziale al backup richiesto.
 function resolveChain(backupDir) {
   const chain = [];
+  const seen = new Set();
   let dir = path.resolve(backupDir);
   const parent = path.dirname(dir);
   for (;;) {
+    if (seen.has(dir)) throw new Error(`Catena di backup circolare in ${parent}: controlla i baseId dei manifest.`);
+    seen.add(dir);
     const manifest = readManifest(dir);
     chain.unshift({ dir, manifest });
     if (manifest.type === 'full') return chain;
