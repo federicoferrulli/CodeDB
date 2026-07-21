@@ -4,13 +4,37 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CodeDB</title>
+  <meta name="theme-color" content="#1e1e2e" />
+  <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="codedb.ico" />
   <link rel="icon" type="image/png" href="codedb.png">
   <link rel="stylesheet" href="css/style.css" />
 </head>
+
 <body>
+  <!-- ===================== Modale Sblocco Vault / Master Password ===================== -->
+  <div id="vault-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>🔑 Sblocco Vault</h2>
+      <p class="subtitle">Inserisci la Master Password per accedere alle connessioni salvate e ai segreti cifrati.</p>
+
+      <form id="vault-form">
+        <div class="form-row">
+          <label>Master Password
+            <input type="password" id="vault-passphrase" placeholder="Inserisci passphrase..." required autocomplete="current-password" autofocus />
+          </label>
+        </div>
+        <div id="vault-error" class="error hidden"></div>
+        <div class="modal-actions">
+          <button type="submit" class="primary">Sblocca</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ===================== Modale di connessione ===================== -->
   <div id="connect-overlay" class="overlay hidden">
+
     <div class="modal">
       <h2>Connessione</h2>
       <p class="subtitle">Inserisci i dati di connessione al database</p>

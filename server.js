@@ -106,6 +106,30 @@ function decryptSecret(text) {
   }
 }
 
+function tryUnlockVault(passphrase) {
+  if (typeof passphrase !== 'string') {
+    return { ok: false, error: 'Passphrase non valida.' };
+  }
+  const key = crypto.createHash('sha256').update(passphrase).digest();
+  const oldKey = encryptionKey;
+  const oldFailures = decryptFailures;
+
+  encryptionKey = key;
+  decryptFailures = 0;
+
+  const conns = loadConnections();
+  if (decryptFailures > 0) {
+    encryptionKey = oldKey;
+    decryptFailures = oldFailures;
+    return { ok: false, error: 'Passphrase errata: i segreti cifrati non si decifrano con questa chiave.' };
+  }
+
+  if (Object.keys(conns).length > 0) {
+    saveConnections(conns);
+  }
+  return { ok: true };
+}
+
 function parseIni(text) {
   const sections = {};
   let current = null;
@@ -482,6 +506,16 @@ io.on('connection', (socket) => {
     }
   });
 
+  // --- Vault & Password ------------------------------------------------------
+
+  safeOn('vault:status', (_payload, cb) => {
+    cb({ ok: true, locked: encryptionKey === null });
+  });
+
+  safeOn('vault:unlock', ({ passphrase }, cb) => {
+    cb(tryUnlockVault(passphrase || ''));
+  });
+
   // --- Connessioni salvate ----------------------------------------------------
   // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
@@ -675,34 +709,13 @@ io.on('connection', (socket) => {
 });
 
 async function startServer() {
-  let passphrase = process.env.GUI_MONGO_PASSPHRASE;
-  
-  if (!passphrase) {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-    passphrase = await new Promise(resolve => {
-      rl.question('Inserisci la passphrase per cifrare/decifrare i segreti: ', (ans) => {
-        rl.close();
-        resolve(ans);
-      });
-    });
-  }
-
-  encryptionKey = crypto.createHash('sha256').update(passphrase).digest();
-  
-  // Migrazione automatica: decifra (o legge in chiaro) e risalva cifrando tutto.
-  // Se anche un solo segreto non si decifra la passphrase è sbagliata: uscire
-  // subito, senza toccare il file (proseguire lo riscriverebbe coi segreti vuoti).
-  const conns = loadConnections();
-  if (decryptFailures > 0) {
-    console.error('Passphrase errata: i segreti di connections.ini non si decifrano con questa passphrase.');
-    console.error('Riavvia con la passphrase corretta. (Copie precedenti del file: connections.ini.bak / .bak2.)');
-    process.exit(1);
-  }
-  if (Object.keys(conns).length > 0) {
-    saveConnections(conns);
+  const passphrase = process.env.GUI_MONGO_PASSPHRASE;
+  if (passphrase) {
+    const res = tryUnlockVault(passphrase);
+    if (!res.ok) {
+      console.error('Passphrase errata fornita via GUI_MONGO_PASSPHRASE: i segreti non si decifrano.');
+      process.exit(1);
+    }
   }
 
   const HOST = process.env.HOST || '127.0.0.1';

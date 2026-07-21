@@ -8,14 +8,8 @@ $root = Split-Path -Parent $PSScriptRoot
 $port = if ($env:PORT) { [int]$env:PORT } else { 3030 }
 $url = "http://localhost:$port"
 
-if (-not $env:GUI_MONGO_PASSPHRASE) {
-  # Prompt mascherato nella console del launcher (già aperta e a fuoco): più
-  # affidabile del dialogo Get-Credential, che può finire dietro le finestre.
-  $ss = Read-Host -AsSecureString 'Inserisci la passphrase dei segreti di CodeDB'
-  $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($ss)
-  $env:GUI_MONGO_PASSPHRASE = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-}
+# Se GUI_MONGO_PASSPHRASE non è impostata, il server parte in modalità "Vault Bloccato"
+# e la passphrase verrà chiesta dall'interfaccia web all'avvio.
 
 $out = Join-Path $root 'codedb.log'
 $err = Join-Path $root 'codedb.err.log'

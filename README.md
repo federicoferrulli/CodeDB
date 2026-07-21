@@ -1,9 +1,14 @@
+<p align="center">
+  <img src="public/codedb.png" alt="CodeDB Logo" width="96" />
+</p>
+
 # CodeDB
 
 Un clone web di DBeaver **multi-database**: esplora database e collection/tabelle,
 visualizza i documenti/righe come una tabella, esegui query, modifica i dati.
 Supporta **MongoDB** e **MySQL** tramite uno **Strategy Pattern**.
 Tutta la comunicazione tra browser e backend avviene tramite **Socket.IO**.
+
 
 ## Stack
 
@@ -25,16 +30,16 @@ comparirà la schermata di connessione. Nel form scegli il **tipo di database**
 (MongoDB o MySQL) e inserisci host/porta/credenziali, oppure una connection string
 completa (MongoDB).
 
-### Avvio "desktop"
+### Avvio "desktop" e PWA
 
-Il launcher apre solo il browser se il server è già attivo; altrimenti chiede la
-passphrase dei segreti (prompt mascherato nella console/terminale) e avvia il
+Il launcher apre solo il browser (o l'App PWA) se il server è già attivo; altrimenti avvia il
 server **in background**: la console si chiude subito dopo l'avvio,
-i log finiscono in `codedb.log`. Il browser si apre appena la porta risponde.
-Per fermare il server: `CodeDB.cmd stop` / `./codedb.sh stop`. Con una
-passphrase sbagliata il server **esce subito senza toccare `connections.ini`**.
+i log finiscono in `codedb.log`. Il browser si apre appena la porta risponde e la
+**Master Password** per sbloccare i segreti cifrati viene richiesta direttamente nell'interfaccia UI.
+Per fermare il server: `CodeDB.cmd stop` / `./codedb.sh stop`.
 Se avvii una seconda istanza sulla stessa porta, il server esce con un
 messaggio chiaro (usa `PORT=<altra porta>`).
+
 
 - **Windows** — doppio click su **`CodeDB.cmd`**; con `npm run shortcut` crei i
   collegamenti **CodeDB** (icona `public/codedb.ico`) sul Desktop e nel menu

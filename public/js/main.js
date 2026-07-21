@@ -18,6 +18,16 @@ import { initDetails, loadDetails } from './details.js';
 import { initLive } from './live.js';
 import { initResponsive } from './responsive.js';
 import { initExportImport } from './exportimport.js';
+import { initVault } from './vault.js';
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch((err) => {
+      console.warn('Registrazione Service Worker fallita:', err);
+    });
+  });
+}
+
 
 export function setView(view) {
   state.view = view;
@@ -82,6 +92,8 @@ initLive();
 initResizers();
 initResponsive();
 initExportImport();
+initVault();
+
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

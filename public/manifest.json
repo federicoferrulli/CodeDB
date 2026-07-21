@@ -1,0 +1,16 @@
+{
+  "name": "CodeDB - Database Web GUI",
+  "short_name": "CodeDB",
+  "description": "GUI Web in stile DBeaver per MongoDB e MySQL con supporto MCP e real-time socket updates.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#1e1e2e",
+  "theme_color": "#1e1e2e",
+  "icons": [
+    {
+      "src": "codedb.png",
+      "sizes": "192x192 512x512",
+      "type": "image/png"
+    }
+  ]
+}
