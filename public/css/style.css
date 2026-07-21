@@ -1,23 +1,23 @@
 :root {
   /* Palette ispirata a VSCode Dark+ / Dark Modern */
-  --bg: #1e1e1e;          /* sfondo "editor" (workspace, griglia) */
-  --bg-2: #252526;        /* sidebar e pannelli */
-  --bg-3: #2d2d2d;        /* header di sezione, tab inattivi, superfici */
-  --bg-4: #333333;        /* activity-bar / hover di superfici scure */
-  --border: #2b2b2b;      /* bordi sottili tra pannelli */
-  --border-2: #3c3c3c;    /* bordi più marcati (input, tabelle) */
+  --bg: #12121f;          /* sfondo "editor" (workspace, griglia) */
+  --bg-2: #181829;        /* sidebar e pannelli */
+  --bg-3: #1e1e33;        /* header di sezione, tab inattivi, superfici */
+  --bg-4: #262640;        /* activity-bar / hover di superfici scure */
+  --border: #2e2e4a;      /* bordi sottili tra pannelli */
+  --border-2: #3b3b5e;    /* bordi più marcati (input, tabelle) */
   --fg: #cccccc;
   --fg-dim: #8c8c8c;
-  --accent: #007acc;      /* blu iconico VSCode: tab attivo, selezioni, link */
-  --accent-2: #0e639c;    /* sfondo pulsanti primari */
-  --accent-hover: #1177bb;/* hover pulsanti primari */
-  --focus: #007fd4;       /* bordo di focus */
+  --accent: #00d2ff;      /* blu iconico VSCode: tab attivo, selezioni, link */
+  --accent-2: #5523d4;    /* sfondo pulsanti primari */
+  --accent-hover: #763ae3;/* hover pulsanti primari */
+  --focus: #00d2ff;       /* bordo di focus */
   --danger: #f14c4c;
-  --sel: #094771;         /* selezione attiva nelle liste (blu VSCode) */
-  --hover: #2a2d2e;       /* hover righe/voci di lista */
-  --input-bg: #3c3c3c;    /* sfondo campi di input */
-  --btn-bg: #3a3d41;      /* pulsanti secondari */
-  --btn-hover: #45494e;   /* hover pulsanti secondari */
+  --sel: #1c2a4f;         /* selezione attiva nelle liste (blu VSCode) */
+  --hover: #1f1f33;       /* hover righe/voci di lista */
+  --input-bg: #1e1e33;    /* sfondo campi di input */
+  --btn-bg: #262640;      /* pulsanti secondari */
+  --btn-hover: #333355;   /* hover pulsanti secondari */
   font-size: 13px;
 }
 
@@ -35,8 +35,8 @@ html, body {
 * { scrollbar-width: thin; scrollbar-color: rgba(121, 121, 121, 0.4) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(121, 121, 121, 0.4); border-radius: 0; border: 2px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: rgba(150, 150, 150, 0.7); background-clip: padding-box; border: 2px solid transparent; }
+::-webkit-scrollbar-thumb { background: rgba(85, 35, 212, 0.4); border-radius: 0; border: 2px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 210, 255, 0.7); background-clip: padding-box; border: 2px solid transparent; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 .hidden { display: none !important; }
@@ -126,13 +126,17 @@ button:hover { background: var(--btn-hover); border-color: transparent; }
 button:focus-visible { outline: 1px solid var(--focus); outline-offset: 1px; }
 
 button.primary {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  border: none;
   color: #fff;
   font-weight: 600;
+  transition: all 0.2s ease;
 }
 
-button.primary:hover { background: var(--accent-hover); }
+button.primary:hover {
+  background: linear-gradient(135deg, var(--accent-hover), var(--accent));
+  box-shadow: 0 0 10px rgba(0, 210, 255, 0.4);
+}
 button.primary:disabled { opacity: 0.6; cursor: wait; }
 
 button.ghost { background: transparent; border-color: transparent; }
@@ -251,7 +255,7 @@ header {
   width: 20px;
   height: 20px;
   border-radius: 4px;
-  background: linear-gradient(135deg, var(--accent) 0%, #005a9e 100%);
+  background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 100%);
   color: #fff;
   font-size: 0.72rem;
   font-weight: 700;
@@ -417,12 +421,12 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid td.cell-selected { background: rgba(76, 175, 125, 0.22); }
 #grid td.cell-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
 #cell-info { color: var(--fg-dim); margin-left: 10px; }
-#grid td .type-oid { color: #c9a26d; }
-#grid td .type-num { color: #7fb4e0; }
-#grid td .type-bool { color: #c586c0; }
-#grid td .type-date { color: #6fc2b0; }
+#grid td .type-oid { color: #b373cf; }
+#grid td .type-num { color: #00d2ff; }
+#grid td .type-bool { color: #e15bed; }
+#grid td .type-date { color: #20e3b2; }
 #grid td .type-null { color: var(--fg-dim); font-style: italic; }
-#grid td .type-obj { color: #d8c27a; }
+#grid td .type-obj { color: #f1b34e; }
 
 #grid td.editing { padding: 0; }
 #grid td.editing input,
