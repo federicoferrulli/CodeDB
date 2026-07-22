@@ -178,11 +178,13 @@ function loadConnections() {
 // sezioni, senza toccare l'originale: usata sia prima di riscrivere il file
 // sia prima di esportarlo, così i due percorsi restano un solo punto di verità.
 function encryptSections(sections) {
-  const copy = JSON.parse(JSON.stringify(sections));
-  for (const sec of Object.values(copy)) {
+  const copy = {};
+  for (const key in sections) {
+    const secCopy = { ...sections[key] };
     for (const f of SECRET_FIELDS) {
-      if (sec[f]) sec[f] = encryptSecret(sec[f]);
+      if (secCopy[f]) secCopy[f] = encryptSecret(secCopy[f]);
     }
+    copy[key] = secCopy;
   }
   return copy;
 }
