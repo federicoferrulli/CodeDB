@@ -42,7 +42,7 @@
       <form id="connect-form">
         <div id="conn-edit-banner" class="conn-edit-banner hidden">
           Modifica di <strong id="conn-edit-name"></strong>
-          <button type="button" id="conn-edit-cancel" title="Annulla la modifica">✕</button>
+          <button type="button" id="conn-edit-cancel" title="Annulla la modifica" aria-label="Annulla la modifica">✕</button>
         </div>
 
         <div class="form-row">
@@ -161,8 +161,8 @@
   <!-- ===================== Layout principale ===================== -->
   <div id="app">
     <header>
-      <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate">☰</button>
-      <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo">🗄</button>
+      <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate" aria-label="Connessioni salvate">☰</button>
+      <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo" aria-label="Database del tab attivo">🗄</button>
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
@@ -178,8 +178,8 @@
         <div class="sidebar-title">
           <span>Connessioni</span>
           <span class="saved-conns-tools">
-            <button type="button" id="conn-export-btn" title="Scarica connections.ini (segreti cifrati)">⤓</button>
-            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini">⤒</button>
+            <button type="button" id="conn-export-btn" title="Scarica connections.ini (segreti cifrati)" aria-label="Scarica connections.ini (segreti cifrati)">⤓</button>
+            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini" aria-label="Importa connessioni da un file .ini">⤒</button>
           </span>
         </div>
         <ul id="conn-tree"></ul>
@@ -202,7 +202,7 @@
           <aside id="sidebar">
             <div class="sidebar-title">
               <span>Database</span>
-              <button id="new-db-btn" title="Nuovo database">＋</button>
+              <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database">＋</button>
             </div>
             <div class="sidebar-search" style="padding: 0 15px 10px 15px;">
               <input type="text" id="db-search" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
@@ -241,13 +241,13 @@
               <input id="sort-input" type="text" spellcheck="false" class="narrow"
                      placeholder='Sort, es. { "name": 1 }' />
               <span class="query-history-wrap">
-                <button id="query-history-btn" title="Query recenti di questa collection">🕒</button>
+                <button id="query-history-btn" title="Query recenti di questa collection" aria-label="Query recenti di questa collection">🕒</button>
                 <div id="query-history-panel" class="hidden"></div>
               </span>
               <button id="run-btn" class="primary" title="Esegui (Invio)">▶ Esegui</button>
               <button id="explain-btn" title="Piano di esecuzione della query corrente">🧭 Piano</button>
               <button id="insert-btn" title="Inserisci un nuovo documento">+ Documento</button>
-              <button id="refresh-btn" title="Ricarica">⟳</button>
+              <button id="refresh-btn" title="Ricarica" aria-label="Ricarica">⟳</button>
             </div>
 
             <div id="query-error" class="error hidden"></div>
@@ -288,12 +288,12 @@
                 <table class="info-table kv-table" id="stats-table"><tbody></tbody></table>
               </section>
               <section>
-                <h3>Indici <button type="button" id="index-add-btn" class="mini-btn" title="Nuovo indice">＋</button></h3>
+                <h3>Indici <button type="button" id="index-add-btn" class="mini-btn" title="Nuovo indice" aria-label="Nuovo indice">＋</button></h3>
                 <table class="info-table" id="index-table"><thead></thead><tbody></tbody></table>
               </section>
               <section class="full">
                 <h3><span id="schema-title">Schema rilevato</span> <span id="schema-note" class="hint"></span>
-                  <button type="button" id="column-add-btn" class="mini-btn hidden" title="Aggiungi colonna">＋</button></h3>
+                  <button type="button" id="column-add-btn" class="mini-btn hidden" title="Aggiungi colonna" aria-label="Aggiungi colonna">＋</button></h3>
                 <table class="info-table" id="schema-table"><thead></thead><tbody></tbody></table>
               </section>
             </div>
