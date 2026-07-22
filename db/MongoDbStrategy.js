@@ -180,7 +180,8 @@ async function sampleSchema(collection, sampleSize = 100) {
   }
   const fields = new Map();
   for (const doc of docs) {
-    for (const [key, val] of Object.entries(doc)) {
+    for (const key in doc) {
+      const val = doc[key];
       let f = fields.get(key);
       if (!f) fields.set(key, (f = { name: key, types: new Set(), count: 0 }));
       f.count += 1;
