@@ -72,6 +72,7 @@ let decryptFailures = 0;
 function encryptSecret(text) {
   if (!text || typeof text !== 'string') return text;
   if (text.startsWith('ENC:')) return text; // già cifrato
+  if (!encryptionKey) throw new Error('Impossibile cifrare il segreto: il vault è bloccato.');
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
@@ -82,6 +83,7 @@ function encryptSecret(text) {
 
 // Decifra un segreto ENC:iv:tag:testo; lancia se la chiave non è quella giusta.
 function decryptRaw(text) {
+  if (!encryptionKey) throw new Error('Vault bloccato');
   const parts = text.split(':');
   if (parts.length !== 4) return text;
   const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(parts[1], 'hex'));
@@ -94,6 +96,7 @@ function decryptRaw(text) {
 function decryptSecret(text) {
   if (!text || typeof text !== 'string') return text;
   if (!text.startsWith('ENC:')) return text; // non cifrato (plain text)
+  if (!encryptionKey) return text; // vault bloccato: restituisci il cifrato intatto
   try {
     return decryptRaw(text);
   } catch (e) {
