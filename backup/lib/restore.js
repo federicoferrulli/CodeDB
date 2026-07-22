@@ -118,18 +118,29 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
     const dataFiles = layer.manifest.files.filter(
       (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
     );
+
+    let existingTables = null;
+    if (isFirst) {
+      const [rows] = await conn.query(
+        'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?',
+        [targetDb]
+      );
+      existingTables = new Set(rows.map(r => r.TABLE_NAME));
+    }
+
     for (const f of dataFiles) {
       const tableId = mysql.escapeId(f.collection, true);
       if (isFirst) {
-        if (drop) await conn.query(`DROP TABLE IF EXISTS ${tableId}`);
-        const [exists] = await conn.query(
-          'SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?',
-          [targetDb, f.collection]
-        );
-        if (!exists.length) {
+        if (drop) {
+          await conn.query(`DROP TABLE IF EXISTS ${tableId}`);
+          existingTables.delete(f.collection);
+        }
+
+        if (!existingTables.has(f.collection)) {
           const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
           if (!schemaFile) throw new Error(`Schema di "${f.collection}" assente dal backup: impossibile ricreare la tabella.`);
           await conn.query(fs.readFileSync(path.join(layer.dir, schemaFile.path), 'utf8').replace(/;\s*$/, ''));
+          existingTables.add(f.collection);
         }
       }
 
