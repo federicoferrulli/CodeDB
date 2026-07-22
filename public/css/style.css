@@ -54,16 +54,18 @@ html, body {
 }
 
 .modal {
+  border-radius: 12px;
+
   background: var(--bg-2);
   border: 1px solid var(--border-2);
-  border-radius: 6px;
+
   padding: 24px 28px;
   width: 420px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
 }
 
 .modal.wide { width: 640px; }
@@ -95,10 +97,11 @@ html, body {
 .form-row label.small { flex: 0 0 110px; }
 
 input, select, textarea {
+  border-radius: 6px;
   background: var(--input-bg);
   color: var(--fg);
   border: 1px solid var(--border-2);
-  border-radius: 3px;
+
   padding: 7px 9px;
   font-size: 0.95rem;
   outline: none;
@@ -108,15 +111,17 @@ input:focus, select:focus, textarea:focus {
   border-color: var(--focus);
   outline: 1px solid var(--focus);
   outline-offset: -1px;
+  box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.3);
 }
 
 textarea { width: 100%; font-family: Consolas, "Cascadia Code", monospace; resize: vertical; }
 
 button {
+  border-radius: 6px;
   background: var(--btn-bg);
   color: var(--fg);
   border: 1px solid transparent;
-  border-radius: 3px;
+
   padding: 7px 14px;
   cursor: pointer;
   font-size: 0.9rem;
@@ -151,7 +156,7 @@ button.ghost:hover { background: var(--btn-bg); }
   background: rgba(241, 76, 76, 0.12);
   border: 1px solid var(--danger);
   color: #f1a3a3;
-  border-radius: 3px;
+
   padding: 8px 10px;
   margin: 10px 0;
   font-size: 0.85rem;
@@ -174,6 +179,7 @@ button.ghost:hover { background: var(--btn-bg); }
 .saved-conns-tools { margin-left: auto; display: flex; gap: 4px; }
 
 .saved-conns-tools button {
+  border-radius: 6px;
   background: transparent;
   border: none;
   color: var(--fg-dim);
@@ -191,7 +197,7 @@ button.ghost:hover { background: var(--btn-bg); }
   font-size: 0.8rem;
   font-style: italic;
   border: 1px dashed var(--border);
-  border-radius: 6px;
+
   padding: 8px 10px;
 }
 
@@ -201,13 +207,14 @@ button.ghost:hover { background: var(--btn-bg); }
   gap: 6px;
   background: var(--sel);
   border: 1px solid var(--accent-2);
-  border-radius: 6px;
+
   padding: 6px 10px;
   margin-bottom: 12px;
   font-size: 0.85rem;
 }
 
 .conn-edit-banner button {
+  border-radius: 6px;
   margin-left: auto;
   background: transparent;
   border: none;
@@ -228,7 +235,8 @@ header {
   gap: 12px;
   padding: 6px 14px;
   background: var(--bg-3);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--bg-4);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.4);
 }
 
 .brand {
@@ -238,6 +246,9 @@ header {
   font-weight: 600;
   font-size: 0.95rem;
   letter-spacing: 0.2px;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .brand-logo {
@@ -352,7 +363,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 .view-tab {
   padding: 5px 12px;
-  border-radius: 3px;
+
   background: transparent;
   color: var(--fg-dim);
   border: 1px solid transparent;
@@ -388,7 +399,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 0.85rem; }
 
 #grid th, #grid td {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(46, 46, 74, 0.5);
   padding: 5px 10px;
   text-align: left;
   max-width: 360px;
@@ -410,7 +421,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid thead th:hover { color: var(--accent); }
 
 #grid tbody tr:nth-child(even) { background: rgba(255, 255, 255, 0.02); }
-#grid tbody tr:hover { background: var(--hover); }
+#grid tbody tr:hover {
+  background: linear-gradient(90deg, rgba(31,31,51,0.8), transparent);
+}
 
 #grid td.editable { cursor: cell; }
 
@@ -419,7 +432,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #grid tbody { user-select: none; }
 #grid td.editing { user-select: text; }
 #grid td.cell-selected { background: rgba(76, 175, 125, 0.22); }
-#grid td.cell-focus { outline: 1px solid var(--accent); outline-offset: -1px; }
+#grid td.cell-focus { outline: 1px solid var(--accent); outline-offset: -1px;
+  box-shadow: 0 0 0 2px rgba(0, 210, 255, 0.3); }
 #cell-info { color: var(--fg-dim); margin-left: 10px; }
 #grid td .type-oid { color: #b373cf; }
 #grid td .type-num { color: #00d2ff; }
@@ -539,7 +553,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   border-left: 3px solid var(--accent);
   border-radius: 4px;
   padding: 10px 18px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
   z-index: 200;
 }
 
@@ -557,13 +571,13 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   background: var(--bg-3);
   border: 1px solid var(--border-2);
   border-radius: 5px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
   font-size: 0.9rem;
 }
 
 .context-menu li {
   padding: 7px 12px;
-  border-radius: 3px;
+
   cursor: pointer;
   white-space: nowrap;
 }
@@ -598,7 +612,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .info-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 
 .info-table th, .info-table td {
-  border: 1px solid var(--border);
+  border: 1px solid rgba(46, 46, 74, 0.5);
   padding: 5px 10px;
   text-align: left;
 }
@@ -871,6 +885,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 }
 
 .bulk-delete-toolbar button {
+  border-radius: 6px;
   padding: 6px 12px;
   font-size: 0.85rem;
 }
@@ -946,7 +961,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .view-tabs { margin-left: 0; }
   .view-tab { padding: 5px 10px; }
 
-  .modal { padding: 20px 16px; }
+  .modal {
+  border-radius: 12px;
+   padding: 20px 16px; }
   .form-row { flex-direction: column; gap: 8px; }
   .form-row label.small { flex: 1; }
   .connect-actions { flex-wrap: wrap; }
@@ -964,7 +981,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 
 /* --- Touch: target più grandi e niente auto-zoom iOS -------------------- */
 @media (pointer: coarse) {
-  button { padding: 9px 14px; }
+  button {
+  border-radius: 6px; padding: 9px 14px; }
   .menu-btn { padding: 8px 12px; }
   .node-label { padding: 9px 14px; }
   .context-menu li { padding: 11px 14px; }
@@ -990,8 +1008,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   overflow-y: auto;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
 }
 .query-history-header {
   display: flex;
@@ -1007,6 +1025,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   background: var(--bg-2);
 }
 .query-history-header button {
+  border-radius: 6px;
   font-size: 0.75rem;
   padding: 2px 8px;
 }
