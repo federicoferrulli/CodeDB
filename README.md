@@ -154,11 +154,11 @@ npm run backup -- help    # guida completa
   le stringhe di 24 caratteri esadecimali in `_id` vengono convertite in ObjectId
   automaticamente. Per le date usa `{ "$date": "2026-01-01T00:00:00Z" }`.
 - Le **connessioni salvate** vivono in `connections.ini` nella root (file in
-  `.gitignore`): **password e segreti SSH sono in chiaro**, sia nel file sia
-  nell'export. Nessun segreto viene mai rimandato al browser: nel form, lasciando
-  vuoto il campo, resta quello già salvato. A ogni riscrittura il server conserva
+  `.gitignore`): **i segreti e le password sono cifrati con AES-256-GCM**
+  tramite una Master Passphrase (Vault). Nessun segreto viene mai rimandato al browser:
+  nel form, lasciando vuoto il campo, resta quello già salvato. A ogni riscrittura il server conserva
   le due versioni precedenti in `connections.ini.bak` e `.bak2` (stessa cartella):
-  se i segreti si corrompono (es. avvio con passphrase sbagliata), recuperale da lì.
+  se i segreti non si decifrano (es. avvio con passphrase sbagliata), recuperali da lì.
 - La **rinomina di un database MongoDB** non è nativa: l'app copia le collection
   nel nuovo database (`$out` cross-database, richiede MongoDB ≥ 4.4) e poi elimina
   l'originale.
