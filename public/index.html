@@ -205,7 +205,7 @@
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database">＋</button>
             </div>
             <div class="sidebar-search" style="padding: 0 15px 10px 15px;">
-              <input type="text" id="db-search" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
+              <input type="text" id="db-search" aria-label="Cerca database" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
             </div>
             <ul id="db-tree"></ul>
           </aside>
@@ -234,13 +234,13 @@
           <!-- ------------------- Vista dati ------------------- -->
           <div id="view-data" class="view-panel">
             <div class="toolbar">
-              <select id="query-mode" title="Modalità query">
+              <select id="query-mode" title="Modalità query" aria-label="Modalità query">
                 <option value="find">find</option>
                 <option value="aggregate">aggregate</option>
               </select>
-              <input id="filter-input" type="text" spellcheck="false"
+              <input id="filter-input" aria-label="Filtro query" type="text" spellcheck="false"
                      placeholder='Filtro, es. { "age": { "$gt": 30 } }' />
-              <input id="sort-input" type="text" spellcheck="false" class="narrow"
+              <input id="sort-input" aria-label="Ordinamento query" type="text" spellcheck="false" class="narrow"
                      placeholder='Sort, es. { "name": 1 }' />
               <span class="query-history-wrap">
                 <button id="query-history-btn" title="Query recenti di questa collection" aria-label="Query recenti di questa collection">🕒</button>
@@ -270,10 +270,10 @@
               <span id="result-info"></span>
               <span id="cell-info"></span>
               <span class="spacer"></span>
-              <button id="prev-btn" class="ghost">‹ Prec</button>
+              <button id="prev-btn" aria-label="Pagina precedente" class="ghost">‹ Prec</button>
               <span id="page-info"></span>
-              <button id="next-btn" class="ghost">Succ ›</button>
-              <select id="page-size">
+              <button id="next-btn" aria-label="Pagina successiva" class="ghost">Succ ›</button>
+              <select id="page-size" aria-label="Risultati per pagina">
                 <option>25</option>
                 <option selected>50</option>
                 <option>100</option>
@@ -316,12 +316,12 @@
           <!-- ------------------- Vista Grafo 3D ------------------- -->
           <div id="view-graph3d" class="view-panel hidden">
             <div class="graph3d-bar">
-              <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo..." autocomplete="off" spellcheck="false" title="Cerca nome tabella o nome colonna" />
-              <select id="graph3d-color-mode" title="Modalità di colorazione e dimensione nodi">
+              <input type="text" id="graph3d-search" aria-label="Cerca nel grafo 3D" placeholder="Cerca tabella o campo..." autocomplete="off" spellcheck="false" title="Cerca nome tabella o nome colonna" />
+              <select id="graph3d-color-mode" aria-label="Modalità colore grafo" title="Modalità di colorazione e dimensione nodi">
                 <option value="prefix">🎨 Colore: Prefisso</option>
                 <option value="degree">🔥 Colore: Centralità</option>
               </select>
-              <select id="graph3d-hop-filter" title="Filtra vicini per livello di distanza dal nodo selezionato">
+              <select id="graph3d-hop-filter" aria-label="Filtro distanza grafo" title="Filtra vicini per livello di distanza dal nodo selezionato">
                 <option value="all">🔍 Mostra: Tutti</option>
                 <option value="1">1° Livello</option>
                 <option value="2">2° Livello</option>
@@ -364,7 +364,7 @@
             <div class="query-topbar">
               <div class="query-engine-selector">
                 <label for="query-target-engine">Target Engine:</label>
-                <select id="query-target-engine" class="styled-select">
+                <select id="query-target-engine" aria-label="Motore di query" class="styled-select">
                   <option value="auto">⚡ Auto-detect (DB corrente)</option>
                   <option value="mysql">🐬 MySQL (SQL Runner)</option>
                   <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
@@ -393,7 +393,7 @@
                   <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
                 </div>
                 <div class="sidebar-search" style="padding: 0 10px 8px 10px;">
-                  <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..." autocomplete="off" spellcheck="false" />
+                  <input type="text" id="query-schema-search" aria-label="Filtra schema" placeholder="Filtra tabelle/campi..." autocomplete="off" spellcheck="false" />
                 </div>
                 <div id="query-schema-tree" class="query-schema-tree"></div>
               </aside>
@@ -412,7 +412,7 @@
                     </div>
                   </div>
                   <div class="editor-body">
-                    <textarea id="query-editor-input" spellcheck="false" placeholder="-- Inserisci query SQL o pipeline MQL in formato JSON&#10;-- Es. SELECT * FROM users WHERE status = 'active';&#10;-- Oppure: [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                    <textarea id="query-editor-input" aria-label="Editor query" spellcheck="false" placeholder="-- Inserisci query SQL o pipeline MQL in formato JSON&#10;-- Es. SELECT * FROM users WHERE status = 'active';&#10;-- Oppure: [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
                   </div>
                 </div>
 
