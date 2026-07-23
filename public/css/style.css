@@ -1105,3 +1105,150 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   white-space: nowrap;
 }
 .explain-table th { position: sticky; top: 0; background: var(--panel, #22262b); }
+
+/* ===================== Grafo 3D Interattivo ===================== */
+#view-graph3d {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.graph3d-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-2, #1b1e23);
+  border-bottom: 1px solid var(--border, #2a2e35);
+  z-index: 10;
+}
+.graph3d-bar input {
+  padding: 5px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #2a2e35);
+  background: var(--bg-1, #131518);
+  color: var(--fg, #e1e4e8);
+  width: 200px;
+}
+.graph3d-container {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+.graph3d-canvas {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 450px;
+  position: relative;
+  background: #0b0c0e;
+}
+.graph3d-side-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 340px;
+  background: rgba(22, 26, 33, 0.95);
+  backdrop-filter: blur(10px);
+  border-left: 1px solid var(--border, #2a2e35);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  transition: transform 0.25s ease;
+}
+.graph3d-side-panel.hidden {
+  transform: translateX(100%);
+  display: flex !important;
+  pointer-events: none;
+}
+.side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, #2a2e35);
+  background: var(--bg-2, #1b1e23);
+}
+.side-panel-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--accent, #4a9eff);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.side-panel-header .close-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg-dim, #8b949e);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.side-panel-header .close-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.side-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 16px;
+  font-size: 0.9rem;
+}
+.side-panel-section {
+  margin-bottom: 18px;
+}
+.side-panel-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-dim, #8b949e);
+}
+.side-panel-fields {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border, #2a2e35);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.side-panel-fields li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 7px 10px;
+  background: var(--bg-1, #131518);
+  border-bottom: 1px solid var(--border, #2a2e35);
+}
+.side-panel-fields li:last-child {
+  border-bottom: none;
+}
+.field-name {
+  font-weight: 500;
+  color: var(--fg, #e1e4e8);
+}
+.field-badge {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(74, 158, 255, 0.15);
+  color: #4a9eff;
+}
+.field-badge.pk {
+  background: rgba(245, 166, 35, 0.2);
+  color: #f5a623;
+}
+.side-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 15px;
+}
+

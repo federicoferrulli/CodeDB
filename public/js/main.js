@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { onTabChange } from './tabs.js';
 import { $ } from './utils.js';
 import { initUml, loadUml } from './uml.js';
+import { initGraph3d, loadGraph3d } from './graph3d.js';
 import { initConnection } from './connection.js';
 import { initConnManager } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
@@ -35,8 +36,10 @@ export function setView(view) {
   $('#view-data').classList.toggle('hidden', view !== 'data');
   $('#view-details').classList.toggle('hidden', view !== 'details');
   $('#view-uml').classList.toggle('hidden', view !== 'uml');
+  $('#view-graph3d').classList.toggle('hidden', view !== 'graph3d');
   if (view === 'details') loadDetails();
   if (view === 'uml') loadUml(false);
+  if (view === 'graph3d') loadGraph3d(false);
 }
 
 document.querySelectorAll('.view-tab').forEach((tab) =>
@@ -79,6 +82,7 @@ onTabChange(() => {
 });
 
 initUml();
+initGraph3d();
 initConnection();
 initConnManager();
 initDbTree();

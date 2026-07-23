@@ -494,6 +494,68 @@ class MySqlStrategy extends DbStrategy {
     return ddl == null ? null : String(ddl);
   }
 
+  async dbSchema(db) {
+    const pool = this.requirePool();
+    const [tables] = await pool.query(
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+      [db]
+    );
+
+    const [columns] = await pool.query(
+      `SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = ?
+       ORDER BY TABLE_NAME, ORDINAL_POSITION`,
+      [db]
+    );
+
+    const colsByTable = new Map();
+    for (const row of columns) {
+      if (!colsByTable.has(row.TABLE_NAME)) colsByTable.set(row.TABLE_NAME, []);
+      colsByTable.get(row.TABLE_NAME).push({
+        name: row.COLUMN_NAME,
+        types: [row.DATA_TYPE || row.COLUMN_TYPE || 'varchar'],
+        pk: row.COLUMN_KEY === 'PRI',
+        nullable: row.IS_NULLABLE === 'YES',
+      });
+    }
+
+    const collections = tables.map((t) => ({
+      name: t.TABLE_NAME,
+      fields: colsByTable.get(t.TABLE_NAME) || [],
+    }));
+
+    const [fkRows] = await pool.query(
+      `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+       WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
+      [db]
+    );
+
+    const relations = [];
+    const fkSet = new Set();
+    for (const fk of fkRows) {
+      relations.push({
+        from: fk.TABLE_NAME,
+        field: fk.COLUMN_NAME,
+        to: fk.REFERENCED_TABLE_NAME,
+        many: true,
+      });
+      fkSet.add(`${fk.TABLE_NAME}.${fk.COLUMN_NAME}->${fk.REFERENCED_TABLE_NAME}`);
+    }
+
+    const detected = DbStrategy.detectRelations(collections);
+    for (const r of detected) {
+      const key = `${r.from}.${r.field}->${r.to}`;
+      if (!fkSet.has(key)) {
+        relations.push(r);
+      }
+    }
+
+    return { collections, relations };
+  }
+
+
   // Esporta un blocco di righe come CSV (format: 'csv', header a parte),
   // come statement INSERT (format: 'sql') o come righe Extended JSON
   // (format: 'json', una riga-oggetto per riga di tabella: è il formato
