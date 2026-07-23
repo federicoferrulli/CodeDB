@@ -38,12 +38,10 @@ export function setView(view) {
   $('#view-details').classList.toggle('hidden', view !== 'details');
   $('#view-uml').classList.toggle('hidden', view !== 'uml');
   $('#view-graph3d').classList.toggle('hidden', view !== 'graph3d');
-  if (view === 'details') loadDetails();
-  if (view === 'uml') loadUml(false);
-  if (view === 'graph3d') loadGraph3d(false);
   $('#view-query').classList.toggle('hidden', view !== 'query');
   if (view === 'details') loadDetails();
   if (view === 'uml') loadUml(false);
+  if (view === 'graph3d') loadGraph3d(false);
   if (view === 'query') loadQueryTab();
 }
 

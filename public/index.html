@@ -327,6 +327,7 @@
                 <option value="2">2° Livello</option>
               </select>
               <button id="graph3d-find-path" class="ghost" title="Trova il cammino minimo tra 2 tabelle">🔗 Cammino</button>
+              <button id="graph3d-clear-path" class="ghost hidden" style="color:#e5534b; border-color:rgba(229,83,75,0.4);" title="Rimuovi evidenziazione del cammino minimo">❌ Azzera Cammino</button>
               <button id="graph3d-deps" class="ghost" title="Analizza la matrice delle dipendenze e l'ordine di popolamento">📊 Dipendenze</button>
               <button id="graph3d-toggle-empty" class="ghost" title="Mostra/Nascondi tabelle vuote senza record">🎯 Solo Popolate</button>
               <button id="graph3d-toggle-implicit" class="ghost" title="Mostra/Nascondi relazioni implicite euristiche">💡 Implicite</button>
@@ -344,6 +345,10 @@
               <button id="graph3d-refresh" class="ghost" title="Rigenera Grafo">⟳ Rigenera</button>
             </div>
             <div class="graph3d-container">
+              <div id="graph3d-path-badge" class="graph3d-path-badge hidden">
+                <span id="graph3d-path-badge-text">🔗 Cammino attivo</span>
+                <button id="graph3d-path-badge-clear" class="badge-clear-btn" title="Rimuovi cammino">✕ Rimuovi</button>
+              </div>
               <div id="graph3d-canvas" class="graph3d-canvas"></div>
               <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                 <div class="side-panel-header">
@@ -352,6 +357,8 @@
                 </div>
                 <div id="graph3d-panel-content" class="side-panel-content"></div>
               </aside>
+            </div>
+          </div>
           <!-- ------------------- Vista Query & Aggregate ------------------- -->
           <div id="view-query" class="view-panel hidden">
             <div class="query-topbar">
@@ -796,6 +803,7 @@
       </div>
       <div id="path-result" style="max-height: 250px; overflow-y: auto; padding: 10px 0; margin-top: 10px;"></div>
       <div class="modal-actions">
+        <button id="path-modal-clear" class="ghost hidden" style="color:#e5534b;">❌ Azzera Cammino</button>
         <button id="path-modal-close" class="ghost">Chiudi</button>
         <button id="path-modal-calc" class="primary">🔍 Trova Cammino & Evidenzia 3D</button>
       </div>

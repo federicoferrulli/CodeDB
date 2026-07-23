@@ -13,6 +13,43 @@ let hideEmptyTables = false;
 let currentSearchQuery = '';
 let activeShortestPath = null; // Set di nodi del cammino minimo
 
+function updatePathUI() {
+  const clearBtn = $('#graph3d-clear-path');
+  const findBtn = $('#graph3d-find-path');
+  const badge = $('#graph3d-path-badge');
+  const badgeText = $('#graph3d-path-badge-text');
+  const modalClearBtn = $('#path-modal-clear');
+
+  if (activeShortestPath && activeShortestPath.nodes && activeShortestPath.nodes.length > 0) {
+    if (clearBtn) clearBtn.classList.remove('hidden');
+    if (findBtn) findBtn.classList.add('active');
+    if (modalClearBtn) modalClearBtn.classList.remove('hidden');
+    if (badge) {
+      badge.classList.remove('hidden');
+      if (badgeText) {
+        badgeText.innerHTML = `🔗 Cammino (${activeShortestPath.nodes.length - 1} passaggi): ` +
+          activeShortestPath.nodes.map((n) => `<b style="color:#00e676;">${esc(n)}</b>`).join(' → ');
+      }
+    }
+  } else {
+    if (clearBtn) clearBtn.classList.add('hidden');
+    if (findBtn) findBtn.classList.remove('active');
+    if (modalClearBtn) modalClearBtn.classList.add('hidden');
+    if (badge) badge.classList.add('hidden');
+  }
+}
+
+export function clearShortestPath(silent = false) {
+  activeShortestPath = null;
+  const resDiv = $('#path-result');
+  if (resDiv) resDiv.innerHTML = '';
+  updatePathUI();
+  renderGraph3d();
+  if (!silent) {
+    notify('Evidenziazione cammino rimossa.');
+  }
+}
+
 const SCHEMA_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minuti
 
 export function loadGraph3d(force) {
@@ -73,6 +110,7 @@ export function renderGraph3d() {
   }
 
   currentSchemaData = schema;
+  updatePathUI();
   canvas.innerHTML = '';
 
   const colorMode = ($('#graph3d-color-mode') && $('#graph3d-color-mode').value) || 'prefix';
@@ -964,7 +1002,10 @@ export function initGraph3d() {
           toSel.selectedIndex = 1;
         }
       }
-      $('#path-result').innerHTML = '';
+      if (!activeShortestPath) {
+        $('#path-result').innerHTML = '';
+      }
+      updatePathUI();
       $('#path-modal').classList.remove('hidden');
     });
   }
@@ -986,6 +1027,7 @@ export function initGraph3d() {
       if (!res) {
         activeShortestPath = null;
         if (resDiv) resDiv.innerHTML = `<div style="color:#e5534b;">Nessun cammino trovato tra <b>${esc(start)}</b> e <b>${esc(end)}</b>.</div>`;
+        updatePathUI();
         renderGraph3d();
       } else {
         activeShortestPath = res;
@@ -998,15 +1040,34 @@ export function initGraph3d() {
           </div>`;
         }
         $('#path-modal').classList.add('hidden');
+        updatePathUI();
         renderGraph3d();
         notify(`Cammino tra "${start}" e "${end}" evidenziato in verde nel 3D!`);
       }
     });
   }
 
+  const pathModalClearBtn = $('#path-modal-clear');
+  if (pathModalClearBtn) {
+    pathModalClearBtn.addEventListener('click', () => {
+      clearShortestPath();
+      $('#path-modal').classList.add('hidden');
+    });
+  }
+
   const pathCloseBtn = $('#path-modal-close');
   if (pathCloseBtn) {
     pathCloseBtn.addEventListener('click', () => $('#path-modal').classList.add('hidden'));
+  }
+
+  const graphClearPathBtn = $('#graph3d-clear-path');
+  if (graphClearPathBtn) {
+    graphClearPathBtn.addEventListener('click', () => clearShortestPath());
+  }
+
+  const badgeClearBtn = $('#graph3d-path-badge-clear');
+  if (badgeClearBtn) {
+    badgeClearBtn.addEventListener('click', () => clearShortestPath());
   }
 
   // 3. Matrice Dipendenze Trigger
@@ -1145,7 +1206,7 @@ export function initGraph3d() {
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       selectedNodeId = null;
-      activeShortestPath = null;
+      clearShortestPath(true);
       if (graphInstance) {
         graphInstance.zoomToFit(1000, 50);
         graphInstance.nodeColor(graphInstance.nodeColor()).linkWidth(graphInstance.linkWidth());
