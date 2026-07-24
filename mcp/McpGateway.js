@@ -35,7 +35,9 @@ const { notifySlack } = require('../backup/lib/notify');
 const MCP_PATH = '/mcp';
 // Radice dei backup creati via MCP: la stessa della CLI (backup/cli.js),
 // così catalogo e catene incrementali sono condivisi tra i due canali.
-const BACKUP_ROOT = path.join(__dirname, '..', 'backups');
+// CODEDB_BACKUPS_DIR: override usato dall'app Electron pacchettizzata, la cui
+// cartella di installazione è di sola lettura (vedi electron-main.js).
+const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups');
 const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
 const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -122,7 +124,7 @@ function assertReadOnlyPipeline(pipelineText) {
  * mcp-audit.log nella root del progetto (file in .gitignore).
  * ------------------------------------------------------------------------- */
 
-const AUDIT_FILE = path.join(__dirname, '..', 'mcp-audit.log');
+const AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log');
 const AUDIT_MAX_BYTES = 5 * 1024 * 1024; // oltre, si ruota un file .1 per non crescere indefinitamente
 
 function audit(entry) {

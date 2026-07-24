@@ -10,4 +10,6 @@ codedb.log
 codedb.err.log
 # Backup dei database creati da backup/cli.js (dati + log delle operazioni).
 backups/
+# Output di electron-builder (npm run dist:*): eseguibili/installer generati.
+dist/
 .agents

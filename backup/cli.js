@@ -20,7 +20,9 @@ const { parseStorage, uploadBackupDir } = require('./lib/storage');
 const { notifySlack } = require('./lib/notify');
 const { readCatalog, readManifest, sha256File, formatBytes } = require('./lib/util');
 
-const DEFAULT_DEST = path.join(__dirname, '..', 'backups');
+// CODEDB_BACKUPS_DIR: stesso override rispettato dal gateway MCP (mcp/McpGateway.js),
+// così CLI e MCP condividono la cartella di default anche nell'app Electron pacchettizzata.
+const DEFAULT_DEST = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups');
 
 const HELP = `
 codedb-backup — backup e ripristino dei database CodeDB (MongoDB e MySQL)
