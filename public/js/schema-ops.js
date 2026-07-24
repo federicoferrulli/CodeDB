@@ -86,9 +86,10 @@ function addColRow(values = {}) {
   del.title = 'Rimuovi colonna';
   del.addEventListener('click', () => tr.remove());
 
+  const typeListId = state.dbType === 'postgresql' ? 'postgres-types' : 'mysql-types';
   tr.append(
     cell(text('col-name', values.name, 'nome')),
-    cell(text('col-type', values.type, 'es. VARCHAR(255)', 'mysql-types')),
+    cell(text('col-type', values.type, 'es. VARCHAR(255)', typeListId)),
     cell(check('col-null', values.nullable !== false)),
     cell(text('col-default', values.default, '')),
     cell(check('col-ai', values.autoIncrement)),
@@ -169,6 +170,8 @@ export function openColumnModal(field) {
     ? '(nessuno; testo, numero o CURRENT_TIMESTAMP)'
     : '(vuoto = null; testo, numero o EJSON come {"$date": "..."})';
 
+  const typeListId = state.dbType === 'postgresql' ? 'postgres-types' : 'mysql-types';
+  $('#coledit-type').setAttribute('list', typeListId);
   $('#coledit-type').value = field && isSql ? field.types[0] : '';
   $('#coledit-bsontype').value = '';
   $('#coledit-null').checked = field ? !!field.nullable : true;

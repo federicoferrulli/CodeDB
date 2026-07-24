@@ -722,7 +722,15 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const targetName = newName || oldName;
     if (type) {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type}`);
+      try {
+        await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type}`);
+      } catch (err) {
+        if (/cannot be cast automatically/i.test(err.message || '')) {
+          await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type} USING ${qid(targetName)}::${type}`);
+        } else {
+          throw err;
+        }
+      }
     }
     if (col.nullable === false) {
       await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} SET NOT NULL`);
