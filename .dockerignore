@@ -9,3 +9,4 @@ connections.ini
 connections.ini.bak*
 codedb.log
 codedb.err.log
+.env
