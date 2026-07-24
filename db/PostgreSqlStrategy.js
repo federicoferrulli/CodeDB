@@ -637,6 +637,9 @@ class PostgreSqlStrategy extends DbStrategy {
     };
   }
 
+  // payload.upsert: se true, le righe che riportano tutte le colonne della
+  // PK vengono inserite con ON CONFLICT ... DO UPDATE (usato dal restore per
+  // i layer incrementali/differenziali, dove una riga può già esistere).
   async collectionImport(db, coll, payload) {
     const pool = this.requirePool();
     const raw = Array.isArray(payload.docs) ? payload.docs : [];
@@ -644,6 +647,8 @@ class PostgreSqlStrategy extends DbStrategy {
     const table = qtable(db, coll);
     let inserted = 0;
     const errors = [];
+
+    const pk = payload.upsert ? await this.primaryKey(db, coll) : [];
 
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
@@ -664,7 +669,14 @@ class PostgreSqlStrategy extends DbStrategy {
     for (const p of parsed) {
       try {
         const placeholders = p.cols.map((_, idx) => `$${idx + 1}`).join(', ');
-        const sql = `INSERT INTO ${table} (${p.cols.map(qid).join(', ')}) VALUES (${placeholders})`;
+        let sql = `INSERT INTO ${table} (${p.cols.map(qid).join(', ')}) VALUES (${placeholders})`;
+        if (pk.length && pk.every((c) => p.cols.includes(c))) {
+          const updateCols = p.cols.filter((c) => !pk.includes(c));
+          sql += ` ON CONFLICT (${pk.map(qid).join(', ')})`;
+          sql += updateCols.length
+            ? ` DO UPDATE SET ${updateCols.map((c) => `${qid(c)} = EXCLUDED.${qid(c)}`).join(', ')}`
+            : ' DO NOTHING';
+        }
         await pool.query(sql, p.values);
         inserted += 1;
       } catch (err) {

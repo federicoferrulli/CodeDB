@@ -5,7 +5,8 @@
  * differenziale la catena viene risolta automaticamente risalendo i baseId
  * tra le cartelle sorelle (full → ... → backup richiesto) e i layer vengono
  * applicati in ordine: il primo con INSERT, i successivi come upsert
- * (replaceOne upsert su MongoDB, REPLACE INTO su MySQL).
+ * (replaceOne upsert su MongoDB, REPLACE INTO su MySQL, INSERT ... ON
+ * CONFLICT DO UPDATE su PostgreSQL).
  *
  * Restore selettivo: --collections limita il ripristino alle collection o
  * tabelle indicate. Le cancellazioni avvenute tra un layer e l'altro non sono
@@ -194,9 +195,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       lines.push(line);
     }
     if (lines.length) {
-      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: lines });
+      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: lines, upsert: !isFirst });
       total += imp.inserted;
-      log.info(`  ${f.collection}: ${imp.inserted} righe applicate (layer ${layer.manifest.id}).`);
+      log.info(`  ${f.collection}: ${imp.inserted} righe applicate (layer ${layer.manifest.id}, ${isFirst ? 'INSERT' : 'UPSERT'}).`);
     }
   }
   return total;

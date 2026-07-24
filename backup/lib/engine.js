@@ -18,9 +18,10 @@
  *
  * Le modifiche sono individuate da un campo data (--since-field, es.
  * updatedAt); senza campo: MongoDB usa il timestamp degli ObjectId (cattura
- * solo i nuovi inserimenti), MySQL cerca colonne canoniche (updated_at, ...)
- * e in mancanza esegue il dump completo della tabella. Le cancellazioni non
- * vengono mai catturate dai backup incrementali/differenziali.
+ * solo i nuovi inserimenti), MySQL e PostgreSQL cercano colonne canoniche
+ * (updated_at, ...) e in mancanza eseguono il dump completo della tabella.
+ * Le cancellazioni non vengono mai catturate dai backup incrementali/
+ * differenziali.
  * ------------------------------------------------------------------------- */
 
 const fs = require('fs');
@@ -32,7 +33,7 @@ const {
 } = require('./util');
 
 const TOOL_VERSION = 1;
-const MYSQL_SINCE_CANDIDATES = [
+const SINCE_COLUMN_CANDIDATES = [
   'updated_at', 'updatedAt', 'modified_at', 'last_modified', 'last_updated', 'created_at', 'createdAt',
 ];
 
@@ -111,7 +112,7 @@ async function mysqlSinceColumn(conn, db, table, sinceField) {
     cols.filter((c) => ['timestamp', 'datetime', 'date'].includes(String(c.dtype).toLowerCase())).map((c) => c.name)
   );
   if (sinceField) return dateCols.has(sinceField) ? sinceField : null;
-  return MYSQL_SINCE_CANDIDATES.find((c) => dateCols.has(c)) || null;
+  return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
 }
 
 async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
@@ -169,9 +170,33 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
   return { files, notes };
 }
 
-async function dumpPostgreSql({ strategy, db, collections, backupDir, compress, level, log }) {
+function pgQid(name) {
+  return '"' + String(name).replace(/"/g, '""') + '"';
+}
+
+// Sceglie la colonna data per l'incrementale della tabella: quella esplicita
+// (--since-field, se esiste) oppure la prima tra le candidate canoniche.
+async function pgSinceColumn(pool, table, sinceField) {
+  const res = await pool.query(
+    `SELECT column_name AS name, data_type AS dtype FROM information_schema.columns
+      WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1`,
+    [table]
+  );
+  const dateCols = new Set(
+    res.rows
+      .filter((c) => ['timestamp without time zone', 'timestamp with time zone', 'date'].includes(String(c.dtype).toLowerCase()))
+      .map((c) => c.name)
+  );
+  if (sinceField) return dateCols.has(sinceField) ? sinceField : null;
+  return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
+}
+
+async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
+  const pool = strategy.pool;
   const files = [];
   const notes = [];
+  const BATCH = 1000;
+
   for (const table of collections) {
     const ddl = await strategy.tableDdl(db, table);
     if (ddl) {
@@ -181,27 +206,80 @@ async function dumpPostgreSql({ strategy, db, collections, backupDir, compress, 
       files.push({ path: relSchema, collection: table, kind: 'schema' });
     }
 
+    let mode = 'full';
+    let sinceColumn = null;
+    let sinceParam = null;
+    if (since) {
+      sinceColumn = await pgSinceColumn(pool, table, sinceField);
+      if (sinceColumn) {
+        mode = 'incremental';
+        sinceParam = new Date(since);
+      } else {
+        notes.push(`"${table}": nessuna colonna data utilizzabile — inclusa per intero nel backup incrementale.`);
+      }
+    }
+
+    const pk = await strategy.primaryKey(db, table);
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
-    let after = null;
-    let skip = 0;
-    for (;;) {
-      const exp = await strategy.collectionExport(db, table, { format: 'json', limit: 1000, after, skip });
-      for (const line of exp.lines) {
-        await sink.writeLine(line);
-        count += 1;
+
+    if (pk.length) {
+      const pkCols = pk.map(pgQid).join(', ');
+      let after = null;
+      for (;;) {
+        const conds = [];
+        const params = [];
+        if (sinceParam) {
+          conds.push(`${pgQid(sinceColumn)} > $${params.length + 1}`);
+          params.push(sinceParam);
+        }
+        if (after) {
+          conds.push(`(${pkCols}) > (${pk.map((_, i) => `$${params.length + i + 1}`).join(', ')})`);
+          params.push(...after);
+        }
+        const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+        params.push(BATCH);
+        const res = await pool.query(
+          `SELECT * FROM ${pgQid(table)}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
+          params
+        );
+        if (!res.rows.length) break;
+        for (const row of res.rows) {
+          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          count += 1;
+        }
+        after = pk.map((c) => res.rows[res.rows.length - 1][c]);
+        if (res.rows.length < BATCH) break;
       }
-      if (!exp.lines.length) break;
-      if (exp.nextAfter) {
-        after = exp.nextAfter;
-      } else {
-        skip += exp.lines.length;
+    } else {
+      // Nessuna PK: paginazione per OFFSET (tabelle senza chiave, presumibilmente piccole).
+      let offset = 0;
+      for (;;) {
+        const conds = [];
+        const params = [];
+        if (sinceParam) {
+          conds.push(`${pgQid(sinceColumn)} > $1`);
+          params.push(sinceParam);
+        }
+        const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+        params.push(BATCH, offset);
+        const res = await pool.query(
+          `SELECT * FROM ${pgQid(table)}${where} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          params
+        );
+        if (!res.rows.length) break;
+        for (const row of res.rows) {
+          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          count += 1;
+        }
+        offset += res.rows.length;
+        if (res.rows.length < BATCH) break;
       }
     }
 
     const { bytes, sha256 } = await sink.close();
-    files.push({ path: rel, collection: table, kind: 'data', mode: 'full', count, bytes, sha256 });
+    files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
     log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
   }
   return { files, notes };

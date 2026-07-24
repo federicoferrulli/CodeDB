@@ -26,6 +26,7 @@ const { McpServer, ResourceTemplate } = require('@modelcontextprotocol/sdk/serve
 const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
+const DbFactory = require('../db/DbFactory');
 const { runBackup } = require('../backup/lib/engine');
 const { runRestore, resolveChain } = require('../backup/lib/restore');
 const { createLogger } = require('../backup/lib/logger');
@@ -525,7 +526,7 @@ function buildMcpServer(session, deps) {
   tool('list_saved_connections', {
     title: 'Connessioni salvate',
     description:
-      'Elenca le connessioni salvate in connections.ini: nome, tipo di database (mongodb o mysql), ' +
+      'Elenca le connessioni salvate in connections.ini: nome, tipo di database (mongodb, mysql o postgresql), ' +
       'etichetta host e cartella. Le credenziali non vengono mai esposte. ' +
       'Usa il nome restituito come parametro "saved" di connect_database.',
     inputSchema: {},
@@ -547,7 +548,7 @@ function buildMcpServer(session, deps) {
     title: 'Apri connessione',
     description:
       'Apre una connessione a una delle connessioni salvate (indicata per nome) e restituisce il ' +
-      'connection_id da usare nelle altre chiamate, il dbType (mongodb o mysql) e l\'elenco dei database. ' +
+      'connection_id da usare nelle altre chiamate, il dbType (mongodb, mysql o postgresql) e l\'elenco dei database. ' +
       'Le credenziali e gli eventuali tunnel SSH restano gestiti dal server.',
     inputSchema: {
       saved: z.string().describe('Nome della connessione salvata (vedi list_saved_connections)'),
@@ -639,11 +640,11 @@ function buildMcpServer(session, deps) {
       'Esegue una query di sola lettura e restituisce { docs, columns, total, skip, limit } ' +
       '(documenti/righe in Extended JSON: ObjectId = {"$oid": ...}, date = {"$date": ...}). ' +
       'Su MongoDB usa "collection" con "filter"/"sort"/"projection" (find) oppure "pipeline" (aggregazione, senza $out/$merge). ' +
-      'Su MySQL usa solo "sql" con uno statement SELECT/SHOW/DESCRIBE/EXPLAIN/WITH, eseguito in una transazione READ ONLY. ' +
+      'Su MySQL/PostgreSQL usa solo "sql" con uno statement SELECT/SHOW/DESCRIBE/EXPLAIN/WITH, eseguito in una transazione READ ONLY. ' +
       'Mantieni "limit" basso e usa "projection" o SELECT mirate per non sprecare contesto.',
     inputSchema: {
       connection_id: z.string(),
-      db: z.string().describe('Database (MySQL: schema) su cui eseguire la query'),
+      db: z.string().describe('Database (MySQL/PostgreSQL: schema) su cui eseguire la query'),
       collection: z.string().optional().describe('Solo MongoDB: collection su cui eseguire find o pipeline'),
       filter: z.string().optional().describe('Solo MongoDB: filtro find in Extended JSON, es. {"age":{"$gt":30}} o {"_id":{"$oid":"..."}}'),
       sort: z.string().optional().describe('Solo MongoDB: ordinamento in Extended JSON, es. {"age":-1}'),
@@ -651,7 +652,7 @@ function buildMcpServer(session, deps) {
       skip: z.coerce.number().int().min(0).optional().describe('Solo MongoDB find: offset per la paginazione (default 0)'),
       limit: z.coerce.number().int().min(1).max(500).optional().describe('Solo MongoDB find: numero massimo di documenti (default 50, max 500)'),
       pipeline: z.string().optional().describe('Solo MongoDB: pipeline di aggregazione in Extended JSON (array di stage); $out e $merge sono vietati'),
-      sql: z.string().optional().describe('Solo MySQL: query SQL di sola lettura (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN); includi una LIMIT'),
+      sql: z.string().optional().describe('Solo MySQL/PostgreSQL: query SQL di sola lettura (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN); includi una LIMIT'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async (args) => {
@@ -659,15 +660,15 @@ function buildMcpServer(session, deps) {
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
 
-    if (sess.dbType === 'mysql') {
+    if (DbFactory.isSqlType(sess.dbType)) {
       const sql = String(args.sql || '').trim();
-      if (!sql) throw new Error('Per MySQL usa il parametro "sql" con una query di sola lettura (gli altri parametri valgono solo per MongoDB).');
+      if (!sql) throw new Error('Per MySQL/PostgreSQL usa il parametro "sql" con una query di sola lettura (gli altri parametri valgono solo per MongoDB).');
       assertReadOnlySql(sql);
       return jsonResult(await sess.strategy.collectionAggregate(db, null, { pipeline: sql, readOnly: true }));
     }
 
     if (args.sql && String(args.sql).trim()) {
-      throw new Error('Il parametro "sql" vale solo per MySQL: su MongoDB usa "filter" (find) oppure "pipeline" (aggregazione).');
+      throw new Error('Il parametro "sql" vale solo per MySQL/PostgreSQL: su MongoDB usa "filter" (find) oppure "pipeline" (aggregazione).');
     }
     const coll = String(args.collection || '').trim();
     if (!coll) throw new Error('Parametro "collection" mancante.');
@@ -865,17 +866,17 @@ function buildMcpServer(session, deps) {
         exec: async () => { await sess.strategy.dropDatabase(db); return { dropped: db }; },
       };
     }
-    if (sess.dbType === 'mysql') {
+    if (DbFactory.isSqlType(sess.dbType)) {
       const sql = String(args.sql || '').trim();
-      if (!sql) throw new Error('Per MySQL usa il parametro "sql" con uno statement INSERT/UPDATE/DELETE/REPLACE.');
+      if (!sql) throw new Error('Per MySQL/PostgreSQL usa il parametro "sql" con uno statement INSERT/UPDATE/DELETE (REPLACE solo MySQL).');
       assertWriteSql(sql);
       return {
-        summary: { dbType: 'mysql', db, sql },
+        summary: { dbType: sess.dbType, db, sql },
         exec: () => sess.strategy.collectionAggregate(db, null, { pipeline: sql }),
       };
     }
     if (args.sql && String(args.sql).trim()) {
-      throw new Error('Il parametro "sql" vale solo per MySQL: su MongoDB usa "operation" con "doc"/"filter"/"set".');
+      throw new Error('Il parametro "sql" vale solo per MySQL/PostgreSQL: su MongoDB usa "operation" con "doc"/"filter"/"set".');
     }
     const coll = String(args.collection || '').trim();
     if (!coll) throw new Error('Parametro "collection" mancante.');
@@ -914,19 +915,19 @@ function buildMcpServer(session, deps) {
       'Mostra l\'anteprima all\'utente umano e chiedi la sua approvazione esplicita: solo dopo richiama con confirm_token. ' +
       'NON confermare mai di tua iniziativa. Il token scade dopo 5 minuti ed è monouso. ' +
       'MongoDB: "operation" (insert|update|delete) con "doc" (insert) o "filter"+"set" (update) o "filter" (delete), in Extended JSON; ' +
-      'filtri vuoti rifiutati. MySQL: "sql" con INSERT/UPDATE/DELETE/REPLACE; UPDATE/DELETE richiedono WHERE. ' +
-      'Su entrambi i dbType "operation" ammette anche "drop_collection" (elimina la collection/tabella indicata) e ' +
+      'filtri vuoti rifiutati. MySQL/PostgreSQL: "sql" con INSERT/UPDATE/DELETE (MySQL anche REPLACE); UPDATE/DELETE richiedono WHERE. ' +
+      'Su tutti i dbType "operation" ammette anche "drop_collection" (elimina la collection/tabella indicata) e ' +
       '"drop_database" (elimina l\'intero database "db"); i db di sistema sono protetti. Nessun altro DDL è ammesso. ' +
       'Ogni richiesta ed esecuzione viene registrata in un audit log sul server.',
     inputSchema: {
       connection_id: z.string(),
-      db: z.string().describe('Database (MySQL: schema) su cui operare'),
+      db: z.string().describe('Database (MySQL/PostgreSQL: schema) su cui operare'),
       collection: z.string().optional().describe('Collection/tabella su cui operare (per MongoDB e per drop_collection)'),
-      operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']).optional().describe('Tipo di scrittura: insert/update/delete solo MongoDB; drop_collection e drop_database per entrambi i dbType'),
+      operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']).optional().describe('Tipo di scrittura: insert/update/delete solo MongoDB; drop_collection e drop_database per tutti i dbType'),
       doc: z.string().optional().describe('Solo MongoDB insert: documento in Extended JSON'),
       filter: z.string().optional().describe('Solo MongoDB update/delete: filtro esplicito in Extended JSON (mai vuoto)'),
       set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
-      sql: z.string().optional().describe('Solo MySQL: statement INSERT/UPDATE/DELETE/REPLACE (UPDATE/DELETE con WHERE)'),
+      sql: z.string().optional().describe('Solo MySQL/PostgreSQL: statement INSERT/UPDATE/DELETE (REPLACE solo MySQL); UPDATE/DELETE con WHERE'),
       confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
