@@ -2,10 +2,20 @@
 
 const MongoDbStrategy = require('./MongoDbStrategy');
 const MySqlStrategy = require('./MySqlStrategy');
+const PostgreSqlStrategy = require('./PostgreSqlStrategy');
 
 const STRATEGIES = {
   mongodb: MongoDbStrategy,
   mysql: MySqlStrategy,
+  postgresql: PostgreSqlStrategy,
+  postgres: PostgreSqlStrategy,
+};
+
+const DEFAULT_PORTS = {
+  mongodb: 27017,
+  mysql: 3306,
+  postgresql: 5432,
+  postgres: 5432,
 };
 
 // Istanzia la strategia per il tipo di database richiesto.
@@ -18,4 +28,19 @@ function getStrategy(dbType) {
   return new Strategy();
 }
 
-module.exports = { getStrategy, SUPPORTED_TYPES: Object.keys(STRATEGIES) };
+function defaultPort(dbType) {
+  const key = String(dbType || 'mongodb').trim().toLowerCase();
+  return DEFAULT_PORTS[key] || 27017;
+}
+
+function isSqlType(dbType) {
+  const key = String(dbType || '').trim().toLowerCase();
+  return key === 'mysql' || key === 'postgresql' || key === 'postgres';
+}
+
+module.exports = {
+  getStrategy,
+  defaultPort,
+  isSqlType,
+  SUPPORTED_TYPES: Object.keys(STRATEGIES),
+};

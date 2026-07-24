@@ -175,6 +175,33 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
   return total;
 }
 
+async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log }) {
+  const dataFiles = layer.manifest.files.filter(
+    (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
+  );
+  let total = 0;
+  for (const f of dataFiles) {
+    if (isFirst) {
+      if (drop) await strategy.dropCollection(targetDb, f.collection).catch(() => {});
+      const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
+      if (schemaFile) {
+        const sql = fs.readFileSync(path.join(layer.dir, schemaFile.path), 'utf8');
+        await strategy.collectionAggregate(targetDb, f.collection, { pipeline: sql }).catch(() => {});
+      }
+    }
+    const lines = [];
+    for await (const line of readLines(path.join(layer.dir, f.path))) {
+      lines.push(line);
+    }
+    if (lines.length) {
+      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: lines });
+      total += imp.inserted;
+      log.info(`  ${f.collection}: ${imp.inserted} righe applicate (layer ${layer.manifest.id}).`);
+    }
+  }
+  return total;
+}
+
 /* --- Restore completo ----------------------------------------------------- */
 
 async function runRestore({ session, backupDir, targetDb, onlyCollections, drop, log }) {
@@ -198,7 +225,11 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   let total = 0;
   for (let i = 0; i < chain.length; i++) {
     const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log };
-    total += dbType === 'mysql' ? await restoreLayerMySql(args) : await restoreLayerMongo(args);
+    total += dbType === 'mysql'
+      ? await restoreLayerMySql(args)
+      : (dbType === 'postgresql' || dbType === 'postgres')
+        ? await restoreLayerPostgreSql(args)
+        : await restoreLayerMongo(args);
   }
   return { targetDb: db, layers: chain.length, totalDocs: total };
 }

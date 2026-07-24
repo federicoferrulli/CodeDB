@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $ } from './utils.js';
+import { $, isSqlType } from './utils.js';
 
 const SQL_KEYWORDS = [
   'SELECT', 'FROM', 'WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT',
@@ -20,9 +20,9 @@ const MONGO_KEYWORDS = [
 ];
 
 function keywordsFor() {
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   const aggregate = $('#query-mode').value === 'aggregate';
-  if (isMysql) return aggregate ? SQL_KEYWORDS : SQL_WHERE_KEYWORDS;
+  if (isSql) return aggregate ? SQL_KEYWORDS : SQL_WHERE_KEYWORDS;
   return MONGO_KEYWORDS;
 }
 

@@ -117,7 +117,7 @@ function renderPanel() {
     return;
   }
 
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   for (const entry of entries) {
     const item = document.createElement('div');
     item.className = 'query-history-item';
@@ -127,7 +127,7 @@ function renderPanel() {
     top.className = 'query-history-item-top';
     const mode = document.createElement('span');
     mode.className = 'query-history-mode';
-    mode.textContent = entry.mode === 'aggregate' ? (isMysql ? 'SQL' : 'aggregate') : 'find';
+    mode.textContent = entry.mode === 'aggregate' ? (isSql ? 'SQL' : 'aggregate') : 'find';
     const ts = document.createElement('span');
     ts.className = 'query-history-ts';
     ts.textContent = fmtTs(entry.ts);

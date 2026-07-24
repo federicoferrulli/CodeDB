@@ -1,12 +1,12 @@
 import { state } from './state.js';
-import { $, emit, showContextMenu, toast } from './utils.js';
+import { $, emit, showContextMenu, toast, isSqlType } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
 import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
 
 export function collWord(capital) {
-  const w = state.dbType === 'mysql' ? 'tabella' : 'collection';
+  const w = isSqlType(state.dbType) ? 'tabella' : 'collection';
   return capital ? w[0].toUpperCase() + w.slice(1) : w;
 }
 

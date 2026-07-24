@@ -25,11 +25,16 @@ class VirtualJoinEngine {
       throw new Error('Definizione Virtual Join incompleta: specificare sourceA, sourceB, on.leftKey e on.rightKey.');
     }
 
+    const isSql = (type) => ['mysql', 'postgresql', 'postgres'].includes(String(type).toLowerCase());
+    const qid = (type, name) => isSql(type) && (type.includes('postgres')) ? `"${name}"` : `\`${name}\``;
+
     // Fetching dati Sorgente A (SQL o MongoDB)
     let rowsA = [];
-    if (sourceA.dbType === 'mysql' || strategyA.type === 'mysql') {
-      const sql = sourceA.query || `SELECT * FROM \`${sourceA.table}\` LIMIT ${maxPayloadSize}`;
-      const resA = await strategyA.collectionAggregate(sourceA.db, sourceA.table, { pipeline: sql });
+    const typeA = sourceA.dbType || strategyA.type;
+    if (isSql(typeA)) {
+      const tableName = sourceA.table || sourceA.collection;
+      const sql = sourceA.query || `SELECT * FROM ${qid(typeA, tableName)} LIMIT ${maxPayloadSize}`;
+      const resA = await strategyA.collectionAggregate(sourceA.db, tableName, { pipeline: sql });
       rowsA = resA.docs || [];
     } else {
       const pipelineStr = typeof sourceA.query === 'string' ? sourceA.query : JSON.stringify(sourceA.query || []);
@@ -53,8 +58,9 @@ class VirtualJoinEngine {
     // Fetching dati Sorgente B
     let rowsB = [];
     const keysArray = Array.from(joinKeys);
+    const typeB = sourceB.dbType || strategyB.type;
 
-    if (sourceB.dbType === 'mongodb' || strategyB.type === 'mongodb') {
+    if (!isSql(typeB)) {
       // Per MongoDB: pipeline $match $in
       const oidsOrKeys = keysArray.map((k) => {
         if (/^[0-9a-fA-F]{24}$/.test(k)) {
@@ -69,10 +75,11 @@ class VirtualJoinEngine {
       const resB = await strategyB.collectionAggregate(sourceB.db, sourceB.collection, { pipeline: JSON.stringify(matchPipeline) });
       rowsB = resB.docs || [];
     } else {
-      // Per MySQL: WHERE rightKey IN (...)
-      const escapedKeys = keysArray.map((k) => `'${String(k).replace(/'/g, "\\'")}'`).join(',');
-      const sql = `SELECT * FROM \`${sourceB.table}\` WHERE \`${on.rightKey}\` IN (${escapedKeys}) LIMIT ${maxPayloadSize}`;
-      const resB = await strategyB.collectionAggregate(sourceB.db, sourceB.table, { pipeline: sql });
+      // Per SQL (MySQL / PostgreSQL): WHERE rightKey IN (...)
+      const tableName = sourceB.table || sourceB.collection;
+      const escapedKeys = keysArray.map((k) => `'${String(k).replace(/'/g, "''")}'`).join(',');
+      const sql = `SELECT * FROM ${qid(typeB, tableName)} WHERE ${qid(typeB, on.rightKey)} IN (${escapedKeys}) LIMIT ${maxPayloadSize}`;
+      const resB = await strategyB.collectionAggregate(sourceB.db, tableName, { pipeline: sql });
       rowsB = resB.docs || [];
     }
 

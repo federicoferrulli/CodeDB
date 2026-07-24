@@ -7,7 +7,7 @@
 
 Un clone web di DBeaver **multi-database**: esplora database e collection/tabelle,
 visualizza i documenti/righe come una tabella, esegui query, modifica i dati.
-Supporta **MongoDB** e **MySQL** tramite uno **Strategy Pattern**.
+Supporta **MongoDB**, **MySQL** e **PostgreSQL** tramite uno **Strategy Pattern**.
 Tutta la comunicazione tra browser e backend avviene tramite **Socket.IO**.
 
 
@@ -16,6 +16,7 @@ Tutta la comunicazione tra browser e backend avviene tramite **Socket.IO**.
 - **Backend:** Node.js, Express, Socket.IO
   - MongoDB: driver nativo `mongodb` + `bson` (EJSON)
   - MySQL: `mysql2` (pool)
+  - PostgreSQL: `pg` (pool)
   - Tunnel SSH opzionale via `ssh2`
 - **Frontend:** HTML/CSS/JS vanilla (nessun framework, nessuna build)
 
@@ -28,7 +29,7 @@ npm start          # oppure: npm run dev (riavvio automatico)
 
 Apri <http://localhost:3030> (porta configurabile con la variabile `PORT`):
 comparirà la schermata di connessione. Nel form scegli il **tipo di database**
-(MongoDB o MySQL) e inserisci host/porta/credenziali, oppure una connection string
+(MongoDB, MySQL o PostgreSQL) e inserisci host/porta/credenziali, oppure una connection string
 completa (MongoDB).
 
 ### Avvio "desktop" e PWA

@@ -1,12 +1,12 @@
-# Strategy DB - Database Extensibility Plan (MongoDB & MySQL)
+# Strategy DB - Database Extensibility Plan (MongoDB, MySQL & PostgreSQL)
 
-Questo documento definisce la strategia, l'architettura e il piano di implementazione dettagliato per estendere **Mongo Web GUI** in modo da supportare più tipi di database, introducendo inizialmente il supporto a **MySQL** tramite lo **Strategy Pattern**.
+Questo documento definisce la strategia, l'architettura e il piano di implementazione dettagliato per estendere **Mongo Web GUI** in modo da supportare più tipi di database (**MongoDB**, **MySQL** e **PostgreSQL**) tramite lo **Strategy Pattern**.
 
 ---
 
 ## 1. Architettura dello Strategy Pattern
 
-L'obiettivo è separare la logica del server HTTP/Socket.IO da quella specifica del DBMS. Creeremo una cartella `db` contenente le strategie per ciascun database.
+L'obiettivo è separare la logica del server HTTP/Socket.IO da quella specifica del DBMS. La cartella `db` contiene le strategie per ciascun database.
 
 ### Schema delle Classi/Moduli
 
@@ -40,12 +40,20 @@ classDiagram
       +connect(cfg)
       ...
     }
+    class PostgreSqlStrategy {
+      -Pool pool
+      +connect(cfg)
+      ...
+    }
     class DbFactory {
       +getStrategy(dbType) DbStrategy
+      +defaultPort(dbType) number
+      +isSqlType(dbType) boolean
     }
 
     DbStrategy <|-- MongoDbStrategy
     DbStrategy <|-- MySqlStrategy
+    DbStrategy <|-- PostgreSqlStrategy
     DbFactory ..> DbStrategy : creates
 ```
 

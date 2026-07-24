@@ -305,6 +305,8 @@ const DB_EXPORT_FORMAT = 'codedb-database';
 // Esportarli produce viste non ricreabili, importarci sopra è distruttivo.
 const SYSTEM_DBS = {
   mysql: ['information_schema', 'mysql', 'performance_schema', 'sys'],
+  postgresql: ['information_schema', 'pg_catalog', 'postgres', 'template0', 'template1'],
+  postgres: ['information_schema', 'pg_catalog', 'postgres', 'template0', 'template1'],
   mongodb: ['admin', 'config', 'local'],
 };
 
@@ -313,7 +315,7 @@ function isSystemDb(name) {
 }
 
 export async function exportDatabase(db) {
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   if (isSystemDb(db)) {
     toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
     return;

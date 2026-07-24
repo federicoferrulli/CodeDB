@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType } from './utils.js';
 import { runQuery } from './grid.js';
 
 let insertRows = [];
@@ -8,10 +8,10 @@ let insertJsonTouched = false;
 
 export function insertKindOf(typeName) {
   const t = String(typeName || '').toLowerCase();
-  if (state.dbType === 'mysql') {
+  if (isSqlType(state.dbType)) {
     if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
-    if (/^decimal/.test(t)) return 'decimal';
-    if (/int|float|double|year/.test(t)) return 'number';
+    if (/^decimal|^numeric/.test(t)) return 'decimal';
+    if (/int|float|double|year|serial/.test(t)) return 'number';
     if (/^datetime|^timestamp/.test(t)) return 'datetime';
     if (/^date$/.test(t)) return 'date';
     if (/^json/.test(t)) return 'json';
@@ -215,28 +215,28 @@ export function initInsert() {
   });
 
   $('#insert-btn').addEventListener('click', () => {
-    const isMysql = state.dbType === 'mysql';
-    $('#insert-title').textContent = isMysql ? 'Nuova riga' : 'Nuovo documento';
+    const isSql = isSqlType(state.dbType);
+    $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
     $('#insert-json').value = '{\n  \n}';
     insertJsonTouched = false;
     insertRows = [];
     $('#insert-form tbody').innerHTML = '';
     $('#insert-form-empty').classList.add('hidden');
-    $('#insert-addfield').classList.toggle('hidden', isMysql);
+    $('#insert-addfield').classList.toggle('hidden', isSql);
     $('#insert-error').classList.add('hidden');
     selectInsertTab('form');
     openModal('#insert-overlay');
 
     emit('collection:stats', { db: state.db, coll: state.coll }).then((res) => {
       for (const f of res.fields) {
-        if (f.name === '_id' && !isMysql) continue;
+        if (f.name === '_id' && !isSql) continue;
         const mainType = f.types.find((t) => t !== 'null') || 'null';
         addInsertRow({
           name: f.name,
           typeLabel: f.types.join(', '),
           kind: insertKindOf(mainType),
           auto: !!f.autoIncrement,
-          required: isMysql && !f.nullable && f.default == null && !f.autoIncrement,
+          required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
         });
       }
       if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
@@ -268,7 +268,7 @@ export function initInsert() {
       doc: docText,
     }).then(() => {
       closeModal('#insert-overlay');
-      toast(state.dbType === 'mysql' ? 'Riga inserita' : 'Documento inserito');
+      toast(isSqlType(state.dbType) ? 'Riga inserita' : 'Documento inserito');
       runQuery();
     }).catch((err) => {
       const errorEl = $('#insert-error');

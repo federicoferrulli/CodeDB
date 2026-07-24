@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError } from './utils.js';
+import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -7,21 +7,21 @@ import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
 
 export function applyDbTypeToWorkspace() {
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   // Fix per non usare l'indice magico
   const aggOpt = $('#query-mode').querySelector('option[value="aggregate"]');
-  if (aggOpt) aggOpt.textContent = isMysql ? 'SQL Raw' : 'aggregate';
+  if (aggOpt) aggOpt.textContent = isSql ? 'SQL Raw' : 'aggregate';
   
-  $('#uml-hint').innerHTML = isMysql
+  $('#uml-hint').innerHTML = isSql
     ? 'Relazioni dalle <b>foreign key</b> dichiarate, più quelle dedotte dai nomi delle colonne (es. <code>user_id</code> → tabella <code>users</code>).'
     : 'Associazioni dedotte dai nomi dei campi (es. <code>user_id</code> → collection <code>users</code>) e dai tipi ObjectId su un campione di documenti.';
   applyQueryPlaceholders();
 }
 
 export function applyQueryPlaceholders() {
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   const aggregate = $('#query-mode').value === 'aggregate';
-  if (isMysql) {
+  if (isSql) {
     $('#filter-input').placeholder = aggregate
       ? 'Query SQL, es. SELECT city, COUNT(*) AS n FROM users GROUP BY city'
       : 'Clausola WHERE, es. age > 30';
@@ -294,7 +294,7 @@ export function renderGrid() {
 
   const from = state.total === 0 ? 0 : state.skip + 1;
   const to = Math.min(state.skip + state.docs.length, state.skip + state.limit);
-  const docWord = state.dbType === 'mysql' ? 'righe' : 'documenti';
+  const docWord = isSqlType(state.dbType) ? 'righe' : 'documenti';
 
   $('#result-info').textContent = `${state.total} ${docWord} — ${state.docs.length} mostrati`;
   $('#page-info').textContent = `${from}–${Math.min(to, state.total) || state.docs.length}`;
@@ -350,14 +350,14 @@ export function deleteAllWithFilter() {
   if ($('#query-mode').value === 'aggregate') return; // solo in modalità find
   const filter = $('#filter-input').value.trim();
   const total = state.total;
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   if (total === 0) {
-    toast(isMysql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', true);
+    toast(isSql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', true);
     return;
   }
   const msg = filter
-    ? `Eliminare ${isMysql ? `le ${total} righe` : `i ${total} documenti`} con questo filtro? Questa azione non si può annullare.`
-    : `Nessun filtro impostato: eliminare ${isMysql ? `TUTTE le ${total} righe` : `TUTTI i ${total} documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
+    ? `Eliminare ${isSql ? `le ${total} righe` : `i ${total} documenti`} con questo filtro? Questa azione non si può annullare.`
+    : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${total} righe` : `TUTTI i ${total} documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
   if (!confirm(msg)) return;
 
   emit('collection:deleteMany', {

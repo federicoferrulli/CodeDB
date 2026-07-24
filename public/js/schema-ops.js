@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, toast, openModal, closeModal, invalidateSchema, colDone } from './utils.js';
+import { $, emit, toast, openModal, closeModal, invalidateSchema, colDone, isSqlType } from './utils.js';
 import { refreshDbTree, collWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
@@ -9,12 +9,12 @@ let creatingCollDb = null;
 let colEditOldName = null;
 
 export function openCreateDb() {
-  const isMysql = state.dbType === 'mysql';
-  $('#dbcreate-subtitle').textContent = isMysql
-    ? 'In MySQL la prima tabella è facoltativa (verrà creata con una colonna id auto-incrementale).'
+  const isSql = isSqlType(state.dbType);
+  $('#dbcreate-subtitle').textContent = isSql
+    ? 'Nei DB SQL la prima tabella è facoltativa (verrà creata con una colonna id auto-incrementale).'
     : 'In MongoDB un database esiste solo se contiene almeno una collection.';
-  $('#dbcreate-coll-label').textContent = isMysql ? 'Prima tabella' : 'Prima collection';
-  $('#dbcreate-coll').placeholder = isMysql ? '(opzionale)' : 'collection1';
+  $('#dbcreate-coll-label').textContent = isSql ? 'Prima tabella' : 'Prima collection';
+  $('#dbcreate-coll').placeholder = isSql ? '(opzionale)' : 'collection1';
   $('#dbcreate-name').value = '';
   $('#dbcreate-coll').value = '';
   $('#dbcreate-error').classList.add('hidden');
@@ -113,13 +113,13 @@ function readColRows() {
 
 export function openCreateColl(dbName) {
   creatingCollDb = dbName;
-  const isMysql = state.dbType === 'mysql';
-  $('#collcreate-title').textContent = isMysql ? 'Nuova tabella' : 'Nuova collection';
+  const isSql = isSqlType(state.dbType);
+  $('#collcreate-title').textContent = isSql ? 'Nuova tabella' : 'Nuova collection';
   $('#collcreate-subtitle').textContent = `Database: ${dbName}`;
   $('#collcreate-name').value = '';
-  $('#collcreate-schema').classList.toggle('hidden', !isMysql);
+  $('#collcreate-schema').classList.toggle('hidden', !isSql);
   $('#collcreate-cols tbody').innerHTML = '';
-  if (isMysql) addColRow({ name: 'id', type: 'INT UNSIGNED', nullable: false, autoIncrement: true, primaryKey: true });
+  if (isSql) addColRow({ name: 'id', type: 'INT', nullable: false, autoIncrement: true, primaryKey: true });
   $('#collcreate-error').classList.add('hidden');
   openModal('#collcreate-overlay');
   $('#collcreate-name').focus();
@@ -155,21 +155,21 @@ export function dropColl(dbName, collName) {
 }
 
 export function openColumnModal(field) {
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   colEditOldName = field ? field.name : null;
   $('#coledit-title').textContent = field ? `Modifica ${collWord(true)} "${field.name}"` : `Aggiungi ${collWord()}`;
   $('#coledit-name').value = field ? field.name : '';
 
-  $('#coledit-type-row').classList.toggle('hidden', !isMysql);
-  $('#coledit-bsontype-row').classList.toggle('hidden', isMysql || !field);
-  $('#coledit-null-row').classList.toggle('hidden', !isMysql);
-  $('#coledit-default-row').classList.toggle('hidden', !isMysql && !!field);
-  $('#coledit-default-label').textContent = isMysql ? 'Default' : 'Valore iniziale per i documenti esistenti';
-  $('#coledit-default').placeholder = isMysql
+  $('#coledit-type-row').classList.toggle('hidden', !isSql);
+  $('#coledit-bsontype-row').classList.toggle('hidden', isSql || !field);
+  $('#coledit-null-row').classList.toggle('hidden', !isSql);
+  $('#coledit-default-row').classList.toggle('hidden', !isSql && !!field);
+  $('#coledit-default-label').textContent = isSql ? 'Default' : 'Valore iniziale per i documenti esistenti';
+  $('#coledit-default').placeholder = isSql
     ? '(nessuno; testo, numero o CURRENT_TIMESTAMP)'
     : '(vuoto = null; testo, numero o EJSON come {"$date": "..."})';
 
-  $('#coledit-type').value = field && isMysql ? field.types[0] : '';
+  $('#coledit-type').value = field && isSql ? field.types[0] : '';
   $('#coledit-bsontype').value = '';
   $('#coledit-null').checked = field ? !!field.nullable : true;
   $('#coledit-default').value = field && field.default != null ? field.default : '';
@@ -208,10 +208,11 @@ export function initSchemaOps() {
   $('#collcreate-save').addEventListener('click', () => {
     const name = $('#collcreate-name').value.trim();
     const payload = { db: creatingCollDb, name };
-    if (state.dbType === 'mysql') payload.columns = readColRows();
+    const isSql = isSqlType(state.dbType);
+    if (isSql) payload.columns = readColRows();
     emit('collection:create', payload).then(() => {
       closeModal('#collcreate-overlay');
-      toast(`${state.dbType === 'mysql' ? 'Tabella' : 'Collection'} "${name}" creata`);
+      toast(`${isSql ? 'Tabella' : 'Collection'} "${name}" creata`);
       state.expandedDbs.add(creatingCollDb);
       invalidateSchema();
       refreshDbTree();
@@ -235,7 +236,8 @@ export function initSchemaOps() {
     const delBtn = e.target.closest('.col-del');
     if (!delBtn) return;
     const name = delBtn.dataset.name;
-    const msg = state.dbType === 'mysql'
+    const isSql = isSqlType(state.dbType);
+    const msg = isSql
       ? `Eliminare la colonna "${name}" e tutti i suoi dati?\nL'operazione non è reversibile.`
       : `Rimuovere il campo "${name}" da TUTTI i documenti della collection?\nL'operazione non è reversibile.`;
     if (!confirm(msg)) return;
@@ -248,8 +250,8 @@ export function initSchemaOps() {
   });
 
   $('#coledit-save').addEventListener('click', () => {
-    const isMysql = state.dbType === 'mysql';
-    const column = isMysql
+    const isSql = isSqlType(state.dbType);
+    const column = isSql
       ? {
           name: $('#coledit-name').value.trim(),
           type: $('#coledit-type').value.trim(),

@@ -28,10 +28,9 @@ async function establishConnection(cfg) {
       if (cfg.uri && cfg.uri.trim()) {
         throw new Error('Il tunnel SSH è disponibile solo in modalità "Parametri", non con URI completa.');
       }
-      const defaultPort = dbType === 'mysql' ? 3306 : 27017;
       const target = {
         host: (cfg.host || 'localhost').trim(),
-        port: parseInt(cfg.port, 10) || defaultPort,
+        port: parseInt(cfg.port, 10) || DbFactory.defaultPort(dbType),
       };
       tunnel = await openSshTunnel(cfg, target);
       connectCfg = { ...cfg, host: tunnel.host, port: String(tunnel.port) };

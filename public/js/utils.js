@@ -256,5 +256,11 @@ export function colDone(verb) {
 }
 
 export function dbTypeIcon(dbType) {
-  return dbType === 'mysql' ? '🐬' : '🍃';
+  if (dbType === 'postgresql' || dbType === 'postgres') return '🐘';
+  if (dbType === 'mysql') return '🐬';
+  return '🍃';
+}
+
+export function isSqlType(dbType) {
+  return dbType === 'mysql' || dbType === 'postgresql' || dbType === 'postgres';
 }

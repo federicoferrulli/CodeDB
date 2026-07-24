@@ -19,29 +19,36 @@ function selectConnTab(name) {
 
 export function syncConnForm() {
   const form = $('#connect-form');
-  const isMysql = form.elements.dbType.value === 'mysql';
+  const type = form.elements.dbType.value;
+  const isSql = type === 'mysql' || type === 'postgresql' || type === 'postgres';
   const sshOn = form.elements.ssh.checked;
 
-  $('#row-authsource').classList.toggle('hidden', isMysql);
-  $('#row-database').classList.toggle('hidden', !isMysql);
+  $('#row-authsource').classList.toggle('hidden', isSql);
+  $('#row-database').classList.toggle('hidden', !isSql);
 
   // SSH fields
   $('#ssh-fields').classList.toggle('hidden', !sshOn);
-  $('#tab-uri-btn').classList.toggle('hidden', isMysql || sshOn);
+  $('#tab-uri-btn').classList.toggle('hidden', isSql || sshOn);
 
-  if ((isMysql || sshOn) && !$('#tab-uri').classList.contains('hidden')) {
+  if ((isSql || sshOn) && !$('#tab-uri').classList.contains('hidden')) {
     selectConnTab('fields');
   }
 
   const port = form.elements.port;
-  if (isMysql && port.value === '27017') port.value = '3306';
-  if (!isMysql && port.value === '3306') port.value = '27017';
+  if (type === 'postgresql' || type === 'postgres') {
+    if (port.value === '27017' || port.value === '3306') port.value = '5432';
+  } else if (type === 'mysql') {
+    if (port.value === '27017' || port.value === '5432') port.value = '3306';
+  } else {
+    if (port.value === '3306' || port.value === '5432') port.value = '27017';
+  }
 }
 
 function readConnForm() {
   const form = $('#connect-form');
-  const isMysql = form.elements.dbType.value === 'mysql';
-  const usingUri = !isMysql && !$('#tab-uri').classList.contains('hidden');
+  const type = form.elements.dbType.value;
+  const isSql = type === 'mysql' || type === 'postgresql' || type === 'postgres';
+  const usingUri = !isSql && !$('#tab-uri').classList.contains('hidden');
   const cfg = usingUri
     ? { uri: form.elements.uri.value }
     : {
@@ -51,7 +58,7 @@ function readConnForm() {
         password: form.elements.password.value,
       };
   if (!usingUri) {
-    if (isMysql) cfg.database = form.elements.database.value;
+    if (isSql) cfg.database = form.elements.database.value;
     else cfg.authSource = form.elements.authSource.value;
   }
   cfg.dbType = form.elements.dbType.value;
@@ -118,12 +125,14 @@ export function startEditConn(name) {
   emit('connections:get', { name }).then((res) => {
     const f = res.fields;
     const form = $('#connect-form');
-    const isMysql = (f.dbType || 'mongodb') === 'mysql';
-    form.elements.dbType.value = f.dbType || 'mongodb';
-    selectConnTab(f.uri && !isMysql ? 'uri' : 'fields');
+    const dbType = f.dbType || 'mongodb';
+    const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType === 'postgres';
+    const defaultPort = dbType === 'mysql' ? '3306' : (dbType.includes('postgres') ? '5432' : '27017');
+    form.elements.dbType.value = dbType;
+    selectConnTab(f.uri && !isSql ? 'uri' : 'fields');
     form.elements.uri.value = f.uri || '';
     form.elements.host.value = f.host || 'localhost';
-    form.elements.port.value = f.port || (isMysql ? '3306' : '27017');
+    form.elements.port.value = f.port || defaultPort;
     form.elements.username.value = f.username || '';
     form.elements.password.value = '';
     form.elements.password.placeholder = res.hasPassword ? '(invariata se lasciata vuota)' : '';

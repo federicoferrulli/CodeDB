@@ -238,8 +238,8 @@ function connLabel(cfg) {
   if (cfg.uri && cfg.uri.trim()) {
     base = cfg.uri.trim().replace(/\/\/[^@]+@/, '//***@');
   } else {
-    const defaultPort = connDbType(cfg) === 'mysql' ? 3306 : 27017;
-    base = `${(cfg.host || 'localhost').trim()}:${String(cfg.port || defaultPort).trim()}`;
+    const type = connDbType(cfg);
+    base = `${(cfg.host || 'localhost').trim()}:${String(cfg.port || DbFactory.defaultPort(type)).trim()}`;
   }
   return sshEnabled(cfg) ? `${base} (via SSH)` : base;
 }
@@ -291,10 +291,9 @@ async function establishConnection(cfg) {
       if (effective.uri && effective.uri.trim()) {
         throw new Error('Il tunnel SSH è disponibile solo in modalità "Parametri", non con URI completa.');
       }
-      const defaultPort = dbType === 'mysql' ? 3306 : 27017;
       const target = {
         host: (effective.host || 'localhost').trim(),
-        port: parseInt(effective.port, 10) || defaultPort,
+        port: parseInt(effective.port, 10) || DbFactory.defaultPort(dbType),
       };
       tunnel = await openSshTunnel(effective, target);
       connectCfg = { ...effective, host: tunnel.host, port: String(tunnel.port) };

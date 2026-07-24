@@ -169,6 +169,44 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
   return { files, notes };
 }
 
+async function dumpPostgreSql({ strategy, db, collections, backupDir, compress, level, log }) {
+  const files = [];
+  const notes = [];
+  for (const table of collections) {
+    const ddl = await strategy.tableDdl(db, table);
+    if (ddl) {
+      const relSchema = `schema/${safeName(table)}.sql`;
+      fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
+      fs.writeFileSync(path.join(backupDir, relSchema), ddl + '\n', 'utf8');
+      files.push({ path: relSchema, collection: table, kind: 'schema' });
+    }
+
+    const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
+    const sink = createFileSink(path.join(backupDir, rel), { compress, level });
+    let count = 0;
+    let after = null;
+    let skip = 0;
+    for (;;) {
+      const exp = await strategy.collectionExport(db, table, { format: 'json', limit: 1000, after, skip });
+      for (const line of exp.lines) {
+        await sink.writeLine(line);
+        count += 1;
+      }
+      if (!exp.lines.length) break;
+      if (exp.nextAfter) {
+        after = exp.nextAfter;
+      } else {
+        skip += exp.lines.length;
+      }
+    }
+
+    const { bytes, sha256 } = await sink.close();
+    files.push({ path: rel, collection: table, kind: 'data', mode: 'full', count, bytes, sha256 });
+    log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
+  }
+  return { files, notes };
+}
+
 /* --- Backup completo di un database --------------------------------------- */
 
 async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress, level, log }) {
@@ -201,7 +239,11 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   let result;
   try {
     const args = { strategy, db, collections, type, since, sinceField, backupDir, compress, level, log };
-    result = dbType === 'mysql' ? await dumpMySql(args) : await dumpMongo(args);
+    result = dbType === 'mysql'
+      ? await dumpMySql(args)
+      : (dbType === 'postgresql' || dbType === 'postgres')
+        ? await dumpPostgreSql(args)
+        : await dumpMongo(args);
 
     const manifest = {
       tool: 'codedb-backup',
