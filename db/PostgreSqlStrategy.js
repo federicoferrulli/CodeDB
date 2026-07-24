@@ -507,7 +507,7 @@ class PostgreSqlStrategy extends DbStrategy {
     );
 
     const columnsRes = await pool.query(
-      `SELECT table_name, column_name, data_type, is_nullable
+      `SELECT table_name, column_name, data_type, udt_name, is_nullable
          FROM information_schema.columns
         WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
      ORDER BY table_name, ordinal_position`
@@ -516,9 +516,10 @@ class PostgreSqlStrategy extends DbStrategy {
     const colsByTable = new Map();
     for (const row of columnsRes.rows) {
       if (!colsByTable.has(row.table_name)) colsByTable.set(row.table_name, []);
+      const typeName = row.data_type === 'USER-DEFINED' ? row.udt_name : (row.data_type || row.udt_name || 'varchar');
       colsByTable.get(row.table_name).push({
         name: row.column_name,
-        types: [row.data_type || 'varchar'],
+        types: [typeName],
         presence: row.is_nullable === 'YES' ? 0 : 100,
         nullable: row.is_nullable === 'YES',
       });
@@ -766,7 +767,7 @@ class PostgreSqlStrategy extends DbStrategy {
   async tableFields(_db, table) {
     const pool = this.requirePool();
     const res = await pool.query(
-      `SELECT column_name AS name, data_type AS ctype, is_nullable AS nullable, column_default AS cdefault
+      `SELECT column_name AS name, data_type AS ctype, udt_name AS udt, is_nullable AS nullable, column_default AS cdefault
          FROM information_schema.columns
         WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1
      ORDER BY ordinal_position`,
@@ -778,7 +779,7 @@ class PostgreSqlStrategy extends DbStrategy {
 
     return res.rows.map((c) => ({
       name: c.name,
-      types: [String(c.ctype)],
+      types: [String(c.ctype === 'USER-DEFINED' ? c.udt : (c.ctype || c.udt || 'varchar'))],
       presence: c.nullable === 'YES' ? 0 : 100,
       nullable: c.nullable === 'YES',
       default: c.cdefault == null ? null : String(c.cdefault),

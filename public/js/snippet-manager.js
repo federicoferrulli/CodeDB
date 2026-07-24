@@ -39,6 +39,21 @@ export const PRESETS = [
     name: '🔀 Cross-DB: Virtual JOIN (MySQL ➔ MongoDB)',
     engine: 'crossdb',
     code: `{\n  "virtualJoin": {\n    "sourceA": {\n      "dbType": "mysql",\n      "db": "shop",\n      "table": "orders",\n      "query": "SELECT id, user_id, total_amount FROM orders LIMIT 50"\n    },\n    "sourceB": {\n      "dbType": "mongodb",\n      "db": "crm",\n      "collection": "customers",\n      "foreignKey": "_id"\n    },\n    "on": {\n      "leftKey": "user_id",\n      "rightKey": "_id"\n    },\n    "as": "customer_details"\n  }\n}`
+  },
+  {
+    name: '🐘 PostgreSQL: Ricerca Semantica Vector (pgvector)',
+    engine: 'postgresql',
+    code: `-- Ricerca Semantica con pgvector (Cosine Similarity)\n-- Prerequisito nel DB: CREATE EXTENSION IF NOT EXISTS vector;\nSELECT \n  id,\n  title,\n  content,\n  1 - (embedding <=> '[0.12, -0.34, 0.56, 0.78]') AS similarity\nFROM documents\nORDER BY embedding <=> '[0.12, -0.34, 0.56, 0.78]'\nLIMIT 10;`
+  },
+  {
+    name: '🐘 PostgreSQL: Full-Text Search (tsvector & tsquery)',
+    engine: 'postgresql',
+    code: `-- Ricerca Testuale Full-Text Search PostgreSQL\nSELECT \n  id,\n  title,\n  ts_rank(to_tsvector('italian', body), to_tsquery('italian', 'ricerca & semantica')) AS rank\nFROM articles\nWHERE to_tsvector('italian', body) @@ to_tsquery('italian', 'ricerca & semantica')\nORDER BY rank DESC;`
+  },
+  {
+    name: '🐘 PostgreSQL: Operazioni JSONB',
+    engine: 'postgresql',
+    code: `-- Query ed Operatori su Colonne JSONB in PostgreSQL\nSELECT \n  id,\n  payload->>'status' AS status,\n  payload->'user'->>'email' AS email\nFROM events\nWHERE payload @> '{"type": "user_signup"}'\nLIMIT 50;`
   }
 ];
 
