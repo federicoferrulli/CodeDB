@@ -120,7 +120,12 @@ console.log('--- Test Unitari CodeDB ---');
     'bin/codedb.js',
     'electron-main.js',
     'server.js',
-    'backup/cli.js'
+    'backup/cli.js',
+    'public/js/backupmanager.js',
+    'backup/lib/engine.js',
+    'backup/lib/restore.js',
+    'backup/lib/storage.js',
+    'backup/lib/util.js'
   ];
 
   for (const relPath of requiredFiles) {

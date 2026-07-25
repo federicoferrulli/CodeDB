@@ -366,7 +366,7 @@ export function deleteAllWithFilter() {
     filter,
   }).then((res) => {
     state.selectedDocs.clear();
-    toast(isMysql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
+    toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
     runQuery();
   }).catch((err) => toast(err.message, true));
 }

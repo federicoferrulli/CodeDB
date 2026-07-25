@@ -9,7 +9,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, cut, toast } from './utils.js';
+import { $, cut, toast, isSqlType } from './utils.js';
 
 const MAX_ENTRIES = 50;
 const PREFIX = 'queryHistory:';

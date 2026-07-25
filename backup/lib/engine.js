@@ -77,7 +77,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const rel = `data/${safeName(coll)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
-    const cursor = collection.find(filter);
+    const cursor = collection.find(filter).batchSize(1000);
     for await (const doc of cursor) {
       await sink.writeLine(EJSON.stringify(doc, { relaxed: true }));
       count += 1;

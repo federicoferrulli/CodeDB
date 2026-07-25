@@ -17,12 +17,13 @@ const { finished } = require('stream/promises');
 
 // Sink su file: le righe scritte passano (opzionalmente) da gzip, poi da un
 // contatore che calcola SHA-256 e dimensione sui byte effettivi del file.
-function createFileSink(filePath, { compress = true, level = 6 } = {}) {
+function createFileSink(filePath, { compress = true, level = 1 } = {}) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const out = fs.createWriteStream(filePath);
+  const out = fs.createWriteStream(filePath, { highWaterMark: 64 * 1024 });
   const hash = crypto.createHash('sha256');
   let bytes = 0;
   const counter = new Transform({
+    highWaterMark: 64 * 1024,
     transform(chunk, _enc, cb) {
       hash.update(chunk);
       bytes += chunk.length;
@@ -32,7 +33,7 @@ function createFileSink(filePath, { compress = true, level = 6 } = {}) {
   counter.pipe(out);
   let entry = counter;
   if (compress) {
-    entry = zlib.createGzip({ level });
+    entry = zlib.createGzip({ level, chunkSize: 64 * 1024 });
     entry.pipe(counter);
   }
   return {

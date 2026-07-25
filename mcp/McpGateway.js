@@ -29,8 +29,9 @@ const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 const DbFactory = require('../db/DbFactory');
 const { runBackup } = require('../backup/lib/engine');
 const { runRestore, resolveChain } = require('../backup/lib/restore');
+const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 const { createLogger } = require('../backup/lib/logger');
-const { readCatalog, safeName, formatBytes } = require('../backup/lib/util');
+const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
 
 const MCP_PATH = '/mcp';
@@ -1074,6 +1075,10 @@ function buildMcpServer(session, deps) {
       type: z.enum(['full', 'incremental', 'differential']).optional().describe('Tipo di backup (default: full)'),
       collections: z.string().optional().describe('Elenco separato da virgole per limitare il backup ad alcune collection/tabelle'),
       since_field: z.string().optional().describe('Campo data che individua le modifiche per incremental/differential (es. updatedAt)'),
+      storage: z.string().optional().describe('URI Cloud Storage di destinazione (es. s3://bucket/prefisso, gs://bucket/prefisso, azure://container/prefisso)'),
+      no_compress: z.boolean().optional().describe('Disabilita la compressione gzip dei file dati'),
+      compress_level: z.number().int().min(1).max(9).optional().describe('Livello di compressione gzip (1-9, default: 1 per velocità massima)'),
+      slack_webhook: z.string().optional().describe('URL Webhook Slack personalizzato per la notifica'),
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async (args) => {
@@ -1084,16 +1089,25 @@ function buildMcpServer(session, deps) {
     const onlyCollections = args.collections
       ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
       : null;
+    const storage = parseStorage(args.storage);
+    const webhook = args.slack_webhook || process.env.SLACK_WEBHOOK_URL;
+    const level = Math.min(Math.max(parseInt(args.compress_level, 10) || 1, 1), 9);
+    const compress = !args.no_compress;
+
     const log = createLogger(path.join(BACKUP_ROOT, 'backup.log'), { quiet: true });
     const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType, operation: 'backup', db, type };
     try {
-      const summary = await log.run(`backup ${type} conn=${sess.name} db=${db} (via MCP)`, () => runBackup({
-        session: sess, connName: sess.name, db, type, onlyCollections,
-        sinceField: args.since_field ? String(args.since_field).trim() : null,
-        destRoot: BACKUP_ROOT, compress: true, level: 6, log,
-      }));
+      const summary = await log.run(`backup ${type} conn=${sess.name} db=${db} (via MCP)`, async () => {
+        const result = await runBackup({
+          session: sess, connName: sess.name, db, type, onlyCollections,
+          sinceField: args.since_field ? String(args.since_field).trim() : null,
+          destRoot: BACKUP_ROOT, compress, level, log,
+        });
+        if (storage) await uploadBackupDir(storage, result.backupDir, log);
+        return result;
+      });
       audit({ ...auditBase, event: 'executed', backupId: summary.id });
-      await notifySlack(process.env.SLACK_WEBHOOK_URL, `✅ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
+      await notifySlack(webhook, `✅ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
       return jsonResult({
         backup_id: summary.id,
         group: `${safeName(sess.name)}_${safeName(db)}`,
@@ -1104,7 +1118,7 @@ function buildMcpServer(session, deps) {
       });
     } catch (err) {
       audit({ ...auditBase, event: 'failed', error: errMsg(err) });
-      await notifySlack(process.env.SLACK_WEBHOOK_URL, `❌ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
+      await notifySlack(webhook, `❌ CodeDB backup *${type}* di \`${db}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
       throw err;
     }
   });
@@ -1130,6 +1144,55 @@ function buildMcpServer(session, deps) {
       }
     }
     return jsonResult({ groups });
+  });
+
+  tool('verify_backup', {
+    title: 'Verifica i checksum SHA-256 di un backup',
+    description:
+      'Verifica i checksum SHA-256 dei file di dati di un backup presente nella cartella backups/ del server per accertarsi che non sia corrotto o incompleto.',
+    inputSchema: {
+      group: z.string().describe('Gruppo del backup, es. "mongo-locale_shop" (vedi list_backups)'),
+      backup_id: z.string().describe('Id del backup, es. "20260714-100000_full" (vedi list_backups)'),
+    },
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async (args) => {
+    const group = String(args.group || '').trim();
+    const backupId = String(args.backup_id || '').trim();
+    if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
+      throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
+    }
+    const backupDir = path.join(BACKUP_ROOT, group, backupId);
+    if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
+      throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
+    }
+    const manifest = readManifest(backupDir);
+    let ok = 0;
+    let failed = 0;
+    const details = [];
+    for (const f of manifest.files) {
+      if (!f.sha256) continue;
+      const full = path.join(backupDir, f.path);
+      if (!fs.existsSync(full)) {
+        details.push({ file: f.path, status: 'MISSING' });
+        failed++;
+        continue;
+      }
+      const actual = await sha256File(full);
+      if (actual === f.sha256) {
+        details.push({ file: f.path, status: 'OK' });
+        ok++;
+      } else {
+        details.push({ file: f.path, status: 'CORRUPTED', expected: f.sha256, actual });
+        failed++;
+      }
+    }
+    return jsonResult({
+      backup_id: manifest.id,
+      ok_files: ok,
+      failed_files: failed,
+      valid: failed === 0,
+      details,
+    });
   });
 
   tool('restore_backup', {

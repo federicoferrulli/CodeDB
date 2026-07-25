@@ -21,6 +21,7 @@ import { initResponsive } from './responsive.js';
 import { initExportImport } from './exportimport.js';
 import { initVault } from './vault.js';
 import { initQueryTab, loadQueryTab } from './query-tab.js';
+import { initBackupManager } from './backupmanager.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -101,6 +102,7 @@ initResponsive();
 initExportImport();
 initVault();
 initQueryTab();
+initBackupManager();
 
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.

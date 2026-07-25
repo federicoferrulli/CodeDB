@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
@@ -340,7 +340,7 @@ export async function exportDatabase(db) {
     for (const c of collections) {
       let ddl = null;
       let indexes = null;
-      if (isMysql) {
+      if (isSql) {
         ddl = (await emit('collection:ddl', { db, coll: c.name })).ddl;
       } else {
         const stats = await emit('collection:stats', { db, coll: c.name });
@@ -446,7 +446,7 @@ async function runDbImport() {
     return;
   }
   const drop = $('#dbimport-drop').checked;
-  const isMysql = state.dbType === 'mysql';
+  const isSql = isSqlType(state.dbType);
   const totalDocs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0) || 1;
 
   dbImporting = true;
@@ -457,9 +457,9 @@ async function runDbImport() {
   const errors = [];
   const pushErr = (msg) => { if (errors.length < 20) errors.push(msg); };
   try {
-    // MySQL: lo schema di destinazione deve esistere (MongoDB lo crea da solo
+    // SQL: lo schema di destinazione deve esistere (MongoDB lo crea da solo
     // al primo insert). "esiste già" non è un errore.
-    if (isMysql) {
+    if (isSql) {
       try {
         await emit('db:create', { db: target });
       } catch (err) {
@@ -473,7 +473,7 @@ async function runDbImport() {
         if (drop) {
           await emit('collection:drop', { db: target, coll: c.name }).catch(() => { /* non esisteva */ });
         }
-        if (isMysql && c.ddl) {
+        if (isSql && c.ddl) {
           // CREATE TABLE dal file; se la tabella esiste già (senza drop) si
           // prosegue con il solo inserimento delle righe.
           await emit('collection:aggregate', { db: target, coll: c.name, pipeline: c.ddl })
@@ -524,7 +524,7 @@ async function runDbImport() {
   setDbImportProgress(100, 'completato');
 
   const report = $('#dbimport-report');
-  const word = isMysql ? 'righe' : 'documenti';
+  const word = isSql ? 'righe' : 'documenti';
   let html = `<strong>${inserted}</strong> ${word} importati in "${esc(target)}"` +
     (failed ? `, <strong class="import-failed">${failed}</strong> con errori.` : '.');
   if (errors.length) {

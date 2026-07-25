@@ -167,6 +167,7 @@
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
+      <button id="btn-backup-manager" class="ghost" title="Gestione Backup & Ripristino" style="margin-left: 15px;">💾 Backup & Restore</button>
       <label id="polling-toggle" class="hidden" style="margin-left: 15px; font-size: 0.9em; cursor: pointer; color: var(--fg-dim);">
         <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
       </label>
@@ -936,6 +937,87 @@
   <ul id="context-menu" class="context-menu hidden"></ul>
 
   <div id="toast" class="toast hidden"></div>
+
+  <!-- ===================== Modale Backup & Restore ===================== -->
+  <div id="modal-backup-manager" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>💾 Gestione Backup & Ripristino</h2>
+        <button type="button" id="btn-close-backup-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button type="button" id="tab-btn-backup-new" class="tab-btn active">＋ Nuovo Backup</button>
+        <button type="button" id="tab-btn-backup-catalog" class="tab-btn">📂 Catalogo & Ripristino</button>
+      </div>
+
+      <!-- Scheda 1: Nuovo Backup -->
+      <div id="section-backup-new" class="modal-tab-content">
+        <form id="form-run-backup">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-db">Database originario *</label>
+              <select id="backup-db" required></select>
+            </div>
+            <div class="form-group">
+              <label for="backup-type">Tipo di Backup *</label>
+              <select id="backup-type">
+                <option value="full">FULL (Dump completo del database)</option>
+                <option value="incremental">INCREMENTALE (Solo modifiche dall'ultimo backup)</option>
+                <option value="differential">DIFFERENZIALE (Solo modifiche dall'ultimo FULL)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-collections">Collection / Tabelle selettive (opzionale)</label>
+              <input type="text" id="backup-collections" placeholder="es. utenti, ordini (separate da virgola)" />
+            </div>
+            <div class="form-group">
+              <label for="backup-since">Campo data per modifiche (opzionale)</label>
+              <input type="text" id="backup-since" placeholder="es. updatedAt, created_at" />
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-storage">Cloud Storage URI (opzionale)</label>
+              <input type="text" id="backup-storage" placeholder="es. s3://mio-bucket/backups, gs://bucket/prefisso" />
+            </div>
+            <div class="form-group">
+              <label for="backup-slack">Slack Webhook URL (opzionale)</label>
+              <input type="url" id="backup-slack" placeholder="https://hooks.slack.com/services/..." />
+            </div>
+          </div>
+
+          <div class="form-row checkbox-row">
+            <label style="cursor: pointer;">
+              <input type="checkbox" id="backup-no-compress" /> Disabilita compressione gzip
+            </label>
+            <label style="margin-left: 20px;">Livello gzip (1-9):
+              <input type="number" id="backup-compress-level" min="1" max="9" value="1" style="width: 60px;" title="Livello 1 = velocità massima (consigliato)" />
+            </label>
+          </div>
+
+          <div id="backup-status-msg" class="status-box hidden"></div>
+
+          <div class="modal-actions">
+            <button type="submit" id="btn-submit-backup" class="primary">🚀 Avvia Backup</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Scheda 2: Catalogo & Ripristino -->
+      <div id="section-backup-catalog" class="modal-tab-content hidden">
+        <div class="catalog-toolbar">
+          <span>Cataloghi dei backup presenti nel server:</span>
+          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</button>
+        </div>
+        <div id="backup-catalog-list" class="catalog-list-container"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/lib/three.min.js"></script>

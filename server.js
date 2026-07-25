@@ -26,6 +26,15 @@ const { openSshTunnel } = require('./db/SshTunnel');
 const { attachMcp } = require('./mcp/McpGateway');
 const VirtualJoinEngine = require('./db/VirtualJoinEngine');
 
+const { runBackup } = require('./backup/lib/engine');
+const { runRestore } = require('./backup/lib/restore');
+const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
+const { createLogger, formatDuration } = require('./backup/lib/logger');
+const { readCatalog, readManifest, sha256File, formatBytes } = require('./backup/lib/util');
+const { notifySlack } = require('./backup/lib/notify');
+
+const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
+
 const PORT = process.env.PORT || 3030;
 
 const app = express();
@@ -464,7 +473,7 @@ io.on('connection', (socket) => {
     // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
     await closeSession(tabId);
     const conn = await establishConnection(cfg);
-    sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel });
+    sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel, dbType: conn.dbType });
     activeGlobalSessions++;
     try {
       // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
@@ -778,6 +787,148 @@ io.on('connection', (socket) => {
   safeOn('schema:unwatch', (payload) => {
     const sess = sessions.get(normTabId(payload.tabId));
     if (sess) sess.strategy.unwatchSchema();
+  });
+
+  // --- Operazioni Backup & Restore -------------------------------------------
+
+  safeOn('backup:run', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    const db = String(payload.db || '').trim();
+    if (!db) throw new Error('Nome database mancante.');
+    const type = String(payload.type || 'full').toLowerCase();
+    if (!['full', 'incremental', 'differential'].includes(type)) {
+      throw new Error(`Tipo backup non valido: ${type}`);
+    }
+    const onlyCollections = payload.collections
+      ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+    const destRoot = path.resolve(payload.dest || BACKUP_ROOT);
+    const storage = parseStorage(payload.storage);
+    const webhook = payload.slackWebhook || process.env.SLACK_WEBHOOK_URL;
+    const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
+    const level = Math.min(Math.max(parseInt(payload.compressLevel, 10) || 1, 1), 9);
+    const compress = payload.noCompress !== true;
+
+    const t0 = Date.now();
+    const connName = payload.connName || payload.label || 'ui-session';
+    try {
+      const summary = await log.run(`backup ${type} conn=${connName} db=${db} (via UI)`, async () => {
+        const result = await runBackup({
+          session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, connName, db, type, onlyCollections,
+          sinceField: payload.sinceField ? String(payload.sinceField).trim() : null,
+          destRoot, compress, level, log,
+        });
+        if (storage) await uploadBackupDir(storage, result.backupDir, log);
+        return result;
+      });
+      await notifySlack(webhook, `✅ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
+      cb({ ok: true, summary });
+    } catch (err) {
+      await notifySlack(webhook, `❌ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
+      throw err;
+    }
+  });
+
+  safeOn('backup:list', ({ dest }, cb) => {
+    const destRoot = path.resolve(dest || BACKUP_ROOT);
+    const groups = {};
+    if (fs.existsSync(destRoot)) {
+      for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const { backups } = readCatalog(path.join(destRoot, entry.name));
+        if (backups.length) groups[entry.name] = backups;
+      }
+    }
+    cb({ ok: true, groups });
+  });
+
+  safeOn('backup:restore', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+
+    let backupDir = payload.from ? path.resolve(payload.from) : null;
+    if (!backupDir && payload.group && payload.backupId) {
+      const group = String(payload.group).trim();
+      const backupId = String(payload.backupId).trim();
+      if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
+        throw new Error('Parametri "group" o "backupId" non validi.');
+      }
+      backupDir = path.join(BACKUP_ROOT, group, backupId);
+    }
+    if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
+      throw new Error('Cartella backup non valida o manifest.json mancante.');
+    }
+
+    const destRoot = path.resolve(payload.dest || BACKUP_ROOT);
+    const webhook = payload.slackWebhook || process.env.SLACK_WEBHOOK_URL;
+    const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
+    const onlyCollections = payload.collections
+      ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
+      : null;
+
+    const t0 = Date.now();
+    const connName = payload.connName || 'ui-session';
+    try {
+      const summary = await log.run(`restore conn=${connName} da=${path.basename(backupDir)} (via UI)`, async () => {
+        return await runRestore({
+          session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, backupDir,
+          targetDb: payload.targetDb || null,
+          onlyCollections, drop: !!payload.drop, log,
+        });
+      });
+      await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
+      cb({ ok: true, summary });
+    } catch (err) {
+      await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
+      throw err;
+    }
+  });
+
+  safeOn('backup:verify', async (payload, cb) => {
+    let backupDir = payload.from ? path.resolve(payload.from) : null;
+    if (!backupDir && payload.group && payload.backupId) {
+      const group = String(payload.group).trim();
+      const backupId = String(payload.backupId).trim();
+      if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
+        throw new Error('Parametri "group" o "backupId" non validi.');
+      }
+      backupDir = path.join(BACKUP_ROOT, group, backupId);
+    }
+    if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
+      throw new Error('Cartella backup non trovata o manifest.json mancante.');
+    }
+    const manifest = readManifest(backupDir);
+    let ok = 0;
+    let failed = 0;
+    const details = [];
+    for (const f of manifest.files) {
+      if (!f.sha256) continue;
+      const full = path.join(backupDir, f.path);
+      if (!fs.existsSync(full)) {
+        details.push({ file: f.path, status: 'MISSING' });
+        failed++;
+        continue;
+      }
+      const actual = await sha256File(full);
+      if (actual === f.sha256) {
+        details.push({ file: f.path, status: 'OK' });
+        ok++;
+      } else {
+        details.push({ file: f.path, status: 'CORRUPTED', expected: f.sha256, actual });
+        failed++;
+      }
+    }
+    cb({
+      ok: true,
+      backupId: manifest.id,
+      okCount: ok,
+      failedCount: failed,
+      valid: failed === 0,
+      details,
+    });
   });
 
   socket.on('disconnect', () => {
