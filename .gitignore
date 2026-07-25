@@ -10,6 +10,8 @@ codedb.log
 codedb.err.log
 # Backup dei database creati da backup/cli.js (dati + log delle operazioni).
 backups/
+# Output di electron-builder (npm run dist:*): eseguibili/installer generati.
+dist/
 .agents
 # Variabili d'ambiente per Docker Compose (puo' contenere GUI_MONGO_PASSPHRASE).
 .env

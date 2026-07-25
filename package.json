@@ -3,17 +3,27 @@
   "version": "1.0.0",
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
-  "main": "server.js",
+  "author": "Federico 'Keus' Ferrulli",
+  "main": "electron-main.js",
+  "bin": {
+    "codedb": "bin/codedb.js",
+    "mongo-web-gui": "bin/codedb.js"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "electron:start": "electron .",
+    "electron:icons": "node tools/genera-icona.js",
+    "dist:win": "npm run electron:icons && node tools/build-desktop.mjs win32",
+    "dist:mac": "npm run electron:icons && node tools/build-desktop.mjs darwin",
+    "dist:linux": "npm run electron:icons && node tools/build-desktop.mjs linux",
     "backup": "node backup/cli.js",
     "test": "node test/unit.js",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.24.3",
     "bson": "^6.10.0",
     "express": "^4.21.0",
     "mongodb": "^6.12.0",
@@ -24,6 +34,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@electron/packager": "^20.0.4",
+    "electron": "^43.2.0",
     "socket.io-client": "^4.8.3"
   }
 }
