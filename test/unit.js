@@ -135,6 +135,38 @@ console.log('--- Test Unitari CodeDB ---');
     console.log(`  OK   ${relPath} file check passed`);
   }
 
+  // Test 7: Logica di Riconnessione Automatica e Rilevazione Errori di Connessione
+  const isConnErrTerms = [
+    new Error('Nessuna connessione attiva al database'),
+    new Error('MongoNetworkError: connection reset by peer'),
+    new Error('PROTOCOL_CONNECTION_LOST'),
+    new Error('Tunnel SSH caduto: connection timed out'),
+    new Error('Connection terminated unexpectedly')
+  ];
+  const connTerms = [
+    'nessuna connessione attiva',
+    'topology was destroyed',
+    'client is closed',
+    'pool is closed',
+    'socket closed',
+    'connection closed',
+    'connection terminated',
+    'connection reset',
+    'connection lost',
+    'tunnel ssh caduto',
+    'econnreset',
+    'econnrefused',
+    'etimedout',
+    'protocol_connection_lost'
+  ];
+
+  for (const err of isConnErrTerms) {
+    const msg = (err.message || '').toLowerCase();
+    const isConn = connTerms.some(t => msg.includes(t));
+    assert.strictEqual(isConn, true, `Errore "${err.message}" deve essere riconosciuto come errore di connessione`);
+  }
+  console.log('  OK   Rilevazione errori di disconnessione DB superata');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

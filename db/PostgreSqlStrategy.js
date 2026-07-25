@@ -129,6 +129,10 @@ class PostgreSqlStrategy extends DbStrategy {
       max: 4,
     });
 
+    pool.on('error', (err) => {
+      console.error('[PostgreSQL Pool Error]', err ? err.message : err);
+    });
+
     try {
       await pool.query('SELECT 1');
     } catch (err) {

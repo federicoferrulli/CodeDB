@@ -105,6 +105,7 @@ export function connectAndOpenTab(cfg) {
   }).then((res) => {
     const tab = reuse || createTab({ id: tabId });
     tab.connName = cfg.saved || cfg.saveAs || null;
+    tab.connCfg = cfg;
     tab.dbType = res.dbType || 'mongodb';
     tab.label = tab.connName || res.label || 'Connessione';
     Object.assign(tab.state, {

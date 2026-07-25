@@ -242,7 +242,33 @@ export function emit(event, payload) {
   return new Promise((resolve, reject) => {
     socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) }, (res) => {
       if (tab && !tabs.list.includes(tab)) return; // tab chiuso: risposta orfana
-      res.ok ? resolve(Object.assign(res, { _tab: tab })) : reject(new Error(res.error));
+      if (res && res.ok) {
+        resolve(Object.assign(res, { _tab: tab }));
+      } else {
+        const errMsg = String((res && res.error) || '');
+        const isNoSession = errMsg.includes('Nessuna connessione attiva');
+        if (isNoSession && tab && (tab.connCfg || tab.connName) && (!payload || !payload._reconnected)) {
+          const cfg = tab.connCfg || { saved: tab.connName };
+          socket.emit('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
+            if (connRes && connRes.ok) {
+              tab.state.connected = true;
+              toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
+              socket.emit(event, { tabId: tab.id, ...(payload || {}), _reconnected: true }, (retryRes) => {
+                if (retryRes && retryRes.ok) {
+                  resolve(Object.assign(retryRes, { _tab: tab }));
+                } else {
+                  reject(new Error(retryRes ? retryRes.error : 'Errore dopo la riconnessione'));
+                }
+              });
+            } else {
+              toast(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, true);
+              reject(new Error(res ? res.error : 'Connessione assente'));
+            }
+          });
+        } else {
+          reject(new Error(res ? res.error : 'Errore sconosciuto'));
+        }
+      }
     });
   });
 }

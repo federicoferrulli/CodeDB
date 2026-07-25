@@ -347,6 +347,106 @@ async function teardownConnection({ strategy, tunnel }) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Riconnessione automatica in caso di perdita di connessione DB / tunnel SSH
+ * ------------------------------------------------------------------------- */
+
+function isConnectionError(err, sess) {
+  if (!err) return false;
+  if (sess && sess.tunnel && !sess.tunnel.alive) return true;
+
+  const msg = (err.message || String(err)).toLowerCase();
+  const name = (err.name || '').toLowerCase();
+  const code = (err.code || '').toLowerCase();
+
+  const connTerms = [
+    'nessuna connessione attiva',
+    'topology was destroyed',
+    'client is closed',
+    'pool is closed',
+    'pool closed',
+    'socket closed',
+    'socket disconnected',
+    'socket hang up',
+    'connection closed',
+    'connection terminated',
+    'connection reset',
+    'connection lost',
+    'tunnel ssh caduto',
+    'client has already been dismantled',
+    'server shutdown',
+    'econnreset',
+    'econnrefused',
+    'etimedout',
+    'epipe',
+    'enotfound',
+    'protocol_connection_lost',
+    'protocol_enqueue_after_fatal_error',
+    'mongonetworkerror',
+    'mongoserverselectionerror',
+  ];
+
+  return connTerms.some((term) => msg.includes(term) || name.includes(term) || code.includes(term));
+}
+
+async function reconnectSession(sess, maxAttempts = 14) {
+  if (!sess || !sess.effectiveCfg) {
+    throw new Error('Impossibile riconnettersi: configurazione di connessione non disponibile.');
+  }
+  if (sess.reconnecting) {
+    return sess.reconnectPromise;
+  }
+  sess.reconnecting = true;
+  sess.reconnectPromise = (async () => {
+    let lastErr = null;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const delayMs = Math.min(attempt * 5000, 60000);
+      if (delayMs > 0) {
+        console.log(`[Auto-Reconnect] Attesa di ${delayMs / 1000}s prima del tentativo ${attempt + 1}/${maxAttempts} per ${sess.label || 'sessione'}...`);
+        await new Promise((r) => setTimeout(r, delayMs));
+      } else {
+        console.log(`[Auto-Reconnect] Tentativo immediato (1/${maxAttempts}) di riconnessione automatica al DB per ${sess.label || 'sessione'}...`);
+      }
+
+      try {
+        await teardownConnection(sess).catch(() => {});
+        const conn = await establishConnection(sess.effectiveCfg);
+        sess.strategy = conn.strategy;
+        sess.tunnel = conn.tunnel;
+        sess.dbType = conn.dbType;
+        sess.label = connLabel(conn.effective);
+        console.log(`[Auto-Reconnect] Riconnessione automatica al DB riuscita al tentativo ${attempt + 1} per ${sess.label}!`);
+        return true;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`[Auto-Reconnect] Tentativo ${attempt + 1}/${maxAttempts} fallito per ${sess.label || 'sessione'}: ${err.message}`);
+      }
+    }
+
+    console.error(`[Auto-Reconnect] Tutti i ${maxAttempts} tentativi di riconnessione automatica sono falliti per ${sess.label || 'sessione'}.`);
+    throw new Error(`Connessione al database persa. Tentativo di riconnessione automatico fallito dopo ${maxAttempts} tentativi: ${lastErr ? lastErr.message : 'Errore sconosciuto'}`);
+  })().finally(() => {
+    sess.reconnecting = false;
+    sess.reconnectPromise = null;
+  });
+
+  return sess.reconnectPromise;
+}
+
+async function executeWithReconnect(sess, actionFn) {
+  try {
+    return await actionFn(sess.strategy);
+  } catch (err) {
+    if (isConnectionError(err, sess) && sess.effectiveCfg) {
+      console.warn(`[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...`);
+      await reconnectSession(sess);
+      return await actionFn(sess.strategy);
+    }
+    throw err;
+  }
+}
+
+
+/* ---------------------------------------------------------------------------
  * Audit delle scritture via Web UI
  * ------------------------------------------------------------------------- */
 
@@ -606,7 +706,7 @@ io.on('connection', (socket) => {
       // da evento, payload e strategia (vedi collection:aggregate).
       const cls = classifyAudit(event, payload, sess);
       try {
-        const result = await fn(sess.strategy, payload);
+        const result = await executeWithReconnect(sess, (strat) => fn(strat, payload));
         cb({ ok: true, ...result });
         auditDelegate(cls, sess, event, payload, 'ok', result, null);
       } catch (err) {
@@ -640,9 +740,11 @@ io.on('connection', (socket) => {
     await closeSession(tabId);
     const conn = await establishConnection(cfg);
     sessions.set(tabId, {
+      tabId,
       strategy: conn.strategy,
       tunnel: conn.tunnel,
       dbType: conn.dbType,
+      effectiveCfg: conn.effective,
       // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
       // in UI, nome della connessione salvata (se noto) e IP del client.
       label: connLabel(conn.effective),
@@ -746,21 +848,50 @@ io.on('connection', (socket) => {
           ? { active: true, alive: !!sess.tunnel.alive, host: sess.tunnel.host, port: sess.tunnel.port, lastError: sess.tunnel.lastError || null }
           : { active: false },
       };
-      // Un tunnel già segnalato come caduto: niente ping (fallirebbe dopo il timeout).
-      if (sess.tunnel && !sess.tunnel.alive) {
-        entry.status = 'error';
-        entry.error = `Tunnel SSH caduto${sess.tunnel.lastError ? `: ${sess.tunnel.lastError}` : '.'}`;
-        return entry;
-      }
-      try {
+      const checkPing = async () => {
         const h = await withTimeout(sess.strategy.health(), 5000, 'Ping');
         entry.status = 'ok';
         entry.latencyMs = h.latencyMs;
         entry.pool = h.pool || null;
         if (h.extra) entry.extra = h.extra;
+      };
+
+      if (sess.tunnel && !sess.tunnel.alive) {
+        if (sess.effectiveCfg) {
+          try {
+            await reconnectSession(sess);
+            await checkPing();
+            entry.ssh = sess.tunnel
+              ? { active: true, alive: !!sess.tunnel.alive, host: sess.tunnel.host, port: sess.tunnel.port }
+              : { active: false };
+            return entry;
+          } catch (recErr) {
+            entry.status = 'error';
+            entry.error = errMsg(recErr);
+            return entry;
+          }
+        } else {
+          entry.status = 'error';
+          entry.error = `Tunnel SSH caduto${sess.tunnel.lastError ? `: ${sess.tunnel.lastError}` : '.'}`;
+          return entry;
+        }
+      }
+
+      try {
+        await checkPing();
       } catch (err) {
-        entry.status = 'error';
-        entry.error = errMsg(err);
+        if (isConnectionError(err, sess) && sess.effectiveCfg) {
+          try {
+            await reconnectSession(sess);
+            await checkPing();
+          } catch (recErr) {
+            entry.status = 'error';
+            entry.error = errMsg(recErr);
+          }
+        } else {
+          entry.status = 'error';
+          entry.error = errMsg(err);
+        }
       }
       return entry;
     }));
@@ -906,7 +1037,7 @@ io.on('connection', (socket) => {
         throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
       }
       try {
-        const docs = await VirtualJoinEngine.execute(spec, session.strategy, session.strategy);
+        const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
         auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'ok', { docs }, null);
         return cb({ ok: true, docs, data: docs });
       } catch (err) {
@@ -927,7 +1058,7 @@ io.on('connection', (socket) => {
       const cat = write ? 'write' : 'read';
       const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
       try {
-        const res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
+        const res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr }));
         auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
         return cb({ ok: true, ...res, data: res.docs });
       } catch (err) {
@@ -947,7 +1078,7 @@ io.on('connection', (socket) => {
           if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
           if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
           else { op = 'Aggregazione (pipeline)'; }
-          res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
+          res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr }));
         } else if (codeStr.startsWith('{')) {
           // MQL Filter JSON
           let parsed;
@@ -958,7 +1089,7 @@ io.on('connection', (socket) => {
           }
           if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
           op = 'Query di lettura (filtro MQL)';
-          res = await session.strategy.collectionFind(targetDb, targetColl, parsed);
+          res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, parsed));
         } else if (sqlFromMatch) {
           // Query SQL automatica tradotta su MongoDB (es. SELECT * FROM pippo)
           if (!targetColl) throw new Error('Collezione non specificata nella clausola FROM.');
@@ -972,10 +1103,10 @@ io.on('connection', (socket) => {
           if (limitMatch) limitNum = parseInt(limitMatch[1], 10);
 
           op = 'Query di lettura (SQL→MQL)';
-          res = await session.strategy.collectionFind(targetDb, targetColl, { filter: whereStr, limit: limitNum });
+          res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: whereStr, limit: limitNum }));
         } else {
           if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
-          res = await session.strategy.collectionFind(targetDb, targetColl, { filter: '' });
+          res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: '' }));
         }
       } catch (err) {
         auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
