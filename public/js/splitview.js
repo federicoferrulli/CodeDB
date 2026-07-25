@@ -9,7 +9,7 @@ const splitState = {
   focusedPaneId: null,
   panes: new Map(),
   layout: null,
-  splitCollTabId: null, // ID del tab speciale "🔲 Split-View"
+  splitCollTabId: null, // ID del tab speciale "🔲 Area Split-View"
 };
 
 let paneCounter = 0;
@@ -67,7 +67,17 @@ export function initSplitView() {
   ws.addEventListener('drop', handleWorkspaceDrop);
 }
 
-// Assicura che esista il tab speciale "🔲 Split-View" nei collTabs del tab di connessione attivo
+// Rimuove la singola tab di collezione dal coll-tab bar quando viene unita allo Split-View
+function removeSingleCollTab(db, coll) {
+  const t = activeTab();
+  if (!t) return;
+  const idx = t.state.collTabs.findIndex((c) => !c.isSplitTab && c.db === db && c.coll === coll);
+  if (idx >= 0) {
+    t.state.collTabs.splice(idx, 1);
+  }
+}
+
+// Assicura che esista il tab speciale "🔲 Area Split-View" nei collTabs del tab di connessione attivo
 function ensureSplitCollTab() {
   const t = activeTab();
   if (!t) return null;
@@ -88,7 +98,6 @@ function ensureSplitCollTab() {
   return splitCt;
 }
 
-// Disattiva la visualizzazione dello Split View e ripristina la modalità workspace singolo
 export function deactivateSplitView() {
   const ws = $('#workspace');
   if (ws && ws.classList.contains('split-active')) {
@@ -242,6 +251,9 @@ export function addOrSplitPane(targetPaneId, dir, item) {
     error: null,
   };
 
+  // Rimuove la tab singola corrispondente se era presente nella barra delle tab
+  removeSingleCollTab(item.db, item.coll);
+
   splitState.panes.set(pId, newPane);
 
   if (!splitState.active || splitState.panes.size === 1 || !splitState.layout) {
@@ -263,6 +275,9 @@ export function addOrSplitPane(targetPaneId, dir, item) {
         loading: false,
         error: null,
       };
+
+      removeSingleCollTab(firstPane.db, firstPane.coll);
+
       splitState.panes.set(firstExistingId, firstPane);
       splitState.panes.delete(pId);
 
@@ -364,22 +379,23 @@ export function closeSplitView() {
   splitState.active = false;
   splitState.layout = null;
   const remainingPane = Array.from(splitState.panes.values())[0];
-  if (remainingPane) {
-    state.db = remainingPane.db;
-    state.coll = remainingPane.coll;
-  }
-  splitState.panes.clear();
-  splitState.focusedPaneId = null;
 
-  // Rimuove il tab speciale "🔲 Split-View" dai collTabs
   const t = activeTab();
   if (t) {
     const idx = t.state.collTabs.findIndex((c) => c.isSplitTab);
     if (idx >= 0) t.state.collTabs.splice(idx, 1);
   }
 
+  splitState.panes.clear();
+  splitState.focusedPaneId = null;
+
   deactivateSplitView();
-  import('./workspace.js').then((m) => m.renderWorkspace());
+
+  if (remainingPane && t) {
+    import('./colltabs.js').then((m) => m.openCollTab(remainingPane.db, remainingPane.coll));
+  } else {
+    import('./workspace.js').then((m) => m.renderWorkspace());
+  }
 }
 
 let cachedWorkspaceHTML = '';
