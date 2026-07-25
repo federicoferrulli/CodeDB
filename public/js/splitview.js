@@ -4,12 +4,12 @@ import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, esc, isSqlType, dbTypeIcon } from './utils.js';
 
-// Stato globale dello Split View
 const splitState = {
   active: false,
   focusedPaneId: null,
   panes: new Map(),
   layout: null,
+  splitCollTabId: null, // ID del tab speciale "🔲 Split-View"
 };
 
 let paneCounter = 0;
@@ -43,19 +43,16 @@ export function setFocusedPane(paneId) {
   }
 }
 
-// Inizializzazione degli event listener per Drag & Drop globale e drop zone overlay
 export function initSplitView() {
   const ws = $('#workspace');
   if (!ws) return;
 
-  // Previene l'intercettazione dello split quando si trascinano i tab dentro la barra dei tab
   const tabContainer = $('#coll-tab-bar') || $('#tab-bar');
   if (tabContainer) {
     tabContainer.addEventListener('dragover', (e) => e.stopPropagation());
     tabContainer.addEventListener('drop', (e) => e.stopPropagation());
   }
 
-  // Overlay visivo per la preview della drop zone
   let dropOverlay = $('#drop-zone-overlay');
   if (!dropOverlay) {
     dropOverlay = document.createElement('div');
@@ -70,32 +67,37 @@ export function initSplitView() {
   ws.addEventListener('drop', handleWorkspaceDrop);
 }
 
-// Apri una nuova collezione nel pannello attivo (focus) quando lo Split View è attivo
-export function openInActivePane(db, coll, tabId) {
-  if (!isSplitActive()) return false;
-  const pId = getFocusedPaneId();
-  if (!pId) return false;
-
-  const p = splitState.panes.get(pId);
-  if (!p) return false;
-
+// Assicura che esista il tab speciale "🔲 Split-View" nei collTabs del tab di connessione attivo
+function ensureSplitCollTab() {
   const t = activeTab();
-  p.tabId = tabId || (t ? t.id : p.tabId);
-  p.db = db;
-  p.coll = coll;
-  p.skip = 0;
-  p.filter = '';
-  p.sort = '';
-  p.queryMode = 'find';
+  if (!t) return null;
 
-  runPaneQuery(pId);
-  renderSplitView();
-  return true;
+  let splitCt = t.state.collTabs.find((c) => c.isSplitTab);
+  if (!splitCt) {
+    splitCt = {
+      id: 'splitview_' + crypto.randomUUID(),
+      isSplitTab: true,
+      db: 'Split-View',
+      coll: '🔲 Area Split-View',
+      snap: null,
+    };
+    t.state.collTabs.push(splitCt);
+  }
+  t.state.activeCollId = splitCt.id;
+  splitState.splitCollTabId = splitCt.id;
+  return splitCt;
 }
 
-// Quando si trascina un tab o un nodo DB sopra il workspace
+// Disattiva la visualizzazione dello Split View e ripristina la modalità workspace singolo
+export function deactivateSplitView() {
+  const ws = $('#workspace');
+  if (ws && ws.classList.contains('split-active')) {
+    ws.classList.remove('split-active');
+    ws.innerHTML = getOriginalWorkspaceHTML();
+  }
+}
+
 function handleWorkspaceDragOver(e) {
-  // Ignora se il trascinamento avviene su elementi della barra tab o controlli non-workspace
   if (e.target.closest('#coll-tab-bar') || e.target.closest('#tab-bar') || e.target.closest('#sidebar') || e.target.closest('#conn-sidebar')) {
     hideDropPreview();
     return;
@@ -116,7 +118,6 @@ function handleWorkspaceDragOver(e) {
   else if (relY > 0.75) dir = 'bottom';
   else if (relY < 0.25) dir = 'top';
 
-  // Se siamo in modalità singola e il drag è al centro, non mostrare la drop preview per evitare split accidentali
   if (!splitState.active && dir === 'center') {
     hideDropPreview();
     return;
@@ -178,7 +179,6 @@ function hideDropPreview() {
   if (overlay) overlay.classList.add('hidden');
 }
 
-// Rilascio del tab o nodo DB
 function handleWorkspaceDrop(e) {
   hideDropPreview();
 
@@ -211,7 +211,6 @@ function handleWorkspaceDrop(e) {
   else if (relY > 0.75) dir = 'bottom';
   else if (relY < 0.25) dir = 'top';
 
-  // Se siamo in modalità singola e il drag è al centro, apri normalmente senza split
   if (!splitState.active && dir === 'center') {
     return;
   }
@@ -220,7 +219,6 @@ function handleWorkspaceDrop(e) {
   addOrSplitPane(targetPaneId, dir, item);
 }
 
-// Aggiunge un pannello o divide uno esistente
 export function addOrSplitPane(targetPaneId, dir, item) {
   const t = activeTab();
   const tabId = item.tabId || (t ? t.id : null);
@@ -297,8 +295,13 @@ export function addOrSplitPane(targetPaneId, dir, item) {
   }
 
   splitState.active = splitState.panes.size > 1;
+
+  ensureSplitCollTab();
+
   runPaneQuery(newPane.id);
   renderSplitView();
+
+  import('./colltabs.js').then((m) => m.renderCollTabBar());
 }
 
 function createSplitTree(existingPaneId, newPaneId, dir) {
@@ -348,27 +351,35 @@ export function closePane(paneId) {
   splitState.panes.delete(paneId);
 
   if (splitState.panes.size <= 1) {
-    splitState.active = false;
-    splitState.layout = null;
-    const remainingPane = Array.from(splitState.panes.values())[0];
-    if (remainingPane) {
-      state.db = remainingPane.db;
-      state.coll = remainingPane.coll;
-    }
-    splitState.panes.clear();
-    splitState.focusedPaneId = null;
-    const ws = $('#workspace');
-    if (ws) {
-      ws.classList.remove('split-active');
-      ws.innerHTML = getOriginalWorkspaceHTML();
-    }
-    import('./workspace.js').then((m) => m.renderWorkspace());
+    closeSplitView();
     return;
   }
 
   splitState.layout = removeFromTree(splitState.layout, paneId);
   splitState.focusedPaneId = Array.from(splitState.panes.keys())[0] || null;
   renderSplitView();
+}
+
+export function closeSplitView() {
+  splitState.active = false;
+  splitState.layout = null;
+  const remainingPane = Array.from(splitState.panes.values())[0];
+  if (remainingPane) {
+    state.db = remainingPane.db;
+    state.coll = remainingPane.coll;
+  }
+  splitState.panes.clear();
+  splitState.focusedPaneId = null;
+
+  // Rimuove il tab speciale "🔲 Split-View" dai collTabs
+  const t = activeTab();
+  if (t) {
+    const idx = t.state.collTabs.findIndex((c) => c.isSplitTab);
+    if (idx >= 0) t.state.collTabs.splice(idx, 1);
+  }
+
+  deactivateSplitView();
+  import('./workspace.js').then((m) => m.renderWorkspace());
 }
 
 let cachedWorkspaceHTML = '';
@@ -422,13 +433,15 @@ export function renderSplitView() {
 
   getOriginalWorkspaceHTML();
   ws.classList.add('split-active');
+  $('#placeholder')?.classList.add('hidden');
+  ws.classList.remove('hidden');
   ws.innerHTML = '';
 
   const headBar = document.createElement('div');
   headBar.className = 'split-global-header';
   headBar.innerHTML = `
     <div class="split-info">
-      <span>🔲 <b>Split-View Attiva</b> (${splitState.panes.size} pannelli)</span>
+      <span>🔲 <b>Area Split-View</b> (${splitState.panes.size} pannelli)</span>
     </div>
     <div class="split-global-actions">
       <button type="button" id="btn-compare-schemas" class="ghost" title="Confronta gli schemi delle tabelle tra i primi due pannelli">🔍 Confronta Schema</button>
@@ -437,16 +450,7 @@ export function renderSplitView() {
   `;
   ws.appendChild(headBar);
 
-  headBar.querySelector('#btn-close-split').addEventListener('click', () => {
-    splitState.active = false;
-    splitState.panes.clear();
-    splitState.layout = null;
-    splitState.focusedPaneId = null;
-    ws.classList.remove('split-active');
-    ws.innerHTML = getOriginalWorkspaceHTML();
-    import('./workspace.js').then((m) => m.renderWorkspace());
-  });
-
+  headBar.querySelector('#btn-close-split').addEventListener('click', closeSplitView);
   headBar.querySelector('#btn-compare-schemas').addEventListener('click', comparePaneSchemas);
 
   const container = document.createElement('div');

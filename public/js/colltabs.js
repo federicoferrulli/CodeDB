@@ -7,7 +7,7 @@ import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
-import { addOrSplitPane, isSplitActive, openInActivePane } from './splitview.js';
+import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView } from './splitview.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
 // connessione (t.state.collTabs). Ogni coll-tab ha uno snapshot di query,
@@ -21,7 +21,7 @@ function currentCollTab() {
 
 function saveActiveSnapshot() {
   const ct = currentCollTab();
-  if (!ct) return;
+  if (!ct || ct.isSplitTab) return;
   ct.snap = {
     filter: $('#filter-input')?.value || '',
     sort: $('#sort-input')?.value || '',
@@ -48,6 +48,16 @@ function markTreeSelection() {
 function activate(ct, { fresh }) {
   const t = activeTab();
   t.state.activeCollId = ct.id;
+
+  if (ct.isSplitTab) {
+    renderCollTabBar();
+    markTreeSelection();
+    renderSplitView();
+    return;
+  }
+
+  deactivateSplitView();
+
   state.db = ct.db;
   state.coll = ct.coll;
   state.watching = false;
@@ -57,12 +67,6 @@ function activate(ct, { fresh }) {
   // Lo scroll infinito riparte pulito sulla collection attivata.
   state.loading = false;
   state.exhausted = false;
-
-  if (isSplitActive()) {
-    renderCollTabBar();
-    markTreeSelection();
-    return;
-  }
 
   $('#live-badge').classList.add('hidden');
 
@@ -129,7 +133,7 @@ export function openCollTab(db, coll) {
   const t = activeTab();
   if (!t || !t.state.connected) return;
   saveActiveSnapshot();
-  let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll);
+  let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll && !c.isSplitTab);
   if (!ct) {
     ct = { id: crypto.randomUUID(), db, coll, snap: null };
     t.state.collTabs.push(ct);
@@ -154,6 +158,12 @@ export function closeCollTab(id) {
   const list = t.state.collTabs;
   const i = list.findIndex((c) => c.id === id);
   if (i < 0) return;
+
+  if (list[i].isSplitTab) {
+    closeSplitView();
+    return;
+  }
+
   const wasActive = list[i].id === t.state.activeCollId;
   list.splice(i, 1);
   if (!wasActive) {
