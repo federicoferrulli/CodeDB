@@ -9,7 +9,7 @@ const splitState = {
   focusedPaneId: null,
   panes: new Map(),
   layout: null,
-  splitCollTabId: null, // ID del tab speciale "🔲 Area Split-View"
+  splitCollTabId: null,
 };
 
 let paneCounter = 0;
@@ -23,6 +23,53 @@ export function isSplitActive() {
 
 export function getSplitState() {
   return splitState;
+}
+
+export function getSplitStateSnapshot() {
+  if (!splitState.active || !splitState.panes.size) return null;
+  return {
+    active: splitState.active,
+    layout: splitState.layout,
+    focusedPaneId: splitState.focusedPaneId,
+    panes: Array.from(splitState.panes.entries()).map(([pId, p]) => [
+      pId,
+      {
+        id: p.id,
+        tabId: p.tabId,
+        db: p.db,
+        coll: p.coll,
+        filter: p.filter || '',
+        sort: p.sort || '',
+        queryMode: p.queryMode || 'find',
+      },
+    ]),
+  };
+}
+
+export function restoreSplitStateSnapshot(snap) {
+  if (!snap || !snap.panes || !snap.panes.length) return;
+  splitState.active = !!snap.active;
+  splitState.layout = snap.layout || null;
+  splitState.focusedPaneId = snap.focusedPaneId || null;
+  splitState.panes.clear();
+  for (const [pId, p] of snap.panes) {
+    splitState.panes.set(pId, {
+      id: p.id,
+      tabId: p.tabId,
+      db: p.db,
+      coll: p.coll,
+      filter: p.filter || '',
+      sort: p.sort || '',
+      queryMode: p.queryMode || 'find',
+      skip: 0,
+      limit: 50,
+      total: 0,
+      docs: [],
+      columns: [],
+      loading: false,
+      error: null,
+    });
+  }
 }
 
 export function getFocusedPaneId() {
@@ -67,7 +114,6 @@ export function initSplitView() {
   ws.addEventListener('drop', handleWorkspaceDrop);
 }
 
-// Rimuove la singola tab di collezione dal coll-tab bar quando viene unita allo Split-View
 function removeSingleCollTab(db, coll) {
   const t = activeTab();
   if (!t) return;
@@ -77,7 +123,6 @@ function removeSingleCollTab(db, coll) {
   }
 }
 
-// Assicura che esista il tab speciale "🔲 Area Split-View" nei collTabs del tab di connessione attivo
 function ensureSplitCollTab() {
   const t = activeTab();
   if (!t) return null;
@@ -251,7 +296,6 @@ export function addOrSplitPane(targetPaneId, dir, item) {
     error: null,
   };
 
-  // Rimuove la tab singola corrispondente se era presente nella barra delle tab
   removeSingleCollTab(item.db, item.coll);
 
   splitState.panes.set(pId, newPane);

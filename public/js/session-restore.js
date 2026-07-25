@@ -18,27 +18,35 @@ import { $, toast } from './utils.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
+import { getSplitStateSnapshot, restoreSplitStateSnapshot } from './splitview.js';
 
 const KEY = 'codedb:session';
 
 // Input correnti di un coll-tab: dal DOM se è quello attivo del tab attivo
 // (mentre è attivo la verità è il DOM), altrimenti dal suo snapshot salvato.
 function collTabInputs(t, c) {
+  if (c.isSplitTab) {
+    return {
+      id: c.id,
+      isSplitTab: true,
+      db: 'Split-View',
+      coll: '🔲 Area Split-View',
+      splitSnap: getSplitStateSnapshot() || c.splitSnap || null,
+    };
+  }
+
   const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
   if (activeNow) {
     return {
       id: c.id, db: c.db, coll: c.coll,
-      filter: $('#filter-input').value,
-      sort: $('#sort-input').value,
-      queryMode: $('#query-mode').value,
-      pageSize: $('#page-size').value,
-      infiniteScroll: $('#infinite-toggle').checked,
+      filter: $('#filter-input')?.value || '',
+      sort: $('#sort-input')?.value || '',
+      queryMode: $('#query-mode')?.value || 'find',
+      pageSize: $('#page-size')?.value || '50',
+      infiniteScroll: $('#infinite-toggle')?.checked || false,
       view: state.view || 'data',
     };
   }
-  // Coll-tab non attivo: gli input vivono nel suo snapshot; se è stato appena
-  // ripristinato e mai riattivato lo snapshot è ancora null, quindi si ripiega
-  // sugli input di ripristino (altrimenti si perderebbero al refresh seguente).
   const src = c.snap || c.restore || {};
   return {
     id: c.id, db: c.db, coll: c.coll,
@@ -79,8 +87,6 @@ export function persistSession() {
 // coll-tab e gli input da ripristinare "una tantum" alla prima attivazione).
 function reconnectTab(info) {
   return new Promise((resolve, reject) => {
-    // Timeout di sicurezza: se l'ack non arriva (rete/errore), non bloccare il
-    // ripristino dei tab successivi.
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
@@ -102,14 +108,28 @@ function reconnectTab(info) {
         databases: res.databases || [],
         expandedDbs: new Set(info.expandedDbs || []),
       });
-      tab.state.collTabs = (info.collTabs || []).map((c) => ({
-        id: c.id || crypto.randomUUID(),
-        db: c.db,
-        coll: c.coll,
-        snap: null,
-        // Ripristino degli input al primo activate del coll-tab (vedi colltabs.js).
-        restore: { filter: c.filter, sort: c.sort, queryMode: c.queryMode, pageSize: c.pageSize, infiniteScroll: c.infiniteScroll, view: c.view },
-      }));
+      tab.state.collTabs = (info.collTabs || []).map((c) => {
+        if (c.isSplitTab) {
+          if (c.splitSnap) {
+            restoreSplitStateSnapshot(c.splitSnap);
+          }
+          return {
+            id: c.id || ('splitview_' + crypto.randomUUID()),
+            isSplitTab: true,
+            db: 'Split-View',
+            coll: '🔲 Area Split-View',
+            snap: null,
+            splitSnap: c.splitSnap,
+          };
+        }
+        return {
+          id: c.id || crypto.randomUUID(),
+          db: c.db,
+          coll: c.coll,
+          snap: null,
+          restore: { filter: c.filter, sort: c.sort, queryMode: c.queryMode, pageSize: c.pageSize, infiniteScroll: c.infiniteScroll, view: c.view },
+        };
+      });
       tab.state.activeCollId = info.activeCollId && tab.state.collTabs.some((c) => c.id === info.activeCollId)
         ? info.activeCollId
         : (tab.state.collTabs[0] ? tab.state.collTabs[0].id : null);
