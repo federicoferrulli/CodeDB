@@ -126,6 +126,14 @@ class DbStrategy {
   watchSchema(handlers) { handlers.onUnavailable(); }
 
   unwatchSchema() { /* niente da fermare di default */ }
+
+  /**
+   * Stato di salute della connessione per il pannello di monitoraggio: misura
+   * la latenza di un ping (round-trip a vuoto) e, dove disponibili, le
+   * statistiche del pool di connessioni.
+   * @returns {Promise<{ latencyMs: number, pool: { limit, total, idle, active, waiting }|null, extra?: object }>}
+   */
+  async health() { throw unsupported(); }
 }
 
 /* ---------------------------------------------------------------------------

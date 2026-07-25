@@ -135,6 +135,36 @@ class MySqlStrategy extends DbStrategy {
     }
   }
 
+  async health() {
+    const pool = this.requirePool();
+    const t0 = Date.now();
+    await pool.query('SELECT 1');
+    const latencyMs = Date.now() - t0;
+    // mysql2 non ha un'API pubblica per lo stato del pool: si leggono, in modo
+    // difensivo, i contatori interni del pool "core" (dietro il wrapper promise).
+    const raw = pool.pool || pool;
+    const len = (d) => {
+      if (!d) return null;
+      if (typeof d.length === 'number') return d.length;
+      if (typeof d.size === 'number') return d.size;
+      if (typeof d.toArray === 'function') return d.toArray().length;
+      return null;
+    };
+    const limit = (raw.config && raw.config.connectionLimit != null) ? raw.config.connectionLimit : null;
+    const total = len(raw._allConnections);
+    const idle = len(raw._freeConnections);
+    return {
+      latencyMs,
+      pool: {
+        limit,
+        total,
+        idle,
+        active: (total != null && idle != null) ? total - idle : null,
+        waiting: len(raw._connectionQueue),
+      },
+    };
+  }
+
   async listDatabases() {
     const pool = this.requirePool();
     const [rows] = await pool.query(

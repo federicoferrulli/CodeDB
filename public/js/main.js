@@ -23,6 +23,7 @@ import { initVault } from './vault.js';
 import { initQueryTab, loadQueryTab } from './query-tab.js';
 import { initBackupManager } from './backupmanager.js';
 import { initAuditLog } from './auditlog.js';
+import { initHealth } from './health.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -105,6 +106,7 @@ initVault();
 initQueryTab();
 initBackupManager();
 initAuditLog();
+initHealth();
 
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.

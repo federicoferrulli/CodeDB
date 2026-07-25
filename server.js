@@ -59,6 +59,17 @@ function errMsg(err) {
   return (err && err.message) || String(err);
 }
 
+// Corsa contro un timeout: se `promise` non si risolve entro `ms`, rigetta con
+// un errore leggibile. Usato dal pannello di salute per non restare appeso su
+// una connessione morta (es. tunnel SSH caduto) oltre qualche secondo.
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label || 'Operazione'} scaduta dopo ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
 /* ---------------------------------------------------------------------------
  * Connessioni salvate (connections.ini)
  * ------------------------------------------------------------------------- */
@@ -719,6 +730,41 @@ io.on('connection', (socket) => {
       category: payload.category ? String(payload.category) : undefined,
     });
     cb({ ok: true, entries, total, offset, limit });
+  });
+
+  // Stato di salute delle connessioni attive di questo socket (una per tab):
+  // latenza di ping, stato del tunnel SSH e statistiche del pool. I ping vanno
+  // in parallelo con un timeout, così una connessione morta non blocca il resto.
+  safeOn('health:connections', async (_payload, cb) => {
+    const entries = await Promise.all([...sessions.entries()].map(async ([tabId, sess]) => {
+      const entry = {
+        tabId,
+        label: sess.label || null,
+        connName: sess.connName || null,
+        dbType: sess.dbType || (sess.strategy && sess.strategy.type) || null,
+        ssh: sess.tunnel
+          ? { active: true, alive: !!sess.tunnel.alive, host: sess.tunnel.host, port: sess.tunnel.port, lastError: sess.tunnel.lastError || null }
+          : { active: false },
+      };
+      // Un tunnel già segnalato come caduto: niente ping (fallirebbe dopo il timeout).
+      if (sess.tunnel && !sess.tunnel.alive) {
+        entry.status = 'error';
+        entry.error = `Tunnel SSH caduto${sess.tunnel.lastError ? `: ${sess.tunnel.lastError}` : '.'}`;
+        return entry;
+      }
+      try {
+        const h = await withTimeout(sess.strategy.health(), 5000, 'Ping');
+        entry.status = 'ok';
+        entry.latencyMs = h.latencyMs;
+        entry.pool = h.pool || null;
+        if (h.extra) entry.extra = h.extra;
+      } catch (err) {
+        entry.status = 'error';
+        entry.error = errMsg(err);
+      }
+      return entry;
+    }));
+    cb({ ok: true, connections: entries });
   });
 
   safeOn('connections:delete', ({ name }, cb) => {

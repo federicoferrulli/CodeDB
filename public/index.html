@@ -169,6 +169,7 @@
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
       <button id="btn-backup-manager" class="ghost" title="Gestione Backup & Ripristino" style="margin-left: 15px;">💾 Backup & Restore</button>
       <button id="btn-audit-log" class="ghost" title="Storico delle azioni critiche/di scrittura sul database" style="margin-left: 8px;">📜 Storico Azioni</button>
+      <button id="btn-health" class="ghost" title="Stato di salute delle connessioni attive (ping, tunnel SSH, pool)" style="margin-left: 8px;">💓 Salute</button>
       <label id="polling-toggle" class="hidden" style="margin-left: 15px; font-size: 0.9em; cursor: pointer; color: var(--fg-dim);">
         <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
       </label>
@@ -1106,6 +1107,26 @@
           </select>
         </label>
       </div>
+    </div>
+  </div>
+
+  <!-- ===================== Salute delle connessioni ===================== -->
+  <div id="modal-health" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>💓 Salute delle Connessioni</h2>
+        <button type="button" id="btn-close-health-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Stato in tempo reale delle connessioni attive (una per tab aperto): latenza del ping, stato del tunnel SSH e pool di connessioni.</p>
+
+      <div class="catalog-toolbar health-toolbar">
+        <label class="health-auto">
+          <input type="checkbox" id="health-auto-refresh" checked> Auto-refresh (4s)
+        </label>
+        <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+      <div id="health-list" class="catalog-list-container"></div>
     </div>
   </div>
 

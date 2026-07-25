@@ -245,6 +245,21 @@ class MongoDbStrategy extends DbStrategy {
     }
   }
 
+  async health() {
+    const client = this.requireClient();
+    const t0 = Date.now();
+    await client.db('admin').command({ ping: 1 });
+    const latencyMs = Date.now() - t0;
+    // Il driver Mongo non espone contatori di pool pubblici e stabili: si
+    // riporta solo il numero di server della topology, quando accessibile.
+    let extra;
+    try {
+      const desc = client.topology && client.topology.description;
+      if (desc && desc.servers) extra = { servers: desc.servers.size };
+    } catch { /* internals non disponibili: si omette */ }
+    return { latencyMs, pool: null, extra };
+  }
+
   async listDatabases() {
     const client = this.requireClient();
     try {

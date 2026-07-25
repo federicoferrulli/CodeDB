@@ -147,6 +147,27 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
+  async health() {
+    const pool = this.requirePool();
+    const t0 = Date.now();
+    await pool.query('SELECT 1');
+    const latencyMs = Date.now() - t0;
+    // Il Pool di `pg` espone contatori pubblici: totali/idle/in coda.
+    const limit = (pool.options && pool.options.max != null) ? pool.options.max : null;
+    const total = pool.totalCount != null ? pool.totalCount : null;
+    const idle = pool.idleCount != null ? pool.idleCount : null;
+    return {
+      latencyMs,
+      pool: {
+        limit,
+        total,
+        idle,
+        active: (total != null && idle != null) ? total - idle : null,
+        waiting: pool.waitingCount != null ? pool.waitingCount : null,
+      },
+    };
+  }
+
   async listDatabases() {
     const pool = this.requirePool();
     const res = await pool.query(
