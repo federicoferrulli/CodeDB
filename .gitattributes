@@ -1,0 +1,10 @@
+# Forza i terminatori di riga corretti per gli script, indipendentemente dall'OS.
+# Gli script shell UNIX DEVONO restare LF: con CRLF la shebang "#!/usr/bin/env bash"
+# viene letta come "bash\r" e su macOS/Linux fallisce con "No such file or directory".
+*.sh    text eol=lf
+codedb.sh text eol=lf
+
+# Gli script Windows restano CRLF.
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
