@@ -26,6 +26,7 @@ function saveActiveSnapshot() {
     sort: $('#sort-input').value,
     queryMode: $('#query-mode').value,
     pageSize: $('#page-size').value,
+    infiniteScroll: state.infiniteScroll,
     skip: state.skip,
     limit: state.limit,
     total: state.total,
@@ -52,6 +53,9 @@ function activate(ct, { fresh }) {
   // La selezione bulk è legata alla pagina corrente: un _id (es. PK intera
   // MySQL) potrebbe coincidere tra tabelle diverse, quindi si azzera.
   state.selectedDocs.clear();
+  // Lo scroll infinito riparte pulito sulla collection attivata.
+  state.loading = false;
+  state.exhausted = false;
   $('#live-badge').classList.add('hidden');
 
   const s = ct.snap;
@@ -59,6 +63,8 @@ function activate(ct, { fresh }) {
   $('#sort-input').value = s ? s.sort : '';
   $('#query-mode').value = s ? s.queryMode : 'find';
   if (s) $('#page-size').value = s.pageSize;
+  state.infiniteScroll = s ? !!s.infiniteScroll : false;
+  $('#infinite-toggle').checked = state.infiniteScroll;
   applyQueryPlaceholders();
 
   $('#breadcrumb').textContent = `${ct.db} ▸ ${ct.coll}`;

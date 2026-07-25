@@ -271,15 +271,22 @@
             <div class="statusbar">
               <span id="result-info"></span>
               <span id="cell-info"></span>
+              <span id="loading-info"></span>
               <span class="spacer"></span>
+              <label id="infinite-toggle-label" title="Scroll infinito: carica altri dati man mano che scorri (solo find)">
+                <input type="checkbox" id="infinite-toggle"> ∞ Scroll
+              </label>
               <button id="prev-btn" class="ghost">‹ Prec</button>
               <span id="page-info"></span>
               <button id="next-btn" class="ghost">Succ ›</button>
-              <select id="page-size">
+              <select id="page-size" title="Righe per pagina (o per blocco con scroll infinito)">
                 <option>25</option>
                 <option selected>50</option>
                 <option>100</option>
                 <option>200</option>
+                <option>500</option>
+                <option>1000</option>
+                <option>5000</option>
               </select>
             </div>
           </div>

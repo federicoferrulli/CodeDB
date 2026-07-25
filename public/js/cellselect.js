@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject } from './utils.js';
-import { runQuery } from './grid.js';
+import { runQuery, ensureRowRendered } from './grid.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
@@ -357,6 +357,8 @@ function selectColumn(c, { ctrl, shift }) {
 function focusCellIntoView() {
   const f = sel().focus;
   if (!f) return;
+  // In virtualizzazione la riga potrebbe non essere nel DOM: la renderizza.
+  ensureRowRendered(f.r);
   const td = document.querySelector(`#grid tbody td[data-r="${f.r}"][data-c="${f.c}"]`);
   td?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }

@@ -20,6 +20,7 @@ export function saveWorkspaceInputs() {
   s.sort = $('#sort-input').value;
   s.queryMode = $('#query-mode').value;
   s.pageSize = $('#page-size').value;
+  s.infiniteScroll = $('#infinite-toggle').checked;
 }
 
 export function renderWorkspace() {
@@ -51,6 +52,7 @@ export function renderWorkspace() {
   $('#filter-input').value = state.filter || '';
   $('#sort-input').value = state.sort || '';
   $('#page-size').value = state.pageSize || '50';
+  $('#infinite-toggle').checked = !!state.infiniteScroll;
   applyQueryPlaceholders();
 
   $('#live-badge').classList.toggle('hidden', !state.watching);

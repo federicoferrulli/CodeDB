@@ -95,14 +95,14 @@ export function startEdit(td, doc, field) {
   const cancel = () => {
     if (finished) return;
     finished = true;
-    renderGrid();
+    renderGrid({ preserveScroll: true });
   };
 
   const save = () => {
     if (finished) return;
     finished = true;
     if (input.value === original) {
-      renderGrid();
+      renderGrid({ preserveScroll: true });
       return;
     }
     let value;
@@ -110,7 +110,7 @@ export function startEdit(td, doc, field) {
       value = buildValue();
     } catch (err) {
       toast(err.message, true);
-      renderGrid();
+      renderGrid({ preserveScroll: true });
       return;
     }
     emit('doc:update', {
@@ -123,7 +123,7 @@ export function startEdit(td, doc, field) {
       runQuery();
     }).catch((err) => {
       toast(err.message, true);
-      renderGrid();
+      renderGrid({ preserveScroll: true });
     });
   };
 

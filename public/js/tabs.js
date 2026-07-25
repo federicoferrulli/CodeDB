@@ -19,6 +19,9 @@ export function freshState() {
     total: 0,
     docs: [],
     columns: [],
+    infiniteScroll: false,  // scroll infinito attivo (carica a blocchi allo scroll)
+    loading: false,         // fetch di un blocco in corso (scroll infinito)
+    exhausted: false,       // tutti i documenti caricati: niente altri blocchi
     liveTimer: null,
     pollingInterval: null,
     view: 'data',
