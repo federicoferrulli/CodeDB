@@ -422,7 +422,6 @@ export function closePane(paneId) {
 export function closeSplitView() {
   splitState.active = false;
   splitState.layout = null;
-  const remainingPane = Array.from(splitState.panes.values())[0];
 
   const t = activeTab();
   if (t) {
@@ -435,9 +434,13 @@ export function closeSplitView() {
 
   deactivateSplitView();
 
-  if (remainingPane && t) {
-    import('./colltabs.js').then((m) => m.openCollTab(remainingPane.db, remainingPane.coll));
+  if (t && t.state.collTabs.length > 0) {
+    const nextCt = t.state.collTabs[t.state.collTabs.length - 1];
+    import('./colltabs.js').then((m) => m.switchCollTab(nextCt.id));
   } else {
+    state.db = null;
+    state.coll = null;
+    if (t) t.state.activeCollId = null;
     import('./workspace.js').then((m) => m.renderWorkspace());
   }
 }
