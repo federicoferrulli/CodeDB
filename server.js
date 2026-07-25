@@ -22,6 +22,7 @@ const { Server } = require('socket.io');
 const crypto = require('crypto');
 const readline = require('readline');
 const DbFactory = require('./db/DbFactory');
+const { makeAuditor } = require('./db/AuditLog');
 const { openSshTunnel } = require('./db/SshTunnel');
 const { attachMcp } = require('./mcp/McpGateway');
 const VirtualJoinEngine = require('./db/VirtualJoinEngine');
@@ -34,6 +35,13 @@ const { readCatalog, readManifest, sha256File, formatBytes } = require('./backup
 const { notifySlack } = require('./backup/lib/notify');
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
+
+// Audit log delle operazioni critiche/di scrittura eseguite dalla Web UI, su un
+// file separato da quello del gateway MCP (mcp-audit.log) ma con lo stesso
+// formato/rotazione (db/AuditLog.js). CODEDB_UI_AUDIT_FILE lo sposta nella
+// cartella dati utente per l'app Electron pacchettizzata e isola i test.
+const UI_AUDIT_FILE = process.env.CODEDB_UI_AUDIT_FILE || path.join(__dirname, 'ui-audit.log');
+const { audit: auditUi, readRecent: readUiAudit } = makeAuditor(UI_AUDIT_FILE);
 
 const PORT = process.env.PORT || 3030;
 
@@ -328,6 +336,147 @@ async function teardownConnection({ strategy, tunnel }) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Audit delle scritture via Web UI
+ * ------------------------------------------------------------------------- */
+
+// Tronca un valore (stringa o oggetto) a n caratteri per non gonfiare il log.
+function cutStr(v, n = 200) {
+  if (v == null) return undefined;
+  const s = typeof v === 'string' ? v : JSON.stringify(v);
+  return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
+// Estrae i contatori "quante righe" dal risultato di una scrittura, qualunque
+// sia la strategia (Mongo/MySQL/PostgreSQL usano nomi diversi): entra nel log
+// solo ciò che è effettivamente presente.
+function auditCounts(r) {
+  if (!r || typeof r !== 'object') return {};
+  const out = {};
+  for (const k of ['deletedCount', 'modifiedCount', 'matchedCount', 'insertedCount',
+    'upsertedCount', 'inserted', 'imported', 'count', 'affectedRows']) {
+    if (r[k] != null) out[k] = r[k];
+  }
+  return out;
+}
+
+// Descrittori delle operazioni di scrittura tracciate: (payload, result) →
+// campi aggiuntivi da registrare (op = etichetta italiana per la UI). Solo gli
+// eventi qui presenti vengono registrati; i restanti delegate restano di sola
+// lettura e non producono voci di audit.
+const AUDIT_WRITES = {
+  'db:create':             (p) => ({ coll: p.coll, op: 'Creazione database' }),
+  'db:rename':             (p) => ({ newName: p.newName, op: 'Rinomina database' }),
+  'db:drop':               () => ({ op: 'Eliminazione database' }),
+  'collection:create':     (p) => ({ coll: p.name, op: 'Creazione collection/tabella' }),
+  'collection:rename':     (p) => ({ coll: p.coll, newName: p.newName, op: 'Rinomina collection/tabella' }),
+  'collection:drop':       (p) => ({ coll: p.coll, op: 'Eliminazione collection/tabella' }),
+  'column:add':            (p) => ({ coll: p.coll, op: 'Aggiunta colonna' }),
+  'column:alter':          (p) => ({ coll: p.coll, op: 'Modifica colonna' }),
+  'column:drop':           (p) => ({ coll: p.coll, column: p.name, op: 'Eliminazione colonna' }),
+  'index:create':          (p) => ({ coll: p.coll, op: 'Creazione indice' }),
+  'index:drop':            (p) => ({ coll: p.coll, index: p.name, op: 'Eliminazione indice' }),
+  'doc:insert':            (p) => ({ coll: p.coll, op: 'Inserimento documento/riga' }),
+  'doc:update':            (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Aggiornamento documento/riga' }),
+  'doc:replace':           (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Sostituzione documento/riga' }),
+  'doc:delete':            (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Eliminazione documento/riga' }),
+  'collection:deleteMany': (p) => ({ coll: p.coll, filter: cutStr(p.filter), op: 'Eliminazione massiva' }),
+  'collection:import':     (p) => ({ coll: p.coll, op: 'Import batch' }),
+};
+
+// Descrittori delle operazioni di sola lettura tracciate (find, aggregate,
+// explain, export). Le letture di navigazione/chrome (db:list, db:collections,
+// db:schema, db:search, collection:stats) restano fuori: sono ad altissimo
+// volume (polling, render della sidebar) e non rappresentano un'azione utente.
+const AUDIT_READS = {
+  'collection:find':      (p) => ({ coll: p.coll, op: 'Lettura documenti/righe (find)', filter: cutStr(p.filter), sort: cutStr(p.sort, 80) }),
+  'collection:aggregate': (p) => ({ coll: p.coll, op: 'Aggregazione', pipeline: cutStr(p.pipeline, 300) }),
+  'collection:explain':   (p) => ({ coll: p.coll, op: 'Piano di esecuzione (explain)' }),
+  'collection:export':    (p) => ({ coll: p.coll, op: 'Export collection/tabella' }),
+};
+
+// Prima parola SQL: riconosce se una query è una scrittura (le letture SELECT
+// restano categorizzate come read).
+const SQL_WRITE_KEYWORDS = /^(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|MERGE|GRANT|REVOKE|RENAME|CALL)\b/i;
+function isWriteSql(code) {
+  return SQL_WRITE_KEYWORDS.test(String(code || '').trim());
+}
+// Pipeline MongoDB che materializza dati (unica forma di scrittura via pipeline).
+function isWriteMongoPipeline(code) {
+  return /"\$out"|"\$merge"/.test(String(code || ''));
+}
+
+// Classifica un evento delegato: scrittura, lettura o non tracciato. Il ramo
+// collection:aggregate è ambiguo (nella griglia "SQL Raw"/pipeline può essere
+// una scrittura): si guarda la strategia e il codice per decidere.
+function classifyAudit(event, payload, sess) {
+  if (AUDIT_WRITES[event]) return { category: 'write', describe: AUDIT_WRITES[event] };
+  if (event === 'collection:aggregate') {
+    const isSql = sess && sess.strategy && sess.strategy.type && sess.strategy.type !== 'mongodb';
+    if (isSql && isWriteSql(payload.pipeline)) {
+      return { category: 'write', describe: (p) => ({ coll: p.coll, op: 'Query di scrittura (SQL Raw)', query: cutStr(p.pipeline, 500) }) };
+    }
+    if (!isSql && isWriteMongoPipeline(payload.pipeline)) {
+      return { category: 'write', describe: (p) => ({ coll: p.coll, op: 'Pipeline di scrittura ($out/$merge)', pipeline: cutStr(p.pipeline, 500) }) };
+    }
+    return { category: 'read', describe: AUDIT_READS['collection:aggregate'] };
+  }
+  if (AUDIT_READS[event]) return { category: 'read', describe: AUDIT_READS[event] };
+  return null;
+}
+
+// Scrive una voce di audit per un'operazione delegata. Best-effort assoluto:
+// qualsiasi errore qui non deve mai disturbare l'operazione già completata.
+function auditWrite(sess, event, payload, extra, status, result, error, category) {
+  try {
+    auditUi({
+      event,
+      category: category || 'write',
+      status,
+      connection: (sess && (sess.connName || sess.label)) || null,
+      dbType: (sess && (sess.dbType || (sess.strategy && sess.strategy.type))) || null,
+      db: payload.db || null,
+      client: (sess && sess.ip) || null,
+      ...(extra || {}),
+      ...auditCounts(result),
+      ...(Array.isArray(result && result.docs) ? { rows: result.docs.length } : {}),
+      ...(error ? { error: errMsg(error) } : {}),
+    });
+  } catch { /* audit best-effort */ }
+}
+
+// Registra la voce di audit per un evento delegato, saltando le letture
+// automatiche (polling/live/refresh post-scrittura marcate _bg dal client).
+function auditDelegate(cls, sess, event, payload, status, result, error) {
+  if (!cls) return;
+  if (cls.category === 'read' && payload._bg) return;
+  auditWrite(sess, event, payload, cls.describe(payload, result), status, result, error, cls.category);
+}
+
+// Voce di audit per una query eseguita dal Query Engine (query:execute): db/coll
+// sono quelli risolti localmente, non nel payload. Il Query Engine è sempre
+// avviato dall'utente (nessun polling): letture e scritture vengono entrambe
+// tracciate, distinte da `category`.
+function auditQuery(sess, db, coll, code, category, op, status, result, error) {
+  try {
+    auditUi({
+      event: 'query:execute',
+      category,
+      status,
+      op,
+      connection: (sess && (sess.connName || sess.label)) || null,
+      dbType: (sess && (sess.dbType || (sess.strategy && sess.strategy.type))) || null,
+      db: db || null,
+      coll: coll || null,
+      client: (sess && sess.ip) || null,
+      query: cutStr(code, 500),
+      ...auditCounts(result),
+      ...(Array.isArray(result && result.docs) ? { rows: result.docs.length } : {}),
+      ...(error ? { error: errMsg(error) } : {}),
+    });
+  } catch { /* audit best-effort */ }
+}
+
+/* ---------------------------------------------------------------------------
  * Socket handling — una sessione (strategia + eventuale tunnel) per ogni tab
  * aperto nel browser; il tabId viaggia in ogni payload. Client storici senza
  * tabId ricadono sulla sessione "default" (stesso comportamento di prima).
@@ -442,9 +591,15 @@ io.on('connection', (socket) => {
         cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
         return;
       }
+      // Classificazione (scrittura/lettura/non tracciato) per l'audit: dipende
+      // da evento, payload e strategia (vedi collection:aggregate).
+      const cls = classifyAudit(event, payload, sess);
       try {
-        cb({ ok: true, ...(await fn(sess.strategy, payload)) });
+        const result = await fn(sess.strategy, payload);
+        cb({ ok: true, ...result });
+        auditDelegate(cls, sess, event, payload, 'ok', result, null);
       } catch (err) {
+        auditDelegate(cls, sess, event, payload, 'error', null, err);
         // Se il tunnel SSH è caduto dopo l'apertura, la strategia vede solo
         // un errore di rete generico verso la porta locale ormai orfana:
         // qui lo si riconosce e si dà un messaggio chiaro invece di quello
@@ -473,7 +628,16 @@ io.on('connection', (socket) => {
     // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
     await closeSession(tabId);
     const conn = await establishConnection(cfg);
-    sessions.set(tabId, { strategy: conn.strategy, tunnel: conn.tunnel, dbType: conn.dbType });
+    sessions.set(tabId, {
+      strategy: conn.strategy,
+      tunnel: conn.tunnel,
+      dbType: conn.dbType,
+      // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
+      // in UI, nome della connessione salvata (se noto) e IP del client.
+      label: connLabel(conn.effective),
+      connName: String(cfg.saved || cfg.saveAs || '').trim() || null,
+      ip,
+    });
     activeGlobalSessions++;
     try {
       // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
@@ -537,6 +701,24 @@ io.on('connection', (socket) => {
     const connections = Object.entries(loadConnections())
       .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c), folder: c.folder || '' }));
     cb({ ok: true, connections });
+  });
+
+  // Storico delle operazioni critiche/di scrittura via Web UI. Non richiede una
+  // connessione DB attiva: legge il file di audit lato server (ui-audit.log).
+  safeOn('audit:list', (payload, cb) => {
+    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+    const offset = Math.max(parseInt(payload.offset, 10) || 0, 0);
+    const { entries, total } = readUiAudit({
+      limit,
+      offset,
+      event: payload.event ? String(payload.event) : undefined,
+      db: payload.db ? String(payload.db) : undefined,
+      connection: payload.connection ? String(payload.connection) : undefined,
+      dbType: payload.dbType ? String(payload.dbType) : undefined,
+      status: payload.status ? String(payload.status) : undefined,
+      category: payload.category ? String(payload.category) : undefined,
+    });
+    cb({ ok: true, entries, total, offset, limit });
   });
 
   safeOn('connections:delete', ({ name }, cb) => {
@@ -677,8 +859,14 @@ io.on('connection', (socket) => {
       } catch (err) {
         throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
       }
-      const docs = await VirtualJoinEngine.execute(spec, session.strategy, session.strategy);
-      return cb({ ok: true, docs, data: docs });
+      try {
+        const docs = await VirtualJoinEngine.execute(spec, session.strategy, session.strategy);
+        auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'ok', { docs }, null);
+        return cb({ ok: true, docs, data: docs });
+      } catch (err) {
+        auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'error', null, err);
+        throw err;
+      }
     }
 
     // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
@@ -689,44 +877,65 @@ io.on('connection', (socket) => {
 
     // Modalità SQL su MySQL
     if (engine === 'mysql' || session.strategy.type === 'mysql') {
-      const res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
-      return cb({ ok: true, ...res, data: res.docs });
+      const write = isWriteSql(codeStr);
+      const cat = write ? 'write' : 'read';
+      const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
+      try {
+        const res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
+        auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
+        return cb({ ok: true, ...res, data: res.docs });
+      } catch (err) {
+        auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
+        throw err;
+      }
     }
 
     // Modalità NoSQL (MongoDB)
     if (engine === 'mongodb' || session.strategy.type === 'mongodb') {
       let res;
-      if (codeStr.startsWith('[')) {
-        // Pipeline MQL EJSON
-        if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-        res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
-      } else if (codeStr.startsWith('{')) {
-        // MQL Filter JSON
-        let parsed;
-        try {
-          parsed = JSON.parse(codeStr);
-        } catch (e) {
-          throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
+      let cat = 'read';
+      let op = 'Query di lettura (MQL)';
+      try {
+        if (codeStr.startsWith('[')) {
+          // Pipeline MQL EJSON (scrittura solo con $out/$merge)
+          if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+          if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
+          else { op = 'Aggregazione (pipeline)'; }
+          res = await session.strategy.collectionAggregate(targetDb, targetColl, { pipeline: codeStr });
+        } else if (codeStr.startsWith('{')) {
+          // MQL Filter JSON
+          let parsed;
+          try {
+            parsed = JSON.parse(codeStr);
+          } catch (e) {
+            throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
+          }
+          if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+          op = 'Query di lettura (filtro MQL)';
+          res = await session.strategy.collectionFind(targetDb, targetColl, parsed);
+        } else if (sqlFromMatch) {
+          // Query SQL automatica tradotta su MongoDB (es. SELECT * FROM pippo)
+          if (!targetColl) throw new Error('Collezione non specificata nella clausola FROM.');
+
+          let whereStr = '';
+          const whereMatch = codeStr.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/i);
+          if (whereMatch) whereStr = whereMatch[1].trim();
+
+          let limitNum = 50;
+          const limitMatch = codeStr.match(/LIMIT\s+(\d+)/i);
+          if (limitMatch) limitNum = parseInt(limitMatch[1], 10);
+
+          op = 'Query di lettura (SQL→MQL)';
+          res = await session.strategy.collectionFind(targetDb, targetColl, { filter: whereStr, limit: limitNum });
+        } else {
+          if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
+          res = await session.strategy.collectionFind(targetDb, targetColl, { filter: '' });
         }
-        if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-        res = await session.strategy.collectionFind(targetDb, targetColl, parsed);
-      } else if (sqlFromMatch) {
-        // Query SQL automatica tradotta su MongoDB (es. SELECT * FROM pippo)
-        if (!targetColl) throw new Error('Collezione non specificata nella clausola FROM.');
-        
-        let whereStr = '';
-        const whereMatch = codeStr.match(/WHERE\s+(.+?)(?:\s+ORDER\s+BY|\s+LIMIT|$)/i);
-        if (whereMatch) whereStr = whereMatch[1].trim();
-
-        let limitNum = 50;
-        const limitMatch = codeStr.match(/LIMIT\s+(\d+)/i);
-        if (limitMatch) limitNum = parseInt(limitMatch[1], 10);
-
-        res = await session.strategy.collectionFind(targetDb, targetColl, { filter: whereStr, limit: limitNum });
-      } else {
-        if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
-        res = await session.strategy.collectionFind(targetDb, targetColl, { filter: '' });
+      } catch (err) {
+        auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
+        throw err;
       }
+      auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
       return cb({ ok: true, ...res, data: res.docs });
     }
 
@@ -824,9 +1033,11 @@ io.on('connection', (socket) => {
         return result;
       });
       await notifySlack(webhook, `✅ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
+      auditWrite(sess, 'backup:run', { db }, { op: 'Backup', backupType: type, backupId: summary.id }, 'ok', summary, null);
       cb({ ok: true, summary });
     } catch (err) {
       await notifySlack(webhook, `❌ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
+      auditWrite(sess, 'backup:run', { db }, { op: 'Backup', backupType: type }, 'error', null, err);
       throw err;
     }
   });
@@ -880,9 +1091,11 @@ io.on('connection', (socket) => {
         });
       });
       await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
+      auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'ok', summary, null);
       cb({ ok: true, summary });
     } catch (err) {
       await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
+      auditWrite(sess, 'backup:restore', { db: payload.targetDb || null }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', null, err);
       throw err;
     }
   });

@@ -269,7 +269,7 @@ export function initInsert() {
     }).then(() => {
       closeModal('#insert-overlay');
       toast(isSqlType(state.dbType) ? 'Riga inserita' : 'Documento inserito');
-      runQuery();
+      runQuery({ auto: true }); // refresh post-scrittura
     }).catch((err) => {
       const errorEl = $('#insert-error');
       errorEl.textContent = err.message;

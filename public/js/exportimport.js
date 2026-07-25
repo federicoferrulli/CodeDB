@@ -235,7 +235,7 @@ async function runImport() {
 
   // Aggiorna griglia (se la collection è aperta) e contatori della sidebar.
   if (inserted && state.db === db && state.coll === coll) {
-    import('./grid.js').then(({ runQuery }) => runQuery());
+    import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-import
   }
   if (inserted) refreshDbTree();
 }

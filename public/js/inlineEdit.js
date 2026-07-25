@@ -120,7 +120,7 @@ export function startEdit(td, doc, field) {
       set: { [field]: value },
     }).then(() => {
       toast(`Campo "${field}" aggiornato`);
-      runQuery();
+      runQuery({ auto: true }); // refresh post-scrittura
     }).catch((err) => {
       toast(err.message, true);
       renderGrid({ preserveScroll: true });
@@ -161,7 +161,7 @@ export function initInlineEdit() {
     }).then(() => {
       closeModal('#editdoc-overlay');
       toast('Documento aggiornato');
-      runQuery();
+      runQuery({ auto: true }); // refresh post-scrittura
     }).catch((err) => {
       const errorEl = $('#editdoc-error');
       errorEl.textContent = err.message;

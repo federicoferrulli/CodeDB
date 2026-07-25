@@ -326,7 +326,7 @@ function pasteIntoGrid(text) {
       c: Math.min(start.c + width - 1, state.columns.length - 1),
     };
     s.cells = new Set(rectKeys(s.anchor, s.focus));
-    runQuery();
+    runQuery({ auto: true }); // refresh post-scrittura (incolla celle)
   });
 }
 

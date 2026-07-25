@@ -28,6 +28,8 @@ if (app.isPackaged) {
     || path.join(dataDir, 'backups');
   process.env.CODEDB_MCP_AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE
     || path.join(dataDir, 'mcp-audit.log');
+  process.env.CODEDB_UI_AUDIT_FILE = process.env.CODEDB_UI_AUDIT_FILE
+    || path.join(dataDir, 'ui-audit.log');
 }
 
 const gotLock = app.requestSingleInstanceLock();

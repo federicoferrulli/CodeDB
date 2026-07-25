@@ -38,7 +38,7 @@ export function renameDb(name) {
       invalidateSchema();
       state.dbSchemaFor = null;
       $('#breadcrumb').textContent = `${newName} ▸ ${state.coll}`;
-      import('./grid.js').then(({ runQuery }) => runQuery());
+      import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
     refreshDbTree();
@@ -138,7 +138,7 @@ export function renameColl(dbName, collName) {
     if (state.db === dbName && state.coll === collName) {
       state.coll = newName;
       $('#breadcrumb').textContent = `${dbName} ▸ ${newName}`;
-      import('./grid.js').then(({ runQuery }) => runQuery());
+      import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
     refreshDbTree();

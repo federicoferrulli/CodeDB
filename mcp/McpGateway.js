@@ -27,6 +27,7 @@ const { StreamableHTTPServerTransport } = require('@modelcontextprotocol/sdk/ser
 const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
 const DbFactory = require('../db/DbFactory');
+const { makeAuditor } = require('../db/AuditLog');
 const { runBackup } = require('../backup/lib/engine');
 const { runRestore, resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
@@ -127,19 +128,11 @@ function assertReadOnlyPipeline(pipelineText) {
  * ------------------------------------------------------------------------- */
 
 const AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log');
-const AUDIT_MAX_BYTES = 5 * 1024 * 1024; // oltre, si ruota un file .1 per non crescere indefinitamente
 
-function audit(entry) {
-  const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
-  const append = () => fs.appendFile(AUDIT_FILE, line + '\n', () => { /* l'audit non deve mai bloccare */ });
-  fs.stat(AUDIT_FILE, (err, stats) => {
-    if (!err && stats.size > AUDIT_MAX_BYTES) {
-      fs.rename(AUDIT_FILE, `${AUDIT_FILE}.1`, append);
-    } else {
-      append();
-    }
-  });
-}
+// Formato e rotazione sono condivisi con l'audit della Web UI (db/AuditLog.js):
+// qui l'auditor scrive sul file MCP, mentre server.js ne crea uno gemello su
+// ui-audit.log.
+const { audit } = makeAuditor(AUDIT_FILE);
 
 /* ---------------------------------------------------------------------------
  * Resource "schema": diagramma UML (Mermaid) + dizionario dati in markdown,

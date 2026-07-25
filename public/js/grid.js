@@ -47,7 +47,10 @@ export function selectCollection(dbName, collName) {
   openCollTab(dbName, collName);
 }
 
-export function runQuery() {
+// opts.auto = lettura automatica (polling, live change stream, refresh dopo una
+// scrittura): marcata `_bg` così l'audit del server la ignora e non intasa lo
+// storico con le riletture non avviate dall'utente.
+export function runQuery(opts = {}) {
   if (!state.db || !state.coll) return;
   showQueryError(null);
   const mode = $('#query-mode').value;
@@ -66,6 +69,7 @@ export function runQuery() {
         limit: $('#page-size').value,
         skip: state.skip,
       };
+  if (opts.auto) payload._bg = true;
 
   // Storico query: registra ciò che l'utente sta eseguendo (best-effort,
   // anche se poi il server risponde con errore la voce resta utile).
@@ -495,6 +499,7 @@ function fetchMore() {
     sort: $('#sort-input').value,
     limit: chunk,
     skip: state.docs.length,
+    _bg: true, // continuazione dello scroll infinito: non una nuova lettura utente
   }).then((res) => {
     // Unione colonne (blocchi successivi possono avere campi nuovi) e append.
     for (const c of res.columns) if (!state.columns.includes(c)) state.columns.push(c);
@@ -519,7 +524,7 @@ export function deleteDoc(doc) {
     id: idOf(doc),
   }).then(() => {
     toast('Documento eliminato');
-    runQuery();
+    runQuery({ auto: true }); // refresh post-scrittura: non è una lettura utente
   }).catch((err) => toast(err.message, true));
 }
 
@@ -546,7 +551,7 @@ export function deleteSelectedDocs() {
     state.selectedDocs.clear();
     if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
     else toast(`${ok} documenti eliminati`);
-    runQuery();
+    runQuery({ auto: true }); // refresh post-scrittura
   });
 }
 
@@ -571,7 +576,7 @@ export function deleteAllWithFilter() {
   }).then((res) => {
     state.selectedDocs.clear();
     toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
-    runQuery();
+    runQuery({ auto: true }); // refresh post-scrittura
   }).catch((err) => toast(err.message, true));
 }
 
@@ -592,7 +597,7 @@ export function updateBulkDeleteUI() {
 
 export function initGrid() {
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });
-  $('#refresh-btn').addEventListener('click', runQuery);
+  $('#refresh-btn').addEventListener('click', () => runQuery()); // refresh manuale = lettura utente
   $('#explain-btn').addEventListener('click', explainQuery);
   $('#explain-close').addEventListener('click', () => $('#explain-overlay').classList.add('hidden'));
   $('#explain-overlay').addEventListener('click', (e) => {

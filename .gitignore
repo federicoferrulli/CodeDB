@@ -5,6 +5,10 @@ connections.ini.bak
 connections.ini.bak2
 # Audit log delle scritture eseguite via MCP.
 mcp-audit.log
+mcp-audit.log.1
+# Audit log delle operazioni critiche/di scrittura eseguite via Web UI.
+ui-audit.log
+ui-audit.log.1
 # Log del server avviato in background dal launcher desktop.
 codedb.log
 codedb.err.log

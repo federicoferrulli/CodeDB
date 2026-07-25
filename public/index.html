@@ -168,6 +168,7 @@
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
       <button id="btn-backup-manager" class="ghost" title="Gestione Backup & Ripristino" style="margin-left: 15px;">💾 Backup & Restore</button>
+      <button id="btn-audit-log" class="ghost" title="Storico delle azioni critiche/di scrittura sul database" style="margin-left: 8px;">📜 Storico Azioni</button>
       <label id="polling-toggle" class="hidden" style="margin-left: 15px; font-size: 0.9em; cursor: pointer; color: var(--fg-dim);">
         <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
       </label>
@@ -1025,6 +1026,85 @@
           <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</button>
         </div>
         <div id="backup-catalog-list" class="catalog-list-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Storico Azioni (Audit Log) ===================== -->
+  <div id="modal-audit-log" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>📜 Storico delle Azioni</h2>
+        <button type="button" id="btn-close-audit-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Registro delle operazioni critiche e di scrittura eseguite dalla Web UI su tutte le connessioni (MongoDB, MySQL, PostgreSQL).</p>
+
+      <div class="catalog-toolbar audit-toolbar">
+        <label>Categoria:
+          <select id="audit-filter-category">
+            <option value="">Tutte</option>
+            <option value="write">✏️ Scritture</option>
+            <option value="read">👁 Letture</option>
+          </select>
+        </label>
+        <label>Tipo:
+          <select id="audit-filter-event">
+            <option value="">Tutti</option>
+            <optgroup label="Scritture">
+            <option value="db:create">Creazione database</option>
+            <option value="db:rename">Rinomina database</option>
+            <option value="db:drop">Eliminazione database</option>
+            <option value="collection:create">Creazione collection/tabella</option>
+            <option value="collection:rename">Rinomina collection/tabella</option>
+            <option value="collection:drop">Eliminazione collection/tabella</option>
+            <option value="column:add">Aggiunta colonna</option>
+            <option value="column:alter">Modifica colonna</option>
+            <option value="column:drop">Eliminazione colonna</option>
+            <option value="index:create">Creazione indice</option>
+            <option value="index:drop">Eliminazione indice</option>
+            <option value="doc:insert">Inserimento</option>
+            <option value="doc:update">Aggiornamento</option>
+            <option value="doc:replace">Sostituzione</option>
+            <option value="doc:delete">Eliminazione documento/riga</option>
+            <option value="collection:deleteMany">Eliminazione massiva</option>
+            <option value="collection:import">Import batch</option>
+            <option value="backup:run">Backup</option>
+            <option value="backup:restore">Ripristino backup</option>
+            </optgroup>
+            <optgroup label="Letture">
+            <option value="collection:find">Lettura (find)</option>
+            <option value="collection:aggregate">Aggregazione</option>
+            <option value="collection:explain">Piano di esecuzione (explain)</option>
+            <option value="collection:export">Export</option>
+            <option value="query:execute">Query Engine (lettura/scrittura)</option>
+            </optgroup>
+          </select>
+        </label>
+        <label>Esito:
+          <select id="audit-filter-status">
+            <option value="">Tutti</option>
+            <option value="ok">Successo</option>
+            <option value="error">Errore</option>
+          </select>
+        </label>
+        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off" spellcheck="false" />
+        <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+      <div id="audit-log-list" class="catalog-list-container"></div>
+
+      <div class="audit-pager">
+        <button type="button" id="audit-prev" class="btn btn-sm btn-secondary">‹ Precedenti</button>
+        <span id="audit-page-info" class="sub-text"></span>
+        <button type="button" id="audit-next" class="btn btn-sm btn-secondary">Successivi ›</button>
+        <label class="audit-page-size">Righe per pagina:
+          <select id="audit-page-size">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
       </div>
     </div>
   </div>

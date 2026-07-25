@@ -21,7 +21,7 @@ export function togglePolling() {
       if (document.querySelector('.editing')) return;
       if (!$('#editdoc-overlay').classList.contains('hidden')) return;
       if (!$('#insert-overlay').classList.contains('hidden')) return;
-      runQuery();
+      runQuery({ auto: true }); // polling automatico: non tracciato nell'audit
     }, 5000);
   }
 }
@@ -94,7 +94,7 @@ export function initLive() {
     if (change.tabId && change.tabId !== tabs.activeId) return;
     if (change.db !== state.db || change.coll !== state.coll) return;
     clearTimeout(state.liveTimer);
-    state.liveTimer = setTimeout(runQuery, 300);
+    state.liveTimer = setTimeout(() => runQuery({ auto: true }), 300); // refresh da change stream: non tracciato
   });
 
   let schemaTimer = null;
