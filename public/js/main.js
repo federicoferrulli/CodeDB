@@ -24,6 +24,8 @@ import { initQueryTab, loadQueryTab } from './query-tab.js';
 import { initBackupManager } from './backupmanager.js';
 import { initAuditLog } from './auditlog.js';
 import { initHealth } from './health.js';
+import { initSessionPersistence } from './session-restore.js';
+import { ensureActiveCollLoaded } from './colltabs.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -82,9 +84,12 @@ function initResizers() {
 }
 
 // Cambio del tab attivo (switch o chiusura): ri-render di barra e workspace.
+// ensureActiveCollLoaded carica i dati del coll-tab attivo dei tab ripristinati
+// da una sessione (sui tab normali non fa nulla: i dati sono già in memoria).
 onTabChange(() => {
   renderTabBar();
   renderWorkspace();
+  ensureActiveCollLoaded();
 });
 
 initUml();
@@ -107,6 +112,7 @@ initQueryTab();
 initBackupManager();
 initAuditLog();
 initHealth();
+initSessionPersistence();
 
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.

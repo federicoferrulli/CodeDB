@@ -5,6 +5,7 @@ import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
+import { restoreSession, persistSession } from './session-restore.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -275,17 +276,26 @@ export function initConnection() {
   });
 
   let hadSession = false;
-  socket.on('connect', () => {
+  socket.on('connect', async () => {
     loadSavedConnections();
-    // Riconnessione del socket: le sessioni server sono andate perse, i tab
-    // aperti non sono più validi.
-    if (hadSession && tabs.list.length) {
+    if (!hadSession) {
+      // Primo collegamento dopo il caricamento della pagina (incluso un F5):
+      // ripristina la sessione salvata in sessionStorage (riconnette le
+      // connessioni salvate, il tab attivo e il database/collection selezionati).
+      hadSession = true;
+      await restoreSession();
+      return;
+    }
+    // Riconnessione del socket a runtime: le sessioni server sono andate perse.
+    // Si cattura il layout attuale, si svuotano i tab (sessioni morte) e si
+    // riapre tutto riconnettendosi — l'utente resta operativo senza fare nulla.
+    if (tabs.list.length) {
+      persistSession();
       closeAllTabs();
       renderTabBar();
       renderWorkspace();
-      toast('Sessione persa: i tab sono stati chiusi, riconnettiti.', true);
+      await restoreSession();
     }
-    hadSession = true;
   });
 
   socket.on('disconnect', () => {

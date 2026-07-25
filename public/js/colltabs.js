@@ -59,11 +59,15 @@ function activate(ct, { fresh }) {
   $('#live-badge').classList.add('hidden');
 
   const s = ct.snap;
-  $('#filter-input').value = s ? s.filter : '';
-  $('#sort-input').value = s ? s.sort : '';
-  $('#query-mode').value = s ? s.queryMode : 'find';
+  // Input da ripristinare dopo un refresh (una tantum): presenti solo finché il
+  // coll-tab non ha ancora uno snapshot proprio (vedi session-restore.js).
+  const r = (!s && ct.restore) ? ct.restore : null;
+  $('#filter-input').value = s ? s.filter : (r ? (r.filter || '') : '');
+  $('#sort-input').value = s ? s.sort : (r ? (r.sort || '') : '');
+  $('#query-mode').value = s ? s.queryMode : (r ? (r.queryMode || 'find') : 'find');
   if (s) $('#page-size').value = s.pageSize;
-  state.infiniteScroll = s ? !!s.infiniteScroll : false;
+  else if (r && r.pageSize) $('#page-size').value = r.pageSize;
+  state.infiniteScroll = s ? !!s.infiniteScroll : (r ? !!r.infiniteScroll : false);
   $('#infinite-toggle').checked = state.infiniteScroll;
   applyQueryPlaceholders();
 
@@ -78,8 +82,9 @@ function activate(ct, { fresh }) {
     state.docs = [];
     state.columns = [];
     state.total = 0;
-    setView('data');
+    setView(r && r.view ? r.view : 'data');
     runQuery();
+    if (r) ct.restore = null; // input ripristinati: da qui in poi vale lo snapshot
   } else {
     state.skip = s.skip;
     state.limit = s.limit;
@@ -92,6 +97,20 @@ function activate(ct, { fresh }) {
   // Il change stream della sessione è unico: segue la collection attiva.
   // L'eventuale auto-refresh (MySQL) si ferma e va riattivato sul nuovo tab.
   startWatch();
+}
+
+// Attiva il coll-tab attivo del tab corrente se i suoi dati non sono ancora
+// stati caricati (state.db/coll non impostati): serve dopo il ripristino di una
+// sessione, dove i coll-tab esistono ma la query non è stata ancora eseguita.
+// Sui tab normali (dati già in stato) esce subito senza effetti.
+export function ensureActiveCollLoaded() {
+  const t = activeTab();
+  if (!t || !t.state.connected) return;
+  const id = t.state.activeCollId;
+  if (!id) return;
+  if (state.db && state.coll) return; // dati già presenti nello stato del tab
+  const ct = t.state.collTabs.find((c) => c.id === id);
+  if (ct) activate(ct, { fresh: false });
 }
 
 export function openCollTab(db, coll) {
