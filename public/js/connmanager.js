@@ -80,11 +80,33 @@ function connItem(conn) {
 function renderConnTree() {
   const tree = $('#conn-tree');
   tree.innerHTML = '';
-  $('#conn-empty').classList.toggle('hidden', !!allConns.length);
+  const searchInput = $('#conn-search');
+  const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+
+  const filteredConns = allConns.filter((conn) => {
+    if (!query) return true;
+    const name = (conn.name || '').toLowerCase();
+    const label = (conn.label || '').toLowerCase();
+    const folder = (conn.folder || '').toLowerCase();
+    const dbType = (conn.dbType || '').toLowerCase();
+    return name.includes(query) || label.includes(query) || folder.includes(query) || dbType.includes(query);
+  });
+
+  const connEmpty = $('#conn-empty');
+  if (query && !filteredConns.length && allConns.length > 0) {
+    connEmpty.textContent = 'Nessuna connessione corrisponde alla ricerca.';
+    connEmpty.classList.remove('hidden');
+  } else if (!allConns.length) {
+    connEmpty.textContent = 'Nessuna connessione salvata.';
+    connEmpty.classList.remove('hidden');
+  } else {
+    connEmpty.classList.add('hidden');
+  }
+
   $('#conn-export-btn').disabled = !allConns.length;
 
   const groups = new Map(); // folder ('' = senza cartella) -> connessioni
-  for (const conn of allConns) {
+  for (const conn of filteredConns) {
     const folder = (conn.folder || '').trim();
     if (!groups.has(folder)) groups.set(folder, []);
     groups.get(folder).push(conn);
@@ -96,7 +118,7 @@ function renderConnTree() {
     li.className = 'conn-folder';
     const head = document.createElement('div');
     head.className = 'node-label folder-label';
-    const isCollapsed = collapsed.has(folder);
+    const isCollapsed = query ? false : collapsed.has(folder);
     head.textContent = `${isCollapsed ? '▸' : '▾'} 📁 ${folder}`;
 
     const sub = document.createElement('ul');
@@ -128,4 +150,8 @@ function fillFolderDatalist() {
 
 export function initConnManager() {
   $('#conn-add-btn').addEventListener('click', () => openConnModal());
+  const searchInput = $('#conn-search');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => renderConnTree());
+  }
 }

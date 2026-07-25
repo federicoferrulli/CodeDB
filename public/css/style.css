@@ -296,6 +296,28 @@ header {
   color: var(--fg-dim);
 }
 
+.sidebar-search {
+  padding: 0 12px 8px 12px;
+}
+
+.sidebar-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-2);
+  background: var(--input-bg);
+  color: var(--fg);
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebar-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
 #new-db-btn {
   margin-left: auto;
   padding: 0 8px;

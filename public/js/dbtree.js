@@ -14,6 +14,13 @@ export function renderDbTree(databases) {
   state.databases = databases; // cache per il ri-render al cambio tab
   const tree = $('#db-tree');
   tree.innerHTML = '';
+  if (!databases || databases.length === 0) {
+    const emptyLi = document.createElement('li');
+    emptyLi.className = 'node-label loading';
+    emptyLi.textContent = 'Nessun database trovato.';
+    tree.appendChild(emptyLi);
+    return;
+  }
   for (const db of databases) {
     const li = document.createElement('li');
     li.className = 'db';

@@ -184,6 +184,9 @@
             <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini" aria-label="Importa connessioni da un file .ini">⤒</button>
           </span>
         </div>
+        <div class="sidebar-search">
+          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off" spellcheck="false" />
+        </div>
         <ul id="conn-tree"></ul>
         <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
         <button type="button" id="conn-add-btn">＋ Aggiungi connessione</button>
@@ -206,8 +209,8 @@
               <span>Database</span>
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database">＋</button>
             </div>
-            <div class="sidebar-search" style="padding: 0 15px 10px 15px;">
-              <input type="text" id="db-search" placeholder="Cerca..." autocomplete="off" spellcheck="false" style="width: 100%; box-sizing: border-box; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border);" />
+            <div class="sidebar-search">
+              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off" spellcheck="false" />
             </div>
             <ul id="db-tree"></ul>
           </aside>
