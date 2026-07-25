@@ -180,11 +180,17 @@ document.addEventListener('keydown', (e) => {
 // riordina l'array sottostante e ri-renderizza. Si lavora per id, non per
 // indice: la barra di connessione salta i tab non connessi, quindi la posizione
 // visiva non coincide con l'indice nell'array.
-export function makeDraggable(el, id, onReorder) {
+export function makeDraggable(el, id, onReorder, getPayload) {
   el.draggable = true;
   el.addEventListener('dragstart', (e) => {
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData('text/plain', typeof id === 'string' ? id : JSON.stringify(id));
+    if (getPayload) {
+      const payload = typeof getPayload === 'function' ? getPayload() : getPayload;
+      if (payload) {
+        e.dataTransfer.setData('application/codedb-tab', JSON.stringify(payload));
+      }
+    }
     el.classList.add('dragging');
   });
   el.addEventListener('dragend', () => {

@@ -26,6 +26,7 @@ import { initAuditLog } from './auditlog.js';
 import { initHealth } from './health.js';
 import { initSessionPersistence } from './session-restore.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
+import { initSplitView } from './splitview.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -113,6 +114,7 @@ initBackupManager();
 initAuditLog();
 initHealth();
 initSessionPersistence();
+initSplitView();
 
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.

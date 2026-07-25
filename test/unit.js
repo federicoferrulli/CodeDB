@@ -122,6 +122,7 @@ console.log('--- Test Unitari CodeDB ---');
     'server.js',
     'backup/cli.js',
     'public/js/backupmanager.js',
+    'public/js/splitview.js',
     'backup/lib/engine.js',
     'backup/lib/restore.js',
     'backup/lib/storage.js',

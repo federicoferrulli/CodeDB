@@ -4,6 +4,8 @@ import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
 import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
+import { addOrSplitPane } from './splitview.js';
+import { activeTab } from './tabs.js';
 
 export function collWord(capital) {
   const w = isSqlType(state.dbType) ? 'tabella' : 'collection';
@@ -81,6 +83,7 @@ export function renderCollectionsList(dbName, container, collections) {
     li.className = 'coll';
     const label = document.createElement('div');
     label.className = 'node-label';
+    label.draggable = true;
 
     const name = document.createElement('span');
     name.textContent = coll.name;
@@ -96,12 +99,24 @@ export function renderCollectionsList(dbName, container, collections) {
       label.appendChild(count);
     }
 
+    label.addEventListener('dragstart', (e) => {
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = 'copy';
+      const t = activeTab();
+      const payload = { db: dbName, coll: coll.name, tabId: t ? t.id : null };
+      e.dataTransfer.setData('application/codedb-tab', JSON.stringify(payload));
+      e.dataTransfer.setData('text/plain', JSON.stringify(payload));
+      label.classList.add('dragging');
+    });
+    label.addEventListener('dragend', () => label.classList.remove('dragging'));
+
     label.addEventListener('click', () => selectCollection(dbName, coll.name, label));
     label.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
         { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name, label) },
+        { label: '🔲 Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
         { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name, label); setView('details'); } },
         { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name, label); setView('uml'); } },
         '---',

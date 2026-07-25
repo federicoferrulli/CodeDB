@@ -7,6 +7,7 @@ import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
+import { addOrSplitPane, isSplitActive, openInActivePane } from './splitview.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
 // connessione (t.state.collTabs). Ogni coll-tab ha uno snapshot di query,
@@ -22,10 +23,10 @@ function saveActiveSnapshot() {
   const ct = currentCollTab();
   if (!ct) return;
   ct.snap = {
-    filter: $('#filter-input').value,
-    sort: $('#sort-input').value,
-    queryMode: $('#query-mode').value,
-    pageSize: $('#page-size').value,
+    filter: $('#filter-input')?.value || '',
+    sort: $('#sort-input')?.value || '',
+    queryMode: $('#query-mode')?.value || 'find',
+    pageSize: $('#page-size')?.value || '50',
     infiniteScroll: state.infiniteScroll,
     skip: state.skip,
     limit: state.limit,
@@ -56,6 +57,13 @@ function activate(ct, { fresh }) {
   // Lo scroll infinito riparte pulito sulla collection attivata.
   state.loading = false;
   state.exhausted = false;
+
+  if (isSplitActive()) {
+    renderCollTabBar();
+    markTreeSelection();
+    return;
+  }
+
   $('#live-badge').classList.add('hidden');
 
   const s = ct.snap;
@@ -201,6 +209,9 @@ export function renderCollTabBar() {
   const list = t && t.state.connected ? t.state.collTabs : [];
   bar.classList.toggle('hidden', !list.length);
 
+  bar.addEventListener('dragover', (e) => e.stopPropagation());
+  bar.addEventListener('drop', (e) => e.stopPropagation());
+
   for (const ct of list) {
     const el = document.createElement('div');
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '');
@@ -226,15 +237,22 @@ export function renderCollTabBar() {
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       showContextMenu(e.clientX, e.clientY, [
+        { label: '🔲 Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
+        '---',
         ...exportImportMenuItems(ct.db, ct.coll),
         '---',
         { label: '✕ Chiudi tab', action: () => closeCollTab(ct.id) },
       ]);
     });
 
-    makeDraggable(el, ct.id, (fromId, toId) => {
-      if (reorderById(t.state.collTabs, fromId, toId)) renderCollTabBar();
-    });
+    makeDraggable(
+      el,
+      ct.id,
+      (fromId, toId) => {
+        if (reorderById(t.state.collTabs, fromId, toId)) renderCollTabBar();
+      },
+      () => ({ db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id })
+    );
 
     el.append(name, close);
     bar.appendChild(el);
