@@ -56,6 +56,18 @@ messaggio chiaro (usa `PORT=<altra porta>`).
 
 Le icone sono generate proceduralmente da `node tools/genera-icona.js`.
 
+### App Desktop (Electron) e pacchettizzazione
+
+CodeDB supporta l'esecuzione nativa desktop e la pacchettizzazione multipiattaforma tramite Electron:
+
+```bash
+npm run electron:start  # Avvia l'applicazione desktop con Electron
+npm run electron:icons  # Rigenera le icone procedurali (.ico e .png) per Electron/Desktop
+npm run dist:win        # Crea l'eseguibile e l'archivio ZIP per Windows (in dist/CodeDB-win32-x64)
+npm run dist:mac        # Crea la build desktop per macOS (in dist/CodeDB-darwin-x64)
+npm run dist:linux      # Crea la build desktop e l'archivio ZIP per Linux (in dist/CodeDB-linux-x64)
+```
+
 ### Test end-to-end
 
 Richiedono **il server già avviato su :3030** e un DB locale in ascolto.
