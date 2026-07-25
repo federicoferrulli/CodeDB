@@ -83,7 +83,11 @@ function activate(ct, { fresh }) {
     state.columns = [];
     state.total = 0;
     setView(r && r.view ? r.view : 'data');
-    runQuery();
+    // La riesecuzione della query in fase di ripristino (r) è automatica, non
+    // un'azione dell'utente: marcata `auto` così l'audit non la registra
+    // (coerente con polling/refresh post-scrittura). L'apertura "vera" di una
+    // collection (r assente) resta invece tracciata come lettura utente.
+    runQuery(r ? { auto: true } : undefined);
     if (r) ct.restore = null; // input ripristinati: da qui in poi vale lo snapshot
   } else {
     state.skip = s.skip;

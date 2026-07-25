@@ -36,15 +36,18 @@ function collTabInputs(t, c) {
       view: state.view || 'data',
     };
   }
-  const s = c.snap;
+  // Coll-tab non attivo: gli input vivono nel suo snapshot; se è stato appena
+  // ripristinato e mai riattivato lo snapshot è ancora null, quindi si ripiega
+  // sugli input di ripristino (altrimenti si perderebbero al refresh seguente).
+  const src = c.snap || c.restore || {};
   return {
     id: c.id, db: c.db, coll: c.coll,
-    filter: s ? s.filter : '',
-    sort: s ? s.sort : '',
-    queryMode: s ? s.queryMode : 'find',
-    pageSize: s ? s.pageSize : '50',
-    infiniteScroll: s ? !!s.infiniteScroll : false,
-    view: s ? s.view : 'data',
+    filter: src.filter || '',
+    sort: src.sort || '',
+    queryMode: src.queryMode || 'find',
+    pageSize: src.pageSize || '50',
+    infiniteScroll: !!src.infiniteScroll,
+    view: src.view || 'data',
   };
 }
 
@@ -76,7 +79,18 @@ export function persistSession() {
 // coll-tab e gli input da ripristinare "una tantum" alla prima attivazione).
 function reconnectTab(info) {
   return new Promise((resolve, reject) => {
+    // Timeout di sicurezza: se l'ack non arriva (rete/errore), non bloccare il
+    // ripristino dei tab successivi.
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error('timeout di riconnessione'));
+    }, 15000);
     socket.emit('mongo:connect', { saved: info.connName, tabId: info.id }, (res) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (!res || !res.ok) return reject(new Error(res ? res.error : 'Risposta assente'));
       const tab = createTab({ id: info.id, connName: info.connName });
       tab.dbType = res.dbType || 'mongodb';
