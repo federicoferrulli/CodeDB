@@ -35,6 +35,14 @@ console.log('--- Test Unitari CodeDB ---');
       throw err;
     }
   }
+  // Test 2: Controllo Docker files
+  const dockerfile = path.join(__dirname, '..', 'Dockerfile');
+  assert(fs.existsSync(dockerfile), 'Dockerfile deve esistere');
+  console.log('  OK   Dockerfile file check passed');
+
+  const dockerCompose = path.join(__dirname, '..', 'docker-compose.yml');
+  assert(fs.existsSync(dockerCompose), 'docker-compose.yml deve esistere');
+  console.log('  OK   docker-compose.yml file check passed');
 
   console.log('\nTutti i test unitari superati con successo!');
 })();

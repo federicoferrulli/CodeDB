@@ -1,0 +1,61 @@
+services:
+  codedb:
+    build: .
+    ports:
+      - "3030:3030"
+    environment:
+      - PORT=3030
+      - HOST=0.0.0.0
+      # Passphrase per decifrare i segreti (password DB, SSH) in
+      # connections.ini; senza, i segreti restano bloccati finche' non viene
+      # sbloccato il vault dalla UI. Impostare via .env, mai in chiaro qui.
+      - GUI_MONGO_PASSPHRASE=${GUI_MONGO_PASSPHRASE:-}
+    volumes:
+      # connections.ini e backups/ persistono fuori dal container: senza
+      # questi volumi, ricreare il container azzera tutte le connessioni
+      # salvate dall'utente via UI.
+      - codedb_data:/app/data
+      - codedb_backups:/app/backups
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_DATABASE=gui_mongodb_e2e
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - MYSQL_DATABASE=codedb_e2e
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  mongo_data:
+  mysql_data:
+  codedb_data:
+  codedb_backups:
