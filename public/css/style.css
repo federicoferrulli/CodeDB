@@ -547,6 +547,7 @@ header {
 .header-more-menu .menu-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start !important;
   gap: 8px;
   width: 100%;
   padding: 8px 12px;
@@ -557,7 +558,7 @@ header {
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  text-align: left;
+  text-align: left !important;
   transition: all 0.15s ease;
 }
 
@@ -573,6 +574,8 @@ header {
 }
 
 .header-more-menu .checkbox-item {
+  justify-content: flex-start !important;
+  text-align: left !important;
   color: var(--fg-dim);
   cursor: pointer;
 }
@@ -1845,6 +1848,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .toolbar-dropdown-menu .dropdown-item {
   display: flex;
   align-items: center;
+  justify-content: flex-start !important;
   gap: 8px;
   width: 100%;
   padding: 7px 12px;
@@ -1855,7 +1859,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  text-align: left;
+  text-align: left !important;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
