@@ -5,7 +5,9 @@
 
 # CodeDB
 
-A **multi-database** web-based DBeaver clone: explore databases, collections, and tables, view documents/rows in a spreadsheet-like grid, run custom queries, and edit data in real time.
+CodeDB was born taking inspiration from modern software, with the vision of being the tool that anyone can use in their unique workflow—human developers and AI agents alike.
+
+It is a **multi-database** web-based application: explore databases, collections, and tables, view documents/rows in a spreadsheet-like grid, run custom queries, and edit data in real time.
 Supports **MongoDB**, **MySQL**, and **PostgreSQL** via a **Strategy Pattern** architecture. All browser-to-backend communication runs seamlessly over **Socket.IO**.
 
 *(Read this document in Italian: [README_IT.md](README_IT.md))*

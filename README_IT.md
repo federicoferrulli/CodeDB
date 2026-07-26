@@ -5,8 +5,10 @@
 
 # CodeDB (Italiano)
 
-Un clone web di DBeaver **multi-database**: esplora database e collection/tabelle,
-visualizza i documenti/righe come una tabella, esegui query, modifica i dati.
+CodeDB nasce prendendo ispirazione dai software moderni, con la visione di essere lo strumento che chiunque può usare valorizzando le proprie unicità — sviluppatori umani e agenti AI compresi.
+
+È un'applicazione web **multi-database**: esplora database e collection/tabelle,
+visualizza i documenti/righe come una tabella, esegui query e modifica i dati in tempo reale.
 Supporta **MongoDB**, **MySQL** e **PostgreSQL** tramite uno **Strategy Pattern**.
 Tutta la comunicazione tra browser e backend avviene tramite **Socket.IO**.
 
