@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType } from './utils.js';
+import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -122,12 +122,19 @@ export function explainQuery() {
         skip: state.skip,
       };
 
+  $('#explain-query').textContent = `${state.db}.${state.coll}`;
+  $('#explain-body').innerHTML = '<div class="loading-spinner" style="padding:20px; text-align:center; color:var(--accent);">Analisi del piano di esecuzione in corso...</div>';
+  $('#explain-overlay').classList.remove('hidden');
+
   emit('collection:explain', payload)
     .then(showExplainResult)
-    .catch((err) => showQueryError(err.message));
+    .catch((err) => {
+      $('#explain-overlay').classList.add('hidden');
+      showQueryError(err.message);
+    });
 }
 
-// Mostra il piano nella modale: JSON formattato (Mongo e MySQL FORMAT=JSON)
+// Mostra il piano nella modale: albero JSON interattivo con rendering pigro
 // oppure tabella (EXPLAIN classico MySQL).
 function showExplainResult(res) {
   const body = $('#explain-body');
@@ -147,6 +154,7 @@ function showExplainResult(res) {
     thead.appendChild(headRow);
     table.appendChild(thead);
     const tbody = document.createElement('tbody');
+    const frag = document.createDocumentFragment();
     for (const row of res.rows || []) {
       const tr = document.createElement('tr');
       for (const col of res.columns || []) {
@@ -156,14 +164,17 @@ function showExplainResult(res) {
         td.textContent = row[col] === undefined ? '' : text;
         tr.appendChild(td);
       }
-      tbody.appendChild(tr);
+      frag.appendChild(tr);
     }
+    tbody.appendChild(frag);
     table.appendChild(tbody);
     body.appendChild(table);
   } else {
-    const pre = document.createElement('pre');
-    pre.textContent = JSON.stringify(res.plan, null, 2);
-    body.appendChild(pre);
+    const treeContainer = document.createElement('div');
+    treeContainer.className = 'json-tree-container';
+    const tree = buildJsonNode(res.plan, 'Plan', true);
+    treeContainer.appendChild(tree);
+    body.appendChild(treeContainer);
   }
   $('#explain-overlay').classList.remove('hidden');
 }

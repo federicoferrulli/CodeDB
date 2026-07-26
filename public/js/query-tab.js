@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, positionFixedDropdown } from './utils.js';
+import { $, emit, displayValue, positionFixedDropdown, buildJsonNode } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 
 let activeViewMode = 'table'; // 'table' | 'json'
@@ -286,81 +286,7 @@ function renderResultsJsonTree(data) {
   container.appendChild(tree);
 }
 
-// Costruttore albero JSON interattivo
-function buildJsonNode(val, key = null, isRoot = false) {
-  const node = document.createElement('div');
-  node.className = 'json-node';
 
-  const type = typeof val;
-
-  if (val === null) {
-    node.innerHTML = `${key ? `<span class="json-key">${key}</span>: ` : ''}<span class="json-null">null</span>`;
-    return node;
-  }
-
-  if (type === 'object') {
-    const isArray = Array.isArray(val);
-    const keys = Object.keys(val);
-
-    const header = document.createElement('div');
-    header.className = 'json-header';
-
-    const toggle = document.createElement('span');
-    toggle.className = 'json-toggle';
-    toggle.textContent = '▼ ';
-
-    const keySpan = key ? `<span class="json-key">${key}</span>: ` : '';
-    const bracketOpen = isArray ? '[' : '{';
-    const countText = `<span class="json-count">(${keys.length} ${isArray ? 'elementi' : 'chiavi'})</span>`;
-
-    header.innerHTML = `${keySpan}${bracketOpen} ${countText}`;
-    header.prepend(toggle);
-    node.appendChild(header);
-
-    const childrenWrap = document.createElement('div');
-    childrenWrap.className = 'json-children';
-    childrenWrap.style.marginLeft = '16px';
-
-    keys.forEach((k) => {
-      childrenWrap.appendChild(buildJsonNode(val[k], k));
-    });
-
-    const footer = document.createElement('div');
-    footer.className = 'json-footer';
-    footer.textContent = isArray ? ']' : '}';
-    footer.style.marginLeft = '16px';
-
-    node.appendChild(childrenWrap);
-    node.appendChild(footer);
-
-    toggle.addEventListener('click', () => {
-      const isHidden = childrenWrap.style.display === 'none';
-      childrenWrap.style.display = isHidden ? 'block' : 'none';
-      footer.style.display = isHidden ? 'block' : 'none';
-      toggle.textContent = isHidden ? '▼ ' : '▶ ';
-    });
-
-    return node;
-  }
-
-  // Tipi primitivi
-  let valHtml = '';
-  if (type === 'string') valHtml = `<span class="json-string">"${escapeHtml(val)}"</span>`;
-  else if (type === 'number') valHtml = `<span class="json-number">${val}</span>`;
-  else if (type === 'boolean') valHtml = `<span class="json-boolean">${val}</span>`;
-  else valHtml = `<span>${String(val)}</span>`;
-
-  node.innerHTML = `${key ? `<span class="json-key">${key}</span>: ` : ''}${valHtml}`;
-  return node;
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 // Render Schema Browser (Task 2)
 export function renderQuerySchemaBrowser() {

@@ -98,7 +98,7 @@ export function initAuditLog() {
   if (dbFilter) {
     dbFilter.addEventListener('input', () => {
       clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(resetAndFetch, 300);
+      debounceTimer = setTimeout(resetAndFetch, 400);
     });
   }
 
@@ -124,7 +124,12 @@ function resetAndFetch() {
 async function fetchAudit() {
   const container = $('#audit-log-list');
   if (!container) return;
-  container.innerHTML = '<div class="loading-spinner">Caricamento storico in corso...</div>';
+
+  if (!container.querySelector('table.audit-table')) {
+    container.innerHTML = '<div class="loading-spinner" style="padding:24px; text-align:center; color:var(--accent);">Caricamento storico in corso...</div>';
+  } else {
+    container.classList.add('loading-state');
+  }
 
   try {
     const res = await emit('audit:list', {
@@ -141,7 +146,8 @@ async function fetchAudit() {
     render(res.entries || []);
     updatePager(res.entries ? res.entries.length : 0);
   } catch (err) {
-    container.innerHTML = `<div class="error-box">Errore nel caricamento dello storico: ${esc(err.message)}</div>`;
+    container.classList.remove('loading-state');
+    container.innerHTML = `<div class="error-box" style="margin:16px;">Errore nel caricamento dello storico: ${esc(err.message)}</div>`;
     updatePager(0);
   }
 }
@@ -190,12 +196,37 @@ function detailsOf(e) {
 
 function render(entries) {
   const container = $('#audit-log-list');
-  if (!entries.length) {
-    container.innerHTML = '<div class="empty-state">Nessuna azione registrata con questi filtri.</div>';
+  if (!container) return;
+
+  if (!entries || !entries.length) {
+    container.innerHTML = '<div class="empty-state" style="padding:24px; text-align:center; color:var(--fg-dim);">Nessuna azione registrata con questi filtri.</div>';
     return;
   }
 
-  let rows = '';
+  let table = container.querySelector('table.audit-table');
+  if (!table) {
+    container.innerHTML = `
+      <table class="backup-table audit-table">
+        <thead>
+          <tr>
+            <th>Data / Ora</th>
+            <th>Categoria</th>
+            <th>Azione</th>
+            <th>Database › Coll.</th>
+            <th>Connessione</th>
+            <th>Dettagli</th>
+            <th>Esito</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    `;
+    table = container.querySelector('table.audit-table');
+  }
+
+  const tbody = table.querySelector('tbody');
+  const frag = document.createDocumentFragment();
+
   for (const e of entries) {
     const label = EVENT_LABELS[e.event] || e.op || e.event || '?';
     const detail = e.op && e.op !== label ? e.op : '';
@@ -213,33 +244,21 @@ function render(entries) {
       ? `${esc(label)}<div class="sub-text">${esc(detail)}</div>`
       : esc(label);
 
-    rows += `
-      <tr class="${ok ? '' : 'audit-row-err'}">
-        <td class="audit-ts">${fmtTs(e.ts)}</td>
-        <td>${catHtml}</td>
-        <td>${action}</td>
-        <td>${target} ${dbType}</td>
-        <td>${conn}</td>
-        <td class="audit-details">${esc(detailsOf(e))}</td>
-        <td>${statusHtml}</td>
-      </tr>
+    const tr = document.createElement('tr');
+    if (!ok) tr.className = 'audit-row-err';
+    tr.innerHTML = `
+      <td class="audit-ts">${fmtTs(e.ts)}</td>
+      <td>${catHtml}</td>
+      <td>${action}</td>
+      <td>${target} ${dbType}</td>
+      <td>${conn}</td>
+      <td class="audit-details">${esc(detailsOf(e))}</td>
+      <td>${statusHtml}</td>
     `;
+    frag.appendChild(tr);
   }
 
-  container.innerHTML = `
-    <table class="backup-table audit-table">
-      <thead>
-        <tr>
-          <th>Data / Ora</th>
-          <th>Categoria</th>
-          <th>Azione</th>
-          <th>Database › Coll.</th>
-          <th>Connessione</th>
-          <th>Dettagli</th>
-          <th>Esito</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>
-  `;
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+  container.classList.remove('loading-state');
 }

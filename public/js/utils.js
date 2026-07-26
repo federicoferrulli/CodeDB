@@ -324,3 +324,78 @@ export function positionFixedDropdown(btn, menu) {
   menu.style.left = `${left}px`;
   menu.style.right = 'auto';
 }
+
+// Costruttore albero JSON interattivo con rendering pigro dei figli
+export function buildJsonNode(val, key = null, isRoot = false) {
+  const node = document.createElement('div');
+  node.className = 'json-node';
+
+  const type = typeof val;
+
+  if (val === null) {
+    node.innerHTML = `${key ? `<span class="json-key">${esc(key)}</span>: ` : ''}<span class="json-null">null</span>`;
+    return node;
+  }
+
+  if (type === 'object') {
+    const isArray = Array.isArray(val);
+    const keys = Object.keys(val);
+
+    const header = document.createElement('div');
+    header.className = 'json-header';
+    header.style.cursor = 'pointer';
+
+    const toggle = document.createElement('span');
+    toggle.className = 'json-toggle';
+    toggle.textContent = isRoot ? '▼ ' : '▶ ';
+
+    const keySpan = key ? `<span class="json-key">${esc(key)}</span>: ` : '';
+    const bracketOpen = isArray ? '[' : '{';
+    const countText = `<span class="json-count">(${keys.length} ${isArray ? 'elementi' : 'chiavi'})</span>`;
+
+    header.innerHTML = `${keySpan}${bracketOpen} ${countText}`;
+    header.prepend(toggle);
+    node.appendChild(header);
+
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'json-children';
+    if (!isRoot) childrenWrap.classList.add('hidden');
+    node.appendChild(childrenWrap);
+
+    let rendered = false;
+    const renderChildren = () => {
+      if (rendered) return;
+      rendered = true;
+      const frag = document.createDocumentFragment();
+      for (const k of keys) {
+        frag.appendChild(buildJsonNode(val[k], isArray ? null : k, false));
+      }
+      childrenWrap.appendChild(frag);
+    };
+
+    if (isRoot) renderChildren();
+
+    header.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renderChildren();
+      const isHidden = childrenWrap.classList.toggle('hidden');
+      toggle.textContent = isHidden ? '▶ ' : '▼ ';
+    });
+
+    return node;
+  }
+
+  let valClass = 'json-string';
+  let formattedVal = `"${esc(String(val))}"`;
+
+  if (type === 'number') {
+    valClass = 'json-number';
+    formattedVal = String(val);
+  } else if (type === 'boolean') {
+    valClass = 'json-boolean';
+    formattedVal = String(val);
+  }
+
+  node.innerHTML = `${key ? `<span class="json-key">${esc(key)}</span>: ` : ''}<span class="${valClass}">${formattedVal}</span>`;
+  return node;
+}

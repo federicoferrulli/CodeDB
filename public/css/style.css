@@ -424,6 +424,20 @@ button.ghost:hover, .btn-ghost:hover {
   padding: 0 4px;
 }
 
+/* ---------- Performance & Containment ---------- */
+.modal,
+.explain-body,
+.catalog-list-container,
+#audit-log-list {
+  contain: content;
+}
+
+#audit-log-list.loading-state {
+  opacity: 0.6;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
 .conn-edit-banner button:hover { color: var(--danger); }
 
 /* ---------- Layout ---------- */
