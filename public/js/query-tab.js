@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue } from './utils.js';
+import { $, emit, displayValue, positionFixedDropdown } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 
 let activeViewMode = 'table'; // 'table' | 'json'
@@ -18,6 +18,52 @@ export function initQueryTab() {
   const resModeTableBtn = $('#res-mode-table');
   const resModeJsonBtn = $('#res-mode-json');
   const editorInput = $('#query-editor-input');
+
+  // Toggle Schema Browser Drawer (Mobile)
+  const toggleSchemaBtn = $('#query-toggle-schema-btn');
+  const closeSchemaBtn = $('#query-schema-close');
+  const schemaSidebar = $('#query-schema-sidebar');
+
+  if (toggleSchemaBtn && schemaSidebar) {
+    toggleSchemaBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      schemaSidebar.classList.toggle('open');
+    });
+  }
+
+  if (closeSchemaBtn && schemaSidebar) {
+    closeSchemaBtn.addEventListener('click', () => {
+      schemaSidebar.classList.remove('open');
+    });
+  }
+
+  // Export Dropdown Menu (Mobile)
+  const exportMenuBtn = $('#query-export-menu-btn');
+  const exportMenu = $('#query-export-menu');
+  if (exportMenuBtn && exportMenu) {
+    exportMenuBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = exportMenu.classList.contains('hidden');
+      document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+      if (isHidden) {
+        positionFixedDropdown(exportMenuBtn, exportMenu);
+      }
+    });
+
+    const bindExportClick = (mobId, mainId) => {
+      const mobBtn = $(mobId);
+      const mainBtn = $(mainId);
+      if (mobBtn && mainBtn) {
+        mobBtn.addEventListener('click', () => {
+          exportMenu.classList.add('hidden');
+          mainBtn.click();
+        });
+      }
+    };
+    bindExportClick('#query-export-csv-mob', '#query-export-csv');
+    bindExportClick('#query-export-json-mob', '#query-export-json');
+    bindExportClick('#query-export-sql-mob', '#query-export-sql');
+  }
 
   // Switch vista risultati (Tabella vs JSON Tree)
   if (resModeTableBtn && resModeJsonBtn) {

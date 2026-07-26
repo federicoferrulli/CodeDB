@@ -155,12 +155,23 @@ export function deactivateSplitView() {
 }
 
 function handleWorkspaceDragOver(e) {
-  if (e.target.closest('#coll-tab-bar') || e.target.closest('#tab-bar') || e.target.closest('#sidebar') || e.target.closest('#conn-sidebar')) {
+  if (
+    e.target.closest('#coll-tab-bar') ||
+    e.target.closest('#tab-bar') ||
+    e.target.closest('#sidebar') ||
+    e.target.closest('#conn-sidebar') ||
+    e.target.closest('input, textarea') ||
+    e.target.closest('.query-editor-container') ||
+    e.target.closest('.query-sidebar')
+  ) {
     hideDropPreview();
     return;
   }
 
-  if (!e.dataTransfer.types.includes('application/codedb-tab') && !e.dataTransfer.types.includes('text/plain')) return;
+  if (!e.dataTransfer.types.includes('application/codedb-tab')) {
+    hideDropPreview();
+    return;
+  }
 
   const targetPaneEl = e.target.closest('.split-pane') || $('#workspace');
   if (!targetPaneEl) return;
@@ -239,11 +250,19 @@ function hideDropPreview() {
 function handleWorkspaceDrop(e) {
   hideDropPreview();
 
-  if (e.target.closest('#coll-tab-bar') || e.target.closest('#tab-bar')) {
+  if (
+    e.target.closest('#coll-tab-bar') ||
+    e.target.closest('#tab-bar') ||
+    e.target.closest('#sidebar') ||
+    e.target.closest('#conn-sidebar') ||
+    e.target.closest('input, textarea') ||
+    e.target.closest('.query-editor-container') ||
+    e.target.closest('.query-sidebar')
+  ) {
     return;
   }
 
-  const dataRaw = e.dataTransfer.getData('application/codedb-tab') || e.dataTransfer.getData('text/plain');
+  const dataRaw = e.dataTransfer.getData('application/codedb-tab');
   if (!dataRaw) return;
 
   let item = null;

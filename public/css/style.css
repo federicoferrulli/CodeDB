@@ -2168,6 +2168,13 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   position: relative;
 }
 
+.mobile-only-btn { display: none !important; }
+.mobile-export-dropdown { display: none !important; }
+.desktop-export-group { display: inline-flex; align-items: center; gap: 6px; }
+.tab-label-short { display: none; }
+.tab-label-full { display: inline; }
+.sidebar-title-actions { display: flex; align-items: center; gap: 6px; }
+
 .query-sidebar {
   width: 250px;
   min-width: 160px;
@@ -3189,36 +3196,49 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
     align-items: stretch;
   }
 
-  /* ---- Vista Query & Aggregate: layout impilato in verticale ---- */
-  /* Su desktop schema-sidebar | resizer | editor+risultati vivono in riga.
-     Su mobile impiliamo: lo Schema Browser diventa un pannello a tutta
-     larghezza con altezza limitata sopra editor e risultati. */
+  .tab-label-full { display: none !important; }
+  .tab-label-short { display: inline !important; }
+  .mobile-only-btn { display: inline-flex !important; }
+  .desktop-export-group { display: none !important; }
+  .mobile-export-dropdown { display: inline-flex !important; }
+
+  /* ---- Vista Query & Aggregate: Schema Sidebar come Off-Canvas Drawer su Mobile ---- */
   .query-layout-body {
-    flex-direction: column !important;
+    position: relative !important;
+    overflow: hidden !important;
   }
   .query-sidebar {
-    flex: 0 0 auto !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-    max-height: 28vh;
-    border-right: none !important;
-    border-bottom: 1px solid var(--border);
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    z-index: 80 !important;
+    width: 280px !important;
+    max-width: 85vw !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    background: var(--bg-2) !important;
+    border-right: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    box-shadow: 6px 0 30px rgba(0, 0, 0, 0.7) !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.25s ease-in-out !important;
   }
-  /* Il resizer orizzontale della sidebar non ha senso in colonna (e il
-     drag è scomodo al tocco): lo nascondiamo. */
+  .query-sidebar.open {
+    transform: translateX(0) !important;
+  }
   .query-layout-body > .resizer[data-resize="query-sidebar"] {
     display: none !important;
   }
   .query-main-panel {
-    flex: 1 1 auto !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
     min-height: 0;
   }
   .query-editor-container,
   .query-results-container {
     min-height: 96px;
   }
-  /* Resizer verticale editor/risultati: area di tocco più generosa. */
   .resizer-v {
     height: 12px;
   }

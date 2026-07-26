@@ -9,9 +9,10 @@ import { $ } from './utils.js';
 const mq = window.matchMedia('(max-width: 900px)');
 
 function closeDrawers() {
-  $('#conn-sidebar').classList.remove('open');
-  $('#sidebar').classList.remove('open');
-  $('#drawer-backdrop').classList.add('hidden');
+  $('#conn-sidebar')?.classList.remove('open');
+  $('#sidebar')?.classList.remove('open');
+  $('#query-schema-sidebar')?.classList.remove('open');
+  $('#drawer-backdrop')?.classList.add('hidden');
 }
 
 function toggleDrawer(sel) {

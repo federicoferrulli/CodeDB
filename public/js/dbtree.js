@@ -105,7 +105,7 @@ export function renderCollectionsList(dbName, container, collections) {
       const t = activeTab();
       const payload = { db: dbName, coll: coll.name, tabId: t ? t.id : null };
       e.dataTransfer.setData('application/codedb-tab', JSON.stringify(payload));
-      e.dataTransfer.setData('text/plain', JSON.stringify(payload));
+      e.dataTransfer.setData('text/plain', coll.name);
       label.classList.add('dragging');
     });
     label.addEventListener('dragend', () => label.classList.remove('dragging'));

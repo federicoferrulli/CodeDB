@@ -264,11 +264,11 @@
           <div class="workspace-head">
             <span id="breadcrumb" class="breadcrumb"></span>
             <div class="view-tabs">
-              <button class="view-tab active" data-view="data">▤ Dati</button>
-              <button class="view-tab" data-view="details">ℹ Dettagli</button>
-              <button class="view-tab" data-view="uml">◫ UML</button>
-              <button class="view-tab" data-view="graph3d">🌐 Grafo 3D</button>
-              <button class="view-tab" data-view="query">⚡ Query & Aggregate</button>
+              <button class="view-tab active" data-view="data">▤ <span class="tab-label-full">Dati</span><span class="tab-label-short">Dati</span></button>
+              <button class="view-tab" data-view="details">ℹ <span class="tab-label-full">Dettagli</span><span class="tab-label-short">Info</span></button>
+              <button class="view-tab" data-view="uml">◫ <span class="tab-label-full">UML</span><span class="tab-label-short">UML</span></button>
+              <button class="view-tab" data-view="graph3d">🌐 <span class="tab-label-full">Grafo 3D</span><span class="tab-label-short">Grafo</span></button>
+              <button class="view-tab" data-view="query">⚡ <span class="tab-label-full">Query & Aggregate</span><span class="tab-label-short">Query</span></button>
             </div>
           </div>
 
@@ -439,6 +439,7 @@
               </div>
 
               <div class="query-actions">
+                <button id="query-toggle-schema-btn" class="ghost btn-sm mobile-only-btn" type="button" title="Mostra/Nascondi Schema Browser">📂 <span class="btn-label-mobile">Schema</span></button>
                 <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)">▶ Esegui Query</button>
                 <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query">🛑 Annulla</button>
                 <button id="query-snippet-btn" class="ghost" title="Snippet & Template">📚 Snippets</button>
@@ -456,7 +457,10 @@
               <aside id="query-schema-sidebar" class="query-sidebar">
                 <div class="sidebar-title">
                   <span>Schema Browser</span>
-                  <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                  <div class="sidebar-title-actions">
+                    <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                    <button id="query-schema-close" class="mini-btn mobile-only-btn" title="Chiudi Schema Browser">✕</button>
+                  </div>
                 </div>
                 <div class="sidebar-search" style="padding: 0 10px 8px 10px;">
                   <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..." autocomplete="off" spellcheck="false" />
@@ -492,9 +496,19 @@
                       <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree">🌳 JSON Tree</button>
                     </div>
                     <div class="results-actions">
-                      <button id="query-export-csv" class="mini-btn" title="Esporta CSV">📥 CSV</button>
-                      <button id="query-export-json" class="mini-btn" title="Esporta JSON">📥 JSON</button>
-                      <button id="query-export-sql" class="mini-btn" title="Esporta SQL">📥 SQL</button>
+                      <div class="desktop-export-group">
+                        <button id="query-export-csv" class="mini-btn" title="Esporta CSV">📥 CSV</button>
+                        <button id="query-export-json" class="mini-btn" title="Esporta JSON">📥 JSON</button>
+                        <button id="query-export-sql" class="mini-btn" title="Esporta SQL">📥 SQL</button>
+                      </div>
+                      <div class="mobile-export-dropdown toolbar-dropdown-wrap">
+                        <button type="button" id="query-export-menu-btn" class="mini-btn dropdown-trigger-btn" title="Esporta Risultati">📥 Esporta ▾</button>
+                        <div id="query-export-menu" class="toolbar-dropdown-menu hidden">
+                          <button id="query-export-csv-mob" class="dropdown-item" type="button">📥 Esporta CSV</button>
+                          <button id="query-export-json-mob" class="dropdown-item" type="button">📥 Esporta JSON</button>
+                          <button id="query-export-sql-mob" class="dropdown-item" type="button">📥 Esporta SQL</button>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
