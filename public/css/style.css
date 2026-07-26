@@ -91,13 +91,15 @@ html, body {
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 26px 30px;
-  width: 440px;
+  width: 480px;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   max-height: calc(100dvh - 24px);
   overflow-y: auto;
+  overflow-x: hidden;
   box-shadow: var(--shadow-lg);
   animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
 .modal.wide { width: 660px; }
@@ -127,9 +129,11 @@ html, body {
 .tab:hover { color: var(--fg); border-color: transparent; background: rgba(255, 255, 255, 0.03); }
 .tab.active { background: transparent; color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
-.form-row { display: flex; gap: 12px; margin-bottom: 14px; }
-.form-row label { flex: 1; display: flex; flex-direction: column; gap: 5px; color: var(--fg-dim); font-size: 0.85rem; font-weight: 500; }
-.form-row label.small { flex: 0 0 110px; }
+.form-row { display: flex; gap: 12px; margin-bottom: 14px; min-width: 0; }
+.form-row label { flex: 1; display: flex; flex-direction: column; gap: 5px; color: var(--fg-dim); font-size: 0.85rem; font-weight: 500; min-width: 0; }
+.form-row label.small { flex: 0 0 110px; min-width: 0; }
+.form-row input:not([type="checkbox"]):not([type="radio"]),
+.form-row select { width: 100%; box-sizing: border-box; }
 
 input, select, textarea {
   background: var(--input-bg);
@@ -1320,6 +1324,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   border-left: 2px solid var(--accent);
   background: rgba(255, 255, 255, 0.02);
   border-radius: 0 4px 4px 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* Modulo di inserimento guidato dallo schema */
