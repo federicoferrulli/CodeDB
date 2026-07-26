@@ -2224,6 +2224,13 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   text-align: left;
   z-index: 2;
 }
+.pane-col-header {
+  cursor: pointer;
+  user-select: none;
+}
+.pane-col-header:hover {
+  color: var(--accent);
+}
 .pane-grid td {
   border-bottom: 1px solid var(--border);
   padding: 5px 8px;
@@ -2232,6 +2239,30 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.pane-grid td.editable {
+  cursor: cell;
+}
+.pane-grid td.editing {
+  padding: 0;
+}
+.pane-grid td.editing input,
+.pane-grid td.editing select {
+  width: 100%;
+  border: 2px solid var(--accent);
+  border-radius: 0;
+  font-family: Consolas, monospace;
+  font-size: 0.82rem;
+  padding: 3px 6px;
+}
+.pane-grid td.row-actions {
+  text-align: center;
+}
+.pane-grid td .type-oid { color: #b373cf; }
+.pane-grid td .type-num { color: #00d2ff; }
+.pane-grid td .type-bool { color: #e15bed; }
+.pane-grid td .type-date { color: #20e3b2; }
+.pane-grid td .type-null { color: var(--fg-dim); font-style: italic; }
+.pane-grid td .type-obj { color: #f1b34e; }
 .pane-grid tr:hover {
   background: var(--hover);
 }

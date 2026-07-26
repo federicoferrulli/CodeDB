@@ -135,8 +135,11 @@ export function startEdit(td, doc, field) {
   if (input.tagName === 'SELECT') input.addEventListener('change', save);
 }
 
-export function openEditDoc(doc) {
+let editDocContext = null;
+
+export function openEditDoc(doc, context = null) {
   state.editingDoc = doc;
+  editDocContext = context;
   const copy = {};
   for (const [k, v] of Object.entries(doc)) {
     if (k !== '_id') copy[k] = v;
@@ -153,15 +156,24 @@ export function initInlineEdit() {
 
   $('#editdoc-save').addEventListener('click', () => {
     if (!state.editingDoc) return;
+    const tabId = editDocContext ? editDocContext.tabId : undefined;
+    const db = editDocContext ? editDocContext.db : state.db;
+    const coll = editDocContext ? editDocContext.coll : state.coll;
+
     emit('doc:replace', {
-      db: state.db,
-      coll: state.coll,
+      tabId,
+      db,
+      coll,
       id: idOf(state.editingDoc),
       doc: $('#editdoc-json').value,
     }).then(() => {
       closeModal('#editdoc-overlay');
       toast('Documento aggiornato');
-      runQuery({ auto: true }); // refresh post-scrittura
+      if (editDocContext && editDocContext.onSaveSuccess) {
+        editDocContext.onSaveSuccess();
+      } else {
+        runQuery({ auto: true }); // refresh post-scrittura
+      }
     }).catch((err) => {
       const errorEl = $('#editdoc-error');
       errorEl.textContent = err.message;
@@ -169,3 +181,4 @@ export function initInlineEdit() {
     });
   });
 }
+

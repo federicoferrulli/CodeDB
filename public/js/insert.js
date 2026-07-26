@@ -201,6 +201,45 @@ export function selectInsertTab(name) {
   $('#insert-tab-json').classList.toggle('hidden', name !== 'json');
 }
 
+let insertContext = null;
+
+export function openInsertDocForContext(ctx = null) {
+  insertContext = ctx;
+  const db = ctx ? ctx.db : state.db;
+  const coll = ctx ? ctx.coll : state.coll;
+  const tabId = ctx ? ctx.tabId : undefined;
+  const dbType = ctx ? ctx.dbType : state.dbType;
+  const isSql = isSqlType(dbType);
+
+  $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
+  $('#insert-json').value = '{\n  \n}';
+  insertJsonTouched = false;
+  insertRows = [];
+  $('#insert-form tbody').innerHTML = '';
+  $('#insert-form-empty').classList.add('hidden');
+  $('#insert-addfield').classList.toggle('hidden', isSql);
+  $('#insert-error').classList.add('hidden');
+  selectInsertTab('form');
+  openModal('#insert-overlay');
+
+  emit('collection:stats', { tabId, db, coll }).then((res) => {
+    for (const f of (res.fields || [])) {
+      if (f.name === '_id' && !isSql) continue;
+      const mainType = (f.types || []).find((t) => t !== 'null') || 'null';
+      addInsertRow({
+        name: f.name,
+        typeLabel: (f.types || []).join(', '),
+        kind: insertKindOf(mainType),
+        auto: !!f.autoIncrement,
+        required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
+      });
+    }
+    if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
+    const first = insertRows.find((r) => !r.auto);
+    if (first) first.input.focus();
+  }).catch((err) => toast(err.message, true));
+}
+
 export function initInsert() {
   document.querySelectorAll('[data-instab]').forEach((tab) =>
     tab.addEventListener('click', () => selectInsertTab(tab.dataset.instab))
@@ -215,34 +254,7 @@ export function initInsert() {
   });
 
   $('#insert-btn').addEventListener('click', () => {
-    const isSql = isSqlType(state.dbType);
-    $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
-    $('#insert-json').value = '{\n  \n}';
-    insertJsonTouched = false;
-    insertRows = [];
-    $('#insert-form tbody').innerHTML = '';
-    $('#insert-form-empty').classList.add('hidden');
-    $('#insert-addfield').classList.toggle('hidden', isSql);
-    $('#insert-error').classList.add('hidden');
-    selectInsertTab('form');
-    openModal('#insert-overlay');
-
-    emit('collection:stats', { db: state.db, coll: state.coll }).then((res) => {
-      for (const f of res.fields) {
-        if (f.name === '_id' && !isSql) continue;
-        const mainType = f.types.find((t) => t !== 'null') || 'null';
-        addInsertRow({
-          name: f.name,
-          typeLabel: f.types.join(', '),
-          kind: insertKindOf(mainType),
-          auto: !!f.autoIncrement,
-          required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
-        });
-      }
-      if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
-      const first = insertRows.find((r) => !r.auto);
-      if (first) first.input.focus();
-    }).catch((err) => toast(err.message, true));
+    openInsertDocForContext(null);
   });
 
   $('#insert-cancel').addEventListener('click', () => closeModal('#insert-overlay'));
@@ -262,14 +274,24 @@ export function initInsert() {
     } else {
       docText = $('#insert-json').value;
     }
+    const tabId = insertContext ? insertContext.tabId : undefined;
+    const db = insertContext ? insertContext.db : state.db;
+    const coll = insertContext ? insertContext.coll : state.coll;
+    const dbType = insertContext ? insertContext.dbType : state.dbType;
+
     emit('doc:insert', {
-      db: state.db,
-      coll: state.coll,
+      tabId,
+      db,
+      coll,
       doc: docText,
     }).then(() => {
       closeModal('#insert-overlay');
-      toast(isSqlType(state.dbType) ? 'Riga inserita' : 'Documento inserito');
-      runQuery({ auto: true }); // refresh post-scrittura
+      toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
+      if (insertContext && insertContext.onSaveSuccess) {
+        insertContext.onSaveSuccess();
+      } else {
+        runQuery({ auto: true }); // refresh post-scrittura
+      }
     }).catch((err) => {
       const errorEl = $('#insert-error');
       errorEl.textContent = err.message;

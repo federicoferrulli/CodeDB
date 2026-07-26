@@ -2,7 +2,9 @@
 
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, esc, isSqlType, dbTypeIcon } from './utils.js';
+import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast } from './utils.js';
+import { buildEditor, openEditDoc } from './inlineEdit.js';
+import { openInsertDocForContext } from './insert.js';
 
 const splitState = {
   active: false,
@@ -68,6 +70,7 @@ export function restoreSplitStateSnapshot(snap) {
       columns: [],
       loading: false,
       error: null,
+      selectedDocs: new Set(),
     });
   }
 }
@@ -294,6 +297,7 @@ export function addOrSplitPane(targetPaneId, dir, item) {
     columns: [],
     loading: false,
     error: null,
+    selectedDocs: new Set(),
   };
 
   removeSingleCollTab(item.db, item.coll);
@@ -318,6 +322,7 @@ export function addOrSplitPane(targetPaneId, dir, item) {
         columns: state.columns || [],
         loading: false,
         error: null,
+        selectedDocs: new Set(),
       };
 
       removeSingleCollTab(firstPane.db, firstPane.coll);
@@ -549,6 +554,106 @@ function renderLayoutNode(node) {
   return el;
 }
 
+function startPaneEdit(td, paneId, doc, field) {
+  const p = splitState.panes.get(paneId);
+  if (!p || td.classList.contains('editing')) return;
+
+  const { input, original, buildValue } = buildEditor(doc[field]);
+
+  td.classList.add('editing');
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  if (input.select) input.select();
+
+  let finished = false;
+
+  const cancel = () => {
+    if (finished) return;
+    finished = true;
+    updatePaneUI(paneId);
+  };
+
+  const save = () => {
+    if (finished) return;
+    finished = true;
+    if (input.value === original) {
+      updatePaneUI(paneId);
+      return;
+    }
+    let value;
+    try {
+      value = buildValue();
+    } catch (err) {
+      toast(err.message, true);
+      updatePaneUI(paneId);
+      return;
+    }
+    emitPaneQuery(p.tabId, 'doc:update', {
+      db: p.db,
+      coll: p.coll,
+      id: idOf(doc),
+      set: { [field]: value },
+    }).then(() => {
+      toast(`Campo "${field}" aggiornato`);
+      runPaneQuery(paneId, { auto: true });
+    }).catch((err) => {
+      toast(err.message, true);
+      updatePaneUI(paneId);
+    });
+  };
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') cancel();
+  });
+  input.addEventListener('blur', save);
+  if (input.tagName === 'SELECT') input.addEventListener('change', save);
+}
+
+function deletePaneDoc(paneId, doc) {
+  const p = splitState.panes.get(paneId);
+  if (!p) return;
+  const { text } = displayValue(doc._id);
+  if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
+
+  emitPaneQuery(p.tabId, 'doc:delete', {
+    db: p.db,
+    coll: p.coll,
+    id: idOf(doc),
+  }).then(() => {
+    toast('Documento eliminato');
+    runPaneQuery(paneId, { auto: true });
+  }).catch((err) => toast(err.message, true));
+}
+
+function deletePaneSelectedDocs(paneId) {
+  const p = splitState.panes.get(paneId);
+  if (!p || !p.selectedDocs) return;
+  const visible = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
+  const ids = [...p.selectedDocs].filter((id) => visible.has(id));
+  if (ids.length === 0) {
+    toast('Nessun documento selezionato', true);
+    return;
+  }
+  if (!confirm(`Eliminare i ${ids.length} documenti selezionati? Questa azione non si può annullare.`)) return;
+
+  Promise.allSettled(ids.map((id) =>
+    emitPaneQuery(p.tabId, 'doc:delete', {
+      db: p.db,
+      coll: p.coll,
+      id,
+    })
+  )).then((results) => {
+    const failed = results.filter((r) => r.status === 'rejected');
+    const ok = results.length - failed.length;
+    p.selectedDocs.clear();
+    if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
+    else toast(`${ok} documenti eliminati`);
+    runPaneQuery(paneId, { auto: true });
+  });
+}
+
 function createPaneElement(paneId) {
   const p = splitState.panes.get(paneId);
   const connTab = tabs.list.find((t) => t.id === p.tabId);
@@ -586,6 +691,8 @@ function createPaneElement(paneId) {
       <input type="text" class="pane-filter-input" placeholder="${isSql ? 'Clausola WHERE...' : 'Filtro JSON...'}" value="${esc(p.filter)}" spellcheck="false" />
       <input type="text" class="pane-sort-input ${p.queryMode === 'aggregate' ? 'hidden' : ''}" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" />
       <button type="button" class="pane-run-btn primary">▶ Esegui</button>
+      <button type="button" class="pane-insert-btn ghost" title="${isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento'}">${isSql ? '+ Riga' : '+ Documento'}</button>
+      <button type="button" class="pane-bulk-delete-btn danger hidden" title="Elimina elementi selezionati">🗑 Elimina (0)</button>
     </div>
 
     <div class="pane-error-banner hidden"></div>
@@ -684,6 +791,23 @@ function createPaneElement(paneId) {
     runPaneQuery(paneId);
   });
 
+  paneEl.querySelector('.pane-insert-btn').addEventListener('click', () => {
+    const curConnTab = tabs.list.find((t) => t.id === p.tabId);
+    const curDbType = curConnTab ? curConnTab.dbType : 'mongodb';
+    openInsertDocForContext({
+      tabId: p.tabId,
+      db: p.db,
+      coll: p.coll,
+      dbType: curDbType,
+      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
+    });
+  });
+
+  const bulkDelBtn = paneEl.querySelector('.pane-bulk-delete-btn');
+  if (bulkDelBtn) {
+    bulkDelBtn.addEventListener('click', () => deletePaneSelectedDocs(paneId));
+  }
+
   paneEl.querySelector('.pane-prev-btn').addEventListener('click', () => {
     if (p.skip >= p.limit) {
       p.skip -= p.limit;
@@ -716,6 +840,18 @@ function updatePaneUI(paneId) {
   const p = splitState.panes.get(paneId);
   if (!p) return;
 
+  if (!p.selectedDocs) p.selectedDocs = new Set();
+
+  const connTab = tabs.list.find((t) => t.id === p.tabId);
+  const dbType = connTab ? connTab.dbType : 'mongodb';
+  const isSql = isSqlType(dbType);
+
+  const insertBtn = paneEl.querySelector('.pane-insert-btn');
+  if (insertBtn) {
+    insertBtn.title = isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento';
+    insertBtn.textContent = isSql ? '+ Riga' : '+ Documento';
+  }
+
   const errBanner = paneEl.querySelector('.pane-error-banner');
   if (p.error) {
     errBanner.textContent = p.error;
@@ -739,22 +875,147 @@ function updatePaneUI(paneId) {
     tbody.innerHTML = '<tr><td colspan="100" class="pane-empty">Nessun documento o riga trovata.</td></tr>';
   } else {
     const cols = p.columns && p.columns.length ? p.columns : Array.from(new Set(p.docs.flatMap(Object.keys)));
-    
+    let currentSort = {};
+    try { currentSort = JSON.parse(p.sort || '{}'); } catch { /* ignore */ }
+
+    const canSelect = p.queryMode !== 'aggregate';
+    const hasIdDocs = p.docs.some((d) => '_id' in d);
+
+    const visibleIds = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
+    for (const id of [...p.selectedDocs]) {
+      if (!visibleIds.has(id)) p.selectedDocs.delete(id);
+    }
+
     const trHead = document.createElement('tr');
-    trHead.innerHTML = '<th class="row-num-col">#</th>' + cols.map((c) => `<th>${esc(c)}</th>`).join('');
+
+    const thNum = document.createElement('th');
+    thNum.className = 'row-num-col';
+    thNum.textContent = '#';
+    trHead.appendChild(thNum);
+
+    if (canSelect && hasIdDocs) {
+      const thSel = document.createElement('th');
+      thSel.className = 'grid-select-col';
+      const checkAll = document.createElement('input');
+      checkAll.type = 'checkbox';
+      checkAll.className = 'pane-select-all';
+      checkAll.title = 'Seleziona/deseleziona tutti';
+
+      const docsWithId = p.docs.filter((d) => '_id' in d);
+      checkAll.checked = docsWithId.length > 0 && docsWithId.every((d) => p.selectedDocs.has(idOf(d)));
+      checkAll.indeterminate = !checkAll.checked && docsWithId.some((d) => p.selectedDocs.has(idOf(d)));
+
+      checkAll.addEventListener('change', () => {
+        if (checkAll.checked) {
+          docsWithId.forEach((d) => p.selectedDocs.add(idOf(d)));
+        } else {
+          docsWithId.forEach((d) => p.selectedDocs.delete(idOf(d)));
+        }
+        updatePaneUI(paneId);
+      });
+      thSel.appendChild(checkAll);
+      trHead.appendChild(thSel);
+    }
+
+    if (hasIdDocs) {
+      const thActions = document.createElement('th');
+      thActions.className = 'grid-actions-col';
+      thActions.textContent = '';
+      trHead.appendChild(thActions);
+    }
+
+    cols.forEach((col) => {
+      const th = document.createElement('th');
+      th.className = 'pane-col-header';
+      const dir = currentSort[col];
+      const arrow = dir === 1 ? ' ▲' : dir === -1 ? ' ▼' : '';
+      th.textContent = col + arrow;
+      th.title = 'Clicca per ordinare';
+      th.addEventListener('click', () => {
+        const nextDir = dir === 1 ? -1 : 1;
+        p.sort = JSON.stringify({ [col]: nextDir });
+        const sortInput = paneEl.querySelector('.pane-sort-input');
+        if (sortInput) sortInput.value = p.sort;
+        p.skip = 0;
+        runPaneQuery(paneId);
+      });
+      trHead.appendChild(th);
+    });
+
     thead.appendChild(trHead);
 
     p.docs.forEach((doc, idx) => {
       const tr = document.createElement('tr');
-      let rowHtml = `<td class="row-num-col">${p.skip + idx + 1}</td>`;
+
+      const numTd = document.createElement('td');
+      numTd.className = 'row-num-col';
+      numTd.textContent = p.skip + idx + 1;
+      tr.appendChild(numTd);
+
+      const docId = '_id' in doc ? idOf(doc) : null;
+
+      if (canSelect && hasIdDocs) {
+        const selectTd = document.createElement('td');
+        selectTd.className = 'grid-select-col';
+        if (docId) {
+          const cb = document.createElement('input');
+          cb.type = 'checkbox';
+          cb.checked = p.selectedDocs.has(docId);
+          cb.addEventListener('change', () => {
+            if (cb.checked) p.selectedDocs.add(docId);
+            else p.selectedDocs.delete(docId);
+            updatePaneUI(paneId);
+          });
+          selectTd.appendChild(cb);
+        }
+        tr.appendChild(selectTd);
+      }
+
+      if (hasIdDocs) {
+        const actionsTd = document.createElement('td');
+        actionsTd.className = 'row-actions';
+        if (docId) {
+          const editBtn = document.createElement('button');
+          editBtn.className = 'edit-btn';
+          editBtn.textContent = '✎';
+          editBtn.title = 'Modifica documento (riga intera)';
+          editBtn.addEventListener('click', () => {
+            openEditDoc(doc, {
+              tabId: p.tabId,
+              db: p.db,
+              coll: p.coll,
+              onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
+            });
+          });
+          actionsTd.appendChild(editBtn);
+
+          const delBtn = document.createElement('button');
+          delBtn.className = 'del-btn';
+          delBtn.textContent = '✕';
+          delBtn.title = 'Elimina documento';
+          delBtn.addEventListener('click', () => deletePaneDoc(paneId, doc));
+          actionsTd.appendChild(delBtn);
+        }
+        tr.appendChild(actionsTd);
+      }
 
       cols.forEach((col) => {
+        const td = document.createElement('td');
         const val = doc[col];
         const disp = displayValue(val);
-        rowHtml += `<td class="${disp.cls}">${esc(disp.text)}</td>`;
+        const span = document.createElement('span');
+        if (disp.cls) span.className = disp.cls;
+        span.textContent = val === undefined ? '' : disp.text;
+        td.title = disp.text;
+        td.appendChild(span);
+
+        if (col !== '_id' && docId && canSelect) {
+          td.classList.add('editable');
+          td.addEventListener('dblclick', () => startPaneEdit(td, paneId, doc, col));
+        }
+        tr.appendChild(td);
       });
 
-      tr.innerHTML = rowHtml;
       tbody.appendChild(tr);
     });
   }
@@ -763,6 +1024,13 @@ function updatePaneUI(paneId) {
   const resultInfo = paneEl.querySelector('.pane-result-info');
   const prevBtn = paneEl.querySelector('.pane-prev-btn');
   const nextBtn = paneEl.querySelector('.pane-next-btn');
+
+  const bulkDelBtn = paneEl.querySelector('.pane-bulk-delete-btn');
+  if (bulkDelBtn) {
+    const selCount = p.selectedDocs ? p.selectedDocs.size : 0;
+    bulkDelBtn.classList.toggle('hidden', selCount === 0);
+    bulkDelBtn.textContent = `🗑 Elimina (${selCount})`;
+  }
 
   const currPage = Math.floor(p.skip / p.limit) + 1;
   const totalPages = Math.ceil(p.total / p.limit) || 1;
