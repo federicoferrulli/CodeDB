@@ -872,7 +872,7 @@ header {
 
 /* ---------- Sidebar ---------- */
 
-#sidebar, #conn-sidebar {
+#sidebar {
   width: 260px;
   min-width: 200px;
   background: var(--bg-2);
@@ -894,10 +894,12 @@ header {
   color: var(--fg-dim);
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
   margin-bottom: 6px;
+  flex-shrink: 0;
 }
 
 .sidebar-search {
   padding: 0 12px 10px 12px;
+  flex-shrink: 0;
 }
 
 .sidebar-search input {
@@ -1532,8 +1534,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   min-width: 150px;
   background: var(--bg-2);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 10px 0;
+  overflow: hidden;
+  padding: 10px 0 0 0;
   display: flex;
   flex-direction: column;
   transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -1575,7 +1577,15 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 #conn-sidebar .saved-conns-title { margin-bottom: 0; padding: 4px 14px 8px; }
 
-#conn-tree { list-style: none; margin: 0; padding: 0; flex: 1; }
+#conn-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 #conn-tree ul { list-style: none; margin: 0; padding-left: 12px; }
 
 #conn-tree .folder-label { color: var(--fg-dim); font-size: 0.85rem; user-select: none; }
@@ -1592,10 +1602,11 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   white-space: nowrap;
 }
 
-#conn-empty { margin: 8px 14px; }
+#conn-empty { margin: 8px 14px; flex-shrink: 0; }
 
 #conn-add-btn {
-  margin: 10px 14px 4px;
+  margin: 8px 14px 10px;
+  flex-shrink: 0;
   border-style: dashed;
   color: var(--fg-dim);
 }
