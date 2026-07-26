@@ -148,10 +148,59 @@ function fillFolderDatalist() {
   }
 }
 
+const SIDEBAR_COLLAPSED_KEY = 'gui-db:conn-sidebar-collapsed';
+
+export function toggleConnSidebar(forceCollapsed) {
+  const sidebar = $('#conn-sidebar');
+  const resizer = document.querySelector('.resizer[data-resize="conn-sidebar"]');
+  const expandBtn = $('#conn-sidebar-expand-btn');
+  const toggleBtn = $('#conn-sidebar-toggle-btn');
+  if (!sidebar) return;
+
+  const isCurrentlyCollapsed = sidebar.classList.contains('collapsed');
+  const collapse = typeof forceCollapsed === 'boolean' ? forceCollapsed : !isCurrentlyCollapsed;
+
+  sidebar.classList.toggle('collapsed', collapse);
+  if (resizer) resizer.classList.toggle('collapsed', collapse);
+  if (expandBtn) expandBtn.classList.toggle('hidden', !collapse);
+
+  if (toggleBtn) {
+    toggleBtn.title = collapse ? 'Espandi barra connessioni' : 'Comprimi barra connessioni';
+    toggleBtn.setAttribute('aria-label', toggleBtn.title);
+    toggleBtn.innerHTML = collapse ? `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <line x1="9" y1="3" x2="9" y2="21"/>
+        <polyline points="14 10 17 12 14 14"/>
+      </svg>` : `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+        <line x1="9" y1="3" x2="9" y2="21"/>
+        <polyline points="16 10 13 12 16 14"/>
+      </svg>`;
+  }
+
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapse ? 'true' : 'false');
+}
+
 export function initConnManager() {
   $('#conn-add-btn').addEventListener('click', () => openConnModal());
   const searchInput = $('#conn-search');
   if (searchInput) {
     searchInput.addEventListener('input', () => renderConnTree());
+  }
+
+  const toggleBtn = $('#conn-sidebar-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', () => toggleConnSidebar());
+  }
+
+  const expandBtn = $('#conn-sidebar-expand-btn');
+  if (expandBtn) {
+    expandBtn.addEventListener('click', () => toggleConnSidebar(false));
+  }
+
+  if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true') {
+    toggleConnSidebar(true);
   }
 }

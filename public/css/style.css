@@ -610,20 +610,67 @@ header {
 
 /* ---------- Connection Tabs Bar (#tab-bar) ---------- */
 
-#tab-bar {
+.tab-bar-wrap {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 12px 0 12px;
+  align-items: flex-end;
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 0;
+  width: 100%;
+}
+
+#tab-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 6px 12px 0 6px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 1;
+  min-width: 0;
   scrollbar-width: none;
 }
 #tab-bar::-webkit-scrollbar { display: none; }
+
+.conn-sidebar-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  margin: 6px 0 0 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-bottom: 1px solid var(--bg-2);
+  border-radius: 8px 8px 0 0;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  transition: all 0.15s ease;
+  margin-bottom: -1px;
+}
+
+.conn-sidebar-expand-btn:hover {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--fg);
+  border-color: var(--accent);
+  border-bottom-color: var(--bg-2);
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+.conn-sidebar-expand-btn svg {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.conn-sidebar-expand-btn .btn-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
 
 .conn-tab {
   display: inline-flex;
@@ -1326,6 +1373,41 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   padding: 10px 0;
   display: flex;
   flex-direction: column;
+  transition: width 0.2s cubic-bezier(0.16, 1, 0.3, 1), padding 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#conn-sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-right: none !important;
+  visibility: hidden;
+}
+
+.resizer[data-resize="conn-sidebar"].collapsed,
+#conn-sidebar.collapsed + .resizer {
+  display: none !important;
+}
+
+.sidebar-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  cursor: pointer;
+  line-height: 1;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--hover);
+  color: var(--accent);
 }
 
 #conn-sidebar .saved-conns-title { margin-bottom: 0; padding: 4px 14px 8px; }
@@ -1526,6 +1608,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 @media (max-width: 900px) {
   .menu-btn { display: inline-block; }
   .resizer { display: none; }
+  .conn-sidebar-expand-btn, .sidebar-toggle-btn { display: none !important; }
 
   /* Le sidebar escono dal flusso e diventano drawer (il width !important
      vince sul width inline salvato dai resizer del desktop). */
