@@ -92,7 +92,7 @@ const CONN_FIELDS = [
 // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
 const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
 
-let encryptionKey = null;
+let encryptionKey = crypto.createHash('sha256').update(process.env.GUI_MONGO_PASSPHRASE || '').digest();
 // Conta i segreti che non si decifrano: all'avvio un valore > 0 significa
 // passphrase sbagliata e il server rifiuta di partire (vedi main), invece di
 // proseguire e riscrivere il file coi segreti azzerati.

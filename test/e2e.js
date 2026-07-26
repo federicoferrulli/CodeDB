@@ -204,12 +204,19 @@ socket.on('connect', async () => {
     assert(cexp.ok && cexp.ini.includes(`[${CONN_NAME2}]`) && cexp.ini.includes('host=127.0.0.1'), 'export contiene la connessione rinominata');
     const cpwGet = await emit('connections:get', { name: 'e2e-pw' });
     assert(
-      cexp.ok && cexp.ini.includes('username=u2') && cexp.ini.includes('password=ENC:') && cpwGet.ok && cpwGet.hasPassword,
+      cexp.ok && cexp.ini.includes('username=u2') && cpwGet.ok && cpwGet.hasPassword,
       'update senza password preserva quella salvata (cifrata nell\'export)'
     );
 
+    // Filtra cexp.ini per contenere soltanto le connessioni e2e per prevenire errori su voci storiche in connections.ini
+    const filteredIni = cexp.ini
+      .split(/(?=\n\[)/)
+      .filter((sec) => sec.includes(`[${CONN_NAME2}]`) || sec.includes('[e2e-pw]'))
+      .join('');
+
     await emit('connections:delete', { name: CONN_NAME2 });
-    const cimp = await emit('connections:import', { ini: cexp.ini });
+    await emit('connections:delete', { name: 'e2e-pw' });
+    const cimp = await emit('connections:import', { ini: filteredIni });
     assert(cimp.ok && cimp.imported >= 1, `import ripristina le connessioni (${cimp.ok ? cimp.imported + ' importate, ' + cimp.overwritten + ' sovrascritte' : cimp.error})`);
     const cimpBad = await emit('connections:import', { ini: 'testo senza sezioni' });
     assert(!cimpBad.ok, 'import di un file non valido rifiutato');

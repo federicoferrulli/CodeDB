@@ -21,6 +21,8 @@
     "test": "node test/unit.js",
     "test:unit": "node test/unit.js",
     "test:e2e": "node test/e2e.js",
+    "test:e2e:all": "node test/all-e2e.js",
+    "test:all": "npm test && npm run test:e2e:all",
     "test:e2e:mysql": "node test/e2e-mysql.js",
     "test:e2e:mcp": "node test/e2e-mcp.js",
     "test:e2e:mcp-mysql": "node test/e2e-mcp-mysql.js",

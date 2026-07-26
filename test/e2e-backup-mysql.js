@@ -30,7 +30,7 @@ const iniFile = path.join(tmpRoot, 'connections.ini');
 const destRoot = path.join(tmpRoot, 'backups');
 fs.writeFileSync(
   iniFile,
-  `[e2e-backup-mysql]\ndbType=mysql\nhost=localhost\nport=${PORT}\nusername=root\n${PASSWORD ? `password=${PASSWORD}\n` : ''}`,
+  `[e2e-backup-mysql]\ndbType=mysql\nhost=127.0.0.1\nport=${PORT}\nusername=root\n${PASSWORD ? `password=${PASSWORD}\n` : ''}`,
   'utf8'
 );
 
@@ -95,8 +95,8 @@ async function main() {
 
     console.log('e2e-backup-mysql: tutti i test superati.');
   } finally {
-    await conn.query(`DROP DATABASE IF EXISTS ${DB}; DROP DATABASE IF EXISTS ${DB_RESTORE}`).catch(() => {});
-    await conn.end().catch(() => {});
+    await conn.query(`DROP DATABASE IF EXISTS ${DB}; DROP DATABASE IF EXISTS ${DB_RESTORE}`).catch(() => { });
+    await conn.end().catch(() => { });
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }
 }

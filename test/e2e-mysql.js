@@ -10,6 +10,7 @@ const { io } = require('socket.io-client');
 
 const socket = io('http://localhost:3030');
 const MYSQL_PORT = process.env.MYSQL_PORT || 3306;
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
 const DB = 'gui_mysql_e2e';
 const DB2 = 'gui_mysql_e2e_ren';
 const TABLE = 'people';
@@ -36,7 +37,7 @@ socket.on('connect', async () => {
   try {
     console.log('1. mongo:connect (dbType = mysql)');
     const conn = await emit('mongo:connect', {
-      dbType: 'mysql', host: 'localhost', port: MYSQL_PORT, username: 'root', password: '',
+      dbType: 'mysql', host: 'localhost', port: MYSQL_PORT, username: 'root', password: MYSQL_PASSWORD,
     });
     assert(conn.ok && conn.dbType === 'mysql',
       `connessione riuscita (${conn.ok ? conn.databases.length + ' schema, dbType=' + conn.dbType : conn.error})`);
