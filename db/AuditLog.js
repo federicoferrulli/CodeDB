@@ -26,8 +26,26 @@ const DEFAULT_MAX_BYTES = 5 * 1024 * 1024; // oltre, si ruota un file .1 per non
 // mai bloccare né far fallire l'operazione tracciata. `readRecent(filtri)`
 // rilegge il log (file ruotato + principale) per la vista storica della UI.
 function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
+  let cache = null;
+
+  function loadCache() {
+    cache = [];
+    for (const f of [`${filePath}.1`, filePath]) {
+      let text;
+      try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
+      for (const line of text.split(/\r?\n/)) {
+        if (!line.trim()) continue;
+        try { cache.push(JSON.parse(line)); } catch { /* riga corrotta: ignora */ }
+      }
+    }
+  }
+
   function audit(entry) {
-    const line = JSON.stringify({ ts: new Date().toISOString(), ...entry });
+    const fullEntry = { ts: new Date().toISOString(), ...entry };
+    if (cache === null) loadCache();
+    cache.push(fullEntry);
+
+    const line = JSON.stringify(fullEntry);
     const append = () => fs.appendFile(filePath, line + '\n', () => { /* l'audit non deve mai bloccare */ });
     fs.stat(filePath, (err, stats) => {
       if (!err && stats.size > maxBytes) {
@@ -38,34 +56,29 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
     });
   }
 
-  // Legge le voci applicando filtri opzionali (event/db/connection/dbType/
-  // status/category) e paginazione (offset/limit). Legge prima il file ruotato
-  // (.1, più vecchio) e poi il principale, così l'ordine cronologico è
-  // preservato prima dell'inversione finale (più recenti in cima). Le righe
-  // corrotte si saltano. Ritorna `{ entries, total }`: `total` è il numero di
-  // voci che soddisfano i filtri (prima della paginazione), utile alla UI per
-  // calcolare le pagine.
   function readRecent(filters = {}) {
+    if (cache === null) loadCache();
     const { limit = 200, offset = 0, event, db, connection, dbType, status, category } = filters;
-    let entries = [];
-    for (const f of [`${filePath}.1`, filePath]) {
-      let text;
-      try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
-      for (const line of text.split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        try { entries.push(JSON.parse(line)); } catch { /* riga corrotta: ignora */ }
-      }
-    }
+    let entries = cache;
+
     if (event) entries = entries.filter((e) => e.event === event);
     if (db) entries = entries.filter((e) => e.db === db);
     if (connection) entries = entries.filter((e) => e.connection === connection);
     if (dbType) entries = entries.filter((e) => e.dbType === dbType);
     if (status) entries = entries.filter((e) => e.status === status);
     if (category) entries = entries.filter((e) => e.category === category);
-    entries.reverse(); // più recenti in cima
+
     const total = entries.length;
     const start = Math.max(0, offset);
-    return { entries: entries.slice(start, start + Math.max(1, limit)), total };
+    // Inverti per restituire i più recenti in cima
+    const sliced = [];
+    const end = Math.max(0, total - start);
+    const begin = Math.max(0, end - Math.max(1, limit));
+    for (let i = end - 1; i >= begin; i--) {
+      sliced.push(entries[i]);
+    }
+
+    return { entries: sliced, total };
   }
 
   return { audit, readRecent, filePath };

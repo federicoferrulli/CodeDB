@@ -252,7 +252,7 @@ function render(entries) {
       <td>${action}</td>
       <td>${target} ${dbType}</td>
       <td>${conn}</td>
-      <td class="audit-details">${esc(detailsOf(e))}</td>
+      <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
       <td>${statusHtml}</td>
     `;
     frag.appendChild(tr);
