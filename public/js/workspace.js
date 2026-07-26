@@ -32,6 +32,7 @@ export function renderWorkspace() {
   $('#disconnect-btn').classList.toggle('hidden', !connected);
   // Hamburger dei database (drawer mobile): ha senso solo con un tab connesso.
   $('#menu-dbs-btn').classList.toggle('hidden', !connected);
+  $('#conn-info').classList.toggle('hidden', !connected);
   $('#conn-info').textContent = connected ? `${dbTypeIcon(state.dbType)} ${state.connLabel}` : '';
   if (!connected) {
     $('#live-badge').classList.add('hidden');
