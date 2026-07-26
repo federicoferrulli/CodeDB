@@ -11,6 +11,69 @@ import { restoreSession, persistSession } from './session-restore.js';
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
 
 let editingConn = null;
+let currentStep = 1;
+
+export function setWizardStep(step) {
+  const sshOn = $('#conn-ssh-toggle')?.checked;
+  // Se SSH è disattivato e si cerca di andare al passo 2, salta al 3 o 1
+  if (step === 2 && !sshOn) {
+    step = currentStep === 1 ? 3 : 1;
+  }
+  currentStep = Math.max(1, Math.min(3, step));
+
+  document.querySelectorAll('.wizard-panel').forEach((panel) => {
+    panel.classList.toggle('hidden', parseInt(panel.dataset.step, 10) !== currentStep);
+  });
+
+  document.querySelectorAll('.wizard-step-badge').forEach((badge) => {
+    const s = parseInt(badge.dataset.step, 10);
+    badge.classList.toggle('active', s === currentStep);
+    badge.classList.toggle('completed', s < currentStep);
+    badge.classList.toggle('disabled', s === 2 && !sshOn);
+  });
+
+  const subtitles = {
+    1: 'Passo 1: Parametri di connessione',
+    2: 'Passo 2: Configurazione Tunnel SSH',
+    3: 'Passo 3: Salvataggio & Connessione',
+  };
+  const subtitleEl = $('#wizard-subtitle');
+  if (subtitleEl) subtitleEl.textContent = subtitles[currentStep] || '';
+
+  $('#wizard-prev-btn')?.classList.toggle('hidden', currentStep === 1);
+  $('#wizard-next-btn')?.classList.toggle('hidden', currentStep === 3);
+
+  $('#connect-error')?.classList.add('hidden');
+  $('#connect-test-msg')?.classList.add('hidden');
+
+  if (currentStep === 3) {
+    updateWizardSummary();
+  }
+}
+
+function updateWizardSummary() {
+  const cfg = readConnForm();
+  const summaryBox = $('#wizard-summary-box');
+  if (!summaryBox) return;
+
+  const dbIcon = { mongodb: '🍃', mysql: '🐬', postgresql: '🐘', postgres: '🐘' }[cfg.dbType] || '🗄';
+  const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
+  
+  let html = `<div><strong>${dbIcon} ${dbTypeName}</strong> — `;
+  if (cfg.uri) {
+    html += `URI: <code>${cfg.uri}</code>`;
+  } else {
+    html += `Host: <strong>${cfg.host || 'localhost'}:${cfg.port || ''}</strong>`;
+    if (cfg.username) html += ` | User: <strong>${cfg.username}</strong>`;
+    if (cfg.database) html += ` | DB: <strong>${cfg.database}</strong>`;
+    if (cfg.authSource) html += ` | Auth: <strong>${cfg.authSource}</strong>`;
+  }
+  if (cfg.ssh === 'true') {
+    html += `<br>🔒 <strong>Tunnel SSH attivo</strong>: <code>${cfg.sshUser || 'user'}@${cfg.sshHost || 'bastion'}:${cfg.sshPort || '22'}</code>`;
+  }
+  html += `</div>`;
+  summaryBox.innerHTML = html;
+}
 
 function selectConnTab(name) {
   document.querySelectorAll('.tab[data-tab]').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
@@ -27,8 +90,9 @@ export function syncConnForm() {
   $('#row-authsource').classList.toggle('hidden', isSql);
   $('#row-database').classList.toggle('hidden', !isSql);
 
-  // SSH fields
-  $('#ssh-fields').classList.toggle('hidden', !sshOn);
+  const sshBadge = $('#wizard-badge-ssh');
+  if (sshBadge) sshBadge.classList.toggle('disabled', !sshOn);
+
   $('#tab-uri-btn').classList.toggle('hidden', isSql || sshOn);
 
   if ((isSql || sshOn) && !$('#tab-uri').classList.contains('hidden')) {
@@ -80,7 +144,9 @@ function readConnForm() {
 
 export function openConnModal() {
   cancelEditConn();
+  setWizardStep(1);
   $('#connect-error').classList.add('hidden');
+  $('#connect-test-msg').classList.add('hidden');
   $('#connect-overlay').classList.remove('hidden');
 }
 
@@ -128,7 +194,7 @@ export function startEditConn(name) {
     const f = res.fields;
     const form = $('#connect-form');
     const dbType = f.dbType || 'mongodb';
-    const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType === 'postgres';
+    const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType.includes('postgres');
     const defaultPort = dbType === 'mysql' ? '3306' : (dbType.includes('postgres') ? '5432' : '27017');
     form.elements.dbType.value = dbType;
     selectConnTab(f.uri && !isSql ? 'uri' : 'fields');
@@ -153,10 +219,12 @@ export function startEditConn(name) {
     form.elements.saveAs.value = name;
     syncConnForm();
     editingConn = name;
+    setWizardStep(1);
     $('#conn-edit-name').textContent = name;
     $('#conn-edit-banner').classList.remove('hidden');
     $('#conn-save-btn').classList.remove('hidden');
     $('#connect-error').classList.add('hidden');
+    $('#connect-test-msg').classList.add('hidden');
     $('#connect-overlay').classList.remove('hidden');
   }).catch((err) => toast(err.message, true));
 }
@@ -169,6 +237,7 @@ function cancelEditConn() {
   form.elements.sshPassword.placeholder = '(vuoto se usi una chiave)';
   form.elements.sshPassphrase.placeholder = '(se la chiave è protetta)';
   syncConnForm();
+  setWizardStep(1);
   $('#conn-edit-banner').classList.add('hidden');
   $('#conn-save-btn').classList.add('hidden');
 }
@@ -178,8 +247,43 @@ export function initConnection() {
     tab.addEventListener('click', () => selectConnTab(tab.dataset.tab))
   );
 
+  document.querySelectorAll('.wizard-step-badge').forEach((badge) => {
+    badge.addEventListener('click', () => {
+      const step = parseInt(badge.dataset.step, 10);
+      setWizardStep(step);
+    });
+  });
+
+  $('#wizard-prev-btn')?.addEventListener('click', () => setWizardStep(currentStep - 1));
+  $('#wizard-next-btn')?.addEventListener('click', () => setWizardStep(currentStep + 1));
+
   $('#conn-dbtype').addEventListener('change', syncConnForm);
   $('#conn-ssh-toggle').addEventListener('change', syncConnForm);
+
+  $('#conn-test-btn')?.addEventListener('click', () => {
+    const cfg = readConnForm();
+    const btn = $('#conn-test-btn');
+    btn.disabled = true;
+    btn.textContent = 'Verifica…';
+    $('#connect-error').classList.add('hidden');
+    $('#connect-test-msg').classList.add('hidden');
+
+    emit('connections:test', cfg)
+      .then((res) => {
+        btn.disabled = false;
+        btn.textContent = '⚡ Testa Connessione';
+        const msg = $('#connect-test-msg');
+        msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;
+        msg.classList.remove('hidden');
+      })
+      .catch((err) => {
+        btn.disabled = false;
+        btn.textContent = '⚡ Testa Connessione';
+        const errorEl = $('#connect-error');
+        errorEl.textContent = `Errore di connessione: ${err.message}`;
+        errorEl.classList.remove('hidden');
+      });
+  });
 
   $('#connect-form').addEventListener('submit', (e) => {
     e.preventDefault();

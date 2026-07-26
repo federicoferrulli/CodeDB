@@ -35,12 +35,30 @@
     </div>
   </div>
 
-  <!-- ===================== Modale di connessione ===================== -->
+  <!-- ===================== Modale di connessione (Wizard) ===================== -->
   <div id="connect-overlay" class="overlay hidden">
 
-    <div class="modal">
-      <h2>Connessione</h2>
-      <p class="subtitle">Inserisci i dati di connessione al database</p>
+    <div class="modal wizard-modal">
+      <h2>Connessione Database</h2>
+      <p class="subtitle" id="wizard-subtitle">Passo 1: Parametri di connessione</p>
+
+      <!-- Indicatore Passaggi (Wizard Bar) -->
+      <div class="wizard-steps-bar">
+        <button type="button" class="wizard-step-badge active" data-step="1">
+          <span class="step-num">1</span>
+          <span class="step-title">Parametri</span>
+        </button>
+        <div class="wizard-step-line"></div>
+        <button type="button" class="wizard-step-badge" data-step="2" id="wizard-badge-ssh">
+          <span class="step-num">2</span>
+          <span class="step-title">Tunnel SSH</span>
+        </button>
+        <div class="wizard-step-line"></div>
+        <button type="button" class="wizard-step-badge" data-step="3">
+          <span class="step-num">3</span>
+          <span class="step-title">Salva & Connetti</span>
+        </button>
+      </div>
 
       <form id="connect-form">
         <div id="conn-edit-banner" class="conn-edit-banner hidden">
@@ -48,115 +66,135 @@
           <button type="button" id="conn-edit-cancel" title="Annulla la modifica" aria-label="Annulla la modifica">✕</button>
         </div>
 
-        <div class="form-row">
-          <label>Tipo di database
-            <select name="dbType" id="conn-dbtype">
-              <option value="mongodb">🍃 MongoDB</option>
-              <option value="mysql">🐬 MySQL</option>
-              <option value="postgresql">🐘 PostgreSQL</option>
-            </select>
-          </label>
-        </div>
+        <!-- ================= PASSO 1: Parametri ================= -->
+        <div class="wizard-panel" data-step="1">
+          <div class="form-row">
+            <label>Tipo di database
+              <select name="dbType" id="conn-dbtype">
+                <option value="mongodb">🍃 MongoDB</option>
+                <option value="mysql">🐬 MySQL</option>
+                <option value="postgresql">🐘 PostgreSQL</option>
+              </select>
+            </label>
+          </div>
 
-        <div class="tabs">
-          <button type="button" class="tab active" data-tab="fields">Parametri</button>
-          <button type="button" class="tab" data-tab="uri" id="tab-uri-btn">URI completa</button>
-        </div>
+          <div class="tabs">
+            <button type="button" class="tab active" data-tab="fields">Parametri</button>
+            <button type="button" class="tab" data-tab="uri" id="tab-uri-btn">URI completa</button>
+          </div>
 
-        <div id="tab-fields" class="tab-panel">
-          <div class="form-row">
-            <label>Host
-              <input type="text" name="host" value="localhost" autocomplete="off" />
-            </label>
-            <label class="small">Porta
-              <input type="number" name="port" value="27017" />
-            </label>
+          <div id="tab-fields" class="tab-panel">
+            <div class="form-row">
+              <label>Host
+                <input type="text" name="host" value="localhost" autocomplete="off" />
+              </label>
+              <label class="small">Porta
+                <input type="number" name="port" value="27017" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Username
+                <input type="text" name="username" placeholder="(vuoto se senza auth)" autocomplete="username" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Password
+                <input type="password" name="password" autocomplete="current-password" />
+              </label>
+            </div>
+            <div class="form-row" id="row-authsource">
+              <label>Auth source
+                <input type="text" name="authSource" value="admin" />
+              </label>
+            </div>
+            <div class="form-row hidden" id="row-database">
+              <label>Database
+                <input type="text" name="database" placeholder="(opzionale: database/schema iniziale)" autocomplete="off" />
+              </label>
+            </div>
           </div>
-          <div class="form-row">
-            <label>Username
-              <input type="text" name="username" placeholder="(vuoto se senza auth)" autocomplete="username" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label>Password
-              <input type="password" name="password" autocomplete="current-password" />
-            </label>
-          </div>
-          <div class="form-row" id="row-authsource">
-            <label>Auth source
-              <input type="text" name="authSource" value="admin" />
-            </label>
-          </div>
-          <div class="form-row hidden" id="row-database">
-            <label>Database
-              <input type="text" name="database" placeholder="(opzionale: database/schema iniziale)" autocomplete="off" />
-            </label>
-          </div>
-        </div>
 
-        <div id="tab-uri" class="tab-panel hidden">
-          <div class="form-row">
-            <label>Connection string
-              <input type="text" name="uri" placeholder="mongodb://user:pass@host:27017/?authSource=admin" autocomplete="off" />
-            </label>
+          <div id="tab-uri" class="tab-panel hidden">
+            <div class="form-row">
+              <label>Connection string
+                <input type="text" name="uri" placeholder="mongodb://user:pass@host:27017/?authSource=admin" autocomplete="off" />
+              </label>
+            </div>
           </div>
-        </div>
 
-        <div class="form-row">
-          <label class="checkbox-label">
-            <input type="checkbox" name="ssh" id="conn-ssh-toggle" />
-            Connessione tramite tunnel SSH
-          </label>
-        </div>
-
-        <div id="ssh-fields" class="ssh-fields hidden">
           <div class="form-row">
-            <label>Host SSH
-              <input type="text" name="sshHost" placeholder="es. bastion.example.com" autocomplete="off" />
-            </label>
-            <label class="small">Porta SSH
-              <input type="number" name="sshPort" value="22" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label>Utente SSH
-              <input type="text" name="sshUser" autocomplete="off" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label>Password SSH
-              <input type="password" name="sshPassword" placeholder="(vuoto se usi una chiave)" autocomplete="off" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label>Chiave privata (percorso file)
-              <input type="text" name="sshKeyFile" placeholder="es. C:\Users\Keus\.ssh\id_rsa" autocomplete="off" />
-            </label>
-          </div>
-          <div class="form-row">
-            <label>Passphrase chiave
-              <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)" autocomplete="off" />
+            <label class="checkbox-label">
+              <input type="checkbox" name="ssh" id="conn-ssh-toggle" />
+              Abilita Tunnel SSH (Passo 2)
             </label>
           </div>
         </div>
 
-        <div class="form-row">
-          <label>Salva come
-            <input type="text" name="saveAs" placeholder="(opzionale: salva con questo nome)"
-                   autocomplete="off" spellcheck="false" />
-          </label>
-          <label>Cartella
-            <input type="text" name="folder" list="conn-folders"
-                   placeholder="(opzionale, es. Produzione)" autocomplete="off" spellcheck="false" />
-          </label>
+        <!-- ================= PASSO 2: Tunnel SSH ================= -->
+        <div class="wizard-panel hidden" data-step="2">
+          <p class="wizard-panel-hint">Configura i parametri del Bastion Host per la connessione sicura via SSH.</p>
+          <div class="ssh-fields-wrap">
+            <div class="form-row">
+              <label>Host SSH
+                <input type="text" name="sshHost" placeholder="es. bastion.example.com" autocomplete="off" />
+              </label>
+              <label class="small">Porta SSH
+                <input type="number" name="sshPort" value="22" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Utente SSH
+                <input type="text" name="sshUser" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Password SSH
+                <input type="password" name="sshPassword" placeholder="(vuoto se usi una chiave)" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Chiave privata (percorso file)
+                <input type="text" name="sshKeyFile" placeholder="es. C:\Users\Keus\.ssh\id_rsa" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Passphrase chiave
+                <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)" autocomplete="off" />
+              </label>
+            </div>
+          </div>
         </div>
-        <datalist id="conn-folders"></datalist>
+
+        <!-- ================= PASSO 3: Salvataggio & Connessione ================= -->
+        <div class="wizard-panel hidden" data-step="3">
+          <p class="wizard-panel-hint">Assegna un nome per salvare questa connessione o procedi direttamente.</p>
+          <div class="form-row">
+            <label>Salva come
+              <input type="text" name="saveAs" placeholder="(opzionale: es. DB Produzione)"
+                     autocomplete="off" spellcheck="false" />
+            </label>
+            <label>Cartella
+              <input type="text" name="folder" list="conn-folders"
+                     placeholder="(opzionale, es. Produzione)" autocomplete="off" spellcheck="false" />
+            </label>
+          </div>
+          <datalist id="conn-folders"></datalist>
+
+          <div id="wizard-summary-box" class="wizard-summary-box"></div>
+        </div>
 
         <div id="connect-error" class="error hidden"></div>
+        <div id="connect-test-msg" class="success-msg hidden"></div>
+
         <div class="connect-actions">
           <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
-          <button type="button" id="conn-save-btn" class="hidden" title="Salva la connessione senza connetterti">💾 Salva</button>
-          <button type="submit" id="connect-btn" class="primary">Connetti</button>
+          <button type="button" id="conn-test-btn" class="secondary btn-sm" title="Tenta la connessione lato server senza aprire un tab">⚡ Testa Connessione</button>
+          <div class="wizard-nav-btns">
+            <button type="button" id="wizard-prev-btn" class="ghost hidden">← Indietro</button>
+            <button type="button" id="wizard-next-btn" class="secondary">Avanti →</button>
+            <button type="button" id="conn-save-btn" class="secondary hidden" title="Salva la connessione senza connetterti">💾 Salva</button>
+            <button type="submit" id="connect-btn" class="primary">Connetti</button>
+          </div>
         </div>
       </form>
     </div>
