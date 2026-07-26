@@ -194,11 +194,102 @@ function detailsOf(e) {
   return bits.join(' · ');
 }
 
+let currentEntries = [];
+let vscrollAttached = false;
+const AUDIT_ROW_H = 44;
+const AUDIT_OVERSCAN = 5;
+
+function renderAuditVirtualWindow() {
+  const container = $('#audit-log-list');
+  if (!container) return;
+  const table = container.querySelector('table.audit-table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+
+  const N = currentEntries.length;
+  if (N === 0) {
+    tbody.innerHTML = '';
+    return;
+  }
+
+  const viewport = container.clientHeight || 420;
+  const scrollTop = container.scrollTop || 0;
+  const start = Math.max(0, Math.floor(scrollTop / AUDIT_ROW_H) - AUDIT_OVERSCAN);
+  const visible = Math.ceil(viewport / AUDIT_ROW_H);
+  const end = Math.min(N, start + visible + AUDIT_OVERSCAN * 2);
+
+  const frag = document.createDocumentFragment();
+
+  if (start > 0) {
+    const topSpacer = document.createElement('tr');
+    topSpacer.className = 'v-spacer';
+    topSpacer.innerHTML = `<td colspan="7" style="height:${start * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    frag.appendChild(topSpacer);
+  }
+
+  for (let i = start; i < end; i++) {
+    const e = currentEntries[i];
+    const label = EVENT_LABELS[e.event] || e.op || e.event || '?';
+    const detail = e.op && e.op !== label ? e.op : '';
+    const ok = e.status !== 'error';
+    const statusHtml = ok
+      ? '<span class="audit-status audit-status-ok">✅ OK</span>'
+      : '<span class="audit-status audit-status-err">❌ Errore</span>';
+    const catHtml = e.category === 'read'
+      ? '<span class="audit-cat audit-cat-read">👁 Lettura</span>'
+      : '<span class="audit-cat audit-cat-write">✏️ Scrittura</span>';
+    const target = [e.db, e.coll].filter(Boolean).map(esc).join(' › ') || '<span class="sub-text">—</span>';
+    const conn = e.connection ? esc(e.connection) : '<span class="sub-text">—</span>';
+    const dbType = e.dbType ? `<span class="sub-text">${esc(e.dbType)}</span>` : '';
+    const action = detail
+      ? `${esc(label)}<div class="sub-text">${esc(detail)}</div>`
+      : esc(label);
+
+    const tr = document.createElement('tr');
+    if (!ok) tr.className = 'audit-row-err';
+    tr.style.height = `${AUDIT_ROW_H}px`;
+    tr.innerHTML = `
+      <td class="audit-ts">${fmtTs(e.ts)}</td>
+      <td>${catHtml}</td>
+      <td>${action}</td>
+      <td>${target} ${dbType}</td>
+      <td>${conn}</td>
+      <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
+      <td>${statusHtml}</td>
+    `;
+    frag.appendChild(tr);
+  }
+
+  if (end < N) {
+    const botSpacer = document.createElement('tr');
+    botSpacer.className = 'v-spacer';
+    botSpacer.innerHTML = `<td colspan="7" style="height:${(N - end) * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    frag.appendChild(botSpacer);
+  }
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+}
+
+function attachAuditVScroll() {
+  const container = $('#audit-log-list');
+  if (!container || vscrollAttached) return;
+  vscrollAttached = true;
+  let raf = 0;
+  container.addEventListener('scroll', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(renderAuditVirtualWindow);
+  });
+}
+
 function render(entries) {
   const container = $('#audit-log-list');
   if (!container) return;
 
-  if (!entries || !entries.length) {
+  currentEntries = entries || [];
+
+  if (!currentEntries.length) {
     container.innerHTML = '<div class="empty-state" style="padding:24px; text-align:center; color:var(--fg-dim);">Nessuna azione registrata con questi filtri.</div>';
     return;
   }
@@ -221,44 +312,10 @@ function render(entries) {
         <tbody></tbody>
       </table>
     `;
-    table = container.querySelector('table.audit-table');
   }
 
-  const tbody = table.querySelector('tbody');
-  const frag = document.createDocumentFragment();
-
-  for (const e of entries) {
-    const label = EVENT_LABELS[e.event] || e.op || e.event || '?';
-    const detail = e.op && e.op !== label ? e.op : '';
-    const ok = e.status !== 'error';
-    const statusHtml = ok
-      ? '<span class="audit-status audit-status-ok">✅ OK</span>'
-      : '<span class="audit-status audit-status-err">❌ Errore</span>';
-    const catHtml = e.category === 'read'
-      ? '<span class="audit-cat audit-cat-read">👁 Lettura</span>'
-      : '<span class="audit-cat audit-cat-write">✏️ Scrittura</span>';
-    const target = [e.db, e.coll].filter(Boolean).map(esc).join(' › ') || '<span class="sub-text">—</span>';
-    const conn = e.connection ? esc(e.connection) : '<span class="sub-text">—</span>';
-    const dbType = e.dbType ? `<span class="sub-text">${esc(e.dbType)}</span>` : '';
-    const action = detail
-      ? `${esc(label)}<div class="sub-text">${esc(detail)}</div>`
-      : esc(label);
-
-    const tr = document.createElement('tr');
-    if (!ok) tr.className = 'audit-row-err';
-    tr.innerHTML = `
-      <td class="audit-ts">${fmtTs(e.ts)}</td>
-      <td>${catHtml}</td>
-      <td>${action}</td>
-      <td>${target} ${dbType}</td>
-      <td>${conn}</td>
-      <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
-      <td>${statusHtml}</td>
-    `;
-    frag.appendChild(tr);
-  }
-
-  tbody.innerHTML = '';
-  tbody.appendChild(frag);
+  attachAuditVScroll();
+  container.scrollTop = 0;
+  renderAuditVirtualWindow();
   container.classList.remove('loading-state');
 }

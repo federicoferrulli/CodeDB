@@ -428,9 +428,24 @@ button.ghost:hover, .btn-ghost:hover {
 .modal,
 .explain-body,
 .catalog-list-container,
+#query-table-view,
 #audit-log-list {
   contain: content;
   transform: translateZ(0);
+}
+
+#query-result-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+#query-result-table th,
+#query-result-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 6px 10px;
 }
 
 #audit-log-list.loading-state {

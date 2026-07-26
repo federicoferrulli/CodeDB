@@ -78,6 +78,9 @@ export function renderDbTree(databases) {
 
 export function renderCollectionsList(dbName, container, collections) {
   container.innerHTML = '';
+  if (!collections || collections.length === 0) return;
+
+  const frag = document.createDocumentFragment();
   for (const coll of collections) {
     const li = document.createElement('li');
     li.className = 'coll';
@@ -127,8 +130,9 @@ export function renderCollectionsList(dbName, container, collections) {
       ]);
     });
     li.appendChild(label);
-    container.appendChild(li);
+    frag.appendChild(li);
   }
+  container.appendChild(frag);
 }
 
 export function loadCollections(dbName, container) {

@@ -1,6 +1,8 @@
 import { state } from './state.js';
-import { $, emit, displayValue, positionFixedDropdown, buildJsonNode } from './utils.js';
+import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
+
+const escapeHtml = esc;
 
 let activeViewMode = 'table'; // 'table' | 'json'
 let currentResults = [];
@@ -224,10 +226,85 @@ export function renderResults(data) {
   }
 }
 
+let queryTableRows = [];
+let queryTableCols = [];
+let queryVScrollAttached = false;
+const QUERY_ROW_H = 36;
+const QUERY_OVERSCAN = 6;
+
+function renderQueryVirtualWindow() {
+  const container = $('#query-table-view');
+  if (!container) return;
+  const table = $('#query-result-table');
+  if (!table) return;
+  const tbody = table.querySelector('tbody');
+  if (!tbody) return;
+
+  const N = queryTableRows.length;
+  if (N === 0) {
+    tbody.innerHTML = '';
+    return;
+  }
+
+  const viewport = container.clientHeight || 400;
+  const scrollTop = container.scrollTop || 0;
+  const start = Math.max(0, Math.floor(scrollTop / QUERY_ROW_H) - QUERY_OVERSCAN);
+  const visible = Math.ceil(viewport / QUERY_ROW_H);
+  const end = Math.min(N, start + visible + QUERY_OVERSCAN * 2);
+  const numCols = queryTableCols.length || 1;
+
+  const frag = document.createDocumentFragment();
+
+  if (start > 0) {
+    const topSpacer = document.createElement('tr');
+    topSpacer.className = 'v-spacer';
+    topSpacer.innerHTML = `<td colspan="${numCols}" style="height:${start * QUERY_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    frag.appendChild(topSpacer);
+  }
+
+  for (let i = start; i < end; i++) {
+    const row = queryTableRows[i];
+    const tr = document.createElement('tr');
+    tr.style.height = `${QUERY_ROW_H}px`;
+    queryTableCols.forEach((col) => {
+      const td = document.createElement('td');
+      const val = row ? row[col] : undefined;
+      const res = displayValue(val);
+      td.textContent = (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
+      if (res && res.cls) td.className = res.cls;
+      td.title = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
+      tr.appendChild(td);
+    });
+    frag.appendChild(tr);
+  }
+
+  if (end < N) {
+    const botSpacer = document.createElement('tr');
+    botSpacer.className = 'v-spacer';
+    botSpacer.innerHTML = `<td colspan="${numCols}" style="height:${(N - end) * QUERY_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    frag.appendChild(botSpacer);
+  }
+
+  tbody.innerHTML = '';
+  tbody.appendChild(frag);
+}
+
+function attachQueryVScroll() {
+  const container = $('#query-table-view');
+  if (!container || queryVScrollAttached) return;
+  queryVScrollAttached = true;
+  let raf = 0;
+  container.addEventListener('scroll', () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(renderQueryVirtualWindow);
+  });
+}
+
 // Render Tabella
 function renderResultsTable(rows) {
   const table = $('#query-result-table');
-  if (!table) return;
+  const container = $('#query-table-view');
+  if (!table || !container) return;
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
   thead.innerHTML = '';
@@ -238,7 +315,6 @@ function renderResultsTable(rows) {
     return;
   }
 
-  // Estrai tutte le colonne uniche
   const cols = new Set();
   rows.forEach((r) => {
     if (r && typeof r === 'object') {
@@ -246,29 +322,20 @@ function renderResultsTable(rows) {
     }
   });
 
-  const colArray = Array.from(cols);
+  queryTableRows = rows;
+  queryTableCols = Array.from(cols);
+
   const headerTr = document.createElement('tr');
-  colArray.forEach((colName) => {
+  queryTableCols.forEach((colName) => {
     const th = document.createElement('th');
     th.textContent = colName;
     headerTr.appendChild(th);
   });
   thead.appendChild(headerTr);
 
-  // Popola righe
-  rows.forEach((row) => {
-    const tr = document.createElement('tr');
-    colArray.forEach((col) => {
-      const td = document.createElement('td');
-      const val = row[col];
-      const res = displayValue(val);
-      td.textContent = (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
-      if (res && res.cls) td.className = res.cls;
-      td.title = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
+  attachQueryVScroll();
+  container.scrollTop = 0;
+  renderQueryVirtualWindow();
 }
 
 // Render JSON Tree View
