@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, notify } from './utils.js';
+import { $, emit, esc, notify, positionFixedDropdown } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { setView } from './main.js';
 
@@ -981,6 +981,45 @@ export function initGraph3d() {
 
   const hopSelect = $('#graph3d-hop-filter');
   if (hopSelect) hopSelect.addEventListener('change', () => renderGraph3d());
+
+  // Inizializzazione dropdown della toolbar del Grafo 3D
+  const setupToolbarDropdown = (btnId, menuId) => {
+    const btn = $(btnId);
+    const menu = $(menuId);
+    if (!btn || !menu) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = menu.classList.contains('hidden');
+      document.querySelectorAll('.toolbar-dropdown-menu, .header-more-menu').forEach((m) => m.classList.add('hidden'));
+
+      if (isHidden) {
+        positionFixedDropdown(btn, menu);
+      }
+    });
+
+    menu.addEventListener('click', (e) => {
+      if (e.target.closest('.dropdown-item')) {
+        menu.classList.add('hidden');
+      }
+    });
+  };
+
+  setupToolbarDropdown('#graph3d-analysis-menu-btn', '#graph3d-analysis-menu');
+  setupToolbarDropdown('#graph3d-export-menu-btn', '#graph3d-export-menu');
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.toolbar-dropdown-wrap') && !e.target.closest('.toolbar-dropdown-menu')) {
+      document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+  });
+  window.addEventListener('scroll', () => {
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+  }, true);
 
   // 1. Shortest Path Modal Trigger & Handler
   const pathBtn = $('#graph3d-find-path');

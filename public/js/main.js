@@ -93,6 +93,43 @@ onTabChange(() => {
   ensureActiveCollLoaded();
 });
 
+import { positionFixedDropdown } from './utils.js';
+
+function initHeaderMoreMenu() {
+  const btn = $('#header-more-btn');
+  const menu = $('#header-more-menu');
+  if (!btn || !menu) return;
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = menu.classList.contains('hidden');
+    document.querySelectorAll('.header-more-menu, .toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+
+    if (isHidden) {
+      positionFixedDropdown(btn, menu);
+    }
+  });
+
+  menu.addEventListener('click', (e) => {
+    if (e.target.closest('.menu-item')) {
+      menu.classList.add('hidden');
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#header-more-btn') && !e.target.closest('#header-more-menu')) {
+      menu.classList.add('hidden');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') menu.classList.add('hidden');
+  });
+
+  window.addEventListener('resize', () => menu.classList.add('hidden'));
+  window.addEventListener('scroll', () => menu.classList.add('hidden'), true);
+}
+
 initUml();
 initGraph3d();
 initConnection();
@@ -115,7 +152,7 @@ initAuditLog();
 initHealth();
 initSessionPersistence();
 initSplitView();
-
+initHeaderMoreMenu();
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

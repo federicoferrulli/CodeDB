@@ -8,6 +8,9 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="codedb.ico" />
   <link rel="icon" type="image/png" href="codedb.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css" />
 </head>
 
@@ -167,13 +170,27 @@
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
       <span id="conn-info" class="conn-info"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
-      <button id="btn-backup-manager" class="ghost" title="Gestione Backup & Ripristino" style="margin-left: 15px;">💾 Backup & Restore</button>
-      <button id="btn-audit-log" class="ghost" title="Storico delle azioni critiche/di scrittura sul database" style="margin-left: 8px;">📜 Storico Azioni</button>
-      <button id="btn-health" class="ghost" title="Stato di salute delle connessioni attive (ping, tunnel SSH, pool)" style="margin-left: 8px;">💓 Salute</button>
-      <label id="polling-toggle" class="hidden" style="margin-left: 15px; font-size: 0.9em; cursor: pointer; color: var(--fg-dim);">
-        <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
-      </label>
-      <button id="disconnect-btn" class="ghost hidden" title="Chiude il tab attivo e la sua connessione">Disconnetti</button>
+
+      <div class="header-tools-wrap">
+        <button id="header-more-btn" class="ghost btn-icon" title="Strumenti & Utility (⋮)" aria-label="Strumenti & Utility">⋮</button>
+        <div id="header-more-menu" class="header-more-menu hidden">
+          <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
+            <span>💾</span> Backup & Restore
+          </button>
+          <button id="btn-audit-log" class="menu-item" type="button" title="Storico delle azioni critiche/di scrittura">
+            <span>📜</span> Storico Azioni
+          </button>
+          <button id="btn-health" class="menu-item" type="button" title="Stato di salute delle connessioni attive">
+            <span>💓</span> Salute Connessioni
+          </button>
+          <div class="menu-divider"></div>
+          <label id="polling-toggle" class="menu-item checkbox-item hidden">
+            <input type="checkbox" id="polling-checkbox"> Auto-refresh (5s)
+          </label>
+        </div>
+      </div>
+
+      <button id="disconnect-btn" class="danger btn-sm hidden" title="Chiude il tab attivo e la sua connessione">Disconnetti</button>
     </header>
 
     <div class="body">
@@ -200,9 +217,17 @@
         <div id="tab-bar"></div>
 
         <div id="welcome" class="placeholder">
-          Nessuna connessione aperta.<br />
-          <span class="placeholder-hint">Clicca una connessione salvata nella barra a sinistra
-            (tasto destro per testarla o modificarla) oppure ＋ per crearne una nuova.</span>
+          <div class="empty-state-card">
+            <div class="empty-state-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+                <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+              </svg>
+            </div>
+            <h3>Nessuna connessione aperta</h3>
+            <p class="placeholder-hint">Seleziona una connessione salvata dal menu a sinistra oppure clicca su <strong>＋ Aggiungi connessione</strong> per iniziare.</p>
+          </div>
         </div>
 
         <div id="tab-body" class="tab-body hidden">
@@ -220,8 +245,17 @@
 
           <main>
         <div id="placeholder" class="placeholder">
-          Seleziona una collection dalla barra laterale per visualizzare i dati.<br />
-          <span class="placeholder-hint">Tasto destro su un database per crearlo, rinominarlo o eliminarlo.</span>
+          <div class="empty-state-card">
+            <div class="empty-state-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+            </div>
+            <h3>Esplora i dati</h3>
+            <p class="placeholder-hint">Seleziona una collection o tabella dalla barra laterale per visualizzare le righe o eseguire query avanzate.</p>
+          </div>
         </div>
 
         <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
@@ -340,22 +374,39 @@
                 <option value="1">1° Livello</option>
                 <option value="2">2° Livello</option>
               </select>
-              <button id="graph3d-find-path" class="ghost" title="Trova il cammino minimo tra 2 tabelle">🔗 Cammino</button>
-              <button id="graph3d-clear-path" class="ghost hidden" style="color:#e5534b; border-color:rgba(229,83,75,0.4);" title="Rimuovi evidenziazione del cammino minimo">❌ Azzera Cammino</button>
-              <button id="graph3d-deps" class="ghost" title="Analizza la matrice delle dipendenze e l'ordine di popolamento">📊 Dipendenze</button>
-              <button id="graph3d-toggle-empty" class="ghost" title="Mostra/Nascondi tabelle vuote senza record">🎯 Solo Popolate</button>
-              <button id="graph3d-toggle-implicit" class="ghost" title="Mostra/Nascondi relazioni implicite euristiche">💡 Implicite</button>
               <button id="graph3d-toggle-2d" class="ghost" title="Alterna tra vista 3D e vista 2D piatta">📐 Vista 2D</button>
               <button id="graph3d-auto-rotate" class="ghost" title="Attiva/Disattiva rotazione automatica 3D">🔄 Auto-Rotate</button>
               <button id="graph3d-reset-cam" class="ghost" title="Reset Vista 3D">🎥 Reset Camera</button>
-              <button id="graph3d-audit" class="ghost" title="Esegui diagnostica dello schema (Health Check)">🩺 Audit Schema</button>
-              <button id="graph3d-save-snapshot" class="ghost" title="Salva uno snapshot dello schema corrente">💾 Snapshot</button>
-              <button id="graph3d-diff" class="ghost" title="Confronta lo schema attivo con lo snapshot salvato">⚖️ Diff</button>
-              <button id="graph3d-import-schema" class="ghost" title="Importa ed esplora uno schema da SQL o DBML">📥 Importa</button>
-              <button id="graph3d-export-png" class="ghost" title="Esporta PNG">📷 PNG</button>
-              <button id="graph3d-export-mermaid" class="ghost" title="Copia diagramma Mermaid">📝 Mermaid</button>
-              <button id="graph3d-export-dbml" class="ghost" title="Esporta in formato DBML">💎 DBML</button>
-              <button id="graph3d-export-sql" class="ghost" title="Esporta DDL SQL CREATE TABLE">🗄️ SQL DDL</button>
+
+              <!-- Dropdown Analisi & Strumenti -->
+              <div class="toolbar-dropdown-wrap">
+                <button type="button" id="graph3d-analysis-menu-btn" class="ghost dropdown-trigger-btn" title="Strumenti di analisi dello schema">📊 Analisi ▾</button>
+                <div id="graph3d-analysis-menu" class="toolbar-dropdown-menu hidden">
+                  <button id="graph3d-find-path" class="dropdown-item" type="button" title="Trova il cammino minimo tra 2 tabelle">🔗 Cammino Minimo</button>
+                  <button id="graph3d-clear-path" class="dropdown-item hidden" type="button" style="color:#e5534b;" title="Rimuovi evidenziazione del cammino minimo">❌ Azzera Cammino</button>
+                  <button id="graph3d-deps" class="dropdown-item" type="button" title="Analizza la matrice delle dipendenze e l'ordine di popolamento">📊 Dipendenze Schema</button>
+                  <button id="graph3d-audit" class="dropdown-item" type="button" title="Esegui diagnostica dello schema (Health Check)">🩺 Audit Schema</button>
+                  <button id="graph3d-diff" class="dropdown-item" type="button" title="Confronta lo schema attivo con lo snapshot salvato">⚖️ Diff Schema</button>
+                  <div class="dropdown-divider"></div>
+                  <button id="graph3d-toggle-empty" class="dropdown-item" type="button" title="Mostra/Nascondi tabelle vuote senza record">🎯 Solo Popolate</button>
+                  <button id="graph3d-toggle-implicit" class="dropdown-item" type="button" title="Mostra/Nascondi relazioni implicite euristiche">💡 Relazioni Implicite</button>
+                </div>
+              </div>
+
+              <!-- Dropdown Import & Export -->
+              <div class="toolbar-dropdown-wrap">
+                <button type="button" id="graph3d-export-menu-btn" class="ghost dropdown-trigger-btn" title="Importa ed Esporta schema">📥 Import & Export ▾</button>
+                <div id="graph3d-export-menu" class="toolbar-dropdown-menu hidden">
+                  <button id="graph3d-save-snapshot" class="dropdown-item" type="button" title="Salva uno snapshot dello schema corrente">💾 Salva Snapshot</button>
+                  <button id="graph3d-import-schema" class="dropdown-item" type="button" title="Importa ed esplora uno schema da SQL o DBML">📥 Importa (SQL/DBML)</button>
+                  <div class="dropdown-divider"></div>
+                  <button id="graph3d-export-png" class="dropdown-item" type="button" title="Esporta PNG">📷 Esporta PNG</button>
+                  <button id="graph3d-export-mermaid" class="dropdown-item" type="button" title="Copia diagramma Mermaid">📝 Diagramma Mermaid</button>
+                  <button id="graph3d-export-dbml" class="dropdown-item" type="button" title="Esporta in formato DBML">💎 Formato DBML</button>
+                  <button id="graph3d-export-sql" class="dropdown-item" type="button" title="Esporta DDL SQL CREATE TABLE">🗄️ DDL SQL</button>
+                </div>
+              </div>
+
               <button id="graph3d-refresh" class="ghost" title="Rigenera Grafo">⟳ Rigenera</button>
             </div>
             <div class="graph3d-container">
@@ -1127,8 +1178,25 @@
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
-    </div>
-  </div>
+  <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
+  <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
+    <button type="button" id="mobile-nav-conns" class="mobile-nav-item">
+      <span class="nav-icon">🌐</span>
+      <span class="nav-label">Connessioni</span>
+    </button>
+    <button type="button" id="mobile-nav-dbs" class="mobile-nav-item">
+      <span class="nav-icon">🗄️</span>
+      <span class="nav-label">Database</span>
+    </button>
+    <button type="button" id="mobile-nav-query" class="mobile-nav-item">
+      <span class="nav-icon">⚡</span>
+      <span class="nav-label">Query Engine</span>
+    </button>
+    <button type="button" id="mobile-nav-health" class="mobile-nav-item">
+      <span class="nav-icon">💓</span>
+      <span class="nav-label">Salute</span>
+    </button>
+  </nav>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="js/lib/three.min.js"></script>

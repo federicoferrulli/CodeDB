@@ -296,3 +296,31 @@ export function dbTypeIcon(dbType) {
 export function isSqlType(dbType) {
   return dbType === 'mysql' || dbType === 'postgresql' || dbType === 'postgres';
 }
+
+export function positionFixedDropdown(btn, menu) {
+  if (!btn || !menu) return;
+  menu.classList.remove('hidden');
+  const rect = btn.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth || 220;
+  const menuHeight = menu.offsetHeight || 180;
+  const screenWidth = window.innerWidth;
+  const screenHeight = window.innerHeight;
+
+  menu.style.position = 'fixed';
+  menu.style.zIndex = '100000';
+
+  // Posizionamento verticale: sotto il bottone, oppure sopra se in basso non c'è spazio sufficiente
+  let top = rect.bottom + 6;
+  if (top + menuHeight > screenHeight - 8 && rect.top - menuHeight - 6 > 0) {
+    top = Math.max(8, rect.top - menuHeight - 6);
+  }
+  menu.style.top = `${top}px`;
+
+  // Posizionamento orizzontale: allinea a destra col bottone, garantendo che sia sempre compreso nello schermo (8px dal bordo)
+  let left = rect.right - menuWidth;
+  if (left < 8) left = 8;
+  if (left + menuWidth > screenWidth - 8) left = Math.max(8, screenWidth - menuWidth - 8);
+
+  menu.style.left = `${left}px`;
+  menu.style.right = 'auto';
+}

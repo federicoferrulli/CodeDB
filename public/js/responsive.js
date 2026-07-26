@@ -29,6 +29,25 @@ export function initResponsive() {
   $('#menu-dbs-btn').addEventListener('click', () => toggleDrawer('#sidebar'));
   $('#drawer-backdrop').addEventListener('click', closeDrawers);
 
+  // Bottom Nav Mobile Listeners
+  const mobConns = $('#mobile-nav-conns');
+  const mobDbs = $('#mobile-nav-dbs');
+  const mobQuery = $('#mobile-nav-query');
+  const mobHealth = $('#mobile-nav-health');
+
+  if (mobConns) mobConns.addEventListener('click', () => toggleDrawer('#conn-sidebar'));
+  if (mobDbs) mobDbs.addEventListener('click', () => toggleDrawer('#sidebar'));
+  if (mobQuery) mobQuery.addEventListener('click', () => {
+    closeDrawers();
+    const queryTabBtn = document.querySelector('.view-tab[data-view="query"]');
+    if (queryTabBtn) queryTabBtn.click();
+  });
+  if (mobHealth) mobHealth.addEventListener('click', () => {
+    closeDrawers();
+    const healthBtn = $('#btn-health');
+    if (healthBtn) healthBtn.click();
+  });
+
   // Scegliere qualcosa dentro un drawer lo chiude: una collection/tabella
   // nel tree dei database, una connessione salvata o "＋ Aggiungi".
   $('#sidebar').addEventListener('click', (e) => {
