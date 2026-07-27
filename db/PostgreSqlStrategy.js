@@ -341,7 +341,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const where = String(payload.filter || '').trim();
     const whereSql = where ? ` WHERE ${where}` : '';
     const orderSql = this.buildOrderBy(payload.sort);
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), DbStrategy.resultCap(payload));
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
     const table = qtable(_db, coll);
     return { table, whereSql, orderSql, limit, skip };
@@ -377,21 +377,22 @@ class PostgreSqlStrategy extends DbStrategy {
         await client.query('SET LOCAL statement_timeout = 30000');
       }
       try {
+        const cap = DbStrategy.resultCap(payload);
         const res = await client.query(sql);
         if (Array.isArray(res)) {
           const lastRes = res[res.length - 1];
-          const rows = (lastRes.rows || []).slice(0, 500);
+          const rows = (lastRes.rows || []).slice(0, cap);
           const columns = lastRes.fields ? lastRes.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: 500 };
+          return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: cap };
         }
         if (res.rows && (res.rows.length > 0 || res.fields)) {
-          const rows = res.rows.slice(0, 500);
+          const rows = res.rows.slice(0, cap);
           const columns = res.fields ? res.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: 500 };
+          return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: cap };
         }
 
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
-        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: 500 };
+        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
         if (readOnly) await client.query('ROLLBACK').catch(() => {});
       }
@@ -642,7 +643,11 @@ class PostgreSqlStrategy extends DbStrategy {
           const v = r[c];
           if (v === null || v === undefined) return 'NULL';
           if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-          return `'${String(v).replace(/'/g, "''")}'`;
+          if (v instanceof Date) return isNaN(v.getTime()) ? 'NULL' : `'${v.toISOString()}'`;
+          if (typeof v === 'object' || Buffer.isBuffer(v)) {
+            return `'${JSON.stringify(v).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+          }
+          return `'${String(v).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
         });
         return `INSERT INTO ${table} (${columns.map(qid).join(', ')}) VALUES (${vals.join(', ')});`;
       });

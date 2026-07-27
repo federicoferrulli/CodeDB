@@ -51,7 +51,11 @@ async function main() {
     await utenti.createIndex({ nome: 1 }, { unique: true, name: 'nome_unico' });
     await client.db(DB).collection('ordini').insertMany([{ totale: 99.5 }, { totale: 12 }]);
 
-    // 1. Backup full.
+    // 1. Backup full. Attesa >1s dopo il seed: l'euristica incrementale a
+    // granularità 1 secondo cattura l'intero secondo di confine (over-capture
+    // sicuro), quindi seed e startedAt del full devono cadere in secondi
+    // diversi, altrimenti l'incrementale ri-catturerebbe i documenti del seed.
+    await new Promise((r) => setTimeout(r, 1100));
     const outFull = cli('backup', '--conn', 'e2e-backup', '--db', DB, '--type', 'full', '--dest', destRoot);
     assert.match(outFull, /stato=SUCCESSO/, 'il backup full deve riuscire');
 

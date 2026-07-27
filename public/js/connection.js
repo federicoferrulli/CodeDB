@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast } from './utils.js';
+import { $, emit, toast, safeUUID } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -162,7 +162,7 @@ function closeConnModal() {
 export function connectAndOpenTab(cfg) {
   const current = activeTab();
   const reuse = current && !current.state.connected ? current : null;
-  const tabId = reuse ? reuse.id : crypto.randomUUID();
+  const tabId = reuse ? reuse.id : safeUUID();
   saveWorkspaceInputs(); // snapshot del tab che (forse) si lascia
   return new Promise((resolve, reject) => {
     socket.emit('mongo:connect', { ...cfg, tabId }, (res) =>

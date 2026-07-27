@@ -190,15 +190,23 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
         await strategy.collectionAggregate(targetDb, f.collection, { pipeline: sql }).catch(() => {});
       }
     }
-    const lines = [];
+    // Applica a batch (come i restore Mongo/MySQL): senza, l'intero file
+    // verrebbe caricato in memoria — OOM su tabelle grandi.
+    let batch = [];
+    let applied = 0;
+    const flush = async () => {
+      if (!batch.length) return;
+      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: batch, upsert: !isFirst });
+      applied += imp.inserted;
+      batch = [];
+    };
     for await (const line of readLines(path.join(layer.dir, f.path))) {
-      lines.push(line);
+      batch.push(line);
+      if (batch.length >= BATCH_SIZE) await flush();
     }
-    if (lines.length) {
-      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: lines, upsert: !isFirst });
-      total += imp.inserted;
-      log.info(`  ${f.collection}: ${imp.inserted} righe applicate (layer ${layer.manifest.id}, ${isFirst ? 'INSERT' : 'UPSERT'}).`);
-    }
+    await flush();
+    total += applied;
+    log.info(`  ${f.collection}: ${applied} righe applicate (layer ${layer.manifest.id}, ${isFirst ? 'INSERT' : 'UPSERT'}).`);
   }
   return total;
 }

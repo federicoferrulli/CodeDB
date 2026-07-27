@@ -558,4 +558,9 @@ export function showSkeletonGrid(targetEl, rows = 6, cols = 5) {
   }
 }
 
-
+export function safeUUID() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID(); } catch { /* fallthrough */ }
+  }
+  return 'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+}

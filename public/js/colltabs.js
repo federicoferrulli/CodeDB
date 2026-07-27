@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, notify, showContextMenu, makeDraggable, reorderById } from './utils.js';
+import { $, notify, showContextMenu, makeDraggable, reorderById, safeUUID } from './utils.js';
 import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
@@ -135,7 +135,7 @@ export function openCollTab(db, coll) {
   saveActiveSnapshot();
   let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll && !c.isSplitTab);
   if (!ct) {
-    ct = { id: crypto.randomUUID(), db, coll, snap: null };
+    ct = { id: safeUUID(), db, coll, snap: null };
     t.state.collTabs.push(ct);
     activate(ct, { fresh: true });
   } else if (ct.id !== t.state.activeCollId) {

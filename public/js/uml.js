@@ -11,8 +11,13 @@ export function loadUml(force) {
   }
   $('#uml-canvas').innerHTML = '<div class="uml-msg">Analisi dello schema del database…</div>';
   emit('db:schema', { db: state.db }).then((res) => {
-    res._tab.state.dbSchema = res;
-    res._tab.state.dbSchemaFor = res._tab.state.db;
+    if (res._tab && res._tab.state) {
+      res._tab.state.dbSchema = res;
+      res._tab.state.dbSchemaFor = res._tab.state.db;
+    } else {
+      state.dbSchema = res;
+      state.dbSchemaFor = state.db;
+    }
     renderUml();
   }).catch((err) => {
     $('#uml-canvas').innerHTML = `<div class="error">${esc(err.message)}</div>`;

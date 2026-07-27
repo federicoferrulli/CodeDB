@@ -182,4 +182,17 @@ function detectRelations(collections) {
 DbStrategy.detectRelations = detectRelations;
 DbStrategy.singular = singular;
 
+// Tetto massimo di righe/documenti restituiti da una lettura. Il default (500)
+// preserva il comportamento della griglia paginata; il Query Engine passa un
+// `payload.maxRows` più alto per non troncare i risultati di una query
+// esplicita. Il ceiling assoluto evita di esaurire la memoria con risultati
+// enormi. Usato da tutte le strategie in collectionFind/collectionAggregate.
+function resultCap(payload, fallback = 500) {
+  const m = parseInt(payload && payload.maxRows, 10);
+  if (!Number.isFinite(m) || m < 1) return fallback;
+  return Math.min(m, 100000);
+}
+
+DbStrategy.resultCap = resultCap;
+
 module.exports = DbStrategy;

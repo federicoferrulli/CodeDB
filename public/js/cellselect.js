@@ -236,10 +236,39 @@ function selectFrom(cell, { shift, ctrl }) {
 
 // --- Incolla da Excel -------------------------------------------------------
 
+// Parser TSV degli appunti (formato di Excel/Sheets): le celle che contengono
+// TAB o a-capo vengono racchiuse tra virgolette con "" come escape del ".
+// Un semplice split('\n')/split('\t') spezzerebbe quelle celle in più
+// celle/righe, scrivendo dati corrotti. La macchina a stati qui sotto rispetta
+// il quoting; per il testo senza virgolette il risultato è identico allo split.
 function parseClipboardGrid(text) {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  while (lines.length && lines[lines.length - 1] === '') lines.pop();
-  return lines.map((l) => l.split('\t'));
+  const src = String(text).replace(/\r\n?/g, '\n');
+  const rows = [];
+  let row = [];
+  let field = '';
+  let inQuotes = false;
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (src[i + 1] === '"') { field += '"'; i++; } // "" → " letterale
+        else inQuotes = false;                          // fine cella quotata
+      } else {
+        field += ch; // TAB e a-capo dentro le virgolette fanno parte della cella
+      }
+      continue;
+    }
+    if (ch === '"' && field === '') inQuotes = true; // virgoletta solo a inizio cella
+    else if (ch === '\t') { row.push(field); field = ''; }
+    else if (ch === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else field += ch;
+  }
+  row.push(field);
+  rows.push(row);
+  // Scarta le righe vuote finali (come faceva la versione a split): una riga con
+  // la sola cella vuota, tipica del \n di chiusura.
+  while (rows.length && rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') rows.pop();
+  return rows;
 }
 
 // Converte il testo incollato provando a rispettare il tipo del valore

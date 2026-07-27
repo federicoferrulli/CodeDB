@@ -22,11 +22,29 @@ const fs = require('fs');
 
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024; // oltre, si ruota un file .1 per non crescere indefinitamente
 
+// Tetto delle voci tenute in RAM per la vista storica. Senza, la cache
+// crescerebbe illimitata per tutta la vita del processo (una voce per ogni
+// scrittura e lettura utente auditata): su un server long-running è un leak.
+// Il cap copre ampiamente sia la paginazione della UI sia quanto il file
+// ruotato (<file> + <file>.1) conserva su disco, quindi non cambia i risultati
+// osservabili. Il trim è a lotti per non pagare un O(n) a ogni audit.
+const MAX_CACHE_ENTRIES = 50000;
+const CACHE_TRIM_MARGIN = 1000;
+
 // Crea un auditor legato a un file. `audit(entry)` è fire-and-forget: non deve
 // mai bloccare né far fallire l'operazione tracciata. `readRecent(filtri)`
 // rilegge il log (file ruotato + principale) per la vista storica della UI.
 function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
   let cache = null;
+
+  // Mantiene la cache entro MAX_CACHE_ENTRIES scartando le voci più vecchie.
+  // Interviene solo oltre un margine, così l'ammortamento evita uno shift a
+  // ogni chiamata (le voci più vecchie restano comunque nel file su disco).
+  function trimCache() {
+    if (cache.length > MAX_CACHE_ENTRIES + CACHE_TRIM_MARGIN) {
+      cache.splice(0, cache.length - MAX_CACHE_ENTRIES);
+    }
+  }
 
   function loadCache() {
     cache = [];
@@ -38,12 +56,14 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
         try { cache.push(JSON.parse(line)); } catch { /* riga corrotta: ignora */ }
       }
     }
+    trimCache();
   }
 
   function audit(entry) {
     const fullEntry = { ts: new Date().toISOString(), ...entry };
     if (cache === null) loadCache();
     cache.push(fullEntry);
+    trimCache();
 
     const line = JSON.stringify(fullEntry);
     const append = () => fs.appendFile(filePath, line + '\n', () => { /* l'audit non deve mai bloccare */ });

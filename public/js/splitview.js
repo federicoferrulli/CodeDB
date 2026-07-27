@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast } from './utils.js';
+import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
 import { openInsertDocForContext } from './insert.js';
 
@@ -133,7 +133,7 @@ function ensureSplitCollTab() {
   let splitCt = t.state.collTabs.find((c) => c.isSplitTab);
   if (!splitCt) {
     splitCt = {
-      id: 'splitview_' + crypto.randomUUID(),
+      id: 'splitview_' + safeUUID(),
       isSplitTab: true,
       db: 'Split-View',
       coll: '🔲 Area Split-View',

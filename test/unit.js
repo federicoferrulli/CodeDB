@@ -3,6 +3,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const VirtualJoinEngine = require('../db/VirtualJoinEngine');
 const DbFactory = require('../db/DbFactory');
 const DbStrategy = require('../db/DbStrategy');
@@ -95,6 +96,92 @@ console.log('--- Test Unitari CodeDB ---');
   assert.strictEqual(vjResult[0].user_info.username, 'mario', 'Cross-DB merge dati corretto');
   console.log('  OK   VirtualJoinEngine in-memory cross-DB join passed');
 
+  // Test 3b: JOIN su chiavi ObjectId (EJSON {$oid}). Regressione: prima le
+  // chiavi oggetto collassavano in "[object Object]" e il $in su B non
+  // matchava mai (joined_data null). B applica davvero il $match per simulare
+  // il comportamento reale di MongoDB.
+  const oid = '507f1f77bcf86cd799439011';
+  const stratOidA = {
+    type: 'mongodb',
+    async collectionAggregate() {
+      return { docs: [{ _id: { $oid: 'aaaaaaaaaaaaaaaaaaaaaaaa' }, userId: { $oid: oid }, tot: 10 }] };
+    }
+  };
+  const usersOidB = [{ _id: { $oid: oid }, name: 'Mario' }];
+  const stratOidB = {
+    type: 'mongodb',
+    async collectionAggregate(db, coll, payload) {
+      const pipeline = JSON.parse(payload.pipeline);
+      const inList = pipeline[0].$match._id.$in;
+      // Nel path Mongo→Mongo il $in contiene wrapper {$oid: hex}: la chiave
+      // deve essere l'esadecimale reale, non "[object Object]".
+      assert.ok(
+        inList.every((k) => k && typeof k === 'object' && /^[0-9a-fA-F]{24}$/.test(k.$oid)),
+        'Il $in deve contenere ObjectId {$oid: hex}, non "[object Object]"'
+      );
+      return { docs: usersOidB.filter((u) => inList.some((k) => k.$oid === u._id.$oid)) };
+    }
+  };
+  const oidSpec = {
+    virtualJoin: {
+      sourceA: { dbType: 'mongodb', db: 'd', collection: 'orders' },
+      sourceB: { dbType: 'mongodb', db: 'd', collection: 'users' },
+      on: { leftKey: 'userId', rightKey: '_id' }
+    }
+  };
+  const oidResult = await VirtualJoinEngine.execute(oidSpec, stratOidA, stratOidB);
+  assert.ok(oidResult[0].joined_data, 'JOIN su chiave ObjectId deve trovare il match (joined_data non null)');
+  assert.strictEqual(oidResult[0].joined_data.name, 'Mario', 'Merge su chiave ObjectId corretto');
+  console.log('  OK   VirtualJoinEngine join su chiavi ObjectId ($oid) passed');
+
+  // Test 3b2: JOIN su chiave $numberLong (Mongo Long). Il $in lato B deve
+  // ricevere il wrapper EJSON tipizzato {$numberLong}, non la stringa nuda,
+  // altrimenti EJSON.parse non ricostruisce il Long e il match fallisce.
+  const stratLongA = {
+    type: 'mongodb',
+    async collectionAggregate() {
+      return { docs: [{ _id: { $oid: 'bbbbbbbbbbbbbbbbbbbbbbbb' }, ref: { $numberLong: '12345' }, tot: 7 }] };
+    }
+  };
+  const stratLongB = {
+    type: 'mongodb',
+    async collectionAggregate(db, coll, payload) {
+      const inList = JSON.parse(payload.pipeline)[0].$match.num.$in;
+      assert.ok(
+        inList.every((k) => k && typeof k === 'object' && k.$numberLong === '12345'),
+        'Il $in deve contenere il wrapper tipizzato {$numberLong}, non la stringa nuda'
+      );
+      return { docs: [{ num: { $numberLong: '12345' }, label: 'ok' }] };
+    }
+  };
+  const longSpec = {
+    virtualJoin: {
+      sourceA: { dbType: 'mongodb', db: 'd', collection: 'a' },
+      sourceB: { dbType: 'mongodb', db: 'd', collection: 'b' },
+      on: { leftKey: 'ref', rightKey: 'num' }
+    }
+  };
+  const longResult = await VirtualJoinEngine.execute(longSpec, stratLongA, stratLongB);
+  assert.ok(longResult[0].joined_data && longResult[0].joined_data.label === 'ok', 'JOIN su chiave $numberLong deve trovare il match');
+  console.log('  OK   VirtualJoinEngine join su chiavi $numberLong passed');
+
+  // Test 3c: maxPayloadSize non numerico non deve rompere/iniettare l'SQL.
+  let capturedSql = '';
+  const stratSqlA = {
+    type: 'mysql',
+    async collectionAggregate(db, table, payload) { capturedSql = payload.pipeline; return { docs: [] }; }
+  };
+  await VirtualJoinEngine.execute({
+    virtualJoin: {
+      sourceA: { dbType: 'mysql', db: 'shop', table: 'orders' },
+      sourceB: { dbType: 'mysql', db: 'shop', table: 'users' },
+      on: { leftKey: 'user_id', rightKey: 'id' },
+      maxPayloadSize: '5; DROP TABLE users'
+    }
+  }, stratSqlA, stratSqlA);
+  assert.ok(/LIMIT \d+\s*$/.test(capturedSql) && !/DROP/i.test(capturedSql), 'maxPayloadSize non numerico non deve iniettare SQL: LIMIT resta un intero, il resto è scartato');
+  console.log('  OK   VirtualJoinEngine maxPayloadSize coercito a intero passed');
+
   // Test 4: Handling errore connessione PostgreSQL server offline
   try {
     const pgConn = await pgStrategy.connect({ host: 'localhost', database: 'postgres' });
@@ -112,6 +199,23 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 5: SshTunnel check
   assert.strictEqual(typeof SshTunnel.openSshTunnel, 'function', 'openSshTunnel deve essere una funzione');
   console.log('  OK   SshTunnel.openSshTunnel export passed');
+
+  // Test 5b: AuditLog — la cache in memoria deve restare limitata (no memory
+  // leak) pur preservando le voci più recenti e i filtri.
+  {
+    const { makeAuditor } = require('../db/AuditLog');
+    const tmp = path.join(os.tmpdir(), `codedb-audit-unit-${process.pid}.log`);
+    for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
+    const auditor = makeAuditor(tmp, 1024); // soglia file bassa: forza la rotazione
+    for (let i = 0; i < 60000; i++) auditor.audit({ event: 'unit', n: i });
+    const recent = auditor.readRecent({ limit: 2 });
+    assert(recent.total <= 51000, `cache limitata: total=${recent.total} deve essere <= 51000 (no leak)`);
+    assert(recent.total >= 50000, `cache non troppo aggressiva: total=${recent.total} deve essere >= 50000`);
+    assert.strictEqual(recent.entries[0].n, 59999, 'la voce più recente deve essere preservata');
+    assert.strictEqual(auditor.readRecent({ event: 'unit', limit: 3 }).entries.length, 3, 'i filtri devono continuare a funzionare');
+    for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
+    console.log('  OK   AuditLog cache limitata (no memory leak) passed');
+  }
 
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
   const requiredFiles = [
@@ -167,6 +271,26 @@ console.log('--- Test Unitari CodeDB ---');
   }
   console.log('  OK   Rilevazione errori di disconnessione DB superata');
 
+  // Test 8: VirtualJoinEngine escaping backslashes nelle chiavi SQL IN
+  let vjCapturedSql = '';
+  const stratVjSql = {
+    type: 'mysql',
+    async collectionAggregate(db, table, payload) { vjCapturedSql = payload.pipeline; return { docs: [] }; }
+  };
+  await VirtualJoinEngine.execute({
+    virtualJoin: {
+      sourceA: { dbType: 'mysql', db: 'shop', table: 'orders' },
+      sourceB: { dbType: 'mysql', db: 'shop', table: 'users' },
+      on: { leftKey: 'user_id', rightKey: 'id' }
+    }
+  }, {
+    type: 'mysql',
+    async collectionAggregate() { return { docs: [{ user_id: 'val\\with\'quotes' }] }; }
+  }, stratVjSql);
+  assert.ok(vjCapturedSql.includes("'val\\\\with''quotes'"), 'VirtualJoinEngine deve fuggire backslash e apici nelle chiavi SQL');
+  console.log('  OK   VirtualJoinEngine backslash escaping in SQL IN passed');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
+
 

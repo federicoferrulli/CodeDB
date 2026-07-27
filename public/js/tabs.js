@@ -1,6 +1,7 @@
 'use strict';
 
 import { socket } from './socket.js';
+import { safeUUID } from './utils.js';
 
 // Registro dei tab di connessione. Ogni tab ha un proprio `state` (la forma
 // storica dell'oggetto globale) e una sessione dedicata lato server, indicata
@@ -67,7 +68,7 @@ export function onTabChange(fn) {
 // sessione server) e crea il tab solo a connessione riuscita.
 export function createTab({ id, connName } = {}) {
   const tab = {
-    id: id || crypto.randomUUID(),
+    id: id || safeUUID(),
     connName: connName || null,
     label: connName || '',
     dbType: 'mongodb',

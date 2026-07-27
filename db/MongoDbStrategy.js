@@ -569,7 +569,8 @@ class MongoDbStrategy extends DbStrategy {
     const filter = parseQueryObject(payload.filter, {});
     const sort = parseQueryObject(payload.sort, {});
     const projection = parseQueryObject(payload.projection, {});
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+    const cap = DbStrategy.resultCap(payload);
+    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), cap);
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
 
     const collection = client.db(db).collection(coll);
@@ -601,14 +602,15 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const pipeline = parseQueryObject(payload.pipeline, []);
     if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
+    const cap = DbStrategy.resultCap(payload);
     const docs = await client
       .db(db)
       .collection(coll)
       .aggregate(pipeline)
-      .limit(500)
+      .limit(cap)
       .toArray();
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
-    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: 500 };
+    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap };
   }
 
   // Piano di esecuzione: explain() sul find o sull'aggregate corrente,

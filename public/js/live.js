@@ -33,8 +33,11 @@ export function startWatch() {
   togglePolling();
   const tab = tabs.list.find((t) => t.id === tabs.activeId);
   emit('collection:watch', { db: state.db, coll: state.coll }).then((res) => {
-    res._tab.state.watching = true;
-    if (res._tab.id === tabs.activeId) $('#live-badge').classList.remove('hidden');
+    const targetTab = (res && res._tab) || tab;
+    if (targetTab && targetTab.state) {
+      targetTab.state.watching = true;
+      if (targetTab.id === tabs.activeId) $('#live-badge').classList.remove('hidden');
+    }
   }).catch(() => {
     // Watch rifiutato subito (MySQL non lo supporta, o errore lato server):
     // stesso ripiego dell'evento watch:unavailable, cioè il toggle di

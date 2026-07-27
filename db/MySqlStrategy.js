@@ -338,7 +338,7 @@ class MySqlStrategy extends DbStrategy {
     const where = String(payload.filter || '').trim();
     const whereSql = where ? ` WHERE ${where}` : '';
     const orderSql = this.buildOrderBy(payload.sort);
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), DbStrategy.resultCap(payload));
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
     const table = qtable(db, coll);
     return { table, whereSql, orderSql, limit, skip };
@@ -377,17 +377,18 @@ class MySqlStrategy extends DbStrategy {
       await conn.query(`USE ${qid(db)}`);
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
+        const cap = DbStrategy.resultCap(payload);
         const [result, fields] = await conn.query(readOnly ? { sql, timeout: 30000 } : sql);
         if (Array.isArray(result)) {
-          const rows = result.slice(0, 500);
+          const rows = result.slice(0, cap);
           const columns = (fields || []).map((f) => f.name);
-          return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: 500 };
+          return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap };
         }
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
         const summary = { righeCoinvolte: result.affectedRows };
         if (result.insertId) summary.insertId = result.insertId;
         if (result.info) summary.info = result.info;
-        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: 500 };
+        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
         if (readOnly) await conn.query('ROLLBACK').catch(() => {});
       }
@@ -547,6 +548,7 @@ class MySqlStrategy extends DbStrategy {
         types: [row.DATA_TYPE || row.COLUMN_TYPE || 'varchar'],
         pk: row.COLUMN_KEY === 'PRI',
         nullable: row.IS_NULLABLE === 'YES',
+        presence: row.IS_NULLABLE === 'YES' ? 0 : 100, // coerente con PostgreSqlStrategy
       });
     }
 
@@ -694,7 +696,7 @@ class MySqlStrategy extends DbStrategy {
     const groups = [];
     let cur = null;
     for (const p of parsed) {
-      const sig = p.cols.join(' ');
+      const sig = p.cols.join('\u0000');
       if (cur && cur.sig === sig && cur.rows.length < BATCH_SIZE) {
         cur.rows.push(p);
       } else {
@@ -867,40 +869,6 @@ class MySqlStrategy extends DbStrategy {
       fields,
       sampled: Number(t.TABLE_ROWS) || 0,
     };
-  }
-
-  async dbSchema(db) {
-    const pool = this.requirePool();
-    const [cols] = await pool.query(
-      `SELECT TABLE_NAME AS tname, COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable
-         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = ?
-     ORDER BY TABLE_NAME, ORDINAL_POSITION`,
-      [db]
-    );
-    const byTable = new Map();
-    for (const c of cols) {
-      let t = byTable.get(c.tname);
-      if (!t) byTable.set(c.tname, (t = { name: c.tname, fields: [] }));
-      t.fields.push({ name: c.name, types: [String(c.ctype)], presence: c.nullable === 'YES' ? 0 : 100 });
-    }
-    const collections = [...byTable.values()].sort((a, b) => a.name.localeCompare(b.name));
-
-    // Relazioni reali dalle foreign key dichiarate...
-    const [fks] = await pool.query(
-      `SELECT TABLE_NAME AS tname, COLUMN_NAME AS col, REFERENCED_TABLE_NAME AS ref
-         FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
-      [db]
-    );
-    const relations = fks.map((f) => ({ from: f.tname, field: f.col, to: f.ref, many: false }));
-
-    // ...più le euristiche di denominazione per quelle non formalizzate.
-    const known = new Set(relations.map((r) => `${r.from} ${r.field}`));
-    for (const r of DbStrategy.detectRelations(collections)) {
-      if (!known.has(`${r.from} ${r.field}`)) relations.push(r);
-    }
-    return { collections, relations };
   }
 }
 

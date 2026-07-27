@@ -253,7 +253,11 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         if (res.rows.length < BATCH) break;
       }
     } else {
-      // Nessuna PK: paginazione per OFFSET (tabelle senza chiave, presumibilmente piccole).
+      // Nessuna PK: paginazione per OFFSET (tabelle senza chiave, presumibilmente
+      // piccole). ORDER BY ctid (identificatore fisico di riga, sempre presente
+      // sulle tabelle base) dà un ordine STABILE tra le pagine: senza, PostgreSQL
+      // non garantisce lo stesso ordine tra query e OFFSET potrebbe saltare o
+      // duplicare righe.
       let offset = 0;
       for (;;) {
         const conds = [];
@@ -265,7 +269,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH, offset);
         const res = await pool.query(
-          `SELECT * FROM ${pgQid(table)}${where} LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          `SELECT * FROM ${pgQid(table)}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
           params
         );
         if (!res.rows.length) break;

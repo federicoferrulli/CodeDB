@@ -14,7 +14,7 @@
 import { socket } from './socket.js';
 import { tabs, createTab } from './tabs.js';
 import { state } from './state.js';
-import { $, toast } from './utils.js';
+import { $, toast, safeUUID } from './utils.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
@@ -114,7 +114,7 @@ function reconnectTab(info) {
             restoreSplitStateSnapshot(c.splitSnap);
           }
           return {
-            id: c.id || ('splitview_' + crypto.randomUUID()),
+            id: c.id || ('splitview_' + safeUUID()),
             isSplitTab: true,
             db: 'Split-View',
             coll: '🔲 Area Split-View',
@@ -123,7 +123,7 @@ function reconnectTab(info) {
           };
         }
         return {
-          id: c.id || crypto.randomUUID(),
+          id: c.id || safeUUID(),
           db: c.db,
           coll: c.coll,
           snap: null,

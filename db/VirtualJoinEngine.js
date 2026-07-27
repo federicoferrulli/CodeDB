@@ -2,6 +2,34 @@
 
 const EJSON = require('bson').EJSON;
 
+// Normalizza a stringa una chiave di join. I documenti arrivano serializzati in
+// EJSON relaxed, quindi i valori tipizzati sono oggetti wrapper ($oid, $date,
+// $numberLong...): senza scompattarli, String() darebbe "[object Object]" e il
+// match fallirebbe. Deve restare coerente in TUTTI i punti (estrazione chiavi,
+// indicizzazione di B e merge), altrimenti i JOIN su ObjectId/Date/Long
+// restituiscono silenziosamente null.
+function keyToString(val) {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'object') {
+    if (val.$oid) return String(val.$oid);
+    if (val.$numberLong) return String(val.$numberLong);
+    if (val.$date != null) {
+      // $date può essere una stringa ISO oppure { $numberLong: "..." }
+      const d = val.$date;
+      return String(d && typeof d === 'object' && d.$numberLong ? d.$numberLong : d);
+    }
+  }
+  return String(val);
+}
+
+// Intero positivo per le clausole LIMIT (interpolate direttamente nell'SQL):
+// vanno coercite per non rompere/iniettare la query con valori non numerici.
+function toLimit(val, fallback = 1000) {
+  const n = parseInt(val, 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, 100000);
+}
+
 /**
  * Motore per Virtual JOINs e Aggregazioni Cross-Database (MySQL <-> MongoDB)
  */
@@ -19,14 +47,22 @@ class VirtualJoinEngine {
     }
 
     const vj = spec.virtualJoin;
-    const { sourceA, sourceB, on, as = 'joined_data', maxPayloadSize = 1000 } = vj;
+    const { sourceA, sourceB, on, as = 'joined_data' } = vj;
+    const maxPayloadSize = toLimit(vj.maxPayloadSize, 1000);
 
     if (!sourceA || !sourceB || !on || !on.leftKey || !on.rightKey) {
       throw new Error('Definizione Virtual Join incompleta: specificare sourceA, sourceB, on.leftKey e on.rightKey.');
     }
 
     const isSql = (type) => ['mysql', 'postgresql', 'postgres'].includes(String(type).toLowerCase());
-    const qid = (type, name) => isSql(type) && (type.includes('postgres')) ? `"${name}"` : `\`${name}\``;
+    // Quoting dell'identificatore con escape del delimitatore interno (raddoppio):
+    // PostgreSQL usa "..." (raddoppia "), MySQL usa `...` (raddoppia `).
+    const qid = (type, name) => {
+      const s = String(name);
+      return isSql(type) && String(type).toLowerCase().includes('postgres')
+        ? `"${s.replace(/"/g, '""')}"`
+        : `\`${s.replace(/`/g, '``')}\``;
+    };
 
     // Fetching dati Sorgente A (SQL o MongoDB)
     let rowsA = [];
@@ -44,29 +80,35 @@ class VirtualJoinEngine {
 
     if (!rowsA.length) return [];
 
-    // Estrazione chiavi per la query guidata sulla Sorgente B (Batch In-Memory Lookup)
-    const joinKeys = new Set();
+    // Estrazione chiavi per la query guidata sulla Sorgente B (Batch In-Memory
+    // Lookup). Map<chiaveNormalizzata, valoreOriginale>: la stringa serve per il
+    // dedup e per l'IN dei DB SQL; il valore originale (wrapper EJSON come
+    // {$oid}/{$numberLong}/{$date}) serve per l'$in tipizzato lato MongoDB, così
+    // EJSON.parse in collectionAggregate lo ri-tipizza (ObjectId/Long/Date) e il
+    // match funziona anche su chiavi non-ObjectId.
+    const joinKeys = new Map();
     rowsA.forEach((row) => {
-      const val = row[on.leftKey];
-      if (val !== undefined && val !== null) {
-        joinKeys.add(String(val));
-      }
+      const raw = row[on.leftKey];
+      const key = keyToString(raw);
+      if (key !== null && !joinKeys.has(key)) joinKeys.set(key, raw);
     });
 
     if (joinKeys.size === 0) return rowsA;
 
     // Fetching dati Sorgente B
     let rowsB = [];
-    const keysArray = Array.from(joinKeys);
+    const keysArray = Array.from(joinKeys.keys());
     const typeB = sourceB.dbType || strategyB.type;
 
     if (!isSql(typeB)) {
-      // Per MongoDB: pipeline $match $in
+      // Per MongoDB: pipeline $match $in. Usa il valore originale (già tipizzato
+      // in forma EJSON); per le stringhe di 24 esadecimali applica l'euristica
+      // hex→ObjectId, utile ai JOIN cross-tipo (stringa su un lato, ObjectId
+      // sull'altro).
       const oidsOrKeys = keysArray.map((k) => {
-        if (/^[0-9a-fA-F]{24}$/.test(k)) {
-          try { return { $oid: k }; } catch { return k; }
-        }
-        return k;
+        const raw = joinKeys.get(k);
+        if (typeof raw === 'string' && /^[0-9a-fA-F]{24}$/.test(raw)) return { $oid: raw };
+        return raw;
       });
       const matchPipeline = [
         { $match: { [on.rightKey]: { $in: oidsOrKeys } } },
@@ -77,7 +119,7 @@ class VirtualJoinEngine {
     } else {
       // Per SQL (MySQL / PostgreSQL): WHERE rightKey IN (...)
       const tableName = sourceB.table || sourceB.collection;
-      const escapedKeys = keysArray.map((k) => `'${String(k).replace(/'/g, "''")}'`).join(',');
+      const escapedKeys = keysArray.map((k) => `'${String(k).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`).join(',');
       const sql = `SELECT * FROM ${qid(typeB, tableName)} WHERE ${qid(typeB, on.rightKey)} IN (${escapedKeys}) LIMIT ${maxPayloadSize}`;
       const resB = await strategyB.collectionAggregate(sourceB.db, tableName, { pipeline: sql });
       rowsB = resB.docs || [];
@@ -86,23 +128,14 @@ class VirtualJoinEngine {
     // Indicizzazione Sorgente B in una Map in-memory per O(1) lookup
     const mapB = new Map();
     rowsB.forEach((bDoc) => {
-      const bKeyVal = bDoc[on.rightKey];
-      let bKeyStr = String(bKeyVal);
-      if (bKeyVal && typeof bKeyVal === 'object' && bKeyVal.$oid) {
-        bKeyStr = bKeyVal.$oid;
-      }
-      mapB.set(bKeyStr, bDoc);
+      const bKeyStr = keyToString(bDoc[on.rightKey]);
+      if (bKeyStr !== null) mapB.set(bKeyStr, bDoc);
     });
 
     // Merge in memoria
     const mergedResults = rowsA.map((aDoc) => {
-      const aKeyVal = aDoc[on.leftKey];
-      let aKeyStr = String(aKeyVal);
-      if (aKeyVal && typeof aKeyVal === 'object' && aKeyVal.$oid) {
-        aKeyStr = aKeyVal.$oid;
-      }
-
-      const matchB = mapB.get(aKeyStr) || null;
+      const aKeyStr = keyToString(aDoc[on.leftKey]);
+      const matchB = (aKeyStr !== null && mapB.get(aKeyStr)) || null;
       return {
         ...aDoc,
         [as]: matchB

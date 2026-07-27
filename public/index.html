@@ -611,7 +611,7 @@
                       </div>
                       <div class="editor-body">
                         <textarea id="query-editor-input" spellcheck="false"
-                          placeholder="-- Inserisci query SQL o pipeline MQL in formato JSON&#10;-- Es. SELECT * FROM users WHERE status = 'active';&#10;-- Oppure: [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                          placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
                       </div>
                     </div>
 
