@@ -1,0 +1,3 @@
+## 2026-07-27 - [Icon-only buttons missing aria-labels]
+**Learning:** Found multiple icon-only buttons (`✕`, `⟳`) in `public/index.html` that relied solely on the `title` attribute for tooltip text but lacked an `aria-label` for screen reader accessibility. Although a visual user might hover over the element and see the `title`, screen readers might read it as "button" or by its generic symbol representation, which lacks context.
+**Action:** When implementing icon-only buttons, always explicitly add `aria-label` to provide an accessible name for screen readers, in addition to `title` for sighted users.
