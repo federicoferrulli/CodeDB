@@ -146,11 +146,17 @@ function ensureSplitCollTab() {
   return splitCt;
 }
 
+let savedWorkspaceNodes = null;
+
 export function deactivateSplitView() {
   const ws = $('#workspace');
   if (ws && ws.classList.contains('split-active')) {
     ws.classList.remove('split-active');
-    ws.innerHTML = getOriginalWorkspaceHTML();
+    ws.innerHTML = '';
+    if (savedWorkspaceNodes && savedWorkspaceNodes.length) {
+      savedWorkspaceNodes.forEach((node) => ws.appendChild(node));
+      savedWorkspaceNodes = null;
+    }
   }
 }
 
@@ -469,15 +475,6 @@ export function closeSplitView() {
   }
 }
 
-let cachedWorkspaceHTML = '';
-function getOriginalWorkspaceHTML() {
-  if (!cachedWorkspaceHTML) {
-    const ws = $('#workspace');
-    if (ws) cachedWorkspaceHTML = ws.innerHTML;
-  }
-  return cachedWorkspaceHTML;
-}
-
 export function runPaneQuery(paneId, opts = {}) {
   const p = splitState.panes.get(paneId);
   if (!p || !p.db || !p.coll) return;
@@ -518,7 +515,9 @@ export function renderSplitView() {
   const ws = $('#workspace');
   if (!ws) return;
 
-  getOriginalWorkspaceHTML();
+  if (!ws.classList.contains('split-active')) {
+    savedWorkspaceNodes = Array.from(ws.childNodes);
+  }
   ws.classList.add('split-active');
   $('#placeholder')?.classList.add('hidden');
   ws.classList.remove('hidden');

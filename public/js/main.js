@@ -51,9 +51,12 @@ export function setView(view) {
   if (view === 'query') loadQueryTab();
 }
 
-document.querySelectorAll('.view-tab').forEach((tab) =>
-  tab.addEventListener('click', () => setView(tab.dataset.view))
-);
+document.addEventListener('click', (e) => {
+  const tab = e.target.closest('.view-tab');
+  if (tab && tab.dataset.view) {
+    setView(tab.dataset.view);
+  }
+});
 
 // Maniglie di ridimensionamento orizzontale: ogni .resizer ridimensiona
 // l'elemento indicato da data-resize; la larghezza è ricordata in localStorage.

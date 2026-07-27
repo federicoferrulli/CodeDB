@@ -1049,7 +1049,7 @@ io.on('connection', (socket) => {
     // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
     const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
     const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
-    const targetColl = coll || extractedColl;
+    const targetColl = extractedColl || coll;
     const targetDb = db || session.strategy.currentDb || 'admin';
 
     // Modalità SQL su MySQL

@@ -1,7 +1,7 @@
 'use strict';
 
 import { $ } from './utils.js';
-import { runQuery } from './query-tab.js';
+import { runQuery, exportQueryResults } from './query-tab.js';
 
 // Libreria di Preset e Template pronti all'uso
 export const PRESETS = [
@@ -147,58 +147,5 @@ export function openSnippetModal() {
 
 // Esportazione dei risultati
 export function exportResults(format) {
-  const table = $('#query-result-table');
-  if (!table) return;
-
-  const rows = [];
-  const headers = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent);
-  const trs = table.querySelectorAll('tbody tr');
-
-  trs.forEach((tr) => {
-    const rowObj = {};
-    const tds = tr.querySelectorAll('td');
-    headers.forEach((h, idx) => {
-      rowObj[h] = tds[idx] ? tds[idx].textContent : '';
-    });
-    rows.push(rowObj);
-  });
-
-  if (!rows.length) {
-    alert('Nessun dato da esportare.');
-    return;
-  }
-
-  let content = '';
-  let filename = `query_result_${Date.now()}`;
-  let mimeType = 'text/plain';
-
-  if (format === 'csv') {
-    filename += '.csv';
-    mimeType = 'text/csv';
-    content = headers.join(',') + '\n';
-    rows.forEach((r) => {
-      const vals = headers.map((h) => `"${String(r[h] || '').replace(/"/g, '""')}"`);
-      content += vals.join(',') + '\n';
-    });
-  } else if (format === 'json') {
-    filename += '.json';
-    mimeType = 'application/json';
-    content = JSON.stringify(rows, null, 2);
-  } else if (format === 'sql') {
-    filename += '.sql';
-    mimeType = 'application/sql';
-    content = rows.map((r) => {
-      const cols = Object.keys(r).map((k) => `\`${k}\``).join(', ');
-      const vals = Object.values(r).map((v) => `'${String(v).replace(/'/g, "\\'")}'`).join(', ');
-      return `INSERT INTO \`query_result\` (${cols}) VALUES (${vals});`;
-    }).join('\n');
-  }
-
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  exportQueryResults(format);
 }

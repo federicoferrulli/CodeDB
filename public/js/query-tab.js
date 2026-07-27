@@ -483,6 +483,8 @@ function renderSchemaTreeForDb(dbName, container, collections) {
 
     collLabel.addEventListener('click', (e) => {
       if (e.target.closest('.mini-btn')) return;
+      selectedQueryDb = dbName;
+      selectedQueryColl = collName;
       fieldsContainer.classList.toggle('hidden');
     });
 
@@ -515,6 +517,9 @@ function insertTextInEditor(text) {
   input.focus();
 }
 
+let selectedQueryDb = null;
+let selectedQueryColl = null;
+
 // Esecuzione Query (Task 3 runner integration)
 export function runQuery() {
   const editorInput = $('#query-editor-input');
@@ -533,8 +538,8 @@ export function runQuery() {
   emit('query:execute', {
     code,
     engine,
-    db: state.db,
-    coll: state.coll,
+    db: selectedQueryDb || state.db,
+    coll: selectedQueryColl || state.coll,
     dbType: state.dbType
   })
     .then((res) => {
@@ -552,4 +557,62 @@ export function runQuery() {
       updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
       renderResults([]);
     });
+}
+
+// Esportazione dei risultati raw da memoria (tutti i record caricati)
+export function exportQueryResults(format) {
+  if (!currentResults || !currentResults.length) {
+    alert('Nessun dato da esportare.');
+    return;
+  }
+
+  const rows = currentResults;
+  const cols = new Set();
+  rows.forEach((r) => {
+    if (r && typeof r === 'object') {
+      Object.keys(r).forEach((k) => cols.add(k));
+    }
+  });
+  const headers = Array.from(cols);
+
+  let content = '';
+  let filename = `query_result_${Date.now()}`;
+  let mimeType = 'text/plain';
+
+  if (format === 'csv') {
+    filename += '.csv';
+    mimeType = 'text/csv';
+    content = headers.join(',') + '\n';
+    rows.forEach((r) => {
+      const vals = headers.map((h) => {
+        const val = r ? r[h] : '';
+        const strVal = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '');
+        return `"${strVal.replace(/"/g, '""')}"`;
+      });
+      content += vals.join(',') + '\n';
+    });
+  } else if (format === 'json') {
+    filename += '.json';
+    mimeType = 'application/json';
+    content = JSON.stringify(rows, null, 2);
+  } else if (format === 'sql') {
+    filename += '.sql';
+    mimeType = 'application/sql';
+    content = rows.map((r) => {
+      const rowCols = Object.keys(r).map((k) => `\`${k}\``).join(', ');
+      const vals = Object.values(r).map((v) => {
+        const strVal = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
+        return `'${strVal.replace(/'/g, "\\'")}'`;
+      }).join(', ');
+      return `INSERT INTO \`query_result\` (${rowCols}) VALUES (${vals});`;
+    }).join('\n');
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
