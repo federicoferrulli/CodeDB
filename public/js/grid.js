@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode } from './utils.js';
+import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -78,6 +78,10 @@ export function runQuery(opts = {}) {
     filter: $('#filter-input').value.trim(),
     sort: mode === 'aggregate' ? '' : $('#sort-input').value.trim(),
   });
+
+  if (!opts.auto) {
+    showSkeletonGrid('#grid');
+  }
 
   emit(`collection:${mode}`, payload).then((res) => {
     state.docs = res.docs;

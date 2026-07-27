@@ -55,7 +55,7 @@ const SCHEMA_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minuti
 export function loadGraph3d(force) {
   if (!state.db) return;
   const cacheKey = `gui-db:schema-cache:${state.db}`;
-  
+
   if (!force) {
     const cachedText = sessionStorage.getItem(cacheKey);
     if (cachedText) {

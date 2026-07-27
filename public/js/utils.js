@@ -222,8 +222,7 @@ export function reorderById(list, fromId, toId, key = 'id') {
   return true;
 }
 
-export const openModal = (id) => $(id).classList.remove('hidden');
-export const closeModal = (id) => $(id).classList.add('hidden');
+
 
 export function showError(id, msg) {
   const el = $(id);
@@ -399,3 +398,164 @@ export function buildJsonNode(val, key = null, isRoot = false) {
   node.innerHTML = `${key ? `<span class="json-key">${esc(key)}</span>: ` : ''}<span class="${valClass}">${formattedVal}</span>`;
   return node;
 }
+
+/* ---------- Gestione Modali & Overlay Centralizzata ---------- */
+const activeModals = new Set();
+
+function handleModalEsc(e) {
+  if (e.key === 'Escape' && activeModals.size > 0) {
+    const lastModal = Array.from(activeModals).pop();
+    closeModal(lastModal);
+  }
+}
+
+export function openModal(elOrId) {
+  const el = typeof elOrId === 'string'
+    ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
+    : elOrId;
+  if (!el) return;
+  el.classList.remove('hidden');
+  activeModals.add(el);
+  if (activeModals.size === 1) {
+    document.addEventListener('keydown', handleModalEsc);
+  }
+  const focusable = el.querySelector('input:not([type="hidden"]), button, select, textarea');
+  if (focusable) focusable.focus();
+}
+
+export function closeModal(elOrId) {
+  const el = typeof elOrId === 'string'
+    ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
+    : elOrId;
+  if (!el) return;
+  el.classList.add('hidden');
+  activeModals.delete(el);
+  if (activeModals.size === 0) {
+    document.removeEventListener('keydown', handleModalEsc);
+  }
+}
+
+/* ---------- Gestione Notifiche Toast ---------- */
+export function showToast(message, type = 'info', duration = 3500) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.role = 'status';
+
+  const icons = {
+    success: '✅',
+    error: '❌',
+    info: 'ℹ️',
+    warning: '⚠️'
+  };
+
+  const iconSpan = document.createElement('span');
+  iconSpan.textContent = icons[type] || 'ℹ️';
+
+  const textSpan = document.createElement('span');
+  textSpan.textContent = message;
+  textSpan.style.flex = '1';
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'btn-close';
+  closeBtn.textContent = '✕';
+  closeBtn.ariaLabel = 'Chiudi notifica';
+  closeBtn.onclick = () => toast.remove();
+
+  toast.appendChild(iconSpan);
+  toast.appendChild(textSpan);
+  toast.appendChild(closeBtn);
+  container.appendChild(toast);
+
+  if (duration > 0) {
+    setTimeout(() => {
+      if (toast.parentNode) {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.2s ease';
+        setTimeout(() => toast.remove(), 200);
+      }
+    }, duration);
+  }
+}
+
+/* ---------- Rendering Skeleton Pending States ---------- */
+export function showSkeletonGrid(targetEl, rows = 6, cols = 5) {
+  const el = typeof targetEl === 'string' ? document.querySelector(targetEl) : targetEl;
+  if (!el) return;
+
+  // Rimuove eventuali tabelle skeleton temporanee precedentemente create
+  el.querySelectorAll('.skeleton-grid-table').forEach((t) => t.remove());
+
+  const targetTable = el.tagName === 'TABLE' ? el : el.querySelector('table');
+
+  if (targetTable) {
+    let thead = targetTable.querySelector('thead');
+    let tbody = targetTable.querySelector('tbody');
+    if (!thead) {
+      thead = document.createElement('thead');
+      targetTable.appendChild(thead);
+    }
+    if (!tbody) {
+      tbody = document.createElement('tbody');
+      targetTable.appendChild(tbody);
+    }
+    thead.innerHTML = '';
+    tbody.innerHTML = '';
+
+    const trH = document.createElement('tr');
+    for (let c = 0; c < cols; c++) {
+      const th = document.createElement('th');
+      th.style.padding = '8px 12px';
+      th.innerHTML = `<div class="skeleton skeleton-text" style="width: ${50 + ((c + 1) * 17) % 40}%;"></div>`;
+      trH.appendChild(th);
+    }
+    thead.appendChild(trH);
+
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement('td');
+        td.style.padding = '8px 12px';
+        td.innerHTML = `<div class="skeleton skeleton-text" style="width: ${35 + ((r + c) * 19) % 55}%;"></div>`;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+  } else {
+    const table = document.createElement('table');
+    table.className = 'data-table skeleton-grid-table';
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+
+    const thead = document.createElement('thead');
+    const trH = document.createElement('tr');
+    for (let c = 0; c < cols; c++) {
+      const th = document.createElement('th');
+      th.style.padding = '8px 12px';
+      th.innerHTML = `<div class="skeleton skeleton-text" style="width: ${50 + ((c + 1) * 17) % 40}%;"></div>`;
+      trH.appendChild(th);
+    }
+    thead.appendChild(trH);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (let r = 0; r < rows; r++) {
+      const tr = document.createElement('tr');
+      for (let c = 0; c < cols; c++) {
+        const td = document.createElement('td');
+        td.style.padding = '8px 12px';
+        td.innerHTML = `<div class="skeleton skeleton-text" style="width: ${35 + ((r + c) * 19) % 55}%;"></div>`;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    el.appendChild(table);
+  }
+}
+
+

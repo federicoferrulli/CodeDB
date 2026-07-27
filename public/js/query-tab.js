@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc } from './utils.js';
+import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 
 const escapeHtml = esc;
@@ -190,7 +190,11 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
   if (statusBadge) {
     statusBadge.className = `badge badge-${status}`;
     if (status === 'idle') statusBadge.textContent = '● In attesa';
-    else if (status === 'running') statusBadge.textContent = '⏳ Esecuzione...';
+    else if (status === 'running') {
+      statusBadge.textContent = '⏳ Esecuzione...';
+      const tableView = $('#query-table-view');
+      if (tableView) showSkeletonGrid(tableView, 8, 5);
+    }
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
     else if (status === 'error') statusBadge.textContent = '✖ Errore';
   }
@@ -302,8 +306,11 @@ function attachQueryVScroll() {
 
 // Render Tabella
 function renderResultsTable(rows) {
-  const table = $('#query-result-table');
   const container = $('#query-table-view');
+  if (container) {
+    container.querySelectorAll('.skeleton-grid-table').forEach((t) => t.remove());
+  }
+  const table = $('#query-result-table');
   if (!table || !container) return;
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');

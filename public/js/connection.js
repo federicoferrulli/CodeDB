@@ -58,7 +58,7 @@ function updateWizardSummary() {
 
   const dbIcon = { mongodb: '🍃', mysql: '🐬', postgresql: '🐘', postgres: '🐘' }[cfg.dbType] || '🗄';
   const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
-  
+
   let html = `<div><strong>${dbIcon} ${dbTypeName}</strong> — `;
   if (cfg.uri) {
     html += `URI: <code>${cfg.uri}</code>`;
@@ -117,11 +117,11 @@ function readConnForm() {
   const cfg = usingUri
     ? { uri: form.elements.uri.value }
     : {
-        host: form.elements.host.value,
-        port: form.elements.port.value,
-        username: form.elements.username.value,
-        password: form.elements.password.value,
-      };
+      host: form.elements.host.value,
+      port: form.elements.port.value,
+      username: form.elements.username.value,
+      password: form.elements.password.value,
+    };
   if (!usingUri) {
     if (isSql) cfg.database = form.elements.database.value;
     else cfg.authSource = form.elements.authSource.value;
