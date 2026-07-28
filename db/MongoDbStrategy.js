@@ -6,6 +6,13 @@ const DbStrategy = require('./DbStrategy');
 
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
+// Riconosce l'errore di timeout lato server (maxTimeMS scaduto): codice BSON 50
+// / label 'MaxTimeMSExpired'. Usato per degradare il conteggio a "sconosciuto".
+function isMaxTimeError(err) {
+  return !!err && (err.code === 50 || err.codeName === 'MaxTimeMSExpired'
+    || /operation exceeded time limit|maxTimeMS/i.test(err.message || ''));
+}
+
 /* ---------------------------------------------------------------------------
  * Helpers MongoDB (EJSON, URI, schema campionato)
  * ------------------------------------------------------------------------- */
@@ -576,12 +583,21 @@ class MongoDbStrategy extends DbStrategy {
     const collection = client.db(db).collection(coll);
     await this.promoteFilterObjectIds(collection, filter);
     const cursor = collection.find(filter, { projection }).sort(sort).skip(skip).limit(limit);
-    const [docs, total] = await Promise.all([
-      cursor.toArray(),
-      // Con filtro vuoto countDocuments è una scansione completa: sulle
-      // collection grandi si usa il conteggio dai metadati, istantaneo.
-      Object.keys(filter).length ? collection.countDocuments(filter) : collection.estimatedDocumentCount(),
-    ]);
+
+    // Il conteggio con filtro è una scansione completa: su collection enormi
+    // bloccherebbe la griglia. Il client della UI passa `deferCount` e recupera
+    // il totale a parte via `collection:count`; qui restituiamo solo il totale
+    // istantaneo dai metadati (filtro vuoto) e altrimenti null. Senza
+    // `deferCount` (MCP, test) manteniamo il conteggio esatto ma con un timeout
+    // così non può mai bloccarsi all'infinito.
+    const hasFilter = Object.keys(filter).length > 0;
+    let total;
+    if (payload.deferCount) {
+      total = hasFilter ? null : await collection.estimatedDocumentCount().catch(() => null);
+    } else {
+      total = await this.countWithTimeout(collection, filter, hasFilter);
+    }
+    const docs = await cursor.toArray();
 
     // Union of the keys of all returned documents -> table columns.
     const columns = [];
@@ -596,6 +612,32 @@ class MongoDbStrategy extends DbStrategy {
     }
 
     return { docs: docs.map(serialize), columns, total, skip, limit };
+  }
+
+  // Conteggio con timeout: countDocuments (con filtro) o estimatedDocumentCount
+  // (senza). Se supera CODEDB_COUNT_TIMEOUT_MS il server MongoDB interrompe la
+  // query (MaxTimeMSExpired) e restituiamo null anziché propagare l'errore.
+  async countWithTimeout(collection, filter, hasFilter) {
+    const maxTimeMS = DbStrategy.countTimeoutMs();
+    try {
+      if (!hasFilter) return await collection.estimatedDocumentCount();
+      const opts = maxTimeMS > 0 ? { maxTimeMS } : {};
+      return await collection.countDocuments(filter, opts);
+    } catch (err) {
+      if (isMaxTimeError(err)) return null;
+      throw err;
+    }
+  }
+
+  // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
+  async collectionCount(db, coll, payload) {
+    const client = this.requireClient();
+    const filter = parseQueryObject(payload.filter, {});
+    const collection = client.db(db).collection(coll);
+    const hasFilter = Object.keys(filter).length > 0;
+    if (hasFilter) await this.promoteFilterObjectIds(collection, filter);
+    const total = await this.countWithTimeout(collection, filter, hasFilter);
+    return { total, timedOut: total === null };
   }
 
   async collectionAggregate(db, coll, payload) {

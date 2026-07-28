@@ -17,7 +17,10 @@ export function freshState() {
     coll: null,
     skip: 0,
     limit: 50,
-    total: 0,
+    total: 0,           // conteggio totale; null = sconosciuto (conteggio disaccoppiato)
+    countToken: 0,      // scarta le risposte di conteggio obsolete
+    countPending: false, // conteggio totale in corso (footer mostra '…')
+    countTimedOut: false, // conteggio andato in timeout lato server (footer mostra '?')
     docs: [],
     columns: [],
     infiniteScroll: false,  // scroll infinito attivo (carica a blocchi allo scroll)

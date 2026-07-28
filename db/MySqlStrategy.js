@@ -352,7 +352,16 @@ class MySqlStrategy extends DbStrategy {
       `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`,
       [limit, skip]
     );
-    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`);
+
+    // COUNT(*) su InnoDB è una scansione: su tabelle enormi bloccherebbe la
+    // griglia. Il client della UI passa `deferCount` e chiede il totale a parte
+    // via `collection:count`; senza il flag (MCP, test) lo calcoliamo inline ma
+    // con un timeout così non può bloccarsi all'infinito.
+    let total = null;
+    if (!payload.deferCount) {
+      const c = await this.countWithTimeout(table, whereSql);
+      total = c.total;
+    }
 
     const columns = (fields || []).map((f) => f.name);
     const pk = await this.primaryKey(db, coll);
@@ -360,7 +369,31 @@ class MySqlStrategy extends DbStrategy {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc);
     });
-    return { docs, columns, total: Number(total), skip, limit };
+    return { docs, columns, total, skip, limit };
+  }
+
+  // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
+  // { total, timedOut }: total è null se il conteggio ha superato il timeout.
+  async countWithTimeout(table, whereSql) {
+    const pool = this.requirePool();
+    const ms = DbStrategy.countTimeoutMs();
+    const q = { sql: `SELECT COUNT(*) AS total FROM ${table}${whereSql}` };
+    if (ms > 0) q.timeout = ms;
+    try {
+      const [[{ total }]] = await pool.query(q);
+      return { total: Number(total), timedOut: false };
+    } catch (err) {
+      if (err && (err.code === 'PROTOCOL_SEQUENCE_TIMEOUT' || /timeout/i.test(err.message || ''))) {
+        return { total: null, timedOut: true };
+      }
+      throw err;
+    }
+  }
+
+  // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
+  async collectionCount(db, coll, payload) {
+    const { table, whereSql } = this.buildSelect(db, coll, payload);
+    return this.countWithTimeout(table, whereSql);
   }
 
   // Modalità "SQL Raw": esegue una query libera nel contesto del database.

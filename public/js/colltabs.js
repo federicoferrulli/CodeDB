@@ -67,6 +67,10 @@ function activate(ct, { fresh }) {
   // Lo scroll infinito riparte pulito sulla collection attivata.
   state.loading = false;
   state.exhausted = false;
+  // Il conteggio disaccoppiato è per-query: invalida quelli in volo del coll-tab
+  // precedente (il token cambierà alla prossima runQuery) e azzera i flag footer.
+  state.countPending = false;
+  state.countTimedOut = false;
 
   $('#live-badge').classList.add('hidden');
 

@@ -68,6 +68,10 @@ export function runQuery(opts = {}) {
         sort: $('#sort-input').value,
         limit: $('#page-size').value,
         skip: state.skip,
+        // Conteggio disaccoppiato: la find torna subito coi soli documenti (su
+        // collection enormi il conteggio esatto è una scansione che bloccherebbe
+        // la griglia); il totale arriva dopo via `collection:count`.
+        deferCount: true,
       };
   if (opts.auto) payload._bg = true;
 
@@ -86,11 +90,11 @@ export function runQuery(opts = {}) {
   emit(`collection:${mode}`, payload).then((res) => {
     state.docs = res.docs;
     state.columns = res.columns;
-    state.total = res.total;
+    state.total = res.total;   // può essere null: conteggio in corso (vedi sotto)
     state.skip = res.skip;
     state.limit = res.limit;
     // Scroll infinito: dopo il primo blocco stabilisce se c'è altro da caricare.
-    state.exhausted = state.docs.length >= state.total;
+    state.exhausted = computeExhausted(res);
     // Mantiene selezionati solo i documenti ancora presenti nella pagina:
     // la selezione sopravvive ai refresh (live/polling) ma si svuota al
     // cambio di pagina o di filtro.
@@ -99,7 +103,47 @@ export function runQuery(opts = {}) {
       if (!visible.has(id)) state.selectedDocs.delete(id);
     }
     renderGrid();
+    // Totale sconosciuto (find con filtro su collection grande): lo chiediamo a
+    // parte, così la griglia è già utilizzabile mentre il conteggio gira.
+    if (mode !== 'aggregate' && res.total == null) requestTotalCount(payload);
   }).catch((err) => showQueryError(err.message));
+}
+
+// Fine dei dati raggiunta? Con totale noto ci si ferma quando i documenti
+// caricati lo raggiungono; con totale sconosciuto (conteggio disaccoppiato in
+// corso) ci si basa sul blocco: se non è pieno non c'è altro da caricare.
+function computeExhausted(res) {
+  if (!res.docs.length) return true;
+  if (res.docs.length < (res.limit || state.limit)) return true;
+  if (res.total != null && state.docs.length >= res.total) return true;
+  return false;
+}
+
+// Conteggio totale disaccoppiato dalla find. Un token scarta le risposte
+// obsolete se nel frattempo l'utente rilancia la query, cambia coll-tab o
+// collection. Best-effort: un errore non deve rompere la griglia già mostrata.
+function requestTotalCount(payload) {
+  const token = (state.countToken = (state.countToken || 0) + 1);
+  const db = state.db, coll = state.coll;
+  state.countPending = true;
+  state.countTimedOut = false;
+  updateFooter();
+  emit('collection:count', { db: payload.db, coll: payload.coll, filter: payload.filter, _bg: true })
+    .then((res) => {
+      if (token !== state.countToken || state.db !== db || state.coll !== coll) return;
+      state.countPending = false;
+      if (res.total == null) {
+        state.countTimedOut = true; // timeout lato server: totale non calcolabile
+      } else {
+        state.total = res.total;
+        state.exhausted = state.docs.length >= state.total;
+      }
+      updateFooter();
+      updateInfiniteUI();
+      $('.bulk-delete-toolbar').classList.toggle('hidden',
+        $('#query-mode').value === 'aggregate' || state.total === 0);
+    })
+    .catch(() => { if (token === state.countToken) state.countPending = false; });
 }
 
 // Piano di esecuzione (EXPLAIN) della query corrente: stessi parametri di
@@ -469,18 +513,29 @@ export function ensureRowRendered(r) {
 
 function updateFooter() {
   const docWord = isSqlType(state.dbType) ? 'righe' : 'documenti';
+  // Totale sconosciuto: '…' mentre il conteggio gira, '?' se è andato in timeout.
+  const known = state.total != null;
+  const totalLabel = known ? state.total : (state.countTimedOut ? '?' : '…');
   if (state.infiniteScroll && $('#query-mode').value !== 'aggregate') {
-    $('#result-info').textContent = `${state.total} ${docWord} — ${state.docs.length} caricati`;
-    $('#page-info').textContent = state.docs.length >= state.total ? 'tutti' : `${state.docs.length} / ${state.total}`;
+    $('#result-info').textContent = `${totalLabel} ${docWord} — ${state.docs.length} caricati`;
+    $('#page-info').textContent = (known && state.docs.length >= state.total)
+      ? 'tutti'
+      : `${state.docs.length}${known ? ` / ${state.total}` : ''}`;
     $('#prev-btn').disabled = true;
     $('#next-btn').disabled = true;
   } else {
-    const from = state.total === 0 ? 0 : state.skip + 1;
+    const from = state.docs.length === 0 ? 0 : state.skip + 1;
     const to = Math.min(state.skip + state.docs.length, state.skip + state.limit);
-    $('#result-info').textContent = `${state.total} ${docWord} — ${state.docs.length} mostrati`;
-    $('#page-info').textContent = `${from}–${Math.min(to, state.total) || state.docs.length}`;
+    $('#result-info').textContent = `${totalLabel} ${docWord} — ${state.docs.length} mostrati`;
+    $('#page-info').textContent = known
+      ? `${state.total === 0 ? 0 : from}–${Math.min(to, state.total) || state.docs.length}`
+      : `${from}–${to}`;
     $('#prev-btn').disabled = state.skip === 0;
-    $('#next-btn').disabled = state.skip + state.limit >= state.total;
+    // Totale noto: disabilita "avanti" sull'ultima pagina. Totale sconosciuto:
+    // resta attivo finché l'ultima pagina è piena (potrebbe esserci altro).
+    $('#next-btn').disabled = known
+      ? (state.skip + state.limit >= state.total)
+      : (state.docs.length < state.limit);
   }
 }
 
@@ -495,7 +550,10 @@ function updateInfiniteUI() {
 function maybeLoadMore() {
   if (!state.infiniteScroll || state.loading || state.exhausted) return;
   if ($('#query-mode').value === 'aggregate') return;
-  if (state.docs.length >= state.total) { state.exhausted = true; return; }
+  // Con totale noto ci si ferma al suo raggiungimento; se è sconosciuto
+  // (conteggio disaccoppiato in corso) è `state.exhausted`, già impostato dalla
+  // pienezza dell'ultimo blocco, a dire se c'è altro da caricare.
+  if (state.total != null && state.docs.length >= state.total) { state.exhausted = true; return; }
   const wrap = $('.grid-wrap');
   if (!wrap) return;
   const margin = (vctx ? vctx.rowH : 32) * OVERSCAN;
@@ -514,13 +572,18 @@ function fetchMore() {
     sort: $('#sort-input').value,
     limit: chunk,
     skip: state.docs.length,
+    deferCount: true, // il totale è già noto (o in arrivo): non riscansionare qui
     _bg: true, // continuazione dello scroll infinito: non una nuova lettura utente
   }).then((res) => {
     // Unione colonne (blocchi successivi possono avere campi nuovi) e append.
     for (const c of res.columns) if (!state.columns.includes(c)) state.columns.push(c);
     state.docs = state.docs.concat(res.docs);
-    state.total = res.total;
-    if (!res.docs.length || state.docs.length >= state.total) state.exhausted = true;
+    if (res.total != null) state.total = res.total; // non sovrascrivere un totale noto con null
+    // Fine dati: blocco non pieno, oppure raggiunto un totale noto.
+    if (!res.docs.length || res.docs.length < (res.limit || state.limit)
+        || (state.total != null && state.docs.length >= state.total)) {
+      state.exhausted = true;
+    }
     state.loading = false;
     renderGrid({ preserveScroll: true });
   }).catch((err) => {
@@ -579,9 +642,12 @@ export function deleteAllWithFilter() {
     toast(isSql ? 'Nessuna riga da eliminare' : 'Nessun documento da eliminare', true);
     return;
   }
+  // Il totale può essere sconosciuto (conteggio disaccoppiato ancora in corso o
+  // in timeout): in tal caso non lo citiamo nel messaggio di conferma.
+  const count = total != null ? `${total} ` : '';
   const msg = filter
-    ? `Eliminare ${isSql ? `le ${total} righe` : `i ${total} documenti`} con questo filtro? Questa azione non si può annullare.`
-    : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${total} righe` : `TUTTI i ${total} documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
+    ? `Eliminare ${isSql ? `le ${count}righe` : `i ${count}documenti`} che soddisfano questo filtro? Questa azione non si può annullare.`
+    : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${count}righe` : `TUTTI i ${count}documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
   if (!confirm(msg)) return;
 
   emit('collection:deleteMany', {
@@ -666,7 +732,13 @@ export function initGrid() {
   });
 
   $('#next-btn').addEventListener('click', () => {
-    if (state.skip + state.limit < state.total) {
+    // Con totale noto avanza finché non è l'ultima pagina; con totale
+    // sconosciuto (conteggio disaccoppiato) avanza se la pagina è piena, quindi
+    // potrebbe esserci un'altra pagina (coerente con updateFooter).
+    const canNext = state.total != null
+      ? (state.skip + state.limit < state.total)
+      : (state.docs.length >= state.limit);
+    if (canNext) {
       state.skip += state.limit;
       state.selectedDocs.clear(); // reset selezione al cambio pagina
       clearCellSelection();

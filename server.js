@@ -1036,6 +1036,10 @@ io.on('connection', (socket) => {
 
   delegate('collection:stats', (strategy, { db, coll }) => strategy.collectionStats(db, coll));
   delegate('collection:find', (strategy, p) => strategy.collectionFind(p.db, p.coll, p));
+  // Conteggio totale disaccoppiato: la griglia carica prima i documenti
+  // (total = null) e chiede il conteggio a parte, così non aspetta la scansione
+  // completa su collection/tabelle enormi. Lettura di chrome: non tracciata.
+  delegate('collection:count', (strategy, p) => strategy.collectionCount(p.db, p.coll, p));
   delegate('collection:aggregate', (strategy, p) => strategy.collectionAggregate(p.db, p.coll, p));
   delegate('collection:explain', (strategy, p) => strategy.collectionExplain(p.db, p.coll, p));
   delegate('doc:insert', (strategy, p) => strategy.docInsert(p.db, p.coll, p));

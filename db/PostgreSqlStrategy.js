@@ -352,8 +352,16 @@ class PostgreSqlStrategy extends DbStrategy {
     const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
 
     const res = await pool.query(`SELECT * FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`, [limit, skip]);
-    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`);
-    const total = Number(countRes.rows[0]?.total) || 0;
+
+    // COUNT(*) su tabelle enormi è una scansione: bloccherebbe la griglia. Il
+    // client della UI passa `deferCount` e chiede il totale a parte via
+    // `collection:count`; senza il flag (MCP, test) lo calcoliamo inline ma con
+    // un timeout così non può bloccarsi all'infinito.
+    let total = null;
+    if (!payload.deferCount) {
+      const c = await this.countWithTimeout(table, whereSql);
+      total = c.total;
+    }
 
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
     const pk = await this.primaryKey(db, coll);
@@ -363,6 +371,34 @@ class PostgreSqlStrategy extends DbStrategy {
     });
 
     return { docs, columns, total, skip, limit };
+  }
+
+  // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
+  // timeout si azzera da solo a fine transazione. Ritorna { total, timedOut }:
+  // total è null se il conteggio è stato annullato per timeout (SQLSTATE 57014).
+  async countWithTimeout(table, whereSql) {
+    const pool = this.requirePool();
+    const ms = DbStrategy.countTimeoutMs();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
+      const r = await client.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`);
+      await client.query('COMMIT');
+      return { total: Number(r.rows[0]?.total) || 0, timedOut: false };
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (err && err.code === '57014') return { total: null, timedOut: true };
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
+  async collectionCount(db, coll, payload) {
+    const { table, whereSql } = this.buildSelect(db, coll, payload);
+    return this.countWithTimeout(table, whereSql);
   }
 
   async collectionAggregate(_db, _coll, payload) {

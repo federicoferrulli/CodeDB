@@ -70,6 +70,16 @@ class DbStrategy {
   /** @returns {Promise<{docs, columns, total, skip, limit}>} */
   async collectionFind(_db, _coll, _payload) { throw unsupported(); }
 
+  /**
+   * Conteggio totale dei documenti/righe che soddisfano il filtro, disaccoppiato
+   * dalla find: su collection/tabelle enormi è una scansione costosa, quindi la
+   * griglia carica prima i dati (total = null) e poi chiede questo conteggio in
+   * background con un timeout. Ritorna { total, timedOut? }: `total` è null se il
+   * conteggio ha superato il timeout (l'UI mostra il totale come sconosciuto).
+   * @returns {Promise<{ total: number|null, timedOut?: boolean }>}
+   */
+  async collectionCount(_db, _coll, _payload) { throw unsupported(); }
+
   /** Pipeline di aggregazione (MongoDB) o query SQL libera (MySQL). */
   async collectionAggregate(_db, _coll, _payload) { throw unsupported(); }
 
@@ -194,5 +204,16 @@ function resultCap(payload, fallback = 500) {
 }
 
 DbStrategy.resultCap = resultCap;
+
+// Tempo massimo (ms) concesso al conteggio esatto disaccoppiato prima di
+// arrendersi e riportare un totale sconosciuto. Configurabile via env
+// CODEDB_COUNT_TIMEOUT_MS (default 5000); un valore <= 0 disabilita il timeout.
+function countTimeoutMs() {
+  const m = parseInt(process.env.CODEDB_COUNT_TIMEOUT_MS, 10);
+  if (!Number.isFinite(m)) return 5000;
+  return Math.max(m, 0);
+}
+
+DbStrategy.countTimeoutMs = countTimeoutMs;
 
 module.exports = DbStrategy;
