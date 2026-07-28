@@ -100,12 +100,12 @@ let encryptionKey = crypto.createHash('sha256').update(process.env.GUI_MONGO_PAS
 // proseguire e riscrivere il file coi segreti azzerati.
 let decryptFailures = 0;
 
-function encryptSecret(text) {
+function encryptSecret(text, cryptoKey = encryptionKey) {
   if (!text || typeof text !== 'string') return text;
   if (text.startsWith('ENC:')) return text; // già cifrato
-  if (!encryptionKey) throw new Error('Impossibile cifrare il segreto: il vault è bloccato.');
+  if (!cryptoKey) throw new Error('Impossibile cifrare il segreto: il vault è bloccato.');
   const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', cryptoKey, iv);
   let encrypted = cipher.update(text, 'utf8', 'hex');
   encrypted += cipher.final('hex');
   const authTag = cipher.getAuthTag().toString('hex');
@@ -211,14 +211,16 @@ function loadConnections() {
 // Cifra i segreti (password, credenziali SSH) di una copia profonda delle
 // sezioni, senza toccare l'originale: usata sia prima di riscrivere il file
 // sia prima di esportarlo, così i due percorsi restano un solo punto di verità.
-function encryptSections(sections) {
+// `cryptoKey` permette all'export di cifrare con una passphrase diversa da
+// quella dell'installazione corrente (default: la chiave del vault attivo).
+function encryptSections(sections, cryptoKey = encryptionKey) {
   const copy = {};
-  for (const key in sections) {
-    const secCopy = { ...sections[key] };
+  for (const name in sections) {
+    const secCopy = { ...sections[name] };
     for (const f of SECRET_FIELDS) {
-      if (secCopy[f]) secCopy[f] = encryptSecret(secCopy[f]);
+      if (secCopy[f]) secCopy[f] = encryptSecret(secCopy[f], cryptoKey);
     }
-    copy[key] = secCopy;
+    copy[name] = secCopy;
   }
   return copy;
 }
@@ -958,6 +960,12 @@ io.on('connection', (socket) => {
     const conns = loadConnections();
     const previous = oldName ? conns[oldName] : conns[name];
     if (oldName && !previous) throw new Error(`Connessione salvata "${oldName}" non trovata.`);
+    // Il nome è la chiave della sezione .ini: due connessioni con lo stesso nome
+    // si sovrascriverebbero. Rifiuta se il nome è già in uso da un'ALTRA
+    // connessione (nuova connessione, o modifica che rinomina su un nome occupato).
+    if (conns[name] && name !== oldName) {
+      throw new Error(`Esiste già una connessione chiamata "${name}". Scegli un nome diverso.`);
+    }
     const next = sanitizeConnCfg(cfg || {});
     if (previous) {
       for (const f of SECRET_FIELDS) {
@@ -970,11 +978,18 @@ io.on('connection', (socket) => {
     cb({ ok: true });
   });
 
-  // Esporta il file .ini completo (password incluse, ma cifrate).
-  safeOn('connections:export', (_payload, cb) => {
+  // Esporta il file .ini completo (password incluse, ma cifrate). Con
+  // `passphrase` i segreti vengono ri-cifrati con la sua chiave (SHA256), così
+  // il file è importabile su un'installazione che gira con QUELLA passphrase —
+  // senza mai esporre i segreti in chiaro. Vuota = passphrase di questa
+  // installazione (comportamento storico). I segreti sono comunque decifrati in
+  // memoria da loadConnections e ri-cifrati qui, mai trasmessi in chiaro.
+  safeOn('connections:export', ({ passphrase } = {}, cb) => {
     const conns = loadConnections();
     if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
-    const toSave = encryptSections(conns);
+    const pass = passphrase == null ? '' : String(passphrase);
+    const cryptoKey = pass !== '' ? crypto.createHash('sha256').update(pass).digest() : encryptionKey;
+    const toSave = encryptSections(conns, cryptoKey);
     cb({ ok: true, ini: stringifyIni(toSave) });
   });
 

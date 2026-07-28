@@ -178,6 +178,195 @@ check('GROUP BY multiplo', () => {
   ]);
 });
 
+console.log('SQL→MQL — JOIN ($lookup)');
+
+check('INNER JOIN base → $lookup + $unwind', () => {
+  const p = translate('SELECT * FROM orders o JOIN customers c ON o.cust_id = c._id');
+  eq(p.kind, 'aggregate');
+  eq(p.coll, 'orders');
+  eq(p.pipeline, [
+    { $lookup: { from: 'customers', localField: 'cust_id', foreignField: '_id', as: 'c' } },
+    { $unwind: '$c' },
+  ]);
+});
+
+check('JOIN senza INNER equivale a INNER', () => {
+  const p = translate('SELECT * FROM a JOIN b ON a.bid = b.id');
+  eq(p.pipeline[1], { $unwind: '$b' });
+});
+
+check('LEFT JOIN preserva i documenti senza corrispondenza', () => {
+  const p = translate('SELECT * FROM a LEFT JOIN b ON a.bid = b.id');
+  eq(p.pipeline, [
+    { $lookup: { from: 'b', localField: 'bid', foreignField: 'id', as: 'b' } },
+    { $unwind: { path: '$b', preserveNullAndEmptyArrays: true } },
+  ]);
+});
+
+check('LEFT OUTER JOIN accetta OUTER opzionale', () => {
+  const p = translate('SELECT * FROM a LEFT OUTER JOIN b ON a.bid = b.id');
+  eq(p.pipeline[1], { $unwind: { path: '$b', preserveNullAndEmptyArrays: true } });
+});
+
+check('JOIN con proiezione di colonne qualificate', () => {
+  const p = translate('SELECT o.total AS t, c.name FROM orders o JOIN customers c ON o.cust_id = c._id');
+  eq(p.pipeline, [
+    { $lookup: { from: 'customers', localField: 'cust_id', foreignField: '_id', as: 'c' } },
+    { $unwind: '$c' },
+    { $project: { _id: 0, t: '$total', name: '$c.name' } },
+  ]);
+});
+
+check('JOIN con WHERE su campi base e uniti', () => {
+  const p = translate("SELECT o.id FROM orders o JOIN customers c ON o.cust_id = c._id WHERE o.total > 100 AND c.city = 'Roma'");
+  eq(p.pipeline, [
+    { $lookup: { from: 'customers', localField: 'cust_id', foreignField: '_id', as: 'c' } },
+    { $unwind: '$c' },
+    { $match: { $and: [{ total: { $gt: 100 } }, { 'c.city': 'Roma' }] } },
+    { $project: { _id: 0, id: '$id' } },
+  ]);
+});
+
+check('ON con ordine invertito (foreign a sinistra)', () => {
+  const p = translate('SELECT * FROM a JOIN b ON b.id = a.bid');
+  eq(p.pipeline[0], { $lookup: { from: 'b', localField: 'bid', foreignField: 'id', as: 'b' } });
+});
+
+check('JOIN + GROUP BY con aggregato su campo unito', () => {
+  const p = translate('SELECT c.city, SUM(o.total) AS tot FROM orders o JOIN customers c ON o.cust_id = c._id GROUP BY c.city');
+  eq(p.pipeline, [
+    { $lookup: { from: 'customers', localField: 'cust_id', foreignField: '_id', as: 'c' } },
+    { $unwind: '$c' },
+    { _id: '$c.city', tot: { $sum: '$total' } },
+    { $project: { _id: 0, city: '$_id', tot: 1 } },
+  ]);
+});
+
+check('due JOIN concatenate', () => {
+  const p = translate('SELECT * FROM a JOIN b ON a.bid = b.id JOIN c ON b.cid = c.id');
+  eq(p.pipeline, [
+    { $lookup: { from: 'b', localField: 'bid', foreignField: 'id', as: 'b' } },
+    { $unwind: '$b' },
+    { $lookup: { from: 'c', localField: 'b.cid', foreignField: 'id', as: 'c' } },
+    { $unwind: '$c' },
+  ]);
+});
+
+throws('RIGHT JOIN rifiutato', 'SELECT * FROM a RIGHT JOIN b ON a.x = b.y', /right join/i);
+throws('FULL JOIN rifiutato', 'SELECT * FROM a FULL JOIN b ON a.x = b.y', /full join/i);
+throws('CROSS JOIN rifiutato', 'SELECT * FROM a CROSS JOIN b', /cross join/i);
+throws('JOIN USING rifiutato', 'SELECT * FROM a JOIN b USING (id)', /using/i);
+throws('ON non di uguaglianza rifiutato', 'SELECT * FROM a JOIN b ON a.x > b.y', /uguaglianza/i);
+throws('ON multi-condizione rifiutato', 'SELECT * FROM a JOIN b ON a.x = b.y AND a.z = b.w', /equi-join/i);
+throws('ON tra due colonne della stessa tabella rifiutato', 'SELECT * FROM a JOIN b ON a.x = a.y', /altra tabella/i);
+
+console.log('SQL→MQL — DISTINCT e HAVING');
+
+check('SELECT DISTINCT su una colonna', () => {
+  const p = translate('SELECT DISTINCT city FROM users');
+  eq(p.kind, 'aggregate');
+  eq(p.pipeline, [
+    { _id: '$city' },
+    { $project: { _id: 0, city: '$_id' } },
+  ]);
+});
+
+check('SELECT DISTINCT su più colonne', () => {
+  const p = translate('SELECT DISTINCT country, city FROM users');
+  eq(p.pipeline, [
+    { _id: { country: '$country', city: '$city' } },
+    { $project: { _id: 0, country: '$_id.country', city: '$_id.city' } },
+  ]);
+});
+
+check('HAVING su alias di aggregato del SELECT', () => {
+  const p = translate('SELECT city, COUNT(*) AS n FROM t GROUP BY city HAVING n > 5');
+  eq(p.pipeline, [
+    { _id: '$city', n: { $sum: 1 } },
+    { $project: { _id: 0, city: '$_id', n: 1 } },
+    { $match: { n: { $gt: 5 } } },
+  ]);
+});
+
+check('HAVING con COUNT(*) non presente nel SELECT', () => {
+  const p = translate('SELECT city FROM t GROUP BY city HAVING COUNT(*) > 1');
+  eq(p.pipeline, [
+    { _id: '$city', __having_count_all: { $sum: 1 } },
+    { $project: { _id: 0, city: '$_id', __having_count_all: 1 } },
+    { $match: { __having_count_all: { $gt: 1 } } },
+    { $project: { __having_count_all: 0 } },
+  ]);
+});
+
+check('HAVING con SUM sintetizzato', () => {
+  const p = translate('SELECT city FROM t GROUP BY city HAVING SUM(amount) >= 100');
+  eq(p.pipeline[2], { $match: { __having_sum_amount: { $gte: 100 } } });
+});
+
+console.log('SQL→MQL — UNION ($unionWith)');
+
+check('UNION ALL non deduplica', () => {
+  const p = translate('SELECT name FROM a UNION ALL SELECT name FROM b');
+  eq(p.kind, 'aggregate');
+  eq(p.coll, 'a');
+  eq(p.pipeline, [
+    { $project: { name: 1, _id: 0 } },
+    { $unionWith: { coll: 'b', pipeline: [{ $project: { name: 1, _id: 0 } }] } },
+  ]);
+});
+
+check('UNION deduplica sull\'intero documento', () => {
+  const p = translate('SELECT name FROM a UNION SELECT name FROM b');
+  eq(p.pipeline, [
+    { $project: { name: 1, _id: 0 } },
+    { $unionWith: { coll: 'b', pipeline: [{ $project: { name: 1, _id: 0 } }] } },
+    { $group: { _id: '$$ROOT' } },
+    { $replaceRoot: { newRoot: '$_id' } },
+  ]);
+});
+
+check('UNION a tre vie con WHERE su un operando', () => {
+  const p = translate('SELECT id FROM a WHERE x = 1 UNION ALL SELECT id FROM b UNION ALL SELECT id FROM c');
+  eq(p.pipeline, [
+    { $match: { x: 1 } },
+    { $project: { id: 1, _id: 0 } },
+    { $unionWith: { coll: 'b', pipeline: [{ $project: { id: 1, _id: 0 } }] } },
+    { $unionWith: { coll: 'c', pipeline: [{ $project: { id: 1, _id: 0 } }] } },
+  ]);
+});
+
+check('operando UNION non impone il LIMIT di default', () => {
+  const p = translate('SELECT * FROM a UNION ALL SELECT * FROM b');
+  // Nessuno stadio $limit negli operandi né in coda.
+  eq(p.pipeline.some((s) => s.$limit != null), false);
+  const uw = p.pipeline.find((s) => s.$unionWith);
+  eq(uw.$unionWith.pipeline.some((s) => s.$limit != null), false);
+});
+
+console.log('SQL→MQL — sotto-query (derived table nella FROM)');
+
+check('derived table con GROUP BY interno e WHERE esterno', () => {
+  const p = translate('SELECT city, n FROM (SELECT city, COUNT(*) AS n FROM users GROUP BY city) AS s WHERE n > 5');
+  eq(p.kind, 'aggregate');
+  eq(p.coll, 'users');
+  eq(p.pipeline, [
+    { _id: '$city', n: { $sum: 1 } },
+    { $project: { _id: 0, city: '$_id', n: 1 } },
+    { $match: { n: { $gt: 5 } } },
+    { $project: { _id: 0, city: '$city', n: '$n' } },
+  ]);
+});
+
+check('derived table con ORDER BY e LIMIT esterni', () => {
+  const p = translate('SELECT * FROM (SELECT name, age FROM users WHERE age > 18) t ORDER BY age DESC LIMIT 3');
+  eq(p.pipeline, [
+    { $match: { age: { $gt: 18 } } },
+    { $project: { name: 1, age: 1, _id: 0 } },
+    { $sort: { age: -1 } },
+    { $limit: 3 },
+  ]);
+});
+
 console.log('SQL→MQL — errori attesi');
 
 function throws(name, sql, rx) {
@@ -187,8 +376,11 @@ function throws(name, sql, rx) {
 }
 
 throws('non-SELECT viene rifiutata', 'DELETE FROM users', /solo le query select/i);
-throws('JOIN non supportato', 'SELECT * FROM a JOIN b ON a.x = b.y', /join/i);
-throws('HAVING non supportato', 'SELECT city FROM t GROUP BY city HAVING COUNT(*) > 1', /having/i);
+throws('SELECT DISTINCT * rifiutato', 'SELECT DISTINCT * FROM t', /distinct \*/i);
+throws('DISTINCT con GROUP BY rifiutato', 'SELECT DISTINCT city FROM t GROUP BY city', /distinct/i);
+throws('HAVING senza GROUP BY/aggregato rifiutato', 'SELECT city FROM t HAVING city > 1', /having richiede/i);
+throws('sotto-query IN (SELECT) rifiutata', 'SELECT * FROM t WHERE id IN (SELECT id FROM other)', /sotto-query/i);
+throws('sotto-query scalare rifiutata', 'SELECT * FROM t WHERE age = (SELECT MAX(age) FROM t)', /sotto-query/i);
 throws('colonna fuori da GROUP BY', 'SELECT name, COUNT(*) FROM t GROUP BY city', /group by/i);
 throws('manca FROM', 'SELECT *', /from/i);
 throws('identificatore non quotato come valore', 'SELECT * FROM t WHERE a = b', /apici|valore non valido/i);

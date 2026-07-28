@@ -831,6 +831,26 @@
     </div>
   </div>
 
+  <!-- ===================== Modale export connessioni ===================== -->
+  <div id="connexport-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Esporta connessioni</h2>
+      <p class="subtitle">I segreti restano cifrati nel file. Per riusarli su un'altra installazione, questa deve girare con la stessa passphrase con cui li cifri qui.</p>
+      <div class="form-row">
+        <label>Passphrase di cifratura (opzionale)
+          <input type="password" id="connexport-pass" autocomplete="new-password"
+            placeholder="vuoto = passphrase di questa installazione" />
+        </label>
+      </div>
+      <p class="hint">Indica la passphrase dell'installazione di <strong>destinazione</strong> per poter importare lì i segreti. Vuota: usa la passphrase di questa installazione.</p>
+      <div id="connexport-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="connexport-cancel" class="ghost">Annulla</button>
+        <button id="connexport-run" class="primary">Esporta</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== Modale import collection / tabella ===================== -->
   <div id="import-overlay" class="overlay hidden">
     <div class="modal wide">

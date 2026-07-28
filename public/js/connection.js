@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -342,16 +342,31 @@ export function initConnection() {
     });
   });
 
+  // L'export apre una modale: si può indicare la passphrase con cui cifrare i
+  // segreti (es. quella dell'installazione di destinazione), oppure lasciarla
+  // vuota per usare quella di questa installazione (comportamento storico).
   $('#conn-export-btn').addEventListener('click', () => {
-    emit('connections:export', {}).then((res) => {
+    $('#connexport-pass').value = '';
+    showError('#connexport-error', '');
+    openModal('connexport-overlay');
+  });
+
+  $('#connexport-cancel').addEventListener('click', () => closeModal('connexport-overlay'));
+
+  $('#connexport-run').addEventListener('click', () => {
+    const passphrase = $('#connexport-pass').value;
+    emit('connections:export', { passphrase }).then((res) => {
       const blob = new Blob([res.ini], { type: 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = 'connections.ini';
       a.click();
       URL.revokeObjectURL(a.href);
-      toast('Connessioni esportate (segreti cifrati)');
-    }).catch((err) => toast(err.message, true));
+      closeModal('connexport-overlay');
+      toast(passphrase
+        ? 'Connessioni esportate (segreti cifrati con la passphrase indicata)'
+        : 'Connessioni esportate (segreti cifrati)');
+    }).catch((err) => showError('#connexport-error', err.message));
   });
 
   $('#conn-import-btn').addEventListener('click', () => $('#conn-import-file').click());
