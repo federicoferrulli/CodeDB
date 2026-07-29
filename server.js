@@ -36,6 +36,13 @@ const { createLogger, formatDuration } = require('./backup/lib/logger');
 const { readCatalog, readManifest, sha256File, formatBytes } = require('./backup/lib/util');
 const { notifySlack } = require('./backup/lib/notify');
 
+const { ROOT_PRINCIPAL, rbacOn } = require('./auth/principal');
+const { AppStore } = require('./auth/AppStore');
+const { createEntitlementProvider } = require('./auth/EntitlementProvider');
+const { guardStrategy } = require('./auth/guardStrategy');
+const { isWriteSql, isWriteMongoPipeline, eventCapability } = require('./auth/capabilities');
+const { can, allowedConnections, canUseConnection, canWholeConnection } = require('./auth/permissions');
+
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
 
 // Audit log delle operazioni critiche/di scrittura eseguite dalla Web UI, su un
@@ -311,7 +318,12 @@ function resolveEffectiveCfg(cfg) {
 // Apre tunnel SSH (se richiesto) e connette la strategia. In caso di errore
 // chiude quanto già aperto e rilancia; altrimenti restituisce le risorse
 // aperte, la cui chiusura è a carico del chiamante (teardownConnection).
-async function establishConnection(cfg) {
+//
+// `guardCtx` = { principal, connName }: se presente (e il principal non è
+// root), la strategia restituita è avvolta nel Proxy autorizzante, quindi ogni
+// accesso ai dati che ne deriva — griglia, Query Engine, tool MCP — è già
+// soggetto ai permessi. Con RBAC spento resta null e nulla cambia.
+async function establishConnection(cfg, guardCtx = null) {
   const effective = resolveEffectiveCfg(cfg);
   const dbType = connDbType(effective);
   let tunnel = null;
@@ -335,7 +347,7 @@ async function establishConnection(cfg) {
     }
     const strategy = DbFactory.getStrategy(dbType);
     await strategy.connect(connectCfg);
-    return { strategy, tunnel, effective, dbType };
+    return { strategy: guardStrategy(strategy, guardCtx), tunnel, effective, dbType };
   } catch (err) {
     if (tunnel) try { tunnel.close(); } catch { /* ignora */ }
     throw err;
@@ -413,7 +425,9 @@ async function reconnectSession(sess, maxAttempts = 14) {
 
       try {
         await teardownConnection(sess).catch(() => {});
-        const conn = await establishConnection(sess.effectiveCfg);
+        // Il contesto di autorizzazione va ripassato: senza, la riconnessione
+        // automatica restituirebbe una strategia non protetta dal Proxy.
+        const conn = await establishConnection(sess.effectiveCfg, sess.guardCtx || null);
         sess.strategy = conn.strategy;
         sess.tunnel = conn.tunnel;
         sess.dbType = conn.dbType;
@@ -509,16 +523,9 @@ const AUDIT_READS = {
   'collection:export':    (p) => ({ coll: p.coll, op: 'Export collection/tabella' }),
 };
 
-// Prima parola SQL: riconosce se una query è una scrittura (le letture SELECT
-// restano categorizzate come read).
-const SQL_WRITE_KEYWORDS = /^(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|MERGE|GRANT|REVOKE|RENAME|CALL)\b/i;
-function isWriteSql(code) {
-  return SQL_WRITE_KEYWORDS.test(String(code || '').trim());
-}
-// Pipeline MongoDB che materializza dati (unica forma di scrittura via pipeline).
-function isWriteMongoPipeline(code) {
-  return /"\$out"|"\$merge"/.test(String(code || ''));
-}
+// `isWriteSql` e `isWriteMongoPipeline` vivono in auth/capabilities.js: audit e
+// motore dei permessi devono classificare collection:aggregate esattamente allo
+// stesso modo (SQL Raw di scrittura, pipeline con $out/$merge).
 
 // Tetto dei risultati per il Query Engine (⚡ Query & Aggregate): più alto del
 // default 500 della griglia paginata, così una query esplicita non viene
@@ -636,6 +643,190 @@ let activeGlobalSessions = 0;
 const ipConnections = new Map();
 
 /* ---------------------------------------------------------------------------
+ * Autenticazione e RBAC multi-utente (flag CODEDB_RBAC)
+ *
+ * Spento (default, e sempre nell'app desktop Electron): ogni richiesta viaggia
+ * con ROOT_PRINCIPAL, `can()` risponde sempre true e le strategie non vengono
+ * avvolte — il comportamento è identico a quello storico mono-utente.
+ *
+ * Acceso: serve un control plane MongoDB (CODEDB_APP_DB_URI) con utenti, ruoli,
+ * grant, API key e sessioni. La UI si autentica con un token opaco
+ * (POST /auth/login → handshake Socket.IO), i client MCP con una API key.
+ * ------------------------------------------------------------------------- */
+
+/** @type {import('./auth/AppStore').AppStore|null} */
+let appStore = null;
+let entitlements = null;
+
+function requireStore() {
+  if (!appStore) throw new Error('Control plane non disponibile: RBAC non inizializzato.');
+  return appStore;
+}
+
+// Il principal di una richiesta: con RBAC spento è sempre l'owner locale.
+function principalOf(carrier) {
+  return (carrier && carrier.principal) || ROOT_PRINCIPAL;
+}
+
+async function resolvePrincipalFromToken(token) {
+  if (!rbacOn()) return ROOT_PRINCIPAL;
+  if (!appStore || !token) return null;
+  return appStore.resolveSession(token).catch(() => null);
+}
+
+async function resolvePrincipalFromApiKey(key) {
+  if (!rbacOn()) return ROOT_PRINCIPAL;
+  if (!appStore || !key) return null;
+  return appStore.resolveApiKey(key).catch(() => null);
+}
+
+/** Vista pubblica del principal per il frontend (mai segreti). */
+function principalView(principal) {
+  return {
+    id: principal.id,
+    type: principal.type,
+    email: principal.email,
+    displayName: principal.displayName,
+    owner: !!(principal.owner || principal.root),
+    rbac: rbacOn(),
+    capabilities: principal.capabilities || [],
+    grants: (principal.grants || []).map((g) => ({ connName: g.connName, role: g.role, capabilities: g.capabilities, scope: g.scope })),
+  };
+}
+
+// Solo owner/admin possono gestire utenti, grant e API key del proprio tenant.
+function assertManage(principal) {
+  if (principal.root || principal.owner) return;
+  if (!can(principal, { capability: 'manage' })) {
+    throw new Error('Permesso negato: operazione riservata all\'amministratore dell\'account.');
+  }
+}
+
+/**
+ * Autorizza l'apertura (o il test) di una connessione al database.
+ * - connessione salvata → serve un grant su quel nome;
+ * - connessione "a mano" o salvataggio di una nuova (saveAs) → serve `manage`,
+ *   perché significa introdurre credenziali nuove nell'istanza.
+ */
+function assertConnAllowed(principal, cfg, connName) {
+  if (principal.root) return;
+  if (String((cfg && cfg.saveAs) || '').trim()) {
+    assertManage(principal);
+    return;
+  }
+  if (!connName) {
+    if (!principal.owner) {
+      throw new Error('Permesso negato: puoi aprire solo le connessioni salvate assegnate al tuo utente.');
+    }
+    return;
+  }
+  if (!canUseConnection(principal, connName)) {
+    throw new Error(`Permesso negato: nessun accesso alla connessione "${connName}".`);
+  }
+}
+
+/**
+ * Autorizza un'operazione che agisce sull'intera connessione senza passare dai
+ * metodi della strategia (backup): serve la capability e nessuno scope, perché
+ * su questo percorso lo scope non sarebbe applicabile.
+ */
+function assertWholeConnection(principal, connName, capability, what) {
+  if (principal.root) return;
+  if (!canWholeConnection(principal, connName, capability)) {
+    throw new Error(`Permesso negato: non hai i privilegi per ${what} su questa connessione.`);
+  }
+}
+
+// Freno agli attacchi a forza bruta sul login: 5 tentativi falliti per IP, poi
+// un minuto di attesa. In memoria: sufficiente per un'istanza singola.
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCK_MS = 60 * 1000;
+const loginAttempts = new Map();
+
+function loginBlocked(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry) return false;
+  if (Date.now() - entry.last > LOGIN_LOCK_MS) {
+    loginAttempts.delete(ip);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_ATTEMPTS;
+}
+
+function noteLoginFailure(ip) {
+  const entry = loginAttempts.get(ip) || { count: 0, last: 0 };
+  entry.count += 1;
+  entry.last = Date.now();
+  loginAttempts.set(ip, entry);
+}
+
+// Login/logout via HTTP (non via socket): così il gate dell'handshake resta una
+// regola secca — nessun evento è raggiungibile senza essere già autenticati.
+app.post('/auth/login', express.json({ limit: '16kb' }), async (req, res) => {
+  if (!rbacOn()) {
+    res.json({ ok: true, rbac: false, token: null, user: principalView(ROOT_PRINCIPAL) });
+    return;
+  }
+  const ip = req.ip || (req.socket && req.socket.remoteAddress) || 'unknown';
+  if (loginBlocked(ip)) {
+    res.status(429).json({ ok: false, error: 'Troppi tentativi di accesso falliti: riprova tra un minuto.' });
+    return;
+  }
+  const email = String((req.body && req.body.email) || '').trim();
+  const password = String((req.body && req.body.password) || '');
+  try {
+    // Prima l'owner (identità verificata dall'Entitlement Provider, cioè dal
+    // sistema di billing in SaaS), poi i sottoutenti locali del control plane.
+    let user = await entitlements.verifyOwner({ email, password });
+    if (!user) user = await appStore.verifySubUser(email, password);
+    if (!user) {
+      noteLoginFailure(ip);
+      res.status(401).json({ ok: false, error: 'Email o password non validi.' });
+      return;
+    }
+    loginAttempts.delete(ip);
+    const token = await appStore.createSession(user);
+    const principal = await appStore.principalFor(user);
+    auditUi({ event: 'auth:login', category: 'write', status: 'ok', op: 'Accesso utente', user: principal.email, client: ip });
+    res.json({ ok: true, rbac: true, token, user: principalView(principal) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: errMsg(err) });
+  }
+});
+
+app.post('/auth/logout', express.json({ limit: '16kb' }), async (req, res) => {
+  const token = String((req.body && req.body.token) || '') || bearerToken(req);
+  if (rbacOn() && appStore) await appStore.deleteSession(token).catch(() => {});
+  res.json({ ok: true });
+});
+
+function bearerToken(req) {
+  const raw = String(req.headers.authorization || '');
+  const m = raw.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+
+// Gate dell'handshake Socket.IO: nessun evento viene registrato prima che il
+// principal sia noto. È l'unico punto d'ingresso della UI.
+io.use(async (socket, next) => {
+  if (!rbacOn()) {
+    socket.principal = ROOT_PRINCIPAL;
+    next();
+    return;
+  }
+  const auth = socket.handshake.auth || {};
+  const principal = auth.apiKey
+    ? await resolvePrincipalFromApiKey(auth.apiKey)
+    : await resolvePrincipalFromToken(auth.token);
+  if (!principal) {
+    next(new Error('auth_required'));
+    return;
+  }
+  socket.principal = principal;
+  next();
+});
+
+/* ---------------------------------------------------------------------------
  * Gateway MCP: espone i tools di sola lettura per i client AI sull'endpoint
  * /mcp (Streamable HTTP). Riusa le connessioni salvate e il ciclo di vita
  * delle sessioni di questo file; il budget globale è condiviso coi socket.
@@ -657,6 +848,12 @@ const mcpControl = attachMcp(app, {
   },
   establishConnection,
   teardownConnection,
+  // Autenticazione dei client MCP: con RBAC acceso ogni richiesta deve portare
+  // una API key valida (Authorization: Bearer …), che risolve nel principal i
+  // cui grant limitano poi connessioni, database e operazioni.
+  rbacOn,
+  resolveApiKey: resolvePrincipalFromApiKey,
+  allowedConnections,
   maxDbSessions: MAX_SESSIONS_PER_SOCKET,
   tryAcquireGlobalSession: () => {
     if (activeGlobalSessions >= MAX_GLOBAL_SESSIONS) return false;
@@ -689,6 +886,10 @@ io.on('connection', (socket) => {
     return;
   }
   ipConnections.set(ip, currentSocketsForIp + 1);
+
+  // Chi è l'utente di questo socket: risolto dal gate dell'handshake (io.use).
+  // Con RBAC spento è l'owner locale e nessun controllo ha effetto.
+  const principal = principalOf(socket);
 
   /** @type {Map<string, { strategy: import('./db/DbStrategy'), tunnel: { close: () => void }|null }>} */
   const sessions = new Map();
@@ -740,6 +941,14 @@ io.on('connection', (socket) => {
       // Classificazione (scrittura/lettura/non tracciato) per l'audit: dipende
       // da evento, payload e strategia (vedi collection:aggregate).
       const cls = classifyAudit(event, payload, sess);
+      // Pre-check dei permessi: il Proxy autorizzante sulla strategia coprirebbe
+      // comunque l'operazione, ma qui l'errore arriva prima di toccare il DB e
+      // nomina l'evento richiesto.
+      const capability = eventCapability(event, payload, sess);
+      if (!can(principal, { connName: sess.connName, capability, db: payload.db, coll: payload.coll })) {
+        cb({ ok: false, error: `Permesso negato: non hai i privilegi per l'operazione "${event}" su questa connessione.` });
+        return;
+      }
       // Query annullabili della griglia: se il payload porta un runId, registra
       // un opHandle in sess.inflight così `query:cancel` può fermare la lettura
       // in corso (killOp / KILL QUERY / pg_cancel_backend — nessuna modifica ai
@@ -783,19 +992,27 @@ io.on('connection', (socket) => {
     if (!sessions.has(tabId) && activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
       throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
     }
+    // Nome della connessione salvata: è la chiave su cui poggiano i permessi,
+    // quindi va risolto PRIMA di aprire qualsiasi cosa.
+    const connName = String(cfg.saved || cfg.saveAs || '').trim() || null;
+    assertConnAllowed(principal, cfg, connName);
+    const guardCtx = { principal, connName };
+
     // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
     await closeSession(tabId);
-    const conn = await establishConnection(cfg);
+    const conn = await establishConnection(cfg, guardCtx);
     sessions.set(tabId, {
       tabId,
       strategy: conn.strategy,
       tunnel: conn.tunnel,
       dbType: conn.dbType,
       effectiveCfg: conn.effective,
+      principal,
+      guardCtx,
       // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
       // in UI, nome della connessione salvata (se noto) e IP del client.
       label: connLabel(conn.effective),
-      connName: String(cfg.saved || cfg.saveAs || '').trim() || null,
+      connName,
       ip,
     });
     activeGlobalSessions++;
@@ -829,13 +1046,15 @@ io.on('connection', (socket) => {
   // Prova una configurazione (o una connessione salvata) senza tenere aperto
   // nulla: connect + listDatabases + disconnect. Serve al pulsante "Testa".
   safeOn('connections:test', async (cfg, cb) => {
+    const connName = String(cfg.saved || cfg.saveAs || '').trim() || null;
+    assertConnAllowed(principal, cfg, connName);
     if (activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
       throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
     }
     activeGlobalSessions++;
     let conn = null;
     try {
-      conn = await establishConnection(cfg);
+      conn = await establishConnection(cfg, { principal, connName });
       const databases = await conn.strategy.listDatabases();
       cb({ ok: true, dbType: conn.dbType, label: connLabel(conn.effective), databases: databases.length });
     } finally {
@@ -851,6 +1070,9 @@ io.on('connection', (socket) => {
   });
 
   safeOn('vault:unlock', ({ passphrase }, cb) => {
+    // Sbloccare il vault significa provare una passphrase globale dell'istanza:
+    // riservato all'amministratore dell'account.
+    assertManage(principal);
     cb(tryUnlockVault(passphrase || ''));
   });
 
@@ -858,8 +1080,11 @@ io.on('connection', (socket) => {
   // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
   safeOn('connections:list', (_payload, cb) => {
-    const connections = Object.entries(loadConnections())
-      .map(([name, c]) => ({ name, label: connLabel(c), dbType: connDbType(c), folder: c.folder || '' }));
+    const all = loadConnections();
+    // Un sottoutente vede soltanto le connessioni su cui ha un grant.
+    const visible = allowedConnections(principal, Object.keys(all));
+    const connections = visible
+      .map((name) => ({ name, label: connLabel(all[name]), dbType: connDbType(all[name]), folder: all[name].folder || '' }));
     cb({ ok: true, connections });
   });
 
@@ -946,6 +1171,7 @@ io.on('connection', (socket) => {
   });
 
   safeOn('connections:delete', ({ name }, cb) => {
+    assertManage(principal);
     const conns = loadConnections();
     if (!conns[name]) throw new Error(`Connessione salvata "${name}" non trovata.`);
     delete conns[name];
@@ -956,6 +1182,9 @@ io.on('connection', (socket) => {
   // Campi di una connessione salvata per popolarne il form di modifica.
   // La password non viene mai rimandata al browser: si segnala solo se esiste.
   safeOn('connections:get', ({ name }, cb) => {
+    if (!canUseConnection(principal, String(name || ''))) {
+      throw new Error(`Permesso negato: nessun accesso alla connessione "${name}".`);
+    }
     const conn = loadConnections()[name];
     if (!conn) throw new Error(`Connessione salvata "${name}" non trovata.`);
     const fields = { ...conn };
@@ -969,6 +1198,7 @@ io.on('connection', (socket) => {
   // diverso da name, rinomina la connessione. Password vuota nel form =
   // mantieni quella già salvata.
   safeOn('connections:save', ({ name, oldName, cfg }, cb) => {
+    assertManage(principal);
     name = String(name || '').trim();
     assertConnName(name);
     const conns = loadConnections();
@@ -999,6 +1229,7 @@ io.on('connection', (socket) => {
   // installazione (comportamento storico). I segreti sono comunque decifrati in
   // memoria da loadConnections e ri-cifrati qui, mai trasmessi in chiaro.
   safeOn('connections:export', ({ passphrase } = {}, cb) => {
+    assertManage(principal);
     const conns = loadConnections();
     if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
     const pass = passphrase == null ? '' : String(passphrase);
@@ -1010,6 +1241,7 @@ io.on('connection', (socket) => {
   // Importa connessioni da un file .ini: le sezioni con lo stesso nome di una
   // connessione esistente vengono sovrascritte, le altre aggiunte.
   safeOn('connections:import', ({ ini }, cb) => {
+    assertManage(principal);
     const incoming = parseIni(String(ini || ''));
     const names = Object.keys(incoming);
     if (!names.length) throw new Error('Nessuna connessione trovata nel file importato.');
@@ -1038,6 +1270,130 @@ io.on('connection', (socket) => {
     if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
     saveConnections(conns);
     cb({ ok: true, imported, overwritten });
+  });
+
+  // --- Utenti, permessi e API key (solo con RBAC attivo) ---------------------
+  // Riservati a owner/admin del tenant; i limiti del piano (quanti sottoutenti)
+  // arrivano dall'Entitlement Provider, cioè dal billing in modalità SaaS.
+
+  function requireRbac() {
+    if (!rbacOn()) throw new Error('Gestione utenti non disponibile: CODEDB_RBAC non è attivo su questa istanza.');
+    return requireStore();
+  }
+
+  safeOn('auth:me', (_payload, cb) => {
+    cb({ ok: true, user: principalView(principal) });
+  });
+
+  safeOn('roles:list', async (_payload, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const roles = await store.listRoles(principal.ownerId);
+    cb({ ok: true, roles: roles.map((r) => ({ name: r.name, capabilities: r.capabilities, builtIn: !!r.builtIn })) });
+  });
+
+  safeOn('users:list', async (_payload, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const [users, limits] = await Promise.all([
+      store.listSubUsers(principal.ownerId),
+      entitlements.getLimits(principal.ownerId),
+    ]);
+    cb({
+      ok: true,
+      users: users.map((u) => ({ id: u._id, email: u.email, displayName: u.displayName, status: u.status, createdAt: u.createdAt })),
+      limits: { maxSubUsers: limits.maxSubUsers === Infinity ? null : limits.maxSubUsers, plan: limits.plan },
+    });
+  });
+
+  safeOn('users:create', async ({ email, password, displayName }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const limits = await entitlements.getLimits(principal.ownerId);
+    const current = await store.countSubUsers(principal.ownerId);
+    if (current >= limits.maxSubUsers) {
+      throw new Error(`Il tuo piano consente al massimo ${limits.maxSubUsers} sottoutenti: elimina un utente esistente o passa a un piano superiore.`);
+    }
+    const user = await store.createSubUser({ ownerId: principal.ownerId, email, password, displayName });
+    await entitlements.reportUsage(principal.ownerId, 'subusers', current + 1).catch(() => {});
+    auditUi({ event: 'users:create', category: 'write', status: 'ok', op: 'Creazione sottoutente', user: principal.email, target: user.email });
+    cb({ ok: true, user: { id: user._id, email: user.email, displayName: user.displayName, status: user.status } });
+  });
+
+  safeOn('users:update', async ({ id, status, displayName, password }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
+    auditUi({ event: 'users:update', category: 'write', status: 'ok', op: 'Modifica sottoutente', user: principal.email, target: String(id) });
+    cb({ ok: true });
+  });
+
+  safeOn('users:delete', async ({ id }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    await store.deleteSubUser(principal.ownerId, id);
+    auditUi({ event: 'users:delete', category: 'write', status: 'ok', op: 'Eliminazione sottoutente', user: principal.email, target: String(id) });
+    cb({ ok: true });
+  });
+
+  safeOn('grants:list', async (_payload, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const grants = await store.listGrants(principal.ownerId);
+    cb({ ok: true, grants: grants.map((g) => ({ subjectId: g.subjectId, connName: g.connName, role: g.role, scope: g.scope || null })) });
+  });
+
+  safeOn('grants:set', async ({ subjectId, connName, role, scope }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    // Non si può concedere l'accesso a una connessione che non esiste: sarebbe
+    // un permesso silenziosamente inefficace.
+    if (!loadConnections()[String(connName || '').trim()]) {
+      throw new Error(`Connessione salvata "${connName}" non trovata.`);
+    }
+    const grant = await store.setGrant({ ownerId: principal.ownerId, subjectId, connName, role, scope });
+    auditUi({ event: 'grants:set', category: 'write', status: 'ok', op: 'Assegnazione permessi', user: principal.email, target: String(subjectId), connection: grant.connName, role: grant.role });
+    cb({ ok: true, grant: { subjectId: grant.subjectId, connName: grant.connName, role: grant.role, scope: grant.scope } });
+  });
+
+  safeOn('grants:revoke', async ({ subjectId, connName }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const res = await store.revokeGrant(principal.ownerId, subjectId, connName);
+    auditUi({ event: 'grants:revoke', category: 'write', status: 'ok', op: 'Revoca permessi', user: principal.email, target: String(subjectId), connection: String(connName) });
+    cb({ ok: true, ...res });
+  });
+
+  safeOn('apikeys:list', async (_payload, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const keys = await store.listApiKeys(principal.ownerId);
+    cb({
+      ok: true,
+      keys: keys.map((k) => ({ id: k._id, subjectId: k.subjectId, label: k.label, prefix: k.prefix, connScope: k.connScope, createdAt: k.createdAt, lastUsedAt: k.lastUsedAt })),
+    });
+  });
+
+  // La chiave in chiaro esiste solo in questa risposta: in DB ne resta l'hash.
+  safeOn('apikeys:create', async ({ subjectId, label, connScope }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    const created = await store.createApiKey({
+      ownerId: principal.ownerId,
+      subjectId: subjectId || principal.id,
+      label,
+      connScope,
+    });
+    auditUi({ event: 'apikeys:create', category: 'write', status: 'ok', op: 'Creazione API key', user: principal.email, target: created.subjectId, label: created.label });
+    cb({ ok: true, key: created.key, apiKey: { id: created._id, subjectId: created.subjectId, label: created.label, prefix: created.prefix, connScope: created.connScope } });
+  });
+
+  safeOn('apikeys:revoke', async ({ id }, cb) => {
+    const store = requireRbac();
+    assertManage(principal);
+    await store.revokeApiKey(principal.ownerId, id);
+    auditUi({ event: 'apikeys:revoke', category: 'write', status: 'ok', op: 'Revoca API key', user: principal.email, target: String(id) });
+    cb({ ok: true });
   });
 
   // --- Esplorazione e gestione database (delegati alla strategia) ------------
@@ -1373,6 +1729,10 @@ io.on('connection', (socket) => {
     const tabId = normTabId(payload.tabId);
     const sess = sessions.get(tabId);
     if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    // Il motore di backup legge dal driver nativo (strategy.client/pool), fuori
+    // dalla portata del Proxy autorizzante: qui si pretende quindi la lettura
+    // sull'INTERA connessione, senza scope db/collezione.
+    assertWholeConnection(principal, sess.connName, 'read', 'eseguire un backup');
     const db = String(payload.db || '').trim();
     if (!db) throw new Error('Nome database mancante.');
     const type = String(payload.type || 'full').toLowerCase();
@@ -1412,6 +1772,7 @@ io.on('connection', (socket) => {
   });
 
   safeOn('backup:list', ({ dest }, cb) => {
+    assertManage(principal);
     const destRoot = path.resolve(dest || BACKUP_ROOT);
     const groups = {};
     if (fs.existsSync(destRoot)) {
@@ -1428,6 +1789,8 @@ io.on('connection', (socket) => {
     const tabId = normTabId(payload.tabId);
     const sess = sessions.get(tabId);
     if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    // Il restore riscrive interi database: operazione da amministratore.
+    assertManage(principal);
 
     let backupDir = payload.from ? path.resolve(payload.from) : null;
     if (!backupDir && payload.group && payload.backupId) {
@@ -1470,6 +1833,7 @@ io.on('connection', (socket) => {
   });
 
   safeOn('backup:verify', async (payload, cb) => {
+    assertManage(principal);
     let backupDir = payload.from ? path.resolve(payload.from) : null;
     if (!backupDir && payload.group && payload.backupId) {
       const group = String(payload.group).trim();
@@ -1549,6 +1913,11 @@ async function gracefulShutdown(signal) {
       await mcpControl.shutdownMcp().catch((err) => {
         console.error('[Shutdown] Errore durante la chiusura MCP:', err.message);
       });
+    }
+
+    if (appStore) {
+      console.log('[Shutdown] Chiusura connessione al control plane RBAC...');
+      await appStore.close().catch(() => {});
     }
 
     if (io && io.sockets && io.sockets.sockets) {
@@ -1631,6 +2000,21 @@ async function startServer() {
     const res = tryUnlockVault(passphrase);
     if (!res.ok) {
       console.error('Passphrase errata fornita via GUI_MONGO_PASSPHRASE: i segreti non si decifrano.');
+      process.exit(1);
+    }
+  }
+
+  // Control plane RBAC: obbligatorio quando il flag è acceso. Un fallimento qui
+  // è fatale (come la passphrase errata): meglio non partire che partire senza
+  // il livello di autorizzazione che ci si aspetta.
+  if (rbacOn()) {
+    try {
+      appStore = await new AppStore().connect();
+      entitlements = createEntitlementProvider(appStore);
+      const owner = await entitlements.bootstrap();
+      console.log(`[RBAC] Control plane pronto (${appStore.dbName}); owner: ${owner.email} (provider: ${entitlements.name}).`);
+    } catch (err) {
+      console.error(`[RBAC] Impossibile inizializzare il control plane: ${errMsg(err)}`);
       process.exit(1);
     }
   }

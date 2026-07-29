@@ -317,6 +317,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 13: Esecuzione test unitari su Lifecycle & Graceful Shutdown
   require('./unit-lifecycle');
 
+  // Test 14: Esecuzione test unitari su RBAC (permessi, Proxy, gate MCP)
+  require('./unit-rbac');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

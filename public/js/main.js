@@ -20,6 +20,7 @@ import { initLive } from './live.js';
 import { initResponsive } from './responsive.js';
 import { initExportImport } from './exportimport.js';
 import { initVault } from './vault.js';
+import { initAuth } from './auth.js';
 import { initQueryTab, loadQueryTab } from './query-tab.js';
 import { initBackupManager } from './backupmanager.js';
 import { initAuditLog } from './auditlog.js';
@@ -134,6 +135,9 @@ function initHeaderMoreMenu() {
   window.addEventListener('scroll', () => menu.classList.add('hidden'), true);
 }
 
+// Per primo: con RBAC attivo la schermata di accesso deve comparire prima che
+// gli altri moduli inizino a parlare col server.
+initAuth();
 initUml();
 initGraph3d();
 initConnection();

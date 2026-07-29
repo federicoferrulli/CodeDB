@@ -34,6 +34,14 @@ const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 const { createLogger } = require('../backup/lib/logger');
 const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
+const { ROOT_PRINCIPAL } = require('../auth/principal');
+const { canUseConnection, canWholeConnection } = require('../auth/permissions');
+
+// Principal della sessione MCP: risolto dalla API key nell'handshake HTTP.
+// Con RBAC spento resta l'owner locale e nessun controllo ha effetto.
+function sessionPrincipal(session) {
+  return (session && session.principal) || ROOT_PRINCIPAL;
+}
 
 const MCP_PATH = '/mcp';
 // Radice dei backup creati via MCP: la stessa della CLI (backup/cli.js),
@@ -528,15 +536,20 @@ function buildMcpServer(session, deps) {
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => {
-    const connections = Object.entries(deps.loadConnections())
-      .map(([name, c]) => ({
-        name,
-        dbType: deps.connDbType(c),
-        label: deps.connLabel(c),
-        folder: c.folder || '',
-        // Scritture consentite solo con readOnly=false esplicito nel .ini.
-        readOnly: String(c.readOnly || '').trim().toLowerCase() !== 'false',
-      }));
+    const all = deps.loadConnections();
+    // Con RBAC attivo l'AI vede solo le connessioni concesse al soggetto della
+    // API key (grant ∩ connScope della chiave).
+    const visible = deps.allowedConnections
+      ? deps.allowedConnections(sessionPrincipal(session), Object.keys(all))
+      : Object.keys(all);
+    const connections = visible.map((name) => ({
+      name,
+      dbType: deps.connDbType(all[name]),
+      label: deps.connLabel(all[name]),
+      folder: all[name].folder || '',
+      // Scritture consentite solo con readOnly=false esplicito nel .ini.
+      readOnly: String(all[name].readOnly || '').trim().toLowerCase() !== 'false',
+    }));
     return jsonResult({ connections });
   });
 
@@ -551,15 +564,22 @@ function buildMcpServer(session, deps) {
     },
     annotations: { openWorldHint: false },
   }, async ({ saved }) => {
+    if (!canUseConnection(sessionPrincipal(session), String(saved || ''))) {
+      throw new Error(`Permesso negato: la API key usata non ha accesso alla connessione "${saved}".`);
+    }
     if (session.dbSessions.size >= deps.maxDbSessions) {
       throw new Error(`Raggiunto il limite di ${deps.maxDbSessions} connessioni per questa sessione MCP: chiudine una con disconnect_database.`);
     }
     if (!deps.tryAcquireGlobalSession()) {
       throw new Error('Raggiunto il limite globale di connessioni al database: riprova più tardi.');
     }
+    const connName = String(saved || '');
     let conn;
     try {
-      conn = await deps.establishConnection({ saved: String(saved || '') });
+      // La strategia torna già avvolta nel Proxy autorizzante: da qui in poi
+      // ogni tool è soggetto ai permessi del soggetto della API key, senza
+      // controlli sparsi tool per tool.
+      conn = await deps.establishConnection({ saved: connName }, { principal: sessionPrincipal(session), connName });
     } catch (err) {
       deps.releaseGlobalSession();
       throw err;
@@ -1007,6 +1027,11 @@ function buildMcpServer(session, deps) {
   }, async (args) => {
     const name = String(args.connection_name || '').trim();
     if (!name) throw new Error('Parametro "connection_name" mancante.');
+    // Modifica connections.ini: è amministrazione dell'istanza, non un accesso
+    // ai dati, quindi richiede la capability `manage`.
+    if (!canWholeConnection(sessionPrincipal(session), name, 'manage')) {
+      throw new Error(`Permesso negato: la API key usata non può modificare la configurazione della connessione "${name}".`);
+    }
     sweepPendingWrites();
     const auditBase = { sessionId: session.id, connection: name, operation: 'set_connection_read_only' };
 
@@ -1076,6 +1101,12 @@ function buildMcpServer(session, deps) {
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async (args) => {
     const sess = requireDbSession(args.connection_id);
+    // Il motore di backup legge dal driver nativo, fuori dalla portata del
+    // Proxy autorizzante: serve la lettura sull'intera connessione (nessuno
+    // scope db/collezione), come per l'evento backup:run della UI.
+    if (!canWholeConnection(sessionPrincipal(session), sess.name, 'read')) {
+      throw new Error(`Permesso negato: la API key usata non può eseguire backup della connessione "${sess.name}".`);
+    }
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
     const type = String(args.type || 'full').toLowerCase();
@@ -1211,6 +1242,11 @@ function buildMcpServer(session, deps) {
     const sess = requireDbSession(args.connection_id);
     if (!sess.writesAllowed) {
       throw new Error(`La connessione "${sess.name}" è in sola lettura: il restore scrive sul database e richiede readOnly=false in connections.ini (vedi set_connection_read_only).`);
+    }
+    // Il restore riscrive interi database e usa anche il driver nativo:
+    // richiede `manage` sull'intera connessione.
+    if (!canWholeConnection(sessionPrincipal(session), sess.name, 'manage')) {
+      throw new Error(`Permesso negato: la API key usata non può ripristinare backup sulla connessione "${sess.name}".`);
     }
     // Il percorso è ricostruito da componenti validati: niente path traversal.
     const group = String(args.group || '').trim();
@@ -1483,12 +1519,42 @@ function attachMcp(app, deps) {
     return { jsonrpc: '2.0', error: { code, message }, id: null };
   }
 
+  // Autenticazione dei client MCP. Con RBAC acceso ogni richiesta deve portare
+  // una API key valida (`Authorization: Bearer cdb_…`, oppure header
+  // `x-api-key`): senza, /mcp resterebbe un ingresso non autenticato accanto
+  // alla UI protetta. Con RBAC spento la funzione restituisce l'owner locale e
+  // il comportamento è quello storico.
+  function apiKeyFromRequest(req) {
+    const auth = String(req.headers.authorization || '');
+    const m = auth.match(/^Bearer\s+(.+)$/i);
+    if (m) return m[1].trim();
+    return String(req.headers['x-api-key'] || '').trim();
+  }
+
+  async function authenticate(req, res) {
+    if (!deps.rbacOn || !deps.rbacOn()) return ROOT_PRINCIPAL;
+    const principal = await deps.resolveApiKey(apiKeyFromRequest(req));
+    if (!principal) {
+      res.status(401).json(rpcError(-32000, 'API key mancante o non valida: passa "Authorization: Bearer <api key>" (creala dal pannello di amministrazione di CodeDB).'));
+      return null;
+    }
+    return principal;
+  }
+
   app.post(MCP_PATH, express.json({ limit: '5mb' }), async (req, res) => {
     if (!guardHost(req, res)) return;
+    const principal = await authenticate(req, res);
+    if (!principal) return;
     try {
       const sid = req.headers['mcp-session-id'];
       const existing = sid ? mcpSessions.get(String(sid)) : undefined;
       if (existing) {
+        // Una sessione MCP appartiene al soggetto che l'ha aperta: una API key
+        // diversa non può proseguirla (né ereditarne le connessioni aperte).
+        if (sessionPrincipal(existing).id !== principal.id) {
+          res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente: reinizializza la connessione.'));
+          return;
+        }
         existing.lastActivity = Date.now();
         await existing.transport.handleRequest(req, res, req.body);
         return;
@@ -1504,7 +1570,7 @@ function attachMcp(app, deps) {
 
       // Nuova sessione: un McpServer e un transport dedicati, registrati
       // nella mappa quando l'SDK assegna il session id.
-      const session = { id: null, transport: null, dbSessions: new Map(), pendingWrites: new Map(), lastActivity: Date.now(), destroyed: false };
+      const session = { id: null, transport: null, principal, dbSessions: new Map(), pendingWrites: new Map(), lastActivity: Date.now(), destroyed: false };
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
         enableJsonResponse: true, // risposte JSON semplici: nessun push server→client
@@ -1526,10 +1592,16 @@ function attachMcp(app, deps) {
   // protocollo), DELETE = terminazione esplicita della sessione.
   const handleSessionRequest = async (req, res) => {
     if (!guardHost(req, res)) return;
+    const principal = await authenticate(req, res);
+    if (!principal) return;
     const sid = req.headers['mcp-session-id'];
     const session = sid ? mcpSessions.get(String(sid)) : undefined;
     if (!session) {
       res.status(400).json(rpcError(-32000, 'Sessione MCP non valida o scaduta.'));
+      return;
+    }
+    if (sessionPrincipal(session).id !== principal.id) {
+      res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente.'));
       return;
     }
     session.lastActivity = Date.now();
