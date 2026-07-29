@@ -3146,6 +3146,27 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 }
 
 /* Storico Azioni (Audit Log) */
+/* Il modale Storico Azioni deve stare in una finestra ad altezza fissa:
+   header, filtri e paginazione restano ancorati, scorre solo la lista. */
+#modal-audit-log .modal.modal-lg {
+  height: 80vh;
+  min-height: 440px;
+  max-height: 840px;
+  display: flex;
+  flex-direction: column;
+}
+#modal-audit-log .modal-header,
+#modal-audit-log .modal-hint,
+#modal-audit-log .audit-toolbar,
+#modal-audit-log .audit-pager {
+  flex-shrink: 0;
+}
+#modal-audit-log #audit-log-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .audit-toolbar {
   flex-wrap: wrap;
   gap: 10px;
