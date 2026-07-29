@@ -144,6 +144,13 @@ class DbStrategy {
    * @returns {Promise<{ latencyMs: number, pool: { limit, total, idle, active, waiting }|null, extra?: object }>}
    */
   async health() { throw unsupported(); }
+
+  /**
+   * Annulla una query in corso indicata dall'opHandle.
+   * @param {object} _opHandle
+   * @returns {Promise<{ cancelled: boolean }>}
+   */
+  async cancelQuery(_opHandle) { return { cancelled: false }; }
 }
 
 /* ---------------------------------------------------------------------------

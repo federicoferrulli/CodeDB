@@ -2,6 +2,7 @@
 
 import { socket } from './socket.js';
 import { safeUUID } from './utils.js';
+import { markAbandonedByTab } from './pending-queries.js';
 
 // Registro dei tab di connessione. Ogni tab ha un proprio `state` (la forma
 // storica dell'oggetto globale) e una sessione dedicata lato server, indicata
@@ -89,6 +90,7 @@ export function switchTab(id) {
 }
 
 export function closeTab(id) {
+  markAbandonedByTab(id);
   const i = tabs.list.findIndex((t) => t.id === id);
   if (i < 0) return;
   const [tab] = tabs.list.splice(i, 1);

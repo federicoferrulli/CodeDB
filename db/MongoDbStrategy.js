@@ -582,7 +582,10 @@ class MongoDbStrategy extends DbStrategy {
 
     const collection = client.db(db).collection(coll);
     await this.promoteFilterObjectIds(collection, filter);
-    const cursor = collection.find(filter, { projection }).sort(sort).skip(skip).limit(limit);
+    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
+    const findOpts = { projection };
+    if (runComment) findOpts.comment = runComment;
+    const cursor = collection.find(filter, findOpts).sort(sort).skip(skip).limit(limit);
 
     // Il conteggio con filtro è una scansione completa: su collection enormi
     // bloccherebbe la griglia. Il client della UI passa `deferCount` e recupera
@@ -645,14 +648,42 @@ class MongoDbStrategy extends DbStrategy {
     const pipeline = parseQueryObject(payload.pipeline, []);
     if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
     const cap = DbStrategy.resultCap(payload);
+    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
+    const aggOpts = {};
+    if (runComment) aggOpts.comment = runComment;
+
     const docs = await client
       .db(db)
       .collection(coll)
-      .aggregate(pipeline)
+      .aggregate(pipeline, aggOpts)
       .limit(cap)
       .toArray();
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
     return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap };
+  }
+
+  async cancelQuery(opHandle) {
+    if (!opHandle || !opHandle.runId || !this.client) return { cancelled: false };
+    try {
+      const admin = this.client.db('admin');
+      const ops = await admin.aggregate([
+        { $currentOp: { allUsers: true, idleConnections: false } },
+        { $match: { $or: [{ "command.comment": opHandle.runId }, { comment: opHandle.runId }] } }
+      ]).toArray();
+
+      if (!ops || ops.length === 0) return { cancelled: false };
+
+      let cancelled = false;
+      for (const op of ops) {
+        if (op.opid !== undefined) {
+          await admin.command({ killOp: 1, op: op.opid }).catch(() => {});
+          cancelled = true;
+        }
+      }
+      return { cancelled };
+    } catch (err) {
+      return { cancelled: false };
+    }
   }
 
   // Piano di esecuzione: explain() sul find o sull'aggregate corrente,

@@ -1,6 +1,8 @@
 import { state } from './state.js';
-import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid } from './utils.js';
+import { activeTab } from './tabs.js';
+import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
+import { trackPending, markPaused } from './pending-queries.js';
 
 const escapeHtml = esc;
 
@@ -107,6 +109,10 @@ export function initQueryTab() {
 
   if (runBtn) {
     runBtn.addEventListener('click', () => runQuery());
+  }
+
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => cancelActiveQuery());
   }
 
   if (schemaRefreshBtn) {
@@ -526,6 +532,24 @@ function insertTextInEditor(text) {
 
 let selectedQueryDb = null;
 let selectedQueryColl = null;
+let currentRunId = null;
+
+export function cancelActiveQuery() {
+  const stopBtn = $('#query-stop-btn');
+  if (stopBtn) stopBtn.classList.add('hidden');
+
+  if (currentRunId) {
+    const runIdToCancel = currentRunId;
+    currentRunId = null;
+    const curTab = activeTab();
+    const currentTabId = curTab ? curTab.id : undefined;
+    emit('query:cancel', { tabId: currentTabId, runId: runIdToCancel })
+      .catch((err) => console.warn('[QueryTab] Errore invio query:cancel:', err));
+    markPaused(runIdToCancel);
+    updateQueryMetrics('idle');
+    toast('Query annullata dall\'utente');
+  }
+}
 
 // Esecuzione Query (Task 3 runner integration)
 export function runQuery() {
@@ -541,18 +565,45 @@ export function runQuery() {
   const stopBtn = $('#query-stop-btn');
   if (stopBtn) stopBtn.classList.remove('hidden');
 
+  const runId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : (Date.now() + '-' + Math.random().toString(36).slice(2));
+  currentRunId = runId;
+
+  const curTab = activeTab();
+  const currentTabId = curTab ? curTab.id : undefined;
+  const targetDb = selectedQueryDb || state.db;
+  const targetColl = selectedQueryColl || state.coll;
+  const connName = state.connName || state.connId || 'Default';
+  const collTabId = state.activeCollId || null;
+
+  const pendingHandle = trackPending({
+    runId,
+    code,
+    engine,
+    db: targetDb,
+    coll: targetColl,
+    connName,
+    tabId: currentTabId,
+    collTabId
+  });
+
   // Emissione evento socket query:execute
   emit('query:execute', {
     code,
     engine,
-    db: selectedQueryDb || state.db,
-    coll: selectedQueryColl || state.coll,
-    dbType: state.dbType
+    db: targetDb,
+    coll: targetColl,
+    dbType: state.dbType,
+    tabId: currentTabId,
+    runId
   })
     .then((res) => {
       const elapsed = Math.round(performance.now() - executionStartTime);
       if (stopBtn) stopBtn.classList.add('hidden');
+      if (currentRunId === runId) currentRunId = null;
 
+      pendingHandle.done(res, elapsed);
       const rows = res.data || res.docs || res.rows || [];
       updateQueryMetrics('success', elapsed, rows.length);
       renderResults(rows);
@@ -560,7 +611,9 @@ export function runQuery() {
     .catch((err) => {
       const elapsed = Math.round(performance.now() - executionStartTime);
       if (stopBtn) stopBtn.classList.add('hidden');
+      if (currentRunId === runId) currentRunId = null;
 
+      pendingHandle.fail(err, elapsed);
       updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
       renderResults([]);
     });

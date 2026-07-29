@@ -30,6 +30,7 @@
     "test:e2e:backup-mysql": "node test/e2e-backup-mysql.js",
     "test:e2e:export": "node test/e2e-dbexport.js",
     "test:e2e:query": "node test/e2e-query-engine.js",
+    "test:e2e:cancel": "node test/e2e-query-cancel.js",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh"
   },

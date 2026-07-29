@@ -8,6 +8,7 @@ import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
 import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView } from './splitview.js';
+import { markAbandonedByCollTab } from './pending-queries.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
 // connessione (t.state.collTabs). Ogni coll-tab ha uno snapshot di query,
@@ -157,6 +158,7 @@ export function switchCollTab(id) {
 }
 
 export function closeCollTab(id) {
+  markAbandonedByCollTab(id);
   const t = activeTab();
   if (!t) return;
   const list = t.state.collTabs;

@@ -1071,138 +1071,206 @@ io.on('connection', (socket) => {
       throw new Error('Nessuna connessione attiva al database per questo tab.');
     }
 
-    let { code, engine, db, coll } = payload;
-    const codeStr = String(code || '').trim();
+    if (!session.inflight) session.inflight = new Map();
 
-    if (!codeStr) {
-      throw new Error('Codice query vuoto.');
-    }
+    const runId = payload.runId;
+    const opHandle = { runId };
+    if (runId) session.inflight.set(runId, opHandle);
 
-    // Modalità Cross-DB (Virtual Join)
-    if (engine === 'crossdb' || codeStr.includes('"virtualJoin"')) {
-      let spec;
-      try {
-        spec = JSON.parse(codeStr);
-      } catch (err) {
-        throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
+    try {
+      let { code, engine, db, coll } = payload;
+      const codeStr = String(code || '').trim();
+
+      if (!codeStr) {
+        throw new Error('Codice query vuoto.');
       }
-      try {
-        const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
-        auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'ok', { docs }, null);
-        return cb({ ok: true, docs, data: docs });
-      } catch (err) {
-        auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'error', null, err);
-        throw err;
-      }
-    }
 
-    // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
-    const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
-    const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
-    const targetColl = extractedColl || coll;
-    const targetDb = db || session.strategy.currentDb || 'admin';
-
-    // Modalità SQL (MySQL e PostgreSQL: Strategy Pattern, stesso "SQL Raw").
-    if (engine === 'mysql' || engine === 'postgresql' || DbFactory.isSqlType(session.strategy.type)) {
-      const write = isWriteSql(codeStr);
-      const cat = write ? 'write' : 'read';
-      const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
-      try {
-        const res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS }));
-        auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
-        return cb({ ok: true, ...res, data: res.docs });
-      } catch (err) {
-        auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
-        throw err;
-      }
-    }
-
-    // Modalità NoSQL (MongoDB)
-    if (engine === 'mongodb' || session.strategy.type === 'mongodb') {
-      let res;
-      let cat = 'read';
-      let op = 'Query di lettura (MQL)';
-      // Collection effettivamente interrogata: shell/SQL possono indicarne una
-      // diversa da quella attiva (plan.coll); l'audit deve registrare questa.
-      let queryColl = targetColl;
-      try {
-        if (codeStr.startsWith('[')) {
-          // Pipeline MQL EJSON (scrittura solo con $out/$merge)
-          if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-          assertNoServerJs(safeParseForScan(codeStr));
-          if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
-          else { op = 'Aggregazione (pipeline)'; }
-          res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS }));
-        } else if (codeStr.startsWith('{')) {
-          // MQL Filter JSON: il filtro va passato come payload.filter (stringa),
-          // non come intero payload, altrimenti collectionFind lo ignorerebbe.
-          let parsed;
-          try {
-            parsed = JSON.parse(codeStr);
-          } catch (e) {
-            throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
-          }
-          if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-          assertNoServerJs(parsed);
-          op = 'Query di lettura (filtro MQL)';
-          res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS }));
-        } else {
-          // Né JSON né pipeline: prova la sintassi nativa shell (db.coll.find...)
-          // oppure una SELECT SQL. Entrambe producono lo stesso "plan".
-          let plan = null;
-          let planLabel = '';
-          if (MongoShell.looksLikeShell(codeStr)) {
-            try {
-              plan = MongoShell.translate(codeStr);
-            } catch (e) {
-              throw new Error('Comando shell MongoDB non valido: ' + e.message);
-            }
-            planLabel = 'shell';
-          } else if (SqlToMql.looksLikeSql(codeStr)) {
-            try {
-              plan = SqlToMql.translate(codeStr);
-            } catch (e) {
-              throw new Error('Traduzione SQL→MongoDB non riuscita: ' + e.message);
-            }
-            planLabel = 'SQL→MQL';
-          }
-
-          if (plan) {
-            const collName = plan.coll || targetColl;
-            if (!collName) throw new Error('Collezione non specificata nel comando.');
-            queryColl = collName;
-            if (plan.kind === 'aggregate') {
-              assertNoServerJs(plan.pipeline);
-              op = `Query di lettura (${planLabel} aggregate)`;
-              res = await executeWithReconnect(session, (strat) =>
-                strat.collectionAggregate(targetDb, collName, { pipeline: JSON.stringify(plan.pipeline), maxRows: QUERY_ENGINE_MAX_ROWS }));
-            } else {
-              assertNoServerJs(plan.filter);
-              op = `Query di lettura (${planLabel})`;
-              res = await executeWithReconnect(session, (strat) =>
-                strat.collectionFind(targetDb, collName, {
-                  filter: JSON.stringify(plan.filter),
-                  projection: JSON.stringify(plan.projection),
-                  sort: JSON.stringify(plan.sort),
-                  limit: plan.limit,
-                  skip: plan.skip,
-                  maxRows: QUERY_ENGINE_MAX_ROWS,
-                }));
-            }
-          } else {
-            if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
-            res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: '', maxRows: QUERY_ENGINE_MAX_ROWS }));
-          }
+      // Modalità Cross-DB (Virtual Join)
+      if (engine === 'crossdb' || codeStr.includes('"virtualJoin"')) {
+        let spec;
+        try {
+          spec = JSON.parse(codeStr);
+        } catch (err) {
+          throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
         }
-      } catch (err) {
-        auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'error', null, err);
-        throw err;
+        try {
+          const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
+          auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'ok', { docs }, null);
+          return cb({ ok: true, docs, data: docs });
+        } catch (err) {
+          auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'error', null, err);
+          throw err;
+        }
       }
-      auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'ok', res, null);
-      return cb({ ok: true, ...res, data: res.docs });
+
+      // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
+      const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
+      const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
+      const targetColl = extractedColl || coll;
+      const targetDb = db || session.strategy.currentDb || 'admin';
+
+      // Modalità SQL (MySQL e PostgreSQL: Strategy Pattern, stesso "SQL Raw").
+      if (engine === 'mysql' || engine === 'postgresql' || DbFactory.isSqlType(session.strategy.type)) {
+        const write = isWriteSql(codeStr);
+        const cat = write ? 'write' : 'read';
+        const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
+        try {
+          const res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+          auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
+          return cb({ ok: true, ...res, data: res.docs });
+        } catch (err) {
+          auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
+          throw err;
+        }
+      }
+
+      // Modalità NoSQL (MongoDB)
+      if (engine === 'mongodb' || session.strategy.type === 'mongodb') {
+        let res;
+        let cat = 'read';
+        let op = 'Query di lettura (MQL)';
+        // Collection effettivamente interrogata: shell/SQL possono indicarne una
+        // diversa da quella attiva (plan.coll); l'audit deve registrare questa.
+        let queryColl = targetColl;
+        try {
+          if (codeStr.startsWith('[')) {
+            // Pipeline MQL EJSON (scrittura solo con $out/$merge)
+            if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+            assertNoServerJs(safeParseForScan(codeStr));
+            if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
+            else { op = 'Aggregazione (pipeline)'; }
+            res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+          } else if (codeStr.startsWith('{')) {
+            // MQL Filter JSON: il filtro va passato come payload.filter (stringa),
+            // non come intero payload, altrimenti collectionFind lo ignorerebbe.
+            let parsed;
+            try {
+              parsed = JSON.parse(codeStr);
+            } catch (e) {
+              throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
+            }
+            if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+            assertNoServerJs(parsed);
+            op = 'Query di lettura (filtro MQL)';
+            res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+          } else {
+            // Né JSON né pipeline: prova la sintassi nativa shell (db.coll.find...)
+            // oppure una SELECT SQL. Entrambe producono lo stesso "plan".
+            let plan = null;
+            let planLabel = '';
+            if (MongoShell.looksLikeShell(codeStr)) {
+              try {
+                plan = MongoShell.translate(codeStr);
+              } catch (e) {
+                throw new Error('Comando shell MongoDB non valido: ' + e.message);
+              }
+              planLabel = 'shell';
+            } else if (SqlToMql.looksLikeSql(codeStr)) {
+              try {
+                plan = SqlToMql.translate(codeStr);
+              } catch (e) {
+                throw new Error('Traduzione SQL→MongoDB non riuscita: ' + e.message);
+              }
+              planLabel = 'SQL→MQL';
+            }
+
+            if (plan) {
+              const collName = plan.coll || targetColl;
+              if (!collName) throw new Error('Collezione non specificata nel comando.');
+              queryColl = collName;
+              if (plan.kind === 'aggregate') {
+                assertNoServerJs(plan.pipeline);
+                op = `Query di lettura (${planLabel} aggregate)`;
+                res = await executeWithReconnect(session, (strat) =>
+                  strat.collectionAggregate(targetDb, collName, { pipeline: JSON.stringify(plan.pipeline), maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+              } else {
+                assertNoServerJs(plan.filter);
+                op = `Query di lettura (${planLabel})`;
+                res = await executeWithReconnect(session, (strat) =>
+                  strat.collectionFind(targetDb, collName, {
+                    filter: JSON.stringify(plan.filter),
+                    projection: JSON.stringify(plan.projection),
+                    sort: JSON.stringify(plan.sort),
+                    limit: plan.limit,
+                    skip: plan.skip,
+                    maxRows: QUERY_ENGINE_MAX_ROWS,
+                    runId,
+                    opHandle
+                  }));
+              }
+            } else {
+              if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
+              res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: '', maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+            }
+          }
+        } catch (err) {
+          auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'error', null, err);
+          throw err;
+        }
+        auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'ok', res, null);
+        return cb({ ok: true, ...res, data: res.docs });
+      }
+
+      throw new Error('Target Engine non supportato.');
+    } finally {
+      if (runId && session.inflight) {
+        session.inflight.delete(runId);
+      }
+    }
+  });
+
+  safeOn('query:cancel', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const session = sessions.get(tabId);
+    if (!session || !session.strategy || !session.inflight) {
+      if (cb) cb({ ok: true, cancelled: false });
+      return;
     }
 
-    throw new Error('Target Engine non supportato.');
+    const runId = payload.runId;
+    if (!runId) {
+      if (cb) cb({ ok: true, cancelled: false });
+      return;
+    }
+
+    const opHandle = session.inflight.get(runId);
+    if (!opHandle) {
+      if (cb) cb({ ok: true, cancelled: false });
+      return;
+    }
+
+    try {
+      const res = await session.strategy.cancelQuery(opHandle);
+      try {
+        auditUi({
+          event: 'query:cancel',
+          category: 'write',
+          op: 'Annullamento query',
+          status: 'ok',
+          connection: (session && (session.connName || session.label)) || null,
+          dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
+          client: (session && session.ip) || null,
+          runId,
+          cancelled: res.cancelled
+        });
+      } catch (_) {}
+      if (cb) cb({ ok: true, cancelled: res.cancelled });
+    } catch (err) {
+      try {
+        auditUi({
+          event: 'query:cancel',
+          category: 'write',
+          op: 'Annullamento query',
+          status: 'error',
+          connection: (session && (session.connName || session.label)) || null,
+          dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
+          client: (session && session.ip) || null,
+          runId,
+          error: errMsg(err)
+        });
+      } catch (_) {}
+      if (cb) cb({ ok: true, cancelled: false, error: err.message });
+    }
   });
 
   // --- Export / import di collection e tabelle ---------------------------------
