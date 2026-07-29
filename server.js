@@ -641,7 +641,7 @@ const ipConnections = new Map();
  * delle sessioni di questo file; il budget globale è condiviso coi socket.
  * ------------------------------------------------------------------------- */
 
-attachMcp(app, {
+const mcpControl = attachMcp(app, {
   loadConnections,
   connLabel,
   connDbType,
@@ -705,6 +705,8 @@ io.on('connection', (socket) => {
   async function closeAllSessions() {
     for (const tabId of [...sessions.keys()]) await closeSession(tabId);
   }
+
+  socket.closeAllSessions = closeAllSessions;
 
   // Registrazione sicura di un evento: payload sempre oggetto e ack sempre
   // funzione monouso — un client senza callback o con payload malformato non
@@ -1523,7 +1525,107 @@ io.on('connection', (socket) => {
   });
 });
 
+/* ---------------------------------------------------------------------------
+ * Lifecycle del Processo, Graceful Shutdown & Gestione Eccezioni Globali
+ * ------------------------------------------------------------------------- */
+
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
+  console.log(`\n[Shutdown] Ricevuto segnale (${signal}). Avvio chiusura ordinata...`);
+
+  const forceExitTimer = setTimeout(() => {
+    console.error('[Shutdown] Timeout di sicurezza (5s) superato: forzatura uscita dal processo.');
+    process.exit(signal === 'uncaughtException' ? 1 : 1);
+  }, 5000);
+  if (forceExitTimer.unref) forceExitTimer.unref();
+
+  try {
+    if (mcpControl && typeof mcpControl.shutdownMcp === 'function') {
+      console.log('[Shutdown] Chiusura gateway MCP e sessioni MCP attive...');
+      await mcpControl.shutdownMcp().catch((err) => {
+        console.error('[Shutdown] Errore durante la chiusura MCP:', err.message);
+      });
+    }
+
+    if (io && io.sockets && io.sockets.sockets) {
+      console.log('[Shutdown] Chiusura sessioni DB/SSH nei socket WebSocket attivi...');
+      for (const socket of io.sockets.sockets.values()) {
+        if (typeof socket.closeAllSessions === 'function') {
+          await socket.closeAllSessions().catch((err) => {
+            console.error('[Shutdown] Errore chiusura sessione socket:', err.message);
+          });
+        }
+      }
+    }
+
+    if (io) {
+      console.log('[Shutdown] Chiusura server Socket.IO...');
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 800);
+        try {
+          io.close(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        } catch {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    }
+
+    if (server) {
+      console.log('[Shutdown] Chiusura server HTTP...');
+      if (typeof server.closeAllConnections === 'function') {
+        try { server.closeAllConnections(); } catch { /* ignora */ }
+      }
+      if (server.listening) {
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 800);
+          try {
+            server.close(() => {
+              clearTimeout(timer);
+              resolve();
+            });
+          } catch {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      }
+    }
+
+    console.log('[Shutdown] Chiusura pulita completata con successo.');
+    clearTimeout(forceExitTimer);
+    process.exit(signal === 'uncaughtException' ? 1 : 0);
+  } catch (err) {
+    console.error('[Shutdown] Errore imprevisto durante lo shutdown:', err);
+    clearTimeout(forceExitTimer);
+    process.exit(1);
+  }
+}
+
+function registerGlobalExceptionHandlers() {
+  process.on('uncaughtException', (err, origin) => {
+    console.error(`[Process] Uncaught Exception (${origin}):`, err);
+    gracefulShutdown('uncaughtException');
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('[Process] Unhandled Rejection in Promise:', promise, 'motivo:', reason);
+  });
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+}
+
 async function startServer() {
+  registerGlobalExceptionHandlers();
+
   const passphrase = process.env.GUI_MONGO_PASSPHRASE;
   if (passphrase) {
     const res = tryUnlockVault(passphrase);
@@ -1548,4 +1650,8 @@ async function startServer() {
   });
 }
 
-startServer();
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = { app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer };

@@ -314,6 +314,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 12: Esecuzione test unitari su Syntax Highlighting
   require('./unit-highlighter');
 
+  // Test 13: Esecuzione test unitari su Lifecycle & Graceful Shutdown
+  require('./unit-lifecycle');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

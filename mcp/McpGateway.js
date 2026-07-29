@@ -1450,14 +1450,20 @@ function attachMcp(app, deps) {
     }
   }
 
-  // Le sessioni MCP non hanno una "disconnessione" affidabile come i socket:
-  // quelle inattive da troppo tempo vengono chiuse d'ufficio.
-  setInterval(() => {
+  const sweepTimer = setInterval(() => {
     const now = Date.now();
     for (const session of [...mcpSessions.values()]) {
       if (now - session.lastActivity > MCP_SESSION_TTL_MS) destroyMcpSession(session);
     }
-  }, SWEEP_INTERVAL_MS).unref();
+  }, SWEEP_INTERVAL_MS);
+  sweepTimer.unref();
+
+  async function shutdownMcp() {
+    clearInterval(sweepTimer);
+    for (const session of [...mcpSessions.values()]) {
+      await destroyMcpSession(session);
+    }
+  }
 
   // Anti DNS-rebinding: quando il server è in ascolto solo su loopback, una
   // pagina web ostile può comunque raggiungerlo facendo puntare il proprio
@@ -1535,6 +1541,8 @@ function attachMcp(app, deps) {
   };
   app.get(MCP_PATH, handleSessionRequest);
   app.delete(MCP_PATH, handleSessionRequest);
+
+  return { shutdownMcp, mcpSessions };
 }
 
 module.exports = { attachMcp, assertReadOnlySql, assertReadOnlyPipeline, MCP_PATH };
