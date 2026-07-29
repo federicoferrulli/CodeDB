@@ -3,6 +3,8 @@ import { activeTab } from './tabs.js';
 import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
+import { SqlChunker, formatBytes } from './sql-chunker.js';
+import { highlightQueryCode } from './query-highlighter.js';
 
 const escapeHtml = esc;
 
@@ -10,8 +12,31 @@ let activeViewMode = 'table'; // 'table' | 'json'
 let currentResults = [];
 let executionStartTime = 0;
 
+// Stato per il Chunking File SQL
+let activeSqlChunker = null;
+let currentChunkIndex = 0;
+let isChunkRunning = false;
+let stopChunkRunRequested = false;
+
+export function updateEditorHighlight() {
+  const editorInput = $('#query-editor-input');
+  const highlightCode = $('#query-editor-code');
+  const highlightPre = $('#query-editor-highlight');
+  if (!editorInput || !highlightCode) return;
+
+  const code = editorInput.value;
+  const engine = $('#query-target-engine')?.value || 'auto';
+  highlightCode.innerHTML = highlightQueryCode(code, engine) + (code.endsWith('\n') ? ' ' : '');
+
+  if (highlightPre) {
+    highlightPre.scrollTop = editorInput.scrollTop;
+    highlightPre.scrollLeft = editorInput.scrollLeft;
+  }
+}
+
 export function initQueryTab() {
   initSnippetManager();
+  initSqlChunking();
   const targetEngineSelect = $('#query-target-engine');
   const runBtn = $('#query-run-btn');
   const stopBtn = $('#query-stop-btn');
@@ -22,6 +47,11 @@ export function initQueryTab() {
   const resModeTableBtn = $('#res-mode-table');
   const resModeJsonBtn = $('#res-mode-json');
   const editorInput = $('#query-editor-input');
+  const highlightPre = $('#query-editor-highlight');
+
+  if (targetEngineSelect) {
+    targetEngineSelect.addEventListener('change', updateEditorHighlight);
+  }
 
   // Toggle Schema Browser Drawer (Mobile)
   const toggleSchemaBtn = $('#query-toggle-schema-btn');
@@ -75,7 +105,18 @@ export function initQueryTab() {
     resModeJsonBtn.addEventListener('click', () => setResultsViewMode('json'));
   }
 
-  // Azioni editor
+  // Azioni editor e sincronizzazione highlight
+  if (editorInput) {
+    editorInput.addEventListener('input', updateEditorHighlight);
+    editorInput.addEventListener('scroll', () => {
+      if (highlightPre) {
+        highlightPre.scrollTop = editorInput.scrollTop;
+        highlightPre.scrollLeft = editorInput.scrollLeft;
+      }
+    });
+    updateEditorHighlight();
+  }
+
   if (formatBtn && editorInput) {
     formatBtn.addEventListener('click', () => {
       const val = editorInput.value.trim();
@@ -84,6 +125,7 @@ export function initQueryTab() {
         if (val.startsWith('{') || val.startsWith('[')) {
           const parsed = JSON.parse(val);
           editorInput.value = JSON.stringify(parsed, null, 2);
+          updateEditorHighlight();
         }
       } catch (e) {
         // lascia com'è se non è JSON valido
@@ -94,6 +136,7 @@ export function initQueryTab() {
   if (clearBtn && editorInput) {
     clearBtn.addEventListener('click', () => {
       editorInput.value = '';
+      updateEditorHighlight();
     });
   }
 
@@ -126,6 +169,202 @@ export function initQueryTab() {
   }
 
   initVerticalResizer();
+}
+
+// Inizializza ed aggancia la gestione del Chunking per File SQL Grandi
+function initSqlChunking() {
+  const openBtn = $('#query-open-sql-btn');
+  const fileInput = $('#query-open-sql-input');
+  const chunkPanel = $('#query-sql-chunk-panel');
+  const fileNameEl = $('#chunk-file-name');
+  const fileSizeEl = $('#chunk-file-size');
+  const countBadgeEl = $('#chunk-count-badge');
+  const chunkSelect = $('#chunk-select');
+  const prevBtn = $('#chunk-prev-btn');
+  const nextBtn = $('#chunk-next-btn');
+  const loadEditorBtn = $('#chunk-load-editor-btn');
+  const closeBtn = $('#chunk-close-btn');
+  const runAllBtn = $('#chunk-run-all-btn');
+  const cancelRunBtn = $('#chunk-cancel-run-btn');
+  const progressContainer = $('#chunk-progress-container');
+  const progressFill = $('#chunk-progress-fill');
+  const progressText = $('#chunk-progress-text');
+  const byteInfoEl = $('#chunk-byte-info');
+  const editorInput = $('#query-editor-input');
+
+  if (!openBtn || !fileInput) return;
+
+  openBtn.addEventListener('click', () => {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+
+    fileInput.value = '';
+
+    // File piccolo (<= 1MB): caricamento diretto nell'editor
+    if (file.size <= 1024 * 1024) {
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (editorInput) {
+            editorInput.value = String(reader.result || '');
+            updateEditorHighlight();
+          }
+          if (chunkPanel) chunkPanel.classList.add('hidden');
+          toast(`File "${file.name}" caricato nell'editor (${formatBytes(file.size)})`);
+        };
+        reader.onerror = () => toast('Impossibile leggere il file selezionato', 'error');
+        reader.readAsText(file);
+      } catch (err) {
+        toast(`Errore durante la lettura del file: ${err.message}`, 'error');
+      }
+      return;
+    }
+
+    // File grande (> 1MB): attivazione SqlChunker
+    try {
+      toast(`Caricamento e analisi file "${file.name}" (${formatBytes(file.size)})...`);
+      activeSqlChunker = new SqlChunker(file, 1024 * 1024);
+      await activeSqlChunker.init();
+
+      const info = activeSqlChunker.getFileInfo();
+      if (fileNameEl) fileNameEl.textContent = info.name;
+      if (fileSizeEl) fileSizeEl.textContent = info.formattedSize;
+      if (countBadgeEl) countBadgeEl.textContent = `${info.chunkCount} chunk`;
+
+      if (chunkSelect) {
+        chunkSelect.innerHTML = '';
+        activeSqlChunker.chunks.forEach((c) => {
+          const opt = document.createElement('option');
+          opt.value = c.index;
+          opt.textContent = `Chunk ${c.index + 1} / ${info.chunkCount} (${formatBytes(c.size)})`;
+          chunkSelect.appendChild(opt);
+        });
+      }
+
+      if (chunkPanel) chunkPanel.classList.remove('hidden');
+      if (progressContainer) progressContainer.classList.add('hidden');
+
+      await selectAndPreviewChunk(0);
+      toast(`File "${file.name}" (${info.formattedSize}) suddiviso in ${info.chunkCount} chunk.`);
+    } catch (err) {
+      toast(`Errore nella suddivisione a chunk: ${err.message}`, 'error');
+    }
+  });
+
+  async function selectAndPreviewChunk(index, updateEditor = true) {
+    if (!activeSqlChunker) return;
+    const total = activeSqlChunker.getChunkCount();
+    if (index < 0 || index >= total) return;
+
+    currentChunkIndex = index;
+    if (chunkSelect) chunkSelect.value = index;
+
+    const chunkData = await activeSqlChunker.readChunk(index);
+    if (byteInfoEl) {
+      byteInfoEl.textContent = `Byte ${formatBytes(chunkData.startByte)} - ${formatBytes(chunkData.endByte)} (Tot. ${formatBytes(chunkData.totalBytes)})`;
+    }
+
+    if (updateEditor && editorInput) {
+      editorInput.value = chunkData.text;
+      updateEditorHighlight();
+    }
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex - 1));
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex + 1));
+  }
+
+  if (chunkSelect) {
+    chunkSelect.addEventListener('change', (e) => {
+      selectAndPreviewChunk(parseInt(e.target.value, 10));
+    });
+  }
+
+  if (loadEditorBtn) {
+    loadEditorBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex, true));
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      activeSqlChunker = null;
+      currentChunkIndex = 0;
+      if (chunkPanel) chunkPanel.classList.add('hidden');
+      toast('File SQL chiuso.');
+    });
+  }
+
+  if (runAllBtn) {
+    runAllBtn.addEventListener('click', async () => {
+      if (!activeSqlChunker || isChunkRunning) return;
+      isChunkRunning = true;
+      stopChunkRunRequested = false;
+
+      if (runAllBtn) runAllBtn.classList.add('hidden');
+      if (cancelRunBtn) cancelRunBtn.classList.remove('hidden');
+      if (progressContainer) progressContainer.classList.remove('hidden');
+
+      const totalChunks = activeSqlChunker.getChunkCount();
+      let totalRows = 0;
+      const tStart = performance.now();
+
+      for (let i = currentChunkIndex; i < totalChunks; i++) {
+        if (stopChunkRunRequested) {
+          toast('Esecuzione sequenziale dei chunk interrotta dall\'utente.');
+          break;
+        }
+
+        const pct = Math.round(((i + 1) / totalChunks) * 100);
+        if (progressFill) progressFill.style.width = `${pct}%`;
+        if (progressText) {
+          progressText.textContent = `Esecuzione Chunk ${i + 1}/${totalChunks} (${pct}%) — ${totalRows} righe/record elaborati...`;
+        }
+
+        try {
+          await selectAndPreviewChunk(i, true);
+          const res = await runQuery();
+          if (res && (res.data || res.docs)) {
+            const list = res.data || res.docs;
+            totalRows += Array.isArray(list) ? list.length : 1;
+          }
+        } catch (err) {
+          toast(`Errore durante l'esecuzione del Chunk ${i + 1}: ${err.message}`, 'error');
+          if (progressText) {
+            progressText.textContent = `✖ Interrotto per errore al Chunk ${i + 1}/${totalChunks}`;
+          }
+          break;
+        }
+      }
+
+      isChunkRunning = false;
+      const elapsed = Math.round(performance.now() - tStart);
+      if (runAllBtn) runAllBtn.classList.remove('hidden');
+      if (cancelRunBtn) cancelRunBtn.classList.add('hidden');
+
+      if (!stopChunkRunRequested) {
+        if (progressFill) progressFill.style.width = '100%';
+        if (progressText) {
+          progressText.textContent = `✓ Esecuzione completata in ${elapsed} ms! Totale ${totalRows} righe/record elaborati su ${totalChunks} chunk.`;
+        }
+        toast(`Esecuzione completata! ${totalRows} righe elaborate su ${totalChunks} chunk (${elapsed} ms).`);
+      }
+    });
+  }
+
+  if (cancelRunBtn) {
+    cancelRunBtn.addEventListener('click', () => {
+      stopChunkRunRequested = true;
+      if (cancelRunBtn) cancelRunBtn.classList.add('hidden');
+      if (runAllBtn) runAllBtn.classList.remove('hidden');
+    });
+  }
 }
 
 // Inizializza la tab Query
@@ -528,6 +767,7 @@ function insertTextInEditor(text) {
   input.value = val.substring(0, start) + text + val.substring(end);
   input.selectionStart = input.selectionEnd = start + text.length;
   input.focus();
+  updateEditorHighlight();
 }
 
 let selectedQueryDb = null;
@@ -589,7 +829,7 @@ export function runQuery() {
   });
 
   // Emissione evento socket query:execute
-  emit('query:execute', {
+  return emit('query:execute', {
     code,
     engine,
     db: targetDb,
@@ -605,8 +845,15 @@ export function runQuery() {
 
       pendingHandle.done(res, elapsed);
       const rows = res.data || res.docs || res.rows || [];
+
+      // Se il server segnala un cambio di database (es. via USE <dbname>)
+      if (res && res.activeDb) {
+        selectedQueryDb = res.activeDb;
+      }
+
       updateQueryMetrics('success', elapsed, rows.length);
       renderResults(rows);
+      return res;
     })
     .catch((err) => {
       const elapsed = Math.round(performance.now() - executionStartTime);
@@ -616,6 +863,7 @@ export function runQuery() {
       pendingHandle.fail(err, elapsed);
       updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
       renderResults([]);
+      throw err;
     });
 }
 

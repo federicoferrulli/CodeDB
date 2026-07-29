@@ -20,6 +20,9 @@ export function freshState() {
     limit: 50,
     total: 0,           // conteggio totale; null = sconosciuto (conteggio disaccoppiato)
     countToken: 0,      // scarta le risposte di conteggio obsolete
+    countKey: null,     // firma (db|coll|filtro) già conteggiata: la paginazione la riusa
+    countApprox: false, // totale stimato dai metadati (footer con "≈", non esatto per la navigazione)
+    gridRunId: null,    // runId della find/aggregate della griglia in volo (single-flight + annullamento)
     countPending: false, // conteggio totale in corso (footer mostra '…')
     countTimedOut: false, // conteggio andato in timeout lato server (footer mostra '?')
     docs: [],

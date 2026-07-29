@@ -607,13 +607,49 @@
                       <div class="editor-header">
                         <span id="query-editor-title">Editor Query (SQL / MQL JSON)</span>
                         <div class="editor-tools">
+                          <button id="query-open-sql-btn" class="mini-btn" title="Apri ed esegui file SQL">📂 Apri SQL</button>
+                          <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
                           <button id="query-format-btn" class="mini-btn" title="Formatta il codice">✨ Formatta</button>
                           <button id="query-clear-btn" class="mini-btn" title="Pulisci editor">🧹 Pulisci</button>
                         </div>
                       </div>
+                      <!-- Pannello Gestione Chunk File SQL Grandi -->
+                      <div id="query-sql-chunk-panel" class="query-chunk-panel hidden">
+                        <div class="chunk-panel-top">
+                          <div class="chunk-file-info">
+                            <span class="chunk-file-icon">📄</span>
+                            <strong id="chunk-file-name" class="chunk-file-name">file.sql</strong>
+                            <span id="chunk-file-size" class="chunk-file-badge">0 MB</span>
+                            <span id="chunk-count-badge" class="chunk-file-badge">0 chunk</span>
+                          </div>
+                          <div class="chunk-panel-actions">
+                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequenzialmente">▶ Esegui Tutti i Chunk</button>
+                            <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecuzione sequenziale">🛑 Stop Esecuzione</button>
+                            <button id="chunk-close-btn" class="ghost mini-btn" type="button" title="Chiudi pannello file grandi">✕ Chiudi File</button>
+                          </div>
+                        </div>
+                        <div class="chunk-panel-nav">
+                          <div class="chunk-nav-controls">
+                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente">◀ Prev</button>
+                            <select id="chunk-select" class="styled-select chunk-select" title="Seleziona chunk"></select>
+                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next ▶</button>
+                            <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'editor per ispezione/modifica">✏️ Carica in Editor</button>
+                          </div>
+                          <span id="chunk-byte-info" class="chunk-byte-info">0 KB - 0 KB</span>
+                        </div>
+                        <div id="chunk-progress-container" class="chunk-progress-container hidden">
+                          <div class="chunk-progress-track">
+                            <div id="chunk-progress-fill" class="chunk-progress-fill" style="width: 0%;"></div>
+                          </div>
+                          <span id="chunk-progress-text" class="chunk-progress-text">Pronto per l'esecuzione</span>
+                        </div>
+                      </div>
                       <div class="editor-body">
-                        <textarea id="query-editor-input" spellcheck="false"
-                          placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                        <div class="query-editor-wrapper">
+                          <pre id="query-editor-highlight" class="query-editor-highlight" aria-hidden="true"><code id="query-editor-code"></code></pre>
+                          <textarea id="query-editor-input" spellcheck="false"
+                            placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                        </div>
                       </div>
                     </div>
 
@@ -1383,7 +1419,13 @@
       <p class="modal-hint">Registro delle query avviate dalla tab Query & Aggregate non completate o nello storico recente. La prima voce non completata indica il punto in cui ci si è fermati.</p>
 
       <div class="catalog-toolbar pending-toolbar">
-        <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary">🧹 Pulisci completate</button>
+        <div class="pending-search-wrap">
+          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
+        </div>
+        <div class="pending-toolbar-btns">
+          <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary">🧹 Pulisci completate</button>
+          <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger">🗑 Pulisci TUTTE</button>
+        </div>
       </div>
       <div id="pending-queries-list" class="catalog-list-container"></div>
     </div>

@@ -738,6 +738,16 @@ io.on('connection', (socket) => {
       // Classificazione (scrittura/lettura/non tracciato) per l'audit: dipende
       // da evento, payload e strategia (vedi collection:aggregate).
       const cls = classifyAudit(event, payload, sess);
+      // Query annullabili della griglia: se il payload porta un runId, registra
+      // un opHandle in sess.inflight così `query:cancel` può fermare la lettura
+      // in corso (killOp / KILL QUERY / pg_cancel_backend — nessuna modifica ai
+      // dati). La strategia vi scrive connectionId/processID/comment.
+      const runId = payload.runId;
+      if (runId) {
+        if (!sess.inflight) sess.inflight = new Map();
+        payload.opHandle = { runId };
+        sess.inflight.set(runId, payload.opHandle);
+      }
       try {
         const result = await executeWithReconnect(sess, (strat) => fn(strat, payload));
         cb({ ok: true, ...result });
@@ -752,6 +762,8 @@ io.on('connection', (socket) => {
           throw new Error(`Tunnel SSH caduto${sess.tunnel.lastError ? `: ${sess.tunnel.lastError}` : '.'}`);
         }
         throw err;
+      } finally {
+        if (runId && sess.inflight) sess.inflight.delete(runId);
       }
     });
   }
@@ -1103,6 +1115,24 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Riconoscimento ed esecuzione del comando USE <dbname> (o use <dbname>;)
+      const useCmdMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*$/i);
+      if (useCmdMatch) {
+        const newDb = useCmdMatch[1];
+        session.strategy.currentDb = newDb;
+        const summaryDoc = { messaggio: `Database attivo cambiato in "${newDb}"`, activeDb: newDb };
+        auditQuery(session, newDb, null, codeStr, 'write', 'Cambio Database (USE)', 'ok', { docs: [summaryDoc] }, null);
+        return cb({ ok: true, docs: [summaryDoc], data: [summaryDoc], columns: Object.keys(summaryDoc), activeDb: newDb });
+      }
+
+      // Se il codice inizia con USE <dbname>; seguito da ulteriori istruzioni
+      const usePrefixMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*\n?/i);
+      if (usePrefixMatch && codeStr.trim().length > usePrefixMatch[0].trim().length) {
+        const newDb = usePrefixMatch[1];
+        session.strategy.currentDb = newDb;
+        db = newDb;
+      }
+
       // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
       const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
       const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
@@ -1241,19 +1271,25 @@ io.on('connection', (socket) => {
 
     try {
       const res = await session.strategy.cancelQuery(opHandle);
-      try {
-        auditUi({
-          event: 'query:cancel',
-          category: 'write',
-          op: 'Annullamento query',
-          status: 'ok',
-          connection: (session && (session.connName || session.label)) || null,
-          dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
-          client: (session && session.ip) || null,
-          runId,
-          cancelled: res.cancelled
-        });
-      } catch (_) {}
+      // Gli annullamenti del single-flight della griglia (superamento di una
+      // pagina da parte della successiva) sono marcati `_bg`: sono housekeeping
+      // interno, non un'azione utente, e intaserebbero lo Storico Azioni
+      // (peggio col refresh live). Solo gli annullamenti espliciti sono tracciati.
+      if (!payload._bg) {
+        try {
+          auditUi({
+            event: 'query:cancel',
+            category: 'write',
+            op: 'Annullamento query',
+            status: 'ok',
+            connection: (session && (session.connName || session.label)) || null,
+            dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
+            client: (session && session.ip) || null,
+            runId,
+            cancelled: res.cancelled
+          });
+        } catch (_) {}
+      }
       if (cb) cb({ ok: true, cancelled: res.cancelled });
     } catch (err) {
       try {

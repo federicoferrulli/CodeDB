@@ -223,4 +223,18 @@ function countTimeoutMs() {
 
 DbStrategy.countTimeoutMs = countTimeoutMs;
 
+// Tempo massimo (ms) concesso a una query di lettura della griglia (find/pagina)
+// prima che il server la interrompa, così una scansione lenta (es. OFFSET
+// profondo) degrada con un errore invece di tenere occupata una connessione del
+// pool all'infinito. Configurabile via env CODEDB_QUERY_TIMEOUT_MS (default
+// 30000); un valore <= 0 disabilita il timeout. Usato dalle strategie in
+// collectionFind.
+function queryTimeoutMs() {
+  const m = parseInt(process.env.CODEDB_QUERY_TIMEOUT_MS, 10);
+  if (!Number.isFinite(m)) return 30000;
+  return Math.max(m, 0);
+}
+
+DbStrategy.queryTimeoutMs = queryTimeoutMs;
+
 module.exports = DbStrategy;

@@ -308,6 +308,12 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 10: Esecuzione test unitari sul registro pending queries
   require('./pending-queries');
 
+  // Test 11: Esecuzione test unitari su SqlChunker & USE Statement
+  require('./unit-sql-chunking');
+
+  // Test 12: Esecuzione test unitari su Syntax Highlighting
+  require('./unit-highlighter');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

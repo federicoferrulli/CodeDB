@@ -115,7 +115,7 @@ class MySqlStrategy extends DbStrategy {
       database: (cfg.database || '').trim() || undefined,
       connectTimeout: 6000,
       waitForConnections: true,
-      connectionLimit: 4,
+      connectionLimit: 8,
       multipleStatements: false,
     }).promise();
     try {
@@ -347,11 +347,41 @@ class MySqlStrategy extends DbStrategy {
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
     const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
+    const pk = await this.primaryKey(db, coll);
 
-    const [rows, fields] = await pool.query(
-      `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`,
-      [limit, skip]
-    );
+    // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
+    // singola, ordinamento di default), pagina con `pk > :after` invece di
+    // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk);
+    const sql = ks ? ks.sql : `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
+    const params = ks ? ks.params : [limit, skip];
+
+    // Timeout per-query (mysql2 interrompe la query allo scadere): una find lenta
+    // degrada con errore invece di tenere occupata la connessione del pool. La
+    // query object include `timeout` solo se > 0.
+    const ms = DbStrategy.queryTimeoutMs();
+    const q = ms > 0 ? { sql, timeout: ms } : { sql };
+    // Se la richiesta ha un opHandle (griglia con runId), la eseguiamo su una
+    // connessione dedicata di cui catturiamo il CONNECTION_ID, così è
+    // annullabile via `KILL QUERY` (cancelQuery) — nessuna modifica ai dati.
+    let rows, fields;
+    const opHandle = payload && payload.opHandle;
+    if (opHandle) {
+      const conn = await pool.getConnection();
+      try {
+        try {
+          const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
+          if (row && row.cid) opHandle.connectionId = row.cid;
+        } catch (_) {}
+        [rows, fields] = await conn.query(q, params);
+      } finally {
+        conn.release();
+      }
+    } else {
+      [rows, fields] = await pool.query(q, params);
+    }
+    // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
+    if (ks && ks.reverse) rows = rows.slice().reverse();
 
     // COUNT(*) su InnoDB è una scansione: su tabelle enormi bloccherebbe la
     // griglia. Il client della UI passa `deferCount` e chiede il totale a parte
@@ -364,12 +394,49 @@ class MySqlStrategy extends DbStrategy {
     }
 
     const columns = (fields || []).map((f) => f.name);
-    const pk = await this.primaryKey(db, coll);
     const docs = rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc);
     });
-    return { docs, columns, total, skip, limit };
+    return { docs, columns, total, skip, limit, keyset: !!ks };
+  }
+
+  // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
+  // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
+  // a colonna singola) → il chiamante usa OFFSET. Il filtro utente (WHERE) viene
+  // combinato in AND con il vincolo sul cursore.
+  buildKeyset(payload, table, whereSql, limit, pk) {
+    const ks = payload && payload.keyset;
+    if (!ks) return null;
+    if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
+    if (!pk || pk.length !== 1) return null;             // chiave composita/assente → OFFSET
+    const col = pk[0];
+    const conds = [];
+    const params = [];
+    if (whereSql) conds.push(`(${whereSql.replace(/^\s*WHERE\s+/i, '')})`); // filtro utente
+    let dir = 'ASC', reverse = false;
+    if (ks.after != null) {
+      conds.push(`${qid(col)} > ?`); params.push(this.keysetValue(ks.after, col));
+    } else if (ks.from != null) {
+      // Refresh in place: pagina corrente a partire (incluso) dal primo id noto.
+      conds.push(`${qid(col)} >= ?`); params.push(this.keysetValue(ks.from, col));
+    } else if (ks.before != null) {
+      conds.push(`${qid(col)} < ?`); params.push(this.keysetValue(ks.before, col));
+      dir = 'DESC'; reverse = true;
+    }
+    // ks.first (o nessun estremo): prima pagina, solo ORDER BY pk ASC.
+    const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+    const sql = `SELECT * FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT ?`;
+    params.push(limit);
+    return { sql, params, reverse };
+  }
+
+  // Estrae il valore della chiave dal cursore inviato dal client: è l'_id della
+  // riga (JSON.stringify di `{ colonna: valore }`) oppure il valore scalare.
+  keysetValue(rawId, col) {
+    const parsed = parseClientValue(rawId);
+    const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed[col] : parsed;
+    return toSqlValue(v);
   }
 
   // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
@@ -391,9 +458,36 @@ class MySqlStrategy extends DbStrategy {
   }
 
   // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
+  // Senza filtro usa la stima istantanea del catalogo (information_schema)
+  // invece di un COUNT(*) che scansiona l'intera tabella: è ciò che fanno
+  // DBeaver/phpMyAdmin. Con filtro resta il COUNT(*) esatto con timeout.
   async collectionCount(db, coll, payload) {
     const { table, whereSql } = this.buildSelect(db, coll, payload);
+    if (!whereSql) {
+      // Stima usata solo se > 0: per tabelle vuote/piccole TABLE_ROWS è
+      // inaffidabile (InnoDB) e il COUNT(*) esatto è comunque istantaneo.
+      const est = await this.estimatedRowCount(db, coll);
+      if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
+    }
     return this.countWithTimeout(table, whereSql);
+  }
+
+  // Stima (approssimata) del numero di righe dai metadati del catalogo, senza
+  // scansione. TABLE_ROWS è affidabile solo per tabelle base InnoDB/MyISAM ed è
+  // NULL per le viste: in tal caso torniamo null e il chiamante ripiega sul
+  // COUNT(*) esatto. Sola lettura.
+  async estimatedRowCount(db, coll) {
+    const pool = this.requirePool();
+    try {
+      const [rows] = await pool.query(
+        'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = ?',
+        [db, coll, 'BASE TABLE']
+      );
+      const n = rows && rows[0] ? rows[0].n : null;
+      return n != null ? Number(n) : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   // Modalità "SQL Raw": esegue una query libera nel contesto del database.
@@ -413,20 +507,54 @@ class MySqlStrategy extends DbStrategy {
           if (row && row.cid) payload.opHandle.connectionId = row.cid;
         } catch (_) {}
       }
-      await conn.query(`USE ${qid(db)}`);
+      if (db) await conn.query(`USE ${qid(db)}`).catch(() => {});
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
         const [result, fields] = await conn.query(readOnly ? { sql, timeout: 30000 } : sql);
+
         if (Array.isArray(result)) {
+          // Se la prima voce è un array o un oggetto con affectedRows, abbiamo multipleStatements
+          const isMulti = result.length > 0 && (Array.isArray(result[0]) || (typeof result[0] === 'object' && result[0] !== null && 'affectedRows' in result[0]));
+
+          if (isMulti) {
+            // Cerchiamo l'ultimo result set che ha righe di dati (SELECT)
+            let selectRes = null;
+            let selectFields = null;
+            let totalAffected = 0;
+            let statementCount = result.length;
+
+            for (let i = 0; i < result.length; i++) {
+              const resItem = result[i];
+              if (Array.isArray(resItem)) {
+                selectRes = resItem;
+                selectFields = Array.isArray(fields) && fields[i] ? fields[i] : null;
+              } else if (resItem && typeof resItem.affectedRows === 'number') {
+                totalAffected += resItem.affectedRows;
+              }
+            }
+
+            if (selectRes) {
+              const rows = selectRes.slice(0, cap);
+              const columns = (selectFields || []).map((f) => f.name || f);
+              return { docs: rows.map(serializeRow), columns, total: selectRes.length, skip: 0, limit: cap };
+            }
+
+            // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
+            const summary = { istruzioniEseguite: statementCount, righeCoinvolteTotali: totalAffected };
+            return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
+          }
+
+          // Singola SELECT
           const rows = result.slice(0, cap);
           const columns = (fields || []).map((f) => f.name);
           return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap };
         }
+
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
-        const summary = { righeCoinvolte: result.affectedRows };
-        if (result.insertId) summary.insertId = result.insertId;
-        if (result.info) summary.info = result.info;
+        const summary = { righeCoinvolte: result ? (result.affectedRows || 0) : 0 };
+        if (result && result.insertId) summary.insertId = result.insertId;
+        if (result && result.info) summary.info = result.info;
         return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
         if (readOnly) await conn.query('ROLLBACK').catch(() => {});

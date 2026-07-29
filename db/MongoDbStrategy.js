@@ -113,6 +113,17 @@ function parseId(rawId) {
   return val;
 }
 
+// Aggiunge al filtro un vincolo sul cursore keyset (`_id <op> val`) senza
+// sovrascrivere un eventuale `_id` già presente nel filtro utente (in tal caso
+// si combina con $and).
+function withIdBound(filter, op, val) {
+  const cond = { _id: { [op]: val } };
+  if (filter && Object.prototype.hasOwnProperty.call(filter, '_id')) {
+    return { $and: [filter, cond] };
+  }
+  return { ...filter, ...cond };
+}
+
 // Relaxed: i numeri restano numeri JSON, ObjectId e Date restano in forma
 // estesa ($oid / $date) così il client li riconosce e li preserva.
 function serialize(value) {
@@ -585,14 +596,49 @@ class MongoDbStrategy extends DbStrategy {
     const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
     const findOpts = { projection };
     if (runComment) findOpts.comment = runComment;
-    const cursor = collection.find(filter, findOpts).sort(sort).skip(skip).limit(limit);
+    // Timeout lato server sulla find: una scansione lenta (es. skip profondo)
+    // viene interrotta (MaxTimeMSExpired) invece di tenere la connessione
+    // occupata all'infinito. Annullabile anche via killOp sul `comment` (runId).
+    const maxTimeMS = DbStrategy.queryTimeoutMs();
+    if (maxTimeMS > 0) findOpts.maxTimeMS = maxTimeMS;
+
+    // Keyset (seek) pagination: se richiesta (`payload.keyset`) e l'ordinamento è
+    // quello di default, si pagina con `_id > :after` (avanti) / `_id < :before`
+    // (indietro) invece di `.skip()`, che su collection enormi è O(skip). Costo
+    // O(pagina) a qualsiasi profondità grazie all'indice su `_id`. Con un sort
+    // personalizzato si ricade su `.skip()`.
+    const hasCustomSort = Object.keys(sort).length > 0;
+    const ks = (payload.keyset && !hasCustomSort) ? payload.keyset : null;
+    let cursor;
+    let reverse = false;
+    if (ks) {
+      let kfilter = filter;
+      let ksort = { _id: 1 };
+      if (ks.after != null) {
+        kfilter = withIdBound(filter, '$gt', parseId(ks.after));
+      } else if (ks.from != null) {
+        // Refresh in place: ricarica la pagina corrente a partire (incluso) dal
+        // primo _id già mostrato, senza tornare all'inizio.
+        kfilter = withIdBound(filter, '$gte', parseId(ks.from));
+      } else if (ks.before != null) {
+        kfilter = withIdBound(filter, '$lt', parseId(ks.before));
+        ksort = { _id: -1 };
+        reverse = true;
+      }
+      // ks.first (o nessun estremo): prima pagina, solo ORDER BY _id ASC.
+      cursor = collection.find(kfilter, findOpts).sort(ksort).limit(limit);
+    } else {
+      cursor = collection.find(filter, findOpts).sort(sort).skip(skip).limit(limit);
+    }
 
     // Il conteggio con filtro è una scansione completa: su collection enormi
     // bloccherebbe la griglia. Il client della UI passa `deferCount` e recupera
     // il totale a parte via `collection:count`; qui restituiamo solo il totale
     // istantaneo dai metadati (filtro vuoto) e altrimenti null. Senza
     // `deferCount` (MCP, test) manteniamo il conteggio esatto ma con un timeout
-    // così non può mai bloccarsi all'infinito.
+    // così non può mai bloccarsi all'infinito. (`estimatedDocumentCount` è
+    // metadata autorevole: non lo segnaliamo come stima, a differenza delle
+    // statistiche del planner SQL.)
     const hasFilter = Object.keys(filter).length > 0;
     let total;
     if (payload.deferCount) {
@@ -600,7 +646,9 @@ class MongoDbStrategy extends DbStrategy {
     } else {
       total = await this.countWithTimeout(collection, filter, hasFilter);
     }
-    const docs = await cursor.toArray();
+    let docs = await cursor.toArray();
+    // Keyset "indietro": la query gira in ordine _id DESC, qui si riordina ASC.
+    if (reverse) docs.reverse();
 
     // Union of the keys of all returned documents -> table columns.
     const columns = [];
@@ -614,7 +662,7 @@ class MongoDbStrategy extends DbStrategy {
       }
     }
 
-    return { docs: docs.map(serialize), columns, total, skip, limit };
+    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks };
   }
 
   // Conteggio con timeout: countDocuments (con filtro) o estimatedDocumentCount

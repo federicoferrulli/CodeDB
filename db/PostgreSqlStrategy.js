@@ -126,7 +126,7 @@ class PostgreSqlStrategy extends DbStrategy {
       password: cfg.password || '',
       database: (cfg.database || 'postgres').trim() || 'postgres',
       connectionTimeoutMillis: 6000,
-      max: 4,
+      max: 8,
     });
 
     pool.on('error', (err) => {
@@ -350,8 +350,43 @@ class PostgreSqlStrategy extends DbStrategy {
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
     const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
+    const pk = await this.primaryKey(db, coll);
 
-    const res = await pool.query(`SELECT * FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`, [limit, skip]);
+    // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
+    // singola, ordinamento di default), pagina con `pk > :after` invece di
+    // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk);
+    const sql = ks ? ks.sql : `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
+    const params = ks ? ks.params : [limit, skip];
+    const ms = DbStrategy.queryTimeoutMs();
+    const opHandle = payload && payload.opHandle;
+
+    // Se la richiesta ha un opHandle (griglia con runId) o un timeout attivo,
+    // usiamo una connessione dedicata: catturiamo il PID di backend (annullabile
+    // via pg_cancel_backend, sola lettura) e impostiamo statement_timeout con
+    // SET LOCAL in transazione, così una find lenta degrada con errore invece di
+    // occupare la connessione all'infinito.
+    let res;
+    if (opHandle || ms > 0) {
+      const client = await pool.connect();
+      try {
+        if (opHandle && client.processID) opHandle.processID = client.processID;
+        await client.query('BEGIN READ ONLY');
+        if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
+        res = await client.query(sql, params);
+        await client.query('COMMIT');
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (_) {}
+        throw err;
+      } finally {
+        client.release();
+      }
+    } else {
+      res = await pool.query(sql, params);
+    }
+    // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
+    let rows = res.rows;
+    if (ks && ks.reverse) rows = rows.slice().reverse();
 
     // COUNT(*) su tabelle enormi è una scansione: bloccherebbe la griglia. Il
     // client della UI passa `deferCount` e chiede il totale a parte via
@@ -364,13 +399,46 @@ class PostgreSqlStrategy extends DbStrategy {
     }
 
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
-    const pk = await this.primaryKey(db, coll);
-    const docs = res.rows.map((r) => {
+    const docs = rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc);
     });
 
-    return { docs, columns, total, skip, limit };
+    return { docs, columns, total, skip, limit, keyset: !!ks };
+  }
+
+  // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
+  // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
+  // a colonna singola) → il chiamante usa OFFSET. Placeholder $n per pg.
+  buildKeyset(payload, table, whereSql, limit, pk) {
+    const ks = payload && payload.keyset;
+    if (!ks) return null;
+    if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
+    if (!pk || pk.length !== 1) return null;             // chiave composita/assente → OFFSET
+    const col = pk[0];
+    const conds = [];
+    const params = [];
+    let idx = 1;
+    if (whereSql) conds.push(`(${whereSql.replace(/^\s*WHERE\s+/i, '')})`); // filtro utente
+    let dir = 'ASC', reverse = false;
+    if (ks.after != null) {
+      conds.push(`${qid(col)} > $${idx++}`); params.push(this.keysetValue(ks.after, col));
+    } else if (ks.from != null) {
+      conds.push(`${qid(col)} >= $${idx++}`); params.push(this.keysetValue(ks.from, col));
+    } else if (ks.before != null) {
+      conds.push(`${qid(col)} < $${idx++}`); params.push(this.keysetValue(ks.before, col));
+      dir = 'DESC'; reverse = true;
+    }
+    const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+    const sql = `SELECT * FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT $${idx}`;
+    params.push(limit);
+    return { sql, params, reverse };
+  }
+
+  keysetValue(rawId, col) {
+    const parsed = parseClientValue(rawId);
+    const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed[col] : parsed;
+    return toSqlValue(v);
   }
 
   // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
@@ -396,9 +464,42 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
+  // Senza filtro usa la stima istantanea del planner (pg_class.reltuples) invece
+  // di un COUNT(*) che scansiona l'intera tabella. Se la stima non è disponibile
+  // (tabella mai analizzata: reltuples < 0, oppure vuota) ripiega sul COUNT(*)
+  // esatto con timeout. Con filtro resta il COUNT(*) esatto.
   async collectionCount(db, coll, payload) {
     const { table, whereSql } = this.buildSelect(db, coll, payload);
+    if (!whereSql) {
+      const est = await this.estimatedRowCount(coll);
+      if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
+    }
     return this.countWithTimeout(table, whereSql);
+  }
+
+  // Stima (approssimata) delle righe dal catalogo del planner, senza scansione.
+  // `reltuples` è aggiornata da ANALYZE/autovacuum; vale -1 se mai analizzata
+  // (PG ≥ 14) → torniamo null e il chiamante ripiega sul COUNT(*) esatto. Usa lo
+  // schema corrente del search_path. Sola lettura.
+  async estimatedRowCount(coll) {
+    const pool = this.requirePool();
+    try {
+      const r = await pool.query(
+        `SELECT c.reltuples::bigint AS n
+           FROM pg_class c
+           JOIN pg_namespace nsp ON nsp.oid = c.relnamespace
+          WHERE c.relname = $1
+            AND c.relkind = 'r'
+            AND nsp.nspname = ANY (current_schemas(false))
+          ORDER BY array_position(current_schemas(false), nsp.nspname)
+          LIMIT 1`,
+        [coll]
+      );
+      const n = r.rows && r.rows[0] ? Number(r.rows[0].n) : null;
+      return n != null && n >= 0 ? n : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   async collectionAggregate(_db, _coll, payload) {
