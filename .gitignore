@@ -19,3 +19,5 @@ dist/
 .agents
 # Variabili d'ambiente per Docker Compose (puo' contenere GUI_MONGO_PASSPHRASE).
 .env
+
+conns/
