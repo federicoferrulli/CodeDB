@@ -268,7 +268,7 @@
           </span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
+          <input type="text" id="conn-search" aria-label="Cerca connessioni" placeholder="Cerca connessioni..." autocomplete="off"
             spellcheck="false" />
         </div>
         <ul id="conn-tree"></ul>
@@ -316,7 +316,7 @@
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database">＋</button>
             </div>
             <div class="sidebar-search">
-              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+              <input type="text" id="db-search" aria-label="Cerca database o collezioni" placeholder="Cerca database o collezioni..." autocomplete="off"
                 spellcheck="false" />
             </div>
             <ul id="db-tree"></ul>
@@ -541,7 +541,7 @@
                   <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                     <div class="side-panel-header">
                       <h3 id="graph3d-panel-title">Nome Tabella</h3>
-                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">✕</button>
+                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi" aria-label="Chiudi pannello tabella">✕</button>
                     </div>
                     <div id="graph3d-panel-content" class="side-panel-content"></div>
                   </aside>
@@ -585,9 +585,9 @@
                     <div class="sidebar-title">
                       <span>Schema Browser</span>
                       <div class="sidebar-title-actions">
-                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema" aria-label="Ricarica schema browser">⟳</button>
                         <button id="query-schema-close" class="mini-btn mobile-only-btn"
-                          title="Chiudi Schema Browser">✕</button>
+                          title="Chiudi Schema Browser" aria-label="Chiudi schema browser">✕</button>
                       </div>
                     </div>
                     <div class="sidebar-search">
