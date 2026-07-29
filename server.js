@@ -201,9 +201,25 @@ function stringifyIni(sections) {
   return lines.join('\n') + '\n';
 }
 
-function loadConnections() {
+// Isolamento multi-tenant delle connessioni salvate: con RBAC attivo ogni owner
+// ha il proprio file data/conns/<ownerId>.ini, così un tenant non può vedere né
+// usare le connessioni (né i segreti) di un altro. Con RBAC spento — o per
+// l'owner locale/root — resta il file storico condiviso CONNECTIONS_FILE, e i
+// test continuano a usare l'override CODEDB_CONNECTIONS_FILE. La chiave del vault
+// (passphrase) resta unica per installazione: cambia solo il file, non la chiave.
+const CONNECTIONS_DIR = process.env.CODEDB_CONNECTIONS_DIR
+  || path.join(path.dirname(CONNECTIONS_FILE), 'conns');
+
+function connectionsFileFor(ownerId) {
+  const id = String(ownerId == null ? '' : ownerId).trim();
+  if (!rbacOn() || !id || id === 'local') return CONNECTIONS_FILE;
+  const safe = id.replace(/[^A-Za-z0-9_.-]/g, '_');
+  return path.join(CONNECTIONS_DIR, `${safe}.ini`);
+}
+
+function loadConnections(ownerId) {
   try {
-    const sections = parseIni(fs.readFileSync(CONNECTIONS_FILE, 'utf8'));
+    const sections = parseIni(fs.readFileSync(connectionsFileFor(ownerId), 'utf8'));
     for (const sec of Object.values(sections)) {
       for (const f of SECRET_FIELDS) {
         if (sec[f]) sec[f] = decryptSecret(sec[f]);
@@ -232,19 +248,22 @@ function encryptSections(sections, cryptoKey = encryptionKey) {
   return copy;
 }
 
-function saveConnections(sections) {
+function saveConnections(sections, ownerId) {
+  const file = connectionsFileFor(ownerId);
   const toSave = encryptSections(sections);
+  // La directory per-owner potrebbe non esistere ancora al primo salvataggio.
+  try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch { /* già presente */ }
   // Prima di riscrivere, conserva le due versioni precedenti (.bak e .bak2):
   // il file è l'unica copia dei segreti sul disco e la migrazione all'avvio con
   // una passphrase sbagliata li azzererebbe; due generazioni proteggono anche
   // se dopo una migrazione corrotta arriva un ulteriore salvataggio dalla UI.
   try {
-    fs.copyFileSync(CONNECTIONS_FILE + '.bak', CONNECTIONS_FILE + '.bak2');
+    fs.copyFileSync(file + '.bak', file + '.bak2');
   } catch { /* nessun .bak precedente: niente da ruotare */ }
   try {
-    fs.copyFileSync(CONNECTIONS_FILE, CONNECTIONS_FILE + '.bak');
+    fs.copyFileSync(file, file + '.bak');
   } catch { /* file ancora inesistente: nessun backup da fare */ }
-  fs.writeFileSync(CONNECTIONS_FILE, stringifyIni(toSave), 'utf8');
+  fs.writeFileSync(file, stringifyIni(toSave), 'utf8');
 }
 
 function assertConnName(name) {
@@ -291,12 +310,12 @@ function connLabel(cfg) {
 // (i parametri, password inclusa, restano lato server); cfg.keepPasswordFrom =
 // riusa i segreti di una connessione salvata quando il form li lascia vuoti
 // (non vengono mai rimandati al browser, quindi il client non può reinviarli).
-function resolveEffectiveCfg(cfg) {
+function resolveEffectiveCfg(cfg, ownerId) {
   let effective = cfg;
   // Un solo caricamento del file: sia "saved" che "keepPasswordFrom" leggono
   // dalla stessa mappa in memoria, evitando due letture/decifrature ridondanti.
   const needsLookup = cfg.saved || cfg.keepPasswordFrom;
-  const conns = needsLookup ? loadConnections() : null;
+  const conns = needsLookup ? loadConnections(ownerId) : null;
   if (cfg.saved) {
     const saved = conns[cfg.saved];
     if (!saved) throw new Error(`Connessione salvata "${cfg.saved}" non trovata.`);
@@ -324,7 +343,9 @@ function resolveEffectiveCfg(cfg) {
 // accesso ai dati che ne deriva — griglia, Query Engine, tool MCP — è già
 // soggetto ai permessi. Con RBAC spento resta null e nulla cambia.
 async function establishConnection(cfg, guardCtx = null) {
-  const effective = resolveEffectiveCfg(cfg);
+  // Il lookup delle connessioni salvate avviene nel file del tenant richiedente
+  // (guardCtx.principal.ownerId); con RBAC spento resta il file condiviso.
+  const effective = resolveEffectiveCfg(cfg, guardCtx && guardCtx.principal && guardCtx.principal.ownerId);
   const dbType = connDbType(effective);
   let tunnel = null;
   try {
@@ -839,12 +860,12 @@ const mcpControl = attachMcp(app, {
   // Unica scrittura su connections.ini concessa al gateway MCP: il flag
   // readOnly di una connessione salvata (mai gli altri campi, mai i segreti).
   // La conferma umana a due passaggi è responsabilità del gateway.
-  setConnectionReadOnly: (name, readOnly) => {
-    const sections = loadConnections();
+  setConnectionReadOnly: (name, readOnly, ownerId) => {
+    const sections = loadConnections(ownerId);
     const key = String(name || '').trim();
     if (!sections[key]) throw new Error(`Connessione salvata "${key}" inesistente.`);
     sections[key].readOnly = readOnly ? 'true' : 'false';
-    saveConnections(sections);
+    saveConnections(sections, ownerId);
   },
   establishConnection,
   teardownConnection,
@@ -1021,9 +1042,9 @@ io.on('connection', (socket) => {
       const saveAs = String(cfg.saveAs || '').trim();
       if (saveAs) {
         assertConnName(saveAs);
-        const conns = loadConnections();
+        const conns = loadConnections(principal.ownerId);
         conns[saveAs] = sanitizeConnCfg(conn.effective);
-        saveConnections(conns);
+        saveConnections(conns, principal.ownerId);
       }
       cb({
         ok: true,
@@ -1080,7 +1101,7 @@ io.on('connection', (socket) => {
   // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
   safeOn('connections:list', (_payload, cb) => {
-    const all = loadConnections();
+    const all = loadConnections(principal.ownerId);
     // Un sottoutente vede soltanto le connessioni su cui ha un grant.
     const visible = allowedConnections(principal, Object.keys(all));
     const connections = visible
@@ -1172,10 +1193,10 @@ io.on('connection', (socket) => {
 
   safeOn('connections:delete', ({ name }, cb) => {
     assertManage(principal);
-    const conns = loadConnections();
+    const conns = loadConnections(principal.ownerId);
     if (!conns[name]) throw new Error(`Connessione salvata "${name}" non trovata.`);
     delete conns[name];
-    saveConnections(conns);
+    saveConnections(conns, principal.ownerId);
     cb({ ok: true });
   });
 
@@ -1185,7 +1206,7 @@ io.on('connection', (socket) => {
     if (!canUseConnection(principal, String(name || ''))) {
       throw new Error(`Permesso negato: nessun accesso alla connessione "${name}".`);
     }
-    const conn = loadConnections()[name];
+    const conn = loadConnections(principal.ownerId)[name];
     if (!conn) throw new Error(`Connessione salvata "${name}" non trovata.`);
     const fields = { ...conn };
     const has = (f) => conn[f] != null && conn[f] !== '';
@@ -1201,7 +1222,7 @@ io.on('connection', (socket) => {
     assertManage(principal);
     name = String(name || '').trim();
     assertConnName(name);
-    const conns = loadConnections();
+    const conns = loadConnections(principal.ownerId);
     const previous = oldName ? conns[oldName] : conns[name];
     if (oldName && !previous) throw new Error(`Connessione salvata "${oldName}" non trovata.`);
     // Il nome è la chiave della sezione .ini: due connessioni con lo stesso nome
@@ -1218,7 +1239,7 @@ io.on('connection', (socket) => {
     }
     if (oldName && oldName !== name) delete conns[oldName];
     conns[name] = next;
-    saveConnections(conns);
+    saveConnections(conns, principal.ownerId);
     cb({ ok: true });
   });
 
@@ -1230,7 +1251,7 @@ io.on('connection', (socket) => {
   // memoria da loadConnections e ri-cifrati qui, mai trasmessi in chiaro.
   safeOn('connections:export', ({ passphrase } = {}, cb) => {
     assertManage(principal);
-    const conns = loadConnections();
+    const conns = loadConnections(principal.ownerId);
     if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
     const pass = passphrase == null ? '' : String(passphrase);
     const cryptoKey = pass !== '' ? crypto.createHash('sha256').update(pass).digest() : encryptionKey;
@@ -1245,7 +1266,7 @@ io.on('connection', (socket) => {
     const incoming = parseIni(String(ini || ''));
     const names = Object.keys(incoming);
     if (!names.length) throw new Error('Nessuna connessione trovata nel file importato.');
-    const conns = loadConnections();
+    const conns = loadConnections(principal.ownerId);
     let imported = 0;
     let overwritten = 0;
     for (const name of names) {
@@ -1268,7 +1289,7 @@ io.on('connection', (socket) => {
       conns[name] = cfg;
     }
     if (!imported && !overwritten) throw new Error('Il file non contiene connessioni valide.');
-    saveConnections(conns);
+    saveConnections(conns, principal.ownerId);
     cb({ ok: true, imported, overwritten });
   });
 
@@ -1348,7 +1369,7 @@ io.on('connection', (socket) => {
     assertManage(principal);
     // Non si può concedere l'accesso a una connessione che non esiste: sarebbe
     // un permesso silenziosamente inefficace.
-    if (!loadConnections()[String(connName || '').trim()]) {
+    if (!loadConnections(principal.ownerId)[String(connName || '').trim()]) {
       throw new Error(`Connessione salvata "${connName}" non trovata.`);
     }
     const grant = await store.setGrant({ ownerId: principal.ownerId, subjectId, connName, role, scope });

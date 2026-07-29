@@ -11,6 +11,7 @@
   },
   "scripts": {
     "start": "node server.js",
+    "start:rbac": "node --env-file=.env server.js",
     "dev": "node --watch server.js",
     "electron:start": "electron .",
     "electron:icons": "node tools/genera-icona.js",

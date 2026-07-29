@@ -35,7 +35,16 @@ const { createLogger } = require('../backup/lib/logger');
 const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
 const { ROOT_PRINCIPAL } = require('../auth/principal');
-const { canUseConnection, canWholeConnection } = require('../auth/permissions');
+const { can, canUseConnection, canWholeConnection } = require('../auth/permissions');
+
+// Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
+// Stessa mappatura di auth/capabilities.js (write/delete/ddl): così il gate del
+// primo passo di execute_write non diverge dal Proxy autorizzante che protegge
+// l'esecuzione vera e propria.
+const WRITE_OP_CAPABILITY = {
+  insert: 'write', update: 'write', delete: 'delete',
+  drop_collection: 'ddl', drop_database: 'ddl',
+};
 
 // Principal della sessione MCP: risolto dalla API key nell'handshake HTTP.
 // Con RBAC spento resta l'owner locale e nessun controllo ha effetto.
@@ -536,7 +545,8 @@ function buildMcpServer(session, deps) {
     inputSchema: {},
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async () => {
-    const all = deps.loadConnections();
+    // File connessioni del tenant del soggetto (isolamento multi-tenant).
+    const all = deps.loadConnections(sessionPrincipal(session).ownerId);
     // Con RBAC attivo l'AI vede solo le connessioni concesse al soggetto della
     // API key (grant ∩ connScope della chiave).
     const visible = deps.allowedConnections
@@ -954,6 +964,20 @@ function buildMcpServer(session, deps) {
     }
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
+
+    // Gate RBAC anticipato: un principal senza la capability di scrittura non
+    // deve nemmeno ottenere l'anteprima e il confirm_token (la scrittura vera è
+    // già bloccata dal Proxy autorizzante al secondo passo, ma emettere un token
+    // a un utente in sola lettura è di per sé sbagliato). Per il DML su SQL
+    // (args.sql, nessun args.operation) la capability minima è 'write'.
+    const writeCap = WRITE_OP_CAPABILITY[String(args.operation || '').trim()]
+      || (args.sql ? 'write' : null);
+    if (writeCap && !can(sessionPrincipal(session), {
+      connName: sess.name, capability: writeCap, db, coll: args.collection || null,
+    })) {
+      throw new Error(`Permesso negato: la API key usata non ha i privilegi di scrittura sulla connessione "${sess.name}".`);
+    }
+
     sweepPendingWrites();
 
     const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType };
@@ -1040,7 +1064,7 @@ function buildMcpServer(session, deps) {
     if (token) {
       const pending = confirmFlow.consume(token, 'ini', (p) => p.name === name, 'richiesta');
       try {
-        deps.setConnectionReadOnly(name, pending.readOnly);
+        deps.setConnectionReadOnly(name, pending.readOnly, sessionPrincipal(session).ownerId);
         audit({ ...auditBase, event: 'executed', readOnly: pending.readOnly });
         return jsonResult({
           executed: true,
@@ -1058,7 +1082,7 @@ function buildMcpServer(session, deps) {
     if (typeof args.read_only !== 'boolean') {
       throw new Error('Parametro "read_only" mancante: indica true (sola lettura) o false (scritture consentite).');
     }
-    const conn = deps.loadConnections()[name];
+    const conn = deps.loadConnections(sessionPrincipal(session).ownerId)[name];
     if (!conn) throw new Error(`Connessione salvata "${name}" inesistente: verifica con list_saved_connections.`);
     const current = String(conn.readOnly || '').trim().toLowerCase() !== 'false';
     if (current === args.read_only) {

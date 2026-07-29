@@ -58,20 +58,11 @@ async function waitForServer(timeoutMs = 20000) {
  */
 async function startRbacServer({ maxSubUsers = 1, verbose = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-rbac-'));
+  // File legacy vuoto: con RBAC attivo le connessioni del tenant vivono nel file
+  // per-owner (conns/<ownerId>.ini), seminato dopo l'avvio da seedOwnerConnections
+  // — così il test verifica anche l'isolamento multi-tenant del vault connessioni.
   const iniPath = path.join(dir, 'connections.ini');
-  fs.writeFileSync(iniPath, [
-    `[${CONN_NAME}]`,
-    'dbType=mongodb',
-    'host=localhost',
-    'port=27017',
-    'readOnly=false',
-    '',
-    `[${OTHER_CONN}]`,
-    'dbType=mongodb',
-    'host=localhost',
-    'port=27017',
-    '',
-  ].join('\n'), 'utf8');
+  fs.writeFileSync(iniPath, '', 'utf8');
 
   const proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
     env: {
@@ -100,7 +91,39 @@ async function startRbacServer({ maxSubUsers = 1, verbose = false } = {}) {
   });
 
   await waitForServer();
+  await seedOwnerConnections(dir);
   return { proc, dir };
+}
+
+/**
+ * Semina le due connessioni di prova nel file del tenant dell'owner di bootstrap.
+ * Con RBAC attivo l'owner legge da <dir>/conns/<ownerId>.ini (isolamento
+ * per-owner), non dal connections.ini legacy: l'ownerId lo ricaviamo dal control
+ * plane subito dopo che il bootstrap ha creato l'owner.
+ */
+async function seedOwnerConnections(dir) {
+  const client = new MongoClient(MONGO_URI);
+  await client.connect();
+  const owner = await client.db(APP_DB).collection('users').findOne({ email: OWNER.email, type: 'owner' });
+  await client.close();
+  if (!owner) throw new Error('Owner di bootstrap non trovato nel control plane: impossibile seminare le connessioni.');
+  const ownerId = String(owner.ownerId || owner._id);
+  const safe = ownerId.replace(/[^A-Za-z0-9_.-]/g, '_');
+  const connsDir = path.join(dir, 'conns');
+  fs.mkdirSync(connsDir, { recursive: true });
+  fs.writeFileSync(path.join(connsDir, `${safe}.ini`), [
+    `[${CONN_NAME}]`,
+    'dbType=mongodb',
+    'host=localhost',
+    'port=27017',
+    'readOnly=false',
+    '',
+    `[${OTHER_CONN}]`,
+    'dbType=mongodb',
+    'host=localhost',
+    'port=27017',
+    '',
+  ].join('\n'), 'utf8');
 }
 
 async function stopRbacServer(handle) {
