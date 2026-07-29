@@ -1,0 +1,8 @@
+
+> mongo-web-gui@1.0.0 start /app
+> node server.js
+
+CodeDB in ascolto su http://127.0.0.1:3030
+Endpoint MCP (Streamable HTTP) su http://127.0.0.1:3030/mcp
+Terminated
+ ELIFECYCLE  Command failed with exit code 143.
