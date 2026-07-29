@@ -261,6 +261,8 @@
             title="Storico delle azioni critiche/di scrittura">Storico Azioni</button>
           <button id="btn-health" class="menu-item" type="button"
             title="Stato di salute delle connessioni attive">Salute Connessioni</button>
+          <button id="btn-admin-rbac" class="menu-item hidden" type="button"
+            title="Gestione sottoutenti, permessi e API key">Utenti &amp; Permessi</button>
           <button id="btn-logout" class="menu-item hidden" type="button"
             title="Chiude la sessione dell'utente corrente">Esci</button>
           <div class="menu-divider"></div>
@@ -1433,6 +1435,62 @@
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Utenti & Permessi (RBAC) ===================== -->
+  <div id="modal-admin-rbac" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>👥 Utenti &amp; Permessi</h2>
+        <button type="button" id="btn-close-admin-rbac" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Gestisci i sottoutenti del tuo account, i loro permessi per connessione (ruolo + scope su
+        database/collezioni) e le API key per l'accesso via MCP.</p>
+
+      <div class="admin-tabs">
+        <button type="button" class="admin-tab active" data-pane="subusers">Sottoutenti</button>
+        <button type="button" class="admin-tab" data-pane="grants">Permessi</button>
+        <button type="button" class="admin-tab" data-pane="apikeys">API key</button>
+      </div>
+
+      <!-- Sottoutenti -->
+      <div class="admin-pane" data-pane="subusers">
+        <form id="subuser-form" class="admin-form">
+          <input type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required>
+          <input type="text" id="subuser-name" class="form-control form-control-sm" placeholder="Nome (opzionale)">
+          <input type="password" id="subuser-password" class="form-control form-control-sm" placeholder="Password" autocomplete="new-password" required>
+          <button type="submit" class="btn btn-sm btn-primary">+ Crea</button>
+        </form>
+        <div id="subuser-limit" class="sub-text admin-limit"></div>
+        <div id="subuser-list" class="catalog-list-container"></div>
+      </div>
+
+      <!-- Permessi (grant per connessione) -->
+      <div class="admin-pane hidden" data-pane="grants">
+        <form id="grant-form" class="admin-form">
+          <select id="grant-subject" class="form-control form-control-sm" title="Sottoutente"></select>
+          <select id="grant-conn" class="form-control form-control-sm" title="Connessione salvata"></select>
+          <select id="grant-role" class="form-control form-control-sm" title="Ruolo"></select>
+          <input type="text" id="grant-dbs" class="form-control form-control-sm" placeholder="Database (glob, vuoto = tutti)">
+          <input type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Collezioni/tabelle (glob, vuoto = tutte)">
+          <button type="submit" class="btn btn-sm btn-primary">+ Assegna</button>
+        </form>
+        <div id="grant-list" class="catalog-list-container"></div>
+      </div>
+
+      <!-- API key -->
+      <div class="admin-pane hidden" data-pane="apikeys">
+        <form id="apikey-form" class="admin-form">
+          <select id="apikey-subject" class="form-control form-control-sm" title="Soggetto della chiave"></select>
+          <input type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Etichetta (es. Claude Desktop)">
+          <input type="text" id="apikey-scope" class="form-control form-control-sm" placeholder="Connessioni consentite (nomi separati da virgola; vuoto = tutte)">
+          <button type="submit" class="btn btn-sm btn-primary">+ Genera</button>
+        </form>
+        <div id="apikey-new" class="apikey-new hidden"></div>
+        <div id="apikey-list" class="catalog-list-container"></div>
+      </div>
     </div>
   </div>
 

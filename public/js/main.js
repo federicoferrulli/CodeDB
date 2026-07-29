@@ -28,6 +28,7 @@ import { initHealth } from './health.js';
 import { initSessionPersistence } from './session-restore.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
 import { initSplitView } from './splitview.js';
+import { initAdminRbac } from './admin-rbac.js';
 import { initPendingQueries } from './pending-queries.js';
 
 if ('serviceWorker' in navigator) {
@@ -158,6 +159,7 @@ initQueryTab();
 initBackupManager();
 initAuditLog();
 initHealth();
+initAdminRbac();
 initPendingQueries();
 initSessionPersistence();
 initSplitView();
