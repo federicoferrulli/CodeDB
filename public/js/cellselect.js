@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType } from './utils.js';
 import { runQuery, ensureRowRendered } from './grid.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
@@ -185,6 +185,162 @@ function downloadFile(name, text, mime) {
   a.download = name;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// --- Duplica riga -----------------------------------------------------------
+
+// Genera un ObjectId a 24 hex lato client (4B timestamp + 5B random + 3B counter),
+// così il duplicato "con chiave" non collide con l'originale (evita E11000).
+let oidCounter = Math.floor(Math.random() * 0xffffff);
+function generateObjectId() {
+  const ts = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
+  let rnd = '';
+  for (let i = 0; i < 10; i++) rnd += Math.floor(Math.random() * 16).toString(16);
+  oidCounter = (oidCounter + 1) % 0x1000000;
+  const cnt = oidCounter.toString(16).padStart(6, '0');
+  return (ts + rnd + cnt).slice(0, 24);
+}
+
+// Apre un modal di conferma con preview/editor JSON del documento da inserire.
+// `withKey`: se true mantiene la chiave nel documento; per MongoDB ne genera una
+//            NUOVA (l'utente può comunque cambiarla) così il duplicato è valido
+//            senza dover modificare a mano l'_id.
+//            se false la rimuove (il DB genererà una nuova chiave).
+function duplicateRow(rowIndex, withKey) {
+  const doc = state.docs[rowIndex];
+  if (!doc) { toast('Nessun documento selezionato', true); return; }
+
+  const isSql = isSqlType(state.dbType);
+  const rowWord = isSql ? 'riga' : 'documento';
+
+  // Copia profonda escludendo o includendo la chiave primaria.
+  const cloned = JSON.parse(JSON.stringify(doc));
+  if (!withKey) {
+    delete cloned._id; // MongoDB: nuova ObjectId auto; SQL: server genera la PK
+  } else if (!isSql && cloned._id && typeof cloned._id === 'object' && cloned._id.$oid) {
+    // MongoDB con _id ObjectId: rigenera una chiave nuova per evitare il
+    // duplicate key error; resta modificabile dall'utente.
+    cloned._id = { $oid: generateObjectId() };
+  }
+  const initialJson = JSON.stringify(cloned, null, 2);
+
+  // Costruisce il modal on-the-fly (non esiste ancora nel DOM).
+  const overlayId = 'duprow-overlay';
+  let overlay = document.getElementById(overlayId);
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = overlayId;
+    overlay.className = 'overlay hidden';
+    overlay.innerHTML = `
+      <div class="modal wide">
+        <h2 id="duprow-title">Duplica riga</h2>
+        <p id="duprow-desc" style="margin:0 0 8px;font-size:13px;color:var(--fg-dim,#888)"></p>
+        <textarea id="duprow-json" rows="16" spellcheck="false"></textarea>
+        <div id="duprow-error" class="error hidden"></div>
+        <div class="modal-actions">
+          <button id="duprow-cancel" class="ghost">Annulla</button>
+          <button id="duprow-ok" class="primary">Inserisci duplicato</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    document.getElementById('duprow-cancel').addEventListener('click', () => {
+      overlay.classList.add('hidden');
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.classList.add('hidden');
+    });
+  }
+
+  // Popola e mostra.
+  const title = withKey
+    ? `Duplica ${rowWord} (con chiave)`
+    : `Duplica ${rowWord} (senza chiave)`;
+  const desc = withKey
+    ? (isSql
+        ? `Modifica la chiave nel JSON qui sotto (dev'essere univoca), poi conferma l'inserimento.`
+        : `È stata generata una nuova chiave (selezionata qui sotto): modificala se vuoi, poi conferma.`)
+    : `Verifica il JSON del duplicato — la chiave è stata rimossa e verrà generata automaticamente.`;
+  document.getElementById('duprow-title').textContent = title;
+  document.getElementById('duprow-desc').textContent = desc;
+  const ta = document.getElementById('duprow-json');
+  ta.value = initialJson;
+  const errEl = document.getElementById('duprow-error');
+  errEl.classList.add('hidden');
+  overlay.classList.remove('hidden');
+  ta.focus();
+
+  // UX: la textarea deve mostrare la prima riga (dove sta l'_id da cambiare),
+  // non restare scrollata dopo il focus. Con chiave, pre-seleziona il valore
+  // dell'_id così l'utente può digitare subito la nuova chiave.
+  ta.scrollTop = 0;
+  if (withKey) {
+    // ObjectId: seleziona il valore hex di "$oid"; altrimenti il valore di "_id".
+    const m = /"\$oid"\s*:\s*"([0-9a-fA-F]{24})"/.exec(initialJson)
+           || /"_id"\s*:\s*/.exec(initialJson);
+    if (m && m[1] !== undefined) {
+      const start = m.index + m[0].indexOf(m[1]);
+      ta.setSelectionRange(start, start + m[1].length);
+    } else if (m) {
+      let start = m.index + m[0].length;
+      // Estende la selezione all'intero valore (stringa fra apici o token grezzo).
+      let end = start;
+      if (initialJson[start] === '"') {
+        end = initialJson.indexOf('"', start + 1);
+        end = end === -1 ? initialJson.length : end + 1;
+      } else {
+        while (end < initialJson.length && !/[,\n}]/.test(initialJson[end])) end++;
+      }
+      ta.setSelectionRange(start, end);
+    } else {
+      ta.setSelectionRange(0, 0);
+    }
+  } else {
+    ta.setSelectionRange(0, 0);
+  }
+
+  // Sostituisce il listener del bottone OK ad ogni apertura.
+  const oldOk = document.getElementById('duprow-ok');
+  const newOk = oldOk.cloneNode(true);
+  oldOk.replaceWith(newOk);
+  newOk.addEventListener('click', () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(ta.value);
+    } catch (ex) {
+      errEl.textContent = 'JSON non valido: ' + ex.message;
+      errEl.classList.remove('hidden');
+      return;
+    }
+    errEl.classList.add('hidden');
+    emit('doc:insert', {
+      db: state.db,
+      coll: state.coll,
+      doc: JSON.stringify(parsed),
+    }).then(() => {
+      overlay.classList.add('hidden');
+      toast(isSql ? 'Riga duplicata' : 'Documento duplicato');
+      runQuery({ auto: true });
+    }).catch((err) => {
+      errEl.textContent = friendlyInsertError(err.message);
+      errEl.classList.remove('hidden');
+    });
+  });
+}
+
+// Traduce l'errore di chiave duplicata (E11000) in un messaggio comprensibile
+// che indica quale indice e quali campi vanno resi univoci prima di duplicare.
+function friendlyInsertError(msg) {
+  const fallback = msg || 'Errore durante l\'inserimento';
+  if (!msg || !/E11000|duplicate key/i.test(msg)) return fallback;
+  const idxM = /index:\s*([^\s]+)/i.exec(msg);
+  const keyM = /dup key:\s*(\{[\s\S]*\})/i.exec(msg);
+  let out = 'Chiave duplicata: esiste già un documento con gli stessi valori';
+  if (idxM) out += ` per l'indice unico "${idxM[1]}"`;
+  out += '.';
+  if (keyM) out += ` Valori in conflitto: ${keyM[1]}.`;
+  out += ' Modifica i campi indicati per renderli univoci, poi riprova.';
+  return out;
 }
 
 function copyToClipboard(text) {
@@ -465,6 +621,19 @@ export function initCellSelect() {
       { label: 'Copia (Ctrl+C)', action: () => copyToClipboard(buildTsv(false)) },
       { label: 'Copia con intestazioni', action: () => copyToClipboard(buildTsv(true)) },
       { label: 'Copia avanzato ▸', action: advanced },
+      '---',
+      {
+        label: 'Duplica riga ▸',
+        action: () => setTimeout(() => {
+          const { rows } = selectionGrid();
+          const r = rows.length ? rows[0] : sel().focus?.r;
+          if (r == null) { toast('Seleziona prima una riga', true); return; }
+          showContextMenu(x, y, [
+            { label: 'Senza chiave (nuova generata)', action: () => duplicateRow(r, false) },
+            { label: 'Con chiave personalizzabile',   action: () => duplicateRow(r, true)  },
+          ]);
+        }, 0),
+      },
       '---',
       {
         label: 'Incolla (Ctrl+V)',

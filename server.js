@@ -360,7 +360,7 @@ function isConnectionError(err, sess) {
 
   const msg = (err.message || String(err)).toLowerCase();
   const name = (err.name || '').toLowerCase();
-  const code = (err.code || '').toLowerCase();
+  const code = String(err.code || '').toLowerCase();
 
   const connTerms = [
     'nessuna connessione attiva',
