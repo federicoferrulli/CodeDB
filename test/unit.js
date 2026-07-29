@@ -290,6 +290,24 @@ console.log('--- Test Unitari CodeDB ---');
   assert.ok(vjCapturedSql.includes("'val\\\\with''quotes'"), 'VirtualJoinEngine deve fuggire backslash e apici nelle chiavi SQL');
   console.log('  OK   VirtualJoinEngine backslash escaping in SQL IN passed');
 
+  // Test 9: Interfaccia cancelQuery sulle strategie DB
+  const baseStrat = new DbStrategy();
+  const resBaseCancel = await baseStrat.cancelQuery({});
+  assert.strictEqual(resBaseCancel.cancelled, false, 'DbStrategy base cancelQuery deve ritornare cancelled: false');
+
+  const resMongoCancel = await mongoStrategy.cancelQuery({});
+  assert.strictEqual(resMongoCancel.cancelled, false, 'MongoDbStrategy cancelQuery senza client deve ritornare cancelled: false');
+
+  const resMysqlCancel = await mysqlStrategy.cancelQuery({});
+  assert.strictEqual(resMysqlCancel.cancelled, false, 'MySqlStrategy cancelQuery senza pool deve ritornare cancelled: false');
+
+  const resPgCancel = await pgStrategy.cancelQuery({});
+  assert.strictEqual(resPgCancel.cancelled, false, 'PostgreSqlStrategy cancelQuery senza pool deve ritornare cancelled: false');
+  console.log('  OK   DbStrategy cancelQuery interface check passed');
+
+  // Test 10: Esecuzione test unitari sul registro pending queries
+  require('./pending-queries');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

@@ -224,6 +224,8 @@
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
 
       <div class="header-tools-wrap">
+        <button id="btn-pending-queries" class="ghost btn-icon header-pending-btn" title="Query in sospeso"
+          aria-label="Query in sospeso">⏳<span id="pending-queries-badge" class="badge-count hidden">0</span></button>
         <button id="header-more-btn" class="ghost btn-icon" title="Strumenti & Utility (⋮)"
           aria-label="Strumenti & Utility">⋮</button>
         <div id="header-more-menu" class="header-more-menu hidden">
@@ -1367,7 +1369,27 @@
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
-      <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
+    </div>
+  </div>
+
+  <!-- ===================== Query in Sospeso ===================== -->
+  <div id="modal-pending" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>⏳ Query in Sospeso</h2>
+        <button type="button" id="btn-close-pending-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Registro delle query avviate dalla tab Query & Aggregate non completate o nello storico recente. La prima voce non completata indica il punto in cui ci si è fermati.</p>
+
+      <div class="catalog-toolbar pending-toolbar">
+        <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary">🧹 Pulisci completate</button>
+      </div>
+      <div id="pending-queries-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
       <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
         <button type="button" id="mobile-nav-conns" class="mobile-nav-item">
           <span class="nav-icon">🌐</span>

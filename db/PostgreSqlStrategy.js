@@ -408,6 +408,9 @@ class PostgreSqlStrategy extends DbStrategy {
     const readOnly = !!payload.readOnly;
     const client = await pool.connect();
     try {
+      if (payload && payload.opHandle && client.processID) {
+        payload.opHandle.processID = client.processID;
+      }
       if (readOnly) {
         await client.query('BEGIN READ ONLY');
         await client.query('SET LOCAL statement_timeout = 30000');
@@ -432,6 +435,20 @@ class PostgreSqlStrategy extends DbStrategy {
       } finally {
         if (readOnly) await client.query('ROLLBACK').catch(() => {});
       }
+    } finally {
+      client.release();
+    }
+  }
+
+  async cancelQuery(opHandle) {
+    if (!opHandle || !opHandle.processID || !this.pool) return { cancelled: false };
+    const client = await this.pool.connect();
+    try {
+      const res = await client.query('SELECT pg_cancel_backend($1) AS cancelled', [opHandle.processID]);
+      const cancelled = !!(res.rows && res.rows[0] && res.rows[0].cancelled);
+      return { cancelled };
+    } catch (err) {
+      return { cancelled: false };
     } finally {
       client.release();
     }

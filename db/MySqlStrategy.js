@@ -407,6 +407,12 @@ class MySqlStrategy extends DbStrategy {
     const readOnly = !!payload.readOnly;
     const conn = await pool.getConnection();
     try {
+      if (payload && payload.opHandle) {
+        try {
+          const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
+          if (row && row.cid) payload.opHandle.connectionId = row.cid;
+        } catch (_) {}
+      }
       await conn.query(`USE ${qid(db)}`);
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
@@ -425,6 +431,19 @@ class MySqlStrategy extends DbStrategy {
       } finally {
         if (readOnly) await conn.query('ROLLBACK').catch(() => {});
       }
+    } finally {
+      conn.release();
+    }
+  }
+
+  async cancelQuery(opHandle) {
+    if (!opHandle || !opHandle.connectionId || !this.pool) return { cancelled: false };
+    const conn = await this.pool.getConnection();
+    try {
+      await conn.query(`KILL QUERY ${opHandle.connectionId}`);
+      return { cancelled: true };
+    } catch (err) {
+      return { cancelled: false };
     } finally {
       conn.release();
     }
