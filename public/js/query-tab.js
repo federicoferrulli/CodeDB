@@ -521,6 +521,7 @@ function renderQueryVirtualWindow() {
       const res = displayValue(val);
       td.textContent = (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
       if (res && res.cls) td.className = res.cls;
+      if (res && res.dataVal !== undefined) td.dataset.val = res.dataVal;
       td.title = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
       tr.appendChild(td);
     });

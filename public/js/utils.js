@@ -21,7 +21,7 @@ export function ejsonKind(v) {
 }
 
 export function displayValue(v) {
-  if (v === null || v === undefined) return { text: 'null', cls: 'type-null' };
+  if (v === null || v === undefined) return { text: '–', cls: 'type-null' };
   if (Array.isArray(v)) return { text: JSON.stringify(v.map(simplify)), cls: 'type-obj' };
 
   const kind = ejsonKind(v);
@@ -57,7 +57,7 @@ export function displayValue(v) {
     return { text: `[BLOB ${fmtBytes(size)}] ${hex.trim()}`, cls: 'type-obj' };
   }
   if (kind === 'object') return { text: JSON.stringify(simplify(v)), cls: 'type-obj' };
-  if (kind === 'boolean') return { text: String(v), cls: 'type-bool' };
+  if (kind === 'boolean') return { text: String(v), cls: 'type-bool', dataVal: String(v) };
   return { text: String(v), cls: '' };
 }
 
@@ -287,9 +287,14 @@ export function colDone(verb) {
 }
 
 export function dbTypeIcon(dbType) {
-  if (dbType === 'postgresql' || dbType === 'postgres') return '🐘';
-  if (dbType === 'mysql') return '🐬';
-  return '🍃';
+  if (dbType === 'postgresql' || dbType === 'postgres') {
+    return '<span class="db-type-badge db-type-pg" title="PostgreSQL"><i data-lucide="database"></i></span>';
+  }
+  if (dbType === 'mysql') {
+    return '<span class="db-type-badge db-type-mysql" title="MySQL"><i data-lucide="database"></i></span>';
+  }
+  // mongodb (default)
+  return '<span class="db-type-badge db-type-mongo" title="MongoDB"><i data-lucide="leaf"></i></span>';
 }
 
 export function isSqlType(dbType) {

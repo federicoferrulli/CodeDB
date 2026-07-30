@@ -27,7 +27,7 @@ function updatePathUI() {
     if (badge) {
       badge.classList.remove('hidden');
       if (badgeText) {
-        badgeText.innerHTML = `🔗 Cammino (${activeShortestPath.nodes.length - 1} passaggi): ` +
+        badgeText.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Cammino (${activeShortestPath.nodes.length - 1} passaggi): ` +
           activeShortestPath.nodes.map((n) => `<b style="color:#00e676;">${esc(n)}</b>`).join(' → ');
       }
     }
@@ -400,7 +400,7 @@ function showTableDetailsPanel(tableName, highlightQuery) {
     const highlightStyle = isMatched ? 'style="background: rgba(74, 158, 255, 0.25); border: 1px solid #4a9eff;"' : '';
 
     html += `<li ${highlightStyle}>
-      <span class="field-name">${esc(f.name)} ${isPii ? '<span title="Campo sensibile (PII/GDPR)" style="color:#f5a623;">🔒 PII</span>' : ''} ${isMatched ? '🔍' : ''}</span>
+      <span class="field-name">${esc(f.name)} ${isPii ? '<span title="Campo sensibile (PII/GDPR)" style="color:#f5a623;font-size:0.75rem;font-weight:600;border:1px solid rgba(245,166,35,0.4);border-radius:2px;padding:1px 4px;">PII</span>' : ''} ${isMatched ? '<span style="color:#4a9eff;font-size:0.75rem;">●</span>' : ''}</span>
       <span>
         ${isPk ? '<span class="field-badge pk">PK</span> ' : ''}
         <span class="field-badge">${esc(typeStr)}</span>
@@ -573,17 +573,17 @@ function analyzeDependencies() {
   </div>`;
 
   html += `<div class="audit-issue-item" style="border-left-color:#00e676; margin-bottom:12px;">
-    <div class="audit-issue-title" style="color:#00e676;">🌱 Tabelle Root (${rootTables.length}) - Indipendenti senza FK uscenti</div>
+    <div class="audit-issue-title" style="color:#00e676;">▸ ROOT — Tabelle indipendenti (${rootTables.length}) senza FK uscenti</div>
     <div class="audit-issue-desc">${rootTables.map((r) => `<b>${esc(r.name)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
   html += `<div class="audit-issue-item" style="border-left-color:#4a9eff; margin-bottom:12px;">
-    <div class="audit-issue-title" style="color:#4a9eff;">🍃 Tabelle Leaf (${leafTables.length}) - Tabelle foglia terminali</div>
+    <div class="audit-issue-title" style="color:#4a9eff;">▸ LEAF — Tabelle terminali (${leafTables.length})</div>
     <div class="audit-issue-desc">${leafTables.map((l) => `<b>${esc(l.name)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
   html += `<div class="audit-issue-item" style="border-left-color:#f5a623;">
-    <div class="audit-issue-title" style="color:#f5a623;">🔄 Sequenza Ottima di Popolamento (Seeding)</div>
+    <div class="audit-issue-title" style="color:#f5a623;">⟳ Sequenza Ottima di Popolamento (Seeding)</div>
     <div class="audit-issue-desc">
       <ol style="margin:6px 0 0 18px; padding:0; color:var(--fg,#e1e4e8);">
         ${seedOrder.map((s) => `<li style="padding:2px 0;"><b>${esc(s)}</b></li>`).join('')}

@@ -28,7 +28,7 @@ export function renderDbTree(databases) {
     li.className = 'db';
     const label = document.createElement('div');
     label.className = 'node-label';
-    label.textContent = db.name;
+    label.innerHTML = `<i data-lucide="database" class="icon-db"></i> <span>${db.name}</span>`;
     li.appendChild(label);
 
     const sub = document.createElement('ul');
@@ -89,6 +89,7 @@ export function renderCollectionsList(dbName, container, collections) {
     label.className = 'node-label';
     label.draggable = true;
 
+    label.innerHTML = `<i data-lucide="table" class="icon-coll"></i> `;
     const name = document.createElement('span');
     name.textContent = coll.name;
     label.appendChild(name);
@@ -134,6 +135,7 @@ export function renderCollectionsList(dbName, container, collections) {
     frag.appendChild(li);
   }
   container.appendChild(frag);
+  refreshLucideIcons(container);
 }
 
 export function loadCollections(dbName, container) {

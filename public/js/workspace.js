@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, dbTypeIcon } from './utils.js';
+import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
 import { renderDbTree, refreshDbTree } from './dbtree.js';
 import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
 import { renderCollTabBar } from './colltabs.js';
@@ -33,7 +33,8 @@ export function renderWorkspace() {
   // Hamburger dei database (drawer mobile): ha senso solo con un tab connesso.
   $('#menu-dbs-btn').classList.toggle('hidden', !connected);
   $('#conn-info').classList.toggle('hidden', !connected);
-  $('#conn-info').textContent = connected ? `${dbTypeIcon(state.dbType)} ${state.connLabel}` : '';
+  $('#conn-info').innerHTML = connected ? `${dbTypeIcon(state.dbType)} <span>${esc(state.connLabel)}</span>` : '';
+  refreshLucideIcons($('#conn-info'));
   if (!connected) {
     $('#live-badge').classList.add('hidden');
     $('#polling-toggle').classList.add('hidden');

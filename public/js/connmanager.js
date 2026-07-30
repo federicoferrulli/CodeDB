@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, showContextMenu, refreshLucideIcons } from './utils.js';
+import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
@@ -65,7 +65,7 @@ function connItem(conn) {
 
   const name = document.createElement('span');
   name.className = 'conn-name';
-  name.textContent = `${dbTypeIcon(conn.dbType)} ${conn.name}`;
+  name.innerHTML = `${dbTypeIcon(conn.dbType)} <span>${esc(conn.name)}</span>`;
   const detail = document.createElement('span');
   detail.className = 'conn-detail';
   detail.textContent = conn.label;

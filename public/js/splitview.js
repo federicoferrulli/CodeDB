@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID } from './utils.js';
+import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
 import { openInsertDocForContext } from './insert.js';
 
@@ -840,6 +840,7 @@ function createPaneElement(paneId) {
     }
   });
 
+  refreshLucideIcons(paneEl);
   return paneEl;
 }
 
@@ -1023,6 +1024,7 @@ function updatePaneUI(paneId) {
         const disp = displayValue(val);
         const span = document.createElement('span');
         if (disp.cls) span.className = disp.cls;
+        if (disp.dataVal !== undefined) span.dataset.val = disp.dataVal;
         span.textContent = val === undefined ? '' : disp.text;
         td.title = disp.text;
         td.appendChild(span);

@@ -12,7 +12,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="css/style.css" />
   <script src="js/lucide.min.js"></script>
@@ -278,7 +278,7 @@
         </div>
       </div>
 
-      <button id="disconnect-btn" class="danger btn-sm hidden"
+      <button id="disconnect-btn" class="btn-disconnect hidden"
         title="Chiude il tab attivo e la sua connessione"><i data-lucide="unplug"></i> Disconnetti</button>
     </header>
 
@@ -603,28 +603,28 @@
                   <div class="query-engine-selector">
                     <label for="query-target-engine">Target Engine:</label>
                     <select id="query-target-engine" class="styled-select">
-                      <option value="auto">⚡ Auto-detect (DB corrente)</option>
-                      <option value="mysql">🐬 MySQL (SQL Runner)</option>
-                      <option value="postgresql">🐘 PostgreSQL (SQL Runner)</option>
-                      <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
-                      <option value="crossdb">🔀 Cross-DB (Virtual JOIN)</option>
+                      <option value="auto"><i data-lucide="zap"></i> Auto-detect (DB corrente)</option>
+                      <option value="mysql"><i data-lucide="database"></i> MySQL (SQL Runner)</option>
+                      <option value="postgresql"><i data-lucide="database"></i> PostgreSQL (SQL Runner)</option>
+                      <option value="mongodb"><i data-lucide="database"></i> MongoDB (MQL / Aggregate)</option>
+                      <option value="crossdb"><i data-lucide="shuffle"></i> Cross-DB (Virtual JOIN)</option>
                     </select>
                   </div>
 
                   <div class="query-actions">
                     <button id="query-toggle-schema-btn" class="ghost btn-sm mobile-only-btn" type="button"
-                      title="Mostra/Nascondi Schema Browser">📂 <span class="btn-label-mobile">Schema</span></button>
-                    <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)">▶ Esegui Query</button>
-                    <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query">🛑
+                      title="Mostra/Nascondi Schema Browser"><i data-lucide="folder-tree"></i> <span class="btn-label-mobile">Schema</span></button>
+                    <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> Esegui Query</button>
+                    <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query"><i data-lucide="square"></i>
                       Annulla</button>
-                    <button id="query-snippet-btn" class="ghost" title="Snippet & Template">📚 Snippets</button>
+                    <button id="query-snippet-btn" class="ghost" title="Snippet & Template"><i data-lucide="book"></i> Snippets</button>
                   </div>
 
                   <div id="query-metrics" class="query-metrics">
                     <span id="query-status-badge" class="badge badge-idle">● In attesa</span>
-                    <span id="query-time-metric" class="metric-item hidden">⏱ <strong id="query-time-val">0</strong>
+                    <span id="query-time-metric" class="metric-item hidden"><i data-lucide="clock"></i> <strong id="query-time-val">0</strong>
                       ms</span>
-                    <span id="query-count-metric" class="metric-item hidden">📊 <strong id="query-count-val">0</strong>
+                    <span id="query-count-metric" class="metric-item hidden"><i data-lucide="bar-chart"></i> <strong id="query-count-val">0</strong>
                       record</span>
                   </div>
                 </div>
@@ -657,10 +657,10 @@
                       <div class="editor-header">
                         <span id="query-editor-title">Editor Query (SQL / MQL JSON)</span>
                         <div class="editor-tools">
-                          <button id="query-open-sql-btn" class="mini-btn" title="Apri ed esegui file SQL">📂 Apri SQL</button>
+                          <button id="query-open-sql-btn" class="mini-btn" title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri SQL</button>
                           <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
-                          <button id="query-format-btn" class="mini-btn" title="Formatta il codice">✨ Formatta</button>
-                          <button id="query-clear-btn" class="mini-btn" title="Pulisci editor">🧹 Pulisci</button>
+                          <button id="query-format-btn" class="mini-btn" title="Formatta il codice"><i data-lucide="sparkles"></i> Formatta</button>
+                          <button id="query-clear-btn" class="mini-btn" title="Pulisci editor"><i data-lucide="eraser"></i> Pulisci</button>
                         </div>
                       </div>
                       <!-- Pannello Gestione Chunk File SQL Grandi -->
@@ -709,8 +709,8 @@
                     <div id="query-results-container" class="query-results-container">
                       <div class="results-header">
                         <div class="results-view-mode">
-                          <button id="res-mode-table" class="mode-btn active" title="Vista Tabella">📊 Tabella</button>
-                          <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree">🌳 JSON Tree</button>
+                          <button id="res-mode-table" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
+                          <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
                         </div>
                         <div class="results-actions">
                           <div class="desktop-export-group">
@@ -1573,7 +1573,7 @@
           <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
         </div>
         <div class="pending-toolbar-btns">
-          <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary">🧹 Pulisci completate</button>
+          <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>
           <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger">🗑 Pulisci TUTTE</button>
         </div>
       </div>
