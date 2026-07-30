@@ -1199,6 +1199,40 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   border-color: var(--border-2);
 }
 
+.toolbar-checkbox {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.toolbar-checkbox:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-2);
+}
+
+.toolbar-checkbox:has(input:checked) {
+  background: rgba(56, 189, 248, 0.12);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: var(--accent, #38bdf8);
+}
+
+.toolbar-checkbox input {
+  display: none;
+}
+
+
 .toolbar button.primary {
   background: linear-gradient(135deg, var(--accent-2) 0%, var(--accent-violet) 100%);
   color: #ffffff;
@@ -1684,13 +1718,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 #conn-empty { margin: 8px 14px; flex-shrink: 0; }
 
-#conn-add-btn {
-  margin: 8px 14px 10px;
-  flex-shrink: 0;
-  border-style: dashed;
-  color: var(--fg-dim);
-}
-#conn-add-btn:hover { color: var(--accent); border-color: var(--accent-2); }
+/* #conn-add-btn gestito in .sidebar-footer-wrap */
 
 /* ---------- Maniglie di ridimensionamento ---------- */
 
@@ -4401,6 +4429,142 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   color: #818cf8;
   margin-left: 2px;
 }
+
+/* ===================== Lucide Icons System ===================== */
+.lucide, svg.lucide {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2px;
+  stroke: currentColor;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
+.lucide-xs { width: 12px; height: 12px; }
+.lucide-sm { width: 14px; height: 14px; }
+.lucide-md { width: 18px; height: 18px; }
+.lucide-lg { width: 22px; height: 22px; }
+
+/* Connection Sidebar Container & Dock */
+#conn-sidebar {
+  container-type: inline-size;
+  container-name: conn-sidebar;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-2, #121827);
+}
+
+.sidebar-footer-wrap {
+  margin-top: auto;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-2, rgba(255, 255, 255, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-2, #121827);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+#conn-add-btn, .conn-add-btn-primary {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: var(--fg, #e2e8f0);
+  font-size: clamp(0.78rem, 3cqi, 0.82rem);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+#conn-add-btn:hover, .conn-add-btn-primary:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+#conn-add-btn:active, .conn-add-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.conn-tools-dock {
+  width: 100%;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(32px, 1fr));
+  gap: 2px;
+  padding: 2px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+}
+
+.dock-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--fg-dim, #94a3b8);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-width: 0;
+}
+
+.dock-btn svg, .dock-btn .lucide {
+  width: 15px;
+  height: 15px;
+  stroke-width: 2px;
+  transition: color 0.15s ease;
+}
+
+.dock-btn .dock-label {
+  font-size: 0.65rem;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.dock-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--fg, #f8fafc);
+}
+
+.dock-btn:hover svg, .dock-btn:hover .lucide {
+  color: var(--fg, #f8fafc);
+}
+
+/* Responsive adjustment when sidebar is narrow (< 210px) */
+@container conn-sidebar (max-width: 210px) {
+  .dock-btn .dock-label {
+    display: none;
+  }
+  .dock-btn {
+    padding: 8px 4px;
+  }
+}
+
 
 
 

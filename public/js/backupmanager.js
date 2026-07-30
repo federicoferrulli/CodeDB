@@ -8,9 +8,9 @@ let currentTabMode = 'new'; // 'new' | 'catalog'
 
 export function initBackupManager() {
   const btnOpen = $('#btn-backup-manager');
-  if (btnOpen) {
-    btnOpen.addEventListener('click', () => openBackupModal());
-  }
+  const dockBtn = $('#conn-dock-backup');
+  if (btnOpen) btnOpen.addEventListener('click', () => openBackupModal());
+  if (dockBtn) dockBtn.addEventListener('click', () => openBackupModal());
 
   const btnClose = $('#btn-close-backup-modal');
   if (btnClose) {

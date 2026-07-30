@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, showContextMenu, toast, isSqlType } from './utils.js';
+import { $, emit, showContextMenu, toast, isSqlType, refreshLucideIcons } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
@@ -74,6 +74,7 @@ export function renderDbTree(databases) {
 
     tree.appendChild(li);
   }
+  refreshLucideIcons(tree);
 }
 
 export function renderCollectionsList(dbName, container, collections) {

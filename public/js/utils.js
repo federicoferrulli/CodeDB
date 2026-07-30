@@ -564,3 +564,23 @@ export function safeUUID() {
   }
   return 'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
+
+export function refreshLucideIcons(targetElement = null) {
+  if (window.lucide && typeof window.lucide.createIcons === 'function') {
+    try {
+      window.lucide.createIcons({
+        attrs: {
+          'stroke-width': 2
+        },
+        nameAttr: 'data-lucide',
+        ...(targetElement ? { root: targetElement } : {})
+      });
+    } catch (e) {
+      console.warn('Lucide icon refresh warning:', e);
+    }
+  }
+}
+
+export function lucideIconHtml(iconName, extraClasses = '') {
+  return `<i data-lucide="${iconName}" class="lucide-icon ${extraClasses}"></i>`;
+}

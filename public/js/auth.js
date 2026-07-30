@@ -97,7 +97,9 @@ export function initAuth() {
   }
 
   const logoutBtn = $('#btn-logout');
+  const dockLogout = $('#conn-dock-logout');
   if (logoutBtn) logoutBtn.addEventListener('click', () => { logout(); });
+  if (dockLogout) dockLogout.addEventListener('click', () => { logout(); });
 
   socket.on('connect_error', (err) => {
     if (err && err.message === 'auth_required') {
@@ -112,8 +114,16 @@ export function initAuth() {
     const res = await emit('auth:me', {}).catch(() => null);
     if (res && res.ok) {
       currentUser = res.user;
-      // Il pulsante "Esci" ha senso solo dove esistono davvero degli utenti.
-      if (logoutBtn) logoutBtn.classList.toggle('hidden', !res.user.rbac);
+      const rbacActive = !!(res.user && res.user.rbac);
+      const canManage = hasCapability('manage');
+
+      if (logoutBtn) logoutBtn.classList.toggle('hidden', !rbacActive);
+      if (dockLogout) dockLogout.classList.toggle('hidden', !rbacActive);
+
+      const adminBtn = $('#btn-admin-rbac');
+      const dockAdmin = $('#conn-dock-admin');
+      if (adminBtn) adminBtn.classList.toggle('hidden', !rbacActive || !canManage);
+      if (dockAdmin) dockAdmin.classList.toggle('hidden', !rbacActive || !canManage);
     }
   });
 }

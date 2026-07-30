@@ -90,6 +90,8 @@ function initResizers() {
   });
 }
 
+import { positionFixedDropdown, refreshLucideIcons } from './utils.js';
+
 // Cambio del tab attivo (switch o chiusura): ri-render di barra e workspace.
 // ensureActiveCollLoaded carica i dati del coll-tab attivo dei tab ripristinati
 // da una sessione (sui tab normali non fa nulla: i dati sono già in memoria).
@@ -97,9 +99,8 @@ onTabChange(() => {
   renderTabBar();
   renderWorkspace();
   ensureActiveCollLoaded();
+  refreshLucideIcons();
 });
-
-import { positionFixedDropdown } from './utils.js';
 
 function initHeaderMoreMenu() {
   const btn = $('#header-more-btn');
@@ -168,3 +169,4 @@ initHeaderMoreMenu();
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();
 renderWorkspace();
+refreshLucideIcons();

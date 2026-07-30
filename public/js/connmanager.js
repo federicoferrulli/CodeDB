@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, showContextMenu } from './utils.js';
+import { $, emit, toast, dbTypeIcon, showContextMenu, refreshLucideIcons } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
@@ -135,6 +135,7 @@ function renderConnTree() {
     tree.appendChild(li);
   }
   for (const conn of groups.get('') || []) tree.appendChild(connItem(conn));
+  refreshLucideIcons(tree);
 }
 
 // Suggerisce le cartelle esistenti nel campo "Cartella" del form.
