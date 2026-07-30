@@ -1469,24 +1469,68 @@
 
       <!-- Permessi (grant per connessione) -->
       <div class="admin-pane hidden" data-pane="grants">
-        <form id="grant-form" class="admin-form">
-          <select id="grant-subject" class="form-control form-control-sm" title="Sottoutente"></select>
-          <select id="grant-conn" class="form-control form-control-sm" title="Connessione salvata"></select>
-          <select id="grant-role" class="form-control form-control-sm" title="Ruolo"></select>
-          <input type="text" id="grant-dbs" class="form-control form-control-sm" placeholder="Database (glob, vuoto = tutti)">
-          <input type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Collezioni/tabelle (glob, vuoto = tutte)">
-          <button type="submit" class="btn btn-sm btn-primary">+ Assegna</button>
+        <form id="grant-form" class="admin-form-stacked">
+          <div class="admin-form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Sottoutente</label>
+              <select id="grant-subject" class="form-control form-control-sm" title="Sottoutente"></select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Connessione</label>
+              <select id="grant-conn" class="form-control form-control-sm" title="Connessione salvata"></select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Ruolo</label>
+              <select id="grant-role" class="form-control form-control-sm" title="Ruolo"></select>
+            </div>
+          </div>
+
+          <div class="admin-form-row multiselect-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Database consentiti (clicca per selezionare):</label>
+              <div id="grant-dbs-pills" class="pill-multiselect-container">
+                <button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>
+              </div>
+              <input type="hidden" id="grant-dbs" value="">
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Collezioni / Tabelle (opzionale):</label>
+              <input type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Es: orders*, users (vuoto = tutte)">
+            </div>
+          </div>
+
+          <div class="admin-form-actions">
+            <button type="submit" class="btn btn-sm btn-primary">+ Assegna Permesso</button>
+          </div>
         </form>
         <div id="grant-list" class="catalog-list-container"></div>
       </div>
 
       <!-- API key -->
       <div class="admin-pane hidden" data-pane="apikeys">
-        <form id="apikey-form" class="admin-form">
-          <select id="apikey-subject" class="form-control form-control-sm" title="Soggetto della chiave"></select>
-          <input type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Etichetta (es. Claude Desktop)">
-          <input type="text" id="apikey-scope" class="form-control form-control-sm" placeholder="Connessioni consentite (nomi separati da virgola; vuoto = tutte)">
-          <button type="submit" class="btn btn-sm btn-primary">+ Genera</button>
+        <form id="apikey-form" class="admin-form-stacked">
+          <div class="admin-form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Soggetto API Key</label>
+              <select id="apikey-subject" class="form-control form-control-sm" title="Soggetto della chiave"></select>
+            </div>
+            <div class="form-group flex-2">
+              <label class="form-label">Etichetta client</label>
+              <input type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Es. Claude Desktop / MCP Cursor" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Connessioni consentite per l'API key (clicca sulle pill per selezionare):</label>
+            <div id="apikey-scope-pills" class="pill-multiselect-container">
+              <button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</button>
+            </div>
+            <input type="hidden" id="apikey-scope" value="">
+          </div>
+
+          <div class="admin-form-actions">
+            <button type="submit" class="btn btn-sm btn-primary">🔑 Genera API Key</button>
+          </div>
         </form>
         <div id="apikey-new" class="apikey-new hidden"></div>
         <div id="apikey-list" class="catalog-list-container"></div>

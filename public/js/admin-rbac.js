@@ -136,6 +136,60 @@ function populateSelects() {
   if (apikeySubject) {
     apikeySubject.innerHTML = `<option value="">Me (owner)</option>${subjOpts}`;
   }
+
+  renderPillMultiselects();
+}
+
+function renderPillMultiselects() {
+  // Pill per le connessioni consentite nell'API key
+  const apikeyPills = $('#apikey-scope-pills');
+  if (apikeyPills) {
+    const connItems = data.conns.map((c) =>
+      `<button type="button" class="pill-option" data-value="${esc(c.name)}">🔌 ${esc(c.name)}</button>`
+    ).join('');
+    apikeyPills.innerHTML = `<button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</button>${connItems}`;
+    wirePillContainer(apikeyPills, $('#apikey-scope'));
+  }
+
+  // Pill per i database nei Grant (Permessi)
+  const grantDbPills = $('#grant-dbs-pills');
+  if (grantDbPills) {
+    grantDbPills.innerHTML = `<button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>`;
+    wirePillContainer(grantDbPills, $('#grant-dbs'));
+  }
+}
+
+function wirePillContainer(container, hiddenInput) {
+  if (!container || container.dataset.wired) return;
+  container.dataset.wired = 'true';
+
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('.pill-option');
+    if (!btn) return;
+
+    const val = btn.dataset.value;
+    const allBtn = container.querySelector('.pill-option[data-value=""]');
+
+    if (val === '') {
+      container.querySelectorAll('.pill-option').forEach((p) => p.classList.remove('active'));
+      btn.classList.add('active');
+    } else {
+      if (allBtn) allBtn.classList.remove('active');
+      btn.classList.toggle('active');
+
+      const activeSpecific = container.querySelectorAll('.pill-option:not([data-value=""]).active');
+      if (activeSpecific.length === 0 && allBtn) {
+        allBtn.classList.add('active');
+      }
+    }
+
+    if (hiddenInput) {
+      const selectedVals = Array.from(container.querySelectorAll('.pill-option.active'))
+        .map((b) => b.dataset.value)
+        .filter(Boolean);
+      hiddenInput.value = selectedVals.join(',');
+    }
+  });
 }
 
 /* --- Rendering delle liste ------------------------------------------------- */
@@ -305,7 +359,6 @@ function wireForms() {
     try {
       const res = await emit('apikeys:create', { subjectId, label, connScope: connScope.length ? connScope : null });
       $('#apikey-label').value = '';
-      $('#apikey-scope').value = '';
       showNewKey(res.key);
       await reload();
     } catch (err) {

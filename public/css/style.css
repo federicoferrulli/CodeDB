@@ -203,20 +203,47 @@
 .form-row select { width: 100%; box-sizing: border-box; }
 
 input, select, textarea {
-  background: var(--input-bg);
-  color: var(--fg);
-  border: 1px solid var(--border-2);
+  background-color: var(--input-bg, #0f172a);
+  color: var(--fg, #f8fafc);
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.16));
   border-radius: 6px;
   padding: 8px 12px;
   font-size: 0.92rem;
-  outline: none;
+  outline: none !important;
   font-family: var(--font-sans);
-  transition: all 0.18s ease;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 14px 14px !important;
+}
+
+/* Stile per i menu a tendina nativi (option) per evitare sfondi bianchi */
+select option {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  padding: 8px 12px;
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+  background-color: #334155 !important;
+  color: #ffffff !important;
 }
 
 input:focus, select:focus, textarea:focus {
-  border-color: var(--focus);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25);
+  border-color: var(--accent-2, #6366f1) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.25) !important;
+  outline: none !important;
 }
 
 textarea { width: 100%; font-family: var(--font-mono); resize: vertical; line-height: 1.45; }
@@ -812,31 +839,32 @@ header {
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
-  color: var(--fg-dim);
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  color: #94a3b8;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
   position: relative;
 }
 
 .conn-tab:hover {
   background: rgba(255, 255, 255, 0.06);
-  color: var(--fg);
+  color: #f8fafc;
 }
 
 .conn-tab.active {
-  background: var(--bg);
-  color: #ffffff;
-  font-weight: 600;
-  border-color: var(--border-2);
-  box-shadow: inset 0 2px 0 0 var(--accent);
+  background: var(--bg-surface, #1e293b) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  border-color: rgba(99, 102, 241, 0.4) rgba(99, 102, 241, 0.4) transparent rgba(99, 102, 241, 0.4);
+  border-bottom: 3px solid #6366f1 !important;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15) !important;
 }
 
 .conn-tab .dot {
@@ -914,32 +942,32 @@ header {
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
-  border-bottom: 1px solid var(--bg-2);
-  border-radius: 8px 8px 0 0;
-  color: var(--fg-dim);
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  color: #94a3b8;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
   margin-bottom: -1px;
 }
 
 .coll-tab:hover {
   background: rgba(255, 255, 255, 0.07);
-  color: var(--fg);
+  color: #f8fafc;
 }
 
 .coll-tab.active {
-  background: var(--bg);
-  color: var(--accent);
-  font-weight: 600;
-  border-color: var(--border-2);
-  border-bottom-color: var(--bg);
-  box-shadow: inset 0 2px 0 0 var(--accent);
+  background: var(--bg, #0b0f19) !important;
+  color: #38bdf8 !important;
+  font-weight: 700 !important;
+  border-color: rgba(56, 189, 248, 0.4) rgba(56, 189, 248, 0.4) transparent rgba(56, 189, 248, 0.4);
+  border-bottom: 3px solid #38bdf8 !important;
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.15) !important;
 }
 
 /* ---------- Sidebar ---------- */
@@ -4286,5 +4314,94 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   color: #a5b4fc;
   white-space: pre;
 }
+
+.admin-form-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-surface, rgba(255, 255, 255, 0.03));
+  padding: 16px;
+  border-radius: var(--radius-lg, 8px);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+
+.admin-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group.flex-1 { flex: 1 1 180px; }
+.form-group.flex-2 { flex: 2 1 240px; }
+
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--fg-dim, #94a3b8);
+}
+
+.admin-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* Pill Multiselect Component */
+.pill-multiselect-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--bg-1, #0f172a);
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-md, 6px);
+  min-height: 42px;
+  align-items: center;
+}
+
+.pill-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.84rem;
+  font-weight: 500;
+  background: var(--bg-surface, #131d31);
+  color: var(--fg-dim, #cbd5e1);
+  border: 1px solid var(--border-2, rgba(255, 255, 255, 0.16));
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.pill-option:hover {
+  background: rgba(99, 102, 241, 0.15);
+  color: #f8fafc;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.pill-option.active {
+  background: rgba(99, 102, 241, 0.22);
+  color: #a5b4fc;
+  border-color: #6366f1;
+}
+
+.pill-option.active::after {
+  content: "✓";
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #818cf8;
+  margin-left: 2px;
+}
+
+
 
 
