@@ -1,16 +1,20 @@
-'use strict';
+"use strict";
 
-const { MongoClient, ObjectId } = require('mongodb');
-const { EJSON } = require('bson');
-const DbStrategy = require('./DbStrategy');
+const { MongoClient, ObjectId } = require("mongodb");
+const { EJSON } = require("bson");
+const DbStrategy = require("./DbStrategy");
 
-const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
+const SYSTEM_DBS = new Set(["admin", "config", "local"]);
 
 // Riconosce l'errore di timeout lato server (maxTimeMS scaduto): codice BSON 50
 // / label 'MaxTimeMSExpired'. Usato per degradare il conteggio a "sconosciuto".
 function isMaxTimeError(err) {
-  return !!err && (err.code === 50 || err.codeName === 'MaxTimeMSExpired'
-    || /operation exceeded time limit|maxTimeMS/i.test(err.message || ''));
+  return (
+    !!err &&
+    (err.code === 50 ||
+      err.codeName === "MaxTimeMSExpired" ||
+      /operation exceeded time limit|maxTimeMS/i.test(err.message || ""))
+  );
 }
 
 /* ---------------------------------------------------------------------------
@@ -22,40 +26,44 @@ function isMaxTimeError(err) {
 function buildUri(cfg) {
   if (cfg.uri && cfg.uri.trim()) return cfg.uri.trim();
 
-  const host = (cfg.host || 'localhost').trim();
+  const host = (cfg.host || "localhost").trim();
   const port = String(cfg.port || 27017).trim();
-  let auth = '';
+  let auth = "";
   if (cfg.username) {
     auth = encodeURIComponent(cfg.username);
-    if (cfg.password) auth += ':' + encodeURIComponent(cfg.password);
-    auth += '@';
+    if (cfg.password) auth += ":" + encodeURIComponent(cfg.password);
+    auth += "@";
   }
   const params = new URLSearchParams();
-  if (cfg.username) params.set('authSource', cfg.authSource || 'admin');
+  if (cfg.username) params.set("authSource", cfg.authSource || "admin");
   // Connessione diretta a un singolo nodo (es. dietro tunnel SSH): evita la
   // topology discovery verso host del replica set non raggiungibili.
-  if (cfg.directConnection) params.set('directConnection', 'true');
+  if (cfg.directConnection) params.set("directConnection", "true");
   const qs = params.toString();
-  return `mongodb://${auth}${host}:${port}/${qs ? '?' + qs : ''}`;
+  return `mongodb://${auth}${host}:${port}/${qs ? "?" + qs : ""}`;
 }
 
 // Parses a user supplied filter/sort/projection string. Accepts Extended
 // JSON ({"_id": {"$oid": "..."}}) as well as plain JSON. Plain 24-hex
 // strings used as _id are promoted to ObjectId automatically.
 function parseQueryObject(text, fallback = {}) {
-  if (text == null || String(text).trim() === '') return fallback;
+  if (text == null || String(text).trim() === "") return fallback;
   const parsed = EJSON.parse(String(text), { relaxed: false });
   promoteObjectIds(parsed);
   return parsed;
 }
 
 function promoteObjectIds(obj) {
-  if (!obj || typeof obj !== 'object') return;
+  if (!obj || typeof obj !== "object") return;
   for (const key of Object.keys(obj)) {
     const val = obj[key];
-    if (key === '_id' && typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val)) {
+    if (
+      key === "_id" &&
+      typeof val === "string" &&
+      /^[0-9a-fA-F]{24}$/.test(val)
+    ) {
       obj[key] = new ObjectId(val);
-    } else if (val && typeof val === 'object' && !(val instanceof ObjectId)) {
+    } else if (val && typeof val === "object" && !(val instanceof ObjectId)) {
       promoteObjectIds(val);
     }
   }
@@ -63,16 +71,22 @@ function promoteObjectIds(obj) {
 
 const HEX24_RE = /^[0-9a-fA-F]{24}$/;
 // Operatori il cui valore (o i cui elementi) sono confronti col campo corrente.
-const COMPARISON_OPS = new Set(['$eq', '$ne', '$gt', '$gte', '$lt', '$lte']);
-const LIST_OPS = new Set(['$in', '$nin', '$all']);
-const LOGICAL_OPS = new Set(['$and', '$or', '$nor']);
+const COMPARISON_OPS = new Set(["$eq", "$ne", "$gt", "$gte", "$lt", "$lte"]);
+const LIST_OPS = new Set(["$in", "$nin", "$all"]);
+const LOGICAL_OPS = new Set(["$and", "$or", "$nor"]);
 const OID_PROBE_SAMPLE = 100; // documenti letti al massimo dal probe
 const OID_PROBE_TTL_MS = 60_000;
 
 // Oggetto "semplice" del filtro: esclude array, Date e tipi BSON già
 // tipizzati (ObjectId, Long, Binary...), dentro cui non bisogna ricorrere.
 function isPlainFilterObject(v) {
-  return !!v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date) && !v._bsontype;
+  return (
+    !!v &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    !(v instanceof Date) &&
+    !v._bsontype
+  );
 }
 
 // Cammina il filtro e promuove in loco a ObjectId le stringhe di 24
@@ -83,21 +97,29 @@ function isPlainFilterObject(v) {
 // sono sotto-filtri completi.
 async function promoteHexStrings(node, path, isOidField) {
   const promote = async (holder, key, fieldPath) => {
-    if (fieldPath && HEX24_RE.test(holder[key]) && (await isOidField(fieldPath))) {
+    if (
+      fieldPath &&
+      HEX24_RE.test(holder[key]) &&
+      (await isOidField(fieldPath))
+    ) {
       holder[key] = new ObjectId(holder[key]);
     }
   };
   for (const [key, val] of Object.entries(node)) {
-    const isOp = key.startsWith('$');
+    const isOp = key.startsWith("$");
     const fieldPath = isOp ? path : path ? `${path}.${key}` : key;
-    if (typeof val === 'string') {
+    if (typeof val === "string") {
       if (!isOp || COMPARISON_OPS.has(key)) await promote(node, key, fieldPath);
     } else if (Array.isArray(val)) {
       for (let i = 0; i < val.length; i++) {
-        if (typeof val[i] === 'string') {
+        if (typeof val[i] === "string") {
           if (!isOp || LIST_OPS.has(key)) await promote(val, i, fieldPath);
         } else if (isPlainFilterObject(val[i])) {
-          await promoteHexStrings(val[i], LOGICAL_OPS.has(key) ? '' : fieldPath, isOidField);
+          await promoteHexStrings(
+            val[i],
+            LOGICAL_OPS.has(key) ? "" : fieldPath,
+            isOidField,
+          );
         }
       }
     } else if (isPlainFilterObject(val)) {
@@ -109,7 +131,8 @@ async function promoteHexStrings(node, path, isOidField) {
 // Parses the _id sent by the client (serialized as relaxed EJSON string).
 function parseId(rawId) {
   const val = EJSON.parse(rawId, { relaxed: false });
-  if (typeof val === 'string' && /^[0-9a-fA-F]{24}$/.test(val)) return new ObjectId(val);
+  if (typeof val === "string" && /^[0-9a-fA-F]{24}$/.test(val))
+    return new ObjectId(val);
   return val;
 }
 
@@ -118,7 +141,7 @@ function parseId(rawId) {
 // si combina con $and).
 function withIdBound(filter, op, val) {
   const cond = { _id: { [op]: val } };
-  if (filter && Object.prototype.hasOwnProperty.call(filter, '_id')) {
+  if (filter && Object.prototype.hasOwnProperty.call(filter, "_id")) {
     return { $and: [filter, cond] };
   }
   return { ...filter, ...cond };
@@ -131,7 +154,16 @@ function serialize(value) {
 }
 
 // Tipi ammessi da $convert per la conversione dei campi.
-const MONGO_CONVERT_TYPES = new Set(['string', 'int', 'long', 'double', 'decimal', 'bool', 'date', 'objectId']);
+const MONGO_CONVERT_TYPES = new Set([
+  "string",
+  "int",
+  "long",
+  "double",
+  "decimal",
+  "bool",
+  "date",
+  "objectId",
+]);
 
 // Valore "libero" digitato dall'utente: prova il parse EJSON/JSON
 // (numeri, booleani, {"$date": ...}), altrimenti è una stringa semplice.
@@ -154,7 +186,9 @@ function errMsgSafe(err) {
 // un errore diverso da quello originale.
 function dbNameFromUri(uri) {
   try {
-    const name = new URL(String(uri || '').replace(/^mongodb(\+srv)?:\/\//, 'http://')).pathname.replace('/', '');
+    const name = new URL(
+      String(uri || "").replace(/^mongodb(\+srv)?:\/\//, "http://"),
+    ).pathname.replace("/", "");
     return name || null;
   } catch {
     return null;
@@ -169,22 +203,22 @@ function assertDbName(name) {
 
 // Tipo BSON "leggibile" di un valore, per lo schema dedotto dal campione.
 function bsonTypeOf(v) {
-  if (v === null || v === undefined) return 'null';
-  if (Array.isArray(v)) return 'array';
-  if (v instanceof Date) return 'date';
-  if (typeof v === 'object') {
+  if (v === null || v === undefined) return "null";
+  if (Array.isArray(v)) return "array";
+  if (v instanceof Date) return "date";
+  if (typeof v === "object") {
     const t = v._bsontype;
-    if (t === 'ObjectId') return 'objectId';
-    if (t === 'Long') return 'long';
-    if (t === 'Int32') return 'int';
-    if (t === 'Double') return 'double';
-    if (t === 'Decimal128') return 'decimal';
-    if (t === 'Binary') return 'binary';
-    if (t === 'Timestamp') return 'timestamp';
+    if (t === "ObjectId") return "objectId";
+    if (t === "Long") return "long";
+    if (t === "Int32") return "int";
+    if (t === "Double") return "double";
+    if (t === "Decimal128") return "decimal";
+    if (t === "Binary") return "binary";
+    if (t === "Timestamp") return "timestamp";
     if (t) return String(t).toLowerCase();
-    return 'object';
+    return "object";
   }
-  if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'double';
+  if (typeof v === "number") return Number.isInteger(v) ? "int" : "double";
   return typeof v; // string, boolean
 }
 
@@ -192,7 +226,9 @@ function bsonTypeOf(v) {
 async function sampleSchema(collection, sampleSize = 100) {
   let docs;
   try {
-    docs = await collection.aggregate([{ $sample: { size: sampleSize } }]).toArray();
+    docs = await collection
+      .aggregate([{ $sample: { size: sampleSize } }])
+      .toArray();
   } catch {
     docs = await collection.find().limit(sampleSize).toArray();
   }
@@ -201,9 +237,24 @@ async function sampleSchema(collection, sampleSize = 100) {
     for (const key in doc) {
       const val = doc[key];
       let f = fields.get(key);
-      if (!f) fields.set(key, (f = { name: key, types: new Set(), count: 0 }));
+      if (!f)
+        fields.set(
+          key,
+          (f = { name: key, types: new Set(), count: 0, _lastType: null }),
+        );
       f.count += 1;
-      f.types.add(bsonTypeOf(val));
+
+      let bType;
+      const t = typeof val;
+      if (t === "string") bType = "string";
+      else if (t === "number") bType = Number.isInteger(val) ? "int" : "double";
+      else if (t === "boolean") bType = "boolean";
+      else bType = bsonTypeOf(val);
+
+      if (f._lastType !== bType) {
+        f.types.add(bType);
+        f._lastType = bType;
+      }
     }
   }
   const out = [...fields.values()].map((f) => ({
@@ -212,7 +263,11 @@ async function sampleSchema(collection, sampleSize = 100) {
     presence: docs.length ? Math.round((f.count / docs.length) * 100) : 0,
   }));
   out.sort((a, b) =>
-    a.name === '_id' ? -1 : b.name === '_id' ? 1 : b.presence - a.presence || a.name.localeCompare(b.name)
+    a.name === "_id"
+      ? -1
+      : b.name === "_id"
+        ? 1
+        : b.presence - a.presence || a.name.localeCompare(b.name),
   );
   return { fields: out, sampled: docs.length };
 }
@@ -226,17 +281,20 @@ class MongoDbStrategy extends DbStrategy {
     super();
     /** @type {MongoClient|null} */
     this.client = null;
-    this.uri = '';
+    this.uri = "";
     // Cache dei probe "campo → è ObjectId?" (chiave db.coll.campo, con TTL).
     this.oidFieldCache = new Map();
     this.changeStream = null;
     this.schemaStream = null;
   }
 
-  get type() { return 'mongodb'; }
+  get type() {
+    return "mongodb";
+  }
 
   requireClient() {
-    if (!this.client) throw new Error('Nessuna connessione attiva al database.');
+    if (!this.client)
+      throw new Error("Nessuna connessione attiva al database.");
     return this.client;
   }
 
@@ -248,7 +306,7 @@ class MongoDbStrategy extends DbStrategy {
     });
     await client.connect();
     // Force a round-trip so bad credentials fail here and not later.
-    await client.db('admin').command({ ping: 1 });
+    await client.db("admin").command({ ping: 1 });
     this.client = client;
     this.uri = uri;
   }
@@ -266,7 +324,7 @@ class MongoDbStrategy extends DbStrategy {
   async health() {
     const client = this.requireClient();
     const t0 = Date.now();
-    await client.db('admin').command({ ping: 1 });
+    await client.db("admin").command({ ping: 1 });
     const latencyMs = Date.now() - t0;
     // Il driver Mongo non espone contatori di pool pubblici e stabili: si
     // riporta solo il numero di server della topology, quando accessibile.
@@ -274,15 +332,23 @@ class MongoDbStrategy extends DbStrategy {
     try {
       const desc = client.topology && client.topology.description;
       if (desc && desc.servers) extra = { servers: desc.servers.size };
-    } catch { /* internals non disponibili: si omette */ }
+    } catch {
+      /* internals non disponibili: si omette */
+    }
     return { latencyMs, pool: null, extra };
   }
 
   async listDatabases() {
     const client = this.requireClient();
     try {
-      const res = await client.db('admin').admin().listDatabases({ nameOnly: false });
-      return res.databases.map((d) => ({ name: d.name, sizeOnDisk: d.sizeOnDisk }));
+      const res = await client
+        .db("admin")
+        .admin()
+        .listDatabases({ nameOnly: false });
+      return res.databases.map((d) => ({
+        name: d.name,
+        sizeOnDisk: d.sizeOnDisk,
+      }));
     } catch {
       // User may lack listDatabases permission: fall back to the db in the URI.
       const dbName = dbNameFromUri(this.uri);
@@ -291,12 +357,15 @@ class MongoDbStrategy extends DbStrategy {
   }
 
   async search(query) {
-    const term = (query || '').toLowerCase();
+    const term = (query || "").toLowerCase();
     const client = this.requireClient();
-    
+
     let databases = [];
     try {
-      const res = await client.db('admin').admin().listDatabases({ nameOnly: false });
+      const res = await client
+        .db("admin")
+        .admin()
+        .listDatabases({ nameOnly: false });
       databases = res.databases || [];
     } catch {
       const dbName = dbNameFromUri(this.uri);
@@ -311,10 +380,10 @@ class MongoDbStrategy extends DbStrategy {
         try {
           const collections = await db.listCollections().toArray();
           const matchedCols = collections
-            .filter((c) => !c.name.startsWith('system.'))
+            .filter((c) => !c.name.startsWith("system."))
             .filter((c) => dbMatches || c.name.toLowerCase().includes(term))
             .map((c) => ({ name: c.name }));
-            
+
           if (dbMatches || matchedCols.length > 0) {
             return { name: dbInfo.name, collections: matchedCols };
           }
@@ -330,50 +399,67 @@ class MongoDbStrategy extends DbStrategy {
 
   async createDatabase(db, firstColl) {
     const client = this.requireClient();
-    const name = String(db || '').trim();
+    const name = String(db || "").trim();
     assertDbName(name);
-    const collName = String(firstColl || '').trim() || 'collection1';
+    const collName = String(firstColl || "").trim() || "collection1";
     const existing = await this.listDatabases();
-    if (existing.some((d) => d.name === name)) throw new Error(`Il database "${name}" esiste già.`);
+    if (existing.some((d) => d.name === name))
+      throw new Error(`Il database "${name}" esiste già.`);
     // In MongoDB un database esiste solo se contiene almeno una collection.
     await client.db(name).createCollection(collName);
   }
 
   async renameDatabase(db, newName) {
     const client = this.requireClient();
-    const from = String(db || '').trim();
-    const to = String(newName || '').trim();
+    const from = String(db || "").trim();
+    const to = String(newName || "").trim();
     assertDbName(from);
     assertDbName(to);
-    if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
-    if (SYSTEM_DBS.has(from)) throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
+    if (from === to)
+      throw new Error("Il nuovo nome coincide con quello attuale.");
+    if (SYSTEM_DBS.has(from))
+      throw new Error(
+        `Il database di sistema "${from}" non può essere rinominato.`,
+      );
     const existing = await this.listDatabases();
-    if (existing.some((d) => d.name === to)) throw new Error(`Il database "${to}" esiste già.`);
+    if (existing.some((d) => d.name === to))
+      throw new Error(`Il database "${to}" esiste già.`);
 
     // MongoDB non supporta la rinomina diretta: copia ogni collection nel
     // nuovo db ($out cross-database, MongoDB >= 4.4) e poi elimina l'originale.
     const source = client.db(from);
-    const allColls = await source.listCollections({}, { nameOnly: true }).toArray();
-    const colls = allColls.filter((c) => c.type !== 'view');
-    const views = allColls.filter((c) => c.type === 'view');
+    const allColls = await source
+      .listCollections({}, { nameOnly: true })
+      .toArray();
+    const colls = allColls.filter((c) => c.type !== "view");
+    const views = allColls.filter((c) => c.type === "view");
     if (views.length) {
       // $out non copia le view: proseguendo, il drop del db sorgente le
       // farebbe sparire in silenzio. Meglio rifiutare che perdere dati.
       throw new Error(
-        `Il database contiene ${views.length} view (${views.map((v) => v.name).join(', ')}) ` +
-        'che non possono essere copiate nel nuovo nome: eliminale o ricreale manualmente prima di rinominare.'
+        `Il database contiene ${views.length} view (${views.map((v) => v.name).join(", ")}) ` +
+          "che non possono essere copiate nel nuovo nome: eliminale o ricreale manualmente prima di rinominare.",
       );
     }
-    if (!colls.length) throw new Error('Il database non contiene collection da copiare.');
+    if (!colls.length)
+      throw new Error("Il database non contiene collection da copiare.");
     for (const c of colls) {
-      await source.collection(c.name)
+      await source
+        .collection(c.name)
         .aggregate([{ $match: {} }, { $out: { db: to, coll: c.name } }])
         .toArray();
-      const indexes = await source.collection(c.name).indexes().catch(() => []);
+      const indexes = await source
+        .collection(c.name)
+        .indexes()
+        .catch(() => []);
       for (const idx of indexes) {
-        if (idx.name === '_id_') continue;
+        if (idx.name === "_id_") continue;
         const { key, name, v, ns, ...opts } = idx;
-        await client.db(to).collection(c.name).createIndex(key, { name, ...opts }).catch(() => {});
+        await client
+          .db(to)
+          .collection(c.name)
+          .createIndex(key, { name, ...opts })
+          .catch(() => {});
       }
     }
     await source.dropDatabase();
@@ -381,24 +467,31 @@ class MongoDbStrategy extends DbStrategy {
 
   async dropDatabase(db) {
     const client = this.requireClient();
-    const name = String(db || '').trim();
+    const name = String(db || "").trim();
     assertDbName(name);
-    if (SYSTEM_DBS.has(name)) throw new Error(`Il database di sistema "${name}" non può essere eliminato.`);
+    if (SYSTEM_DBS.has(name))
+      throw new Error(
+        `Il database di sistema "${name}" non può essere eliminato.`,
+      );
     await client.db(name).dropDatabase();
   }
 
   async listCollections(db) {
     const client = this.requireClient();
     const database = client.db(db);
-    const collections = await database.listCollections({}, { nameOnly: true }).toArray();
+    const collections = await database
+      .listCollections({}, { nameOnly: true })
+      .toArray();
     const result = await Promise.all(
       collections.map(async (c) => {
         let count = null;
         try {
           count = await database.collection(c.name).estimatedDocumentCount();
-        } catch { /* views don't support estimatedDocumentCount */ }
+        } catch {
+          /* views don't support estimatedDocumentCount */
+        }
         return { name: c.name, type: c.type, count };
-      })
+      }),
     );
     result.sort((a, b) => a.name.localeCompare(b.name));
     return result;
@@ -406,15 +499,15 @@ class MongoDbStrategy extends DbStrategy {
 
   async createCollection(db, name) {
     const client = this.requireClient();
-    const coll = String(name || '').trim();
-    if (!coll) throw new Error('Nome della collection mancante.');
+    const coll = String(name || "").trim();
+    if (!coll) throw new Error("Nome della collection mancante.");
     await client.db(db).createCollection(coll);
   }
 
   async renameCollection(db, coll, newName) {
     const client = this.requireClient();
-    const to = String(newName || '').trim();
-    if (!to) throw new Error('Nuovo nome della collection mancante.');
+    const to = String(newName || "").trim();
+    if (!to) throw new Error("Nuovo nome della collection mancante.");
     await client.db(db).renameCollection(coll, to);
   }
 
@@ -431,14 +524,17 @@ class MongoDbStrategy extends DbStrategy {
   // non lo hanno già.
   async addColumn(db, coll, column) {
     const client = this.requireClient();
-    const name = String((column && column.name) || '').trim();
-    if (!name) throw new Error('Nome del campo mancante.');
-    if (name === '_id') throw new Error('Il campo "_id" esiste già in ogni documento.');
+    const name = String((column && column.name) || "").trim();
+    if (!name) throw new Error("Nome del campo mancante.");
+    if (name === "_id")
+      throw new Error('Il campo "_id" esiste già in ogni documento.');
     let value = null;
-    if (column.default != null && String(column.default).trim() !== '') {
+    if (column.default != null && String(column.default).trim() !== "") {
       value = parseLooseValue(column.default);
     }
-    const res = await client.db(db).collection(coll)
+    const res = await client
+      .db(db)
+      .collection(coll)
       .updateMany({ [name]: { $exists: false } }, { $set: { [name]: value } });
     return { modified: res.modifiedCount };
   }
@@ -447,61 +543,95 @@ class MongoDbStrategy extends DbStrategy {
   // con pipeline, MongoDB >= 4.2). I valori non convertibili restano invariati.
   async alterColumn(db, coll, payload) {
     const client = this.requireClient();
-    const oldName = String((payload && payload.oldName) || '').trim();
+    const oldName = String((payload && payload.oldName) || "").trim();
     const column = (payload && payload.column) || {};
-    const newName = String(column.name || '').trim() || oldName;
-    if (!oldName) throw new Error('Nome del campo da modificare mancante.');
-    if (oldName === '_id' || newName === '_id') throw new Error('Il campo "_id" non può essere modificato.');
+    const newName = String(column.name || "").trim() || oldName;
+    if (!oldName) throw new Error("Nome del campo da modificare mancante.");
+    if (oldName === "_id" || newName === "_id")
+      throw new Error('Il campo "_id" non può essere modificato.');
 
     const collection = client.db(db).collection(coll);
     let modified = 0;
     if (newName !== oldName) {
-      const res = await collection.updateMany({ [oldName]: { $exists: true } }, { $rename: { [oldName]: newName } });
-      modified = Math.max(modified, res.modifiedCount);
-    }
-    const to = String(column.type || '').trim();
-    if (to) {
-      if (!MONGO_CONVERT_TYPES.has(to)) {
-        throw new Error(`Tipo di conversione non valido: "${to}". Tipi ammessi: ${[...MONGO_CONVERT_TYPES].join(', ')}.`);
-      }
       const res = await collection.updateMany(
-        { [newName]: { $exists: true } },
-        [{ $set: { [newName]: { $convert: { input: `$${newName}`, to, onError: `$${newName}`, onNull: null } } } }]
+        { [oldName]: { $exists: true } },
+        { $rename: { [oldName]: newName } },
       );
       modified = Math.max(modified, res.modifiedCount);
     }
-    if (newName === oldName && !to) throw new Error('Nessuna modifica da applicare.');
+    const to = String(column.type || "").trim();
+    if (to) {
+      if (!MONGO_CONVERT_TYPES.has(to)) {
+        throw new Error(
+          `Tipo di conversione non valido: "${to}". Tipi ammessi: ${[...MONGO_CONVERT_TYPES].join(", ")}.`,
+        );
+      }
+      const res = await collection.updateMany(
+        { [newName]: { $exists: true } },
+        [
+          {
+            $set: {
+              [newName]: {
+                $convert: {
+                  input: `$${newName}`,
+                  to,
+                  onError: `$${newName}`,
+                  onNull: null,
+                },
+              },
+            },
+          },
+        ],
+      );
+      modified = Math.max(modified, res.modifiedCount);
+    }
+    if (newName === oldName && !to)
+      throw new Error("Nessuna modifica da applicare.");
     return { modified };
   }
 
   // Rimuove il campo da tutti i documenti ($unset).
   async dropColumn(db, coll, name) {
     const client = this.requireClient();
-    const field = String(name || '').trim();
-    if (!field) throw new Error('Nome del campo da eliminare mancante.');
-    if (field === '_id') throw new Error('Il campo "_id" non può essere eliminato.');
-    const res = await client.db(db).collection(coll)
-      .updateMany({ [field]: { $exists: true } }, { $unset: { [field]: '' } });
+    const field = String(name || "").trim();
+    if (!field) throw new Error("Nome del campo da eliminare mancante.");
+    if (field === "_id")
+      throw new Error('Il campo "_id" non può essere eliminato.');
+    const res = await client
+      .db(db)
+      .collection(coll)
+      .updateMany({ [field]: { $exists: true } }, { $unset: { [field]: "" } });
     return { modified: res.modifiedCount };
   }
 
   async createIndex(db, coll, payload) {
     const client = this.requireClient();
     const spec = parseQueryObject(payload.fields, null);
-    if (!spec || typeof spec !== 'object' || Array.isArray(spec) || !Object.keys(spec).length) {
-      throw new Error('Specifica dei campi non valida: usa ad es. {"email": 1}.');
+    if (
+      !spec ||
+      typeof spec !== "object" ||
+      Array.isArray(spec) ||
+      !Object.keys(spec).length
+    ) {
+      throw new Error(
+        'Specifica dei campi non valida: usa ad es. {"email": 1}.',
+      );
     }
     const options = {};
     if (payload.unique) options.unique = true;
-    const name = String(payload.name || '').trim();
+    const name = String(payload.name || "").trim();
     if (name) options.name = name;
-    const created = await client.db(db).collection(coll).createIndex(spec, options);
+    const created = await client
+      .db(db)
+      .collection(coll)
+      .createIndex(spec, options);
     return { name: created };
   }
 
   async dropIndex(db, coll, name) {
     const client = this.requireClient();
-    if (name === '_id_') throw new Error('L\'indice "_id_" non può essere eliminato.');
+    if (name === "_id_")
+      throw new Error('L\'indice "_id_" non può essere eliminato.');
     await client.db(db).collection(coll).dropIndex(name);
   }
 
@@ -510,7 +640,9 @@ class MongoDbStrategy extends DbStrategy {
     const collection = client.db(db).collection(coll);
     let stats = null;
     try {
-      const res = await collection.aggregate([{ $collStats: { storageStats: {} } }]).toArray();
+      const res = await collection
+        .aggregate([{ $collStats: { storageStats: {} } }])
+        .toArray();
       const s = res[0] && res[0].storageStats;
       if (s) {
         stats = {
@@ -522,13 +654,22 @@ class MongoDbStrategy extends DbStrategy {
           nindexes: s.nindexes,
         };
       }
-    } catch { /* le view non supportano $collStats */ }
-    if (!stats) stats = { count: await collection.countDocuments().catch(() => null) };
+    } catch {
+      /* le view non supportano $collStats */
+    }
+    if (!stats)
+      stats = { count: await collection.countDocuments().catch(() => null) };
 
     let indexes = [];
     try {
-      indexes = (await collection.indexes()).map((i) => ({ name: i.name, key: i.key, unique: !!i.unique }));
-    } catch { /* le view non hanno indici */ }
+      indexes = (await collection.indexes()).map((i) => ({
+        name: i.name,
+        key: i.key,
+        unique: !!i.unique,
+      }));
+    } catch {
+      /* le view non hanno indici */
+    }
 
     const schema = await sampleSchema(collection);
     return { stats, indexes, fields: schema.fields, sampled: schema.sampled };
@@ -537,8 +678,9 @@ class MongoDbStrategy extends DbStrategy {
   async dbSchema(db) {
     const client = this.requireClient();
     const database = client.db(db);
-    const infos = (await database.listCollections({}, { nameOnly: true }).toArray())
-      .filter((c) => c.type !== 'view');
+    const infos = (
+      await database.listCollections({}, { nameOnly: true }).toArray()
+    ).filter((c) => c.type !== "view");
     const collections = [];
     for (const c of infos) {
       const schema = await sampleSchema(database.collection(c.name), 50);
@@ -562,7 +704,7 @@ class MongoDbStrategy extends DbStrategy {
       const hit = await collection
         .aggregate([
           { $limit: OID_PROBE_SAMPLE },
-          { $match: { [path]: { $type: 'objectId' } } },
+          { $match: { [path]: { $type: "objectId" } } },
           { $limit: 1 },
         ])
         .toArray();
@@ -571,7 +713,10 @@ class MongoDbStrategy extends DbStrategy {
       /* campo non sondabile: nessuna promozione */
     }
     if (this.oidFieldCache.size > 500) this.oidFieldCache.clear();
-    this.oidFieldCache.set(key, { isOid, expires: Date.now() + OID_PROBE_TTL_MS });
+    this.oidFieldCache.set(key, {
+      isOid,
+      expires: Date.now() + OID_PROBE_TTL_MS,
+    });
     return isOid;
   }
 
@@ -579,7 +724,9 @@ class MongoDbStrategy extends DbStrategy {
   // filtro diventano ObjectId se il campo confrontato è memorizzato così.
   async promoteFilterObjectIds(collection, filter) {
     if (!isPlainFilterObject(filter)) return;
-    await promoteHexStrings(filter, '', (path) => this.isObjectIdField(collection, path));
+    await promoteHexStrings(filter, "", (path) =>
+      this.isObjectIdField(collection, path),
+    );
   }
 
   async collectionFind(db, coll, payload) {
@@ -593,7 +740,8 @@ class MongoDbStrategy extends DbStrategy {
 
     const collection = client.db(db).collection(coll);
     await this.promoteFilterObjectIds(collection, filter);
-    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
+    const runComment =
+      payload.comment || payload.runId || payload.opHandle?.runId;
     const findOpts = { projection };
     if (runComment) findOpts.comment = runComment;
     // Timeout lato server sulla find: una scansione lenta (es. skip profondo)
@@ -608,27 +756,31 @@ class MongoDbStrategy extends DbStrategy {
     // O(pagina) a qualsiasi profondità grazie all'indice su `_id`. Con un sort
     // personalizzato si ricade su `.skip()`.
     const hasCustomSort = Object.keys(sort).length > 0;
-    const ks = (payload.keyset && !hasCustomSort) ? payload.keyset : null;
+    const ks = payload.keyset && !hasCustomSort ? payload.keyset : null;
     let cursor;
     let reverse = false;
     if (ks) {
       let kfilter = filter;
       let ksort = { _id: 1 };
       if (ks.after != null) {
-        kfilter = withIdBound(filter, '$gt', parseId(ks.after));
+        kfilter = withIdBound(filter, "$gt", parseId(ks.after));
       } else if (ks.from != null) {
         // Refresh in place: ricarica la pagina corrente a partire (incluso) dal
         // primo _id già mostrato, senza tornare all'inizio.
-        kfilter = withIdBound(filter, '$gte', parseId(ks.from));
+        kfilter = withIdBound(filter, "$gte", parseId(ks.from));
       } else if (ks.before != null) {
-        kfilter = withIdBound(filter, '$lt', parseId(ks.before));
+        kfilter = withIdBound(filter, "$lt", parseId(ks.before));
         ksort = { _id: -1 };
         reverse = true;
       }
       // ks.first (o nessun estremo): prima pagina, solo ORDER BY _id ASC.
       cursor = collection.find(kfilter, findOpts).sort(ksort).limit(limit);
     } else {
-      cursor = collection.find(filter, findOpts).sort(sort).skip(skip).limit(limit);
+      cursor = collection
+        .find(filter, findOpts)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit);
     }
 
     // Il conteggio con filtro è una scansione completa: su collection enormi
@@ -642,7 +794,9 @@ class MongoDbStrategy extends DbStrategy {
     const hasFilter = Object.keys(filter).length > 0;
     let total;
     if (payload.deferCount) {
-      total = hasFilter ? null : await collection.estimatedDocumentCount().catch(() => null);
+      total = hasFilter
+        ? null
+        : await collection.estimatedDocumentCount().catch(() => null);
     } else {
       total = await this.countWithTimeout(collection, filter, hasFilter);
     }
@@ -662,7 +816,14 @@ class MongoDbStrategy extends DbStrategy {
       }
     }
 
-    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks };
+    return {
+      docs: docs.map(serialize),
+      columns,
+      total,
+      skip,
+      limit,
+      keyset: !!ks,
+    };
   }
 
   // Conteggio con timeout: countDocuments (con filtro) o estimatedDocumentCount
@@ -694,9 +855,11 @@ class MongoDbStrategy extends DbStrategy {
   async collectionAggregate(db, coll, payload) {
     const client = this.requireClient();
     const pipeline = parseQueryObject(payload.pipeline, []);
-    if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
+    if (!Array.isArray(pipeline))
+      throw new Error("La pipeline deve essere un array JSON.");
     const cap = DbStrategy.resultCap(payload);
-    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
+    const runComment =
+      payload.comment || payload.runId || payload.opHandle?.runId;
     const aggOpts = {};
     if (runComment) aggOpts.comment = runComment;
 
@@ -707,17 +870,33 @@ class MongoDbStrategy extends DbStrategy {
       .limit(cap)
       .toArray();
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
-    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap };
+    return {
+      docs: docs.map(serialize),
+      columns,
+      total: docs.length,
+      skip: 0,
+      limit: cap,
+    };
   }
 
   async cancelQuery(opHandle) {
-    if (!opHandle || !opHandle.runId || !this.client) return { cancelled: false };
+    if (!opHandle || !opHandle.runId || !this.client)
+      return { cancelled: false };
     try {
-      const admin = this.client.db('admin');
-      const ops = await admin.aggregate([
-        { $currentOp: { allUsers: true, idleConnections: false } },
-        { $match: { $or: [{ "command.comment": opHandle.runId }, { comment: opHandle.runId }] } }
-      ]).toArray();
+      const admin = this.client.db("admin");
+      const ops = await admin
+        .aggregate([
+          { $currentOp: { allUsers: true, idleConnections: false } },
+          {
+            $match: {
+              $or: [
+                { "command.comment": opHandle.runId },
+                { comment: opHandle.runId },
+              ],
+            },
+          },
+        ])
+        .toArray();
 
       if (!ops || ops.length === 0) return { cancelled: false };
 
@@ -741,15 +920,21 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const collection = client.db(db).collection(coll);
     let explanation;
-    if (payload.mode === 'aggregate') {
+    if (payload.mode === "aggregate") {
       const pipeline = parseQueryObject(payload.pipeline, []);
-      if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
-      explanation = await collection.aggregate(pipeline).explain('executionStats');
+      if (!Array.isArray(pipeline))
+        throw new Error("La pipeline deve essere un array JSON.");
+      explanation = await collection
+        .aggregate(pipeline)
+        .explain("executionStats");
     } else {
       const filter = parseQueryObject(payload.filter, {});
       const sort = parseQueryObject(payload.sort, {});
       const projection = parseQueryObject(payload.projection, {});
-      const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
+      const limit = Math.min(
+        Math.max(parseInt(payload.limit, 10) || 50, 1),
+        500,
+      );
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
       await this.promoteFilterObjectIds(collection, filter);
       explanation = await collection
@@ -757,15 +942,16 @@ class MongoDbStrategy extends DbStrategy {
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .explain('executionStats');
+        .explain("executionStats");
     }
-    return { format: 'json', plan: serialize(explanation) };
+    return { format: "json", plan: serialize(explanation) };
   }
 
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
     const doc = parseQueryObject(payload.doc, null);
-    if (!doc || typeof doc !== 'object') throw new Error('Documento JSON non valido.');
+    if (!doc || typeof doc !== "object")
+      throw new Error("Documento JSON non valido.");
     const res = await client.db(db).collection(coll).insertOne(doc);
     return { insertedId: EJSON.stringify(res.insertedId) };
   }
@@ -775,14 +961,31 @@ class MongoDbStrategy extends DbStrategy {
   async collectionUpdateMany(db, coll, payload) {
     const client = this.requireClient();
     const filter = parseQueryObject(payload.filter, null);
-    if (!filter || typeof filter !== 'object' || Array.isArray(filter) || !Object.keys(filter).length) {
-      throw new Error('Filtro mancante o vuoto: per un aggiornamento di massa serve un filtro esplicito.');
+    if (
+      !filter ||
+      typeof filter !== "object" ||
+      Array.isArray(filter) ||
+      !Object.keys(filter).length
+    ) {
+      throw new Error(
+        "Filtro mancante o vuoto: per un aggiornamento di massa serve un filtro esplicito.",
+      );
     }
     const set = parseQueryObject(payload.set, null);
-    if (!set || typeof set !== 'object' || Array.isArray(set) || !Object.keys(set).length) {
-      throw new Error('Oggetto "set" mancante o vuoto: indica i campi da aggiornare.');
+    if (
+      !set ||
+      typeof set !== "object" ||
+      Array.isArray(set) ||
+      !Object.keys(set).length
+    ) {
+      throw new Error(
+        'Oggetto "set" mancante o vuoto: indica i campi da aggiornare.',
+      );
     }
-    const res = await client.db(db).collection(coll).updateMany(filter, { $set: set });
+    const res = await client
+      .db(db)
+      .collection(coll)
+      .updateMany(filter, { $set: set });
     return { matched: res.matchedCount, modified: res.modifiedCount };
   }
 
@@ -794,9 +997,10 @@ class MongoDbStrategy extends DbStrategy {
       update.$set = EJSON.deserialize(payload.set, { relaxed: false });
     }
     if (payload.unset && payload.unset.length) {
-      update.$unset = Object.fromEntries(payload.unset.map((f) => [f, '']));
+      update.$unset = Object.fromEntries(payload.unset.map((f) => [f, ""]));
     }
-    if (!Object.keys(update).length) throw new Error('Nessuna modifica da applicare.');
+    if (!Object.keys(update).length)
+      throw new Error("Nessuna modifica da applicare.");
     const res = await client.db(db).collection(coll).updateOne({ _id }, update);
     return { matched: res.matchedCount, modified: res.modifiedCount };
   }
@@ -805,8 +1009,8 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const _id = parseId(payload.id);
     const doc = parseQueryObject(payload.doc, null);
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-      throw new Error('Documento JSON non valido.');
+    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+      throw new Error("Documento JSON non valido.");
     }
     delete doc._id; // l'_id non è modificabile
     const res = await client.db(db).collection(coll).replaceOne({ _id }, doc);
@@ -834,25 +1038,34 @@ class MongoDbStrategy extends DbStrategy {
   // (relaxed:false) dell'ultimo _id ricevuto; omesso per la prima pagina.
   async collectionExport(db, coll, payload) {
     const client = this.requireClient();
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
+    const limit = Math.min(
+      Math.max(parseInt(payload.limit, 10) || 500, 1),
+      1000,
+    );
     const collection = client.db(db).collection(coll);
     const filter = {};
-    if (payload.after != null && payload.after !== '') {
+    if (payload.after != null && payload.after !== "") {
       let afterId;
       try {
         afterId = EJSON.parse(String(payload.after), { relaxed: false });
       } catch {
-        throw new Error('Cursore di paginazione non valido.');
+        throw new Error("Cursore di paginazione non valido.");
       }
       filter._id = { $gt: afterId };
     }
-    const docs = await collection.find(filter).sort({ _id: 1 }).limit(limit).toArray();
+    const docs = await collection
+      .find(filter)
+      .sort({ _id: 1 })
+      .limit(limit)
+      .toArray();
     // relaxed: i numeri restano numeri, ObjectId/Date restano $oid/$date,
     // così il file riesportato si può reimportare senza perdita di tipi.
     const lines = docs.map((d) => EJSON.stringify(d, { relaxed: true }));
     const total = await collection.countDocuments();
-    const nextAfter = docs.length ? EJSON.stringify(docs[docs.length - 1]._id, { relaxed: false }) : null;
-    return { lines, count: docs.length, total, format: 'json', nextAfter };
+    const nextAfter = docs.length
+      ? EJSON.stringify(docs[docs.length - 1]._id, { relaxed: false })
+      : null;
+    return { lines, count: docs.length, total, format: "json", nextAfter };
   }
 
   // Importa un blocco di documenti (payload.docs = array di oggetti Extended
@@ -860,14 +1073,15 @@ class MongoDbStrategy extends DbStrategy {
   async collectionImport(db, coll, payload) {
     const client = this.requireClient();
     const raw = Array.isArray(payload.docs) ? payload.docs : [];
-    if (!raw.length) throw new Error('Nessun documento da importare nel blocco.');
+    if (!raw.length)
+      throw new Error("Nessun documento da importare nel blocco.");
     const errors = [];
     const docs = [];
     raw.forEach((d, i) => {
       try {
         const doc = EJSON.deserialize(d, { relaxed: false });
-        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-          throw new Error('il documento deve essere un oggetto JSON');
+        if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+          throw new Error("il documento deve essere un oggetto JSON");
         }
         docs.push(doc);
       } catch (err) {
@@ -877,18 +1091,27 @@ class MongoDbStrategy extends DbStrategy {
     let inserted = 0;
     if (docs.length) {
       try {
-        const res = await client.db(db).collection(coll).insertMany(docs, { ordered: false });
+        const res = await client
+          .db(db)
+          .collection(coll)
+          .insertMany(docs, { ordered: false });
         inserted = res.insertedCount;
       } catch (err) {
         // BulkWriteError: alcuni documenti possono comunque essere entrati.
-        inserted = (err.result && (err.result.insertedCount ?? err.result.nInserted)) || 0;
+        inserted =
+          (err.result && (err.result.insertedCount ?? err.result.nInserted)) ||
+          0;
         for (const we of (err.writeErrors || []).slice(0, 10)) {
           errors.push(we.errmsg || we.message || String(we));
         }
         if (!(err.writeErrors || []).length) errors.push(errMsgSafe(err));
       }
     }
-    return { inserted, failed: raw.length - inserted, errors: errors.slice(0, 10) };
+    return {
+      inserted,
+      failed: raw.length - inserted,
+      errors: errors.slice(0, 10),
+    };
   }
 
   // Change stream: richiede un replica set; su server standalone degrada
@@ -900,14 +1123,17 @@ class MongoDbStrategy extends DbStrategy {
   watch(db, coll, { onChange, onUnavailable }) {
     const client = this.requireClient();
     this.unwatch();
-    this.changeStream = client.db(db).collection(coll).watch([], { fullDocument: 'updateLookup' });
-    this.changeStream.on('change', (change) => {
+    this.changeStream = client
+      .db(db)
+      .collection(coll)
+      .watch([], { fullDocument: "updateLookup" });
+    this.changeStream.on("change", (change) => {
       onChange({
         operationType: change.operationType,
         documentKey: change.documentKey ? serialize(change.documentKey) : null,
       });
     });
-    this.changeStream.on('error', () => {
+    this.changeStream.on("error", () => {
       this.unwatch();
       onUnavailable();
     });
@@ -926,19 +1152,28 @@ class MongoDbStrategy extends DbStrategy {
   watchSchema({ onChange, onUnavailable }) {
     const client = this.requireClient();
     this.unwatchSchema();
-    const pipeline = [{ $match: { operationType: { $in: ['create', 'drop', 'rename', 'dropDatabase'] } } }];
+    const pipeline = [
+      {
+        $match: {
+          operationType: { $in: ["create", "drop", "rename", "dropDatabase"] },
+        },
+      },
+    ];
     const open = (expanded) => {
       // showExpandedEvents (MongoDB ≥ 6.0) aggiunge l'evento "create"; sui
       // server più vecchi lo stream fallirebbe: si riprova senza l'opzione.
-      const stream = client.watch(pipeline, expanded ? { showExpandedEvents: true } : {});
-      stream.on('change', (change) => {
+      const stream = client.watch(
+        pipeline,
+        expanded ? { showExpandedEvents: true } : {},
+      );
+      stream.on("change", (change) => {
         onChange({
           operationType: change.operationType,
           db: change.ns ? change.ns.db : null,
           coll: (change.ns && change.ns.coll) || null,
         });
       });
-      stream.on('error', () => {
+      stream.on("error", () => {
         stream.close().catch(() => {});
         if (this.schemaStream !== stream) return;
         this.schemaStream = null;
