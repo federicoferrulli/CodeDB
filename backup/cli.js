@@ -62,6 +62,8 @@ RESTORE
   --target-db <nome>       Database di destinazione (default: quello di origine del backup).
   --collections <a,b,...>  Restore selettivo delle sole collection/tabelle indicate.
   --drop                   Elimina la collection/tabella di destinazione prima del ripristino.
+  --allow-unsafe-schema    Esegue il DDL del backup anche se non è una semplice definizione
+                           della tabella attesa (usare solo su backup di provenienza certa).
 
 ESEMPI
   node backup/cli.js backup  --conn mongo-locale --db shop --type full
@@ -80,7 +82,7 @@ NOTE
 
 /* --- Parsing argomenti ----------------------------------------------------- */
 
-const FLAGS = new Set(['--no-compress', '--drop', '--quiet', '--help', '-h']);
+const FLAGS = new Set(['--no-compress', '--drop', '--quiet', '--allow-unsafe-schema', '--help', '-h']);
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -186,6 +188,7 @@ async function cmdRestore(args) {
           session, backupDir,
           targetDb: args['target-db'] || null,
           onlyCollections, drop: !!args.drop, log,
+          allowUnsafeSchema: !!args['allow-unsafe-schema'],
         });
       } finally {
         await teardownConnection(session);
@@ -194,6 +197,12 @@ async function cmdRestore(args) {
     log.info(`Restore completato su "${summary.targetDb}": ${summary.totalDocs} documenti/righe da ${summary.layers} layer.`);
     await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
   } catch (err) {
+    // Ripristino incompleto: dire anche quanto è stato applicato prima di
+    // fermarsi, perché il database di destinazione è in uno stato intermedio.
+    if (err && err.summary) {
+      log.error(`Ripristino su "${err.summary.targetDb}" INTERROTTO: ${err.summary.totalDocs} di ${err.summary.expectedDocs} documenti/righe applicati.`);
+      for (const p of err.summary.problems || []) log.error(`  · ${p}`);
+    }
     await notifySlack(webhook, `❌ CodeDB restore (${connName}) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${(err && err.message) || err}`, log);
     throw err;
   }

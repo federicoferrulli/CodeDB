@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, notify, showContextMenu, makeDraggable, reorderById, safeUUID } from './utils.js';
+import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID } from './utils.js';
 import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
@@ -61,6 +61,13 @@ function activate(ct, { fresh }) {
 
   state.db = ct.db;
   state.coll = ct.coll;
+  // La tab ⚡ Query & Aggregate torna a seguire il contesto: un bersaglio scelto
+  // a mano nello Schema Browser (o via `USE <db>`) vale finché si resta su
+  // questa collection, non per sempre. Senza questo azzeramento la tab
+  // continuava a interrogare il primo database toccato, anche dopo averne
+  // aperto un altro.
+  state.queryDb = null;
+  state.queryColl = null;
   state.watching = false;
   // La selezione bulk è legata alla pagina corrente: un _id (es. PK intera
   // MySQL) potrebbe coincidere tra tabelle diverse, quindi si azzera.
@@ -182,15 +189,32 @@ export function closeCollTab(id) {
 }
 
 // Chiude i coll-tab che soddisfano il predicato (es. db o collection eliminati).
-export function closeCollTabsWhere(pred) {
+// `st` esplicito: le operazioni DDL rispondono in modo asincrono e l'utente può
+// aver cambiato tab nel frattempo — senza, si chiuderebbero i coll-tab del tab
+// sbagliato. Su un tab non attivo si aggiorna solo la struttura, mai il DOM.
+export function closeCollTabsWhere(pred, st = null) {
   const t = activeTab();
+  if (st && (!t || t.state !== st)) {
+    const list = st.collTabs;
+    for (const c of list.filter(pred)) {
+      markAbandonedByCollTab(c.id);
+      const i = list.indexOf(c);
+      if (i >= 0) list.splice(i, 1);
+      if (st.activeCollId === c.id) st.activeCollId = (list[i] || list[i - 1] || {}).id || null;
+    }
+    return;
+  }
   if (!t) return;
   for (const id of t.state.collTabs.filter(pred).map((c) => c.id)) closeCollTab(id);
 }
 
 // Applica una modifica a tutti i coll-tab (es. rename di db/collection).
-export function updateCollTabs(fn) {
+export function updateCollTabs(fn, st = null) {
   const t = activeTab();
+  if (st && (!t || t.state !== st)) {
+    st.collTabs.forEach(fn);
+    return; // tab in background: nessuna barra da ridisegnare
+  }
   if (!t) return;
   t.state.collTabs.forEach(fn);
   renderCollTabBar();
@@ -200,7 +224,7 @@ export function updateCollTabs(fn) {
 function clearCollWorkspace() {
   const t = activeTab();
   if (t) t.state.activeCollId = null;
-  notify('collection:unwatch');
+  emitFireAndForget('collection:unwatch');
   state.db = null;
   state.coll = null;
   state.watching = false;
@@ -225,8 +249,17 @@ export function renderCollTabBar() {
   const list = t && t.state.connected ? t.state.collTabs : [];
   bar.classList.toggle('hidden', !list.length);
 
-  bar.addEventListener('dragover', (e) => e.stopPropagation());
-  bar.addEventListener('drop', (e) => e.stopPropagation());
+  // La barra è un nodo PERSISTENTE: svuotarne l'innerHTML scarta i figli e i
+  // loro listener, ma non quelli registrati sulla barra stessa. Questa funzione
+  // viene richiamata a ogni apertura/chiusura/cambio di coll-tab e a ogni
+  // renderWorkspace, quindi senza guardia si accumulavano centinaia di coppie
+  // dragover/drop identiche sullo stesso nodo — tutte eseguite a ogni evento di
+  // trascinamento, con le rispettive closure mai raccolte.
+  if (!bar.dataset.wired) {
+    bar.dataset.wired = '1';
+    bar.addEventListener('dragover', (e) => e.stopPropagation());
+    bar.addEventListener('drop', (e) => e.stopPropagation());
+  }
 
   for (const ct of list) {
     const el = document.createElement('div');

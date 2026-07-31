@@ -217,6 +217,246 @@ console.log('--- Test Unitari CodeDB ---');
     console.log('  OK   AuditLog cache limitata (no memory leak) passed');
   }
 
+  // Test 5c: AuditLog — isolamento multi-tenant dello Storico Azioni (CDB-07).
+  // `ui-audit.log` è unico per installazione: readRecent deve poter restringere
+  // la vista al tenant (ownerId) e al singolo soggetto (userId), e non deve mai
+  // far trapelare le voci prive di identità a chi chiede una vista ristretta.
+  {
+    const { makeAuditor } = require('../db/AuditLog');
+    const tmp = path.join(os.tmpdir(), `codedb-audit-tenant-${process.pid}.log`);
+    for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
+    const auditor = makeAuditor(tmp);
+    auditor.audit({ event: 'doc:insert', ownerId: 'A', userId: 'a1' });
+    auditor.audit({ event: 'doc:insert', ownerId: 'A', userId: 'a2' });
+    auditor.audit({ event: 'doc:insert', ownerId: 'B', userId: 'b1' });
+    auditor.audit({ event: 'doc:insert' }); // voce storica, senza attore
+
+    assert.strictEqual(auditor.readRecent({ limit: 100 }).total, 4, 'il root deve vedere tutte le voci');
+    assert.strictEqual(auditor.readRecent({ ownerId: 'A', limit: 100 }).total, 2, 'l\'owner deve vedere solo il proprio tenant');
+    assert.strictEqual(auditor.readRecent({ ownerId: 'A', userId: 'a1', limit: 100 }).total, 1, 'il sottoutente deve vedere solo le proprie azioni');
+    assert.strictEqual(auditor.readRecent({ ownerId: 'B', limit: 100 }).total, 1, 'nessuna fuga di voci fra tenant');
+    assert.strictEqual(
+      auditor.readRecent({ ownerId: 'A', limit: 100 }).entries.every((e) => e.ownerId === 'A'), true,
+      'le voci senza attore non devono comparire in una vista ristretta'
+    );
+    for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
+    console.log('  OK   AuditLog isolamento multi-tenant (CDB-07) passed');
+  }
+
+  // Test 5d: restore — un ripristino incompleto non deve mai risultare riuscito
+  // (CDB-27), ma un layer che legittimamente non contiene righe sì.
+  {
+    const { checkApplied } = require('../backup/lib/restore');
+    const layer = { manifest: { id: '20260731_full' } };
+    const problems = [];
+
+    checkApplied(problems, layer, { collection: 'ordini', count: 100 }, 100);
+    assert.strictEqual(problems.length, 0, 'tutte le righe applicate: nessun problema');
+
+    checkApplied(problems, layer, { collection: 'vuota', count: 0 }, 0);
+    assert.strictEqual(problems.length, 0, 'collection vuota nel backup: ripristino legittimo');
+
+    checkApplied(problems, layer, { collection: 'clienti', count: 500 }, 0, '500 righe rifiutate');
+    assert.strictEqual(problems.length, 1, 'righe dichiarate e non applicate: errore');
+    assert(/clienti/.test(problems[0]) && /500/.test(problems[0]), 'il messaggio deve nominare tabella e conteggio atteso');
+
+    checkApplied(problems, layer, { collection: 'storico' }, 0);
+    assert.strictEqual(problems.length, 1, 'manifest storico senza count: nessuna asserzione possibile');
+    console.log('  OK   Restore: verifica di completezza (CDB-27) passed');
+  }
+
+  // Test 5e: il sink di backup deve propagare gli errori invece di bloccarsi
+  // (CDB-46). Con la vecchia catena di .pipe() un errore di scrittura lasciava
+  // close() in attesa per sempre: backup fermo, nessun messaggio, client appeso.
+  {
+    const { createFileSink } = require('../backup/lib/util');
+
+    // Percorso felice: byte e checksum coerenti.
+    const okPath = path.join(os.tmpdir(), `codedb-sink-ok-${process.pid}.ndjson.gz`);
+    const sink = createFileSink(okPath, { compress: true, level: 1 });
+    for (let i = 0; i < 2000; i++) {
+      const pending = sink.writeLine(JSON.stringify({ i }));
+      if (pending) await pending;
+    }
+    const meta = await sink.close();
+    assert(meta.bytes > 0, 'il sink deve riportare i byte scritti');
+    assert.strictEqual(meta.sha256.length, 64, 'il sink deve riportare uno SHA-256');
+    assert(fs.statSync(okPath).size > 0, 'il file di backup deve esistere e non essere vuoto');
+    try { fs.unlinkSync(okPath); } catch { /* ignora */ }
+
+    // Errore asincrono di scrittura (target non scrivibile): close() deve
+    // rigettare, non restare appesa.
+    const dirPath = path.join(os.tmpdir(), `codedb-sink-dir-${process.pid}`);
+    fs.mkdirSync(dirPath, { recursive: true });
+    const badSink = createFileSink(dirPath, { compress: true });
+    await assert.rejects(
+      (async () => { const p = badSink.writeLine('{"a":1}'); if (p) await p; await badSink.close(); })(),
+      'un errore di scrittura deve emergere come rigetto, non come blocco'
+    );
+    try { fs.rmSync(dirPath, { recursive: true, force: true }); } catch { /* ignora */ }
+    console.log('  OK   Sink di backup: errori propagati, nessun blocco (CDB-46) passed');
+  }
+
+  // Test 5f: politiche sulle destinazioni richieste da un client (CDB-06/CDB-43).
+  // Percorso locale confinato, storage cloud solo per alias pre-approvati,
+  // webhook solo verso Slack: dal socket e dal gateway MCP non si deve poter
+  // scrivere fuori dalla cartella dei backup né esfiltrare un database.
+  {
+    const { resolveBackupPath, resolveStorageAlias, resolveSlackWebhook } = require('../backup/lib/policy');
+    const root = path.join(os.tmpdir(), 'codedb-backups-root');
+
+    assert.strictEqual(resolveBackupPath('', root), path.resolve(root), 'percorso vuoto = radice dei backup');
+    assert.strictEqual(resolveBackupPath('gruppo/2026', root), path.resolve(root, 'gruppo/2026'), 'sottocartella consentita');
+    assert.throws(() => resolveBackupPath('../fuori', root), /non consentito/, 'risalita con .. rifiutata');
+    assert.throws(() => resolveBackupPath('gruppo/../../fuori', root), /non consentito/, 'risalita mascherata rifiutata');
+    assert.throws(() => resolveBackupPath(path.resolve(os.tmpdir(), 'altrove'), root), /non consentito/, 'percorso assoluto rifiutato');
+
+    const prevStorage = process.env.CODEDB_BACKUP_STORAGE;
+    delete process.env.CODEDB_BACKUP_STORAGE;
+    assert.strictEqual(resolveStorageAlias(''), null, 'nessuno storage richiesto: nessuno storage');
+    assert.throws(() => resolveStorageAlias('s3://bucket-attaccante/exfil'), /non configurato/, 'senza alias configurati lo storage cloud è disattivato');
+    process.env.CODEDB_BACKUP_STORAGE = 'archivio=s3://bucket-aziendale/backup';
+    assert.strictEqual(resolveStorageAlias('archivio'), 's3://bucket-aziendale/backup', 'alias approvato risolto');
+    assert.throws(() => resolveStorageAlias('s3://bucket-attaccante/exfil'), /non consentita/, 'URI arbitrario rifiutato anche con alias configurati');
+    if (prevStorage === undefined) delete process.env.CODEDB_BACKUP_STORAGE;
+    else process.env.CODEDB_BACKUP_STORAGE = prevStorage;
+
+    const prevHook = process.env.SLACK_WEBHOOK_URL;
+    delete process.env.SLACK_WEBHOOK_URL;
+    assert.strictEqual(resolveSlackWebhook(''), null, 'nessun webhook configurato né richiesto');
+    assert.strictEqual(resolveSlackWebhook('https://hooks.slack.com/services/T/B/X'), 'https://hooks.slack.com/services/T/B/X', 'webhook Slack accettato');
+    assert.throws(() => resolveSlackWebhook('http://169.254.169.254/latest/meta-data/'), /non consentito/, 'URL arbitrario (SSRF) rifiutato');
+    assert.throws(() => resolveSlackWebhook('https://hooks.slack.com.evil.test/x'), /non consentito/, 'dominio simile a Slack rifiutato');
+    if (prevHook === undefined) delete process.env.SLACK_WEBHOOK_URL;
+    else process.env.SLACK_WEBHOOK_URL = prevHook;
+
+    console.log('  OK   Destinazioni di backup confinate (CDB-06/CDB-43) passed');
+  }
+
+  // Test 5g: tetto sui risultati (CDB-11). Il cap sulle righe è deciso dal
+  // server (maxRows è rimosso dai payload del client) e il budget di byte ferma
+  // la lettura quando poche righe enormi la farebbero esplodere.
+  {
+    const DbStrategyMod = require('../db/DbStrategy');
+    const cap = DbStrategyMod.resultCap;
+
+    assert.strictEqual(cap({}), 500, 'senza maxRows vale il default della griglia');
+    assert.strictEqual(cap({ maxRows: 10000 }), 10000, 'il Query Engine può alzare il tetto');
+    assert.strictEqual(cap({ maxRows: 10 ** 9 }), 100000, 'il ceiling assoluto resta invalicabile');
+
+    // Budget di byte: 20 documenti da ~1 KB con budget 5 KB → si tronca.
+    const big = Array.from({ length: 20 }, (_, i) => ({ i, blob: 'x'.repeat(1024) }));
+    const cut = DbStrategyMod.truncateBySize(big, 5 * 1024);
+    assert(cut.truncated, 'il budget di byte deve troncare i risultati troppo grandi');
+    assert(cut.rows.length > 0 && cut.rows.length < big.length, 'si conserva almeno una riga, ma non tutte');
+    assert.strictEqual(DbStrategyMod.truncateBySize(big, 0).truncated, false, 'budget 0 = controllo disabilitato');
+
+    // Stessa regola sul cursore: si smette di leggere, non si tronca a valle.
+    async function* cursorOf(items) { for (const it of items) yield it; }
+    const collected = await DbStrategyMod.collectCapped(cursorOf(big), 1000, 5 * 1024);
+    assert(collected.truncated, 'il cursore deve fermarsi al budget di byte');
+    assert(collected.docs.length < big.length, 'non tutti i documenti devono essere letti');
+    const byRows = await DbStrategyMod.collectCapped(cursorOf(big), 3, 0);
+    assert.strictEqual(byRows.docs.length, 3, 'il tetto sulle righe resta rispettato');
+    assert.strictEqual(byRows.truncated, true, 'e viene segnalato come troncamento');
+    console.log('  OK   Tetto righe/byte sui risultati (CDB-11) passed');
+  }
+
+  // Test 5h: il restore esegue il DDL contenuto nel backup, quindi deve prima
+  // validarlo (CDB-28). Si valida per forma e per tabella attesa, non per numero
+  // di statement: un DDL legittimo può includere anche indici e vincoli.
+  {
+    const { assertSafeSchemaSql } = require('../backup/lib/restore');
+
+    // Accettati: la definizione della tabella attesa, anche su più statement.
+    assertSafeSchemaSql('CREATE TABLE `ordini` (id INT PRIMARY KEY);', 'ordini');
+    assertSafeSchemaSql('CREATE TABLE "ordini" (id int);\nCREATE INDEX idx ON ordini (id);', 'ordini');
+    assertSafeSchemaSql('CREATE TABLE ordini (id int);\nALTER TABLE ordini ADD COLUMN nota text;', 'ordini');
+    // Commenti e stringhe non devono confondere l'analisi.
+    assertSafeSchemaSql("/* backup CodeDB */\nCREATE TABLE ordini (nota text DEFAULT 'GRANT ALL; DROP TABLE x');", 'ordini');
+
+    // Rifiutati: comandi che non sono definizioni di tabella.
+    assert.throws(() => assertSafeSchemaSql('CREATE TABLE ordini (id int); GRANT ALL PRIVILEGES ON *.* TO evil;', 'ordini'),
+      /non è una definizione di tabella valida/, 'GRANT nascosto in coda al DDL rifiutato');
+    assert.throws(() => assertSafeSchemaSql('DROP DATABASE produzione;', 'ordini'),
+      /non è una definizione di tabella valida/, 'DROP DATABASE rifiutato');
+    assert.throws(() => assertSafeSchemaSql('CREATE TABLE altra_tabella (id int);', 'ordini'),
+      /un'altra tabella/, 'DDL che crea una tabella diversa da quella attesa rifiutato');
+    assert.throws(() => assertSafeSchemaSql('   ', 'ordini'), /vuoto/, 'file di schema vuoto rifiutato');
+
+    // Deroga esplicita dell'operatore (solo da CLI): il DDL passa.
+    assert.strictEqual(
+      assertSafeSchemaSql('GRANT ALL ON *.* TO evil;', 'ordini', { allowUnsafeSchema: true }),
+      'GRANT ALL ON *.* TO evil;',
+      'con --allow-unsafe-schema la scelta resta all\'operatore'
+    );
+    console.log('  OK   Validazione del DDL nel backup (CDB-28) passed');
+  }
+
+  // Test 5i: nomi creabili da CodeDB (CDB-57). I DBMS accettano identificatori
+  // arbitrari se quotati, quindi un nome di database poteva contenere markup e
+  // finire nel DOM della sidebar: XSS stored attivabile con la sola capability
+  // `ddl`. I nomi PREESISTENTI restano validi — qui si vieta solo di crearne.
+  {
+    const { assertCreatableName } = require('../db/DbStrategy');
+
+    for (const n of ['shop', 'my_db', 'my-db', 'my.db', 'negozio_2026', 'Città', 'データベース']) {
+      assertCreatableName(n, 'del database'); // nomi legittimi: non devono essere rifiutati
+    }
+
+    const pericolosi = [
+      '<img src=x onerror=alert(1)>',
+      'a"b', "a'b", 'a`b', 'a;b', 'a\\b', 'a<b', 'a&b',
+      'a\nb', 'a b', '   ', '',
+    ];
+    for (const n of pericolosi) {
+      assert.throws(() => assertCreatableName(n, 'del database'), /non valido|mancante/,
+        `nome pericoloso rifiutato: ${JSON.stringify(n)}`);
+    }
+    console.log('  OK   Nomi creabili senza markup/quoting (CDB-57) passed');
+  }
+
+  // Test 5j: distribuzione Electron — l'AppUserModelID impostato nel processo
+  // principale DEVE coincidere con `build.appId`, che è quello che l'installer
+  // NSIS scrive nel collegamento del menu Start. Se i due divergono, Windows
+  // tratta il collegamento appuntato e la finestra aperta come due applicazioni
+  // diverse e l'icona compare DUPLICATA nella barra: è un difetto silenzioso,
+  // visibile solo dopo aver installato, quindi va bloccato qui.
+  {
+    const pkg = require('../package.json');
+    const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron-main.js'), 'utf8');
+
+    assert.ok(pkg.build, 'package.json deve contenere la configurazione "build" di electron-builder');
+    assert.ok(pkg.build.appId, 'build.appId deve essere definito');
+
+    const m = mainSrc.match(/setAppUserModelId\(\s*([A-Za-z_$][\w$]*|'[^']*'|"[^"]*")\s*\)/);
+    assert.ok(m, 'electron-main.js deve chiamare app.setAppUserModelId(...)');
+    let used = m[1];
+    if (!/^['"]/.test(used)) {
+      // Costante: risolvi la sua dichiarazione.
+      const decl = mainSrc.match(new RegExp(`const\\s+${used}\\s*=\\s*['"]([^'"]+)['"]`));
+      assert.ok(decl, `la costante ${used} passata a setAppUserModelId deve essere dichiarata con un valore letterale`);
+      used = `'${decl[1]}'`;
+    }
+    assert.strictEqual(used.slice(1, -1), pkg.build.appId,
+      `l'AppUserModelID di electron-main.js (${used}) deve coincidere con build.appId (${pkg.build.appId})`);
+
+    // Va impostato PRIMA di qualunque finestra: se comparisse dentro main() o
+    // dopo createWindow(), i dialog di errore e la finestra principale
+    // nascerebbero senza identità e finirebbero in un gruppo separato.
+    const idxSet = mainSrc.indexOf('setAppUserModelId');
+    const idxWindow = mainSrc.indexOf('new BrowserWindow');
+    assert.ok(idxSet > -1 && idxSet < idxWindow,
+      'setAppUserModelId deve precedere la creazione della finestra nel sorgente');
+
+    // I segreti non devono finire dentro l'installer.
+    for (const escluso of ['!connections.ini', '!.env', '!conns/**']) {
+      assert.ok((pkg.build.files || []).includes(escluso),
+        `build.files deve escludere ${escluso} dal pacchetto distribuito`);
+    }
+    console.log('  OK   Electron: AppUserModelID allineato a build.appId (barra applicazioni) passed');
+  }
+
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
   const requiredFiles = [
     'Dockerfile',

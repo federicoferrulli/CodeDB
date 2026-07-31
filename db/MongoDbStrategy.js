@@ -332,7 +332,10 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const name = String(db || '').trim();
     assertDbName(name);
+    // Vedi la nota in MySqlStrategy: vale solo per i nomi creati da CodeDB.
+    DbStrategy.assertCreatableName(name, 'del database');
     const collName = String(firstColl || '').trim() || 'collection1';
+    DbStrategy.assertCreatableName(collName, 'della collection');
     const existing = await this.listDatabases();
     if (existing.some((d) => d.name === name)) throw new Error(`Il database "${name}" esiste già.`);
     // In MongoDB un database esiste solo se contiene almeno una collection.
@@ -345,6 +348,7 @@ class MongoDbStrategy extends DbStrategy {
     const to = String(newName || '').trim();
     assertDbName(from);
     assertDbName(to);
+    DbStrategy.assertCreatableName(to, 'del database');
     if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
     if (SYSTEM_DBS.has(from)) throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
     const existing = await this.listDatabases();
@@ -408,6 +412,7 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const coll = String(name || '').trim();
     if (!coll) throw new Error('Nome della collection mancante.');
+    DbStrategy.assertCreatableName(coll, 'della collection');
     await client.db(db).createCollection(coll);
   }
 
@@ -415,6 +420,7 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const to = String(newName || '').trim();
     if (!to) throw new Error('Nuovo nome della collection mancante.');
+    DbStrategy.assertCreatableName(to, 'della collection');
     await client.db(db).renameCollection(coll, to);
   }
 
@@ -646,7 +652,11 @@ class MongoDbStrategy extends DbStrategy {
     } else {
       total = await this.countWithTimeout(collection, filter, hasFilter);
     }
-    let docs = await cursor.toArray();
+    // Lettura a budget: il cursore si ferma al tetto delle righe O a quello dei
+    // byte, così pochi documenti enormi non possono esaurire la memoria del
+    // processo (vedi DbStrategy.collectCapped).
+    const collected = await DbStrategy.collectCapped(cursor, limit);
+    let docs = collected.docs;
     // Keyset "indietro": la query gira in ordine _id DESC, qui si riordina ASC.
     if (reverse) docs.reverse();
 
@@ -662,7 +672,7 @@ class MongoDbStrategy extends DbStrategy {
       }
     }
 
-    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks };
+    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks, truncated: collected.truncated || undefined };
   }
 
   // Conteggio con timeout: countDocuments (con filtro) o estimatedDocumentCount
@@ -700,14 +710,15 @@ class MongoDbStrategy extends DbStrategy {
     const aggOpts = {};
     if (runComment) aggOpts.comment = runComment;
 
-    const docs = await client
+    const cursor = client
       .db(db)
       .collection(coll)
       .aggregate(pipeline, aggOpts)
-      .limit(cap)
-      .toArray();
+      .limit(cap);
+    // Come nella find: si smette di leggere al tetto delle righe o dei byte.
+    const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap);
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
-    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap };
+    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined };
   }
 
   async cancelQuery(opHandle) {

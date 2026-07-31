@@ -1,11 +1,14 @@
 import { state } from './state.js';
-import { $, emit, fmtBytes, esc, toast } from './utils.js';
+import { $, emit, fmtBytes, esc, toast, isForActiveTab } from './utils.js';
 
 export function loadDetails() {
   if (!state.db || !state.coll) return;
   emit('collection:stats', { db: state.db, coll: state.coll }).then((res) => {
+    // La vista Dettagli è un DOM unico: statistiche e indici di un tab non più
+    // in primo piano descriverebbero una collection diversa da quella mostrata.
+    if (!isForActiveTab(res)) return;
     renderDetails(res);
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });
 }
 
 export function renderDetails({ stats, indexes, fields, sampled }) {
@@ -63,9 +66,11 @@ export function initDetails() {
     const name = btn.dataset.name;
     const extra = name.toUpperCase() === 'PRIMARY' ? '\nAttenzione: è la chiave primaria della tabella.' : '';
     if (!confirm(`Eliminare l'indice "${name}"?${extra}`)) return;
-    emit('index:drop', { db: state.db, coll: state.coll, name }).then(() => {
+    emit('index:drop', { db: state.db, coll: state.coll, name }).then((res) => {
       toast(`Indice "${name}" eliminato`);
-      loadDetails();
+      // loadDetails() rilegge db/coll dal Proxy: ha senso solo se il tab che ha
+      // eliminato l'indice è ancora quello mostrato.
+      if (isForActiveTab(res)) loadDetails();
     }).catch((err) => toast(err.message, true));
   });
 
@@ -90,7 +95,7 @@ export function initDetails() {
     }).then((res) => {
       $('#idxcreate-overlay').classList.add('hidden');
       toast(`Indice "${res.name}" creato`);
-      loadDetails();
+      if (isForActiveTab(res)) loadDetails();
     }).catch((err) => {
       const errorEl = $('#idxcreate-error');
       errorEl.textContent = err.message;

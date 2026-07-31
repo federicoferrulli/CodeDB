@@ -8,11 +8,14 @@
 
 const mysql = require('mysql2/promise');
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
-const PORT = process.env.PORT || 3030;
-const BASE = `http://127.0.0.1:${PORT}`;
+// Il test avvia una PROPRIA istanza di CodeDB con un connections.ini
+// temporaneo (test/e2e-harness.js): salva ed elimina connessioni salvate,
+// quindi non deve mai toccare il vault reale dell'utente.
+let BASE = null; // valorizzato dopo l'avvio dell'istanza di test
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
 const DB = 'gui_mysql_e2e_mcp';
@@ -39,6 +42,8 @@ async function call(client, name, args) {
   return { ok: !res.isError, text, data: res.isError ? null : JSON.parse(text) };
 }
 
+let testServer = null;
+
 (async () => {
   let admin = null;
   let socket = null;
@@ -51,6 +56,11 @@ async function call(client, name, args) {
     await admin.query(`CREATE DATABASE ${DB}`);
     await admin.query(`CREATE TABLE ${DB}.people (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, born DATETIME)`);
     await admin.query(`INSERT INTO ${DB}.people (name, age, born) VALUES ('Ada', 36, '1990-01-15 10:00:00'), ('Bruno', 41, '1985-06-02 08:30:00')`);
+
+    console.log('1b. istanza CodeDB di test (porta dedicata, vault temporaneo)');
+    testServer = await startTestServer({ port: parseInt(process.env.E2E_PORT, 10) || 3143 });
+    BASE = testServer.url;
+    assert(!!BASE, `istanza di test avviata su ${BASE}`);
 
     console.log('2. connessione salvata di test (via socket, come farebbe la UI)');
     socket = io(BASE);
@@ -153,6 +163,8 @@ async function call(client, name, args) {
       await admin.query(`DROP DATABASE IF EXISTS ${DB}`).catch(() => {});
       await admin.end().catch(() => {});
     }
+    // L'istanza di test (e il suo connections.ini temporaneo) sparisce con lei.
+    if (testServer) await testServer.stop();
   }
 })();
 

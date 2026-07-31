@@ -61,6 +61,10 @@ function collTabInputs(t, c) {
 
 // Serializza il layout corrente in sessionStorage (best-effort).
 export function persistSession() {
+  // Mai salvare a ripristino in corso: il layout sarebbe parziale (i tab non
+  // ancora riaperti mancherebbero) e diventerebbe la nuova verità, cancellando
+  // proprio ciò che si stava ripristinando.
+  if (restoring) return;
   try {
     let skippedUnsaved = 0;
     const out = [];
@@ -140,10 +144,37 @@ function reconnectTab(info) {
   });
 }
 
+/* ---------------------------------------------------------------------------
+ * Un solo ripristino per volta.
+ *
+ * `restoreSession()` riconnette i tab IN SEQUENZA, con 15 s di timeout ciascuno:
+ * su rete instabile Socket.IO può riconnettersi di nuovo (e rilanciare
+ * l'handler) mentre il ciclo precedente è ancora a metà. Senza guardia si
+ * ottenevano tab duplicati con lo stesso id, `mongo:connect` doppi sullo stesso
+ * tabId (la race lato server, ora serializzata) e un `persistSession()` eseguito
+ * a ripristino incompleto, che salvava un layout parziale come nuova verità
+ * facendo perdere i tab non ancora riaperti.
+ *
+ * `restoreInProgress()` permette al chiamante di non salvare il layout mentre il
+ * ripristino è in corso.
+ * ------------------------------------------------------------------------- */
+let restoring = null;
+
+export function restoreInProgress() {
+  return restoring !== null;
+}
+
 // Ripristina la sessione salvata: riconnette in sequenza le connessioni salvate,
 // ripristina il tab attivo e carica i dati del coll-tab attivo. Ritorna true se
-// c'era qualcosa da ripristinare.
-export async function restoreSession() {
+// c'era qualcosa da ripristinare. Chiamate concorrenti condividono lo stesso
+// ripristino invece di avviarne un secondo.
+export function restoreSession() {
+  if (restoring) return restoring;
+  restoring = doRestoreSession().finally(() => { restoring = null; });
+  return restoring;
+}
+
+async function doRestoreSession() {
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(KEY) || 'null'); } catch { saved = null; }
   if (!saved || !Array.isArray(saved.tabs) || !saved.tabs.length) {

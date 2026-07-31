@@ -54,6 +54,13 @@ function generateIconAssets() {
   if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir, { recursive: true });
   fs.writeFileSync(path.join(buildDir, 'icon.ico'), buildMultiSizeIco(frames));
   console.log('Generato build/icon.ico (16..256px, per electron-builder)');
+
+  // --- build/icon.png (512x512) ------------------------------------------
+  // electron-builder pretende almeno 256x256 per l'icona Linux (AppImage/deb)
+  // e usa questo file anche per derivare l'icona macOS quando manca icon.icns.
+  // public/codedb.png è 128x128: sufficiente per la UI, respinto dalla build.
+  fs.writeFileSync(path.join(buildDir, 'icon.png'), encodePNG(resize(squareBuf, side, 512), 512));
+  console.log('Generato build/icon.png (512x512, per Linux/macOS)');
 }
 
 if (require.main === module) {

@@ -21,6 +21,7 @@
 
 const { METHOD_CAPABILITY, CAPABILITY_LABEL, isWriteSql, isWriteMongoPipeline, matchesAny } = require('./capabilities');
 const { can, scopeFor } = require('./permissions');
+const { assertScopedClauses } = require('./sqlClause');
 
 function denied(capability, connName, db, coll) {
   const label = CAPABILITY_LABEL[capability] || capability;
@@ -89,8 +90,13 @@ function guardStrategy(strategy, ctx) {
       }
       return function guarded(...args) {
         const capability = resolveCapability(spec, target, args);
-        const db = spec.db != null ? args[spec.db] : null;
-        const coll = spec.coll != null ? args[spec.coll] : null;
+        // `undefined` quando il metodo NON ha un bersaglio (listDatabases,
+        // search, watchSchema): `can()` salta il confronto con lo scope, che per
+        // quelle operazioni è comunque applicato filtrando i RISULTATI. Passare
+        // `null` le avrebbe fatte negare, lasciando la sidebar vuota proprio
+        // agli utenti che lo scope dovrebbe servire.
+        const db = spec.db != null ? args[spec.db] : undefined;
+        const coll = spec.coll != null ? args[spec.coll] : undefined;
         // I metodi della strategia sono asincroni e chi li chiama può usarne
         // direttamente la promise (`strategy.dropCollection(...).catch(...)` in
         // backup/lib/restore.js): il rifiuto deve quindi essere una promise
@@ -106,6 +112,32 @@ function guardStrategy(strategy, ctx) {
         if (spec.coll2 != null && !can(principal, { connName, capability, db, coll: args[spec.coll2] })) {
           return refuse(capability, db, args[spec.coll2]);
         }
+
+        // Su MySQL/PostgreSQL `filter` e `sort` della griglia sono frammenti di
+        // SQL grezzo: lo scope protegge il NOME della tabella, non il testo della
+        // query, quindi da lì si può leggere (a oracolo) fuori dal proprio
+        // perimetro. Per i soli principal con uno scope attivo si pretende la
+        // forma strutturata; per owner e sottoutenti senza scope nulla cambia.
+        if (target.type && target.type !== 'mongodb' && scopeFor(principal, connName)) {
+          try {
+            assertScopedClauses(args[2]);
+          } catch (err) {
+            return spec.sync ? (() => { throw err; })() : Promise.reject(err);
+          }
+        }
+
+        // Barriera indipendente dal parser: quando un SQL Raw è stato
+        // classificato come LETTURA e chi lo esegue è un sottoutente, lo si fa
+        // girare in una transazione di sola lettura (PostgreSqlStrategy legge
+        // `expectRead`). Se la classificazione dovesse comunque sbagliarsi, è il
+        // MOTORE a rifiutare la scrittura. Non si applica all'owner: una SELECT
+        // che invoca una funzione con effetti collaterali, una tabella
+        // temporanea o un SET di sessione sono casi rari ma legittimi, e
+        // continuano a funzionare come oggi.
+        if (spec.cap === 'dynamic' && capability === 'read' && !principal.owner && args[2] && typeof args[2] === 'object') {
+          args[2].expectRead = true;
+        }
+
         const out = value.apply(target, args);
         if (!spec.filter) return out;
         const scope = scopeFor(principal, connName);

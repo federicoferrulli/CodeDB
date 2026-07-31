@@ -15,7 +15,10 @@ function runAllE2eTests() {
   console.log('=== Avvio esecuzione completa suite Test E2E ===\n');
 
   const files = fs.readdirSync(TEST_DIR)
-    .filter((file) => (file === 'e2e.js' || (file.startsWith('e2e-') && file.endsWith('.js'))) && file !== 'all-e2e.js')
+    // e2e-harness.js è l'infrastruttura condivisa (avvia le istanze di test),
+    // non un test: eseguirlo non farebbe nulla ma comparirebbe fra i risultati.
+    .filter((file) => (file === 'e2e.js' || (file.startsWith('e2e-') && file.endsWith('.js')))
+      && file !== 'all-e2e.js' && file !== 'e2e-harness.js')
     .sort();
 
   let passed = 0;
@@ -34,6 +37,11 @@ function runAllE2eTests() {
       MYSQL_PASSWORD: process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '',
       MYSQL_HOST: process.env.MYSQL_HOST || '127.0.0.1',
       MYSQL_PORT: process.env.MYSQL_PORT || '3306',
+      PG_HOST: process.env.PG_HOST || '127.0.0.1',
+      PG_PORT: process.env.PG_PORT || '5432',
+      PG_USER: process.env.PG_USER || 'postgres',
+      PG_PASSWORD: process.env.PG_PASSWORD || '',
+      PG_DATABASE: process.env.PG_DATABASE || 'postgres',
     };
 
     const result = spawnSync(process.execPath, [fullPath], {

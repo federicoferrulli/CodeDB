@@ -15,6 +15,11 @@
     "dev": "node --watch server.js",
     "electron:start": "electron .",
     "electron:icons": "node tools/genera-icona.js",
+    "build:win": "npm run electron:icons && electron-builder --win --publish never",
+    "build:mac": "npm run electron:icons && electron-builder --mac --publish never",
+    "build:linux": "npm run electron:icons && electron-builder --linux --publish never",
+    "build:all": "npm run electron:icons && electron-builder -mwl --publish never",
+    "build:dir": "npm run electron:icons && electron-builder --dir --publish never",
     "dist:win": "npm run electron:icons && node tools/build-desktop.mjs win32",
     "dist:mac": "npm run electron:icons && node tools/build-desktop.mjs darwin",
     "dist:linux": "npm run electron:icons && node tools/build-desktop.mjs linux",
@@ -31,6 +36,7 @@
     "test:e2e:backup-mysql": "node test/e2e-backup-mysql.js",
     "test:e2e:export": "node test/e2e-dbexport.js",
     "test:e2e:query": "node test/e2e-query-engine.js",
+    "test:e2e:postgres": "node test/e2e-postgres.js",
     "test:unit:mcp-auth": "node test/unit-mcp-auth.js",
     "test:e2e:rbac": "node test/e2e-rbac.js",
     "test:e2e:rbac-mcp": "node test/e2e-rbac-mcp.js",
@@ -52,6 +58,95 @@
   "devDependencies": {
     "@electron/packager": "^20.0.4",
     "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
     "socket.io-client": "^4.8.3"
+  },
+  "productName": "CodeDB",
+  "build": {
+    "appId": "com.codedb.app",
+    "productName": "CodeDB",
+    "copyright": "Copyright (c) 2026 Federico Ferrulli",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "npmRebuild": false,
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!docs/**",
+      "!issue/**",
+      "!test/**",
+      "!tools/**",
+      "!backups/**",
+      "!conns/**",
+      "!.env",
+      "!.env.example",
+      "!connections.ini",
+      "!connections.ini.*",
+      "!*.log",
+      "!*.log.*",
+      "!.git*",
+      "!Dockerfile",
+      "!docker-compose.yml",
+      "!node_modules/cpu-features/**",
+      "!node_modules/nan/**"
+    ],
+    "extraMetadata": {
+      "name": "codedb"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CodeDB",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "dmg": {
+      "title": "CodeDB ${version}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "build/icon.png",
+      "category": "Development",
+      "executableName": "codedb",
+      "synopsis": "GUI web multi-database (MongoDB, MySQL, PostgreSQL)",
+      "maintainer": "Federico Ferrulli",
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "syncDesktopName": true
+    }
   }
 }

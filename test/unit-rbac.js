@@ -151,6 +151,206 @@ function fakeStrategy() {
     /Permesso negato/, 'pipeline di scrittura negata al viewer');
   console.log('  OK   Proxy autorizzante sulle strategie');
 
+  /* --- Scope e bersaglio vuoto (CDB-03) -------------------------------------- */
+  // `matchesAny` distingue tre stati: undefined = operazione senza bersaglio
+  // (passa), null/'' = bersaglio atteso ma mancante (NEGA), stringa = confronto.
+  {
+    assert.strictEqual(matchesAny(['reporting'], undefined), true, 'operazione senza bersaglio: consentita');
+    assert.strictEqual(matchesAny(['reporting'], ''), false, 'bersaglio vuoto dal client: negato');
+    assert.strictEqual(matchesAny(['reporting'], null), false, 'bersaglio nullo dal client: negato');
+    assert.strictEqual(matchesAny(['reporting'], 'reporting'), true, 'bersaglio nello scope: consentito');
+    assert.strictEqual(matchesAny(['reporting'], 'finance'), false, 'bersaglio fuori scope: negato');
+    assert.strictEqual(matchesAny([], ''), true, 'nessuno scope su questa dimensione: sempre consentito');
+
+    const scoped = makePrincipal({ _id: 'z1', type: 'subuser', ownerId: 'o1', email: 'z@x' },
+      [{ connName: 'prod', role: 'viewer', capabilities: ['read'], scope: { databases: ['reporting'], collections: [] } }]);
+
+    // Lo scenario dell'audit: `{ db: '', coll: '' }` faceva cadere il confronto.
+    assert.strictEqual(can(scoped, { connName: 'prod', capability: 'read', db: '', coll: '' }), false,
+      'db/coll vuoti nel payload non devono piu\' scavalcare lo scope');
+    assert.strictEqual(can(scoped, { connName: 'prod', capability: 'read', db: 'finance' }), false,
+      'database fuori scope negato');
+    assert.strictEqual(can(scoped, { connName: 'prod', capability: 'read', db: 'reporting' }), true,
+      'database nello scope consentito');
+
+    // La regressione da evitare: le operazioni che NON hanno un bersaglio
+    // (listDatabases, search, watchSchema) devono continuare a passare, o la
+    // sidebar resterebbe vuota proprio a chi ha uno scope.
+    assert.strictEqual(can(scoped, { connName: 'prod', capability: 'read' }), true,
+      'operazione senza bersaglio: consentita anche con scope attivo');
+
+    const listing = guardStrategy({
+      type: 'mongodb',
+      async listDatabases() { return [{ name: 'reporting' }, { name: 'finance' }]; },
+      async watchSchema() { return true; },
+    }, { principal: scoped, connName: 'prod' });
+    const dbs = await listing.listDatabases();
+    assert.deepStrictEqual(dbs.map((d) => d.name), ['reporting'],
+      'listDatabases resta permessa e viene FILTRATA, non negata');
+    await listing.watchSchema({});
+    console.log('  OK   Scope non aggirabile con bersaglio vuoto, navigazione intatta (CDB-03)');
+  }
+
+  /* --- Classificazione lettura/scrittura del SQL (CDB-02) -------------------- */
+  // isWriteSql decide SIA la capability SIA la categoria nell'audit: guardare la
+  // sola prima parola lasciava tre bypass, tutti registrati come "letture".
+  {
+    const { isWriteSql } = require('../auth/capabilities');
+
+    // Letture legittime: non devono diventare scritture, o verrebbero negate a
+    // chi oggi le esegue senza problemi (falsi positivi da stringhe e commenti).
+    const letture = [
+      'SELECT 1',
+      'select * from clienti where eta > 30 limit 10',
+      "SELECT * FROM note WHERE testo = 'a;b'",
+      "SELECT * FROM audit WHERE azione = 'DELETE'",
+      "SELECT * FROM log WHERE msg = 'DROP TABLE x; GRANT ALL'",
+      'SELECT updated_at, created_at, deleted FROM ordini',
+      'WITH x AS (SELECT 1) SELECT * FROM x',
+      'EXPLAIN SELECT * FROM clienti',
+      'SHOW TABLES',
+      'SELECT a."update" FROM t a',
+      'SELECT * FROM t -- commento con DELETE',
+      'SELECT * FROM t /* commento con DROP TABLE */',
+    ];
+    for (const q of letture) {
+      assert.strictEqual(isWriteSql(q), false, `lettura non deve essere classificata scrittura: ${q}`);
+    }
+
+    const scritture = [
+      'DELETE FROM clienti',
+      'UPDATE clienti SET eta = 1',
+      '/* commento */ DELETE FROM users',                          // bypass 1: commento iniziale
+      'WITH x AS (DELETE FROM users RETURNING *) SELECT * FROM x', // bypass 2: CTE di scrittura (PostgreSQL)
+      'SELECT 1; DROP TABLE users;',                               // bypass 3: multi-statement
+      'GRANT ALL PRIVILEGES ON *.* TO evil',
+      'TRUNCATE clienti',
+      'CALL procedura()',
+    ];
+    for (const q of scritture) {
+      assert.strictEqual(isWriteSql(q), true, `scrittura da riconoscere: ${q}`);
+    }
+    console.log('  OK   Classificazione SQL lettura/scrittura senza bypass (CDB-02)');
+  }
+
+  /* --- Barriera READ ONLY indipendente dal parser (CDB-02) ------------------- */
+  {
+    const seen = [];
+    const pgStrategy = () => ({
+      type: 'postgresql',
+      async collectionAggregate(db, coll, payload) { seen.push({ ...payload }); return { docs: [] }; },
+    });
+    const sub = makePrincipal({ _id: 's9', type: 'subuser', ownerId: 'o9', email: 's@x' },
+      [{ connName: 'prod', role: 'editor', capabilities: ['read', 'write'], scope: null }]);
+    const own = makePrincipal({ _id: 'o9', type: 'owner', ownerId: 'o9', email: 'o@x' }, []);
+
+    await guardStrategy(pgStrategy(), { principal: sub, connName: 'prod' })
+      .collectionAggregate('public', null, { pipeline: 'SELECT 1' });
+    assert.strictEqual(seen[0].expectRead, true, 'sottoutente + lettura: il motore impone la transazione di sola lettura');
+
+    seen.length = 0;
+    await guardStrategy(pgStrategy(), { principal: sub, connName: 'prod' })
+      .collectionAggregate('public', null, { pipeline: 'DELETE FROM t' });
+    assert.ok(!seen[0].expectRead, 'scrittura riconosciuta: nessuna transazione di sola lettura');
+
+    seen.length = 0;
+    await guardStrategy(pgStrategy(), { principal: own, connName: 'prod' })
+      .collectionAggregate('public', null, { pipeline: 'SELECT elabora_ordini()' });
+    assert.ok(!seen[0].expectRead, 'owner: comportamento invariato (funzioni con effetti collaterali, temp table, SET)');
+    console.log('  OK   Barriera READ ONLY per i sottoutenti, owner invariato (CDB-02)');
+  }
+
+  /* --- Clausole WHERE/ORDER BY libere e scope (CDB-05) ----------------------- */
+  // Su SQL `filter` e `sort` sono frammenti grezzi: lo scope protegge il nome
+  // della tabella, non il testo della query. Per i principal CON scope si esige
+  // la forma strutturata; per owner e sottoutenti senza scope nulla cambia.
+  {
+    const { assertSimpleClause } = require('../auth/sqlClause');
+
+    const ammessi = [
+      "stato = 'aperto'",
+      'totale > 100 AND totale <= 500',
+      "nome LIKE 'Mar%' OR cognome LIKE 'Ros%'",
+      'eta BETWEEN 18 AND 65',
+      'citta IN (1, 2, 3)',
+      "citta NOT IN ('Roma','Bari')",
+      'note IS NOT NULL',
+      '(a = 1 OR b = 2) AND c = 3',
+      'created_at DESC',
+      'cognome ASC, nome ASC',
+      "descrizione = 'contiene SELECT, ; e -- ma dentro una stringa'",
+    ];
+    for (const c of ammessi) assertSimpleClause(c, 'filtro');
+
+    const rifiutati = [
+      "1=1 AND (SELECT COUNT(*) FROM utenti WHERE password LIKE 'a%') > 0", // oracolo binario
+      '1=1; DROP TABLE clienti',
+      '1=1 -- commento',
+      '1=1 /* commento */',
+      'id > 0 UNION SELECT 1',
+      'SLEEP(5)',
+      'id > 0 AND BENCHMARK(1000000, MD5(1))',
+      "id > 0 AND LOAD_FILE('/etc/passwd') IS NOT NULL",
+      "id > 0 INTO OUTFILE '/tmp/x'",
+    ];
+    for (const c of rifiutati) {
+      assert.throws(() => assertSimpleClause(c, 'filtro'), /non consentito/, `clausola rifiutata: ${c}`);
+    }
+
+    // Il Proxy applica la regola SOLO a chi ha uno scope, e solo su SQL.
+    const sqlStrategy = () => ({
+      type: 'mysql',
+      async collectionFind(db, coll, payload) { return { docs: [], payload }; },
+    });
+    const conScope = makePrincipal({ _id: 's1', type: 'subuser', ownerId: 'o1', email: 's@x' },
+      [{ connName: 'prod', role: 'viewer', capabilities: ['read'], scope: { databases: ['shop'], collections: ['ordini'] } }]);
+    const senzaScope = makePrincipal({ _id: 's2', type: 'subuser', ownerId: 'o1', email: 't@x' },
+      [{ connName: 'prod', role: 'viewer', capabilities: ['read'], scope: null }]);
+
+    const gScoped = guardStrategy(sqlStrategy(), { principal: conScope, connName: 'prod' });
+    await assert.rejects(() => gScoped.collectionFind('shop', 'ordini', { filter: '1=1 AND (SELECT 1) > 0' }),
+      /non consentito/, 'sotto-query negata a chi ha uno scope');
+    await gScoped.collectionFind('shop', 'ordini', { filter: 'totale > 10' }); // forma strutturata: ok
+
+    const gFree = guardStrategy(sqlStrategy(), { principal: senzaScope, connName: 'prod' });
+    await gFree.collectionFind('shop', 'ordini', { filter: '1=1 AND (SELECT 1) > 0' }); // nessuna regressione
+    console.log('  OK   Clausole libere limitate ai soli principal con scope (CDB-05)');
+  }
+
+  /* --- Login dei sottoutenti e isolamento fra tenant (CDB-44) ---------------- */
+  // L'unicità delle email è per tenant: due owner possono avere un sottoutente
+  // con la stessa email. Il login deve verificare TUTTI gli omonimi, non il
+  // primo che capita, altrimenti l'utente legittimo di un tenant viene respinto
+  // con "Email o password non validi" pur avendo credenziali corrette.
+  {
+    const { AppStore } = require('../auth/AppStore');
+    const { hashPassword } = require('../auth/sessions');
+
+    const users = [
+      { _id: 'u1', ownerId: 'ownerA', email: 'mario@azienda.it', type: 'subuser', status: 'active', passwordHash: hashPassword('password-A') },
+      { _id: 'u2', ownerId: 'ownerB', email: 'mario@azienda.it', type: 'subuser', status: 'active', passwordHash: hashPassword('password-B') },
+      { _id: 'u3', ownerId: 'ownerC', email: 'sospeso@azienda.it', type: 'subuser', status: 'suspended', passwordHash: hashPassword('password-C') },
+    ];
+    const store = new AppStore({ uri: 'mongodb://unused', dbName: 'unused' });
+    store.col = () => ({
+      find: (q) => ({ toArray: async () => users.filter((u) => u.email === q.email && u.type === q.type) }),
+    });
+
+    const a = await store.verifySubUser('mario@azienda.it', 'password-A');
+    assert.ok(a && a.ownerId === 'ownerA', 'il sottoutente del tenant A deve poter accedere');
+    const b = await store.verifySubUser('mario@azienda.it', 'password-B');
+    assert.ok(b && b.ownerId === 'ownerB', 'anche il sottoutente omonimo del tenant B deve poter accedere');
+    assert.strictEqual(await store.verifySubUser('mario@azienda.it', 'sbagliata'), null, 'password errata: nessun accesso');
+    assert.strictEqual(await store.verifySubUser('sospeso@azienda.it', 'password-C'), null, 'utente sospeso: nessun accesso');
+
+    // Stessa email E stessa password su due tenant: rifiuto esplicito invece di
+    // far entrare qualcuno nel tenant sbagliato.
+    users.push({ _id: 'u4', ownerId: 'ownerD', email: 'mario@azienda.it', type: 'subuser', status: 'active', passwordHash: hashPassword('password-A') });
+    await assert.rejects(() => store.verifySubUser('mario@azienda.it', 'password-A'),
+      (e) => e.ambiguousLogin === true, 'credenziali ambigue fra tenant: accesso rifiutato con motivo');
+    console.log('  OK   Login sottoutenti: isolamento fra tenant omonimi (CDB-44)');
+  }
+
   console.log('\nTutti i test unitari RBAC superati!');
 })().catch((err) => {
   console.error('  FAIL', err && err.message);

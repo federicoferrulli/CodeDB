@@ -25,7 +25,13 @@ function can(principal, req = {}) {
   if (!principal) return false;
   if (principal.root) return true;
 
-  const { connName = null, capability = null, db = null, coll = null } = req;
+  const { connName = null, capability = null } = req;
+  // `db`/`coll` conservano la distinzione fra "non applicabile" (proprieta'
+  // assente => undefined) e "atteso ma vuoto" (null/''), che matchesAny tratta
+  // in modo opposto: la prima passa, la seconda viene negata. Il destructuring
+  // con default a `null` avrebbe appiattito i due casi.
+  const db = Object.prototype.hasOwnProperty.call(req, 'db') ? req.db : undefined;
+  const coll = Object.prototype.hasOwnProperty.call(req, 'coll') ? req.coll : undefined;
   if (!capability) return true; // operazione non classificata: nessun permesso richiesto
 
   // Le API key possono essere limitate a un sottoinsieme di connessioni: il

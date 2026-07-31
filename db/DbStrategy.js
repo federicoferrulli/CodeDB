@@ -199,11 +199,52 @@ function detectRelations(collections) {
 DbStrategy.detectRelations = detectRelations;
 DbStrategy.singular = singular;
 
+/* ---------------------------------------------------------------------------
+ * Nomi di oggetti CREATI da CodeDB.
+ *
+ * I DBMS accettano identificatori arbitrari se quotati: `CREATE DATABASE
+ * "<img src=x onerror=…>"` è SQL legale, e quel nome viene poi mostrato nella
+ * sidebar, nell'UML, nell'audit e nei menu. Il frontend fa l'escape ovunque
+ * (verificato), ma un solo punto dimenticato basta a trasformare un utente con
+ * la sola capability `ddl` in chi esegue codice nel browser dell'owner — token
+ * di sessione e credenziali comprese.
+ *
+ * Si vieta quindi alla RADICE che nomi del genere possano essere creati DA
+ * CodeDB. Non è una whitelist stretta di caratteri (bloccherebbe nomi
+ * legittimi: accenti, punti, nomi non latini) ma il rifiuto della sola classe
+ * pericolosa — caratteri di markup, quoting e terminazione di comando, più i
+ * caratteri di controllo.
+ *
+ * ATTENZIONE: vale solo per la CREAZIONE. I nomi PREESISTENTI, creati altrove,
+ * devono restare leggibili, apribili ed eliminabili: applicare qui una regola
+ * severa renderebbe inutilizzabili database che esistono già.
+ */
+// eslint-disable-next-line no-control-regex
+const UNSAFE_NAME_CHARS = /[<>&"'`;\\ -]/;
+
+function assertCreatableName(name, what = 'oggetto') {
+  const s = String(name == null ? '' : name);
+  if (!s.trim()) throw new Error(`Nome ${what} mancante.`);
+  if (UNSAFE_NAME_CHARS.test(s)) {
+    throw new Error(
+      `Nome ${what} non valido: "${s}". Non sono ammessi i caratteri < > & " ' \` ; \\ ` +
+      'né caratteri di controllo, perché finirebbero nell\'interfaccia e nei log di tutti gli utenti.'
+    );
+  }
+  return s;
+}
+
+DbStrategy.assertCreatableName = assertCreatableName;
+
 // Tetto massimo di righe/documenti restituiti da una lettura. Il default (500)
 // preserva il comportamento della griglia paginata; il Query Engine passa un
 // `payload.maxRows` più alto per non troncare i risultati di una query
 // esplicita. Il ceiling assoluto evita di esaurire la memoria con risultati
 // enormi. Usato da tutte le strategie in collectionFind/collectionAggregate.
+//
+// NB: `maxRows` è un campo RISERVATO AL SERVER — server.js lo rimuove da ogni
+// payload che arriva dal client (SERVER_ONLY_PAYLOAD_FIELDS), altrimenti
+// chiunque potrebbe alzare il tetto a 100.000 documenti su una normale find.
 function resultCap(payload, fallback = 500) {
   const m = parseInt(payload && payload.maxRows, 10);
   if (!Number.isFinite(m) || m < 1) return fallback;
@@ -211,6 +252,66 @@ function resultCap(payload, fallback = 500) {
 }
 
 DbStrategy.resultCap = resultCap;
+
+// Budget di memoria per il risultato di una singola lettura. Il tetto sulle
+// RIGHE non basta: poche righe con BLOB, testi lunghi o campi JSON estesi
+// pesano quanto decine di migliaia di documenti piccoli, e il risultato viene
+// poi serializzato in EJSON e messo su socket. Configurabile con
+// CODEDB_MAX_RESULT_BYTES; <= 0 disabilita il controllo.
+function maxResultBytes() {
+  const m = parseInt(process.env.CODEDB_MAX_RESULT_BYTES, 10);
+  if (!Number.isFinite(m)) return 32 * 1024 * 1024; // 32 MB
+  return Math.max(m, 0);
+}
+
+DbStrategy.maxResultBytes = maxResultBytes;
+
+/**
+ * Accumula i documenti di un cursore rispettando SIA il tetto sulle righe SIA
+ * il budget di byte, interrompendo la lettura appena uno dei due è superato.
+ * Fermare il cursore è l'unico modo per proteggere davvero la memoria: troncare
+ * a valle presuppone che il risultato sia già stato materializzato per intero.
+ *
+ * Ritorna `{ docs, truncated }`: `truncated` dice che ci sarebbero altri
+ * documenti ma il budget è finito, così il chiamante può segnalarlo alla UI
+ * invece di far credere che i dati siano tutti lì.
+ */
+async function collectCapped(cursor, cap, budget = maxResultBytes()) {
+  const docs = [];
+  let bytes = 0;
+  let truncated = false;
+  for await (const doc of cursor) {
+    if (docs.length >= cap) { truncated = true; break; }
+    if (budget > 0) {
+      // Stima grossolana ma sufficiente: l'ordine di grandezza è quello che
+      // conta, e il costo è lo stesso della serializzazione che seguirebbe.
+      try { bytes += JSON.stringify(doc).length; } catch { bytes += 1024; }
+      if (bytes > budget && docs.length) { truncated = true; break; }
+    }
+    docs.push(doc);
+  }
+  return { docs, truncated };
+}
+
+DbStrategy.collectCapped = collectCapped;
+
+/**
+ * Variante per i risultati già materializzati (driver SQL, che restituiscono
+ * l'intero result set): tronca la lista al budget di byte. Non evita il picco
+ * di memoria del driver — per quello servirebbe lo streaming — ma impedisce di
+ * serializzare e spedire su socket un risultato spropositato.
+ */
+function truncateBySize(rows, budget = maxResultBytes()) {
+  if (!budget || !Array.isArray(rows) || !rows.length) return { rows, truncated: false };
+  let bytes = 0;
+  for (let i = 0; i < rows.length; i++) {
+    try { bytes += JSON.stringify(rows[i]).length; } catch { bytes += 1024; }
+    if (bytes > budget && i > 0) return { rows: rows.slice(0, i), truncated: true };
+  }
+  return { rows, truncated: false };
+}
+
+DbStrategy.truncateBySize = truncateBySize;
 
 // Tempo massimo (ms) concesso al conteggio esatto disaccoppiato prima di
 // arrendersi e riportare un totale sconosciuto. Configurabile via env

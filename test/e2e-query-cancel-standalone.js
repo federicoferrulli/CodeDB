@@ -1,11 +1,14 @@
 'use strict';
 
-const { fork } = require('child_process');
-const path = require('path');
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 const DbFactory = require('../db/DbFactory');
 
-const PORT = 3039;
+// Il test avvia una PROPRIA istanza di CodeDB con connections.ini e audit in una
+// cartella temporanea (test/e2e-harness.js). Prima faceva `fork(server.js)`
+// passando l'ambiente così com'era: quell'istanza leggeva il connections.ini
+// REALE dell'utente e scriveva nel suo ui-audit.log.
+const PORT = parseInt(process.env.E2E_PORT, 10) || 3039;
 const DB = 'gui_mongodb_e2e';
 const COLL = 'cancel_test';
 
@@ -21,19 +24,9 @@ function assert(cond, label) {
 async function run() {
   console.log('--- Test Standalone Query Cancel (Server + Socket query:cancel) ---');
 
-  // Avvia il server aggiornato su una porta dedicata (3039)
-  const serverProcess = fork(path.join(__dirname, '../server.js'), [], {
-    env: { ...process.env, PORT: String(PORT) },
-    stdio: ['ignore', 'pipe', 'pipe', 'ipc']
-  });
+  const testServer = await startTestServer({ port: PORT });
 
-  serverProcess.stdout?.on('data', (d) => console.log(`[Server] ${d.toString().trim()}`));
-  serverProcess.stderr?.on('data', (d) => console.error(`[Server Err] ${d.toString().trim()}`));
-
-  // Attende che il server sia pronto
-  await new Promise((r) => setTimeout(r, 2500));
-
-  const socket = io(`http://127.0.0.1:${PORT}`);
+  const socket = io(testServer.url);
   
   await new Promise((resolve, reject) => {
     socket.on('connect', resolve);
@@ -90,7 +83,7 @@ async function run() {
     process.exitCode = 1;
   } finally {
     socket.close();
-    serverProcess.kill('SIGTERM');
+    await testServer.stop();
   }
 }
 

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, cut } from './utils.js';
+import { $, emit, esc, cut, isForActiveTab } from './utils.js';
 
 const UML = { W: 230, ROW: 17, HEAD: 26, PAD: 10, GAP: 30, COLGAP: 140, MAXF: 11 };
 
@@ -18,8 +18,12 @@ export function loadUml(force) {
       state.dbSchema = res;
       state.dbSchemaFor = state.db;
     }
+    // Il canvas UML è unico: lo schema di un tab in background va solo messo in
+    // cache, verrà disegnato quando l'utente ci tornerà.
+    if (!isForActiveTab(res)) return;
     renderUml();
   }).catch((err) => {
+    if (!isForActiveTab(err)) return;
     $('#uml-canvas').innerHTML = `<div class="error">${esc(err.message)}</div>`;
   });
 }

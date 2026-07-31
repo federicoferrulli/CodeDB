@@ -8,14 +8,18 @@
 // Uso: node test/e2e-dbexport.js
 
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 
-const PORT = process.env.PORT || 3030;
+// Il test avvia una PROPRIA istanza di CodeDB su una porta dedicata, con un
+// connections.ini temporaneo (test/e2e-harness.js).
+const PORT = parseInt(process.env.E2E_PORT, 10) || 3147;
 const DB = 'gui_e2e_dbexport';
 const DB2 = 'gui_e2e_dbexport_copy';
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
 
-const socket = io(`http://localhost:${PORT}`);
+let socket = null;
+let testServer = null;
 
 function emit(event, payload) {
   return new Promise((resolve) => socket.emit(event, payload, resolve));
@@ -100,7 +104,13 @@ async function testMySql() {
   }
 }
 
-socket.on('connect', async () => {
+(async () => {
+  testServer = await startTestServer({ port: PORT });
+  socket = io(testServer.url);
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('connect_error', reject);
+  });
   try {
     await testMongo();
     await testMySql();
@@ -110,11 +120,11 @@ socket.on('connect', async () => {
     process.exitCode = 1;
   } finally {
     socket.close();
+    await testServer.stop();
   }
-});
-
-socket.on('connect_error', (err) => {
-  console.error(`Server non raggiungibile su :${PORT} — avvialo con npm start. (${err.message})`);
+})().catch(async (err) => {
+  console.error('Impossibile avviare i test:', (err && err.message) || err);
   process.exitCode = 1;
-  socket.close();
+  if (socket) socket.close();
+  if (testServer) await testServer.stop();
 });

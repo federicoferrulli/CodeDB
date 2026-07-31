@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext } from './utils.js';
 import { runQuery, ensureRowRendered } from './grid.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
@@ -317,10 +317,11 @@ function duplicateRow(rowIndex, withKey) {
       db: state.db,
       coll: state.coll,
       doc: JSON.stringify(parsed),
-    }).then(() => {
+    }).then((res) => {
       overlay.classList.add('hidden');
       toast(isSql ? 'Riga duplicata' : 'Documento duplicato');
-      runQuery({ auto: true });
+      // runQuery rilegge dagli input del workspace: solo se il tab è ancora quello.
+      if (isForActiveTab(res)) runQuery({ auto: true });
     }).catch((err) => {
       errEl.textContent = friendlyInsertError(err.message);
       errEl.classList.remove('hidden');
@@ -497,12 +498,17 @@ function pasteIntoGrid(text) {
   if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o sulla colonna _id)`;
   if (!confirm(msg)) return;
 
+  // L'incolla può durare a lungo: il contesto (tab + coll-tab) va catturato ora,
+  // non alla risposta, o la selezione e il refresh finirebbero su un'altra
+  // tabella se l'utente si sposta nel frattempo.
+  const origin = captureContext();
   Promise.allSettled(updates.map((u) =>
     emit('doc:update', { db: state.db, coll: state.coll, id: u.id, set: u.set })
   )).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length) toast(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, true);
     else toast(`${cellsCount} celle incollate in ${updates.length} ${docWord}`);
+    if (!origin.isStillActive()) return; // le righe sono scritte: nulla da ridipingere qui
     // Lascia selezionata l'area incollata (ri-applicata dal render di runQuery).
     const width = Math.max(...grid.map((l) => l.length));
     s.anchor = { r: start.r, c: start.c };

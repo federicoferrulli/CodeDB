@@ -199,6 +199,14 @@
                   autocomplete="off" />
               </label>
             </div>
+            <div class="form-row">
+              <label>Impronta host SSH
+                <input type="text" name="sshHostKey" placeholder="(registrata automaticamente al primo collegamento)"
+                  autocomplete="off" spellcheck="false"
+                  title="Impronta SHA-256 della chiave del server SSH, nel formato di OpenSSH. Viene registrata al primo collegamento riuscito; dopo, una chiave diversa fa fallire la connessione (possibile man-in-the-middle). Puoi confrontarla con: ssh-keyscan -t rsa HOST | ssh-keygen -lf -" />
+              </label>
+            </div>
+            <p class="wizard-panel-hint">L'impronta della chiave del server viene registrata al primo collegamento riuscito. Se in seguito cambia, la connessione viene rifiutata: è la protezione contro un server SSH che si sostituisce al tuo (man-in-the-middle). Svuota il campo solo se sai che la chiave è cambiata legittimamente.</p>
           </div>
         </div>
 
@@ -609,6 +617,15 @@
                       <option value="mongodb"><i data-lucide="database"></i> MongoDB (MQL / Aggregate)</option>
                       <option value="crossdb"><i data-lucide="shuffle"></i> Cross-DB (Virtual JOIN)</option>
                     </select>
+                  </div>
+
+                  <!-- Bersaglio effettivo della query: senza, non c'era modo di
+                       sapere su quale database si stesse per eseguire. -->
+                  <div class="query-target-selector">
+                    <label>Esegui su:</label>
+                    <span id="query-target-label" class="query-target-label">—</span>
+                    <button id="query-target-reset" class="mini-btn hidden" type="button"
+                      title="Torna al contesto della collection aperta">✕</button>
                   </div>
 
                   <div class="query-actions">
@@ -1317,8 +1334,8 @@
 
           <div class="form-grid">
             <div class="form-group">
-              <label for="backup-storage">Cloud Storage URI (opzionale)</label>
-              <input type="text" id="backup-storage" placeholder="es. s3://mio-bucket/backups, gs://bucket/prefisso" />
+              <label for="backup-storage">Destinazione cloud (opzionale)</label>
+              <input type="text" id="backup-storage" placeholder="alias configurato sul server (CODEDB_BACKUP_STORAGE)" title="Nome di una destinazione cloud pre-approvata dall'amministratore. Gli URI arbitrari non sono accettati dall'interfaccia: usa la CLI." />
             </div>
             <div class="form-group">
               <label for="backup-slack">Slack Webhook URL (opzionale)</label>

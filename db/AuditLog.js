@@ -78,8 +78,16 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
 
   function readRecent(filters = {}) {
     if (cache === null) loadCache();
-    const { limit = 200, offset = 0, event, db, connection, dbType, status, category } = filters;
+    const { limit = 200, offset = 0, event, db, connection, dbType, status, category, ownerId, userId } = filters;
     let entries = cache;
+
+    // Isolamento multi-tenant: `ownerId`/`userId` non sono filtri di comodo come
+    // gli altri ma il confine di visibilità dello Storico Azioni. Le voci prive
+    // dell'identità (scritte da versioni precedenti, quando l'attore non veniva
+    // registrato) restano visibili solo a chi non pone alcun filtro — cioè al
+    // root: non è possibile attribuirle a un tenant, quindi non vanno mostrate.
+    if (ownerId) entries = entries.filter((e) => e.ownerId === ownerId);
+    if (userId) entries = entries.filter((e) => e.userId === userId);
 
     if (event) entries = entries.filter((e) => e.event === event);
     if (db) entries = entries.filter((e) => e.db === db);

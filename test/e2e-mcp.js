@@ -8,13 +8,16 @@
 const fs = require('fs');
 const path = require('path');
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 const { MongoClient } = require('mongodb');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 const { assertReadOnlySql, assertReadOnlyPipeline } = require('../mcp/McpGateway');
 
-const PORT = process.env.PORT || 3030;
-const BASE = `http://127.0.0.1:${PORT}`;
+// Il test avvia una PROPRIA istanza di CodeDB con un connections.ini
+// temporaneo (test/e2e-harness.js): salva ed elimina connessioni salvate,
+// quindi non deve mai toccare il vault reale dell'utente.
+let BASE = null; // valorizzato dopo l'avvio dell'istanza di test
 const DB = 'gui_mongodb_e2e_mcp';
 const DROP_DB = 'gui_mongodb_e2e_mcp_drop';
 const CONN_NAME = 'e2e-mcp';
@@ -55,6 +58,8 @@ async function newMcpClient() {
   await client.connect(transport);
   return { client, transport };
 }
+
+let testServer = null;
 
 (async () => {
   let mongo = null;
@@ -97,6 +102,11 @@ async function newMcpClient() {
       { name: 'Bruno', age: 41, city: 'Bari', tags: ['a', 'b'] },
     ]);
     await mongo.db(DB).collection('orders').insertOne({ people_id: ins.insertedIds[0], amount: 10 });
+
+    console.log('1b. istanza CodeDB di test (porta dedicata, vault temporaneo)');
+    testServer = await startTestServer({ port: parseInt(process.env.E2E_PORT, 10) || 3142 });
+    BASE = testServer.url;
+    assert(!!BASE, `istanza di test avviata su ${BASE}`);
 
     console.log('2. connessione salvata di test (via socket, come farebbe la UI)');
     socket = io(BASE);
@@ -281,7 +291,11 @@ async function newMcpClient() {
     const qGuard = await call(mcp1.client, 'execute_query', { connection_id: cid2, db: DB, collection: 'people', pipeline: '[{ "$out": "x" }]' });
     assert(!qGuard.ok, 'execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)');
 
-    const auditPath = path.join(__dirname, '..', 'mcp-audit.log');
+    // Audit dell'ISTANZA DI TEST, non quello reale nella radice del repo: con
+    // l'istanza usa-e-getta il file vive nella sua cartella temporanea. Leggere
+    // quello del repo, oltre a essere sbagliato ora, rendeva l'asserzione
+    // soddisfacibile da voci lasciate da un'esecuzione precedente.
+    const auditPath = path.join(testServer.dir, 'mcp-audit.log');
     const auditText = fs.existsSync(auditPath) ? fs.readFileSync(auditPath, 'utf8') : '';
     assert(auditText.includes(`"connection":"${RW_NAME}"`) && auditText.includes('"event":"executed"'), 'audit log con eventi requested/executed');
 
@@ -329,6 +343,8 @@ async function newMcpClient() {
       await mongo.db(DROP_DB).dropDatabase().catch(() => {});
       await mongo.close().catch(() => {});
     }
+    // L'istanza di test (e il suo connections.ini temporaneo) sparisce con lei.
+    if (testServer) await testServer.stop();
   }
 })();
 

@@ -7,8 +7,13 @@
 // Richiede il server della GUI già avviato su :3030.
 
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 
-const socket = io('http://localhost:3030');
+// Il test avvia una PROPRIA istanza di CodeDB su una porta dedicata, con un
+// connections.ini temporaneo (test/e2e-harness.js): nessuna dipendenza dal
+// server dell'utente e nessun rischio per il suo vault.
+let socket = null;
+let testServer = null;
 const MYSQL_PORT = process.env.MYSQL_PORT || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
 const DB = 'gui_mysql_e2e';
@@ -33,7 +38,22 @@ function sql(db, query) {
   return emit('collection:aggregate', { db, coll: null, pipeline: query });
 }
 
-socket.on('connect', async () => {
+(async () => {
+  testServer = await startTestServer({ port: parseInt(process.env.E2E_PORT, 10) || 3144 });
+  socket = io(testServer.url);
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('connect_error', reject);
+  });
+  await runTests();
+})().catch(async (err) => {
+  console.error('Impossibile avviare i test:', (err && err.message) || err);
+  process.exitCode = 1;
+  if (socket) socket.close();
+  if (testServer) await testServer.stop();
+});
+
+async function runTests() {
   try {
     console.log('1. mongo:connect (dbType = mysql)');
     const conn = await emit('mongo:connect', {
@@ -217,5 +237,6 @@ socket.on('connect', async () => {
     process.exitCode = 1;
   } finally {
     socket.close();
+    await testServer.stop();
   }
-});
+}

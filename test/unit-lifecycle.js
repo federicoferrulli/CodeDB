@@ -3,7 +3,7 @@
 const assert = require('assert');
 const express = require('express');
 const { attachMcp } = require('../mcp/McpGateway');
-const { registerGlobalExceptionHandlers } = require('../server');
+const { registerGlobalExceptionHandlers, makeConnectLocks } = require('../server');
 
 console.log('--- Test Unitari Lifecycle & Graceful Shutdown ---');
 
@@ -62,6 +62,57 @@ console.log('--- Test Unitari Lifecycle & Graceful Shutdown ---');
     assert.ok(rejectionListeners.length > 0, 'Almeno un listener per unhandledRejection deve essere presente');
 
     console.log('  OK   Registrazione globale handler eccezioni e segnali superata');
+
+    // Test 3 (CDB-08): serializzazione delle aperture di connessione per tab.
+    // Due mongo:connect concorrenti sullo stesso tabId non devono mai eseguire
+    // in parallelo (aprivano due strategie, di cui una orfana per sempre).
+    {
+      const withLock = makeConnectLocks();
+      let concurrent = 0;
+      let maxConcurrent = 0;
+      const order = [];
+      const task = (name, ms) => async () => {
+        concurrent++;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        await new Promise((r) => setTimeout(r, ms));
+        order.push(name);
+        concurrent--;
+      };
+
+      await Promise.all([
+        withLock('tab-1', task('a', 30)),
+        withLock('tab-1', task('b', 1)),
+      ]);
+      assert.strictEqual(maxConcurrent, 1, 'due aperture sullo stesso tab non devono sovrapporsi');
+      assert.deepStrictEqual(order, ['a', 'b'], 'le aperture devono rispettare l\'ordine di arrivo');
+
+      // Tab diversi restano indipendenti: la serializzazione non deve
+      // trasformarsi in un collo di bottiglia globale.
+      concurrent = 0; maxConcurrent = 0;
+      await Promise.all([
+        withLock('tab-A', task('a', 20)),
+        withLock('tab-B', task('b', 20)),
+      ]);
+      assert.strictEqual(maxConcurrent, 2, 'tab diversi devono poter connettersi in parallelo');
+
+      // Un fallimento non deve bloccare la coda del tab.
+      const failing = withLock('tab-2', async () => { throw new Error('boom'); });
+      await assert.rejects(failing, /boom/, 'l\'errore deve arrivare al chiamante');
+      let ranAfterFailure = false;
+      await withLock('tab-2', async () => { ranAfterFailure = true; });
+      assert.strictEqual(ranAfterFailure, true, 'la coda deve proseguire dopo un fallimento');
+
+      // Oltre una richiesta in attesa si rifiuta invece di accodare all'infinito.
+      const slow = withLock('tab-3', task('slow', 40));
+      const queued = withLock('tab-3', task('queued', 1));
+      await assert.rejects(
+        withLock('tab-3', task('extra', 1)),
+        /già in corso/,
+        'la terza richiesta concorrente deve essere rifiutata con un messaggio parlante'
+      );
+      await Promise.all([slow, queued]);
+      console.log('  OK   Serializzazione delle aperture di connessione per tab (CDB-08) superata');
+    }
 
     console.log('\nTutti i test unitari di Lifecycle & Shutdown superati con successo!');
   } catch (err) {

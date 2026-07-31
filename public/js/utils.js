@@ -234,15 +234,33 @@ export function showError(id, msg) {
 
 // Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
 // momento della chiamata (non alla risposta: l'utente può cambiare tab mentre
-// la query è in volo). La risposta porta il tab di origine in `_tab`; se nel
-// frattempo il tab è stato chiuso, la risposta viene scartata.
+// la query è in volo). La risposta porta il tab di origine in `_tab` e il suo
+// stato in `_state`; se nel frattempo il tab è stato chiuso, la risposta viene
+// scartata.
+//
+// IMPORTANTE — `_state` non è un di più: `state` (state.js) è un Proxy che punta
+// SEMPRE al tab attivo, quindi un callback che scrive `state.docs = …` scrive nel
+// tab che è attivo AL MOMENTO DELLA RISPOSTA, non in quello che ha fatto la
+// richiesta. Cambiando tab mentre una find è in volo, i risultati del tab A
+// finivano nello stato del tab B (griglia, colonne e footer sbagliati, e da lì
+// scritture sul documento sbagliato). Ogni callback che modifica lo stato deve
+// quindi usare `res._state`, mai il Proxy; e deve ridipingere solo se il proprio
+// tab è ancora quello attivo (`res._tab === activeTab()`).
 export function emit(event, payload) {
-  const tab = activeTab();
+  // Il tabId del payload, quando c'è, ha la precedenza (split view, modali con
+  // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
+  // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
+  const pinned = payload && payload.tabId;
+  const tab = pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab();
+  const stamp = (res) => Object.assign(res, { _tab: tab, _state: tab ? tab.state : state });
   return new Promise((resolve, reject) => {
-    socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) }, (res) => {
+    // Anche gli errori portano l'origine: i callback di errore devono poter
+    // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
+    const fail = (msg) => reject(stamp(new Error(msg)));
+    socket.emit(event, { tabId: tab ? tab.id : pinned, ...(payload || {}) }, (res) => {
       if (tab && !tabs.list.includes(tab)) return; // tab chiuso: risposta orfana
       if (res && res.ok) {
-        resolve(Object.assign(res, { _tab: tab }));
+        resolve(stamp(res));
       } else {
         const errMsg = String((res && res.error) || '');
         const isNoSession = errMsg.includes('Nessuna connessione attiva');
@@ -254,33 +272,63 @@ export function emit(event, payload) {
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
               socket.emit(event, { tabId: tab.id, ...(payload || {}), _reconnected: true }, (retryRes) => {
                 if (retryRes && retryRes.ok) {
-                  resolve(Object.assign(retryRes, { _tab: tab }));
+                  resolve(stamp(retryRes));
                 } else {
-                  reject(new Error(retryRes ? retryRes.error : 'Errore dopo la riconnessione'));
+                  fail(retryRes ? retryRes.error : 'Errore dopo la riconnessione');
                 }
               });
             } else {
               toast(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, true);
-              reject(new Error(res ? res.error : 'Connessione assente'));
+              fail(res ? res.error : 'Connessione assente');
             }
           });
         } else {
-          reject(new Error(res ? res.error : 'Errore sconosciuto'));
+          fail(res ? res.error : 'Errore sconosciuto');
         }
       }
     });
   });
 }
 
-// Evento senza risposta (fire-and-forget), sempre col tabId del tab attivo.
-export function notify(event, payload) {
+// La risposta riguarda ancora ciò che l'utente sta guardando? Solo in questo
+// caso il workspace (DOM unico, condiviso da tutti i tab) va ridipinto: i dati
+// di un tab in background si scrivono nel suo stato e basta, verranno mostrati
+// quando l'utente ci tornerà.
+export function isForActiveTab(res) {
+  return !res || !res._tab || res._tab === activeTab();
+}
+
+// Contesto (tab + coll-tab) al momento in cui parte un'operazione asincrona
+// lunga — import a blocchi, scritture multiple, refresh post-scrittura. `st` è
+// lo stato su cui scrivere; `isStillActive()` dice se il workspace mostra ancora
+// quel contesto, cioè se ha senso ridipingere o rieseguire la query (che legge
+// gli input del DOM, condivisi da tutti i tab).
+export function captureContext() {
+  const tab = activeTab();
+  const st = tab ? tab.state : state;
+  const collId = st.activeCollId;
+  return {
+    tab,
+    st,
+    collId,
+    tabId: tab ? tab.id : undefined,
+    isStillActive: () => activeTab() === tab && st.activeCollId === collId,
+  };
+}
+
+// Evento socket senza risposta (fire-and-forget), sempre col tabId del tab
+// attivo. Si chiamava `notify`, nome indistinguibile da una notifica all'utente:
+// in graph3d.js era stato usato per ~27 messaggi UI, che quindi non comparivano
+// mai (errori compresi) mentre il testo italiano finiva sul socket come nome di
+// evento. Per i messaggi all'utente si usa `toast()`.
+export function emitFireAndForget(event, payload) {
   const tab = activeTab();
   socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) });
 }
 
-export function invalidateSchema() {
-  state.dbSchema = null;
-}
+// (rimossa `invalidateSchema()`: azzerava la cache dello schema attraverso il
+// Proxy `state`, quindi quella del tab ATTIVO alla risposta invece di quella del
+// tab che aveva eseguito la DDL. I chiamanti ora scrivono `res._state.dbSchema`.)
 
 export function colDone(verb) {
   return verb + 'a';

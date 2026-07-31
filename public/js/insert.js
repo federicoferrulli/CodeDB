@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab } from './utils.js';
 import { runQuery } from './grid.js';
 
 let insertRows = [];
@@ -284,12 +284,14 @@ export function initInsert() {
       db,
       coll,
       doc: docText,
-    }).then(() => {
+    }).then((res) => {
       closeModal('#insert-overlay');
       toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
       if (insertContext && insertContext.onSaveSuccess) {
         insertContext.onSaveSuccess();
-      } else {
+      } else if (isForActiveTab(res)) {
+        // runQuery legge gli input del workspace: ha senso solo se il tab che ha
+        // inserito è ancora quello mostrato.
         runQuery({ auto: true }); // refresh post-scrittura
       }
     }).catch((err) => {

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal } from './utils.js';
+import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab } from './utils.js';
 import { runQuery, renderGrid } from './grid.js';
 
 export function buildEditor(current) {
@@ -118,12 +118,15 @@ export function startEdit(td, doc, field) {
       coll: state.coll,
       id: idOf(doc),
       set: { [field]: value },
-    }).then(() => {
+    }).then((res) => {
       toast(`Campo "${field}" aggiornato`);
-      runQuery({ auto: true }); // refresh post-scrittura
+      // Il refresh rilegge dagli input del workspace, che appartengono al tab
+      // mostrato: se l'utente si è spostato altrove, rileggerebbe la collection
+      // sbagliata. La scrittura è comunque andata a buon fine.
+      if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura
     }).catch((err) => {
       toast(err.message, true);
-      renderGrid({ preserveScroll: true });
+      if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
     });
   };
 
@@ -166,12 +169,12 @@ export function initInlineEdit() {
       coll,
       id: idOf(state.editingDoc),
       doc: $('#editdoc-json').value,
-    }).then(() => {
+    }).then((res) => {
       closeModal('#editdoc-overlay');
       toast('Documento aggiornato');
       if (editDocContext && editDocContext.onSaveSuccess) {
         editDocContext.onSaveSuccess();
-      } else {
+      } else if (isForActiveTab(res)) {
         runQuery({ auto: true }); // refresh post-scrittura
       }
     }).catch((err) => {

@@ -359,12 +359,43 @@ class AppStore {
 
   /* --- Autenticazione ------------------------------------------------------- */
 
-  /** Verifica le credenziali di un sottoutente (l'owner passa dal provider). */
+  /**
+   * Verifica le credenziali di un sottoutente (l'owner passa dal provider).
+   *
+   * L'unicità delle email è per tenant (indice `{ownerId, email}`): due owner
+   * diversi POSSONO avere un sottoutente con la stessa email, ed è corretto che
+   * sia così in un SaaS. Cercare con un `findOne` senza ownerId però ne
+   * selezionava uno arbitrario: se le password erano diverse, l'utente legittimo
+   * dell'altro tenant si vedeva rifiutare credenziali giuste, senza alcun errore
+   * lato server e senza modo di indicare il proprio tenant dall'interfaccia.
+   *
+   * Si verificano quindi TUTTI gli omonimi. Se più di uno accetta la stessa
+   * password l'accesso viene rifiutato in modo esplicito invece di scegliere a
+   * caso: è un caso raro, e sceglierne uno significherebbe far entrare qualcuno
+   * nel tenant sbagliato.
+   */
   async verifySubUser(email, password) {
-    const user = await this.col('users').findOne({ email: normEmail(email), type: 'subuser' });
-    if (!user || user.status !== 'active') return null;
-    if (!verifyPassword(password, user.passwordHash)) return null;
-    return user;
+    const candidates = await this.col('users')
+      .find({ email: normEmail(email), type: 'subuser' })
+      .toArray();
+
+    const matches = [];
+    for (const user of candidates) {
+      // Il confronto (scrypt + timingSafeEqual) gira su ogni candidato attivo,
+      // così il tempo di risposta non rivela quale record ha corrisposto.
+      if (user.status !== 'active') continue;
+      if (verifyPassword(password, user.passwordHash)) matches.push(user);
+    }
+
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1) {
+      const err = new Error(
+        'Questa email esiste su più account con la stessa password: contatta l\'amministratore per distinguerli.'
+      );
+      err.ambiguousLogin = true;
+      throw err;
+    }
+    return null;
   }
 
   /** Costruisce il principal completo (grant denormalizzati) per un utente. */

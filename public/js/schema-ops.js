@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, toast, openModal, closeModal, invalidateSchema, colDone, isSqlType } from './utils.js';
-import { refreshDbTree, collWord } from './dbtree.js';
+import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab } from './utils.js';
+import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
 
@@ -23,21 +23,37 @@ export function openCreateDb() {
 }
 
 export function renameDb(name) {
-  const input = prompt(`Nuovo nome per il database "${name}":\n(le collection verranno copiate nel nuovo database)`, name);
+  // Su PostgreSQL il livello è lo SCHEMA e la rinomina è un ALTER SCHEMA
+  // istantaneo: la nota sulla copia vale solo per MongoDB/MySQL.
+  const isSchema = dbWord() === 'schema';
+  const input = prompt(
+    isSchema
+      ? `Nuovo nome per lo schema "${name}":`
+      : `Nuovo nome per il database "${name}":\n(le collection verranno copiate nel nuovo database)`,
+    name
+  );
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === name) return;
-  emit('db:rename', { db: name, newName }).then(() => {
-    toast(`Database rinominato in "${newName}"`);
-    state.expandedDbs.delete(name);
-    state.expandedDbs.add(newName);
+  emit('db:rename', { db: name, newName }).then((res) => {
+    // Lo stato da aggiornare è quello del tab che ha chiesto la rinomina, non di
+    // quello attivo alla risposta: una rinomina copia le collection e può durare.
+    const st = res._state;
+    toast(`${dbWord(true)} rinominato in "${newName}"`);
+    st.expandedDbs.delete(name);
+    st.expandedDbs.add(newName);
     // I coll-tab aperti sul vecchio nome seguono la rinomina.
-    updateCollTabs((ct) => { if (ct.db === name) ct.db = newName; });
-    if (state.db === name) {
-      state.db = newName;
-      invalidateSchema();
-      state.dbSchemaFor = null;
-      $('#breadcrumb').textContent = `${newName} ▸ ${state.coll}`;
+    updateCollTabs((ct) => { if (ct.db === name) ct.db = newName; }, st);
+    if (st.db === name) {
+      st.db = newName;
+      st.dbSchema = null;
+      st.dbSchemaFor = null;
+    }
+    // Breadcrumb, griglia e sidebar sono il workspace condiviso: si toccano solo
+    // se questo tab è ancora quello in primo piano.
+    if (!isForActiveTab(res)) return;
+    if (st.db === newName) {
+      $('#breadcrumb').textContent = `${newName} ▸ ${st.coll}`;
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
@@ -46,12 +62,16 @@ export function renameDb(name) {
 }
 
 export function dropDb(name) {
-  if (!confirm(`Eliminare il database "${name}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
-  emit('db:drop', { db: name }).then(() => {
-    toast(`Database "${name}" eliminato`);
-    state.expandedDbs.delete(name);
-    closeCollTabsWhere((ct) => ct.db === name);
-    refreshDbTree();
+  const what = dbWord() === 'schema'
+    ? `lo schema "${name}" e TUTTE le tabelle che contiene`
+    : `il database "${name}" e TUTTI i suoi dati`;
+  if (!confirm(`Eliminare ${what}?
+L'operazione non è reversibile.`)) return;
+  emit('db:drop', { db: name }).then((res) => {
+    toast(`${dbWord(true)} "${name}" eliminato`);
+    res._state.expandedDbs.delete(name);
+    closeCollTabsWhere((ct) => ct.db === name, res._state);
+    if (isForActiveTab(res)) refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }
 
@@ -131,12 +151,15 @@ export function renameColl(dbName, collName) {
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === collName) return;
-  emit('collection:rename', { db: dbName, coll: collName, newName }).then(() => {
+  emit('collection:rename', { db: dbName, coll: collName, newName }).then((res) => {
+    const st = res._state;
     toast(`Rinominata in "${newName}"`);
-    invalidateSchema();
-    updateCollTabs((ct) => { if (ct.db === dbName && ct.coll === collName) ct.coll = newName; });
-    if (state.db === dbName && state.coll === collName) {
-      state.coll = newName;
+    st.dbSchema = null;
+    updateCollTabs((ct) => { if (ct.db === dbName && ct.coll === collName) ct.coll = newName; }, st);
+    const wasOpen = st.db === dbName && st.coll === collName;
+    if (wasOpen) st.coll = newName;
+    if (!isForActiveTab(res)) return; // workspace condiviso: non toccarlo da un altro tab
+    if (wasOpen) {
       $('#breadcrumb').textContent = `${dbName} ▸ ${newName}`;
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
@@ -147,11 +170,11 @@ export function renameColl(dbName, collName) {
 
 export function dropColl(dbName, collName) {
   if (!confirm(`Eliminare la ${collWord()} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
-  emit('collection:drop', { db: dbName, coll: collName }).then(() => {
+  emit('collection:drop', { db: dbName, coll: collName }).then((res) => {
     toast(`"${collName}" eliminata`);
-    invalidateSchema();
-    closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName);
-    refreshDbTree();
+    res._state.dbSchema = null;
+    closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName, res._state);
+    if (isForActiveTab(res)) refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }
 
@@ -187,11 +210,11 @@ export function initSchemaOps() {
   $('#dbcreate-save').addEventListener('click', () => {
     const db = $('#dbcreate-name').value.trim();
     const coll = $('#dbcreate-coll').value.trim();
-    emit('db:create', { db, coll }).then(() => {
+    emit('db:create', { db, coll }).then((res) => {
       closeModal('#dbcreate-overlay');
-      toast(`Database "${db}" creato`);
-      state.expandedDbs.add(db);
-      refreshDbTree();
+      toast(`${dbWord(true)} "${db}" creato`);
+      res._state.expandedDbs.add(db);
+      if (isForActiveTab(res)) refreshDbTree();
     }).catch((err) => {
       const errorEl = $('#dbcreate-error');
       errorEl.textContent = err.message;
@@ -213,12 +236,12 @@ export function initSchemaOps() {
     const payload = { db: creatingCollDb, name };
     const isSql = isSqlType(state.dbType);
     if (isSql) payload.columns = readColRows();
-    emit('collection:create', payload).then(() => {
+    emit('collection:create', payload).then((res) => {
       closeModal('#collcreate-overlay');
       toast(`${isSql ? 'Tabella' : 'Collection'} "${name}" creata`);
-      state.expandedDbs.add(creatingCollDb);
-      invalidateSchema();
-      refreshDbTree();
+      res._state.expandedDbs.add(creatingCollDb);
+      res._state.dbSchema = null;
+      if (isForActiveTab(res)) refreshDbTree();
     }).catch((err) => {
       const errorEl = $('#collcreate-error');
       errorEl.textContent = err.message;
@@ -247,8 +270,8 @@ export function initSchemaOps() {
     emit('column:drop', { db: state.db, coll: state.coll, name }).then((res) => {
       toast(`${collWord(true)} "${name}" ${colDone('eliminat')}` +
         (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
-      invalidateSchema();
-      loadDetails();
+      res._state.dbSchema = null;
+      if (isForActiveTab(res)) loadDetails();
     }).catch((err) => toast(err.message, true));
   });
 
@@ -273,8 +296,8 @@ export function initSchemaOps() {
       const verb = colEditOldName ? 'modificat' : 'aggiunt';
       const done = `${collWord(true)} "${column.name}" ${colDone(verb)}`;
       toast(done + (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
-      invalidateSchema();
-      loadDetails();
+      res._state.dbSchema = null;
+      if (isForActiveTab(res)) loadDetails();
     }).catch((err) => {
       const errorEl = $('#coledit-error');
       errorEl.textContent = err.message;

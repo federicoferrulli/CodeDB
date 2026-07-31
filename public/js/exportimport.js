@@ -1,13 +1,19 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
+import { tabs } from './tabs.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
-// righe via `collection:import`. Tutte le richieste passano da emit(), che
-// inietta il tabId del tab attivo.
+// righe via `collection:import`.
+//
+// Sono operazioni LUNGHE e non bloccanti: emit() inietta il tabId del tab ATTIVO
+// al momento della chiamata, quindi ogni ciclo a blocchi deve congelare il
+// proprio contesto con captureContext() e passare `tabId` esplicitamente. Senza,
+// cambiare tab a metà import dirotta i blocchi rimanenti su un'altra
+// connessione — con danno permanente, perché sono scritture.
 
 const CHUNK = 500;
 
@@ -34,9 +40,13 @@ export async function exportCollection(db, coll, format) {
   let after = null; // cursore keyset (Mongo sempre, MySQL con PK)
   let total = 0;
   let header = null;
+  // Anche l'export va ancorato al tab d'origine: senza, cambiare connessione a
+  // metà scaricamento farebbe arrivare i blocchi successivi da un'altra
+  // connessione e il file prodotto conterrebbe dati di due database diversi.
+  const { tabId } = captureContext();
   try {
     for (;;) {
-      const res = await emit('collection:export', { db, coll, skip, after, limit: CHUNK, format });
+      const res = await emit('collection:export', { tabId, db, coll, skip, after, limit: CHUNK, format });
       total = res.total;
       if (header == null && res.header != null) header = res.header;
       lines.push(...res.lines);
@@ -75,7 +85,7 @@ export async function exportCollection(db, coll, format) {
  * Import
  * ------------------------------------------------------------------------- */
 
-let importTarget = null; // { db, coll }
+let importTarget = null; // { db, coll, ctx } — ctx congela il tab di destinazione (vedi openImportModal)
 let importing = false;
 
 // Parser CSV minimale (RFC 4180): gestisce virgolette, virgolette raddoppiate
@@ -151,7 +161,11 @@ function setImportProgress(pct, label) {
 }
 
 export function openImportModal(db, coll) {
-  importTarget = { db, coll };
+  // Il contesto (tab + coll-tab) va congelato all'apertura: l'import dura minuti
+  // e la modale non blocca l'app, quindi l'utente può cambiare tab mentre i
+  // blocchi partono. Senza un tabId esplicito, emit() userebbe il tab ATTIVO al
+  // momento di ciascun blocco e le righe finirebbero in un'altra connessione.
+  importTarget = { db, coll, ctx: captureContext() };
   importing = false;
   const isMysql = state.dbType === 'mysql';
   $('#import-title').textContent = `Importa in "${coll}"`;
@@ -192,18 +206,30 @@ async function runImport() {
     return;
   }
 
-  const { db, coll } = importTarget;
+  const { db, coll, ctx } = importTarget;
+  // Il tab di destinazione è quello in cui l'utente ha aperto la modale, non
+  // quello attivo quando parte il singolo blocco.
+  const tabId = ctx && ctx.tabId;
   importing = true;
   $('#import-run').disabled = true;
   let inserted = 0;
   let failed = 0;
+  let aborted = false;
   const errors = [];
   try {
     for (let i = 0; i < docs.length; i += CHUNK) {
+      // Tab chiuso (o mai esistito) durante l'import: fermarsi è l'unica scelta
+      // corretta — proseguire scriverebbe su una sessione non più identificabile.
+      if (tabId && !tabs.list.some((t) => t.id === tabId)) {
+        aborted = true;
+        errors.push('Import interrotto: la connessione di destinazione è stata chiusa.');
+        failed += docs.length - i;
+        break;
+      }
       const batch = docs.slice(i, i + CHUNK);
       setImportProgress((i / docs.length) * 100, `${i}/${docs.length}…`);
       try {
-        const res = await emit('collection:import', { db, coll, docs: batch });
+        const res = await emit('collection:import', { tabId, db, coll, docs: batch });
         inserted += res.inserted;
         failed += res.failed;
         for (const e of res.errors || []) {
@@ -231,13 +257,20 @@ async function runImport() {
   }
   report.innerHTML = html;
   report.classList.remove('hidden');
-  toast(failed ? `Import completato con ${failed} errori` : `Importati ${inserted} ${word} in "${coll}"`, !!failed);
+  toast(
+    aborted ? 'Import interrotto: connessione di destinazione chiusa'
+      : failed ? `Import completato con ${failed} errori`
+        : `Importati ${inserted} ${word} in "${coll}"`,
+    aborted || !!failed
+  );
 
-  // Aggiorna griglia (se la collection è aperta) e contatori della sidebar.
-  if (inserted && state.db === db && state.coll === coll) {
+  // Aggiorna griglia e sidebar solo se l'utente sta ancora guardando il tab in
+  // cui è avvenuto l'import: le due funzioni leggono il workspace condiviso.
+  if (!inserted || (ctx && !ctx.isStillActive())) return;
+  if (state.db === db && state.coll === coll) {
     import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-import
   }
-  if (inserted) refreshDbTree();
+  refreshDbTree();
 }
 
 export function initExportImport() {
@@ -305,8 +338,10 @@ const DB_EXPORT_FORMAT = 'codedb-database';
 // Esportarli produce viste non ricreabili, importarci sopra è distruttivo.
 const SYSTEM_DBS = {
   mysql: ['information_schema', 'mysql', 'performance_schema', 'sys'],
-  postgresql: ['information_schema', 'pg_catalog', 'postgres', 'template0', 'template1'],
-  postgres: ['information_schema', 'pg_catalog', 'postgres', 'template0', 'template1'],
+  // Su PostgreSQL il livello "database" della UI è lo SCHEMA (vedi la nota in
+  // PostgreSqlStrategy): qui vanno quindi gli schemi di sistema, non i database.
+  postgresql: ['information_schema', 'pg_catalog', 'pg_toast'],
+  postgres: ['information_schema', 'pg_catalog', 'pg_toast'],
   mongodb: ['admin', 'config', 'local'],
 };
 
@@ -320,10 +355,13 @@ export async function exportDatabase(db) {
     toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
     return;
   }
+  // Export di un intero database: decine di richieste in sequenza, quindi il tab
+  // d'origine va congelato qui (vedi nota in testa al modulo).
+  const { tabId } = captureContext();
   let collections;
   try {
     // Solo collection/tabelle "vere": le view sono derivate.
-    collections = (await emit('db:collections', { db })).collections.filter((c) => c.type !== 'view');
+    collections = (await emit('db:collections', { tabId, db })).collections.filter((c) => c.type !== 'view');
   } catch (err) {
     toast(`Esportazione fallita: ${err.message}`, true);
     return;
@@ -341,16 +379,16 @@ export async function exportDatabase(db) {
       let ddl = null;
       let indexes = null;
       if (isSql) {
-        ddl = (await emit('collection:ddl', { db, coll: c.name })).ddl;
+        ddl = (await emit('collection:ddl', { tabId, db, coll: c.name })).ddl;
       } else {
-        const stats = await emit('collection:stats', { db, coll: c.name });
+        const stats = await emit('collection:stats', { tabId, db, coll: c.name });
         indexes = (stats.indexes || []).filter((i) => i.name !== '_id_');
       }
       const lines = [];
       let skip = 0;
       let after = null;
       for (;;) {
-        const res = await emit('collection:export', { db, coll: c.name, skip, after, limit: CHUNK, format: 'json' });
+        const res = await emit('collection:export', { tabId, db, coll: c.name, skip, after, limit: CHUNK, format: 'json' });
         lines.push(...res.lines);
         skip += res.count;
         after = res.nextAfter != null ? res.nextAfter : after;
@@ -449,6 +487,14 @@ async function runDbImport() {
   const isSql = isSqlType(state.dbType);
   const totalDocs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0) || 1;
 
+  // Import di un intero database: è l'operazione più lunga dell'app (schema +
+  // dati + indici, collection per collection). Il tab di destinazione si congela
+  // qui, altrimenti un cambio di connessione a metà riverserebbe le collection
+  // rimanenti su un altro database (vedi nota in testa al modulo).
+  const ctx = captureContext();
+  const tabId = ctx.tabId;
+  const stillConnected = () => !tabId || tabs.list.some((t) => t.id === tabId);
+
   dbImporting = true;
   $('#dbimport-run').disabled = true;
   let inserted = 0;
@@ -461,22 +507,27 @@ async function runDbImport() {
     // al primo insert). "esiste già" non è un errore.
     if (isSql) {
       try {
-        await emit('db:create', { db: target });
+        await emit('db:create', { tabId, db: target });
       } catch (err) {
         if (!/esiste già/i.test(err.message)) throw err;
       }
     }
 
     for (const c of dbImportData.collections) {
+      // Connessione di destinazione chiusa a metà import: fermarsi subito.
+      if (!stillConnected()) {
+        pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
+        break;
+      }
       setDbImportProgress((done / totalDocs) * 100, `${c.name}…`);
       try {
         if (drop) {
-          await emit('collection:drop', { db: target, coll: c.name }).catch(() => { /* non esisteva */ });
+          await emit('collection:drop', { tabId, db: target, coll: c.name }).catch(() => { /* non esisteva */ });
         }
         if (isSql && c.ddl) {
           // CREATE TABLE dal file; se la tabella esiste già (senza drop) si
           // prosegue con il solo inserimento delle righe.
-          await emit('collection:aggregate', { db: target, coll: c.name, pipeline: c.ddl })
+          await emit('collection:aggregate', { tabId, db: target, coll: c.name, pipeline: c.ddl })
             .catch((err) => {
               if (!/already exists/i.test(err.message)) throw err;
             });
@@ -492,7 +543,7 @@ async function runDbImport() {
         const batch = c.docs.slice(i, i + CHUNK);
         setDbImportProgress((done / totalDocs) * 100, `${c.name}: ${i}/${c.docs.length}…`);
         try {
-          const res = await emit('collection:import', { db: target, coll: c.name, docs: batch });
+          const res = await emit('collection:import', { tabId, db: target, coll: c.name, docs: batch });
           inserted += res.inserted;
           failed += res.failed;
           for (const e of res.errors || []) pushErr(`${c.name}: ${e}`);
@@ -507,7 +558,7 @@ async function runDbImport() {
       await Promise.all((c.indexes || []).map(async (idx) => {
         try {
           await emit('index:create', {
-            db: target, coll: c.name,
+            tabId, db: target, coll: c.name,
             fields: JSON.stringify(idx.key), unique: !!idx.unique, name: idx.name,
           });
         } catch (err) {
@@ -533,7 +584,9 @@ async function runDbImport() {
   report.innerHTML = html;
   report.classList.remove('hidden');
   toast(failed || errors.length ? 'Import del database completato con errori' : `Database "${target}" importato`, !!(failed || errors.length));
-  refreshDbTree();
+  // La sidebar mostra i database del tab attivo: aggiornarla da un altro tab
+  // sostituirebbe il suo albero con quello della connessione di destinazione.
+  if (ctx.isStillActive()) refreshDbTree();
 }
 
 // Voci di menu contestuale per una collection/tabella, condivise tra la

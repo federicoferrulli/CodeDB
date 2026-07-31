@@ -2,10 +2,15 @@
 
 // Test end-to-end: esercita l'intero flusso socket contro un MongoDB locale.
 // Uso: node test/e2e.js
+//
+// Il test avvia una PROPRIA istanza di CodeDB su una porta dedicata, con un
+// connections.ini temporaneo (test/e2e-harness.js): salva ed elimina connessioni,
+// quindi non deve mai toccare il vault reale dell'utente. Richiede solo un
+// MongoDB locale su :27017.
 
 const { io } = require('socket.io-client');
+const { startTestServer } = require('./e2e-harness');
 
-const socket = io('http://localhost:3030');
 const DB = 'gui_mongodb_e2e';
 const COLL = 'people';
 const TMP_DB = 'gui_mongodb_e2e_tmp';
@@ -24,7 +29,25 @@ function assert(cond, label) {
   }
 }
 
-socket.on('connect', async () => {
+let server = null;
+let socket = null;
+
+(async () => {
+  server = await startTestServer();
+  socket = io(server.url);
+  await new Promise((resolve, reject) => {
+    socket.once('connect', resolve);
+    socket.once('connect_error', reject);
+  });
+  await runTests();
+})().catch(async (err) => {
+  console.error('Errore inatteso:', err && err.message ? err.message : err);
+  process.exitCode = 1;
+  if (socket) socket.close();
+  if (server) await server.stop();
+});
+
+async function runTests() {
   try {
     console.log('1. mongo:connect');
     const conn = await emit('mongo:connect', { host: 'localhost', port: 27017 });
@@ -198,8 +221,16 @@ socket.on('connect', async () => {
     );
 
     const cpw1 = await emit('connections:save', { name: 'e2e-pw', cfg: { host: 'localhost', username: 'u1', password: 'segreta' } });
-    const cpw2 = await emit('connections:save', { name: 'e2e-pw', cfg: { host: 'localhost', username: 'u2' } });
-    assert(cpw1.ok && cpw2.ok, 'connections:save crea e aggiorna "e2e-pw"');
+    // Aggiornamento di una connessione esistente: `oldName` va sempre passato,
+    // come fa la UI (connection.js invia `oldName: editingConn`). Senza, il
+    // salvataggio è una CREAZIONE e viene rifiutato perché il nome è già in uso:
+    // due connessioni omonime si sovrascriverebbero, essendo il nome la chiave
+    // della sezione .ini.
+    const cpw2 = await emit('connections:save', { name: 'e2e-pw', oldName: 'e2e-pw', cfg: { host: 'localhost', username: 'u2' } });
+    assert(cpw1.ok && cpw2.ok, `connections:save crea e aggiorna "e2e-pw"${cpw2.ok ? '' : ' (' + cpw2.error + ')'}`);
+    // Un salvataggio SENZA oldName su un nome già esistente deve essere rifiutato.
+    const cpwDup = await emit('connections:save', { name: 'e2e-pw', cfg: { host: 'localhost', username: 'u3' } });
+    assert(!cpwDup.ok, 'salvataggio con nome già esistente rifiutato');
     const cexp = await emit('connections:export', {});
     assert(cexp.ok && cexp.ini.includes(`[${CONN_NAME2}]`) && cexp.ini.includes('host=127.0.0.1'), 'export contiene la connessione rinominata');
     const cpwGet = await emit('connections:get', { name: 'e2e-pw' });
@@ -263,10 +294,11 @@ socket.on('connect', async () => {
     process.exitCode = 1;
   } finally {
     socket.close();
+    await server.stop();
   }
-});
+}
 
 setTimeout(() => {
   console.error('Timeout: il server non risponde.');
   process.exit(1);
-}, 30000).unref();
+}, 60000).unref();

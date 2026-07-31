@@ -13,10 +13,19 @@ const crypto = require('crypto');
 const readline = require('readline');
 const { Transform } = require('stream');
 const { once } = require('events');
-const { finished } = require('stream/promises');
+const { pipeline } = require('stream/promises');
 
 // Sink su file: le righe scritte passano (opzionalmente) da gzip, poi da un
 // contatore che calcola SHA-256 e dimensione sui byte effettivi del file.
+//
+// La catena usa `pipeline` e NON `.pipe()`: `.pipe()` non propaga gli errori
+// lungo la catena, quindi un errore a monte (gzip, o il Transform del checksum)
+// lasciava il writeStream a valle senza né 'error' né 'finish' e la `finished()`
+// in close() non si risolveva MAI. Il backup si bloccava senza messaggio: via
+// CLI il processo restava appeso, via UI l'evento socket non rispondeva più e il
+// client girava all'infinito. Il caso più comune è anche il peggiore — errore di
+// scrittura su disco pieno, cioè proprio quando il backup deve fallire in modo
+// pulito. `pipeline` propaga l'errore e distrugge tutti gli stream della catena.
 function createFileSink(filePath, { compress = true, level = 1 } = {}) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const out = fs.createWriteStream(filePath, { highWaterMark: 64 * 1024 });
@@ -30,19 +39,37 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
       cb(null, chunk);
     },
   });
-  counter.pipe(out);
-  let entry = counter;
-  if (compress) {
-    entry = zlib.createGzip({ level, chunkSize: 64 * 1024 });
-    entry.pipe(counter);
-  }
+
+  const gzip = compress ? zlib.createGzip({ level, chunkSize: 64 * 1024 }) : null;
+  const entry = gzip || counter;
+  const stages = gzip ? [gzip, counter, out] : [counter, out];
+
+  // La pipeline si risolve quando l'ultimo stream è concluso e rigetta al primo
+  // errore in qualunque punto della catena. La si tiene qui e la si attende in
+  // close(): senza un `catch` sospeso, un errore prima di close() diventerebbe
+  // una unhandled rejection.
+  let failure = null;
+  const done = pipeline(...stages).catch((err) => { failure = err; throw err; });
+  done.catch(() => { /* l'errore vero viene rilanciato da close()/writeLine() */ });
+
   return {
     writeLine(line) {
-      if (!entry.write(line + '\n')) return once(entry, 'drain');
+      // Se la catena è già saltata, fermarsi subito invece di accodare dati che
+      // nessuno scriverà mai.
+      if (failure) throw failure;
+      if (!entry.write(line + '\n')) {
+        // L'attesa del 'drain' va messa in gara con la fine della catena: se la
+        // pipeline salta mentre siamo in attesa, il 'drain' non arriverà mai e
+        // il chiamante resterebbe appeso — lo stesso blocco che si sta correggendo.
+        return Promise.race([
+          once(entry, 'drain'),
+          done.then(() => { throw failure || new Error('Sink di backup chiuso durante la scrittura.'); }),
+        ]);
+      }
     },
     async close() {
       entry.end();
-      await finished(out);
+      await done; // rigetta con l'errore originale, ovunque si sia verificato
       return { bytes, sha256: hash.digest('hex') };
     },
   };

@@ -1,11 +1,46 @@
+# ---------------------------------------------------------------------------
+# Stack di sviluppo/prova: CodeDB + MongoDB + MySQL.
+#
+# SICUREZZA — leggere prima di esporre questo stack
+# Le porte sono vincolate a 127.0.0.1 per default: lo stack è raggiungibile solo
+# dalla macchina che lo ospita. Prima, `ports: "3030:3030"` pubblicava su TUTTE
+# le interfacce una GUI che con CODEDB_RBAC=off (il default) assegna a chiunque
+# arrivi i pieni poteri su tutte le connessioni salvate — lettura, scrittura,
+# DDL, export del vault — e accanto pubblicava un MongoDB senza autenticazione e
+# un MySQL con root/root.
+#
+# Per condividere l'istanza (uso legittimo del compose su un server) è
+# sufficiente una scelta CONSAPEVOLE in .env:
+#
+#   BIND_ADDR=0.0.0.0          # espone CodeDB oltre il loopback
+#   CODEDB_RBAC=on             # ...e allora l'autenticazione diventa necessaria
+#   CODEDB_TRUST_PROXY_TLS=1   # dichiarazione che davanti c'è un proxy HTTPS
+#
+# Senza `CODEDB_TRUST_PROXY_TLS=1` il server rifiuta comunque di partire fuori
+# dal loopback: su HTTP viaggerebbero in chiaro password, token e passphrase.
+# Le porte dei DATABASE hanno un bind separato (DB_BIND_ADDR) e restano su
+# loopback anche quando si espone la GUI: quasi mai serve raggiungerli da fuori.
+# ---------------------------------------------------------------------------
+
 services:
   codedb:
     build: .
     ports:
-      - "3030:3030"
+      # Default sicuro; sovrascrivibile con BIND_ADDR in .env (vedi sopra).
+      - "${BIND_ADDR:-127.0.0.1}:3030:3030"
     environment:
       - PORT=3030
       - HOST=0.0.0.0
+      # RBAC: esplicito, non implicito. Con 'off' (default) chiunque raggiunga
+      # la porta ha pieni poteri: accettabile solo su loopback.
+      - CODEDB_RBAC=${CODEDB_RBAC:-off}
+      - CODEDB_APP_DB_URI=${CODEDB_APP_DB_URI:-}
+      - CODEDB_OWNER_EMAIL=${CODEDB_OWNER_EMAIL:-}
+      - CODEDB_OWNER_PASSWORD=${CODEDB_OWNER_PASSWORD:-}
+      # Il Dockerfile la imposta a 1 perché il bind 0.0.0.0 è INTERNO al
+      # container; qui la si può azzerare per far rifiutare l'avvio se si espone
+      # la porta senza un reverse proxy HTTPS davanti.
+      - CODEDB_TRUST_PROXY_TLS=${CODEDB_TRUST_PROXY_TLS:-1}
       # Passphrase per decifrare i segreti (password DB, SSH) in
       # connections.ini; senza, i segreti restano bloccati finche' non viene
       # sbloccato il vault dalla UI. Impostare via .env, mai in chiaro qui.
@@ -22,37 +57,53 @@ services:
       mysql:
         condition: service_healthy
     restart: unless-stopped
+    # Superficie ridotta: il processo Node non ha bisogno di alcuna capability
+    # di root né di scrivere fuori dai volumi montati.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
 
   mongodb:
     image: mongo:6.0
+    # I database restano su loopback anche quando si espone la GUI: sono
+    # raggiungibili da CodeDB attraverso la rete interna del compose.
     ports:
-      - "27017:27017"
+      - "${DB_BIND_ADDR:-127.0.0.1}:27017:27017"
     environment:
       - MONGO_INITDB_DATABASE=gui_mongodb_e2e
+      # Autenticazione attiva: senza, chiunque raggiunga la porta legge e
+      # scrive tutto, scavalcando del tutto i permessi di CodeDB.
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER:-codedb}
+      - "MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD:?definisci MONGO_ROOT_PASSWORD in .env - nessun default, una password prevedibile e come non averla}"
     volumes:
       - mongo_data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "-u", "${MONGO_ROOT_USER:-codedb}", "-p", "${MONGO_ROOT_PASSWORD}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+    restart: unless-stopped
 
   mysql:
     image: mysql:8.0
     ports:
-      - "3306:3306"
+      - "${DB_BIND_ADDR:-127.0.0.1}:3306:3306"
     environment:
-      - MYSQL_ROOT_PASSWORD=root
+      # root/root era una credenziale nota: chi raggiungeva la porta 3306
+      # entrava senza nemmeno passare da CodeDB.
+      - "MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:?definisci MYSQL_ROOT_PASSWORD in .env - nessun default, una password prevedibile e come non averla}"
       - MYSQL_DATABASE=codedb_e2e
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+    restart: unless-stopped
 
 volumes:
   mongo_data:

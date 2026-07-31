@@ -5,7 +5,7 @@ import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
-import { restoreSession, persistSession } from './session-restore.js';
+import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -137,6 +137,9 @@ function readConnForm() {
     cfg.sshUser = form.elements.sshUser.value;
     cfg.sshPassword = form.elements.sshPassword.value;
     cfg.sshKeyFile = form.elements.sshKeyFile.value;
+    // Impronta della host key: non è un segreto, viaggia in chiaro col resto
+    // della configurazione ed è registrata al primo collegamento riuscito.
+    cfg.sshHostKey = form.elements.sshHostKey.value.trim();
     cfg.sshPassphrase = form.elements.sshPassphrase.value;
   }
   return cfg;
@@ -214,6 +217,7 @@ export function startEditConn(name) {
     form.elements.sshPassword.value = '';
     form.elements.sshPassword.placeholder = res.hasSshPassword ? '(invariata se lasciata vuota)' : '(vuoto se usi una chiave)';
     form.elements.sshKeyFile.value = f.sshKeyFile || '';
+    form.elements.sshHostKey.value = f.sshHostKey || '';
     form.elements.sshPassphrase.value = '';
     form.elements.sshPassphrase.placeholder = res.hasSshPassphrase ? '(invariata se lasciata vuota)' : '(se la chiave è protetta)';
     form.elements.saveAs.value = name;
@@ -409,6 +413,14 @@ export function initConnection() {
     // Riconnessione del socket a runtime: le sessioni server sono andate perse.
     // Si cattura il layout attuale, si svuotano i tab (sessioni morte) e si
     // riapre tutto riconnettendosi — l'utente resta operativo senza fare nulla.
+    //
+    // Se un ripristino è GIÀ in corso non si riparte da capo: su rete instabile
+    // Socket.IO può riconnettersi più volte a pochi secondi di distanza, e il
+    // ciclo "persist → closeAllTabs → restore" a metà di un altro ripristino
+    // salverebbe un layout parziale e chiuderebbe i tab appena riaperti. Le
+    // riconnessioni in volo del ripristino corrente viaggiano comunque sul
+    // socket nuovo.
+    if (restoreInProgress()) return;
     if (tabs.list.length) {
       persistSession();
       closeAllTabs();

@@ -31,6 +31,10 @@ const { makeAuditor } = require('../db/AuditLog');
 const { runBackup } = require('../backup/lib/engine');
 const { runRestore, resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
+// Stesse politiche del percorso socket: la destinazione cloud e il webhook non
+// possono arrivare dal client (qui: dal client MCP, cioè dall'AI e da chi
+// detiene la API key). Vedi backup/lib/policy.js.
+const { resolveStorageAlias, resolveSlackWebhook } = require('../backup/lib/policy');
 const { createLogger } = require('../backup/lib/logger');
 const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
@@ -1117,7 +1121,7 @@ function buildMcpServer(session, deps) {
       type: z.enum(['full', 'incremental', 'differential']).optional().describe('Tipo di backup (default: full)'),
       collections: z.string().optional().describe('Elenco separato da virgole per limitare il backup ad alcune collection/tabelle'),
       since_field: z.string().optional().describe('Campo data che individua le modifiche per incremental/differential (es. updatedAt)'),
-      storage: z.string().optional().describe('URI Cloud Storage di destinazione (es. s3://bucket/prefisso, gs://bucket/prefisso, azure://container/prefisso)'),
+      storage: z.string().optional().describe('Alias di una destinazione cloud pre-approvata dal server (CODEDB_BACKUP_STORAGE). Non è un URI: gli URI arbitrari non sono accettati.'),
       no_compress: z.boolean().optional().describe('Disabilita la compressione gzip dei file dati'),
       compress_level: z.number().int().min(1).max(9).optional().describe('Livello di compressione gzip (1-9, default: 1 per velocità massima)'),
       slack_webhook: z.string().optional().describe('URL Webhook Slack personalizzato per la notifica'),
@@ -1137,8 +1141,16 @@ function buildMcpServer(session, deps) {
     const onlyCollections = args.collections
       ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
       : null;
-    const storage = parseStorage(args.storage);
-    const webhook = args.slack_webhook || process.env.SLACK_WEBHOOK_URL;
+    // Alias pre-approvato lato server, mai un URI arbitrario: senza questo
+    // vincolo una API key in sola lettura poteva far copiare un intero database
+    // su un bucket controllato dall'attaccante, con le credenziali cloud
+    // dell'installazione.
+    const storageUrl = resolveStorageAlias(args.storage);
+    if (storageUrl && !canWholeConnection(sessionPrincipal(session), sess.name, 'manage')) {
+      throw new Error(`Permesso negato: la API key usata non può inviare backup della connessione "${sess.name}" su storage remoto.`);
+    }
+    const storage = parseStorage(storageUrl);
+    const webhook = resolveSlackWebhook(args.slack_webhook);
     const level = Math.min(Math.max(parseInt(args.compress_level, 10) || 1, 1), 9);
     const compress = !args.no_compress;
 

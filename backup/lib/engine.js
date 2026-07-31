@@ -33,6 +33,14 @@ const {
 } = require('./util');
 
 const TOOL_VERSION = 1;
+
+// Dimensione e SHA-256 di un file di schema appena scritto. Il restore esegue
+// questi file come SQL: senza checksum non c'è modo di accorgersi che sono stati
+// modificati dopo il backup (vedi assertSafeSchemaSql in restore.js).
+function schemaDigest(fullPath) {
+  const buf = fs.readFileSync(fullPath);
+  return { bytes: buf.length, sha256: require('crypto').createHash('sha256').update(buf).digest('hex') };
+}
 const SINCE_COLUMN_CANDIDATES = [
   'updated_at', 'updatedAt', 'modified_at', 'last_modified', 'last_updated', 'created_at', 'createdAt',
 ];
@@ -128,7 +136,9 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const relSchema = `schema/${safeName(table)}.sql`;
       fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relSchema), String(create['Create Table']) + ';\n', 'utf8');
-      files.push({ path: relSchema, collection: table, kind: 'schema' });
+      // Checksum anche per lo schema: il restore lo ESEGUE, quindi deve poter
+      // verificare che il file non sia stato alterato sul disco.
+      files.push({ path: relSchema, collection: table, kind: 'schema', ...schemaDigest(path.join(backupDir, relSchema)) });
 
       let mode = 'full';
       let sinceColumn = null;
@@ -174,13 +184,55 @@ function pgQid(name) {
   return '"' + String(name).replace(/"/g, '""') + '"';
 }
 
+/**
+ * Schema in cui PostgreSQL risolve davvero un nome di tabella non qualificato.
+ *
+ * `to_regclass` applica esattamente le stesse regole del `search_path` usate
+ * dalle query del dump, quindi è l'unico modo di sapere QUALE tabella si sta
+ * salvando quando lo stesso nome esiste in più schemi.
+ *
+ * @returns {Promise<{ schema: string|null, ambiguous: string[] }>}
+ */
+async function pgResolveSchema(pool, table, preferred = null) {
+  // Se il chiamante sa gia' in quale schema si trova (la UI passa lo schema come
+  // "db"), quello vince: to_regclass serve solo come ripiego per i percorsi che
+  // non lo conoscono.
+  const ref = preferred ? `${pgQid(preferred)}.${pgQid(table)}` : table;
+  const res = await pool.query(
+    `SELECT n.nspname AS schema
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.oid = to_regclass($1)`,
+    [ref]
+  );
+  const schema = res.rows.length ? res.rows[0].schema : (preferred || null);
+  // Omonimi in altri schemi: non è un errore, ma va detto — è la differenza fra
+  // "ho salvato public.ordini" e "ho salvato archivio.ordini".
+  const others = await pool.query(
+    `SELECT n.nspname AS schema
+       FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE c.relname = $1 AND c.relkind IN ('r','p','v','m','f')
+        AND n.nspname NOT IN ('pg_catalog','information_schema')`,
+    [table]
+  );
+  return { schema, ambiguous: others.rows.map((r) => r.schema).filter((s) => s !== schema) };
+}
+
 // Sceglie la colonna data per l'incrementale della tabella: quella esplicita
 // (--since-field, se esiste) oppure la prima tra le candidate canoniche.
-async function pgSinceColumn(pool, table, sinceField) {
+//
+// La ricerca è vincolata allo SCHEMA in cui la tabella viene effettivamente
+// risolta: cercare per solo `table_name` su tutti gli schemi poteva far scegliere
+// la colonna incrementale di una tabella OMONIMA di un altro schema, e quindi
+// produrre un incrementale che filtra sulle righe sbagliate — un backup che
+// riesce ma non contiene ciò che dovrebbe.
+async function pgSinceColumn(pool, table, sinceField, schema = null) {
   const res = await pool.query(
-    `SELECT column_name AS name, data_type AS dtype FROM information_schema.columns
-      WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1`,
-    [table]
+    schema
+      ? `SELECT column_name AS name, data_type AS dtype FROM information_schema.columns
+          WHERE table_schema = $2 AND table_name = $1`
+      : `SELECT column_name AS name, data_type AS dtype FROM information_schema.columns
+          WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1`,
+    schema ? [table, schema] : [table]
   );
   const dateCols = new Set(
     res.rows
@@ -198,19 +250,36 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
   const BATCH = 1000;
 
   for (const table of collections) {
+    // Schema in cui il nome viene davvero risolto: serve a qualificare le query
+    // del dump, a scegliere la colonna incrementale giusta e a registrare nel
+    // manifest COSA è stato salvato. `db` è già uno schema (vedi la nota su
+    // qtable in PostgreSqlStrategy), quindi lo si preferisce quando c'è.
+    const resolved = await pgResolveSchema(pool, table, db).catch(() => ({ schema: db || null, ambiguous: [] }));
+    // Riferimento qualificato usato da TUTTE le query del dump: senza, il nome
+    // veniva risolto dal search_path e si poteva salvare la tabella omonima di
+    // un altro schema — un backup che riesce ma contiene i dati sbagliati, e un
+    // restore che poi li scrive sopra quelli buoni.
+    const qualified = resolved.schema ? `${pgQid(resolved.schema)}.${pgQid(table)}` : pgQid(table);
+    if (resolved.ambiguous.length) {
+      notes.push(
+        `"${table}": esiste anche negli schemi ${resolved.ambiguous.join(', ')}; ` +
+        `salvata quella risolta dal search_path (${resolved.schema || 'sconosciuto'}).`
+      );
+      log.info(`  ATTENZIONE: "${table}" è omonima in ${resolved.ambiguous.join(', ')}: salvata ${resolved.schema || '?'}.${table}`);
+    }
     const ddl = await strategy.tableDdl(db, table);
     if (ddl) {
       const relSchema = `schema/${safeName(table)}.sql`;
       fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relSchema), ddl + '\n', 'utf8');
-      files.push({ path: relSchema, collection: table, kind: 'schema' });
+      files.push({ path: relSchema, collection: table, kind: 'schema', schema: resolved.schema || undefined, ...schemaDigest(path.join(backupDir, relSchema)) });
     }
 
     let mode = 'full';
     let sinceColumn = null;
     let sinceParam = null;
     if (since) {
-      sinceColumn = await pgSinceColumn(pool, table, sinceField);
+      sinceColumn = await pgSinceColumn(pool, table, sinceField, resolved.schema);
       if (sinceColumn) {
         mode = 'incremental';
         sinceParam = new Date(since);
@@ -241,7 +310,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH);
         const res = await pool.query(
-          `SELECT * FROM ${pgQid(table)}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
+          `SELECT * FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
           params
         );
         if (!res.rows.length) break;
@@ -269,7 +338,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH, offset);
         const res = await pool.query(
-          `SELECT * FROM ${pgQid(table)}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          `SELECT * FROM ${qualified}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
           params
         );
         if (!res.rows.length) break;
@@ -283,8 +352,10 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     }
 
     const { bytes, sha256 } = await sink.close();
-    files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
-    log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
+    // `schema` nel manifest: documenta da dove vengono i dati, così un restore
+    // futuro (o un operatore) non deve indovinarlo.
+    files.push({ path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined, mode, sinceColumn, count, bytes, sha256 });
+    log.info(`  ${resolved.schema ? resolved.schema + '.' : ''}${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
   }
   return { files, notes };
 }

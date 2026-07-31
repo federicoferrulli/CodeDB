@@ -45,6 +45,11 @@ const { can, allowedConnections, canUseConnection, canWholeConnection } = requir
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
 
+// Politiche sulle destinazioni di backup richieste da un client (percorso
+// locale, storage cloud, webhook): vedi backup/lib/policy.js. La CLI non le usa.
+const { resolveBackupPath: confineBackupPath, resolveStorageAlias, resolveSlackWebhook } = require('./backup/lib/policy');
+const resolveBackupPath = (raw, what) => confineBackupPath(raw, BACKUP_ROOT, what);
+
 // Audit log delle operazioni critiche/di scrittura eseguite dalla Web UI, su un
 // file separato da quello del gateway MCP (mcp-audit.log) ma con lo stesso
 // formato/rotazione (db/AuditLog.js). CODEDB_UI_AUDIT_FILE lo sposta nella
@@ -56,7 +61,95 @@ const PORT = process.env.PORT || 3030;
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { maxHttpBufferSize: 5e6 });
+
+/* ---------------------------------------------------------------------------
+ * Gate sull'Origin dell'handshake Socket.IO (Cross-Site WebSocket Hijacking).
+ *
+ * Il CORS NON protegge il transport WebSocket: senza controllo, qualunque pagina
+ * web aperta nel browser dell'utente poteva fare
+ *
+ *     io('http://127.0.0.1:3030', { transports: ['websocket'] })
+ *
+ * e usare l'intera API. Con CODEDB_RBAC spento (default, e sempre nell'app
+ * Electron) l'handshake assegna ROOT_PRINCIPAL: lettura, scrittura e DDL su
+ * tutte le connessioni salvate, export del vault, backup su percorsi scelti da
+ * chi attacca. L'endpoint /mcp aveva già `guardHost`, il canale principale no.
+ *
+ * REGOLA
+ *  · Origin assente (app Electron, client CLI, curl) → si applica lo stesso
+ *    controllo anti DNS-rebinding di /mcp sull'header Host.
+ *  · CODEDB_ALLOWED_ORIGINS impostata → whitelist esplicita, punto.
+ *  · Altrimenti → è consentito l'Origin il cui host coincide con l'Host della
+ *    richiesta. È esattamente ciò che distingue un accesso diretto ("ho aperto
+ *    io questa pagina") da una richiesta cross-site, e continua a funzionare
+ *    quando si raggiunge CodeDB da un'altra macchina o dietro un reverse proxy,
+ *    cosa che una whitelist fissa su localhost avrebbe rotto.
+ * Il rifiuto porta un messaggio che dice cosa fare, non un errore muto.
+ * ------------------------------------------------------------------------- */
+const LOCAL_HOST_HEADER = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
+
+function allowedOriginList() {
+  return String(process.env.CODEDB_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+/**
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+function checkOrigin(req) {
+  const origin = String((req.headers && req.headers.origin) || '').trim();
+  const host = String((req.headers && req.headers.host) || '').trim();
+
+  if (!origin) {
+    // Nessun Origin: non è una richiesta partita da una pagina web. Resta però
+    // il DNS-rebinding, in cui un dominio ostile risolve a 127.0.0.1: l'Host
+    // continua a essere quello ostile, quindi lo si pretende locale — ma solo
+    // se il server è in ascolto su loopback (altrimenti si romperebbe l'accesso
+    // legittimo da un'altra macchina).
+    const bindHost = String(process.env.HOST || '127.0.0.1').toLowerCase();
+    const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
+    if (!loopbackBind || LOCAL_HOST_HEADER.test(host)) return { ok: true };
+    return { ok: false, reason: `header Host "${host}" non consentito su un'istanza in ascolto solo su loopback` };
+  }
+
+  const allowed = allowedOriginList();
+  if (allowed.length) {
+    if (allowed.includes(origin)) return { ok: true };
+    return {
+      ok: false,
+      reason: `origine "${origin}" non consentita: aggiungila a CODEDB_ALLOWED_ORIGINS (attualmente: ${allowed.join(', ')})`,
+    };
+  }
+
+  // Senza whitelist: l'Origin deve corrispondere all'host su cui il browser ha
+  // effettivamente aperto CodeDB.
+  let originHost;
+  try { originHost = new URL(origin).host; } catch { originHost = null; }
+  if (originHost && host && originHost.toLowerCase() === host.toLowerCase()) return { ok: true };
+  return {
+    ok: false,
+    reason: `origine "${origin}" non corrisponde all'indirizzo di CodeDB ("${host}"). ` +
+      'Se l\'accesso avviene tramite un altro dominio (reverse proxy), elencalo in CODEDB_ALLOWED_ORIGINS.',
+  };
+}
+
+const io = new Server(server, {
+  maxHttpBufferSize: 5e6,
+  // Il CORS non basta per il WebSocket: la decisione vera è in allowRequest,
+  // che gira PRIMA di stabilire la connessione. `cors: { origin: false }` evita
+  // in più che il polling HTTP di fallback ottenga header permissivi.
+  cors: { origin: false },
+  allowRequest: (req, callback) => {
+    const verdict = checkOrigin(req);
+    if (verdict.ok) return callback(null, true);
+    console.warn(`[Sicurezza] Handshake Socket.IO rifiutato: ${verdict.reason}`);
+    // Il messaggio arriva al client come `connect_error`, così nel browser non
+    // si vede un fallimento inspiegabile.
+    return callback(verdict.reason, false);
+  },
+});
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -95,7 +188,10 @@ const CONN_FIELDS = [
   // connessione dichiara esplicitamente readOnly=false (default: sola lettura).
   'readOnly',
   // Tunnel SSH (ortogonale al dbType): 'ssh' = "true" per abilitarlo.
-  'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshPassword', 'sshKeyFile', 'sshPassphrase',
+  // sshHostKey: impronta SHA256 della host key del bastion. NON è un segreto
+  // (è un'impronta pubblica) ma va conservata: è ciò che rende rilevabile un
+  // MITM sul tunnel. Registrata al primo collegamento riuscito.
+  'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshPassword', 'sshKeyFile', 'sshPassphrase', 'sshHostKey',
 ];
 // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
 // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
@@ -145,6 +241,42 @@ function decryptSecret(text) {
     // (encryptSecret lascia passare i valori già "ENC:").
     return text;
   }
+}
+
+/**
+ * Il vault è utilizzabile con la chiave attuale?
+ *
+ * Serve all'avvio senza GUI_MONGO_PASSPHRASE, dove la chiave è quella derivata
+ * dalla passphrase vuota. Non basta chiedersi "ci sono segreti cifrati?": chi non
+ * ha mai impostato una passphrase HA segreti cifrati, ma con la chiave vuota —
+ * per lui non deve cambiare nulla e nessuna modale deve comparire. La domanda
+ * giusta è se i segreti presenti si decifrano davvero.
+ *
+ * Legge tutti i vault (quello storico condiviso e, con RBAC, quelli per owner).
+ * @returns {boolean} true se non c'è nulla da decifrare o si decifra tutto.
+ */
+function probeVault() {
+  const before = decryptFailures;
+  decryptFailures = 0;
+  try {
+    loadConnections();
+    // Con RBAC acceso ogni owner ha il proprio file: vanno verificati tutti,
+    // altrimenti il vault sembrerebbe a posto solo perché il file condiviso lo è.
+    if (rbacOn()) {
+      try {
+        if (fs.existsSync(CONNECTIONS_DIR)) {
+          for (const f of fs.readdirSync(CONNECTIONS_DIR)) {
+            if (f.endsWith('.ini')) loadConnections(path.basename(f, '.ini'));
+          }
+        }
+      } catch { /* nessuna cartella per-owner: resta solo il file storico */ }
+    }
+  } catch (err) {
+    console.error(`Impossibile leggere le connessioni salvate: ${errMsg(err)}`);
+  }
+  const ok = decryptFailures === 0;
+  decryptFailures = before;
+  return ok;
 }
 
 function tryUnlockVault(passphrase) {
@@ -509,6 +641,25 @@ function auditCounts(r) {
   return out;
 }
 
+/**
+ * Identità dell'autore di un'azione, da includere in OGNI voce di audit.
+ *
+ * Senza questi campi lo Storico Azioni non è attribuibile e quindi non è
+ * filtrabile per tenant: `ui-audit.log` è un file unico per installazione, e
+ * mostrarlo intero a chiunque vanificherebbe l'isolamento per owner realizzato
+ * da `connectionsFileFor()`. `ownerId` delimita il tenant, `userId` il singolo
+ * soggetto (l'owner vede tutto il proprio tenant, un sottoutente solo le
+ * proprie azioni), `user` è l'etichetta leggibile mostrata in tabella.
+ */
+function auditActor(principal) {
+  const p = principal || ROOT_PRINCIPAL;
+  return {
+    ownerId: p.ownerId || null,
+    userId: p.id || null,
+    user: p.email || p.displayName || null,
+  };
+}
+
 // Descrittori delle operazioni di scrittura tracciate: (payload, result) →
 // campi aggiuntivi da registrare (op = etichetta italiana per la UI). Solo gli
 // eventi qui presenti vengono registrati; i restanti delegate restano di sola
@@ -553,6 +704,12 @@ const AUDIT_READS = {
 // troncata silenziosamente. Override con env CODEDB_QUERY_MAX; il ceiling
 // assoluto è comunque imposto dalle strategie (DbStrategy.resultCap).
 const QUERY_ENGINE_MAX_ROWS = Math.max(parseInt(process.env.CODEDB_QUERY_MAX, 10) || 10000, 1);
+
+// Campi del payload che solo il server può decidere: vengono rimossi da ogni
+// evento delegato prima di raggiungere le strategie (vedi delegate()).
+// `opHandle` è il descrittore dell'operazione annullabile, popolato qui: se lo
+// mandasse il client potrebbe farsi annullare le query altrui.
+const SERVER_ONLY_PAYLOAD_FIELDS = ['maxRows', 'opHandle'];
 
 // Operatori MongoDB che eseguono JavaScript lato server: vietati nel Query
 // Engine della UI (coerente col gateway MCP) per non trasformare una query in
@@ -604,6 +761,7 @@ function auditWrite(sess, event, payload, extra, status, result, error, category
       event,
       category: category || 'write',
       status,
+      ...auditActor(sess && sess.principal),
       connection: (sess && (sess.connName || sess.label)) || null,
       dbType: (sess && (sess.dbType || (sess.strategy && sess.strategy.type))) || null,
       db: payload.db || null,
@@ -635,6 +793,7 @@ function auditQuery(sess, db, coll, code, category, op, status, result, error) {
       category,
       status,
       op,
+      ...auditActor(sess && sess.principal),
       connection: (sess && (sess.connName || sess.label)) || null,
       dbType: (sess && (sess.dbType || (sess.strategy && sess.strategy.type))) || null,
       db: db || null,
@@ -662,6 +821,54 @@ const MAX_SOCKETS_PER_IP = 20;
 
 let activeGlobalSessions = 0;
 const ipConnections = new Map();
+
+/* ---------------------------------------------------------------------------
+ * Serializzazione delle aperture di connessione per tab.
+ *
+ * `mongo:connect` è asincrono e lungo (TCP + eventuale tunnel SSH): fra il
+ * controllo su `sessions` e la `sessions.set` finale c'è un await, quindi due
+ * richieste concorrenti sullo stesso tabId aprivano due strategie e la seconda
+ * sovrascriveva la prima, che restava aperta per sempre (client DB e tunnel SSH
+ * orfani) mentre il budget globale veniva incrementato due volte e decrementato
+ * una sola — deriva monotòna del contatore fino al blocco dell'intera istanza,
+ * risolvibile solo col riavvio. Non è un caso di laboratorio: doppio click su
+ * "Connetti", riconnessione automatica del socket e ripristino di sessione
+ * possono facilmente sovrapporsi.
+ *
+ * `makeConnectLocks()` restituisce `withConnectLock(key, fn)`: le funzioni con
+ * la stessa chiave vengono eseguite una alla volta, in ordine di arrivo. Si
+ * accoda al massimo una richiesta oltre a quella in corso; oltre, si risponde
+ * con un errore parlante invece di far crescere la coda (un client impazzito
+ * non deve poter accumulare lavoro sul server).
+ * ------------------------------------------------------------------------- */
+const MAX_INFLIGHT_CONNECTS = 2; // 1 in esecuzione + 1 in attesa
+
+function makeConnectLocks(maxInflight = MAX_INFLIGHT_CONNECTS) {
+  /** @type {Map<string, { tail: Promise<void>, inflight: number }>} */
+  const locks = new Map();
+
+  return function withConnectLock(key, fn) {
+    let lock = locks.get(key);
+    if (!lock) {
+      lock = { tail: Promise.resolve(), inflight: 0 };
+      locks.set(key, lock);
+    }
+    if (lock.inflight >= maxInflight) {
+      return Promise.reject(new Error('Una connessione è già in corso su questo tab: attendi che termini.'));
+    }
+    lock.inflight++;
+    // La coda avanza qualunque sia l'esito del predecessore: un fallimento non
+    // deve bloccare per sempre il tab.
+    const result = lock.tail.then(fn, fn);
+    lock.tail = result.then(() => {}, () => {}).then(() => {
+      lock.inflight--;
+      // Rimuovi il lock quando è scarico, così la mappa non cresce con i tab
+      // effimeri (un socket può vedere passare molti tabId nel tempo).
+      if (lock.inflight === 0 && locks.get(key) === lock) locks.delete(key);
+    });
+    return result;
+  };
+}
 
 /* ---------------------------------------------------------------------------
  * Autenticazione e RBAC multi-utente (flag CODEDB_RBAC)
@@ -720,6 +927,29 @@ function assertManage(principal) {
   if (principal.root || principal.owner) return;
   if (!can(principal, { capability: 'manage' })) {
     throw new Error('Permesso negato: operazione riservata all\'amministratore dell\'account.');
+  }
+}
+
+/**
+ * Registra l'impronta della host key SSH sulla connessione salvata, se non era
+ * ancora nota (fiducia al primo uso, come `StrictHostKeyChecking=accept-new`).
+ * Da lì in poi `openSshTunnel` rifiuta qualunque chiave diversa, che è ciò che
+ * rende rilevabile un man-in-the-middle sul bastion.
+ *
+ * Best-effort: un problema nel salvataggio non deve far fallire una connessione
+ * già stabilita — al massimo l'impronta verrà registrata al tentativo successivo.
+ */
+function rememberSshHostKey(principal, connName, tunnel) {
+  if (!connName || !tunnel || !tunnel.hostKey || tunnel.hostKeyKnown) return;
+  try {
+    const conns = loadConnections(principal.ownerId);
+    const sec = conns[connName];
+    if (!sec || String(sec.sshHostKey || '').trim()) return;
+    sec.sshHostKey = tunnel.hostKey;
+    saveConnections(conns, principal.ownerId);
+    console.log(`[SSH] Impronta della host key registrata per "${connName}": ${tunnel.hostKey}`);
+  } catch (err) {
+    console.warn(`[SSH] Impossibile registrare l'impronta della host key per "${connName}": ${errMsg(err)}`);
   }
 }
 
@@ -808,9 +1038,17 @@ app.post('/auth/login', express.json({ limit: '16kb' }), async (req, res) => {
     loginAttempts.delete(ip);
     const token = await appStore.createSession(user);
     const principal = await appStore.principalFor(user);
-    auditUi({ event: 'auth:login', category: 'write', status: 'ok', op: 'Accesso utente', user: principal.email, client: ip });
+    auditUi({ event: 'auth:login', category: 'write', status: 'ok', op: 'Accesso utente', ...auditActor(principal), client: ip });
     res.json({ ok: true, rbac: true, token, user: principalView(principal) });
   } catch (err) {
+    // Email presente su più tenant con la stessa password: non è un errore
+    // interno ma una richiesta ambigua, e va detto all'utente invece di
+    // restituire un 500 opaco (o, peggio, farlo entrare nel tenant sbagliato).
+    if (err && err.ambiguousLogin) {
+      noteLoginFailure(ip);
+      res.status(409).json({ ok: false, error: errMsg(err) });
+      return;
+    }
     res.status(500).json({ ok: false, error: errMsg(err) });
   }
 });
@@ -930,6 +1168,16 @@ io.on('connection', (socket) => {
 
   socket.closeAllSessions = closeAllSessions;
 
+  // Serializzazione delle aperture/chiusure di connessione per tab (vedi
+  // makeConnectLocks): una mappa di lock privata per ogni socket.
+  const withConnectLock = makeConnectLocks();
+
+  // Il socket può cadere mentre una connessione è ancora in apertura: in quel
+  // caso `closeAllSessions()` non la vede (non è ancora nella mappa) e resterebbe
+  // orfana. Il flag permette a `mongo:connect` di accorgersene e smontarla.
+  let socketClosed = false;
+  socket.on('disconnect', () => { socketClosed = true; });
+
   // Registrazione sicura di un evento: payload sempre oggetto e ack sempre
   // funzione monouso — un client senza callback o con payload malformato non
   // deve mai abbattere il processo. Gli errori del handler, sincroni o async,
@@ -954,6 +1202,15 @@ io.on('connection', (socket) => {
   // risposta { ok, ... } usato dal frontend.
   function delegate(event, fn) {
     safeOn(event, async (payload, cb) => {
+      // Campi che SOLO il server può impostare: arrivano fino alle strategie
+      // insieme al resto del payload, quindi vanno rimossi da ciò che manda il
+      // client. `maxRows` alza il tetto dei risultati fino a 100.000 documenti
+      // (DbStrategy.resultCap): pensato per il Query Engine, che lo imposta lato
+      // server, ma nulla impediva a un client di metterlo in una normale
+      // collection:find e farsi serializzare centinaia di MB per socket e per
+      // tab — memoria del processo esaurita in poche richieste.
+      for (const serverOnly of SERVER_ONLY_PAYLOAD_FIELDS) delete payload[serverOnly];
+
       const sess = sessions.get(normTabId(payload.tabId));
       if (!sess) {
         cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
@@ -1007,60 +1264,95 @@ io.on('connection', (socket) => {
       throw new Error('tabId non valido.');
     }
     const tabId = normTabId(cfg.tabId);
-    if (!sessions.has(tabId) && sessions.size >= MAX_SESSIONS_PER_SOCKET) {
-      throw new Error(`Raggiunto il limite di ${MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
-    }
-    if (!sessions.has(tabId) && activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
-      throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
-    }
-    // Nome della connessione salvata: è la chiave su cui poggiano i permessi,
-    // quindi va risolto PRIMA di aprire qualsiasi cosa.
-    const connName = String(cfg.saved || cfg.saveAs || '').trim() || null;
-    assertConnAllowed(principal, cfg, connName);
-    const guardCtx = { principal, connName };
-
-    // Riconnessione sullo stesso tab: chiudi prima la sessione precedente.
-    await closeSession(tabId);
-    const conn = await establishConnection(cfg, guardCtx);
-    sessions.set(tabId, {
-      tabId,
-      strategy: conn.strategy,
-      tunnel: conn.tunnel,
-      dbType: conn.dbType,
-      effectiveCfg: conn.effective,
-      principal,
-      guardCtx,
-      // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
-      // in UI, nome della connessione salvata (se noto) e IP del client.
-      label: connLabel(conn.effective),
-      connName,
-      ip,
-    });
-    activeGlobalSessions++;
-    try {
-      // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
-      const saveAs = String(cfg.saveAs || '').trim();
-      if (saveAs) {
-        assertConnName(saveAs);
-        const conns = loadConnections(principal.ownerId);
-        conns[saveAs] = sanitizeConnCfg(conn.effective);
-        saveConnections(conns, principal.ownerId);
+    // Tutto il corpo (controllo dei limiti compreso) gira dentro il lock: i
+    // controlli devono vedere lo stato lasciato dall'apertura precedente.
+    await withConnectLock(tabId, async () => {
+      if (!sessions.has(tabId) && sessions.size >= MAX_SESSIONS_PER_SOCKET) {
+        throw new Error(`Raggiunto il limite di ${MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
       }
-      cb({
-        ok: true,
-        tabId,
-        label: connLabel(conn.effective),
-        dbType: conn.dbType,
-        databases: await conn.strategy.listDatabases(),
-      });
-    } catch (err) {
+      // Nome della connessione salvata: è la chiave su cui poggiano i permessi,
+      // quindi va risolto PRIMA di aprire qualsiasi cosa.
+      const connName = String(cfg.saved || cfg.saveAs || '').trim() || null;
+      assertConnAllowed(principal, cfg, connName);
+      const guardCtx = { principal, connName };
+
+      // Riconnessione sullo stesso tab: chiudi prima la sessione precedente
+      // (libera anche il posto nel budget globale, verificato subito dopo).
       await closeSession(tabId);
-      throw err;
-    }
+      if (activeGlobalSessions >= MAX_GLOBAL_SESSIONS) {
+        throw new Error(`Raggiunto il limite globale di ${MAX_GLOBAL_SESSIONS} connessioni al database.`);
+      }
+
+      // Il posto nel budget si prenota PRIMA di aprire e si rilascia se
+      // l'apertura fallisce: incrementare a cose fatte lasciava una finestra in
+      // cui più aperture concorrenti superavano il limite, e ogni errore dopo
+      // l'incremento faceva divergere il contatore dalle sessioni reali.
+      activeGlobalSessions++;
+      let conn;
+      try {
+        conn = await establishConnection(cfg, guardCtx);
+      } catch (err) {
+        activeGlobalSessions--;
+        throw err;
+      }
+      // Socket caduto durante l'apertura: la sessione non entrerà mai nella
+      // mappa, quindi va smontata qui o resterebbe orfana con il suo tunnel.
+      if (socketClosed) {
+        activeGlobalSessions--;
+        await teardownConnection(conn).catch(() => {});
+        throw new Error('Connessione annullata: sessione chiusa.');
+      }
+
+      sessions.set(tabId, {
+        tabId,
+        strategy: conn.strategy,
+        tunnel: conn.tunnel,
+        dbType: conn.dbType,
+        effectiveCfg: conn.effective,
+        principal,
+        guardCtx,
+        // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
+        // in UI, nome della connessione salvata (se noto) e IP del client.
+        label: connLabel(conn.effective),
+        connName,
+        ip,
+      });
+      // Da qui in poi il rilascio del posto spetta a closeSession.
+      try {
+        // cfg.saveAs = salva (o aggiorna) la connessione, solo se funzionante.
+        const saveAs = String(cfg.saveAs || '').trim();
+        if (saveAs) {
+          assertConnName(saveAs);
+          const conns = loadConnections(principal.ownerId);
+          conns[saveAs] = sanitizeConnCfg(conn.effective);
+          saveConnections(conns, principal.ownerId);
+        }
+        // Fiducia al primo uso sulla host key del bastion: registrata sulla
+        // connessione salvata, così dal collegamento successivo un cambio di
+        // chiave (possibile MITM) viene rilevato e rifiutato.
+        rememberSshHostKey(principal, saveAs || connName, conn.tunnel);
+        cb({
+          ok: true,
+          tabId,
+          label: connLabel(conn.effective),
+          dbType: conn.dbType,
+          databases: await conn.strategy.listDatabases(),
+          sshHostKey: conn.tunnel ? conn.tunnel.hostKey : undefined,
+          sshHostKeyNew: conn.tunnel ? !conn.tunnel.hostKeyKnown : undefined,
+        });
+      } catch (err) {
+        await closeSession(tabId);
+        throw err;
+      }
+    });
   });
 
   safeOn('mongo:disconnect', async (payload, cb) => {
-    await closeSession(normTabId(payload.tabId));
+    const tabId = normTabId(payload.tabId);
+    // Anche la chiusura passa dal lock: un disconnect che scavalcasse una
+    // apertura ancora in corso non troverebbe nulla da chiudere e la sessione
+    // comparirebbe subito dopo, viva sul server ma non più nella UI.
+    await withConnectLock(tabId, () => closeSession(tabId));
     cb({ ok: true });
   });
 
@@ -1111,12 +1403,25 @@ io.on('connection', (socket) => {
 
   // Storico delle operazioni critiche/di scrittura via Web UI. Non richiede una
   // connessione DB attiva: legge il file di audit lato server (ui-audit.log).
+  //
+  // `ui-audit.log` è unico per installazione e contiene nomi di connessione,
+  // database, filtri e query di TUTTI i tenant: va quindi filtrato, non negato
+  // (negarlo toglierebbe lo Storico Azioni ai sottoutenti, che è una funzione
+  // legittima e utile). Il criterio è lo stesso già applicato dal Proxy alle
+  // liste di navigazione — si mostra solo il consentito:
+  //   · root (RBAC spento o owner locale) → tutto;
+  //   · owner                             → le azioni del proprio tenant;
+  //   · sottoutente                       → soltanto le proprie.
   safeOn('audit:list', (payload, cb) => {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
     const offset = Math.max(parseInt(payload.offset, 10) || 0, 0);
+    const visibility = principal.root
+      ? {}
+      : { ownerId: principal.ownerId, ...(principal.owner ? {} : { userId: principal.id }) };
     const { entries, total } = readUiAudit({
       limit,
       offset,
+      ...visibility,
       event: payload.event ? String(payload.event) : undefined,
       db: payload.db ? String(payload.db) : undefined,
       connection: payload.connection ? String(payload.connection) : undefined,
@@ -1337,7 +1642,7 @@ io.on('connection', (socket) => {
     }
     const user = await store.createSubUser({ ownerId: principal.ownerId, email, password, displayName });
     await entitlements.reportUsage(principal.ownerId, 'subusers', current + 1).catch(() => {});
-    auditUi({ event: 'users:create', category: 'write', status: 'ok', op: 'Creazione sottoutente', user: principal.email, target: user.email });
+    auditUi({ event: 'users:create', category: 'write', status: 'ok', op: 'Creazione sottoutente', ...auditActor(principal), target: user.email });
     cb({ ok: true, user: { id: user._id, email: user.email, displayName: user.displayName, status: user.status } });
   });
 
@@ -1345,7 +1650,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
-    auditUi({ event: 'users:update', category: 'write', status: 'ok', op: 'Modifica sottoutente', user: principal.email, target: String(id) });
+    auditUi({ event: 'users:update', category: 'write', status: 'ok', op: 'Modifica sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
@@ -1353,7 +1658,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     await store.deleteSubUser(principal.ownerId, id);
-    auditUi({ event: 'users:delete', category: 'write', status: 'ok', op: 'Eliminazione sottoutente', user: principal.email, target: String(id) });
+    auditUi({ event: 'users:delete', category: 'write', status: 'ok', op: 'Eliminazione sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
@@ -1373,7 +1678,7 @@ io.on('connection', (socket) => {
       throw new Error(`Connessione salvata "${connName}" non trovata.`);
     }
     const grant = await store.setGrant({ ownerId: principal.ownerId, subjectId, connName, role, scope });
-    auditUi({ event: 'grants:set', category: 'write', status: 'ok', op: 'Assegnazione permessi', user: principal.email, target: String(subjectId), connection: grant.connName, role: grant.role });
+    auditUi({ event: 'grants:set', category: 'write', status: 'ok', op: 'Assegnazione permessi', ...auditActor(principal), target: String(subjectId), connection: grant.connName, role: grant.role });
     cb({ ok: true, grant: { subjectId: grant.subjectId, connName: grant.connName, role: grant.role, scope: grant.scope } });
   });
 
@@ -1381,7 +1686,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     const res = await store.revokeGrant(principal.ownerId, subjectId, connName);
-    auditUi({ event: 'grants:revoke', category: 'write', status: 'ok', op: 'Revoca permessi', user: principal.email, target: String(subjectId), connection: String(connName) });
+    auditUi({ event: 'grants:revoke', category: 'write', status: 'ok', op: 'Revoca permessi', ...auditActor(principal), target: String(subjectId), connection: String(connName) });
     cb({ ok: true, ...res });
   });
 
@@ -1405,7 +1710,7 @@ io.on('connection', (socket) => {
       label,
       connScope,
     });
-    auditUi({ event: 'apikeys:create', category: 'write', status: 'ok', op: 'Creazione API key', user: principal.email, target: created.subjectId, label: created.label });
+    auditUi({ event: 'apikeys:create', category: 'write', status: 'ok', op: 'Creazione API key', ...auditActor(principal), target: created.subjectId, label: created.label });
     cb({ ok: true, key: created.key, apiKey: { id: created._id, subjectId: created.subjectId, label: created.label, prefix: created.prefix, connScope: created.connScope } });
   });
 
@@ -1413,7 +1718,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     await store.revokeApiKey(principal.ownerId, id);
-    auditUi({ event: 'apikeys:revoke', category: 'write', status: 'ok', op: 'Revoca API key', user: principal.email, target: String(id) });
+    auditUi({ event: 'apikeys:revoke', category: 'write', status: 'ok', op: 'Revoca API key', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
@@ -1517,6 +1822,14 @@ io.on('connection', (socket) => {
       const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
       const targetColl = extractedColl || coll;
       const targetDb = db || session.strategy.currentDb || 'admin';
+
+      // Il bersaglio deve essere un nome vero: `targetDb`/`targetColl` sono ciò
+      // su cui il Proxy autorizzante confronta lo scope, e un valore vuoto
+      // faceva cadere il confronto (vedi matchesAny). Meglio un errore
+      // comprensibile che una query eseguita senza il controllo di ambito.
+      if (!String(targetDb || '').trim()) {
+        throw new Error('Nessun database selezionato: apri un database nella sidebar oppure usa "USE <database>" prima della query.');
+      }
 
       // Modalità SQL (MySQL e PostgreSQL: Strategy Pattern, stesso "SQL Raw").
       if (engine === 'mysql' || engine === 'postgresql' || DbFactory.isSqlType(session.strategy.type)) {
@@ -1661,6 +1974,7 @@ io.on('connection', (socket) => {
             category: 'write',
             op: 'Annullamento query',
             status: 'ok',
+            ...auditActor(session && session.principal),
             connection: (session && (session.connName || session.label)) || null,
             dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
             client: (session && session.ip) || null,
@@ -1677,6 +1991,7 @@ io.on('connection', (socket) => {
           category: 'write',
           op: 'Annullamento query',
           status: 'error',
+          ...auditActor(session && session.principal),
           connection: (session && (session.connName || session.label)) || null,
           dbType: (session && (session.dbType || (session.strategy && session.strategy.type))) || null,
           client: (session && session.ip) || null,
@@ -1763,9 +2078,16 @@ io.on('connection', (socket) => {
     const onlyCollections = payload.collections
       ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
       : null;
-    const destRoot = path.resolve(payload.dest || BACKUP_ROOT);
-    const storage = parseStorage(payload.storage);
-    const webhook = payload.slackWebhook || process.env.SLACK_WEBHOOK_URL;
+    const destRoot = resolveBackupPath(payload.dest, 'destinazione');
+    // La destinazione cloud non arriva mai dal client: solo alias pre-approvati.
+    const storageUrl = resolveStorageAlias(payload.storage);
+    // Portare una copia integrale del database fuori dal perimetro è un atto
+    // amministrativo, non una lettura: la sola capability `read` non basta.
+    if (storageUrl) {
+      assertWholeConnection(principal, sess.connName, 'manage', 'inviare un backup su storage remoto');
+    }
+    const storage = parseStorage(storageUrl);
+    const webhook = resolveSlackWebhook(payload.slackWebhook);
     const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
     const level = Math.min(Math.max(parseInt(payload.compressLevel, 10) || 1, 1), 9);
     const compress = payload.noCompress !== true;
@@ -1794,7 +2116,7 @@ io.on('connection', (socket) => {
 
   safeOn('backup:list', ({ dest }, cb) => {
     assertManage(principal);
-    const destRoot = path.resolve(dest || BACKUP_ROOT);
+    const destRoot = resolveBackupPath(dest, 'elenco');
     const groups = {};
     if (fs.existsSync(destRoot)) {
       for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
@@ -1813,7 +2135,7 @@ io.on('connection', (socket) => {
     // Il restore riscrive interi database: operazione da amministratore.
     assertManage(principal);
 
-    let backupDir = payload.from ? path.resolve(payload.from) : null;
+    let backupDir = payload.from ? resolveBackupPath(payload.from, 'origine') : null;
     if (!backupDir && payload.group && payload.backupId) {
       const group = String(payload.group).trim();
       const backupId = String(payload.backupId).trim();
@@ -1826,8 +2148,8 @@ io.on('connection', (socket) => {
       throw new Error('Cartella backup non valida o manifest.json mancante.');
     }
 
-    const destRoot = path.resolve(payload.dest || BACKUP_ROOT);
-    const webhook = payload.slackWebhook || process.env.SLACK_WEBHOOK_URL;
+    const destRoot = resolveBackupPath(payload.dest, 'destinazione');
+    const webhook = resolveSlackWebhook(payload.slackWebhook);
     const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
     const onlyCollections = payload.collections
       ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
@@ -1840,7 +2162,9 @@ io.on('connection', (socket) => {
         return await runRestore({
           session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, backupDir,
           targetDb: payload.targetDb || null,
-          onlyCollections, drop: !!payload.drop, log,
+          // Il DDL del backup viene eseguito sul database: dall'interfaccia non
+          // si può scavalcare la validazione, la deroga resta solo nella CLI.
+          onlyCollections, drop: !!payload.drop, log, allowUnsafeSchema: false,
         });
       });
       await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
@@ -1848,14 +2172,17 @@ io.on('connection', (socket) => {
       cb({ ok: true, summary });
     } catch (err) {
       await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
-      auditWrite(sess, 'backup:restore', { db: payload.targetDb || null }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', null, err);
+      // Un ripristino incompleto porta con sé il riepilogo parziale (quante righe
+      // erano state applicate prima di fermarsi): va nell'audit, serve a capire
+      // in che stato è rimasto il database di destinazione.
+      auditWrite(sess, 'backup:restore', { db: (err.summary && err.summary.targetDb) || payload.targetDb || null }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', err.summary || null, err);
       throw err;
     }
   });
 
   safeOn('backup:verify', async (payload, cb) => {
     assertManage(principal);
-    let backupDir = payload.from ? path.resolve(payload.from) : null;
+    let backupDir = payload.from ? resolveBackupPath(payload.from, 'origine') : null;
     if (!backupDir && payload.group && payload.backupId) {
       const group = String(payload.group).trim();
       const backupId = String(payload.backupId).trim();
@@ -2013,6 +2340,45 @@ function registerGlobalExceptionHandlers() {
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 }
 
+/* ---------------------------------------------------------------------------
+ * Sicurezza del trasporto.
+ *
+ * Il server è solo `http.createServer`: su HTTP viaggiano in chiaro la password
+ * di accesso (POST /auth/login), il token di sessione (handshake Socket.IO e
+ * ogni riconnessione), la passphrase del vault (vault:unlock) e le credenziali
+ * complete dei database digitate nel form — password SSH e passphrase delle
+ * chiavi private comprese. Finché tutto resta su 127.0.0.1 il rischio è teorico;
+ * appena si esce dal loopback (il Dockerfile imposta HOST=0.0.0.0) chiunque sia
+ * sul percorso legge la chiave di tutti i segreti dell'installazione.
+ *
+ * Implementare TLS nell'app non è la scelta giusta — un reverse proxy fa il
+ * lavoro meglio — ma l'errore va reso impossibile: se si esce dal loopback senza
+ * dichiarare di essere dietro un proxy TLS, il server NON parte e spiega come
+ * configurarlo. `CODEDB_TRUST_PROXY_TLS=1` è la dichiarazione esplicita.
+ * ------------------------------------------------------------------------- */
+const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
+
+function assertTransportSafe(host) {
+  const h = String(host || '').trim().toLowerCase();
+  if (LOOPBACK_HOSTS.has(h)) return;
+  if (String(process.env.CODEDB_TRUST_PROXY_TLS || '').trim() === '1') {
+    console.log('[TLS] HOST non di loopback con CODEDB_TRUST_PROXY_TLS=1: si assume un reverse proxy che termina HTTPS.');
+    if (!rbacOn()) {
+      console.warn('[Sicurezza] ATTENZIONE: CODEDB_RBAC è spento e il server è raggiungibile dalla rete:');
+      console.warn('            chiunque arrivi alla porta ottiene lettura, scrittura e DDL su tutte le connessioni salvate.');
+    }
+    return;
+  }
+  console.error(`Avvio rifiutato: HOST="${host}" espone CodeDB oltre il loopback, ma il server parla solo HTTP.`);
+  console.error('Su HTTP viaggiano in chiaro password di accesso, token di sessione, passphrase del vault e credenziali dei database.');
+  console.error('');
+  console.error('Mettilo dietro un reverse proxy che termina HTTPS (nginx, Caddy, Traefik) e poi riavvia con:');
+  console.error('  CODEDB_TRUST_PROXY_TLS=1');
+  console.error('Esempio minimo con Caddy:   codedb.example.com { reverse_proxy 127.0.0.1:' + PORT + ' }');
+  console.error('Per un uso locale, lascia HOST=127.0.0.1 (default).');
+  process.exit(1);
+}
+
 async function startServer() {
   registerGlobalExceptionHandlers();
 
@@ -2023,6 +2389,18 @@ async function startServer() {
       console.error('Passphrase errata fornita via GUI_MONGO_PASSPHRASE: i segreti non si decifrano.');
       process.exit(1);
     }
+  } else if (!probeVault()) {
+    // Nessuna passphrase nell'ambiente e i segreti cifrati NON si decifrano con
+    // la chiave di default: il vault resta BLOCCATO e la passphrase verrà
+    // chiesta dall'interfaccia (vault:status → modale di sblocco). Prima si
+    // proseguiva con la chiave sbagliata: `decryptSecret` falliva, restituiva il
+    // testo "ENC:…" e quel testo finiva come password verso il DBMS, con errori
+    // di autenticazione incomprensibili e nessun modo di sbloccare dalla UI.
+    // È anche il comportamento che tools/avvio-nascosto.ps1 già documentava.
+    encryptionKey = null;
+    decryptFailures = 0;
+    console.warn('Vault BLOCCATO: connections.ini contiene segreti cifrati e non è stata fornita GUI_MONGO_PASSPHRASE.');
+    console.warn('Le connessioni salvate non saranno utilizzabili finché non sblocchi il vault dall\'interfaccia web.');
   }
 
   // Control plane RBAC: obbligatorio quando il flag è acceso. Un fallimento qui
@@ -2041,6 +2419,7 @@ async function startServer() {
   }
 
   const HOST = process.env.HOST || '127.0.0.1';
+  assertTransportSafe(HOST);
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`La porta ${PORT} è già in uso: probabilmente CodeDB è già in esecuzione.`);
@@ -2059,4 +2438,4 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer };
+module.exports = { app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer, makeConnectLocks };

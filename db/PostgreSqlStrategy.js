@@ -3,8 +3,15 @@
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 
-const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema']);
-const SYSTEM_DBS = new Set(['postgres', 'template0', 'template1']);
+// Schemi che CodeDB non deve mai mostrare ne' modificare. Il livello
+// "database" dell'interfaccia corrisponde allo SCHEMA (vedi la nota su qtable),
+// quindi la protezione riguarda gli schemi di sistema, non i database.
+const SYSTEM_SCHEMAS = new Set(['pg_catalog', 'information_schema', 'pg_toast']);
+
+function isSystemSchema(name) {
+  const n = String(name || '').trim().toLowerCase();
+  return SYSTEM_SCHEMAS.has(n) || n.startsWith('pg_');
+}
 
 /* ---------------------------------------------------------------------------
  * Helpers PostgreSQL
@@ -21,8 +28,24 @@ function qid(name) {
   return '"' + String(name).replace(/"/g, '""') + '"';
 }
 
+// Schema usato quando il chiamante non ne indica uno (client storici, percorsi
+// che non passano dalla sidebar). `public` è lo schema di default di PostgreSQL.
+const DEFAULT_SCHEMA = 'public';
+
+// Nome di schema valido, normalizzato. Il livello "database" dell'interfaccia
+// corrisponde allo SCHEMA PostgreSQL: vedi la nota in testa alla classe.
+function schemaOf(db) {
+  const s = String(db == null ? '' : db).trim();
+  return s || DEFAULT_SCHEMA;
+}
+
+// Tabella SEMPRE qualificata con lo schema. Prima `qtable` scartava il primo
+// argomento e restituiva il solo nome della tabella: la risoluzione veniva
+// lasciata al search_path, quindi con tabelle omonime in schemi diversi si
+// leggeva e si SCRIVEVA su quella sbagliata, e lo scope dei permessi (che
+// autorizza sul `db` passato) non aveva alcun effetto reale.
 function qtable(db, table) {
-  return `${qid(table)}`;
+  return `${qid(schemaOf(db))}.${qid(table)}`;
 }
 
 // Converte un valore proveniente dal client (deserializzato da EJSON)
@@ -94,6 +117,29 @@ function columnSql(c) {
 
 /* ---------------------------------------------------------------------------
  * Strategia PostgreSQL: un pool pg per istanza (cioè per socket)
+ *
+ * MODELLO: il livello "database" dell'interfaccia = SCHEMA PostgreSQL
+ *
+ * Il pool `pg` è legato a `cfg.database` e non può cambiarlo a runtime: dentro
+ * una connessione l'unico spazio di nomi navigabile sono gli schemi. Prima la
+ * sidebar elencava invece i database del CLUSTER, ma `qtable()` scartava il
+ * primo argomento e `listCollections()` ignorava il suo: si vedevano i nomi di
+ * database che non si potevano aprire, sotto ognuno comparivano le tabelle di
+ * tutti gli schemi del database connesso, e ogni operazione finiva sulla
+ * tabella risolta dal `search_path`. Con tabelle omonime in schemi diversi
+ * questo significava leggere, MODIFICARE ed ELIMINARE la riga sbagliata; e lo
+ * scope dei permessi, che autorizza sul `db` ricevuto, non aveva effetto reale.
+ *
+ * Da qui in avanti il primo argomento `db` di ogni metodo è il NOME DELLO
+ * SCHEMA: `qtable()` qualifica sempre, le query sui cataloghi filtrano su
+ * `table_schema`, e create/rename/drop del "database" sono CREATE/ALTER/DROP
+ * SCHEMA. Per SQL Raw (`collectionAggregate`) il `search_path` viene allineato
+ * allo schema aperto, così i nomi non qualificati scritti dall'utente si
+ * risolvono dove se li aspetta.
+ *
+ * Conseguenza sui backup preesistenti: i manifest scritti prima di questa
+ * modifica hanno `db` = nome del DATABASE. `backup/lib/restore.js` continua a
+ * interpretarli come prima quando il manifest non dichiara uno `schema`.
  * ------------------------------------------------------------------------- */
 
 class PostgreSqlStrategy extends DbStrategy {
@@ -174,11 +220,20 @@ class PostgreSqlStrategy extends DbStrategy {
 
   async listDatabases() {
     const pool = this.requirePool();
+    // Il livello "database" della UI sono gli SCHEMI del database connesso.
+    // Elencare i database del cluster era fuorviante: il pool `pg` e' legato a
+    // cfg.database e non puo' cambiarlo, quindi aprendo un altro database si
+    // vedevano comunque le tabelle di quello connesso e ogni operazione finiva
+    // sull'omonima risolta dal search_path (o falliva).
     const res = await pool.query(
-      `SELECT datname AS name, pg_database_size(datname) AS size
-         FROM pg_database
-        WHERE datistemplate = false
-     ORDER BY datname`
+      `SELECT n.nspname AS name,
+              COALESCE(SUM(pg_total_relation_size(c.oid)), 0) AS size
+         FROM pg_namespace n
+         LEFT JOIN pg_class c ON c.relnamespace = n.oid AND c.relkind IN ('r','p','m')
+        WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          AND n.nspname NOT LIKE 'pg\\_%'
+     GROUP BY n.nspname
+     ORDER BY n.nspname`
     );
     return res.rows.map((r) => ({ name: r.name, sizeOnDisk: Number(r.size) || 0 }));
   }
@@ -187,30 +242,22 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const name = String(db || '').trim();
     assertDbName(name);
+    // Vedi la nota in MySqlStrategy: vale solo per i nomi creati da CodeDB.
+    DbStrategy.assertCreatableName(name, 'dello schema');
     try {
-      await pool.query(`CREATE DATABASE ${qid(name)}`);
+      await pool.query(`CREATE SCHEMA ${qid(name)}`);
     } catch (err) {
-      if (err && err.code === '42P04') throw new Error(`Il database "${name}" esiste già.`);
+      if (err && err.code === '42P06') throw new Error(`Lo schema "${name}" esiste già.`);
       throw err;
     }
 
+    // La prima tabella si crea sulla STESSA connessione: prima serviva un client
+    // separato verso il nuovo database, e la tabella finiva in un database che
+    // poi la sessione non poteva piu' raggiungere.
     const table = String(firstColl || '').trim();
     if (table) {
-      const pg = require('pg');
-      const client = new pg.Client({
-        host: (this._config.host || 'localhost').trim(),
-        port: parseInt(this._config.port, 10) || 5432,
-        user: this._config.username || 'postgres',
-        password: this._config.password || '',
-        database: name,
-        connectionTimeoutMillis: 6000,
-      });
-      try {
-        await client.connect();
-        await client.query(`CREATE TABLE ${qid(table)} (id SERIAL PRIMARY KEY)`);
-      } finally {
-        await client.end().catch(() => {});
-      }
+      DbStrategy.assertCreatableName(table, 'della tabella');
+      await pool.query(`CREATE TABLE ${qid(name)}.${qid(table)} (id SERIAL PRIMARY KEY)`);
     }
   }
 
@@ -220,19 +267,15 @@ class PostgreSqlStrategy extends DbStrategy {
     const to = String(newName || '').trim();
     assertDbName(from);
     assertDbName(to);
+    DbStrategy.assertCreatableName(to, 'del database');
     if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
-    if (SYSTEM_DBS.has(from.toLowerCase())) {
-      throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
+    if (isSystemSchema(from)) {
+      throw new Error(`Lo schema di sistema "${from}" non può essere rinominato.`);
     }
     try {
-      // Disconnette eventuali altre sessioni per consentire la rinomina
-      await pool.query(
-        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-        [from]
-      );
-      await pool.query(`ALTER DATABASE ${qid(from)} RENAME TO ${qid(to)}`);
+      await pool.query(`ALTER SCHEMA ${qid(from)} RENAME TO ${qid(to)}`);
     } catch (err) {
-      if (err && err.code === '42P04') throw new Error(`Il database "${to}" esiste già.`);
+      if (err && err.code === '42P06') throw new Error(`Lo schema "${to}" esiste già.`);
       throw err;
     }
   }
@@ -241,25 +284,32 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const name = String(db || '').trim();
     assertDbName(name);
-    if (SYSTEM_DBS.has(name.toLowerCase())) {
-      throw new Error(`Il database di sistema "${name}" non può essere eliminato.`);
+    if (isSystemSchema(name)) {
+      throw new Error(`Lo schema di sistema "${name}" non può essere eliminato.`);
     }
-    await pool.query(
-      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-      [name]
-    );
-    await pool.query(`DROP DATABASE ${qid(name)}`);
+    // CASCADE: elimina anche le tabelle contenute, coerentemente con la
+    // semantica dell'operazione nell'interfaccia ("elimina il database e TUTTI
+    // i suoi dati", gia' confermata esplicitamente dall'utente).
+    await pool.query(`DROP SCHEMA ${qid(name)} CASCADE`);
   }
 
-  async listCollections(_db) {
+  async listCollections(db) {
     const pool = this.requirePool();
+    // Filtrata sullo schema richiesto: prima l'argomento veniva ignorato e sotto
+    // OGNI voce della sidebar comparivano le tabelle di tutti gli schemi.
     const res = await pool.query(
+      // Il join su pg_class passa per pg_namespace, altrimenti `relname` da solo
+      // aggancia le tabelle OMONIME di tutti gli schemi: la stessa tabella
+      // compariva più volte nella sidebar e il conteggio righe poteva arrivare
+      // da un'altra tabella. Prima non si notava perché la query restituiva
+      // comunque le tabelle di ogni schema.
       `SELECT t.table_name AS name, t.table_type AS ttype, COALESCE(c.reltuples::bigint, 0) AS cnt
          FROM information_schema.tables t
-    LEFT JOIN pg_class c ON c.relname = t.table_name
-    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = t.table_schema
-        WHERE t.table_schema NOT IN ('pg_catalog', 'information_schema')
-     ORDER BY t.table_name`
+    LEFT JOIN pg_namespace n ON n.nspname = t.table_schema
+    LEFT JOIN pg_class c ON c.relname = t.table_name AND c.relnamespace = n.oid
+        WHERE t.table_schema = $1
+     ORDER BY t.table_name`,
+      [schemaOf(db)]
     );
     return res.rows.map((r) => {
       const isView = String(r.ttype || '').toUpperCase().includes('VIEW');
@@ -275,10 +325,10 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const term = `%${(query || '').toLowerCase()}%`;
     const sql = `
-      SELECT table_catalog AS db, table_name AS coll
+      SELECT table_schema AS db, table_name AS coll
         FROM information_schema.tables
        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-         AND (LOWER(table_catalog) LIKE $1 OR LOWER(table_name) LIKE $1)
+         AND (LOWER(table_schema) LIKE $1 OR LOWER(table_name) LIKE $1)
     `;
     const res = await pool.query(sql, [term]);
     const dbs = new Map();
@@ -289,8 +339,11 @@ class PostgreSqlStrategy extends DbStrategy {
     return Array.from(dbs.entries()).map(([name, collections]) => ({ name, collections }));
   }
 
-  async primaryKey(_db, table) {
+  async primaryKey(db, table) {
     const pool = this.requirePool();
+    // Filtro sullo schema: senza, una tabella OMONIMA in un altro schema poteva
+    // fornire la chiave primaria, e da li' l'`_id` virtuale sbagliato — cioe'
+    // modifiche ed eliminazioni sulla riga sbagliata.
     const res = await pool.query(
       `SELECT kcu.column_name AS name
          FROM information_schema.table_constraints tc
@@ -298,10 +351,10 @@ class PostgreSqlStrategy extends DbStrategy {
            ON tc.constraint_name = kcu.constraint_name
           AND tc.table_schema = kcu.table_schema
         WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')
+          AND tc.table_schema = $2
           AND tc.table_name = $1
      ORDER BY kcu.ordinal_position`,
-      [table]
+      [table, schemaOf(db)]
     );
     return res.rows.map((r) => r.name);
   }
@@ -337,13 +390,13 @@ class PostgreSqlStrategy extends DbStrategy {
     return ` ORDER BY ${t}`;
   }
 
-  buildSelect(_db, coll, payload) {
+  buildSelect(db, coll, payload) {
     const where = String(payload.filter || '').trim();
     const whereSql = where ? ` WHERE ${where}` : '';
     const orderSql = this.buildOrderBy(payload.sort);
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), DbStrategy.resultCap(payload));
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-    const table = qtable(_db, coll);
+    const table = qtable(db, coll);
     return { table, whereSql, orderSql, limit, skip };
   }
 
@@ -399,12 +452,14 @@ class PostgreSqlStrategy extends DbStrategy {
     }
 
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
-    const docs = rows.map((r) => {
+    // Budget di byte: vedi la nota corrispondente in MySqlStrategy.
+    const capped = DbStrategy.truncateBySize(rows);
+    const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc);
     });
 
-    return { docs, columns, total, skip, limit, keyset: !!ks };
+    return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
@@ -471,7 +526,7 @@ class PostgreSqlStrategy extends DbStrategy {
   async collectionCount(db, coll, payload) {
     const { table, whereSql } = this.buildSelect(db, coll, payload);
     if (!whereSql) {
-      const est = await this.estimatedRowCount(coll);
+      const est = await this.estimatedRowCount(coll, db);
       if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
     }
     return this.countWithTimeout(table, whereSql);
@@ -479,9 +534,10 @@ class PostgreSqlStrategy extends DbStrategy {
 
   // Stima (approssimata) delle righe dal catalogo del planner, senza scansione.
   // `reltuples` è aggiornata da ANALYZE/autovacuum; vale -1 se mai analizzata
-  // (PG ≥ 14) → torniamo null e il chiamante ripiega sul COUNT(*) esatto. Usa lo
-  // schema corrente del search_path. Sola lettura.
-  async estimatedRowCount(coll) {
+  // (PG ≥ 14) → torniamo null e il chiamante ripiega sul COUNT(*) esatto.
+  // Vincolata allo SCHEMA della tabella mostrata, non al search_path: con
+  // tabelle omonime la stima poteva venire da un'altra tabella.
+  async estimatedRowCount(coll, db) {
     const pool = this.requirePool();
     try {
       const r = await pool.query(
@@ -490,10 +546,9 @@ class PostgreSqlStrategy extends DbStrategy {
            JOIN pg_namespace nsp ON nsp.oid = c.relnamespace
           WHERE c.relname = $1
             AND c.relkind = 'r'
-            AND nsp.nspname = ANY (current_schemas(false))
-          ORDER BY array_position(current_schemas(false), nsp.nspname)
+            AND nsp.nspname = $2
           LIMIT 1`,
-        [coll]
+        [coll, schemaOf(db)]
       );
       const n = r.rows && r.rows[0] ? Number(r.rows[0].n) : null;
       return n != null && n >= 0 ? n : null;
@@ -502,12 +557,24 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
-  async collectionAggregate(_db, _coll, payload) {
+  async collectionAggregate(db, _coll, payload) {
     const pool = this.requirePool();
     const sql = String(payload.pipeline || '').trim();
     if (!sql) throw new Error('Inserisci una query SQL da eseguire.');
-    const readOnly = !!payload.readOnly;
+    // `readOnly`: richiesto esplicitamente (tool MCP di sola lettura).
+    // `expectRead`: la query e' stata CLASSIFICATA come lettura e chi la esegue
+    // e' un sottoutente (vedi guardStrategy). E' la barriera che non dipende dal
+    // parser: se la classificazione sbaglia, e' il motore a rifiutare la
+    // scrittura invece di lasciarla passare come "lettura".
+    const readOnly = !!payload.readOnly || !!payload.expectRead;
     const client = await pool.connect();
+    // SQL Raw: la query la scrive l'utente, quindi puo' qualificare gli schemi
+    // come vuole. I nomi NON qualificati devono pero' risolversi nello schema
+    // che sta guardando, non in quello che capita dal search_path del server.
+    // `SET LOCAL` dentro la transazione, `RESET` fuori: la connessione torna
+    // sempre pulita al pool.
+    const schema = schemaOf(db);
+    let pathSet = false;
     try {
       if (payload && payload.opHandle && client.processID) {
         payload.opHandle.processID = client.processID;
@@ -515,6 +582,10 @@ class PostgreSqlStrategy extends DbStrategy {
       if (readOnly) {
         await client.query('BEGIN READ ONLY');
         await client.query('SET LOCAL statement_timeout = 30000');
+        await client.query(`SET LOCAL search_path TO ${qid(schema)}, public`);
+      } else {
+        await client.query(`SET search_path TO ${qid(schema)}, public`);
+        pathSet = true;
       }
       try {
         const cap = DbStrategy.resultCap(payload);
@@ -535,6 +606,7 @@ class PostgreSqlStrategy extends DbStrategy {
         return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
         if (readOnly) await client.query('ROLLBACK').catch(() => {});
+        if (pathSet) await client.query('RESET search_path').catch(() => {});
       }
     } finally {
       client.release();
@@ -555,14 +627,14 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
-  async collectionExplain(_db, coll, payload) {
+  async collectionExplain(db, coll, payload) {
     const pool = this.requirePool();
     let sql;
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
     } else {
-      const { table, whereSql, orderSql, limit, skip } = this.buildSelect(_db, coll, payload);
+      const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
       sql = `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
     }
 
@@ -667,9 +739,9 @@ class PostgreSqlStrategy extends DbStrategy {
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
-  async tableDdl(_db, coll) {
-    const fields = await this.tableFields(_db, coll);
-    const pk = await this.primaryKey(_db, coll);
+  async tableDdl(db, coll) {
+    const fields = await this.tableFields(db, coll);
+    const pk = await this.primaryKey(db, coll);
     const colDefs = fields.map((f) => {
       let def = `${qid(f.name)} ${f.types[0]}`;
       if (!f.nullable) def += ' NOT NULL';
@@ -677,20 +749,26 @@ class PostgreSqlStrategy extends DbStrategy {
       return def;
     });
     if (pk.length) colDefs.push(`PRIMARY KEY (${pk.map(qid).join(', ')})`);
-    return `CREATE TABLE ${qid(coll)} (\n  ${colDefs.join(',\n  ')}\n);`;
+    return `CREATE TABLE ${qtable(db, coll)} (\n  ${colDefs.join(',\n  ')}\n);`;
   }
 
-  async dbSchema(_db) {
+  async dbSchema(db) {
     const pool = this.requirePool();
+    // Schema/UML/grafo del solo schema aperto: prima univano le tabelle di
+    // tutti gli schemi, quindi il diagramma mostrava relazioni fra tabelle che
+    // nella vista corrente non esistono.
+    const schema = schemaOf(db);
     const tablesRes = await pool.query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_type = 'BASE TABLE' ORDER BY table_name`
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name`,
+      [schema]
     );
 
     const columnsRes = await pool.query(
       `SELECT table_name, column_name, data_type, udt_name, is_nullable
          FROM information_schema.columns
-        WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
-     ORDER BY table_name, ordinal_position`
+        WHERE table_schema = $1
+     ORDER BY table_name, ordinal_position`,
+      [schema]
     );
 
     const colsByTable = new Map();
@@ -715,7 +793,8 @@ class PostgreSqlStrategy extends DbStrategy {
          FROM information_schema.table_constraints tc
          JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
          JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
-        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema NOT IN ('pg_catalog', 'information_schema')`
+        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1`,
+      [schema]
     );
 
     const relations = [];
@@ -875,6 +954,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const table = String(name || '').trim();
     if (!table) throw new Error('Nome della tabella mancante.');
+    DbStrategy.assertCreatableName(table, 'della tabella');
     const cols = Array.isArray(payload.columns) ? payload.columns : [];
     let defs;
     if (!cols.length) {
@@ -887,16 +967,19 @@ class PostgreSqlStrategy extends DbStrategy {
     await pool.query(`CREATE TABLE ${qtable(db, table)} (${defs.join(', ')})`);
   }
 
-  async renameCollection(_db, coll, newName) {
+  async renameCollection(db, coll, newName) {
     const pool = this.requirePool();
     const to = String(newName || '').trim();
     if (!to) throw new Error('Nuovo nome della tabella mancante.');
-    await pool.query(`ALTER TABLE ${qtable(_db, coll)} RENAME TO ${qid(to)}`);
+    DbStrategy.assertCreatableName(to, 'della tabella');
+    // Il nuovo nome resta nello STESSO schema: ALTER TABLE ... RENAME TO non
+    // accetta un nome qualificato per la destinazione.
+    await pool.query(`ALTER TABLE ${qtable(db, coll)} RENAME TO ${qid(to)}`);
   }
 
-  async dropCollection(_db, coll) {
+  async dropCollection(db, coll) {
     const pool = this.requirePool();
-    await pool.query(`DROP TABLE ${qtable(_db, coll)}`);
+    await pool.query(`DROP TABLE ${qtable(db, coll)}`);
   }
 
   async addColumn(db, coll, column) {
@@ -961,24 +1044,26 @@ class PostgreSqlStrategy extends DbStrategy {
     return { name };
   }
 
-  async dropIndex(_db, _coll, name) {
+  async dropIndex(db, _coll, name) {
     const pool = this.requirePool();
     const idx = String(name || '').trim();
     if (!idx) throw new Error('Nome dell\'indice da eliminare mancante.');
-    await pool.query(`DROP INDEX ${qid(idx)}`);
+    // Qualificato: senza schema l'indice veniva risolto dal search_path e si
+    // poteva eliminare l'omonimo di un altro schema.
+    await pool.query(`DROP INDEX ${qid(schemaOf(db))}.${qid(idx)}`);
   }
 
-  async tableFields(_db, table) {
+  async tableFields(db, table) {
     const pool = this.requirePool();
     const res = await pool.query(
       `SELECT column_name AS name, data_type AS ctype, udt_name AS udt, is_nullable AS nullable, column_default AS cdefault
          FROM information_schema.columns
-        WHERE table_schema NOT IN ('pg_catalog', 'information_schema') AND table_name = $1
+        WHERE table_schema = $2 AND table_name = $1
      ORDER BY ordinal_position`,
-      [table]
+      [table, schemaOf(db)]
     );
 
-    const pk = await this.primaryKey(_db, table);
+    const pk = await this.primaryKey(db, table);
     const pkSet = new Set(pk);
 
     return res.rows.map((c) => ({
@@ -992,25 +1077,28 @@ class PostgreSqlStrategy extends DbStrategy {
     }));
   }
 
-  async collectionStats(_db, coll) {
+  async collectionStats(db, coll) {
     const pool = this.requirePool();
-    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${qtable(_db, coll)}`);
+    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${qtable(db, coll)}`);
     const count = Number(countRes.rows[0]?.total) || 0;
 
+    // `::regclass` risolve un nome non qualificato dal search_path: qui si passa
+    // il nome QUALIFICATO, altrimenti le dimensioni potevano essere quelle di
+    // una tabella omonima in un altro schema.
     const sizeRes = await pool.query(
       `SELECT pg_relation_size($1::regclass) AS data_size, pg_total_relation_size($1::regclass) AS total_size`,
-      [coll]
+      [qtable(db, coll)]
     );
     const dataSize = Number(sizeRes.rows[0]?.data_size) || 0;
     const totalSize = Number(sizeRes.rows[0]?.total_size) || 0;
 
     const idxRes = await pool.query(
-      `SELECT indexname FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND tablename = $1`,
-      [coll]
+      `SELECT indexname FROM pg_indexes WHERE schemaname = $2 AND tablename = $1`,
+      [coll, schemaOf(db)]
     );
     const indexes = idxRes.rows.map((i) => ({ name: i.indexname, key: { [i.indexname]: 1 } }));
 
-    const fields = await this.tableFields(_db, coll);
+    const fields = await this.tableFields(db, coll);
 
     return {
       stats: {

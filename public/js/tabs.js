@@ -52,6 +52,13 @@ export function freshState() {
     cellSel: { anchor: null, focus: null, cells: new Set() }, // selezione celle stile Excel (vedi cellselect.js)
     schemaPolling: false,   // watch dello schema non disponibile: polling della sidebar
     schemaDirty: false,     // schema cambiato mentre il tab era in background
+    // Bersaglio scelto a mano nella tab ⚡ Query & Aggregate (click nello Schema
+    // Browser o comando USE). null = segue il contesto del workspace
+    // (state.db/state.coll). Vive QUI, non in una variabile di modulo, perché
+    // altrimenti sarebbe condiviso da tutti i tab di connessione: la scelta
+    // fatta in un tab dirottava le query di tutti gli altri.
+    queryDb: null,
+    queryColl: null,
   };
 }
 
@@ -74,6 +81,20 @@ export function onTabChange(fn) {
 // `id` esplicito: il flusso di connessione genera prima il tabId (per la
 // sessione server) e crea il tab solo a connessione riuscita.
 export function createTab({ id, connName } = {}) {
+  // Un tabId identifica UNA sessione lato server: se esiste già un tab con
+  // quell'id va riusato, non duplicato. Senza questo controllo un doppio
+  // ripristino di sessione (socket riconnesso due volte di seguito) produceva
+  // due tab omonimi nella barra, entrambi legati alla stessa sessione.
+  if (id) {
+    const existing = tabs.list.find((t) => t.id === id);
+    if (existing) {
+      if (connName) {
+        existing.connName = connName;
+        existing.label = connName;
+      }
+      return existing;
+    }
+  }
   const tab = {
     id: id || safeUUID(),
     connName: connName || null,

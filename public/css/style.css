@@ -2496,6 +2496,35 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-weight: 500;
 }
 
+/* Bersaglio della query: sempre visibile nella barra della tab. Un bersaglio
+   scelto a mano nello Schema Browser e' evidenziato, per distinguerlo da quello
+   che segue la collection aperta. */
+.query-target-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.query-target-label {
+  font-family: var(--mono, monospace);
+  font-size: 0.85em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-2);
+  color: var(--fg-dim);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-target-label.query-target-explicit {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
 .styled-select {
   background: var(--input-bg);
   color: var(--fg);

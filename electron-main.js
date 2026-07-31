@@ -15,6 +15,32 @@ let mainWindow = null;
 // il nome della cartella dati utente (%APPDATA%/mongo-web-gui): forziamo "CodeDB".
 app.setName(APP_NAME);
 
+/* ---------------------------------------------------------------------------
+ * AppUserModelID (solo Windows)
+ *
+ * È l'identificativo con cui Windows RAGGRUPPA le finestre nella barra delle
+ * applicazioni e le associa a un collegamento appuntato. Deve valere due cose:
+ *
+ *  1. va impostato PRIMA che esista qualunque finestra — inclusi i `dialog`
+ *    di errore, che sono finestre a tutti gli effetti. Stava dentro `main()`,
+ *    quindi dopo il ping al server e dopo fino a ~10 s di attesa: qualsiasi
+ *    finestra creata prima (o un errore mostrato in quel frattempo) sarebbe
+ *    finita in un gruppo separato, con l'icona duplicata nella barra.
+ *  2. deve coincidere con l'`appId` dichiarato in package.json → `build.appId`,
+ *    perché è quello che l'installer NSIS scrive nel collegamento del menu
+ *    Start: se i due valori divergono, Windows tratta il collegamento appuntato
+ *    e la finestra aperta come due applicazioni diverse.
+ *
+ * Nota: i collegamenti creati da `npm run shortcut` puntano a `cmd.exe` e non
+ * portano alcun AppUserModelID, quindi non si raggrupperanno mai con la
+ * finestra dell'app. È il motivo per cui la distribuzione va fatta con
+ * l'installer, non con quello script.
+ * ------------------------------------------------------------------------- */
+const APP_USER_MODEL_ID = 'com.codedb.app';
+if (process.platform === 'win32') {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
+
 // L'exe pacchettizzato gira da una cartella di sola lettura (es. Program Files):
 // connections.ini/backups/log non possono più stare accanto a server.js, quindi
 // li spostiamo nella cartella dati utente scrivibile (stessi hook usati dai test
@@ -80,9 +106,9 @@ function waitForServer(retries, delay) {
 }
 
 async function main() {
-  if (process.platform === 'win32') {
-    app.setAppUserModelId('com.codedb.app');
-  }
+  // L'AppUserModelID è già impostato a livello di modulo (vedi sopra): qui
+  // sarebbe troppo tardi, perché prima si attende il server e si possono aprire
+  // finestre di dialogo.
   Menu.setApplicationMenu(buildMenu());
 
   // Se il server è già in ascolto (avviato a parte con CodeDB.cmd/codedb.sh, o

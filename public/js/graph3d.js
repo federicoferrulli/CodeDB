@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, notify, positionFixedDropdown } from './utils.js';
+import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { setView } from './main.js';
 
@@ -46,7 +46,7 @@ export function clearShortestPath(silent = false) {
   updatePathUI();
   renderGraph3d();
   if (!silent) {
-    notify('Evidenziazione cammino rimossa.');
+    toast('Evidenziazione cammino rimossa.');
   }
 }
 
@@ -95,10 +95,14 @@ export function loadGraph3d(force) {
       } catch (err) {
         console.warn('Impossibile salvare lo schema nella cache di sessione:', err);
       }
+      // Il canvas 3D è unico: lo schema di un tab passato in background resta in
+      // cache e verrà disegnato al ritorno, non sopra il grafo di un'altra
+      // connessione.
+      if (!isForActiveTab(res)) return;
       renderGraph3d();
     })
     .catch((err) => {
-      if (canvas) {
+      if (canvas && isForActiveTab(err)) {
         canvas.innerHTML = `<div class="error" style="padding:20px;">${esc(err.message)}</div>`;
       }
     });
@@ -522,7 +526,7 @@ function computeShortestPath(startNode, endNode) {
 function analyzeDependencies() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema || !schema.collections || !schema.collections.length) {
-    notify('Nessuno schema disponibile per le dipendenze.');
+    toast('Nessuno schema disponibile per le dipendenze.', true);
     return;
   }
 
@@ -601,7 +605,7 @@ function analyzeDependencies() {
 function runSchemaAudit() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema || !schema.collections || !schema.collections.length) {
-    notify('Nessuno schema disponibile per la diagnostica.');
+    toast('Nessuno schema disponibile per la diagnostica.', true);
     return;
   }
 
@@ -682,7 +686,7 @@ function runSchemaAudit() {
 function saveSchemaSnapshotLocal() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema) {
-    notify('Nessuno schema disponibile da salvare.');
+    toast('Nessuno schema disponibile da salvare.', true);
     return;
   }
   const payload = {
@@ -703,7 +707,7 @@ function saveSchemaSnapshotLocal() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  notify(`File snapshot "schema-snapshot-${state.db || 'db'}.json" salvato sul tuo computer!`);
+  toast(`File snapshot "schema-snapshot-${state.db || 'db'}.json" salvato sul tuo computer!`);
 }
 
 function renderDiffReport(snapshot) {
@@ -1032,7 +1036,7 @@ export function initGraph3d() {
     pathBtn.addEventListener('click', () => {
       const schema = state.dbSchema || currentSchemaData;
       if (!schema || !schema.collections || !schema.collections.length) {
-        notify('Nessuno schema disponibile.');
+        toast('Nessuno schema disponibile.', true);
         return;
       }
 
@@ -1061,7 +1065,7 @@ export function initGraph3d() {
       const end = $('#path-to-select').value;
 
       if (start === end) {
-        notify('Seleziona due tabelle differenti.');
+        toast('Seleziona due tabelle differenti.', true);
         return;
       }
 
@@ -1086,7 +1090,7 @@ export function initGraph3d() {
         $('#path-modal').classList.add('hidden');
         updatePathUI();
         renderGraph3d();
-        notify(`Cammino tra "${start}" e "${end}" evidenziato in verde nel 3D!`);
+        toast(`Cammino tra "${start}" e "${end}" evidenziato in verde nel 3D!`);
       }
     });
   }
@@ -1127,7 +1131,7 @@ export function initGraph3d() {
       hideEmptyTables = !hideEmptyTables;
       toggleEmptyBtn.classList.toggle('active', hideEmptyTables);
       renderGraph3d();
-      notify(hideEmptyTables ? 'Tabelle vuote nascoste' : 'Tutte le tabelle visibili');
+      toast(hideEmptyTables ? 'Tabelle vuote nascoste' : 'Tutte le tabelle visibili');
     });
   }
 
@@ -1137,7 +1141,7 @@ export function initGraph3d() {
       showImplicitRelations = !showImplicitRelations;
       implicitBtn.classList.toggle('active', showImplicitRelations);
       renderGraph3d();
-      notify(showImplicitRelations ? 'Relazioni implicite visibili' : 'Relazioni implicite nascoste');
+      toast(showImplicitRelations ? 'Relazioni implicite visibili' : 'Relazioni implicite nascoste');
     });
   }
 
@@ -1147,7 +1151,7 @@ export function initGraph3d() {
       is2DMode = !is2DMode;
       toggle2dBtn.classList.toggle('active', is2DMode);
       renderGraph3d();
-      notify(is2DMode ? 'Modalità 2D Piatta attivata' : 'Modalità 3D attivata');
+      toast(is2DMode ? 'Modalità 2D Piatta attivata' : 'Modalità 3D attivata');
     });
   }
 
@@ -1160,7 +1164,7 @@ export function initGraph3d() {
         graphInstance.controls().autoRotate = autoRotateActive;
         graphInstance.controls().autoRotateSpeed = 1.5;
       }
-      notify(autoRotateActive ? 'Modalità Auto-Rotate 3D attivata' : 'Auto-Rotate disattivata');
+      toast(autoRotateActive ? 'Modalità Auto-Rotate 3D attivata' : 'Auto-Rotate disattivata');
     });
   }
 
@@ -1194,7 +1198,7 @@ export function initGraph3d() {
           const snapshot = JSON.parse(evt.target.result);
           renderDiffReport(snapshot);
         } catch (err) {
-          notify('Impossibile leggere il file JSON: ' + err.message);
+          toast('Impossibile leggere il file JSON: ' + err.message, true);
         }
       };
       reader.readAsText(file);
@@ -1218,19 +1222,19 @@ export function initGraph3d() {
       const textarea = $('#import-schema-textarea');
       const format = $('#import-schema-format').value;
       if (!textarea || !textarea.value.trim()) {
-        notify('Incolla uno script SQL o DBML valido.');
+        toast('Incolla uno script SQL o DBML valido.', true);
         return;
       }
       const parsed = parseSchemaInput(textarea.value, format);
       if (!parsed.collections.length) {
-        notify('Impossibile interpretare lo schema fornito.');
+        toast('Impossibile interpretare lo schema fornito.', true);
         return;
       }
       state.dbSchema = parsed;
       state.dbSchemaFor = 'imported';
       $('#import-schema-modal').classList.add('hidden');
       renderGraph3d();
-      notify(`Schema importato (${parsed.collections.length} tabelle visualizzate)!`);
+      toast(`Schema importato (${parsed.collections.length} tabelle visualizzate)!`);
     });
   }
 
@@ -1279,10 +1283,10 @@ export function initGraph3d() {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        notify('Immagine PNG esportata con successo!');
+        toast('Immagine PNG esportata con successo!');
       } catch (err) {
         console.error('Errore export PNG:', err);
-        notify('Impossibile esportare l\'immagine PNG.');
+        toast('Impossibile esportare l\'immagine PNG.', true);
       }
     });
   }
@@ -1292,7 +1296,7 @@ export function initGraph3d() {
     exportMermaidBtn.addEventListener('click', () => {
       const mermaidText = buildMermaidDiagram();
       if (!mermaidText) {
-        notify('Nessun dato di schema disponibile per Mermaid.');
+        toast('Nessun dato di schema disponibile per Mermaid.', true);
         return;
       }
       const textarea = $('#mermaid-textarea');
@@ -1316,10 +1320,10 @@ export function initGraph3d() {
       if (!textarea) return;
       textarea.select();
       navigator.clipboard.writeText(textarea.value).then(() => {
-        notify('Diagramma Mermaid copiato negli appunti!');
+        toast('Diagramma Mermaid copiato negli appunti!');
       }).catch(() => {
         document.execCommand('copy');
-        notify('Diagramma Mermaid copiato negli appunti!');
+        toast('Diagramma Mermaid copiato negli appunti!');
       });
     });
   }
@@ -1329,7 +1333,7 @@ export function initGraph3d() {
     exportDbmlBtn.addEventListener('click', () => {
       const dbmlText = buildDbmlDiagram();
       if (!dbmlText) {
-        notify('Nessun dato di schema disponibile per DBML.');
+        toast('Nessun dato di schema disponibile per DBML.', true);
         return;
       }
       const textarea = $('#dbml-textarea');
@@ -1353,10 +1357,10 @@ export function initGraph3d() {
       if (!textarea) return;
       textarea.select();
       navigator.clipboard.writeText(textarea.value).then(() => {
-        notify('Schema DBML copiato negli appunti!');
+        toast('Schema DBML copiato negli appunti!');
       }).catch(() => {
         document.execCommand('copy');
-        notify('Schema DBML copiato negli appunti!');
+        toast('Schema DBML copiato negli appunti!');
       });
     });
   }
@@ -1366,7 +1370,7 @@ export function initGraph3d() {
     exportSqlBtn.addEventListener('click', () => {
       const sqlText = buildSqlDdl();
       if (!sqlText) {
-        notify('Nessun dato di schema disponibile per SQL DDL.');
+        toast('Nessun dato di schema disponibile per SQL DDL.', true);
         return;
       }
       const textarea = $('#sql-textarea');
@@ -1390,10 +1394,10 @@ export function initGraph3d() {
       if (!textarea) return;
       textarea.select();
       navigator.clipboard.writeText(textarea.value).then(() => {
-        notify('Script SQL DDL copiato negli appunti!');
+        toast('Script SQL DDL copiato negli appunti!');
       }).catch(() => {
         document.execCommand('copy');
-        notify('Script SQL DDL copiato negli appunti!');
+        toast('Script SQL DDL copiato negli appunti!');
       });
     });
   }

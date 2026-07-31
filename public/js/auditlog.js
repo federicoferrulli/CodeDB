@@ -198,6 +198,11 @@ function detailsOf(e) {
 
 let currentEntries = [];
 let vscrollAttached = false;
+// La colonna "Utente" ha senso solo con RBAC attivo: senza, ogni voce è
+// dell'unico utente locale e la colonna sarebbe una fila di trattini. Si decide
+// dai dati (presenza dell'attore) invece che da un flag, così la tabella resta
+// corretta anche mescolando voci scritte prima dell'introduzione dell'attore.
+let showUserCol = false;
 const AUDIT_ROW_H = 44;
 const AUDIT_OVERSCAN = 5;
 
@@ -214,6 +219,7 @@ function renderAuditVirtualWindow() {
     tbody.innerHTML = '';
     return;
   }
+  const cols = showUserCol ? 8 : 7;
 
   const viewport = container.clientHeight || 420;
   const scrollTop = container.scrollTop || 0;
@@ -226,7 +232,7 @@ function renderAuditVirtualWindow() {
   if (start > 0) {
     const topSpacer = document.createElement('tr');
     topSpacer.className = 'v-spacer';
-    topSpacer.innerHTML = `<td colspan="7" style="height:${start * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    topSpacer.innerHTML = `<td colspan="${cols}" style="height:${start * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
     frag.appendChild(topSpacer);
   }
 
@@ -251,12 +257,17 @@ function renderAuditVirtualWindow() {
     const tr = document.createElement('tr');
     if (!ok) tr.className = 'audit-row-err';
     tr.style.height = `${AUDIT_ROW_H}px`;
+    const userCell = showUserCol
+      ? `<td>${e.user ? esc(e.user) : '<span class="sub-text">—</span>'}</td>`
+      : '';
+
     tr.innerHTML = `
       <td class="audit-ts">${fmtTs(e.ts)}</td>
       <td>${catHtml}</td>
       <td>${action}</td>
       <td>${target} ${dbType}</td>
       <td>${conn}</td>
+      ${userCell}
       <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
       <td>${statusHtml}</td>
     `;
@@ -266,7 +277,7 @@ function renderAuditVirtualWindow() {
   if (end < N) {
     const botSpacer = document.createElement('tr');
     botSpacer.className = 'v-spacer';
-    botSpacer.innerHTML = `<td colspan="7" style="height:${(N - end) * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
+    botSpacer.innerHTML = `<td colspan="${cols}" style="height:${(N - end) * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
     frag.appendChild(botSpacer);
   }
 
@@ -296,8 +307,12 @@ function render(entries) {
     return;
   }
 
-  let table = container.querySelector('table.audit-table');
-  if (!table) {
+  const wantUserCol = currentEntries.some((e) => e.user);
+  const table = container.querySelector('table.audit-table');
+  // L'intestazione va ricostruita anche quando la tabella esiste già ma il
+  // numero di colonne cambia (es. prima pagina senza attore, seconda con).
+  if (!table || wantUserCol !== showUserCol) {
+    showUserCol = wantUserCol;
     container.innerHTML = `
       <table class="backup-table audit-table">
         <thead>
@@ -307,6 +322,7 @@ function render(entries) {
             <th>Azione</th>
             <th>Database › Coll.</th>
             <th>Connessione</th>
+            ${showUserCol ? '<th>Utente</th>' : ''}
             <th>Dettagli</th>
             <th>Esito</th>
           </tr>

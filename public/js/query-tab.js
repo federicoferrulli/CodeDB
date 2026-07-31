@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast } from './utils.js';
+import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -160,6 +160,14 @@ export function initQueryTab() {
 
   if (schemaRefreshBtn) {
     schemaRefreshBtn.addEventListener('click', () => renderQuerySchemaBrowser());
+  }
+
+  const targetReset = $('#query-target-reset');
+  if (targetReset) {
+    targetReset.addEventListener('click', () => {
+      setQueryTarget(null, null);
+      toast('La query torna a seguire la collection aperta');
+    });
   }
 
   if (schemaSearchInput) {
@@ -370,6 +378,7 @@ function initSqlChunking() {
 // Inizializza la tab Query
 export function loadQueryTab() {
   renderQuerySchemaBrowser();
+  renderQueryTarget();
 }
 
 // Resizer verticale tra editor e pannello risultati
@@ -658,15 +667,21 @@ function fetchCollectionsForSchemaBrowser(dbName, container) {
   container.innerHTML = '<div style="color: var(--fg-dim); padding: 4px;">Caricamento schema...</div>';
   emit('db:schema', { db: dbName })
     .then((res) => {
+      // Schema Browser: il contenitore appartiene all'albero della connessione
+      // mostrata; una risposta in ritardo di un altro tab lo riempirebbe di
+      // tabelle inesistenti.
+      if (!isForActiveTab(res)) return;
       renderSchemaTreeForDb(dbName, container, res.collections);
     })
     .catch(() => {
       // Fallback su db:collections in caso di errore
       emit('db:collections', { db: dbName })
         .then((res) => {
+          if (!isForActiveTab(res)) return;
           renderSchemaTreeForDb(dbName, container, res.collections);
         })
         .catch((err) => {
+          if (!isForActiveTab(err)) return;
           container.innerHTML = `<div style="color: var(--danger); font-size: 0.85em;">${escapeHtml(err.message || 'Errore caricamento')}</div>`;
         });
     });
@@ -736,8 +751,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
 
     collLabel.addEventListener('click', (e) => {
       if (e.target.closest('.mini-btn')) return;
-      selectedQueryDb = dbName;
-      selectedQueryColl = collName;
+      setQueryTarget(dbName, collName);
       fieldsContainer.classList.toggle('hidden');
     });
 
@@ -771,9 +785,53 @@ function insertTextInEditor(text) {
   updateEditorHighlight();
 }
 
-let selectedQueryDb = null;
-let selectedQueryColl = null;
 let currentRunId = null;
+
+/* ---------------------------------------------------------------------------
+ * Bersaglio della tab Query & Aggregate.
+ *
+ * Il default e' il contesto del workspace (la collection aperta): `state.db` /
+ * `state.coll`. Cliccando una tabella nello Schema Browser, o eseguendo un
+ * `USE <db>`, si fissa un bersaglio ESPLICITO che vince sul contesto.
+ *
+ * Quel bersaglio pero' deve decadere quando il contesto cambia, e viveva in due
+ * variabili di MODULO: una volta scelto un database restava per sempre, per
+ * tutti i tab di connessione e per tutte le collection aperte dopo — la query
+ * continuava a girare sul primo database toccato. Ora sta nello stato del tab
+ * (`state.queryDb`/`state.queryColl`, vedi freshState in tabs.js) e viene
+ * azzerato all'attivazione di un coll-tab (colltabs.js), cosi' la tab segue di
+ * nuovo cio' che l'utente sta guardando.
+ * ------------------------------------------------------------------------- */
+
+/** Imposta il bersaglio esplicito (null/undefined = torna a seguire il contesto). */
+export function setQueryTarget(db, coll) {
+  state.queryDb = db || null;
+  state.queryColl = coll || null;
+  renderQueryTarget();
+}
+
+/** Bersaglio effettivo su cui girera' la prossima query. */
+export function queryTarget() {
+  return { db: state.queryDb || state.db || null, coll: state.queryColl || state.coll || null };
+}
+
+// Indicatore sempre visibile nella barra della tab: prima non c'era modo di
+// sapere su quale database si stesse per eseguire.
+export function renderQueryTarget() {
+  const el = $('#query-target-label');
+  if (!el) return;
+  const { db, coll } = queryTarget();
+  const explicit = !!state.queryDb;
+  el.textContent = db ? `${db}${coll ? ' \u25b8 ' + coll : ''}` : 'nessun database selezionato';
+  el.classList.toggle('query-target-explicit', explicit);
+  el.title = db
+    ? (explicit
+      ? `Bersaglio scelto a mano nello Schema Browser. Clicca per tornare al contesto della collection aperta (${state.db || 'nessuna'}).`
+      : 'Bersaglio: la collection aperta nel workspace.')
+    : 'Apri una collection oppure scegli una tabella nello Schema Browser.';
+  const reset = $('#query-target-reset');
+  if (reset) reset.classList.toggle('hidden', !explicit);
+}
 
 export function cancelActiveQuery() {
   const stopBtn = $('#query-stop-btn');
@@ -813,8 +871,7 @@ export function runQuery() {
 
   const curTab = activeTab();
   const currentTabId = curTab ? curTab.id : undefined;
-  const targetDb = selectedQueryDb || state.db;
-  const targetColl = selectedQueryColl || state.coll;
+  const { db: targetDb, coll: targetColl } = queryTarget();
   const connName = state.connName || state.connId || 'Default';
   const collTabId = state.activeCollId || null;
 
@@ -849,11 +906,17 @@ export function runQuery() {
 
       // Se il server segnala un cambio di database (es. via USE <dbname>)
       if (res && res.activeDb) {
-        selectedQueryDb = res.activeDb;
+        // `USE <db>` nel Query Engine: da qui in poi il bersaglio e' esplicito.
+        setQueryTarget(res.activeDb, null);
       }
 
-      updateQueryMetrics('success', elapsed, rows.length);
-      renderResults(rows);
+      // Il pannello dei risultati è unico: i risultati di un tab passato in
+      // background restano nello storico delle query in sospeso, ma non devono
+      // sostituire ciò che l'utente sta guardando su un'altra connessione.
+      if (isForActiveTab(res)) {
+        updateQueryMetrics('success', elapsed, rows.length);
+        renderResults(rows);
+      }
       return res;
     })
     .catch((err) => {
@@ -862,8 +925,10 @@ export function runQuery() {
       if (currentRunId === runId) currentRunId = null;
 
       pendingHandle.fail(err, elapsed);
-      updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
-      renderResults([]);
+      if (isForActiveTab(err)) {
+        updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
+        renderResults([]);
+      }
       throw err;
     });
 }

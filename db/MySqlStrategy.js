@@ -182,6 +182,9 @@ class MySqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const name = String(db || '').trim();
     assertDbName(name);
+    // Nomi CREATI da CodeDB: niente caratteri di markup/quoting, che finirebbero
+    // nell'interfaccia di tutti gli utenti (i nomi preesistenti restano intatti).
+    DbStrategy.assertCreatableName(name, 'del database');
     try {
       await pool.query(`CREATE DATABASE ${qid(name)}`);
     } catch (err) {
@@ -205,6 +208,7 @@ class MySqlStrategy extends DbStrategy {
     const to = String(newName || '').trim();
     assertDbName(from);
     assertDbName(to);
+    DbStrategy.assertCreatableName(to, 'del database');
     if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
     if (SYSTEM_SCHEMAS.has(from.toLowerCase())) {
       throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
@@ -394,11 +398,15 @@ class MySqlStrategy extends DbStrategy {
     }
 
     const columns = (fields || []).map((f) => f.name);
-    const docs = rows.map((r) => {
+    // Budget di byte: il tetto sulle righe non protegge da poche righe enormi
+    // (BLOB, testi lunghi, campi JSON). Il driver ha già materializzato il
+    // result set, ma qui si evita almeno di serializzarlo e spedirlo per intero.
+    const capped = DbStrategy.truncateBySize(rows);
+    const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc);
     });
-    return { docs, columns, total, skip, limit, keyset: !!ks };
+    return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
@@ -916,6 +924,7 @@ class MySqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const table = String(name || '').trim();
     if (!table) throw new Error('Nome della tabella mancante.');
+    DbStrategy.assertCreatableName(table, 'della tabella');
     const cols = Array.isArray(payload.columns) ? payload.columns : [];
     let defs;
     if (!cols.length) {
@@ -932,6 +941,7 @@ class MySqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const to = String(newName || '').trim();
     if (!to) throw new Error('Nuovo nome della tabella mancante.');
+    DbStrategy.assertCreatableName(to, 'della tabella');
     await pool.query(`RENAME TABLE ${qtable(db, coll)} TO ${qtable(db, to)}`);
   }
 
