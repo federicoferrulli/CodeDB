@@ -1,8 +1,8 @@
-'use strict';
+"use strict";
 
-const net = require('net');
-const fs = require('fs');
-const { Client } = require('ssh2');
+const net = require("net");
+const fs = require("fs");
+const { Client } = require("ssh2");
 
 /* ---------------------------------------------------------------------------
  * Tunnel SSH condiviso tra le strategie: ortogonale al tipo di database.
@@ -28,7 +28,12 @@ function openSshTunnel(ssh, target) {
     const fail = (err) => {
       if (settled) return;
       settled = true;
-      if (server) try { server.close(); } catch { /* ignora */ }
+      if (server)
+        try {
+          server.close();
+        } catch {
+          /* ignora */
+        }
       conn.end();
       reject(err instanceof Error ? err : new Error(String(err)));
     };
@@ -41,7 +46,7 @@ function openSshTunnel(ssh, target) {
     // essere caduto.
     const tunnelState = { alive: true, lastError: null };
 
-    conn.on('error', (err) => {
+    conn.on("error", (err) => {
       if (settled) {
         tunnelState.alive = false;
         tunnelState.lastError = errText(err);
@@ -49,37 +54,51 @@ function openSshTunnel(ssh, target) {
       }
       fail(err);
     });
-    conn.on('close', () => {
+    conn.on("close", () => {
       tunnelState.alive = false;
     });
 
-    conn.on('ready', () => {
+    conn.on("ready", () => {
       server = net.createServer((socket) => {
         if (!tunnelState.alive) {
           socket.destroy();
           return;
         }
-        conn.forwardOut('127.0.0.1', socket.remotePort || 0, target.host, target.port, (err, stream) => {
-          if (err) {
-            socket.destroy();
-            return;
-          }
-          socket.pipe(stream).pipe(socket);
-          stream.on('error', () => socket.destroy());
-          socket.on('error', () => stream.destroy());
-        });
+        conn.forwardOut(
+          "127.0.0.1",
+          socket.remotePort || 0,
+          target.host,
+          target.port,
+          (err, stream) => {
+            if (err) {
+              socket.destroy();
+              return;
+            }
+            socket.pipe(stream).pipe(socket);
+            stream.on("error", () => socket.destroy());
+            socket.on("error", () => stream.destroy());
+          },
+        );
       });
-      server.on('error', fail);
-      server.listen(0, '127.0.0.1', () => {
+      server.on("error", fail);
+      server.listen(0, "127.0.0.1", () => {
         settled = true;
         const { port } = server.address();
         resolve({
-          host: '127.0.0.1',
+          host: "127.0.0.1",
           port,
-          get alive() { return tunnelState.alive; },
-          get lastError() { return tunnelState.lastError; },
+          get alive() {
+            return tunnelState.alive;
+          },
+          get lastError() {
+            return tunnelState.lastError;
+          },
           close() {
-            try { server.close(); } catch { /* ignora */ }
+            try {
+              server.close();
+            } catch {
+              /* ignora */
+            }
             conn.end();
           },
         });
@@ -87,26 +106,39 @@ function openSshTunnel(ssh, target) {
     });
 
     const params = {
-      host: String(ssh.sshHost || '').trim(),
+      host: String(ssh.sshHost || "").trim(),
       port: parseInt(ssh.sshPort, 10) || 22,
-      username: String(ssh.sshUser || '').trim(),
+      username: String(ssh.sshUser || "").trim(),
       readyTimeout: 8000,
     };
-    if (!params.host) return fail(new Error('Host SSH mancante.'));
-    if (!params.username) return fail(new Error('Utente SSH mancante.'));
+    if (!params.host) return fail(new Error("Host SSH mancante."));
+    if (!params.username) return fail(new Error("Utente SSH mancante."));
 
-    const keyFile = String(ssh.sshKeyFile || '').trim();
+    const keyFile = String(ssh.sshKeyFile || "").trim();
     if (keyFile) {
-      try {
-        params.privateKey = fs.readFileSync(keyFile);
-      } catch {
-        return fail(new Error(`Impossibile leggere la chiave privata SSH: "${keyFile}".`));
-      }
-      if (ssh.sshPassphrase) params.passphrase = ssh.sshPassphrase;
+      fs.promises
+        .readFile(keyFile)
+        .then((privateKey) => {
+          params.privateKey = privateKey;
+          if (ssh.sshPassphrase) params.passphrase = ssh.sshPassphrase;
+          conn.connect(params);
+        })
+        .catch(() => {
+          fail(
+            new Error(
+              `Impossibile leggere la chiave privata SSH: "${keyFile}".`,
+            ),
+          );
+        });
+      return;
     } else if (ssh.sshPassword) {
       params.password = ssh.sshPassword;
     } else {
-      return fail(new Error('Indica una password SSH oppure il percorso di una chiave privata.'));
+      return fail(
+        new Error(
+          "Indica una password SSH oppure il percorso di una chiave privata.",
+        ),
+      );
     }
 
     conn.connect(params);
