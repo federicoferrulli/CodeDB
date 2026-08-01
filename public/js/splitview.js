@@ -160,6 +160,22 @@ export function deactivateSplitView() {
   }
 }
 
+// Il coll-tab dell'area affiancata vive nello stato di UN tab di connessione:
+// se quel tab è stato chiuso (o sono stati chiusi tutti), i pannelli puntano a
+// sessioni server inesistenti. Qui lo stato orfano viene buttato e il DOM del
+// workspace rimesso a posto.
+export function discardSplitViewIfOrphan() {
+  if (!splitState.active && !splitState.panes.size) return;
+  const stillOpen = tabs.list.some((t) => t.state.collTabs.some((c) => c.isSplitTab));
+  if (stillOpen) return;
+  splitState.active = false;
+  splitState.layout = null;
+  splitState.focusedPaneId = null;
+  splitState.splitCollTabId = null;
+  splitState.panes.clear();
+  deactivateSplitView();
+}
+
 function handleWorkspaceDragOver(e) {
   if (
     e.target.closest('#coll-tab-bar') ||

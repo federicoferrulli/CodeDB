@@ -46,9 +46,11 @@ export function startWatch() {
     if (!tab || !tabs.list.includes(tab)) return;
     tab.state.watching = false;
     tab.state.pollingShown = true;
+    // `?.`: con la Split-View attiva la toolbar è staccata dal DOM; lo stato
+    // del tab è comunque aggiornato e renderWorkspace la ridipinge al rientro.
     if (tab.id === tabs.activeId) {
       $('#live-badge').classList.add('hidden');
-      $('#polling-toggle').classList.remove('hidden');
+      $('#polling-toggle')?.classList.remove('hidden');
     }
   });
 }
@@ -137,7 +139,7 @@ export function initLive() {
     tab.state.pollingShown = true;
     if (tab.id === tabs.activeId) {
       $('#live-badge').classList.add('hidden');
-      $('#polling-toggle').classList.remove('hidden');
+      $('#polling-toggle')?.classList.remove('hidden'); // vedi nota in startWatch
     }
   });
 }
