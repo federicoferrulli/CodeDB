@@ -2779,6 +2779,177 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   color: var(--fg-dim);
 }
 
+/* --- Resoconto di esecuzione di uno SCRIPT (più istruzioni) ---------------
+   Vive sopra la griglia dei risultati: l'avanzamento e gli errori sono ciò che
+   si guarda mentre lo script gira, il result set è quello dell'ultima
+   istruzione che ne ha prodotto uno. */
+
+.script-run-panel {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.88em;
+}
+
+.script-run-panel.hidden {
+  display: none !important;
+}
+
+.script-run-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.script-run-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.script-run-counts {
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.script-run-errors {
+  color: var(--danger, #f14c4c);
+  font-weight: 600;
+}
+
+.script-run-errors.hidden {
+  display: none !important;
+}
+
+.script-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.script-run-actions .hidden {
+  display: none !important;
+}
+
+.script-run-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.script-run-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.script-run-log {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 0.82em;
+}
+
+.script-log-empty {
+  color: var(--fg-dim);
+  padding: 4px 0;
+}
+
+.script-log-row {
+  display: grid;
+  grid-template-columns: 16px 62px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.script-log-row.ko {
+  background: rgba(241, 76, 76, 0.12);
+}
+
+.script-log-row.interrupted {
+  background: rgba(255, 190, 60, 0.12);
+}
+
+.script-log-row.ok .script-log-icon {
+  color: var(--ok, #4ec9b0);
+}
+
+.script-log-row.ko .script-log-icon {
+  color: var(--danger, #f14c4c);
+}
+
+.script-log-line {
+  color: var(--fg-dim);
+}
+
+.script-log-sql {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.script-log-meta {
+  color: var(--fg-dim);
+}
+
+/* Avanzamento dello script nella scheda del registro "query in sospeso" */
+.pending-script-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 0;
+}
+
+.pending-progress-track {
+  width: 100%;
+  height: 5px;
+  background: var(--bg-3);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.pending-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.pending-progress-text {
+  font-size: 0.8em;
+  color: var(--fg-dim);
+}
+
+/* Casella "ferma al primo errore", accanto ai pulsanti di esecuzione */
+.query-inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85em;
+  color: var(--fg-dim);
+  cursor: pointer;
+  user-select: none;
+}
+
+.query-inline-check.hidden {
+  display: none !important;
+}
+
 .query-editor-wrapper {
   position: relative;
   flex: 1;

@@ -560,6 +560,21 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 14: Esecuzione test unitari su RBAC (permessi, Proxy, gate MCP)
   require('./unit-rbac');
 
+  // Test 15: Divisione degli script in istruzioni (base del runner di script)
+  require('./unit-sql-split');
+
+  // Test 16: Macchina a stati dell'esecuzione script (pausa/ripresa, errori)
+  require('./unit-script-runner');
+
+  // Test 17: Splitter client, e sua coerenza col gemello server
+  require('./unit-sql-split-client');
+
+  // Test 18: Interprete degli script MongoDB (linguaggio, sandbox, budget)
+  require('./unit-mongo-script');
+
+  // Test 19: Traduzione SQL di scrittura/DDL → MongoDB
+  require('./unit-sql-write-mongo');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

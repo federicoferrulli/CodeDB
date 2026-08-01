@@ -289,10 +289,20 @@ function translate(code) {
   const args = parseCallArgs(p);
 
   if (WRITE_METHODS.has(method)) {
-    throw new Error(`L'operazione di scrittura "${method}()" non è eseguibile da qui: usa la vista Dati oppure una pipeline con $out/$merge.`);
+    // Questo traduttore produce un piano di SOLA LETTURA (find/aggregate): una
+    // scrittura non è rappresentabile. Non è però più un vicolo cieco — l'errore
+    // è marcato, e `query:execute` lo riconosce per instradare il comando
+    // all'interprete di script (db/MongoScriptRunner.js), che le scritture le
+    // esegue davvero.
+    const err = new Error(`L'operazione di scrittura "${method}()" non è eseguibile da qui: usa la vista Dati oppure una pipeline con $out/$merge.`);
+    err.scritturaShell = true;
+    err.metodo = method;
+    throw err;
   }
   if (!READ_METHODS.has(method)) {
-    throw new Error(`Metodo "${method}()" non supportato. Usa find, findOne, aggregate, countDocuments o distinct.`);
+    const err = new Error(`Metodo "${method}()" non supportato. Usa find, findOne, aggregate, countDocuments o distinct.`);
+    err.metodoSconosciuto = method;
+    throw err;
   }
 
   const op = buildBaseOp(method, args, coll);

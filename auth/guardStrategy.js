@@ -19,7 +19,10 @@
  * l'utente può vedere, senza modifiche al frontend.
  * ------------------------------------------------------------------------- */
 
-const { METHOD_CAPABILITY, CAPABILITY_LABEL, isWriteSql, isWriteMongoPipeline, matchesAny } = require('./capabilities');
+const {
+  METHOD_CAPABILITY, CAPABILITY_LABEL, isWriteSql, isWriteMongoPipeline,
+  matchesAny, shellWriteCapability,
+} = require('./capabilities');
 const { can, scopeFor } = require('./permissions');
 const { assertScopedClauses } = require('./sqlClause');
 
@@ -34,9 +37,12 @@ function denied(capability, connName, db, coll) {
 
 function resolveCapability(spec, strategy, args) {
   if (spec.cap !== 'dynamic') return spec.cap;
+  const payload = args[2] || {};
+  // Scritture della shell da uno script: la capability dipende dall'operazione
+  // richiesta (insert/update = write, delete = delete).
+  if (spec.kind === 'shellWrite') return shellWriteCapability(payload.op);
   // collection:aggregate = SQL Raw su MySQL/PostgreSQL, pipeline su MongoDB:
   // stessa logica di classifyAudit, così audit e permessi non divergono mai.
-  const payload = args[2] || {};
   const isSql = strategy.type && strategy.type !== 'mongodb';
   const write = isSql ? isWriteSql(payload.pipeline) : isWriteMongoPipeline(payload.pipeline);
   return write ? 'write' : 'read';

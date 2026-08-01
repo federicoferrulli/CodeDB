@@ -5,6 +5,9 @@ import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
 import { highlightQueryCode } from './query-highlighter.js';
+import { isScript, countStatements } from './sql-split.js';
+import { runScript, runScriptAndWait } from './script-run.js';
+import { refreshDbTree } from './dbtree.js';
 
 const escapeHtml = esc;
 
@@ -32,6 +35,43 @@ export function updateEditorHighlight() {
     highlightPre.scrollTop = editorInput.scrollTop;
     highlightPre.scrollLeft = editorInput.scrollLeft;
   }
+
+  aggiornaModalitaScript(code);
+}
+
+/**
+ * Il codice appena eseguito ha modificato la STRUTTURA (database, tabelle,
+ * collezioni)? In quel caso la sidebar va ricaricata, altrimenti mostra un
+ * albero che non corrisponde più al database.
+ */
+function cambiaStruttura(code) {
+  const s = String(code || '');
+  if (/\b(CREATE|DROP|ALTER|RENAME|TRUNCATE)\s+(TABLE|DATABASE|SCHEMA|COLLECTION|VIEW)\b/i.test(s)) return true;
+  // Equivalenti nella sintassi shell/script MongoDB.
+  return /\.(drop|createCollection|dropDatabase|renameCollection)\s*\(/.test(s)
+    || /\bdb\.createCollection\s*\(/.test(s);
+}
+
+/**
+ * L'editor con più istruzioni verrà eseguito come SCRIPT: dirlo PRIMA di
+ * premere Esegui evita la sorpresa di un'esecuzione che si comporta in modo
+ * diverso da quella attesa, e mostra l'opzione "ferma al primo errore" solo
+ * quando ha senso.
+ */
+function aggiornaModalitaScript(code) {
+  const label = $('#query-run-label');
+  const wrap = $('#query-stop-on-error-wrap');
+  const testo = String(code || '').trim();
+  // Il conteggio percorre il testo carattere per carattere: su un chunk da 1 MB
+  // non va fatto a ogni tasto premuto. Oltre la soglia si assume "script" senza
+  // contare (un testo così lungo non è mai una query sola) e il numero resta
+  // ignoto finché non lo dice il server all'avvio.
+  const troppoLungo = testo.length > 200000;
+  const n = troppoLungo ? null : countStatements(testo);
+  const script = troppoLungo || n > 1;
+
+  if (label) label.textContent = script ? (n ? `Esegui Script (${n})` : 'Esegui Script') : 'Esegui Query';
+  if (wrap) wrap.classList.toggle('hidden', !script);
 }
 
 export function initQueryTab() {
@@ -337,10 +377,34 @@ function initSqlChunking() {
 
         try {
           await selectAndPreviewChunk(i, true);
-          const res = await runQuery();
-          if (res && (res.data || res.docs)) {
-            const list = res.data || res.docs;
-            totalRows += Array.isArray(list) ? list.length : 1;
+          // Un chunk contiene quasi sempre MOLTE istruzioni: va eseguito come
+          // script e ATTESO fino alla fine, altrimenti i blocchi successivi
+          // partirebbero tutti insieme (`runScript` ritorna all'avvio).
+          const testoChunk = ($('#query-editor-input')?.value || '').trim();
+          if (isScript(testoChunk)) {
+            const stato = await runScriptAndWait({
+              code: testoChunk,
+              engine: $('#query-target-engine')?.value || 'auto',
+              ...queryTarget(),
+              stopOnError: !!$('#query-stop-on-error')?.checked,
+            });
+            if (stato) {
+              totalRows += stato.eseguiti || 0;
+              // Uno script interrotto (pausa/abort) ferma anche la sequenza:
+              // proseguire coi blocchi successivi ignorerebbe la volontà
+              // dell'utente di fermarsi.
+              if (stato.status === 'aborted' || stato.status === 'paused') {
+                stopChunkRunRequested = true;
+                if (progressText) progressText.textContent = `⏸ Sequenza fermata al Chunk ${i + 1}/${totalChunks}`;
+                break;
+              }
+            }
+          } else {
+            const res = await runQuery();
+            if (res && (res.data || res.docs)) {
+              const list = res.data || res.docs;
+              totalRows += Array.isArray(list) ? list.length : 1;
+            }
           }
         } catch (err) {
           toast(`Errore durante l'esecuzione del Chunk ${i + 1}: ${err.message}`, 'error');
@@ -858,6 +922,21 @@ export function runQuery() {
   if (!code) return;
 
   const engine = $('#query-target-engine')?.value || 'auto';
+
+  // Più istruzioni = SCRIPT: percorso diverso (esecuzione a passi lato server,
+  // con progresso, pausa e ripresa) invece dell'ack unico di `query:execute`.
+  // Il conteggio qui serve solo a scegliere la strada: quante siano davvero lo
+  // decide il server, che è l'unico a dividere il testo per l'esecuzione.
+  if (isScript(code)) {
+    const { db: scriptDb, coll: scriptColl } = queryTarget();
+    return runScript({
+      code,
+      engine,
+      db: scriptDb,
+      coll: scriptColl,
+      stopOnError: !!$('#query-stop-on-error')?.checked,
+    });
+  }
   updateQueryMetrics('running');
   executionStartTime = performance.now();
 
@@ -916,6 +995,11 @@ export function runQuery() {
       if (isForActiveTab(res)) {
         updateQueryMetrics('success', elapsed, rows.length);
         renderResults(rows);
+        // Un DDL riuscito cambia l'albero: senza questo l'oggetto creato
+        // esisteva davvero ma non compariva nella sidebar finché non si
+        // riapriva la connessione, e sembrava che il comando non avesse
+        // fatto nulla.
+        if (cambiaStruttura(code)) refreshDbTree();
       }
       return res;
     })

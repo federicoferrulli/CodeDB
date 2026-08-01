@@ -30,6 +30,7 @@ import { ensureActiveCollLoaded } from './colltabs.js';
 import { initSplitView } from './splitview.js';
 import { initAdminRbac } from './admin-rbac.js';
 import { initPendingQueries } from './pending-queries.js';
+import { initScriptRun } from './script-run.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -162,6 +163,7 @@ initAuditLog();
 initHealth();
 initAdminRbac();
 initPendingQueries();
+initScriptRun();
 initSessionPersistence();
 initSplitView();
 initHeaderMoreMenu();

@@ -631,10 +631,16 @@
                   <div class="query-actions">
                     <button id="query-toggle-schema-btn" class="ghost btn-sm mobile-only-btn" type="button"
                       title="Mostra/Nascondi Schema Browser"><i data-lucide="folder-tree"></i> <span class="btn-label-mobile">Schema</span></button>
-                    <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> Esegui Query</button>
+                    <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> <span id="query-run-label">Esegui Query</span></button>
                     <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query"><i data-lucide="square"></i>
                       Annulla</button>
                     <button id="query-snippet-btn" class="ghost" title="Snippet & Template"><i data-lucide="book"></i> Snippets</button>
+                    <!-- Visibile solo quando l'editor contiene più istruzioni: per una
+                         query singola la scelta non avrebbe senso. -->
+                    <label id="query-stop-on-error-wrap" class="query-inline-check hidden"
+                      title="Se attivo lo script si ferma alla prima istruzione fallita (resta riprendibile); altrimenti prosegue e riporta gli errori alla fine">
+                      <input type="checkbox" id="query-stop-on-error" /> ferma al primo errore
+                    </label>
                   </div>
 
                   <div id="query-metrics" class="query-metrics">
@@ -752,6 +758,29 @@
 
                       <div id="query-error-box" class="error hidden"></div>
 
+                      <!-- Resoconto dell'esecuzione di uno SCRIPT (più istruzioni):
+                           avanzamento, controlli di pausa/ripresa e righe fallite.
+                           La griglia sotto continua a mostrare l'ultimo result set. -->
+                      <div id="script-run-panel" class="script-run-panel hidden">
+                        <div class="script-run-top">
+                          <div class="script-run-info">
+                            <span id="script-run-status" class="badge-status status-running">⏳ In esecuzione</span>
+                            <span id="script-run-counts" class="script-run-counts">0 / 0</span>
+                            <span id="script-run-errors" class="script-run-errors hidden">0 errori</span>
+                          </div>
+                          <div class="script-run-actions">
+                            <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione in corso">⏸ Pausa</button>
+                            <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'istruzione in corso sul database">⏸! Pausa forzata</button>
+                            <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cui si era fermato">▶ Riprendi</button>
+                            <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivamente">🛑 Interrompi</button>
+                            <button id="script-close-btn" class="mini-btn ghost hidden" type="button" title="Chiudi il resoconto">✕ Chiudi</button>
+                          </div>
+                        </div>
+                        <div class="script-run-progress-track">
+                          <div id="script-run-progress-fill" class="script-run-progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <div id="script-run-log" class="script-run-log"></div>
+                      </div>
 
                       <div id="query-results-body" class="query-results-body">
                         <!-- Vista Tabella -->

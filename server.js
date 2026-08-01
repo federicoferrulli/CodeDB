@@ -28,6 +28,9 @@ const { attachMcp } = require('./mcp/McpGateway');
 const VirtualJoinEngine = require('./db/VirtualJoinEngine');
 const SqlToMql = require('./db/SqlToMql');
 const MongoShell = require('./db/MongoShell');
+const { splitStatementsDetailed, stripSqlNoise } = require('./db/sqlText');
+const { createScriptRun } = require('./db/ScriptRunner');
+const MongoScriptRunner = require('./db/MongoScriptRunner');
 
 const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
@@ -705,6 +708,27 @@ const AUDIT_READS = {
 // assoluto è comunque imposto dalle strategie (DbStrategy.resultCap).
 const QUERY_ENGINE_MAX_ROWS = Math.max(parseInt(process.env.CODEDB_QUERY_MAX, 10) || 10000, 1);
 
+// --- Runner di script (⚡ Query & Aggregate) ---------------------------------
+// Tetto di istruzioni per esecuzione: un file enorme va caricato col pannello a
+// blocchi (sql-chunker.js), non spedito in un solo evento — dividerlo costa
+// memoria proporzionale al testo e il socket ha un limite di payload.
+const MAX_SCRIPT_STATEMENTS = Math.max(parseInt(process.env.CODEDB_SCRIPT_MAX_STATEMENTS, 10) || 20000, 1);
+// Script contemporanei per sessione: più di così è quasi sempre un errore
+// dell'utente, e ognuno tiene occupata una connessione del pool.
+const MAX_SCRIPTS_PER_SESSION = 4;
+// Cadenza minima fra due eventi di progresso (ms). Errori, pause e fine
+// passano comunque: è solo l'avanzamento "normale" a essere diradato.
+const SCRIPT_PROGRESS_MS = 150;
+
+// Budget degli script MongoDB interpretati (db/MongoScriptRunner.js). Girano
+// DENTRO il processo CodeDB, quindi un ciclo infinito o una scrittura in massa
+// devono fermare sé stessi invece del server. I valori sono generosi per l'uso
+// normale (migrazioni, seed) e configurabili per chi ha bisogno di più.
+const SCRIPT_LIMITI = {
+  tempoMs: Math.max(parseInt(process.env.CODEDB_SCRIPT_TIMEOUT_MS, 10) || 60000, 1000),
+  chiamateDb: Math.max(parseInt(process.env.CODEDB_SCRIPT_MAX_DB_CALLS, 10) || 5000, 1),
+};
+
 // Campi del payload che solo il server può decidere: vengono rimossi da ogni
 // evento delegato prima di raggiungere le strategie (vedi delegate()).
 // `opHandle` è il descrittore dell'operazione annullabile, popolato qui: se lo
@@ -805,6 +829,384 @@ function auditQuery(sess, db, coll, code, category, op, status, result, error) {
       ...(error ? { error: errMsg(error) } : {}),
     });
   } catch { /* audit best-effort */ }
+}
+
+/* ---------------------------------------------------------------------------
+ * Host per l'interprete di script MongoDB.
+ *
+ * L'interprete (db/MongoScriptRunner.js) non conosce né strategie né sessioni:
+ * riceve queste funzioni e null'altro. Il punto è che **passano tutte dalla
+ * strategia della sessione**, che è già avvolta nel Proxy autorizzante: ogni
+ * riga di script è quindi soggetta all'RBAC come qualsiasi altra operazione,
+ * senza un solo controllo scritto qui dentro. Aggiungere un metodo
+ * all'interprete non può aprire un buco, perché il varco resta uno solo.
+ * ------------------------------------------------------------------------- */
+function mongoScriptHost(session, runId, opHandle) {
+  const esegui = (fn) => executeWithReconnect(session, fn);
+  // Gli operatori che eseguono JavaScript sul SERVER MongoDB restano vietati
+  // anche negli script: l'interprete gira nel processo CodeDB, `$where` no.
+  const controlla = (testo) => {
+    if (!testo) return;
+    try { assertNoServerJs(JSON.parse(testo)); } catch (err) {
+      if (err && /\$where|\$function|\$accumulator/.test(err.message)) throw err;
+    }
+  };
+
+  return {
+    find: (db, coll, payload) => {
+      controlla(payload.filter);
+      return esegui((s) => s.collectionFind(db, coll, { ...payload, runId, opHandle }));
+    },
+    aggregate: (db, coll, payload) => {
+      controlla(payload.pipeline);
+      return esegui((s) => s.collectionAggregate(db, coll, { ...payload, runId, opHandle }));
+    },
+    count: (db, coll, payload) => esegui((s) => s.collectionCount(db, coll, payload)),
+    write: (db, coll, payload) => esegui((s) => s.shellWrite(db, coll, payload)),
+    listCollections: (db) => esegui((s) => s.listCollections(db)),
+    createCollection: (db, nome) => esegui((s) => s.createCollection(db, nome)),
+    dropCollection: (db, coll) => esegui((s) => s.dropCollection(db, coll)),
+    dropDatabase: (db) => esegui((s) => s.dropDatabase(db)),
+    // L'interprete parla in termini di shell (`keys`/`options`), la strategia
+    // ha il suo contratto (`fields`/`unique`/`name`): l'adattamento sta qui,
+    // così nessuno dei due deve conoscere l'altro.
+    createIndex: (db, coll, { keys, options }) => esegui((s) => s.createIndex(db, coll, {
+      fields: JSON.stringify(keys || {}),
+      unique: !!(options && options.unique),
+      name: (options && options.name) || '',
+    })),
+    dropIndex: (db, coll, nome) => esegui((s) => s.dropIndex(db, coll, nome)),
+  };
+}
+
+/**
+ * Il comando porta con sé il nome del database su cui agisce (CREATE/DROP
+ * DATABASE o SCHEMA), quindi non richiede un database già aperto.
+ */
+function comandoConDbProprio(codeStr) {
+  return /^\s*(CREATE|DROP)\s+(DATABASE|SCHEMA)\b/i.test(String(codeStr || ''));
+}
+
+/* ---------------------------------------------------------------------------
+ * SQL di scrittura/DDL eseguito su MongoDB.
+ *
+ * `SqlToMql.translateWrite` produce un'operazione neutra; qui la si esegue
+ * usando le STESSE funzioni dell'interprete di script (mongoScriptHost), così
+ * esiste un solo percorso di scrittura verso MongoDB e un solo punto in cui
+ * l'RBAC si applica.
+ * ------------------------------------------------------------------------- */
+async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto }) {
+  const op = 'SQL di scrittura (SQL→MongoDB)';
+  let piano;
+  try {
+    piano = SqlToMql.translateWrite(codeStr);
+  } catch (err) {
+    throw conContesto(new Error(`Traduzione SQL→MongoDB non riuscita: ${err.message}`), 'write', op, targetDb, null);
+  }
+
+  const host = mongoScriptHost(session, runId, opHandle);
+  const messaggio = (testo) => {
+    const doc = { messaggio: testo, ...(piano.note ? { nota: piano.note } : {}) };
+    return fatto({ docs: [doc], columns: Object.keys(doc) }, 'write', op, targetDb, piano.coll || null);
+  };
+
+  try {
+    if (piano.kind === 'ddl') {
+      switch (piano.op) {
+        case 'createCollection':
+          await host.createCollection(targetDb, piano.coll);
+          return messaggio(`Collezione "${piano.coll}" creata in "${targetDb}".`);
+        case 'dropCollection':
+          await host.dropCollection(targetDb, piano.coll);
+          return messaggio(`Collezione "${piano.coll}" eliminata da "${targetDb}".`);
+        case 'createDatabase':
+          // Su MongoDB il database nasce con la prima collezione: la strategia
+          // lo sa fare (createDatabase crea una collezione iniziale).
+          await executeWithReconnect(session, (s) => s.createDatabase(piano.db));
+          return fatto(
+            { docs: [{ messaggio: `Database "${piano.db}" creato.`, nota: piano.note }], columns: ['messaggio', 'nota'] },
+            'write', op, piano.db, null
+          );
+        case 'dropDatabase':
+          await host.dropDatabase(piano.db);
+          return fatto(
+            { docs: [{ messaggio: `Database "${piano.db}" eliminato.` }], columns: ['messaggio'] },
+            'write', op, piano.db, null
+          );
+        default:
+          throw new Error(`Operazione DDL non gestita: ${piano.op}`);
+      }
+    }
+
+    // Scritture sui dati: stesso metodo `shellWrite` usato dagli script.
+    const payload = { op: piano.op };
+    if (piano.op === 'insertOne') payload.doc = JSON.stringify(piano.docs[0]);
+    if (piano.op === 'insertMany') payload.docs = JSON.stringify(piano.docs);
+    if (piano.filter !== undefined) payload.filter = JSON.stringify(piano.filter);
+    if (piano.update !== undefined) payload.update = JSON.stringify(piano.update);
+
+    const res = await host.write(targetDb, piano.coll, payload);
+    const doc = { operazione: piano.op, collezione: piano.coll, ...res, ...(piano.note ? { nota: piano.note } : {}) };
+    return fatto({ docs: [doc], columns: Object.keys(doc) }, 'write', op, targetDb, piano.coll);
+  } catch (err) {
+    throw conContesto(err, 'write', op, targetDb, piano.coll || null);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Esecuzione di UN blocco di codice del Query Engine.
+ *
+ * Estratta dal gestore `query:execute` perché serve a DUE chiamanti: la query
+ * singola e il runner di script, che la invoca per ogni istruzione. Tenerla in
+ * un solo posto è ciò che garantisce che sintassi shell, SQL→MQL, `USE`,
+ * pipeline e SQL Raw si comportino IDENTICAMENTE dentro e fuori da uno script —
+ * comprese le regole di sicurezza (`assertNoServerJs`, bersaglio non vuoto) e
+ * il passaggio dal Proxy autorizzante, che vede una chiamata di strategia per
+ * istruzione e ne decide la capability.
+ *
+ * Non scrive audit: restituisce categoria e descrizione dell'operazione
+ * (`category`/`op`) e, in caso di errore, le allega all'eccezione in
+ * `err.auditCtx`. Chi chiama decide se e come tracciare — la query singola
+ * traccia sempre, lo script traccia le scritture e un riepilogo.
+ *
+ * @returns {Promise<{res:object, category:'read'|'write', op:string, db:string, coll:string|null, code:string}>}
+ * ------------------------------------------------------------------------- */
+async function executeQueryCode(session, payload) {
+  let { code, engine, db, coll, runId, opHandle } = payload;
+  const codeStr = String(code || '').trim();
+
+  if (!codeStr) {
+    throw new Error('Codice query vuoto.');
+  }
+
+  const fatto = (res, category, op, dbUsato, collUsata) => ({
+    res, category, op, db: dbUsato || null, coll: collUsata || null, code: codeStr,
+  });
+  // L'errore porta con sé il contesto di audit: senza, il chiamante non saprebbe
+  // su quale db/coll è fallita l'operazione né come classificarla.
+  const conContesto = (err, category, op, dbUsato, collUsata) => {
+    err.auditCtx = { category, op, db: dbUsato || null, coll: collUsata || null, code: codeStr };
+    return err;
+  };
+
+  // Modalità Cross-DB (Virtual Join)
+  if (engine === 'crossdb' || codeStr.includes('"virtualJoin"')) {
+    let spec;
+    try {
+      spec = JSON.parse(codeStr);
+    } catch (err) {
+      throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
+    }
+    try {
+      const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
+      return fatto({ docs }, 'read', 'Virtual JOIN Cross-DB', db, coll);
+    } catch (err) {
+      throw conContesto(err, 'read', 'Virtual JOIN Cross-DB', db, coll);
+    }
+  }
+
+  // Riconoscimento ed esecuzione del comando USE <dbname> (o use <dbname>;)
+  const useCmdMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*$/i);
+  if (useCmdMatch) {
+    const newDb = useCmdMatch[1];
+    session.strategy.currentDb = newDb;
+    const summaryDoc = { messaggio: `Database attivo cambiato in "${newDb}"`, activeDb: newDb };
+    return fatto(
+      { docs: [summaryDoc], columns: Object.keys(summaryDoc), activeDb: newDb },
+      'write', 'Cambio Database (USE)', newDb, null
+    );
+  }
+
+  // Se il codice inizia con USE <dbname>; seguito da ulteriori istruzioni
+  const usePrefixMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*\n?/i);
+  if (usePrefixMatch && codeStr.trim().length > usePrefixMatch[0].trim().length) {
+    const newDb = usePrefixMatch[1];
+    session.strategy.currentDb = newDb;
+    db = newDb;
+  }
+
+  // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
+  const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
+  const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
+  const targetColl = extractedColl || coll;
+  const targetDb = db || session.strategy.currentDb || 'admin';
+
+  // Il bersaglio deve essere un nome vero: `targetDb`/`targetColl` sono ciò
+  // su cui il Proxy autorizzante confronta lo scope, e un valore vuoto
+  // faceva cadere il confronto (vedi matchesAny). Meglio un errore
+  // comprensibile che una query eseguita senza il controllo di ambito.
+  //
+  // Eccezione: i comandi che CREANO un database (o lo eliminano) portano il
+  // nome con sé e non hanno bisogno di un database "corrente". Pretenderlo
+  // rendeva impossibile la cosa più ovvia — creare un database da zero —
+  // proprio a chi non ne aveva ancora aperto uno. Il controllo dei permessi
+  // resta: lo fa il Proxy sul nome indicato nel comando.
+  if (!String(targetDb || '').trim() && !comandoConDbProprio(codeStr)) {
+    throw new Error('Nessun database selezionato: apri un database nella sidebar oppure usa "USE <database>" prima della query.');
+  }
+
+  // Modalità SQL (MySQL e PostgreSQL: Strategy Pattern, stesso "SQL Raw").
+  if (engine === 'mysql' || engine === 'postgresql' || DbFactory.isSqlType(session.strategy.type)) {
+    // Su PostgreSQL il pool è legato a `cfg.database` e nella UI il livello
+    // "database" È LO SCHEMA: un CREATE DATABASE non può essere eseguito dal
+    // pool (non è ammesso in transazione) e comunque il risultato non
+    // comparirebbe mai nella sidebar. Meglio dirlo che lasciar fallire con un
+    // errore del driver che non spiega nulla.
+    if (session.strategy.type === 'postgresql' && /^\s*CREATE\s+DATABASE\b/i.test(codeStr)) {
+      throw new Error('Su PostgreSQL la connessione è legata a un database e nella sidebar il livello "database" corrisponde allo SCHEMA: usa "CREATE SCHEMA <nome>" per creare un contenitore visibile qui. Per un nuovo database serve una connessione separata.');
+    }
+
+    const write = isWriteSql(codeStr);
+    const cat = write ? 'write' : 'read';
+    const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
+    try {
+      const res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+      return fatto(res, cat, op, targetDb, targetColl);
+    } catch (err) {
+      throw conContesto(err, cat, op, targetDb, targetColl);
+    }
+  }
+
+  // Modalità NoSQL (MongoDB)
+  if (engine === 'mongodb' || session.strategy.type === 'mongodb') {
+    // Esecuzione tramite l'INTERPRETE (db/MongoScriptRunner.js): l'unico
+    // percorso MongoDB che sa eseguire scritture, cicli e funzioni.
+    const eseguiScriptMongo = async () => {
+      const op = 'Script MongoDB';
+      try {
+        const esito = await MongoScriptRunner.eseguiScript(
+          codeStr,
+          mongoScriptHost(session, runId, opHandle),
+          {
+            db: targetDb,
+            interrotto: () => !!(opHandle && opHandle.interrotto),
+            limiti: SCRIPT_LIMITI,
+          }
+        );
+        // I `print()` diventano documenti, così l'output dello script è
+        // visibile nella stessa griglia dei risultati invece di sparire.
+        const docs = esito.output.length
+          ? esito.output.map((riga, i) => ({ '#': i + 1, output: riga }))
+          : esito.docs;
+        return fatto(
+          { docs, columns: docs.length ? Object.keys(docs[0]) : [], scriptOutput: esito.output, dbCalls: esito.chiamateDb },
+          'write', op, targetDb, targetColl
+        );
+      } catch (err) {
+        // La riga dell'errore, quando c'è, è l'informazione più utile.
+        if (err && err.scriptLine && !/riga \d+/.test(err.message)) {
+          err.message = `${err.message} (riga ${err.scriptLine})`;
+        }
+        throw conContesto(err, 'write', op, targetDb, targetColl);
+      }
+    };
+
+    // SCRIPT JavaScript (var/let/const, for, if, funzioni...): non è un comando
+    // shell singolo né una SELECT, va INTERPRETATO. Non passa dalla divisione
+    // per `;`, che non conosce i blocchi `{ … }` e spezzerebbe un ciclo a metà.
+    if (MongoScriptRunner.sembraScriptJs(codeStr)) return eseguiScriptMongo();
+
+    // SQL di SCRITTURA o DDL su MongoDB: `INSERT INTO`, `UPDATE`, `DELETE`,
+    // `CREATE TABLE`, `DROP DATABASE`… Tradotti nelle stesse operazioni che usa
+    // l'interprete, quindi soggetti al Proxy autorizzante allo stesso modo.
+    if (SqlToMql.looksLikeSqlWrite(codeStr)) {
+      return eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto });
+    }
+
+    let res;
+    let cat = 'read';
+    let op = 'Query di lettura (MQL)';
+    // Collection effettivamente interrogata: shell/SQL possono indicarne una
+    // diversa da quella attiva (plan.coll); l'audit deve registrare questa.
+    let queryColl = targetColl;
+    try {
+      if (codeStr.startsWith('[')) {
+        // Pipeline MQL EJSON (scrittura solo con $out/$merge)
+        if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+        assertNoServerJs(safeParseForScan(codeStr));
+        if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
+        else { op = 'Aggregazione (pipeline)'; }
+        res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+      } else if (codeStr.startsWith('{')) {
+        // MQL Filter JSON: il filtro va passato come payload.filter (stringa),
+        // non come intero payload, altrimenti collectionFind lo ignorerebbe.
+        let parsed;
+        try {
+          parsed = JSON.parse(codeStr);
+        } catch (e) {
+          throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
+        }
+        if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
+        assertNoServerJs(parsed);
+        op = 'Query di lettura (filtro MQL)';
+        res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+      } else {
+        // Né JSON né pipeline: prova la sintassi nativa shell (db.coll.find...)
+        // oppure una SELECT SQL. Entrambe producono lo stesso "plan".
+        let plan = null;
+        let planLabel = '';
+        if (MongoShell.looksLikeShell(codeStr)) {
+          try {
+            plan = MongoShell.translate(codeStr);
+          } catch (e) {
+            // Il traduttore produce solo piani di lettura. Se il comando è una
+            // SCRITTURA (o un metodo che non conosce) non è un errore: è roba
+            // da interprete, che la esegue davvero. Prima era un vicolo cieco.
+            if (e.scritturaShell || e.metodoSconosciuto) return eseguiScriptMongo();
+            throw new Error('Comando shell MongoDB non valido: ' + e.message);
+          }
+          planLabel = 'shell';
+        } else if (SqlToMql.looksLikeSql(codeStr)) {
+          try {
+            plan = SqlToMql.translate(codeStr);
+          } catch (e) {
+            throw new Error('Traduzione SQL→MongoDB non riuscita: ' + e.message);
+          }
+          planLabel = 'SQL→MQL';
+        }
+
+        if (plan) {
+          const collName = plan.coll || targetColl;
+          if (!collName) throw new Error('Collezione non specificata nel comando.');
+          queryColl = collName;
+          if (plan.kind === 'aggregate') {
+            assertNoServerJs(plan.pipeline);
+            op = `Query di lettura (${planLabel} aggregate)`;
+            res = await executeWithReconnect(session, (strat) =>
+              strat.collectionAggregate(targetDb, collName, { pipeline: JSON.stringify(plan.pipeline), maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+          } else {
+            assertNoServerJs(plan.filter);
+            op = `Query di lettura (${planLabel})`;
+            res = await executeWithReconnect(session, (strat) =>
+              strat.collectionFind(targetDb, collName, {
+                filter: JSON.stringify(plan.filter),
+                projection: JSON.stringify(plan.projection),
+                sort: JSON.stringify(plan.sort),
+                limit: plan.limit,
+                skip: plan.skip,
+                maxRows: QUERY_ENGINE_MAX_ROWS,
+                runId,
+                opHandle
+              }));
+          }
+        } else if (targetColl && /^[A-Za-z_][A-Za-z0-9_.]*$/.test(codeStr)) {
+          // Un nome secco (la collezione aperta): mostra i suoi documenti.
+          res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: '', maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
+        } else {
+          // Non è JSON, non è una pipeline, non è shell di lettura né SQL:
+          // l'ultima possibilità sensata è che sia codice da interpretare
+          // (`print(...)`, una chiamata, un'espressione). Prima si finiva qui
+          // con un "seleziona una collezione" che non spiegava nulla.
+          return eseguiScriptMongo();
+        }
+      }
+    } catch (err) {
+      throw conContesto(err, cat, op, targetDb, queryColl);
+    }
+    return fatto(res, cat, op, targetDb, queryColl);
+  }
+
+  throw new Error('Target Engine non supportato.');
 }
 
 /* ---------------------------------------------------------------------------
@@ -1159,6 +1561,13 @@ io.on('connection', (socket) => {
     // Rimuovi prima di await: evita doppie chiusure su chiamate concorrenti.
     sessions.delete(tabId);
     activeGlobalSessions--;
+    // Script ancora in corso su questa sessione: senza `abort` il ciclo
+    // continuerebbe a eseguire istruzioni su una strategia che stiamo
+    // chiudendo, e ogni passo fallirebbe rumorosamente dopo la disconnessione.
+    if (sess.scripts) {
+      for (const run of sess.scripts.values()) run.abort();
+      sess.scripts.clear();
+    }
     await teardownConnection(sess);
   }
 
@@ -1774,172 +2183,245 @@ io.on('connection', (socket) => {
     if (runId) session.inflight.set(runId, opHandle);
 
     try {
-      let { code, engine, db, coll } = payload;
-      const codeStr = String(code || '').trim();
-
-      if (!codeStr) {
-        throw new Error('Codice query vuoto.');
-      }
-
-      // Modalità Cross-DB (Virtual Join)
-      if (engine === 'crossdb' || codeStr.includes('"virtualJoin"')) {
-        let spec;
-        try {
-          spec = JSON.parse(codeStr);
-        } catch (err) {
-          throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
-        }
-        try {
-          const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
-          auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'ok', { docs }, null);
-          return cb({ ok: true, docs, data: docs });
-        } catch (err) {
-          auditQuery(session, db || null, coll || null, codeStr, 'read', 'Virtual JOIN Cross-DB', 'error', null, err);
-          throw err;
-        }
-      }
-
-      // Riconoscimento ed esecuzione del comando USE <dbname> (o use <dbname>;)
-      const useCmdMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*$/i);
-      if (useCmdMatch) {
-        const newDb = useCmdMatch[1];
-        session.strategy.currentDb = newDb;
-        const summaryDoc = { messaggio: `Database attivo cambiato in "${newDb}"`, activeDb: newDb };
-        auditQuery(session, newDb, null, codeStr, 'write', 'Cambio Database (USE)', 'ok', { docs: [summaryDoc] }, null);
-        return cb({ ok: true, docs: [summaryDoc], data: [summaryDoc], columns: Object.keys(summaryDoc), activeDb: newDb });
-      }
-
-      // Se il codice inizia con USE <dbname>; seguito da ulteriori istruzioni
-      const usePrefixMatch = codeStr.match(/^\s*(?:USE|use)\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?\s*;?\s*\n?/i);
-      if (usePrefixMatch && codeStr.trim().length > usePrefixMatch[0].trim().length) {
-        const newDb = usePrefixMatch[1];
-        session.strategy.currentDb = newDb;
-        db = newDb;
-      }
-
-      // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
-      const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
-      const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
-      const targetColl = extractedColl || coll;
-      const targetDb = db || session.strategy.currentDb || 'admin';
-
-      // Il bersaglio deve essere un nome vero: `targetDb`/`targetColl` sono ciò
-      // su cui il Proxy autorizzante confronta lo scope, e un valore vuoto
-      // faceva cadere il confronto (vedi matchesAny). Meglio un errore
-      // comprensibile che una query eseguita senza il controllo di ambito.
-      if (!String(targetDb || '').trim()) {
-        throw new Error('Nessun database selezionato: apri un database nella sidebar oppure usa "USE <database>" prima della query.');
-      }
-
-      // Modalità SQL (MySQL e PostgreSQL: Strategy Pattern, stesso "SQL Raw").
-      if (engine === 'mysql' || engine === 'postgresql' || DbFactory.isSqlType(session.strategy.type)) {
-        const write = isWriteSql(codeStr);
-        const cat = write ? 'write' : 'read';
-        const op = write ? 'Query di scrittura (SQL)' : 'Query di lettura (SQL)';
-        try {
-          const res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
-          auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'ok', res, null);
-          return cb({ ok: true, ...res, data: res.docs });
-        } catch (err) {
-          auditQuery(session, targetDb, targetColl, codeStr, cat, op, 'error', null, err);
-          throw err;
-        }
-      }
-
-      // Modalità NoSQL (MongoDB)
-      if (engine === 'mongodb' || session.strategy.type === 'mongodb') {
-        let res;
-        let cat = 'read';
-        let op = 'Query di lettura (MQL)';
-        // Collection effettivamente interrogata: shell/SQL possono indicarne una
-        // diversa da quella attiva (plan.coll); l'audit deve registrare questa.
-        let queryColl = targetColl;
-        try {
-          if (codeStr.startsWith('[')) {
-            // Pipeline MQL EJSON (scrittura solo con $out/$merge)
-            if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-            assertNoServerJs(safeParseForScan(codeStr));
-            if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
-            else { op = 'Aggregazione (pipeline)'; }
-            res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
-          } else if (codeStr.startsWith('{')) {
-            // MQL Filter JSON: il filtro va passato come payload.filter (stringa),
-            // non come intero payload, altrimenti collectionFind lo ignorerebbe.
-            let parsed;
-            try {
-              parsed = JSON.parse(codeStr);
-            } catch (e) {
-              throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
-            }
-            if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-            assertNoServerJs(parsed);
-            op = 'Query di lettura (filtro MQL)';
-            res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
-          } else {
-            // Né JSON né pipeline: prova la sintassi nativa shell (db.coll.find...)
-            // oppure una SELECT SQL. Entrambe producono lo stesso "plan".
-            let plan = null;
-            let planLabel = '';
-            if (MongoShell.looksLikeShell(codeStr)) {
-              try {
-                plan = MongoShell.translate(codeStr);
-              } catch (e) {
-                throw new Error('Comando shell MongoDB non valido: ' + e.message);
-              }
-              planLabel = 'shell';
-            } else if (SqlToMql.looksLikeSql(codeStr)) {
-              try {
-                plan = SqlToMql.translate(codeStr);
-              } catch (e) {
-                throw new Error('Traduzione SQL→MongoDB non riuscita: ' + e.message);
-              }
-              planLabel = 'SQL→MQL';
-            }
-
-            if (plan) {
-              const collName = plan.coll || targetColl;
-              if (!collName) throw new Error('Collezione non specificata nel comando.');
-              queryColl = collName;
-              if (plan.kind === 'aggregate') {
-                assertNoServerJs(plan.pipeline);
-                op = `Query di lettura (${planLabel} aggregate)`;
-                res = await executeWithReconnect(session, (strat) =>
-                  strat.collectionAggregate(targetDb, collName, { pipeline: JSON.stringify(plan.pipeline), maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
-              } else {
-                assertNoServerJs(plan.filter);
-                op = `Query di lettura (${planLabel})`;
-                res = await executeWithReconnect(session, (strat) =>
-                  strat.collectionFind(targetDb, collName, {
-                    filter: JSON.stringify(plan.filter),
-                    projection: JSON.stringify(plan.projection),
-                    sort: JSON.stringify(plan.sort),
-                    limit: plan.limit,
-                    skip: plan.skip,
-                    maxRows: QUERY_ENGINE_MAX_ROWS,
-                    runId,
-                    opHandle
-                  }));
-              }
-            } else {
-              if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o specifica una query valida.');
-              res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: '', maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
-            }
-          }
-        } catch (err) {
-          auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'error', null, err);
-          throw err;
-        }
-        auditQuery(session, targetDb, queryColl, codeStr, cat, op, 'ok', res, null);
-        return cb({ ok: true, ...res, data: res.docs });
-      }
-
-      throw new Error('Target Engine non supportato.');
+      const esito = await executeQueryCode(session, { ...payload, runId, opHandle });
+      auditQuery(session, esito.db, esito.coll, esito.code, esito.category, esito.op, 'ok', esito.res, null);
+      return cb({ ok: true, ...esito.res, data: esito.res.docs });
+    } catch (err) {
+      const ctx = err.auditCtx;
+      if (ctx) auditQuery(session, ctx.db, ctx.coll, ctx.code, ctx.category, ctx.op, 'error', null, err);
+      throw err;
     } finally {
       if (runId && session.inflight) {
         session.inflight.delete(runId);
       }
     }
   });
+
+  /* --- Esecuzione di SCRIPT (più istruzioni) ---------------------------------
+   * Uno script non viene mandato in blocco al driver: viene diviso e ESEGUITO
+   * UN'ISTRUZIONE ALLA VOLTA (vedi db/ScriptRunner.js per il perché). Il run
+   * vive nella sessione, quindi sopravvive all'ack: il client riceve subito
+   * `{ ok, total }` e poi segue l'avanzamento con gli eventi push
+   * `script:progress`, potendo mettere in pausa e riprendere dal punto esatto.
+   * ------------------------------------------------------------------------- */
+
+  // Registro dei run per sessione, con l'esito da mostrare (l'ULTIMO result set
+  // prodotto: in uno script di 500 righe è quello che l'utente si aspetta di
+  // vedere nella griglia dei risultati).
+  function scriptsOf(session) {
+    if (!session.scripts) session.scripts = new Map();
+    return session.scripts;
+  }
+
+  // Il progresso è informativo e ad altissima frequenza: mandarlo per ogni
+  // istruzione intaserebbe il socket su uno script da decine di migliaia di
+  // righe. Si spedisce a intervalli, ma ERRORI, pause e fine passano sempre.
+  function makeProgressSender(tab, run, holder) {
+    let ultimoInvio = 0;
+    return (ev) => {
+      const importante = ev.tipo !== 'statement' || (ev.result && !ev.result.ok);
+      const adesso = Date.now();
+      if (!importante && adesso - ultimoInvio < SCRIPT_PROGRESS_MS) return;
+      ultimoInvio = adesso;
+      socket.emit('script:progress', {
+        tabId: tab,
+        ...ev,
+        stato: run.state(),
+        ...(ev.tipo === 'done' || ev.tipo === 'paused' ? { ultimoRisultato: holder.last } : {}),
+      });
+    };
+  }
+
+  // Esecutore di una singola istruzione dello script: passa dallo STESSO
+  // percorso della query singola (`executeQueryCode`), quindi shell MongoDB,
+  // SQL→MQL, `USE` e SQL Raw si comportano identicamente dentro e fuori da uno
+  // script — e ogni istruzione attraversa il Proxy autorizzante, che decide la
+  // capability guardando QUELLA istruzione.
+  function makeScriptExecutor(session, ctx, holder, run) {
+    return async (stmt) => {
+      const opHandle = { runId: run.id };
+      run.setOpHandle(opHandle);
+      const esito = await executeQueryCode(session, {
+        code: stmt.sql,
+        engine: ctx.engine,
+        db: ctx.db,
+        coll: ctx.coll,
+        opHandle,
+      });
+      // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
+      // successive devono seguirlo, come farebbe un client SQL.
+      if (esito.res && esito.res.activeDb) ctx.db = esito.res.activeDb;
+      if (esito.res && Array.isArray(esito.res.docs) && esito.res.docs.length) {
+        holder.last = { docs: esito.res.docs, columns: esito.res.columns || null };
+      }
+      // Audit: una voce per ogni istruzione di SCRITTURA (sono quelle che
+      // lasciano traccia sui dati), non per ogni lettura di uno script lungo —
+      // il riepilogo finale copre l'esecuzione nel suo insieme.
+      if (esito.category === 'write') {
+        auditQuery(session, esito.db, esito.coll, esito.code, 'write', `${esito.op} [script]`, 'ok', esito.res, null);
+      }
+      return esito.res;
+    };
+  }
+
+  safeOn('script:execute', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const session = sessions.get(tabId);
+    if (!session || !session.strategy) {
+      throw new Error('Nessuna connessione attiva al database per questo tab.');
+    }
+
+    const runId = String(payload.runId || '').trim();
+    if (!runId) throw new Error('runId mancante: impossibile seguire e mettere in pausa lo script.');
+
+    const runs = scriptsOf(session);
+    if (runs.has(runId)) throw new Error('Uno script con questo identificativo è già in corso.');
+    // I run terminati restano consultabili, ma non all'infinito.
+    for (const [id, r] of runs) {
+      if (r.status === 'done' || r.status === 'aborted') runs.delete(id);
+    }
+    if (runs.size >= MAX_SCRIPTS_PER_SESSION) {
+      throw new Error(`Troppi script attivi su questa connessione (max ${MAX_SCRIPTS_PER_SESSION}): mettine in pausa o chiudine uno.`);
+    }
+
+    const codeStr = String(payload.code || '').trim();
+    if (!codeStr) throw new Error('Script vuoto.');
+
+    // Uno SCRIPT JavaScript su MongoDB non si divide per `;`: il separatore
+    // sta anche dentro i blocchi `{ … }` di cicli e funzioni, e spezzarlo
+    // produrrebbe frammenti privi di senso. Lo si tratta come un'unica unità e
+    // sarà l'interprete ad analizzarlo (executeQueryCode → MongoScriptRunner).
+    const jsMongo = session.strategy.type === 'mongodb'
+      && MongoScriptRunner.sembraScriptJs(codeStr);
+
+    // Le porzioni fatte di soli commenti non sono istruzioni: un file .sql
+    // finisce spesso con un commento di chiusura, e mandarlo al database
+    // produrrebbe un errore di sintassi per qualcosa che l'utente non ha
+    // nemmeno scritto come comando.
+    const statements = jsMongo
+      ? [{ sql: codeStr, line: 1 }]
+      : splitStatementsDetailed(codeStr).filter((st) => stripSqlNoise(st.sql).trim().length > 0);
+    if (!statements.length) throw new Error('Lo script non contiene istruzioni eseguibili.');
+    if (statements.length > MAX_SCRIPT_STATEMENTS) {
+      throw new Error(`Lo script contiene ${statements.length} istruzioni: il massimo per esecuzione è ${MAX_SCRIPT_STATEMENTS}. Caricalo come file per eseguirlo a blocchi.`);
+    }
+
+    const ctx = { engine: payload.engine, db: payload.db, coll: payload.coll };
+    const holder = { last: null };
+    const run = createScriptRun({
+      id: runId,
+      statements,
+      stopOnError: !!payload.stopOnError,
+    });
+    run.onProgress = makeProgressSender(tabId, run, holder);
+    run.ctx = ctx;
+    run.holder = holder;
+    runs.set(runId, run);
+
+    auditQuery(session, ctx.db || null, ctx.coll || null, codeStr, 'write', `Avvio script (${statements.length} istruzioni)`, 'ok', null, null);
+
+    // L'ack torna SUBITO: lo script può durare minuti e l'utente deve poter
+    // interagire (pausa, chiusura del pannello) mentre gira.
+    cb({ ok: true, runId, total: statements.length });
+
+    run.start(makeScriptExecutor(session, ctx, holder, run))
+      .then((stato) => finalizzaScript(session, run, stato))
+      .catch((err) => {
+        console.error('[script] errore imprevisto nel ciclo:', err && err.message);
+      });
+  });
+
+  function finalizzaScript(session, run, stato) {
+    if (stato.status !== 'done' && stato.status !== 'aborted') return;
+    auditQuery(
+      session,
+      (run.ctx && run.ctx.db) || null,
+      (run.ctx && run.ctx.coll) || null,
+      `script ${run.id}`,
+      'write',
+      `Fine script: ${stato.eseguiti} eseguite, ${stato.falliti} fallite`,
+      stato.falliti ? 'error' : 'ok',
+      null,
+      stato.falliti ? new Error(`${stato.falliti} istruzioni fallite`) : null
+    );
+  }
+
+  safeOn('script:pause', async (payload, cb) => {
+    const session = sessions.get(normTabId(payload.tabId));
+    const run = session && session.scripts && session.scripts.get(String(payload.runId || ''));
+    if (!run) return cb({ ok: true, paused: false });
+
+    // `pause()` risponde `false` se non c'era nulla da fermare (script già
+    // finito o già in pausa): va riportato com'è, altrimenti la UI mostrerebbe
+    // "in pausa" su uno script concluso e offrirebbe una ripresa impossibile.
+    const paused = run.pause();
+    // La pausa si ferma DOPO l'istruzione in corso: troncarla d'ufficio
+    // significherebbe interrompere a metà una possibile scrittura, cioè proprio
+    // lo stato incoerente che si vuole evitare. Con `force` (l'utente insiste
+    // perché l'istruzione è lunga) la si tronca sul database e la si segna come
+    // interrotta: non conta come fallimento e la ripresa la rilancia.
+    const corrente = run.currentStatement;
+    let cancelled = false;
+    if (paused && payload.force && corrente && corrente.opHandle && session.strategy) {
+      run.markCurrentInterrupted();
+      corrente.opHandle.interrotto = true; // ferma anche uno script interpretato
+      try {
+        const res = await session.strategy.cancelQuery(corrente.opHandle);
+        cancelled = !!(res && res.cancelled);
+      } catch (_) { /* annullamento best-effort */ }
+    }
+    cb({ ok: true, paused, cancelled, stato: run.state() });
+  });
+
+  safeOn('script:resume', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const session = sessions.get(tabId);
+    if (!session || !session.strategy) {
+      throw new Error('Nessuna connessione attiva al database per questo tab.');
+    }
+    const run = session.scripts && session.scripts.get(String(payload.runId || ''));
+    if (!run) throw new Error('Script non trovato: potrebbe essere scaduto o la connessione è stata riaperta.');
+    if (run.status === 'running') return cb({ ok: true, stato: run.state() });
+
+    const fromIndex = Number.isInteger(payload.fromIndex) ? payload.fromIndex : undefined;
+    cb({ ok: true, stato: run.state() });
+
+    run.resume(makeScriptExecutor(session, run.ctx, run.holder, run), fromIndex)
+      .then((stato) => finalizzaScript(session, run, stato))
+      .catch((err) => {
+        console.error('[script] errore imprevisto alla ripresa:', err && err.message);
+      });
+  });
+
+  // Stato di un run (ripristino della UI dopo un F5 o un cambio di tab).
+  safeOn('script:state', async (payload, cb) => {
+    const session = sessions.get(normTabId(payload.tabId));
+    const runs = session && session.scripts;
+    if (!runs) return cb({ ok: true, scripts: [] });
+
+    const runId = payload.runId ? String(payload.runId) : null;
+    if (runId) {
+      const run = runs.get(runId);
+      return cb({ ok: true, stato: run ? run.state() : null, ultimoRisultato: run ? run.holder.last : null });
+    }
+    cb({ ok: true, scripts: [...runs.values()].map((r) => r.state()) });
+  });
+
+  safeOn('script:abort', async (payload, cb) => {
+    const session = sessions.get(normTabId(payload.tabId));
+    const runs = session && session.scripts;
+    const run = runs && runs.get(String(payload.runId || ''));
+    if (!run) return cb({ ok: true, aborted: false });
+    run.abort();
+    const corrente = run.currentStatement;
+    if (corrente && corrente.opHandle && session.strategy) {
+      corrente.opHandle.interrotto = true;
+      try { await session.strategy.cancelQuery(corrente.opHandle); } catch (_) {}
+    }
+    runs.delete(run.id);
+    cb({ ok: true, aborted: true });
+  });
+
 
   safeOn('query:cancel', async (payload, cb) => {
     const tabId = normTabId(payload.tabId);
@@ -1962,6 +2444,10 @@ io.on('connection', (socket) => {
     }
 
     try {
+      // Uno script MongoDB interpretato non è un'operazione del database che
+      // si possa uccidere con killOp: gira nel processo CodeDB. Il flag è il
+      // suo canale di interruzione, controllato insieme agli altri budget.
+      opHandle.interrotto = true;
       const res = await session.strategy.cancelQuery(opHandle);
       // Gli annullamenti del single-flight della griglia (superamento di una
       // pagina da parte della successiva) sono marcati `_bg`: sono housekeeping

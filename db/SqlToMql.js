@@ -983,4 +983,208 @@ function looksLikeSql(code) {
   return /^\s*SELECT\b/i.test(String(code || ''));
 }
 
-module.exports = { translate, looksLikeSql, tokenize };
+/* ==========================================================================
+ * SQL di SCRITTURA e DDL su MongoDB
+ *
+ * "SQL anche per i database Mongo" non può fermarsi alle SELECT: chi scrive
+ * `INSERT INTO` o `CREATE TABLE` si aspetta che funzioni. La traduzione è
+ * diretta — una collezione è una tabella, un documento una riga — e i comandi
+ * risultanti vengono eseguiti dalle STESSE funzioni usate dall'interprete di
+ * script, quindi passano dal Proxy autorizzante come tutto il resto.
+ *
+ * Ciò che NON si traduce viene rifiutato con un messaggio che spiega perché,
+ * invece di fallire in modo oscuro: `ALTER TABLE` non ha senso su un database
+ * senza schema, e i tipi di colonna di una `CREATE TABLE` non hanno un
+ * equivalente (vengono ignorati, e lo si dice).
+ * ========================================================================== */
+
+// Le keyword di scrittura non stanno in KEYWORDS (il tokenizer le marca come
+// identificatori): aggiungerle cambierebbe il parsing delle SELECT, dove una
+// colonna può benissimo chiamarsi "set" o "values". Si confrontano quindi a
+// mano, senza distinzione fra maiuscole e minuscole.
+function isWord(p, parola, offset = 0) {
+  const t = p.peek(offset);
+  return !!t && (t.type === 'ident' || t.type === 'kw') && String(t.value).toUpperCase() === parola;
+}
+
+function eatWord(p, parola) {
+  if (isWord(p, parola)) { p.pos++; return true; }
+  return false;
+}
+
+function expectWord(p, parola) {
+  if (!eatWord(p, parola)) {
+    const t = p.peek();
+    throw new Error(`Attesa parola chiave "${parola}"${t ? `, trovato "${t.value}"` : ' a fine comando'}.`);
+  }
+}
+
+/** Il testo è un comando SQL di scrittura o DDL (non una SELECT)? */
+function looksLikeSqlWrite(code) {
+  return /^\s*(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|TRUNCATE|ALTER)\b/i.test(String(code || ''));
+}
+
+/**
+ * Traduce un comando SQL di scrittura/DDL in un'operazione MongoDB.
+ *
+ * @returns {{kind:'write'|'ddl', op:string, coll?:string, db?:string, docs?:object[], filter?:object, update?:object, note?:string}}
+ */
+function translateWrite(sql) {
+  const p = new Parser(tokenize(sql));
+
+  if (eatWord(p, 'INSERT')) return traduciInsert(p);
+  if (eatWord(p, 'UPDATE')) return traduciUpdate(p);
+  if (eatWord(p, 'DELETE')) return traduciDelete(p);
+  if (eatWord(p, 'TRUNCATE')) return traduciTruncate(p);
+  if (eatWord(p, 'CREATE')) return traduciCreate(p);
+  if (eatWord(p, 'DROP')) return traduciDrop(p);
+
+  if (isWord(p, 'ALTER')) {
+    throw new Error('ALTER non ha equivalente su MongoDB: le collezioni non hanno uno schema fisso. Per modificare i documenti usa UPDATE … SET, oppure db.<collezione>.updateMany().');
+  }
+  if (isWord(p, 'REPLACE')) {
+    throw new Error('REPLACE INTO non è supportato su MongoDB. Usa UPDATE … SET (aggiornamento) oppure db.<collezione>.replaceOne().');
+  }
+  const t = p.peek();
+  throw new Error(`Comando SQL non riconosciuto${t ? `: "${t.value}"` : ''}.`);
+}
+
+// INSERT INTO coll (c1, c2) VALUES (v1, v2), (v3, v4)
+function traduciInsert(p) {
+  expectWord(p, 'INTO');
+  const coll = p.parseIdent();
+
+  let colonne = null;
+  if (p.isPunct('(')) {
+    p.expectPunct('(');
+    colonne = [];
+    do { colonne.push(p.parseIdent()); } while (p.eatPunct(','));
+    p.expectPunct(')');
+  }
+
+  expectWord(p, 'VALUES');
+
+  const righe = [];
+  do {
+    p.expectPunct('(');
+    const valori = [];
+    do { valori.push(parseValue(p)); } while (p.eatPunct(','));
+    p.expectPunct(')');
+    righe.push(valori);
+  } while (p.eatPunct(','));
+
+  if (!colonne) {
+    throw new Error('INSERT senza elenco di colonne: su MongoDB non esiste un ordine delle colonne da cui dedurre i nomi dei campi. Usa INSERT INTO collezione (campo1, campo2) VALUES (…).');
+  }
+
+  const docs = righe.map((valori) => {
+    if (valori.length !== colonne.length) {
+      throw new Error(`Numero di valori (${valori.length}) diverso dal numero di colonne (${colonne.length}).`);
+    }
+    const doc = {};
+    colonne.forEach((c, i) => { doc[c] = valori[i]; });
+    return doc;
+  });
+
+  return { kind: 'write', op: docs.length > 1 ? 'insertMany' : 'insertOne', coll, docs };
+}
+
+// UPDATE coll SET a = 1, b = 'x' [WHERE …]
+function traduciUpdate(p) {
+  const coll = p.parseIdent();
+  expectWord(p, 'SET');
+
+  const set = {};
+  do {
+    const campo = p.parseIdent();
+    const t = p.peek();
+    if (!t || t.type !== 'op' || t.value !== '=') {
+      throw new Error(`Atteso "=" dopo "${campo}" nella SET.`);
+    }
+    p.pos++;
+    set[campo] = parseValue(p);
+  } while (p.eatPunct(','));
+
+  const filter = p.eatKw('WHERE') || eatWord(p, 'WHERE') ? parseWhere(p) : {};
+
+  return {
+    kind: 'write',
+    op: 'updateMany',
+    coll,
+    filter,
+    update: { $set: set },
+    // In SQL un UPDATE senza WHERE tocca tutta la tabella: è legittimo, ma va
+    // detto, perché su una collezione grande è un'operazione importante.
+    note: Object.keys(filter).length ? null : 'UPDATE senza WHERE: aggiornati TUTTI i documenti della collezione.',
+  };
+}
+
+// DELETE FROM coll [WHERE …]
+function traduciDelete(p) {
+  expectWord(p, 'FROM');
+  const coll = p.parseIdent();
+  const filter = p.eatKw('WHERE') || eatWord(p, 'WHERE') ? parseWhere(p) : {};
+  return {
+    kind: 'write',
+    op: 'deleteMany',
+    coll,
+    filter,
+    note: Object.keys(filter).length ? null : 'DELETE senza WHERE: cancellati TUTTI i documenti della collezione.',
+  };
+}
+
+// TRUNCATE [TABLE] coll
+function traduciTruncate(p) {
+  eatWord(p, 'TABLE');
+  const coll = p.parseIdent();
+  return { kind: 'write', op: 'deleteMany', coll, filter: {}, note: 'TRUNCATE: cancellati tutti i documenti (la collezione resta).' };
+}
+
+// CREATE TABLE coll (…) | CREATE DATABASE nome
+function traduciCreate(p) {
+  if (eatWord(p, 'DATABASE') || eatWord(p, 'SCHEMA')) {
+    eatWord(p, 'IF'); eatWord(p, 'NOT'); eatWord(p, 'EXISTS');
+    const db = p.parseIdent();
+    return {
+      kind: 'ddl',
+      op: 'createDatabase',
+      db,
+      note: 'Su MongoDB un database esiste quando contiene almeno una collezione: viene creata una collezione iniziale.',
+    };
+  }
+  if (eatWord(p, 'TABLE') || eatWord(p, 'COLLECTION')) {
+    eatWord(p, 'IF'); eatWord(p, 'NOT'); eatWord(p, 'EXISTS');
+    const coll = p.parseIdent();
+    // La definizione delle colonne viene letta e SCARTATA: su MongoDB non c'è
+    // uno schema da fissare. Lo si dice invece di far credere il contrario.
+    let note = null;
+    if (p.isPunct('(')) {
+      p.readParenGroup();
+      note = 'Le definizioni delle colonne sono state ignorate: le collezioni MongoDB non hanno uno schema fisso.';
+    }
+    return { kind: 'ddl', op: 'createCollection', coll, note };
+  }
+  if (eatWord(p, 'INDEX') || eatWord(p, 'UNIQUE')) {
+    throw new Error('CREATE INDEX non è tradotto: usa db.<collezione>.createIndex({ campo: 1 }) nella sintassi shell.');
+  }
+  const t = p.peek();
+  throw new Error(`CREATE non supportato${t ? ` per "${t.value}"` : ''}: sono tradotti CREATE TABLE e CREATE DATABASE.`);
+}
+
+// DROP TABLE coll | DROP DATABASE nome
+function traduciDrop(p) {
+  if (eatWord(p, 'DATABASE') || eatWord(p, 'SCHEMA')) {
+    eatWord(p, 'IF'); eatWord(p, 'EXISTS');
+    const db = p.parseIdent();
+    return { kind: 'ddl', op: 'dropDatabase', db };
+  }
+  if (eatWord(p, 'TABLE') || eatWord(p, 'COLLECTION')) {
+    eatWord(p, 'IF'); eatWord(p, 'EXISTS');
+    const coll = p.parseIdent();
+    return { kind: 'ddl', op: 'dropCollection', coll };
+  }
+  const t = p.peek();
+  throw new Error(`DROP non supportato${t ? ` per "${t.value}"` : ''}: sono tradotti DROP TABLE e DROP DATABASE.`);
+}
+
+module.exports = { translate, looksLikeSql, tokenize, translateWrite, looksLikeSqlWrite };

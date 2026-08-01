@@ -100,6 +100,7 @@ function fakeStrategy() {
     async docInsert(db, coll) { calls.push(['insert', db, coll]); return { inserted: 1 }; },
     async renameCollection(db, coll, newName) { calls.push(['rename', db, coll, newName]); return {}; },
     async collectionAggregate(db, coll, payload) { calls.push(['aggregate', payload.pipeline]); return { docs: [] }; },
+    async shellWrite(db, coll, payload) { calls.push(['shellWrite', db, coll, payload.op]); return { ok: 1 }; },
     async health() { return { latencyMs: 1 }; },
   };
 }
@@ -150,6 +151,44 @@ function fakeStrategy() {
   await assert.rejects(() => guardedViewerAgg.collectionAggregate('shop', 'orders', { pipeline: '[{"$out":"copia"}]' }),
     /Permesso negato/, 'pipeline di scrittura negata al viewer');
   console.log('  OK   Proxy autorizzante sulle strategie');
+
+  /* --- Scritture da SCRIPT (shellWrite) -------------------------------------- */
+  // Uno script MongoDB non deve essere una scorciatoia per i permessi: la
+  // capability dipende dall'OPERAZIONE richiesta, e cancellare resta distinto
+  // dallo scrivere anche quando la firma del metodo è la stessa.
+  {
+    const viewerScript = guardStrategy(fakeStrategy(), { principal: viewer, connName: 'prod' });
+    await assert.rejects(() => viewerScript.shellWrite('shop', 'orders', { op: 'insertOne', doc: '{}' }),
+      /Permesso negato/, 'insert da script negato al viewer');
+    await assert.rejects(() => viewerScript.shellWrite('shop', 'orders', { op: 'deleteMany', filter: '{}' }),
+      /Permesso negato/, 'delete da script negato al viewer');
+
+    // L'editor ha read+write ma NON delete: deve poter inserire e non cancellare.
+    const editorScript = guardStrategy(fakeStrategy(), { principal: editor, connName: 'prod' });
+    await editorScript.shellWrite('shop', 'orders', { op: 'insertOne', doc: '{}' });
+    await editorScript.shellWrite('shop', 'orders', { op: 'updateMany', filter: '{}', update: '{"$set":{}}' });
+    await assert.rejects(() => editorScript.shellWrite('shop', 'orders', { op: 'deleteMany', filter: '{}' }),
+      /Permesso negato/, 'deleteMany da script negato a chi non ha la capability delete');
+
+    // Lo scope vale come per le altre operazioni: fuori perimetro si nega.
+    // (`editor` qui sopra non ha scope, quindi serve un principal che ce l'ha.)
+    const editorConScope = guardStrategy(fakeStrategy(), {
+      principal: makePrincipal(
+        { _id: 'u4', type: 'subuser', ownerId: 'o1', email: 'es@x.it' },
+        [{ connName: 'prod', role: 'editor', capabilities: ['read', 'write'], scope: { databases: ['shop'], collections: ['orders*'] } }],
+      ),
+      connName: 'prod',
+    });
+    await editorConScope.shellWrite('shop', 'orders', { op: 'insertOne', doc: '{}' });
+    await assert.rejects(() => editorConScope.shellWrite('shop', 'customers', { op: 'insertOne', doc: '{}' }),
+      /Permesso negato/, 'scrittura da script fuori scope negata');
+
+    // Un'operazione sconosciuta ricade sulla capability più restrittiva invece
+    // di passare per assenza di mappatura.
+    await assert.rejects(() => editorScript.shellWrite('shop', 'orders', { op: 'operazioneStrana' }),
+      /Permesso negato/, 'operazione non mappata trattata come la più restrittiva');
+  }
+  console.log('  OK   Scritture da script soggette ai permessi (Fase C)');
 
   /* --- Scope e bersaglio vuoto (CDB-03) -------------------------------------- */
   // `matchesAny` distingue tre stati: undefined = operazione senza bersaglio

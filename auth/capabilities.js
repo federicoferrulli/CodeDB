@@ -58,6 +58,25 @@ function isWriteMongoPipeline(code) {
   return /"\$out"|"\$merge"/.test(String(code || ''));
 }
 
+// Capability per operazione della shell (metodo `shellWrite` delle strategie).
+// Cancellare è una capability distinta dallo scrivere, qui come altrove.
+const SHELL_WRITE_CAPABILITY = {
+  insertOne: 'write',
+  insertMany: 'write',
+  updateOne: 'write',
+  updateMany: 'write',
+  replaceOne: 'write',
+  findOneAndUpdate: 'write',
+  deleteOne: 'delete',
+  deleteMany: 'delete',
+  findOneAndDelete: 'delete',
+};
+
+/** Capability di una scrittura shell; operazione ignota = la più restrittiva. */
+function shellWriteCapability(op) {
+  return SHELL_WRITE_CAPABILITY[String(op || '')] || 'delete';
+}
+
 /* --- Eventi socket ---------------------------------------------------------- */
 
 // Solo gli eventi che toccano i dati o le connessioni salvate. Un evento assente
@@ -150,6 +169,12 @@ const METHOD_CAPABILITY = {
   watch:               { cap: 'read', db: 0, coll: 1, sync: true },
   watchSchema:         { cap: 'read', sync: true },
 
+  // Scritture della shell da uno script MongoDB: un metodo solo, capability
+  // decisa dall'OPERAZIONE nel payload (vedi SHELL_WRITE_CAPABILITY). Un
+  // `deleteMany` dentro uno script richiede quindi `delete` esattamente come
+  // dalla griglia: lo script non è una scorciatoia per i permessi.
+  shellWrite:          { cap: 'dynamic', kind: 'shellWrite', db: 0, coll: 1 },
+
   docInsert:           { cap: 'write', db: 0, coll: 1 },
   docUpdate:           { cap: 'write', db: 0, coll: 1 },
   docReplace:          { cap: 'write', db: 0, coll: 1 },
@@ -220,6 +245,8 @@ module.exports = {
   eventCapability,
   METHOD_CAPABILITY,
   CAPABILITY_LABEL,
+  SHELL_WRITE_CAPABILITY,
+  shellWriteCapability,
   globMatch,
   matchesAny,
 };

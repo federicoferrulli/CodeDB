@@ -3,6 +3,7 @@ import { socket } from './socket.js';
 import { tabs, switchTab, activeTab } from './tabs.js';
 import { switchCollTab, openCollTab } from './colltabs.js';
 import { runQuery } from './query-tab.js';
+import { knowsScriptRun, focusScriptRun, resumeScript } from './script-run.js';
 
 const STORAGE_KEY = 'codedb:pending';
 
@@ -97,7 +98,15 @@ export function trackPending(meta) {
     endedAt: null,
     elapsedMs: null,
     status: 'running',
-    error: null
+    error: null,
+    // Uno SCRIPT è una query in sospeso come le altre, ma con un avanzamento:
+    // `kind` distingue le due forme e i contatori alimentano la barra di
+    // progresso nella scheda del registro.
+    kind: meta.kind === 'script' ? 'script' : 'query',
+    total: meta.total || 0,
+    cursor: 0,
+    eseguiti: 0,
+    falliti: 0
   };
 
   pendingQueries.unshift(item);
@@ -127,6 +136,46 @@ export function trackPending(meta) {
       }
     }
   };
+}
+
+/**
+ * Aggiorna la voce di uno SCRIPT con lo stato che arriva dal server
+ * (`script:progress`). Uno script completato SENZA errori sparisce dal
+ * registro come una query riuscita; se qualcosa è fallito resta, perché è
+ * proprio quello che l'utente deve poter ritrovare.
+ */
+export function updateScriptProgress(runId, stato) {
+  const q = pendingQueries.find((x) => x.runId === runId || x.id === runId);
+  if (!q || !stato) return;
+
+  q.total = stato.total != null ? stato.total : q.total;
+  q.cursor = stato.cursor != null ? stato.cursor : q.cursor;
+  q.eseguiti = stato.eseguiti != null ? stato.eseguiti : q.eseguiti;
+  q.falliti = stato.falliti != null ? stato.falliti : q.falliti;
+
+  if (stato.status === 'running') {
+    q.status = 'running';
+  } else if (stato.status === 'paused') {
+    q.status = 'paused';
+  } else if (stato.status === 'aborted') {
+    q.status = 'abbandonata';
+    q.endedAt = Date.now();
+    q.elapsedMs = q.endedAt - q.startedAt;
+  } else if (stato.status === 'done') {
+    q.endedAt = Date.now();
+    q.elapsedMs = q.endedAt - q.startedAt;
+    if (q.falliti) {
+      q.status = 'error';
+      const primo = (stato.results || []).find((r) => !r.ok && !r.interrupted);
+      q.error = `${q.falliti} istruzioni fallite${primo ? ` — riga ${primo.line}: ${primo.error}` : ''}`;
+    } else {
+      const idx = pendingQueries.findIndex((x) => x.id === q.id);
+      if (idx !== -1) pendingQueries.splice(idx, 1);
+    }
+  }
+
+  save();
+  notify();
 }
 
 export function markPaused(runId) {
@@ -266,8 +315,10 @@ let lastRenderedStart = -1;
 let lastRenderedEnd = -1;
 
 function getItemHeight(item) {
-  // Se la scheda contiene un banner di errore, richiede maggiore altezza (185px vs 145px)
-  return item && item.error ? 185 : 145;
+  // Se la scheda contiene un banner di errore, richiede maggiore altezza (185px vs 145px);
+  // gli script aggiungono la riga di avanzamento (barra + contatori).
+  const base = item && item.error ? 185 : 145;
+  return base + (item && item.kind === 'script' ? 34 : 0);
 }
 
 function computeYPositions(items) {
@@ -325,6 +376,22 @@ export function forceResetVScroll() {
   renderedCards.clear();
 }
 
+// Avanzamento di uno script: è l'informazione che rende utile la ripresa —
+// senza, "riprendi" non direbbe da dove.
+function buildScriptProgressHtml(item) {
+  const total = item.total || 0;
+  const eseguiti = Math.min(item.eseguiti || 0, total);
+  const pct = total ? Math.round((eseguiti / total) * 100) : 0;
+  const daDove = item.status === 'paused' && total
+    ? ` — riprende dall'istruzione ${Math.min((item.cursor || 0) + 1, total)}`
+    : '';
+  return `
+      <div class="pending-script-progress">
+        <div class="pending-progress-track"><div class="pending-progress-fill" style="width:${pct}%"></div></div>
+        <span class="pending-progress-text">📜 ${eseguiti}/${total} istruzioni${item.falliti ? ` · ${item.falliti} errori` : ''}${daDove}</span>
+      </div>`;
+}
+
 function buildPendingCard(item, index) {
   const isStopPoint = index === 0 && !$('#pending-search-input')?.value.trim();
   const dateStr = item.startedAt ? new Date(item.startedAt).toLocaleTimeString() : '';
@@ -361,12 +428,14 @@ function buildPendingCard(item, index) {
 
       ${item.error ? `<div class="pending-error" title="${esc(item.error)}">⚠️ ${esc(item.error)}</div>` : ''}
 
+      ${item.kind === 'script' ? buildScriptProgressHtml(item) : ''}
+
       <div class="pending-code-wrap">
         <pre class="pending-code"><code>${esc(item.code)}</code></pre>
       </div>
 
       <div class="pending-actions">
-        <button type="button" class="btn btn-sm btn-primary btn-resume-pending" data-id="${esc(item.id)}">▶ Riprendi</button>
+        <button type="button" class="btn btn-sm btn-primary btn-resume-pending" data-id="${esc(item.id)}">${item.kind === 'script' && item.status === 'paused' ? '▶ Riprendi da dov\'era' : '▶ Riprendi'}</button>
         <button type="button" class="btn btn-sm btn-secondary btn-copy-pending" data-id="${esc(item.id)}">📋 Copia</button>
         <button type="button" class="btn btn-sm btn-secondary btn-resolve-pending" data-id="${esc(item.id)}">✔ Segna risolta</button>
         <button type="button" class="btn btn-sm btn-danger btn-remove-pending" data-id="${esc(item.id)}">🗑 Rimuovi</button>
@@ -531,6 +600,23 @@ export function renderPendingModalList() {
 export function resumePendingQuery(id) {
   const item = pendingQueries.find((x) => x.id === id);
   if (!item) return;
+
+  // Uno SCRIPT non si "rilancia": si RIPRENDE dal cursore che il server ha
+  // conservato, altrimenti si rieseguirebbero istruzioni già applicate (per un
+  // INSERT significa duplicare). La ripresa vale finché il run esiste ancora
+  // lato server: dopo un F5 o una riconnessione la pagina non lo conosce più e
+  // si ricade sul comportamento normale (ricaricare il codice nell'editor).
+  if (item.kind === 'script' && item.status === 'paused' && knowsScriptRun(item.runId)) {
+    const modaleScript = $('#modal-pending');
+    if (modaleScript) modaleScript.classList.add('hidden');
+    if (item.tabId && tabs.list.some((t) => t.id === item.tabId)) switchTab(item.tabId);
+    focusScriptRun(item.runId);
+    resumeScript(item.runId);
+    return;
+  }
+  if (item.kind === 'script' && !knowsScriptRun(item.runId)) {
+    toast('Lo script non è più in esecuzione su questa sessione: il codice viene ricaricato nell\'editor.');
+  }
 
   // 1. Attiva il tab di connessione se esiste
   if (item.tabId && tabs.list.some((t) => t.id === item.tabId)) {

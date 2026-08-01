@@ -710,11 +710,16 @@ class MongoDbStrategy extends DbStrategy {
     const aggOpts = {};
     if (runComment) aggOpts.comment = runComment;
 
-    const cursor = client
-      .db(db)
-      .collection(coll)
-      .aggregate(pipeline, aggOpts)
-      .limit(cap);
+    // `$out`/`$merge` DEVONO restare l'ultimo stage: applicare `.limit()` come
+    // per le letture vi accodava un `$limit` e MongoDB rifiutava la pipeline
+    // ("$out can only be the final stage"), rendendo impossibile l'unica
+    // scrittura via pipeline che il Query Engine dichiara di supportare.
+    // Del resto queste pipeline non restituiscono documenti: il tetto è inutile.
+    const ultimo = pipeline.length ? Object.keys(pipeline[pipeline.length - 1] || {})[0] : null;
+    const materializza = ultimo === '$out' || ultimo === '$merge';
+
+    const agg = client.db(db).collection(coll).aggregate(pipeline, aggOpts);
+    const cursor = materializza ? agg : agg.limit(cap);
     // Come nella find: si smette di leggere al tetto delle righe o dei byte.
     const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap);
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
@@ -829,6 +834,87 @@ class MongoDbStrategy extends DbStrategy {
     const _id = parseId(payload.id);
     const res = await client.db(db).collection(coll).deleteOne({ _id });
     return { deleted: res.deletedCount };
+  }
+
+  /**
+   * Scritture della shell eseguite da uno SCRIPT (db/MongoScriptRunner.js).
+   *
+   * Un metodo solo, con l'operazione nel payload, invece di dieci metodi nuovi:
+   * così c'è **un unico punto** da autorizzare (`METHOD_CAPABILITY.shellWrite`,
+   * capability decisa dall'operazione) e le scritture dello script non possono
+   * scavalcare il Proxy per una svista.
+   *
+   * Non è un doppione di docInsert/docUpdate: quelli servono la griglia e
+   * lavorano su un `_id` singolo con `$set`, mentre qui servono filtri e
+   * operatori di aggiornamento arbitrari, che sono il senso di uno script.
+   */
+  async shellWrite(db, coll, payload) {
+    const client = this.requireClient();
+    const c = client.db(db).collection(coll);
+    const op = String(payload.op || '');
+    const filtro = () => parseQueryObject(payload.filter, {});
+    const opzioni = () => parseQueryObject(payload.options, {}) || {};
+
+    // Un "aggiornamento" senza operatori ($set, $inc…) sostituirebbe l'intero
+    // documento: in mongosh è un errore, e qui lo è a maggior ragione — è la
+    // differenza fra correggere un campo e cancellare tutti gli altri.
+    const aggiornamento = () => {
+      const u = parseQueryObject(payload.update, null);
+      if (!u || typeof u !== 'object' || Array.isArray(u)) {
+        throw new Error('Aggiornamento non valido: serve un oggetto con operatori (es. { $set: { … } }).');
+      }
+      if (!Object.keys(u).some((k) => k.startsWith('$'))) {
+        throw new Error('Aggiornamento senza operatori: usa { $set: { … } }. Per sostituire l\'intero documento serve replaceOne().');
+      }
+      return u;
+    };
+
+    switch (op) {
+      case 'insertOne': {
+        const doc = parseQueryObject(payload.doc, null);
+        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('insertOne richiede un documento.');
+        const res = await c.insertOne(doc);
+        return { acknowledged: true, insertedId: EJSON.stringify(res.insertedId), inserted: 1 };
+      }
+      case 'insertMany': {
+        const docs = parseQueryObject(payload.docs, null);
+        if (!Array.isArray(docs) || !docs.length) throw new Error('insertMany richiede un array di documenti non vuoto.');
+        const res = await c.insertMany(docs);
+        return { acknowledged: true, inserted: res.insertedCount };
+      }
+      case 'updateOne': {
+        const res = await c.updateOne(filtro(), aggiornamento(), opzioni());
+        return { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
+      }
+      case 'updateMany': {
+        const res = await c.updateMany(filtro(), aggiornamento(), opzioni());
+        return { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
+      }
+      case 'replaceOne': {
+        const doc = parseQueryObject(payload.doc, null);
+        if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('replaceOne richiede un documento.');
+        const res = await c.replaceOne(filtro(), doc, opzioni());
+        return { matched: res.matchedCount, modified: res.modifiedCount };
+      }
+      case 'deleteOne': {
+        const res = await c.deleteOne(filtro());
+        return { deleted: res.deletedCount };
+      }
+      case 'deleteMany': {
+        const res = await c.deleteMany(filtro());
+        return { deleted: res.deletedCount };
+      }
+      case 'findOneAndUpdate': {
+        const res = await c.findOneAndUpdate(filtro(), aggiornamento(), opzioni());
+        return { doc: res && res.value ? serialize(res.value) : null };
+      }
+      case 'findOneAndDelete': {
+        const res = await c.findOneAndDelete(filtro(), opzioni());
+        return { doc: res && res.value ? serialize(res.value) : null };
+      }
+      default:
+        throw new Error(`Operazione di scrittura non supportata: "${op}".`);
+    }
   }
 
   async collectionDeleteMany(db, coll, payload) {
