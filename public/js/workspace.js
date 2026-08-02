@@ -3,9 +3,9 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
-import { renderDbTree, refreshDbTree } from './dbtree.js';
+import { renderDbTree, refreshDbTree, collWord } from './dbtree.js';
 import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
-import { renderCollTabBar } from './colltabs.js';
+import { renderCollTabBar, applyViewTabsFor } from './colltabs.js';
 import { deactivateSplitView, renderSplitView, discardSplitViewIfOrphan } from './splitview.js';
 import { setView } from './main.js';
 
@@ -89,6 +89,24 @@ export function renderWorkspace() {
   $('#live-badge').classList.toggle('hidden', !state.watching);
   $('#polling-toggle').classList.toggle('hidden', !state.pollingShown);
   $('#polling-checkbox').checked = !!state.pollingInterval;
+
+  // Tab a livello database (database senza collection): il workspace va
+  // mostrato lo stesso, con la sola tab ⚡ Query & Aggregate.
+  const activeCt = tab.state.collTabs.find((c) => c.id === tab.state.activeCollId);
+  applyViewTabsFor(activeCt);
+  if (activeCt && activeCt.isDbTab) {
+    // Lo stato di norma è già quello lasciato da `activate()`, ma dopo un
+    // ripristino di sessione questo render precede la prima attivazione: senza
+    // il bersaglio la tab Query direbbe "nessun database selezionato".
+    state.db = activeCt.db;
+    state.coll = null;
+    if (!state.queryDb) state.queryDb = activeCt.db;
+    $('#breadcrumb').textContent = `${activeCt.db} ▸ (nessuna ${collWord()})`;
+    $('#placeholder').classList.add('hidden');
+    $('#workspace').classList.remove('hidden');
+    setView('query');
+    return;
+  }
 
   if (state.db && state.coll) {
     $('#breadcrumb').textContent = `${state.db} ▸ ${state.coll}`;

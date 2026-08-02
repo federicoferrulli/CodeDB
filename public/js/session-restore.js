@@ -35,6 +35,10 @@ function collTabInputs(t, c) {
     };
   }
 
+  // Tab a livello database (database senza collection): non ha input di griglia
+  // né snapshot, basta sapere su quale database era aperto.
+  if (c.isDbTab) return { id: c.id, isDbTab: true, db: c.db, coll: null, view: 'query' };
+
   const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
   if (activeNow) {
     return {
@@ -125,6 +129,9 @@ function reconnectTab(info) {
             snap: null,
             splitSnap: c.splitSnap,
           };
+        }
+        if (c.isDbTab) {
+          return { id: c.id || safeUUID(), db: c.db, coll: null, isDbTab: true, snap: null };
         }
         return {
           id: c.id || safeUUID(),

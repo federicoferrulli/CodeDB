@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID } from './utils.js';
+import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType } from './utils.js';
 import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
@@ -15,14 +15,32 @@ import { markAbandonedByCollTab } from './pending-queries.js';
 // risultati e vista, ripristinato quando lo si riattiva; mentre è attivo la
 // verità è il DOM/stato piatto, lo snapshot si aggiorna al cambio.
 
-function currentCollTab() {
+export function currentCollTab() {
   const t = activeTab();
   return t ? t.state.collTabs.find((c) => c.id === t.state.activeCollId) : null;
 }
 
+// Copia locale di `collWord()` (dbtree.js): importarla creerebbe il ciclo
+// colltabs → dbtree → grid → colltabs solo per una parola.
+function parolaColl() {
+  return isSqlType(state.dbType) ? 'tabella' : 'collection';
+}
+
+// Un coll-tab "a livello database" (`isDbTab`) non ha una collection: serve ai
+// database ancora VUOTI, dove prima non si poteva aprire nulla e quindi non si
+// riusciva nemmeno a creare la prima tabella con una query. Ha la sola vista
+// ⚡ Query & Aggregate: le altre (Dati, Dettagli, UML, Grafo 3D) descrivono una
+// collection che qui non esiste.
+export function applyViewTabsFor(ct) {
+  const soloQuery = !!(ct && ct.isDbTab);
+  document.querySelectorAll('.view-tab').forEach((el) => {
+    el.classList.toggle('hidden', soloQuery && el.dataset.view !== 'query');
+  });
+}
+
 function saveActiveSnapshot() {
   const ct = currentCollTab();
-  if (!ct || ct.isSplitTab) return;
+  if (!ct || ct.isSplitTab || ct.isDbTab) return;
   ct.snap = {
     filter: $('#filter-input')?.value || '',
     sort: $('#sort-input')?.value || '',
@@ -53,11 +71,45 @@ function activate(ct, { fresh }) {
   if (ct.isSplitTab) {
     renderCollTabBar();
     markTreeSelection();
+    applyViewTabsFor(ct);
     renderSplitView();
     return;
   }
 
   deactivateSplitView();
+
+  // Tab a livello database (nessuna collection): niente griglia, niente watch,
+  // niente snapshot — solo la tab Query & Aggregate puntata su questo database.
+  if (ct.isDbTab) {
+    state.db = ct.db;
+    state.coll = null;
+    state.queryDb = ct.db;
+    state.queryColl = null;
+    state.watching = false;
+    state.selectedDocs.clear();
+    // Il change stream e l'auto-refresh appartenevano alla collection lasciata:
+    // qui non c'è nulla da aggiornare. Senza questo l'intervallo di polling
+    // continuava a scattare ogni 5 s a vuoto (`runQuery` esce subito senza
+    // `state.coll`) finché non si riapriva una collection. La casella NON viene
+    // deselezionata: tornando sul suo coll-tab `startWatch` la rilegge e il
+    // polling riparte da solo.
+    emitFireAndForget('collection:unwatch');
+    if (state.pollingInterval) {
+      clearInterval(state.pollingInterval);
+      state.pollingInterval = null;
+    }
+    $('#live-badge').classList.add('hidden');
+    $('#polling-toggle').classList.add('hidden');
+    $('#breadcrumb').textContent = `${ct.db} ▸ (nessuna ${parolaColl()})`;
+    $('#placeholder').classList.add('hidden');
+    $('#workspace').classList.remove('hidden');
+    renderCollTabBar();
+    markTreeSelection();
+    applyViewTabsFor(ct);
+    setView('query');
+    return;
+  }
+  applyViewTabsFor(ct);
 
   state.db = ct.db;
   state.coll = ct.coll;
@@ -155,6 +207,22 @@ export function openCollTab(db, coll) {
   }
 }
 
+// Apre (o riattiva) il tab a livello database: l'unico modo di lavorare su un
+// database senza collection, dove non c'è niente da cliccare nella sidebar.
+export function openDbTab(db) {
+  const t = activeTab();
+  if (!t || !t.state.connected) return;
+  saveActiveSnapshot();
+  let ct = t.state.collTabs.find((c) => c.isDbTab && c.db === db);
+  if (!ct) {
+    ct = { id: safeUUID(), db, coll: null, isDbTab: true, snap: null };
+    t.state.collTabs.push(ct);
+    activate(ct, { fresh: true });
+  } else if (ct.id !== t.state.activeCollId) {
+    activate(ct, { fresh: false });
+  }
+}
+
 export function switchCollTab(id) {
   const t = activeTab();
   if (!t || id === t.state.activeCollId) return;
@@ -238,6 +306,7 @@ function clearCollWorkspace() {
   $('#placeholder').classList.remove('hidden');
   $('#live-badge').classList.add('hidden');
   $('#polling-toggle').classList.add('hidden');
+  applyViewTabsFor(null); // le viste nascoste da un eventuale tab-database tornano visibili
   renderCollTabBar();
   markTreeSelection();
 }
@@ -264,10 +333,12 @@ export function renderCollTabBar() {
   for (const ct of list) {
     const el = document.createElement('div');
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '');
-    el.title = `${ct.db} ▸ ${ct.coll}`;
+    el.title = ct.isDbTab
+      ? `${ct.db} — solo Query & Aggregate (nessuna ${parolaColl()})`
+      : `${ct.db} ▸ ${ct.coll}`;
 
     const name = document.createElement('span');
-    name.textContent = ct.coll;
+    name.textContent = ct.isDbTab ? `⚡ ${ct.db}` : ct.coll;
 
     const close = document.createElement('button');
     close.type = 'button';
@@ -285,7 +356,11 @@ export function renderCollTabBar() {
     });
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      showContextMenu(e.clientX, e.clientY, [
+      // Il tab-database non ha una collection: split-view ed export/import,
+      // che lavorano su una collection, non hanno bersaglio.
+      showContextMenu(e.clientX, e.clientY, ct.isDbTab ? [
+        { label: '✕ Chiudi tab', action: () => closeCollTab(ct.id) },
+      ] : [
         { label: '🔲 Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
         '---',
         ...exportImportMenuItems(ct.db, ct.coll),
@@ -300,7 +375,9 @@ export function renderCollTabBar() {
       (fromId, toId) => {
         if (reorderById(t.state.collTabs, fromId, toId)) renderCollTabBar();
       },
-      () => ({ db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id })
+      // Il payload serve a trascinare la collection in un pannello affiancato:
+      // un tab-database non ne ha una, quindi resta solo riordinabile.
+      () => (ct.isDbTab ? null : { db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id })
     );
 
     el.append(name, close);

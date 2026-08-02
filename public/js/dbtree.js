@@ -6,6 +6,7 @@ import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } 
 import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
 import { addOrSplitPane } from './splitview.js';
 import { activeTab } from './tabs.js';
+import { openDbTab } from './colltabs.js';
 
 export function collWord(capital) {
   const w = isSqlType(state.dbType) ? 'tabella' : 'collection';
@@ -73,6 +74,10 @@ export function renderDbTree(databases) {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
+        // Utile soprattutto sui database vuoti, dove non c'è alcuna collection
+        // da aprire e quindi nessun modo di raggiungere il Query Engine.
+        { label: `⚡ Query & Aggregate su questo ${dbWord()}`, action: () => openDbTab(db.name) },
+        '---',
         { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
         { label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
@@ -102,7 +107,37 @@ export function renderDbTree(databases) {
 
 export function renderCollectionsList(dbName, container, collections) {
   container.innerHTML = '';
-  if (!collections || collections.length === 0) return;
+  // Database vuoto: prima non compariva NULLA sotto il nodo espanso, quindi non
+  // si distingueva un database senza tabelle da uno ancora in caricamento, e
+  // soprattutto non c'era niente da cliccare — nemmeno per creare la prima
+  // tabella con una query. Ora lo si dice, e si offrono le due vie d'uscita.
+  if (!collections || collections.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'node-empty';
+
+    const msg = document.createElement('div');
+    msg.className = 'node-empty-msg';
+    msg.textContent = `Nessuna ${collWord()} in questo ${dbWord()}.`;
+    li.appendChild(msg);
+
+    const query = document.createElement('button');
+    query.type = 'button';
+    query.className = 'node-empty-action';
+    query.textContent = `⚡ Apri Query & Aggregate`;
+    query.title = `Esegui query sul ${dbWord()} "${dbName}" senza aprire una ${collWord()}`;
+    query.addEventListener('click', (e) => { e.stopPropagation(); openDbTab(dbName); });
+    li.appendChild(query);
+
+    const crea = document.createElement('button');
+    crea.type = 'button';
+    crea.className = 'node-empty-action';
+    crea.textContent = `＋ Nuova ${collWord()}…`;
+    crea.addEventListener('click', (e) => { e.stopPropagation(); openCreateColl(dbName); });
+    li.appendChild(crea);
+
+    container.appendChild(li);
+    return;
+  }
 
   const frag = document.createDocumentFragment();
   for (const coll of collections) {

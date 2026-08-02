@@ -1,0 +1,592 @@
+{
+  "progetto": "CodeDB",
+  "branch": "production-ready",
+  "data": "2026-08-02",
+  "origine": "Findings ancora aperti di docs/audit-2026-07-31.json (24 Media + 14 Bassa) piu 6 voci di processo aggiunte il 2026-08-02.",
+  "stato_verifica": {
+    "eseguito_il_2026_08_02": [
+      "npm test: 180 asserzioni verdi, exit 0",
+      "node test/e2e.js su MongoDB reale: TUTTI I TEST SUPERATI, exit 0",
+      "node --check su tutti gli 80 file backend: nessun errore di sintassi"
+    ],
+    "nota": "Le 6 Critiche e le 20 Alte dell'audit del 31/7 risultano corrette e coperte da test di regressione che citano gli id (CDB-02, CDB-03, CDB-05, CDB-44). I task qui sotto sono cio che resta. Il campo 'verifica' dice quali ho ricontrollato oggi sul codice e quali sono ereditati dall'audit senza rilettura."
+  },
+  "riepilogo": {
+    "totale": 44,
+    "per_severita": { "media": 24, "bassa": 14, "processo": 6 },
+    "per_blocco": {
+      "blocco-1-backup-restore": 10,
+      "blocco-2-rbac-e-audit": 4,
+      "blocco-3-frontend-correttezza": 9,
+      "blocco-4-resilienza-server": 5,
+      "blocco-5-hardening-minore": 10,
+      "blocco-6-processo": 6
+    }
+  },
+  "ordine_consigliato": [
+    "blocco-1-backup-restore",
+    "blocco-2-rbac-e-audit",
+    "blocco-6-processo",
+    "blocco-3-frontend-correttezza",
+    "blocco-4-resilienza-server",
+    "blocco-5-hardening-minore"
+  ],
+  "blocchi": [
+    {
+      "id": "blocco-1-backup-restore",
+      "titolo": "Backup e ripristino",
+      "priorita": 1,
+      "motivo": "E il percorso di recupero: qui un errore non si manifesta quando accade, ma il giorno in cui serve il restore. Tre voci su dieci sono perdita di dati silenziosa.",
+      "task": [
+        {
+          "id": "CDB-30",
+          "titolo": "Restore MySQL: le colonne sono dedotte dalla prima riga del file",
+          "severita": "Media",
+          "categoria": "perdita di dati silenziosa",
+          "moduli": ["backup/lib/restore.js"],
+          "riferimento": "backup/lib/restore.js:151-169 (restoreLayerMySql)",
+          "azione": "Raggruppare per firma delle colonne come gia fa MySqlStrategy.collectionImport (cur.sig = cols.join('\\u0000')), oppure ricalcolare columns quando l'insieme cambia facendo flush del batch precedente.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-32",
+          "titolo": "Backup incrementali con risoluzione al secondo: documenti persi al confine",
+          "severita": "Media",
+          "categoria": "integrita del backup incrementale",
+          "moduli": ["backup/lib/engine.js"],
+          "riferimento": "backup/lib/engine.js:65-75 (dumpMongo), 137-149 (dumpMySql)",
+          "azione": "Arrotondare 'since' per difetto di un secondo prima di costruire il filtro (qualche documento duplicato e accettabile: i layer successivi al primo sono upsert, quindi idempotenti) e documentare che la finestra di sovrapposizione e voluta.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-60",
+          "titolo": "Il ripristino non verifica la connessione di destinazione e ricade in silenzio sul database originale",
+          "severita": "Media",
+          "categoria": "operazione distruttiva / conferme deboli",
+          "moduli": ["public/js/backupmanager.js"],
+          "riferimento": "public/js/backupmanager.js:275-305 (promptRestoreBackup, executeRestore)",
+          "azione": "Trattare il campo vuoto come annullamento, non come default. Sostituire prompt/confirm con una modale che mostri connessione di origine del backup, connessione di destinazione corrente e database di destinazione, e che richieda la digitazione del nome del database per confermare il drop. Confrontare manifest.connection col connName della sessione e chiedere conferma esplicita quando differiscono.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-47",
+          "titolo": "Il lock del catalogo blocca l'event loop con Atomics.wait e forza i lock altrui",
+          "severita": "Media",
+          "categoria": "prestazioni / blocco dell'event loop",
+          "moduli": ["backup/lib/util.js"],
+          "riferimento": "backup/lib/util.js:144 (acquireCatalogLock)",
+          "azione": "Rendere l'acquisizione asincrona (await new Promise(r => setTimeout(r, 20)) nel ciclo di retry) cosi l'event loop resta libero; considerare stantio un lock in base all'eta del file (fs.statSync().mtimeMs) e non al tempo di attesa del richiedente, cosi un'operazione lunga ma viva non viene mai scavalcata.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "confermato aperto il 2026-08-02 (Atomics.wait presente a backup/lib/util.js:144)"
+        },
+        {
+          "id": "CDB-40",
+          "titolo": "Lo stream di dump MySQL non viene distrutto in caso di errore",
+          "severita": "Media",
+          "categoria": "resource leak",
+          "moduli": ["backup/lib/engine.js"],
+          "riferimento": "backup/lib/engine.js:151-169 (dumpMySql)",
+          "azione": "Racchiudere il ciclo in try/finally e chiamare stream.destroy() nel finally, come raccomandato da mysql2 per interrompere un result set in streaming.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-29",
+          "titolo": "resolveChain usa il baseId del manifest per costruire un percorso",
+          "severita": "Media",
+          "categoria": "path traversal",
+          "moduli": ["backup/lib/restore.js"],
+          "riferimento": "backup/lib/restore.js:24-42 (resolveChain)",
+          "azione": "Validare baseId con lo stesso /^[\\w.-]+$/ usato in server.js e verificare che path.resolve(parent, baseId) resti dentro parent prima di leggerlo.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-56",
+          "titolo": "Un catalog.json corrotto viene silenziosamente trattato come vuoto",
+          "severita": "Bassa",
+          "categoria": "perdita silenziosa di metadati",
+          "moduli": ["backup/lib/util.js", "backup/lib/engine.js"],
+          "riferimento": "backup/lib/util.js:90-96 (readCatalog), backup/lib/engine.js:41-51 (resolveBase)",
+          "azione": "Distinguere i due casi: ENOENT restituisce { backups: [] }, qualsiasi altro errore lancia con un messaggio che nomina il file. Prima di riscrivere un catalogo non parsabile, rinominarlo in catalog.json.corrotto-<timestamp> cosi i dati restano recuperabili.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-53",
+          "titolo": "Id di backup con risoluzione al secondo e in ora locale",
+          "severita": "Bassa",
+          "categoria": "edge case / identificatori",
+          "moduli": ["backup/lib/util.js", "backup/lib/engine.js"],
+          "riferimento": "backup/lib/util.js:81-86 (makeBackupId), backup/lib/engine.js:299-301",
+          "azione": "Usare UTC e aggiungere i millisecondi o un suffisso casuale breve all'id; in resolveBase e in list ordinare esplicitamente per startedAt (gia ISO/UTC nel manifest) e mai per nome di cartella.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-54",
+          "titolo": "Livello di compressione predefinito diverso fra CLI e interfaccia",
+          "severita": "Bassa",
+          "categoria": "incoerenza di configurazione",
+          "moduli": ["backup/cli.js", "server.js"],
+          "riferimento": "backup/cli.js:54 (help), 141 (default 6), server.js:1770 (default 1)",
+          "azione": "Definire il livello di default in un solo punto condiviso (costante esportata da backup/lib/engine.js) e usarlo in entrambi i percorsi; esporre il livello nella UI del backup se si vuole lasciare la scelta.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-50",
+          "titolo": "La CLI di backup ignora l'isolamento per tenant delle connessioni",
+          "severita": "Media",
+          "categoria": "coerenza architetturale / multi-tenant",
+          "moduli": ["backup/lib/connstore.js"],
+          "riferimento": "backup/lib/connstore.js:19-20, 88-112; server.js:210-218 (connectionsFileFor)",
+          "azione": "Aggiungere alla CLI l'opzione --owner <id|email> (o la lettura di CODEDB_OWNER_ID) e replicare in connstore.js la stessa risoluzione di connectionsFileFor; in mancanza dell'indicazione, se esistono file in data/conns/ elencarli in un messaggio esplicativo invece del generico 'non trovata'.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        }
+      ]
+    },
+    {
+      "id": "blocco-2-rbac-e-audit",
+      "titolo": "RBAC e tracciamento",
+      "priorita": 2,
+      "motivo": "Un permesso che sembra concesso ma non funziona (CDB-48) e peggio di un permesso assente, e uno scope non impostabile dalla UI (CDB-49) rende inutilizzabile il motore che gia funziona.",
+      "task": [
+        {
+          "id": "CDB-48",
+          "titolo": "Il ruolo admin e inerte: nessun sottoutente potra mai amministrare",
+          "severita": "Media",
+          "categoria": "RBAC / funzionalita dichiarata assente",
+          "moduli": ["auth/permissions.js", "auth/principal.js", "server.js", "public/js/auth.js"],
+          "riferimento": "auth/principal.js:52 (capabilities: isOwner ? ALL : []), auth/permissions.js:38 (!connName -> false), server.js:719-724 (assertManage), auth/AppStore.js:25-30 (SEED_ROLES.admin), public/js/auth.js:24-26",
+          "azione": "Decidere l'intento e allinearlo. Se la delega deve esistere: capability di tenant (non per connessione), memorizzata sull'utente e non nel grant, letta sia da makePrincipal sia da assertManage. Se non deve esistere: rimuovere 'admin' da SEED_ROLES e dalla tendina, e documentare che l'amministrazione e riservata all'owner.",
+          "sforzo": "medio",
+          "stato": "aperto",
+          "verifica": "confermato aperto il 2026-08-02: 'admin' compare solo in auth/AppStore.js:23,27 (definizione del ruolo), in nessun punto di verifica"
+        },
+        {
+          "id": "CDB-49",
+          "titolo": "Lo scope per database non e selezionabile dall'interfaccia dei permessi",
+          "severita": "Media",
+          "categoria": "UI incompleta / RBAC",
+          "moduli": ["public/js/admin-rbac.js", "public/index.html"],
+          "riferimento": "public/js/admin-rbac.js:156-161 (renderPillMultiselects), 341-343, public/index.html:1508-1519",
+          "azione": "Popolare le pill dei database alla scelta della connessione, oppure (soluzione minima e immediata) sostituire le pill con un campo di testo libero identico a quello delle collezioni, che accetta glob separati da virgola.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-16",
+          "titolo": "query:execute in modalita crossdb: capability e audit sempre 'lettura'",
+          "severita": "Media",
+          "categoria": "audit / bypass parziale",
+          "moduli": ["server.js", "db/VirtualJoinEngine.js"],
+          "riferimento": "server.js:1480-1495, VirtualJoinEngine.js:70-79, 119-126",
+          "azione": "Classificare anche il ramo crossdb con isWriteSql su sourceA.query e sourceB.query per decidere category e op; ignorare sourceX.dbType proveniente dal client e usare sempre strategy.type.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-19",
+          "titolo": "Rate-limit del login inefficace dietro reverse proxy e mappe non potate",
+          "severita": "Media",
+          "categoria": "DoS / rate limiting",
+          "moduli": ["server.js"],
+          "riferimento": "server.js:1583-1600 (POST /auth/login, loginBlocked/noteLoginFailure), 763-782, 894-909",
+          "azione": "app.set('trust proxy', process.env.TRUST_PROXY || 'loopback'); chiave di rate-limit su ip + email invece del solo IP; setInterval(...).unref() che elimina le voci piu vecchie di LOGIN_LOCK_MS.",
+          "sforzo": "basso",
+          "stato": "aperto (parziale)",
+          "verifica": "confermato il 2026-08-02: il rate-limit esiste ed e agganciato a /auth/login, ma la chiave resta il solo IP e non c'e trust proxy"
+        }
+      ]
+    },
+    {
+      "id": "blocco-3-frontend-correttezza",
+      "titolo": "Frontend: correttezza e stato condiviso",
+      "priorita": 3,
+      "motivo": "E la meta meno verificata del progetto: il backend ha 180 asserzioni, la UI zero. Sono i bug che l'utente incontra per primo.",
+      "task": [
+        {
+          "id": "CDB-52",
+          "titolo": "Il documento in modifica vive nello stato del tab attivo: il salvataggio puo non fare nulla",
+          "severita": "Media",
+          "categoria": "bug logico frontend / stato condiviso",
+          "moduli": ["public/js/inlineEdit.js"],
+          "riferimento": "public/js/inlineEdit.js:138-152 (openEditDoc), 157-168 (salvataggio)",
+          "azione": "Conservare il documento in una variabile di modulo insieme al contesto (tabId, db, coll), come gia fa editDocContext, invece che nello stato del tab; in subordine mostrare un errore esplicito quando il documento non e piu disponibile e chiudere la modale al cambio di tab.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-20",
+          "titolo": "skip e cursore keyset divergono: intervallo di pagina errato",
+          "severita": "Media",
+          "categoria": "bug logico frontend / paginazione",
+          "moduli": ["public/js/grid.js"],
+          "riferimento": "public/js/grid.js:200-206, 617-648, 842-864",
+          "azione": "Quando la risposta ha keyset: true, abbandonare il ragionamento per offset: mantenere una pila di cursori e un pageIndex, impostare state.skip = null e mostrare nel footer 'pagina N' invece dell'intervallo numerico.",
+          "sforzo": "medio",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-51",
+          "titolo": "Le scritture di massa vengono emesse tutte insieme senza limite di concorrenza",
+          "severita": "Media",
+          "categoria": "prestazioni / saturazione del pool",
+          "moduli": ["public/js/cellselect.js", "public/js/grid.js"],
+          "riferimento": "public/js/cellselect.js:500-505 (pasteIntoGrid), public/js/grid.js:733-746 (deleteSelectedDocs)",
+          "azione": "Helper condiviso che esegue le promesse a finestra limitata (concorrenza 4-8) con avanzamento, usato in entrambi i punti; meglio ancora, per la cancellazione multipla usare un solo collection:deleteMany con filtro sugli _id selezionati.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-62",
+          "titolo": "Gli snapshot dei coll-tab trattengono tutti i risultati di ogni tab aperto",
+          "severita": "Media",
+          "categoria": "consumo di memoria",
+          "moduli": ["public/js/colltabs.js"],
+          "riferimento": "public/js/colltabs.js:23-39 (saveActiveSnapshot), 110-114",
+          "azione": "Conservare i documenti solo per il coll-tab attivo e per i pochi piu recenti (LRU 2-3); per gli altri salvare solo i parametri della query, rieseguendola alla riattivazione (ramo 'fresh || !s' di activate()). In alternativa troncare i documenti dello snapshot a una pagina.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-13",
+          "titolo": "Impossibile inserire righe se collection:stats fallisce (database SQL)",
+          "severita": "Media",
+          "categoria": "bug funzionale (blocca l'inserimento)",
+          "moduli": ["public/js/insert.js"],
+          "riferimento": "public/js/insert.js:206-241",
+          "azione": "Nel catch della emit('collection:stats'): mostrare il messaggio, ri-abilitare il pulsante '+ campo' anche per SQL e passare al tab JSON come fallback; in docInsert (MySQL) rifiutare esplicitamente il documento vuoto con un messaggio parlante.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-14",
+          "titolo": "insertRows globale di modulo: race fra due aperture della modale",
+          "severita": "Media",
+          "categoria": "race condition frontend",
+          "moduli": ["public/js/insert.js"],
+          "riferimento": "public/js/insert.js:6, 133, 225-240",
+          "azione": "Token di generazione (let insertGen = 0; const gen = ++insertGen) e scarto della risposta se gen !== insertGen, come gia avviene per il conteggio in grid.js.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-15",
+          "titolo": "datetime-local interpretato come UTC: date sfalsate all'inserimento",
+          "severita": "Media",
+          "categoria": "cast dei dati / timezone",
+          "moduli": ["public/js/insert.js", "public/js/inlineEdit.js"],
+          "riferimento": "public/js/insert.js:151-155, public/js/inlineEdit.js:8-24",
+          "azione": "Scegliere una convenzione unica e renderla visibile invece di cambiare solo insert.js. Consigliato: restare su UTC ovunque (coerente con la griglia che mostra toISOString()) affiancando all'input l'etichetta 'UTC' piu il valore in ora locale. Per le colonne DATETIME senza fuso, la scelta piu sicura resta inviare la stringa 'YYYY-MM-DD HH:mm:ss' cosi com'e digitata invece di un $date.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-61",
+          "titolo": "Lo storico delle query resta in localStorage anche dopo il logout, senza limite di chiavi",
+          "severita": "Media",
+          "categoria": "privacy / persistenza locale",
+          "moduli": ["public/js/queryhistory.js", "public/js/auth.js"],
+          "riferimento": "public/js/queryhistory.js:14-40 (historyKey), public/js/auth.js:59-71 (logout)",
+          "azione": "Rimuovere le chiavi con prefisso queryHistory: dentro logout(); pulsante 'cancella cronologia' nelle impostazioni; potatura oltre una soglia complessiva (es. 200) con indice di ultimo uso. Valutare sessionStorage se la persistenza fra sessioni non e un requisito.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-34",
+          "titolo": "I blocchi di import sono dimensionati a numero di documenti, non a byte",
+          "severita": "Media",
+          "categoria": "edge case / payload di grandi dimensioni",
+          "moduli": ["public/js/exportimport.js", "server.js"],
+          "riferimento": "public/js/exportimport.js:202-206, server.js:59 (maxHttpBufferSize: 5e6)",
+          "azione": "Dimensionare i blocchi per byte stimati (JSON.stringify(batch).length) con tetto prudenziale (es. 2 MB), riducendo dinamicamente il blocco quando la stima sfora; sul server gestire esplicitamente l'errore di payload troppo grande invece di lasciar cadere il socket.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        }
+      ]
+    },
+    {
+      "id": "blocco-4-resilienza-server",
+      "titolo": "Resilienza del server e prestazioni",
+      "priorita": 4,
+      "task": [
+        {
+          "id": "CDB-17",
+          "titolo": "Aggregate MongoDB senza maxTimeMS",
+          "severita": "Media",
+          "categoria": "resilienza / pool",
+          "moduli": ["db/MongoDbStrategy.js"],
+          "riferimento": "db/MongoDbStrategy.js:694-711",
+          "azione": "Impostare aggOpts.maxTimeMS = DbStrategy.queryTimeoutMs() quando maggiore di zero, con un valore piu generoso per il Query Engine deciso lato server (mai dal payload).",
+          "sforzo": "basso",
+          "stato": "da riverificare",
+          "verifica": "il 2026-08-02 maxTimeMS risulta usato in MongoDbStrategy (righe 9-13, 606) ma per il percorso del conteggio: controllare se l'aggregate lo imposta davvero prima di lavorarci"
+        },
+        {
+          "id": "CDB-18",
+          "titolo": "closeAllSessions() non attesa al disconnect e uncaughtException che abbatte tutti",
+          "severita": "Media",
+          "categoria": "resilienza / promise silenziate",
+          "moduli": ["server.js"],
+          "riferimento": "server.js:1901-1910, 2002-2014, 3037-3044",
+          "azione": "closeAllSessions().catch(console.error) nel disconnect; decrementare il contatore dopo il teardown in un finally; mettere comunque l'app dietro un supervisore (systemd/PM2, restart: always in docker-compose, oggi non dichiarato).",
+          "sforzo": "basso",
+          "stato": "parzialmente risolto",
+          "verifica": "il 2026-08-02 esistono gracefulShutdown + handler uncaughtException/unhandledRejection (server.js:3037-3044): restano da controllare l'attesa di closeAllSessions al disconnect e il restart nel compose"
+        },
+        {
+          "id": "CDB-36",
+          "titolo": "Service worker con cache a versione fissa e fallback che puo risolvere undefined",
+          "severita": "Media",
+          "categoria": "cache / coerenza delle versioni",
+          "moduli": ["public/sw.js"],
+          "riferimento": "public/sw.js:1-13, 41-49",
+          "azione": "Derivare CACHE_NAME dalla versione di package.json (o da un hash di build) cosi l'activate elimina le cache vecchie; non cachare un sottoinsieme parziale dei moduli ES; nel fetch handler restituire una Response esplicita quando caches.match risolve undefined; escludere /auth/ dal service worker come gia si fa per /socket.io/ e /mcp.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-31",
+          "titolo": "L'import PostgreSQL esegue una query per riga",
+          "severita": "Media",
+          "categoria": "prestazioni",
+          "moduli": ["db/PostgreSqlStrategy.js"],
+          "riferimento": "db/PostgreSqlStrategy.js:853-869 (collectionImport)",
+          "azione": "Raggruppare per firma delle colonne e usare un unico INSERT ... VALUES ($1,$2),($3,$4)... con ON CONFLICT, con fallback riga per riga solo sul batch fallito (stesso schema di MySqlStrategy.collectionImport).",
+          "sforzo": "medio",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-41",
+          "titolo": "Una colonna realmente chiamata _id viene scartata dall'import e dalle scritture",
+          "severita": "Bassa",
+          "categoria": "perdita di dati silenziosa",
+          "moduli": ["db/PostgreSqlStrategy.js"],
+          "riferimento": "db/PostgreSqlStrategy.js:844 (collectionImport), 586 (docInsert), 612, 617 (docUpdate)",
+          "azione": "Determinare una volta le colonne reali della tabella (tableFields) e rimuovere _id solo se non e tra quelle; in alternativa marcare la chiave virtuale con un nome che non puo collidere (es. __codedb_id) mappandolo nel frontend.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        }
+      ]
+    },
+    {
+      "id": "blocco-5-hardening-minore",
+      "titolo": "Hardening minore, pulizia e coerenza",
+      "priorita": 5,
+      "motivo": "Sforzo quasi nullo per la maggior parte: buon materiale per una sessione di rifinitura unica.",
+      "task": [
+        {
+          "id": "CDB-21",
+          "titolo": "parseIni e connections:save accettano __proto__ come nome di sezione",
+          "severita": "Bassa",
+          "categoria": "prototype pollution",
+          "moduli": ["server.js"],
+          "riferimento": "server.js:174-191, 1221-1244",
+          "azione": "const sections = Object.create(null) in parseIni e rifiuto esplicito di __proto__, constructor e prototype in assertConnName.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "confermato il 2026-08-02: nessuna occorrenza di __proto__ in server.js, quindi il rifiuto non e stato aggiunto"
+        },
+        {
+          "id": "CDB-55",
+          "titolo": "Parser shell: chiave __proto__ e stringhe non terminate accettate in silenzio",
+          "severita": "Bassa",
+          "categoria": "robustezza del parser",
+          "moduli": ["db/MongoShell.js"],
+          "riferimento": "db/MongoShell.js:198-215 (parseObject), 70-84 (stringhe)",
+          "azione": "In parseObject usare Object.create(null) oppure Object.defineProperty, e rifiutare esplicitamente le chiavi __proto__/constructor/prototype. Nel tokenizer lanciare 'Stringa non terminata' se il ciclo raggiunge la fine dell'input senza il delimitatore di chiusura.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "confermato il 2026-08-02: nessuna occorrenza di __proto__ in db/MongoShell.js"
+        },
+        {
+          "id": "CDB-24",
+          "titolo": "docInsert accetta un array",
+          "severita": "Bassa",
+          "categoria": "validazione input",
+          "moduli": ["db/MongoDbStrategy.js"],
+          "riferimento": "db/MongoDbStrategy.js:765-771",
+          "azione": "Aggiungere || Array.isArray(doc) alla condizione di rifiuto, come gia avviene in docReplace.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-37",
+          "titolo": "shell.openExternal senza whitelist di schema",
+          "severita": "Bassa",
+          "categoria": "hardening Electron",
+          "moduli": ["electron-main.js"],
+          "riferimento": "electron-main.js:138-141",
+          "azione": "Verificare lo schema prima di aprire: if (!/^https?:$/.test(new URL(url).protocol)) return { action: 'deny' }; aggiungere un handler su 'will-navigate' che impedisce alla finestra di lasciare http://127.0.0.1:PORT.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-38",
+          "titolo": "pingServer accetta qualunque server in ascolto sulla porta",
+          "severita": "Bassa",
+          "categoria": "hardening Electron",
+          "moduli": ["electron-main.js"],
+          "riferimento": "electron-main.js:58-67, 91, 131",
+          "azione": "Far esporre a server.js un endpoint di identificazione (es. GET /__codedb con un token generato all'avvio e passato al processo Electron) e riusare l'istanza solo se la risposta corrisponde; altrimenti avvisare che la porta e occupata da un altro processo.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-39",
+          "titolo": "LIKE tradotto in regex ancorata: pattern patologici pesano sul server MongoDB",
+          "severita": "Bassa",
+          "categoria": "prestazioni / ReDoS lato database",
+          "moduli": ["db/SqlToMql.js"],
+          "riferimento": "db/SqlToMql.js:353-368 (likeToRegex), 399-403",
+          "azione": "Limitare il numero di jolly in un singolo LIKE (es. 5) con errore esplicativo, e compilare i pattern con prefisso letterale come regex ancorata a sinistra (^prefisso) cosi l'indice resta utilizzabile; valutare $options 'i' solo se richiesto esplicitamente.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-22",
+          "titolo": "Credenziali conservate in memoria nel browser",
+          "severita": "Bassa",
+          "categoria": "esposizione credenziali",
+          "moduli": ["public/js/connection.js", "public/js/utils.js"],
+          "riferimento": "public/js/connection.js:174, public/js/utils.js:249-250",
+          "azione": "Dopo la prima connessione riuscita conservare solo { saved: name } o un handle opaco emesso dal server; per le connessioni non salvate accettare che la riconnessione automatica non sia possibile, com'e gia dopo un F5 in session-restore.js.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-64",
+          "titolo": "Prefissi delle chiavi di storage incoerenti (residuo del rebranding)",
+          "severita": "Bassa",
+          "categoria": "coerenza / manutenibilita",
+          "moduli": ["public/js/main.js", "public/js/queryhistory.js", "public/js/socket.js", "public/js/session-restore.js", "public/js/connmanager.js"],
+          "riferimento": "public/js/main.js:70 ('gui-db:width:'), public/js/queryhistory.js:15 ('queryHistory:'), public/js/socket.js:7 ('codedb:token'), public/js/session-restore.js:23 ('codedb:session')",
+          "azione": "Uniformare su 'codedb:' con una migrazione una tantum che rinomina le chiavi esistenti al primo avvio, cosi le preferenze dell'utente non vengono perse.",
+          "sforzo": "basso",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-63",
+          "titolo": "Il ramo di errore dello sblocco vault e irraggiungibile",
+          "severita": "Bassa",
+          "categoria": "codice morto / coerenza",
+          "moduli": ["public/js/vault.js", "public/js/utils.js"],
+          "riferimento": "public/js/vault.js:47-64, public/js/utils.js:244-247",
+          "azione": "Rimuovere il ramo else e affidarsi al catch; documentare in utils.js che emit() rigetta su ok:false, cosi il contratto e esplicito.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit"
+        },
+        {
+          "id": "CDB-23",
+          "titolo": "Intestazione errata in connections.ini",
+          "severita": "Bassa",
+          "categoria": "documentazione fuorviante",
+          "moduli": ["server.js"],
+          "riferimento": "server.js:194",
+          "azione": "Aggiornare il testo: segreti cifrati con AES-256-GCM, chiave derivata dalla passphrase dell'installazione (vault v2 a busta); il file resta comunque sensibile.",
+          "sforzo": "banale",
+          "stato": "aperto",
+          "verifica": "ereditato dall'audit; da riformulare tenendo conto del vault v2 introdotto dopo l'audit"
+        }
+      ]
+    },
+    {
+      "id": "blocco-6-processo",
+      "titolo": "Processo, verifica e rilascio",
+      "priorita": 6,
+      "motivo": "Non sono difetti del codice ma la ragione per cui i difetti passano: oggi la qualita dipende dal lanciare i test a mano al momento giusto.",
+      "task": [
+        {
+          "id": "PT-01",
+          "titolo": "Collaudare a mano il blocco di feature mai provate nel browser",
+          "categoria": "verifica manuale",
+          "dettaglio": "Risultano implementate ma mai provate in interfaccia: motore script Query & Aggregate, virtual scrolling, selezione celle stile Excel, layout responsive, ripristino sessione dopo F5, bulk delete, pannello Salute, Storico Azioni, vista griglia dopo il rebrand.",
+          "azione": "Sessione di collaudo guidata con una checklist per feature, annotando cosa si rompe; ogni difetto trovato diventa un task in questo file.",
+          "sforzo": "medio",
+          "stato": "aperto"
+        },
+        {
+          "id": "PT-02",
+          "titolo": "Nessun test automatico sul frontend",
+          "categoria": "copertura di test",
+          "dettaglio": "Il backend ha 180 asserzioni unitarie; public/js non ne ha nessuna, ed e dove si concentrano 9 dei findings aperti.",
+          "azione": "Partire dai moduli puri e ad alto rischio senza DOM (sql-split.js, query-formatter.js gia coperti; aggiungere la logica di paginazione keyset di grid.js e gli snapshot di colltabs.js estraendo le funzioni pure), con lo stesso stile assert + process.exitCode del resto.",
+          "sforzo": "medio",
+          "stato": "aperto"
+        },
+        {
+          "id": "PT-03",
+          "titolo": "Nessuna CI: i test girano solo quando qualcuno se li ricorda",
+          "categoria": "processo",
+          "azione": "Workflow GitHub Actions che esegue npm test a ogni push, piu un job con i servizi mongodb/mysql/postgres per npm run test:e2e:all. I servizi esistono gia nel docker-compose, quindi il costo e basso.",
+          "sforzo": "basso",
+          "stato": "aperto"
+        },
+        {
+          "id": "PT-04",
+          "titolo": "Nessun linter",
+          "categoria": "processo",
+          "dettaglio": "Il progetto e vanilla JS senza build: un linter e l'unica rete che intercetta variabili non usate, promise non attese e refusi prima del runtime.",
+          "azione": "ESLint con configurazione minima (eslint:recommended + no-floating-promises via regola equivalente), eseguito nella stessa CI di PT-03.",
+          "sforzo": "basso",
+          "stato": "aperto"
+        },
+        {
+          "id": "PT-05",
+          "titolo": "Molto lavoro non committato o non pushato",
+          "categoria": "processo / rischio di perdita",
+          "dettaglio": "Diverse feature complete (backup/restore, audit UI, salute, ripristino sessione, SQL->MQL, motore script, fix dell'audit) risultano non committate o non pushate su remoto.",
+          "azione": "Fare il punto su cosa e effettivamente in albero, committare per argomento con messaggi parlanti e pushare production-ready, cosi il lavoro non vive su una sola macchina.",
+          "sforzo": "basso",
+          "stato": "aperto"
+        },
+        {
+          "id": "PT-06",
+          "titolo": "Gli e2e richiedono database avviati a mano e non coprono PostgreSQL nella routine",
+          "categoria": "copertura di test",
+          "dettaglio": "npm test copre solo gli unitari; e2e.js (Mongo) e verde, ma MySQL/PostgreSQL/MCP/backup dipendono da servizi locali che vanno avviati manualmente.",
+          "azione": "Documentare (o scriptare) l'avvio dello stack docker compose come prerequisito unico di test:e2e:all e includerlo nella CI di PT-03.",
+          "sforzo": "basso",
+          "stato": "aperto"
+        }
+      ]
+    }
+  ]
+}

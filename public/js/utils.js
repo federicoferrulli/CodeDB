@@ -251,13 +251,23 @@ export function emit(event, payload) {
   // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
   // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
   const pinned = payload && payload.tabId;
+  // NB: il tabId va scritto DOPO lo spread del payload. Diverse modali passano
+  // `tabId` esplicito ma indefinito quando non hanno un contesto (es. insert.js
+  // con `insertContext = null`): con lo spread per ultimo quell'`undefined`
+  // cancellava il tabId iniettato, il server ripiegava sulla sessione "default"
+  // e rispondeva "Nessuna connessione attiva al database.".
   const tab = pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab();
+  const withTab = (extra) => {
+    const out = { ...(payload || {}), ...(extra || {}) };
+    out.tabId = tab ? tab.id : pinned;
+    return out;
+  };
   const stamp = (res) => Object.assign(res, { _tab: tab, _state: tab ? tab.state : state });
   return new Promise((resolve, reject) => {
     // Anche gli errori portano l'origine: i callback di errore devono poter
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
     const fail = (msg) => reject(stamp(new Error(msg)));
-    socket.emit(event, { tabId: tab ? tab.id : pinned, ...(payload || {}) }, (res) => {
+    socket.emit(event, withTab(), (res) => {
       if (tab && !tabs.list.includes(tab)) return; // tab chiuso: risposta orfana
       if (res && res.ok) {
         resolve(stamp(res));
@@ -270,7 +280,7 @@ export function emit(event, payload) {
             if (connRes && connRes.ok) {
               tab.state.connected = true;
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
-              socket.emit(event, { tabId: tab.id, ...(payload || {}), _reconnected: true }, (retryRes) => {
+              socket.emit(event, withTab({ _reconnected: true }), (retryRes) => {
                 if (retryRes && retryRes.ok) {
                   resolve(stamp(retryRes));
                 } else {
@@ -323,7 +333,11 @@ export function captureContext() {
 // evento. Per i messaggi all'utente si usa `toast()`.
 export function emitFireAndForget(event, payload) {
   const tab = activeTab();
-  socket.emit(event, { tabId: tab ? tab.id : undefined, ...(payload || {}) });
+  // Il tabId dopo lo spread, per lo stesso motivo di `emit()`: un `tabId`
+  // esplicito ma indefinito nel payload non deve cancellare quello iniettato.
+  const msg = { ...(payload || {}) };
+  msg.tabId = (payload && payload.tabId) || (tab ? tab.id : undefined);
+  socket.emit(event, msg);
 }
 
 // (rimossa `invalidateSchema()`: azzerava la cache dello schema attraverso il
