@@ -367,7 +367,7 @@
           </span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
+          <input type="text" aria-label="Cerca connessioni" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
             spellcheck="false" />
         </div>
         <ul id="conn-tree"></ul>
@@ -434,7 +434,7 @@
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
             </div>
             <div class="sidebar-search">
-              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+              <input type="text" aria-label="Cerca database o collezioni" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
                 spellcheck="false" />
             </div>
             <ul id="db-tree"></ul>
@@ -584,7 +584,7 @@
               <!-- ------------------- Vista Grafo 3D ------------------- -->
               <div id="view-graph3d" class="view-panel hidden">
                 <div class="graph3d-bar">
-                  <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo..." autocomplete="off"
+                  <input type="text" aria-label="Cerca tabella o campo" id="graph3d-search" placeholder="Cerca tabella o campo..." autocomplete="off"
                     spellcheck="false" title="Cerca nome tabella o nome colonna" />
                   <select id="graph3d-color-mode" title="Modalità di colorazione e dimensione nodi">
                     <option value="prefix">🎨 Colore: Prefisso</option>
@@ -659,7 +659,7 @@
                   <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                     <div class="side-panel-header">
                       <h3 id="graph3d-panel-title">Nome Tabella</h3>
-                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">✕</button>
+                      <button aria-label="Chiudi pannello 3D" id="graph3d-panel-close" class="close-btn" title="Chiudi">✕</button>
                     </div>
                     <div id="graph3d-panel-content" class="side-panel-content"></div>
                   </aside>
@@ -684,7 +684,7 @@
                   <div class="query-target-selector">
                     <label>Esegui su:</label>
                     <span id="query-target-label" class="query-target-label">—</span>
-                    <button id="query-target-reset" class="mini-btn hidden" type="button"
+                    <button aria-label="Reimposta destinazione query" id="query-target-reset" class="mini-btn hidden" type="button"
                       title="Torna al contesto della collection aperta">✕</button>
                   </div>
 
@@ -718,14 +718,14 @@
                     <div class="sidebar-title">
                       <span>Schema Browser</span>
                       <div class="sidebar-title-actions">
-                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
-                        <button id="query-schema-close" class="mini-btn mobile-only-btn"
+                        <button aria-label="Ricarica schema" id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                        <button aria-label="Chiudi schema browser" id="query-schema-close" class="mini-btn mobile-only-btn"
                           title="Chiudi Schema Browser">✕</button>
                       </div>
                     </div>
                     <div class="sidebar-search">
 
-                      <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
+                      <input type="text" aria-label="Filtra tabelle o campi" id="query-schema-search" placeholder="Filtra tabelle/campi..."
                         autocomplete="off" spellcheck="false" />
                     </div>
                     <div id="query-schema-tree" class="query-schema-tree"></div>
@@ -1562,7 +1562,7 @@
             <option value="error">Errore</option>
           </select>
         </label>
-        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
+        <input type="text" aria-label="Filtra log per database" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
           spellcheck="false" />
         <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
