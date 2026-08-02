@@ -143,6 +143,10 @@ npm run backup -- help    # Full usage guide
 - [CONTRIBUTING.md](CONTRIBUTING.md) — Guidelines for contributing to CodeDB.
 - [SECURITY.md](SECURITY.md) — Security policy and vulnerability reporting guidelines.
 
+## AI Transparency (EU AI Act Compliance)
+
+In compliance with the transparency requirements of the EU AI Act, we disclose that portions of this software's codebase and documentation were generated, assisted, or implemented using Artificial Intelligence (AI) systems. Users should be aware that while the AI outputs are reviewed, they may not be entirely free of errors or biases.
+
 ## License
 
 Copyright (c) 2026 Federico Ferrulli.

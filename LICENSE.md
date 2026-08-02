@@ -1,6 +1,8 @@
 # CodeDB / gui-mongodb
 Copyright (c) 2026 Federico Ferrulli
 
+**AI Transparency Notice**: This software was developed with the assistance of Artificial Intelligence (AI) systems. In accordance with the EU AI Act transparency requirements, users are hereby informed that parts of the codebase and documentation were generated or modified by AI.
+
 ---
 
 # GNU AFFERO GENERAL PUBLIC LICENSE

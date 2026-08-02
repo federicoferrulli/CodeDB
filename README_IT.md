@@ -187,6 +187,10 @@ npm run backup -- help    # guida completa
 - `strategy_db.md` — piano storico di estensione multi-database (MongoDB & MySQL).
 - `strategy_mcp.md` — piano e stato dell'integrazione MCP (Fasi 1–3 + estensioni).
 
+## Trasparenza AI (Conformità all'EU AI Act)
+
+In ottemperanza ai requisiti di trasparenza previsti dall'EU AI Act, dichiariamo che porzioni del codice sorgente e della documentazione di questo software sono state generate, assistite o implementate tramite sistemi di Intelligenza Artificiale (AI). Gli utenti devono essere consapevoli che, sebbene i risultati dell'AI siano revisionati, potrebbero non essere del tutto privi di errori o bias.
+
 ## Licenza
 
 Copyright (c) 2026 Federico Ferrulli.
