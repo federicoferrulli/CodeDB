@@ -175,7 +175,30 @@
    Mappa e GeoJSON affiancati: sono la stessa geometria vista in due modi, e
    tenerli uno accanto all'altro è il punto dell'editor — chi corregge una
    coordinata a mano deve vedere subito dove finisce. */
-.modal.geomap-modal { width: min(1040px, calc(100vw - 24px)); }
+/* NIENTE backdrop-filter su QUESTA modale.
+   `.overlay` sfoca l'intero viewport dietro di sé (blur 12px). Per una modale
+   statica è un costo che si paga una volta; la mappa invece ridipinge in
+   continuazione — trascinamento, pan, zoom, arrivo di ogni tile — e a ogni
+   fotogramma il compositor era costretto a rifare una sfocatura gaussiana a
+   schermo intero avendo come sorgente tutta l'applicazione (griglia, sidebar,
+   albero). È questo, non il disegno della geometria, il grosso dello scatto:
+   l'editor geografico è semplicemente la prima modale che si ridisegna di
+   continuo, quindi la prima in cui il problema si vede. Lo sfondo scuro resta,
+   solo un po' più opaco per compensare la sfocatura che non c'è più. */
+#geomap-overlay {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(5, 9, 18, 0.88);
+  transition: none;
+}
+.modal.geomap-modal {
+  width: min(1040px, calc(100vw - 24px));
+  /* Fondo PIENO (il `--glass-bg` delle altre modali è translucido): sopra un
+     fondo trasparente il browser deve comporre ciò che sta sotto a ogni
+     ridisegno della mappa, ed è lavoro inutile per una finestra che copre
+     comunque l'area. */
+  background: var(--bg-surface, #161b22);
+}
 .geomap-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
 .geomap-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
 .geomap-check { cursor: pointer; }
@@ -188,6 +211,12 @@
   border-radius: 6px;
   /* Sfondo neutro: è ciò che si vede con le tile disattivate o offline. */
   background: var(--bg-alt, #1e1e1e);
+  /* `contain: paint` confina i ridisegni della mappa dentro questo riquadro:
+     senza, ogni fotogramma invalida anche gli antenati (modale, overlay,
+     pagina). `translateZ(0)` la promuove a livello di composizione proprio, così
+     il pan sposta un livello già disegnato invece di ridipingere l'area. */
+  contain: paint;
+  transform: translateZ(0);
 }
 .geomap-json { flex: 1 1 0; min-width: 0; height: 420px; resize: none; font-family: monospace; font-size: 0.8rem; }
 .geomap-note { margin-top: 8px; font-size: 0.8rem; }

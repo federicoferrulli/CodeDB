@@ -2,7 +2,7 @@
 
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
-const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
+const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 
 // Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
 const GEO_CACHE_MS = 15000;
@@ -426,6 +426,7 @@ class PostgreSqlStrategy extends DbStrategy {
     }
 
     this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
+    potaCache(this._geoCache);
     return info;
   }
 
@@ -508,13 +509,15 @@ class PostgreSqlStrategy extends DbStrategy {
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
     const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
-    const pk = await this.primaryKey(db, coll);
+    // Due letture di catalogo indipendenti: in parallelo costano un round trip
+    // invece di due, su ogni pagina della griglia.
+    const [pk, sel] = await Promise.all([this.primaryKey(db, coll), this.selectListFor(db, coll)]);
 
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
     // Geometrie lette come GeoJSON: vedi selectListFor.
-    const { list: selectList, geo } = await this.selectListFor(db, coll);
+    const { list: selectList, geo } = sel;
     const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
     const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
     const params = ks ? ks.params : [limit, skip];

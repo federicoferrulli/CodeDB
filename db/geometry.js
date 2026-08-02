@@ -138,8 +138,25 @@ function parseGeoJsonText(value) {
   }
 }
 
+/**
+ * Tiene limitata la cache dei metadati di colonna. Senza, una sessione che
+ * naviga molte tabelle (o uno script che ne tocca a centinaia) accumulerebbe
+ * una voce per tabella finché il socket resta aperto: poca memoria ciascuna,
+ * ma nessun limite superiore. Prima si buttano le voci scadute; se non basta,
+ * si svuota — è una cache, ricostruirla costa una query.
+ */
+function potaCache(cache, max = 200) {
+  if (cache.size <= max) return;
+  const ora = Date.now();
+  for (const [k, v] of cache) {
+    if (!v || v.scade <= ora) cache.delete(k);
+  }
+  if (cache.size > max) cache.clear();
+}
+
 module.exports = {
   SQL_GEOMETRY_TYPES,
+  potaCache,
   GEOJSON_TYPES,
   isSqlGeometryType,
   isGeoJson,

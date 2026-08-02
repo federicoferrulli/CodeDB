@@ -3,7 +3,7 @@
 const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
-const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
+const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
@@ -354,6 +354,7 @@ class MySqlStrategy extends DbStrategy {
       if (isSqlGeometryType(c.type)) info.geo.set(c.name, c);
     }
     this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
+    potaCache(this._geoCache);
     return info;
   }
 
@@ -456,14 +457,17 @@ class MySqlStrategy extends DbStrategy {
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
     const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
-    const pk = await this.primaryKey(db, coll);
+    // Chiave primaria e metadati di colonna sono due letture di
+    // information_schema indipendenti: in serie aggiungevano due round trip a
+    // ogni pagina della griglia, in parallelo uno solo.
+    const [pk, sel] = await Promise.all([this.primaryKey(db, coll), this.selectListFor(db, coll)]);
 
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
     // Le colonne geometriche vanno lette come GeoJSON (ST_AsGeoJSON): senza,
     // mysql2 restituisce oggetti {x, y} annidati da cui non si risale al tipo.
-    const { list: selectList, geo } = await this.selectListFor(db, coll);
+    const { list: selectList, geo } = sel;
     const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
     const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
     const params = ks ? ks.params : [limit, skip];
