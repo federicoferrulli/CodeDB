@@ -2,6 +2,10 @@
 
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
+
+// Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
+const GEO_CACHE_MS = 15000;
 
 // Schemi che CodeDB non deve mai mostrare ne' modificare. Il livello
 // "database" dell'interfaccia corrisponde allo SCHEMA (vedi la nota su qtable),
@@ -147,6 +151,9 @@ class PostgreSqlStrategy extends DbStrategy {
     super();
     this.pool = null;
     this._config = null;
+    // Metadati di colonna (tipo + SRID delle geometriche) per schema.tabella:
+    // servono a ogni find, quindi vanno in cache breve. Vedi tableColumnsInfo.
+    this._geoCache = new Map();
   }
 
   get type() { return 'postgresql'; }
@@ -366,6 +373,104 @@ class PostgreSqlStrategy extends DbStrategy {
     return id;
   }
 
+  /* -------------------------------------------------------------------------
+   * Geometrie PostGIS (vedi db/geometry.js per il perché del formato GeoJSON)
+   * ---------------------------------------------------------------------- */
+
+  // Colonne della tabella con tipo e, per le geometriche, SRID e tipo esatto.
+  // Il SRID sta in `geometry_columns`/`geography_columns` (viste PostGIS): se
+  // PostGIS non è installato quelle viste non esistono e si prosegue senza —
+  // `udt_name` non sarà mai 'geometry', quindi non cambia nulla.
+  async tableColumnsInfo(db, coll) {
+    const schema = schemaOf(db);
+    const chiave = `${schema} ${coll}`;
+    const ora = Date.now();
+    const hit = this._geoCache.get(chiave);
+    if (hit && hit.scade > ora) return hit.info;
+
+    const pool = this.requirePool();
+    const res = await pool.query(
+      `SELECT column_name AS name, udt_name AS type
+         FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = $2
+     ORDER BY ordinal_position`,
+      [schema, coll]
+    );
+    const info = {
+      columns: res.rows.map((r) => ({ name: r.name, type: r.type, srid: null })),
+      geo: new Map(),
+    };
+    for (const c of info.columns) {
+      if (isSqlGeometryType(c.type)) info.geo.set(c.name, c);
+    }
+
+    if (info.geo.size) {
+      try {
+        const srid = await pool.query(
+          `SELECT f_geometry_column AS name, srid, 'geometry' AS kind
+             FROM geometry_columns WHERE f_table_schema = $1 AND f_table_name = $2
+            UNION ALL
+           SELECT f_geography_column AS name, srid, 'geography' AS kind
+             FROM geography_columns WHERE f_table_schema = $1 AND f_table_name = $2`,
+          [schema, coll]
+        );
+        for (const r of srid.rows) {
+          const c = info.geo.get(r.name);
+          if (c) { c.srid = r.srid == null ? null : Number(r.srid); c.kind = r.kind; }
+        }
+      } catch {
+        // Viste PostGIS assenti o non leggibili: si scrive senza forzare il
+        // SRID (ST_GeomFromGeoJSON produce 4326, il default di gran lunga più
+        // comune) invece di far fallire l'intera lettura.
+      }
+    }
+
+    this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
+    return info;
+  }
+
+  // `*` quando non ci sono geometrie; altrimenti colonne esplicite con
+  // ST_AsGeoJSON su quelle geometriche (l'alias conserva il nome). Senza,
+  // il driver `pg` restituirebbe il WKB esadecimale, inutilizzabile.
+  async selectListFor(db, coll) {
+    const info = await this.tableColumnsInfo(db, coll);
+    if (!info.geo.size) return { list: '*', geo: info.geo };
+    const list = info.columns
+      .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
+      .join(', ');
+    return { list, geo: info.geo };
+  }
+
+  static geoRowsToJson(rows, geo) {
+    if (!geo || !geo.size) return rows;
+    for (const row of rows) {
+      for (const col of geo.keys()) {
+        if (col in row) row[col] = parseGeoJsonText(row[col]);
+      }
+    }
+    return rows;
+  }
+
+  // Frammento SQL per scrivere una geometria: il SRID della colonna va imposto
+  // (ST_GeomFromGeoJSON produce sempre 4326) e le colonne `geography` vogliono
+  // il cast esplicito, altrimenti PostgreSQL rifiuta l'assegnazione.
+  static geoExpression(colInfo, placeholder) {
+    const base = colInfo && colInfo.srid != null
+      ? `ST_SetSRID(ST_GeomFromGeoJSON(${placeholder}), ${Number(colInfo.srid)})`
+      : `ST_GeomFromGeoJSON(${placeholder})`;
+    return (colInfo && colInfo.kind === 'geography') ? `${base}::geography` : base;
+  }
+
+  // Espressione + parametro per una colonna in scrittura.
+  static geoBinding(col, value, geo, placeholder) {
+    const colInfo = geo && geo.get(col);
+    if (colInfo && isGeoJson(value)) {
+      assertGeoJson(value, `Colonna "${col}"`);
+      return { sql: PostgreSqlStrategy.geoExpression(colInfo, placeholder), param: JSON.stringify(value) };
+    }
+    return { sql: placeholder, param: toSqlValue(value) };
+  }
+
   parseRowId(rawId) {
     const id = parseClientValue(rawId);
     if (!id || typeof id !== 'object' || Array.isArray(id)) {
@@ -408,8 +513,10 @@ class PostgreSqlStrategy extends DbStrategy {
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
-    const ks = this.buildKeyset(payload, table, whereSql, limit, pk);
-    const sql = ks ? ks.sql : `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
+    // Geometrie lette come GeoJSON: vedi selectListFor.
+    const { list: selectList, geo } = await this.selectListFor(db, coll);
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
+    const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
     const params = ks ? ks.params : [limit, skip];
     const ms = DbStrategy.queryTimeoutMs();
     const opHandle = payload && payload.opHandle;
@@ -440,6 +547,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
     let rows = res.rows;
     if (ks && ks.reverse) rows = rows.slice().reverse();
+    PostgreSqlStrategy.geoRowsToJson(rows, geo);
 
     // COUNT(*) su tabelle enormi è una scansione: bloccherebbe la griglia. Il
     // client della UI passa `deferCount` e chiede il totale a parte via
@@ -465,7 +573,7 @@ class PostgreSqlStrategy extends DbStrategy {
   // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
   // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
   // a colonna singola) → il chiamante usa OFFSET. Placeholder $n per pg.
-  buildKeyset(payload, table, whereSql, limit, pk) {
+  buildKeyset(payload, table, whereSql, limit, pk, selectList = '*') {
     const ks = payload && payload.keyset;
     if (!ks) return null;
     if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
@@ -485,7 +593,7 @@ class PostgreSqlStrategy extends DbStrategy {
       dir = 'DESC'; reverse = true;
     }
     const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const sql = `SELECT * FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT $${idx}`;
+    const sql = `SELECT ${selectList} FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT $${idx}`;
     params.push(limit);
     return { sql, params, reverse };
   }
@@ -662,9 +770,12 @@ class PostgreSqlStrategy extends DbStrategy {
     if (!cols.length) {
       res = await pool.query(`INSERT INTO ${table} DEFAULT VALUES RETURNING *`);
     } else {
-      const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
-      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${placeholders}) RETURNING *`;
-      res = await pool.query(sql, cols.map((c) => toSqlValue(doc[c])));
+      // Le colonne geometriche non prendono il valore grezzo ma
+      // ST_GeomFromGeoJSON col SRID della colonna (vedi geoBinding).
+      const { geo } = await this.tableColumnsInfo(db, coll);
+      const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`));
+      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING *`;
+      res = await pool.query(sql, bind.map((b) => b.param));
     }
     const insertedRow = res.rows[0] || {};
     const pk = await this.primaryKey(db, coll);
@@ -680,10 +791,12 @@ class PostgreSqlStrategy extends DbStrategy {
     const params = [];
     let idx = 1;
 
+    const { geo } = await this.tableColumnsInfo(db, coll);
     for (const [col, val] of Object.entries(set)) {
       if (col === '_id') continue;
-      assignments.push(`${qid(col)} = $${idx++}`);
-      params.push(toSqlValue(val));
+      const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`);
+      assignments.push(`${qid(col)} = ${b.sql}`);
+      params.push(b.param);
     }
     for (const col of payload.unset || []) {
       if (col === '_id') continue;
@@ -975,16 +1088,19 @@ class PostgreSqlStrategy extends DbStrategy {
     // Il nuovo nome resta nello STESSO schema: ALTER TABLE ... RENAME TO non
     // accetta un nome qualificato per la destinazione.
     await pool.query(`ALTER TABLE ${qtable(db, coll)} RENAME TO ${qid(to)}`);
+    this._geoCache.clear();
   }
 
   async dropCollection(db, coll) {
     const pool = this.requirePool();
     await pool.query(`DROP TABLE ${qtable(db, coll)}`);
+    this._geoCache.clear();
   }
 
   async addColumn(db, coll, column) {
     const pool = this.requirePool();
     await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
+    this._geoCache.clear(); // i metadati di colonna in cache non valgono più
   }
 
   async alterColumn(db, coll, payload) {
@@ -1016,6 +1132,7 @@ class PostgreSqlStrategy extends DbStrategy {
     } else if (col.nullable === true) {
       await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} DROP NOT NULL`);
     }
+    this._geoCache.clear();
   }
 
   async dropColumn(db, coll, name) {
@@ -1023,6 +1140,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const column = String(name || '').trim();
     if (!column) throw new Error('Nome della colonna da eliminare mancante.');
     await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP COLUMN ${qid(column)}`);
+    this._geoCache.clear();
   }
 
   async createIndex(db, coll, payload) {

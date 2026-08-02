@@ -171,6 +171,48 @@
 
 .modal.wide { width: min(660px, calc(100vw - 24px)); }
 
+/* ---------- Editor geografico (geomap.js) ----------
+   Mappa e GeoJSON affiancati: sono la stessa geometria vista in due modi, e
+   tenerli uno accanto all'altro è il punto dell'editor — chi corregge una
+   coordinata a mano deve vedere subito dove finisce. */
+.modal.geomap-modal { width: min(1040px, calc(100vw - 24px)); }
+.geomap-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+.geomap-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.geomap-check { cursor: pointer; }
+.geomap-body { display: flex; gap: 10px; align-items: stretch; }
+.geomap-canvas {
+  flex: 2 1 0;
+  min-width: 0;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  /* Sfondo neutro: è ciò che si vede con le tile disattivate o offline. */
+  background: var(--bg-alt, #1e1e1e);
+}
+.geomap-json { flex: 1 1 0; min-width: 0; height: 420px; resize: none; font-family: monospace; font-size: 0.8rem; }
+.geomap-note { margin-top: 8px; font-size: 0.8rem; }
+/* Cella geometrica nella griglia: etichetta compatta, non un muro di numeri. */
+.type-geo { color: #4ec9b0; cursor: pointer; }
+/* Pulsante-geometria nel form di inserimento. */
+.geo-pick { width: 100%; text-align: left; }
+.warning {
+  margin: 6px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: #e0a800;
+  background: rgba(224, 168, 0, 0.12);
+  border: 1px solid rgba(224, 168, 0, 0.35);
+}
+/* Le tile di Leaflet restano leggibili anche sul tema scuro. */
+.geomap-canvas .leaflet-container { background: transparent; }
+
+@media (max-width: 860px) {
+  .geomap-body { flex-direction: column; }
+  .geomap-canvas { height: 300px; }
+  .geomap-json { height: 160px; }
+}
+
 .modal h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.015em; }
 .modal h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; color: #f1f5f9; letter-spacing: -0.015em; }
 .modal .subtitle { margin: 0 0 18px; color: var(--fg-dim); font-size: 0.88rem; line-height: 1.45; }

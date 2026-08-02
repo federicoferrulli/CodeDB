@@ -1,0 +1,369 @@
+'use strict';
+
+/* ---------------------------------------------------------------------------
+ * Editor geografico: una geometria si guarda e si modifica su una MAPPA.
+ *
+ * Perché esiste: una colonna GEOMETRY/geography, o un campo GeoJSON su
+ * MongoDB, in una griglia è una riga di JSON illeggibile — e correggerla a mano
+ * significa scrivere coordinate a occhio. Qui la stessa geometria è un disegno
+ * trascinabile, e il JSON resta accanto: le due viste sono LA STESSA COSA e si
+ * aggiornano a vicenda (mappa → testo a ogni trascinamento, testo → mappa a
+ * ogni modifica valida).
+ *
+ * Formato: sempre e solo GeoJSON ({ type, coordinates }), lo stesso che il
+ * server produce e accetta per tutti e tre i DBMS (vedi db/geometry.js).
+ *
+ * Leaflet è VENDORIZZATO in public/vendor/leaflet (nessuna build, nessuna CDN)
+ * e viene caricato solo quando questa finestra si apre la prima volta: chi non
+ * tocca geometrie non paga 150 KB di libreria.
+ *
+ * Le TILE di sfondo (OpenStreetMap) sono l'unica richiesta esterna dell'intera
+ * applicazione: sono opzionali, la scelta è ricordata, e senza di esse
+ * l'editor funziona identico su sfondo neutro.
+ * ------------------------------------------------------------------------- */
+
+import { $, toast, openModal, closeModal } from './utils.js';
+import {
+  isGeometry, geometryLabel, fmtCoord, posizioni, scriviPosizione, chiuso, fuoriDaLonLat,
+} from './geojson.js';
+
+// Ri-esportati per comodita' di chi apre l'editor: chi importa geomap.js ha
+// gia' quello che serve per riconoscere ed etichettare una geometria.
+export { isGeometry, geometryLabel };
+
+const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTR = '© OpenStreetMap';
+const CHIAVE_TILE = 'codedb:geo:tiles';
+
+// Tipi disegnabili/modificabili con le maniglie. Gli altri (Multi*,
+// GeometryCollection) si vedono sulla mappa ma si modificano dal JSON: dare
+// maniglie a geometrie annidate richiederebbe un'interfaccia a parte, e un
+// editor a metà su dati altrui è peggio di un editor che dichiara il limite.
+const MODIFICABILI = new Set(['Point', 'MultiPoint', 'LineString', 'Polygon']);
+
+let L = null;              // Leaflet, caricato su richiesta
+let caricamento = null;    // promessa condivisa del caricamento
+let mappa = null;          // istanza L.map
+let livelloTile = null;
+let gruppo = null;         // L.LayerGroup con geometria e maniglie
+let stato = null;          // { geo, onSave, readOnly, campo }
+
+/* ------------------------------- Caricamento ----------------------------- */
+
+function caricaRisorsa(tag, attrs) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement(tag);
+    Object.assign(el, attrs);
+    el.addEventListener('load', () => resolve());
+    el.addEventListener('error', () => reject(new Error('Impossibile caricare Leaflet da public/vendor/leaflet.')));
+    document.head.appendChild(el);
+  });
+}
+
+async function caricaLeaflet() {
+  if (L) return L;
+  if (!caricamento) {
+    caricamento = (async () => {
+      await caricaRisorsa('link', { rel: 'stylesheet', href: '/vendor/leaflet/leaflet.css' });
+      await caricaRisorsa('script', { src: '/vendor/leaflet/leaflet.js' });
+      if (!window.L) throw new Error('Leaflet caricato ma non disponibile (window.L assente).');
+      L = window.L;
+      return L;
+    })().catch((err) => { caricamento = null; throw err; });
+  }
+  return caricamento;
+}
+
+/* --------------------------------- Mappa --------------------------------- */
+
+const latlng = (pos) => [Number(pos[1]), Number(pos[0])]; // GeoJSON [lon,lat] → Leaflet [lat,lng]
+
+function disegna() {
+  if (!mappa || !gruppo || !stato) return;
+  gruppo.clearLayers();
+  const geo = stato.geo;
+  if (!isGeometry(geo)) return;
+
+  const stile = { color: '#007acc', weight: 3, fillColor: '#007acc', fillOpacity: 0.18 };
+  const forme = geo.type === 'GeometryCollection' ? (geo.geometries || []) : [geo];
+  for (const g of forme) {
+    if (!isGeometry(g)) continue;
+    try {
+      if (g.type !== 'Point' && g.type !== 'MultiPoint') {
+        L.geoJSON(g, { style: () => stile }).addTo(gruppo);
+      }
+    } catch { /* geometria non disegnabile: restano le maniglie */ }
+  }
+
+  // Maniglie: un cerchietto per vertice. Trascinabile solo se la geometria è
+  // di un tipo modificabile e il campo non è in sola lettura.
+  const modificabile = !stato.readOnly && MODIFICABILI.has(geo.type);
+  posizioni(geo).forEach(({ percorso, pos }, i) => {
+    if (!Array.isArray(pos) || pos.length < 2) return;
+    const m = L.circleMarker(latlng(pos), {
+      radius: 6, color: '#fff', weight: 2, fillColor: '#e0a800', fillOpacity: 1,
+    }).addTo(gruppo);
+    m.bindTooltip(`#${i + 1} — ${fmtCoord(pos)}`, { direction: 'top' });
+    if (!modificabile) return;
+
+    // Trascinamento: `circleMarker` non è trascinabile di suo, quindi si segue
+    // il puntatore sulla mappa finché non si rilascia. Durante il trascinamento
+    // il pan della mappa va disabilitato, altrimenti si sposterebbero entrambi.
+    m.on('mousedown', (ev) => {
+      ev.originalEvent.preventDefault();
+      mappa.dragging.disable();
+      const muovi = (e) => {
+        const nuova = [Number(e.latlng.lng.toFixed(7)), Number(e.latlng.lat.toFixed(7))];
+        if (pos.length > 2) nuova.push(pos[2]);
+        scriviPosizione(stato.geo, percorso, nuova);
+        aggiornaTesto();
+        disegna();
+      };
+      const rilascia = () => {
+        mappa.dragging.enable();
+        mappa.off('mousemove', muovi);
+        mappa.off('mouseup', rilascia);
+      };
+      mappa.on('mousemove', muovi);
+      mappa.on('mouseup', rilascia);
+    });
+
+    // Tasto destro su un vertice = eliminalo (dove ha senso).
+    m.on('contextmenu', (ev) => {
+      ev.originalEvent.preventDefault();
+      eliminaVertice(percorso);
+    });
+  });
+}
+
+function eliminaVertice(percorso) {
+  const geo = stato.geo;
+  if (!MODIFICABILI.has(geo.type) || geo.type === 'Point') {
+    toast('Un Point ha una sola posizione: cambia il tipo per eliminarla.', true);
+    return;
+  }
+  const minimi = geo.type === 'Polygon' ? 4 : (geo.type === 'LineString' ? 2 : 1);
+  const anello = geo.type === 'Polygon' ? geo.coordinates[percorso[0]] : geo.coordinates;
+  if (anello.length <= minimi) {
+    toast(`Servono almeno ${minimi} posizioni per un ${geo.type}.`, true);
+    return;
+  }
+  const idx = percorso[percorso.length - 1];
+  anello.splice(idx, 1);
+  if (geo.type === 'Polygon') chiudiAnello(anello, idx === 0);
+  aggiornaTesto();
+  disegna();
+}
+
+// Un anello di poligono deve avere la prima posizione ripetuta in fondo: se si
+// tocca il primo vertice va riallineato l'ultimo (e viceversa), altrimenti il
+// database rifiuta la geometria e l'utente non capirebbe perché.
+function chiudiAnello(anello, primoModificato) {
+  if (anello.length < 2) return;
+  if (primoModificato) anello[anello.length - 1] = [...anello[0]];
+  else anello[0] = [...anello[anello.length - 1]];
+}
+
+function aggiungiPunto(latlngClick) {
+  const geo = stato.geo;
+  if (stato.readOnly || !MODIFICABILI.has(geo.type)) return;
+  const nuova = [Number(latlngClick.lng.toFixed(7)), Number(latlngClick.lat.toFixed(7))];
+  if (geo.type === 'Point') {
+    geo.coordinates = nuova; // un Point si sposta, non si moltiplica
+  } else if (geo.type === 'Polygon') {
+    const anello = geo.coordinates[0] || (geo.coordinates[0] = []);
+    // Il nuovo vertice entra PRIMA della ripetizione di chiusura.
+    if (anello.length >= 2) anello.splice(anello.length - 1, 0, nuova);
+    else anello.push(nuova);
+    if (anello.length >= 3 && !chiuso(anello)) anello.push([...anello[0]]);
+  } else {
+    geo.coordinates.push(nuova);
+  }
+  aggiornaTesto();
+  disegna();
+}
+
+function inquadra() {
+  if (!mappa || !isGeometry(stato.geo)) return;
+  const punti = posizioni(stato.geo)
+    .filter(({ pos }) => Array.isArray(pos) && pos.length >= 2 && Number.isFinite(Number(pos[0])) && Number.isFinite(Number(pos[1])))
+    .map(({ pos }) => latlng(pos));
+  if (!punti.length) return;
+  if (punti.length === 1) mappa.setView(punti[0], Math.max(mappa.getZoom(), 13));
+  else mappa.fitBounds(L.latLngBounds(punti), { padding: [30, 30] });
+}
+
+/* ---------------------------- Testo ⇄ geometria --------------------------- */
+
+function aggiornaTesto() {
+  const ta = $('#geomap-json');
+  if (ta) ta.value = JSON.stringify(stato.geo, null, 2);
+  aggiornaIntestazione();
+}
+
+function aggiornaIntestazione() {
+  const info = $('#geomap-info');
+  if (info) info.textContent = isGeometry(stato.geo) ? geometryLabel(stato.geo) : 'geometria non valida';
+  const avviso = $('#geomap-warning');
+  if (avviso) {
+    const proiettata = isGeometry(stato.geo) && fuoriDaLonLat(stato.geo);
+    avviso.textContent = proiettata
+      ? 'Coordinate fuori dall\'intervallo longitudine/latitudine: la geometria è probabilmente PROIETTATA (es. metri EPSG:3857). La posizione sulla mappa non è attendibile; modifica pure il JSON.'
+      : '';
+    avviso.classList.toggle('hidden', !proiettata);
+  }
+  const nonModificabile = isGeometry(stato.geo) && !MODIFICABILI.has(stato.geo.type);
+  const nota = $('#geomap-note');
+  if (nota) {
+    nota.textContent = nonModificabile
+      ? `Le geometrie ${stato.geo.type} si visualizzano sulla mappa ma si modificano dal JSON qui accanto.`
+      : (stato.readOnly ? '' : 'Clic sulla mappa = aggiungi un punto · trascina un vertice = spostalo · tasto destro su un vertice = eliminalo.');
+    nota.classList.toggle('hidden', !nota.textContent);
+  }
+}
+
+function leggiTesto() {
+  const ta = $('#geomap-json');
+  const err = $('#geomap-error');
+  if (!ta) return;
+  let parsed;
+  try {
+    parsed = JSON.parse(ta.value);
+  } catch (e) {
+    err.textContent = `JSON non valido: ${e.message}`;
+    err.classList.remove('hidden');
+    return;
+  }
+  if (!isGeometry(parsed)) {
+    err.textContent = 'Non è una geometria GeoJSON: serve { "type": "Point|LineString|Polygon|…", "coordinates": [...] }.';
+    err.classList.remove('hidden');
+    return;
+  }
+  err.classList.add('hidden');
+  stato.geo = parsed;
+  aggiornaIntestazione();
+  disegna();
+}
+
+/* --------------------------------- Modale -------------------------------- */
+
+function tileAttive() {
+  return localStorage.getItem(CHIAVE_TILE) !== 'off';
+}
+
+function applicaTile() {
+  if (!mappa) return;
+  const attive = tileAttive();
+  if (attive && !livelloTile) {
+    livelloTile = L.tileLayer(TILE_URL, { maxZoom: 19, attribution: TILE_ATTR }).addTo(mappa);
+  } else if (!attive && livelloTile) {
+    mappa.removeLayer(livelloTile);
+    livelloTile = null;
+  }
+}
+
+function creaMappa() {
+  if (mappa) return;
+  mappa = L.map('geomap-canvas', { center: [41.9, 12.5], zoom: 5, zoomControl: true });
+  gruppo = L.layerGroup().addTo(mappa);
+  applicaTile();
+  mappa.on('click', (e) => aggiungiPunto(e.latlng));
+}
+
+/**
+ * Apre l'editor su una geometria.
+ *
+ * @param {object} opts
+ * @param {object} opts.value    geometria GeoJSON di partenza (o null: si parte da un Point)
+ * @param {string} opts.campo    nome del campo/colonna, per il titolo
+ * @param {boolean} opts.readOnly sola visualizzazione
+ * @param {(geo: object) => void} opts.onSave chiamata con la geometria confermata
+ */
+export async function openGeoEditor({ value, campo = '', readOnly = false, onSave = null }) {
+  try {
+    await caricaLeaflet();
+  } catch (err) {
+    toast(err.message, true);
+    return;
+  }
+
+  stato = {
+    // Copia profonda: finché non si conferma, il valore nella griglia non deve
+    // cambiare (annullare significa annullare davvero).
+    geo: isGeometry(value) ? JSON.parse(JSON.stringify(value)) : { type: 'Point', coordinates: [12.4964, 41.9028] },
+    readOnly,
+    onSave,
+    campo,
+  };
+
+  $('#geomap-title').textContent = campo ? `Geometria — ${campo}` : 'Geometria';
+  $('#geomap-error').classList.add('hidden');
+  $('#geomap-json').readOnly = !!readOnly;
+  $('#geomap-save').classList.toggle('hidden', !!readOnly);
+  $('#geomap-type').value = isGeometry(stato.geo) ? stato.geo.type : 'Point';
+  $('#geomap-type').disabled = !!readOnly;
+  $('#geomap-tiles').checked = tileAttive();
+  aggiornaTesto();
+
+  openModal('#geomap-overlay');
+  // La mappa va creata/ridimensionata DOPO che il contenitore è visibile:
+  // Leaflet legge le dimensioni del div e su un contenitore nascosto (0×0)
+  // disegnerebbe una mappa grigia che non si aggiusta più da sola.
+  setTimeout(() => {
+    creaMappa();
+    mappa.invalidateSize();
+    disegna();
+    inquadra();
+  }, 30);
+}
+
+// Converte la geometria corrente in un altro tipo, riusando le posizioni già
+// presenti: cambiare tipo senza ridisegnare da capo è il caso normale (un
+// Point tracciato per sbaglio al posto di un LineString).
+function cambiaTipo(nuovo) {
+  const punti = posizioni(stato.geo).map(({ pos }) => pos).filter((p) => Array.isArray(p) && p.length >= 2);
+  const primo = punti[0] || [12.4964, 41.9028];
+  if (nuovo === 'Point') {
+    stato.geo = { type: 'Point', coordinates: primo };
+  } else if (nuovo === 'MultiPoint' || nuovo === 'LineString') {
+    const lista = punti.length >= 2 ? punti : [primo, [primo[0] + 0.01, primo[1] + 0.01]];
+    stato.geo = { type: nuovo, coordinates: lista };
+  } else if (nuovo === 'Polygon') {
+    let anello = punti.length >= 3 ? [...punti] : [
+      primo, [primo[0] + 0.01, primo[1]], [primo[0] + 0.01, primo[1] + 0.01],
+    ];
+    if (!chiuso(anello)) anello.push([...anello[0]]);
+    stato.geo = { type: 'Polygon', coordinates: [anello] };
+  }
+  aggiornaTesto();
+  disegna();
+  inquadra();
+}
+
+export function initGeoMap() {
+  const overlay = $('#geomap-overlay');
+  if (!overlay) return;
+
+  $('#geomap-cancel').addEventListener('click', () => closeModal('#geomap-overlay'));
+
+  $('#geomap-save').addEventListener('click', () => {
+    leggiTesto(); // eventuali modifiche a mano non ancora applicate
+    if (!$('#geomap-error').classList.contains('hidden')) return;
+    if (!isGeometry(stato.geo)) {
+      toast('Geometria non valida.', true);
+      return;
+    }
+    const salva = stato.onSave;
+    const geo = stato.geo;
+    closeModal('#geomap-overlay');
+    if (salva) salva(geo);
+  });
+
+  $('#geomap-json').addEventListener('input', () => leggiTesto());
+  $('#geomap-fit').addEventListener('click', () => inquadra());
+  $('#geomap-type').addEventListener('change', (e) => cambiaTipo(e.target.value));
+  $('#geomap-tiles').addEventListener('change', (e) => {
+    localStorage.setItem(CHIAVE_TILE, e.target.checked ? 'on' : 'off');
+    applicaTile();
+  });
+}

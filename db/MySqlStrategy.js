@@ -3,8 +3,14 @@
 const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
+
+// Durata della cache dei metadati di colonna (vedi tableColumnsInfo). Breve di
+// proposito: una ALTER TABLE fatta da fuori si riflette al massimo dopo questo
+// intervallo, quelle fatte da qui svuotano la cache subito.
+const GEO_CACHE_MS = 15000;
 
 /* ---------------------------------------------------------------------------
  * Helpers MySQL
@@ -97,6 +103,10 @@ class MySqlStrategy extends DbStrategy {
   constructor() {
     super();
     this.pool = null; // pool promise-based di mysql2
+    // Colonne geometriche per tabella (vedi geoColumns): la lettura le deve
+    // conoscere a OGNI find, e information_schema non è gratis. Cache breve,
+    // svuotata dalle DDL sulle colonne che passano da qui.
+    this._geoCache = new Map();
   }
 
   get type() { return 'mysql'; }
@@ -298,6 +308,101 @@ class MySqlStrategy extends DbStrategy {
     return rows.map((r) => r.name);
   }
 
+  /* -------------------------------------------------------------------------
+   * Geometrie (vedi db/geometry.js per il perché del formato unico GeoJSON)
+   * ---------------------------------------------------------------------- */
+
+  // Elenco colonne della tabella con le sole informazioni che servono qui:
+  // nome, tipo e — per le geometriche — SRID. `SRS_ID` esiste da MySQL 8; su
+  // 5.7 la query fallisce e si ripiega senza (là il SRID non è vincolato).
+  async tableColumnsInfo(db, coll) {
+    const chiave = `${db} ${coll}`;
+    const ora = Date.now();
+    const hit = this._geoCache.get(chiave);
+    if (hit && hit.scade > ora) return hit.info;
+
+    const pool = this.requirePool();
+    let rows;
+    try {
+      [rows] = await pool.query(
+        `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, SRS_ID AS srid, EXTRA AS extra
+           FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+        [db, coll]
+      );
+    } catch {
+      [rows] = await pool.query(
+        `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, NULL AS srid, EXTRA AS extra
+           FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+       ORDER BY ORDINAL_POSITION`,
+        [db, coll]
+      );
+    }
+    const info = {
+      // Le colonne INVISIBLE (MySQL 8) non fanno parte di `SELECT *`: vanno
+      // escluse anche dalla lista esplicita, altrimenti la sola presenza di una
+      // colonna geometrica farebbe comparire nella griglia colonne che prima
+      // non c'erano.
+      columns: rows
+        .filter((r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')))
+        .map((r) => ({ name: r.name, type: r.type, srid: r.srid == null ? null : Number(r.srid) })),
+      geo: new Map(),
+    };
+    for (const c of info.columns) {
+      if (isSqlGeometryType(c.type)) info.geo.set(c.name, c);
+    }
+    this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
+    return info;
+  }
+
+  // Lista di selezione: `*` quando non ci sono geometrie (nessun costo per il
+  // 99% delle tabelle), altrimenti le colonne per nome con ST_AsGeoJSON su
+  // quelle geometriche — l'alias conserva il nome originale, quindi il resto
+  // della pipeline (colonne, _id, griglia) non si accorge di nulla.
+  async selectListFor(db, coll) {
+    const info = await this.tableColumnsInfo(db, coll);
+    if (!info.geo.size) return { list: '*', geo: info.geo };
+    const list = info.columns
+      .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
+      .join(', ');
+    return { list, geo: info.geo };
+  }
+
+  // Le geometrie tornano come testo GeoJSON: qui diventano oggetti, la forma
+  // che il client sa disegnare sulla mappa.
+  static geoRowsToJson(rows, geo) {
+    if (!geo || !geo.size) return rows;
+    for (const row of rows) {
+      for (const col of geo.keys()) {
+        if (col in row) row[col] = parseGeoJsonText(row[col]);
+      }
+    }
+    return rows;
+  }
+
+  // Frammento SQL + parametro per scrivere una geometria. Il SRID della colonna
+  // va imposto: ST_GeomFromGeoJSON produce SRID 4326 e MySQL rifiuta la
+  // scrittura se non coincide con quello dichiarato dalla colonna (compreso 0,
+  // il default di una colonna GEOMETRY senza SRID).
+  static geoPlaceholder(colInfo) {
+    return colInfo && colInfo.srid != null
+      ? `ST_SRID(ST_GeomFromGeoJSON(?), ${Number(colInfo.srid)})`
+      : 'ST_GeomFromGeoJSON(?)';
+  }
+
+  // Valore di scrittura per una colonna: le geometriche prendono il frammento
+  // ST_GeomFromGeoJSON, tutte le altre un normale segnaposto.
+  static geoBinding(col, value, geo) {
+    const colInfo = geo && geo.get(col);
+    if (colInfo && isGeoJson(value)) {
+      assertGeoJson(value, `Colonna "${col}"`);
+      return { sql: MySqlStrategy.geoPlaceholder(colInfo), param: JSON.stringify(value) };
+    }
+    return { sql: '?', param: toSqlValue(value) };
+  }
+
   // _id virtuale per il client: la chiave primaria come oggetto
   // { colonna: valore }. Senza chiave primaria si usa l'intera riga come
   // chiave composita di fallback.
@@ -356,8 +461,11 @@ class MySqlStrategy extends DbStrategy {
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
-    const ks = this.buildKeyset(payload, table, whereSql, limit, pk);
-    const sql = ks ? ks.sql : `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
+    // Le colonne geometriche vanno lette come GeoJSON (ST_AsGeoJSON): senza,
+    // mysql2 restituisce oggetti {x, y} annidati da cui non si risale al tipo.
+    const { list: selectList, geo } = await this.selectListFor(db, coll);
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
+    const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
     const params = ks ? ks.params : [limit, skip];
 
     // Timeout per-query (mysql2 interrompe la query allo scadere): una find lenta
@@ -397,6 +505,8 @@ class MySqlStrategy extends DbStrategy {
       total = c.total;
     }
 
+    MySqlStrategy.geoRowsToJson(rows, geo);
+
     const columns = (fields || []).map((f) => f.name);
     // Budget di byte: il tetto sulle righe non protegge da poche righe enormi
     // (BLOB, testi lunghi, campi JSON). Il driver ha già materializzato il
@@ -413,7 +523,7 @@ class MySqlStrategy extends DbStrategy {
   // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
   // a colonna singola) → il chiamante usa OFFSET. Il filtro utente (WHERE) viene
   // combinato in AND con il vincolo sul cursore.
-  buildKeyset(payload, table, whereSql, limit, pk) {
+  buildKeyset(payload, table, whereSql, limit, pk, selectList = '*') {
     const ks = payload && payload.keyset;
     if (!ks) return null;
     if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
@@ -434,7 +544,7 @@ class MySqlStrategy extends DbStrategy {
     }
     // ks.first (o nessun estremo): prima pagina, solo ORDER BY pk ASC.
     const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const sql = `SELECT * FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT ?`;
+    const sql = `SELECT ${selectList} FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT ?`;
     params.push(limit);
     return { sql, params, reverse };
   }
@@ -631,8 +741,12 @@ class MySqlStrategy extends DbStrategy {
     if (!cols.length) {
       [res] = await pool.query(`INSERT INTO ${table} () VALUES ()`);
     } else {
-      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`;
-      [res] = await pool.query(sql, cols.map((c) => toSqlValue(doc[c])));
+      // Una geometria non è un parametro come gli altri: il segnaposto diventa
+      // ST_GeomFromGeoJSON(?) col SRID della colonna (vedi geoBinding).
+      const { geo } = await this.tableColumnsInfo(db, coll);
+      const bind = cols.map((c) => MySqlStrategy.geoBinding(c, doc[c], geo));
+      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map((b) => b.sql).join(', ')})`;
+      [res] = await pool.query(sql, bind.map((b) => b.param));
     }
     return { insertedId: JSON.stringify(res.insertId || null) };
   }
@@ -643,9 +757,11 @@ class MySqlStrategy extends DbStrategy {
     const set = deserializeClientObject(payload.set);
     const assignments = [];
     const params = [];
+    const { geo } = await this.tableColumnsInfo(db, coll);
     for (const [col, val] of Object.entries(set)) {
-      assignments.push(`${qid(col)} = ?`);
-      params.push(toSqlValue(val));
+      const b = MySqlStrategy.geoBinding(col, val, geo);
+      assignments.push(`${qid(col)} = ${b.sql}`);
+      params.push(b.param);
     }
     for (const col of payload.unset || []) {
       assignments.push(`${qid(col)} = NULL`);
@@ -943,16 +1059,19 @@ class MySqlStrategy extends DbStrategy {
     if (!to) throw new Error('Nuovo nome della tabella mancante.');
     DbStrategy.assertCreatableName(to, 'della tabella');
     await pool.query(`RENAME TABLE ${qtable(db, coll)} TO ${qtable(db, to)}`);
+    this._geoCache.clear();
   }
 
   async dropCollection(db, coll) {
     const pool = this.requirePool();
     await pool.query(`DROP TABLE ${qtable(db, coll)}`);
+    this._geoCache.clear();
   }
 
   async addColumn(db, coll, column) {
     const pool = this.requirePool();
     await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
+    this._geoCache.clear(); // i metadati di colonna in cache non valgono più
   }
 
   // payload: { oldName, column: { name, type, nullable, default } }
@@ -963,6 +1082,7 @@ class MySqlStrategy extends DbStrategy {
     await pool.query(
       `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${columnSql(payload.column || {})}`
     );
+    this._geoCache.clear();
   }
 
   async dropColumn(db, coll, name) {

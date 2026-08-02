@@ -1,13 +1,24 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
 import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab } from './utils.js';
+import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
 
+// Tipi di colonna geometrici, negli stessi nomi in cui arrivano da
+// `collection:stats`: MySQL manda COLUMN_TYPE ("point", "geometry"),
+// PostgreSQL l'udt ("geometry", "geography"), MongoDB il tipo dedotto dal
+// campione ("geojson", vedi bsonTypeOf in MongoDbStrategy).
+const TIPI_GEO = new Set([
+  'geojson', 'geometry', 'geography', 'point', 'linestring', 'polygon',
+  'multipoint', 'multilinestring', 'multipolygon', 'geometrycollection', 'geomcollection',
+]);
+
 export function insertKindOf(typeName) {
   const t = String(typeName || '').toLowerCase();
+  if (TIPI_GEO.has(t)) return 'geo';
   if (isSqlType(state.dbType)) {
     if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
     if (/^decimal|^numeric/.test(t)) return 'decimal';
@@ -26,7 +37,38 @@ export function insertKindOf(typeName) {
   return 'text';
 }
 
+// Etichetta del pulsante-geometria: dice cosa c'è dentro senza aprire la mappa.
+function etichettaGeo(btn) {
+  let geo = null;
+  try { geo = btn.value ? JSON.parse(btn.value) : null; } catch { /* testo non valido */ }
+  btn.textContent = isGeometry(geo) ? `🗺 ${geometryLabel(geo).replace(/^▦ /, '')}` : '🗺 Disegna sulla mappa…';
+}
+
 export function insertInputFor(kind) {
+  // Geometria: il "campo" è un pulsante che apre la mappa e custodisce il
+  // GeoJSON in `value` — così il resto del form (lettura, cambio tipo,
+  // rimozione riga) continua a trattarlo come un input qualsiasi.
+  if (kind === 'geo') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'ghost geo-pick';
+    btn.value = '';
+    etichettaGeo(btn);
+    btn.addEventListener('click', () => {
+      let corrente = null;
+      try { corrente = btn.value ? JSON.parse(btn.value) : null; } catch { /* si riparte da zero */ }
+      openGeoEditor({
+        value: corrente,
+        campo: insertNomeCampo(btn),
+        onSave: (geo) => {
+          btn.value = JSON.stringify(geo);
+          etichettaGeo(btn);
+        },
+      });
+    });
+    return btn;
+  }
+
   if (kind === 'bool') {
     const s = document.createElement('select');
     for (const v of ['', 'true', 'false']) {
@@ -80,7 +122,10 @@ export function addInsertRow(opts) {
   if (opts.nameEditable) {
     const sel = document.createElement('select');
     const kinds = [['text', 'testo'], ['number', 'numero'], ['bool', 'booleano'],
-                   ['datetime', 'data'], ['oid', 'ObjectId'], ['json', 'JSON']];
+                   ['datetime', 'data'], ['oid', 'ObjectId'], ['json', 'JSON'],
+                   // Su MongoDB il tipo di un campo NUOVO non è deducibile da
+                   // nessuno schema: la geometria va potuta scegliere a mano.
+                   ['geo', 'geometria (mappa)']];
     for (const [v, label] of kinds) {
       const o = document.createElement('option');
       o.value = v;
@@ -134,6 +179,14 @@ export function addInsertRow(opts) {
   return row;
 }
 
+// Nome del campo a cui appartiene un controllo del form: serve solo per il
+// titolo dell'editor geografico.
+function insertNomeCampo(el) {
+  const row = insertRows.find((r) => r.input === el);
+  if (!row) return '';
+  return row.nameInput ? row.nameInput.value.trim() : (row.fixedName || '');
+}
+
 export function insertRowValue(row) {
   const raw = row.input.value;
   const t = String(raw == null ? '' : raw).trim();
@@ -158,6 +211,12 @@ export function insertRowValue(row) {
     case 'oid':
       if (!/^[0-9a-fA-F]{24}$/.test(t)) throw new Error('ObjectId non valido (24 caratteri esadecimali)');
       return { $oid: t };
+    case 'geo': {
+      let geo;
+      try { geo = JSON.parse(t); } catch { throw new Error('geometria non valida (JSON illeggibile)'); }
+      if (!isGeometry(geo)) throw new Error('geometria non valida: serve un GeoJSON { type, coordinates }');
+      return geo;
+    }
     case 'json':
       try { return JSON.parse(t); } catch { throw new Error('JSON non valido'); }
     default:

@@ -904,6 +904,43 @@
     </div>
   </div>
 
+  <!-- ===================== Modale editor geografico (GEOMETRY / GeoJSON) ===================== -->
+  <div id="geomap-overlay" class="overlay hidden">
+    <div class="modal wide geomap-modal">
+      <h2 id="geomap-title">Geometria</h2>
+
+      <div class="geomap-toolbar">
+        <label>Tipo
+          <select id="geomap-type">
+            <option value="Point">Point</option>
+            <option value="MultiPoint">MultiPoint</option>
+            <option value="LineString">LineString</option>
+            <option value="Polygon">Polygon</option>
+          </select>
+        </label>
+        <button type="button" id="geomap-fit" class="ghost">⤢ Inquadra</button>
+        <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
+          <input type="checkbox" id="geomap-tiles" /> Sfondo mappa (OpenStreetMap)
+        </label>
+        <span id="geomap-info" class="dim"></span>
+      </div>
+
+      <div id="geomap-warning" class="warning hidden"></div>
+
+      <div class="geomap-body">
+        <div id="geomap-canvas" class="geomap-canvas"></div>
+        <textarea id="geomap-json" class="geomap-json" spellcheck="false"></textarea>
+      </div>
+
+      <div id="geomap-note" class="dim geomap-note hidden"></div>
+      <div id="geomap-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="geomap-cancel" class="ghost">Annulla</button>
+        <button id="geomap-save" class="primary">Applica geometria</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== Modale modifica documento (riga) ===================== -->
   <div id="editdoc-overlay" class="overlay hidden">
     <div class="modal wide">

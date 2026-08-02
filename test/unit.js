@@ -581,6 +581,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 21: Vault a busta (DEK, scrypt, cambio passphrase)
   require('./unit-vault');
 
+  // Test 22: Geometrie (validazione GeoJSON, binding ST_GeomFromGeoJSON, lettura)
+  require('./unit-geometry');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

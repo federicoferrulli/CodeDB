@@ -1,6 +1,7 @@
 import { state } from './state.js';
-import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab } from './utils.js';
+import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext } from './utils.js';
 import { runQuery, renderGrid } from './grid.js';
+import { isGeometry, openGeoEditor } from './geomap.js';
 
 export function buildEditor(current) {
   const type = valueType(current);
@@ -80,8 +81,54 @@ export function buildEditor(current) {
   return { input, original: input.value, buildValue: () => parseEdited(input.value) };
 }
 
+/**
+ * Scrive un singolo campo della riga. Estratta dal salvataggio inline perché la
+ * usa anche l'editor su mappa, che risponde molto DOPO l'apertura: il contesto
+ * (tab e collection) va quindi congelato all'inizio, altrimenti una geometria
+ * confermata dopo un cambio di tab finirebbe nella tabella sbagliata.
+ */
+function salvaCampo(doc, field, value, ctx) {
+  const c = ctx || captureContext();
+  return emit('doc:update', {
+    tabId: c.tabId,
+    db: c.db,
+    coll: c.coll,
+    id: idOf(doc),
+    set: { [field]: value },
+  }).then((res) => {
+    toast(`Campo "${field}" aggiornato`);
+    // Il refresh rilegge dagli input del workspace, che appartengono al tab
+    // mostrato: se l'utente si è spostato altrove, rileggerebbe la collection
+    // sbagliata. La scrittura è comunque andata a buon fine.
+    if (isForActiveTab(res) && c.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+  }).catch((err) => {
+    toast(err.message, true);
+    if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
+  });
+}
+
+// Contesto di scrittura completo: tab, coll-tab e bersaglio db/collection.
+function contestoScrittura() {
+  const c = captureContext();
+  return Object.assign(c, { db: state.db, coll: state.coll });
+}
+
 export function startEdit(td, doc, field) {
   if (td.classList.contains('editing')) return;
+
+  // Geometrie: non c'è un `input` sensato in cui scriverle a mano. Si apre
+  // l'editor su mappa, che è anche l'unico modo di CAPIRE cosa si sta
+  // modificando; il salvataggio è lo stesso `doc:update` degli altri campi.
+  if (isGeometry(doc[field])) {
+    const ctx = contestoScrittura();
+    openGeoEditor({
+      value: doc[field],
+      campo: field,
+      onSave: (geo) => salvaCampo(doc, field, geo, ctx),
+    });
+    return;
+  }
+
   const { input, original, buildValue } = buildEditor(doc[field]);
 
   td.classList.add('editing');
@@ -113,21 +160,7 @@ export function startEdit(td, doc, field) {
       renderGrid({ preserveScroll: true });
       return;
     }
-    emit('doc:update', {
-      db: state.db,
-      coll: state.coll,
-      id: idOf(doc),
-      set: { [field]: value },
-    }).then((res) => {
-      toast(`Campo "${field}" aggiornato`);
-      // Il refresh rilegge dagli input del workspace, che appartengono al tab
-      // mostrato: se l'utente si è spostato altrove, rileggerebbe la collection
-      // sbagliata. La scrittura è comunque andata a buon fine.
-      if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura
-    }).catch((err) => {
-      toast(err.message, true);
-      if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
-    });
+    salvaCampo(doc, field, value, contestoScrittura());
   };
 
   input.addEventListener('keydown', (e) => {

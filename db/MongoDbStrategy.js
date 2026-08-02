@@ -3,6 +3,7 @@
 const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { isGeoJson } = require('./geometry');
 
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
@@ -182,6 +183,11 @@ function bsonTypeOf(v) {
     if (t === 'Binary') return 'binary';
     if (t === 'Timestamp') return 'timestamp';
     if (t) return String(t).toLowerCase();
+    // Un GeoJSON è un `object` come tutti gli altri, ma è l'unico che la UI sa
+    // aprire su una mappa: distinguerlo qui è ciò che permette al form di
+    // inserimento di proporre l'editor geografico invece di una textarea JSON
+    // (su MySQL/PostgreSQL lo dice il tipo della colonna, qui no).
+    if (isGeoJson(v)) return 'geojson';
     return 'object';
   }
   if (typeof v === 'number') return Number.isInteger(v) ? 'int' : 'double';

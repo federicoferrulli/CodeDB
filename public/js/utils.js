@@ -1,6 +1,7 @@
 import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
+import { isGeometry, geometryLabel } from './geojson.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -23,6 +24,11 @@ export function ejsonKind(v) {
 export function displayValue(v) {
   if (v === null || v === undefined) return { text: '–', cls: 'type-null' };
   if (Array.isArray(v)) return { text: JSON.stringify(v.map(simplify)), cls: 'type-obj' };
+  // Geometrie: in cella l'elenco delle coordinate non dice nulla e rompe il
+  // layout. Si mostra tipo e numero di vertici; il contenuto vero si apre con
+  // un doppio clic (editor su mappa). La copia delle celle non passa di qui:
+  // legge `state.docs`, quindi continua a copiare il GeoJSON completo.
+  if (isGeometry(v)) return { text: geometryLabel(v), cls: 'type-geo' };
 
   const kind = ejsonKind(v);
   if (kind === 'oid') return { text: v.$oid, cls: 'type-oid' };

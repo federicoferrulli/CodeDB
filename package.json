@@ -59,6 +59,7 @@
     "@electron/packager": "^20.0.4",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
+    "leaflet": "^1.9.4",
     "socket.io-client": "^4.8.3"
   },
   "productName": "CodeDB",
