@@ -575,6 +575,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 19: Traduzione SQL di scrittura/DDL → MongoDB
   require('./unit-sql-write-mongo');
 
+  // Test 20: Formattatore dell'editor (SQL, JSON/MQL, rientri JavaScript)
+  require('./unit-query-formatter');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

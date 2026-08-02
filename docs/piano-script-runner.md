@@ -66,7 +66,19 @@ alla volta sulla stessa connessione**. Vantaggi oltre alla sicurezza:
   dell'albero** dopo un DDL riuscito. Test: `unit-mongo-script`,
   `unit-sql-write-mongo` (in `npm test`), `e2e-mongo-script`, più il caso
   «scritture da script soggette ai permessi» in `unit-rbac`.
-- **Fase D** — da fare.
+- **Fase D — FATTA**: `public/js/query-formatter.js` (SQL ricostruito dai token,
+  JSON/MQL indentato, script JS **solo rientri**) con vocabolario SQL importato
+  dall'evidenziatore per non divergere; keyword JavaScript e funzioni
+  dell'ambiente colorate in `query-highlighter.js`;
+  `public/js/query-editor.js` con **numeri di riga**, Tab/Shift+Tab che
+  indentano, **esegui solo la selezione** (Ctrl+Invio) e **riga in errore
+  evidenziata** nel gutter. Test: `unit-query-formatter` e i due casi nuovi in
+  `unit-highlighter` (in `npm test`). Nota CSS: l'editor passa da `pre-wrap` a
+  `pre` (scorrimento orizzontale) — con l'a capo automatico una riga logica
+  occupa più righe visive e la numerazione indicherebbe la riga sbagliata
+  proprio quando serve.
+
+Tutte e quattro le fasi del piano sono completate.
 
 ## Fase A — Fondamenta: divisione ed esecuzione a passi (backend)
 

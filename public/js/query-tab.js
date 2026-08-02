@@ -8,6 +8,10 @@ import { highlightQueryCode } from './query-highlighter.js';
 import { isScript, countStatements } from './sql-split.js';
 import { runScript, runScriptAndWait } from './script-run.js';
 import { refreshDbTree } from './dbtree.js';
+import { formatCode } from './query-formatter.js';
+import {
+  initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
+} from './query-editor.js';
 
 const escapeHtml = esc;
 
@@ -37,6 +41,10 @@ export function updateEditorHighlight() {
   }
 
   aggiornaModalitaScript(code);
+  // Il testo dell'editor cambia anche senza digitazione (snippet, ripresa di
+  // una query in sospeso, caricamento di un chunk): la numerazione deve
+  // seguirlo comunque, non solo sull'evento `input`.
+  aggiornaNumeriRiga();
 }
 
 /**
@@ -159,17 +167,20 @@ export function initQueryTab() {
 
   if (formatBtn && editorInput) {
     formatBtn.addEventListener('click', () => {
-      const val = editorInput.value.trim();
-      if (!val) return;
-      try {
-        if (val.startsWith('{') || val.startsWith('[')) {
-          const parsed = JSON.parse(val);
-          editorInput.value = JSON.stringify(parsed, null, 2);
-          updateEditorHighlight();
-        }
-      } catch (e) {
-        // lascia com'è se non è JSON valido
+      const val = editorInput.value;
+      if (!val.trim()) return;
+      // `formatCode` sceglie da sé fra SQL, JSON/MQL e script JavaScript, e in
+      // caso di sintassi non analizzabile restituisce il testo invariato: una
+      // formattazione che corrompe il codice sarebbe molto peggio di una
+      // formattazione mancata. Prima qui funzionava solo il ramo JSON, e su
+      // SQL il pulsante non faceva nulla senza dirlo.
+      const formattato = formatCode(val);
+      if (formattato === val) {
+        toast('Niente da formattare (o codice non analizzabile).');
+        return;
       }
+      editorInput.value = formattato;
+      updateEditorHighlight();
     });
   }
 
@@ -185,10 +196,21 @@ export function initQueryTab() {
     editorInput.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
-        runQuery();
+        // Con del testo selezionato si esegue SOLO quello: è il modo naturale
+        // di provare una riga dentro uno script lungo senza rilanciarlo tutto.
+        const selezione = selezioneEditor();
+        if (selezione) {
+          toast('Eseguo solo la selezione');
+          runQuery({ code: selezione });
+        } else {
+          runQuery();
+        }
       }
     });
   }
+
+  // Numeri di riga, Tab che indenta, evidenziazione della riga in errore.
+  initQueryEditor({ onCambio: updateEditorHighlight });
 
   if (runBtn) {
     runBtn.addEventListener('click', () => runQuery());
@@ -914,12 +936,21 @@ export function cancelActiveQuery() {
   }
 }
 
-// Esecuzione Query (Task 3 runner integration)
-export function runQuery() {
+/**
+ * Esecuzione della query o dello script.
+ *
+ * @param {{code?: string}} [opzioni] `code` esegue QUEL testo invece del
+ *   contenuto dell'editor: serve a "esegui solo la selezione" (Ctrl+Invio su
+ *   un pezzo di script) senza duplicare tutto il percorso di esecuzione.
+ */
+export function runQuery(opzioni = {}) {
   const editorInput = $('#query-editor-input');
   if (!editorInput) return;
-  const code = editorInput.value.trim();
+  const code = String(opzioni.code || editorInput.value).trim();
   if (!code) return;
+
+  // Una nuova esecuzione azzera la segnalazione precedente.
+  segnalaRigaErrore(0);
 
   const engine = $('#query-target-engine')?.value || 'auto';
 
@@ -1012,6 +1043,9 @@ export function runQuery() {
       if (isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
         renderResults([]);
+        // "… (riga 12)" nel messaggio: la riga viene evidenziata nel gutter e
+        // portata in vista, invece di lasciarla cercare a mano.
+        if (!opzioni.code) segnalaRigaErrore(rigaDaMessaggio(err.message));
       }
       throw err;
     });

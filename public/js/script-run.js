@@ -24,6 +24,7 @@ import {
 } from './pending-queries.js';
 import { renderResults, updateQueryMetrics } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
+import { segnalaRigaErrore } from './query-editor.js';
 
 // Run seguiti da questo browser: runId → { tabId, collTabId, total, stato }.
 const runs = new Map();
@@ -202,6 +203,12 @@ function onProgress(ev) {
   if (ev.tipo === 'statement' && ev.result) {
     r.log.push(ev.result);
     if (r.log.length > MAX_LOG) r.log.splice(0, r.log.length - MAX_LOG);
+    // Prima istruzione fallita: si evidenzia la riga nel sorgente. È il punto
+    // in cui l'utente deve guardare, e con uno script lungo trovarlo a mano
+    // è il lavoro più noioso.
+    if (!ev.result.ok && !ev.result.interrupted && runVisibile === ev.runId) {
+      segnalaRigaErrore(ev.result.line);
+    }
   }
 
   // Solo il run mostrato tocca il pannello: gli altri aggiornano comunque il

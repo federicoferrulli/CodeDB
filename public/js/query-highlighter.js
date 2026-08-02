@@ -66,6 +66,26 @@ const MONGO_SHELL_TYPES = new Set([
   'RegExp', 'UUID', 'BinData', 'MinKey', 'MaxKey', 'DBRef'
 ]);
 
+// Parole chiave JavaScript degli script MongoDB (db/MongoScript.js). Sono
+// confrontate sul testo ORIGINALE, non in maiuscolo: in JavaScript `let` è una
+// parola chiave ma `LET` è un normale identificatore, e colorarli allo stesso
+// modo darebbe l'idea sbagliata di cosa il motore riconosce.
+const JS_KEYWORDS = new Set([
+  'var', 'let', 'const', 'function', 'return', 'if', 'else', 'for', 'of', 'in',
+  'while', 'do', 'break', 'continue', 'try', 'catch', 'finally', 'throw', 'new',
+  'typeof', 'instanceof', 'void', 'delete', 'this',
+]);
+// `true`/`false`/`null` restano fuori: sono già colorati come valori booleani
+// più avanti, ed è la resa giusta anche negli script.
+
+// Funzioni dell'ambiente degli script: non sono parole chiave, ma vederle
+// colorate distingue subito ciò che l'interprete mette a disposizione da un
+// nome qualsiasi (che sarebbe un errore "Nome non definito").
+const JS_GLOBALS = new Set([
+  'print', 'printjson', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number',
+  'Boolean', 'parseInt', 'parseFloat', 'isNaN', 'db',
+]);
+
 function escHtml(str) {
   return String(str || '')
     .replace(/&/g, '&amp;')
@@ -174,7 +194,13 @@ export function highlightQueryCode(code, engineHint = 'auto') {
         const word = wordMatch[0];
         const upper = word.toUpperCase();
 
-        if (SQL_KEYWORDS.has(upper)) {
+        if (JS_KEYWORDS.has(word)) {
+          // Prima dei set SQL: `in`, `for` e `do` esistono in entrambi i mondi,
+          // ma il confronto JS è sul testo esatto e quindi più specifico.
+          html += `<span class="hl-keyword">${escHtml(word)}</span>`;
+        } else if (JS_GLOBALS.has(word) && word !== 'db') {
+          html += `<span class="hl-function">${escHtml(word)}</span>`;
+        } else if (SQL_KEYWORDS.has(upper)) {
           html += `<span class="hl-keyword">${escHtml(word)}</span>`;
         } else if (SQL_TYPES.has(upper)) {
           html += `<span class="hl-type">${escHtml(word)}</span>`;
@@ -212,3 +238,8 @@ export function highlightQueryCode(code, engineHint = 'auto') {
 
   return html;
 }
+
+/* Vocabolario condiviso: il formattatore (query-formatter.js) deve mettere in
+ * maiuscolo ESATTAMENTE le parole che qui vengono riconosciute come SQL, e mai
+ * un identificatore. Tenerlo in un solo posto evita che i due divergano. */
+export { SQL_KEYWORDS, SQL_TYPES, SQL_FUNCTIONS, JS_KEYWORDS, MONGO_SHELL_TYPES };

@@ -49,5 +49,24 @@ console.log('--- Test Unitari Query Syntax Highlighter ---');
   assert.ok(shellHighlighted.includes('<span class="hl-shell-method">find</span>'), 'Metodo find deve essere evidenziato');
   console.log('  OK   Evidenziazione sintassi MongoShell superata');
 
+  // Test 5: Evidenziazione degli script JavaScript (interprete MongoDB)
+  const js = 'const soglia = 10;\nfor (const d of db.c.find({}).toArray()) {\n  if (d.n > soglia) { print(d.n); }\n}';
+  const jsHighlighted = highlightQueryCode(js, 'mongodb');
+
+  assert.ok(jsHighlighted.includes('<span class="hl-keyword">const</span>'), 'const deve essere evidenziato');
+  assert.ok(jsHighlighted.includes('<span class="hl-keyword">for</span>'), 'for deve essere evidenziato');
+  assert.ok(jsHighlighted.includes('<span class="hl-keyword">of</span>'), 'of deve essere evidenziato');
+  assert.ok(jsHighlighted.includes('<span class="hl-keyword">if</span>'), 'if deve essere evidenziato');
+  assert.ok(jsHighlighted.includes('<span class="hl-function">print</span>'), 'print (funzione dell\'ambiente) deve essere evidenziata');
+  // Un identificatore qualsiasi NON deve essere colorato come parola chiave.
+  assert.ok(!/<span class="hl-keyword">soglia<\/span>/.test(jsHighlighted), 'un identificatore non è una parola chiave');
+  console.log('  OK   Evidenziazione sintassi script JavaScript superata');
+
+  // Test 6: le parole chiave JS sono riconosciute sul testo ESATTO, non in
+  // maiuscolo: in JavaScript `LET` è un normale identificatore.
+  const maiuscolo = highlightQueryCode('LET x = 1', 'mongodb');
+  assert.ok(!/<span class="hl-keyword">LET<\/span>/.test(maiuscolo), 'LET non è una parola chiave JavaScript');
+  console.log('  OK   Distinzione fra parole chiave JS e identificatori maiuscoli superata');
+
   console.log('Tutti i test unitari di Syntax Highlighting superati con successo!');
 })();

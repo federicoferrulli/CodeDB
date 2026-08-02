@@ -719,6 +719,9 @@
                       </div>
                       <div class="editor-body">
                         <div class="query-editor-wrapper">
+                          <!-- Numeri di riga: servono da quando gli errori del
+                               runner e dell'interprete dicono "riga N". -->
+                          <div id="query-editor-gutter" class="query-editor-gutter" aria-hidden="true"></div>
                           <pre id="query-editor-highlight" class="query-editor-highlight" aria-hidden="true"><code id="query-editor-code"></code></pre>
                           <textarea id="query-editor-input" spellcheck="false"
                             placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
