@@ -797,6 +797,7 @@
                         <div class="results-view-mode">
                           <button id="res-mode-table" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
                           <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
+                          <button id="res-mode-chart" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
                         </div>
                         <div class="results-actions">
                           <div class="desktop-export-group">
@@ -856,6 +857,41 @@
                         <!-- Vista JSON Tree -->
                         <div id="query-json-view" class="results-panel-view hidden">
                           <div id="query-json-tree" class="json-tree-container"></div>
+                        </div>
+                        <!-- Vista Grafici personalizzati (ECharts, caricato su
+                             richiesta da public/vendor/echarts). Il pannello a
+                             destra si genera da charts.js: i controlli dipendono
+                             dal tipo di grafico e dalle colonne del result set,
+                             che non si conoscono a priori. -->
+                        <div id="query-chart-view" class="results-panel-view hidden">
+                          <div class="chart-layout">
+                            <div class="chart-main">
+                              <!-- Barra rapida: le quattro decisioni che fanno
+                                   un grafico (tipo, categoria, misura, calcolo)
+                                   sempre in vista. I controlli li genera
+                                   charts.js, che è l'unico a conoscere le
+                                   colonne del result set corrente. -->
+                              <div class="chart-toolbar">
+                                <div id="chart-quickbar" class="chart-quickbar"></div>
+                                <div class="toolbar-dropdown-wrap">
+                                  <button type="button" id="chart-suggest-btn" class="mini-btn dropdown-trigger-btn"
+                                    title="Grafici già pronti, dedotti dalla forma dei risultati">💡 Suggeriti ▾</button>
+                                  <div id="chart-suggest-menu" class="toolbar-dropdown-menu hidden"></div>
+                                </div>
+                                <button type="button" id="chart-export-png" class="mini-btn" title="Scarica il grafico come immagine PNG">🖼 PNG</button>
+                                <button type="button" id="chart-export-option" class="mini-btn" title="Scarica l'option ECharts generata">⤓ option</button>
+                                <button type="button" id="chart-toggle-builder" class="mini-btn"
+                                  title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON">⚙ Personalizza</button>
+                              </div>
+                              <div id="query-chart-canvas" class="chart-canvas"></div>
+                              <div id="chart-empty" class="chart-empty">Esegui una query: i risultati compaiono qui come grafico.</div>
+                              <div id="chart-notes" class="chart-notes hidden"></div>
+                            </div>
+                            <div id="chart-builder-panel" class="chart-builder-panel">
+                              <div class="chart-builder-head">Personalizzazione</div>
+                              <div id="chart-builder" class="chart-builder"></div>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>

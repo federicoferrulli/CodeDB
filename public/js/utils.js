@@ -2,24 +2,15 @@ import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { isGeometry, geometryLabel } from './geojson.js';
+import { isPlainObject, ejsonKind, fmtBytes, safeUUID } from './valori.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
-export function isPlainObject(v) {
-  return v !== null && typeof v === 'object' && !Array.isArray(v);
-}
-
-export function ejsonKind(v) {
-  if (isPlainObject(v)) {
-    if ('$oid' in v) return 'oid';
-    if ('$date' in v) return 'date';
-    if ('$numberInt' in v || '$numberLong' in v || '$numberDouble' in v) return 'number';
-    if ('$numberDecimal' in v) return 'decimal';
-    if ('$binary' in v) return 'binary';
-    return 'object';
-  }
-  return typeof v; // string, number, boolean, object (null/array)
-}
+// Definiti in valori.js (modulo foglia, senza import) e ri-esportati qui: chi
+// li importava da utils.js continua a funzionare, ma chi ha bisogno solo di
+// questi non è costretto a caricare l'intera applicazione (vedi la nota in
+// testa a valori.js).
+export { isPlainObject, ejsonKind, fmtBytes, safeUUID };
 
 export function displayValue(v) {
   if (v === null || v === undefined) return { text: '–', cls: 'type-null' };
@@ -117,15 +108,6 @@ export function esc(s) {
 export function cut(s, n) {
   s = String(s);
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
-}
-
-export function fmtBytes(n) {
-  if (n == null) return '—';
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let v = n;
-  let i = 0;
-  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
-  return (i === 0 ? String(v) : v.toFixed(1)) + ' ' + units[i];
 }
 
 let toastTimer = null;
@@ -629,13 +611,6 @@ export function showSkeletonGrid(targetEl, rows = 6, cols = 5) {
 
     el.appendChild(table);
   }
-}
-
-export function safeUUID() {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    try { return crypto.randomUUID(); } catch { /* fallthrough */ }
-  }
-  return 'id_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 export function refreshLucideIcons(targetElement = null) {

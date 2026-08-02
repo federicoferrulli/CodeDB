@@ -12,10 +12,11 @@ import { formatCode } from './query-formatter.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
+import { initCharts, renderChart, resizeChart } from './charts.js';
 
 const escapeHtml = esc;
 
-let activeViewMode = 'table'; // 'table' | 'json'
+let activeViewMode = 'table'; // 'table' | 'json' | 'chart'
 let currentResults = [];
 let executionStartTime = 0;
 
@@ -147,11 +148,14 @@ export function initQueryTab() {
     bindExportClick('#query-export-sql-mob', '#query-export-sql');
   }
 
-  // Switch vista risultati (Tabella vs JSON Tree)
+  // Switch vista risultati (Tabella / JSON Tree / Grafici)
   if (resModeTableBtn && resModeJsonBtn) {
     resModeTableBtn.addEventListener('click', () => setResultsViewMode('table'));
     resModeJsonBtn.addEventListener('click', () => setResultsViewMode('json'));
   }
+  const resModeChartBtn = $('#res-mode-chart');
+  if (resModeChartBtn) resModeChartBtn.addEventListener('click', () => setResultsViewMode('chart'));
+  initCharts();
 
   // Azioni editor e sincronizzazione highlight
   if (editorInput) {
@@ -502,20 +506,56 @@ function initVerticalResizer() {
   });
 }
 
-// Gestione modalità vista risultati (Table vs JSON)
+// Gestione modalità vista risultati (Tabella / JSON / Grafici)
 export function setResultsViewMode(mode) {
   activeViewMode = mode;
-  const tableBtn = $('#res-mode-table');
-  const jsonBtn = $('#res-mode-json');
-  const tableView = $('#query-table-view');
-  const jsonView = $('#query-json-view');
+  const viste = {
+    table: { btn: '#res-mode-table', view: '#query-table-view' },
+    json: { btn: '#res-mode-json', view: '#query-json-view' },
+    chart: { btn: '#res-mode-chart', view: '#query-chart-view' },
+  };
+  for (const [nome, sel] of Object.entries(viste)) {
+    const btn = $(sel.btn);
+    const view = $(sel.view);
+    if (btn) btn.classList.toggle('active', nome === mode);
+    if (view) view.classList.toggle('hidden', nome !== mode);
+  }
 
-  if (tableBtn) tableBtn.classList.toggle('active', mode === 'table');
-  if (jsonBtn) jsonBtn.classList.toggle('active', mode === 'json');
-  if (tableView) tableView.classList.toggle('hidden', mode !== 'table');
-  if (jsonView) jsonView.classList.toggle('hidden', mode !== 'json');
-
+  if (mode === 'chart') allargaRisultatiPerGrafico();
   renderResults(currentResults);
+  // Il canvas del grafico era nascosto (larghezza 0) mentre si guardava un'altra
+  // vista: ECharts ha bisogno di rimisurarlo, altrimenti resta disegnato sulla
+  // dimensione precedente o non compare affatto.
+  if (mode === 'chart') requestAnimationFrame(resizeChart);
+}
+
+// Un grafico ha bisogno di più altezza di una tabella: con la ripartizione di
+// default il pannello dei risultati è alto ~230px, e fra toolbar, assi e
+// legenda al disegno restano cento pixel. Alla PRIMA apertura dei Grafici si
+// sposta il divisorio una volta sola — poi decide l'utente, e la sua scelta non
+// viene più toccata (altrimenti ogni ritorno alla vista rimetterebbe tutto
+// dov'era, che è il modo più sicuro di far sembrare rotto un divisorio).
+let spazioGraficoDato = false;
+function allargaRisultatiPerGrafico() {
+  if (spazioGraficoDato) return;
+  const editor = $('#query-editor-container');
+  const risultati = $('#query-results-container');
+  if (!editor || !risultati) return;
+  const hRis = risultati.getBoundingClientRect().height;
+  const hEd = editor.getBoundingClientRect().height;
+  spazioGraficoDato = true;
+  if (hRis >= 340 || hEd <= 170) return; // spazio già sufficiente
+
+  // Si fissa l'altezza SOLO dell'editor e i risultati restano elastici: il
+  // resto dello spazio è quello che c'è, qualunque sia (divisorio compreso).
+  // Assegnando due altezze calcolate a mano, la somma superava di qualche pixel
+  // l'altezza del contenitore e la colonna finiva sotto il bordo della finestra
+  // — cioè il difetto che si stava correggendo, spostato di un passo.
+  const totale = hRis + hEd;
+  editor.style.flex = 'none';
+  editor.style.height = `${Math.max(150, Math.round(totale * 0.32))}px`;
+  risultati.style.flex = '1 1 auto';
+  risultati.style.height = '';
 }
 
 // Aggiorna badge e metriche
@@ -565,6 +605,14 @@ export function renderResults(data) {
 
   if (activeViewMode === 'table') {
     renderResultsTable(currentResults);
+  } else if (activeViewMode === 'chart') {
+    // `renderChart` è asincrona solo al primo uso (carica ECharts da
+    // public/vendor): il risultato non serve a nessuno qui, ma un errore di
+    // caricamento non deve restare una promessa rifiutata in silenzio.
+    renderChart(currentResults).catch((err) => {
+      console.error('[QueryTab] Errore nel rendering del grafico:', err);
+      toast(`Impossibile disegnare il grafico: ${err.message}`, true);
+    });
   } else {
     renderResultsJsonTree(currentResults);
   }

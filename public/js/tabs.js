@@ -59,6 +59,12 @@ export function freshState() {
     // fatta in un tab dirottava le query di tutti gli altri.
     queryDb: null,
     queryColl: null,
+    // Configurazione della vista Grafici della tab ⚡ Query & Aggregate (serie,
+    // assi, legenda, tavolozza; vedi charts.js). Sta qui per la stessa ragione
+    // di queryDb: due tab su due connessioni diverse mostrano due grafici
+    // diversi, e passando dall'uno all'altro ognuno ritrova il suo. null =
+    // ancora mai aperta (la costruisce charts.js alla prima richiesta).
+    chartCfg: null,
   };
 }
 

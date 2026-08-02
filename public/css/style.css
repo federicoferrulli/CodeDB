@@ -5109,3 +5109,443 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   height: 16px;
   margin-top: 2px;
 }
+
+/* ==========================================================================
+   Vista Grafici della tab ⚡ Query & Aggregate (charts.js + ECharts)
+
+   Due colonne: il grafico occupa lo spazio, il pannello di personalizzazione
+   sta a destra e si può collassare. Il canvas NON deve mai scorrere: ECharts si
+   ridimensiona da sé (ResizeObserver), quindi la vista toglie l'overflow che
+   .results-panel-view impone alle altre due.
+   ========================================================================== */
+
+#query-chart-view {
+  overflow: hidden;
+}
+
+.chart-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.chart-main {
+  flex: 1;
+  min-width: 0;
+  /* `min-height: 0` è la riga che tiene in piedi tutto il resto: senza, un
+     figlio flex non può scendere sotto la propria altezza di contenuto e la
+     colonna sfora il contenitore invece di comprimersi. */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Una riga sola, sempre. Con `flex-wrap: wrap` l'ultimo pulsante andava a capo
+   appena la barra rapida cresceva, e in un pannello basso una riga di
+   interfaccia in più è altezza rubata al grafico: qui si stringe la barra
+   rapida (che scorre) invece di far crescere la toolbar. */
+.chart-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: var(--space-2xs);
+  padding: var(--space-2xs) var(--space-xs);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+.chart-toolbar > .toolbar-dropdown-wrap,
+.chart-toolbar > .mini-btn { flex: 0 0 auto; }
+
+/* Il canvas prende lo spazio che RESTA e può scendere fin quasi a zero.
+   Con `min-height: 220px` (come era) in un pannello dei risultati da 227px il
+   canvas sforava di 38px: lo slider dello zoom e le note finivano fuori dalla
+   finestra, invisibili. L'altezza vera la misura ECharts col ResizeObserver. */
+.chart-canvas {
+  flex: 1 1 0;
+  min-height: 60px;
+  width: 100%;
+}
+
+/* Messaggio "nessun dato": sovrapposto al canvas, non in colonna, così non
+   sposta il grafico quando compare e scompare. */
+.chart-empty {
+  position: absolute;
+  inset: 40px 0 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: var(--space-lg);
+  pointer-events: none;
+}
+
+.chart-notes {
+  flex: 0 0 auto;
+  /* Le note non devono mai mangiarsi il grafico: poche righe, poi scorrono. */
+  max-height: 64px;
+  overflow: auto;
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.chart-note {
+  font-size: 0.78rem;
+  color: var(--warning);
+  line-height: 1.35;
+}
+.chart-note::before { content: '⚠ '; }
+
+/* ------------------------------ Pannello --------------------------------- */
+
+.chart-builder-panel {
+  flex: 0 0 288px;
+  width: 288px;
+  border-left: 1px solid var(--border-2);
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  transition: width var(--transition-fast), flex-basis var(--transition-fast);
+}
+
+.chart-builder-panel.collassato {
+  flex-basis: 0;
+  width: 0;
+  overflow: hidden;
+  border-left: none;
+}
+
+.chart-builder-head {
+  flex: 0 0 auto;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-builder {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: var(--space-xl);
+}
+
+.chart-group {
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-group > summary {
+  padding: var(--space-sm);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--fg);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  user-select: none;
+}
+.chart-group > summary::-webkit-details-marker { display: none; }
+.chart-group > summary::before {
+  content: '▸';
+  color: var(--fg-muted);
+  font-size: 0.7rem;
+  transition: transform var(--transition-fast);
+}
+.chart-group[open] > summary::before { transform: rotate(90deg); }
+.chart-group > summary:hover { background: var(--hover); }
+
+.chart-count {
+  margin-left: auto;
+  background: var(--bg-4);
+  color: var(--fg-dim);
+  border-radius: var(--radius-full);
+  padding: 0 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.chart-group-body {
+  padding: 0 var(--space-sm) var(--space-sm);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.chart-subgroup {
+  margin-top: var(--space-xs);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.chart-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.chart-field-label {
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+  font-weight: 500;
+}
+
+/* Le note spiegano PERCHÉ un controllo è fatto così (o perché un'opzione non
+   c'è): vanno lette, quindi non sono grigio su grigio al limite del leggibile. */
+.chart-field-hint {
+  font-size: 0.7rem;
+  color: var(--fg-muted);
+  line-height: 1.35;
+}
+.chart-field-hint.block { display: block; margin: 2px 0 var(--space-xs); }
+.chart-field-hint code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0 3px;
+  border-radius: 3px;
+}
+
+.chart-builder select,
+.chart-builder input[type="text"],
+.chart-builder input[type="number"],
+.chart-builder textarea {
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-surface);
+  color: var(--fg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 4px 6px;
+  font-size: 0.78rem;
+  font-family: inherit;
+}
+.chart-builder textarea {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  resize: vertical;
+}
+.chart-builder select:focus,
+.chart-builder input:focus,
+.chart-builder textarea:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.chart-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.78rem;
+  color: var(--fg);
+  cursor: pointer;
+}
+.chart-check input { accent-color: var(--accent); }
+
+.chart-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+.chart-color-row input[type="color"] {
+  width: 34px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+.chart-btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2xs);
+}
+
+.chart-grid-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2xs) var(--space-xs);
+}
+
+/* Anteprima della tavolozza: l'ordine degli slot è la garanzia di leggibilità
+   con deficit di visione dei colori, quindi si mostra. */
+.chart-palette-preview {
+  display: flex;
+  gap: 2px;
+  margin-bottom: var(--space-2xs);
+}
+.chart-palette-preview span {
+  flex: 1;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* ------------------------------- Serie ----------------------------------- */
+
+.chart-serie {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-xs);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+.chart-serie.spenta { opacity: 0.5; }
+
+.chart-serie-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  padding: 5px var(--space-xs);
+  background: var(--bg-3);
+  font-size: 0.78rem;
+  min-width: 0;
+}
+.chart-serie-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chart-serie-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.chart-serie-tipo {
+  font-size: 0.68rem;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+
+.chart-serie-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 1px;
+  flex: 0 0 auto;
+}
+.chart-serie-actions .mini-btn {
+  padding: 1px 4px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.chart-serie-body {
+  padding: var(--space-xs);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+/* Viewport strette: il pannello passa sotto il grafico invece di strizzarlo. */
+@media (max-width: 900px) {
+  .chart-layout { flex-direction: column; }
+  .chart-builder-panel {
+    flex: 0 0 auto;
+    width: 100%;
+    max-height: 45%;
+    border-left: none;
+    border-top: 1px solid var(--border-2);
+  }
+  .chart-builder-panel.collassato { max-height: 0; border-top: none; }
+  .chart-main { min-height: 240px; }
+}
+
+/* -------- Barra rapida dei grafici (le quattro decisioni, in vista) ------- */
+
+.chart-quickbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  flex: 1 1 0;
+  min-width: 0;
+  /* Se non c'è larghezza la barra SCORRE, senza andare a capo né spingere
+     fuori i pulsanti a destra. Barra di scorrimento nascosta: in una fascia
+     alta 28px sarebbe più ingombrante dei controlli. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.chart-quickbar::-webkit-scrollbar { height: 4px; }
+.chart-quickbar::-webkit-scrollbar-thumb {
+  background: var(--border-3);
+  border-radius: var(--radius-full);
+}
+
+/* I campi NON si restringono: senza questo, con il pannello aperto flexbox li
+   comprimeva sotto la larghezza del loro contenuto e etichette e menu finivano
+   uno sull'altro, illeggibili. Quando lo spazio manca scorre la barra. */
+.chart-quick-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+
+.chart-quick-field > span {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.chart-quick-field select {
+  background: var(--bg-surface);
+  color: var(--fg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 2px 4px;
+  font-size: 0.74rem;
+  font-family: inherit;
+  /* Un menu con nomi di colonna lunghi non deve allargare la barra oltre lo
+     spazio del grafico: si tronca e il nome intero resta nel menu aperto. */
+  max-width: 132px;
+  min-width: 82px;
+}
+.chart-quick-field select:focus { outline: none; border-color: var(--border-focus); }
+.chart-quick-field select:disabled { opacity: 0.45; }
+
+.chart-quick-nota {
+  font-size: 0.68rem;
+  color: var(--fg-muted);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-full);
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+#chart-suggest-menu { min-width: 240px; }
+#chart-suggest-menu .dropdown-empty {
+  padding: var(--space-sm);
+  color: var(--fg-muted);
+  font-size: 0.78rem;
+}
+
+.chart-toolbar .mini-btn.attivo {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Viewport strette: la barra rapida va a capo e il grafico resta usabile. */
+@media (max-width: 900px) {
+  .chart-quick-field select { max-width: 104px; }
+}

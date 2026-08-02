@@ -584,6 +584,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 22: Geometrie (validazione GeoJSON, binding ST_GeomFromGeoJSON, lettura)
   require('./unit-geometry');
 
+  // Test 23: Custom Charts (aggregazioni, valori EJSON, regole di leggibilità)
+  require('./unit-charts');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 
