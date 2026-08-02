@@ -3,16 +3,21 @@
 /* ---------------------------------------------------------------------------
  * Lettura in SOLA LETTURA delle connessioni salvate (connections.ini).
  *
- * Replica volutamente parseIni/decryptSecret di server.js: la CLI di backup
- * non deve MAI riscrivere connections.ini (una passphrase sbagliata durante
- * la migrazione azzererebbe i segreti), quindi qui esiste solo il percorso
- * di lettura/decifratura e ogni errore di decifratura è fatale.
+ * La CLI di backup non deve MAI riscrivere connections.ini (una passphrase
+ * sbagliata durante la migrazione azzererebbe i segreti), quindi qui esiste
+ * solo il percorso di lettura/decifratura e ogni errore è fatale.
+ *
+ * La crittografia NON è replicata: viene da `db/vault.js`, lo stesso modulo che
+ * usa il server. Prima qui c'era una seconda copia di `decryptSecret` e della
+ * derivazione della chiave: due implementazioni della stessa cosa che al primo
+ * cambio di formato sarebbero divergute, lasciando la CLI incapace di leggere
+ * un vault che la UI apre senza problemi.
  * ------------------------------------------------------------------------- */
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 const readline = require('readline');
+const Vault = require('../../db/vault');
 
 // CODEDB_CONNECTIONS_FILE: override usato dai test e2e per non toccare mai
 // il connections.ini reale (che contiene i segreti dell'utente).
@@ -39,22 +44,6 @@ function parseIni(text) {
   return sections;
 }
 
-function decryptSecret(text, encryptionKey) {
-  if (!text || typeof text !== 'string') return text;
-  if (!text.startsWith('ENC:')) return text; // segreto in chiaro (mai migrato)
-  const parts = text.split(':');
-  if (parts.length !== 4) return text;
-  const decipher = crypto.createDecipheriv(
-    'aes-256-gcm',
-    encryptionKey,
-    Buffer.from(parts[1], 'hex')
-  );
-  decipher.setAuthTag(Buffer.from(parts[2], 'hex'));
-  let decrypted = decipher.update(parts[3], 'hex', 'utf8');
-  decrypted += decipher.final('utf8'); // lancia se la passphrase è sbagliata
-  return decrypted;
-}
-
 // true se il file contiene almeno un segreto cifrato: solo in quel caso
 // serve chiedere la passphrase all'utente.
 function hasEncryptedSecrets() {
@@ -63,6 +52,25 @@ function hasEncryptedSecrets() {
   } catch {
     return false;
   }
+}
+
+/**
+ * Chiave con cui sono cifrati i segreti, per la passphrase indicata.
+ *
+ * Vault v2 (metadati presenti): si sbusta la DEK — e una passphrase sbagliata
+ * si riconosce subito, con un messaggio chiaro, invece di far fallire la prima
+ * decifratura più avanti. Vault v1: la chiave è derivata dalla passphrase.
+ */
+function resolveKey(passphrase) {
+  const meta = Vault.readMeta(CONNECTIONS_FILE);
+  if (meta) {
+    const dataKey = Vault.unwrapDataKey(meta, passphrase || '');
+    if (!dataKey) {
+      throw new Error('Passphrase errata: la chiave del vault non si apre.');
+    }
+    return dataKey;
+  }
+  return passphrase ? Vault.legacyKey(passphrase) : null;
 }
 
 // Prompt mascherato (gli asterischi coprono l'input), come il launcher desktop.
@@ -93,7 +101,7 @@ function loadConnections(passphrase) {
     return {}; // file assente: nessuna connessione salvata
   }
   const sections = parseIni(text);
-  const key = passphrase ? crypto.createHash('sha256').update(passphrase).digest() : null;
+  const key = resolveKey(passphrase);
   for (const [name, sec] of Object.entries(sections)) {
     for (const f of SECRET_FIELDS) {
       if (sec[f] && sec[f].startsWith('ENC:')) {
@@ -101,7 +109,7 @@ function loadConnections(passphrase) {
           throw new Error(`La connessione "${name}" ha segreti cifrati: serve la passphrase (GUI_MONGO_PASSPHRASE o prompt).`);
         }
         try {
-          sec[f] = decryptSecret(sec[f], key);
+          sec[f] = Vault.decryptWith(sec[f], key);
         } catch {
           throw new Error(`Passphrase errata: il segreto "${f}" della connessione "${name}" non si decifra.`);
         }

@@ -31,6 +31,7 @@ const MongoShell = require('./db/MongoShell');
 const { splitStatementsDetailed, stripSqlNoise } = require('./db/sqlText');
 const { createScriptRun } = require('./db/ScriptRunner');
 const MongoScriptRunner = require('./db/MongoScriptRunner');
+const Vault = require('./db/vault');
 
 const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
@@ -200,34 +201,25 @@ const CONN_FIELDS = [
 // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
 const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
 
-let encryptionKey = crypto.createHash('sha256').update(process.env.GUI_MONGO_PASSPHRASE || '').digest();
+// Chiave con cui i segreti sono cifrati. Nel formato v2 è la **DEK** casuale
+// sbustata dalla passphrase (db/vault.js); nei vault v1 non ancora migrati è
+// ancora `SHA256(passphrase)`. Da qui in giù il resto del codice non vede la
+// differenza: cifra e decifra con questa chiave e basta.
+let encryptionKey = Vault.legacyKey(process.env.GUI_MONGO_PASSPHRASE || '');
+// Metadati del vault v2 (null = vault ancora in formato v1).
+let vaultMeta = null;
 // Conta i segreti che non si decifrano: all'avvio un valore > 0 significa
 // passphrase sbagliata e il server rifiuta di partire (vedi main), invece di
 // proseguire e riscrivere il file coi segreti azzerati.
 let decryptFailures = 0;
 
 function encryptSecret(text, cryptoKey = encryptionKey) {
-  if (!text || typeof text !== 'string') return text;
-  if (text.startsWith('ENC:')) return text; // già cifrato
-  if (!cryptoKey) throw new Error('Impossibile cifrare il segreto: il vault è bloccato.');
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', cryptoKey, iv);
-  let encrypted = cipher.update(text, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `ENC:${iv.toString('hex')}:${authTag}:${encrypted}`;
+  return Vault.encryptWith(text, cryptoKey);
 }
 
 // Decifra un segreto ENC:iv:tag:testo; lancia se la chiave non è quella giusta.
 function decryptRaw(text) {
-  if (!encryptionKey) throw new Error('Vault bloccato');
-  const parts = text.split(':');
-  if (parts.length !== 4) return text;
-  const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(parts[1], 'hex'));
-  decipher.setAuthTag(Buffer.from(parts[2], 'hex'));
-  let decrypted = decipher.update(parts[3], 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
-  return decrypted;
+  return Vault.decryptWith(text, encryptionKey);
 }
 
 function decryptSecret(text) {
@@ -259,6 +251,17 @@ function decryptSecret(text) {
  * @returns {boolean} true se non c'è nulla da decifrare o si decifra tutto.
  */
 function probeVault() {
+  // Vault v2: la domanda ha una risposta esatta e a costo zero — la DEK si
+  // sbusta con la passphrase vuota oppure no.
+  const meta = Vault.readMeta(CONNECTIONS_FILE);
+  if (meta) {
+    const dataKey = Vault.unwrapDataKey(meta, '');
+    if (!dataKey) return false;
+    encryptionKey = dataKey;
+    vaultMeta = meta;
+    return true;
+  }
+
   const before = decryptFailures;
   decryptFailures = 0;
   try {
@@ -282,28 +285,185 @@ function probeVault() {
   return ok;
 }
 
+/**
+ * Apre il vault con la passphrase indicata.
+ *
+ * Due formati possibili:
+ *  · **v2** (metadati presenti): si sbusta la DEK. Un solo tentativo, esatto —
+ *    o la chiave si apre o la passphrase è sbagliata.
+ *  · **v1** (nessun metadato): la chiave È la passphrase, e si verifica
+ *    provando a decifrare i segreti presenti.
+ *
+ * Non riscrive nulla: la migrazione a v2 è un passo separato ed esplicito
+ * (`migrateVaultToV2`), perché toccare l'unica copia dei segreti su disco deve
+ * essere una decisione, non un effetto collaterale dell'avvio.
+ */
 function tryUnlockVault(passphrase) {
   if (typeof passphrase !== 'string') {
     return { ok: false, error: 'Passphrase non valida.' };
   }
-  const key = crypto.createHash('sha256').update(passphrase).digest();
+
+  const meta = Vault.readMeta(CONNECTIONS_FILE);
+  if (meta) {
+    const dataKey = Vault.unwrapDataKey(meta, passphrase);
+    if (!dataKey) {
+      return { ok: false, error: 'Passphrase errata: la chiave del vault non si apre.' };
+    }
+    encryptionKey = dataKey;
+    vaultMeta = meta;
+    decryptFailures = 0;
+    return { ok: true };
+  }
+
+  // Formato v1.
   const oldKey = encryptionKey;
   const oldFailures = decryptFailures;
 
-  encryptionKey = key;
+  encryptionKey = Vault.legacyKey(passphrase);
   decryptFailures = 0;
 
-  const conns = loadConnections();
+  loadConnections();
   if (decryptFailures > 0) {
     encryptionKey = oldKey;
     decryptFailures = oldFailures;
     return { ok: false, error: 'Passphrase errata: i segreti cifrati non si decifrano con questa chiave.' };
   }
+  vaultMeta = null;
+  return { ok: true, legacy: true };
+}
 
-  if (Object.keys(conns).length > 0) {
-    saveConnections(conns);
+/** Elenco dei file .ini che compongono il vault (condiviso + per-owner). */
+function vaultFiles() {
+  const files = [];
+  if (fs.existsSync(CONNECTIONS_FILE)) files.push({ file: CONNECTIONS_FILE, ownerId: null });
+  try {
+    if (fs.existsSync(CONNECTIONS_DIR)) {
+      for (const f of fs.readdirSync(CONNECTIONS_DIR)) {
+        if (f.endsWith('.ini')) files.push({ file: path.join(CONNECTIONS_DIR, f), ownerId: path.basename(f, '.ini') });
+      }
+    }
+  } catch { /* nessuna cartella per-owner */ }
+  return files;
+}
+
+/**
+ * Porta il vault dal formato v1 al v2 ri-cifrando i segreti con una DEK nuova.
+ *
+ * È l'unico momento in cui i segreti vengono riscritti, quindi vale la pena
+ * essere prudenti: si lavora su tutto in memoria, si tiene una copia
+ * pre-migrazione FUORI dalla rotazione .bak (che i riavvii consumano), si
+ * scrive, e si **rilegge per verificare** che ogni segreto torni identico
+ * all'originale. Se qualcosa non torna, si ripristina e non si migra.
+ *
+ * @param {string} newPassphrase passphrase con cui avvolgere la nuova DEK
+ * @returns {{ok: true, migrated: number} | {ok: false, error: string}}
+ */
+function migrateVaultToV2(newPassphrase) {
+  if (!encryptionKey) return { ok: false, error: 'Vault bloccato: sbloccalo prima di cambiare passphrase.' };
+
+  // 1. Tutto in chiaro in memoria, con la chiave attuale.
+  const inMemoria = [];
+  for (const { file, ownerId } of vaultFiles()) {
+    decryptFailures = 0;
+    const sezioni = loadConnections(ownerId);
+    if (decryptFailures > 0) {
+      return { ok: false, error: `Alcuni segreti in "${path.basename(file)}" non si decifrano: migrazione annullata.` };
+    }
+    inMemoria.push({ file, ownerId, sezioni });
   }
-  return { ok: true };
+
+  // 2. Copia pre-migrazione, con un nome che la rotazione .bak non tocca.
+  const copie = [];
+  try {
+    for (const { file } of inMemoria) {
+      const copia = `${file}.pre-vault2`;
+      if (fs.existsSync(file)) { fs.copyFileSync(file, copia); copie.push(copia); }
+    }
+  } catch (err) {
+    return { ok: false, error: `Impossibile creare la copia di sicurezza: ${errMsg(err)}` };
+  }
+
+  // 3. Nuova DEK e riscrittura.
+  const { meta, dataKey } = Vault.createMeta(newPassphrase);
+  const chiavePrecedente = encryptionKey;
+  try {
+    encryptionKey = dataKey;
+    for (const { sezioni, ownerId } of inMemoria) {
+      if (Object.keys(sezioni).length) saveConnections(sezioni, ownerId);
+    }
+    Vault.writeMeta(CONNECTIONS_FILE, meta);
+
+    // 4. Verifica rileggendo dal disco: i segreti devono tornare identici.
+    for (const { sezioni, ownerId } of inMemoria) {
+      decryptFailures = 0;
+      const riletto = loadConnections(ownerId);
+      if (decryptFailures > 0) throw new Error('rilettura fallita dopo la migrazione');
+      for (const [nome, sec] of Object.entries(sezioni)) {
+        for (const campo of SECRET_FIELDS) {
+          if ((sec[campo] || '') !== ((riletto[nome] || {})[campo] || '')) {
+            throw new Error(`il segreto "${campo}" di "${nome}" non corrisponde dopo la migrazione`);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // Ripristino: si torna al formato v1 esattamente com'era.
+    encryptionKey = chiavePrecedente;
+    try {
+      for (const { file } of inMemoria) {
+        const copia = `${file}.pre-vault2`;
+        if (fs.existsSync(copia)) fs.copyFileSync(copia, file);
+      }
+      const metaFile = Vault.metaFileFor(CONNECTIONS_FILE);
+      if (fs.existsSync(metaFile)) fs.unlinkSync(metaFile);
+    } catch { /* ripristino best-effort: le copie restano su disco */ }
+    return { ok: false, error: `Migrazione annullata (${errMsg(err)}). I file sono stati ripristinati; la copia di sicurezza è in *.pre-vault2.` };
+  }
+
+  vaultMeta = meta;
+  decryptFailures = 0;
+  return { ok: true, migrated: inMemoria.length, copie };
+}
+
+/**
+ * Cambia la passphrase del vault.
+ *
+ * Su un vault v2 è un'operazione minuscola: si riavvolge la DEK e si riscrive
+ * il solo file dei metadati. I segreti non vengono toccati — nessuna finestra
+ * in cui l'unica copia delle credenziali è a metà scrittura.
+ * Su un vault v1 la stessa richiesta fa la migrazione (una volta sola).
+ */
+function changeVaultPassphrase(newPassphrase) {
+  if (typeof newPassphrase !== 'string') {
+    return { ok: false, error: 'Passphrase non valida.' };
+  }
+  if (!encryptionKey) {
+    return { ok: false, error: 'Vault bloccato: sbloccalo con la passphrase attuale prima di cambiarla.' };
+  }
+
+  if (!vaultMeta) {
+    const res = migrateVaultToV2(newPassphrase);
+    if (!res.ok) return res;
+    return { ok: true, migrated: true };
+  }
+
+  const nuovoMeta = Vault.rewrapDataKey(vaultMeta, encryptionKey, newPassphrase);
+  const metaFile = Vault.metaFileFor(CONNECTIONS_FILE);
+  const precedente = fs.existsSync(metaFile) ? fs.readFileSync(metaFile, 'utf8') : null;
+  try {
+    Vault.writeMeta(CONNECTIONS_FILE, nuovoMeta);
+    // Verifica: la nuova passphrase deve aprire la STESSA chiave dati.
+    const riletto = Vault.readMeta(CONNECTIONS_FILE);
+    const prova = Vault.unwrapDataKey(riletto, newPassphrase);
+    if (!prova || !prova.equals(encryptionKey)) throw new Error('verifica fallita');
+    vaultMeta = riletto;
+    return { ok: true, migrated: false };
+  } catch (err) {
+    if (precedente !== null) {
+      try { fs.writeFileSync(metaFile, precedente, 'utf8'); } catch { /* best-effort */ }
+    }
+    return { ok: false, error: `Cambio passphrase annullato: ${errMsg(err)}. La passphrase precedente resta valida.` };
+  }
 }
 
 function parseIni(text) {
@@ -1788,7 +1948,17 @@ io.on('connection', (socket) => {
   // --- Vault & Password ------------------------------------------------------
 
   safeOn('vault:status', (_payload, cb) => {
-    cb({ ok: true, locked: encryptionKey === null });
+    cb({
+      ok: true,
+      locked: encryptionKey === null,
+      // `formato` distingue il vault a busta (v2, con salt e scrypt) da quello
+      // storico: la UI lo usa per dire che il primo cambio passphrase comporta
+      // una migrazione dei segreti.
+      formato: vaultMeta ? Vault.VERSION : 1,
+      // Serve alla modale per capire se sta IMPOSTANDO la prima passphrase o
+      // ne sta cambiando una esistente. Non rivela nulla del segreto.
+      protetto: !!process.env.GUI_MONGO_PASSPHRASE || (!!vaultMeta && !Vault.unwrapDataKey(vaultMeta, '')),
+    });
   });
 
   safeOn('vault:unlock', ({ passphrase }, cb) => {
@@ -1796,6 +1966,57 @@ io.on('connection', (socket) => {
     // riservato all'amministratore dell'account.
     assertManage(principal);
     cb(tryUnlockVault(passphrase || ''));
+  });
+
+  /**
+   * Cambia (o imposta) la passphrase del vault.
+   *
+   * Il vault è unico per installazione, quindi l'operazione tocca TUTTI i
+   * tenant: è riservata a chi ha `manage`. Si pretende la passphrase attuale
+   * anche a vault già sbloccato — chi si siede a una sessione lasciata aperta
+   * non deve poter cambiare la chiave dei segreti altrui.
+   */
+  safeOn('vault:setPassphrase', ({ current, next } = {}, cb) => {
+    assertManage(principal);
+
+    if (encryptionKey === null) {
+      throw new Error('Vault bloccato: sbloccalo con la passphrase attuale prima di cambiarla.');
+    }
+    if (typeof next !== 'string' || next.length < 1) {
+      throw new Error('La nuova passphrase non può essere vuota.');
+    }
+
+    // Verifica della passphrase attuale, senza toccare lo stato del vault.
+    const attuale = String(current == null ? '' : current);
+    const valida = vaultMeta
+      ? !!Vault.unwrapDataKey(vaultMeta, attuale)
+      : Vault.legacyKey(attuale).equals(encryptionKey);
+    if (!valida) {
+      throw new Error('La passphrase attuale non è corretta.');
+    }
+
+    const res = changeVaultPassphrase(next);
+    if (!res.ok) throw new Error(res.error);
+
+    try {
+      auditUi({
+        event: 'vault:setPassphrase',
+        category: 'write',
+        op: res.migrated ? 'Cambio passphrase (con migrazione del vault)' : 'Cambio passphrase del vault',
+        status: 'ok',
+        ...auditActor(principal),
+        client: socket.handshake.address || null,
+      });
+    } catch { /* audit best-effort */ }
+
+    cb({
+      ok: true,
+      migrated: !!res.migrated,
+      // La nuova passphrase vale da SUBITO in memoria, ma i prossimi avvii la
+      // pretendono: senza dirlo, un riavvio troverebbe il vault bloccato e
+      // sembrerebbe un guasto.
+      avviso: 'Da ora il server va avviato con la nuova passphrase (GUI_MONGO_PASSPHRASE) oppure sbloccato dall\'interfaccia.',
+    });
   });
 
   // --- Connessioni salvate ----------------------------------------------------
@@ -2865,6 +3086,32 @@ function assertTransportSafe(host) {
   process.exit(1);
 }
 
+/**
+ * Cifra i segreti rimasti in chiaro nei file del vault, e SOLO quelli.
+ *
+ * Prima questa migrazione avveniva riscrivendo l'intero vault a ogni avvio
+ * riuscito: il file veniva ri-cifrato con IV nuovi e la rotazione consumava una
+ * generazione di backup (`.bak` → `.bak2`) ogni volta, così due riavvii
+ * bruciavano entrambe le copie di sicurezza. Ora si riscrive solo se c'è
+ * davvero qualcosa da cifrare.
+ */
+function encryptPlaintextSecretsOnce() {
+  if (!encryptionKey) return;
+  for (const { file, ownerId } of vaultFiles()) {
+    let grezzo;
+    try { grezzo = parseIni(fs.readFileSync(file, 'utf8')); } catch { continue; }
+    const daCifrare = Object.values(grezzo).some((sec) =>
+      SECRET_FIELDS.some((f) => sec[f] && !String(sec[f]).startsWith('ENC:')));
+    if (!daCifrare) continue;
+    try {
+      saveConnections(loadConnections(ownerId), ownerId);
+      console.log(`Segreti in chiaro cifrati in "${path.basename(file)}".`);
+    } catch (err) {
+      console.error(`Impossibile cifrare i segreti in chiaro di "${path.basename(file)}": ${errMsg(err)}`);
+    }
+  }
+}
+
 async function startServer() {
   registerGlobalExceptionHandlers();
 
@@ -2875,6 +3122,7 @@ async function startServer() {
       console.error('Passphrase errata fornita via GUI_MONGO_PASSPHRASE: i segreti non si decifrano.');
       process.exit(1);
     }
+    encryptPlaintextSecretsOnce();
   } else if (!probeVault()) {
     // Nessuna passphrase nell'ambiente e i segreti cifrati NON si decifrano con
     // la chiave di default: il vault resta BLOCCATO e la passphrase verrà

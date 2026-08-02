@@ -4968,3 +4968,57 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 
 
+
+/* --- Riquadri informativi delle modali (cambio passphrase) ----------------- */
+
+.info-box,
+.warn-box,
+.success-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  border-radius: 6px;
+  font-size: 0.86em;
+  line-height: 1.45;
+}
+
+.info-box.hidden,
+.warn-box.hidden,
+.success-box.hidden {
+  display: none !important;
+}
+
+.info-box {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #7dd3fc;
+}
+
+.warn-box {
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  color: #fbbf24;
+}
+
+.success-box {
+  background: rgba(74, 222, 128, 0.12);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+  color: #4ade80;
+}
+
+.info-box code {
+  background: rgba(0, 0, 0, 0.25);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+.info-box svg,
+.warn-box svg,
+.success-box svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}

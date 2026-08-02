@@ -1,6 +1,9 @@
 node_modules/
 # Connessioni salvate: contiene password in chiaro, non versionare.
 connections.ini
+connections*
+vault.json
+vault*.json
 connections.ini.bak
 connections.ini.bak2
 # Audit log delle scritture eseguite via MCP.

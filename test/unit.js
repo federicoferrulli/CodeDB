@@ -578,6 +578,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 20: Formattatore dell'editor (SQL, JSON/MQL, rientri JavaScript)
   require('./unit-query-formatter');
 
+  // Test 21: Vault a busta (DEK, scrypt, cambio passphrase)
+  require('./unit-vault');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

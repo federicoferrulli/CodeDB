@@ -67,6 +67,62 @@
     </div>
   </div>
 
+  <!-- ============= Cambio della passphrase del vault (header ⋮) ============= -->
+  <div id="passphrase-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-labelledby="passphrase-modal-title">
+    <div class="modal">
+      <h2 id="passphrase-modal-title"><i data-lucide="key-round"></i> Cambia passphrase</h2>
+      <p class="subtitle">
+        La passphrase protegge le password dei database e le credenziali SSH salvate.
+        Vale per <strong>tutta l'installazione</strong>.
+      </p>
+
+      <!-- Mostrato solo su un vault ancora nel formato storico: il primo cambio
+           ri-cifra i segreti, e l'utente deve saperlo prima di premere. -->
+      <div id="passphrase-migration-note" class="info-box hidden">
+        <i data-lucide="info"></i>
+        <span>Primo cambio su questo vault: i segreti verranno ri-cifrati e protetti
+          con salt e derivazione lenta (scrypt). Viene creata una copia di sicurezza
+          <code>*.pre-vault2</code> prima di procedere.</span>
+      </div>
+
+      <form id="passphrase-form">
+        <div class="form-row">
+          <label>Passphrase attuale
+            <input type="password" id="passphrase-current" autocomplete="current-password"
+              placeholder="Vuota se non ne hai mai impostata una" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Nuova passphrase
+            <input type="password" id="passphrase-next" autocomplete="new-password" required
+              placeholder="Almeno 8 caratteri" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Ripeti la nuova passphrase
+            <input type="password" id="passphrase-confirm" autocomplete="new-password" required />
+          </label>
+        </div>
+
+        <div class="warn-box">
+          <i data-lucide="alert-triangle"></i>
+          <span>Non esiste un recupero: <strong>se la dimentichi, i segreti salvati
+            non sono più leggibili</strong> e le connessioni vanno reinserite.
+            Dal prossimo avvio servirà la nuova passphrase.</span>
+        </div>
+
+        <div id="passphrase-error" class="error hidden"></div>
+        <div id="passphrase-success" class="success-box hidden"></div>
+
+        <div class="modal-actions">
+          <button type="button" id="passphrase-cancel" class="ghost">Annulla</button>
+          <button type="submit" class="primary"><i data-lucide="key-round"></i> Cambia passphrase</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ===================== Modale di connessione (Wizard) ===================== -->
   <div id="connect-overlay" class="overlay hidden" role="dialog" aria-modal="true"
     aria-labelledby="connect-modal-title">
@@ -278,6 +334,10 @@
           <button id="btn-admin-rbac" class="menu-item hidden" type="button"
             title="Gestione sottoutenti, permessi e API key">
             <i data-lucide="shield-check"></i> Utenti &amp; Permessi
+          </button>
+          <button id="btn-change-passphrase" class="menu-item" type="button"
+            title="Cambia la passphrase che protegge i segreti salvati">
+            <i data-lucide="key-round"></i> Cambia Passphrase
           </button>
           <button id="btn-logout" class="menu-item hidden" type="button"
             title="Chiude la sessione dell'utente corrente">

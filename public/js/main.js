@@ -31,6 +31,7 @@ import { initSplitView } from './splitview.js';
 import { initAdminRbac } from './admin-rbac.js';
 import { initPendingQueries } from './pending-queries.js';
 import { initScriptRun } from './script-run.js';
+import { initPassphrase } from './passphrase.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -164,6 +165,7 @@ initHealth();
 initAdminRbac();
 initPendingQueries();
 initScriptRun();
+initPassphrase();
 initSessionPersistence();
 initSplitView();
 initHeaderMoreMenu();
