@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons } from './utils.js';
+import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
@@ -8,7 +8,9 @@ import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js
 
 let allConns = [];
 
-const COLLAPSED_KEY = 'gui-db:collapsed-folders';
+// Prefisso unificato, con recupero del valore scritto dalle versioni
+// precedenti (CDB-64).
+const COLLAPSED_KEY = migraChiave('collapsed-folders', 'gui-db:collapsed-folders');
 const collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'));
 
 function persistCollapsed() {
@@ -149,7 +151,7 @@ function fillFolderDatalist() {
   }
 }
 
-const SIDEBAR_COLLAPSED_KEY = 'gui-db:conn-sidebar-collapsed';
+const SIDEBAR_COLLAPSED_KEY = migraChiave('conn-sidebar-collapsed', 'gui-db:conn-sidebar-collapsed');
 
 export function toggleConnSidebar(forceCollapsed) {
   const sidebar = $('#conn-sidebar');

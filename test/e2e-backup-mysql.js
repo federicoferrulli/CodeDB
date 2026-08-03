@@ -1,5 +1,8 @@
 'use strict';
 
+// Selezione incrementale ESATTA anche qui (vedi e2e-backup.js e CDB-32).
+process.env.CODEDB_BACKUP_MARGINE_MS = '0';
+
 /* ---------------------------------------------------------------------------
  * Test end-to-end della CLI di backup (backup/cli.js) su MySQL.
  *

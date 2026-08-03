@@ -266,6 +266,40 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
     );
   });
 
+  await prova('BUDGET: la memoria di un singolo valore è limitata (CDB-65)', async () => {
+    // Gli altri budget contano OPERAZIONI e non fermano un'allocazione singola:
+    // ciascuno di questi script esauriva l'heap del processo (misurato: OOM in
+    // 394 ms con --max-old-space-size=256) usando una manciata di passi, e con
+    // il processo cadevano le sessioni di tutti gli utenti.
+    const limiti = { memoriaBytes: 1024 * 1024 }; // 1 MB: la soglia si prova, non si aspetta
+    const vettori = [
+      ['una stringa ripetuta', 'let s = "x".repeat(500000000); print(s.length);'],
+      ['un array raddoppiato', 'let a = [1]; for (let i = 0; i < 26; i++) { a = a.concat(a); }'],
+      ['una stringa raddoppiata', 'let s = "x"; for (let i = 0; i < 40; i++) { s = s + s; }'],
+      ['un riempimento', 'print("x".padEnd(400000000).length);'],
+    ];
+    for (const [nome, code] of vettori) {
+      await deveFallire(code, /oltre il limite di|CODEDB_SCRIPT_MAX_BYTES/, hostFinto(), { limiti });
+      void nome;
+    }
+
+    // E, come ogni budget, non deve essere neutralizzabile dallo script.
+    await deveFallire(
+      'try { "x".repeat(500000000); } catch (e) { print("catturato"); }',
+      /oltre il limite di/,
+      hostFinto(),
+      { limiti }
+    );
+
+    // Il lavoro legittimo non deve pagare nulla: qui sotto la soglia.
+    const r = await esegui(
+      'let a = []; for (let i = 0; i < 500; i++) { a.push(i); } print(a.length + " " + "ab".repeat(3));',
+      hostFinto(),
+      { limiti }
+    );
+    assert.deepStrictEqual(r.output, ['500 ababab']);
+  });
+
   /* === Dialogo col database ============================================= */
 
   await prova('find/toArray: filtro convertito in EJSON e documenti restituiti', async () => {

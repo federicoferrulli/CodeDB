@@ -124,6 +124,65 @@ export function toast(msg, isError = false) {
   toastTimer = setTimeout(() => el.classList.add('hidden'), durata);
 }
 
+/**
+ * Chiave di storage dell'applicazione (CDB-64).
+ *
+ * I prefissi erano rimasti misti dopo il rebranding — `gui-db:` in alcuni
+ * moduli, `codedb:` in altri — e un prefisso unico non è cosmesi: è ciò che
+ * permette di enumerare e ripulire in blocco quanto l'applicazione ha scritto
+ * (logout, reset), cosa impossibile finché metà delle chiavi porta un altro
+ * nome. `chiaveStorage` genera il nome nuovo; `migraChiave` sposta una volta
+ * sola il valore scritto dalle versioni precedenti, così nessuno perde le
+ * larghezze delle sidebar o le cartelle chiuse.
+ */
+export function chiaveStorage(nome) {
+  return `codedb:${nome}`;
+}
+
+export function migraChiave(nomeNuovo, chiaveVecchia) {
+  const nuova = chiaveStorage(nomeNuovo);
+  try {
+    if (localStorage.getItem(nuova) === null) {
+      const valore = localStorage.getItem(chiaveVecchia);
+      if (valore !== null) localStorage.setItem(nuova, valore);
+    }
+    localStorage.removeItem(chiaveVecchia);
+  } catch { /* storage non disponibile: si riparte dai default */ }
+  return nuova;
+}
+
+/**
+ * Esegue `azione` su ogni elemento con al più `ampiezza` operazioni in volo
+ * (CDB-51), restituendo gli esiti nello stesso formato di `Promise.allSettled`
+ * e nello stesso ordine degli elementi.
+ *
+ * Serve dove un solo gesto dell'utente si traduce in molte richieste: incollare
+ * una selezione da un foglio di calcolo, cancellare centinaia di righe. Mandarle
+ * tutte insieme non le rende più veloci — il pool di connessioni della sessione
+ * è comunque limitato — ma riempie la coda del socket e mette in attesa dietro
+ * di sé ogni altra operazione, compresa quella degli altri tab. Sotto
+ * `ampiezza` elementi non cambia nulla: partono tutti nella prima ondata.
+ */
+export async function eseguiAOndate(elementi, ampiezza, azione) {
+  const esiti = new Array(elementi.length);
+  let prossimo = 0;
+  const lavoratore = async () => {
+    for (;;) {
+      const i = prossimo++;
+      if (i >= elementi.length) return;
+      try {
+        esiti[i] = { status: 'fulfilled', value: await azione(elementi[i], i) };
+      } catch (reason) {
+        esiti[i] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(Math.max(ampiezza, 1), elementi.length || 1) }, lavoratore)
+  );
+  return esiti;
+}
+
 export function showQueryError(msg) {
   const el = $('#query-error');
   if (msg) {
@@ -266,8 +325,13 @@ export function emit(event, payload) {
       } else {
         const errMsg = String((res && res.error) || '');
         const isNoSession = errMsg.includes('Nessuna connessione attiva');
-        if (isNoSession && tab && (tab.connCfg || tab.connName) && (!payload || !payload._reconnected)) {
-          const cfg = tab.connCfg || { saved: tab.connName };
+        // Riconnessione automatica possibile solo per le connessioni SALVATE
+        // (CDB-22): i segreti non vivono più nel browser, quindi per una
+        // connessione estemporanea non c'è nulla con cui riaprirla — e provarci
+        // produrrebbe un errore di autenticazione al posto di quello vero.
+        const riconnettibile = !!(tab && (tab.connName || (tab.connCfg && tab.connCfg.saved)));
+        if (isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
+          const cfg = { saved: tab.connName || tab.connCfg.saved };
           socket.emit('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
             if (connRes && connRes.ok) {
               tab.state.connected = true;

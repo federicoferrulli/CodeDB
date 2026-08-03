@@ -16,6 +16,37 @@ import { tabs } from './tabs.js';
 // connessione — con danno permanente, perché sono scritture.
 
 const CHUNK = 500;
+// Tetto in BYTE per blocco di import (CDB-34). Il conteggio a soli documenti non
+// dice nulla sulla dimensione del messaggio: il server accetta al massimo 5 MB
+// per messaggio Socket.IO (`maxHttpBufferSize`), quindi 500 documenti con un
+// campo testo lungo superano il limite e la connessione CADE — l'import si
+// interrompe con un errore di rete invece che con un messaggio comprensibile.
+// Si tiene un margine ampio per la serializzazione EJSON e il resto del payload.
+const CHUNK_BYTES = 3 * 1024 * 1024;
+
+/**
+ * Divide i documenti in blocchi che rispettano ENTRAMBI i limiti: numero di
+ * documenti e dimensione stimata. Un singolo documento più grande del tetto
+ * viaggia comunque da solo — se sfora, il rifiuto arriva dal server con un
+ * messaggio, che è meglio di una connessione chiusa a metà lavoro.
+ */
+function blocchiDiImport(docs) {
+  const blocchi = [];
+  let corrente = [];
+  let byte = 0;
+  for (const doc of docs) {
+    const dim = JSON.stringify(doc).length;
+    if (corrente.length && (corrente.length >= CHUNK || byte + dim > CHUNK_BYTES)) {
+      blocchi.push(corrente);
+      corrente = [];
+      byte = 0;
+    }
+    corrente.push(doc);
+    byte += dim;
+  }
+  if (corrente.length) blocchi.push(corrente);
+  return blocchi;
+}
 
 /* ---------------------------------------------------------------------------
  * Export
@@ -217,7 +248,10 @@ async function runImport() {
   let aborted = false;
   const errors = [];
   try {
-    for (let i = 0; i < docs.length; i += CHUNK) {
+    // Blocchi limitati per numero E per dimensione (CDB-34).
+    const blocchi = blocchiDiImport(docs);
+    let i = 0;
+    for (const batch of blocchi) {
       // Tab chiuso (o mai esistito) durante l'import: fermarsi è l'unica scelta
       // corretta — proseguire scriverebbe su una sessione non più identificabile.
       if (tabId && !tabs.list.some((t) => t.id === tabId)) {
@@ -226,8 +260,8 @@ async function runImport() {
         failed += docs.length - i;
         break;
       }
-      const batch = docs.slice(i, i + CHUNK);
       setImportProgress((i / docs.length) * 100, `${i}/${docs.length}…`);
+      i += batch.length;
       try {
         const res = await emit('collection:import', { tabId, db, coll, docs: batch });
         inserted += res.inserted;
@@ -539,9 +573,13 @@ async function runDbImport() {
         continue;
       }
 
-      for (let i = 0; i < c.docs.length; i += CHUNK) {
-        const batch = c.docs.slice(i, i + CHUNK);
+      // Stessi blocchi dell'import singolo: limitati anche per BYTE (CDB-34),
+      // altrimenti poche righe grandi superano il tetto del messaggio Socket.IO
+      // e la connessione cade a metà import.
+      let i = 0;
+      for (const batch of blocchiDiImport(c.docs)) {
         setDbImportProgress((done / totalDocs) * 100, `${c.name}: ${i}/${c.docs.length}…`);
+        i += batch.length;
         try {
           const res = await emit('collection:import', { tabId, db: target, coll: c.name, docs: batch });
           inserted += res.inserted;

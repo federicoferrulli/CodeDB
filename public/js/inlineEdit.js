@@ -10,6 +10,16 @@ export function buildEditor(current) {
     const input = document.createElement('input');
     input.type = 'datetime-local';
     input.step = '0.001';
+    // ORA UTC, non locale (CDB-15). Il controllo `datetime-local` è per
+    // definizione ora locale, e qui invece si mostra e si rilegge UTC: la scelta
+    // è voluta — la griglia stampa `toISOString()`, l'export e l'EJSON parlano
+    // UTC, e mostrare l'ora locale solo nell'editor significherebbe vedere due
+    // orari diversi per lo stesso istante (e un valore che cambia in viaggio).
+    // Quello che mancava era DIRLO: senza, chi scrive "10:00" crede di indicare
+    // le 10:00 di casa propria e ne salva altre.
+    input.title = 'Ora UTC, come nella griglia (non l\'ora locale del computer)';
+    input.setAttribute('aria-label', 'Data e ora in UTC');
+    input.classList.add('input-utc');
     const raw = isPlainObject(current.$date) ? Number(current.$date.$numberLong) : current.$date;
     const d = new Date(raw);
     if (!Number.isNaN(d.getTime())) input.value = d.toISOString().slice(0, 23);
@@ -172,9 +182,17 @@ export function startEdit(td, doc, field) {
 }
 
 let editDocContext = null;
+// Documento in modifica (CDB-52). Stava in `state.editingDoc`, cioè nel Proxy
+// che punta SEMPRE al tab attivo: aprendo la modale e passando a un altro tab
+// prima di salvare, `state.editingDoc` era quello dell'ALTRO tab — nel migliore
+// dei casi il salvataggio non faceva nulla (nessun documento in modifica lì),
+// nel peggiore scriveva su un `_id` che appartiene a un'altra connessione.
+// La modale è una sola e globale: il documento vive qui, accanto al suo
+// contesto, e non in uno stato che cambia sotto i piedi.
+let editingDoc = null;
 
 export function openEditDoc(doc, context = null) {
-  state.editingDoc = doc;
+  editingDoc = doc;
   editDocContext = context;
   const copy = {};
   for (const [k, v] of Object.entries(doc)) {
@@ -191,7 +209,7 @@ export function initInlineEdit() {
   $('#editdoc-cancel').addEventListener('click', () => closeModal('#editdoc-overlay'));
 
   $('#editdoc-save').addEventListener('click', () => {
-    if (!state.editingDoc) return;
+    if (!editingDoc) return;
     const tabId = editDocContext ? editDocContext.tabId : undefined;
     const db = editDocContext ? editDocContext.db : state.db;
     const coll = editDocContext ? editDocContext.coll : state.coll;
@@ -200,7 +218,7 @@ export function initInlineEdit() {
       tabId,
       db,
       coll,
-      id: idOf(state.editingDoc),
+      id: idOf(editingDoc),
       doc: $('#editdoc-json').value,
     }).then((res) => {
       closeModal('#editdoc-overlay');

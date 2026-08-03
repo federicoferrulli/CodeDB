@@ -81,11 +81,29 @@ if (!gotLock) {
   });
 }
 
+/**
+ * C'è un'istanza di CodeDB in ascolto sulla porta?
+ *
+ * Si interroga `/handshake-check`, che risponde `{ app: 'codedb' }` (CDB-38).
+ * Prima bastava che QUALUNQUE cosa rispondesse sulla porta: se 3030 era occupata
+ * da un altro progetto in sviluppo, l'app desktop non avviava il proprio server
+ * e apriva una finestra su quell'altra applicazione — con la barra del titolo
+ * di CodeDB. Ora, in quel caso, l'avvio prosegue e l'errore di porta occupata
+ * arriva dal server, che sa spiegarlo.
+ */
 function pingServer(timeout) {
   return new Promise((resolve) => {
-    const req = http.get({ host: HOST, port: PORT, path: '/', timeout }, (res) => {
-      res.resume();
-      resolve(true);
+    const req = http.get({ host: HOST, port: PORT, path: '/handshake-check', timeout }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { if (body.length < 4096) body += c; });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body).app === 'codedb');
+        } catch {
+          resolve(false); // risponde qualcos'altro: non è CodeDB
+        }
+      });
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -161,9 +179,35 @@ function createWindow() {
 
   // I link che aprirebbero una nuova finestra (es. target=_blank) vanno nel
   // browser di sistema, non in una nuova BrowserWindow senza sandbox.
+  //
+  // Solo http/https (CDB-37): `shell.openExternal` consegna l'URL al sistema
+  // operativo, che lo apre con l'applicazione registrata per quello schema —
+  // `file:`, `smb:`, `ms-msdt:` e simili diventano quindi l'esecuzione di
+  // qualcosa fuori da Electron, a partire da un link presente in una pagina.
+  // La whitelist è sugli schemi, non sui domini: aprire un sito qualsiasi nel
+  // browser è legittimo, avviare un programma no.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    let schema = '';
+    try { schema = new URL(url).protocol; } catch { schema = ''; }
+    if (schema === 'http:' || schema === 'https:') {
+      shell.openExternal(url);
+    } else {
+      console.warn(`[Electron] Apertura esterna rifiutata (schema "${schema || 'sconosciuto'}"): ${url}`);
+    }
     return { action: 'deny' };
+  });
+
+  // Stessa regola per la NAVIGAZIONE nella finestra: l'unica pagina che CodeDB
+  // deve caricare è la propria. Un link che porti altrove va al browser di
+  // sistema, altrimenti si finirebbe con una pagina esterna dentro la finestra
+  // dell'applicazione, indistinguibile da essa.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const nostra = `http://${HOST}:${PORT}`;
+    if (url.startsWith(nostra)) return;
+    event.preventDefault();
+    let schema = '';
+    try { schema = new URL(url).protocol; } catch { schema = ''; }
+    if (schema === 'http:' || schema === 'https:') shell.openExternal(url);
   });
 
   mainWindow.on('closed', () => {

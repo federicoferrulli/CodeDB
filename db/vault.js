@@ -113,13 +113,46 @@ function readMeta(connectionsFile) {
   }
 }
 
-/** Scrittura ATOMICA: file temporaneo + rename, mai una write in place. */
+/**
+ * Scrittura ATOMICA E DUREVOLE del meta del vault.
+ *
+ * Il rename è atomico rispetto a chi legge, ma non basta (CDB-68): senza `fsync`
+ * il contenuto può essere ancora nella cache di pagina, e dopo un'interruzione
+ * di corrente il file può ritrovarsi di lunghezza zero. Qui la differenza è
+ * definitiva — `vault.json` è l'unico posto in cui la DEK esiste, e senza DEK i
+ * segreti in connections.ini non sono più decifrabili da NESSUNA passphrase.
+ *
+ * Per lo stesso motivo la generazione precedente viene conservata in `.bak`
+ * prima di essere sostituita: costa una copia di poche centinaia di byte e
+ * trasforma uno scenario irreversibile in un ripristino manuale.
+ */
 function writeMeta(connectionsFile, meta) {
   const file = metaFileFor(connectionsFile);
   const tmp = `${file}.tmp-${process.pid}`;
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(tmp, JSON.stringify(meta, null, 2), 'utf8');
+
+  // Copia di sicurezza della generazione attuale (se c'è).
+  try {
+    if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak`);
+  } catch { /* la copia è un di più: non deve impedire la scrittura */ }
+
+  const dati = JSON.stringify(meta, null, 2);
+  const fd = fs.openSync(tmp, 'w');
+  try {
+    fs.writeFileSync(fd, dati, 'utf8');
+    fs.fsyncSync(fd); // il contenuto è sul supporto PRIMA che il rename lo renda visibile
+  } finally {
+    fs.closeSync(fd);
+  }
   fs.renameSync(tmp, file);
+
+  // Anche il rename va reso durevole: su alcuni filesystem la voce di directory
+  // sopravvive senza il file. Non tutti i sistemi permettono di aprire una
+  // directory in lettura (Windows non lo consente), quindi è best-effort.
+  try {
+    const dirFd = fs.openSync(path.dirname(file), 'r');
+    try { fs.fsyncSync(dirFd); } finally { fs.closeSync(dirFd); }
+  } catch { /* non supportato su questa piattaforma: il file è comunque già su disco */ }
 }
 
 /* --- Creazione, apertura, cambio passphrase --------------------------------- */

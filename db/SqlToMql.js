@@ -349,10 +349,26 @@ function parseValue(p) {
   throw new Error(`Valore non valido nella WHERE: "${t.value}".`);
 }
 
+// Numero massimo di jolly in un solo LIKE (CDB-39). Ogni `%` diventa un `.*`, e
+// una regex ancorata con molti quantificatori adiacenti può far esplodere il
+// backtracking del motore di MongoDB: il costo lo paga il SERVER, non CodeDB,
+// quindi il timeout della query lo limita ma non lo evita. Un LIKE legittimo ha
+// pochi jolly; oltre la soglia è quasi sempre un errore di scrittura, e vale la
+// pena dirlo invece di mandare in affanno il database.
+const MAX_JOLLY_LIKE = 20;
+
 // Converte un pattern SQL LIKE in una regex MongoDB (case-insensitive).
 function likeToRegex(pattern) {
   let out = '';
   const str = String(pattern);
+  const jolly = (str.match(/[%_]/g) || []).length;
+  if (jolly > MAX_JOLLY_LIKE) {
+    throw new Error(
+      `Pattern LIKE troppo complesso: ${jolly} caratteri jolly (massimo ${MAX_JOLLY_LIKE}). `
+      + 'Su MongoDB il LIKE diventa un\'espressione regolare, e un pattern con molti "%" '
+      + 'può occupare il database per un tempo indefinito. Restringi la ricerca.'
+    );
+  }
   for (let i = 0; i < str.length; i++) {
     const ch = str[i];
     if (ch === '%') { out += '.*'; continue; }

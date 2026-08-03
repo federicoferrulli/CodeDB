@@ -25,20 +25,64 @@ const CONNECTIONS_FILE = process.env.CODEDB_CONNECTIONS_FILE
   || path.join(__dirname, '..', '..', 'connections.ini');
 const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
 
+// Connessioni per tenant (CDB-50). Con RBAC attivo il server non scrive più nel
+// file condiviso: ogni owner ha `data/conns/<ownerId>.ini`. La CLI leggeva solo
+// il file storico, quindi su un'installazione multi-tenant non trovava NESSUNA
+// connessione e i backup da riga di comando (cioè quelli pianificati) erano
+// semplicemente impossibili. Stessa risoluzione del server, stessa variabile
+// d'ambiente per la cartella.
+const CONNECTIONS_DIR = process.env.CODEDB_CONNECTIONS_DIR
+  || path.join(path.dirname(CONNECTIONS_FILE), 'conns');
+
+function connectionsFileFor(ownerId) {
+  const id = String(ownerId == null ? '' : ownerId).trim();
+  if (!id || id === 'local') return CONNECTIONS_FILE;
+  const safe = id.replace(/[^A-Za-z0-9_.-]/g, '_');
+  return path.join(CONNECTIONS_DIR, `${safe}.ini`);
+}
+
+// Owner richiesto: `--owner` della CLI oppure CODEDB_OWNER_ID.
+function ownerCorrente(ownerId) {
+  return ownerId != null && String(ownerId).trim() !== ''
+    ? String(ownerId).trim()
+    : (process.env.CODEDB_OWNER_ID || '').trim();
+}
+
+// Elenco dei tenant disponibili: serve al messaggio d'errore quando l'owner
+// indicato non esiste, così chi lancia un backup pianificato capisce cosa
+// scrivere invece di vedere "nessuna connessione".
+function tenantDisponibili() {
+  try {
+    return fs.readdirSync(CONNECTIONS_DIR)
+      .filter((f) => f.endsWith('.ini'))
+      .map((f) => path.basename(f, '.ini'));
+  } catch {
+    return [];
+  }
+}
+
+// Nomi che non possono essere sezioni: `sections.__proto__ = {}` cambierebbe il
+// prototipo dell'oggetto invece di aggiungere una connessione (CDB-21). Stessa
+// regola del parser del server.
+const CHIAVI_VIETATE = new Set(['__proto__', 'constructor', 'prototype']);
+
 function parseIni(text) {
-  const sections = {};
+  const sections = Object.create(null);
   let current = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith(';') || line.startsWith('#')) continue;
     const header = line.match(/^\[(.+)\]$/);
     if (header) {
-      current = sections[header[1]] = {};
+      if (CHIAVI_VIETATE.has(header[1])) { current = null; continue; }
+      current = sections[header[1]] = Object.create(null);
       continue;
     }
     const eq = line.indexOf('=');
     if (current && eq > 0) {
-      current[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+      const chiave = line.slice(0, eq).trim();
+      if (CHIAVI_VIETATE.has(chiave)) continue;
+      current[chiave] = line.slice(eq + 1).trim();
     }
   }
   return sections;
@@ -46,9 +90,9 @@ function parseIni(text) {
 
 // true se il file contiene almeno un segreto cifrato: solo in quel caso
 // serve chiedere la passphrase all'utente.
-function hasEncryptedSecrets() {
+function hasEncryptedSecrets(ownerId) {
   try {
-    return fs.readFileSync(CONNECTIONS_FILE, 'utf8').includes('ENC:');
+    return fs.readFileSync(connectionsFileFor(ownerCorrente(ownerId)), 'utf8').includes('ENC:');
   } catch {
     return false;
   }
@@ -93,11 +137,22 @@ function promptPassphrase(question) {
 // Carica e decifra le connessioni salvate. passphrase può essere null se il
 // file non contiene segreti cifrati. Una decifratura fallita interrompe tutto:
 // meglio fermarsi che tentare un backup con credenziali vuote.
-function loadConnections(passphrase) {
+function loadConnections(passphrase, ownerId) {
+  const owner = ownerCorrente(ownerId);
+  const file = connectionsFileFor(owner);
   let text;
   try {
-    text = fs.readFileSync(CONNECTIONS_FILE, 'utf8');
+    text = fs.readFileSync(file, 'utf8');
   } catch {
+    // Owner indicato ma file assente: è un errore di configurazione, non
+    // "nessuna connessione". Dirlo, ed elencare i tenant che esistono.
+    if (owner) {
+      const disponibili = tenantDisponibili();
+      throw new Error(
+        `Nessun file di connessioni per l'owner "${owner}" (${file}).`
+        + (disponibili.length ? ` Owner disponibili: ${disponibili.join(', ')}.` : '')
+      );
+    }
     return {}; // file assente: nessuna connessione salvata
   }
   const sections = parseIni(text);

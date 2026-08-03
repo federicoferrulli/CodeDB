@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget } from './utils.js';
+import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -782,13 +782,16 @@ export function deleteSelectedDocs() {
   // Tab e collection d'origine catturati prima di partire: le risposte arrivano
   // a operazione lunga conclusa, quando l'utente può essere altrove.
   const origin = captureContext();
-  Promise.allSettled(ids.map((id) =>
+  // A ondate, non tutte insieme (CDB-51): una cancellazione multipla di
+  // centinaia di righe riempirebbe la coda del socket e il pool della sessione,
+  // lasciando in attesa ogni altra operazione dell'utente.
+  eseguiAOndate(ids, 8, (id) =>
     emit('doc:delete', {
       db: state.db,
       coll: state.coll,
       id,
     })
-  )).then((results) => {
+  ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
     origin.st.selectedDocs.clear();

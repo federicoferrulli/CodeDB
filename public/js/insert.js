@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 
@@ -81,7 +81,15 @@ export function insertInputFor(kind) {
   }
   const i = document.createElement('input');
   if (kind === 'number') { i.type = 'number'; i.step = 'any'; }
-  else if (kind === 'datetime') { i.type = 'datetime-local'; i.step = '0.001'; }
+  else if (kind === 'datetime') {
+    i.type = 'datetime-local';
+    i.step = '0.001';
+    // L'ora si scrive e si legge in UTC, come nella griglia (CDB-15): il
+    // controllo del browser suggerisce l'ora locale, quindi va detto.
+    i.title = 'Ora UTC, come nella griglia (non l\'ora locale del computer)';
+    i.setAttribute('aria-label', 'Data e ora in UTC');
+    i.classList.add('input-utc');
+  }
   else if (kind === 'date') { i.type = 'date'; }
   else {
     i.type = 'text';
@@ -122,7 +130,7 @@ export function addInsertRow(opts) {
   if (opts.nameEditable) {
     const sel = document.createElement('select');
     const kinds = [['text', 'testo'], ['number', 'numero'], ['bool', 'booleano'],
-                   ['datetime', 'data'], ['oid', 'ObjectId'], ['json', 'JSON'],
+                   ['datetime', 'data (UTC)'], ['oid', 'ObjectId'], ['json', 'JSON'],
                    // Su MongoDB il tipo di un campo NUOVO non è deducibile da
                    // nessuno schema: la geometria va potuta scegliere a mano.
                    ['geo', 'geometria (mappa)']];
@@ -264,9 +272,16 @@ export function selectInsertTab(name) {
 }
 
 let insertContext = null;
+// Numero di apertura della modale (CDB-14). `insertRows` è una variabile di
+// modulo azzerata a ogni apertura e popolata da una risposta asincrona: se si
+// chiude e riapre la modale su un'altra collection prima che la prima risposta
+// arrivi, quelle righe finiscono nel form NUOVO — campi di un'altra tabella,
+// pronti per essere scritti. Il contatore fa scartare le risposte sorpassate.
+let insertAperture = 0;
 
 export function openInsertDocForContext(ctx = null) {
   insertContext = ctx;
+  const apertura = ++insertAperture;
   const db = ctx ? ctx.db : state.db;
   const coll = ctx ? ctx.coll : state.coll;
   const tabId = ctx ? ctx.tabId : undefined;
@@ -285,6 +300,7 @@ export function openInsertDocForContext(ctx = null) {
   openModal('#insert-overlay');
 
   emit('collection:stats', { tabId, db, coll }).then((res) => {
+    if (apertura !== insertAperture) return; // modale riaperta nel frattempo (CDB-14)
     for (const f of (res.fields || [])) {
       if (f.name === '_id' && !isSql) continue;
       const mainType = (f.types || []).find((t) => t !== 'null') || 'null';
@@ -299,7 +315,23 @@ export function openInsertDocForContext(ctx = null) {
     if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
     const first = insertRows.find((r) => !r.auto);
     if (first) first.input.focus();
-  }).catch((err) => toast(err.message, true));
+  }).catch((err) => {
+    if (apertura !== insertAperture) return;
+    // Lo schema non è arrivato (CDB-13). Prima qui c'era solo un toast: la
+    // modale restava aperta e VUOTA e, su SQL, senza nemmeno il pulsante
+    // "aggiungi campo" — quindi inserire una riga diventava impossibile, con la
+    // sola spiegazione di un messaggio che spariva in tre secondi. Lo schema
+    // serve per la comodità dei campi precompilati, non per scrivere: si dice
+    // cosa è successo e si apre la via manuale (nomi di campo digitabili, e la
+    // scheda JSON resta sempre disponibile).
+    toast(`Schema non disponibile: ${err.message}`, true);
+    showError('#insert-error',
+      'Non è stato possibile leggere le colonne di questa tabella: '
+      + `${err.message}. Puoi comunque inserire i valori a mano, aggiungendo i campi `
+      + 'uno a uno oppure scrivendo il documento nella scheda JSON.');
+    $('#insert-addfield').classList.remove('hidden');
+    $('#insert-form-empty').classList.remove('hidden');
+  });
 }
 
 export function initInsert() {

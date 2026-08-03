@@ -34,7 +34,8 @@ export function freshState() {
     pollingInterval: null,
     view: 'data',
     expandedDbs: new Set(), // db espansi nella sidebar
-    editingDoc: null,       // documento aperto nella modale di modifica riga
+    // (il documento in modifica NON sta più qui: la modale è una sola e globale,
+    // quindi vive in inlineEdit.js insieme al suo contesto — vedi CDB-52)
     dbSchema: null,         // cache dello schema per la vista UML
     dbSchemaFor: null,      // db a cui si riferisce la cache
     databases: [],          // elenco db per la sidebar del tab

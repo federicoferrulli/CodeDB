@@ -381,6 +381,26 @@ class PostgreSqlStrategy extends DbStrategy {
   // Il SRID sta in `geometry_columns`/`geography_columns` (viste PostGIS): se
   // PostGIS non è installato quelle viste non esistono e si prosegue senza —
   // `udt_name` non sarà mai 'geometry', quindi non cambia nulla.
+  /**
+   * Toglie dal documento la chiave `_id` SOLO se è quella virtuale (CDB-41).
+   *
+   * Su SQL `_id` è un identificatore sintetico costruito da CodeDB a partire
+   * dalla chiave primaria, quindi va scartato prima di scrivere. Ma nulla
+   * impedisce a una tabella di avere una colonna davvero chiamata `_id` — è
+   * anzi comune nelle tabelle migrate da MongoDB — e lì la `delete`
+   * incondizionata buttava via un valore dell'utente in silenzio: la riga
+   * veniva inserita con quel campo vuoto, senza errori.
+   */
+  async rimuoviIdVirtuale(db, coll, doc) {
+    if (!doc || !Object.prototype.hasOwnProperty.call(doc, '_id')) return doc;
+    try {
+      const { columns } = await this.tableColumnsInfo(db, coll);
+      if (columns.some((c) => c.name === '_id')) return doc; // colonna vera: si conserva
+    } catch { /* metadati non leggibili: si ricade sul comportamento storico */ }
+    delete doc._id;
+    return doc;
+  }
+
   async tableColumnsInfo(db, coll) {
     const schema = schemaOf(db);
     const chiave = `${schema} ${coll}`;
@@ -766,7 +786,7 @@ class PostgreSqlStrategy extends DbStrategy {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
       throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
     }
-    delete doc._id;
+    await this.rimuoviIdVirtuale(db, coll, doc);
     const cols = Object.keys(doc);
     const table = qtable(db, coll);
     let res;
@@ -822,7 +842,7 @@ class PostgreSqlStrategy extends DbStrategy {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
       throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
     }
-    delete doc._id;
+    await this.rimuoviIdVirtuale(db, coll, doc);
     return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: true }) });
   }
 
@@ -1028,6 +1048,13 @@ class PostgreSqlStrategy extends DbStrategy {
     const errors = [];
 
     const pk = payload.upsert ? await this.primaryKey(db, coll) : [];
+    // Nomi reali delle colonne: serve a distinguere l'`_id` virtuale da una
+    // colonna omonima (CDB-41), comune nelle tabelle migrate da MongoDB.
+    let colonneReali = new Set();
+    try {
+      const info = await this.tableColumnsInfo(db, coll);
+      colonneReali = new Set(info.columns.map((c) => c.name));
+    } catch { /* metadati non leggibili: vale il comportamento storico */ }
 
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
@@ -1036,7 +1063,9 @@ class PostgreSqlStrategy extends DbStrategy {
         if (!row || typeof row !== 'object' || Array.isArray(row)) {
           throw new Error('la riga deve essere un oggetto { "colonna": valore }');
         }
-        delete row._id;
+        // Come in docInsert (CDB-41): si scarta l'`_id` VIRTUALE, non una
+        // colonna che si chiama davvero così.
+        if (!colonneReali.has('_id')) delete row._id;
         const cols = Object.keys(row);
         if (!cols.length) throw new Error('riga vuota');
         parsed.push({ i, cols, values: cols.map((c) => toSqlValue(row[c])) });
@@ -1045,21 +1074,66 @@ class PostgreSqlStrategy extends DbStrategy {
       }
     }
 
+    // Costruisce l'INSERT (con eventuale upsert sulla chiave primaria) per un
+    // gruppo di righe che condividono le STESSE colonne. `righe` è un array di
+    // array di valori; i placeholder scorrono su tutte le righe.
+    const sqlPerGruppo = (cols, righe) => {
+      const valori = [];
+      const tuple = righe.map((vals) => {
+        const ph = vals.map((v) => { valori.push(v); return `$${valori.length}`; });
+        return `(${ph.join(', ')})`;
+      });
+      let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}`;
+      if (pk.length && pk.every((c) => cols.includes(c))) {
+        const updateCols = cols.filter((c) => !pk.includes(c));
+        sql += ` ON CONFLICT (${pk.map(qid).join(', ')})`;
+        sql += updateCols.length
+          ? ` DO UPDATE SET ${updateCols.map((c) => `${qid(c)} = EXCLUDED.${qid(c)}`).join(', ')}`
+          : ' DO NOTHING';
+      }
+      return { sql, valori };
+    };
+
+    // Import A BLOCCHI, non una query per riga (CDB-31): importare 10.000 righe
+    // significava 10.000 round-trip, ciascuno con la sua latenza — su una
+    // connessione remota è la differenza fra secondi e minuti. Le righe vengono
+    // raggruppate per FORMA (stesse colonne), perché un solo INSERT può avere
+    // una sola lista di colonne, e i documenti MongoDB importati in PostgreSQL
+    // non hanno tutti gli stessi campi.
+    //
+    // Se un blocco fallisce si ricade sulle righe singole: l'errore va
+    // attribuito alla riga che lo ha causato, altrimenti un solo valore
+    // sbagliato farebbe scartare centinaia di righe valide senza dire quale.
+    const BLOCCO = 200;
+    const gruppi = new Map(); // firma delle colonne -> { cols, elementi }
     for (const p of parsed) {
-      try {
-        const placeholders = p.cols.map((_, idx) => `$${idx + 1}`).join(', ');
-        let sql = `INSERT INTO ${table} (${p.cols.map(qid).join(', ')}) VALUES (${placeholders})`;
-        if (pk.length && pk.every((c) => p.cols.includes(c))) {
-          const updateCols = p.cols.filter((c) => !pk.includes(c));
-          sql += ` ON CONFLICT (${pk.map(qid).join(', ')})`;
-          sql += updateCols.length
-            ? ` DO UPDATE SET ${updateCols.map((c) => `${qid(c)} = EXCLUDED.${qid(c)}`).join(', ')}`
-            : ' DO NOTHING';
+      const firma = p.cols.join(' ');
+      if (!gruppi.has(firma)) gruppi.set(firma, { cols: p.cols, elementi: [] });
+      gruppi.get(firma).elementi.push(p);
+    }
+
+    const inserisciSingole = async (elementi) => {
+      for (const p of elementi) {
+        try {
+          const { sql, valori } = sqlPerGruppo(p.cols, [p.values]);
+          await pool.query(sql, valori);
+          inserted += 1;
+        } catch (err) {
+          if (errors.length < 10) errors.push(`Riga ${p.i + 1}: ${(err && err.message) || err}`);
         }
-        await pool.query(sql, p.values);
-        inserted += 1;
-      } catch (err) {
-        if (errors.length < 10) errors.push(`Riga ${p.i + 1}: ${(err && err.message) || err}`);
+      }
+    };
+
+    for (const { cols, elementi } of gruppi.values()) {
+      for (let i = 0; i < elementi.length; i += BLOCCO) {
+        const blocco = elementi.slice(i, i + BLOCCO);
+        try {
+          const { sql, valori } = sqlPerGruppo(cols, blocco.map((p) => p.values));
+          await pool.query(sql, valori);
+          inserted += blocco.length;
+        } catch {
+          await inserisciSingole(blocco);
+        }
       }
     }
 

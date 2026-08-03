@@ -104,20 +104,55 @@ function safeName(name) {
   return String(name).replace(/[^\w.-]+/g, '_');
 }
 
-// Id del backup: timestamp ordinabile + tipo (es. 20260714-103000_full).
+/**
+ * Id del backup: timestamp ordinabile + tipo (es. `20260714-103000Z_full`).
+ *
+ * In UTC e con i millisecondi (CDB-53). L'ora locale rendeva gli id NON
+ * ordinabili due volte l'anno — al ritorno dall'ora legale un backup delle 2:30
+ * ne precede uno delle 2:30 fatto un'ora dopo — e la catena degli incrementali
+ * si risolve proprio per ordine. I millisecondi evitano invece la collisione fra
+ * due backup avviati nello stesso secondo, che condividerebbero la cartella.
+ * Il suffisso `Z` dichiara il fuso a chi legge il nome.
+ */
 function makeBackupId(type) {
   const d = new Date();
   const p = (n, w = 2) => String(n).padStart(w, '0');
-  const stamp = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  const stamp = `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
+    + `-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`
+    + `${p(d.getUTCMilliseconds(), 3)}Z`;
   return `${stamp}_${type}`;
 }
 
 /* --- Catalogo: <dest>/<conn>_<db>/catalog.json -------------------------- */
 
+/**
+ * Catalogo del gruppo. Un file ASSENTE è normale (primo backup) e vale come
+ * catalogo vuoto; un file CORROTTO no (CDB-56): trattarlo come vuoto faceva
+ * sparire dall'elenco backup che esistono ancora sul disco, e il backup
+ * successivo lo riscriveva perdendo per sempre lo storico. Si distinguono i due
+ * casi: il file illeggibile viene messo da parte con un nome che lo salva, e
+ * l'anomalia viene detta invece di essere ingoiata.
+ */
 function readCatalog(groupDir) {
+  const file = path.join(groupDir, 'catalog.json');
+  let testo;
   try {
-    return JSON.parse(fs.readFileSync(path.join(groupDir, 'catalog.json'), 'utf8'));
+    testo = fs.readFileSync(file, 'utf8');
   } catch {
+    return { backups: [] }; // non esiste ancora: nessun backup in questo gruppo
+  }
+  try {
+    const cat = JSON.parse(testo);
+    if (!cat || !Array.isArray(cat.backups)) throw new Error('struttura inattesa');
+    return cat;
+  } catch (err) {
+    const salvato = `${file}.corrotto-${Date.now()}`;
+    try { fs.renameSync(file, salvato); } catch { /* sola lettura: si prosegue comunque */ }
+    console.warn(
+      `[backup] catalog.json di ${groupDir} illeggibile (${(err && err.message) || err}). `
+      + `Copia conservata in ${path.basename(salvato)}; l'elenco riparte vuoto, `
+      + 'ma i backup sul disco restano intatti e ripristinabili.'
+    );
     return { backups: [] };
   }
 }
@@ -126,22 +161,50 @@ function readCatalog(groupDir) {
 // serializzare le scritture concorrenti al catalogo: un backup via CLI e uno
 // via MCP sullo stesso gruppo altrimenti possono leggere lo stesso catalogo
 // prima l'uno della scrittura dell'altro e perdersi una voce (read-modify-write).
-function acquireCatalogLock(groupDir, timeoutMs = 5000) {
+// Un lock si considera abbandonato solo in base alla sua ETÀ (CDB-47): prima
+// bastava che il RICHIEDENTE avesse atteso oltre il timeout per cancellarlo,
+// quindi un backup lungo ma vivo si vedeva strappare il lock da chi arrivava
+// dopo, e due processi riscrivevano il catalogo insieme — cioè esattamente la
+// perdita di voci che il lock esiste per evitare.
+const LOCK_ETA_MAX_MS = 2 * 60 * 1000;
+
+function lockAbbandonato(lockFile) {
+  try {
+    return Date.now() - fs.statSync(lockFile).mtimeMs > LOCK_ETA_MAX_MS;
+  } catch {
+    return false; // sparito nel frattempo: il prossimo tentativo lo prende
+  }
+}
+
+/**
+ * Acquisizione ASINCRONA del lock del catalogo (CDB-47).
+ *
+ * L'attesa era `Atomics.wait`, che blocca il thread: dentro il server ciò
+ * significa fermare l'event loop — tutte le sessioni, i change stream e le query
+ * di tutti gli utenti — per aspettare un file. Qui si attende con una Promise,
+ * quindi il processo continua a servire il resto.
+ */
+async function acquireCatalogLock(groupDir, timeoutMs = 5000) {
   fs.mkdirSync(groupDir, { recursive: true });
   const lockFile = path.join(groupDir, '.catalog.lock');
-  const start = Date.now();
+  const scadenza = Date.now() + timeoutMs;
   for (;;) {
     try {
       fs.closeSync(fs.openSync(lockFile, 'wx'));
       return lockFile;
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
-      if (Date.now() - start > timeoutMs) {
-        // Lock stantio (processo terminato senza rilasciarlo): lo forza.
+      if (lockAbbandonato(lockFile)) {
         try { fs.unlinkSync(lockFile); } catch { /* già rimosso da un altro */ }
         continue;
       }
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
+      if (Date.now() > scadenza) {
+        throw new Error(
+          `Catalogo dei backup occupato in ${groupDir}: un'altra operazione lo sta aggiornando. `
+          + 'Attendi che finisca e riprova.'
+        );
+      }
+      await new Promise((r) => setTimeout(r, 20));
     }
   }
 }
@@ -150,8 +213,9 @@ function releaseCatalogLock(lockFile) {
   try { fs.unlinkSync(lockFile); } catch { /* già rilasciato */ }
 }
 
-function appendToCatalog(groupDir, entry) {
-  const lockFile = acquireCatalogLock(groupDir);
+// Asincrona perché lo è l'acquisizione del lock (CDB-47).
+async function appendToCatalog(groupDir, entry) {
+  const lockFile = await acquireCatalogLock(groupDir);
   try {
     const catalog = readCatalog(groupDir);
     catalog.backups.push(entry);

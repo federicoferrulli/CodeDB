@@ -45,7 +45,23 @@ const LIMITI_DEFAULT = {
   chiamateDb: 5000,      // operazioni sul database
   output: 1000,          // righe di print conservate
   docPerLettura: 10000,  // documenti materializzati da una singola find
+  // Memoria che un valore dello script può arrivare a occupare (CDB-65).
+  // Gli altri budget contano OPERAZIONI, e nessuno di essi ferma
+  // un'allocazione singola: `'x'.repeat(5e8)` è un passo solo, e
+  // `for (let i=0;i<26;i++) a = a.concat(a)` sono ventisei giri di ciclo che
+  // esauriscono l'heap in meno di mezzo secondo. Il processo Node muore, e con
+  // esso cadono le sessioni di TUTTI gli utenti: uno script non deve poter
+  // fermare il server, esattamente come non deve poterlo fare un `while(true)`.
+  memoriaBytes: 50 * 1024 * 1024,
 };
+
+// Env CODEDB_SCRIPT_MAX_BYTES: <= 0 disabilita il controllo (installazione
+// mono-utente che sa cosa sta facendo).
+function limiteMemoria() {
+  const m = parseInt(process.env.CODEDB_SCRIPT_MAX_BYTES, 10);
+  if (!Number.isFinite(m)) return LIMITI_DEFAULT.memoriaBytes;
+  return Math.max(m, 0);
+}
 
 /* --------------------------------------------------------------------------
  * Completion record: come si propagano return/break/continue senza eccezioni.
@@ -267,7 +283,7 @@ function chiamabile(nome, impl) {
 class Interprete {
   constructor(host, opzioni = {}) {
     this.host = host;
-    this.limiti = { ...LIMITI_DEFAULT, ...(opzioni.limiti || {}) };
+    this.limiti = { ...LIMITI_DEFAULT, memoriaBytes: limiteMemoria(), ...(opzioni.limiti || {}) };
     this.passi = 0;
     this.iterazioni = 0;
     this.profondita = 0;
@@ -292,6 +308,9 @@ class Interprete {
       aggrega: (db, coll, pipeline, opz) => this.aggrega(db, coll, pipeline, opz),
       conta: (db, coll, filtro) => this.conta(db, coll, filtro),
       scrivi: (db, coll, op, args) => this.scrivi(db, coll, op, args),
+      // Budget di memoria: lo applica anche la sandbox dei valori
+      // (MongoScript.legaNativo), che è dove i metodi nativi allocano.
+      contaMemoria: (byte, cosa) => this.contaMemoria(byte, cosa),
     };
 
     this.globali = costruisciGlobali(this.ctx);
@@ -324,6 +343,29 @@ class Interprete {
   contaChiamataDb() {
     if (++this.chiamateDb > this.limiti.chiamateDb) {
       throw errBudget(`Script interrotto: superato il limite di ${this.limiti.chiamateDb} operazioni sul database.`);
+    }
+  }
+
+  /**
+   * Budget di memoria (CDB-65). Si controlla la dimensione che il valore AVREBBE
+   * una volta costruito, PRIMA di costruirlo: dopo sarebbe inutile, perché è
+   * proprio l'allocazione a uccidere il processo. La stima è per eccesso sulle
+   * stringhe (2 byte per carattere, come le stringhe interne di V8) e per
+   * difetto sugli array (8 byte per elemento, cioè il solo puntatore): non è una
+   * misura della memoria reale, è una soglia contro la crescita esplosiva.
+   *
+   * Come gli altri budget, l'errore è marcato e quindi NON catturabile da un
+   * try/catch dello script.
+   */
+  contaMemoria(byteStimati, cosa) {
+    const max = this.limiti.memoriaBytes;
+    if (!max || max <= 0) return;
+    if (byteStimati > max) {
+      throw errBudget(
+        `Script interrotto: ${cosa} occuperebbe circa ${Math.round(byteStimati / 1048576)} MB, `
+        + `oltre il limite di ${Math.round(max / 1048576)} MB per valore `
+        + '(variabile d\'ambiente CODEDB_SCRIPT_MAX_BYTES).'
+      );
     }
   }
 
@@ -732,7 +774,7 @@ class Interprete {
       case 'Binary': {
         const a = await this.valuta(nodo.left, scope);
         const b = await this.valuta(nodo.right, scope);
-        return applicaBinario(nodo.op, a, b, nodo.line);
+        return applicaBinario(nodo.op, a, b, nodo.line, this);
       }
 
       case 'Cond':
@@ -744,7 +786,7 @@ class Interprete {
         let valore = await this.valuta(nodo.value, scope);
         if (nodo.op !== '=') {
           const attuale = await this.valuta(nodo.target, scope);
-          valore = applicaBinario(nodo.op[0], attuale, valore, nodo.line);
+          valore = applicaBinario(nodo.op[0], attuale, valore, nodo.line, this);
         }
         await this.assegnaA(nodo.target, valore, scope);
         return valore;
@@ -788,10 +830,18 @@ function tipoDi(v) {
   return typeof v;
 }
 
-function applicaBinario(op, a, b, line) {
+// `interprete` serve al solo budget di memoria (CDB-65): la concatenazione di
+// stringhe è la via più immediata per far esplodere l'heap (`a = a + a` in un
+// ciclo raddoppia a ogni giro), e va fermata PRIMA di costruire il risultato.
+function applicaBinario(op, a, b, line, interprete = null) {
   switch (op) {
     case '+':
-      if (typeof a === 'string' || typeof b === 'string') return testo(a) + testo(b);
+      if (typeof a === 'string' || typeof b === 'string') {
+        const sa = testo(a);
+        const sb = testo(b);
+        if (interprete) interprete.contaMemoria((sa.length + sb.length) * 2, 'la stringa concatenata');
+        return sa + sb;
+      }
       return Number(a) + Number(b);
     case '-': return Number(a) - Number(b);
     case '*': return Number(a) * Number(b);

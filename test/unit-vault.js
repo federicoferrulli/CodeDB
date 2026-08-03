@@ -142,6 +142,31 @@ prova('Metadati di versione sconosciuta vengono ignorati', () => {
   }
 });
 
+prova('La scrittura del meta conserva la generazione precedente (CDB-68)', () => {
+  // vault.json è l'unico posto in cui la DEK esiste: se una scrittura lo lascia
+  // troncato, i segreti non sono più decifrabili da nessuna passphrase. Oltre a
+  // fsync (non osservabile da un test), si conserva la copia precedente.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-vault-'));
+  const ini = path.join(dir, 'connections.ini');
+  try {
+    const primo = V.createMeta('prima').meta;
+    V.writeMeta(ini, primo);
+    const bak = `${V.metaFileFor(ini)}.bak`;
+    assert.strictEqual(fs.existsSync(bak), false, 'alla prima scrittura non c\'è nulla da conservare');
+
+    V.writeMeta(ini, V.createMeta('dopo').meta);
+    assert.ok(fs.existsSync(bak), 'la generazione precedente deve essere conservata');
+    assert.strictEqual(JSON.parse(fs.readFileSync(bak, 'utf8')).salt, primo.salt,
+      'il .bak deve contenere il meta PRECEDENTE, non quello appena scritto');
+
+    assert.ok(V.unwrapDataKey(V.readMeta(ini), 'dopo'), 'il vault corrente resta apribile');
+    assert.strictEqual(fs.readdirSync(dir).filter((f) => f.includes('.tmp-')).length, 0,
+      'nessun file temporaneo deve restare a terra');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 if (falliti) {
   console.error(`\n${falliti} test falliti.`);
   process.exitCode = 1;

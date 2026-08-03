@@ -68,7 +68,7 @@ function tokenize(src) {
 
     // Stringhe ' " `
     if (c === "'" || c === '"' || c === '`') {
-      const q = c; let val = ''; i++;
+      const q = c; let val = ''; let chiusa = false; i++;
       while (i < n) {
         if (s[i] === '\\' && i + 1 < n) {
           const nx = s[i + 1];
@@ -76,9 +76,14 @@ function tokenize(src) {
           val += map[nx] != null ? map[nx] : nx;
           i += 2; continue;
         }
-        if (s[i] === q) { i++; break; }
+        if (s[i] === q) { i++; chiusa = true; break; }
         val += s[i]; i++;
       }
+      // Stringa non terminata (CDB-55): prima si usciva dal ciclo a fine testo e
+      // il frammento veniva accettato come stringa valida, quindi
+      // `find({nome: "mario)` diventava una find con un filtro inventato invece
+      // di un errore di sintassi.
+      if (!chiusa) throw new Error(`Stringa non terminata: manca la ${q === '`' ? 'virgoletta' : 'virgoletta di chiusura'} ${q}`);
       tokens.push({ type: 'str', value: val });
       continue;
     }
@@ -88,14 +93,16 @@ function tokenize(src) {
     if (c === '/' && regexAllowed(tokens)) {
       let pattern = ''; i++;
       let inClass = false;
+      let chiusaRx = false;
       while (i < n) {
         const ch = s[i];
         if (ch === '\\' && i + 1 < n) { pattern += ch + s[i + 1]; i += 2; continue; }
         if (ch === '[') inClass = true;
         else if (ch === ']') inClass = false;
-        else if (ch === '/' && !inClass) { i++; break; }
+        else if (ch === '/' && !inClass) { i++; chiusaRx = true; break; }
         pattern += ch; i++;
       }
+      if (!chiusaRx) throw new Error('Espressione regolare non terminata: manca la / di chiusura');
       let flags = '';
       while (i < n && /[a-z]/i.test(s[i])) { flags += s[i]; i++; }
       tokens.push({ type: 'regex', value: { pattern, flags } });
@@ -195,8 +202,16 @@ function parseValue(p) {
   throw new Error(`Valore non valido: "${fmt(t)}".`);
 }
 
+// Chiavi che non definiscono un campo ma toccherebbero il prototipo
+// dell'oggetto costruito (CDB-55): un filtro non ha motivo di contenerle.
+const CHIAVI_VIETATE = new Set(['__proto__', 'constructor', 'prototype']);
+
 function parseObject(p) {
   p.expectPunct('{');
+  // Oggetto normale (non `Object.create(null)`): il filtro viene poi
+  // serializzato in EJSON e confrontato altrove, e un oggetto senza prototipo
+  // non è intercambiabile con uno letterale. A tenere fuori `__proto__` basta
+  // il controllo sulla chiave, qui sotto.
   const obj = {};
   if (p.eatPunct('}')) return obj;
   do {
@@ -207,6 +222,7 @@ function parseObject(p) {
     else if (kt && kt.type === 'str') { p.next(); key = kt.value; }
     else if (kt && kt.type === 'num') { p.next(); key = String(kt.value); }
     else throw new Error(`Chiave di oggetto non valida${kt ? `: "${fmt(kt)}"` : ''}.`);
+    if (CHIAVI_VIETATE.has(key)) throw new Error(`Chiave "${key}" non consentita in un filtro.`);
     p.expectPunct(':');
     obj[key] = parseValue(p);
   } while (p.eatPunct(','));

@@ -724,6 +724,16 @@ class MongoDbStrategy extends DbStrategy {
     const ultimo = pipeline.length ? Object.keys(pipeline[pipeline.length - 1] || {})[0] : null;
     const materializza = ultimo === '$out' || ultimo === '$merge';
 
+    // Timeout lato server sulle aggregazioni di LETTURA (CDB-17): senza, una
+    // pipeline pesante ($lookup senza indice, $group su collection enorme) tiene
+    // occupata una connessione del pool finché MongoDB non finisce da solo.
+    // Le pipeline che MATERIALIZZANO ($out/$merge) restano escluse di proposito:
+    // interromperle a metà lascerebbe la collection di destinazione scritta per
+    // metà, cioè lo stato incoerente che il timeout dovrebbe evitare. Là il
+    // rimedio giusto è l'annullamento esplicito dell'utente (cancelQuery).
+    const aggTimeout = DbStrategy.aggregateTimeoutMs();
+    if (!materializza && aggTimeout > 0) aggOpts.maxTimeMS = aggTimeout;
+
     const agg = client.db(db).collection(coll).aggregate(pipeline, aggOpts);
     const cursor = materializza ? agg : agg.limit(cap);
     // Come nella find: si smette di leggere al tetto delle righe o dei byte.
@@ -787,7 +797,12 @@ class MongoDbStrategy extends DbStrategy {
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
     const doc = parseQueryObject(payload.doc, null);
-    if (!doc || typeof doc !== 'object') throw new Error('Documento JSON non valido.');
+    // `typeof [] === 'object'` (CDB-24): un array passava il controllo e finiva
+    // in `insertOne`, che lo scriveva come documento con chiavi "0", "1", "2"…
+    // — un documento inutilizzabile, creato senza un solo messaggio d'errore.
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
+      throw new Error('Documento JSON non valido: attesa una coppia { "campo": valore }.');
+    }
     const res = await client.db(db).collection(coll).insertOne(doc);
     return { insertedId: EJSON.stringify(res.insertedId) };
   }

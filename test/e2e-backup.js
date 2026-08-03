@@ -1,5 +1,11 @@
 'use strict';
 
+// Selezione incrementale ESATTA in questo test: in esercizio il confine viene
+// arretrato di 2 s per non perdere le righe scritte nello stesso secondo del
+// backup precedente (CDB-32), ma qui i documenti nascono a millisecondi di
+// distanza e il margine li includerebbe tutti, rendendo il test cieco.
+process.env.CODEDB_BACKUP_MARGINE_MS = '0';
+
 /* ---------------------------------------------------------------------------
  * Test end-to-end della CLI di backup (backup/cli.js) su MongoDB.
  *
@@ -76,6 +82,11 @@ async function main() {
     assert.strictEqual(inc.baseId, full.id, 'l\'incrementale deve basarsi sul full');
     const incManifest = JSON.parse(fs.readFileSync(path.join(groupDir, inc.id, 'manifest.json'), 'utf8'));
     const incUtenti = incManifest.files.find((f) => f.kind === 'data' && f.collection === 'utenti');
+    // Con il margine disattivato (CODEDB_BACKUP_MARGINE_MS=0, in testa al file)
+    // la selezione è esatta. In esercizio il margine è di 2 s e l'incrementale
+    // può includere qualche riga già presente nel full: è voluto (CDB-32), perché
+    // le righe scritte nello stesso secondo del backup precedente altrimenti
+    // cadono nel buco fra i due, e i layer successivi si applicano in upsert.
     assert.strictEqual(incUtenti.count, 1, 'l\'incrementale deve contenere solo il nuovo documento');
 
     // 4. Verifica checksum.

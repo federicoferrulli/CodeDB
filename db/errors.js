@@ -64,6 +64,11 @@ function msQueryTimeout() {
   return Number.isFinite(m) ? Math.max(m, 0) : 30000;
 }
 
+function msAggregateTimeout() {
+  const m = parseInt(process.env.CODEDB_AGGREGATE_TIMEOUT_MS, 10);
+  return Number.isFinite(m) ? Math.max(m, 0) : 120000;
+}
+
 function msCountTimeout() {
   const m = parseInt(process.env.CODEDB_COUNT_TIMEOUT_MS, 10);
   return Number.isFinite(m) ? Math.max(m, 0) : 5000;
@@ -214,8 +219,8 @@ function regolaTimeout(err) {
   if (code === '50' || codeName === 'maxtimemsexpired'
     || msg.includes('operation exceeded time limit')) {
     return {
-      causa: `La query ha superato il tempo massimo consentito (${msQueryTimeout()} ms) ed è stata interrotta dal server`,
-      rimedio: 'restringi il filtro o riduci le righe lette, crea un indice sui campi filtrati/ordinati (la vista Dettagli mostra quelli esistenti); se l\'attesa lunga è prevista, alza il limite con la variabile d\'ambiente CODEDB_QUERY_TIMEOUT_MS',
+      causa: `La query ha superato il tempo massimo consentito (${msQueryTimeout()} ms per una lettura, ${msAggregateTimeout()} ms per un'aggregazione) ed è stata interrotta dal server`,
+      rimedio: 'restringi il filtro o riduci le righe lette, crea un indice sui campi filtrati/ordinati (la vista Dettagli mostra quelli esistenti); se l\'attesa lunga è prevista, alza il limite con le variabili d\'ambiente CODEDB_QUERY_TIMEOUT_MS e CODEDB_AGGREGATE_TIMEOUT_MS',
     };
   }
   // PostgreSQL: 57014 query_canceled (statement_timeout o annullamento manuale)

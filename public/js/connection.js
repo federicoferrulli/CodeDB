@@ -162,6 +162,22 @@ function closeConnModal() {
 // attivo non è connesso (stato iniziale) viene riusato il suo posto.
 // Socket diretta e non emit(): la risposta va gestita anche se nel frattempo
 // l'utente ha chiuso il tab attivo (emit la scarterebbe).
+// Campi che non devono sopravvivere alla richiesta di connessione (CDB-22).
+const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase'];
+
+/**
+ * Configurazione conservabile sul tab: per una connessione salvata resta il
+ * solo nome (il server ha tutto il resto), per una non salvata i parametri
+ * senza i segreti — così ciò che rimane in memoria non basta comunque a
+ * collegarsi al database.
+ */
+function senzaSegreti(cfg) {
+  if (cfg.saved || cfg.saveAs) return { saved: cfg.saved || cfg.saveAs };
+  const copia = { ...cfg };
+  for (const f of CAMPI_SEGRETI) delete copia[f];
+  return copia;
+}
+
 export function connectAndOpenTab(cfg) {
   const current = activeTab();
   const reuse = current && !current.state.connected ? current : null;
@@ -174,7 +190,15 @@ export function connectAndOpenTab(cfg) {
   }).then((res) => {
     const tab = reuse || createTab({ id: tabId });
     tab.connName = cfg.saved || cfg.saveAs || null;
-    tab.connCfg = cfg;
+    // MAI i segreti in memoria nel browser (CDB-22). Prima qui restava l'intera
+    // configurazione — password del database, password e passphrase SSH — per
+    // tutta la durata della sessione, a disposizione di qualunque codice giri
+    // nella pagina. Serviva alla riconnessione automatica, ma per una
+    // connessione SALVATA basta il nome: i segreti li ha il server e non li
+    // manda mai al client. Per una connessione non salvata la riconnessione
+    // automatica non è più possibile — ed è lo stesso limite, già dichiarato,
+    // del ripristino di sessione dopo un F5.
+    tab.connCfg = senzaSegreti(cfg);
     tab.dbType = res.dbType || 'mongodb';
     tab.label = tab.connName || res.label || 'Connessione';
     Object.assign(tab.state, {

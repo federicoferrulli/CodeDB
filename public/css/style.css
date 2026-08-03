@@ -1691,6 +1691,14 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 /* ---------- Toast ---------- */
 
+/* Campi data/ora: il valore è in UTC, non nell'ora locale che il controllo
+   `datetime-local` lascia intendere (CDB-15). Un input non può avere uno
+   pseudo-elemento, quindi il segno visivo è il bordo: l'etichetta completa sta
+   nel `title` e nel nome del tipo ("data (UTC)"). */
+.input-utc {
+  border-color: var(--accent);
+}
+
 .toast {
   position: fixed;
   bottom: 24px;

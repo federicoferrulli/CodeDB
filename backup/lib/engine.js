@@ -60,6 +60,36 @@ function resolveBase(groupDir, type) {
 
 /* --- Dump MongoDB --------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+ * Confine temporale dei backup incrementali (CDB-32)
+ *
+ * Un incrementale seleziona le righe con "campo data > istante dell'ultimo
+ * backup". Il confronto però avviene con la precisione del campo e del DBMS:
+ * al SECONDO su MySQL (FROM_UNIXTIME di un intero) e sui timestamp degli
+ * ObjectId di MongoDB. Le righe scritte NELLO STESSO SECONDO del backup
+ * precedente, ma dopo il suo passaggio, cadono quindi nel buco fra i due
+ * backup: non sono nel primo perché non c'erano ancora, e non sono nel secondo
+ * perché non superano il confronto. Il dato manca senza alcun errore, e ci si
+ * accorge del buco solo al ripristino.
+ *
+ * Si arretra perciò il confine di un margine. Il costo è qualche riga
+ * ripetuta fra due layer, che il restore applica in upsert (REPLACE / ON
+ * CONFLICT DO UPDATE / replaceOne upsert): riscrivere un valore identico è
+ * innocuo, perderlo no.
+ * ------------------------------------------------------------------------- */
+// Env CODEDB_BACKUP_MARGINE_MS: 0 disattiva il margine (selezione esatta, utile
+// nei test e per chi preferisce la minima ridondanza sapendo cosa rischia).
+const MARGINE_INCREMENTALE_MS = 2000;
+
+function margineIncrementale() {
+  const m = parseInt(process.env.CODEDB_BACKUP_MARGINE_MS, 10);
+  return Number.isFinite(m) ? Math.max(m, 0) : MARGINE_INCREMENTALE_MS;
+}
+
+function confineIncrementale(since) {
+  return new Date(new Date(since).getTime() - margineIncrementale());
+}
+
 async function dumpMongo({ strategy, db, collections, type, since, sinceField, backupDir, compress, level, log }) {
   const client = strategy.client;
   const files = [];
@@ -74,10 +104,10 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       mode = 'incremental';
       if (sinceField) {
         sinceColumn = sinceField;
-        filter = { [sinceField]: { $gt: new Date(since) } };
+        filter = { [sinceField]: { $gt: confineIncrementale(since) } };
       } else {
         sinceColumn = '_id';
-        filter = { _id: { $gt: ObjectId.createFromTime(Math.floor(new Date(since).getTime() / 1000)) } };
+        filter = { _id: { $gt: ObjectId.createFromTime(Math.floor(confineIncrementale(since).getTime() / 1000)) } };
         notes.push(`"${coll}": modifiche individuate dal timestamp degli ObjectId — solo i nuovi inserimenti, non gli aggiornamenti (usa --since-field per un campo data).`);
       }
     }
@@ -152,7 +182,8 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // farebbe serializzare a mysql2 l'ora locale del client, sbagliata
           // quando il server è in un altro fuso orario.
           where = ` WHERE ${mysql.escapeId(sinceColumn, true)} > FROM_UNIXTIME(?)`;
-          params.push(Math.floor(new Date(since).getTime() / 1000));
+          // Millisecondi (non secondi interi): FROM_UNIXTIME accetta i decimali.
+          params.push(confineIncrementale(since).getTime() / 1000);
         } else {
           notes.push(`"${table}": nessuna colonna data utilizzabile — inclusa per intero nel backup incrementale.`);
         }
@@ -282,7 +313,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       sinceColumn = await pgSinceColumn(pool, table, sinceField, resolved.schema);
       if (sinceColumn) {
         mode = 'incremental';
-        sinceParam = new Date(since);
+        sinceParam = confineIncrementale(since);
       } else {
         notes.push(`"${table}": nessuna colonna data utilizzabile — inclusa per intero nel backup incrementale.`);
       }
@@ -414,7 +445,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       files: result.files,
     };
     fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
-    appendToCatalog(groupDir, {
+    await appendToCatalog(groupDir, {
       id, type, baseId: manifest.baseId, db, dbType, startedAt, endedAt: manifest.endedAt, status: 'ok',
     });
   } catch (err) {

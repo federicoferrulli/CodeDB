@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext, eseguiAOndate } from './utils.js';
 import { runQuery, ensureRowRendered } from './grid.js';
 import { statistiche, statistichePerColonna, formattaNumero, riassuntoBreve } from './cell-stats.js';
 
@@ -695,9 +695,15 @@ function pasteIntoGrid(text) {
   // non alla risposta, o la selezione e il refresh finirebbero su un'altra
   // tabella se l'utente si sposta nel frattempo.
   const origin = captureContext();
-  Promise.allSettled(updates.map((u) =>
+  // Le scritture partono a ONDATE, non tutte insieme (CDB-51): incollare da un
+  // foglio di calcolo può produrre centinaia di `doc:update`, e mandarli in un
+  // colpo solo riempie la coda del socket e satura il pool di connessioni della
+  // sessione — le letture della stessa connessione (e degli altri tab) restano
+  // in attesa dietro di esse. Il limite non rallenta i casi piccoli, che
+  // rientrano tutti nella prima ondata.
+  eseguiAOndate(updates, 8, (u) =>
     emit('doc:update', { db: state.db, coll: state.coll, id: u.id, set: u.set })
-  )).then((results) => {
+  ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length) toast(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, true);
     else toast(`${cellsCount} celle incollate in ${updates.length} ${docWord}`);

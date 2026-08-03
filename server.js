@@ -65,6 +65,21 @@ const { audit: auditUi, readRecent: readUiAudit } = makeAuditor(UI_AUDIT_FILE);
 const PORT = process.env.PORT || 3030;
 
 const app = express();
+
+// Reverse proxy davanti a CodeDB (CDB-19): senza questa impostazione `req.ip` è
+// l'indirizzo del PROXY, uguale per tutti, quindi il freno ai tentativi di login
+// diventa un blocco globale — cinque password sbagliate di chiunque chiudono
+// l'accesso a tutti. Con essa, Express legge X-Forwarded-For.
+//
+// È legata a CODEDB_TRUST_PROXY_TLS=1 e non attiva per default di proposito:
+// fidarsi di quell'header senza un proxy davanti è peggio del problema che
+// risolve, perché l'indirizzo diventa scrivibile dal client e il rate limit si
+// aggira cambiandolo a ogni tentativo. La variabile esiste già ed è esattamente
+// la dichiarazione "c'è un proxy davanti" (vedi assertTransportSafe).
+if (String(process.env.CODEDB_TRUST_PROXY_TLS || '').trim() === '1') {
+  app.set('trust proxy', true);
+}
+
 const server = http.createServer(app);
 
 /* ---------------------------------------------------------------------------
@@ -180,10 +195,13 @@ app.use(express.static(path.join(__dirname, 'public')));
  * dato che serve proprio quando la connessione non si stabilisce — e per questo
  * riporta `publicReason`, che dice cosa fare senza rivelare la configurazione.
  * ------------------------------------------------------------------------- */
+// `app: 'codedb'` è anche la FIRMA dell'istanza: la usa il processo Electron per
+// riconoscere un server CodeDB già in ascolto sulla porta invece di fidarsi del
+// solo fatto che qualcosa risponda (CDB-38).
 app.get('/handshake-check', (req, res) => {
   const verdict = checkOrigin(req);
-  if (verdict.ok) return res.json({ ok: true });
-  res.status(403).json({ ok: false, reason: verdict.publicReason || verdict.reason });
+  if (verdict.ok) return res.json({ ok: true, app: 'codedb' });
+  res.status(403).json({ ok: false, app: 'codedb', reason: verdict.publicReason || verdict.reason });
 });
 
 /* ---------------------------------------------------------------------------
@@ -243,6 +261,21 @@ const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
 let encryptionKey = Vault.legacyKey(process.env.GUI_MONGO_PASSPHRASE || '');
 // Metadati del vault v2 (null = vault ancora in formato v1).
 let vaultMeta = null;
+// Il vault è protetto da una passphrase non vuota? (CDB-66)
+//
+// Serve solo alla modale, per sapere se sta IMPOSTANDO la prima passphrase o
+// cambiandone una esistente. La risposta si ottiene provando ad aprire la DEK
+// con la passphrase vuota — cioè con uno `scryptSync` da ~28 ms, durante i quali
+// l'event loop è fermo per TUTTE le sessioni. Calcolarla a ogni `vault:status`
+// (evento che non richiede alcuna capability) rendeva la risposta a una domanda
+// di sola presentazione un modo per bloccare il server. Si calcola quindi una
+// volta e si aggiorna nei soli tre punti che possono cambiarla: sblocco,
+// cambio passphrase, azzeramento.
+let vaultProtetto = !!process.env.GUI_MONGO_PASSPHRASE;
+
+function aggiornaVaultProtetto(passphraseNonVuota) {
+  vaultProtetto = !!passphraseNonVuota;
+}
 // Conta i segreti che non si decifrano: all'avvio un valore > 0 significa
 // passphrase sbagliata e il server rifiuta di partire (vedi main), invece di
 // proseguire e riscrivere il file coi segreti azzerati.
@@ -291,6 +324,9 @@ function probeVault() {
   const meta = Vault.readMeta(CONNECTIONS_FILE);
   if (meta) {
     const dataKey = Vault.unwrapDataKey(meta, '');
+    // Qui la domanda "il vault ha una passphrase?" è già stata posta e pagata:
+    // se la chiave vuota NON apre la DEK, una passphrase c'è (CDB-66).
+    aggiornaVaultProtetto(!dataKey);
     if (!dataKey) return false;
     encryptionKey = dataKey;
     vaultMeta = meta;
@@ -347,6 +383,7 @@ function tryUnlockVault(passphrase) {
     encryptionKey = dataKey;
     vaultMeta = meta;
     decryptFailures = 0;
+    aggiornaVaultProtetto(passphrase !== '');
     return { ok: true };
   }
 
@@ -364,6 +401,7 @@ function tryUnlockVault(passphrase) {
     return { ok: false, error: 'Passphrase errata: i segreti cifrati non si decifrano con questa chiave.' };
   }
   vaultMeta = null;
+  aggiornaVaultProtetto(passphrase !== '');
   return { ok: true, legacy: true };
 }
 
@@ -492,6 +530,7 @@ function changeVaultPassphrase(newPassphrase) {
     const prova = Vault.unwrapDataKey(riletto, newPassphrase);
     if (!prova || !prova.equals(encryptionKey)) throw new Error('verifica fallita');
     vaultMeta = riletto;
+    aggiornaVaultProtetto(newPassphrase !== '');
     return { ok: true, migrated: false };
   } catch (err) {
     if (precedente !== null) {
@@ -558,31 +597,56 @@ function resetVault(newPassphrase) {
   encryptionKey = dataKey;
   vaultMeta = meta;
   decryptFailures = 0;
+  aggiornaVaultProtetto(newPassphrase !== '');
 
   return { ok: true, spostati, suffisso };
 }
 
+// Nomi che non possono essere usati come sezione o come chiave (CDB-21):
+// assegnare `sections.__proto__ = {}` non crea una sezione, CAMBIA il prototipo
+// dell'oggetto — e `constructor`/`prototype` sono la stessa famiglia di
+// sorprese. Un nome di connessione arriva dall'utente, quindi la difesa va qui,
+// nel parser, non nel chiamante.
+const CHIAVI_INI_VIETATE = new Set(['__proto__', 'constructor', 'prototype']);
+
 function parseIni(text) {
-  const sections = {};
+  // `Object.create(null)`: nessun prototipo da inquinare, nemmeno per sbaglio.
+  const sections = Object.create(null);
   let current = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith(';') || line.startsWith('#')) continue;
     const header = line.match(/^\[(.+)\]$/);
     if (header) {
-      current = sections[header[1]] = {};
+      if (CHIAVI_INI_VIETATE.has(header[1])) {
+        console.warn(`[connections.ini] Sezione "${header[1]}" ignorata: nome riservato.`);
+        current = null;
+        continue;
+      }
+      current = sections[header[1]] = Object.create(null);
       continue;
     }
     const eq = line.indexOf('=');
     if (current && eq > 0) {
-      current[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+      const chiave = line.slice(0, eq).trim();
+      if (CHIAVI_INI_VIETATE.has(chiave)) continue;
+      current[chiave] = line.slice(eq + 1).trim();
     }
   }
   return sections;
 }
 
 function stringifyIni(sections) {
-  const lines = ['; Connessioni salvate da Mongo Web GUI. Attenzione: le password sono in chiaro.'];
+  // L'intestazione descrive il file com'è DAVVERO (CDB-23): i segreti sono
+  // cifrati (prefisso ENC:), e dirli "in chiaro" spingeva a trattare male un
+  // file che invece va conservato — mentre la cosa importante da sapere è che
+  // senza la passphrase quei segreti non si recuperano.
+  const lines = [
+    '; Connessioni salvate di CodeDB.',
+    '; Le password e i segreti SSH sono cifrati (valori con prefisso ENC:) con la',
+    '; chiave del vault, custodita in vault.json accanto a questo file.',
+    '; Senza la passphrase del vault NON sono recuperabili: conserva entrambi i file.',
+  ];
   for (const [name, values] of Object.entries(sections)) {
     lines.push('', `[${name}]`);
     for (const [key, val] of Object.entries(values)) {
@@ -660,6 +724,12 @@ function saveConnections(sections, ownerId) {
 function assertConnName(name) {
   if (!name || /[\[\]\r\n]/.test(name)) {
     throw new Error(`Nome di connessione non valido: "${name}"`);
+  }
+  // Il nome diventa la chiave di un oggetto: `__proto__` e compagnia non
+  // creerebbero una connessione ma toccherebbero il prototipo (CDB-21). Il
+  // parser li scarta già in lettura; qui si evita di scriverli.
+  if (CHIAVI_INI_VIETATE.has(name)) {
+    throw new Error(`Nome di connessione riservato: "${name}". Scegline un altro.`);
   }
 }
 
@@ -1108,8 +1178,16 @@ function auditQuery(sess, db, coll, code, category, op, status, result, error) {
  * senza un solo controllo scritto qui dentro. Aggiungere un metodo
  * all'interprete non può aprire un buco, perché il varco resta uno solo.
  * ------------------------------------------------------------------------- */
-function mongoScriptHost(session, runId, opHandle) {
+// `run` (facoltativo) è lo script in corso: le operazioni che MODIFICANO dati o
+// struttura vi lasciano un segno, così la voce di audit di chiusura può dire il
+// vero sulla categoria (CDB-69). Su uno script interpretato è l'unico momento in
+// cui la si conosce: il testo non lo dice, l'esecuzione sì.
+function mongoScriptHost(session, runId, opHandle, run = null) {
   const esegui = (fn) => executeWithReconnect(session, fn);
+  const eseguiScrivendo = (fn) => {
+    if (run) run.haScritto = true;
+    return esegui(fn);
+  };
   // Gli operatori che eseguono JavaScript sul SERVER MongoDB restano vietati
   // anche negli script: l'interprete gira nel processo CodeDB, `$where` no.
   const controlla = (testo) => {
@@ -1129,20 +1207,20 @@ function mongoScriptHost(session, runId, opHandle) {
       return esegui((s) => s.collectionAggregate(db, coll, { ...payload, runId, opHandle }));
     },
     count: (db, coll, payload) => esegui((s) => s.collectionCount(db, coll, payload)),
-    write: (db, coll, payload) => esegui((s) => s.shellWrite(db, coll, payload)),
+    write: (db, coll, payload) => eseguiScrivendo((s) => s.shellWrite(db, coll, payload)),
     listCollections: (db) => esegui((s) => s.listCollections(db)),
-    createCollection: (db, nome) => esegui((s) => s.createCollection(db, nome)),
-    dropCollection: (db, coll) => esegui((s) => s.dropCollection(db, coll)),
-    dropDatabase: (db) => esegui((s) => s.dropDatabase(db)),
+    createCollection: (db, nome) => eseguiScrivendo((s) => s.createCollection(db, nome)),
+    dropCollection: (db, coll) => eseguiScrivendo((s) => s.dropCollection(db, coll)),
+    dropDatabase: (db) => eseguiScrivendo((s) => s.dropDatabase(db)),
     // L'interprete parla in termini di shell (`keys`/`options`), la strategia
     // ha il suo contratto (`fields`/`unique`/`name`): l'adattamento sta qui,
     // così nessuno dei due deve conoscere l'altro.
-    createIndex: (db, coll, { keys, options }) => esegui((s) => s.createIndex(db, coll, {
+    createIndex: (db, coll, { keys, options }) => eseguiScrivendo((s) => s.createIndex(db, coll, {
       fields: JSON.stringify(keys || {}),
       unique: !!(options && options.unique),
       name: (options && options.name) || '',
     })),
-    dropIndex: (db, coll, nome) => esegui((s) => s.dropIndex(db, coll, nome)),
+    dropIndex: (db, coll, nome) => eseguiScrivendo((s) => s.dropIndex(db, coll, nome)),
   };
 }
 
@@ -1162,7 +1240,7 @@ function comandoConDbProprio(codeStr) {
  * esiste un solo percorso di scrittura verso MongoDB e un solo punto in cui
  * l'RBAC si applica.
  * ------------------------------------------------------------------------- */
-async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto }) {
+async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto, run }) {
   const op = 'SQL di scrittura (SQL→MongoDB)';
   let piano;
   try {
@@ -1171,7 +1249,7 @@ async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHa
     throw conContesto(new Error(`Traduzione SQL→MongoDB non riuscita: ${err.message}`), 'write', op, targetDb, null);
   }
 
-  const host = mongoScriptHost(session, runId, opHandle);
+  const host = mongoScriptHost(session, runId, opHandle, run);
   const messaggio = (testo) => {
     const doc = { messaggio: testo, ...(piano.note ? { nota: piano.note } : {}) };
     return fatto({ docs: [doc], columns: Object.keys(doc) }, 'write', op, targetDb, piano.coll || null);
@@ -1238,8 +1316,31 @@ async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHa
  *
  * @returns {Promise<{res:object, category:'read'|'write', op:string, db:string, coll:string|null, code:string}>}
  * ------------------------------------------------------------------------- */
+/**
+ * Un Virtual JOIN contiene scritture? (CDB-16)
+ *
+ * Le sorgenti possono portare una pipeline MongoDB (`$out`/`$merge`) o dell'SQL
+ * grezzo: si usano le STESSE funzioni dei permessi, così audit e autorizzazione
+ * non possono divergere. Ritorna 'write' oppure null.
+ */
+function categoriaVirtualJoin(spec) {
+  const vj = spec && spec.virtualJoin;
+  if (!vj) return null;
+  for (const src of [vj.sourceA, vj.sourceB]) {
+    if (!src || !src.query) continue;
+    const q = src.query;
+    if (typeof q === 'string') {
+      if (isWriteSql(q)) return 'write';
+      try { if (isWriteMongoPipeline(JSON.parse(q))) return 'write'; } catch { /* non è JSON */ }
+    } else if (isWriteMongoPipeline(q)) {
+      return 'write';
+    }
+  }
+  return null;
+}
+
 async function executeQueryCode(session, payload) {
-  let { code, engine, db, coll, runId, opHandle } = payload;
+  let { code, engine, db, coll, runId, opHandle, run } = payload;
   const codeStr = String(code || '').trim();
 
   if (!codeStr) {
@@ -1264,11 +1365,18 @@ async function executeQueryCode(session, payload) {
     } catch (err) {
       throw new Error('La query Virtual Join deve essere un oggetto JSON valido: ' + err.message);
     }
+    // Categoria reale anche qui (CDB-16): le due sorgenti di un Virtual JOIN
+    // portano codice dell'utente (una pipeline MongoDB o dell'SQL), che può
+    // benissimo essere una scrittura — `$out`/`$merge`, o un DELETE nel ramo
+    // SQL. I PERMESSI erano comunque corretti, perché il Proxy autorizzante
+    // classifica `collectionAggregate` guardando ciò che riceve; era l'audit a
+    // registrare sempre "lettura", cioè a non lasciare traccia della modifica.
+    const catJoin = categoriaVirtualJoin(spec) || 'read';
     try {
       const docs = await executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
-      return fatto({ docs }, 'read', 'Virtual JOIN Cross-DB', db, coll);
+      return fatto({ docs }, catJoin, 'Virtual JOIN Cross-DB', db, coll);
     } catch (err) {
-      throw conContesto(err, 'read', 'Virtual JOIN Cross-DB', db, coll);
+      throw conContesto(err, catJoin, 'Virtual JOIN Cross-DB', db, coll);
     }
   }
 
@@ -1343,7 +1451,7 @@ async function executeQueryCode(session, payload) {
       try {
         const esito = await MongoScriptRunner.eseguiScript(
           codeStr,
-          mongoScriptHost(session, runId, opHandle),
+          mongoScriptHost(session, runId, opHandle, run),
           {
             db: targetDb,
             interrotto: () => !!(opHandle && opHandle.interrotto),
@@ -1377,7 +1485,7 @@ async function executeQueryCode(session, payload) {
     // `CREATE TABLE`, `DROP DATABASE`… Tradotti nelle stesse operazioni che usa
     // l'interprete, quindi soggetti al Proxy autorizzante allo stesso modo.
     if (SqlToMql.looksLikeSqlWrite(codeStr)) {
-      return eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto });
+      return eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHandle, fatto, conContesto, run });
     }
 
     let res;
@@ -1678,6 +1786,30 @@ function noteLoginFailure(ip) {
   entry.count += 1;
   entry.last = Date.now();
   loginAttempts.set(ip, entry);
+  potaLoginAttempts();
+}
+
+// Potatura della mappa dei tentativi (CDB-19). Senza, `loginAttempts` cresce di
+// una voce per ogni indirizzo che sbaglia una password e non la si rilascia mai:
+// le voci vengono cancellate solo quando QUELLO STESSO indirizzo torna a tentare
+// dopo la scadenza, cioè quasi mai per un attacco distribuito. È un consumo di
+// memoria illimitato comandato dall'esterno.
+const LOGIN_ATTEMPTS_MAX = 10000;
+
+function potaLoginAttempts() {
+  if (loginAttempts.size <= LOGIN_ATTEMPTS_MAX) {
+    // Potatura ordinaria: si buttano le voci ormai scadute (costa poco perché
+    // scatta solo su un fallimento di login, non su ogni richiesta).
+    const limite = Date.now() - LOGIN_LOCK_MS;
+    for (const [k, v] of loginAttempts) {
+      if (v.last < limite) loginAttempts.delete(k);
+    }
+    return;
+  }
+  // Oltre il tetto: la mappa è sotto pressione, si riparte da zero. Perdere lo
+  // storico dei tentativi è meno grave che esaurire la memoria del processo, e
+  // il blocco si ricostruisce in cinque tentativi.
+  loginAttempts.clear();
 }
 
 // Login/logout via HTTP (non via socket): così il gate dell'handshake resta una
@@ -2071,9 +2203,10 @@ io.on('connection', (socket) => {
       // storico: la UI lo usa per dire che il primo cambio passphrase comporta
       // una migrazione dei segreti.
       formato: vaultMeta ? Vault.VERSION : 1,
+      // Valore già noto: NON si deriva la chiave a ogni richiesta (CDB-66).
       // Serve alla modale per capire se sta IMPOSTANDO la prima passphrase o
       // ne sta cambiando una esistente. Non rivela nulla del segreto.
-      protetto: !!process.env.GUI_MONGO_PASSPHRASE || (!!vaultMeta && !Vault.unwrapDataKey(vaultMeta, '')),
+      protetto: vaultProtetto,
     });
   });
 
@@ -2081,7 +2214,20 @@ io.on('connection', (socket) => {
     // Sbloccare il vault significa provare una passphrase globale dell'istanza:
     // riservato all'amministratore dell'account.
     assertManage(principal);
-    cb(tryUnlockVault(passphrase || ''));
+
+    // Stesso freno del login (CDB-66): ogni tentativo costa uno scrypt da ~28 ms
+    // durante i quali l'event loop è fermo per tutte le sessioni, e senza limite
+    // questo è insieme un oracolo per la passphrase e un modo per bloccare il
+    // server. La chiave è l'indirizzo del client, come per /auth/login.
+    const ipClient = socket.handshake.address || 'unknown';
+    if (loginBlocked(ipClient)) {
+      throw new Error('Troppi tentativi di sblocco falliti: riprova tra un minuto.');
+    }
+
+    const esito = tryUnlockVault(passphrase || '');
+    if (!esito.ok) noteLoginFailure(ipClient);
+    else loginAttempts.delete(ipClient);
+    cb(esito);
   });
 
   /**
@@ -2629,6 +2775,9 @@ io.on('connection', (socket) => {
         db: ctx.db,
         coll: ctx.coll,
         opHandle,
+        // Lo script in corso: le operazioni di scrittura vi lasciano un segno,
+        // usato dalla voce di audit di chiusura (CDB-69).
+        run,
       });
       // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
       // successive devono seguirlo, come farebbe un client SQL.
@@ -2700,7 +2849,21 @@ io.on('connection', (socket) => {
     run.holder = holder;
     runs.set(runId, run);
 
-    auditQuery(session, ctx.db || null, ctx.coll || null, codeStr, 'write', `Avvio script (${statements.length} istruzioni)`, 'ok', null, null);
+    // Categoria REALE dello script (CDB-69): registrarlo sempre come scrittura
+    // riempiva lo Storico Azioni di finte modifiche, e chi filtra per
+    // "scrittura" per ricostruire chi ha toccato i dati trovava rumore proprio
+    // quando serve precisione. Su SQL la risposta si legge dalle istruzioni con
+    // la stessa funzione usata dai permessi; su uno script MongoDB interpretato
+    // si sa solo a fine esecuzione, quindi l'avvio è una lettura e sarà la voce
+    // di chiusura a dire se ha scritto.
+    const scritturaNota = !jsMongo && statements.some((st) => isWriteSql(st.sql));
+    run.categoria = scritturaNota ? 'write' : 'read';
+    auditQuery(
+      session, ctx.db || null, ctx.coll || null, codeStr,
+      run.categoria,
+      `Avvio script (${statements.length} istruzioni)`,
+      'ok', null, null
+    );
 
     // L'ack torna SUBITO: lo script può durare minuti e l'utente deve poter
     // interagire (pausa, chiusura del pannello) mentre gira.
@@ -2710,6 +2873,17 @@ io.on('connection', (socket) => {
       .then((stato) => finalizzaScript(session, run, stato))
       .catch((err) => {
         console.error('[script] errore imprevisto nel ciclo:', err && err.message);
+        // Il run va portato a uno stato TERMINALE e annunciato (CDB-67):
+        // altrimenti il client, che ricava la fine solo dai push, resta con un
+        // pannello "in esecuzione" che non si chiude e non risponde ai comandi.
+        try {
+          const stato = run.fail(err);
+          finalizzaScript(session, run, stato);
+        } catch (e2) {
+          console.error('[script] impossibile chiudere il run:', e2 && e2.message);
+        }
+        // Un run concluso non deve restare nella mappa della sessione.
+        try { scriptsOf(session).delete(run.id); } catch { /* sessione già chiusa */ }
       });
   });
 
@@ -2720,7 +2894,10 @@ io.on('connection', (socket) => {
       (run.ctx && run.ctx.db) || null,
       (run.ctx && run.ctx.coll) || null,
       `script ${run.id}`,
-      'write',
+      // Categoria vera (CDB-69): quella decisa all'avvio per gli script SQL,
+      // oppure quella che l'esecuzione ha rivelato per gli script MongoDB
+      // interpretati (il Proxy autorizzante ha già visto ogni scrittura).
+      run.categoria === 'write' || run.haScritto ? 'write' : 'read',
       `Fine script: ${stato.eseguiti} eseguite, ${stato.falliti} fallite`,
       stato.falliti ? 'error' : 'ok',
       null,
@@ -2957,7 +3134,11 @@ io.on('connection', (socket) => {
     const storage = parseStorage(storageUrl);
     const webhook = resolveSlackWebhook(payload.slackWebhook);
     const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
-    const level = Math.min(Math.max(parseInt(payload.compressLevel, 10) || 1, 1), 9);
+    // Stesso valore predefinito della CLI (CDB-54): quando il client non lo
+    // indica vale 6, non 1. Prima i due canali comprimevano in modo diverso a
+    // parità di richiesta, quindi due backup "uguali" avevano dimensioni molto
+    // diverse a seconda di chi li avesse lanciati, senza che nulla lo dicesse.
+    const level = Math.min(Math.max(parseInt(payload.compressLevel, 10) || 6, 1), 9);
     const compress = payload.noCompress !== true;
 
     const t0 = Date.now();
@@ -3094,7 +3275,15 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    closeAllSessions();
+    // Il gestore è sincrono, quindi la chiusura non si può attendere; ciò che
+    // NON deve mancare è il `.catch` (CDB-18): senza, un errore nella chiusura
+    // di una strategia (rete già caduta, tunnel morto) diventa un unhandled
+    // rejection, e in un processo che lo tratta come fatale basta una
+    // disconnessione sfortunata per farlo terminare — cioè per far cadere le
+    // sessioni di tutti gli altri utenti.
+    closeAllSessions().catch((err) => {
+      console.error('[Sessioni] Errore chiudendo le sessioni del socket:', errMsg(err));
+    });
 
     const count = ipConnections.get(ip);
     if (count > 1) {

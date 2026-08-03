@@ -12,7 +12,16 @@ import { activeTab } from './tabs.js';
 import { $, cut, toast, isSqlType } from './utils.js';
 
 const MAX_ENTRIES = 50;
-const PREFIX = 'queryHistory:';
+// Prefisso unificato con il resto dell'applicazione (CDB-64): le chiavi di
+// storage erano metà `codedb:` e metà residui del nome precedente, quindi non
+// c'era modo di ripulirle in blocco — che è esattamente ciò che serve al logout.
+const PREFIX = 'codedb:queryHistory:';
+const PREFIX_STORICO = 'queryHistory:'; // chiavi scritte dalle versioni precedenti
+// Tetto al NUMERO di chiavi (CDB-61): una per connessione+database+collection,
+// quindi navigando un database con centinaia di tabelle lo storico cresceva
+// senza alcun limite superiore e restava lì per sempre — anche dopo il logout,
+// su un computer condiviso, con i filtri (cioè dei dati) di chi c'era prima.
+const MAX_CHIAVI = 200;
 
 // Chiave localStorage per la collection corrente del tab attivo.
 function historyKey() {
@@ -34,8 +43,47 @@ function loadHistory(key) {
 function saveHistory(key, entries) {
   try {
     localStorage.setItem(key, JSON.stringify(entries.slice(0, MAX_ENTRIES)));
+    potaChiavi();
   } catch {
     // localStorage pieno o non disponibile: lo storico è best-effort.
+  }
+}
+
+// Elenco delle chiavi dello storico (formato attuale e precedente).
+function chiaviStorico() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith(PREFIX) || k.startsWith(PREFIX_STORICO))) out.push(k);
+    }
+  } catch { /* storage non disponibile */ }
+  return out;
+}
+
+// Tiene il numero di chiavi sotto il tetto, buttando le meno recenti (CDB-61).
+// "Meno recente" = la voce più nuova che contiene è la più vecchia fra tutte.
+function potaChiavi() {
+  const chiavi = chiaviStorico();
+  if (chiavi.length <= MAX_CHIAVI) return;
+  const conEta = chiavi.map((k) => {
+    const voci = loadHistory(k);
+    const ts = voci.reduce((max, v) => Math.max(max, Number(v && v.ts) || 0), 0);
+    return { k, ts };
+  }).sort((a, b) => a.ts - b.ts);
+  for (const { k } of conEta.slice(0, chiavi.length - MAX_CHIAVI)) {
+    try { localStorage.removeItem(k); } catch { /* ignora */ }
+  }
+}
+
+/**
+ * Cancella l'intero storico delle query (CDB-61). Chiamata al logout: i filtri
+ * salvati contengono valori dei dati (email, codici, nomi), e su un computer
+ * condiviso restavano leggibili al prossimo utente che apriva l'applicazione.
+ */
+export function clearAllHistory() {
+  for (const k of chiaviStorico()) {
+    try { localStorage.removeItem(k); } catch { /* ignora */ }
   }
 }
 

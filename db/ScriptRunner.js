@@ -259,6 +259,26 @@ class ScriptRun {
     return this.state();
   }
 
+  /**
+   * Chiusura forzata dopo un errore IMPREVISTO del ciclo (CDB-67).
+   *
+   * Gli errori delle singole istruzioni sono già gestiti (si contano e si
+   * prosegue); questo è il caso residuo — un guasto del runner stesso. Senza una
+   * chiusura esplicita il run resta `running` per sempre: il pannello mostra un
+   * avanzamento fermo, Pausa e Interrompi non hanno effetto perché nulla
+   * progredisce, e nemmeno il pulsante di chiusura compare, perché il client
+   * ricava lo stato terminale unicamente da questo evento.
+   */
+  fail(err) {
+    if (this.status === STATUS.DONE || this.status === STATUS.ABORTED) return this.state();
+    this.status = STATUS.ABORTED;
+    this.endedAt = Date.now();
+    this._current = null;
+    this.errore = (err && err.message) || String(err);
+    this._emit({ tipo: 'aborted', cursor: this.cursor, errore: this.errore });
+    return this.state();
+  }
+
   _emit(ev) {
     if (!this.onProgress) return;
     // Il progresso è informativo: un listener che esplode non deve far fallire

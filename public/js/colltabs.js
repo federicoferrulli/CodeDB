@@ -38,9 +38,23 @@ export function applyViewTabsFor(ct) {
   });
 }
 
+// Righe conservate nello snapshot di un coll-tab in secondo piano (CDB-62).
+//
+// Lo snapshot serve a far ricomparire la vista com'era senza rifare la query:
+// per questo conserva anche i risultati. Il costo però si moltiplica per il
+// numero di tab aperti — dieci coll-tab con lo scroll infinito su documenti
+// grandi tengono in memoria decine di migliaia di righe che nessuno sta
+// guardando, e il browser rallenta senza una causa visibile. Oltre la soglia si
+// conserva l'inizio (quello che si vede riattivando il tab) e si segna che
+// mancano le altre: alla riattivazione `ensureActiveCollLoaded` rifà la query,
+// cioè esattamente ciò che accade dopo un refresh della pagina.
+const MAX_DOCS_SNAPSHOT = 500;
+
 function saveActiveSnapshot() {
   const ct = currentCollTab();
   if (!ct || ct.isSplitTab || ct.isDbTab) return;
+  const docs = Array.isArray(state.docs) ? state.docs : [];
+  const troppi = docs.length > MAX_DOCS_SNAPSHOT;
   ct.snap = {
     filter: $('#filter-input')?.value || '',
     sort: $('#sort-input')?.value || '',
@@ -50,7 +64,8 @@ function saveActiveSnapshot() {
     skip: state.skip,
     limit: state.limit,
     total: state.total,
-    docs: state.docs,
+    docs: troppi ? docs.slice(0, MAX_DOCS_SNAPSHOT) : docs,
+    docsParziali: troppi,
     columns: state.columns,
     view: state.view,
   };
@@ -165,6 +180,17 @@ function activate(ct, { fresh }) {
     // collection (r assente) resta invece tracciata come lettura utente.
     runQuery(r ? { auto: true } : undefined);
     if (r) ct.restore = null; // input ripristinati: da qui in poi vale lo snapshot
+  } else if (s.docsParziali) {
+    // Snapshot alleggerito (CDB-62): i risultati completi non sono stati
+    // conservati, quindi si rifà la query invece di mostrarne una parte
+    // spacciandola per tutta. È automatica, non un'azione dell'utente.
+    state.skip = s.skip;
+    state.limit = s.limit;
+    state.total = s.total;
+    state.docs = [];
+    state.columns = s.columns;
+    setView(s.view || 'data');
+    runQuery({ auto: true });
   } else {
     state.skip = s.skip;
     state.limit = s.limit;

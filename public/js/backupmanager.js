@@ -273,12 +273,48 @@ async function verifyBackupIntegrity(group, backupId) {
 }
 
 function promptRestoreBackup(group, backupId, origDb) {
-  const targetDb = prompt(`Inserisci il database di destinazione per il ripristino del backup "${backupId}":`, origDb || '');
+  // Il ripristino scrive sulla CONNESSIONE ATTIVA, non su quella da cui il
+  // backup è stato preso (CDB-60): il pannello elenca i backup di tutti i
+  // gruppi, quindi si può benissimo star guardando il backup di "produzione"
+  // mentre si è connessi a "collaudo" — o viceversa. Prima nulla lo diceva e la
+  // sola domanda era il nome del database: un ripristino sull'ambiente sbagliato
+  // era a un clic di distanza. Ora la destinazione è scritta nella conferma.
+  const tab = activeTab();
+  if (!tab || !tab.dbType) {
+    toast('Connettiti prima a un database: il ripristino scrive sulla connessione attiva.', true);
+    return;
+  }
+  const conn = tab.label || tab.savedName || 'connessione attiva';
+
+  const targetDb = prompt(
+    `Ripristino del backup "${backupId}".\n\n`
+    + `DESTINAZIONE: ${conn}\n\n`
+    + 'Database di destinazione:',
+    origDb || ''
+  );
   if (targetDb === null) return;
+  const dbScelto = targetDb.trim();
+  if (!dbScelto) {
+    // Prima si ricadeva in silenzio sul database del backup: se l'utente
+    // cancella il campo, di solito è perché sta ripensandoci.
+    toast('Ripristino annullato: nessun database di destinazione indicato.', true);
+    return;
+  }
 
-  const dropConfirm = confirm(`Vuoi ELIMINARE (DROP) le collection/tabelle di destinazione in "${targetDb}" prima di applicare il ripristino?\n\n- OK: Elimina ed applica il ripristino\n- Annulla: Applica il ripristino senza eliminare (upsert)`);
+  if (!confirm(
+    `Confermi il ripristino?\n\n`
+    + `Backup:      ${backupId}\n`
+    + `Connessione: ${conn}\n`
+    + `Database:    ${dbScelto}\n\n`
+    + 'I dati esistenti verranno sovrascritti.'
+  )) return;
 
-  executeRestore(group, backupId, targetDb.trim() || origDb, dropConfirm);
+  const dropConfirm = confirm(
+    `Vuoi ELIMINARE (DROP) le collection/tabelle di destinazione in "${dbScelto}" prima di applicare il ripristino?\n\n`
+    + '- OK: Elimina ed applica il ripristino\n- Annulla: Applica il ripristino senza eliminare (upsert)'
+  );
+
+  executeRestore(group, backupId, dbScelto, dropConfirm);
 }
 
 async function executeRestore(group, backupId, targetDb, drop) {

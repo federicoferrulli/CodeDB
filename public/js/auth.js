@@ -12,6 +12,7 @@
 
 import { socket, setToken, getToken } from './socket.js';
 import { $, emit } from './utils.js';
+import { clearAllHistory } from './queryhistory.js';
 
 let currentUser = null;
 
@@ -60,6 +61,10 @@ export async function logout() {
   const token = getToken();
   setToken('');
   currentUser = null;
+  // Lo storico delle query è in localStorage e sopravvive al ricaricamento
+  // (CDB-61): contiene filtri scritti dall'utente, cioè valori dei dati. Su un
+  // computer condiviso, senza questa pulizia, il prossimo che accede li legge.
+  try { clearAllHistory(); } catch { /* storage non disponibile */ }
   await fetch('/auth/logout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

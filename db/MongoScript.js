@@ -804,6 +804,38 @@ function getMember(obj, name, ctx) {
   return undefined;
 }
 
+/**
+ * Dimensione stimata del risultato dei metodi nativi che ALLOCANO (CDB-65).
+ * Ritorna null per tutti gli altri: non c'è nulla da controllare.
+ *
+ * Stima per eccesso sulle stringhe (2 byte per carattere, come le stringhe
+ * interne di V8) e per difetto sugli array (il solo puntatore): serve a fermare
+ * la crescita esplosiva, non a misurare la memoria reale.
+ */
+function byteStimati(target, nome, args) {
+  const n = (v, d = 0) => (Number.isFinite(Number(v)) ? Number(v) : d);
+  if (typeof target === 'string') {
+    switch (nome) {
+      case 'repeat': return target.length * Math.max(n(args[0]), 0) * 2;
+      case 'padEnd':
+      case 'padStart': return Math.max(n(args[0]), target.length) * 2;
+      case 'concat': return (target.length + args.reduce((s, a) => s + String(a == null ? '' : a).length, 0)) * 2;
+      case 'split': return target.length * 2 + (target.length + 1) * 8;
+      default: return null;
+    }
+  }
+  if (Array.isArray(target)) {
+    switch (nome) {
+      case 'concat': return (target.length + args.reduce((s, a) => s + (Array.isArray(a) ? a.length : 1), 0)) * 8;
+      case 'fill': return target.length * 8;
+      case 'flat': return target.length * 8 * Math.max(n(args[0], 1), 1);
+      case 'join': return target.length * 16;
+      default: return null;
+    }
+  }
+  return null;
+}
+
 // Metodo nativo reso invocabile, avvolto in modo che gli argomenti-funzione
 // (map/filter/forEach…) siano quelli dello script e non funzioni native.
 function legaNativo(target, nome, ctx) {
@@ -811,6 +843,12 @@ function legaNativo(target, nome, ctx) {
     __chiamabile: true,
     __nome: nome,
     async invoca(args) {
+      // Budget di memoria PRIMA di allocare: dopo sarebbe inutile, perché è
+      // l'allocazione stessa a esaurire l'heap del processo (CDB-65).
+      if (ctx && typeof ctx.contaMemoria === 'function') {
+        const stima = byteStimati(target, nome, args);
+        if (stima != null) ctx.contaMemoria(stima, `il risultato di ${nome}()`);
+      }
       // I callback dello script sono asincroni (possono toccare il database):
       // i metodi nativi che li accettano vanno eseguiti a mano, in sequenza,
       // invece di delegarli al motore JS che non li attenderebbe. Questo

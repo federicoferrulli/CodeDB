@@ -1,0 +1,119 @@
+{
+  "progetto": "CodeDB",
+  "branch": "develop",
+  "data": "2026-08-03",
+  "tipo_analisi": "revisione statica incrementale sul codice non coperto dall'audit del 2026-07-31, con due rilievi dimostrati eseguendo i moduli interessati in un processo Node isolato (nessun database, nessun server dell'utente, nessun file di configurazione reale toccato)",
+  "relazione_con_audit_precedente": "docs/audit-2026-07-31.json contiene 64 rilievi (CDB-01..CDB-64): le 6 Critiche e le 20 Alte risultano corrette, le restanti sono tracciate in docs/todo-2026-08-02.json. Questa passata NON le riverifica: copre il codice entrato dopo quell'audit (motore di script MongoDB, vault v2, geometrie, nuovi moduli frontend) e le aree allora dichiarate scoperte. La numerazione prosegue da CDB-65.",
+  "ambito_analizzato": [
+    "db/MongoScript.js e db/MongoScriptRunner.js (sandbox, whitelist dei membri, budget)",
+    "db/ScriptRunner.js e i gestori script:* di server.js (ciclo di vita dei run)",
+    "db/vault.js (formato v2 a busta: scrypt, DEK, cambio passphrase, scrittura del meta)",
+    "server.js: gestori vault:status/unlock/setPassphrase/reset; gate dell'handshake e /handshake-check",
+    "db/geometry.js e l'uso del SRID in db/PostgreSqlStrategy.js (interpolazione nelle query ST_*)",
+    "db/errors.js e i punti di innesto in server.js e mcp/McpGateway.js (codice aggiunto oggi)",
+    "public/js: scansione XSS su tutti i moduli non-vendor (innerHTML interpolato, attributi, handler inline); lettura mirata di utils.js, details.js, live.js, tabs.js, connection.js, script-run.js, geomap.js, charts.js",
+    "auth/capabilities.js (mappa EVENT_CAPABILITY, per stabilire chi può innescare gli script)"
+  ],
+  "ambito_non_analizzato": [
+    "I 64 rilievi dell'audit 2026-07-31 e le 44 voci di docs/todo-2026-08-02.json: letti solo per evitare duplicati, non riverificati sul codice",
+    "public/js/{graph3d,splitview,exportimport,backupmanager,admin-rbac}.js (solo scansione mirata su escaping, timer e innerHTML; già coperti dalla passata precedente)",
+    "public/js/{chart-option,cell-stats,query-formatter,geojson}.js (moduli puri con test unitari dedicati: nessuna lettura riga per riga)",
+    "backup/ (invariato nella sostanza dall'audit precedente, che lo copre)",
+    "landing/ e dist/ (fuori dall'ambito indicato dall'utente)",
+    "public/index.html e public/css/style.css (letti solo nei punti toccati dai rilievi)",
+    "tools/, CodeDB.cmd, codedb.sh, Dockerfile, docker-compose.yml (coperti dalla terza passata dell'audit precedente)"
+  ],
+  "riepilogo": {
+    "critica": 0,
+    "alta": 1,
+    "media": 3,
+    "bassa": 1,
+    "totale": 5
+  },
+  "priorita_intervento": [
+    "CDB-65",
+    "CDB-68",
+    "CDB-66",
+    "CDB-67",
+    "CDB-69"
+  ],
+  "criterio_priorita": "Non è l'ordine per severità. CDB-65 primo perché una singola riga scritta da chiunque abbia una connessione aperta interrompe il servizio per tutti gli utenti, ed è la situazione tipica di una beta pubblica. CDB-68 secondo nonostante sia Media perché è l'unico con esito IRREVERSIBILE: si perdono le credenziali salvate, e nessuna correzione successiva le recupera. CDB-66 e CDB-67 hanno fix piccoli e circoscritti. CDB-69 è il meno urgente ma tocca l'affidabilità della traccia di audit.",
+  "note_revisione": "Prima passata (2026-08-03): CDB-65..CDB-69 sul codice entrato dopo l'audit del 31/7. Nel corso della sessione è stato inoltre CORRETTO (non è quindi un rilievo aperto) un difetto trovato provando il gate dell'handshake: il motivo del rifiuto non raggiungeva il browser — Engine.IO tratta il primo argomento di allowRequest come codice di errore, quindi il client riceveva sempre un generico 'xhr poll error' e un rifiuto era indistinguibile da un server spento, mentre codice e CLAUDE.md affermavano il contrario. Rimediato con l'endpoint GET /handshake-check e l'avviso #conn-error-overlay, collaudati in Chrome headless. CORREZIONI APPLICATE lo stesso giorno: CDB-65 budget di memoria per valore nell'interprete (CODEDB_SCRIPT_MAX_BYTES, non catturabile da try/catch, con test sui quattro vettori); CDB-66 'protetto' calcolato una volta sola più freno ai tentativi di sblocco; CDB-67 stato terminale annunciato al client quando il ciclo dello script fallisce; CDB-68 fsync e conservazione della generazione precedente di vault.json; CDB-69 categoria di audit reale per gli script (isWriteSql per SQL, operazioni osservate per gli script MongoDB).",
+  "findings": [
+    {
+      "id": "CDB-65",
+      "severita": "Alta",
+      "categoria": "risorse/DoS",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimento": "db/MongoScriptRunner.js:40-48, db/MongoScript.js:809-828",
+      "titolo": "L'interprete di script non ha alcun budget di memoria: un OOM abbatte il processo per tutti gli utenti",
+      "descrizione": "LIMITI_DEFAULT copre passi (2.000.000), iterazioni, profondità di ricorsione, tempo (60 s), chiamate al database e righe di output, ma NON la memoria allocata. I metodi nativi ammessi dalla whitelist ('repeat', 'padEnd', 'padStart', 'concat') vengono invocati in legaNativo con gli argomenti dello script e allocano senza tetto. Il budget dei passi non protegge, perché la crescita è esponenziale nel numero di iterazioni: bastano una trentina di passi per esaurire l'heap. Nota sull'innesco: script:execute è registrato con safeOn e non compare in EVENT_CAPABILITY, quindi il pre-check per evento non si applica; l'RBAC agisce sulle operazioni verso il database tramite il Proxy autorizzante, ma uno script che non tocca il database non richiede alcuna capability. È sufficiente una sessione aperta su una qualunque connessione, anche con ruolo viewer.",
+      "scenario": "Verificato eseguendo db/MongoScriptRunner.js in un processo Node isolato con --max-old-space-size=256 e un host fittizio (nessun database): lo script 'let a = [1]; for (let i = 0; i < 26; i++) { a = a.concat(a); }' provoca 'JavaScript heap out of memory' dopo 394 ms, con circa 30 passi valutati e nessun budget attivato. In un'istanza condivisa il processo Node termina: tutte le sessioni cadono, compresi gli script e i backup in corso di altri utenti.",
+      "fix": "Aggiungere un budget di memoria all'interprete, applicato dove i valori si materializzano. In db/MongoScript.js, dentro legaNativo, prima di invocare i metodi che allocano ('repeat', 'padEnd', 'padStart', 'concat' su stringhe e array) stimare la dimensione risultante dagli argomenti e confrontarla con un tetto (default 50 MB, env CODEDB_SCRIPT_MAX_BYTES), accumulando in un contatore del contesto come già avviene per this.passi. Il superamento va costruito con errBudget (budget: true) così che un try/catch dello script non possa neutralizzarlo, coerentemente con gli altri limiti. Va coperto anche il caso della concatenazione con l'operatore '+' in applicaBinario, che è la via più immediata per far crescere una stringa.",
+      "sforzo": "medio",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03"
+    },
+    {
+      "id": "CDB-66",
+      "severita": "Media",
+      "categoria": "risorse/DoS",
+      "modulo": "server.js",
+      "riferimento": "server.js:2066-2078 (vault:status), server.js:2080-2085 (vault:unlock), db/vault.js:87-92",
+      "titolo": "vault:status esegue uno scrypt sincrono a ogni chiamata, senza capability né limite di frequenza",
+      "descrizione": "Il gestore vault:status calcola il campo 'protetto' con Vault.unwrapDataKey(vaultMeta, ''), che deriva la KEK con crypto.scryptSync (N=16384, r=8, p=1). Misurato sul modulo reale: 28 ms per chiamata, durante i quali l'event loop del processo è bloccato per tutte le sessioni. L'handler non chiama assertManage (a differenza di unlock/reset/setPassphrase) e nessun percorso del vault ha un limitatore di frequenza, mentre POST /auth/login ne ha già uno (server.js:1646, risposta 429). vault:unlock ha lo stesso costo per tentativo ed è quindi anche un oracolo per la passphrase, per quanto rallentato dal KDF.",
+      "scenario": "Un client con un socket accettato emette vault:status in ciclo. A circa 50 richieste al secondo il thread principale resta occupato 1,4 s per ogni secondo di traffico: griglia, query, change stream e pannello Salute di TUTTE le sessioni si fermano. Con CODEDB_RBAC=off (default e modalità desktop Electron) non serve alcun privilegio oltre a raggiungere la UI.",
+      "fix": "Calcolare 'protetto' una sola volta all'avvio (dove probeVault già apre il vault) e conservarlo in una variabile di modulo, aggiornandola nei tre punti che possono cambiarlo: vault:unlock riuscito, vault:setPassphrase, vault:reset. In aggiunta: applicare a vault:unlock lo stesso limitatore per tentativi falliti di /auth/login, e sostituire scryptSync con la variante asincrona (crypto.scrypt) sui percorsi serviti da un handler, così un tentativo non blocca l'event loop.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03"
+    },
+    {
+      "id": "CDB-67",
+      "severita": "Media",
+      "categoria": "correttezza/stato",
+      "modulo": "server.js",
+      "riferimento": "server.js:2709-2713, public/js/script-run.js:220-231 e 305-315",
+      "titolo": "Un errore imprevisto nel ciclo di uno script lascia il pannello 'in corso' per sempre",
+      "descrizione": "run.start(...).then(finalizzaScript).catch((err) => console.error(...)): il catch si limita a loggare. Non viene emesso alcun evento script:progress terminale, e il client conosce lo stato finale solo da quel push — in script-run.js il pulsante di chiusura compare unicamente quando lo stato è 'done' o 'aborted' (const finito = status === 'done' || status === 'aborted'). Il run resta inoltre nella mappa session.scripts, quindi anche la voce nel registro delle query in sospeso rimane 'running'.",
+      "scenario": "Un'eccezione fuori dal percorso per-istruzione (per esempio in makeProgressSender, mentre il socket sta cadendo) fa cadere il ciclo: il pannello mostra avanzamento e contatori fermi, Pausa e Interrompi non hanno effetto perché il run non progredisce più, e il pulsante di chiusura non compare. L'unica via d'uscita è F5, che chiude la sessione DB e uccide eventuali altri script.",
+      "fix": "Nel catch, portare il run in uno stato terminale ed emettere l'evento finale prima di uscire: marcare lo stato come 'aborted' con il messaggio dell'errore, chiamare l'emissione di progresso già usata da abort() e rimuovere il run da session.scripts. Così il client chiude il pannello e la voce in sospeso passa a fallita invece di restare in corso.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03"
+    },
+    {
+      "id": "CDB-68",
+      "severita": "Media",
+      "categoria": "durabilita/segreti",
+      "modulo": "db/vault.js",
+      "riferimento": "db/vault.js:116-123",
+      "titolo": "vault.json scritto senza fsync: un'interruzione può rendere i segreti irrecuperabili",
+      "descrizione": "writeMeta scrive un file temporaneo con fs.writeFileSync e lo sposta con fs.renameSync. Il rename è atomico rispetto ai lettori — ed è ciò che il commento chiama 'scrittura ATOMICA' — ma senza fsync sul descrittore (e sulla directory) il contenuto può non essere ancora sul supporto: dopo un'interruzione di corrente o un crash del sistema il file può esistere con lunghezza zero o contenuto parziale. La distinzione fra atomicità della visibilità e durabilità del contenuto è esattamente ciò che qui fa la differenza, perché vault.json è l'unico posto in cui la DEK esiste.",
+      "scenario": "L'utente cambia la passphrase: rewrapDataKey produce il nuovo meta e writeMeta lo scrive; la macchina si spegne nell'istante fra il rename e il flush della cache di pagina. Al riavvio readMeta non trova un meta valido (nessun campo dek) e il vault viene interpretato come formato v1: i segreti in connections.ini restano cifrati con una DEK che non esiste più e NESSUNA passphrase può recuperarli. È l'unica copia delle credenziali dei database salvati.",
+      "fix": "Sostituire writeFileSync con apertura esplicita e flush: fd = fs.openSync(tmp, 'w'); fs.writeSync(fd, dati); fs.fsyncSync(fd); fs.closeSync(fd); prima del renameSync; dove il sistema operativo lo consente, aprire la directory e fare fsync anche su quella dopo il rename. In aggiunta, conservare la generazione precedente (copia in vault.json.bak prima di sovrascrivere): il costo è nullo e trasforma uno scenario irreversibile in un ripristino manuale.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03"
+    },
+    {
+      "id": "CDB-69",
+      "severita": "Bassa",
+      "categoria": "audit/tracciabilita",
+      "modulo": "server.js",
+      "riferimento": "server.js:2703, server.js:2718-2728",
+      "titolo": "Gli script di sola lettura sono registrati nell'audit come scritture",
+      "descrizione": "auditQuery(session, ..., 'write', `Avvio script (N istruzioni)`) usa la categoria 'write' cablata, indipendentemente dal contenuto dello script, e lo stesso vale per la voce di fine in finalizzaScript. Uno script composto di sole find compare quindi nello Storico Azioni con il badge 'scrittura'. Il resto dell'applicazione classifica con cura (classifyAudit, isWriteSql, isWriteMongoPipeline, con la normalizzazione di db/sqlText.js proprio per non sbagliare): qui la traccia è meno affidabile di quanto il sistema prometta altrove.",
+      "scenario": "Un amministratore filtra lo Storico Azioni per categoria 'scrittura' per ricostruire chi ha modificato dei dati in una finestra temporale: fra i risultati compaiono script di sola consultazione, e la ricerca perde valore proprio nel momento in cui serve.",
+      "fix": "Per gli script SQL la categoria è nota prima di partire: statements.some((st) => isWriteSql(st.sql)). Per gli script MongoDB interpretati l'informazione esiste solo a runtime, quindi conviene registrare l'avvio come 'read' e portare la categoria vera nella voce di fine, dove il resoconto del run dice già quali operazioni sono state eseguite.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03"
+    }
+  ],
+  "stato_al_2026_08_03": {
+    "corretti": 5,
+    "aperti": 0,
+    "totale": 5
+  }
+}

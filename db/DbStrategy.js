@@ -338,4 +338,21 @@ function queryTimeoutMs() {
 
 DbStrategy.queryTimeoutMs = queryTimeoutMs;
 
+// Tempo massimo (ms) concesso a un'AGGREGAZIONE di lettura (CDB-17). È distinto
+// da queryTimeoutMs perché le due cose hanno tempi legittimi diversi: una pagina
+// di griglia che impiega più di 30 s è quasi sempre un problema, mentre un
+// $group su una collection grande può ragionevolmente durare qualche minuto ed
+// è esattamente ciò per cui esiste il Query Engine. Senza alcun limite, però,
+// una pipeline pesante tiene occupata una connessione del pool a tempo
+// indefinito, e `cancelQuery` la ferma solo se il client ha mandato un runId e
+// l'utente del database ha il privilegio killOp — spesso assente.
+// Env CODEDB_AGGREGATE_TIMEOUT_MS (default 120000); <= 0 disabilita.
+function aggregateTimeoutMs() {
+  const m = parseInt(process.env.CODEDB_AGGREGATE_TIMEOUT_MS, 10);
+  if (!Number.isFinite(m)) return 120000;
+  return Math.max(m, 0);
+}
+
+DbStrategy.aggregateTimeoutMs = aggregateTimeoutMs;
+
 module.exports = DbStrategy;

@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { onTabChange } from './tabs.js';
-import { $ } from './utils.js';
+import { $, migraChiave } from './utils.js';
 import { initUml, loadUml } from './uml.js';
 import { initGraph3d, loadGraph3d } from './graph3d.js';
 import { initConnection } from './connection.js';
@@ -70,7 +70,8 @@ function initResizers() {
   document.querySelectorAll('.resizer[data-resize]').forEach((rz) => {
     const el = document.getElementById(rz.dataset.resize);
     if (!el) return;
-    const key = `gui-db:width:${rz.dataset.resize}`;
+    // Prefisso unificato con recupero del valore precedente (CDB-64).
+    const key = migraChiave(`width:${rz.dataset.resize}`, `gui-db:width:${rz.dataset.resize}`);
     const saved = localStorage.getItem(key);
     if (saved) el.style.width = saved;
     rz.addEventListener('mousedown', (e) => {

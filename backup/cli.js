@@ -39,6 +39,8 @@ COMANDI
 
 OPZIONI COMUNI
   --conn <nome>            Connessione salvata in connections.ini (la CLI non legge mai credenziali da riga di comando).
+  --owner <id>             Con RBAC attivo, tenant proprietario della connessione (o env CODEDB_OWNER_ID).
+                           Senza, si legge il file condiviso: è il caso mono-utente.
   --dest <cartella>        Cartella radice dei backup (default: ./backups).
   --slack-webhook <url>    Webhook Slack per la notifica di fine operazione (o env SLACK_WEBHOOK_URL).
   --quiet                  Scrive solo sul file di log, non in console.
@@ -113,12 +115,14 @@ function requireOpt(args, name, hint) {
 
 // Risolve la connessione salvata, chiedendo la passphrase solo se nel file
 // ci sono segreti cifrati e GUI_MONGO_PASSPHRASE non è impostata.
-async function resolveSavedConnection(name) {
+async function resolveSavedConnection(name, ownerId) {
   let passphrase = process.env.GUI_MONGO_PASSPHRASE || null;
-  if (!passphrase && hasEncryptedSecrets()) {
+  if (!passphrase && hasEncryptedSecrets(ownerId)) {
     passphrase = await promptPassphrase('Passphrase dei segreti di connections.ini: ');
   }
-  const sections = loadConnections(passphrase);
+  // `--owner` (o CODEDB_OWNER_ID) sceglie il file del tenant: con RBAC attivo le
+  // connessioni non stanno più nel file condiviso (CDB-50).
+  const sections = loadConnections(passphrase, ownerId);
   const cfg = sections[name];
   if (!cfg) {
     const known = Object.keys(sections);
@@ -143,7 +147,7 @@ async function cmdBackup(args) {
   const level = Math.min(Math.max(parseInt(args['compress-level'], 10) || 6, 1), 9);
   const onlyCollections = args.collections ? args.collections.split(',').map((s) => s.trim()).filter(Boolean) : null;
 
-  const cfg = await resolveSavedConnection(connName);
+  const cfg = await resolveSavedConnection(connName, args.owner);
   const t0 = Date.now();
   const label = `backup ${type} conn=${connName} db=${db}`;
   try {
@@ -177,7 +181,7 @@ async function cmdRestore(args) {
   const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: !!args.quiet });
   const onlyCollections = args.collections ? args.collections.split(',').map((s) => s.trim()).filter(Boolean) : null;
 
-  const cfg = await resolveSavedConnection(connName);
+  const cfg = await resolveSavedConnection(connName, args.owner);
   const t0 = Date.now();
   const label = `restore conn=${connName} da=${path.basename(backupDir)}`;
   try {

@@ -55,9 +55,21 @@ function resolveChain(backupDir) {
     chain.unshift({ dir, manifest });
     if (manifest.type === 'full') return chain;
     if (!manifest.baseId) throw new Error(`Il backup ${manifest.id} è ${manifest.type} ma non ha un baseId.`);
-    const baseDir = path.join(parent, manifest.baseId);
+    // Il baseId arriva da un file su disco, quindi vale come qualunque altro
+    // input: `path.join(parent, '../../..')` uscirebbe dalla cartella dei
+    // backup e farebbe leggere (e applicare al database) file scelti da chi ha
+    // scritto il manifest — un archivio ricevuto da terzi, per esempio.
+    // Un id di backup è un nome di cartella, non un percorso.
+    const baseId = String(manifest.baseId);
+    if (baseId.includes('/') || baseId.includes('\\') || baseId === '.' || baseId === '..') {
+      throw new Error(`baseId non valido nel manifest ${manifest.id}: "${baseId}" non è un nome di backup.`);
+    }
+    const baseDir = path.join(parent, baseId);
+    if (path.dirname(path.resolve(baseDir)) !== path.resolve(parent)) {
+      throw new Error(`baseId non valido nel manifest ${manifest.id}: punta fuori dalla cartella del gruppo.`);
+    }
     if (!fs.existsSync(baseDir)) {
-      throw new Error(`Backup di base "${manifest.baseId}" non trovato in ${parent}: la catena è incompleta.`);
+      throw new Error(`Backup di base "${baseId}" non trovato in ${parent}: la catena è incompleta.`);
     }
     dir = baseDir;
   }
@@ -267,7 +279,21 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       };
       for await (const line of readLines(path.join(layer.dir, f.path))) {
         const row = EJSON.parse(line, { relaxed: true });
-        if (!columns) columns = Object.keys(row);
+        const colsRiga = Object.keys(row);
+        if (!columns) columns = colsRiga;
+        // Le colonne erano dedotte UNA VOLTA dalla prima riga (CDB-30): una riga
+        // successiva con colonne diverse — normale su MongoDB esportato in SQL,
+        // o dopo un ALTER TABLE a metà catena — perdeva i campi in più SENZA
+        // dirlo, e riempiva di NULL quelli mancanti. Il gruppo di INSERT deve
+        // avere una sola lista di colonne, quindi le righe di forma diversa non
+        // si accodano a questo batch: si scarica il batch corrente e si riparte
+        // con la forma nuova.
+        const stessaForma = colsRiga.length === columns.length
+          && colsRiga.every((c) => columns.includes(c));
+        if (!stessaForma) {
+          await flush();
+          columns = colsRiga;
+        }
         batch.push(columns.map((c) => toSqlValue(row[c])));
         if (batch.length >= BATCH_SIZE) await flush();
       }
