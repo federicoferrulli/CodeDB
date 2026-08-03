@@ -49,21 +49,73 @@
   <!-- ===================== Modale Sblocco Vault / Master Password ===================== -->
   <div id="vault-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="vault-modal-title">
     <div class="modal">
-      <h2 id="vault-modal-title"><i data-lucide="lock"></i> Sblocco Vault</h2>
-      <p class="subtitle">Inserisci la Master Password per accedere alle connessioni salvate e ai segreti cifrati.</p>
+      <!-- Due schermate alternative nella stessa modale: sblocco e ripartenza
+           da zero. Non convivono — chi ha perso la password non ha più niente
+           da fare nel form di sblocco, e vedere entrambi i titoli confonde. -->
+      <div id="vault-unlock">
+        <h2 id="vault-modal-title"><i data-lucide="lock"></i> Sblocco Vault</h2>
+        <p class="subtitle">Inserisci la Master Password per accedere alle connessioni salvate e ai segreti cifrati.</p>
 
-      <form id="vault-form">
-        <div class="form-row">
-          <label>Master Password
-            <input type="password" id="vault-passphrase" placeholder="Inserisci passphrase..." required
-              autocomplete="current-password" autofocus />
+        <form id="vault-form">
+          <div class="form-row">
+            <label>Master Password
+              <input type="password" id="vault-passphrase" placeholder="Inserisci passphrase..." required
+                autocomplete="current-password" autofocus />
+            </label>
+          </div>
+          <div id="vault-error" class="error hidden"></div>
+          <div class="modal-actions vault-actions">
+            <!-- Via d'uscita da una passphrase dimenticata: senza, la modale
+                 chiede l'unica cosa che l'utente non ha e l'app non si apre. -->
+            <button type="button" id="vault-forgot" class="linklike">Password dimenticata?</button>
+            <button type="submit" class="primary"><i data-lucide="key-round"></i> Sblocca</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Ripartenza da zero: connessioni salvate messe da parte e vault nuovo. -->
+      <div id="vault-reset" class="hidden">
+        <h2 class="vault-reset-title"><i data-lucide="triangle-alert"></i> Riparti da zero</h2>
+        <div class="warn-box">
+          <i data-lucide="triangle-alert"></i>
+          <span>Senza la password attuale i segreti salvati <strong>non sono recuperabili</strong>:
+            non esiste alcun recupero, è il punto della cifratura. Puoi però ripartire con un
+            vault nuovo — <strong>tutte le connessioni salvate verranno rimosse</strong> e dovrai
+            reinserirle. I file non vengono cancellati: restano accanto a
+            <code>connections.ini</code> con suffisso <code>.pre-reset-…</code>, illeggibili senza
+            la vecchia password, nel caso ti torni in mente.</span>
+        </div>
+
+        <form id="vault-reset-form">
+          <div class="form-row">
+            <label>Nuova Master Password
+              <input type="password" id="vault-reset-next" placeholder="Almeno 8 caratteri"
+                autocomplete="new-password" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label>Conferma nuova password
+              <input type="password" id="vault-reset-confirm" placeholder="Ripeti la nuova password"
+                autocomplete="new-password" />
+            </label>
+          </div>
+          <label class="checkbox-row">
+            <input type="checkbox" id="vault-reset-ack" />
+            <span>Ho capito che le connessioni salvate verranno eliminate.</span>
           </label>
-        </div>
-        <div id="vault-error" class="error hidden"></div>
-        <div class="modal-actions">
-          <button type="submit" class="primary"><i data-lucide="key-round"></i> Sblocca</button>
-        </div>
-      </form>
+          <div id="vault-reset-error" class="error hidden"></div>
+          <div id="vault-reset-success" class="success-box hidden"></div>
+          <!-- Stessa disposizione della schermata di sblocco: la via di ritorno
+               a sinistra, l'azione a destra. -->
+          <div class="modal-actions vault-actions">
+            <button type="button" id="vault-reset-back" class="linklike vault-back">
+              <i data-lucide="arrow-left"></i> Torna allo sblocco
+            </button>
+            <button type="submit" class="danger"><i data-lucide="trash-2"></i>
+              Elimina connessioni e imposta nuova password</button>
+          </div>
+        </form>
+      </div>
     </div>
   </div>
 

@@ -466,6 +466,67 @@ function changeVaultPassphrase(newPassphrase) {
   }
 }
 
+/**
+ * Ricomincia da capo: vault nuovo con una passphrase nuova, connessioni salvate
+ * messe da parte.
+ *
+ * È l'unica via d'uscita da una passphrase dimenticata. Senza di essa il vault
+ * bloccato è un vicolo cieco: la modale di sblocco chiede l'unica cosa che
+ * l'utente non ha, e l'applicazione non si apre nemmeno per creare una
+ * connessione nuova (i segreti non si decifrano, e non esiste — per costruzione
+ * — alcun recupero).
+ *
+ * I file NON vengono cancellati ma **rinominati** in `*.pre-reset-<timestamp>`:
+ * sono comunque illeggibili senza la passphrase perduta, quindi non c'è nulla da
+ * proteggere in più, mentre chi si ricorda la passphrase il giorno dopo (o ha
+ * premuto per sbaglio) può rimetterli al loro posto. Cancellare l'unica copia
+ * dei segreti su richiesta di un clic sarebbe l'unica operazione davvero
+ * irreversibile di tutta l'applicazione.
+ *
+ * @param {string} newPassphrase passphrase del vault nuovo (vuota = nessuna)
+ * @returns {{ok: true, spostati: string[], suffisso: string} | {ok: false, error: string}}
+ */
+function resetVault(newPassphrase) {
+  if (typeof newPassphrase !== 'string') {
+    return { ok: false, error: 'Passphrase non valida.' };
+  }
+
+  const suffisso = `pre-reset-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const daSpostare = vaultFiles().map((v) => v.file);
+  const metaFile = Vault.metaFileFor(CONNECTIONS_FILE);
+  if (fs.existsSync(metaFile)) daSpostare.push(metaFile);
+
+  const mosse = [];
+  try {
+    for (const file of daSpostare) {
+      const destinazione = `${file}.${suffisso}`;
+      fs.renameSync(file, destinazione);
+      mosse.push({ file, destinazione });
+    }
+  } catch (err) {
+    // Rimetti a posto quello che era già stato spostato: meglio il vault
+    // bloccato di prima che un vault a metà.
+    for (const { file, destinazione } of mosse) {
+      try { fs.renameSync(destinazione, file); } catch { /* best-effort */ }
+    }
+    return { ok: false, error: `Impossibile mettere da parte i file del vault: ${errMsg(err)}` };
+  }
+  const spostati = mosse.map((m) => path.basename(m.destinazione));
+
+  // Vault nuovo di zecca: DEK casuale avvolta dalla passphrase indicata.
+  const { meta, dataKey } = Vault.createMeta(newPassphrase);
+  try {
+    Vault.writeMeta(CONNECTIONS_FILE, meta);
+  } catch (err) {
+    return { ok: false, error: `Vault non ricreato: ${errMsg(err)}` };
+  }
+  encryptionKey = dataKey;
+  vaultMeta = meta;
+  decryptFailures = 0;
+
+  return { ok: true, spostati, suffisso };
+}
+
 function parseIni(text) {
   const sections = {};
   let current = null;
@@ -1966,6 +2027,51 @@ io.on('connection', (socket) => {
     // riservato all'amministratore dell'account.
     assertManage(principal);
     cb(tryUnlockVault(passphrase || ''));
+  });
+
+  /**
+   * Ricomincia da capo dopo una passphrase dimenticata: connessioni salvate
+   * messe da parte e vault nuovo con la passphrase indicata.
+   *
+   * È l'unico modo di uscire da un vault bloccato senza conoscere la
+   * passphrase, quindi non chiede (e non può chiedere) alcun segreto: la
+   * barriera è l'accesso stesso all'applicazione — con RBAC acceso serve la
+   * capability `manage`, con RBAC spento chi apre la UI è già l'amministratore
+   * della macchina. Cosa distrugge va detto senza giri di parole, ed è per
+   * questo che il client deve dichiararlo esplicitamente con `confirm: true`.
+   */
+  safeOn('vault:reset', ({ passphrase, confirm } = {}, cb) => {
+    assertManage(principal);
+
+    if (confirm !== true) {
+      throw new Error('Conferma mancante: l\'operazione elimina le connessioni salvate.');
+    }
+    if (typeof passphrase !== 'string') {
+      throw new Error('Passphrase non valida.');
+    }
+
+    const res = resetVault(passphrase);
+    if (!res.ok) throw new Error(res.error);
+
+    try {
+      auditUi({
+        event: 'vault:reset',
+        category: 'write',
+        op: 'Azzeramento del vault (connessioni eliminate, nuova passphrase)',
+        status: 'ok',
+        details: { spostati: res.spostati },
+        ...auditActor(principal),
+        client: socket.handshake.address || null,
+      });
+    } catch { /* audit best-effort */ }
+
+    cb({
+      ok: true,
+      spostati: res.spostati,
+      avviso: res.spostati.length
+        ? `Le connessioni precedenti non sono state cancellate: i file sono accanto a connections.ini con suffisso .${res.suffisso} (restano illeggibili senza la vecchia passphrase). Da ora il server va avviato con la nuova passphrase (GUI_MONGO_PASSPHRASE) oppure sbloccato dall'interfaccia.`
+        : 'Vault ricreato. Da ora il server va avviato con la nuova passphrase (GUI_MONGO_PASSPHRASE) oppure sbloccato dall\'interfaccia.',
+    });
   });
 
   /**

@@ -221,6 +221,57 @@ const SEGRETO = 'p4ssw0rd-del-database';
     const uscita2 = String(cliSbagliata.stdout || '').trim();
     assert(/^ERRORE:/.test(uscita2) && /non si apre|errata/i.test(uscita2),
       'la CLI rifiuta una passphrase errata con un messaggio chiaro', uscita2);
+
+    console.log('8. Passphrase dimenticata: azzeramento del vault dalla modale di sblocco');
+    // Il caso reale: il server parte senza passphrase, il vault è bloccato e
+    // l'utente NON conosce quella vecchia. Senza questa via d'uscita la modale
+    // chiede l'unica cosa che non ha e l'applicazione resta inutilizzabile.
+    h = await avvia(null);
+    assert(h.avviato, 'server avviato con vault bloccato');
+    s = await connetti();
+    assert((await emit(s, 'vault:status', {})).locked === true, 'vault bloccato');
+
+    const senzaConferma = await emit(s, 'vault:reset', { passphrase: 'vault-nuovo-di-zecca' });
+    assert(!senzaConferma.ok && /conferma/i.test(senzaConferma.error || ''),
+      'senza conferma esplicita l\'azzeramento è rifiutato', senzaConferma.error);
+    assert(fs.existsSync(ini), 'il tentativo rifiutato non ha toccato il vault');
+
+    const azzera = await emit(s, 'vault:reset', { passphrase: 'vault-nuovo-di-zecca', confirm: true });
+    assert(azzera.ok, 'azzeramento riuscito', azzera.error);
+    assert(Array.isArray(azzera.spostati) && azzera.spostati.some((f) => f.includes('.pre-reset-')),
+      'i file precedenti sono messi da parte, non cancellati', JSON.stringify(azzera.spostati));
+    assert(fs.readdirSync(dir).some((f) => f.startsWith('connections.ini.pre-reset-')),
+      'la copia del connections.ini precedente è su disco');
+
+    const statoNuovo = await emit(s, 'vault:status', {});
+    assert(statoNuovo.locked === false && statoNuovo.formato === 2, 'vault nuovo, sbloccato e v2',
+      JSON.stringify(statoNuovo));
+    const listaVuota = await emit(s, 'connections:list', {});
+    assert(listaVuota.ok && listaVuota.connections.length === 0, 'nessuna connessione salvata');
+
+    // La prova che il vault nuovo è davvero utilizzabile: si salva e si rilegge.
+    const nuovaConn = await emit(s, 'connections:save', {
+      name: 'dopo-reset',
+      cfg: { dbType: 'mongodb', host: 'localhost', port: '27017', username: 'u', password: SEGRETO },
+    });
+    assert(nuovaConn.ok, 'connessione salvabile nel vault nuovo', nuovaConn.error);
+    s.close();
+    await ferma(h);
+
+    h = await avvia('vault-nuovo-di-zecca');
+    assert(h.avviato, 'la nuova passphrase apre il vault al riavvio', h.out());
+    if (h.avviato) {
+      s = await connetti();
+      const l = await emit(s, 'connections:list', {});
+      assert(l.ok && l.connections.length === 1 && l.connections[0].name === 'dopo-reset',
+        'solo la connessione creata dopo l\'azzeramento');
+      s.close();
+    }
+    await ferma(h);
+
+    h = await avvia('passphrase-due');
+    assert(!h.avviato && h.codice === 1, 'la vecchia passphrase non apre più nulla', `codice=${h.codice}`);
+    await ferma(h);
   } catch (err) {
     console.error('Errore durante i test:', (err && err.stack) || err);
     falliti++;

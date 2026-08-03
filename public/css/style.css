@@ -5101,6 +5101,57 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   border-radius: 3px;
 }
 
+/* ---------- Modale di sblocco del vault: via d'uscita "password dimenticata" ----------
+   Il link sta a SINISTRA, lontano dal pulsante primario: è l'operazione che
+   elimina le connessioni salvate, e non deve mai trovarsi sotto il dito di chi
+   sta semplicemente premendo "Sblocca". */
+.vault-actions { justify-content: space-between; align-items: center; }
+
+button.linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-muted, #8b949e);
+  font-size: 0.82rem;
+  text-decoration: underline;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+button.linklike:hover {
+  background: none;
+  color: var(--accent);
+  transform: none;
+  box-shadow: none;
+}
+
+/* Ripartenza da zero: schermata ALTERNATIVA allo sblocco, non un'appendice.
+   Il ritorno sta in fondo a sinistra, nello stesso posto in cui la schermata di
+   sblocco tiene "Password dimenticata?": le due vie si scambiano di posto. */
+.vault-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vault-back svg { width: 14px; height: 14px; }
+
+.vault-reset-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  color: var(--danger);
+}
+
+.vault-reset-title svg { width: 18px; height: 18px; }
+
+#vault-reset .checkbox-row { gap: 8px; margin-bottom: 4px; }
+
+@media (max-width: 900px) {
+  .vault-actions { align-items: stretch; }
+}
+
 .info-box svg,
 .warn-box svg,
 .success-box svg {
