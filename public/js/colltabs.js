@@ -9,6 +9,7 @@ import { startWatch } from './live.js';
 import { setView } from './main.js';
 import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView } from './splitview.js';
 import { markAbandonedByCollTab } from './pending-queries.js';
+import { segnaTraguardo } from './onboarding-stato.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
 // connessione (t.state.collTabs). Ogni coll-tab ha uno snapshot di query,
@@ -222,6 +223,7 @@ export function ensureActiveCollLoaded() {
 export function openCollTab(db, coll) {
   const t = activeTab();
   if (!t || !t.state.connected) return;
+  segnaTraguardo('tabella'); // primi passi della guida (no-op se già fatto)
   saveActiveSnapshot();
   let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll && !c.isSplitTab);
   if (!ct) {

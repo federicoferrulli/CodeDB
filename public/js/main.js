@@ -33,6 +33,7 @@ import { initAdminRbac } from './admin-rbac.js';
 import { initPendingQueries } from './pending-queries.js';
 import { initScriptRun } from './script-run.js';
 import { initPassphrase } from './passphrase.js';
+import { initOnboarding } from './onboarding.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -172,6 +173,10 @@ initPassphrase();
 initSessionPersistence();
 initSplitView();
 initHeaderMoreMenu();
+// Per ultima: decide da sé se aprirsi (primo avvio o dopo un aggiornamento) e
+// deve trovare il resto dell'interfaccia già montato, perché il tour indica
+// elementi reali e salta quelli che non ci sono.
+initOnboarding();
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

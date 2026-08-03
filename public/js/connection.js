@@ -6,6 +6,7 @@ import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
 import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
+import { segnaTraguardo } from './onboarding-stato.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -216,6 +217,7 @@ export function connectAndOpenTab(cfg) {
     renderTabBar();
     renderWorkspace();
     startSchemaWatch(); // auto-update della sidebar (db/collection) per questo tab
+    segnaTraguardo('connessione'); // primi passi della guida (no-op se già fatto)
     if (cfg.saveAs) loadSavedConnections();
     return res;
   });

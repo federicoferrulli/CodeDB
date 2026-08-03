@@ -5621,3 +5621,158 @@ button.linklike:hover {
 @media (max-width: 900px) {
   .chart-quick-field select { max-width: 104px; }
 }
+
+/* ===========================================================================
+ * Guida introduttiva: benvenuto/novità (modale), tour guidato (spotlight) e
+ * checklist dei primi passi.
+ *
+ * Nota sullo SPOTLIGHT: l'oscuramento è un `box-shadow` gigante attorno al buco
+ * invece di un overlay con `backdrop-filter`. La classe `.overlay` sfoca tutto
+ * il viewport a ogni fotogramma (stessa ragione per cui `#geomap-overlay` la
+ * disattiva), e qui sarebbe anche controproducente: il tour deve mostrare
+ * NITIDO proprio l'elemento di cui parla, e riposiziona il riquadro a ogni
+ * scroll e ridimensionamento.
+ * ======================================================================== */
+
+.onboarding-modal {
+  position: relative;
+  max-width: 560px;
+  width: min(560px, 94vw);
+}
+
+.onb-chiudi {
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: var(--space-2xs);
+  border-radius: var(--radius-sm);
+}
+.onb-chiudi:hover { color: var(--fg); background: var(--hover); }
+.onb-chiudi-modale { position: absolute; top: var(--space-md); right: var(--space-md); }
+
+.onb-hero { text-align: center; padding: var(--space-lg) var(--space-md) var(--space-md); }
+.onb-hero.compatto { padding-top: var(--space-md); }
+.onb-hero i {
+  width: 40px; height: 40px;
+  stroke-width: 1.5px;
+  color: var(--accent-hover);
+  margin-bottom: var(--space-sm);
+}
+.onb-hero h2 { margin: 0 0 var(--space-xs); font-size: 1.25rem; }
+.onb-hero p { margin: 0 auto; max-width: 44ch; color: var(--fg-dim); font-size: 0.85rem; line-height: 1.5; }
+
+.onb-scelte { display: flex; flex-direction: column; gap: var(--space-sm); margin-top: var(--space-lg); }
+.onb-scelte.orizzontali { flex-direction: row; justify-content: flex-end; }
+
+.onb-scelta {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px var(--space-md);
+  text-align: left;
+  padding: var(--space-md);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  color: var(--fg);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.onb-scelte.orizzontali .onb-scelta { grid-template-rows: auto; padding: var(--space-sm) var(--space-md); }
+.onb-scelta:hover { background: var(--bg-4); border-color: var(--border-3); }
+.onb-scelta.primaria { border-color: var(--accent); }
+.onb-scelta.primaria:hover { box-shadow: var(--shadow-glow-indigo); }
+.onb-scelta i { grid-row: 1 / span 2; width: 20px; height: 20px; color: var(--accent-hover); }
+.onb-scelte.orizzontali .onb-scelta i { grid-row: 1; }
+.onb-scelta-titolo { font-weight: 600; font-size: 0.88rem; }
+.onb-scelta-nota { font-size: 0.76rem; color: var(--fg-dim); }
+
+.onb-novita { margin-top: var(--space-md); max-height: 46vh; overflow-y: auto; }
+.onb-novita-blocco h3 { margin: 0 0 var(--space-xs); font-size: 0.85rem; color: var(--accent-hover); }
+.onb-novita-blocco ul { margin: 0 0 var(--space-md); padding-left: var(--space-lg); }
+.onb-novita-blocco li { font-size: 0.82rem; color: var(--fg-dim); line-height: 1.6; }
+
+/* ------------------------------- Tour ----------------------------------- */
+
+.onb-spot {
+  position: fixed;
+  z-index: 9000;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--accent-hover);
+  box-shadow: 0 0 0 9999px rgba(3, 6, 12, 0.68), var(--shadow-glow-indigo);
+  pointer-events: none;
+  transition: top .18s, left .18s, width .18s, height .18s;
+}
+
+.onb-fumetto {
+  position: fixed;
+  z-index: 9001;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-md);
+}
+.onb-fumetto-head { display: flex; align-items: center; justify-content: space-between; }
+.onb-passo-n { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-muted); }
+.onb-fumetto h3 { margin: var(--space-xs) 0; font-size: 0.95rem; }
+.onb-fumetto p { margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--fg-dim); }
+.onb-fumetto-azioni { display: flex; align-items: center; gap: var(--space-xs); margin-top: var(--space-md); }
+.onb-fumetto-azioni .spazio { flex: 1; }
+.onb-fumetto-azioni button {
+  padding: var(--space-2xs) var(--space-md);
+  border-radius: var(--radius-md);
+  font-size: 0.78rem;
+  cursor: pointer;
+  border: 1px solid var(--border-2);
+  background: var(--btn-bg);
+  color: var(--fg);
+}
+.onb-fumetto-azioni button:hover:not(:disabled) { background: var(--btn-hover); }
+.onb-fumetto-azioni button:disabled { opacity: .45; cursor: default; }
+.onb-fumetto-azioni .primary { background: var(--accent); border-color: var(--accent); color: var(--fg-inverted); }
+.onb-fumetto-azioni .primary:hover { background: var(--accent-2); }
+
+/* ----------------------------- Primi passi ------------------------------- */
+
+.onb-checklist {
+  position: fixed;
+  right: var(--space-lg);
+  bottom: var(--space-lg);
+  z-index: 8000;
+  width: 300px;
+  max-width: calc(100vw - var(--space-xl));
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: var(--space-md);
+}
+.onb-check-head { display: flex; align-items: center; gap: var(--space-sm); font-size: 0.82rem; font-weight: 600; }
+.onb-check-head > span:first-child { display: flex; align-items: center; gap: var(--space-xs); }
+.onb-check-head i { width: 15px; height: 15px; color: var(--accent-hover); }
+.onb-check-conteggio { margin-left: auto; color: var(--fg-dim); font-weight: 500; }
+
+.onb-barra { height: 4px; border-radius: var(--radius-full); background: var(--border-2); margin: var(--space-sm) 0; overflow: hidden; }
+.onb-barra span { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+
+.onb-check-lista { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-sm); }
+.onb-check-lista li { display: flex; gap: var(--space-sm); align-items: flex-start; }
+.onb-check-lista i { width: 15px; height: 15px; flex: 0 0 auto; margin-top: 2px; color: var(--fg-muted); }
+.onb-check-lista li.fatto i { color: var(--success); }
+.onb-check-lista li.fatto strong { color: var(--fg-dim); text-decoration: line-through; }
+.onb-check-testo { display: flex; flex-direction: column; gap: 2px; }
+.onb-check-testo strong { font-size: 0.8rem; font-weight: 600; }
+.onb-check-testo em { font-size: 0.72rem; font-style: normal; color: var(--fg-dim); line-height: 1.45; }
+.onb-check-fine { margin: var(--space-sm) 0 0; font-size: 0.74rem; color: var(--success); }
+
+/* Su viewport strette la checklist occuperebbe mezzo schermo: resta in basso
+   ma a tutta larghezza (vedi responsive.js). */
+@media (max-width: 900px) {
+  .onb-checklist { left: var(--space-sm); right: var(--space-sm); width: auto; bottom: var(--space-sm); }
+  .onb-fumetto { max-width: calc(100vw - var(--space-lg)); }
+}

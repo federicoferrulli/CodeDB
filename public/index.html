@@ -193,6 +193,21 @@
     </div>
   </div>
 
+  <!-- ================== Guida introduttiva (menu ⋮ → Guida) ==================
+       Contenitore unico per benvenuto, hub della guida e novità di versione: il
+       corpo è riscritto da `onboarding.js` perché i tre contenuti hanno struttura
+       diversa e quello delle novità dipende dalla versione installata. Il tour
+       guidato e la checklist NON stanno qui: sono elementi flottanti generati
+       da codice, posizionati sugli elementi reali dell'interfaccia. -->
+  <div id="onboarding-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-label="Guida introduttiva a CodeDB">
+    <div class="modal onboarding-modal">
+      <button type="button" class="onb-chiudi onb-chiudi-modale" id="onboarding-close"
+        aria-label="Chiudi la guida">✕</button>
+      <div id="onboarding-body"></div>
+    </div>
+  </div>
+
   <!-- ===================== Modale di connessione (Wizard) ===================== -->
   <div id="connect-overlay" class="overlay hidden" role="dialog" aria-modal="true"
     aria-labelledby="connect-modal-title">
@@ -400,6 +415,10 @@
           <button id="btn-health" class="menu-item" type="button"
             title="Stato di salute delle connessioni attive">
             <i data-lucide="activity"></i> Salute Connessioni
+          </button>
+          <button id="btn-onboarding" class="menu-item" type="button"
+            title="Guida introduttiva: giro guidato e primi passi">
+            <i data-lucide="life-buoy"></i> Guida Introduttiva
           </button>
           <button id="btn-admin-rbac" class="menu-item hidden" type="button"
             title="Gestione sottoutenti, permessi e API key">

@@ -13,6 +13,7 @@ import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
 import { initCharts, renderChart, resizeChart } from './charts.js';
+import { segnaTraguardo } from './onboarding-stato.js';
 
 const escapeHtml = esc;
 
@@ -520,6 +521,11 @@ export function setResultsViewMode(mode) {
     if (btn) btn.classList.toggle('active', nome === mode);
     if (view) view.classList.toggle('hidden', nome !== mode);
   }
+
+  // Il traguardo è "disegna un grafico DAI RISULTATI": aprire la vista con il
+  // pannello vuoto non è averlo fatto, ed è proprio il caso in cui la guida
+  // dovrebbe ancora suggerirlo.
+  if (mode === 'chart' && currentResults.length) segnaTraguardo('grafico');
 
   if (mode === 'chart') allargaRisultatiPerGrafico();
   renderResults(currentResults);
@@ -1060,6 +1066,7 @@ export function runQuery(opzioni = {}) {
       if (currentRunId === runId) currentRunId = null;
 
       pendingHandle.done(res, elapsed);
+      segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
       const rows = res.data || res.docs || res.rows || [];
 
       // Se il server segnala un cambio di database (es. via USE <dbname>)

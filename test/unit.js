@@ -657,6 +657,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 25: Errori parlanti (traduzione dei codici dei driver)
   require('./unit-errors');
 
+  // Test 26: Guida introduttiva (quando si apre, novità per versione, traguardi)
+  require('./unit-onboarding');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

@@ -34,6 +34,12 @@ const MongoScriptRunner = require('./db/MongoScriptRunner');
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
 
+// Versione dichiarata al client dall'evento `app:info` (guida introduttiva).
+// Letta una volta sola all'avvio: non cambia mentre il processo è vivo.
+const APP_VERSION = (() => {
+  try { return require('./package.json').version || null; } catch { return null; }
+})();
+
 const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
@@ -2200,6 +2206,22 @@ io.on('connection', (socket) => {
       if (conn) await teardownConnection(conn);
       activeGlobalSessions--;
     }
+  });
+
+  // --- Informazioni sull'installazione ---------------------------------------
+
+  /**
+   * Versione dell'applicazione, letta dal `package.json` del server.
+   *
+   * Serve alla guida introduttiva (`public/js/onboarding.js`) per due decisioni:
+   * se mostrare le novità dopo un aggiornamento e cosa scriverci. Passa dal
+   * SOCKET, non da `/handshake-check`: quell'endpoint risponde anche a chi non
+   * ha superato il gate sull'Origin e non ha alcuna sessione, e la versione
+   * esatta di un'installazione raggiungibile in rete è un'informazione che non
+   * c'è motivo di regalare a chi non è ancora entrato.
+   */
+  safeOn('app:info', (_payload, cb) => {
+    cb({ ok: true, version: APP_VERSION });
   });
 
   // --- Vault & Password ------------------------------------------------------

@@ -3,6 +3,7 @@
 import { state } from './state.js';
 import { $, emit, toast, openModal, closeModal, esc, fmtBytes } from './utils.js';
 import { activeTab } from './tabs.js';
+import { segnaTraguardo } from './onboarding-stato.js';
 
 let currentTabMode = 'new'; // 'new' | 'catalog'
 
@@ -139,6 +140,7 @@ async function executeBackup() {
     });
 
     toast(`✅ Backup completato con successo: ${res.summary.id}`);
+    segnaTraguardo('backup'); // primi passi della guida (no-op se già fatto)
     if (statusEl) {
       statusEl.textContent = `✅ Backup completato: ${res.summary.totalDocs} elementi salvati (${fmtBytes(res.summary.totalBytes)}).`;
     }
