@@ -34,6 +34,7 @@ import { initPendingQueries } from './pending-queries.js';
 import { initScriptRun } from './script-run.js';
 import { initPassphrase } from './passphrase.js';
 import { initOnboarding } from './onboarding.js';
+import { initAbout } from './about.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -173,6 +174,7 @@ initPassphrase();
 initSessionPersistence();
 initSplitView();
 initHeaderMoreMenu();
+initAbout();
 // Per ultima: decide da sé se aprirsi (primo avvio o dopo un aggiornamento) e
 // deve trovare il resto dell'interfaccia già montato, perché il tour indica
 // elementi reali e salta quelli che non ci sono.

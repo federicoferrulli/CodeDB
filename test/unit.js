@@ -457,6 +457,44 @@ console.log('--- Test Unitari CodeDB ---');
     console.log('  OK   Electron: AppUserModelID allineato a build.appId (barra applicazioni) passed');
   }
 
+  // Test 5k-bis: licenza e manleva. Il testo compare in due posti — la pagina
+  // di accettazione dell'installer NSIS e la schermata "Informazioni & Licenza"
+  // dentro l'app — ma la sorgente deve restare UNA: due versioni divergenti
+  // dello stesso impegno legale sono il difetto peggiore possibile qui, e non
+  // se ne accorge nessuno finché non è troppo tardi.
+  {
+    const pkg = require('../package.json');
+    const { contenutoLicenza, USCITA } = require('../tools/genera-licenza');
+    const radice = path.join(__dirname, '..');
+
+    const manleva = fs.readFileSync(path.join(radice, 'MANLEVA.md'), 'utf8');
+    assert.ok(/AGPL-3\.0/.test(manleva), 'MANLEVA.md deve citare la licenza applicata');
+    assert.ok(/senza garanzie/i.test(manleva) && /non rispondono/i.test(manleva),
+      'MANLEVA.md deve contenere l\'esclusione di garanzia e la limitazione di responsabilità');
+
+    // L'installer deve mostrarla: senza `nsis.license` il setup non presenta
+    // alcuna pagina di accettazione.
+    assert.strictEqual(pkg.build.nsis.license, 'build/license.txt',
+      'build.nsis.license deve puntare al file generato da MANLEVA.md');
+
+    assert.ok(fs.existsSync(USCITA), 'build/license.txt deve esistere (npm run electron:licenza)');
+    const generato = fs.readFileSync(USCITA, 'utf8');
+    assert.strictEqual(generato, contenutoLicenza(),
+      'build/license.txt è disallineato da MANLEVA.md: rigeneralo con `npm run electron:licenza`');
+
+    // NSIS legge il file come ANSI senza BOM: gli accenti italiani diventano
+    // caratteri illeggibili proprio nella schermata da accettare.
+    assert.strictEqual(generato.charCodeAt(0), 0xFEFF, 'build/license.txt deve iniziare con il BOM UTF-8');
+    assert.ok(!/[*`#]/.test(generato), 'il markdown non deve arrivare nell\'installer come testo');
+
+    // Gli script di build devono rigenerarlo, altrimenti l'installer resterebbe
+    // con la manleva della build precedente.
+    for (const s of ['build:win', 'release:win']) {
+      assert.ok((pkg.scripts[s] || '').includes('electron:licenza'), `${s} deve rigenerare la licenza`);
+    }
+    console.log('  OK   Licenza e manleva: sorgente unica per installer e app passed');
+  }
+
   // Test 5k: aggiornamenti dell'app desktop (electron-updater). Il modulo non
   // tocca Electron finché non si crea il gestore, quindi gli helper puri sono
   // verificabili qui; della configurazione si verifica ciò che, sbagliato, si

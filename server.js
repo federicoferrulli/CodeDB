@@ -40,6 +40,59 @@ const APP_VERSION = (() => {
   try { return require('./package.json').version || null; } catch { return null; }
 })();
 
+/* ---------------------------------------------------------------------------
+ * Dati della schermata "Informazioni & Licenza" (evento `app:license`).
+ *
+ * Le librerie vendorizzate in `public/vendor/` non compaiono in package.json
+ * (non passano da npm), quindi vanno dichiarate: sono le uniche due voci
+ * scritte a mano, con la licenza letta dall'intestazione dei file distribuiti.
+ * ------------------------------------------------------------------------- */
+const VENDORIZZATE = [
+  { nome: 'echarts', versione: '6.1.0', licenza: 'Apache-2.0', nota: 'grafici (public/vendor/echarts)' },
+  { nome: 'leaflet', versione: '1.9.4', licenza: 'BSD-2-Clause', nota: 'mappe delle geometrie (public/vendor/leaflet)' },
+];
+
+let cacheLicenza = null;
+function datiLicenza() {
+  if (cacheLicenza) return cacheLicenza;
+
+  const leggi = (f) => { try { return fs.readFileSync(path.join(__dirname, f), 'utf8'); } catch { return ''; } };
+  const pkg = (() => { try { return require('./package.json'); } catch { return {}; } })();
+
+  // Il campo della licenza ha tre forme storiche in npm: la stringa SPDX
+  // (`license`), l'oggetto `{type}` e l'array `licenses[]` — usato ancora oggi
+  // da pacchetti diffusi come ssh2. Leggerne una sola significa mostrare "—"
+  // accanto a una libreria che la licenza ce l'ha eccome.
+  const licenzaDi = (p) => {
+    if (typeof p.license === 'string') return p.license;
+    if (p.license && typeof p.license.type === 'string') return p.license.type;
+    if (Array.isArray(p.licenses) && p.licenses.length) {
+      return p.licenses.map((l) => (typeof l === 'string' ? l : l && l.type)).filter(Boolean).join(', ') || '—';
+    }
+    return '—';
+  };
+
+  const dipendenze = Object.keys(pkg.dependencies || {}).sort().map((nome) => {
+    try {
+      const p = require(`./node_modules/${nome}/package.json`);
+      return { nome, versione: p.version || '', licenza: licenzaDi(p) };
+    } catch {
+      return { nome, versione: '', licenza: '—' };
+    }
+  });
+
+  cacheLicenza = {
+    version: APP_VERSION,
+    licenza: pkg.license || 'AGPL-3.0-only',
+    autore: pkg.author || '',
+    repository: (pkg.repository && pkg.repository.url) || '',
+    manleva: leggi('MANLEVA.md'),
+    testoLicenza: leggi('LICENSE.md'),
+    dipendenze: [...dipendenze, ...VENDORIZZATE],
+  };
+  return cacheLicenza;
+}
+
 const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
@@ -2222,6 +2275,23 @@ io.on('connection', (socket) => {
    */
   safeOn('app:info', (_payload, cb) => {
     cb({ ok: true, version: APP_VERSION });
+  });
+
+  /**
+   * Licenza, manleva ed elenco delle librerie di terze parti, per la schermata
+   * "Informazioni & Licenza" (`public/js/about.js`).
+   *
+   * Il testo della manleva NON è scritto qui: si legge da `MANLEVA.md`, che è
+   * anche la sorgente di `build/license.txt` mostrato dall'installer. Due copie
+   * dello stesso impegno legale divergerebbero alla prima correzione.
+   *
+   * Le licenze delle dipendenze si leggono dai loro `package.json` invece di
+   * essere elencate a mano: un elenco scritto a mano resta indietro al primo
+   * aggiornamento e dichiarerebbe il falso proprio nella schermata che serve a
+   * dire il vero. Calcolato una volta sola e tenuto in cache.
+   */
+  safeOn('app:license', (_payload, cb) => {
+    cb({ ok: true, ...datiLicenza() });
   });
 
   // --- Vault & Password ------------------------------------------------------

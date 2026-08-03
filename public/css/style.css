@@ -5776,3 +5776,69 @@ button.linklike:hover {
   .onb-checklist { left: var(--space-sm); right: var(--space-sm); width: auto; bottom: var(--space-sm); }
   .onb-fumetto { max-width: calc(100vw - var(--space-lg)); }
 }
+
+/* =============== Informazioni & Licenza (menu ⋮ → Informazioni) ============ */
+
+.about-modal {
+  position: relative;
+  width: min(680px, 94vw);
+  max-width: 680px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.about-attesa { color: var(--fg-dim); font-size: 0.85rem; padding: var(--space-lg) 0; }
+
+.about-intestazione { display: flex; gap: var(--space-lg); align-items: center; padding-right: var(--space-xl); }
+.about-logo { width: 56px; height: 56px; flex: 0 0 auto; }
+.about-intestazione h2 { margin: 0; font-size: 1.15rem; }
+.about-versione { color: var(--fg-dim); font-weight: 500; font-size: 0.9rem; }
+.about-sotto { margin: 2px 0 0; font-size: 0.78rem; color: var(--fg-dim); }
+
+.about-sezione {
+  margin-top: var(--space-lg);
+  padding: var(--space-md) var(--space-lg);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+}
+.about-sezione h3 { margin: 0 0 var(--space-sm); font-size: 0.92rem; }
+.about-sezione h4 { margin: var(--space-md) 0 var(--space-2xs); font-size: 0.85rem; }
+.about-sezione p { margin: 0 0 var(--space-sm); font-size: 0.8rem; line-height: 1.6; color: var(--fg-dim); }
+.about-sezione strong { color: var(--fg); }
+.about-sezione code { font-family: var(--font-mono); font-size: 0.75rem; color: var(--accent-hover); }
+
+.about-dettaglio { margin-top: var(--space-md); border-top: 1px solid var(--border); padding-top: var(--space-sm); }
+.about-dettaglio summary { cursor: pointer; font-size: 0.8rem; color: var(--fg-dim); }
+.about-dettaglio summary:hover { color: var(--fg); }
+
+.about-licenza {
+  margin: var(--space-sm) 0 0;
+  max-height: 300px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  line-height: 1.5;
+  color: var(--fg-dim);
+  white-space: pre-wrap;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-sm);
+}
+
+.about-tabella { width: 100%; margin-top: var(--space-sm); border-collapse: collapse; font-size: 0.75rem; }
+.about-tabella th {
+  text-align: left; font-weight: 600; color: var(--fg-dim);
+  border-bottom: 1px solid var(--border-2); padding: var(--space-2xs) var(--space-xs);
+}
+.about-tabella td { padding: var(--space-2xs) var(--space-xs); border-bottom: 1px solid var(--border); }
+.about-tabella em { color: var(--fg-muted); font-style: normal; font-size: 0.7rem; }
+.about-nota { margin: var(--space-sm) 0 0; font-size: 0.72rem; color: var(--fg-muted); }
+
+.about-azioni { display: flex; justify-content: flex-end; margin-top: var(--space-lg); }
+
+/* La checklist dei primi passi sta a z-index 8000, cioè sopra le modali: con
+   una modale aperta si nasconde, altrimenti coprirebbe i pulsanti in basso a
+   destra dei pannelli larghi (Backup, Storico) senza che si capisca perché. */
+body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }

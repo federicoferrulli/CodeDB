@@ -193,6 +193,20 @@
     </div>
   </div>
 
+  <!-- ============ Informazioni & Licenza (menu ⋮ → Informazioni) ============
+       Corpo riempito da `about.js` con i dati dell'evento `app:license`: la
+       manleva e le licenze delle dipendenze NON sono scritte nel markup, si
+       leggono da MANLEVA.md e dai package.json, così non possono divergere da
+       ciò che l'installer mostra e da ciò che è davvero installato. -->
+  <div id="about-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-label="Informazioni e licenza di CodeDB">
+    <div class="modal about-modal">
+      <button type="button" class="onb-chiudi onb-chiudi-modale" id="about-close"
+        aria-label="Chiudi">✕</button>
+      <div id="about-body"></div>
+    </div>
+  </div>
+
   <!-- ================== Guida introduttiva (menu ⋮ → Guida) ==================
        Contenitore unico per benvenuto, hub della guida e novità di versione: il
        corpo è riscritto da `onboarding.js` perché i tre contenuti hanno struttura
@@ -415,6 +429,10 @@
           <button id="btn-health" class="menu-item" type="button"
             title="Stato di salute delle connessioni attive">
             <i data-lucide="activity"></i> Salute Connessioni
+          </button>
+          <button id="btn-about" class="menu-item" type="button"
+            title="Versione, licenza AGPL-3.0 e manleva">
+            <i data-lucide="scale"></i> Informazioni &amp; Licenza
           </button>
           <button id="btn-onboarding" class="menu-item" type="button"
             title="Guida introduttiva: giro guidato e primi passi">
