@@ -1,0 +1,137 @@
+{
+  "progetto": "CodeDB",
+  "branch": "develop",
+  "data": "2026-08-03",
+  "passata": "seconda del 2026-08-03",
+  "tipo_analisi": "revisione statica del diff dei commit 36e4255 e e75b613 (2587 righe cambiate lo stesso giorno, comprese le correzioni dei 69 rilievi precedenti) piu' letture mirate su moduli frontend dichiarati scoperti. Due rilievi sono stati poi dimostrati eseguendo il codice interessato in isolamento (semantica di 'trust proxy' in Express, migrazione delle chiavi di storage in Chrome headless).",
+  "relazione_con_audit_precedenti": "docs/audit-2026-07-31.json (CDB-01..CDB-64) e docs/audit-2026-08-03.json (CDB-65..CDB-69) risultano tutti corretti e verificati. Questa passata audita IL CODICE DELLE CORREZIONI: e' il codice piu' recente della piattaforma e non era mai stato riletto. Tre dei sei rilievi sono difetti introdotti proprio dai fix di oggi (CDB-70, CDB-71, CDB-74), uno e' un pattern corretto solo dove il rilievo originale lo nominava (CDB-72).",
+  "ambito_analizzato": [
+    "diff completo di server.js (trust proxy, /handshake-check, parseIni, vaultProtetto, mongoScriptHost, categoriaVirtualJoin, chiusura degli script)",
+    "diff di public/js/{connection,utils,queryhistory,auth,colltabs,exportimport,insert,inlineEdit,cellselect,grid,main,connmanager,tabs,backupmanager}.js",
+    "diff di db/{errors,vault,MongoScript,MongoScriptRunner,MongoShell,ScriptRunner,SqlToMql,DbStrategy,MongoDbStrategy,PostgreSqlStrategy}.js nei punti a rischio",
+    "diff di backup/lib/{util,engine,restore,connstore}.js e backup/cli.js",
+    "public/sw.js ed electron-main.js riscritti oggi",
+    "public/js/splitview.js e public/js/pending-queries.js (ricerca mirata su operazioni distruttive, concorrenza e crescita illimitata)",
+    "db/VirtualJoinEngine.js:55-79 (per verificare i nomi di campo usati da categoriaVirtualJoin)"
+  ],
+  "ambito_non_analizzato": [
+    "public/js/{graph3d,query-tab,admin-rbac,schema-ops,autocomplete,snippet-manager,details,responsive,live,charts,geomap}.js: solo ricerche mirate, nessuna lettura riga per riga",
+    "mcp/McpGateway.js, auth/*, backup/* al di fuori delle parti toccate oggi (coperti dall'audit del 31/7)",
+    "il diff di db/ letto nei punti a rischio ma non integralmente",
+    "nessun test eseguito durante l'analisi (regola dell'audit): i rilievi sono verificati sul codice, non riprodotti sull'applicazione in esercizio"
+  ],
+  "riepilogo": {
+    "critica": 0,
+    "alta": 0,
+    "media": 2,
+    "bassa": 4,
+    "totale": 6
+  },
+  "priorita_intervento": [
+    "CDB-71",
+    "CDB-70",
+    "CDB-74",
+    "CDB-72",
+    "CDB-73",
+    "CDB-75"
+  ],
+  "criterio_priorita": "CDB-71 per primo perche' finche' resta com'e' la protezione del login in beta e' PEGGIORE di prima della correzione di CDB-19: prima il freno era inefficace per eccesso, ora lo e' per difetto e in modo sfruttabile. CDB-70 subito dopo perche' costa una riga e chiude davvero un rilievo che risulta chiuso senza esserlo. CDB-74 prima del rilascio e non dopo: passato l'aggiornamento, i dati da migrare sono gia' stati cancellati. Gli ultimi tre sono meccanici.",
+  "note_revisione": "Prima passata del 2026-08-03: CDB-65..CDB-69 (codice entrato dopo l'audit del 31/7). Seconda passata dello stesso giorno: CDB-70..CDB-75 sul codice delle correzioni. TUTTI E SEI CORRETTI e verificati nella stessa sessione — vedi il campo 'verifica' di ciascun finding.",
+  "findings": [
+    {
+      "id": "CDB-71",
+      "severita": "Media",
+      "categoria": "sicurezza/autenticazione",
+      "modulo": "server.js",
+      "riferimento": "server.js:79-81 (prima della correzione), uso a server.js:1822",
+      "titolo": "Il rate limit del login torna aggirabile: 'trust proxy: true' fa leggere l'X-Forwarded-For scritto dal client",
+      "descrizione": "La correzione di CDB-19 aveva impostato app.set('trust proxy', true). Con `true` Express considera attendibile l'INTERA catena di X-Forwarded-For e risale fino al valore piu' a sinistra, che e' quello scritto dal client e non dal proxy. Il commento accanto attribuiva il rischio al solo caso 'senza proxy davanti': con `true` vale anche CON il proxy. Il freno ai tentativi di accesso (LOGIN_MAX_ATTEMPTS, server.js:1690) e' chiavato su req.ip, quindi diventa inefficace.",
+      "scenario": "Istanza in beta dietro reverse proxy con CODEDB_TRUST_PROXY_TLS=1 (la configurazione che assertTransportSafe richiede per uscire dal loopback). L'attaccante prova password inviando X-Forwarded-For: 9.9.9.9, poi 9.9.9.10, e cosi' via: req.ip cambia a ogni richiesta e loginBlocked non scatta mai. Dimostrato eseguendo due app Express identiche con i due valori: con `true` req.ip risulta 9.9.9.9 (valore del client), con `1` risulta l'indirizzo inserito dal proxy.",
+      "fix": "Dichiarare il NUMERO di hop fidati invece di `true`: app.set('trust proxy', hops) con hops = CODEDB_TRUST_PROXY_HOPS oppure 1. Express scarta esattamente quegli hop e legge l'indirizzo che il proxy ha inserito.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Due app Express a confronto: con 'true' req.ip = 9.9.9.9 (scritto dal client), con 1 hop req.ip = 127.0.0.1 (inserito dal proxy)."
+    },
+    {
+      "id": "CDB-70",
+      "severita": "Media",
+      "categoria": "sicurezza/segreti",
+      "modulo": "public/js/connection.js",
+      "riferimento": "public/js/connection.js:165-177 (CAMPI_SEGRETI, senzaSegreti); campi di connessione in server.js:240-252",
+      "titolo": "La password resta in memoria nel browser quando la connessione usa un URI completo",
+      "descrizione": "La correzione di CDB-22 rimuove dalla configurazione conservata sul tab i campi password, sshPassword e sshPassphrase, ma non `uri`. CodeDB supporta la modalita' 'URI completa', in cui le credenziali stanno DENTRO la stringa (mongodb://utente:segreto@host/). Per una connessione non salvata in quella modalita' tab.connCfg.uri conserva la password per tutta la sessione: esattamente cio' che la correzione dichiara — nel proprio commento — di aver eliminato. Il commento che afferma il contrario e' esso stesso parte del problema, perche' chiude la questione agli occhi di chi legge.",
+      "scenario": "L'utente apre una connessione al volo incollando mongodb://admin:Pa$$w0rd@db.interno:27017. Da quel momento tabs.list[0].connCfg.uri contiene la password in chiaro, leggibile dalla console del browser o da qualunque script iniettato nella pagina (il rilievo originale CDB-22 nasceva proprio da questo scenario).",
+      "fix": "Aggiungere 'uri' a CAMPI_SEGRETI. L'etichetta della connessione mostrata nell'interfaccia arriva gia' da res.label, prodotta dal server senza credenziali.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Controllo in Chrome headless: CAMPI_SEGRETI = 'password', 'sshPassword', 'sshPassphrase', 'uri'."
+    },
+    {
+      "id": "CDB-74",
+      "severita": "Bassa",
+      "categoria": "correttezza/dati utente",
+      "modulo": "public/js/queryhistory.js",
+      "riferimento": "public/js/queryhistory.js:14-24 (PREFIX, PREFIX_STORICO), chiaviStorico() e potaChiavi()",
+      "titolo": "Lo storico delle query sparisce, e viene poi cancellato, dopo l'aggiornamento",
+      "descrizione": "La correzione di CDB-64 ha cambiato il prefisso delle chiavi da 'queryHistory:' a 'codedb:queryHistory:' SENZA migrare i valori esistenti, mentre per le altre chiavi (larghezze delle sidebar, cartelle chiuse) era stato scritto apposta l'helper migraChiave in utils.js. Le chiavi vecchie vengono solo enumerate da chiaviStorico(), quindi historyKey() non le trova piu' (storico apparentemente vuoto) e potaChiavi() — che invece le vede — puo' cancellarle definitivamente.",
+      "scenario": "Un utente con 50 query in cronologia aggiorna CodeDB: alla riapertura la cronologia di ogni collection e' vuota, e appena si superano le 200 chiavi la potatura elimina anche quelle storiche. Nessun messaggio spiega perche', e il dato non e' recuperabile.",
+      "fix": "Migrare una volta sola al caricamento del modulo: per ogni chiave con il prefisso vecchio, copiare il valore sulla chiave nuova (se non esiste gia') e rimuovere la vecchia.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Chrome headless: seminata una chiave 'queryHistory:prod:shop:ordini' e una 'gui-db:width:sidebar', poi ricaricata la pagina. Esito: vecchie rimosse, nuove presenti, contenuto del filtro preservato, zero residui col vecchio prefisso."
+    },
+    {
+      "id": "CDB-72",
+      "severita": "Bassa",
+      "categoria": "risorse/concorrenza",
+      "modulo": "public/js/splitview.js",
+      "riferimento": "public/js/splitview.js:675-681",
+      "titolo": "La cancellazione multipla dalla Split-View non ha limite di concorrenza",
+      "descrizione": "deletePaneSelectedDocs usa Promise.allSettled(ids.map(...)) e manda tutte le doc:delete insieme. E' lo stesso difetto di CDB-51, corretto lo stesso giorno in grid.js e cellselect.js con l'helper eseguiAOndate: il rilievo originale nominava quei due file e la correzione ha seguito il rilievo invece del pattern, lasciando scoperto il terzo punto in cui il pattern compare.",
+      "scenario": "Selezione di 400 righe in un pannello della Split-View e cancellazione: 400 messaggi partono insieme, la coda del socket si riempie e ogni altra operazione resta in attesa — compreso l'altro pannello, che sta guardando un'altra connessione.",
+      "fix": "eseguiAOndate(ids, 8, (id) => emitPaneQuery(p.tabId, 'doc:delete', { db: p.db, coll: p.coll, id })), gia' esportata da utils.js.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Controllo statico: splitview.js:679 usa eseguiAOndate con ampiezza 8; l'import da utils.js e' presente."
+    },
+    {
+      "id": "CDB-73",
+      "severita": "Bassa",
+      "categoria": "risorse/crescita illimitata",
+      "modulo": "public/js/pending-queries.js",
+      "riferimento": "public/js/pending-queries.js:112-137 (le voci in errore non vengono mai rimosse), :43 (persistenza in sessionStorage)",
+      "titolo": "Il registro delle query in sospeso cresce senza tetto",
+      "descrizione": "Le query riuscite si rimuovono da sole in done(); quelle fallite restano — ed e' voluto, sono quelle che l'utente deve poter ritrovare — ma nulla ne limitava il numero. Ogni voce porta con se' il testo completo della query e l'array intero viene serializzato in sessionStorage, che ha un tetto di pochi MB: superato quello, save() fallisce e l'errore finisce in un console.warn che nessuno legge, quindi il registro smette di sopravvivere ai refresh senza alcun segnale.",
+      "scenario": "Sessione di lavoro lunga su una query che fallisce ripetutamente mentre la si corregge: decine di voci con il testo completo si accumulano, il pannello diventa illeggibile e la persistenza si rompe in silenzio.",
+      "fix": "Tetto alle voci conservate (100), applicato dopo ogni inserimento, che NON scarta mai le voci ancora in corso: quelle sono lo stato di un'operazione viva, non uno storico.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Chrome headless: 250 query registrate e fatte fallire, il registro ne conserva 100 con la piu' recente in testa ('SELECT 249')."
+    },
+    {
+      "id": "CDB-75",
+      "severita": "Bassa",
+      "categoria": "efficienza",
+      "modulo": "public/js/exportimport.js",
+      "riferimento": "public/js/exportimport.js:33-49 (blocchiDiImport)",
+      "titolo": "L'import serializza ogni documento due volte",
+      "descrizione": "La correzione di CDB-34 misura la dimensione di OGNI documento con JSON.stringify per comporre blocchi che rispettino il tetto del trasporto; lo stesso documento verra' poi serializzato di nuovo da Socket.IO al momento dell'invio. Su import grandi il costo di serializzazione raddoppia, tutto sul thread dell'interfaccia e tutto prima che l'avanzamento cominci a muoversi.",
+      "scenario": "Import di un file da 100.000 documenti: prima che parta il primo blocco il browser serializza l'intero file per misurarlo, con una pausa visibile e la barra di avanzamento ferma a zero.",
+      "fix": "Misurare un CAMPIONE (i primi 50 documenti) e usare la media per i successivi: serve un ordine di grandezza, non una misura esatta — il limite vero lo applica il server, e il margine fra il tetto scelto (3 MB) e quello reale (5 MB) assorbe l'errore della stima.",
+      "sforzo": "basso",
+      "stato": "corretto",
+      "corretto_il": "2026-08-03",
+      "verifica": "Controllo statico del codice; nessuna regressione nella suite (npm test verde, 16/16 e2e verdi)."
+    }
+  ],
+  "stato_al_2026_08_03": {
+    "corretti": 6,
+    "aperti": 0,
+    "totale": 6
+  }
+}

@@ -15,12 +15,12 @@ In un ecosistema MCP:
 
 ---
 
-## 2. Perché integrare MCP in gui-mongodb?
+## 2. Perché integrare MCP in CodeDB?
 
-L'integrazione è un'evoluzione naturale per `gui-mongodb` per tre ragioni fondamentali:
+L'integrazione è un'evoluzione naturale per `CodeDB` per tre ragioni fondamentali:
 
 1. **Il lavoro di astrazione è già fatto:** Grazie allo *Strategy Pattern* (`DbStrategy`, `MongoDbStrategy`, `MySqlStrategy`), il backend possiede già le funzioni programmatiche unificate (`listDatabases`, `listCollections`, `dbSchema`, `collectionFind`) che servono all'AI per "capire" il database.
-2. **Sicurezza Centralizzata:** `gui-mongodb` gestisce il file `connections.ini`, le password e i complessi tunnel SSH (`ssh2`). Esponendo un Server MCP, l'AI non deve conoscere le credenziali del database. L'AI chiede semplicemente di interrogare la connessione "Produzione", e il backend Node.js gestisce l'accesso con gli stessi criteri di sicurezza usati per la UI.
+2. **Sicurezza Centralizzata:** `CodeDB` gestisce il file `connections.ini`, le password e i complessi tunnel SSH (`ssh2`). Esponendo un Server MCP, l'AI non deve conoscere le credenziali del database. L'AI chiede semplicemente di interrogare la connessione "Produzione", e il backend Node.js gestisce l'accesso con gli stessi criteri di sicurezza usati per la UI.
 3. **Da GUI a "AI Data Hub":** Il progetto smetterebbe di essere solo un'interfaccia visiva per utenti umani, diventando un "ponte universale" (Data Hub) tra le intelligenze artificiali e i dati aziendali/personali (abilitando casi d'uso come la generazione di query SQL/NoSQL da linguaggio naturale: *NL2SQL*).
 
 ---
@@ -30,10 +30,10 @@ L'integrazione è un'evoluzione naturale per `gui-mongodb` per tre ragioni fonda
 L'integrazione avverrà utilizzando l'SDK ufficiale per Node.js (`@modelcontextprotocol/sdk`).
 
 ### Livello di Trasporto (Transport)
-L'SDK Node.js di MCP supporta due metodi di trasporto. Per la massima flessibilità di `gui-mongodb`, potremmo abilitarli entrambi o sceglierne uno:
+L'SDK Node.js di MCP supporta due metodi di trasporto. Per la massima flessibilità di `CodeDB`, potremmo abilitarli entrambi o sceglierne uno:
 
 1. **SSE (Server-Sent Events) via Express:**
-   Poiché `gui-mongodb` ha già un server Express in esecuzione (tipicamente sulla porta 3030), possiamo aggiungere due endpoint (es. `GET /mcp/sse` e `POST /mcp/messages`). Questo permette ai client AI di connettersi al server MCP tramite la rete (anche in locale), mantenendo la comunicazione asincrona.
+   Poiché `CodeDB` ha già un server Express in esecuzione (tipicamente sulla porta 3030), possiamo aggiungere due endpoint (es. `GET /mcp/sse` e `POST /mcp/messages`). Questo permette ai client AI di connettersi al server MCP tramite la rete (anche in locale), mantenendo la comunicazione asincrona.
 2. **Standard I/O (stdio):**
    Utile se vogliamo che un client come Claude Desktop lanci direttamente `node server.js` in background e comunichi tramite i flussi di input/output standard.
 
@@ -44,7 +44,7 @@ Attualmente la comunicazione tra Web UI e Backend usa `Socket.IO` instradando tu
 
 ## 4. I "Tools" MCP da Esporre
 
-I server MCP definiscono dei "Tools" (strumenti) che l'AI può invocare. Mappando l'attuale logica di `gui-mongodb`, esporremo i seguenti strumenti:
+I server MCP definiscono dei "Tools" (strumenti) che l'AI può invocare. Mappando l'attuale logica di `CodeDB`, esporremo i seguenti strumenti:
 
 - **`list_saved_connections`**: Legge `connections.ini` e restituisce i nomi e i tipi di DB disponibili all'AI, omettendo rigorosamente le password.
 - **`connect_database`**: Inizializza una connessione a uno dei DB salvati e restituisce un `connection_id` (simile all'attuale `tabId`).
@@ -71,7 +71,7 @@ const { SSEServerTransport } = require("@modelcontextprotocol/sdk/server/sse.js"
 
 // Inizializzazione del Server MCP
 const mcpServer = new Server(
-  { name: "gui-mongodb-mcp", version: "1.0.0" },
+  { name: "CodeDB-mcp", version: "1.0.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -170,7 +170,7 @@ Tutte e tre le fasi sono implementate in `mcp/McpGateway.js` (montato da `server
 
 ```bash
 # Claude Code
-claude mcp add --transport http gui-mongodb http://localhost:3030/mcp
+claude mcp add --transport http CodeDB http://localhost:3030/mcp
 
 # Client solo-stdio (Claude Desktop): mcpServers →
 # { "command": "npx", "args": ["mcp-remote", "http://localhost:3030/mcp"] }

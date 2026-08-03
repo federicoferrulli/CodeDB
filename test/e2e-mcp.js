@@ -54,7 +54,7 @@ async function call(client, name, args) {
 
 async function newMcpClient() {
   const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`));
-  const client = new Client({ name: 'gui-mongodb-e2e-mcp', version: '1.0.0' });
+  const client = new Client({ name: 'CodeDB-mcp-e2e-mcp', version: '1.0.0' });
   await client.connect(transport);
   return { client, transport };
 }

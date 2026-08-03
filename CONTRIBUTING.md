@@ -64,8 +64,8 @@ Below is a map of the primary components and directories in the repository:
 
 1. **Fork** the repository and **clone** your fork:
    ```bash
-   git clone https://github.com/<your-username>/gui-mongodb.git
-   cd gui-mongodb
+   git clone https://github.com/<your-username>/CodeDB.git
+   cd CodeDB
    ```
 2. **Install dependencies**:
    ```bash

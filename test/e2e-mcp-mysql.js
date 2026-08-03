@@ -76,7 +76,7 @@ let testServer = null;
 
     console.log('3. MCP: connect_database su MySQL');
     transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`));
-    client = new Client({ name: 'gui-mongodb-e2e-mcp-mysql', version: '1.0.0' });
+    client = new Client({ name: 'CodeDB-mcp-mysql', version: '1.0.0' });
     await client.connect(transport);
     const conn = await call(client, 'connect_database', { saved: CONN_NAME });
     assert(conn.ok && conn.data.dbType === 'mysql', `connessione aperta (dbType = ${conn.ok ? conn.data.dbType : conn.text})`);

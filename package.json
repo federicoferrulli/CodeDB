@@ -4,6 +4,10 @@
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
   "author": "Federico 'Keus' Ferrulli",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/federicoferrulli/CodeDB.git"
+  },
   "main": "electron-main.js",
   "bin": {
     "codedb": "bin/codedb.js",
@@ -20,6 +24,9 @@
     "build:linux": "npm run electron:icons && electron-builder --linux --publish never",
     "build:all": "npm run electron:icons && electron-builder -mwl --publish never",
     "build:dir": "npm run electron:icons && electron-builder --dir --publish never",
+    "release:win": "npm run electron:icons && electron-builder --win --publish always",
+    "release:mac": "npm run electron:icons && electron-builder --mac --publish always",
+    "release:linux": "npm run electron:icons && electron-builder --linux --publish always",
     "dist:win": "npm run electron:icons && node tools/build-desktop.mjs win32",
     "dist:mac": "npm run electron:icons && node tools/build-desktop.mjs darwin",
     "dist:linux": "npm run electron:icons && node tools/build-desktop.mjs linux",
@@ -47,6 +54,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
     "bson": "^6.10.0",
+    "electron-updater": "^6.8.9",
     "express": "^4.21.0",
     "mongodb": "^6.12.0",
     "mysql2": "^3.22.5",
@@ -72,6 +80,14 @@
       "buildResources": "build"
     },
     "npmRebuild": false,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "federicoferrulli",
+        "repo": "CodeDB",
+        "releaseType": "release"
+      }
+    ],
     "files": [
       "**/*",
       "!dist/**",

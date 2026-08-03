@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons } from './utils.js';
+import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
 import { openInsertDocForContext } from './insert.js';
 
@@ -672,13 +672,17 @@ function deletePaneSelectedDocs(paneId) {
   }
   if (!confirm(`Eliminare i ${ids.length} documenti selezionati? Questa azione non si può annullare.`)) return;
 
-  Promise.allSettled(ids.map((id) =>
+  // A ondate, non tutte insieme (CDB-72): stesso limite già applicato alla
+  // griglia principale e all'incolla di celle. Mandare centinaia di doc:delete
+  // in un colpo riempie la coda del socket e mette in attesa dietro di sé ogni
+  // altra operazione, compreso l'altro pannello della Split-View.
+  eseguiAOndate(ids, 8, (id) =>
     emitPaneQuery(p.tabId, 'doc:delete', {
       db: p.db,
       coll: p.coll,
       id,
     })
-  )).then((results) => {
+  ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
     p.selectedDocs.clear();

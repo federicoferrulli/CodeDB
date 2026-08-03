@@ -24,18 +24,40 @@ const CHUNK = 500;
 // Si tiene un margine ampio per la serializzazione EJSON e il resto del payload.
 const CHUNK_BYTES = 3 * 1024 * 1024;
 
+// Quanti documenti si misurano davvero prima di passare alla media (CDB-75).
+const CAMPIONE_DIM = 50;
+
 /**
  * Divide i documenti in blocchi che rispettano ENTRAMBI i limiti: numero di
  * documenti e dimensione stimata. Un singolo documento più grande del tetto
  * viaggia comunque da solo — se sfora, il rifiuto arriva dal server con un
  * messaggio, che è meglio di una connessione chiusa a metà lavoro.
+ *
+ * La dimensione si stima su un CAMPIONE (CDB-75): misurare ogni documento con
+ * `JSON.stringify` significa serializzare l'intero file una volta in più
+ * rispetto a quanto farà Socket.IO al momento dell'invio, e su un import da
+ * centomila documenti quel giro in più blocca l'interfaccia prima ancora che
+ * l'avanzamento parta. Qui serve un ordine di grandezza, non una misura: il
+ * limite vero lo applica il server, e il margine di 3 MB su 5 assorbe l'errore
+ * della stima. I documenti molto grandi restano misurati singolarmente finché
+ * il campione non è completo, che è il caso in cui la stima conta davvero.
  */
 function blocchiDiImport(docs) {
   const blocchi = [];
   let corrente = [];
   let byte = 0;
+  let misurati = 0;
+  let sommaMisurata = 0;
+
   for (const doc of docs) {
-    const dim = JSON.stringify(doc).length;
+    let dim;
+    if (misurati < CAMPIONE_DIM) {
+      dim = JSON.stringify(doc).length;
+      sommaMisurata += dim;
+      misurati += 1;
+    } else {
+      dim = Math.ceil(sommaMisurata / misurati);
+    }
     if (corrente.length && (corrente.length >= CHUNK || byte + dim > CHUNK_BYTES)) {
       blocchi.push(corrente);
       corrente = [];

@@ -23,6 +23,39 @@ const PREFIX_STORICO = 'queryHistory:'; // chiavi scritte dalle versioni precede
 // su un computer condiviso, con i filtri (cioè dei dati) di chi c'era prima.
 const MAX_CHIAVI = 200;
 
+/**
+ * Porta le chiavi scritte dalle versioni precedenti sul prefisso nuovo (CDB-74).
+ *
+ * Senza questo passaggio il cambio di prefisso non "sposta" lo storico: lo rende
+ * invisibile (`historyKey` cerca solo il nome nuovo) e poi lo fa cancellare dalla
+ * potatura, che invece le chiavi vecchie le vede. Per l'utente sarebbe la
+ * sparizione silenziosa della propria cronologia a un aggiornamento.
+ *
+ * Gira una volta sola, al caricamento del modulo: dopo, non esistono più chiavi
+ * con il vecchio prefisso.
+ */
+function migraStoricoDaPrefissoVecchio() {
+  try {
+    const vecchie = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(PREFIX_STORICO) && !k.startsWith(PREFIX)) vecchie.push(k);
+    }
+    for (const vecchia of vecchie) {
+      const nuova = PREFIX + vecchia.slice(PREFIX_STORICO.length);
+      // Se la chiave nuova esiste già (aggiornamento a metà, due schede aperte)
+      // vince quella nuova: è la più recente.
+      if (localStorage.getItem(nuova) === null) {
+        const valore = localStorage.getItem(vecchia);
+        if (valore !== null) localStorage.setItem(nuova, valore);
+      }
+      localStorage.removeItem(vecchia);
+    }
+  } catch { /* storage non disponibile: si riparte senza storico */ }
+}
+
+migraStoricoDaPrefissoVecchio();
+
 // Chiave localStorage per la collection corrente del tab attivo.
 function historyKey() {
   if (!state.db || !state.coll) return null;

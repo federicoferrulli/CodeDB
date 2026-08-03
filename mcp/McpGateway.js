@@ -514,7 +514,7 @@ function errorResult(err) {
 
 function buildMcpServer(session, deps) {
   const server = new McpServer(
-    { name: 'gui-mongodb-mcp', version: require('../package.json').version },
+    { name: 'CodeDB-mcp', version: require('../package.json').version },
     {
       instructions:
         'Gateway di sola lettura verso i database (MongoDB e MySQL) gestiti da Mongo Web GUI. ' +

@@ -76,8 +76,17 @@ const app = express();
 // risolve, perché l'indirizzo diventa scrivibile dal client e il rate limit si
 // aggira cambiandolo a ogni tentativo. La variabile esiste già ed è esattamente
 // la dichiarazione "c'è un proxy davanti" (vedi assertTransportSafe).
+//
+// Si dichiara il NUMERO DI HOP fidati, mai `true` (CDB-71). Con `true` Express
+// risale l'intera catena di X-Forwarded-For e prende il valore più a sinistra —
+// che è quello scritto dal CLIENT, non dal proxy: il freno ai tentativi di
+// accesso tornerebbe aggirabile cambiando l'header a ogni richiesta, e stavolta
+// di proposito. Con un numero, Express scarta esattamente quegli hop e legge
+// l'indirizzo che il proxy ha inserito. Chi ha due proxy in cascata (CDN +
+// ingress) alza CODEDB_TRUST_PROXY_HOPS di conseguenza.
 if (String(process.env.CODEDB_TRUST_PROXY_TLS || '').trim() === '1') {
-  app.set('trust proxy', true);
+  const hops = parseInt(process.env.CODEDB_TRUST_PROXY_HOPS, 10);
+  app.set('trust proxy', Number.isFinite(hops) && hops > 0 ? hops : 1);
 }
 
 const server = http.createServer(app);

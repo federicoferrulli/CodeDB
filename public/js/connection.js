@@ -163,7 +163,12 @@ function closeConnModal() {
 // Socket diretta e non emit(): la risposta va gestita anche se nel frattempo
 // l'utente ha chiuso il tab attivo (emit la scarterebbe).
 // Campi che non devono sopravvivere alla richiesta di connessione (CDB-22).
-const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase'];
+//
+// `uri` è nell'elenco perché in modalità "URI completa" le credenziali stanno
+// DENTRO la stringa (`mongodb://utente:segreto@host/`): togliere il campo
+// `password` e lasciare l'URI significava dichiarare chiuso un buco che restava
+// aperto per metà degli utenti (CDB-70).
+const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase', 'uri'];
 
 /**
  * Configurazione conservabile sul tab: per una connessione salvata resta il

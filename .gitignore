@@ -3,7 +3,7 @@ node_modules/
 connections.ini
 connections*
 vault.json
-vault*.json
+vault*
 vault*
 connections.ini.bak
 connections.ini.bak2

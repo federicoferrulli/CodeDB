@@ -53,6 +53,30 @@ function save() {
   saveTimer = setTimeout(flushSave, 200);
 }
 
+/**
+ * Tetto alle voci conservate (CDB-73).
+ *
+ * Le query riuscite si tolgono da sole; quelle FALLITE restano — ed è voluto,
+ * sono quelle che l'utente deve poter ritrovare — ma nulla le limitava. Ogni
+ * voce porta con sé il testo della query e finisce in `sessionStorage`, che ha
+ * un tetto di pochi MB: superato quello, il salvataggio falliva in silenzio (un
+ * `console.warn` che nessuno legge) e il registro smetteva di sopravvivere ai
+ * refresh. Si conservano le più recenti, che sono quelle che servono.
+ */
+const MAX_VOCI_REGISTRO = 100;
+
+function potaRegistro() {
+  if (pendingQueries.length <= MAX_VOCI_REGISTRO) return;
+  // Le voci ancora in corso non si buttano MAI: sono lo stato di un'operazione
+  // viva, non uno storico.
+  const inCorso = pendingQueries.filter((q) => q.status === 'running');
+  const concluse = pendingQueries.filter((q) => q.status !== 'running');
+  const tenute = concluse.slice(0, Math.max(MAX_VOCI_REGISTRO - inCorso.length, 0));
+  pendingQueries.length = 0;
+  // Si ricompone rispettando l'ordine originale (le più recenti in testa).
+  pendingQueries.push(...[...inCorso, ...tenute].sort((a, b) => b.startedAt - a.startedAt));
+}
+
 // Il modale è pesante da ridisegnare: quando è chiuso non serve toccarne il DOM.
 function isPendingModalOpen() {
   const modal = $('#modal-pending');
@@ -110,6 +134,7 @@ export function trackPending(meta) {
   };
 
   pendingQueries.unshift(item);
+  potaRegistro();
   save();
   notify();
 

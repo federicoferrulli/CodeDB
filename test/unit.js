@@ -457,6 +457,70 @@ console.log('--- Test Unitari CodeDB ---');
     console.log('  OK   Electron: AppUserModelID allineato a build.appId (barra applicazioni) passed');
   }
 
+  // Test 5k: aggiornamenti dell'app desktop (electron-updater). Il modulo non
+  // tocca Electron finché non si crea il gestore, quindi gli helper puri sono
+  // verificabili qui; della configurazione si verifica ciò che, sbagliato, si
+  // scoprirebbe solo DOPO aver pubblicato una release.
+  {
+    const pkg = require('../package.json');
+    const upd = require('../electron-aggiornamenti');
+    const mainSrc = fs.readFileSync(path.join(__dirname, '..', 'electron-main.js'), 'utf8');
+
+    // electron-updater gira nel processo principale dell'app INSTALLATA: deve
+    // stare fra le dependencies, non fra le devDependencies (electron-builder
+    // esclude queste ultime dal pacchetto e il modulo mancherebbe a runtime).
+    assert.ok(pkg.dependencies['electron-updater'], 'electron-updater deve essere una dependency di runtime');
+    assert.ok(!(pkg.devDependencies || {})['electron-updater'], 'electron-updater non deve stare nelle devDependencies');
+
+    // Senza `build.publish` electron-builder non scrive `app-update.yml` nel
+    // pacchetto: il controllo fallirebbe su ogni installazione con "ENOENT".
+    const pub = (pkg.build.publish || [])[0];
+    assert.ok(pub && pub.provider, 'build.publish deve dichiarare un provider di pubblicazione');
+    if (pub.provider === 'github') {
+      assert.strictEqual(pub.owner, upd.REPO.owner, 'build.publish.owner deve coincidere con il repo usato dal modulo aggiornamenti');
+      assert.strictEqual(pub.repo, upd.REPO.repo, 'build.publish.repo deve coincidere con il repo usato dal modulo aggiornamenti');
+    }
+
+    // Feed personalizzato (server statico HTTP): HTTPS obbligatorio fuori dal
+    // loopback — su HTTP semplice un attaccante in rete non "vede" ma
+    // SOSTITUISCE l'installer scaricato.
+    assert.strictEqual(upd.feedPersonalizzato({}), null, 'nessuna variabile impostata = nessun feed personalizzato');
+    assert.deepStrictEqual(
+      upd.feedPersonalizzato({ CODEDB_UPDATE_URL: 'https://aggiornamenti.example/codedb/' }),
+      { provider: 'generic', url: 'https://aggiornamenti.example/codedb/' },
+      'un URL HTTPS produce un feed generic'
+    );
+    assert.strictEqual(
+      upd.feedPersonalizzato({ CODEDB_UPDATE_URL: 'https://x.example/', CODEDB_UPDATE_CHANNEL: 'beta' }).channel,
+      'beta', 'il canale è propagato al feed');
+    assert.ok(upd.feedPersonalizzato({ CODEDB_UPDATE_URL: 'http://aggiornamenti.example/' }).errore,
+      'HTTP semplice su host remoto rifiutato');
+    assert.ok(!upd.feedPersonalizzato({ CODEDB_UPDATE_URL: 'http://127.0.0.1:8080/' }).errore,
+      'HTTP su loopback ammesso (prove locali)');
+    assert.ok(upd.feedPersonalizzato({ CODEDB_UPDATE_URL: 'non-un-url' }).errore, 'URL malformato rifiutato');
+
+    // Confronto versioni (rete di sicurezza se isUpdateAvailable manca).
+    assert.ok(upd.confrontaVersioni('1.2.0', '1.1.9') > 0, '1.2.0 > 1.1.9');
+    assert.ok(upd.confrontaVersioni('1.10.0', '1.9.0') > 0, 'confronto numerico, non lessicografico');
+    assert.strictEqual(upd.confrontaVersioni('v1.0.0', '1.0.0'), 0, 'il prefisso "v" è ignorato');
+    assert.ok(upd.confrontaVersioni('1.2.0-beta.1', '1.2.0') < 0, 'una pre-release vale meno della versione finale');
+    assert.ok(upd.confrontaVersioni('1.2.0', '1.2.0-beta.1') > 0, 'e viceversa');
+
+    // Note di rilascio: markup ridotto a testo e lunghezza limitata (finiscono
+    // in un dialog nativo, che non interpreta HTML).
+    const note = upd.noteRilascio({ releaseNotes: '<p>Corretto <b>tutto</b></p><ul><li>uno</li></ul>' });
+    assert.ok(!/[<>]/.test(note) && /Corretto tutto/.test(note), 'le note di rilascio devono essere testo semplice');
+    assert.ok(upd.noteRilascio({ releaseNotes: 'x'.repeat(5000) }).length <= 701, 'le note lunghe vengono accorciate');
+    assert.strictEqual(upd.noteRilascio({}), '', 'nessuna nota = stringa vuota');
+
+    // La voce di menu deve esistere e chiamare il controllo MANUALE (true):
+    // con `false` il controllo resterebbe silenzioso e il clic non darebbe
+    // alcuna risposta quando l'app è già aggiornata.
+    assert.ok(/Controlla aggiornamenti/.test(mainSrc), 'il menu deve contenere la voce "Controlla aggiornamenti…"');
+    assert.ok(/aggiornamenti\.controlla\(true\)/.test(mainSrc), 'la voce di menu deve eseguire un controllo manuale');
+    console.log('  OK   Electron: aggiornamenti (feed, versioni, note, menu) passed');
+  }
+
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
   const requiredFiles = [
     'Dockerfile',

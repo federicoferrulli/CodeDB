@@ -3,6 +3,7 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
+const { creaGestoreAggiornamenti } = require('./electron-aggiornamenti');
 
 const APP_NAME = 'CodeDB';
 const HOST = '127.0.0.1';
@@ -10,6 +11,11 @@ const PORT = Number(process.env.PORT) || 3030;
 const ICON_PATH = path.join(__dirname, 'public', 'codedb.ico');
 
 let mainWindow = null;
+
+// Gestore degli aggiornamenti (electron-updater): la finestra gli viene passata
+// come funzione perché a questo punto non esiste ancora, e cambia a ogni
+// riapertura su macOS (evento `activate`).
+const aggiornamenti = creaGestoreAggiornamenti({ getWindow: () => mainWindow });
 
 // Il nome nel package.json ("mongo-web-gui", storico) determinerebbe altrimenti
 // il nome della cartella dati utente (%APPDATA%/mongo-web-gui): forziamo "CodeDB".
@@ -152,6 +158,10 @@ async function main() {
   }
 
   createWindow();
+
+  // Controllo silenzioso: parla solo se c'è davvero una versione nuova
+  // (CODEDB_NO_UPDATE_CHECK=1 per disattivarlo).
+  aggiornamenti.avviaControlloDifferito();
 }
 
 function createWindow() {
@@ -220,6 +230,11 @@ function buildMenu() {
     {
       label: APP_NAME,
       submenu: [
+        {
+          label: 'Controlla aggiornamenti…',
+          click: () => aggiornamenti.controlla(true)
+        },
+        { type: 'separator' },
         { role: 'reload', label: 'Ricarica' },
         { role: 'forceReload', label: 'Ricarica forzata' },
         { role: 'toggleDevTools', label: 'Strumenti sviluppo' },

@@ -27,10 +27,10 @@ Il server MCP è **lo stesso processo** della GUI: finché la GUI è su, l'endpo
 ### Claude Code (CLI)
 
 ```bash
-claude mcp add --transport http gui-mongodb http://localhost:3030/mcp
+claude mcp add --transport http CodeDB http://localhost:3030/mcp
 ```
 
-Verifica con `claude mcp list` (deve risultare *connected*). Per rimuoverlo: `claude mcp remove gui-mongodb`.
+Verifica con `claude mcp list` (deve risultare *connected*). Per rimuoverlo: `claude mcp remove CodeDB`.
 
 ### Claude Desktop (o altri client solo-stdio)
 
@@ -39,7 +39,7 @@ Claude Desktop non parla HTTP direttamente: si usa il ponte `mcp-remote`. In *Im
 ```json
 {
   "mcpServers": {
-    "gui-mongodb": {
+    "CodeDB": {
       "command": "npx",
       "args": ["mcp-remote", "http://localhost:3030/mcp"]
     }
@@ -56,7 +56,7 @@ In `.cursor/mcp.json` (di progetto) o `~/.cursor/mcp.json` (globale):
 ```json
 {
   "mcpServers": {
-    "gui-mongodb": { "url": "http://localhost:3030/mcp" }
+    "CodeDB": { "url": "http://localhost:3030/mcp" }
   }
 }
 ```
