@@ -3,13 +3,16 @@
 import { state } from './state.js';
 import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext } from './utils.js';
 import { runQuery, ensureRowRendered } from './grid.js';
+import { statistiche, statistichePerColonna, formattaNumero, riassuntoBreve } from './cell-stats.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
 // Ctrl+click sull'header (seleziona la colonna), frecce (con Shift estendono),
 // Ctrl+A, copia negli appunti (Ctrl+C in TSV; dal menu contestuale anche JSON,
-// CSV, Markdown, SQL INSERT), incolla da Excel (Ctrl+V, aggiorna i documenti)
-// ed esportazione CSV della selezione.
+// CSV, Markdown, SQL INSERT), incolla da Excel (Ctrl+V, aggiorna i documenti),
+// esportazione CSV della selezione e STATISTICHE dei valori numerici (somma,
+// media, mediana, min, max… nella barra di stato e nel pannello 📊, calcolate
+// dal modulo puro `cell-stats.js`).
 // Lo stato vive per tab in `state.cellSel` (chiavi "riga:colonna" sugli indici
 // di state.docs/state.columns), così la selezione sopravvive ai re-render.
 
@@ -42,6 +45,9 @@ export function clearCellSelection() {
   s.cells.clear();
 }
 
+// Oltre questa dimensione la selezione non viene analizzata a ogni re-render.
+const MAX_CELLE_RIASSUNTO = 20000;
+
 // Ri-applica le classi CSS della selezione dopo un render della griglia,
 // scartando le celle ormai fuori dai limiti della pagina corrente.
 export function applyCellSelection() {
@@ -60,7 +66,17 @@ export function applyCellSelection() {
     td.classList.toggle('cell-focus', !!s.focus && s.focus.r === r && s.focus.c === c);
   });
   const info = $('#cell-info');
-  if (info) info.textContent = s.cells.size > 1 ? `${s.cells.size} celle selezionate` : '';
+  if (!info) return;
+  if (s.cells.size <= 1) { info.textContent = ''; return; }
+  let testo = `${s.cells.size} celle selezionate`;
+  // Il riassunto si ricalcola a ogni movimento del trascinamento: oltre la
+  // soglia si mostra il solo conteggio e i numeri restano nel pannello 📊,
+  // che gira una volta sola.
+  if (s.cells.size <= MAX_CELLE_RIASSUNTO) {
+    const breve = riassuntoBreve(statistiche(valoriSelezionati()));
+    if (breve) testo += ' · ' + breve;
+  }
+  info.textContent = testo;
 }
 
 // Valore testuale della cella come mostrato in griglia.
@@ -82,6 +98,181 @@ function selectionGrid() {
   const rows = [...new Set(cells.map(([r]) => r))].sort((a, b) => a - b);
   const cols = [...new Set(cells.map(([, c]) => c))].sort((a, b) => a - b);
   return { rows, cols };
+}
+
+// --- Statistiche della selezione -------------------------------------------
+
+// Valori grezzi (EJSON) delle sole celle selezionate, nell'ordine di lettura.
+function valoriSelezionati() {
+  const { rows, cols } = selectionGrid();
+  const has = sel().cells;
+  const out = [];
+  for (const r of rows) {
+    for (const c of cols) {
+      if (has.has(key(r, c))) out.push(cellRaw(r, c));
+    }
+  }
+  return out;
+}
+
+// Gli stessi valori raggruppati per colonna: una selezione di più colonne va
+// analizzata colonna per colonna, perché sommare importi e quantità insieme
+// produce un totale che non significa nulla.
+function valoriPerColonna() {
+  const { rows, cols } = selectionGrid();
+  const has = sel().cells;
+  return cols.map((c) => ({
+    nome: state.columns[c] ?? `col ${c}`,
+    valori: rows.filter((r) => has.has(key(r, c))).map((r) => cellRaw(r, c)),
+  }));
+}
+
+// Valore "grezzo" da copiare: il numero senza separatori italiani, cioè la
+// forma che si può incollare in una query, in un foglio di calcolo inglese o in
+// del codice. Quello mostrato (`216,2`) lì non sarebbe utilizzabile, quindi il
+// pannello offre entrambi: clic = come lo vedi, Ctrl+clic = grezzo.
+function grezzoDi(n) {
+  return n === null || n === undefined || !Number.isFinite(n) ? '' : String(n);
+}
+
+// Righe [etichetta, valore mostrato, valore grezzo] del riepilogo complessivo.
+function righeRiepilogo(st) {
+  const dec = Math.min(Math.max(st.decimali, 2), 6);
+  const num = (v, d) => [formattaNumero(v, d), grezzoDi(v)];
+  const conta = (v) => [String(v), String(v)];
+  return [
+    ['Celle selezionate', ...conta(st.celle)],
+    ['Valori numerici', ...conta(st.numerici)],
+    ['Non numerici', ...conta(st.nonNumerici)],
+    ['Vuoti (null o "")', ...conta(st.vuote)],
+    ['Valori distinti', ...conta(st.distinti)],
+    ['Somma', ...num(st.somma, st.decimali)],
+    ['Media', ...num(st.media, dec)],
+    ['Mediana', ...num(st.mediana, dec)],
+    ['Minimo', ...num(st.min, st.decimali)],
+    ['Massimo', ...num(st.max, st.decimali)],
+    ['Deviazione standard (campionaria)', ...num(st.devStd, dec)],
+  ];
+}
+
+// TSV del pannello, per incollare il riepilogo in un foglio di calcolo.
+function statsTsv(st, perCol) {
+  const righe = righeRiepilogo(st).map(([k, v]) => `${k}\t${v}`);
+  if (perCol.length > 1) {
+    righe.push('');
+    righe.push(['Colonna', 'n', 'Somma', 'Media', 'Mediana', 'Min', 'Max'].join('\t'));
+    for (const c of perCol) {
+      const dec = Math.min(Math.max(c.decimali, 2), 6);
+      righe.push([
+        c.nome, c.numerici,
+        formattaNumero(c.somma, c.decimali), formattaNumero(c.media, dec),
+        formattaNumero(c.mediana, dec), formattaNumero(c.min, c.decimali),
+        formattaNumero(c.max, c.decimali),
+      ].join('\t'));
+    }
+  }
+  return righe.join('\n');
+}
+
+// Pannello 📊 con il riepilogo della selezione (costruito al volo come la
+// modale di duplicazione: non esiste nel DOM finché non serve).
+function showCellStats() {
+  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  const valori = valoriSelezionati();
+  const st = statistiche(valori);
+  const perCol = statistichePerColonna(valoriPerColonna());
+
+  let overlay = document.getElementById('cellstats-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'cellstats-overlay';
+    overlay.className = 'overlay hidden';
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>📊 Statistiche selezione</h2>
+        <p class="hint" style="margin:0 0 8px">Clic su un valore per copiarlo · Ctrl+clic per il valore
+          grezzo (senza separatori, da incollare in una query)</p>
+        <div id="cellstats-body"></div>
+        <div class="modal-actions">
+          <button id="cellstats-copy" class="ghost">Copia riepilogo</button>
+          <button id="cellstats-close" class="primary">Chiudi</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('cellstats-close').addEventListener('click', () => overlay.classList.add('hidden'));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+    // Copia del singolo valore: un gestore delegato una volta sola, perché il
+    // corpo della modale viene riscritto a ogni apertura.
+    document.getElementById('cellstats-body').addEventListener('click', (e) => {
+      const td = e.target.closest('td[data-copia]');
+      if (!td) return;
+      const grezzo = (e.ctrlKey || e.metaKey) && td.dataset.grezzo;
+      const testo = grezzo || td.dataset.copia;
+      if (testo === '' || testo === '—') { toast('Nessun valore da copiare', true); return; }
+      copyText(testo, `Copiato: ${testo}`);
+    });
+  }
+
+  const esc = (s) => String(s).replace(/[&<>]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+  const corpo = document.getElementById('cellstats-body');
+  let html = '';
+  if (!st.numerici) {
+    html += `<p class="hint">Nessun valore numerico nella selezione: date, booleani e testo non
+      vengono sommati (sarebbe un totale privo di significato).</p>`;
+  }
+  // Con più colonne il totale complessivo mescola grandezze diverse (importi e
+  // quantità): resta perché è quello che fa un foglio di calcolo, ma va detto
+  // che il confronto sensato è la tabella per colonna qui sotto.
+  const multiCol = perCol.filter((c) => c.numerici > 0).length > 1;
+  if (multiCol) {
+    html += '<h3 style="margin:0 0 6px;font-size:0.9rem">Tutte le colonne insieme '
+      + '<span class="hint">— somma di grandezze diverse: per il confronto usa la tabella per colonna</span></h3>';
+  }
+  // Ogni valore è copiabile con un clic: `data-copia` è quello mostrato,
+  // `data-grezzo` la forma senza separatori (Ctrl+clic).
+  const cellaValore = (mostrato, grezzo) => {
+    const suggerimento = grezzo && grezzo !== mostrato
+      ? `Clic per copiare «${mostrato}» · Ctrl+clic per ${grezzo}`
+      : `Clic per copiare «${mostrato}»`;
+    return `<td class="mono copiabile" data-copia="${esc(mostrato)}" data-grezzo="${esc(grezzo || '')}"`
+      + ` title="${esc(suggerimento)}">${esc(mostrato)}</td>`;
+  };
+
+  html += '<table class="info-table kv-table"><tbody>'
+    + righeRiepilogo(st).map(([k, v, g]) => `<tr><td>${esc(k)}</td>${cellaValore(v, g)}</tr>`).join('')
+    + '</tbody></table>';
+  if (perCol.length > 1) {
+    html += '<h3 style="margin:14px 0 6px;font-size:0.9rem">Per colonna</h3>'
+      + '<div style="max-height:220px;overflow:auto"><table class="info-table"><thead><tr>'
+      + ['Colonna', 'n', 'Somma', 'Media', 'Mediana', 'Min', 'Max'].map((h) => `<th>${h}</th>`).join('')
+      + '</tr></thead><tbody>'
+      + perCol.map((c) => {
+        const dec = Math.min(Math.max(c.decimali, 2), 6);
+        const celle = [
+          [String(c.numerici), String(c.numerici)],
+          [formattaNumero(c.somma, c.decimali), grezzoDi(c.somma)],
+          [formattaNumero(c.media, dec), grezzoDi(c.media)],
+          [formattaNumero(c.mediana, dec), grezzoDi(c.mediana)],
+          [formattaNumero(c.min, c.decimali), grezzoDi(c.min)],
+          [formattaNumero(c.max, c.decimali), grezzoDi(c.max)],
+        ];
+        return `<tr><td>${esc(c.nome)}</td>` + celle.map(([v, g]) => cellaValore(v, g)).join('') + '</tr>';
+      }).join('')
+      + '</tbody></table></div>';
+  }
+  if (st.approssimato) {
+    html += `<p class="hint" style="margin-top:10px">≈ I valori superano la precisione esatta di un
+      numero JavaScript (oltre 2^53 o più di 15 cifre significative): i totali qui sopra sono
+      arrotondati. Per un calcolo esatto usa un'aggregazione lato database.</p>`;
+  }
+  corpo.innerHTML = html;
+
+  const oldCopy = document.getElementById('cellstats-copy');
+  const newCopy = oldCopy.cloneNode(true);
+  oldCopy.replaceWith(newCopy);
+  newCopy.addEventListener('click', () => copyText(statsTsv(st, perCol), 'Riepilogo copiato'));
+
+  overlay.classList.remove('hidden');
 }
 
 // TSV della selezione: le celle non selezionate dentro il rettangolo di
@@ -345,10 +536,12 @@ function friendlyInsertError(msg) {
 }
 
 function copyToClipboard(text) {
-  const done = () => {
-    const n = sel().cells.size;
-    toast(n === 1 ? 'Cella copiata' : `${n} celle copiate`);
-  };
+  const n = sel().cells.size;
+  copyText(text, n === 1 ? 'Cella copiata' : `${n} celle copiate`);
+}
+
+function copyText(text, messaggio) {
+  const done = () => toast(messaggio);
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(done).catch(() => toast('Copia non riuscita', true));
   } else {
@@ -557,6 +750,14 @@ function focusCellIntoView() {
 export function initCellSelect() {
   const tbody = $('#grid tbody');
 
+  // Il riassunto nella barra di stato è anche la porta d'ingresso al pannello:
+  // chi vede "Σ …" lì è esattamente chi vuole mediana, distinti e per-colonna.
+  const info = $('#cell-info');
+  if (info) {
+    info.title = 'Statistiche della selezione (mediana, distinti, per colonna…)';
+    info.addEventListener('click', () => { if (sel().cells.size) showCellStats(); });
+  }
+
   let dragging = false;
   let dragBase = null; // celle già selezionate prima del drag (Ctrl+trascina = aggiunge)
 
@@ -627,6 +828,8 @@ export function initCellSelect() {
       { label: 'Copia (Ctrl+C)', action: () => copyToClipboard(buildTsv(false)) },
       { label: 'Copia con intestazioni', action: () => copyToClipboard(buildTsv(true)) },
       { label: 'Copia avanzato ▸', action: advanced },
+      '---',
+      { label: '📊 Statistiche selezione…', action: showCellStats },
       '---',
       {
         label: 'Duplica riga ▸',

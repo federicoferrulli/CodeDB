@@ -31,7 +31,7 @@
 import { $, toast, esc, safeUUID, positionFixedDropdown } from './utils.js';
 import { state } from './state.js';
 import {
-  CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, famigliaDi, serieDefault, cfgDefault,
+  CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
   campiDisponibili, costruisciOption, coloreSerie, suggerimenti, azzeraAvvisi, prendiAvvisi, INK,
 } from './chart-option.js';
 
@@ -138,11 +138,7 @@ function autoConfigura(righe, c) {
     const scelto = data || testo || campi[0];
     if (scelto.nome !== c.campoX) {
       c.campoX = scelto.nome;
-      // Un campo data merita un asse temporale: le distanze fra i punti
-      // diventano proporzionali al tempo trascorso invece che tutte uguali.
-      // Si imposta solo quando il campo CAMBIA, altrimenti si sovrascriverebbe
-      // il tipo di asse eventualmente scelto a mano.
-      c.assex.tipo = scelto.tipo === 'data' ? 'time' : 'category';
+      allineaAsseX(c, scelto.tipo);
     }
     c.autoX = true;
   }
@@ -153,6 +149,10 @@ function autoConfigura(righe, c) {
     const num = campi.find((f) => f.tipo === 'numero' && f.nome !== c.campoX);
     if (num) {
       s.campoY = num.nome;
+    } else if (!c.aggrega) {
+      // Senza raggruppamento "conteggio" varrebbe 1 su ogni punto, cioè una
+      // riga piatta che sembra un dato: meglio nessuna misura e l'avviso.
+      s.campoY = null;
     } else {
       // Nessuna colonna numerica: l'unica misura sensata è contare le righe per
       // categoria (ed è quasi sempre quello che si vuole da un elenco).
@@ -161,6 +161,24 @@ function autoConfigura(righe, c) {
     }
     s.autoY = true;
   }
+}
+
+/**
+ * Il tipo dell'asse X segue il TIPO DEL CAMPO, finché non è l'utente a sceglierlo.
+ *
+ * Un campo data merita un asse temporale (le distanze fra i punti diventano
+ * proporzionali al tempo trascorso invece che tutte uguali); una colonna di testo
+ * no — e lasciarci un asse temporale non dà un grafico impreciso, ne dà uno
+ * VUOTO, perché nessun valore è un istante. Era il caso che capitava da solo:
+ * l'asse dedotto da `createdAt`, poi il campo cambiato in `name` dalla barra
+ * rapida e il tipo dell'asse rimasto indietro.
+ */
+function allineaAsseX(c, tipoCampo) {
+  if (c.assex.auto === false) return; // scelta esplicita: non si tocca
+  // Solo data → tempo. Un campo numerico resta "categorie": l'asse `value` vuole
+  // punti come coppie [x, y], che si costruiscono per il tempo e per la
+  // dispersione — su barre e linee darebbe un grafico vuoto.
+  c.assex.tipo = tipoCampo === 'data' ? 'time' : 'category';
 }
 
 /** Chiamata da query-tab quando la vista Chart è attiva o i risultati cambiano. */
@@ -374,7 +392,7 @@ function costruisciPannello() {
         ${chk('aggrega', c.aggrega, 'Raggruppa le righe per il campo X', 'data-ricostruisci="1"')}
         <span class="chart-field-hint block">${c.aggrega
     ? 'Le righe con la stessa X collassano in una categoria e si applica l\'aggregazione della serie.'
-    : 'Una riga = un punto, nell\'ordine di arrivo. Giusto quando la query ha già fatto il GROUP BY.'}</span>
+    : 'Una riga = un punto, col valore della misura così com\'è. È la modalità giusta per vedere l\'andamento reale nel tempo (due misurazioni dello stesso istante restano due punti) e quando la query ha già fatto il GROUP BY.'}</span>
         ${riga('Ordina categorie', sel('ordina', [
       { v: 'nessuno', et: 'Come arrivano' },
       { v: 'x-asc', et: 'Per X crescente' },
@@ -414,7 +432,9 @@ function costruisciPannello() {
     { v: 'category', et: 'Categorie' },
     { v: 'time', et: 'Tempo' },
     { v: 'value', et: 'Numerico' },
-  ], c.assex.tipo), 'Con "Tempo" le distanze fra i punti sono proporzionali al tempo trascorso.')}
+  ], c.assex.tipo), c.assex.auto === false
+    ? 'Scelto a mano: non cambia più da solo al cambio del campo X.'
+    : 'Segue il tipo del campo X (data → Tempo). Con "Tempo" le distanze fra i punti sono proporzionali al tempo trascorso; toccandolo diventa una scelta fissa.')}
         ${riga('Nome asse', txt('assex.nome', c.assex.nome, 'nessuno'))}
         ${riga('Rotazione etichette (°)', num('assex.rotazione', c.assex.rotazione, -90, 90, 15))}
         ${chk('assex.griglia', c.assex.griglia, 'Griglia verticale')}
@@ -551,13 +571,17 @@ function costruisciBarraRapida() {
     </label>` : ''}
     <label class="chart-quick-field">
       <span>Misura</span>
-      <select data-path="campoY" ${d}${s.agg === 'conteggio' ? ' disabled title="Con «Conteggio righe» il campo non serve"' : ''}>${opzioniCampi(s.campoY)}</select>
+      <select data-path="campoY" ${d}${c.aggrega && s.agg === 'conteggio' ? ' disabled title="Con «Conteggio righe» il campo non serve"' : ''}>${opzioniCampi(s.campoY)}</select>
     </label>
-    ${c.aggrega ? `
     <label class="chart-quick-field">
       <span>Calcolo</span>
-      <select data-path="agg" ${d} data-ricostruisci="1">${opzioni(AGGREGAZIONI, s.agg)}</select>
-    </label>` : ''}
+      <select data-path="agg" ${d} data-ricostruisci="1" title="${esc(c.aggrega
+    ? 'Le righe con la stessa X vengono raggruppate e su ognuna si applica questo calcolo.'
+    : 'Nessun raggruppamento: una riga = un punto, col valore della misura così com\'è.')}">${opzioni(
+    [{ v: AGG_GREZZO, et: 'Valori grezzi (nessun calcolo)' }].concat(AGGREGAZIONI),
+    c.aggrega ? s.agg : AGG_GREZZO,
+  )}</select>
+    </label>
     ${c.serie.length > 1 ? `<span class="chart-quick-nota" title="La barra rapida agisce sulla prima serie visibile; le altre si regolano nel pannello">+${c.serie.length - 1} serie</span>` : ''}`;
 }
 
@@ -698,13 +722,39 @@ export function initCharts() {
     if (idSerie) {
       const s = serieDaId(c, idSerie);
       if (!s) return;
+      // "Calcolo" è un menu solo: le aggregazioni vere stanno nella SERIE, la
+      // voce "Valori grezzi" spegne invece il raggruppamento, che è una scelta
+      // globale (`c.aggrega`) — non avrebbe senso raggruppare per una serie e
+      // non per un'altra, condividendo lo stesso asse X.
+      if (path === 'agg' && el.value === AGG_GREZZO) {
+        c.aggrega = false;
+        // In modalità grezza `agg` non si applica più, tranne 'conteggio' che
+        // varrebbe 1 su ogni punto: si torna al valore neutro.
+        if (s.agg === 'conteggio') s.agg = 'primo';
+        s.autoY = false;
+        host.dataset.firma = '';
+        if (barra) barra.dataset.firma = '';
+        disegna();
+        return;
+      }
+      if (path === 'agg') c.aggrega = true;
       scriviPercorso(s, path, valoreControllo(el));
       // Scelta esplicita: da qui in poi `autoConfigura` non la rimpiazza più
       // quando cambiano le colonne del result set.
       if (path === 'campoY' || path === 'agg') s.autoY = false;
     } else {
       scriviPercorso(c, path, valoreControllo(el));
-      if (path === 'campoX') c.autoX = false;
+      if (path === 'campoX') {
+        c.autoX = false;
+        // Il CAMPO è una scelta dell'utente, il TIPO DELL'ASSE no: va ridedotto,
+        // altrimenti un asse temporale rimasto da un campo data scarta ogni
+        // punto del campo di testo appena scelto.
+        allineaAsseX(c, (campiCache.find((f) => f.nome === c.campoX) || {}).tipo);
+        host.dataset.firma = '';
+        if (barra) barra.dataset.firma = '';
+      }
+      // Il tipo di asse scelto a mano non va più ridedotto da nessuno.
+      if (path === 'assex.tipo') c.assex.auto = false;
     }
 
     if (el.dataset.ricostruisci) {

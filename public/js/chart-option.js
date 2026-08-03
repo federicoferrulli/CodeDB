@@ -106,6 +106,16 @@ export const TIPI = [
   { v: 'heatmap', et: 'Mappa di calore', fam: 'heatmap' },
 ];
 
+/*
+ * Valore speciale del menu "Calcolo" che significa NESSUN calcolo: una riga = un
+ * punto, il valore della misura così com'è. Non è un'aggregazione (non sta in
+ * AGGREGAZIONI): scriverlo nella serie sarebbe sbagliato, perché la scelta è
+ * globale — o si raggruppa tutto o non si raggruppa niente — e vive in
+ * `cfg.aggrega`. Sta qui e non in charts.js perché è il *contratto* fra il menu
+ * e il modello: chi legge la configurazione deve poterlo riconoscere.
+ */
+export const AGG_GREZZO = '__grezzo__';
+
 export const AGGREGAZIONI = [
   { v: 'somma', et: 'Somma' },
   { v: 'media', et: 'Media' },
@@ -159,7 +169,10 @@ export function cfgDefault() {
     ordina: 'nessuno',
     maxCategorie: 0,     // 0 = tutte
     serie: [serieDefault(0)],
-    assex: { tipo: 'category', nome: '', rotazione: 0, griglia: false, inverti: false },
+    // `auto`: il tipo dell'asse X è stato dedotto dal campo, non scelto a mano —
+    // quindi cambiando campo va ridedotto. Diventa false quando l'utente sceglie
+    // il tipo dal pannello, e da lì in poi resta la sua scelta.
+    assex: { tipo: 'category', auto: true, nome: '', rotazione: 0, griglia: false, inverti: false },
     assey: { tipo: 'value', nome: '', min: '', max: '', griglia: true, log: false, formato: 'migliaia' },
     legenda: { mostra: 'auto', posizione: 'top', orient: 'horizontal' },
     tooltip: { mostra: true, trigger: 'auto' },
@@ -332,6 +345,20 @@ export function suggerimenti(campi) {
       },
     });
   }
+  if (primaData && primoNum) {
+    out.push({
+      id: 'tempo-grezzo',
+      etichetta: `${primoNum.nome} nel tempo, valori grezzi`,
+      patch: {
+        // `aggrega: false` è il punto: ogni riga resta un punto col SUO valore.
+        // Sommare due misurazioni dello stesso istante (o dello stesso giorno)
+        // risponde a un'altra domanda — qui si vuole vedere il dato com'è.
+        campoX: primaData.nome, autoX: false, aggrega: false, ordina: 'x-asc', maxCategorie: 0,
+        assex: { tipo: 'time' },
+        serie: [serieBase({ tipo: 'line', campoY: primoNum.nome, agg: 'primo' })],
+      },
+    });
+  }
   if (primaData && !primoNum) {
     out.push({
       id: 'tempo-conteggio',
@@ -409,7 +436,7 @@ export function suggerimenti(campi) {
     });
   }
 
-  return out.slice(0, 6);
+  return out.slice(0, 7);
 }
 
 function applicaAgg(agg, acc) {
@@ -456,24 +483,43 @@ function accumula(acc, val) {
  *  - `aggrega` attivo: le righe con la stessa X collassano in una categoria e
  *    su ognuna si applica l'aggregazione della serie (è ciò che serve su un
  *    result set grezzo: 50.000 ordini → 12 mesi).
- *  - `aggrega` spento: una riga = un punto, nell'ordine in cui è arrivata (è
- *    ciò che serve quando la query ha già fatto il GROUP BY).
+ *  - `aggrega` spento: una riga = un punto, col valore della misura così com'è
+ *    (è ciò che serve quando la query ha già fatto il GROUP BY, e quando si
+ *    vuole vedere l'andamento REALE di una misura nel tempo senza che i punti
+ *    dello stesso istante o dello stesso giorno vengano fusi in uno).
  */
 function calcolaDati(righe, c) {
   const serieAttive = c.serie.filter((s) => s.visibile !== false);
   const asseTempo = c.assex.tipo === 'time';
+  // Su un asse temporale un punto senza istante valido non è disegnabile: se
+  // restasse nell'elenco, ECharts lo scarterebbe in silenzio e il grafico
+  // mostrerebbe meno dati del previsto senza dire perché.
+  let senzaData = 0;
 
   if (!c.aggrega) {
     const categorie = [];
     const dati = serieAttive.map(() => []);
+    for (const s of serieAttive) {
+      if (!s.campoY && s.agg !== 'conteggio') {
+        avvisi.push(`Serie "${s.nome || `Serie ${serieAttive.indexOf(s) + 1}`}": senza raggruppamento serve un campo misura da tracciare punto per punto.`);
+      }
+    }
     for (const riga of righe) {
       const xv = c.campoX ? estrai(riga, c.campoX) : null;
-      categorie.push(asseTempo ? istante(xv) : (c.campoX ? categoria(xv) : categorie.length + 1));
+      if (asseTempo) {
+        const ms = istante(xv);
+        if (ms === null) { senzaData++; continue; }
+        categorie.push(ms);
+      } else {
+        categorie.push(c.campoX ? categoria(xv) : categorie.length + 1);
+      }
       serieAttive.forEach((s, i) => {
         dati[i].push(s.agg === 'conteggio' ? 1 : numero(estrai(riga, s.campoY)));
       });
     }
-    return ordinaERiduci(categorie, serieAttive, dati, c);
+    notaSenzaData(senzaData, c);
+    notaTroppiPunti(categorie.length);
+    return ordinaERiduci(categorie, serieAttive, dati, c, true);
   }
 
   const chiavi = [];
@@ -483,6 +529,7 @@ function calcolaDati(righe, c) {
   for (const riga of righe) {
     const xv = c.campoX ? estrai(riga, c.campoX) : null;
     const chiave = asseTempo ? istante(xv) : (c.campoX ? categoria(xv) : 'Totale');
+    if (asseTempo && chiave === null) { senzaData++; continue; }
     const kStr = String(chiave);
     let idx = indice.get(kStr);
     if (idx === undefined) {
@@ -496,8 +543,23 @@ function calcolaDati(righe, c) {
     });
   }
 
+  notaSenzaData(senzaData, c);
   const dati = serieAttive.map((s, i) => accs[i].map((acc) => applicaAgg(s.agg, acc)));
-  return ordinaERiduci(chiavi, serieAttive, dati, c);
+  return ordinaERiduci(chiavi, serieAttive, dati, c, false);
+}
+
+function notaSenzaData(quante, c) {
+  if (!quante) return;
+  avvisi.push(`${quante} righe senza un valore valido in "${c.campoX || 'asse X'}" non sono state tracciate: l'asse è temporale.`);
+}
+
+// Soglia oltre la quale un grafico a punti grezzi smette di essere leggibile
+// (e comincia a costare). Non si tronca niente: si dice che c'è un modo migliore.
+const TROPPI_PUNTI = 5000;
+
+function notaTroppiPunti(n) {
+  if (n <= TROPPI_PUNTI) return;
+  avvisi.push(`${n.toLocaleString('it-IT')} punti grezzi: il disegno può essere lento e i segni si sovrappongono. Attiva "Raggruppa le righe" oppure restringi la query.`);
 }
 
 /**
@@ -507,20 +569,29 @@ function calcolaDati(righe, c) {
  * colori verificati, e una torta con trenta fette non si legge comunque. Sommare
  * la coda in una fetta "Altro" è il modo corretto, e vale anche per barre e
  * linee (dove il problema è la leggibilità dell'asse, non i colori).
+ *
+ * @param {boolean} grezzo modalità "una riga = un punto". Cambia due cose: la
+ *   coda NON si somma in "Altro" (sommare punti grezzi inventa un valore che nei
+ *   dati non esiste — lì si tronca e lo si dice), e i valori uguali sull'asse X
+ *   restano punti distinti.
  */
-function ordinaERiduci(categorie, serieAttive, dati, c) {
+function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false) {
   let ordine = categorie.map((_, i) => i);
 
   const totali = ordine.map((i) => dati.reduce((acc, d) => acc + (numero(d[i]) || 0), 0));
-  if (c.ordina === 'x-asc' || c.ordina === 'x-desc') {
-    const dir = c.ordina === 'x-asc' ? 1 : -1;
+  // Su un asse temporale l'ordine di arrivo non è l'ordine del tempo, e una
+  // linea si disegna nell'ordine dei dati: senza questo, righe non ordinate dal
+  // database producono uno zigzag che non è un andamento ma un artefatto.
+  const ordinaEffettivo = (c.ordina === 'nessuno' && c.assex.tipo === 'time') ? 'x-asc' : c.ordina;
+  if (ordinaEffettivo === 'x-asc' || ordinaEffettivo === 'x-desc') {
+    const dir = ordinaEffettivo === 'x-asc' ? 1 : -1;
     ordine.sort((a, b) => {
       const va = categorie[a]; const vb = categorie[b];
       if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
       return String(va).localeCompare(String(vb), 'it', { numeric: true }) * dir;
     });
-  } else if (c.ordina === 'val-desc' || c.ordina === 'val-asc') {
-    const dir = c.ordina === 'val-asc' ? 1 : -1;
+  } else if (ordinaEffettivo === 'val-desc' || ordinaEffettivo === 'val-asc') {
+    const dir = ordinaEffettivo === 'val-asc' ? 1 : -1;
     ordine.sort((a, b) => (totali[a] - totali[b]) * dir);
   }
 
@@ -528,7 +599,14 @@ function ordinaERiduci(categorie, serieAttive, dati, c) {
   let vals = dati.map((d) => ordine.map((i) => d[i]));
 
   const max = Number(c.maxCategorie) || 0;
-  if (max > 0 && cats.length > max) {
+  if (max > 0 && cats.length > max && grezzo) {
+    // Punti grezzi: sommarli in un "Altro" produrrebbe un valore che nei dati
+    // non esiste. Si mostrano i primi e si dice quanti restano fuori.
+    const scartati = cats.length - max;
+    cats = cats.slice(0, max);
+    vals = vals.map((d) => d.slice(0, max));
+    avvisi.push(`Mostrati i primi ${max} punti su ${max + scartati}: senza raggruppamento la coda non si può sommare senza inventare un valore.`);
+  } else if (max > 0 && cats.length > max) {
     const scartate = cats.length - max;
     const coda = vals.map((d) => d.slice(max).reduce((a, v) => a + (numero(v) || 0), 0));
     cats = cats.slice(0, max).concat([`Altro (${scartate})`]);
@@ -568,6 +646,26 @@ function calcolaHeatmap(righe, c, s) {
     max = max === null ? v : Math.max(max, v);
   }
   return { catX, catY, dati, min: min ?? 0, max: max ?? 1 };
+}
+
+/**
+ * Tipo EFFETTIVO dell'asse X.
+ *
+ * Un asse temporale su un campo che non contiene istanti non produce un grafico
+ * sbagliato: ne produce uno **vuoto**, perché ogni punto viene scartato. È il
+ * caso che capita da solo — l'asse viene dedotto da un campo data, poi si cambia
+ * il campo con una colonna di testo e il tipo dell'asse resta indietro. Meglio
+ * disegnare il grafico che si può disegnare e dire cosa è stato fatto, che
+ * mostrare un riquadro vuoto e l'elenco delle righe scartate.
+ */
+function tipoAsseX(righe, c) {
+  if (c.assex.tipo !== 'time' || !righe.length) return c.assex.tipo;
+  const limite = Math.min(righe.length, 200);
+  for (let i = 0; i < limite; i++) {
+    if (istante(estrai(righe[i], c.campoX)) !== null) return 'time';
+  }
+  avvisi.push(`"${c.campoX || 'asse X'}" non contiene date: l'asse è stato trattato come categorie. Per forzarlo, pannello ⚙ → Assi → Tipo.`);
+  return 'category';
 }
 
 /* ============================ Formattazione =============================== */
@@ -814,6 +912,10 @@ const ALTEZZA_MIN_SLIDER = 200;
  *   disegna come se avesse sempre spazio in abbondanza.
  */
 export function costruisciOption(righe, c, box = {}) {
+  // Da qui in giù si lavora sul tipo di asse EFFETTIVO: un asse temporale su un
+  // campo senza date scarterebbe ogni punto (vedi tipoAsseX). La configurazione
+  // dell'utente non viene modificata — solo interpretata.
+  c = { ...c, assex: { ...c.assex, tipo: tipoAsseX(righe, c) } };
   const fmtY = formattatore(c.assey.formato);
   const serieAttive = c.serie.filter((s) => s.visibile !== false);
   const prima = serieAttive[0] || c.serie[0];

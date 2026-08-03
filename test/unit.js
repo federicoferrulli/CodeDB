@@ -587,6 +587,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 23: Custom Charts (aggregazioni, valori EJSON, regole di leggibilità)
   require('./unit-charts');
 
+  // Test 24: Statistiche della selezione di celle (valori EJSON, precisione)
+  require('./unit-cell-stats');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

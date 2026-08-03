@@ -300,6 +300,99 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.deepStrictEqual(opt.series[0].data, [10, 5, 20, 1], 'I valori restano quelli delle righe');
   console.log('  OK   Modalità senza aggregazione (query che ha già fatto il GROUP BY)');
 
+  /* ------------- Andamento nel tempo SENZA aggregazione ------------------ */
+
+  /*
+   * Il caso che l'aggregazione non copre: "voglio vedere questa misura nel
+   * tempo, così com'è". Due misurazioni dello stesso istante devono restare due
+   * punti — sommarle o farne la media risponde a un'altra domanda, e lo fa senza
+   * dirlo. Qui si verificano le tre proprietà che rendono la modalità onesta:
+   * i valori non si fondono, l'ordine è quello del TEMPO e non quello di arrivo,
+   * e le righe senza data valida vengono dichiarate invece che sparire.
+   */
+  const misure = [
+    { t: { $date: 300 }, v: 9 },
+    { t: { $date: 100 }, v: 3 },
+    { t: { $date: 100 }, v: 5 },   // stesso istante: due punti, non uno
+    { t: null, v: 42 },            // senza data: non disegnabile su un asse tempo
+  ];
+  const cfgTempoGrezzo = cfgBase({
+    campoX: 't',
+    aggrega: false,
+    assex: { tipo: 'time', nome: '', rotazione: 0, griglia: false, inverti: false },
+    serie: [{ ...cfgBase().serie[0], tipo: 'line', campoY: 'v', agg: 'primo' }],
+  });
+
+  azzeraAvvisi();
+  opt = costruisciOption(misure, cfgTempoGrezzo);
+  assert.deepStrictEqual(
+    opt.series[0].data,
+    [[100, 3], [100, 5], [300, 9]],
+    'Senza aggregazione i valori dello stesso istante restano punti distinti, ordinati per tempo',
+  );
+  const note = prendiAvvisi();
+  assert.ok(note.some((n) => /senza un valore valido/i.test(n)), 'Le righe senza data valida vanno dichiarate, non scartate in silenzio');
+  console.log('  OK   Misura grezza nel tempo: nessuna fusione, ordine temporale, righe senza data dichiarate');
+
+  // L'ordinamento per tempo è un default, non un'imposizione: una scelta
+  // esplicita dell'utente vince.
+  azzeraAvvisi();
+  opt = costruisciOption(misure, { ...cfgTempoGrezzo, ordina: 'x-desc' });
+  assert.deepStrictEqual(opt.series[0].data.map((p) => p[0]), [300, 100, 100], 'Un ordinamento scelto a mano vince sul default temporale');
+
+  // Su un asse temporale l'ordine di arrivo non è l'ordine del tempo: vale
+  // anche quando si aggrega, perché una linea si disegna nell'ordine dei dati.
+  azzeraAvvisi();
+  opt = costruisciOption(misure, {
+    ...cfgTempoGrezzo,
+    aggrega: true,
+    serie: [{ ...cfgTempoGrezzo.serie[0], agg: 'somma' }],
+  });
+  assert.deepStrictEqual(opt.series[0].data, [[100, 8], [300, 9]], 'Aggregando, gli istanti uguali collassano e restano in ordine di tempo');
+  console.log('  OK   Asse temporale ordinato per tempo (default), scelta manuale rispettata');
+
+  // Punti grezzi: la coda oltre "Max categorie" NON si somma in "Altro" —
+  // sommare valori grezzi inventa un numero che nei dati non esiste.
+  azzeraAvvisi();
+  opt = costruisciOption(vendite, cfgBase({ aggrega: false, maxCategorie: 2 }));
+  assert.deepStrictEqual(opt.xAxis.data, ['Roma', 'Roma'], 'Senza aggregazione si mostrano i primi N punti');
+  assert.deepStrictEqual(opt.series[0].data, [10, 5], 'Nessun valore sintetico "Altro" fra i punti grezzi');
+  assert.ok(prendiAvvisi().some((n) => /primi 2 punti/i.test(n)), 'Va detto quanti punti restano fuori');
+  console.log('  OK   Punti grezzi: la coda si tronca dichiarandolo, non si somma in "Altro"');
+
+  /*
+   * Asse temporale su un campo che NON contiene date. È il caso che capita da
+   * solo: l'asse viene dedotto da `createdAt`, poi si cambia il campo X con una
+   * colonna di testo. Un asse temporale lì non dà un grafico impreciso, ne dà
+   * uno VUOTO — ogni punto viene scartato. Va disegnato quello che si può
+   * disegnare, dicendo cosa è stato fatto.
+   */
+  azzeraAvvisi();
+  opt = costruisciOption(vendite, cfgBase({
+    campoX: 'citta',
+    aggrega: false,
+    assex: { tipo: 'time', nome: '', rotazione: 0, griglia: false, inverti: false },
+    serie: [{ ...cfgBase().serie[0], tipo: 'line', campoY: 'importo' }],
+  }));
+  assert.strictEqual(opt.xAxis.type, 'category', 'Un asse "tempo" su un campo senza date ricade su categorie');
+  assert.deepStrictEqual(opt.series[0].data, [10, 5, 20, 1], 'Nessun punto deve essere scartato: il grafico non deve restare vuoto');
+  assert.ok(prendiAvvisi().some((n) => /non contiene date/i.test(n)), 'Va detto che l\'asse è stato reinterpretato');
+  console.log('  OK   Asse temporale su campo non temporale: ricade su categorie invece di svuotare il grafico');
+
+  // Il ripiego vale solo quando NON c'è alcuna data: un campo temporale con
+  // qualche riga guasta resta temporale, e le righe guaste si dichiarano.
+  azzeraAvvisi();
+  opt = costruisciOption(misure, cfgTempoGrezzo);
+  assert.strictEqual(opt.xAxis.type, 'time', 'Con almeno un istante valido l\'asse resta temporale');
+  azzeraAvvisi();
+
+  // Senza un campo misura la modalità grezza non ha niente da tracciare: lo
+  // dice, invece di disegnare una serie di buchi.
+  azzeraAvvisi();
+  costruisciOption(misure, { ...cfgTempoGrezzo, serie: [{ ...cfgTempoGrezzo.serie[0], campoY: null }] });
+  assert.ok(prendiAvvisi().some((n) => /campo misura/i.test(n)), 'Senza misura va detto che manca il campo da tracciare');
+  azzeraAvvisi();
+
   /* ------------------------------ Valori nulli --------------------------- */
 
   const conNulli = [{ k: 'a', v: 5 }, { k: 'b', v: null }, { k: 'c' }, { k: 'd', v: 'non un numero' }];
@@ -403,6 +496,12 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.strictEqual(tempo.patch.assex.tipo, 'time', 'L\'andamento nel tempo usa un asse temporale');
   assert.strictEqual(tempo.patch.serie[0].tipo, 'line');
   assert.strictEqual(tempo.patch.autoX, false, 'Una proposta è una scelta esplicita: non va rimpiazzata');
+  // La proposta "valori grezzi" è la strada da un clic per vedere una misura nel
+  // tempo senza che nulla venga fuso: deve spegnere il raggruppamento.
+  const grezzo = sugg.find((s) => s.id === 'tempo-grezzo');
+  assert.ok(grezzo, 'Con data e numero va proposto anche l\'andamento a valori grezzi');
+  assert.strictEqual(grezzo.patch.aggrega, false, 'La proposta a valori grezzi non deve raggruppare');
+  assert.strictEqual(grezzo.patch.assex.tipo, 'time');
   const disp = sugg.find((s) => s.id === 'dispersione');
   assert.ok(disp, 'Con due numeri va proposta una dispersione');
   assert.strictEqual(disp.patch.aggrega, false, 'Una dispersione confronta i valori riga per riga: niente raggruppamento');
