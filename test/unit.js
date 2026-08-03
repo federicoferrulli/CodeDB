@@ -590,6 +590,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 24: Statistiche della selezione di celle (valori EJSON, precisione)
   require('./unit-cell-stats');
 
+  // Test 25: Errori parlanti (traduzione dei codici dei driver)
+  require('./unit-errors');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

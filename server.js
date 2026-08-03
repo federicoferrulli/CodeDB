@@ -32,6 +32,7 @@ const { splitStatementsDetailed, stripSqlNoise } = require('./db/sqlText');
 const { createScriptRun } = require('./db/ScriptRunner');
 const MongoScriptRunner = require('./db/MongoScriptRunner');
 const Vault = require('./db/vault');
+const { spiegaErrore } = require('./db/errors');
 
 const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
@@ -124,6 +125,9 @@ function checkOrigin(req) {
     return {
       ok: false,
       reason: `origine "${origin}" non consentita: aggiungila a CODEDB_ALLOWED_ORIGINS (attualmente: ${allowed.join(', ')})`,
+      // Versione mostrata al browser da /handshake-check, che non richiede
+      // autenticazione: dice cosa fare senza elencare le origini configurate.
+      publicReason: `origine "${origin}" non consentita: va aggiunta alla variabile CODEDB_ALLOWED_ORIGINS del server`,
     };
   }
 
@@ -149,8 +153,12 @@ const io = new Server(server, {
     const verdict = checkOrigin(req);
     if (verdict.ok) return callback(null, true);
     console.warn(`[Sicurezza] Handshake Socket.IO rifiutato: ${verdict.reason}`);
-    // Il messaggio arriva al client come `connect_error`, così nel browser non
-    // si vede un fallimento inspiegabile.
+    // NOTA: il motivo NON raggiunge il browser. Engine.IO tratta il primo
+    // argomento come codice di errore e il client riceve comunque un generico
+    // "xhr poll error"/"websocket error" (verificato su entrambi i transport):
+    // per l'utente il rifiuto era indistinguibile da un server spento. È il
+    // motivo per cui esiste /handshake-check qui sotto, che la pagina interroga
+    // quando l'handshake fallisce.
     return callback(verdict.reason, false);
   },
 });
@@ -158,11 +166,38 @@ const io = new Server(server, {
 app.use(express.static(path.join(__dirname, 'public')));
 
 /* ---------------------------------------------------------------------------
+ * Diagnosi dell'handshake rifiutato
+ *
+ * Serve perché il motivo del rifiuto non può viaggiare sul canale Socket.IO
+ * (vedi allowRequest): senza questo endpoint il browser non ha modo di
+ * distinguere "il server ha rifiutato la mia origine" da "il server è spento",
+ * che è esattamente la differenza fra un problema di configurazione da
+ * correggere in trenta secondi e un'attesa senza fine.
+ *
+ * La richiesta arriva dalla pagina di CodeDB, quindi porta gli STESSI header
+ * Origin/Host dell'handshake: applicare qui `checkOrigin` diagnostica il caso
+ * reale, non un'approssimazione. Non richiede autenticazione — non potrebbe,
+ * dato che serve proprio quando la connessione non si stabilisce — e per questo
+ * riporta `publicReason`, che dice cosa fare senza rivelare la configurazione.
+ * ------------------------------------------------------------------------- */
+app.get('/handshake-check', (req, res) => {
+  const verdict = checkOrigin(req);
+  if (verdict.ok) return res.json({ ok: true });
+  res.status(403).json({ ok: false, reason: verdict.publicReason || verdict.reason });
+});
+
+/* ---------------------------------------------------------------------------
  * Helpers
  * ------------------------------------------------------------------------- */
 
-function errMsg(err) {
-  return (err && err.message) || String(err);
+// Messaggio d'errore destinato all'utente. Passa da `spiegaErrore` (db/errors.js),
+// che riconosce gli errori tipici dei driver e li riscrive come "cosa è successo
+// + cosa fare", conservando in coda il testo originale. È il punto di uscita
+// unico degli ack socket (safeOn/delegate) e delle risposte HTTP di /auth:
+// spiegare qui vale per tutta l'applicazione. Un errore non riconosciuto — o già
+// spiegato — torna indietro immutato.
+function errMsg(err, ctx) {
+  return spiegaErrore(err, ctx || (err && err._ctx) || {});
 }
 
 // Corsa contro un timeout: se `promise` non si risolve entro `ms`, rigetta con
@@ -727,6 +762,17 @@ async function establishConnection(cfg, guardCtx = null) {
     return { strategy: guardStrategy(strategy, guardCtx), tunnel, effective, dbType };
   } catch (err) {
     if (tunnel) try { tunnel.close(); } catch { /* ignora */ }
+    // Destinazione reale per il messaggio parlante (vedi errMsg/safeOn): è
+    // l'unico punto che la conosce — "connessione rifiutata su localhost:27017"
+    // invece di un ECONNREFUSED nudo. Mai l'host del tunnel, che all'utente non
+    // dice nulla: quello che ha configurato è l'host del database.
+    if (err && typeof err === 'object' && !err._ctx) {
+      err._ctx = {
+        dbType,
+        host: (effective.host || '').trim() || undefined,
+        port: effective.port ? String(effective.port).trim() : undefined,
+      };
+    }
     throw err;
   }
 }
@@ -1822,6 +1868,10 @@ io.on('connection', (socket) => {
       try {
         await fn(payload || {}, cb);
       } catch (err) {
+        // `_ctx` (letto da errMsg): contesto attaccato all'errore da chi lo
+        // conosce — `establishConnection` per host e porta, `delegate` per il
+        // tipo di database — così la spiegazione nomina la destinazione reale
+        // invece di restare generica.
         cb({ ok: false, error: errMsg(err) });
       }
     });
@@ -1843,7 +1893,7 @@ io.on('connection', (socket) => {
 
       const sess = sessions.get(normTabId(payload.tabId));
       if (!sess) {
-        cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+        cb({ ok: false, error: errMsg('Nessuna connessione attiva al database.') });
         return;
       }
       // Classificazione (scrittura/lettura/non tracciato) per l'audit: dipende
@@ -1879,6 +1929,11 @@ io.on('connection', (socket) => {
         // del driver DB.
         if (sess.tunnel && !sess.tunnel.alive) {
           throw new Error(`Tunnel SSH caduto${sess.tunnel.lastError ? `: ${sess.tunnel.lastError}` : '.'}`);
+        }
+        // Contesto per il messaggio parlante (vedi errMsg): lo stesso codice ha
+        // spiegazioni diverse a seconda del DBMS.
+        if (err && typeof err === 'object' && !err._ctx) {
+          err._ctx = { dbType: sess.dbType, db: payload.db, coll: payload.coll };
         }
         throw err;
       } finally {
@@ -2834,7 +2889,7 @@ io.on('connection', (socket) => {
     const tab = normTabId(tabId);
     const sess = sessions.get(tab);
     if (!sess) {
-      cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+      cb({ ok: false, error: errMsg('Nessuna connessione attiva al database.') });
       return;
     }
     // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
@@ -2857,7 +2912,7 @@ io.on('connection', (socket) => {
     const tabId = normTabId(payload.tabId);
     const sess = sessions.get(tabId);
     if (!sess) {
-      cb({ ok: false, error: 'Nessuna connessione attiva al database.' });
+      cb({ ok: false, error: errMsg('Nessuna connessione attiva al database.') });
       return;
     }
     sess.strategy.watchSchema({

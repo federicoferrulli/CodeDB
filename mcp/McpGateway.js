@@ -40,6 +40,7 @@ const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require
 const { notifySlack } = require('../backup/lib/notify');
 const { ROOT_PRINCIPAL } = require('../auth/principal');
 const { can, canUseConnection, canWholeConnection } = require('../auth/permissions');
+const { spiegaErrore } = require('../db/errors');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
 // Stessa mappatura di auth/capabilities.js (write/delete/ddl): così il gate del
@@ -66,8 +67,12 @@ const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
 const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
 
-function errMsg(err) {
-  return (err && err.message) || String(err);
+// Stesso trattamento del percorso socket (vedi server.js): l'errore tecnico del
+// driver diventa "cosa è successo + cosa fare". Qui il destinatario è un client
+// AI, che dal messaggio deve capire se ritentare, correggere la query o
+// arrendersi — un "57014" nudo non glielo dice.
+function errMsg(err, ctx) {
+  return spiegaErrore(err, ctx || (err && err._ctx) || {});
 }
 
 /* ---------------------------------------------------------------------------

@@ -218,7 +218,10 @@ export function insertRowValue(row) {
       return geo;
     }
     case 'json':
-      try { return JSON.parse(t); } catch { throw new Error('JSON non valido'); }
+      // Il motivo del parser va riportato: su un JSON scritto a mano "non
+      // valido" da solo non dice dove guardare, mentre il messaggio nativo
+      // indica la posizione del carattere che ha fatto fallire la lettura.
+      try { return JSON.parse(t); } catch (e) { throw new Error(`JSON non valido: ${e.message}`); }
     default:
       return raw;
   }

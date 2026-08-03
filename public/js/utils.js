@@ -117,7 +117,11 @@ export function toast(msg, isError = false) {
   el.classList.toggle('error', isError);
   el.classList.remove('hidden');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), 3000);
+  // La durata segue la lunghezza: gli errori ora sono frasi con causa e rimedio
+  // (db/errors.js) e in 3 secondi fissi non si leggevano — sparivano prima della
+  // parte che dice cosa fare. ~55 ms per carattere, fra 3 e 12 secondi.
+  const durata = Math.min(Math.max(3000, String(msg).length * 55), 12000);
+  toastTimer = setTimeout(() => el.classList.add('hidden'), durata);
 }
 
 export function showQueryError(msg) {
