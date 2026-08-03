@@ -50,7 +50,8 @@
     "test:e2e:cancel": "node test/e2e-query-cancel.js",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh",
-    "electron:licenza": "node tools/genera-licenza.js"
+    "electron:licenza": "node tools/genera-licenza.js",
+    "build:linux:docker": "node tools/build-linux-docker.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
@@ -72,6 +73,7 @@
     "socket.io-client": "^4.8.3"
   },
   "productName": "CodeDB",
+  "desktopName": "codedb.desktop",
   "build": {
     "appId": "com.codedb.app",
     "productName": "CodeDB",
