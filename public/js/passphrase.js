@@ -107,6 +107,7 @@ function invia(e) {
         mostra(box, true);
       }
       toast(res.migrated ? 'Vault migrato e passphrase impostata' : 'Passphrase cambiata');
+      chiudiAvviso(false); // i segreti ora sono protetti davvero
       // La modale resta aperta qualche istante: l'avviso sul prossimo avvio è
       // la cosa più importante di tutta l'operazione.
       setTimeout(chiudiModale, 4000);
@@ -119,7 +120,51 @@ function invia(e) {
     });
 }
 
+/* ---------------------------------------------------------------------------
+ * Avviso "i segreti non sono protetti".
+ *
+ * Chi non ha mai impostato una passphrase ha i segreti cifrati con la CHIAVE
+ * VUOTA: il file è illeggibile a occhio, quindi sembra al sicuro, ma chiunque
+ * possa leggerlo lo decifra senza sapere nulla. È il caso peggiore — un rischio
+ * che non si manifesta e che l'utente non ha modo di sospettare — e l'unica
+ * risposta onesta è dirlo.
+ *
+ * Tre scelte per non trasformarlo in molestia: si mostra SOLO se ci sono
+ * davvero segreti salvati (`vault:status` → `segreti`), non è modale (non
+ * blocca nulla), e "Più tardi" lo mette a tacere per la sessione del browser —
+ * non per sempre, perché il rischio resta finché resta la chiave vuota.
+ * ------------------------------------------------------------------------- */
+
+const CHIAVE_RIMANDO = 'codedb:vault-avviso-rimandato';
+
+function chiudiAvviso(perLaSessione) {
+  const box = $('#vault-hint');
+  if (box) box.classList.add('hidden');
+  if (perLaSessione) {
+    try { sessionStorage.setItem(CHIAVE_RIMANDO, '1'); } catch { /* niente storage: pazienza */ }
+  }
+}
+
+/**
+ * Da chiamare quando il vault risulta SBLOCCATO (vedi `checkVaultStatus`).
+ * Non interroga il server di suo: usa la risposta già ottenuta.
+ */
+export function valutaAvvisoVault(stato) {
+  const box = $('#vault-hint');
+  if (!box || !stato || stato.locked) return;
+  if (stato.protetto || !stato.segreti) { box.classList.add('hidden'); return; }
+  try {
+    if (sessionStorage.getItem(CHIAVE_RIMANDO)) return;
+  } catch { /* storage non disponibile: si mostra comunque */ }
+  box.classList.remove('hidden');
+}
+
 export function initPassphrase() {
+  const imposta = $('#vault-hint-set');
+  const rimanda = $('#vault-hint-later');
+  if (imposta) imposta.addEventListener('click', () => { chiudiAvviso(false); apriModale(); });
+  if (rimanda) rimanda.addEventListener('click', () => chiudiAvviso(true));
+
   const apri = $('#btn-change-passphrase');
   const form = $('#passphrase-form');
   const annulla = $('#passphrase-cancel');

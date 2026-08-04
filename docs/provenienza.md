@@ -52,8 +52,8 @@ git ne data il commit:
 
 ```
 registro:  provenienza/impronte.json
-marcatori: 28
-impronta:  e25fbfa14736adf58d1f0c45107d61a661a62b3da479559d5e3bcf7fa47a983c
+marcatori: 29
+impronta:  d6a51f7dd31527fb4fbf32afd60ae206f7b26b376f82d15d83e8779fc917b77d
 creato:    2026-08-04
 ```
 

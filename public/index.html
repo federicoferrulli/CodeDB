@@ -463,6 +463,21 @@
         title="Chiude il tab attivo e la sua connessione"><i data-lucide="unplug"></i> Disconnetti</button>
     </header>
 
+    <!-- Avviso "segreti non protetti": compare solo se ci sono davvero segreti
+         salvati e il vault non ha mai avuto una passphrase (chiave vuota).
+         Non è modale di proposito — non c'è nulla di rotto da sbloccare, c'è
+         una precauzione da prendere. Vedi passphrase.js → valutaAvvisoVault. -->
+    <div id="vault-hint" class="vault-hint hidden" role="status">
+      <i data-lucide="shield-alert"></i>
+      <div class="vault-hint-testo">
+        <strong>I segreti salvati non sono protetti da una passphrase.</strong>
+        Password dei database e chiavi SSH sono cifrate con una chiave vuota:
+        chi riesce a leggere il file delle connessioni può decifrarle.
+      </div>
+      <button type="button" id="vault-hint-set" class="mini-btn primary">Imposta una passphrase</button>
+      <button type="button" id="vault-hint-later" class="mini-btn">Più tardi</button>
+    </div>
+
     <div class="body">
       <!-- ------------------- Connection manager ------------------- -->
       <aside id="conn-sidebar">

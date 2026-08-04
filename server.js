@@ -759,6 +759,29 @@ function connectionsFileFor(ownerId) {
   return path.join(CONNECTIONS_DIR, `${safe}.ini`);
 }
 
+/**
+ * Ci sono segreti salvati (password del DB, password o passphrase SSH)?
+ *
+ * Si guarda il file GREZZO, senza decifrare nulla: la risposta serve a un
+ * evento che non richiede capability, e l'unica cosa che deve dire è "c'è
+ * qualcosa da proteggere", non cosa.
+ *
+ * NB: non basta cercare `ENC:`. Un segreto scritto a mano nel file resta **in
+ * chiaro** finché non c'è una passphrase (`encryptPlaintextSecretsOnce` gira
+ * solo nel ramo con passphrase), e quello è il caso ancora più urgente da
+ * segnalare. Un file assente o illeggibile vale "nessun segreto": l'avviso è un
+ * suggerimento, non una barriera, e non deve inventare allarmi.
+ */
+function haSegretiSalvati(ownerId) {
+  try {
+    const sezioni = parseIni(fs.readFileSync(connectionsFileFor(ownerId), 'utf8'));
+    return Object.values(sezioni).some((sec) =>
+      SECRET_FIELDS.some((f) => sec[f] && String(sec[f]).trim() !== ''));
+  } catch {
+    return false;
+  }
+}
+
 function loadConnections(ownerId) {
   try {
     const sections = parseIni(fs.readFileSync(connectionsFileFor(ownerId), 'utf8'));
@@ -2350,6 +2373,11 @@ io.on('connection', (socket) => {
       // Serve alla modale per capire se sta IMPOSTANDO la prima passphrase o
       // ne sta cambiando una esistente. Non rivela nulla del segreto.
       protetto: vaultProtetto,
+      // Ci sono davvero segreti da proteggere? Serve all'avviso "vault senza
+      // passphrase": senza segreti salvati non c'è nulla da mettere al riparo,
+      // e un avviso in quel caso sarebbe solo rumore. Non dice QUALI segreti né
+      // quanti valgono: solo se esistono.
+      segreti: haSegretiSalvati(principal && principal.ownerId),
     });
   });
 

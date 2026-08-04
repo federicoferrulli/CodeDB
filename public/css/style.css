@@ -5869,3 +5869,31 @@ button.linklike:hover {
    una modale aperta si nasconde, altrimenti coprirebbe i pulsanti in basso a
    destra dei pannelli larghi (Backup, Storico) senza che si capisca perché. */
 body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
+
+/* ============ Avviso "segreti non protetti da passphrase" ================= */
+
+.vault-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--warning-bg);
+  border-bottom: 1px solid var(--border-2);
+  font-size: 0.78rem;
+  color: var(--fg);
+}
+.vault-hint > i { width: 18px; height: 18px; flex: 0 0 auto; color: var(--warning); }
+.vault-hint-testo { flex: 1; line-height: 1.45; color: var(--fg-dim); }
+.vault-hint-testo strong { color: var(--fg); }
+.vault-hint .mini-btn { flex: 0 0 auto; }
+.vault-hint .mini-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--fg-inverted);
+}
+.vault-hint .mini-btn.primary:hover { background: var(--accent-2); }
+
+@media (max-width: 900px) {
+  .vault-hint { flex-wrap: wrap; padding: var(--space-sm); }
+  .vault-hint-testo { flex: 1 1 100%; order: 1; }
+}

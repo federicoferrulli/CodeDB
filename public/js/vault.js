@@ -2,6 +2,7 @@
 
 import { $, emit, toast } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
+import { valutaAvvisoVault } from './passphrase.js';
 
 const MIN_LUNGHEZZA = 8;
 
@@ -13,6 +14,11 @@ export function checkVaultStatus() {
       } else {
         hideVaultModal();
         loadSavedConnections();
+        // Vault aperto: se lo è perché non ha mai avuto una passphrase, i
+        // segreti salvati sono cifrati con la chiave vuota — cioè leggibili da
+        // chiunque abbia il file. L'utente non ha modo di accorgersene: glielo
+        // si dice qui.
+        valutaAvvisoVault(res);
       }
     })
     .catch(() => {
