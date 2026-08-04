@@ -507,8 +507,23 @@ console.log('--- Test Unitari CodeDB ---');
 
     assert.ok(fs.existsSync(USCITA), 'build/license.txt deve esistere (npm run electron:licenza)');
     const generato = fs.readFileSync(USCITA, 'utf8');
-    assert.strictEqual(generato, contenutoLicenza(),
+
+    // Confronto INSENSIBILE ai fine riga: il contenuto deve coincidere, ma non
+    // si può pretendere che il working copy conservi i CRLF — dipende da
+    // `core.autocrlf` e da .gitattributes della macchina, e un test che fallisce
+    // per come git ha fatto il checkout non dice nulla sulla manleva. Il
+    // generatore scrive comunque CRLF (lo legge un installer Windows) e
+    // .gitattributes lo dichiara `eol=crlf`.
+    const soloTesto = (s) => s.replace(/\r\n?/g, '\n');
+    assert.strictEqual(soloTesto(generato), soloTesto(contenutoLicenza()),
       'build/license.txt è disallineato da MANLEVA.md: rigeneralo con `npm run electron:licenza`');
+
+    // I paragrafi devono restare separati: su Windows `MANLEVA.md` arriva con
+    // CRLF e una divisione ingenua li fondeva tutti in un muro di testo — il
+    // file generato era leggibile solo a fatica, e diverso da quello prodotto
+    // su Linux (da cui il fallimento in CI).
+    assert.ok(soloTesto(generato).includes('\n\n'),
+      'build/license.txt deve conservare le righe vuote fra i paragrafi');
 
     // NSIS legge il file come ANSI senza BOM: gli accenti italiani diventano
     // caratteri illeggibili proprio nella schermata da accettare.

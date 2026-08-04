@@ -1,19 +1,26 @@
-﻿Manleva e limitazione di responsabilità CodeDB è distribuito con licenza GNU
-Affero General Public License v3.0 only (AGPL-3.0-only). Il testo completo
-della licenza è nel file LICENSE.md. Il software è fornito "così com'è", senza
-garanzie di alcun tipo, esplicite o implicite, comprese — a titolo
-esemplificativo e non esaustivo — le garanzie di commerciabilità, di idoneità
-a uno scopo particolare e di assenza di violazione di diritti altrui. L'autore
-e i contributori non rispondono di alcun danno, diretto o indiretto,
+﻿Manleva e limitazione di responsabilità
+
+CodeDB è distribuito con licenza GNU Affero General Public License v3.0 only
+(AGPL-3.0-only). Il testo completo della licenza è nel file LICENSE.md.
+
+Il software è fornito "così com'è", senza garanzie di alcun tipo, esplicite o
+implicite, comprese — a titolo esemplificativo e non esaustivo — le garanzie
+di commerciabilità, di idoneità a uno scopo particolare e di assenza di
+violazione di diritti altrui.
+
+L'autore e i contributori non rispondono di alcun danno, diretto o indiretto,
 incidentale, speciale o consequenziale — compresi perdita o corruzione di
 dati, interruzione dell'attività, mancati guadagni o costi di ripristino —
 derivante dall'uso o dall'impossibilità di usare il programma, anche qualora
-fossero stati avvisati della possibilità di tali danni. L'utente si assume
-ogni rischio derivante dall'uso. CodeDB si collega a database e può leggerne,
-modificarne ed eliminarne il contenuto in modo definitivo: la scelta delle
-operazioni da eseguire, la loro verifica prima dell'esecuzione su dati di
-produzione e la disponibilità di copie di sicurezza restano responsabilità
-esclusiva di chi lo utilizza. Resta a carico dell'utente anche il rispetto
-delle norme applicabili ai dati trattati, comprese quelle sulla protezione dei
-dati personali. Le presenti clausole non limitano le responsabilità che la
-legge applicabile non consente di escludere.
+fossero stati avvisati della possibilità di tali danni.
+
+L'utente si assume ogni rischio derivante dall'uso. CodeDB si collega a
+database e può leggerne, modificarne ed eliminarne il contenuto in modo
+definitivo: la scelta delle operazioni da eseguire, la loro verifica prima
+dell'esecuzione su dati di produzione e la disponibilità di copie di sicurezza
+restano responsabilità esclusiva di chi lo utilizza. Resta a carico
+dell'utente anche il rispetto delle norme applicabili ai dati trattati,
+comprese quelle sulla protezione dei dati personali.
+
+Le presenti clausole non limitano le responsabilità che la legge applicabile
+non consente di escludere.

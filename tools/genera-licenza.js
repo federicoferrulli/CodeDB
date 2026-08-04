@@ -29,9 +29,19 @@ const SORGENTE = path.join(RADICE, 'MANLEVA.md');
 const USCITA = path.join(RADICE, 'build', 'license.txt');
 const COLONNE = 78;
 
-/** Markdown → testo semplice (solo ciò che compare davvero in MANLEVA.md). */
+/**
+ * Markdown → testo semplice (solo ciò che compare davvero in MANLEVA.md).
+ *
+ * Prima cosa: **normalizzare i fine riga**. Su Windows `core.autocrlf` consegna
+ * `MANLEVA.md` con CRLF, e la divisione dei paragrafi (`/\n{2,}/`) su `\r\n\r\n`
+ * non trova due `\n` adiacenti: il testo diventava un unico paragrafo. Non è un
+ * difetto teorico — il file generato su Windows era un muro di testo, mentre la
+ * stessa esecuzione su Linux produceva la versione corretta, e i due non
+ * combaciavano più.
+ */
 function testoSemplice(md) {
   return md
+    .replace(/\r\n?/g, '\n')           // CRLF/CR → LF (vedi sopra)
     .replace(/^#\s+/gm, '')            // titolo di primo livello
     .replace(/^#{2,}\s+/gm, '')        // sottotitoli
     .replace(/\*\*(.+?)\*\*/gs, '$1')  // grassetto

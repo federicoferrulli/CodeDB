@@ -4,6 +4,13 @@
 *.sh    text eol=lf
 codedb.sh text eol=lf
 
+# La pagina di accettazione dell'installer NSIS: CRLF su OGNI piattaforma.
+# È generata da tools/genera-licenza.js con CRLF (è un file letto da un
+# installer Windows) e `npm test` la confronta con ciò che il generatore
+# produce: senza questa riga git la normalizzerebbe a LF nel checkout Linux
+# della CI, e il confronto fallirebbe pur essendo il contenuto identico.
+build/license.txt text eol=crlf
+
 # Gli script Windows restano CRLF.
 *.cmd   text eol=crlf
 *.ps1   text eol=crlf
