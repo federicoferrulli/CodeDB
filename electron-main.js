@@ -3,11 +3,16 @@
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const path = require('path');
 const http = require('http');
+const net = require('net');
 const { creaGestoreAggiornamenti } = require('./electron-aggiornamenti');
 
 const APP_NAME = 'CodeDB';
 const HOST = '127.0.0.1';
-const PORT = Number(process.env.PORT) || 3030;
+// La porta può cambiare prima dell'avvio: se quella predefinita è occupata da
+// un'ALTRA applicazione se ne cerca una libera (vedi scegliPorta). Con `PORT`
+// impostata dall'utente la scelta è sua e non viene toccata.
+const PORTA_RICHIESTA = Number(process.env.PORT) || 0;
+let PORT = PORTA_RICHIESTA || 3030;
 const ICON_PATH = path.join(__dirname, 'public', 'codedb.ico');
 
 let mainWindow = null;
@@ -16,6 +21,26 @@ let mainWindow = null;
 // come funzione perché a questo punto non esiste ancora, e cambia a ogni
 // riapertura su macOS (evento `activate`).
 const aggiornamenti = creaGestoreAggiornamenti({ getWindow: () => mainWindow });
+
+/* ---------------------------------------------------------------------------
+ * Ponte verso il server incorporato (letto da `ponteDesktop()` in server.js).
+ *
+ * La voce "Controlla aggiornamenti…" esiste nel menu nativo, ma la finestra ha
+ * `autoHideMenuBar: true`: la barra compare solo premendo Alt, quindi per chi
+ * usa l'applicazione quella voce di fatto non esiste. Deve stare anche nel menu
+ * ⋮ dell'interfaccia, insieme alle altre.
+ *
+ * Non serve alcun IPC per farlo — ed è bene che non serva, perché la finestra è
+ * `sandbox: true` senza preload e carica la stessa UI servita via HTTP: un
+ * canale IPC sarebbe esposto a qualunque pagina finisse lì dentro. Il server
+ * Socket.IO gira invece IN QUESTO processo, quindi gli basta chiamare la
+ * funzione. Se il server è esterno (avviato a parte con CodeDB.cmd) questo
+ * oggetto non esiste nel suo processo e la voce non viene offerta: giusto così,
+ * quella finestra non ha un'installazione da aggiornare.
+ * ------------------------------------------------------------------------- */
+globalThis.__codedbDesktop = {
+  controllaAggiornamenti: () => { aggiornamenti.controlla(true); },
+};
 
 // Il nome nel package.json ("mongo-web-gui", storico) determinerebbe altrimenti
 // il nome della cartella dati utente (%APPDATA%/mongo-web-gui): forziamo "CodeDB".
@@ -129,6 +154,39 @@ function waitForServer(retries, delay) {
   });
 }
 
+/** La porta è libera per un nuovo ascolto? */
+function portaLibera(porta) {
+  return new Promise((resolve) => {
+    const s = net.createServer();
+    s.once('error', () => resolve(false));
+    s.once('listening', () => s.close(() => resolve(true)));
+    s.listen(porta, HOST);
+  });
+}
+
+/**
+ * Sceglie la porta del server incorporato.
+ *
+ * Il caso da evitare: la 3030 occupata da un'ALTRA applicazione (un progetto in
+ * sviluppo, un altro server). `server.js` reagisce a `EADDRINUSE` con
+ * `process.exit(1)` — fatale, perché qui gira dentro il processo di Electron —
+ * e all'utente resterebbe una finestra che non mostra CodeDB, senza spiegazione.
+ *
+ * Se la porta è stata scelta esplicitamente con `PORT` non si cambia nulla: è
+ * una decisione dell'utente, e spostarla di nascosto romperebbe i client MCP e
+ * i segnalibri configurati su quel numero. Altrimenti si cercano le successive.
+ *
+ * @returns {Promise<number|null>} la porta da usare, o null se non se ne trova
+ */
+async function scegliPorta() {
+  if (await portaLibera(PORT)) return PORT;
+  if (PORTA_RICHIESTA) return null; // scelta dall'utente: non la si scavalca
+  for (let p = PORT + 1; p <= PORT + 20; p++) {
+    if (await portaLibera(p)) return p;
+  }
+  return null;
+}
+
 async function main() {
   // L'AppUserModelID è già impostato a livello di modulo (vedi sopra): qui
   // sarebbe troppo tardi, perché prima si attende il server e si possono aprire
@@ -140,8 +198,37 @@ async function main() {
   // (process.exit(1)), che qui ucciderebbe l'intero processo Electron.
   const alreadyRunning = await pingServer(500);
   if (!alreadyRunning) {
+    // La porta risponde ma non è CodeDB (pingServer controlla `app: codedb`),
+    // oppure è occupata da un processo che non risponde affatto.
+    const porta = await scegliPorta();
+    if (porta === null) {
+      dialog.showErrorBox(APP_NAME, `La porta ${PORT} è occupata da un'altra applicazione.\n\n`
+        + (PORTA_RICHIESTA
+          ? 'È la porta impostata nella variabile PORT: liberala oppure indicane un\'altra.'
+          : 'Sono state provate anche le venti successive senza trovarne una libera.'));
+      app.quit();
+      return;
+    }
+    if (porta !== PORT) {
+      console.warn(`[CodeDB] Porta ${PORT} occupata da un'altra applicazione: uso la ${porta}.`);
+      PORT = porta;
+    }
+    // Letta da server.js al momento del require: va impostata PRIMA.
+    process.env.PORT = String(PORT);
+
     try {
-      require('./server.js');
+      // `server.js` mette il proprio avvio dietro `if (require.main === module)`
+      // ed esporta `startServer`: caricarlo e basta definisce tutto ma NON apre
+      // la porta. Da qui `require.main` è electron-main.js, quindi senza questa
+      // chiamata il server incorporato non parte mai — e l'app finiva per
+      // funzionare solo quando trovava già in ascolto un server avviato a parte
+      // (con il vault e il processo di QUELLA istanza), oppure moriva dopo
+      // dieci secondi con "CodeDB non risponde".
+      const srv = require('./server.js');
+      if (typeof srv.startServer !== 'function') {
+        throw new Error('server.js non espone startServer(): versione incompatibile.');
+      }
+      await srv.startServer();
     } catch (err) {
       dialog.showErrorBox(APP_NAME, `Impossibile avviare il server CodeDB: ${err.message}`);
       app.quit();

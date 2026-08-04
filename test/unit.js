@@ -449,6 +449,34 @@ console.log('--- Test Unitari CodeDB ---');
     assert.ok(idxSet > -1 && idxSet < idxWindow,
       'setAppUserModelId deve precedere la creazione della finestra nel sorgente');
 
+    // Il server incorporato deve essere AVVIATO, non solo caricato: `server.js`
+    // mette `startServer()` dietro `require.main === module`, che da
+    // electron-main.js è falso. Senza la chiamata esplicita l'app desktop non
+    // apre alcuna porta e finisce per funzionare solo quando trova già in
+    // ascolto un server avviato a parte — con il vault e il processo di
+    // QUELL'istanza, quindi senza passphrase richiesta e senza aggiornamenti.
+    // È successo davvero, e da fuori sembrava tutto normale.
+    // NB: si cerca la CHIAMATA (`qualcosa.startServer(`), non il nome: la
+    // semplice occorrenza compare anche nel messaggio d'errore qui accanto, e
+    // un test che passa per quello non verificherebbe nulla.
+    assert.ok(/\w+\.startServer\s*\(/.test(mainSrc),
+      'electron-main.js deve chiamare startServer() dopo aver caricato server.js');
+    assert.ok(/module\.exports[\s\S]*startServer/.test(fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8')),
+      'server.js deve esportare startServer per l\'app desktop');
+
+    // Porta occupata da un'ALTRA applicazione: `server.js` reagisce a
+    // EADDRINUSE con process.exit(1), che dentro Electron uccide tutto. Da
+    // quando il server viene davvero avviato, il caso è raggiungibile: va
+    // deciso prima quale porta usare.
+    assert.ok(/function scegliPorta/.test(mainSrc) && /net\.createServer/.test(mainSrc),
+      'electron-main.js deve verificare la disponibilità della porta prima di avviare il server');
+
+    // Ponte verso l'interfaccia: la voce "Controlla Aggiornamenti" nel menu ⋮
+    // esiste solo se il main process lo espone (il menu nativo è nascosto da
+    // autoHideMenuBar, quindi quella voce da sola non basta).
+    assert.ok(/globalThis\.__codedbDesktop/.test(mainSrc),
+      'electron-main.js deve esporre il ponte __codedbDesktop al server incorporato');
+
     // I segreti non devono finire dentro l'installer.
     for (const escluso of ['!connections.ini', '!.env', '!conns/**']) {
       assert.ok((pkg.build.files || []).includes(escluso),
@@ -556,7 +584,37 @@ console.log('--- Test Unitari CodeDB ---');
     // alcuna risposta quando l'app è già aggiornata.
     assert.ok(/Controlla aggiornamenti/.test(mainSrc), 'il menu deve contenere la voce "Controlla aggiornamenti…"');
     assert.ok(/aggiornamenti\.controlla\(true\)/.test(mainSrc), 'la voce di menu deve eseguire un controllo manuale');
+    // Workflow di release: è l'unico modo di produrre il `.dmg` senza un Mac
+    // (electron-builder rifiuta la build macOS altrove). Il rischio vero non è
+    // che il file sparisca, ma che uno script npm venga rinominato e il
+    // workflow resti a citare quello vecchio: se ne accorgerebbe solo la
+    // prossima release, fallendo dopo il tag.
+    {
+      const wf = path.join(__dirname, '..', '.github', 'workflows', 'release.yml');
+      assert.ok(fs.existsSync(wf), '.github/workflows/release.yml deve esistere');
+      const testo = fs.readFileSync(wf, 'utf8');
+      for (const runner of ['windows-latest', 'macos-latest', 'ubuntu-latest']) {
+        assert.ok(testo.includes(runner), `il workflow deve costruire su ${runner}`);
+      }
+      // Gli script sono referenziati con la variabile di matrice: qui si
+      // verifica che ESISTANO tutti e sei quelli che quella variabile può
+      // produrre.
+      assert.ok(/npm run release:\$\{\{ matrix\.piattaforma \}\}/.test(testo)
+        && /npm run build:\$\{\{ matrix\.piattaforma \}\}/.test(testo),
+      'il workflow deve invocare gli script npm per piattaforma');
+      for (const p of ['win', 'mac', 'linux']) {
+        for (const k of ['build', 'release']) {
+          assert.ok(pkg.scripts[`${k}:${p}`], `il workflow richiede lo script ${k}:${p} in package.json`);
+        }
+      }
+      // Senza certificato, electron-builder cercherebbe un'identità nel
+      // portachiavi del runner e fallirebbe invece di produrre un pacchetto
+      // non firmato.
+      assert.ok(testo.includes('CSC_IDENTITY_AUTO_DISCOVERY'),
+        'la build non firmata deve disattivare la ricerca automatica del certificato');
+    }
     console.log('  OK   Electron: aggiornamenti (feed, versioni, note, menu) passed');
+    console.log('  OK   Workflow di release: runner per piattaforma e script npm coerenti passed');
   }
 
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
@@ -691,6 +749,37 @@ console.log('--- Test Unitari CodeDB ---');
 
   // Test 24: Statistiche della selezione di celle (valori EJSON, precisione)
   require('./unit-cell-stats');
+
+  // Test 24-bis: Statistiche di una selezione GEOMETRICA (misure sferiche,
+  // geometrie proiettate escluse dai totali)
+  require('./unit-geo-stats');
+
+  // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
+  // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
+  // momento il registro (vedi docs/provenienza.md) promette qualcosa che il
+  // codice non ha più — cioè lo strumento darebbe un falso negativo proprio
+  // quando serve. Se il registro privato non c'è (clone qualsiasi, CI) il
+  // controllo si salta: è un file volutamente fuori da git.
+  {
+    const registroImpronte = process.env.CODEDB_IMPRONTE
+      || path.join(__dirname, '..', 'provenienza', 'impronte.json');
+    if (!fs.existsSync(registroImpronte)) {
+      console.log('  SKIP Marcatori di provenienza: registro privato assente (docs/provenienza.md)');
+    } else {
+      const { leggiRegistro, analizza, punteggio } = require('../tools/impronte');
+      const reg = leggiRegistro();
+      const ris = analizza(path.join(__dirname, '..'), reg.marcatori);
+      const mancanti = ris.regole.filter((r) => !r.trovato);
+      const soloDoc = mancanti.filter((r) => r.docOnly).map((r) => r.m.id);
+      assert.strictEqual(
+        mancanti.length, 0,
+        `Marcatori di provenienza spariti dal codice: ${mancanti.map((r) => r.m.id).join(', ')}`
+        + (soloDoc.length ? ` (presenti nella sola documentazione: ${soloDoc.join(', ')})` : '')
+      );
+      const p = punteggio(ris.regole);
+      console.log(`  OK   Marcatori di provenienza: ${reg.marcatori.length} presenti nel codice (${p.ottenuto}/${p.tot})`);
+    }
+  }
 
   // Test 25: Errori parlanti (traduzione dei codici dei driver)
   require('./unit-errors');

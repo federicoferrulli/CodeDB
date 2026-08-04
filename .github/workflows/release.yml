@@ -1,0 +1,193 @@
+# ---------------------------------------------------------------------------
+# Costruzione degli installer CodeDB per Windows, macOS e Linux.
+#
+# Perché esiste: ogni sistema può essere impacchettato SOLO sulla propria
+# piattaforma. Il `.dmg` richiede `hdiutil` (macOS), il `.deb` richiede `fpm`
+# (assente su Windows) e l'AppImage richiede collegamenti simbolici che Windows
+# nega a un processo non privilegiato — electron-builder rifiuta esplicitamente
+# di costruire per macOS altrove ("Build for macOS is supported only on macOS").
+# Qui ogni job gira sul runner giusto, e i tre pubblicano sulla STESSA release.
+#
+# Due modi di usarlo:
+#   • push di un tag `v*`  → costruisce e PUBBLICA la release (bozza) su GitHub;
+#   • avvio manuale (Actions → Run workflow) → costruisce e basta, lasciando gli
+#     installer come artefatti scaricabili. È il modo per ottenere un `.dmg`
+#     senza avere un Mac e senza pubblicare niente.
+#
+# La release creata da electron-builder è una BOZZA: i tre job vi aggiungono i
+# propri file in momenti diversi, e pubblicarla automaticamente significherebbe
+# esporre una release incompleta a chi in quel momento cerca aggiornamenti.
+# La si pubblica a mano quando tutti e tre hanno finito.
+# ---------------------------------------------------------------------------
+
+name: Build e release
+
+on:
+  push:
+    # Entrambe le forme: il repository ha già tag senza la "v" iniziale
+    # (`0.1.0b`), e un tag che non fa scattare nulla è peggio di nessun tag —
+    # sembra che la release sia partita e invece non è successo niente.
+    tags: ['v*', '[0-9]*']
+  workflow_dispatch:
+    inputs:
+      pubblica:
+        description: 'Pubblica la release su GitHub (bozza) invece di produrre soli artefatti'
+        type: boolean
+        default: false
+
+# Serve a electron-builder per creare la release e caricarci gli installer.
+permissions:
+  contents: write
+
+# Un tag ricostruito annulla la corsa precedente invece di affiancarla.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verifica:
+    name: Test e controlli di versione
+    runs-on: ubuntu-latest
+    outputs:
+      pubblica: ${{ steps.decidi.outputs.pubblica }}
+      versione: ${{ steps.versione.outputs.valore }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # I test unitari non richiedono alcun database: se falliscono, non ha
+      # senso costruire tre installer.
+      - name: Test unitari
+        run: npm test
+
+      - name: Versione dichiarata
+        id: versione
+        run: echo "valore=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Una versione non semver rende l'AGGIORNAMENTO AUTOMATICO inservibile:
+      # electron-updater confronta le versioni con semver, e un valore che non
+      # sa interpretare non produce un errore visibile — produce un
+      # aggiornamento che non viene mai offerto. Meglio fermarsi qui.
+      - name: La versione deve essere semver
+        run: |
+          node -e "
+            const v = require('./package.json').version;
+            const ok = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.test(v);
+            if (!ok) {
+              console.error('Versione non valida per semver: ' + v);
+              console.error('electron-updater la confronta con semver: usa ad esempio 0.1.0-b oppure 0.1.0-beta.1.');
+              process.exit(1);
+            }
+            console.log('Versione: ' + v);
+          "
+
+      # Il tag serve solo da innesco: il nome della release lo decide
+      # package.json. Se i due divergono si finisce con il tag v1.2.0 e una
+      # release chiamata v1.1.0, e non se ne accorge nessuno finché un utente
+      # non scarica la versione sbagliata.
+      - name: Il tag deve coincidere con la versione
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          TAG="${TAG#v}"   # la "v" iniziale è opzionale
+          VER="${{ steps.versione.outputs.valore }}"
+          if [ "$TAG" != "$VER" ]; then
+            echo "Tag v$TAG diverso dalla versione in package.json ($VER)." >&2
+            exit 1
+          fi
+
+      - name: Pubblicare o no
+        id: decidi
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.pubblica }}" = "true" ]; then
+            echo "pubblica=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "pubblica=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: ${{ matrix.etichetta }}
+    needs: verifica
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # Un fallimento su una piattaforma non deve buttare via le altre due:
+      # spesso quella che fallisce è proprio macOS, per la firma.
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            piattaforma: win
+            etichetta: Windows (NSIS)
+          - os: macos-latest
+            piattaforma: mac
+            etichetta: macOS (dmg)
+          - os: ubuntu-latest
+            piattaforma: linux
+            etichetta: Linux (AppImage + deb)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Costruisci e pubblica
+        if: needs.verifica.outputs.pubblica == 'true'
+        run: npm run release:${{ matrix.piattaforma }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Senza certificato configurato, electron-builder cercherebbe
+          # un'identità nel portachiavi del runner e fallirebbe la build invece
+          # di produrre un pacchetto non firmato. Vedi la nota sulla firma in
+          # fondo al file.
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Costruisci senza pubblicare
+        if: needs.verifica.outputs.pubblica != 'true'
+        run: npm run build:${{ matrix.piattaforma }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      # Anche quando si pubblica: gli artefatti restano scaricabili subito,
+      # senza aspettare che la bozza di release venga pubblicata.
+      - name: Carica gli installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: codedb-${{ matrix.piattaforma }}-${{ needs.verifica.outputs.versione }}
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            dist/*.exe
+            dist/*.dmg
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.yml
+            dist/*.blockmap
+
+# ---------------------------------------------------------------------------
+# FIRMA — limite dichiarato, non dimenticato.
+#
+# I pacchetti prodotti qui NON sono firmati. Conseguenze concrete:
+#   • macOS: Gatekeeper blocca l'app non firmata né notarizzata, ed
+#     `electron-updater` rifiuta di installare un aggiornamento non firmato —
+#     il dialog "Controlla aggiornamenti…" lo dice e offre la pagina delle
+#     release (vedi electron-aggiornamenti.js);
+#   • Windows: SmartScreen avvisa che l'editore è sconosciuto.
+#
+# Per firmare servono un certificato e questi secret nel repository:
+#   • macOS   → CSC_LINK (certificato .p12 in base64), CSC_KEY_PASSWORD,
+#               APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+#               (richiede un Apple Developer Program, a pagamento);
+#   • Windows → WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD.
+# Aggiungendoli, va tolto `CSC_IDENTITY_AUTO_DISCOVERY: false` dal job macOS.
+# ---------------------------------------------------------------------------

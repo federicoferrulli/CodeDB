@@ -27,3 +27,9 @@ dist/
 conns/
 
 landing
+# Registro dei marcatori di provenienza (vedi docs/provenienza.md).
+# Fuori da git DI PROPOSITO: committarlo in chiaro consegnerebbe a chi copia
+# l'elenco preciso di cosa cancellare. In docs/provenienza.md e' committata la
+# sua impronta SHA-256, che la cronologia di git data. Tenerne una copia FUORI
+# dal repository: perso il file, resta l'impegno ma non si sa piu' cosa verifica.
+provenienza/

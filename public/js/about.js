@@ -19,7 +19,49 @@ import { $, emit, esc, toast } from './utils.js';
 
 let dati = null;
 
+
+/**
+ * Voce "Controlla Aggiornamenti" nel menu ⋮.
+ *
+ * Compare SOLO se il server risponde che c'è un'installazione desktop da
+ * aggiornare (`app:info` → `aggiornamenti: true`): nel browser, o con una
+ * finestra Electron appoggiata a un server avviato a parte, non c'è nulla da
+ * aggiornare e una voce che fallisce al clic sarebbe peggio di nessuna voce.
+ *
+ * Esiste perché il menu nativo di Electron — dove la voce c'è da sempre — è
+ * nascosto da `autoHideMenuBar: true` e compare solo premendo Alt: per chi usa
+ * l'applicazione, di fatto non esisteva.
+ */
+async function initAggiornamentiDesktop() {
+  const btn = $('#btn-updates');
+  if (!btn) return;
+
+  let info;
+  try {
+    info = await emit('app:info');
+  } catch {
+    return; // server muto: nessuna voce, nessun errore mostrato
+  }
+  if (!info || !info.aggiornamenti) return;
+
+  btn.classList.remove('hidden');
+  btn.addEventListener('click', async () => {
+    const menu = $('#header-more-menu');
+    if (menu) menu.classList.add('hidden');
+    try {
+      await emit('app:updates:check');
+      // Il resto avviene nei dialog NATIVI del processo principale: qui non
+      // c'è altro da mostrare, e un toast in più coprirebbe la finestra che
+      // sta per aprirsi.
+    } catch (err) {
+      toast(`Controllo aggiornamenti non riuscito: ${err.message}`, true);
+    }
+  });
+}
+
 export function initAbout() {
+  initAggiornamentiDesktop();
+
   const btn = $('#btn-about');
   if (btn) {
     btn.addEventListener('click', () => {

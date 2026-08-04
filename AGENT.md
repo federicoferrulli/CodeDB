@@ -19,6 +19,8 @@ npm run dist:mac           # pacchettizza il .dmg macOS in dist/
 npm run dist:linux         # pacchettizza l'AppImage Linux in dist/
 npm run shortcut           # crea i collegamenti "CodeDB" su Desktop e menu Start (Windows, pinnabili; icona public/codedb.ico)
 npm run shortcut-unix      # Linux: voce .desktop nel menu applicazioni; macOS: istruzioni per il Dock
+npm run impronte           # marcatori di provenienza: verifica che siano ancora nel codice (vedi docs/provenienza.md);
+                           # "node tools/impronte.js <cartella>" analizza un albero sospetto
 CodeDB.cmd / ./codedb.sh   # avvio "desktop": riusa l'istanza attiva o avvia il server in background e apre il browser ("stop" per fermarlo)
 node test/e2e.js           # test end-to-end MongoDB
 node test/e2e-mysql.js     # test end-to-end MySQL (porta: env MYSQL_PORT, default 3306)
@@ -29,6 +31,18 @@ node test/e2e-backup-mysql.js     # test end-to-end della CLI di backup su MySQL
 ```
 
 I test e2e richiedono **il server già avviato su :3030** e rispettivamente un **MongoDB locale su localhost:27017** o un **MySQL locale (root, password vuota)**; creano e poi ripuliscono i database `gui_mongodb_e2e` / `gui_mysql_e2e` / `gui_mongodb_e2e_mcp` / `gui_mysql_e2e_mcp` (i test MCP salvano e poi eliminano anche le connessioni `e2e-mcp` / `e2e-mcp-mysql` in `connections.ini`). Non ci sono lint né framework di test: i test usano semplici assert con `process.exitCode`.
+
+## Licenza e provenienza
+
+CodeDB è **AGPL-3.0**. Studiarlo, modificarlo e ridistribuirlo è permesso; la licenza chiede in cambio di conservare le note di copyright e attribuzione e di pubblicare le modifiche con la stessa licenza — **anche offrendo il software solo via rete** (art. 13). Il nome "CodeDB" e l'icona non sono coperti dalla licenza del codice.
+
+Il repository contiene **marcatori di provenienza** (`tools/impronte.js`, spiegati in `docs/provenienza.md`): scelte arbitrarie annotate — costanti calibrate a mano, ordini di valori, nomi di formati scritti nei file degli utenti — che permettono di riconoscere una copia rimarchiata. Non alterano il comportamento del programma, non raccolgono nulla e non nascondono codice.
+
+Cosa comporta per chi modifica questo repository:
+
+- **non "arrotondare" le costanti dall'aria arbitraria** (soglie di disegno, timeout, tetti, margini) durante una pulizia: sono calibrate su comportamenti reali e alcune sono marcatori;
+- **non rinominare le stringhe che finiscono nei dati degli utenti** — prefissi del vault, nome del formato di export, campo `tool` dei manifest di backup, prefisso delle API key, chiavi di `localStorage`: cambiarle rende illeggibili vault, export, backup e sessioni già esistenti;
+- dopo un refactor esteso, `npm run impronte` dice se qualche marcatore è sparito (il controllo è anche in `npm test`, e si salta da sé se il registro privato non è presente).
 
 ## Architettura
 

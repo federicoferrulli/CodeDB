@@ -26,14 +26,11 @@ import { $, toast, openModal, closeModal } from './utils.js';
 import {
   isGeometry, geometryLabel, fmtCoord, posizioni, scriviPosizione, chiuso, fuoriDaLonLat,
 } from './geojson.js';
+import { caricaLeaflet, tileAttive, impostaTile, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
 
 // Ri-esportati per comodita' di chi apre l'editor: chi importa geomap.js ha
 // gia' quello che serve per riconoscere ed etichettare una geometria.
 export { isGeometry, geometryLabel };
-
-const TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
-const TILE_ATTR = '© OpenStreetMap';
-const CHIAVE_TILE = 'codedb:geo:tiles';
 
 // Tipi disegnabili/modificabili con le maniglie. Gli altri (Multi*,
 // GeometryCollection) si vedono sulla mappa ma si modificano dal JSON: dare
@@ -41,8 +38,7 @@ const CHIAVE_TILE = 'codedb:geo:tiles';
 // editor a metà su dati altrui è peggio di un editor che dichiara il limite.
 const MODIFICABILI = new Set(['Point', 'MultiPoint', 'LineString', 'Polygon']);
 
-let L = null;              // Leaflet, caricato su richiesta
-let caricamento = null;    // promessa condivisa del caricamento
+let L = null;              // Leaflet (caricato su richiesta da geo-leaflet.js)
 let mappa = null;          // istanza L.map
 let livelloTile = null;
 // Forma e maniglie stanno su DUE canvas distinti: spostare una maniglia
@@ -60,32 +56,6 @@ let numVertici = 0;        // quanti vertici ha la geometria disegnata
 let timerTesto = 0;        // debounce del JSON digitato a mano
 let trascinando = false;   // trascinamento di un vertice in corso
 let fineTrascinamento = 0; // istante dell'ultimo rilascio (vedi aggiungiPunto)
-
-/* ------------------------------- Caricamento ----------------------------- */
-
-function caricaRisorsa(tag, attrs) {
-  return new Promise((resolve, reject) => {
-    const el = document.createElement(tag);
-    Object.assign(el, attrs);
-    el.addEventListener('load', () => resolve());
-    el.addEventListener('error', () => reject(new Error('Impossibile caricare Leaflet da public/vendor/leaflet.')));
-    document.head.appendChild(el);
-  });
-}
-
-async function caricaLeaflet() {
-  if (L) return L;
-  if (!caricamento) {
-    caricamento = (async () => {
-      await caricaRisorsa('link', { rel: 'stylesheet', href: '/vendor/leaflet/leaflet.css' });
-      await caricaRisorsa('script', { src: '/vendor/leaflet/leaflet.js' });
-      if (!window.L) throw new Error('Leaflet caricato ma non disponibile (window.L assente).');
-      L = window.L;
-      return L;
-    })().catch((err) => { caricamento = null; throw err; });
-  }
-  return caricamento;
-}
 
 /* --------------------------------- Mappa --------------------------------- */
 
@@ -434,10 +404,6 @@ function leggiTesto() {
 
 /* --------------------------------- Modale -------------------------------- */
 
-function tileAttive() {
-  return localStorage.getItem(CHIAVE_TILE) !== 'off';
-}
-
 function applicaTile() {
   if (!mappa) return;
   const attive = tileAttive();
@@ -509,7 +475,7 @@ function preparaSelettoreTipo(readOnly) {
  */
 export async function openGeoEditor({ value, campo = '', readOnly = false, onSave = null }) {
   try {
-    await caricaLeaflet();
+    L = await caricaLeaflet();
   } catch (err) {
     toast(err.message, true);
     return;
@@ -598,7 +564,7 @@ export function initGeoMap() {
   $('#geomap-fit').addEventListener('click', () => inquadra());
   $('#geomap-type').addEventListener('change', (e) => cambiaTipo(e.target.value));
   $('#geomap-tiles').addEventListener('change', (e) => {
-    localStorage.setItem(CHIAVE_TILE, e.target.checked ? 'on' : 'off');
+    impostaTile(e.target.checked);
     applicaTile();
   });
 }

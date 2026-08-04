@@ -4,6 +4,8 @@ import { state } from './state.js';
 import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext, eseguiAOndate } from './utils.js';
 import { runQuery, ensureRowRendered } from './grid.js';
 import { statistiche, statistichePerColonna, formattaNumero, riassuntoBreve } from './cell-stats.js';
+import { statisticheGeo, riassuntoGeoBreve } from './geo-stats.js';
+import { apriMappaSelezione } from './geomulti.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
@@ -50,7 +52,7 @@ const MAX_CELLE_RIASSUNTO = 20000;
 
 // Ri-applica le classi CSS della selezione dopo un render della griglia,
 // scartando le celle ormai fuori dai limiti della pagina corrente.
-export function applyCellSelection() {
+export function applyCellSelection({ leggero = false } = {}) {
   const s = sel();
   for (const k of [...s.cells]) {
     const [r, c] = k.split(':').map(Number);
@@ -75,6 +77,17 @@ export function applyCellSelection() {
   if (s.cells.size <= MAX_CELLE_RIASSUNTO) {
     const breve = riassuntoBreve(statistiche(valoriSelezionati()));
     if (breve) testo += ' · ' + breve;
+    // Una selezione di geometrie non ha numeri da sommare: il riassunto utile è
+    // un altro (quante, di che tipo, quanto estese) e sta nello stesso posto.
+    // NON durante il trascinamento (`leggero`): misurare lunghezze e aree
+    // significa una haversine per lato, e su una colonna di poligoni reali sono
+    // decine di migliaia di radici quadrate per fotogramma — cioè la selezione
+    // che si muove a scatti mentre la si trascina. A rilascio avvenuto si
+    // calcola una volta sola.
+    if (!leggero) {
+      const breveGeo = riassuntoGeoBreve(statisticheGeo(vociSelezionate()));
+      if (breveGeo) testo += ' · ' + breveGeo;
+    }
   }
   info.textContent = testo;
 }
@@ -110,6 +123,22 @@ function valoriSelezionati() {
   for (const r of rows) {
     for (const c of cols) {
       if (has.has(key(r, c))) out.push(cellRaw(r, c));
+    }
+  }
+  return out;
+}
+
+// Le stesse celle con la loro PROVENIENZA (colonna e riga): la mappa della
+// selezione deve poter dire da dove viene ogni forma disegnata, altrimenti
+// trovare il dato sbagliato che si è appena visto in mezzo all'oceano
+// significherebbe cercarlo a mano nella griglia.
+function vociSelezionate() {
+  const { rows, cols } = selectionGrid();
+  const has = sel().cells;
+  const out = [];
+  for (const r of rows) {
+    for (const c of cols) {
+      if (has.has(key(r, c))) out.push({ valore: cellRaw(r, c), colonna: state.columns[c] ?? '', riga: r });
     }
   }
   return out;
@@ -273,6 +302,24 @@ function showCellStats() {
   newCopy.addEventListener('click', () => copyText(statsTsv(st, perCol), 'Riepilogo copiato'));
 
   overlay.classList.remove('hidden');
+}
+
+// --- Mappa della selezione --------------------------------------------------
+
+// Quante geometrie ci sono nella selezione (per decidere cosa offrire nel menu
+// e dove porta il clic sulla barra di stato).
+function contaGeometrieSelezionate() {
+  return statisticheGeo(vociSelezionate()).totale;
+}
+
+function mostraMappaSelezione() {
+  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  const { cols } = selectionGrid();
+  const nomi = cols.map((c) => state.columns[c]).filter(Boolean);
+  apriMappaSelezione({
+    voci: vociSelezionate(),
+    titolo: [state.coll, nomi.length <= 3 ? nomi.join(', ') : `${nomi.length} colonne`].filter(Boolean).join(' · '),
+  });
 }
 
 // TSV della selezione: le celle non selezionate dentro il rettangolo di
@@ -760,8 +807,16 @@ export function initCellSelect() {
   // chi vede "Σ …" lì è esattamente chi vuole mediana, distinti e per-colonna.
   const info = $('#cell-info');
   if (info) {
-    info.title = 'Statistiche della selezione (mediana, distinti, per colonna…)';
-    info.addEventListener('click', () => { if (sel().cells.size) showCellStats(); });
+    info.title = 'Statistiche della selezione (mediana, distinti, per colonna…) · con le geometrie apre la mappa';
+    info.addEventListener('click', () => {
+      if (!sel().cells.size) return;
+      // Su una selezione di sole geometrie il pannello 📊 non avrebbe nulla da
+      // dire (nessun numero da sommare): il seguito naturale del riassunto
+      // "🗺 12 Polygon · …" è la mappa, non una tabella di trattini.
+      const st = statistiche(valoriSelezionati());
+      if (!st.numerici && contaGeometrieSelezionate()) mostraMappaSelezione();
+      else showCellStats();
+    });
   }
 
   let dragging = false;
@@ -789,10 +844,13 @@ export function initCellSelect() {
     s.focus = cell;
     const rect = rectKeys(s.anchor, cell);
     s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
-    applyCellSelection();
+    applyCellSelection({ leggero: true });
   });
 
   document.addEventListener('mouseup', () => {
+    // Il riassunto geografico è stato saltato durante il trascinamento (troppo
+    // caro per fotogramma): ora che la selezione è ferma si completa.
+    if (dragging) applyCellSelection();
     dragging = false;
     dragBase = null;
   });
@@ -830,12 +888,19 @@ export function initCellSelect() {
       { label: 'Markdown', action: () => copyToClipboard(buildMarkdown()) },
       { label: 'SQL INSERT (MySQL)', action: () => copyToClipboard(buildSqlInsert()) },
     ]), 0);
+    // La voce della mappa compare solo se c'è davvero una geometria selezionata:
+    // su una tabella senza colonne spaziali sarebbe una voce che non fa nulla.
+    const geometrie = contaGeometrieSelezionate();
     showContextMenu(x, y, [
       { label: 'Copia (Ctrl+C)', action: () => copyToClipboard(buildTsv(false)) },
       { label: 'Copia con intestazioni', action: () => copyToClipboard(buildTsv(true)) },
       { label: 'Copia avanzato ▸', action: advanced },
       '---',
       { label: '📊 Statistiche selezione…', action: showCellStats },
+      ...(geometrie ? [{
+        label: `🗺 Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
+        action: mostraMappaSelezione,
+      }] : []),
       '---',
       {
         label: 'Duplica riga ▸',

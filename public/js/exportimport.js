@@ -463,8 +463,21 @@ export async function exportDatabase(db) {
     return;
   }
 
+  // `generatore` è una firma di provenienza DICHIARATA (come il campo `tool`
+  // dei manifest di backup): dice a chi riceve il file quale programma lo ha
+  // prodotto e quando, che è la prima cosa che serve sapere aprendo un export
+  // altrui. Non è nascosta e non cambia nulla nel formato — l'import ignora i
+  // campi che non conosce, quindi i file vecchi restano validi e i nuovi si
+  // aprono anche con le versioni precedenti.
+  let generatore = 'CodeDB';
+  try {
+    const info = await emit('app:info');
+    if (info && info.version) generatore = `CodeDB ${info.version}`;
+  } catch { /* la firma non deve poter far fallire un export */ }
+
   const text =
     `{ "formato": ${JSON.stringify(DB_EXPORT_FORMAT)}, "versione": 1, ` +
+    `"generatore": ${JSON.stringify(generatore)}, "creato": ${JSON.stringify(new Date().toISOString())}, ` +
     `"dbType": ${JSON.stringify(state.dbType)}, "db": ${JSON.stringify(db)},\n"collections": [\n` +
     parts.join(',\n') + '\n] }\n';
   downloadBlob(text, `${db}.codedb.json`, 'application/json;charset=utf-8');

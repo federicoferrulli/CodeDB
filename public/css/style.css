@@ -219,6 +219,32 @@
   transform: translateZ(0);
 }
 .geomap-json { flex: 1 1 0; min-width: 0; height: 420px; resize: none; font-family: monospace; font-size: 0.8rem; }
+/* Colonna destra della mappa di selezione (geomulti.js): riepilogo sopra,
+   elenco scorrevole sotto. L'altezza è quella della mappa accanto, così le due
+   viste restano allineate come nell'editor. */
+#geomulti-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(5, 9, 18, 0.88); transition: none; }
+/* Un po' più larga della colonna JSON dell'editor: qui accanto alla mappa non
+   c'è un testo che va a capo ma una tabella di sei colonne. */
+.geomulti-side { flex: 1.4 1 0; min-width: 0; height: 420px; display: flex; flex-direction: column; gap: 8px; }
+/* Il riepilogo è alto quanto le righe che ha (con poligoni e proiettate arriva a
+   una dozzina): senza un tetto si prendeva l'intera colonna e l'elenco delle
+   geometrie — che è la parte con cui si INTERAGISCE — restava schiacciato a
+   una striscia di pochi pixel. Metà colonna per uno. */
+#geomulti-summary { flex: 0 1 auto; min-height: 0; max-height: 52%; overflow: auto; font-size: 0.8rem; }
+.geomulti-list { flex: 1 1 auto; min-height: 96px; overflow: auto; font-size: 0.8rem; }
+/* Sei colonne strette in una barra laterale: senza `nowrap` "476,89 km" andava
+   a capo in mezzo al numero. Va invece a capo la colonna, scorrendo. */
+.geomulti-list td, .geomulti-list th { padding: 3px 6px; white-space: nowrap; }
+/* Intestazione fissa: l'elenco si scorre (e lo scorre da sé quando si evidenzia
+   una geometria dalla mappa), e senza questa riga si perde di vista cosa sia
+   ogni colonna proprio mentre la si consulta. */
+.geomulti-list thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-surface, #161b22); }
+.geomulti-list tr[data-i] { cursor: pointer; }
+.geomulti-list tr[data-i]:hover td { background: rgba(0, 122, 204, 0.12); }
+.geomulti-list tr.attiva td { background: rgba(255, 107, 107, 0.16); }
+/* Pallino del colore con cui la geometria è disegnata: la legenda sta dove
+   serve, accanto alla riga, invece che in un riquadro a parte da consultare. */
+.geomulti-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 .geomap-note { margin-top: 8px; font-size: 0.8rem; }
 /* Cella geometrica nella griglia: etichetta compatta, non un muro di numeri. */
 .type-geo { color: #4ec9b0; cursor: pointer; }
@@ -240,6 +266,7 @@
   .geomap-body { flex-direction: column; }
   .geomap-canvas { height: 300px; }
   .geomap-json { height: 160px; }
+  .geomulti-side { height: auto; max-height: 320px; }
 }
 
 .modal h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.015em; }

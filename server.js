@@ -52,6 +52,25 @@ const VENDORIZZATE = [
   { nome: 'leaflet', versione: '1.9.4', licenza: 'BSD-2-Clause', nota: 'mappe delle geometrie (public/vendor/leaflet)' },
 ];
 
+/* ---------------------------------------------------------------------------
+ * Ponte con il processo principale di Electron.
+ *
+ * `electron-main.js` incorpora QUESTO server nel proprio processo e vi lascia
+ * un oggetto con le azioni che solo il lato desktop può eseguire (per ora il
+ * controllo degli aggiornamenti). Se il server gira da solo — `npm start`, la
+ * CLI, i test — l'oggetto non c'è e le relative funzioni non vengono offerte
+ * all'interfaccia: la voce di menu semplicemente non compare, invece di
+ * comparire e poi fallire.
+ * ------------------------------------------------------------------------- */
+function ponteDesktop() {
+  const p = globalThis.__codedbDesktop;
+  return (p && typeof p.controllaAggiornamenti === 'function') ? p : null;
+}
+
+function capacitaDesktop() {
+  return { desktop: Boolean(process.versions.electron), aggiornamenti: Boolean(ponteDesktop()) };
+}
+
 let cacheLicenza = null;
 function datiLicenza() {
   if (cacheLicenza) return cacheLicenza;
@@ -2274,7 +2293,30 @@ io.on('connection', (socket) => {
    * c'è motivo di regalare a chi non è ancora entrato.
    */
   safeOn('app:info', (_payload, cb) => {
-    cb({ ok: true, version: APP_VERSION });
+    cb({ ok: true, version: APP_VERSION, ...capacitaDesktop() });
+  });
+
+  /**
+   * "Controlla aggiornamenti…" richiesto dall'interfaccia web.
+   *
+   * Perché passa da qui invece che da un IPC di Electron: la finestra carica la
+   * stessa UI servita da questo server ed è `sandbox: true` senza preload, per
+   * cui un canale IPC sarebbe esposto a qualunque pagina finisse lì dentro. Ma
+   * quando CodeDB gira come app desktop il server vive NELLO STESSO processo
+   * del main di Electron, quindi il gestore degli aggiornamenti è raggiungibile
+   * direttamente — senza aprire alcun canale nuovo verso il renderer.
+   *
+   * L'evento non installa nulla: apre i dialog nativi, dove l'utente decide se
+   * scaricare e se riavviare.
+   */
+  safeOn('app:updates:check', (_payload, cb) => {
+    assertManage(principal);
+    const ponte = ponteDesktop();
+    if (!ponte) {
+      throw new Error('Gli aggiornamenti automatici sono disponibili solo nell\'app desktop CodeDB.');
+    }
+    ponte.controllaAggiornamenti();
+    cb({ ok: true });
   });
 
   /**

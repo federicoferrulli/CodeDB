@@ -1,6 +1,6 @@
 {
-  "name": "mongo-web-gui",
-  "version": "0.1.0b",
+  "name": "codedb",
+  "version": "0.1.0-beta.1",
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
   "author": "Federico 'Keus' Ferrulli",
@@ -51,6 +51,7 @@
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh",
     "electron:licenza": "node tools/genera-licenza.js",
+    "impronte": "node tools/impronte.js",
     "build:linux:docker": "node tools/build-linux-docker.js"
   },
   "dependencies": {

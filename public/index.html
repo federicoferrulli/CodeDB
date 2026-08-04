@@ -430,6 +430,12 @@
             title="Stato di salute delle connessioni attive">
             <i data-lucide="activity"></i> Salute Connessioni
           </button>
+          <!-- Solo nell'app desktop: `about.js` la mostra se il server risponde
+               che c'è un'installazione Electron da aggiornare. -->
+          <button id="btn-updates" class="menu-item hidden" type="button"
+            title="Verifica se è disponibile una nuova versione di CodeDB">
+            <i data-lucide="download-cloud"></i> Controlla Aggiornamenti
+          </button>
           <button id="btn-about" class="menu-item" type="button"
             title="Versione, licenza AGPL-3.0 e manleva">
             <i data-lucide="scale"></i> Informazioni &amp; Licenza
@@ -1081,6 +1087,42 @@
       <div class="modal-actions">
         <button id="geomap-cancel" class="ghost">Annulla</button>
         <button id="geomap-save" class="primary">Applica geometria</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modale mappa di una selezione di celle geometriche ============ -->
+  <div id="geomulti-overlay" class="overlay hidden">
+    <div class="modal wide geomap-modal">
+      <h2 id="geomulti-title">Geometrie sulla mappa</h2>
+
+      <div class="geomap-toolbar">
+        <button type="button" id="geomulti-fit" class="ghost">⤢ Inquadra tutto</button>
+        <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, la mappa funziona su sfondo neutro">
+          <input type="checkbox" id="geomulti-tiles" /> Sfondo mappa (OpenStreetMap)
+        </label>
+        <span class="dim">Clic su una riga dell'elenco per inquadrarla · clic su una forma per trovarla nell'elenco</span>
+      </div>
+
+      <div id="geomulti-warning" class="warning hidden"></div>
+
+      <div class="geomap-body">
+        <div id="geomulti-canvas" class="geomap-canvas"></div>
+        <div class="geomulti-side">
+          <div id="geomulti-summary"></div>
+          <div id="geomulti-list" class="geomulti-list"></div>
+          <div id="geomulti-list-note" class="dim geomap-note hidden"></div>
+        </div>
+      </div>
+
+      <p class="hint" style="margin:8px 0 0">Lunghezze e aree sono calcolate sulla sfera (raggio medio WGS84):
+        l'approssimazione rispetto all'ellissoide è sotto lo 0,5%. Per un calcolo esatto usa le funzioni
+        spaziali del database (<span class="mono">ST_Length</span>, <span class="mono">ST_Area</span>).</p>
+
+      <div class="modal-actions">
+        <button id="geomulti-copy" class="ghost">Copia riepilogo</button>
+        <button id="geomulti-export" class="ghost">Esporta GeoJSON</button>
+        <button id="geomulti-close" class="primary">Chiudi</button>
       </div>
     </div>
   </div>
