@@ -60,9 +60,6 @@ export function initResponsive() {
     if (e.target.closest('.conn-item .node-label') || e.target.closest('#conn-add-btn')) closeDrawers();
   });
 
-  // La disconnessione nasconde il workspace: niente backdrop orfano.
-  $('#disconnect-btn').addEventListener('click', closeDrawers);
-
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeDrawers();
   });

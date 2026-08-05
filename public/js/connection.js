@@ -1,5 +1,5 @@
 import { socket } from './socket.js';
-import { tabs, activeTab, createTab, closeTab, closeAllTabs } from './tabs.js';
+import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
 import { $, emit, toast, safeUUID, openModal, closeModal, showError } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
@@ -421,14 +421,8 @@ export function initConnection() {
     });
   });
 
-  // "Disconnetti" = chiudi il tab attivo (la sessione server viene chiusa).
-  $('#disconnect-btn').addEventListener('click', () => {
-    const tab = activeTab();
-    if (!tab) return;
-    closeTab(tab.id);
-    renderTabBar();
-    renderWorkspace();
-  });
+  // Nessun pulsante "Disconnetti": chiudere la connessione significa chiudere
+  // il suo tab, e la ✕ del tab (o il clic centrale) fa gia' esattamente questo.
 
   let hadSession = false;
   socket.on('connect', async () => {

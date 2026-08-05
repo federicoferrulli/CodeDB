@@ -14,9 +14,7 @@ const REFRESH_MS = 4000;
 
 export function initHealth() {
   const btn = $('#btn-health');
-  const dockBtn = $('#conn-dock-health');
   if (btn) btn.addEventListener('click', openHealthModal);
-  if (dockBtn) dockBtn.addEventListener('click', openHealthModal);
 
   const close = $('#btn-close-health-modal');
   if (close) close.addEventListener('click', closeHealthModal);

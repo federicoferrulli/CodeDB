@@ -1,5 +1,5 @@
 /**
- * CodeDB — Cambio della passphrase del vault (voce "Cambia Passphrase" in ⋮)
+ * CodeDB — Cambio della passphrase del vault (voce "Cambia Passphrase" nel menu Impostazioni)
  *
  * Fino a ieri la passphrase si poteva solo SUBIRE: era la chiave stessa dei
  * segreti, quindi cambiarla significava ri-cifrare a mano l'intero
@@ -171,11 +171,7 @@ export function initPassphrase() {
   const overlay = $('#passphrase-overlay');
 
   if (apri) {
-    apri.addEventListener('click', () => {
-      const menu = $('#header-more-menu');
-      if (menu) menu.classList.add('hidden');
-      apriModale();
-    });
+    apri.addEventListener('click', () => apriModale()); // il menu lo chiude main.js
   }
   if (form) form.addEventListener('submit', invia);
   if (annulla) annulla.addEventListener('click', chiudiModale);

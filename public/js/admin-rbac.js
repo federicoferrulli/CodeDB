@@ -21,9 +21,7 @@ const modal = () => $('#modal-admin-rbac');
 
 export function initAdminRbac() {
   const btn = $('#btn-admin-rbac');
-  const dockBtn = $('#conn-dock-admin');
   if (btn) btn.addEventListener('click', open);
-  if (dockBtn) dockBtn.addEventListener('click', open);
 
   const close = $('#btn-close-admin-rbac');
   if (close) close.addEventListener('click', hide);

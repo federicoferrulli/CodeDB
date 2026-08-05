@@ -747,27 +747,6 @@ header {
   color: var(--fg);
 }
 
-.btn-disconnect {
-  background: transparent;
-  color: var(--fg-dim);
-  border: 1px solid transparent;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all var(--transition-fast);
-}
-
-.btn-disconnect:hover {
-  background: var(--danger);
-  color: #000;
-  border-color: var(--danger);
-}
-
-
 .brand-logo {
   width: 24px;
   height: 24px;
@@ -864,7 +843,7 @@ header {
 }
 
 
-/* Header Tools Wrap & Overflow Menu (⋮) */
+/* Header tools + menu a comparsa (Impostazioni, dropdown della toolbar) */
 .header-tools-wrap {
   position: relative;
   margin-left: auto;
@@ -873,11 +852,11 @@ header {
   flex-shrink: 0;
 }
 
-.header-more-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  width: 220px;
+.app-menu {
+  /* Posizione decisa a runtime da positionFixedDropdown (position: fixed):
+     il menu non vive piu' dentro un contenitore relative nell'header. */
+  position: fixed;
+  width: 230px;
   max-width: calc(100vw - 16px);
   box-sizing: border-box;
   background: var(--bg-2, #1e1e2e);
@@ -891,10 +870,35 @@ header {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  animation: modalFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  /* Apertura e chiusura sono simmetriche e partono dal BASSO: il menu nasce
+     sopra il pulsante Impostazioni, in fondo alla barra connessioni. La
+     chiusura è pilotata da `.closing` in main.js — `.hidden` è `display: none`
+     e da solo farebbe sparire il menu di scatto. */
+  animation: appMenuIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.header-more-menu .menu-item {
+.app-menu.closing {
+  animation: appMenuOut 0.14s ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes appMenuIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes appMenuOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
+}
+
+/* Chi ha chiesto meno animazioni non le riceve: il menu compare e sparisce.
+   `main.js` non se ne accorge — il timer di sicurezza chiude lo stesso. */
+@media (prefers-reduced-motion: reduce) {
+  .app-menu, .app-menu.closing { animation: none; }
+}
+
+.app-menu .menu-item {
   display: flex;
   align-items: center;
   justify-content: flex-start !important;
@@ -912,18 +916,18 @@ header {
   transition: all 0.15s ease;
 }
 
-.header-more-menu .menu-item:hover {
+.app-menu .menu-item:hover {
   background: var(--hover);
   color: var(--accent);
 }
 
-.header-more-menu .menu-divider {
+.app-menu .menu-divider {
   height: 1px;
   background: var(--border);
   margin: 4px 6px;
 }
 
-.header-more-menu .checkbox-item {
+.app-menu .checkbox-item {
   justify-content: flex-start !important;
   text-align: left !important;
   color: var(--fg-dim);
@@ -5044,88 +5048,76 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   transform: scale(0.98);
 }
 
-.conn-tools-dock {
+/* Unico ingresso agli strumenti, in fondo alla barra connessioni: ha preso il
+   posto dei cinque bottoncini della dock e del menu ⋮ dell'header. Il menu che
+   apre (#settings-menu) sta FUORI dalla aside, che si può comprimere. */
+.settings-btn {
   width: 100%;
   box-sizing: border-box;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(32px, 1fr));
-  gap: 2px;
-  padding: 2px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.04);
-  border-radius: 6px;
-}
-
-.dock-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 6px 2px;
+  gap: 8px;
+  padding: 8px 10px;
   background: transparent;
+  /* Senza bordo: e' l'ultima voce di una colonna di comandi, non una scheda a
+     se'. Lo stato lo dicono sfondo e colore al passaggio del mouse. */
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: var(--fg-dim, #94a3b8);
+  font-size: clamp(0.78rem, 3cqi, 0.82rem);
+  font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
   min-width: 0;
 }
 
-.dock-btn svg, .dock-btn .lucide {
+.settings-btn svg, .settings-btn .lucide {
   width: 15px;
   height: 15px;
   stroke-width: 2px;
-  transition: color 0.15s ease;
+  flex-shrink: 0;
 }
 
-.dock-btn .dock-label {
-  font-size: 0.65rem;
-  font-weight: 500;
-  line-height: 1;
+.settings-btn > span {
+  flex: 1;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 100%;
 }
 
-.dock-btn:hover {
-  background: rgba(255, 255, 255, 0.06);
+.settings-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
   color: var(--fg, #f8fafc);
 }
 
-.dock-btn:hover svg, .dock-btn:hover .lucide {
+.settings-btn[aria-expanded="true"] {
+  background: rgba(255, 255, 255, 0.09);
   color: var(--fg, #f8fafc);
 }
 
-/* Responsive adjustment when sidebar is narrow (< 210px) */
+/* Il chevron segue il menu: in su quando è chiuso (il menu si aprirà verso
+   l'alto), in giù quando è aperto. Si RUOTA l'icona invece di sostituirla con
+   `chevron-down`: la rotazione è animabile e non ricostruisce l'SVG a ogni
+   apertura. La classe sopravvive alla sostituzione fatta da Lucide, che
+   fonde le classi del segnaposto in quelle dell'svg generato. */
+.settings-btn-caret {
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.settings-btn[aria-expanded="true"] .settings-btn-caret {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-btn-caret { transition: none; }
+}
+
+/* Barra connessioni stretta: resta la sola icona (l'etichetta sparirebbe
+   comunque nei puntini, e il titolo dice già tutto). */
 @container conn-sidebar (max-width: 210px) {
-  .dock-btn .dock-label {
-    display: none;
-  }
-  .dock-btn {
-    padding: 8px 4px;
-  }
-}
-
-
-
-
-
-
-/* --- Riquadri informativi delle modali (cambio passphrase) ----------------- */
-
-.info-box,
-.warn-box,
-.success-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 12px;
-  margin: 10px 0;
-  border-radius: 6px;
-  font-size: 0.86em;
-  line-height: 1.45;
+  .settings-btn { justify-content: center; padding: 8px 4px; }
+  .settings-btn > span, .settings-btn .settings-btn-caret { display: none; }
 }
 
 .info-box.hidden,

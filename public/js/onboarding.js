@@ -7,7 +7,7 @@
  *
  *  1. MODALE DI BENVENUTO (`#onboarding-overlay`) — si apre da sola al primo
  *     avvio e offre tre vie: creare la prima connessione, fare il giro guidato,
- *     o essere lasciati in pace. Riaperta dal menu ⋮ diventa l'“hub” della
+ *     o essere lasciati in pace. Riaperta dal menu Impostazioni diventa l'“hub” della
  *     guida (rifai il tour, mostra i primi passi, novità della versione).
  *  2. TOUR GUIDATO — un riquadro luminoso sull'elemento REALE dell'interfaccia
  *     più un fumetto. I passi dichiarano un selettore e sono SALTATI se
@@ -80,8 +80,8 @@ const PASSI = [
       + 'uno script con pausa e ripresa; i risultati si vedono come tabella, albero JSON o grafico.',
   },
   {
-    sel: '#header-more-btn',
-    titolo: 'Strumenti & Utility',
+    sel: '#conn-settings-btn',
+    titolo: 'Impostazioni',
     testo: 'Backup e ripristino, Storico Azioni, Salute delle connessioni, passphrase del vault — e questa guida, '
       + 'se vuoi rivederla.',
   },
@@ -92,11 +92,7 @@ const PASSI = [
 export function initOnboarding() {
   const btn = $('#btn-onboarding');
   if (btn) {
-    btn.addEventListener('click', () => {
-      const menu = $('#header-more-menu');
-      if (menu) menu.classList.add('hidden');
-      apriHub();
-    });
+    btn.addEventListener('click', () => apriHub()); // il menu lo chiude main.js
   }
 
   const overlay = $('#onboarding-overlay');
@@ -291,7 +287,7 @@ function apriBenvenuto() {
   `);
 }
 
-/** Stessa modale, riaperta dal menu ⋮ da chi CodeDB lo conosce già. */
+/** Stessa modale, riaperta dal menu Impostazioni da chi CodeDB lo conosce già. */
 function apriHub() {
   const stato = leggiStato();
   const fatti = completati(stato);

@@ -109,39 +109,69 @@ onTabChange(() => {
   refreshLucideIcons();
 });
 
-function initHeaderMoreMenu() {
-  const btn = $('#header-more-btn');
-  const menu = $('#header-more-menu');
+// Menu "Impostazioni" in fondo alla barra connessioni: unico ingresso a backup,
+// storico, salute, utenti, passphrase, guida e informazioni. Ha preso il posto
+// del menu ⋮ nell'header e dei bottoncini della dock, che ripetevano in parte
+// gli stessi comandi in due punti diversi dello schermo.
+function initSettingsMenu() {
+  const btn = $('#conn-settings-btn');
+  const menu = $('#settings-menu');
   if (!btn || !menu) return;
+
+  // Chiusura ANIMATA: `.hidden` è `display: none`, quindi togliere e basta fa
+  // sparire il menu di scatto mentre l'apertura è dissolta — l'asimmetria si
+  // nota. Si passa da `.closing` (animazione in uscita) e solo alla fine si
+  // mette `.hidden`; il timer di sicurezza serve perché `animationend` non
+  // arriva se l'animazione è disattivata (prefers-reduced-motion) o se il
+  // nodo viene nascosto da qualcun altro nel frattempo.
+  let timerChiusura = null;
+  const nascondi = () => {
+    clearTimeout(timerChiusura);
+    timerChiusura = null;
+    menu.classList.remove('closing');
+    menu.classList.add('hidden');
+  };
+  const senzaAnimazioni = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const chiudi = () => {
+    btn.setAttribute('aria-expanded', 'false');
+    if (menu.classList.contains('hidden') || menu.classList.contains('closing')) return;
+    if (senzaAnimazioni()) { nascondi(); return; }
+    menu.classList.add('closing');
+    timerChiusura = setTimeout(nascondi, 200);
+  };
+  menu.addEventListener('animationend', (e) => {
+    if (e.target === menu && menu.classList.contains('closing')) nascondi();
+  });
 
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
-    const isHidden = menu.classList.contains('hidden');
-    document.querySelectorAll('.header-more-menu, .toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
-
-    if (isHidden) {
-      positionFixedDropdown(btn, menu);
+    // Aperto (o in chiusura, cioè ancora visibile): il clic sul pulsante lo
+    // richiude con la sua animazione.
+    if (!menu.classList.contains('hidden') && !menu.classList.contains('closing')) {
+      chiudi();
+      return;
     }
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    clearTimeout(timerChiusura);
+    menu.classList.remove('closing'); // riapertura durante la dissolvenza
+    positionFixedDropdown(btn, menu);
+    btn.setAttribute('aria-expanded', 'true');
   });
 
   menu.addEventListener('click', (e) => {
-    if (e.target.closest('.menu-item')) {
-      menu.classList.add('hidden');
-    }
+    if (e.target.closest('.menu-item')) chiudi();
   });
 
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('#header-more-btn') && !e.target.closest('#header-more-menu')) {
-      menu.classList.add('hidden');
-    }
+    if (!e.target.closest('#conn-settings-btn') && !e.target.closest('#settings-menu')) chiudi();
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') menu.classList.add('hidden');
+    if (e.key === 'Escape') chiudi();
   });
 
-  window.addEventListener('resize', () => menu.classList.add('hidden'));
-  window.addEventListener('scroll', () => menu.classList.add('hidden'), true);
+  window.addEventListener('resize', chiudi);
+  window.addEventListener('scroll', chiudi, true);
 }
 
 // Per primo: con RBAC attivo la schermata di accesso deve comparire prima che
@@ -175,7 +205,7 @@ initScriptRun();
 initPassphrase();
 initSessionPersistence();
 initSplitView();
-initHeaderMoreMenu();
+initSettingsMenu();
 initAbout();
 // Per ultima: decide da sé se aprirsi (primo avvio o dopo un aggiornamento) e
 // deve trovare il resto dell'interfaccia già montato, perché il tour indica

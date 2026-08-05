@@ -64,7 +64,7 @@ export const NOVITA = [
     versione: '0.1.0',
     punti: [
       'Aggiornamenti automatici dell\'app desktop: menu CodeDB → “Controlla aggiornamenti…”.',
-      'Guida introduttiva e primi passi, richiamabili dal menu ⋮.',
+      'Guida introduttiva e primi passi, richiamabili dal menu Impostazioni.',
     ],
   },
 ];

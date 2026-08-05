@@ -1,7 +1,7 @@
 'use strict';
 
 /* ---------------------------------------------------------------------------
- * Schermata "Informazioni & Licenza" (menu ⋮).
+ * Schermata "Informazioni & Licenza" (menu Impostazioni).
  *
  * Tre cose, in quest'ordine: versione installata, MANLEVA per esteso, licenza
  * AGPL-3.0 con il testo completo consultabile qui dentro, e l'elenco delle
@@ -21,7 +21,7 @@ let dati = null;
 
 
 /**
- * Voce "Controlla Aggiornamenti" nel menu ⋮.
+ * Voce "Controlla Aggiornamenti" nel menu Impostazioni.
  *
  * Compare SOLO se il server risponde che c'è un'installazione desktop da
  * aggiornare (`app:info` → `aggiornamenti: true`): nel browser, o con una
@@ -46,8 +46,8 @@ async function initAggiornamentiDesktop() {
 
   btn.classList.remove('hidden');
   btn.addEventListener('click', async () => {
-    const menu = $('#header-more-menu');
-    if (menu) menu.classList.add('hidden');
+    // La chiusura del menu la fa `initSettingsMenu` (main.js) su ogni clic a
+    // una .menu-item, con la sua animazione: farla anche qui la salterebbe.
     try {
       await emit('app:updates:check');
       // Il resto avviene nei dialog NATIVI del processo principale: qui non
@@ -64,11 +64,7 @@ export function initAbout() {
 
   const btn = $('#btn-about');
   if (btn) {
-    btn.addEventListener('click', () => {
-      const menu = $('#header-more-menu');
-      if (menu) menu.classList.add('hidden');
-      apriAbout();
-    });
+    btn.addEventListener('click', () => apriAbout()); // il menu lo chiude main.js
   }
 
   const chiudi = $('#about-close');

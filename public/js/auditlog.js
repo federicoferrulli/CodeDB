@@ -64,9 +64,7 @@ function pageSize() {
 
 export function initAuditLog() {
   const btn = $('#btn-audit-log');
-  const dockBtn = $('#conn-dock-audit');
   if (btn) btn.addEventListener('click', openAuditModal);
-  if (dockBtn) dockBtn.addEventListener('click', openAuditModal);
 
   const close = $('#btn-close-audit-modal');
   if (close) close.addEventListener('click', () => $('#modal-audit-log').classList.add('hidden'));

@@ -1000,7 +1000,7 @@ export function initGraph3d() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const isHidden = menu.classList.contains('hidden');
-      document.querySelectorAll('.toolbar-dropdown-menu, .header-more-menu').forEach((m) => m.classList.add('hidden'));
+      document.querySelectorAll('.toolbar-dropdown-menu, .app-menu').forEach((m) => m.classList.add('hidden'));
 
       if (isHidden) {
         positionFixedDropdown(btn, menu);

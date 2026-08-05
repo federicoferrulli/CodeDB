@@ -137,7 +137,7 @@
     </div>
   </div>
 
-  <!-- ============= Cambio della passphrase del vault (header ⋮) ============= -->
+  <!-- ======= Cambio della passphrase del vault (menu Impostazioni) ========== -->
   <div id="passphrase-overlay" class="overlay hidden" role="dialog" aria-modal="true"
     aria-labelledby="passphrase-modal-title">
     <div class="modal">
@@ -193,7 +193,7 @@
     </div>
   </div>
 
-  <!-- ============ Informazioni & Licenza (menu ⋮ → Informazioni) ============
+  <!-- ===== Informazioni & Licenza (Impostazioni → Informazioni & Licenza) =====
        Corpo riempito da `about.js` con i dati dell'evento `app:license`: la
        manleva e le licenze delle dipendenze NON sono scritte nel markup, si
        leggono da MANLEVA.md e dai package.json, così non possono divergere da
@@ -207,7 +207,7 @@
     </div>
   </div>
 
-  <!-- ================== Guida introduttiva (menu ⋮ → Guida) ==================
+  <!-- ============ Guida introduttiva (Impostazioni → Guida) ==================
        Contenitore unico per benvenuto, hub della guida e novità di versione: il
        corpo è riscritto da `onboarding.js` perché i tre contenuti hanno struttura
        diversa e quello delle novità dipende dalla versione installata. Il tour
@@ -413,54 +413,14 @@
       <span id="conn-info" class="conn-info hidden"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
 
+      <!-- Nell'header resta la sola coda delle query in sospeso: gli strumenti
+           stanno tutti nel menu "Impostazioni" in fondo alla barra connessioni
+           (prima erano un menu ⋮ qui e cinque bottoncini là, in parte doppi).
+           Niente "Disconnetti": il tab della connessione ha già la sua ✕. -->
       <div class="header-tools-wrap">
         <button id="btn-pending-queries" class="ghost btn-icon header-pending-btn" title="Query in sospeso"
           aria-label="Query in sospeso"><i data-lucide="hourglass"></i><span id="pending-queries-badge" class="badge-count hidden">0</span></button>
-        <button id="header-more-btn" class="ghost btn-icon" title="Strumenti & Utility (⋮)"
-          aria-label="Strumenti & Utility"><i data-lucide="more-vertical"></i></button>
-        <div id="header-more-menu" class="header-more-menu hidden">
-          <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
-            <i data-lucide="archive"></i> Backup &amp; Restore
-          </button>
-          <button id="btn-audit-log" class="menu-item" type="button"
-            title="Storico delle azioni critiche/di scrittura">
-            <i data-lucide="history"></i> Storico Azioni
-          </button>
-          <button id="btn-health" class="menu-item" type="button"
-            title="Stato di salute delle connessioni attive">
-            <i data-lucide="activity"></i> Salute Connessioni
-          </button>
-          <!-- Solo nell'app desktop: `about.js` la mostra se il server risponde
-               che c'è un'installazione Electron da aggiornare. -->
-          <button id="btn-updates" class="menu-item hidden" type="button"
-            title="Verifica se è disponibile una nuova versione di CodeDB">
-            <i data-lucide="download-cloud"></i> Controlla Aggiornamenti
-          </button>
-          <button id="btn-about" class="menu-item" type="button"
-            title="Versione, licenza AGPL-3.0 e manleva">
-            <i data-lucide="scale"></i> Informazioni &amp; Licenza
-          </button>
-          <button id="btn-onboarding" class="menu-item" type="button"
-            title="Guida introduttiva: giro guidato e primi passi">
-            <i data-lucide="life-buoy"></i> Guida Introduttiva
-          </button>
-          <button id="btn-admin-rbac" class="menu-item hidden" type="button"
-            title="Gestione sottoutenti, permessi e API key">
-            <i data-lucide="shield-check"></i> Utenti &amp; Permessi
-          </button>
-          <button id="btn-change-passphrase" class="menu-item" type="button"
-            title="Cambia la passphrase che protegge i segreti salvati">
-            <i data-lucide="key-round"></i> Cambia Passphrase
-          </button>
-          <button id="btn-logout" class="menu-item hidden" type="button"
-            title="Chiude la sessione dell'utente corrente">
-            <i data-lucide="log-out"></i> Esci
-          </button>
-        </div>
       </div>
-
-      <button id="disconnect-btn" class="btn-disconnect hidden"
-        title="Chiude il tab attivo e la sua connessione"><i data-lucide="unplug"></i> Disconnetti</button>
     </header>
 
     <!-- Avviso "segreti non protetti": compare solo se ci sono davvero segreti
@@ -506,33 +466,68 @@
             <i data-lucide="plus"></i> <span>Aggiungi connessione</span>
           </button>
 
-          <div class="conn-tools-dock">
-            <button type="button" id="conn-dock-backup" class="dock-btn" title="Gestione Backup & Ripristino" aria-label="Backup & Restore">
-              <i data-lucide="archive"></i>
-              <span class="dock-label">Backup</span>
-            </button>
-            <button type="button" id="conn-dock-audit" class="dock-btn" title="Storico delle azioni critiche/di scrittura" aria-label="Storico Azioni">
-              <i data-lucide="history"></i>
-              <span class="dock-label">Storico</span>
-            </button>
-            <button type="button" id="conn-dock-health" class="dock-btn" title="Stato di salute delle connessioni attive" aria-label="Salute Connessioni">
-              <i data-lucide="activity"></i>
-              <span class="dock-label">Salute</span>
-            </button>
-            <button type="button" id="conn-dock-admin" class="dock-btn hidden" title="Gestione utenti, permessi e API key" aria-label="Utenti & Permessi">
-              <i data-lucide="shield-check"></i>
-              <span class="dock-label">Utenti</span>
-            </button>
-            <button type="button" id="conn-dock-logout" class="dock-btn hidden" title="Chiudi sessione utente" aria-label="Esci">
-              <i data-lucide="log-out"></i>
-              <span class="dock-label">Esci</span>
-            </button>
-          </div>
+          <!-- Un solo ingresso a tutti gli strumenti. Il menu vero è fuori da
+               questa aside (vedi #settings-menu): la barra connessioni si può
+               comprimere, e un menu figlio di un elemento nascosto sarebbe
+               invisibile anche da aperto. -->
+          <button type="button" id="conn-settings-btn" class="settings-btn"
+            title="Backup, storico, salute, utenti, passphrase, informazioni" aria-haspopup="true"
+            aria-expanded="false">
+            <i data-lucide="settings"></i>
+            <span>Impostazioni</span>
+            <i data-lucide="chevron-up" class="settings-btn-caret"></i>
+          </button>
         </div>
 
         <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
       </aside>
       <div class="resizer" data-resize="conn-sidebar"></div>
+
+      <!-- Menu "Impostazioni": aperto da #conn-settings-btn e posizionato a
+           runtime (position: fixed) da positionFixedDropdown, che lo ribalta
+           verso l'alto quando sotto non c'è spazio — qui è sempre il caso, il
+           bottone sta in fondo alla finestra. -->
+      <div id="settings-menu" class="app-menu hidden" role="menu">
+        <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
+          <i data-lucide="archive"></i> Backup &amp; Restore
+        </button>
+        <button id="btn-audit-log" class="menu-item" type="button"
+          title="Storico delle azioni critiche/di scrittura">
+          <i data-lucide="history"></i> Storico Azioni
+        </button>
+        <button id="btn-health" class="menu-item" type="button"
+          title="Stato di salute delle connessioni attive">
+          <i data-lucide="activity"></i> Salute Connessioni
+        </button>
+        <div class="menu-divider"></div>
+        <button id="btn-admin-rbac" class="menu-item hidden" type="button"
+          title="Gestione sottoutenti, permessi e API key">
+          <i data-lucide="shield-check"></i> Utenti &amp; Permessi
+        </button>
+        <button id="btn-change-passphrase" class="menu-item" type="button"
+          title="Cambia la passphrase che protegge i segreti salvati">
+          <i data-lucide="key-round"></i> Cambia Passphrase
+        </button>
+        <div class="menu-divider"></div>
+        <button id="btn-onboarding" class="menu-item" type="button"
+          title="Guida introduttiva: giro guidato e primi passi">
+          <i data-lucide="life-buoy"></i> Guida Introduttiva
+        </button>
+        <!-- Solo nell'app desktop: `about.js` la mostra se il server risponde
+             che c'è un'installazione Electron da aggiornare. -->
+        <button id="btn-updates" class="menu-item hidden" type="button"
+          title="Verifica se è disponibile una nuova versione di CodeDB">
+          <i data-lucide="download-cloud"></i> Controlla Aggiornamenti
+        </button>
+        <button id="btn-about" class="menu-item" type="button"
+          title="Versione, licenza AGPL-3.0 e manleva">
+          <i data-lucide="scale"></i> Informazioni &amp; Licenza
+        </button>
+        <button id="btn-logout" class="menu-item hidden" type="button"
+          title="Chiude la sessione dell'utente corrente">
+          <i data-lucide="log-out"></i> Esci
+        </button>
+      </div>
 
       <div class="main-area">
         <div class="tab-bar-wrap">

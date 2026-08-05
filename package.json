@@ -165,7 +165,7 @@
       "icon": "build/icon.png",
       "category": "Development",
       "executableName": "codedb",
-      "synopsis": "GUI web multi-database (MongoDB, MySQL, PostgreSQL)",
+      "synopsis": "GUI web multi-database",
       "maintainer": "Federico Ferrulli",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "syncDesktopName": true
