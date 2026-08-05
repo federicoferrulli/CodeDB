@@ -495,7 +495,7 @@
           </span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
+          <input type="text" id="conn-search" placeholder="Cerca connessioni..." aria-label="Cerca connessioni" autocomplete="off"
             spellcheck="false" />
         </div>
         <ul id="conn-tree"></ul>
@@ -562,7 +562,7 @@
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
             </div>
             <div class="sidebar-search">
-              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." aria-label="Cerca database o collezioni" autocomplete="off"
                 spellcheck="false" />
             </div>
             <ul id="db-tree"></ul>
@@ -607,9 +607,9 @@
                     <option value="find">find</option>
                     <option value="aggregate">aggregate</option>
                   </select>
-                  <input id="filter-input" type="text" spellcheck="false"
+                  <input id="filter-input" type="text" spellcheck="false" aria-label="Filtro query"
                     placeholder='Filtro, es. { "age": { "$gt": 30 } }' />
-                  <input id="sort-input" type="text" spellcheck="false" class="narrow"
+                  <input id="sort-input" type="text" spellcheck="false" class="narrow" aria-label="Ordinamento query"
                     placeholder='Sort, es. { "name": 1 }' />
                   <span class="query-history-wrap">
                     <button id="query-history-btn" title="Query recenti di questa collection"
@@ -712,7 +712,7 @@
               <!-- ------------------- Vista Grafo 3D ------------------- -->
               <div id="view-graph3d" class="view-panel hidden">
                 <div class="graph3d-bar">
-                  <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo..." autocomplete="off"
+                  <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo..." aria-label="Cerca tabella o campo nel grafo 3D" autocomplete="off"
                     spellcheck="false" title="Cerca nome tabella o nome colonna" />
                   <select id="graph3d-color-mode" title="Modalità di colorazione e dimensione nodi">
                     <option value="prefix">🎨 Colore: Prefisso</option>
@@ -787,7 +787,7 @@
                   <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                     <div class="side-panel-header">
                       <h3 id="graph3d-panel-title">Nome Tabella</h3>
-                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">✕</button>
+                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi" aria-label="Chiudi">✕</button>
                     </div>
                     <div id="graph3d-panel-content" class="side-panel-content"></div>
                   </aside>
@@ -812,7 +812,7 @@
                   <div class="query-target-selector">
                     <label>Esegui su:</label>
                     <span id="query-target-label" class="query-target-label">—</span>
-                    <button id="query-target-reset" class="mini-btn hidden" type="button"
+                    <button id="query-target-reset" class="mini-btn hidden" type="button" aria-label="Torna al contesto della collection aperta"
                       title="Torna al contesto della collection aperta">✕</button>
                   </div>
 
@@ -846,14 +846,14 @@
                     <div class="sidebar-title">
                       <span>Schema Browser</span>
                       <div class="sidebar-title-actions">
-                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema" aria-label="Ricarica schema">⟳</button>
                         <button id="query-schema-close" class="mini-btn mobile-only-btn"
-                          title="Chiudi Schema Browser">✕</button>
+                          title="Chiudi Schema Browser" aria-label="Chiudi Schema Browser">✕</button>
                       </div>
                     </div>
                     <div class="sidebar-search">
 
-                      <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
+                      <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..." aria-label="Filtra tabelle e campi nello schema"
                         autocomplete="off" spellcheck="false" />
                     </div>
                     <div id="query-schema-tree" class="query-schema-tree"></div>
@@ -911,7 +911,7 @@
                                runner e dell'interprete dicono "riga N". -->
                           <div id="query-editor-gutter" class="query-editor-gutter" aria-hidden="true"></div>
                           <pre id="query-editor-highlight" class="query-editor-highlight" aria-hidden="true"><code id="query-editor-code"></code></pre>
-                          <textarea id="query-editor-input" spellcheck="false"
+                          <textarea id="query-editor-input" spellcheck="false" aria-label="Editor query SQL o JSON"
                             placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
                         </div>
                       </div>
@@ -1762,7 +1762,7 @@
             <option value="error">Errore</option>
           </select>
         </label>
-        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
+        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." aria-label="Filtra storico per database" autocomplete="off"
           spellcheck="false" />
         <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
@@ -1917,7 +1917,7 @@
 
       <div class="catalog-toolbar pending-toolbar">
         <div class="pending-search-wrap">
-          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
+          <input type="text" id="pending-search-input" class="form-control form-control-sm" aria-label="Cerca query in sospeso" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
         </div>
         <div class="pending-toolbar-btns">
           <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>
