@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate } from './utils.js';
-import { openCollTab } from './colltabs.js';
+import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 import { applyCellSelection, clearCellSelection } from './cellselect.js';
@@ -56,8 +56,10 @@ function sortCorrente() {
 }
 
 // Apre la collection in un coll-tab (o attiva quello già aperto).
-export function selectCollection(dbName, collName) {
-  openCollTab(dbName, collName);
+// `preview: true` = coll-tab provvisorio (un clic nella sidebar), rimpiazzato
+// dalla prossima anteprima finché non lo si fissa; vedi colltabs.js.
+export function selectCollection(dbName, collName, opts = {}) {
+  openCollTab(dbName, collName, opts);
 }
 
 // opts.auto = lettura automatica (polling, live change stream, refresh dopo una
@@ -910,6 +912,9 @@ export function initGrid() {
         runQuery();
       }
     });
+    // Scrivere un filtro è lavoro: fissa il coll-tab in anteprima, altrimenti
+    // il clic successivo nella sidebar lo rimpiazzerebbe portandoselo via.
+    $(sel).addEventListener('input', () => pinActiveCollTab());
   }
 
   $('#query-mode').addEventListener('change', applyQueryPlaceholders);

@@ -42,7 +42,7 @@ function collTabInputs(t, c) {
   const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
   if (activeNow) {
     return {
-      id: c.id, db: c.db, coll: c.coll,
+      id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
       filter: $('#filter-input')?.value || '',
       sort: $('#sort-input')?.value || '',
       queryMode: $('#query-mode')?.value || 'find',
@@ -53,7 +53,7 @@ function collTabInputs(t, c) {
   }
   const src = c.snap || c.restore || {};
   return {
-    id: c.id, db: c.db, coll: c.coll,
+    id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
     filter: src.filter || '',
     sort: src.sort || '',
     queryMode: src.queryMode || 'find',
@@ -138,6 +138,7 @@ function reconnectTab(info) {
           db: c.db,
           coll: c.coll,
           snap: null,
+          preview: !!c.preview,
           restore: { filter: c.filter, sort: c.sort, queryMode: c.queryMode, pageSize: c.pageSize, infiniteScroll: c.infiniteScroll, view: c.view },
         };
       });

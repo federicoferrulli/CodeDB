@@ -173,15 +173,18 @@ export function renderCollectionsList(dbName, container, collections) {
     });
     label.addEventListener('dragend', () => label.classList.remove('dragging'));
 
-    label.addEventListener('click', () => selectCollection(dbName, coll.name, label));
+    // Un clic apre in ANTEPRIMA (tab provvisorio, rimpiazzato dal clic
+    // successivo su un'altra collection), il doppio clic fissa il tab.
+    label.addEventListener('click', () => selectCollection(dbName, coll.name, { preview: true }));
+    label.addEventListener('dblclick', () => selectCollection(dbName, coll.name));
     label.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
-        { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name, label) },
+        { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name) },
         { label: '🔲 Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
-        { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name, label); setView('details'); } },
-        { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name, label); setView('uml'); } },
+        { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
+        { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
         '---',
         ...exportImportMenuItems(dbName, coll.name),
         '---',

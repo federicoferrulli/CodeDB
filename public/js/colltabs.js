@@ -220,19 +220,56 @@ export function ensureActiveCollLoaded() {
   if (ct) activate(ct, { fresh: false });
 }
 
-export function openCollTab(db, coll) {
+// Anteprima (stile VS Code): un clic sulla collection nella sidebar la apre in
+// un coll-tab PROVVISORIO, che il clic successivo su un'altra collection
+// rimpiazza invece di affiancare — esplorare un database con venti tabelle non
+// deve lasciare venti tab aperti. Il doppio clic (sulla sidebar o sul tab) lo
+// fissa; lo fissano anche il trascinamento e qualunque modifica agli input di
+// query, perché quel lavoro non deve poter sparire al clic successivo.
+// Il tab in anteprima è al massimo UNO per tab di connessione.
+export function pinCollTab(id, { render = true } = {}) {
+  const t = activeTab();
+  if (!t) return;
+  const ct = t.state.collTabs.find((c) => c.id === id);
+  if (!ct || !ct.preview) return;
+  ct.preview = false;
+  if (render) renderCollTabBar();
+}
+
+// Fissa il coll-tab attivo: lo chiamano le azioni che significano "sto
+// lavorando qui" (modifica di filtro/ordinamento) da moduli che non conoscono
+// gli id dei coll-tab.
+export function pinActiveCollTab() {
+  const t = activeTab();
+  if (t && t.state.activeCollId) pinCollTab(t.state.activeCollId);
+}
+
+export function openCollTab(db, coll, { preview = false } = {}) {
   const t = activeTab();
   if (!t || !t.state.connected) return;
   segnaTraguardo('tabella'); // primi passi della guida (no-op se già fatto)
   saveActiveSnapshot();
   let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll && !c.isSplitTab);
-  if (!ct) {
-    ct = { id: safeUUID(), db, coll, snap: null };
-    t.state.collTabs.push(ct);
-    activate(ct, { fresh: true });
-  } else if (ct.id !== t.state.activeCollId) {
-    activate(ct, { fresh: false });
+  if (ct) {
+    // Riapertura: il doppio clic fissa un tab già in anteprima, mentre il clic
+    // singolo non declassa mai un tab già fissato.
+    if (!preview) ct.preview = false;
+    if (ct.id !== t.state.activeCollId) activate(ct, { fresh: false });
+    else renderCollTabBar();
+    return;
   }
+  ct = { id: safeUUID(), db, coll, snap: null, preview };
+  const i = preview ? t.state.collTabs.findIndex((c) => c.preview) : -1;
+  if (i >= 0) {
+    // Il nuovo tab prende il posto di quello in anteprima, nella stessa
+    // posizione della barra: le query in sospeso del vecchio non hanno più un
+    // tab a cui tornare.
+    markAbandonedByCollTab(t.state.collTabs[i].id);
+    t.state.collTabs.splice(i, 1, ct);
+  } else {
+    t.state.collTabs.push(ct);
+  }
+  activate(ct, { fresh: true });
 }
 
 // Apre (o riattiva) il tab a livello database: l'unico modo di lavorare su un
@@ -360,10 +397,11 @@ export function renderCollTabBar() {
 
   for (const ct of list) {
     const el = document.createElement('div');
-    el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '');
-    el.title = ct.isDbTab
+    el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '') + (ct.preview ? ' preview' : '');
+    el.title = (ct.isDbTab
       ? `${ct.db} — solo Query & Aggregate (nessuna ${parolaColl()})`
-      : `${ct.db} ▸ ${ct.coll}`;
+      : `${ct.db} ▸ ${ct.coll}`)
+      + (ct.preview ? '\nAnteprima: doppio clic per fissare il tab' : '');
 
     const name = document.createElement('span');
     name.textContent = ct.isDbTab ? `⚡ ${ct.db}` : ct.coll;
@@ -379,6 +417,7 @@ export function renderCollTabBar() {
     });
 
     el.addEventListener('click', () => switchCollTab(ct.id));
+    el.addEventListener('dblclick', () => pinCollTab(ct.id));
     el.addEventListener('auxclick', (e) => {
       if (e.button === 1) closeCollTab(ct.id);
     });
@@ -405,7 +444,13 @@ export function renderCollTabBar() {
       },
       // Il payload serve a trascinare la collection in un pannello affiancato:
       // un tab-database non ne ha una, quindi resta solo riordinabile.
-      () => (ct.isDbTab ? null : { db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id })
+      () => {
+        // Trascinare un tab è già un modo di dire "questo lo tengo": lo fissa,
+        // senza ridisegnare la barra (siamo dentro il dragstart, ricostruire i
+        // nodi ora annullerebbe il trascinamento in corso).
+        pinCollTab(ct.id, { render: false });
+        return ct.isDbTab ? null : { db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id };
+      }
     );
 
     el.append(name, close);

@@ -1158,6 +1158,13 @@ header {
   box-shadow: 0 -1px 0 var(--accent) inset !important;
 }
 
+/* Tab in ANTEPRIMA (un clic nella sidebar): provvisorio, il prossimo clic su
+   un'altra collection lo rimpiazza. Il corsivo è la stessa convenzione di
+   VS Code — dev'essere leggibile senza spiegazioni e sparire al doppio clic. */
+.coll-tab.preview > span:first-child {
+  font-style: italic;
+}
+
 /* ---------- Sidebar ---------- */
 
 #sidebar {
