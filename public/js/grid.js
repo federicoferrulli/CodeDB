@@ -42,6 +42,19 @@ export function applyQueryPlaceholders() {
   }
 }
 
+// Modalità realmente eseguita: `aggregate` (SQL Raw sui database SQL) con il
+// campo vuoto non è una query, è la vista di default → `find`.
+function modoEffettivo() {
+  const mode = $('#query-mode').value;
+  return mode === 'aggregate' && !$('#filter-input').value.trim() ? 'find' : mode;
+}
+
+// In modalità aggregate il campo ordinamento è solo nascosto e conserva il
+// testo scritto prima: ricadendo su `find` non va applicato di nascosto.
+function sortCorrente() {
+  return $('#query-mode').value === 'aggregate' ? '' : $('#sort-input').value;
+}
+
 // Apre la collection in un coll-tab (o attiva quello già aperto).
 export function selectCollection(dbName, collName) {
   openCollTab(dbName, collName);
@@ -53,7 +66,12 @@ export function selectCollection(dbName, collName) {
 export function runQuery(opts = {}) {
   if (!state.db || !state.coll) return;
   showQueryError(null);
-  const mode = $('#query-mode').value;
+  // Campo vuoto in modalità aggregate/SQL Raw: non c'è nulla da eseguire, e la
+  // cosa sensata è la vista di default (una `find` senza filtro, l'unica anche
+  // paginabile). Prima si mandava al database il letterale `'[]'`: su MongoDB
+  // era una pipeline vuota che restituiva tutto per caso, su MySQL/PostgreSQL
+  // era testo SQL e tornava indietro un errore di sintassi «near '[]'».
+  const mode = modoEffettivo();
 
   // Single-flight: annulla la find/aggregate precedente ancora in volo per
   // questo tab prima di lanciarne un'altra. Cambiare pagina in fretta non
@@ -78,7 +96,7 @@ export function runQuery(opts = {}) {
         db: state.db,
         coll: state.coll,
         filter: $('#filter-input').value,
-        sort: $('#sort-input').value,
+        sort: sortCorrente(),
         limit: $('#page-size').value,
         skip: state.skip,
         // Conteggio disaccoppiato: la find torna subito coi soli documenti (su
@@ -98,7 +116,7 @@ export function runQuery(opts = {}) {
   recordQuery({
     mode,
     filter: $('#filter-input').value.trim(),
-    sort: mode === 'aggregate' ? '' : $('#sort-input').value.trim(),
+    sort: sortCorrente().trim(),
   });
 
   if (!opts.auto) {
@@ -284,7 +302,9 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
 export function explainQuery() {
   if (!state.db || !state.coll) return;
   showQueryError(null);
-  const mode = $('#query-mode').value;
+  // Come in runQuery: campo vuoto = nessuna query da spiegare, si analizza la
+  // lettura di default invece di mandare al database il letterale `'[]'`.
+  const mode = modoEffettivo();
 
   const payload = mode === 'aggregate'
     ? {
@@ -298,7 +318,7 @@ export function explainQuery() {
         coll: state.coll,
         mode,
         filter: $('#filter-input').value,
-        sort: $('#sort-input').value,
+        sort: sortCorrente(),
         limit: $('#page-size').value,
         skip: state.skip,
       };

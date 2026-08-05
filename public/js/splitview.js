@@ -500,13 +500,26 @@ export function runPaneQuery(paneId, opts = {}) {
   updatePaneUI(paneId);
 
   const connTab = tabs.list.find((t) => t.id === p.tabId) || activeTab();
-  const payload = p.queryMode === 'aggregate'
-    ? { db: p.db, coll: p.coll, pipeline: p.filter || '[]' }
-    : { db: p.db, coll: p.coll, filter: p.filter, sort: p.sort, limit: p.limit, skip: p.skip };
+  // Campo vuoto in modalità aggregate/SQL Raw: non è una query, è la vista di
+  // default → `find` senza filtro (vedi `modoEffettivo` in grid.js). Prima si
+  // mandava al database il letterale `'[]'`, che su MySQL/PostgreSQL è testo
+  // SQL e tornava indietro come errore di sintassi.
+  const vuoto = !(p.filter || '').trim();
+  const modo = p.queryMode === 'aggregate' && vuoto ? 'find' : p.queryMode;
+  const payload = modo === 'aggregate'
+    ? { db: p.db, coll: p.coll, pipeline: p.filter }
+    : {
+        db: p.db, coll: p.coll,
+        filter: vuoto ? '' : p.filter,
+        // In aggregate il campo ordinamento è nascosto ma conserva il testo di
+        // prima: ricadendo su find non va applicato di nascosto.
+        sort: p.queryMode === 'aggregate' ? '' : p.sort,
+        limit: p.limit, skip: p.skip,
+      };
 
   if (opts.auto) payload._bg = true;
 
-  emitPaneQuery(p.tabId, `collection:${p.queryMode}`, payload)
+  emitPaneQuery(p.tabId, `collection:${modo}`, payload)
     .then((res) => {
       p.docs = res.docs || [];
       p.columns = res.columns || [];
