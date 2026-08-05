@@ -1614,7 +1614,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 /* Il datepicker nativo resta leggibile sul tema scuro */
 #grid td.editing input[type='datetime-local'] { color-scheme: dark; }
 
-#grid td.row-actions { text-align: center; border-right: 1px solid var(--border); }
+/* La griglia dati non ha più la colonna azioni: modifica ed eliminazione della
+   riga stanno nel menu contestuale (vedi cellselect.js). La classe row-actions
+   resta viva altrove (dettagli, split-view, form di inserimento). */
 
 .del-btn {
   background: transparent;

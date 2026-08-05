@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
-import { startEdit, openEditDoc } from './inlineEdit.js';
+import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
@@ -437,9 +437,8 @@ function buildHead(thead, canSelect) {
   }
   headRow.appendChild(selectTh);
 
-  const actionsTh = document.createElement('th');
-  actionsTh.className = 'grid-actions-col';
-  headRow.appendChild(actionsTh);
+  // Nessuna colonna azioni: modifica ed eliminazione della riga stanno nel menu
+  // contestuale (tasto destro), vedi cellselect.js.
 
   let currentSort = {};
   try { currentSort = JSON.parse($('#sort-input').value || '{}'); } catch { /* ignore */ }
@@ -497,24 +496,7 @@ function buildRow(doc, rowIdx, canSelect) {
   }
   tr.appendChild(selectTd);
 
-  const actions = document.createElement('td');
-  actions.className = 'row-actions';
-  if ('_id' in doc) {
-    const edit = document.createElement('button');
-    edit.className = 'edit-btn';
-    edit.textContent = '✎';
-    edit.title = 'Modifica documento (riga intera)';
-    edit.addEventListener('click', () => openEditDoc(doc));
-    actions.appendChild(edit);
-
-    const del = document.createElement('button');
-    del.className = 'del-btn';
-    del.textContent = '✕';
-    del.title = 'Elimina documento';
-    del.addEventListener('click', () => deleteDoc(doc));
-    actions.appendChild(del);
-  }
-  tr.appendChild(actions);
+  // Le azioni sulla riga (modifica / elimina) vivono nel menu contestuale.
 
   state.columns.forEach((col, colIdx) => {
     const td = document.createElement('td');
@@ -649,7 +631,7 @@ function renderVirtualWindow() {
   vctx.end = end;
 
   tbody.innerHTML = '';
-  const totalCols = 2 + state.columns.length;
+  const totalCols = 1 + state.columns.length; // colonna dei checkbox + colonne dati
   if (start > 0) tbody.appendChild(spacer(start * rowH, totalCols));
   for (let i = start; i < end; i++) tbody.appendChild(buildRow(state.docs[i], i, vctx.canSelect));
   if (end < N) tbody.appendChild(spacer((N - end) * rowH, totalCols));
@@ -788,6 +770,27 @@ export function deleteDoc(doc) {
     // riletti al ritorno.
     if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura: non è una lettura utente
   }).catch((err) => toast(err.message, true));
+}
+
+// Elimina i documenti passati (righe della selezione celle, non i checkbox):
+// una sola conferma per tutti, poi le stesse ondate di `deleteSelectedDocs`.
+export function deleteDocs(docs) {
+  const ids = docs.filter((d) => d && '_id' in d).map(idOf);
+  if (ids.length === 0) { toast('Nessuna riga da eliminare', true); return; }
+  if (ids.length === 1) { deleteDoc(docs.find((d) => d && '_id' in d)); return; }
+  const isSql = isSqlType(state.dbType);
+  const cosa = isSql ? 'righe' : 'documenti';
+  if (!confirm(`Eliminare ${ids.length} ${cosa}? Questa azione non si può annullare.`)) return;
+
+  const origin = captureContext();
+  eseguiAOndate(ids, 8, (id) => emit('doc:delete', { db: state.db, coll: state.coll, id }))
+    .then((results) => {
+      const failed = results.filter((r) => r.status === 'rejected');
+      const ok = results.length - failed.length;
+      if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
+      else toast(`${ok} ${cosa} eliminati`);
+      if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+    });
 }
 
 export function deleteSelectedDocs() {
