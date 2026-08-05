@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes } from './utils.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, chiediTesto } from './utils.js';
 import { activeTab } from './tabs.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
@@ -274,7 +274,7 @@ async function verifyBackupIntegrity(group, backupId) {
   }
 }
 
-function promptRestoreBackup(group, backupId, origDb) {
+async function promptRestoreBackup(group, backupId, origDb) {
   // Il ripristino scrive sulla CONNESSIONE ATTIVA, non su quella da cui il
   // backup è stato preso (CDB-60): il pannello elenca i backup di tutti i
   // gruppi, quindi si può benissimo star guardando il backup di "produzione"
@@ -288,12 +288,13 @@ function promptRestoreBackup(group, backupId, origDb) {
   }
   const conn = tab.label || tab.savedName || 'connessione attiva';
 
-  const targetDb = prompt(
-    `Ripristino del backup "${backupId}".\n\n`
-    + `DESTINAZIONE: ${conn}\n\n`
-    + 'Database di destinazione:',
-    origDb || ''
-  );
+  const targetDb = await chiediTesto({
+    titolo: `Ripristino del backup "${backupId}"`,
+    sottotitolo: `DESTINAZIONE: ${conn}`,
+    etichetta: 'Database di destinazione',
+    valore: origDb || '',
+    ok: 'Continua',
+  });
   if (targetDb === null) return;
   const dbScelto = targetDb.trim();
   if (!dbScelto) {

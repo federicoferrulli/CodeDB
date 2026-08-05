@@ -205,7 +205,15 @@ export function showContextMenu(x, y, items) {
       if (item.danger) li.classList.add('danger');
       li.addEventListener('click', () => {
         hideContextMenu();
-        item.action();
+        // Un'eccezione qui risaliva al listener e moriva in console: la voce di
+        // menu non faceva NULLA e non c'era alcun indizio del perché (è così che
+        // si è manifestato `prompt()` mancante in Electron). Ora si vede.
+        try {
+          const r = item.action();
+          if (r && typeof r.catch === 'function') r.catch((err) => toast(err.message || String(err), true));
+        } catch (err) {
+          toast(err.message || String(err), true);
+        }
       });
     }
     menu.appendChild(li);
@@ -544,6 +552,64 @@ export function openModal(elOrId) {
   }
   const focusable = el.querySelector('input:not([type="hidden"]), button, select, textarea');
   if (focusable) focusable.focus();
+}
+
+/**
+ * Chiede un testo all'utente e risolve con la stringa inserita, oppure `null`
+ * se annulla — stesso contratto di `window.prompt()`, che sostituisce.
+ *
+ * Serve perché **Electron non implementa `prompt()`**: nell'app desktop la
+ * chiamata o lancia ("prompt() is and will not be supported") o ritorna `null`,
+ * e in entrambi i casi il chiamante si interrompe PRIMA di poter mostrare un
+ * toast — cliccando "Rinomina database" non succedeva assolutamente nulla, senza
+ * alcun indizio del perché. `alert()` e `confirm()` invece funzionano, quindi
+ * l'anomalia colpiva le sole voci che chiedono un testo.
+ *
+ * A differenza di `prompt()` non blocca il thread: restituisce una Promise, e
+ * chi la usa deve essere `async` o concatenare `.then`.
+ */
+export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', password = false, ok = 'Conferma' } = {}) {
+  const overlay = $('#askinput-overlay');
+  // Senza la modale in pagina, meglio annullare che restare in attesa per sempre.
+  if (!overlay) return Promise.resolve(null);
+  $('#askinput-title').textContent = titolo || 'Inserisci un valore';
+  const sub = $('#askinput-subtitle');
+  sub.textContent = sottotitolo || '';
+  sub.classList.toggle('hidden', !sottotitolo);
+  $('#askinput-label').textContent = etichetta || 'Valore';
+  $('#askinput-ok').textContent = ok;
+  const input = $('#askinput-value');
+  input.type = password ? 'password' : 'text';
+  input.value = valore == null ? '' : String(valore);
+
+  return new Promise((resolve) => {
+    let chiuso = false;
+    const finish = (res) => {
+      if (chiuso) return;
+      chiuso = true;
+      document.removeEventListener('keydown', onEsc, true);
+      $('#askinput-ok').removeEventListener('click', onOk);
+      $('#askinput-cancel').removeEventListener('click', onCancel);
+      input.removeEventListener('keydown', onEnter);
+      closeModal(overlay);
+      resolve(res);
+    };
+    const onOk = () => finish(input.value);
+    const onCancel = () => finish(null);
+    const onEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); onOk(); } };
+    // Esc lo intercetta anche handleModalEsc, che chiude la modale ma non
+    // saprebbe risolvere la promise: senza questo il chiamante resterebbe
+    // appeso e la modale successiva troverebbe i gestori di quella prima.
+    const onEsc = (e) => { if (e.key === 'Escape') finish(null); };
+
+    $('#askinput-ok').addEventListener('click', onOk);
+    $('#askinput-cancel').addEventListener('click', onCancel);
+    input.addEventListener('keydown', onEnter);
+    document.addEventListener('keydown', onEsc, true);
+    openModal(overlay);
+    input.focus();
+    input.select();
+  });
 }
 
 export function closeModal(elOrId) {

@@ -28,7 +28,7 @@
  * senza toccare questo file.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, esc, safeUUID, positionFixedDropdown } from './utils.js';
+import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto } from './utils.js';
 import { state } from './state.js';
 import {
   CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
@@ -831,10 +831,18 @@ export function initCharts() {
       c.override = '';
       c.overrideAttivo = false;
     } else if (azione === 'preset-salva') {
-      const nome = prompt('Nome della preimpostazione:');
-      if (!nome || !nome.trim()) return;
-      salvaPreset(nome.trim(), c);
-      toast(`Preimpostazione "${nome.trim()}" salvata.`);
+      // Salvare un preset non cambia il grafico: si esce senza ridisegnare, e
+      // la modale (asincrona, vedi chiediTesto) può concludersi con calma.
+      chiediTesto({
+        titolo: 'Salva preimpostazione',
+        etichetta: 'Nome della preimpostazione',
+        ok: 'Salva',
+      }).then((nome) => {
+        if (!nome || !nome.trim()) return;
+        salvaPreset(nome.trim(), c);
+        toast(`Preimpostazione "${nome.trim()}" salvata.`);
+      });
+      return;
     } else if (azione === 'preset-carica') {
       const nome = $('#chart-preset-select')?.value;
       if (!nome) { toast('Scegli una preimpostazione.', true); return; }

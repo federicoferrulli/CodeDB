@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab } from './utils.js';
+import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab, chiediTesto } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
@@ -22,16 +22,17 @@ export function openCreateDb() {
   $('#dbcreate-name').focus();
 }
 
-export function renameDb(name) {
+export async function renameDb(name) {
   // Su PostgreSQL il livello è lo SCHEMA e la rinomina è un ALTER SCHEMA
   // istantaneo: la nota sulla copia vale solo per MongoDB/MySQL.
   const isSchema = dbWord() === 'schema';
-  const input = prompt(
-    isSchema
-      ? `Nuovo nome per lo schema "${name}":`
-      : `Nuovo nome per il database "${name}":\n(le collection verranno copiate nel nuovo database)`,
-    name
-  );
+  const input = await chiediTesto({
+    titolo: `Rinomina ${dbWord()}`,
+    sottotitolo: isSchema ? '' : 'Le collection verranno copiate nel nuovo database.',
+    etichetta: `Nuovo nome per "${name}"`,
+    valore: name,
+    ok: 'Rinomina',
+  });
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === name) return;
@@ -146,8 +147,13 @@ export function openCreateColl(dbName) {
   $('#collcreate-name').focus();
 }
 
-export function renameColl(dbName, collName) {
-  const input = prompt(`Nuovo nome per la ${collWord()} "${collName}":`, collName);
+export async function renameColl(dbName, collName) {
+  const input = await chiediTesto({
+    titolo: `Rinomina ${collWord()}`,
+    etichetta: `Nuovo nome per "${collName}"`,
+    valore: collName,
+    ok: 'Rinomina',
+  });
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === collName) return;

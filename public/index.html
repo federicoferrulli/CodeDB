@@ -1157,6 +1157,28 @@
   </div>
 
   <!-- ===================== Modale nuovo database ===================== -->
+  <!-- ===================== Modale generica "chiedi un testo" =====================
+       Sostituisce window.prompt(), che nell'app desktop Electron NON esiste: la
+       chiamata non apre nulla e il flusso muore in silenzio (nessuna finestra,
+       nessun toast, perché l'errore avviene prima di qualsiasi emit). Vedi
+       chiediTesto() in js/utils.js. -->
+  <div id="askinput-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+       aria-labelledby="askinput-title">
+    <div class="modal">
+      <h2 id="askinput-title">Inserisci un valore</h2>
+      <p class="subtitle hidden" id="askinput-subtitle"></p>
+      <div class="form-row">
+        <label><span id="askinput-label">Valore</span>
+          <input type="text" id="askinput-value" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="askinput-cancel" class="ghost">Annulla</button>
+        <button id="askinput-ok" class="primary">Conferma</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dbcreate-overlay" class="overlay hidden">
     <div class="modal">
       <h2>Nuovo database</h2>

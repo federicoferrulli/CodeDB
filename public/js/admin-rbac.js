@@ -11,7 +11,7 @@
  * Con RBAC spento il pulsante non compare (nessun utente da gestire).
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, showToast } from './utils.js';
+import { $, emit, esc, showToast, chiediTesto } from './utils.js';
 import { socket } from './socket.js';
 
 // Cache locale dei dati caricati all'apertura della modale.
@@ -445,7 +445,13 @@ function wireListActions() {
         showToast(btn.dataset.status === 'suspended' ? 'Sottoutente sospeso.' : 'Sottoutente riattivato.', 'success');
         await reload();
       } else if (action === 'reset-pwd') {
-        const pwd = window.prompt('Nuova password per il sottoutente:');
+        const pwd = await chiediTesto({
+          titolo: 'Reimposta password',
+          sottotitolo: 'Le sessioni attive del sottoutente verranno chiuse.',
+          etichetta: 'Nuova password',
+          password: true,
+          ok: 'Aggiorna',
+        });
         if (!pwd) return;
         await emit('users:update', { id: btn.dataset.id, password: pwd });
         showToast('Password aggiornata (le sessioni attive del sottoutente sono state chiuse).', 'success');
