@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
-import { renderDbTree, refreshDbTree, collWord } from './dbtree.js';
+import { renderDbTree, refreshDbTree } from './dbtree.js';
 import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
 import { renderCollTabBar, applyViewTabsFor } from './colltabs.js';
 import { deactivateSplitView, renderSplitView, discardSplitViewIfOrphan } from './splitview.js';
@@ -101,7 +101,6 @@ export function renderWorkspace() {
     state.db = activeCt.db;
     state.coll = null;
     if (!state.queryDb) state.queryDb = activeCt.db;
-    $('#breadcrumb').textContent = `${activeCt.db} ▸ (nessuna ${collWord()})`;
     $('#placeholder').classList.add('hidden');
     $('#workspace').classList.remove('hidden');
     setView('query');
@@ -109,7 +108,6 @@ export function renderWorkspace() {
   }
 
   if (state.db && state.coll) {
-    $('#breadcrumb').textContent = `${state.db} ▸ ${state.coll}`;
     $('#placeholder').classList.add('hidden');
     $('#workspace').classList.remove('hidden');
     renderGrid(); // i dati sono già nello stato del tab: nessuna nuova query

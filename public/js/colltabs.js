@@ -116,7 +116,6 @@ function activate(ct, { fresh }) {
     }
     $('#live-badge').classList.add('hidden');
     $('#polling-toggle').classList.add('hidden');
-    $('#breadcrumb').textContent = `${ct.db} ▸ (nessuna ${parolaColl()})`;
     $('#placeholder').classList.add('hidden');
     $('#workspace').classList.remove('hidden');
     renderCollTabBar();
@@ -163,7 +162,6 @@ function activate(ct, { fresh }) {
   $('#infinite-toggle').checked = state.infiniteScroll;
   applyQueryPlaceholders();
 
-  $('#breadcrumb').textContent = `${ct.db} ▸ ${ct.coll}`;
   $('#placeholder').classList.add('hidden');
   $('#workspace').classList.remove('hidden');
   renderCollTabBar();
@@ -395,6 +393,15 @@ export function renderCollTabBar() {
     bar.addEventListener('drop', (e) => e.stopPropagation());
   }
 
+  // Il coll-tab È la breadcrumb (quella sotto la barra è stata rimossa: ripeteva
+  // un contesto già evidenziato qui e nell'albero a sinistra). Il nome del
+  // database compare però come prefisso attenuato SOLO quando i tab aperti
+  // vengono da più database: con uno solo sarebbe la stessa parola ripetuta su
+  // ogni tab, cioè rumore che ruba spazio ai nomi delle tabelle. Il contesto
+  // completo resta sempre nel `title` al passaggio del mouse.
+  const dbAperti = new Set(list.filter((c) => !c.isSplitTab).map((c) => c.db));
+  const mostraDb = dbAperti.size > 1;
+
   for (const ct of list) {
     const el = document.createElement('div');
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '') + (ct.preview ? ' preview' : '');
@@ -403,7 +410,17 @@ export function renderCollTabBar() {
       : `${ct.db} ▸ ${ct.coll}`)
       + (ct.preview ? '\nAnteprima: doppio clic per fissare il tab' : '');
 
+    // Il tab-database mostra già il proprio database, quello di split-view non
+    // ne ha uno solo: il prefisso riguarda i coll-tab normali.
+    let dbEl = null;
+    if (mostraDb && !ct.isDbTab && !ct.isSplitTab) {
+      dbEl = document.createElement('span');
+      dbEl.className = 'coll-tab-db';
+      dbEl.textContent = `${ct.db} ▸`;
+    }
+
     const name = document.createElement('span');
+    name.className = 'coll-tab-name';
     name.textContent = ct.isDbTab ? `⚡ ${ct.db}` : ct.coll;
 
     const close = document.createElement('button');
@@ -453,6 +470,7 @@ export function renderCollTabBar() {
       }
     );
 
+    if (dbEl) el.append(dbEl);
     el.append(name, close);
     bar.appendChild(el);
   }

@@ -50,11 +50,11 @@ export async function renameDb(name) {
       st.dbSchema = null;
       st.dbSchemaFor = null;
     }
-    // Breadcrumb, griglia e sidebar sono il workspace condiviso: si toccano solo
-    // se questo tab è ancora quello in primo piano.
+    // Griglia e sidebar sono il workspace condiviso: si toccano solo se questo
+    // tab è ancora quello in primo piano. Il nuovo nome nella barra dei coll-tab
+    // l'ha già scritto `updateCollTabs`, che ridisegna la barra.
     if (!isForActiveTab(res)) return;
     if (st.db === newName) {
-      $('#breadcrumb').textContent = `${newName} ▸ ${st.coll}`;
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
@@ -166,7 +166,7 @@ export async function renameColl(dbName, collName) {
     if (wasOpen) st.coll = newName;
     if (!isForActiveTab(res)) return; // workspace condiviso: non toccarlo da un altro tab
     if (wasOpen) {
-      $('#breadcrumb').textContent = `${dbName} ▸ ${newName}`;
+      // Il nome nel coll-tab è già aggiornato da `updateCollTabs`.
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
