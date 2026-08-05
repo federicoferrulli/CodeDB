@@ -12,6 +12,8 @@ visualizza i documenti/righe come una tabella, esegui query e modifica i dati in
 Supporta **MongoDB**, **MySQL** e **PostgreSQL** tramite uno **Strategy Pattern**.
 Tutta la comunicazione tra browser e backend avviene tramite **Socket.IO**.
 
+> **Nota:** CodeDB è uno strumento 100% Local-First e Open Source. In futuro sarà resa disponibile anche una versione Cloud Hostata a pagamento, con funzionalità avanzate per team aziendali.
+
 
 ## Stack
 

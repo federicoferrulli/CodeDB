@@ -12,6 +12,8 @@ Supports **MongoDB**, **MySQL**, and **PostgreSQL** via a **Strategy Pattern** a
 
 *(Read this document in Italian: [README_IT.md](README_IT.md))*
 
+> **Note:** CodeDB is fully Local-First and Open Source. A hosted, paid Cloud version with enterprise features will be available in the future.
+
 ## Tech Stack
 
 - **Backend:** Node.js, Express, Socket.IO
