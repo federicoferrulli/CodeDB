@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeDB — Mappa dell'architettura</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #12181f;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --line: #2a323d;
+    --line-soft: #222932;
+    --txt: #e6edf3;
+    --txt-dim: #9aa7b4;
+    --txt-faint: #6b7787;
+    --accent: #58a6ff;
+    --accent-soft: rgba(88,166,255,.14);
+    --hl: #ffd166;
+    --shadow: 0 8px 28px rgba(0,0,0,.45);
+    --radius: 10px;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --bg-2: #eef1f6;
+    --panel: #ffffff;
+    --panel-2: #f2f5f9;
+    --line: #d3dae3;
+    --line-soft: #e3e8ef;
+    --txt: #17212b;
+    --txt-dim: #566374;
+    --txt-faint: #8494a5;
+    --accent: #0b62d0;
+    --accent-soft: rgba(11,98,208,.10);
+    --hl: #b26a00;
+    --shadow: 0 8px 28px rgba(16,26,40,.12);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  @media (max-width: 900px) { body { overflow: auto; } }
+
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* ---------- Layout ---------- */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  @media (max-width: 900px) { .app { height: auto; min-height: 100vh; } }
+
+  header.top {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; min-width: 0; }
+  .brand h1 { font-size: 16px; margin: 0; letter-spacing: -.01em; white-space: nowrap; }
+  .brand .sub { color: var(--txt-faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--txt-dim);
+    border-radius: 8px; padding: 6px 11px; font-size: 12.5px; transition: .15s;
+  }
+  .btn:hover { color: var(--txt); border-color: var(--accent); }
+  .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .search {
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 11px; width: 210px; font-size: 12.5px; outline: none;
+  }
+  .search:focus { border-color: var(--accent); }
+
+  main { display: flex; flex: 1; min-height: 0; }
+  @media (max-width: 900px) { main { flex-direction: column-reverse; } }
+
+  /* ---------- Canvas ---------- */
+  .canvas-wrap { position: relative; flex: 1; min-width: 0; background:
+      radial-gradient(circle at 1px 1px, var(--line-soft) 1px, transparent 0) 0 0 / 26px 26px, var(--bg); }
+  @media (max-width: 900px) { .canvas-wrap { height: 62vh; flex: none; } }
+  svg#map { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  svg#map.grabbing { cursor: grabbing; }
+
+  .legend {
+    position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+    max-width: min(560px, calc(100% - 24px));
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; box-shadow: var(--shadow);
+  }
+  .legend.chiusa .chip:not(.toggle) { display: none; }
+  .chip.toggle { border-style: dashed; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--txt-dim);
+    border-radius: 999px; padding: 3px 9px; font-size: 11.5px; transition: .15s; user-select: none;
+  }
+  .chip:hover { color: var(--txt); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .chip.off { opacity: .38; }
+
+  .zoombar { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+  .zoombar .btn { background: color-mix(in srgb, var(--panel) 90%, transparent); }
+
+  .hint {
+    position: absolute; left: 12px; top: 12px; color: var(--txt-faint); font-size: 11.5px;
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px;
+  }
+
+  /* ---------- Nodi ---------- */
+  .node { cursor: pointer; }
+  .node rect.box {
+    fill: var(--panel); stroke: var(--line); stroke-width: 1.5; rx: 9;
+    transition: stroke .15s, fill .15s;
+  }
+  .node text.lbl { fill: var(--txt); font-size: 12.5px; font-weight: 600; pointer-events: none; }
+  .node text.sub { fill: var(--txt-faint); font-size: 10.5px; pointer-events: none; }
+  .node rect.bar { rx: 2; }
+  .node:hover rect.box { stroke: var(--accent); }
+  .node.sel rect.box { stroke: var(--accent); stroke-width: 2.5; }
+  .node.hit rect.box { stroke: var(--hl); stroke-width: 2.5; }
+  .node .badge circle { fill: var(--hl); }
+  .node .badge text { fill: #1a1206; font-size: 10px; font-weight: 800; text-anchor: middle; }
+
+  .edge path { fill: none; stroke: var(--line); stroke-width: 1.4; transition: stroke .15s, stroke-width .15s; }
+  .edge.kind-push path, .edge.kind-async path { stroke-dasharray: 5 4; }
+  .edge.kind-data path { stroke-dasharray: 2 4; }
+  .edge text.elbl { fill: var(--txt-faint); font-size: 10px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .edge.hit path { stroke: var(--hl); stroke-width: 2.6; }
+  .edge.hit text.elbl { opacity: 1; fill: var(--hl); }
+  .edge.step-active path { stroke-width: 4; }
+
+  .dimmed { opacity: .10; transition: opacity .2s; }
+  #viewport.focus .node:not(.hit), #viewport.focus .edge:not(.hit) { opacity: .10; }
+  #viewport .node, #viewport .edge { transition: opacity .2s; }
+  .hidden-group { display: none; }
+
+  /* ---------- Tooltip ---------- */
+  #tip {
+    position: fixed; z-index: 50; max-width: 340px; pointer-events: none; opacity: 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 10px 12px; transition: opacity .12s;
+  }
+  #tip .t-h { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  #tip .t-h .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  #tip .t-f { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--accent); margin: 5px 0 6px; word-break: break-all; }
+  #tip .t-b { font-size: 12px; color: var(--txt-dim); }
+
+  /* ---------- Pannello flussi ---------- */
+  aside.panel {
+    width: 400px; flex: none; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line); min-height: 0;
+  }
+  @media (max-width: 1200px) { aside.panel { width: 340px; } }
+  @media (max-width: 900px) { aside.panel { width: auto; border-left: none; border-bottom: 1px solid var(--line); max-height: none; } }
+
+  .panel-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { margin: 0 0 3px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--txt-dim); }
+  .panel-head p { margin: 0; font-size: 12px; color: var(--txt-faint); }
+  .panel-body { overflow-y: auto; flex: 1; padding: 8px; min-height: 0; }
+  @media (max-width: 900px) { .panel-body { max-height: 55vh; } }
+
+  .grp-title { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--txt-faint); margin: 12px 6px 6px; }
+  .grp-title:first-child { margin-top: 2px; }
+
+  .flow { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 7px; overflow: hidden; background: var(--bg-2); }
+  .flow.open { border-color: var(--accent); }
+  .flow-h { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none; border: 0; padding: 10px 12px; }
+  .flow-h:hover { background: var(--panel-2); }
+  .flow-h .n { flex: none; width: 21px; height: 21px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line);
+               display: grid; place-items: center; font-size: 10.5px; color: var(--txt-faint); font-weight: 700; }
+  .flow.open .flow-h .n { background: var(--accent); border-color: var(--accent); color: #05131f; }
+  .flow-h .ttl { flex: 1; font-size: 13px; font-weight: 600; }
+  .flow-h .cnt { font-size: 11px; color: var(--txt-faint); }
+  .flow-b { padding: 0 12px 12px; display: none; }
+  .flow.open .flow-b { display: block; }
+  .flow-desc { font-size: 12px; color: var(--txt-dim); border-left: 2px solid var(--accent); padding-left: 10px; margin: 2px 0 12px; }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; }
+  ol.steps li { position: relative; padding: 0 0 12px 26px; }
+  ol.steps li::before {
+    content: attr(data-i); position: absolute; left: 0; top: 1px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--txt-faint);
+    font-size: 10px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps li::after { content: ""; position: absolute; left: 9px; top: 20px; bottom: 0; width: 1px; background: var(--line); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps li.active::before { background: var(--hl); border-color: var(--hl); color: #1a1206; }
+  ol.steps li.active .hop { color: var(--hl); }
+  .hop { display: block; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .hop:hover { color: var(--accent); }
+  .hop .arr { color: var(--txt-faint); font-weight: 400; }
+  .note { font-size: 11.5px; color: var(--txt-dim); margin-top: 3px; }
+
+  .detail h3 { margin: 0 0 2px; font-size: 15px; }
+  .detail .file { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; color: var(--accent); word-break: break-all; margin-bottom: 10px; }
+  .detail .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--txt-faint); margin: 14px 0 4px; }
+  .detail p { margin: 0; font-size: 12.5px; color: var(--txt-dim); }
+  .detail ul { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--txt-dim); }
+  .detail ul li { margin-bottom: 3px; }
+  .detail a.rel { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .detail a.rel:hover { text-decoration: underline; }
+  .back { margin-bottom: 10px; }
+
+  .empty { color: var(--txt-faint); font-size: 12px; padding: 20px 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1 id="brand-title">CodeDB</h1>
+      <span class="sub" id="brand-sub"></span>
+    </div>
+    <div class="tools">
+      <input class="search" id="search" type="search" placeholder="Cerca componente o file…" autocomplete="off">
+      <button class="btn" id="btn-fit">Adatta</button>
+      <button class="btn" id="btn-reset">Azzera</button>
+      <button class="btn" id="btn-theme">Tema</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <svg id="map"><g id="viewport"><g id="edges"></g><g id="nodes"></g></g></svg>
+      <div class="hint">Trascina per spostare · rotella per zoomare · clic su un nodo per i dettagli</div>
+      <div class="legend" id="legend"></div>
+      <div class="zoombar">
+        <button class="btn" id="btn-out">−</button>
+        <button class="btn" id="btn-in">+</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-head">
+        <h2 id="panel-title">Flussi</h2>
+        <p id="panel-sub">Seleziona un flusso per illuminarne il percorso nel diagramma.</p>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </main>
+</div>
+
+<div id="tip"></div>
+
+<script>
+/* eslint-disable */
+const DATI = /*__DATI__*/ null;
+
+/* ------------------------------------------------------------------ *
+ * Stato
+ * ------------------------------------------------------------------ */
+const NW = 196, NH = 50;                 // dimensioni del riquadro di un nodo
+const nodeById  = new Map(DATI.nodes.map(n => [n.id, n]));
+const groupById = new Map(DATI.groups.map(g => [g.id, g]));
+const edgeKey   = (a, b) => a + '>' + b;
+const edgeByKey = new Map(DATI.edges.map(e => [edgeKey(e.from, e.to), e]));
+
+const stato = {
+  flusso: null,        // id del flusso selezionato
+  passo: -1,           // indice del passo evidenziato
+  nodo: null,          // id del nodo aperto in dettaglio
+  gruppiOff: new Set(),
+  legendaChiusa: false,
+  vista: { x: 0, y: 0, k: 1 },
+};
+
+const svg      = document.getElementById('map');
+const viewport = document.getElementById('viewport');
+const gEdges   = document.getElementById('edges');
+const gNodes   = document.getElementById('nodes');
+const tip      = document.getElementById('tip');
+const NS       = 'http://www.w3.org/2000/svg';
+
+/* ------------------------------------------------------------------ *
+ * Disegno del diagramma
+ * ------------------------------------------------------------------ */
+function el(tag, attrs = {}, testo) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (testo != null) n.textContent = testo;
+  return n;
+}
+
+/* Il percorso di un arco parte dal bordo destro dell'origine e arriva al bordo
+ * sinistro della destinazione. Gli archi "all'indietro" (destinazione a sinistra)
+ * userebbero una bezier che attraversa i due riquadri: si esce allora dal bordo
+ * sinistro e si rientra da destra, cosi la direzione resta leggibile. */
+function tracciato(a, b) {
+  const ax = a.x, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
+  const avanti = b.x > a.x;
+  const x1 = avanti ? ax + NW : ax;
+  const x2 = avanti ? bx : bx + NW;
+  const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
+  const c1 = avanti ? x1 + dx : x1 - dx;
+  const c2 = avanti ? x2 - dx : x2 + dx;
+  return { d: `M ${x1} ${ay} C ${c1} ${ay}, ${c2} ${by}, ${x2} ${by}`,
+           mx: (x1 + x2) / 2, my: (ay + by) / 2 - 5 };
+}
+
+function disegna() {
+  // marker delle frecce (uno normale, uno evidenziato)
+  const defs = el('defs');
+  for (const [id, col] of [['fr', 'var(--line)'], ['fr-hl', 'var(--hl)']]) {
+    const m = el('marker', { id, viewBox: '0 0 8 8', refX: 7, refY: 4,
+      markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
+    m.appendChild(el('path', { d: 'M 0 0 L 8 4 L 0 8 z', fill: col }));
+    defs.appendChild(m);
+  }
+  svg.insertBefore(defs, viewport);
+
+  for (const e of DATI.edges) {
+    const a = nodeById.get(e.from), b = nodeById.get(e.to);
+    if (!a || !b) continue;
+    const t = tracciato(a, b);
+    const g = el('g', { class: 'edge kind-' + (e.kind || 'sync'), 'data-id': e.id,
+                        'data-from': e.from, 'data-to': e.to });
+    g.appendChild(el('path', { d: t.d, 'marker-end': 'url(#fr)' }));
+    const lbl = el('text', { class: 'elbl', x: t.mx, y: t.my, 'text-anchor': 'middle' }, e.label || '');
+    g.appendChild(lbl);
+    gEdges.appendChild(g);
+  }
+
+  for (const n of DATI.nodes) {
+    const grp = groupById.get(n.group) || { color: 'var(--accent)', label: '' };
+    const g = el('g', { class: 'node', 'data-id': n.id, transform: `translate(${n.x},${n.y})` });
+    g.appendChild(el('rect', { class: 'box', width: NW, height: NH }));
+    g.appendChild(el('rect', { class: 'bar', x: 0, y: 8, width: 4, height: NH - 16, fill: grp.color }));
+    g.appendChild(el('text', { class: 'lbl', x: 14, y: 21 }, tronca(n.label, 26)));
+    g.appendChild(el('text', { class: 'sub', x: 14, y: 37 }, tronca(basename(n.file), 32)));
+    const badge = el('g', { class: 'badge', transform: `translate(${NW - 13},13)`, opacity: 0 });
+    badge.appendChild(el('circle', { r: 9 }));
+    badge.appendChild(el('text', { y: 3.5 }, ''));
+    g.appendChild(badge);
+    gNodes.appendChild(g);
+  }
+}
+
+const tronca   = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : (s || ''));
+const basename = (f) => String(f || '').split(',')[0].trim();
+
+/* ------------------------------------------------------------------ *
+ * Vista: pan / zoom / adatta
+ * ------------------------------------------------------------------ */
+function applicaVista() {
+  const v = stato.vista;
+  viewport.setAttribute('transform', `translate(${v.x},${v.y}) scale(${v.k})`);
+}
+
+function riquadroContenuto() {
+  const vis = DATI.nodes.filter(n => !stato.gruppiOff.has(n.group));
+  const base = vis.length ? vis : DATI.nodes;
+  const xs = base.map(n => n.x), ys = base.map(n => n.y);
+  const x0 = Math.min(...xs) - 40, y0 = Math.min(...ys) - 40;
+  const x1 = Math.max(...xs) + NW + 40, y1 = Math.max(...ys) + NH + 40;
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function adatta(nodi) {
+  const r = riquadroDi(nodi) || riquadroContenuto();
+  const b = svg.getBoundingClientRect();
+  // Legenda e barra dello zoom galleggiano sul diagramma: senza riservare la
+  // loro altezza i nodi piu in basso finiscono sotto, cioe invisibili proprio
+  // dopo un "Adatta" che promette di mostrare tutto.
+  const legenda = document.getElementById('legend');
+  const sotto = legenda ? legenda.getBoundingClientRect().height + 24 : 0;
+  const h = Math.max(160, b.height - sotto);
+  const k = Math.min(b.width / r.w, h / r.h, 1.6);
+  stato.vista = { k, x: (b.width - r.w * k) / 2 - r.x0 * k, y: (h - r.h * k) / 2 - r.y0 * k };
+  applicaVista();
+}
+
+function riquadroDi(ids) {
+  if (!ids || !ids.length) return null;
+  const ns = ids.map(id => nodeById.get(id)).filter(Boolean);
+  if (!ns.length) return null;
+  const x0 = Math.min(...ns.map(n => n.x)) - 70, y0 = Math.min(...ns.map(n => n.y)) - 70;
+  const x1 = Math.max(...ns.map(n => n.x)) + NW + 70, y1 = Math.max(...ns.map(n => n.y)) + NH + 70;
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function zoomA(fattore, cx, cy) {
+  const v = stato.vista;
+  const k = Math.min(3, Math.max(0.18, v.k * fattore));
+  const b = svg.getBoundingClientRect();
+  const px = (cx == null ? b.width / 2 : cx - b.left);
+  const py = (cy == null ? b.height / 2 : cy - b.top);
+  v.x = px - (px - v.x) * (k / v.k);
+  v.y = py - (py - v.y) * (k / v.k);
+  v.k = k;
+  applicaVista();
+}
+
+(function abilitaPanZoom() {
+  let trascina = null;
+  svg.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('.node')) return;
+    trascina = { x: ev.clientX, y: ev.clientY, vx: stato.vista.x, vy: stato.vista.y };
+    svg.classList.add('grabbing');
+    svg.setPointerCapture(ev.pointerId);
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    if (!trascina) return;
+    stato.vista.x = trascina.vx + (ev.clientX - trascina.x);
+    stato.vista.y = trascina.vy + (ev.clientY - trascina.y);
+    applicaVista();
+  });
+  const fine = () => { trascina = null; svg.classList.remove('grabbing'); };
+  svg.addEventListener('pointerup', fine);
+  svg.addEventListener('pointercancel', fine);
+  svg.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    zoomA(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX, ev.clientY);
+  }, { passive: false });
+})();
+
+/* ------------------------------------------------------------------ *
+ * Evidenziazione
+ * ------------------------------------------------------------------ */
+function pulisciEvidenza() {
+  viewport.classList.remove('focus');
+  gNodes.querySelectorAll('.node').forEach(n => {
+    n.classList.remove('hit', 'sel');
+    const b = n.querySelector('.badge');
+    b.setAttribute('opacity', 0);
+    b.querySelector('text').textContent = '';
+  });
+  gEdges.querySelectorAll('.edge').forEach(e => {
+    e.classList.remove('hit', 'step-active');
+    e.querySelector('path').setAttribute('marker-end', 'url(#fr)');
+  });
+}
+
+function evidenziaFlusso(flusso, passo = -1) {
+  pulisciEvidenza();
+  if (!flusso) return;
+  viewport.classList.add('focus');
+
+  const ordine = new Map();   // primo passo in cui compare ogni nodo
+  flusso.steps.forEach((s, i) => {
+    if (!ordine.has(s.from)) ordine.set(s.from, i + 1);
+    if (!ordine.has(s.to))   ordine.set(s.to, i + 1);
+    const g = gEdges.querySelector(`.edge[data-from="${s.from}"][data-to="${s.to}"]`);
+    if (g) {
+      g.classList.add('hit');
+      g.querySelector('path').setAttribute('marker-end', 'url(#fr-hl)');
+      if (i === passo) g.classList.add('step-active');
+    }
+  });
+
+  for (const [id, num] of ordine) {
+    const g = gNodes.querySelector(`.node[data-id="${id}"]`);
+    if (!g) continue;
+    g.classList.add('hit');
+    const b = g.querySelector('.badge');
+    b.setAttribute('opacity', 1);
+    b.querySelector('text').textContent = num;
+  }
+}
+
+function evidenziaNodo(id) {
+  pulisciEvidenza();
+  const g = gNodes.querySelector(`.node[data-id="${id}"]`);
+  if (g) g.classList.add('sel');
+  DATI.edges.forEach(e => {
+    if (e.from !== id && e.to !== id) return;
+    const ge = gEdges.querySelector(`.edge[data-id="${e.id}"]`);
+    if (ge) { ge.classList.add('hit'); ge.querySelector('path').setAttribute('marker-end', 'url(#fr-hl)'); }
+    const alt = e.from === id ? e.to : e.from;
+    const ga = gNodes.querySelector(`.node[data-id="${alt}"]`);
+    if (ga) ga.classList.add('hit');
+  });
+  viewport.classList.add('focus');
+  if (g) g.classList.add('hit');
+}
+
+/* ------------------------------------------------------------------ *
+ * Pannello
+ * ------------------------------------------------------------------ */
+const body = document.getElementById('panel-body');
+const titolo = document.getElementById('panel-title');
+const sottotitolo = document.getElementById('panel-sub');
+
+function renderFlussi() {
+  titolo.textContent = 'Flussi';
+  sottotitolo.textContent = 'Seleziona un flusso per illuminarne il percorso nel diagramma.';
+  body.innerHTML = '';
+  // Raggruppa per "gruppo" conservando l'ordine di prima comparsa: raggruppare
+  // solo i flussi CONSECUTIVI farebbe ricomparire lo stesso titolo piu volte.
+  const perGruppo = new Map();
+  for (const f of DATI.flows) {
+    if (!perGruppo.has(f.gruppo)) perGruppo.set(f.gruppo, []);
+    perGruppo.get(f.gruppo).push(f);
+  }
+  let i = 0;
+  for (const [gruppo, flussi] of perGruppo) {
+    const h = document.createElement('div');
+    h.className = 'grp-title';
+    h.textContent = gruppo;
+    body.appendChild(h);
+    for (const f of flussi) {
+    i += 1;
+    const aperto = stato.flusso === f.id;
+    const box = document.createElement('section');
+    box.className = 'flow' + (aperto ? ' open' : '');
+
+    const head = document.createElement('button');
+    head.className = 'flow-h';
+    head.innerHTML = `<span class="n">${i}</span><span class="ttl"></span><span class="cnt">${f.steps.length} passi</span>`;
+    head.querySelector('.ttl').textContent = f.titolo;
+    head.addEventListener('click', () => {
+      stato.flusso = aperto ? null : f.id;
+      stato.passo = -1;
+      stato.nodo = null;
+      renderFlussi();
+      if (stato.flusso) {
+        evidenziaFlusso(f);
+        adatta([...new Set(f.steps.flatMap(s => [s.from, s.to]))]);
+      } else {
+        pulisciEvidenza();
+      }
+    });
+    box.appendChild(head);
+
+    const b = document.createElement('div');
+    b.className = 'flow-b';
+    const d = document.createElement('p');
+    d.className = 'flow-desc';
+    d.textContent = f.descrizione;
+    b.appendChild(d);
+
+    const ol = document.createElement('ol');
+    ol.className = 'steps';
+    f.steps.forEach((s, idx) => {
+      const li = document.createElement('li');
+      li.dataset.i = idx + 1;
+      if (aperto && stato.passo === idx) li.classList.add('active');
+      const hop = document.createElement('span');
+      hop.className = 'hop';
+      const from = nodeById.get(s.from), to = nodeById.get(s.to);
+      hop.innerHTML = `${escapeHtml(from ? from.label : s.from)} <span class="arr">→</span> ${escapeHtml(to ? to.label : s.to)}`;
+      hop.addEventListener('click', () => {
+        stato.passo = stato.passo === idx ? -1 : idx;
+        renderFlussi();
+        evidenziaFlusso(f, stato.passo);
+        if (stato.passo >= 0) adatta([s.from, s.to]);
+      });
+      li.appendChild(hop);
+      if (s.nota) {
+        const nt = document.createElement('div');
+        nt.className = 'note';
+        nt.textContent = s.nota;
+        li.appendChild(nt);
+      }
+      ol.appendChild(li);
+    });
+    b.appendChild(ol);
+    box.appendChild(b);
+    body.appendChild(box);
+    }
+  }
+}
+
+function renderDettaglio(id) {
+  const n = nodeById.get(id);
+  if (!n) return;
+  const grp = groupById.get(n.group) || {};
+  titolo.textContent = 'Componente';
+  sottotitolo.textContent = grp.label || '';
+  body.innerHTML = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'detail';
+
+  const back = document.createElement('button');
+  back.className = 'btn back';
+  back.textContent = '← Tutti i flussi';
+  back.addEventListener('click', () => { stato.nodo = null; pulisciEvidenza(); renderFlussi(); });
+  wrap.appendChild(back);
+
+  const h = document.createElement('h3'); h.textContent = n.label; wrap.appendChild(h);
+  const f = document.createElement('div'); f.className = 'file'; f.textContent = n.file; wrap.appendChild(f);
+
+  wrap.appendChild(sez('In breve'));
+  const p1 = document.createElement('p'); p1.textContent = n.sommario; wrap.appendChild(p1);
+
+  if (n.dettaglio) {
+    wrap.appendChild(sez('Perché è fatto così'));
+    const p2 = document.createElement('p'); p2.textContent = n.dettaglio; wrap.appendChild(p2);
+  }
+
+  const entranti = DATI.edges.filter(e => e.to === id);
+  const uscenti  = DATI.edges.filter(e => e.from === id);
+  if (uscenti.length) { wrap.appendChild(sez('Dipende da')); wrap.appendChild(lista(uscenti, 'to')); }
+  if (entranti.length) { wrap.appendChild(sez('Usato da')); wrap.appendChild(lista(entranti, 'from')); }
+
+  const flussi = DATI.flows.filter(fl => fl.steps.some(s => s.from === id || s.to === id));
+  if (flussi.length) {
+    wrap.appendChild(sez('Compare nei flussi'));
+    const ul = document.createElement('ul');
+    flussi.forEach(fl => {
+      const li = document.createElement('li');
+      const a = document.createElement('a'); a.className = 'rel'; a.textContent = fl.titolo;
+      a.addEventListener('click', () => {
+        stato.nodo = null; stato.flusso = fl.id; stato.passo = -1;
+        renderFlussi(); evidenziaFlusso(fl);
+        adatta([...new Set(fl.steps.flatMap(s => [s.from, s.to]))]);
+      });
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+  body.appendChild(wrap);
+
+  function sez(t) { const d = document.createElement('div'); d.className = 'sec'; d.textContent = t; return d; }
+  function lista(archi, campo) {
+    const ul = document.createElement('ul');
+    archi.forEach(e => {
+      const altro = nodeById.get(e[campo]);
+      const li = document.createElement('li');
+      const a = document.createElement('a'); a.className = 'rel';
+      a.textContent = altro ? altro.label : e[campo];
+      a.addEventListener('click', () => apriNodo(e[campo]));
+      li.appendChild(a);
+      if (e.label) li.appendChild(document.createTextNode(' — ' + e.label));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+}
+
+function apriNodo(id) {
+  stato.nodo = id;
+  stato.flusso = null;
+  stato.passo = -1;
+  evidenziaNodo(id);
+  renderDettaglio(id);
+  const n = nodeById.get(id);
+  if (n) {
+    const vicini = DATI.edges.filter(e => e.from === id || e.to === id)
+                             .flatMap(e => [e.from, e.to]);
+    adatta([...new Set([id, ...vicini])]);
+  }
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ------------------------------------------------------------------ *
+ * Tooltip
+ * ------------------------------------------------------------------ */
+function mostraTip(n, ev) {
+  const grp = groupById.get(n.group) || {};
+  tip.innerHTML = `<div class="t-h"><span class="dot" style="background:${grp.color}"></span><span></span></div>
+                   <div class="t-f"></div><div class="t-b"></div>`;
+  tip.querySelector('.t-h span:last-child').textContent = n.label;
+  tip.querySelector('.t-f').textContent = n.file;
+  tip.querySelector('.t-b').textContent = n.sommario;
+  tip.style.opacity = 1;
+  muoviTip(ev);
+}
+function muoviTip(ev) {
+  const b = tip.getBoundingClientRect();
+  let x = ev.clientX + 16, y = ev.clientY + 16;
+  if (x + b.width > innerWidth - 10) x = ev.clientX - b.width - 16;
+  if (y + b.height > innerHeight - 10) y = ev.clientY - b.height - 16;
+  tip.style.left = Math.max(8, x) + 'px';
+  tip.style.top = Math.max(8, y) + 'px';
+}
+const nascondiTip = () => { tip.style.opacity = 0; };
+
+/* ------------------------------------------------------------------ *
+ * Legenda / filtri di gruppo
+ * ------------------------------------------------------------------ */
+function renderLegenda() {
+  const box = document.getElementById('legend');
+  box.innerHTML = '';
+  box.classList.toggle('chiusa', stato.legendaChiusa);
+
+  // La legenda sta SOPRA il diagramma: da aperta copre l'angolo in basso a
+  // sinistra, dove finiscono i cluster piu bassi. Da qui il pulsante di
+  // chiusura, oltre allo spazio riservato in adatta().
+  const t = document.createElement('button');
+  t.className = 'chip toggle';
+  t.textContent = stato.legendaChiusa ? '▸ Legenda' : '▾ Legenda';
+  t.addEventListener('click', () => { stato.legendaChiusa = !stato.legendaChiusa; renderLegenda(); });
+  box.appendChild(t);
+
+  for (const g of DATI.groups) {
+    const c = document.createElement('button');
+    c.className = 'chip' + (stato.gruppiOff.has(g.id) ? ' off' : '');
+    c.innerHTML = `<span class="dot" style="background:${g.color}"></span><span></span>`;
+    c.querySelector('span:last-child').textContent = g.label;
+    c.title = g.descrizione;
+    c.addEventListener('click', () => {
+      stato.gruppiOff.has(g.id) ? stato.gruppiOff.delete(g.id) : stato.gruppiOff.add(g.id);
+      renderLegenda();
+      applicaFiltri();
+    });
+    box.appendChild(c);
+  }
+}
+
+function applicaFiltri() {
+  const off = stato.gruppiOff;
+  gNodes.querySelectorAll('.node').forEach(g => {
+    const n = nodeById.get(g.dataset.id);
+    g.classList.toggle('hidden-group', !!(n && off.has(n.group)));
+  });
+  gEdges.querySelectorAll('.edge').forEach(g => {
+    const a = nodeById.get(g.dataset.from), b = nodeById.get(g.dataset.to);
+    const nascosto = (a && off.has(a.group)) || (b && off.has(b.group));
+    g.classList.toggle('hidden-group', !!nascosto);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Ricerca
+ * ------------------------------------------------------------------ */
+document.getElementById('search').addEventListener('input', (ev) => {
+  const q = ev.target.value.trim().toLowerCase();
+  if (!q) {
+    gNodes.querySelectorAll('.node').forEach(g => g.classList.remove('sel'));
+    if (!stato.flusso && !stato.nodo) pulisciEvidenza();
+    return;
+  }
+  const trovati = DATI.nodes.filter(n =>
+    (n.label + ' ' + n.file + ' ' + n.sommario + ' ' + (n.dettaglio || '')).toLowerCase().includes(q));
+  pulisciEvidenza();
+  if (!trovati.length) return;
+  viewport.classList.add('focus');
+  trovati.forEach(n => {
+    const g = gNodes.querySelector(`.node[data-id="${n.id}"]`);
+    if (g) g.classList.add('hit');
+  });
+  if (trovati.length <= 6) adatta(trovati.map(n => n.id));
+});
+
+/* ------------------------------------------------------------------ *
+ * Avvio
+ * ------------------------------------------------------------------ */
+document.getElementById('brand-title').textContent = DATI.meta.prodotto + ' — architettura';
+document.getElementById('brand-sub').textContent =
+  `v${DATI.meta.versione} · ${DATI.nodes.length} componenti · ${DATI.edges.length} relazioni · ${DATI.flows.length} flussi`;
+
+disegna();
+renderLegenda();
+renderFlussi();
+adatta();
+
+gNodes.addEventListener('click', (ev) => {
+  const g = ev.target.closest('.node');
+  if (g) apriNodo(g.dataset.id);
+});
+gNodes.addEventListener('mouseover', (ev) => {
+  const g = ev.target.closest('.node');
+  if (g) mostraTip(nodeById.get(g.dataset.id), ev);
+});
+gNodes.addEventListener('mousemove', (ev) => { if (tip.style.opacity == 1) muoviTip(ev); });
+gNodes.addEventListener('mouseout', (ev) => { if (ev.target.closest('.node')) nascondiTip(); });
+
+document.getElementById('btn-fit').addEventListener('click', () => adatta());
+document.getElementById('btn-in').addEventListener('click', () => zoomA(1.2));
+document.getElementById('btn-out').addEventListener('click', () => zoomA(1 / 1.2));
+document.getElementById('btn-reset').addEventListener('click', () => {
+  stato.flusso = null; stato.passo = -1; stato.nodo = null; stato.gruppiOff.clear();
+  document.getElementById('search').value = '';
+  pulisciEvidenza(); renderLegenda(); applicaFiltri(); renderFlussi(); adatta();
+});
+document.getElementById('btn-theme').addEventListener('click', () => {
+  const r = document.documentElement;
+  r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+
+addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') document.getElementById('btn-reset').click();
+});
+let rid;
+addEventListener('resize', () => { clearTimeout(rid); rid = setTimeout(() => adatta(), 150); });
+</script>
+</body>
+</html>

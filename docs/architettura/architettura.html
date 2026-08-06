@@ -1,0 +1,3018 @@
+<!DOCTYPE html>
+<html lang="it" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeDB — Mappa dell'architettura</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-2: #12181f;
+    --panel: #161b22;
+    --panel-2: #1c232c;
+    --line: #2a323d;
+    --line-soft: #222932;
+    --txt: #e6edf3;
+    --txt-dim: #9aa7b4;
+    --txt-faint: #6b7787;
+    --accent: #58a6ff;
+    --accent-soft: rgba(88,166,255,.14);
+    --hl: #ffd166;
+    --shadow: 0 8px 28px rgba(0,0,0,.45);
+    --radius: 10px;
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f7fa;
+    --bg-2: #eef1f6;
+    --panel: #ffffff;
+    --panel-2: #f2f5f9;
+    --line: #d3dae3;
+    --line-soft: #e3e8ef;
+    --txt: #17212b;
+    --txt-dim: #566374;
+    --txt-faint: #8494a5;
+    --accent: #0b62d0;
+    --accent-soft: rgba(11,98,208,.10);
+    --hl: #b26a00;
+    --shadow: 0 8px 28px rgba(16,26,40,.12);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--txt);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  @media (max-width: 900px) { body { overflow: auto; } }
+
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  /* ---------- Layout ---------- */
+  .app { display: flex; flex-direction: column; height: 100vh; }
+  @media (max-width: 900px) { .app { height: auto; min-height: 100vh; } }
+
+  header.top {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 5;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; margin-right: auto; min-width: 0; }
+  .brand h1 { font-size: 16px; margin: 0; letter-spacing: -.01em; white-space: nowrap; }
+  .brand .sub { color: var(--txt-faint); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--txt-dim);
+    border-radius: 8px; padding: 6px 11px; font-size: 12.5px; transition: .15s;
+  }
+  .btn:hover { color: var(--txt); border-color: var(--accent); }
+  .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .search {
+    background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 11px; width: 210px; font-size: 12.5px; outline: none;
+  }
+  .search:focus { border-color: var(--accent); }
+
+  main { display: flex; flex: 1; min-height: 0; }
+  @media (max-width: 900px) { main { flex-direction: column-reverse; } }
+
+  /* ---------- Canvas ---------- */
+  .canvas-wrap { position: relative; flex: 1; min-width: 0; background:
+      radial-gradient(circle at 1px 1px, var(--line-soft) 1px, transparent 0) 0 0 / 26px 26px, var(--bg); }
+  @media (max-width: 900px) { .canvas-wrap { height: 62vh; flex: none; } }
+  svg#map { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+  svg#map.grabbing { cursor: grabbing; }
+
+  .legend {
+    position: absolute; left: 12px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+    max-width: min(560px, calc(100% - 24px));
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; box-shadow: var(--shadow);
+  }
+  .legend.chiusa .chip:not(.toggle) { display: none; }
+  .chip.toggle { border-style: dashed; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--txt-dim);
+    border-radius: 999px; padding: 3px 9px; font-size: 11.5px; transition: .15s; user-select: none;
+  }
+  .chip:hover { color: var(--txt); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .chip.off { opacity: .38; }
+
+  .zoombar { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 6px; }
+  .zoombar .btn { background: color-mix(in srgb, var(--panel) 90%, transparent); }
+
+  .hint {
+    position: absolute; left: 12px; top: 12px; color: var(--txt-faint); font-size: 11.5px;
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px;
+  }
+
+  /* ---------- Nodi ---------- */
+  .node { cursor: pointer; }
+  .node rect.box {
+    fill: var(--panel); stroke: var(--line); stroke-width: 1.5; rx: 9;
+    transition: stroke .15s, fill .15s;
+  }
+  .node text.lbl { fill: var(--txt); font-size: 12.5px; font-weight: 600; pointer-events: none; }
+  .node text.sub { fill: var(--txt-faint); font-size: 10.5px; pointer-events: none; }
+  .node rect.bar { rx: 2; }
+  .node:hover rect.box { stroke: var(--accent); }
+  .node.sel rect.box { stroke: var(--accent); stroke-width: 2.5; }
+  .node.hit rect.box { stroke: var(--hl); stroke-width: 2.5; }
+  .node .badge circle { fill: var(--hl); }
+  .node .badge text { fill: #1a1206; font-size: 10px; font-weight: 800; text-anchor: middle; }
+
+  .edge path { fill: none; stroke: var(--line); stroke-width: 1.4; transition: stroke .15s, stroke-width .15s; }
+  .edge.kind-push path, .edge.kind-async path { stroke-dasharray: 5 4; }
+  .edge.kind-data path { stroke-dasharray: 2 4; }
+  .edge text.elbl { fill: var(--txt-faint); font-size: 10px; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  .edge.hit path { stroke: var(--hl); stroke-width: 2.6; }
+  .edge.hit text.elbl { opacity: 1; fill: var(--hl); }
+  .edge.step-active path { stroke-width: 4; }
+
+  .dimmed { opacity: .10; transition: opacity .2s; }
+  #viewport.focus .node:not(.hit), #viewport.focus .edge:not(.hit) { opacity: .10; }
+  #viewport .node, #viewport .edge { transition: opacity .2s; }
+  .hidden-group { display: none; }
+
+  /* ---------- Tooltip ---------- */
+  #tip {
+    position: fixed; z-index: 50; max-width: 340px; pointer-events: none; opacity: 0;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 10px 12px; transition: opacity .12s;
+  }
+  #tip .t-h { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 7px; }
+  #tip .t-h .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  #tip .t-f { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11px; color: var(--accent); margin: 5px 0 6px; word-break: break-all; }
+  #tip .t-b { font-size: 12px; color: var(--txt-dim); }
+
+  /* ---------- Pannello flussi ---------- */
+  aside.panel {
+    width: 400px; flex: none; display: flex; flex-direction: column;
+    background: var(--panel); border-left: 1px solid var(--line); min-height: 0;
+  }
+  @media (max-width: 1200px) { aside.panel { width: 340px; } }
+  @media (max-width: 900px) { aside.panel { width: auto; border-left: none; border-bottom: 1px solid var(--line); max-height: none; } }
+
+  .panel-head { padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { margin: 0 0 3px; font-size: 13px; letter-spacing: .04em; text-transform: uppercase; color: var(--txt-dim); }
+  .panel-head p { margin: 0; font-size: 12px; color: var(--txt-faint); }
+  .panel-body { overflow-y: auto; flex: 1; padding: 8px; min-height: 0; }
+  @media (max-width: 900px) { .panel-body { max-height: 55vh; } }
+
+  .grp-title { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--txt-faint); margin: 12px 6px 6px; }
+  .grp-title:first-child { margin-top: 2px; }
+
+  .flow { border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 7px; overflow: hidden; background: var(--bg-2); }
+  .flow.open { border-color: var(--accent); }
+  .flow-h { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none; border: 0; padding: 10px 12px; }
+  .flow-h:hover { background: var(--panel-2); }
+  .flow-h .n { flex: none; width: 21px; height: 21px; border-radius: 6px; background: var(--panel-2); border: 1px solid var(--line);
+               display: grid; place-items: center; font-size: 10.5px; color: var(--txt-faint); font-weight: 700; }
+  .flow.open .flow-h .n { background: var(--accent); border-color: var(--accent); color: #05131f; }
+  .flow-h .ttl { flex: 1; font-size: 13px; font-weight: 600; }
+  .flow-h .cnt { font-size: 11px; color: var(--txt-faint); }
+  .flow-b { padding: 0 12px 12px; display: none; }
+  .flow.open .flow-b { display: block; }
+  .flow-desc { font-size: 12px; color: var(--txt-dim); border-left: 2px solid var(--accent); padding-left: 10px; margin: 2px 0 12px; }
+
+  ol.steps { list-style: none; margin: 0; padding: 0; }
+  ol.steps li { position: relative; padding: 0 0 12px 26px; }
+  ol.steps li::before {
+    content: attr(data-i); position: absolute; left: 0; top: 1px; width: 18px; height: 18px; border-radius: 50%;
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--txt-faint);
+    font-size: 10px; font-weight: 700; display: grid; place-items: center;
+  }
+  ol.steps li::after { content: ""; position: absolute; left: 9px; top: 20px; bottom: 0; width: 1px; background: var(--line); }
+  ol.steps li:last-child::after { display: none; }
+  ol.steps li.active::before { background: var(--hl); border-color: var(--hl); color: #1a1206; }
+  ol.steps li.active .hop { color: var(--hl); }
+  .hop { display: block; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .hop:hover { color: var(--accent); }
+  .hop .arr { color: var(--txt-faint); font-weight: 400; }
+  .note { font-size: 11.5px; color: var(--txt-dim); margin-top: 3px; }
+
+  .detail h3 { margin: 0 0 2px; font-size: 15px; }
+  .detail .file { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: 11.5px; color: var(--accent); word-break: break-all; margin-bottom: 10px; }
+  .detail .sec { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--txt-faint); margin: 14px 0 4px; }
+  .detail p { margin: 0; font-size: 12.5px; color: var(--txt-dim); }
+  .detail ul { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--txt-dim); }
+  .detail ul li { margin-bottom: 3px; }
+  .detail a.rel { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .detail a.rel:hover { text-decoration: underline; }
+  .back { margin-bottom: 10px; }
+
+  .empty { color: var(--txt-faint); font-size: 12px; padding: 20px 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <h1 id="brand-title">CodeDB</h1>
+      <span class="sub" id="brand-sub"></span>
+    </div>
+    <div class="tools">
+      <input class="search" id="search" type="search" placeholder="Cerca componente o file…" autocomplete="off">
+      <button class="btn" id="btn-fit">Adatta</button>
+      <button class="btn" id="btn-reset">Azzera</button>
+      <button class="btn" id="btn-theme">Tema</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <svg id="map"><g id="viewport"><g id="edges"></g><g id="nodes"></g></g></svg>
+      <div class="hint">Trascina per spostare · rotella per zoomare · clic su un nodo per i dettagli</div>
+      <div class="legend" id="legend"></div>
+      <div class="zoombar">
+        <button class="btn" id="btn-out">−</button>
+        <button class="btn" id="btn-in">+</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-head">
+        <h2 id="panel-title">Flussi</h2>
+        <p id="panel-sub">Seleziona un flusso per illuminarne il percorso nel diagramma.</p>
+      </div>
+      <div class="panel-body" id="panel-body"></div>
+    </aside>
+  </main>
+</div>
+
+<div id="tip"></div>
+
+<script>
+/* eslint-disable */
+const DATI = {
+  "meta": {
+    "prodotto": "CodeDB",
+    "versione": "0.1.0-beta.1",
+    "descrizione": "GUI web multi-database (MongoDB, MySQL, PostgreSQL) in stile DBeaver. Nessuna REST: tutta la comunicazione browser-backend passa da Socket.IO con ack; unica eccezione HTTP e l'endpoint /mcp per i client AI.",
+    "licenza": "AGPL-3.0-only",
+    "generato": "2026-08-06",
+    "convenzioni": [
+      "I documenti viaggiano come Extended JSON (EJSON): serializzazione relaxed dal server, parse relaxed:false per MongoDB e relaxed:true per SQL.",
+      "Ogni risposta socket e { ok: true, ... } oppure { ok: false, error }.",
+      "Gli id di sessione DB sono per-tab: Map<tabId, sessione> per socket, massimo 8 per socket.",
+      "Testi UI, messaggi di errore e commenti sono in italiano."
+    ]
+  },
+  "groups": [
+    {
+      "id": "entry",
+      "label": "Avvio & distribuzione",
+      "color": "#f87171",
+      "descrizione": "Entrypoint del processo: app desktop Electron, CLI npm, launcher, container, CI."
+    },
+    {
+      "id": "ui",
+      "label": "Frontend (public/js)",
+      "color": "#38bdf8",
+      "descrizione": "Vanilla JS modulare, nessuna build, nessun framework. Stato per tab."
+    },
+    {
+      "id": "transport",
+      "label": "Trasporto HTTP/Socket",
+      "color": "#a78bfa",
+      "descrizione": "Express statico, gate sull'Origin dell'handshake Socket.IO, /auth, /mcp."
+    },
+    {
+      "id": "auth",
+      "label": "Auth & RBAC",
+      "color": "#f472b6",
+      "descrizione": "Tutto dietro il flag CODEDB_RBAC. Punto di applicazione unico: il Proxy autorizzante sulla strategia."
+    },
+    {
+      "id": "core",
+      "label": "Orchestrazione (server.js)",
+      "color": "#fbbf24",
+      "descrizione": "Sessioni per tab, delega degli eventi, apertura connessioni, routing del codice query."
+    },
+    {
+      "id": "engine",
+      "label": "Motori query & script",
+      "color": "#34d399",
+      "descrizione": "Traduttori e interpreti puri: nessun eval, nessun accesso diretto al DB."
+    },
+    {
+      "id": "strategy",
+      "label": "Strategy Pattern DB",
+      "color": "#60a5fa",
+      "descrizione": "Una strategia per DBMS dietro un'interfaccia comune, piu il tunnel SSH ortogonale."
+    },
+    {
+      "id": "data",
+      "label": "Sistemi esterni",
+      "color": "#94a3b8",
+      "descrizione": "I database dell'utente, il control plane RBAC e i file su disco."
+    },
+    {
+      "id": "cross",
+      "label": "Trasversali",
+      "color": "#fb923c",
+      "descrizione": "Vault dei segreti, audit log, errori parlanti: usati da tutti i livelli."
+    },
+    {
+      "id": "backup",
+      "label": "Backup & Restore",
+      "color": "#c084fc",
+      "descrizione": "CLI indipendente dal server che riusa le strategie; dai client passa da una policy."
+    },
+    {
+      "id": "mcp",
+      "label": "Gateway MCP",
+      "color": "#2dd4bf",
+      "descrizione": "Model Context Protocol su Streamable HTTP per i client AI."
+    },
+    {
+      "id": "quality",
+      "label": "Qualita & provenienza",
+      "color": "#a3e635",
+      "descrizione": "Test senza framework (assert + process.exitCode) e marcatori di provenienza AGPL."
+    }
+  ],
+  "nodes": [
+    {
+      "id": "electron-main",
+      "label": "App Desktop (Electron)",
+      "group": "entry",
+      "x": 30,
+      "y": 40,
+      "file": "electron-main.js",
+      "sommario": "Incorpora server.js IN-PROCESS dentro una BrowserWindow su http://127.0.0.1:PORT.",
+      "dettaglio": "Il server va AVVIATO, non solo caricato: startServer() sta dietro if (require.main === module), quindi il solo require non apre la porta. scegliePorta() verifica la porta con net.createServer prima del require perche server.js risponde a EADDRINUSE con process.exit(1), fatale nello stesso processo. Single-instance lock; nell'app pacchettizzata i file scrivibili vanno in app.getPath('userData')."
+    },
+    {
+      "id": "electron-updater",
+      "label": "Aggiornamenti desktop",
+      "group": "entry",
+      "x": 30,
+      "y": 100,
+      "file": "electron-aggiornamenti.js",
+      "sommario": "electron-updater sulle release GitHub, oppure feed statico via CODEDB_UPDATE_URL.",
+      "dettaglio": "Nessun IPC e nessun preload: la finestra carica la stessa UI web, quindi un canale IPC sarebbe esposto a qualunque pagina. Il ponte e globalThis.__codedbDesktop, letto dal server incorporato nello stesso processo. autoDownload = false."
+    },
+    {
+      "id": "bin-cli",
+      "label": "CLI npm (codedb)",
+      "group": "entry",
+      "x": 30,
+      "y": 160,
+      "file": "bin/codedb.js",
+      "sommario": "Bin CLI codedb / mongo-web-gui: avvia server.js puro e basta.",
+      "dettaglio": "E il percorso piu semplice: nessuna finestra, nessun updater, solo il server HTTP+Socket.IO."
+    },
+    {
+      "id": "launcher",
+      "label": "Launcher desktop",
+      "group": "entry",
+      "x": 30,
+      "y": 220,
+      "file": "CodeDB.cmd / codedb.sh / tools/avvio-nascosto.ps1",
+      "sommario": "Avvio 'desktop' da sorgenti: riusa l'istanza attiva o avvia il server in background e apre il browser.",
+      "dettaglio": "Su UNIX la passphrase e chiesta con prompt mascherato (un processo in background non puo piu chiederla); su Windows non si chiede nulla e il server parte in Vault Bloccato, con la passphrase richiesta dall'interfaccia web. I collegamenti si chiamano 'CodeDB (sorgenti)' per non essere confusi con l'app installata."
+    },
+    {
+      "id": "docker",
+      "label": "Docker / compose",
+      "group": "entry",
+      "x": 30,
+      "y": 280,
+      "file": "Dockerfile, docker-compose.yml",
+      "sommario": "node:20-alpine, utente non privilegiato, HEALTHCHECK HTTP, cap_drop ALL.",
+      "dettaglio": "Le porte sono pubblicate su ${BIND_ADDR:-127.0.0.1}: lo stack di default e raggiungibile solo dalla macchina che lo ospita. connections.ini e backups/ vivono su volumi nominati, non nell'immagine."
+    },
+    {
+      "id": "ci",
+      "label": "CI multipiattaforma",
+      "group": "entry",
+      "x": 30,
+      "y": 340,
+      "file": ".github/workflows/release.yml",
+      "sommario": "Tre job (Windows/macOS/Linux): ogni pacchetto si costruisce solo sulla propria piattaforma.",
+      "dettaglio": "Il job 'verifica' blocca una versione non semver (electron-updater confronta con semver: un valore non interpretabile non da errore, da un aggiornamento mai offerto) e un tag diverso dalla versione in package.json. La release nasce come bozza."
+    },
+    {
+      "id": "ui-main",
+      "label": "Bootstrap UI",
+      "group": "ui",
+      "x": 270,
+      "y": 40,
+      "file": "public/js/main.js",
+      "sommario": "Entrypoint che coordina i moduli e apre il menu Impostazioni.",
+      "dettaglio": "Il menu Impostazioni (#settings-menu) e l'UNICO ingresso a Backup, Storico Azioni, Salute, Utenti & Permessi, Passphrase, Guida, Aggiornamenti, Informazioni, Esci. Il div del menu sta FUORI dalla <aside>, che si comprime con visibility:hidden."
+    },
+    {
+      "id": "ui-tabs",
+      "label": "Tab & Stato",
+      "group": "ui",
+      "x": 270,
+      "y": 98,
+      "file": "public/js/tabs.js, state.js, colltabs.js, tabbar.js",
+      "sommario": "Registro dei tab di connessione; state.js e un Proxy che delega allo stato del tab attivo.",
+      "dettaglio": "L'id del tab e il tabId della sessione server. I coll-tab di secondo livello hanno uno snapshot di query/risultati/vista; i tab in anteprima (corsivo) vengono rimpiazzati al clic successivo, come in VS Code. Il coll-tab E la breadcrumb: lo <span id=breadcrumb> e stato rimosso."
+    },
+    {
+      "id": "ui-socket",
+      "label": "Client Socket.IO + emit()",
+      "group": "ui",
+      "x": 270,
+      "y": 156,
+      "file": "public/js/socket.js, utils.js",
+      "sommario": "Tutte le richieste passano da emit()/emitFireAndForget(), che iniettano il tabId del tab attivo.",
+      "dettaglio": "Contratto: la risposta porta _tab (tab d'origine) e _state (il suo state). Poiche state e un Proxy sul tab ATTIVO, ogni callback deve scrivere res._state e ridipingere il DOM solo se isForActiveTab(res). captureContext() congela tab e coll-tab per le operazioni lunghe."
+    },
+    {
+      "id": "ui-grid",
+      "label": "Griglia Dati",
+      "group": "ui",
+      "x": 270,
+      "y": 214,
+      "file": "public/js/grid.js, inlineEdit.js, insert.js, details.js",
+      "sommario": "Griglia paginata, editing al volo, inserimento, statistiche/indici.",
+      "dettaglio": "Chiama collection:find con deferCount:true (documenti subito, total null quando c'e un filtro) e chiede il totale a parte con collection:count. Le letture automatiche sono marcate _bg per restare fuori dall'audit."
+    },
+    {
+      "id": "ui-query",
+      "label": "Query & Aggregate",
+      "group": "ui",
+      "x": 270,
+      "y": 272,
+      "file": "public/js/query-tab.js, query-editor.js, query-formatter.js, query-highlighter.js",
+      "sommario": "Runner SQL/MQL, Schema Browser, Virtual JOIN, tre viste dei risultati.",
+      "dettaglio": "L'editor usa white-space:pre invece di pre-wrap: con l'a capo automatico una riga logica occupa piu righe visive e il numero a fianco indicherebbe la riga sbagliata proprio quando serve. Ctrl+Invio con testo selezionato esegue solo la selezione."
+    },
+    {
+      "id": "ui-script",
+      "label": "Pannello Script",
+      "group": "ui",
+      "x": 270,
+      "y": 330,
+      "file": "public/js/script-run.js, sql-split.js, sql-chunker.js",
+      "sommario": "Esecuzione di script: avanzamento, pausa dolce/forzata, ripresa dal cursore.",
+      "dettaglio": "sql-split.js e il gemello ESM di db/sqlText.js e serve a UNA sola cosa: decidere se il testo e una query singola o uno script, cioe su quale evento instradarlo. Quante istruzioni eseguire lo decide sempre il server."
+    },
+    {
+      "id": "ui-charts",
+      "label": "Grafici (ECharts)",
+      "group": "ui",
+      "x": 270,
+      "y": 388,
+      "file": "public/js/charts.js, chart-option.js",
+      "sommario": "Terza vista dei risultati; ECharts 6.1.0 vendorizzato e caricato su richiesta.",
+      "dettaglio": "chart-option.js e lo strato PURO (dai risultati all'option ECharts, nessun DOM) perche e la parte che sbagliata MENTE: un'aggregazione errata non produce un grafico rotto ma uno plausibile e falso. Nessun secondo asse Y, tavolozza che non si cicla, il testo non prende il colore del dato."
+    },
+    {
+      "id": "ui-geo",
+      "label": "Mappe GeoJSON (Leaflet)",
+      "group": "ui",
+      "x": 270,
+      "y": 446,
+      "file": "public/js/geomap.js, geomulti.js, geo-stats.js, geojson.js, geo-leaflet.js",
+      "sommario": "Editor di una geometria e mappa di una selezione di celle; Leaflet vendorizzato su richiesta.",
+      "dettaglio": "Le tile OpenStreetMap sono l'unica richiesta a un server esterno di tutta l'applicazione, disattivabile. #geomap-overlay disattiva il backdrop-filter: una modale che si ridipinge di continuo rifarebbe una sfocatura a schermo intero a ogni fotogramma."
+    },
+    {
+      "id": "ui-cellselect",
+      "label": "Selezione celle & statistiche",
+      "group": "ui",
+      "x": 270,
+      "y": 504,
+      "file": "public/js/cellselect.js, cell-stats.js",
+      "sommario": "Selezione stile Excel, copia multi-formato, statistiche della selezione.",
+      "dettaglio": "cell-stats.js e puro e provato in Node: una selezione copiata male salta all'occhio, una somma sbagliata e un numero plausibile che l'utente porta via. Somma con compensazione di Kahan; oltre 2^53 compare il segno di approssimazione."
+    },
+    {
+      "id": "ui-graph3d",
+      "label": "Grafo 3D & UML",
+      "group": "ui",
+      "x": 270,
+      "y": 562,
+      "file": "public/js/graph3d.js, uml.js",
+      "sommario": "Vista 3D di tabelle e relazioni, cammino minimo, matrice dipendenze, audit schema, scansione PII.",
+      "dettaglio": "Le relazioni arrivano da FK reali piu le euristiche condivise di DbStrategy.detectRelations, cosi UML, grafo 3D e strumenti MCP vedono lo stesso modello."
+    },
+    {
+      "id": "ui-panels",
+      "label": "Pannelli di sistema",
+      "group": "ui",
+      "x": 270,
+      "y": 620,
+      "file": "public/js/auth.js, vault.js, passphrase.js, backupmanager.js, auditlog.js, health.js, admin-rbac.js, about.js, onboarding.js",
+      "sommario": "Login, sblocco/cambio passphrase, backup, storico azioni, salute, utenti, licenza, guida.",
+      "dettaglio": "La guida introduttiva ASPETTA le barriere d'accesso (vault bloccato, login RBAC): benvenuto e tour indicherebbero un'interfaccia sfocata rubando l'attenzione all'unica cosa da fare. onboarding-stato.js e foglia e puro: una guida che ricompare a ogni avvio e un difetto che si scopre settimane dopo."
+    },
+    {
+      "id": "ui-session",
+      "label": "Ripristino & query in sospeso",
+      "group": "ui",
+      "x": 270,
+      "y": 678,
+      "file": "public/js/session-restore.js, pending-queries.js, queryhistory.js",
+      "sommario": "Ripristino del layout dopo F5 e registro delle query/script ancora in corso.",
+      "dettaglio": "In sessionStorage finisce solo il layout (connName, db espansi, coll-tab, input): le credenziali non stanno mai nel browser, quindi le connessioni non salvate non sono ripristinabili e vengono segnalate."
+    },
+    {
+      "id": "http-static",
+      "label": "Express statico",
+      "group": "transport",
+      "x": 510,
+      "y": 100,
+      "file": "server.js",
+      "sommario": "Express serve SOLO public/ come statici. Niente REST.",
+      "dettaglio": "Ogni pagina porta una Content-Security-Policy; tutto il resto dell'API vive su Socket.IO."
+    },
+    {
+      "id": "origin-gate",
+      "label": "Gate sull'Origin",
+      "group": "transport",
+      "x": 510,
+      "y": 160,
+      "file": "server.js: checkOrigin() + allowRequest",
+      "sommario": "L'handshake Socket.IO passa da un controllo sull'Origin, con cors:{origin:false}.",
+      "dettaglio": "Il CORS non protegge il WebSocket: senza controllo qualunque pagina web poteva aprire io('http://127.0.0.1:3030') e usare tutta l'API con i privilegi dell'utente. Origin assente (Electron, CLI, test) -> controllo anti DNS-rebinding sull'header Host; CODEDB_ALLOWED_ORIGINS -> whitelist; altrimenti Origin il cui host coincide con l'Host."
+    },
+    {
+      "id": "handshake-check",
+      "label": "GET /handshake-check",
+      "group": "transport",
+      "x": 510,
+      "y": 220,
+      "file": "server.js",
+      "sommario": "Riapplica checkOrigin alla richiesta della pagina e risponde { ok:false, reason }.",
+      "dettaglio": "Esiste perche Engine.IO tratta il primo argomento di allowRequest come codice di errore: il browser riceve comunque un generico 'xhr poll error' e per l'utente un rifiuto era indistinguibile da un server spento. Non e autenticato - non potrebbe esserlo - quindi riporta publicReason."
+    },
+    {
+      "id": "auth-http",
+      "label": "POST /auth/login · /logout",
+      "group": "transport",
+      "x": 510,
+      "y": 280,
+      "file": "server.js",
+      "sommario": "Emette un token opaco di 32 byte; in DB solo lo SHA-256.",
+      "dettaglio": "Token opaco e non JWT proprio per avere la revoca immediata. Il client lo presenta nell'handshake Socket.IO, non in un header."
+    },
+    {
+      "id": "socket-io",
+      "label": "Socket.IO: io.use + safeOn",
+      "group": "transport",
+      "x": 510,
+      "y": 340,
+      "file": "server.js",
+      "sommario": "Autenticazione dell'handshake e registrazione di tutti gli eventi con ack.",
+      "dettaglio": "safeOn e il punto di uscita unico degli ack: da li passa errMsg(), cioe spiegaErrore(). Il segnale che serve il login e il connect_error con messaggio auth_required: nessun endpoint di stato dedicato."
+    },
+    {
+      "id": "mcp-http",
+      "label": "POST/GET/DELETE /mcp",
+      "group": "transport",
+      "x": 510,
+      "y": 400,
+      "file": "server.js -> attachMcp(app, deps)",
+      "sommario": "Unica eccezione HTTP all'architettura a socket: endpoint Streamable HTTP per i client AI.",
+      "dettaglio": "Con RBAC attivo ogni richiesta deve portare una API key valida (Authorization: Bearer cdb_... o x-api-key), altrimenti 401: senza questo gate /mcp resterebbe un ingresso non autenticato accanto alla UI protetta."
+    },
+    {
+      "id": "principal",
+      "label": "Principal & flag RBAC",
+      "group": "auth",
+      "x": 750,
+      "y": 100,
+      "file": "auth/principal.js",
+      "sommario": "ROOT_PRINCIPAL, rbacOn(), makePrincipal(). Default off: comportamento mono-utente identico a prima.",
+      "dettaglio": "Con RBAC off tutto il livello di autorizzazione e trasparente ed e la modalita dell'app desktop Electron."
+    },
+    {
+      "id": "auth-sessions",
+      "label": "Sessioni & password",
+      "group": "auth",
+      "x": 750,
+      "y": 160,
+      "file": "auth/sessions.js",
+      "sommario": "scryptSync + timingSafeEqual, nessuna dipendenza nuova.",
+      "dettaglio": "Le password di login usavano gia scrypt quando il vault usava ancora SHA256 senza salt: e uno dei motivi del passaggio al vault v2."
+    },
+    {
+      "id": "appstore",
+      "label": "Control plane store",
+      "group": "auth",
+      "x": 750,
+      "y": 220,
+      "file": "auth/AppStore.js",
+      "sommario": "Repository sottili sul driver mongodb: users, roles, grants, api_keys, sessions.",
+      "dettaglio": "NON e una DbStrategy: le strategie servono le connessioni dell'utente, questo e storage interno dell'applicazione."
+    },
+    {
+      "id": "entitlements",
+      "label": "EntitlementProvider",
+      "group": "auth",
+      "x": 750,
+      "y": 280,
+      "file": "auth/EntitlementProvider.js",
+      "sommario": "Impone i limiti di piano: local (owner da env, CODEDB_MAX_SUBUSERS) o external.",
+      "dettaglio": "ExternalEntitlementProvider e il punto d'innesto del billing SaaS, non ancora attivo."
+    },
+    {
+      "id": "permissions",
+      "label": "Motore permessi",
+      "group": "auth",
+      "x": 750,
+      "y": 340,
+      "file": "auth/permissions.js",
+      "sommario": "can(), allowedConnections(), canUseConnection(), canWholeConnection().",
+      "dettaglio": "matchesAny distingue TRE stati: undefined = operazione senza bersaglio (passa: sono le liste, protette dal filtro a valle), null/'' = bersaglio atteso ma mancante (NEGA: prima bastava mandare {db:'',coll:''} per far cadere lo scope), stringa = confronto glob."
+    },
+    {
+      "id": "capabilities",
+      "label": "Mappa capability",
+      "group": "auth",
+      "x": 750,
+      "y": 400,
+      "file": "auth/capabilities.js",
+      "sommario": "METHOD_CAPABILITY, EVENT_CAPABILITY, isWriteSql, isWriteMongoPipeline.",
+      "dettaglio": "isWriteSql normalizza il testo con db/sqlText.js e cerca le keyword di scrittura OVUNQUE: chiude commento iniziale, CTE 'WITH ... DELETE ... RETURNING' e multi-statement senza falsi positivi su WHERE azione='DELETE'. Le stesse funzioni usate da classifyAudit, cosi audit e permessi non divergono mai."
+    },
+    {
+      "id": "guard-strategy",
+      "label": "Proxy autorizzante",
+      "group": "auth",
+      "x": 750,
+      "y": 460,
+      "file": "auth/guardStrategy.js",
+      "sommario": "IL punto di applicazione unico: avvolge la strategia e mappa ogni metodo su una capability.",
+      "dettaglio": "FILTRA invece di negare le liste di navigazione (listDatabases/listCollections/search/dbSchema): la sidebar mostra spontaneamente solo il consentito e il frontend resta invariato. Come seconda barriera indipendente dal parser, un SQL Raw classificato lettura per un sottoutente gira in BEGIN READ ONLY."
+    },
+    {
+      "id": "sqlclause",
+      "label": "Clausole SQL libere",
+      "group": "auth",
+      "x": 750,
+      "y": 520,
+      "file": "auth/sqlClause.js",
+      "sommario": "Pretende la forma strutturata per filter/sort quando il principal ha uno scope attivo.",
+      "dettaglio": "Su MySQL/PostgreSQL filter e sort sono SQL grezzo e lo scope protegge il NOME della tabella, non il testo: da li un sottoutente puo leggere a oracolo fuori dal perimetro. E un filtro sintattico, non una barriera assoluta - la protezione solida resta un utente DBMS a privilegi ridotti, e il messaggio d'errore lo dice."
+    },
+    {
+      "id": "session-map",
+      "label": "Map<tabId, sessione>",
+      "group": "core",
+      "x": 990,
+      "y": 100,
+      "file": "server.js",
+      "sommario": "Una strategia dedicata + eventuale tunnel SSH per ogni tab, max 8 per socket.",
+      "dettaglio": "tabId assente = sessione 'default', retro-compatibile col comportamento a connessione singola. Alla disconnessione del socket vengono chiuse tutte le sessioni (e abortiti gli script)."
+    },
+    {
+      "id": "delegate",
+      "label": "delegate() — pipeline eventi",
+      "group": "core",
+      "x": 990,
+      "y": 160,
+      "file": "server.js",
+      "sommario": "Rimuove i campi server-only, risolve la sessione, classifica per l'audit, pre-controlla la capability, registra l'opHandle, esegue con riconnessione.",
+      "dettaglio": "SERVER_ONLY_PAYLOAD_FIELDS = ['maxRows','opHandle']: maxRows alza il tetto fino a 100.000 documenti, ma nulla impediva a un client di metterlo in una normale collection:find e farsi serializzare centinaia di MB per socket e per tab. Il pre-check anticipa l'errore prima di toccare il DB e nomina l'evento."
+    },
+    {
+      "id": "establish",
+      "label": "establishConnection()",
+      "group": "core",
+      "x": 990,
+      "y": 220,
+      "file": "server.js",
+      "sommario": "Risolve la config del tenant, apre l'eventuale tunnel SSH, connette la strategia e la avvolge nel Proxy.",
+      "dettaglio": "Con tunnel attivo host/port vengono riscritti verso il capo locale e per MongoDB si aggiunge directConnection=true. In caso di errore attacca err._ctx con host e porta CONFIGURATI, mai quelli del tunnel, che all'utente non dicono nulla."
+    },
+    {
+      "id": "exec-query-code",
+      "label": "executeQueryCode()",
+      "group": "core",
+      "x": 990,
+      "y": 280,
+      "file": "server.js",
+      "sommario": "Routing per FORMA del codice: pipeline, filtro MQL, shell mongosh, SQL tradotto, SQL Raw, script JS.",
+      "dettaglio": "E il routing di query:execute estratto a funzione e condiviso con lo script, cosi shell, SQL->MQL, USE, pipeline e SQL Raw si comportano IDENTICAMENTE dentro e fuori da uno script. Rifiuta gli operatori che eseguono JS lato server ($where/$function/$accumulator)."
+    },
+    {
+      "id": "reconnect",
+      "label": "Riconnessione automatica",
+      "group": "core",
+      "x": 990,
+      "y": 340,
+      "file": "server.js: executeWithReconnect(), reconnectSession()",
+      "sommario": "Riconosce gli errori di connessione (DB o tunnel caduto) e riapre la sessione.",
+      "dettaglio": "Se il tunnel SSH e caduto dopo l'apertura, la strategia vede solo un errore di rete verso una porta locale ormai orfana: qui lo si riconosce e si da un messaggio chiaro invece di quello del driver."
+    },
+    {
+      "id": "connstore-ini",
+      "label": "Store connessioni",
+      "group": "core",
+      "x": 990,
+      "y": 400,
+      "file": "server.js: loadConnections/saveConnections",
+      "sommario": "connections.ini, con isolamento multi-tenant: data/conns/<ownerId>.ini.",
+      "dettaglio": "Con RBAC on ogni owner ha il proprio file, cosi un tenant non puo vedere ne usare le connessioni di un altro; la chiave del vault resta unica per installazione, cambia solo il file. connections:save rifiuta i nomi duplicati: il nome e la chiave della sezione .ini."
+    },
+    {
+      "id": "script-sessions",
+      "label": "Run degli script",
+      "group": "core",
+      "x": 990,
+      "y": 460,
+      "file": "server.js: session.scripts + push script:progress",
+      "sommario": "Il run sopravvive all'ack: il client riceve { ok, total } e segue i push.",
+      "dettaglio": "Progresso diradato a SCRIPT_PROGRESS_MS, ma errori, pause e fine passano sempre. Limite noto: un F5 uccide lo script, perche la sessione DB vive col socket."
+    },
+    {
+      "id": "sqltomql",
+      "label": "SQL → MQL",
+      "group": "engine",
+      "x": 1230,
+      "y": 100,
+      "file": "db/SqlToMql.js",
+      "sommario": "Tokenizer + parser a discesa ricorsiva: SELECT su MongoDB, piu INSERT/UPDATE/DELETE/DDL.",
+      "dettaglio": "Copre WHERE, GROUP BY/HAVING, DISTINCT, JOIN (-> $lookup + $unwind), UNION (-> $unionWith), derived table. Rifiuta con messaggio esplicito RIGHT/FULL/CROSS JOIN e le sotto-query nella WHERE. INSERT senza elenco di colonne e rifiutato: su MongoDB non esiste un ordine delle colonne da cui dedurre i nomi dei campi."
+    },
+    {
+      "id": "mongoshell",
+      "label": "Parser shell mongosh",
+      "group": "engine",
+      "x": 1230,
+      "y": 160,
+      "file": "db/MongoShell.js",
+      "sommario": "Tokenizer + parser di valori JavaScript, nessun eval, nessun accesso al DB.",
+      "dettaglio": "Gli argomenti sono JS e non JSON (chiavi non quotate, apici singoli, regex, ObjectId/ISODate), convertiti in EJSON canonico. Ritorna lo STESSO descrittore di SqlToMql, cosi query:execute instrada shell e SQL sullo stesso codice."
+    },
+    {
+      "id": "mongoscript",
+      "label": "Interprete script Mongo",
+      "group": "engine",
+      "x": 1230,
+      "y": 220,
+      "file": "db/MongoScript.js, db/MongoScriptRunner.js",
+      "sommario": "Dialetto mongosh completo (var/if/for/funzioni/try) tokenizzato e valutato su AST.",
+      "dettaglio": "Nessun eval e nessun new Function: con eval lo script girerebbe con i privilegi del processo CodeDB (require, process, filesystem, vault), cioe un'esecuzione remota di codice offerta a chiunque apra la UI. Tre proprieta verificate dai test: identificatori solo dalle globali del modulo, accesso ai membri su whitelist (constructor/__proto__ negati sempre), si puo chiamare solo cio che e stato creato qui. I superamenti di budget NON sono catturabili da un try/catch dello script."
+    },
+    {
+      "id": "scriptrunner",
+      "label": "ScriptRunner (SQL)",
+      "group": "engine",
+      "x": 1230,
+      "y": 280,
+      "file": "db/ScriptRunner.js",
+      "sommario": "Esegue UN'ISTRUZIONE ALLA VOLTA, con pausa/ripresa a granularita di statement.",
+      "dettaglio": "Non e solo che su mysql2 multipleStatements resta false di proposito: un'istruzione alla volta da progresso reale, errore localizzato alla riga esatta e capability decisa per SINGOLA istruzione dal Proxy. La pausa si ferma DOPO l'istruzione in corso; con force:true la si tronca e la si marca interrupted, e il cursore NON la supera. Su errore normale il cursore avanza (rieseguire un INSERT fallito a meta sarebbe un duplicato silenzioso)."
+    },
+    {
+      "id": "sqltext",
+      "label": "Analisi testo SQL",
+      "group": "engine",
+      "x": 1230,
+      "y": 340,
+      "file": "db/sqlText.js",
+      "sommario": "splitStatementsDetailed (testo, offset, riga) e stripSqlNoise.",
+      "dettaglio": "Via commenti, stringhe, dollar-quoting e identificatori quotati. E la base sia della divisione degli script sia della classificazione lettura/scrittura, quindi permessi e audit leggono lo stesso testo normalizzato."
+    },
+    {
+      "id": "vjoin",
+      "label": "Virtual JOIN Cross-DB",
+      "group": "engine",
+      "x": 1230,
+      "y": 400,
+      "file": "db/VirtualJoinEngine.js",
+      "sommario": "Fusione in memoria tra tabelle SQL e collezioni MongoDB.",
+      "dettaglio": "E l'unico punto in cui dati di DBMS diversi si incontrano nello stesso result set."
+    },
+    {
+      "id": "geometry",
+      "label": "Geometrie / GeoJSON",
+      "group": "engine",
+      "x": 1230,
+      "y": 460,
+      "file": "db/geometry.js",
+      "sommario": "Un solo formato sul filo: GeoJSON, per tutti e tre i DBMS.",
+      "dettaglio": "PostGIS consegna WKB esadecimale; mysql2 analizza il WKB in oggetti {x,y} che NON distinguono LineString da MultiPoint ne Polygon da MultiLineString. Quindi lettura via ST_AsGeoJSON e scrittura via ST_GeomFromGeoJSON, con il SRID della colonna imposto (ST_GeomFromGeoJSON produce sempre 4326 e MySQL rifiuta se non coincide, SRID 0 compreso). assertGeoJson ferma le geometrie malformate PRIMA del database."
+    },
+    {
+      "id": "dbfactory",
+      "label": "DbFactory",
+      "group": "strategy",
+      "x": 1470,
+      "y": 130,
+      "file": "db/DbFactory.js",
+      "sommario": "getStrategy(dbType), defaultPort(dbType), isSqlType(dbType).",
+      "dettaglio": "E il solo punto che conosce l'elenco dei DBMS supportati."
+    },
+    {
+      "id": "dbstrategy",
+      "label": "DbStrategy (interfaccia)",
+      "group": "strategy",
+      "x": 1470,
+      "y": 190,
+      "file": "db/DbStrategy.js",
+      "sommario": "Interfaccia base, euristiche detectRelations, resultCap, maxResultBytes, countTimeoutMs.",
+      "dettaglio": "Oltre al tetto sulle righe c'e un budget di byte (CODEDB_MAX_RESULT_BYTES, default 32 MB): su MongoDB collectCapped() interrompe il cursore, su SQL truncateBySize() tronca il result set; in entrambi i casi la risposta porta truncated:true."
+    },
+    {
+      "id": "mongo-strat",
+      "label": "MongoDbStrategy",
+      "group": "strategy",
+      "x": 1470,
+      "y": 250,
+      "file": "db/MongoDbStrategy.js",
+      "sommario": "Un MongoClient per istanza; change stream per collection:watch.",
+      "dettaglio": "Rename = copia via $out cross-db + drop (MongoDB >= 4.4); db di sistema protetti. Su standalone il change stream degrada emettendo watch:unavailable invece di fallire."
+    },
+    {
+      "id": "mysql-strat",
+      "label": "MySqlStrategy",
+      "group": "strategy",
+      "x": 1470,
+      "y": 310,
+      "file": "db/MySqlStrategy.js",
+      "sommario": "Pool mysql2; _id virtuale = chiave primaria come oggetto.",
+      "dettaglio": "multipleStatements resta false di proposito: abilitarlo allargherebbe la superficie da injection su tutta l'app. Le statistiche del pool si leggono dai contatori interni dietro il wrapper .promise().pool, in modo difensivo."
+    },
+    {
+      "id": "pg-strat",
+      "label": "PostgreSqlStrategy",
+      "group": "strategy",
+      "x": 1470,
+      "y": 370,
+      "file": "db/PostgreSqlStrategy.js",
+      "sommario": "Il livello 'database' della UI e lo SCHEMA PostgreSQL.",
+      "dettaglio": "Il pool e legato a cfg.database e non puo cambiarlo, quindi listDatabases() elenca gli schemi e qtable(schema, table) QUALIFICA SEMPRE. Prima qtable scartava lo schema e tutto veniva risolto dal search_path: con tabelle omonime in schemi diversi si leggeva, si MODIFICAVA e si ELIMINAVA la riga sbagliata, e lo scope dei permessi non aveva effetto reale."
+    },
+    {
+      "id": "ssh-tunnel",
+      "label": "SshTunnel",
+      "group": "strategy",
+      "x": 1470,
+      "y": 430,
+      "file": "db/SshTunnel.js",
+      "sommario": "Tunnel condiviso e ortogonale al dbType: porta locale effimera su 127.0.0.1.",
+      "dettaglio": "hostVerifier confronta l'impronta SHA256 in formato OpenSSH; se non e nota viene registrata al primo collegamento riuscito (come StrictHostKeyChecking=accept-new) e da li ogni chiave diversa fa fallire la connessione PRIMA dell'autenticazione, cosi le credenziali non raggiungono mai un server non riconosciuto."
+    },
+    {
+      "id": "mongodb",
+      "label": "MongoDB",
+      "group": "data",
+      "x": 1710,
+      "y": 250,
+      "file": "esterno",
+      "sommario": "Database dell'utente.",
+      "dettaglio": "L'unico dei tre che parla gia GeoJSON e che ha i change stream."
+    },
+    {
+      "id": "mysql",
+      "label": "MySQL",
+      "group": "data",
+      "x": 1710,
+      "y": 310,
+      "file": "esterno",
+      "sommario": "Database dell'utente.",
+      "dettaglio": "Le colonne DATETIME arrivano al client come $date: la convenzione EJSON vale anche per le righe SQL."
+    },
+    {
+      "id": "postgres",
+      "label": "PostgreSQL / PostGIS",
+      "group": "data",
+      "x": 1710,
+      "y": 370,
+      "file": "esterno",
+      "sommario": "Database dell'utente; il livello 'database' della UI e lo schema.",
+      "dettaglio": "SQL Raw allinea il search_path allo schema aperto."
+    },
+    {
+      "id": "control-plane",
+      "label": "Control plane RBAC",
+      "group": "data",
+      "x": 1710,
+      "y": 430,
+      "file": "MongoDB dedicato (CODEDB_APP_DB_URI)",
+      "sommario": "Database codedb_control: users, roles, grants, api_keys, sessions.",
+      "dettaglio": "Con RBAC on il server RIFIUTA DI PARTIRE se il control plane non e raggiungibile, come per la passphrase errata: meglio non partire che partire senza il livello di autorizzazione che ci si aspetta."
+    },
+    {
+      "id": "vault",
+      "label": "Vault a busta (v2)",
+      "group": "cross",
+      "x": 510,
+      "y": 620,
+      "file": "db/vault.js",
+      "sommario": "DEK casuale per i segreti; la passphrase deriva via scrypt+salt una KEK che avvolge solo la DEK.",
+      "dettaglio": "Tre conseguenze: cambiare passphrase costa una riga (si riavvolge la DEK, i segreti non si toccano); il salt e il KDF lento rendono impraticabile l'attacco offline su un file rubato (prima era SHA256 senza salt); 'passphrase sbagliata' e una domanda esatta invece di dedursi da 'qualche segreto non si decifra'. La crittografia vive SOLO qui, usata sia da server.js sia dalla CLI di backup."
+    },
+    {
+      "id": "auditlog",
+      "label": "Audit log",
+      "group": "cross",
+      "x": 750,
+      "y": 620,
+      "file": "db/AuditLog.js",
+      "sommario": "Una riga JSON per evento, append-only con rotazione oltre 5 MB.",
+      "dettaglio": "Due file separati: mcp-audit.log e ui-audit.log. Le letture di navigazione e quelle automatiche marcate _bg sono escluse. audit e fire-and-forget e best-effort: non deve mai bloccare ne far fallire l'operazione tracciata. audit:list non nega ma FILTRA per ownerId/userId."
+    },
+    {
+      "id": "errors",
+      "label": "Errori parlanti",
+      "group": "cross",
+      "x": 990,
+      "y": 620,
+      "file": "db/errors.js",
+      "sommario": "spiegaErrore(err, ctx): cosa e successo, cosa fare, e il messaggio originale in coda.",
+      "dettaglio": "Innestato nelle due errMsg() di server.js e McpGateway: spiegare li vale per l'intera applicazione senza toccare i singoli handler. Due proprieta tenute per costruzione: nessuna invenzione (un errore non riconosciuto torna INDIETRO IMMUTATO, perche una spiegazione plausibile e sbagliata manda a cercare la causa sbagliata) e idempotenza."
+    },
+    {
+      "id": "files",
+      "label": "File su disco",
+      "group": "data",
+      "x": 1230,
+      "y": 620,
+      "file": "connections.ini, vault.json, ui-audit.log, mcp-audit.log, backups/",
+      "sommario": "Stato persistente fuori dal database.",
+      "dettaglio": "Nell'app pacchettizzata questi file vanno in app.getPath('userData') tramite gli stessi hook env usati dai test e2e (CODEDB_CONNECTIONS_FILE, CODEDB_BACKUPS_DIR, CODEDB_UI_AUDIT_FILE). In Docker vivono su volumi nominati: ricreare il container senza quei volumi azzera le connessioni salvate."
+    },
+    {
+      "id": "mcp-gateway",
+      "label": "McpGateway",
+      "group": "mcp",
+      "x": 510,
+      "y": 460,
+      "file": "mcp/McpGateway.js",
+      "sommario": "Un McpServer + transport per sessione (max 32, TTL 30 min), con la propria Map<connection_id, sessione DB>.",
+      "dettaglio": "Analoga alla mappa per-tab dei socket e con lo stesso budget globale di sessioni. Le sessioni appartengono a chi le ha aperte: un'altra API key riceve 403."
+    },
+    {
+      "id": "mcp-tools",
+      "label": "Tool MCP (lettura)",
+      "group": "mcp",
+      "x": 510,
+      "y": 520,
+      "file": "mcp/McpGateway.js",
+      "sommario": "list_saved_connections, connect_database, get_schema, execute_query, analisi (PII, dipendenze, audit schema, grafo).",
+      "dettaglio": "connect_database accetta SOLO connessioni salvate, per nome: l'AI non vede mai le credenziali. Su SQL execute_query ha whitelist del primo token, blocco di INTO OUTFILE/DUMPFILE e transazione READ ONLY; su Mongo $out/$merge sono vietati."
+    },
+    {
+      "id": "mcp-write",
+      "label": "execute_write + conferma",
+      "group": "mcp",
+      "x": 510,
+      "y": 580,
+      "file": "mcp/McpGateway.js",
+      "sommario": "Tool separato, richiede readOnly=false e un confirm_token monouso emesso dopo l'anteprima.",
+      "dettaglio": "La capability di scrittura del soggetto e verificata PRIMA di emettere l'anteprima e il token: un principal in sola lettura non riceve nemmeno il token, oltre a non poter eseguire la scrittura."
+    },
+    {
+      "id": "mcp-clients",
+      "label": "Client AI",
+      "group": "mcp",
+      "x": 270,
+      "y": 750,
+      "file": "esterno (Claude Code/Desktop, Cursor, ...)",
+      "sommario": "Parlano Streamable HTTP con header mcp-session-id.",
+      "dettaglio": "Successore del doppio endpoint SSE deprecato."
+    },
+    {
+      "id": "backup-cli",
+      "label": "CLI backup",
+      "group": "backup",
+      "x": 270,
+      "y": 900,
+      "file": "backup/cli.js",
+      "sommario": "backup, restore, list, verify: indipendente dal server.",
+      "dettaglio": "Legge connections.ini in SOLA LETTURA (mai riscritto) e non applica le politiche dei client: li il percorso lo sceglie chi ha gia accesso alla macchina. E cio che usano i test e2e."
+    },
+    {
+      "id": "backup-policy",
+      "label": "Policy destinazioni",
+      "group": "backup",
+      "x": 510,
+      "y": 900,
+      "file": "backup/lib/policy.js",
+      "sommario": "Confina dest/from dentro BACKUP_ROOT; storage cloud solo per alias pre-approvati; webhook solo Slack.",
+      "dettaglio": "Vale per i client (socket UI e gateway MCP), non per la CLI. Lo storage cloud dai client richiede anche la capability manage sull'intera connessione."
+    },
+    {
+      "id": "backup-engine",
+      "label": "Motore di dump",
+      "group": "backup",
+      "x": 750,
+      "y": 900,
+      "file": "backup/lib/engine.js, backup/lib/connect.js",
+      "sommario": "Dump in streaming: cursor MongoDB, stream mysql2, export pg. NDJSON + manifest con SHA-256.",
+      "dettaglio": "Tipi full, incremental e differential individuati da un campo data. Le CANCELLAZIONI NON VENGONO CATTURATE. Su PostgreSQL lo schema effettivo si risolve con to_regclass e finisce nel manifest, cosi la colonna incrementale non viene presa da una tabella omonima di un altro schema."
+    },
+    {
+      "id": "backup-restore",
+      "label": "Restore",
+      "group": "backup",
+      "x": 990,
+      "y": 900,
+      "file": "backup/lib/restore.js",
+      "sommario": "Risale la catena dei baseId; layer 1 = INSERT, successivi = upsert.",
+      "dettaglio": "Il DDL dei backup viene ESEGUITO sul database di destinazione, quindi prima se ne verifica il checksum e la FORMA (assertSafeSchemaSql): solo CREATE TABLE / CREATE INDEX / ALTER TABLE riferiti alla tabella attesa; qualunque altro comando viene rifiutato mostrando cosa e stato bloccato. Deroga solo da CLI con --allow-unsafe-schema: dal socket non e scavalcabile."
+    },
+    {
+      "id": "backup-storage",
+      "label": "Storage cloud & notifiche",
+      "group": "backup",
+      "x": 1230,
+      "y": 900,
+      "file": "backup/lib/storage.js, notify.js, logger.js",
+      "sommario": "Upload opzionale post-dump su S3/GCS/Azure; log operazioni e notifica Slack.",
+      "dettaglio": "Gli SDK sono caricati on-demand e NON sono in package.json: l'errore spiega cosa installare. Le credenziali arrivano solo dai canali standard dei provider."
+    },
+    {
+      "id": "backup-fs",
+      "label": "Archivio backup",
+      "group": "data",
+      "x": 1470,
+      "y": 900,
+      "file": "<dest>/<conn>_<db>/<id>/",
+      "sommario": "manifest.json, data/*.ndjson[.gz], indexes/*.json, schema/*.sql, catalog.json.",
+      "dettaglio": "Una riga EJSON relaxed per documento o riga. La cartella backups/ e gitignored."
+    },
+    {
+      "id": "tests",
+      "label": "Test (assert + exitCode)",
+      "group": "quality",
+      "x": 30,
+      "y": 900,
+      "file": "test/",
+      "sommario": "Nessun lint, nessun framework. Unit senza DB in npm test; e2e con istanza usa-e-getta.",
+      "dettaglio": "I test e2e NON usano piu il server dell'utente: ognuno avvia una propria istanza su una porta dedicata con connections.ini, audit e backup in cartella temporanea. Prima scrivevano nel VAULT REALE e due esecuzioni consecutive consumavano entrambe le generazioni di backup del file."
+    },
+    {
+      "id": "impronte",
+      "label": "Marcatori di provenienza",
+      "group": "quality",
+      "x": 30,
+      "y": 960,
+      "file": "tools/impronte.js, docs/provenienza.md",
+      "sommario": "Scelte arbitrarie annotate che nessun progetto indipendente riprodurrebbe identiche.",
+      "dettaglio": "CodeDB e AGPL-3.0: chi non rispetta le condizioni rimarchia, e dopo quel passaggio la somiglianza a occhio sparisce. Il registro e FUORI da git di proposito (committarlo consegnerebbe l'elenco di cosa cancellare); in docs/provenienza.md c'e la sua impronta SHA-256, che la cronologia di git data. Conseguenza pratica: le costanti dall'aria arbitraria e le stringhe che finiscono nei dati degli utenti non vanno arrotondate ne rinominate per pulizia."
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-electron-http",
+      "from": "electron-main",
+      "to": "http-static",
+      "label": "server in-process",
+      "kind": "sync"
+    },
+    {
+      "id": "e-electron-upd",
+      "from": "electron-main",
+      "to": "electron-updater",
+      "label": "ponte __codedbDesktop",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-updater",
+      "from": "socket-io",
+      "to": "electron-updater",
+      "label": "app:updates:check via ponte",
+      "kind": "sync"
+    },
+    {
+      "id": "e-upd-electron",
+      "from": "electron-updater",
+      "to": "electron-main",
+      "label": "dialog nativi + riavvio",
+      "kind": "sync"
+    },
+    {
+      "id": "e-bin-http",
+      "from": "bin-cli",
+      "to": "http-static",
+      "label": "avvia server.js",
+      "kind": "sync"
+    },
+    {
+      "id": "e-launcher-http",
+      "from": "launcher",
+      "to": "http-static",
+      "label": "background + browser",
+      "kind": "sync"
+    },
+    {
+      "id": "e-docker-http",
+      "from": "docker",
+      "to": "http-static",
+      "label": "container",
+      "kind": "sync"
+    },
+    {
+      "id": "e-ci-electron",
+      "from": "ci",
+      "to": "electron-main",
+      "label": "build installer",
+      "kind": "data"
+    },
+    {
+      "id": "e-main-tabs",
+      "from": "ui-main",
+      "to": "ui-tabs",
+      "label": "coordina",
+      "kind": "sync"
+    },
+    {
+      "id": "e-main-panels",
+      "from": "ui-main",
+      "to": "ui-panels",
+      "label": "menu Impostazioni",
+      "kind": "sync"
+    },
+    {
+      "id": "e-tabs-socket",
+      "from": "ui-tabs",
+      "to": "ui-socket",
+      "label": "tabId attivo",
+      "kind": "sync"
+    },
+    {
+      "id": "e-grid-socket",
+      "from": "ui-grid",
+      "to": "ui-socket",
+      "label": "emit()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-query-socket",
+      "from": "ui-query",
+      "to": "ui-socket",
+      "label": "emit()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-script-socket",
+      "from": "ui-script",
+      "to": "ui-socket",
+      "label": "emit()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-panels-socket",
+      "from": "ui-panels",
+      "to": "ui-socket",
+      "label": "emit()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-session-socket",
+      "from": "ui-session",
+      "to": "ui-socket",
+      "label": "riconnessione",
+      "kind": "sync"
+    },
+    {
+      "id": "e-graph-socket",
+      "from": "ui-graph3d",
+      "to": "ui-socket",
+      "label": "db:schema",
+      "kind": "sync"
+    },
+    {
+      "id": "e-tabs-grid",
+      "from": "ui-tabs",
+      "to": "ui-grid",
+      "label": "coll-tab attivo",
+      "kind": "sync"
+    },
+    {
+      "id": "e-tabs-query",
+      "from": "ui-tabs",
+      "to": "ui-query",
+      "label": "vista",
+      "kind": "sync"
+    },
+    {
+      "id": "e-query-charts",
+      "from": "ui-query",
+      "to": "ui-charts",
+      "label": "risultati",
+      "kind": "data"
+    },
+    {
+      "id": "e-query-script",
+      "from": "ui-query",
+      "to": "ui-script",
+      "label": "piu istruzioni",
+      "kind": "sync"
+    },
+    {
+      "id": "e-grid-geo",
+      "from": "ui-grid",
+      "to": "ui-geo",
+      "label": "cella geometrica",
+      "kind": "sync"
+    },
+    {
+      "id": "e-grid-cellselect",
+      "from": "ui-grid",
+      "to": "ui-cellselect",
+      "label": "selezione",
+      "kind": "sync"
+    },
+    {
+      "id": "e-cellselect-geo",
+      "from": "ui-cellselect",
+      "to": "ui-geo",
+      "label": "mappa selezione",
+      "kind": "sync"
+    },
+    {
+      "id": "e-socket-origin",
+      "from": "ui-socket",
+      "to": "origin-gate",
+      "label": "handshake",
+      "kind": "sync"
+    },
+    {
+      "id": "e-socket-hcheck",
+      "from": "ui-socket",
+      "to": "handshake-check",
+      "label": "diagnosi rifiuto",
+      "kind": "sync"
+    },
+    {
+      "id": "e-panels-authhttp",
+      "from": "ui-panels",
+      "to": "auth-http",
+      "label": "POST /auth/login",
+      "kind": "sync"
+    },
+    {
+      "id": "e-http-ui",
+      "from": "http-static",
+      "to": "ui-main",
+      "label": "serve public/",
+      "kind": "data"
+    },
+    {
+      "id": "e-origin-io",
+      "from": "origin-gate",
+      "to": "socket-io",
+      "label": "handshake ammesso",
+      "kind": "sync"
+    },
+    {
+      "id": "e-socket-io",
+      "from": "ui-socket",
+      "to": "socket-io",
+      "label": "evento + ack (tabId iniettato)",
+      "kind": "sync"
+    },
+    {
+      "id": "e-authhttp-sessions",
+      "from": "auth-http",
+      "to": "auth-sessions",
+      "label": "verifica password",
+      "kind": "sync"
+    },
+    {
+      "id": "e-sessions-appstore",
+      "from": "auth-sessions",
+      "to": "appstore",
+      "label": "token SHA-256",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-principal",
+      "from": "socket-io",
+      "to": "principal",
+      "label": "risolve principal",
+      "kind": "sync"
+    },
+    {
+      "id": "e-principal-appstore",
+      "from": "principal",
+      "to": "appstore",
+      "label": "grants & ruoli",
+      "kind": "sync"
+    },
+    {
+      "id": "e-appstore-cp",
+      "from": "appstore",
+      "to": "control-plane",
+      "label": "driver mongodb",
+      "kind": "sync"
+    },
+    {
+      "id": "e-ent-appstore",
+      "from": "entitlements",
+      "to": "appstore",
+      "label": "bootstrap owner",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-delegate",
+      "from": "socket-io",
+      "to": "delegate",
+      "label": "evento con ack",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-establish",
+      "from": "socket-io",
+      "to": "establish",
+      "label": "mongo:connect",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-execquery",
+      "from": "socket-io",
+      "to": "exec-query-code",
+      "label": "query:execute",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-script",
+      "from": "socket-io",
+      "to": "script-sessions",
+      "label": "script:execute",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-vault",
+      "from": "socket-io",
+      "to": "vault",
+      "label": "vault:unlock / status",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-audit",
+      "from": "socket-io",
+      "to": "auditlog",
+      "label": "audit:list",
+      "kind": "sync"
+    },
+    {
+      "id": "e-io-errors",
+      "from": "socket-io",
+      "to": "errors",
+      "label": "errMsg() sugli ack",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-caps",
+      "from": "delegate",
+      "to": "capabilities",
+      "label": "eventCapability()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-perm",
+      "from": "delegate",
+      "to": "permissions",
+      "label": "pre-check can()",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-session",
+      "from": "delegate",
+      "to": "session-map",
+      "label": "risolve tabId",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-guard",
+      "from": "delegate",
+      "to": "guard-strategy",
+      "label": "invoca il metodo",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-recon",
+      "from": "delegate",
+      "to": "reconnect",
+      "label": "executeWithReconnect",
+      "kind": "sync"
+    },
+    {
+      "id": "e-delegate-audit",
+      "from": "delegate",
+      "to": "auditlog",
+      "label": "classifyAudit + audit",
+      "kind": "async"
+    },
+    {
+      "id": "e-delegate-errors",
+      "from": "delegate",
+      "to": "errors",
+      "label": "err._ctx = dbType",
+      "kind": "sync"
+    },
+    {
+      "id": "e-establish-conn",
+      "from": "establish",
+      "to": "connstore-ini",
+      "label": "config del tenant",
+      "kind": "sync"
+    },
+    {
+      "id": "e-conn-vault",
+      "from": "connstore-ini",
+      "to": "vault",
+      "label": "decifra i segreti",
+      "kind": "sync"
+    },
+    {
+      "id": "e-vault-files",
+      "from": "vault",
+      "to": "files",
+      "label": "connections.ini + vault.json",
+      "kind": "data"
+    },
+    {
+      "id": "e-establish-ssh",
+      "from": "establish",
+      "to": "ssh-tunnel",
+      "label": "se ssh=true",
+      "kind": "sync"
+    },
+    {
+      "id": "e-establish-factory",
+      "from": "establish",
+      "to": "dbfactory",
+      "label": "getStrategy(dbType)",
+      "kind": "sync"
+    },
+    {
+      "id": "e-establish-guard",
+      "from": "establish",
+      "to": "guard-strategy",
+      "label": "avvolge nel Proxy",
+      "kind": "sync"
+    },
+    {
+      "id": "e-establish-session",
+      "from": "establish",
+      "to": "session-map",
+      "label": "registra la sessione",
+      "kind": "sync"
+    },
+    {
+      "id": "e-establish-errors",
+      "from": "establish",
+      "to": "errors",
+      "label": "err._ctx = host/porta",
+      "kind": "sync"
+    },
+    {
+      "id": "e-recon-establish",
+      "from": "reconnect",
+      "to": "establish",
+      "label": "riapre la sessione",
+      "kind": "sync"
+    },
+    {
+      "id": "e-guard-caps",
+      "from": "guard-strategy",
+      "to": "capabilities",
+      "label": "METHOD_CAPABILITY",
+      "kind": "sync"
+    },
+    {
+      "id": "e-guard-perm",
+      "from": "guard-strategy",
+      "to": "permissions",
+      "label": "can(scope, glob)",
+      "kind": "sync"
+    },
+    {
+      "id": "e-guard-sqlclause",
+      "from": "guard-strategy",
+      "to": "sqlclause",
+      "label": "filter/sort strutturati",
+      "kind": "sync"
+    },
+    {
+      "id": "e-guard-dbstrategy",
+      "from": "guard-strategy",
+      "to": "dbstrategy",
+      "label": "chiama il metodo reale",
+      "kind": "sync"
+    },
+    {
+      "id": "e-exec-sqltomql",
+      "from": "exec-query-code",
+      "to": "sqltomql",
+      "label": "SELECT ... su Mongo",
+      "kind": "sync"
+    },
+    {
+      "id": "e-exec-shell",
+      "from": "exec-query-code",
+      "to": "mongoshell",
+      "label": "db.<coll>....",
+      "kind": "sync"
+    },
+    {
+      "id": "e-exec-mongoscript",
+      "from": "exec-query-code",
+      "to": "mongoscript",
+      "label": "script JS / scrittura shell",
+      "kind": "sync"
+    },
+    {
+      "id": "e-exec-vjoin",
+      "from": "exec-query-code",
+      "to": "vjoin",
+      "label": "JOIN cross-DB",
+      "kind": "sync"
+    },
+    {
+      "id": "e-exec-guard",
+      "from": "exec-query-code",
+      "to": "guard-strategy",
+      "label": "SQL Raw / pipeline",
+      "kind": "sync"
+    },
+    {
+      "id": "e-sqltomql-guard",
+      "from": "sqltomql",
+      "to": "guard-strategy",
+      "label": "{kind:find|aggregate}",
+      "kind": "sync"
+    },
+    {
+      "id": "e-shell-guard",
+      "from": "mongoshell",
+      "to": "guard-strategy",
+      "label": "stesso descrittore",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mongoscript-guard",
+      "from": "mongoscript",
+      "to": "guard-strategy",
+      "label": "host iniettato",
+      "kind": "sync"
+    },
+    {
+      "id": "e-script-runner",
+      "from": "script-sessions",
+      "to": "scriptrunner",
+      "label": "crea il run",
+      "kind": "sync"
+    },
+    {
+      "id": "e-runner-sqltext",
+      "from": "scriptrunner",
+      "to": "sqltext",
+      "label": "splitStatementsDetailed",
+      "kind": "sync"
+    },
+    {
+      "id": "e-runner-exec",
+      "from": "scriptrunner",
+      "to": "exec-query-code",
+      "label": "una istruzione alla volta",
+      "kind": "sync"
+    },
+    {
+      "id": "e-script-progress",
+      "from": "script-sessions",
+      "to": "ui-script",
+      "label": "push script:progress",
+      "kind": "push"
+    },
+    {
+      "id": "e-caps-sqltext",
+      "from": "capabilities",
+      "to": "sqltext",
+      "label": "stripSqlNoise",
+      "kind": "sync"
+    },
+    {
+      "id": "e-dbfactory-dbstrategy",
+      "from": "dbfactory",
+      "to": "dbstrategy",
+      "label": "istanzia",
+      "kind": "sync"
+    },
+    {
+      "id": "e-dbstrategy-mongo",
+      "from": "dbstrategy",
+      "to": "mongo-strat",
+      "label": "dbType=mongodb",
+      "kind": "sync"
+    },
+    {
+      "id": "e-dbstrategy-mysql",
+      "from": "dbstrategy",
+      "to": "mysql-strat",
+      "label": "dbType=mysql",
+      "kind": "sync"
+    },
+    {
+      "id": "e-dbstrategy-pg",
+      "from": "dbstrategy",
+      "to": "pg-strat",
+      "label": "dbType=postgres",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mysql-geometry",
+      "from": "mysql-strat",
+      "to": "geometry",
+      "label": "ST_AsGeoJSON",
+      "kind": "sync"
+    },
+    {
+      "id": "e-pg-geometry",
+      "from": "pg-strat",
+      "to": "geometry",
+      "label": "ST_AsGeoJSON",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mongo-db",
+      "from": "mongo-strat",
+      "to": "mongodb",
+      "label": "driver mongodb",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mysql-db",
+      "from": "mysql-strat",
+      "to": "mysql",
+      "label": "pool mysql2",
+      "kind": "sync"
+    },
+    {
+      "id": "e-pg-db",
+      "from": "pg-strat",
+      "to": "postgres",
+      "label": "pool pg",
+      "kind": "sync"
+    },
+    {
+      "id": "e-ssh-mongo",
+      "from": "ssh-tunnel",
+      "to": "mongodb",
+      "label": "porta locale -> remoto",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mongo-watch",
+      "from": "mongo-strat",
+      "to": "ui-grid",
+      "label": "change stream (push)",
+      "kind": "push"
+    },
+    {
+      "id": "e-geometry-geo",
+      "from": "geometry",
+      "to": "ui-geo",
+      "label": "GeoJSON sul filo",
+      "kind": "data"
+    },
+    {
+      "id": "e-audit-files",
+      "from": "auditlog",
+      "to": "files",
+      "label": "ui-audit.log",
+      "kind": "data"
+    },
+    {
+      "id": "e-clients-mcphttp",
+      "from": "mcp-clients",
+      "to": "mcp-http",
+      "label": "Streamable HTTP",
+      "kind": "sync"
+    },
+    {
+      "id": "e-mcphttp-gateway",
+      "from": "mcp-http",
+      "to": "mcp-gateway",
+      "label": "API key -> principal",
+      "kind": "sync"
+    },
+    {
+      "id": "e-gateway-tools",
+      "from": "mcp-gateway",
+      "to": "mcp-tools",
+      "label": "registerTool",
+      "kind": "sync"
+    },
+    {
+      "id": "e-gateway-write",
+      "from": "mcp-gateway",
+      "to": "mcp-write",
+      "label": "tool separato",
+      "kind": "sync"
+    },
+    {
+      "id": "e-gateway-establish",
+      "from": "mcp-gateway",
+      "to": "establish",
+      "label": "connect_database",
+      "kind": "sync"
+    },
+    {
+      "id": "e-gateway-perm",
+      "from": "mcp-gateway",
+      "to": "permissions",
+      "label": "allowedConnections",
+      "kind": "sync"
+    },
+    {
+      "id": "e-tools-guard",
+      "from": "mcp-tools",
+      "to": "guard-strategy",
+      "label": "stessa strategia avvolta",
+      "kind": "sync"
+    },
+    {
+      "id": "e-write-guard",
+      "from": "mcp-write",
+      "to": "guard-strategy",
+      "label": "dopo il confirm_token",
+      "kind": "sync"
+    },
+    {
+      "id": "e-gateway-audit",
+      "from": "mcp-gateway",
+      "to": "auditlog",
+      "label": "mcp-audit.log",
+      "kind": "async"
+    },
+    {
+      "id": "e-gateway-backup",
+      "from": "mcp-gateway",
+      "to": "backup-policy",
+      "label": "backup/restore via MCP",
+      "kind": "sync"
+    },
+    {
+      "id": "e-panels-backup",
+      "from": "ui-panels",
+      "to": "backup-policy",
+      "label": "backup:run dal socket",
+      "kind": "sync"
+    },
+    {
+      "id": "e-cli-connstore",
+      "from": "backup-cli",
+      "to": "vault",
+      "label": "connections.ini in sola lettura",
+      "kind": "sync"
+    },
+    {
+      "id": "e-cli-engine",
+      "from": "backup-cli",
+      "to": "backup-engine",
+      "label": "dump",
+      "kind": "sync"
+    },
+    {
+      "id": "e-cli-restore",
+      "from": "backup-cli",
+      "to": "backup-restore",
+      "label": "restore/verify",
+      "kind": "sync"
+    },
+    {
+      "id": "e-policy-engine",
+      "from": "backup-policy",
+      "to": "backup-engine",
+      "label": "dest confinata",
+      "kind": "sync"
+    },
+    {
+      "id": "e-policy-restore",
+      "from": "backup-policy",
+      "to": "backup-restore",
+      "label": "from confinata",
+      "kind": "sync"
+    },
+    {
+      "id": "e-engine-dbstrategy",
+      "from": "backup-engine",
+      "to": "dbstrategy",
+      "label": "driver nativo, fuori dal Proxy",
+      "kind": "sync"
+    },
+    {
+      "id": "e-restore-dbstrategy",
+      "from": "backup-restore",
+      "to": "dbstrategy",
+      "label": "INSERT / upsert",
+      "kind": "sync"
+    },
+    {
+      "id": "e-engine-fs",
+      "from": "backup-engine",
+      "to": "backup-fs",
+      "label": "NDJSON + manifest",
+      "kind": "data"
+    },
+    {
+      "id": "e-fs-restore",
+      "from": "backup-fs",
+      "to": "backup-restore",
+      "label": "catena dei baseId",
+      "kind": "data"
+    },
+    {
+      "id": "e-engine-storage",
+      "from": "backup-engine",
+      "to": "backup-storage",
+      "label": "upload post-dump",
+      "kind": "async"
+    },
+    {
+      "id": "e-backup-perm",
+      "from": "backup-policy",
+      "to": "permissions",
+      "label": "canWholeConnection",
+      "kind": "sync"
+    },
+    {
+      "id": "e-tests-core",
+      "from": "tests",
+      "to": "delegate",
+      "label": "e2e su istanza usa-e-getta",
+      "kind": "data"
+    },
+    {
+      "id": "e-tests-engine",
+      "from": "tests",
+      "to": "sqltomql",
+      "label": "unit senza DB",
+      "kind": "data"
+    },
+    {
+      "id": "e-impronte-tests",
+      "from": "impronte",
+      "to": "tests",
+      "label": "verificati da npm test",
+      "kind": "data"
+    }
+  ],
+  "flows": [
+    {
+      "id": "avvio",
+      "titolo": "Avvio del server",
+      "gruppo": "Ciclo di vita",
+      "descrizione": "startServer() ha un ordine preciso: prima i segreti, poi l'autorizzazione, poi la rete. Ogni condizione che renderebbe l'applicazione insicura o incomprensibile ferma l'avvio invece di degradarlo.",
+      "steps": [
+        {
+          "from": "electron-main",
+          "to": "http-static",
+          "nota": "L'entrypoint (Electron, bin CLI, launcher o container) carica server.js e chiama startServer(). Il solo require non aprirebbe la porta."
+        },
+        {
+          "from": "connstore-ini",
+          "to": "vault",
+          "nota": "Con GUI_MONGO_PASSPHRASE si prova a sbloccare il vault; passphrase errata = exit 1 PRIMA della migrazione, cosi i segreti non vengono mai azzerati."
+        },
+        {
+          "from": "vault",
+          "to": "files",
+          "nota": "Senza passphrase, probeVault() prova la chiave vuota: se non basta encryptionKey resta null e il server parte in Vault Bloccato, con la richiesta demandata all'interfaccia."
+        },
+        {
+          "from": "entitlements",
+          "to": "appstore",
+          "nota": "Con CODEDB_RBAC=on: bootstrap dell'owner e dei ruoli seed."
+        },
+        {
+          "from": "appstore",
+          "to": "control-plane",
+          "nota": "Se il control plane non e raggiungibile il server RIFIUTA DI PARTIRE: meglio non partire che partire senza il livello di autorizzazione atteso."
+        },
+        {
+          "from": "origin-gate",
+          "to": "socket-io",
+          "nota": "assertTransportSafe(HOST): fuori dal loopback senza CODEDB_TRUST_PROXY_TLS=1 l'avvio si ferma, perche l'app parla solo HTTP e password, token e credenziali viaggerebbero in chiaro."
+        }
+      ]
+    },
+    {
+      "id": "login",
+      "titolo": "Login RBAC e handshake Socket.IO",
+      "gruppo": "Accesso",
+      "descrizione": "Due barriere distinte e in quest'ordine: prima si stabilisce CHI puo aprire un socket (Origin), poi CHI e l'utente (token). Con RBAC spento resta solo la prima.",
+      "steps": [
+        {
+          "from": "ui-panels",
+          "to": "auth-http",
+          "nota": "auth.js apre l'overlay di login quando il socket risponde connect_error con messaggio auth_required: non esiste un endpoint di stato dedicato."
+        },
+        {
+          "from": "auth-http",
+          "to": "auth-sessions",
+          "nota": "Password verificata con scryptSync + timingSafeEqual."
+        },
+        {
+          "from": "auth-sessions",
+          "to": "appstore",
+          "nota": "Token opaco di 32 byte: in DB solo lo SHA-256, quindi la revoca e immediata. Nessun JWT."
+        },
+        {
+          "from": "ui-socket",
+          "to": "origin-gate",
+          "nota": "Il token va in socket.handshake.auth, non in un header: prima pero il gate sull'Origin decide se l'handshake e ammesso."
+        },
+        {
+          "from": "ui-socket",
+          "to": "handshake-check",
+          "nota": "Se l'handshake fallisce il browser vede solo un generico 'xhr poll error': il client interroga /handshake-check, che riapplica checkOrigin alla richiesta della pagina e restituisce publicReason."
+        },
+        {
+          "from": "origin-gate",
+          "to": "socket-io",
+          "nota": "Handshake ammesso."
+        },
+        {
+          "from": "socket-io",
+          "to": "principal",
+          "nota": "io.use risolve il token nel principal del socket; da qui in poi ogni evento porta con se quell'identita."
+        }
+      ]
+    },
+    {
+      "id": "connessione",
+      "titolo": "Apertura di una connessione (mongo:connect)",
+      "gruppo": "Accesso",
+      "descrizione": "Il tab compare solo a connessione riuscita. Tutto il corpo gira dentro un lock per tabId, perche i controlli sui limiti devono vedere lo stato lasciato dall'apertura precedente.",
+      "steps": [
+        {
+          "from": "ui-panels",
+          "to": "ui-socket",
+          "nota": "connection.js invia mongo:connect { saved | cfg, tabId }. Le credenziali di una connessione salvata non passano mai dal browser."
+        },
+        {
+          "from": "ui-socket",
+          "to": "origin-gate",
+          "nota": "Trasporto."
+        },
+        {
+          "from": "origin-gate",
+          "to": "socket-io",
+          "nota": "Trasporto."
+        },
+        {
+          "from": "socket-io",
+          "to": "establish",
+          "nota": "Controllo del limite di 8 sessioni per socket dentro il lock."
+        },
+        {
+          "from": "establish",
+          "to": "connstore-ini",
+          "nota": "resolveEffectiveCfg legge il file del TENANT richiedente: data/conns/<ownerId>.ini con RBAC on, il file condiviso altrimenti."
+        },
+        {
+          "from": "connstore-ini",
+          "to": "vault",
+          "nota": "I segreti (password DB, sshPassword, sshPassphrase) si decifrano qui e non lasciano mai il server."
+        },
+        {
+          "from": "establish",
+          "to": "ssh-tunnel",
+          "nota": "Solo in modalita Parametri: porta locale effimera, host key verificata con accept-new, host/port riscritti verso il capo locale (+ directConnection=true su MongoDB)."
+        },
+        {
+          "from": "establish",
+          "to": "dbfactory",
+          "nota": "getStrategy(dbType) e strategy.connect(cfg)."
+        },
+        {
+          "from": "dbfactory",
+          "to": "dbstrategy",
+          "nota": "Istanza concreta della strategia."
+        },
+        {
+          "from": "establish",
+          "to": "guard-strategy",
+          "nota": "La strategia viene restituita AVVOLTA nel Proxy autorizzante: e l'unico punto di applicazione dei permessi, per la UI e per MCP insieme."
+        },
+        {
+          "from": "establish",
+          "to": "session-map",
+          "nota": "La sessione (strategia + tunnel + dbType + connName) viene registrata sotto il suo tabId."
+        },
+        {
+          "from": "establish",
+          "to": "errors",
+          "nota": "In caso di errore err._ctx porta host e porta CONFIGURATI, mai quelli del tunnel: 'connessione rifiutata su localhost:27017' invece di un ECONNREFUSED nudo."
+        }
+      ]
+    },
+    {
+      "id": "lettura",
+      "titolo": "Lettura della griglia dati",
+      "gruppo": "Uso quotidiano",
+      "descrizione": "Il conteggio e disaccoppiato dalla lettura: e la scelta che rende utilizzabile la griglia su collection enormi, dove la scansione completa per il totale bloccherebbe tutto.",
+      "steps": [
+        {
+          "from": "ui-grid",
+          "to": "ui-socket",
+          "nota": "collection:find con deferCount:true. Le letture automatiche (polling, scroll, refresh post-scrittura) sono marcate _bg."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "emit() inietta il tabId del tab attivo; la risposta portera _tab e _state."
+        },
+        {
+          "from": "socket-io",
+          "to": "delegate",
+          "nota": "Punto di ingresso comune a tutti gli eventi DB."
+        },
+        {
+          "from": "delegate",
+          "to": "session-map",
+          "nota": "Prima di tutto: cancellazione dei campi server-only (maxRows, opHandle) dal payload del client, poi risoluzione del tabId."
+        },
+        {
+          "from": "delegate",
+          "to": "capabilities",
+          "nota": "eventCapability(event, payload, sess): per collection:aggregate la capability dipende dal TESTO (isWriteSql / isWriteMongoPipeline)."
+        },
+        {
+          "from": "delegate",
+          "to": "permissions",
+          "nota": "Pre-check can(): l'errore arriva prima di toccare il DB e nomina l'evento richiesto."
+        },
+        {
+          "from": "delegate",
+          "to": "guard-strategy",
+          "nota": "Il Proxy ricontrolla con lo scope glob su db/coll e, per i principal con scope attivo su SQL, pretende filter/sort in forma strutturata."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "resultCap e maxResultBytes limitano righe e byte; oltre il budget la risposta porta truncated:true."
+        },
+        {
+          "from": "dbstrategy",
+          "to": "mongo-strat",
+          "nota": "Strategia concreta secondo il dbType della sessione."
+        },
+        {
+          "from": "mongo-strat",
+          "to": "mongodb",
+          "nota": "Serializzazione EJSON relaxed in uscita: numeri normali, ma ObjectId e Date restano $oid / $date."
+        },
+        {
+          "from": "delegate",
+          "to": "auditlog",
+          "nota": "classifyAudit registra la lettura solo se e stata avviata dall'utente; fire-and-forget, non puo far fallire l'operazione."
+        },
+        {
+          "from": "ui-grid",
+          "to": "ui-cellselect",
+          "nota": "Poi la griglia chiede il totale a parte con collection:count, che gira con un timeout e degrada a '?' invece di bloccarsi."
+        }
+      ]
+    },
+    {
+      "id": "query",
+      "titolo": "Query Engine: query:execute",
+      "gruppo": "Uso quotidiano",
+      "descrizione": "Il routing avviene per FORMA del codice, non per una scelta dell'utente in un menu a tendina. La stessa funzione serve la tab Query e ogni istruzione di uno script, cosi i due non possono divergere.",
+      "steps": [
+        {
+          "from": "ui-query",
+          "to": "ui-socket",
+          "nota": "Il client decide solo query singola vs script (sql-split.js); cosa eseguire lo decide sempre il server."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "Trasporto con ack."
+        },
+        {
+          "from": "socket-io",
+          "to": "exec-query-code",
+          "nota": "maxRows = QUERY_ENGINE_MAX_ROWS impostato LATO SERVER (il client non puo alzarsi il tetto); $where/$function/$accumulator rifiutati."
+        },
+        {
+          "from": "exec-query-code",
+          "to": "sqltomql",
+          "nota": "'SELECT ...' su MongoDB: tradotto in find o pipeline. Su MySQL/PostgreSQL si va invece su SQL Raw."
+        },
+        {
+          "from": "exec-query-code",
+          "to": "mongoshell",
+          "nota": "'db.<coll>....': parser mongosh senza eval; gli argomenti sono JS, non JSON, e diventano EJSON canonico."
+        },
+        {
+          "from": "exec-query-code",
+          "to": "vjoin",
+          "nota": "JOIN tra tabelle SQL e collezioni MongoDB: fusione in memoria."
+        },
+        {
+          "from": "sqltomql",
+          "to": "guard-strategy",
+          "nota": "Traduttore e parser ritornano lo STESSO descrittore { kind: find | aggregate }, quindi da qui in poi il codice e uno solo."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "Un SQL Raw classificato lettura ed eseguito da un sottoutente gira in BEGIN READ ONLY: seconda barriera, indipendente dal parser."
+        },
+        {
+          "from": "dbstrategy",
+          "to": "pg-strat",
+          "nota": "Su PostgreSQL SQL Raw allinea il search_path allo schema aperto."
+        },
+        {
+          "from": "pg-strat",
+          "to": "postgres",
+          "nota": "Esecuzione."
+        },
+        {
+          "from": "ui-query",
+          "to": "ui-charts",
+          "nota": "I risultati alimentano le tre viste: Tabella, JSON Tree e Grafici."
+        }
+      ]
+    },
+    {
+      "id": "script",
+      "titolo": "Esecuzione di uno script",
+      "gruppo": "Uso quotidiano",
+      "descrizione": "Uno script non viene mandato in blocco al driver. Un'istruzione alla volta da progresso reale, pausa a granularita di statement, errore alla riga esatta e capability decisa per singola istruzione.",
+      "steps": [
+        {
+          "from": "ui-script",
+          "to": "ui-socket",
+          "nota": "script:execute con il codice e l'opzione 'ferma al primo errore'."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "Trasporto."
+        },
+        {
+          "from": "socket-io",
+          "to": "script-sessions",
+          "nota": "Il run vive in session.scripts e SOPRAVVIVE all'ack: il client riceve subito { ok, total }."
+        },
+        {
+          "from": "script-sessions",
+          "to": "scriptrunner",
+          "nota": "Limiti: CODEDB_SCRIPT_MAX_STATEMENTS (20000), 4 script per sessione, resoconto limitato ma gli ERRORI non vengono mai scartati."
+        },
+        {
+          "from": "scriptrunner",
+          "to": "sqltext",
+          "nota": "splitStatementsDetailed conserva testo originale, offset e numero di riga: da qui l'evidenziazione della riga in errore nell'editor."
+        },
+        {
+          "from": "scriptrunner",
+          "to": "exec-query-code",
+          "nota": "Ogni istruzione passa dallo STESSO routing della tab Query. Politica errori: continua e riporta."
+        },
+        {
+          "from": "exec-query-code",
+          "to": "guard-strategy",
+          "nota": "Capability decisa per singola istruzione invece che un unico 'write' indistinto."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "Esecuzione. Pausa dolce = si ferma DOPO l'istruzione in corso; pausa forzata = cancelQuery e statement marcato interrupted, che alla ripresa viene RILANCIATO invece che saltato."
+        },
+        {
+          "from": "script-sessions",
+          "to": "ui-script",
+          "nota": "Push script:progress diradati, ma errori, pause e fine passano sempre. Lo script e anche una 'query in sospeso': si riprende dal cursore, non da capo."
+        }
+      ]
+    },
+    {
+      "id": "scrittura",
+      "titolo": "Scrittura e tracciamento",
+      "gruppo": "Uso quotidiano",
+      "descrizione": "Ogni scrittura attraversa due controlli di permesso indipendenti e finisce nell'audit con l'attore che l'ha eseguita.",
+      "steps": [
+        {
+          "from": "ui-grid",
+          "to": "ui-socket",
+          "nota": "doc:update / doc:insert / collection:deleteMany dall'editing al volo o dal form di inserimento."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "Gli _id viaggiano come stringhe EJSON e vengono riconvertiti dalla strategia (parseId / parseRowId)."
+        },
+        {
+          "from": "socket-io",
+          "to": "delegate",
+          "nota": "Pipeline comune."
+        },
+        {
+          "from": "delegate",
+          "to": "capabilities",
+          "nota": "'delete' e una capability DISTINTA da 'write': il ruolo editor puo scrivere ma non cancellare."
+        },
+        {
+          "from": "delegate",
+          "to": "permissions",
+          "nota": "Pre-check."
+        },
+        {
+          "from": "delegate",
+          "to": "guard-strategy",
+          "nota": "Secondo controllo sul metodo effettivo della strategia, con lo scope glob su database e collezione."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "Su PostgreSQL qtable() qualifica sempre lo schema: senza, con tabelle omonime si modificava la riga sbagliata."
+        },
+        {
+          "from": "dbstrategy",
+          "to": "mysql-strat",
+          "nota": "Esecuzione parametrizzata."
+        },
+        {
+          "from": "mysql-strat",
+          "to": "mysql",
+          "nota": "Applicata."
+        },
+        {
+          "from": "delegate",
+          "to": "auditlog",
+          "nota": "auditActor(principal) registra ownerId, userId e utente; l'etichetta italiana dell'operazione rende leggibile lo Storico Azioni."
+        },
+        {
+          "from": "auditlog",
+          "to": "files",
+          "nota": "ui-audit.log, append-only con rotazione oltre 5 MB."
+        }
+      ]
+    },
+    {
+      "id": "mcp-read",
+      "titolo": "Client AI: lettura via MCP",
+      "gruppo": "Gateway MCP",
+      "descrizione": "L'AI non vede mai le credenziali: sceglie una connessione SALVATA per nome. Da connect_database in poi tutti i tool sono limitati dal Proxy autorizzante, senza controlli tool per tool.",
+      "steps": [
+        {
+          "from": "mcp-clients",
+          "to": "mcp-http",
+          "nota": "Streamable HTTP con header mcp-session-id."
+        },
+        {
+          "from": "mcp-http",
+          "to": "mcp-gateway",
+          "nota": "Con RBAC attivo la API key cdb_... e obbligatoria: senza, 401. La sessione appartiene a chi l'ha aperta, un'altra chiave riceve 403."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "permissions",
+          "nota": "list_saved_connections e filtrata da grant intersecato con il connScope della chiave, e non espone mai i segreti."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "establish",
+          "nota": "connect_database apre la sessione DB passando il principal come guardCtx."
+        },
+        {
+          "from": "establish",
+          "to": "guard-strategy",
+          "nota": "Stessa strategia avvolta della UI."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "mcp-tools",
+          "nota": "execute_query, get_schema, analyze_pii, audit_schema, get_graph..."
+        },
+        {
+          "from": "mcp-tools",
+          "to": "guard-strategy",
+          "nota": "Su SQL: whitelist del primo token, blocco di INTO OUTFILE/DUMPFILE, transazione READ ONLY con timeout 30 s. Su Mongo: $out/$merge vietati."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "Lettura."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "auditlog",
+          "nota": "mcp-audit.log, file separato da quello della UI."
+        }
+      ]
+    },
+    {
+      "id": "mcp-write",
+      "titolo": "Client AI: scrittura con conferma",
+      "gruppo": "Gateway MCP",
+      "descrizione": "La scrittura e un tool SEPARATO con una conferma a due passaggi. Il controllo dei permessi avviene prima dell'anteprima, non prima dell'esecuzione.",
+      "steps": [
+        {
+          "from": "mcp-clients",
+          "to": "mcp-http",
+          "nota": "Richiesta execute_write."
+        },
+        {
+          "from": "mcp-http",
+          "to": "mcp-gateway",
+          "nota": "API key -> principal."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "mcp-write",
+          "nota": "Richiede che la connessione non sia in sola lettura (readOnly=false)."
+        },
+        {
+          "from": "mcp-write",
+          "to": "guard-strategy",
+          "nota": "La capability di scrittura si verifica PRIMA di emettere l'anteprima e il confirm_token: un principal in sola lettura non riceve nemmeno il token."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "permissions",
+          "nota": "Scope su database e collezione."
+        },
+        {
+          "from": "guard-strategy",
+          "to": "dbstrategy",
+          "nota": "Esecuzione solo al secondo passaggio, con il confirm_token monouso."
+        },
+        {
+          "from": "mcp-gateway",
+          "to": "auditlog",
+          "nota": "Tracciata come scrittura con l'attore della API key."
+        }
+      ]
+    },
+    {
+      "id": "backup",
+      "titolo": "Backup e ripristino",
+      "gruppo": "Operazioni",
+      "descrizione": "Backup e restore accedono al driver NATIVO, quindi sono fuori dalla portata del Proxy: vengono autorizzati a parte con canWholeConnection, una capability senza scope. Dai client le destinazioni passano da una policy che la CLI non applica.",
+      "steps": [
+        {
+          "from": "ui-panels",
+          "to": "backup-policy",
+          "nota": "Dal socket: dest e from confinate dentro BACKUP_ROOT, storage cloud solo per alias pre-approvati, webhook solo Slack."
+        },
+        {
+          "from": "backup-policy",
+          "to": "permissions",
+          "nota": "canWholeConnection: capability sull'INTERA connessione, senza scope, perche un dump non ha un bersaglio db/coll da confrontare."
+        },
+        {
+          "from": "backup-cli",
+          "to": "vault",
+          "nota": "In alternativa la CLI, indipendente dal server: legge connections.ini in SOLA LETTURA e riusa db/vault.js, che e l'unica copia della crittografia."
+        },
+        {
+          "from": "backup-policy",
+          "to": "backup-engine",
+          "nota": "Dump in streaming: cursor MongoDB, stream mysql2, export pg. Tipi full, incremental, differential."
+        },
+        {
+          "from": "backup-engine",
+          "to": "dbstrategy",
+          "nota": "Driver nativo (strategy.client / pool), fuori dal Proxy."
+        },
+        {
+          "from": "backup-engine",
+          "to": "backup-fs",
+          "nota": "NDJSON + manifest con checksum SHA-256, indici e schema. Attenzione: le CANCELLAZIONI non vengono catturate."
+        },
+        {
+          "from": "backup-engine",
+          "to": "backup-storage",
+          "nota": "Upload opzionale post-dump; SDK caricati on-demand, credenziali solo dai canali standard dei provider."
+        },
+        {
+          "from": "backup-fs",
+          "to": "backup-restore",
+          "nota": "Il restore risale da solo la catena dei baseId: layer 1 = INSERT, successivi = upsert."
+        },
+        {
+          "from": "backup-restore",
+          "to": "dbstrategy",
+          "nota": "Il DDL del backup viene ESEGUITO sul database di destinazione: prima se ne verifica il checksum e la forma (solo CREATE TABLE / CREATE INDEX / ALTER TABLE sulla tabella attesa). Dal socket la deroga non e scavalcabile."
+        }
+      ]
+    },
+    {
+      "id": "vault-flow",
+      "titolo": "Vault: sblocco e cambio passphrase",
+      "gruppo": "Operazioni",
+      "descrizione": "Il vault a busta separa la chiave che protegge (KEK, derivata dalla passphrase) da quella che cifra (DEK, casuale). Da qui discende tutto il resto del comportamento.",
+      "steps": [
+        {
+          "from": "ui-panels",
+          "to": "ui-socket",
+          "nota": "vault:status risponde locked:true e la modale chiede la passphrase. L'avviso 'segreti non protetti' compare invece quando ci sono segreti ma nessuna passphrase."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "vault:unlock / vault:setPassphrase / vault:reset."
+        },
+        {
+          "from": "socket-io",
+          "to": "vault",
+          "nota": "vault:setPassphrase pretende la passphrase ATTUALE anche a vault gia sbloccato: chi si siede a una sessione lasciata aperta non deve poter cambiare la chiave dei segreti altrui."
+        },
+        {
+          "from": "vault",
+          "to": "files",
+          "nota": "Cambiare passphrase costa una riga: si riavvolge la DEK, i segreti non si toccano - niente riscrittura dell'unica copia su disco delle credenziali. Un vault v1 viene migrato una sola volta, con copia .pre-vault2 e rilettura di verifica."
+        },
+        {
+          "from": "connstore-ini",
+          "to": "vault",
+          "nota": "vault:reset e la via d'uscita per la passphrase dimenticata: i file non vengono cancellati ma rinominati in *.pre-reset-<timestamp>, perche un clic sbagliato non deve distruggere l'unica copia dei segreti."
+        }
+      ]
+    },
+    {
+      "id": "aggiornamento",
+      "titolo": "Aggiornamento dell'app desktop",
+      "gruppo": "Ciclo di vita",
+      "descrizione": "Nessun IPC e nessun preload: la finestra carica la stessa UI web servita dal server, quindi un canale IPC sarebbe esposto a qualunque pagina finisse li dentro.",
+      "steps": [
+        {
+          "from": "ui-main",
+          "to": "ui-panels",
+          "nota": "Voce 'Controlla Aggiornamenti' nel menu Impostazioni. Il menu nativo esiste ma con autoHideMenuBar si vede solo premendo Alt: da solo, per chi usa l'applicazione, non esiste."
+        },
+        {
+          "from": "ui-panels",
+          "to": "ui-socket",
+          "nota": "app:updates:check."
+        },
+        {
+          "from": "ui-socket",
+          "to": "socket-io",
+          "nota": "Trasporto."
+        },
+        {
+          "from": "socket-io",
+          "to": "electron-updater",
+          "nota": "Il server, incorporato nello STESSO processo Electron, legge il ponte globalThis.__codedbDesktop. Se il server e esterno il ponte non esiste, app:info risponde aggiornamenti:false e la voce resta nascosta invece di comparire e fallire."
+        },
+        {
+          "from": "electron-updater",
+          "to": "electron-main",
+          "nota": "autoDownload = false: decine di MB e un riavvio non si prendono alle spalle di chi ha uno script in esecuzione. Dialog nativi, avanzamento sulla barra delle applicazioni."
+        },
+        {
+          "from": "ci",
+          "to": "electron-main",
+          "nota": "Il feed vero e latest.yml / latest-mac.yml / latest-linux.yml, pubblicati dai job di CI insieme agli installer. Un feed personalizzato deve essere HTTPS: su HTTP chi sta in mezzo non VEDE l'aggiornamento, lo SOSTITUISCE."
+        }
+      ]
+    }
+  ]
+};
+
+/* ------------------------------------------------------------------ *
+ * Stato
+ * ------------------------------------------------------------------ */
+const NW = 196, NH = 50;                 // dimensioni del riquadro di un nodo
+const nodeById  = new Map(DATI.nodes.map(n => [n.id, n]));
+const groupById = new Map(DATI.groups.map(g => [g.id, g]));
+const edgeKey   = (a, b) => a + '>' + b;
+const edgeByKey = new Map(DATI.edges.map(e => [edgeKey(e.from, e.to), e]));
+
+const stato = {
+  flusso: null,        // id del flusso selezionato
+  passo: -1,           // indice del passo evidenziato
+  nodo: null,          // id del nodo aperto in dettaglio
+  gruppiOff: new Set(),
+  legendaChiusa: false,
+  vista: { x: 0, y: 0, k: 1 },
+};
+
+const svg      = document.getElementById('map');
+const viewport = document.getElementById('viewport');
+const gEdges   = document.getElementById('edges');
+const gNodes   = document.getElementById('nodes');
+const tip      = document.getElementById('tip');
+const NS       = 'http://www.w3.org/2000/svg';
+
+/* ------------------------------------------------------------------ *
+ * Disegno del diagramma
+ * ------------------------------------------------------------------ */
+function el(tag, attrs = {}, testo) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (testo != null) n.textContent = testo;
+  return n;
+}
+
+/* Il percorso di un arco parte dal bordo destro dell'origine e arriva al bordo
+ * sinistro della destinazione. Gli archi "all'indietro" (destinazione a sinistra)
+ * userebbero una bezier che attraversa i due riquadri: si esce allora dal bordo
+ * sinistro e si rientra da destra, cosi la direzione resta leggibile. */
+function tracciato(a, b) {
+  const ax = a.x, ay = a.y + NH / 2, bx = b.x, by = b.y + NH / 2;
+  const avanti = b.x > a.x;
+  const x1 = avanti ? ax + NW : ax;
+  const x2 = avanti ? bx : bx + NW;
+  const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
+  const c1 = avanti ? x1 + dx : x1 - dx;
+  const c2 = avanti ? x2 - dx : x2 + dx;
+  return { d: `M ${x1} ${ay} C ${c1} ${ay}, ${c2} ${by}, ${x2} ${by}`,
+           mx: (x1 + x2) / 2, my: (ay + by) / 2 - 5 };
+}
+
+function disegna() {
+  // marker delle frecce (uno normale, uno evidenziato)
+  const defs = el('defs');
+  for (const [id, col] of [['fr', 'var(--line)'], ['fr-hl', 'var(--hl)']]) {
+    const m = el('marker', { id, viewBox: '0 0 8 8', refX: 7, refY: 4,
+      markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
+    m.appendChild(el('path', { d: 'M 0 0 L 8 4 L 0 8 z', fill: col }));
+    defs.appendChild(m);
+  }
+  svg.insertBefore(defs, viewport);
+
+  for (const e of DATI.edges) {
+    const a = nodeById.get(e.from), b = nodeById.get(e.to);
+    if (!a || !b) continue;
+    const t = tracciato(a, b);
+    const g = el('g', { class: 'edge kind-' + (e.kind || 'sync'), 'data-id': e.id,
+                        'data-from': e.from, 'data-to': e.to });
+    g.appendChild(el('path', { d: t.d, 'marker-end': 'url(#fr)' }));
+    const lbl = el('text', { class: 'elbl', x: t.mx, y: t.my, 'text-anchor': 'middle' }, e.label || '');
+    g.appendChild(lbl);
+    gEdges.appendChild(g);
+  }
+
+  for (const n of DATI.nodes) {
+    const grp = groupById.get(n.group) || { color: 'var(--accent)', label: '' };
+    const g = el('g', { class: 'node', 'data-id': n.id, transform: `translate(${n.x},${n.y})` });
+    g.appendChild(el('rect', { class: 'box', width: NW, height: NH }));
+    g.appendChild(el('rect', { class: 'bar', x: 0, y: 8, width: 4, height: NH - 16, fill: grp.color }));
+    g.appendChild(el('text', { class: 'lbl', x: 14, y: 21 }, tronca(n.label, 26)));
+    g.appendChild(el('text', { class: 'sub', x: 14, y: 37 }, tronca(basename(n.file), 32)));
+    const badge = el('g', { class: 'badge', transform: `translate(${NW - 13},13)`, opacity: 0 });
+    badge.appendChild(el('circle', { r: 9 }));
+    badge.appendChild(el('text', { y: 3.5 }, ''));
+    g.appendChild(badge);
+    gNodes.appendChild(g);
+  }
+}
+
+const tronca   = (s, n) => (s && s.length > n ? s.slice(0, n - 1) + '…' : (s || ''));
+const basename = (f) => String(f || '').split(',')[0].trim();
+
+/* ------------------------------------------------------------------ *
+ * Vista: pan / zoom / adatta
+ * ------------------------------------------------------------------ */
+function applicaVista() {
+  const v = stato.vista;
+  viewport.setAttribute('transform', `translate(${v.x},${v.y}) scale(${v.k})`);
+}
+
+function riquadroContenuto() {
+  const vis = DATI.nodes.filter(n => !stato.gruppiOff.has(n.group));
+  const base = vis.length ? vis : DATI.nodes;
+  const xs = base.map(n => n.x), ys = base.map(n => n.y);
+  const x0 = Math.min(...xs) - 40, y0 = Math.min(...ys) - 40;
+  const x1 = Math.max(...xs) + NW + 40, y1 = Math.max(...ys) + NH + 40;
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function adatta(nodi) {
+  const r = riquadroDi(nodi) || riquadroContenuto();
+  const b = svg.getBoundingClientRect();
+  // Legenda e barra dello zoom galleggiano sul diagramma: senza riservare la
+  // loro altezza i nodi piu in basso finiscono sotto, cioe invisibili proprio
+  // dopo un "Adatta" che promette di mostrare tutto.
+  const legenda = document.getElementById('legend');
+  const sotto = legenda ? legenda.getBoundingClientRect().height + 24 : 0;
+  const h = Math.max(160, b.height - sotto);
+  const k = Math.min(b.width / r.w, h / r.h, 1.6);
+  stato.vista = { k, x: (b.width - r.w * k) / 2 - r.x0 * k, y: (h - r.h * k) / 2 - r.y0 * k };
+  applicaVista();
+}
+
+function riquadroDi(ids) {
+  if (!ids || !ids.length) return null;
+  const ns = ids.map(id => nodeById.get(id)).filter(Boolean);
+  if (!ns.length) return null;
+  const x0 = Math.min(...ns.map(n => n.x)) - 70, y0 = Math.min(...ns.map(n => n.y)) - 70;
+  const x1 = Math.max(...ns.map(n => n.x)) + NW + 70, y1 = Math.max(...ns.map(n => n.y)) + NH + 70;
+  return { x0, y0, w: x1 - x0, h: y1 - y0 };
+}
+
+function zoomA(fattore, cx, cy) {
+  const v = stato.vista;
+  const k = Math.min(3, Math.max(0.18, v.k * fattore));
+  const b = svg.getBoundingClientRect();
+  const px = (cx == null ? b.width / 2 : cx - b.left);
+  const py = (cy == null ? b.height / 2 : cy - b.top);
+  v.x = px - (px - v.x) * (k / v.k);
+  v.y = py - (py - v.y) * (k / v.k);
+  v.k = k;
+  applicaVista();
+}
+
+(function abilitaPanZoom() {
+  let trascina = null;
+  svg.addEventListener('pointerdown', (ev) => {
+    if (ev.target.closest('.node')) return;
+    trascina = { x: ev.clientX, y: ev.clientY, vx: stato.vista.x, vy: stato.vista.y };
+    svg.classList.add('grabbing');
+    svg.setPointerCapture(ev.pointerId);
+  });
+  svg.addEventListener('pointermove', (ev) => {
+    if (!trascina) return;
+    stato.vista.x = trascina.vx + (ev.clientX - trascina.x);
+    stato.vista.y = trascina.vy + (ev.clientY - trascina.y);
+    applicaVista();
+  });
+  const fine = () => { trascina = null; svg.classList.remove('grabbing'); };
+  svg.addEventListener('pointerup', fine);
+  svg.addEventListener('pointercancel', fine);
+  svg.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    zoomA(ev.deltaY < 0 ? 1.12 : 1 / 1.12, ev.clientX, ev.clientY);
+  }, { passive: false });
+})();
+
+/* ------------------------------------------------------------------ *
+ * Evidenziazione
+ * ------------------------------------------------------------------ */
+function pulisciEvidenza() {
+  viewport.classList.remove('focus');
+  gNodes.querySelectorAll('.node').forEach(n => {
+    n.classList.remove('hit', 'sel');
+    const b = n.querySelector('.badge');
+    b.setAttribute('opacity', 0);
+    b.querySelector('text').textContent = '';
+  });
+  gEdges.querySelectorAll('.edge').forEach(e => {
+    e.classList.remove('hit', 'step-active');
+    e.querySelector('path').setAttribute('marker-end', 'url(#fr)');
+  });
+}
+
+function evidenziaFlusso(flusso, passo = -1) {
+  pulisciEvidenza();
+  if (!flusso) return;
+  viewport.classList.add('focus');
+
+  const ordine = new Map();   // primo passo in cui compare ogni nodo
+  flusso.steps.forEach((s, i) => {
+    if (!ordine.has(s.from)) ordine.set(s.from, i + 1);
+    if (!ordine.has(s.to))   ordine.set(s.to, i + 1);
+    const g = gEdges.querySelector(`.edge[data-from="${s.from}"][data-to="${s.to}"]`);
+    if (g) {
+      g.classList.add('hit');
+      g.querySelector('path').setAttribute('marker-end', 'url(#fr-hl)');
+      if (i === passo) g.classList.add('step-active');
+    }
+  });
+
+  for (const [id, num] of ordine) {
+    const g = gNodes.querySelector(`.node[data-id="${id}"]`);
+    if (!g) continue;
+    g.classList.add('hit');
+    const b = g.querySelector('.badge');
+    b.setAttribute('opacity', 1);
+    b.querySelector('text').textContent = num;
+  }
+}
+
+function evidenziaNodo(id) {
+  pulisciEvidenza();
+  const g = gNodes.querySelector(`.node[data-id="${id}"]`);
+  if (g) g.classList.add('sel');
+  DATI.edges.forEach(e => {
+    if (e.from !== id && e.to !== id) return;
+    const ge = gEdges.querySelector(`.edge[data-id="${e.id}"]`);
+    if (ge) { ge.classList.add('hit'); ge.querySelector('path').setAttribute('marker-end', 'url(#fr-hl)'); }
+    const alt = e.from === id ? e.to : e.from;
+    const ga = gNodes.querySelector(`.node[data-id="${alt}"]`);
+    if (ga) ga.classList.add('hit');
+  });
+  viewport.classList.add('focus');
+  if (g) g.classList.add('hit');
+}
+
+/* ------------------------------------------------------------------ *
+ * Pannello
+ * ------------------------------------------------------------------ */
+const body = document.getElementById('panel-body');
+const titolo = document.getElementById('panel-title');
+const sottotitolo = document.getElementById('panel-sub');
+
+function renderFlussi() {
+  titolo.textContent = 'Flussi';
+  sottotitolo.textContent = 'Seleziona un flusso per illuminarne il percorso nel diagramma.';
+  body.innerHTML = '';
+  // Raggruppa per "gruppo" conservando l'ordine di prima comparsa: raggruppare
+  // solo i flussi CONSECUTIVI farebbe ricomparire lo stesso titolo piu volte.
+  const perGruppo = new Map();
+  for (const f of DATI.flows) {
+    if (!perGruppo.has(f.gruppo)) perGruppo.set(f.gruppo, []);
+    perGruppo.get(f.gruppo).push(f);
+  }
+  let i = 0;
+  for (const [gruppo, flussi] of perGruppo) {
+    const h = document.createElement('div');
+    h.className = 'grp-title';
+    h.textContent = gruppo;
+    body.appendChild(h);
+    for (const f of flussi) {
+    i += 1;
+    const aperto = stato.flusso === f.id;
+    const box = document.createElement('section');
+    box.className = 'flow' + (aperto ? ' open' : '');
+
+    const head = document.createElement('button');
+    head.className = 'flow-h';
+    head.innerHTML = `<span class="n">${i}</span><span class="ttl"></span><span class="cnt">${f.steps.length} passi</span>`;
+    head.querySelector('.ttl').textContent = f.titolo;
+    head.addEventListener('click', () => {
+      stato.flusso = aperto ? null : f.id;
+      stato.passo = -1;
+      stato.nodo = null;
+      renderFlussi();
+      if (stato.flusso) {
+        evidenziaFlusso(f);
+        adatta([...new Set(f.steps.flatMap(s => [s.from, s.to]))]);
+      } else {
+        pulisciEvidenza();
+      }
+    });
+    box.appendChild(head);
+
+    const b = document.createElement('div');
+    b.className = 'flow-b';
+    const d = document.createElement('p');
+    d.className = 'flow-desc';
+    d.textContent = f.descrizione;
+    b.appendChild(d);
+
+    const ol = document.createElement('ol');
+    ol.className = 'steps';
+    f.steps.forEach((s, idx) => {
+      const li = document.createElement('li');
+      li.dataset.i = idx + 1;
+      if (aperto && stato.passo === idx) li.classList.add('active');
+      const hop = document.createElement('span');
+      hop.className = 'hop';
+      const from = nodeById.get(s.from), to = nodeById.get(s.to);
+      hop.innerHTML = `${escapeHtml(from ? from.label : s.from)} <span class="arr">→</span> ${escapeHtml(to ? to.label : s.to)}`;
+      hop.addEventListener('click', () => {
+        stato.passo = stato.passo === idx ? -1 : idx;
+        renderFlussi();
+        evidenziaFlusso(f, stato.passo);
+        if (stato.passo >= 0) adatta([s.from, s.to]);
+      });
+      li.appendChild(hop);
+      if (s.nota) {
+        const nt = document.createElement('div');
+        nt.className = 'note';
+        nt.textContent = s.nota;
+        li.appendChild(nt);
+      }
+      ol.appendChild(li);
+    });
+    b.appendChild(ol);
+    box.appendChild(b);
+    body.appendChild(box);
+    }
+  }
+}
+
+function renderDettaglio(id) {
+  const n = nodeById.get(id);
+  if (!n) return;
+  const grp = groupById.get(n.group) || {};
+  titolo.textContent = 'Componente';
+  sottotitolo.textContent = grp.label || '';
+  body.innerHTML = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'detail';
+
+  const back = document.createElement('button');
+  back.className = 'btn back';
+  back.textContent = '← Tutti i flussi';
+  back.addEventListener('click', () => { stato.nodo = null; pulisciEvidenza(); renderFlussi(); });
+  wrap.appendChild(back);
+
+  const h = document.createElement('h3'); h.textContent = n.label; wrap.appendChild(h);
+  const f = document.createElement('div'); f.className = 'file'; f.textContent = n.file; wrap.appendChild(f);
+
+  wrap.appendChild(sez('In breve'));
+  const p1 = document.createElement('p'); p1.textContent = n.sommario; wrap.appendChild(p1);
+
+  if (n.dettaglio) {
+    wrap.appendChild(sez('Perché è fatto così'));
+    const p2 = document.createElement('p'); p2.textContent = n.dettaglio; wrap.appendChild(p2);
+  }
+
+  const entranti = DATI.edges.filter(e => e.to === id);
+  const uscenti  = DATI.edges.filter(e => e.from === id);
+  if (uscenti.length) { wrap.appendChild(sez('Dipende da')); wrap.appendChild(lista(uscenti, 'to')); }
+  if (entranti.length) { wrap.appendChild(sez('Usato da')); wrap.appendChild(lista(entranti, 'from')); }
+
+  const flussi = DATI.flows.filter(fl => fl.steps.some(s => s.from === id || s.to === id));
+  if (flussi.length) {
+    wrap.appendChild(sez('Compare nei flussi'));
+    const ul = document.createElement('ul');
+    flussi.forEach(fl => {
+      const li = document.createElement('li');
+      const a = document.createElement('a'); a.className = 'rel'; a.textContent = fl.titolo;
+      a.addEventListener('click', () => {
+        stato.nodo = null; stato.flusso = fl.id; stato.passo = -1;
+        renderFlussi(); evidenziaFlusso(fl);
+        adatta([...new Set(fl.steps.flatMap(s => [s.from, s.to]))]);
+      });
+      li.appendChild(a);
+      ul.appendChild(li);
+    });
+    wrap.appendChild(ul);
+  }
+  body.appendChild(wrap);
+
+  function sez(t) { const d = document.createElement('div'); d.className = 'sec'; d.textContent = t; return d; }
+  function lista(archi, campo) {
+    const ul = document.createElement('ul');
+    archi.forEach(e => {
+      const altro = nodeById.get(e[campo]);
+      const li = document.createElement('li');
+      const a = document.createElement('a'); a.className = 'rel';
+      a.textContent = altro ? altro.label : e[campo];
+      a.addEventListener('click', () => apriNodo(e[campo]));
+      li.appendChild(a);
+      if (e.label) li.appendChild(document.createTextNode(' — ' + e.label));
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+}
+
+function apriNodo(id) {
+  stato.nodo = id;
+  stato.flusso = null;
+  stato.passo = -1;
+  evidenziaNodo(id);
+  renderDettaglio(id);
+  const n = nodeById.get(id);
+  if (n) {
+    const vicini = DATI.edges.filter(e => e.from === id || e.to === id)
+                             .flatMap(e => [e.from, e.to]);
+    adatta([...new Set([id, ...vicini])]);
+  }
+}
+
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+/* ------------------------------------------------------------------ *
+ * Tooltip
+ * ------------------------------------------------------------------ */
+function mostraTip(n, ev) {
+  const grp = groupById.get(n.group) || {};
+  tip.innerHTML = `<div class="t-h"><span class="dot" style="background:${grp.color}"></span><span></span></div>
+                   <div class="t-f"></div><div class="t-b"></div>`;
+  tip.querySelector('.t-h span:last-child').textContent = n.label;
+  tip.querySelector('.t-f').textContent = n.file;
+  tip.querySelector('.t-b').textContent = n.sommario;
+  tip.style.opacity = 1;
+  muoviTip(ev);
+}
+function muoviTip(ev) {
+  const b = tip.getBoundingClientRect();
+  let x = ev.clientX + 16, y = ev.clientY + 16;
+  if (x + b.width > innerWidth - 10) x = ev.clientX - b.width - 16;
+  if (y + b.height > innerHeight - 10) y = ev.clientY - b.height - 16;
+  tip.style.left = Math.max(8, x) + 'px';
+  tip.style.top = Math.max(8, y) + 'px';
+}
+const nascondiTip = () => { tip.style.opacity = 0; };
+
+/* ------------------------------------------------------------------ *
+ * Legenda / filtri di gruppo
+ * ------------------------------------------------------------------ */
+function renderLegenda() {
+  const box = document.getElementById('legend');
+  box.innerHTML = '';
+  box.classList.toggle('chiusa', stato.legendaChiusa);
+
+  // La legenda sta SOPRA il diagramma: da aperta copre l'angolo in basso a
+  // sinistra, dove finiscono i cluster piu bassi. Da qui il pulsante di
+  // chiusura, oltre allo spazio riservato in adatta().
+  const t = document.createElement('button');
+  t.className = 'chip toggle';
+  t.textContent = stato.legendaChiusa ? '▸ Legenda' : '▾ Legenda';
+  t.addEventListener('click', () => { stato.legendaChiusa = !stato.legendaChiusa; renderLegenda(); });
+  box.appendChild(t);
+
+  for (const g of DATI.groups) {
+    const c = document.createElement('button');
+    c.className = 'chip' + (stato.gruppiOff.has(g.id) ? ' off' : '');
+    c.innerHTML = `<span class="dot" style="background:${g.color}"></span><span></span>`;
+    c.querySelector('span:last-child').textContent = g.label;
+    c.title = g.descrizione;
+    c.addEventListener('click', () => {
+      stato.gruppiOff.has(g.id) ? stato.gruppiOff.delete(g.id) : stato.gruppiOff.add(g.id);
+      renderLegenda();
+      applicaFiltri();
+    });
+    box.appendChild(c);
+  }
+}
+
+function applicaFiltri() {
+  const off = stato.gruppiOff;
+  gNodes.querySelectorAll('.node').forEach(g => {
+    const n = nodeById.get(g.dataset.id);
+    g.classList.toggle('hidden-group', !!(n && off.has(n.group)));
+  });
+  gEdges.querySelectorAll('.edge').forEach(g => {
+    const a = nodeById.get(g.dataset.from), b = nodeById.get(g.dataset.to);
+    const nascosto = (a && off.has(a.group)) || (b && off.has(b.group));
+    g.classList.toggle('hidden-group', !!nascosto);
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Ricerca
+ * ------------------------------------------------------------------ */
+document.getElementById('search').addEventListener('input', (ev) => {
+  const q = ev.target.value.trim().toLowerCase();
+  if (!q) {
+    gNodes.querySelectorAll('.node').forEach(g => g.classList.remove('sel'));
+    if (!stato.flusso && !stato.nodo) pulisciEvidenza();
+    return;
+  }
+  const trovati = DATI.nodes.filter(n =>
+    (n.label + ' ' + n.file + ' ' + n.sommario + ' ' + (n.dettaglio || '')).toLowerCase().includes(q));
+  pulisciEvidenza();
+  if (!trovati.length) return;
+  viewport.classList.add('focus');
+  trovati.forEach(n => {
+    const g = gNodes.querySelector(`.node[data-id="${n.id}"]`);
+    if (g) g.classList.add('hit');
+  });
+  if (trovati.length <= 6) adatta(trovati.map(n => n.id));
+});
+
+/* ------------------------------------------------------------------ *
+ * Avvio
+ * ------------------------------------------------------------------ */
+document.getElementById('brand-title').textContent = DATI.meta.prodotto + ' — architettura';
+document.getElementById('brand-sub').textContent =
+  `v${DATI.meta.versione} · ${DATI.nodes.length} componenti · ${DATI.edges.length} relazioni · ${DATI.flows.length} flussi`;
+
+disegna();
+renderLegenda();
+renderFlussi();
+adatta();
+
+gNodes.addEventListener('click', (ev) => {
+  const g = ev.target.closest('.node');
+  if (g) apriNodo(g.dataset.id);
+});
+gNodes.addEventListener('mouseover', (ev) => {
+  const g = ev.target.closest('.node');
+  if (g) mostraTip(nodeById.get(g.dataset.id), ev);
+});
+gNodes.addEventListener('mousemove', (ev) => { if (tip.style.opacity == 1) muoviTip(ev); });
+gNodes.addEventListener('mouseout', (ev) => { if (ev.target.closest('.node')) nascondiTip(); });
+
+document.getElementById('btn-fit').addEventListener('click', () => adatta());
+document.getElementById('btn-in').addEventListener('click', () => zoomA(1.2));
+document.getElementById('btn-out').addEventListener('click', () => zoomA(1 / 1.2));
+document.getElementById('btn-reset').addEventListener('click', () => {
+  stato.flusso = null; stato.passo = -1; stato.nodo = null; stato.gruppiOff.clear();
+  document.getElementById('search').value = '';
+  pulisciEvidenza(); renderLegenda(); applicaFiltri(); renderFlussi(); adatta();
+});
+document.getElementById('btn-theme').addEventListener('click', () => {
+  const r = document.documentElement;
+  r.dataset.theme = r.dataset.theme === 'dark' ? 'light' : 'dark';
+});
+
+addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape') document.getElementById('btn-reset').click();
+});
+let rid;
+addEventListener('resize', () => { clearTimeout(rid); rid = setTimeout(() => adatta(), 150); });
+</script>
+</body>
+</html>
