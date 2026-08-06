@@ -1375,6 +1375,28 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   box-shadow: none;
 }
 
+/* Menu "Visualizza": raccoglie UML e Grafo 3D. Il pulsante è un .view-tab a
+   tutti gli effetti (stesso aspetto, stessa evidenziazione da attivo), perché
+   per chi guarda è il tab della vista che sta usando. */
+#view-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.view-menu-caret {
+  width: 14px;
+  height: 14px;
+  opacity: 0.65;
+  transition: transform 0.15s ease;
+}
+
+#view-menu-btn[aria-expanded='true'] .view-menu-caret { transform: rotate(180deg); }
+
+/* Nel tab a livello database le due viste non esistono: il pulsante è nascosto
+   e il contenitore non deve lasciare il proprio gap nella barra. */
+.view-menu-wrap:has(> .view-tab.hidden) { display: none; }
+
 .view-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
 .toolbar {
@@ -1429,39 +1451,13 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   border-color: var(--border-2);
 }
 
-.toolbar-checkbox {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font-size: 0.84rem;
-  font-weight: 500;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.15s ease;
-  white-space: nowrap;
-  user-select: none;
+/* Azioni secondarie della toolbar: quadrate, sola icona. L'etichetta vive nel
+   `title` e in `aria-label`. */
+.toolbar button.icon-only {
+  padding: 0;
+  width: 34px;
+  justify-content: center;
 }
-
-.toolbar-checkbox:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: var(--border-2);
-}
-
-.toolbar-checkbox:has(input:checked) {
-  background: rgba(56, 189, 248, 0.12);
-  border-color: rgba(56, 189, 248, 0.3);
-  color: var(--accent, #38bdf8);
-}
-
-.toolbar-checkbox input {
-  display: none;
-}
-
 
 .toolbar button.primary {
   background: var(--accent);
@@ -1664,6 +1660,52 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   color: var(--accent);
   border-color: var(--border-2);
 }
+
+/* Impaginazione: cluster completo (.pager) oppure, quando c'è una sola pagina,
+   il solo riassunto cliccabile (.pager-compact). Vedi updatePagerCollapse. */
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.statusbar button.pager-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--fg-dim);
+  padding: 0 8px;
+  font-size: 0.82rem;
+}
+
+/* Senza l'icona il riassunto sembrerebbe una scritta: è l'unico indizio che
+   sotto ci sono i controlli di impaginazione, quindi resta visibile anche a
+   riposo e si accende al passaggio del mouse. */
+.statusbar button.pager-compact svg {
+  width: 14px;
+  height: 14px;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.statusbar button.pager-compact:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.statusbar button.pager-compact:hover svg { opacity: 1; }
+
+/* Intervallo cliccabile: richiude i controlli riaperti a mano. */
+.pager-toggle {
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.pager-toggle:hover { color: var(--fg); }
 
 /* Pulsante "＋" accanto ai titoli delle sezioni (indici, colonne) */
 .mini-btn {
@@ -2023,18 +2065,34 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .grid-select-col { width: 32px; text-align: center; }
 .grid-select-col input[type="checkbox"] { cursor: pointer; }
 
+/* Barra CONTESTUALE: compare solo con una selezione attiva (vedi
+   updateBulkDeleteUI in grid.js). Lo sfondo colorato la distingue dalla
+   toolbar sopra — non è un comando sempre disponibile, è lo stato "hai
+   selezionato qualcosa" con le azioni che ne conseguono. */
 .bulk-delete-toolbar {
   display: flex;
+  align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  background: var(--bg-2);
+  background: var(--danger-bg);
   border-bottom: 1px solid var(--border);
   border-top: 1px solid var(--border);
+  animation: modalFadeIn 0.12s ease-out;
+}
+
+.bulk-delete-toolbar .bulk-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin-right: 4px;
 }
 
 .bulk-delete-toolbar button {
   padding: 6px 12px;
   font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .bulk-delete-toolbar button:disabled {
@@ -2414,6 +2472,44 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   background: rgba(74, 158, 255, 0.18);
   color: var(--accent, #4a9eff);
   font-weight: 600;
+}
+
+/* Voce con casella di spunta (es. aggiornamento automatico): a differenza delle
+   altre non chiude il menu, così si vede subito l'effetto della scelta. */
+.toolbar-dropdown-menu .checkbox-item input[type='checkbox'] {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent, #4a9eff);
+  cursor: pointer;
+}
+
+.toolbar-dropdown-menu .checkbox-item:has(input:checked) {
+  color: var(--accent, #4a9eff);
+}
+
+.toolbar-dropdown-menu .dropdown-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.toolbar-dropdown-menu .dropdown-item:disabled:hover {
+  background: transparent;
+  color: var(--fg, #e1e4e8);
+}
+
+.toolbar-dropdown-menu .dropdown-item.danger {
+  color: var(--danger);
+}
+
+.toolbar-dropdown-menu .dropdown-item.danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.toolbar-dropdown-menu .dropdown-item.danger:disabled:hover {
+  color: var(--danger);
 }
 
 .toolbar-dropdown-menu .dropdown-divider {

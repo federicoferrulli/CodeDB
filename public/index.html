@@ -587,12 +587,27 @@
                       class="tab-label-short">Dati</span></button>
                   <button class="view-tab" data-view="details"><i data-lucide="info"></i> <span class="tab-label-full">Dettagli</span><span
                       class="tab-label-short">Info</span></button>
-                  <button class="view-tab" data-view="uml"><i data-lucide="network"></i> <span class="tab-label-full">UML</span><span
-                      class="tab-label-short">UML</span></button>
-                  <button class="view-tab" data-view="graph3d"><i data-lucide="boxes"></i> <span class="tab-label-full">Grafo 3D</span><span
-                      class="tab-label-short">Grafo</span></button>
                   <button class="view-tab" data-view="query"><i data-lucide="zap"></i> <span class="tab-label-full">Query &amp;
                       Aggregate</span><span class="tab-label-short">Query</span></button>
+                  <!-- UML e Grafo 3D descrivono lo SCHEMA, non i dati: si guardano
+                       una volta per capire com'è fatto il database, non a ogni
+                       query. Da tab sempre presenti rubavano metà della barra alle
+                       tre viste che si usano davvero. -->
+                  <div class="toolbar-dropdown-wrap view-menu-wrap">
+                    <button type="button" id="view-menu-btn" class="view-tab" aria-haspopup="true"
+                      aria-expanded="false" title="Altre viste dello schema: UML e Grafo 3D">
+                      <i data-lucide="eye"></i>
+                      <span id="view-menu-label" class="tab-label-full">Visualizza</span><span
+                        class="tab-label-short">Vista</span>
+                      <i data-lucide="chevron-down" class="view-menu-caret"></i>
+                    </button>
+                    <div id="view-menu" class="toolbar-dropdown-menu hidden">
+                      <button type="button" class="dropdown-item view-menu-item" data-view="uml" data-short="UML"
+                        data-label="Diagramma UML"><i data-lucide="network"></i> Diagramma UML</button>
+                      <button type="button" class="dropdown-item view-menu-item" data-view="graph3d"
+                        data-short="Grafo" data-label="Grafo 3D"><i data-lucide="boxes"></i> Grafo 3D</button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -612,24 +627,49 @@
                       aria-label="Query recenti di questa collection"><i data-lucide="clock"></i></button>
                     <div id="query-history-panel" class="hidden"></div>
                   </span>
+                  <!-- Una sola azione porta un'etichetta: è quella che si preme.
+                       Il resto è icona sola (inserimento, ricarica) o sta nel menu
+                       ⋯, perché con cinque pulsanti dello stesso peso "Esegui"
+                       smetteva di essere il pulsante ovvio. -->
                   <button id="run-btn" class="primary" title="Esegui (Invio)"><i data-lucide="play"></i> Esegui</button>
-                  <button id="explain-btn" title="Piano di esecuzione della query corrente"><i data-lucide="compass"></i> Piano</button>
-                  <button id="insert-btn" title="Inserisci un nuovo documento"><i data-lucide="plus"></i> Documento</button>
-                  <button id="refresh-btn" title="Ricarica" aria-label="Ricarica"><i data-lucide="rotate-cw"></i></button>
-                  <label id="polling-toggle" class="toolbar-checkbox hidden" title="Aggiorna automaticamente ogni 5 secondi">
-                    <input type="checkbox" id="polling-checkbox"> 
-                    <i data-lucide="timer"></i>
-                    <span>Auto 5s</span>
-                  </label>
+                  <button id="insert-btn" class="icon-only" title="Inserisci un nuovo documento"
+                    aria-label="Inserisci un nuovo documento"><i data-lucide="plus"></i></button>
+                  <button id="refresh-btn" class="icon-only" title="Ricarica" aria-label="Ricarica"><i
+                      data-lucide="rotate-cw"></i></button>
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="data-more-btn" class="icon-only" aria-haspopup="true"
+                      aria-expanded="false" title="Altre azioni" aria-label="Altre azioni"><i
+                        data-lucide="more-horizontal"></i></button>
+                    <div id="data-more-menu" class="toolbar-dropdown-menu hidden">
+                      <button type="button" id="explain-btn" class="dropdown-item"
+                        title="Piano di esecuzione della query corrente"><i data-lucide="compass"></i> Piano di
+                        esecuzione</button>
+                      <label id="polling-toggle" class="dropdown-item checkbox-item hidden"
+                        title="Aggiorna automaticamente ogni 5 secondi">
+                        <input type="checkbox" id="polling-checkbox">
+                        <i data-lucide="timer"></i>
+                        <span>Aggiornamento automatico (5s)</span>
+                      </label>
+                      <div class="dropdown-divider"></div>
+                      <!-- Distruttiva e senza bersaglio visibile: sta qui, non a un
+                           clic di distanza accanto ai dati. -->
+                      <button type="button" id="delete-all-btn" class="dropdown-item danger" disabled
+                        title="Elimina tutti i documenti che soddisfano il filtro corrente"><i
+                          data-lucide="trash-2"></i> Elimina tutto…</button>
+                    </div>
+                  </div>
                 </div>
 
                 <div id="query-error" class="error hidden"></div>
 
-                <div class="bulk-delete-toolbar hidden">
-                  <button id="delete-selected-btn" disabled title="Elimina i documenti selezionati">🗑 Elimina
-                    (0)</button>
-                  <button id="delete-all-btn" disabled title="Elimina tutti i documenti con questo filtro">🗑 Elimina
-                    tutto</button>
+                <!-- Barra contestuale: compare SOLO con una selezione attiva.
+                     Prima "Elimina (0)" stava sempre in mezzo ai dati, disabilitata
+                     nel 99% del tempo. -->
+                <div class="bulk-delete-toolbar hidden" role="toolbar" aria-label="Azioni sulla selezione">
+                  <span id="bulk-count" class="bulk-count"></span>
+                  <button id="delete-selected-btn" class="danger" title="Elimina i documenti selezionati"><i
+                      data-lucide="trash-2"></i> Elimina</button>
+                  <button id="bulk-clear-btn" class="ghost" title="Annulla la selezione">Deseleziona</button>
                 </div>
 
                 <div class="grid-wrap">
@@ -644,22 +684,32 @@
                   <span id="cell-info"></span>
                   <span id="loading-info"></span>
                   <span class="spacer"></span>
-                  <label id="infinite-toggle-label"
-                    title="Scroll infinito: carica altri dati man mano che scorri (solo find)">
-                    <input type="checkbox" id="infinite-toggle"> ∞ Scroll
-                  </label>
-                  <button id="prev-btn" class="ghost">‹ Prec</button>
-                  <span id="page-info"></span>
-                  <button id="next-btn" class="ghost">Succ ›</button>
-                  <select id="page-size" title="Righe per pagina (o per blocco con scroll infinito)">
-                    <option>25</option>
-                    <option selected>50</option>
-                    <option>100</option>
-                    <option>200</option>
-                    <option>500</option>
-                    <option>1000</option>
-                    <option>5000</option>
-                  </select>
+                  <!-- Quando tutte le righe stanno in una pagina non c'è nulla da
+                       impaginare: i cinque controlli si riducono a "1–1 di 1", che
+                       li riapre con un clic. -->
+                  <!-- Il testo sta in uno span suo: l'icona è statica e non deve
+                       essere spazzata via dal testo riscritto a ogni query. -->
+                  <button type="button" id="pager-compact" class="pager-compact hidden"
+                    title="Mostra i controlli di impaginazione"><span id="pager-compact-text"></span><i
+                      data-lucide="unfold-horizontal"></i></button>
+                  <span id="pager" class="pager">
+                    <label id="infinite-toggle-label"
+                      title="Scroll infinito: carica altri dati man mano che scorri (solo find)">
+                      <input type="checkbox" id="infinite-toggle"> ∞ Scroll
+                    </label>
+                    <button id="prev-btn" class="ghost">‹ Prec</button>
+                    <span id="page-info"></span>
+                    <button id="next-btn" class="ghost">Succ ›</button>
+                    <select id="page-size" title="Righe per pagina (o per blocco con scroll infinito)">
+                      <option>25</option>
+                      <option selected>50</option>
+                      <option>100</option>
+                      <option>200</option>
+                      <option>500</option>
+                      <option>1000</option>
+                      <option>5000</option>
+                    </select>
+                  </span>
                 </div>
               </div>
 

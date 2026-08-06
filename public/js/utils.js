@@ -455,6 +455,46 @@ export function positionFixedDropdown(btn, menu) {
   menu.style.right = 'auto';
 }
 
+// Aggancia un menu a tendina a un pulsante di barra: apre/chiude, chiude gli
+// altri menu aperti, e si richiude al clic fuori, con Esc, al ridimensionamento
+// e allo scroll (il menu è posizionato `fixed`, quindi non seguirebbe il
+// pulsante). `aria-expanded` resta allineato allo stato reale.
+export function initToolbarDropdown(btnSel, menuSel) {
+  const btn = typeof btnSel === 'string' ? $(btnSel) : btnSel;
+  const menu = typeof menuSel === 'string' ? $(menuSel) : menuSel;
+  if (!btn || !menu) return;
+
+  const chiudi = () => {
+    menu.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  };
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const eraChiuso = menu.classList.contains('hidden');
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    document.querySelectorAll('[aria-haspopup="true"]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    if (!eraChiuso) return;
+    positionFixedDropdown(btn, menu);
+    btn.setAttribute('aria-expanded', 'true');
+  });
+
+  // Una voce cliccata ha fatto il suo lavoro: il menu si chiude. Fa eccezione
+  // la casella di spunta, dove si vede subito l'effetto della scelta.
+  menu.addEventListener('click', (e) => {
+    if (e.target.closest('.checkbox-item')) return;
+    if (e.target.closest('.dropdown-item')) chiudi();
+  });
+
+  document.addEventListener('click', (e) => {
+    if (e.target.closest(`#${menu.id}`) || e.target === btn || btn.contains(e.target)) return;
+    chiudi();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') chiudi(); });
+  window.addEventListener('resize', chiudi);
+  window.addEventListener('scroll', chiudi, true);
+}
+
 // Costruttore albero JSON interattivo con rendering pigro dei figli
 export function buildJsonNode(val, key = null, isRoot = false) {
   const node = document.createElement('div');

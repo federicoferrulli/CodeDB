@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate } from './utils.js';
+import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -290,8 +290,7 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
       if (!isForActiveTab(res)) return; // footer e toolbar sono del workspace attivo
       updateFooter();
       updateInfiniteUI();
-      $('.bulk-delete-toolbar').classList.toggle('hidden',
-        $('#query-mode').value === 'aggregate' || st.total === 0);
+      updateBulkDeleteUI(); // il totale appena arrivato abilita/disabilita "Elimina tutto"
     })
     .catch((err) => {
       const st = (err && err._state) || state;
@@ -574,7 +573,6 @@ export function renderGrid(opts = {}) {
 
   updateFooter();
   updateInfiniteUI();
-  $('.bulk-delete-toolbar').classList.toggle('hidden', !canSelect || state.total === 0);
   updateBulkDeleteUI();
   // Dopo il render, se lo scroll infinito è attivo e la finestra non è piena,
   // carica subito il blocco successivo.
@@ -686,6 +684,56 @@ function updateFooter() {
     $('#next-btn').disabled = exact
       ? (state.skip + state.limit >= state.total)
       : (state.docs.length < state.limit);
+  }
+  updatePagerCollapse(exact);
+}
+
+// Footer comprimibile. Quando il risultato sta tutto in una pagina non c'è
+// nulla da impaginare, e i cinque controlli (∞ Scroll, Prec, intervallo, Succ,
+// righe per pagina) occupano metà barra per non fare niente: si riducono a una
+// sola scritta "1–1 di 1 documenti", che li riapre con un clic. L'intervallo
+// resta cliccabile per richiuderli, e la scelta vive nello stato del tab —
+// vale finché si guarda questo risultato, non per sempre.
+function updatePagerCollapse(exact) {
+  const pager = $('#pager');
+  const chip = $('#pager-compact');
+  const info = $('#result-info');
+  if (!pager || !chip) return;
+
+  // Comprimibile solo con la certezza che non ci sia altro: con un totale
+  // stimato o ancora in corso nascondere "Succ ›" significherebbe nascondere
+  // righe reali.
+  const unaPagina = !state.infiniteScroll
+    && state.skip === 0
+    && exact
+    && state.docs.length >= state.total;
+  const compresso = unaPagina && !state.pagerExpanded;
+
+  pager.classList.toggle('hidden', compresso);
+  chip.classList.toggle('hidden', !compresso);
+  // Da compresso il chip dice già tutto: "1 documenti — 1 mostrati" sarebbe la
+  // stessa frase due volte.
+  if (info) info.classList.toggle('hidden', compresso);
+
+  if (compresso) {
+    const uno = state.total === 1;
+    const parola = isSqlType(state.dbType)
+      ? (uno ? 'riga' : 'righe')
+      : (uno ? 'documento' : 'documenti');
+    // Solo il testo: l'icona ↔ accanto dice che il riassunto si può aprire, e
+    // scrivere sul pulsante la cancellerebbe.
+    const testo = $('#pager-compact-text') || chip;
+    testo.textContent = state.total === 0
+      ? `nessun${isSqlType(state.dbType) ? 'a riga' : ' documento'}`
+      : `1–${state.docs.length} di ${state.total} ${parola}`;
+  }
+
+  // Comprimibile ma espanso: l'intervallo fa da maniglia per richiudere.
+  const pageInfo = $('#page-info');
+  if (pageInfo) {
+    const richiudibile = unaPagina && !!state.pagerExpanded;
+    pageInfo.classList.toggle('pager-toggle', richiudibile);
+    pageInfo.title = richiudibile ? 'Nascondi i controlli di impaginazione' : '';
   }
 }
 
@@ -854,18 +902,39 @@ export function deleteAllWithFilter() {
   }).catch((err) => toast(err.message, true));
 }
 
+// Azzera la selezione multipla e ridisegna le caselle di spunta della pagina
+// (la selezione vive in `state`, le caselle sono nel DOM già renderizzato).
+function clearDocSelection() {
+  state.selectedDocs.clear();
+  document.querySelectorAll('#grid .grid-select-col input[type="checkbox"]').forEach((cb) => {
+    cb.checked = false;
+    cb.indeterminate = false;
+  });
+  updateBulkDeleteUI();
+}
+
+// La barra delle azioni sulla selezione è CONTESTUALE: esiste solo finché c'è
+// qualcosa di selezionato. Prima era sempre in mezzo ai dati con "Elimina (0)"
+// disabilitata, cioè un'azione distruttiva perennemente sotto il cursore e
+// perennemente inutile. "Elimina tutto" non dipende dalla selezione e sta ora
+// nel menu ⋯ della toolbar, dove resta raggiungibile senza stare in vista.
 export function updateBulkDeleteUI() {
   const selected = state.selectedDocs.size;
-  const deleteSelectedBtn = $('#delete-selected-btn');
+  const bar = document.querySelector('.bulk-delete-toolbar');
   const deleteAllBtn = $('#delete-all-btn');
 
-  if (deleteSelectedBtn) {
-    deleteSelectedBtn.disabled = selected === 0;
-    deleteSelectedBtn.textContent = `🗑 Elimina (${selected})`;
+  if (bar) bar.classList.toggle('hidden', selected === 0);
+
+  const count = $('#bulk-count');
+  if (count) {
+    const word = isSqlType(state.dbType)
+      ? (selected === 1 ? 'riga selezionata' : 'righe selezionate')
+      : (selected === 1 ? 'documento selezionato' : 'documenti selezionati');
+    count.textContent = `${selected} ${word}`;
   }
 
   if (deleteAllBtn) {
-    deleteAllBtn.disabled = state.total === 0;
+    deleteAllBtn.disabled = state.total === 0 || $('#query-mode').value === 'aggregate';
   }
 }
 
@@ -952,8 +1021,21 @@ export function initGrid() {
     runQuery();
   });
 
+  // Footer comprimibile: il chip riapre i controlli, l'intervallo li richiude.
+  $('#pager-compact').addEventListener('click', () => {
+    state.pagerExpanded = true;
+    updateFooter();
+  });
+  $('#page-info').addEventListener('click', () => {
+    if (!state.pagerExpanded) return;
+    state.pagerExpanded = false;
+    updateFooter();
+  });
+
   initQueryHistory();
 
+  initToolbarDropdown('#data-more-btn', '#data-more-menu');
   $('#delete-selected-btn').addEventListener('click', deleteSelectedDocs);
   $('#delete-all-btn').addEventListener('click', deleteAllWithFilter);
+  $('#bulk-clear-btn').addEventListener('click', clearDocSelection);
 }

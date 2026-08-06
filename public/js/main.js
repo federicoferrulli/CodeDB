@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { onTabChange } from './tabs.js';
-import { $, migraChiave } from './utils.js';
+import { $, migraChiave, initToolbarDropdown } from './utils.js';
 import { initUml, loadUml } from './uml.js';
 import { initGraph3d, loadGraph3d } from './graph3d.js';
 import { initConnection } from './connection.js';
@@ -49,6 +49,19 @@ if ('serviceWorker' in navigator) {
 export function setView(view) {
   state.view = view;
   document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view-menu-item').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+  // Il pulsante "Visualizza" fa da tab per le due viste che ospita: quando una è
+  // attiva ne prende il nome ed è evidenziato come gli altri tab, altrimenti chi
+  // guarda l'UML non avrebbe alcun indizio di dove si trova.
+  const menuBtn = $('#view-menu-btn');
+  if (menuBtn) {
+    const voce = document.querySelector(`.view-menu-item[data-view="${view}"]`);
+    menuBtn.classList.toggle('active', !!voce);
+    const full = $('#view-menu-label');
+    const short = menuBtn.querySelector('.tab-label-short');
+    if (full) full.textContent = voce ? voce.dataset.label : 'Visualizza';
+    if (short) short.textContent = voce ? voce.dataset.short : 'Vista';
+  }
   $('#view-data').classList.toggle('hidden', view !== 'data');
   $('#view-details').classList.toggle('hidden', view !== 'details');
   $('#view-uml').classList.toggle('hidden', view !== 'uml');
@@ -61,7 +74,7 @@ export function setView(view) {
 }
 
 document.addEventListener('click', (e) => {
-  const tab = e.target.closest('.view-tab');
+  const tab = e.target.closest('.view-tab, .view-menu-item');
   if (tab && tab.dataset.view) {
     setView(tab.dataset.view);
   }
@@ -177,6 +190,7 @@ function initSettingsMenu() {
 // Per primo: con RBAC attivo la schermata di accesso deve comparire prima che
 // gli altri moduli inizino a parlare col server.
 initAuth();
+initToolbarDropdown('#view-menu-btn', '#view-menu'); // menu "Visualizza" (UML, Grafo 3D)
 initUml();
 initGraph3d();
 initConnection();

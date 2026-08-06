@@ -1,6 +1,7 @@
 {
   "meta": {
     "prodotto": "CodeDB",
+    "impronta": "codedb-architecture-v1",
     "versione": "0.1.0-beta.1",
     "descrizione": "GUI web multi-database (MongoDB, MySQL, PostgreSQL) in stile DBeaver. Nessuna REST: tutta la comunicazione browser-backend passa da Socket.IO con ack; unica eccezione HTTP e l'endpoint /mcp per i client AI.",
     "licenza": "AGPL-3.0-only",
