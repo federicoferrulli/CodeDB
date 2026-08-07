@@ -239,6 +239,18 @@ document.addEventListener('keydown', (e) => {
 // riordina l'array sottostante e ri-renderizza. Si lavora per id, non per
 // indice: la barra di connessione salta i tab non connessi, quindi la posizione
 // visiva non coincide con l'indice nell'array.
+// Classi che descrivono il bersaglio del trascinamento: `drag-over` è la tab
+// sotto il cursore, `drag-slide-*` il verso in cui si sposta per aprire il
+// varco (vedi "Riordino tab" in style.css). Si ripuliscono sempre TUTTE
+// insieme: la tab che scivola non è quella che riceve `dragend`, e una classe
+// dimenticata lascia una tab spostata di 12px per il resto della sessione.
+const CLASSI_DRAG = ['drag-over', 'drag-slide-left', 'drag-slide-right'];
+function pulisciSegniDrag() {
+  CLASSI_DRAG.forEach((c) => {
+    document.querySelectorAll('.' + c).forEach((n) => n.classList.remove(...CLASSI_DRAG));
+  });
+}
+
 export function makeDraggable(el, id, onReorder, getPayload) {
   el.draggable = true;
   el.addEventListener('dragstart', (e) => {
@@ -254,17 +266,27 @@ export function makeDraggable(el, id, onReorder, getPayload) {
   });
   el.addEventListener('dragend', () => {
     el.classList.remove('dragging');
-    document.querySelectorAll('.drag-over').forEach((n) => n.classList.remove('drag-over'));
+    pulisciSegniDrag();
   });
   el.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (!el.classList.contains('dragging')) el.classList.add('drag-over');
+    if (el.classList.contains('dragging')) return;
+    // Da che parte far scivolare la tab per aprire il varco: se quella in mano
+    // sta PRIMA di questa nella barra, la scavalcherà da sinistra e il posto va
+    // aperto a destra — quindi questa arretra a sinistra. Con un verso fisso
+    // metà dei trascinamenti indicherebbe il lato sbagliato.
+    const inMano = document.querySelector('.dragging');
+    const daSinistra = !!inMano
+      && !!(inMano.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+    el.classList.add('drag-over');
+    el.classList.toggle('drag-slide-left', daSinistra);
+    el.classList.toggle('drag-slide-right', !daSinistra);
   });
-  el.addEventListener('dragleave', () => el.classList.remove('drag-over'));
+  el.addEventListener('dragleave', () => el.classList.remove(...CLASSI_DRAG));
   el.addEventListener('drop', (e) => {
     e.preventDefault();
-    el.classList.remove('drag-over');
+    pulisciSegniDrag();
     const fromId = e.dataTransfer.getData('text/plain');
     if (fromId && fromId !== id) onReorder(fromId, id);
   });

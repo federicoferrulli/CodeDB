@@ -967,8 +967,14 @@ header {
 .tab-bar-wrap {
   display: flex;
   align-items: flex-end;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  /* La riga di separazione dal contenuto è dipinta nel BACKGROUND, non come
+     border-bottom: un bordo appartiene al contenitore e nessun figlio può
+     coprirlo, quindi taglierebbe in due la tab attiva proprio sul punto in cui
+     deve sembrare un unico foglio col pannello. Come sfondo invece i figli ci
+     passano sopra, e la tab attiva interrompe la riga sotto di sé. */
+  background:
+    linear-gradient(to top, var(--border) 0 1px, transparent 1px),
+    var(--bg-2);
   flex-shrink: 0;
   min-width: 0;
   width: 100%;
@@ -978,7 +984,9 @@ header {
   display: flex;
   align-items: flex-end;
   gap: 4px;
-  padding: 6px 12px 0 6px;
+  /* padding-left ≥ --tab-shoulder: la spalluccia sinistra della prima tab
+     attiva sporge fuori dalla tab e senza spazio verrebbe tagliata. */
+  padding: 6px 12px 0 12px;
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -997,7 +1005,7 @@ header {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   border-bottom: 1px solid var(--bg-2);
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--tab-radius) var(--tab-radius) 0 0;
   color: var(--fg-dim);
   font-size: 0.85rem;
   font-weight: 500;
@@ -1026,37 +1034,92 @@ header {
   font-weight: 500;
 }
 
-.conn-tab {
+/* ---------- Forma delle tab: "smart corner" ----------------------------------
+   La tab attiva ha i due angoli inferiori INVERTITI: due spallucce concave che
+   si aprono verso il contenuto, come in Chrome e Safari. È la forma a dire
+   quale tab sta davanti, e non richiede di ridipingere nulla attorno — la tab
+   resta la sola superficie chiara (--bg-surface) su una barra scura, come
+   prima, e la riga di separazione si interrompe sotto di lei (vedi
+   .tab-bar-wrap) invece di tagliarla.
+
+   Le spallucce sono ::before/::after presenti su TUTTE le tab con larghezza 0:
+   così al cambio di tab la forma si TRASFORMA (si chiude di qua, si apre di
+   là) invece di comparire di scatto. Sono ritagli di un quarto di cerchio
+   ottenuti con un radial-gradient centrato sull'angolo alto della spalluccia:
+   dentro il raggio è trasparente (si vede la barra scura), fuori è pieno del
+   colore della tab. Il mezzo pixel in più sul secondo stop serve solo a
+   evitare la scalettatura sul bordo dell'arco.
+
+   Le tab NON attive non hanno cornice: sull'originale sono etichette posate
+   sulla barra, e una cornice attorno a ognuna toglierebbe il contrasto alla
+   sola che deve emergere. */
+
+.conn-tab, .coll-tab {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   padding: 7px 14px;
-  background: rgba(15, 23, 42, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 2px solid transparent;
-  border-radius: 6px 6px 0 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--tab-radius) var(--tab-radius) 0 0;
   color: #94a3b8;
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
   user-select: none;
   flex-shrink: 0;
-  transition: all 0.18s ease;
   position: relative;
+  transition:
+    background-color var(--tab-morph) var(--tab-ease),
+    color var(--tab-morph) var(--tab-ease),
+    border-radius var(--tab-morph) var(--tab-ease),
+    box-shadow var(--tab-morph) var(--tab-ease),
+    transform var(--tab-morph) var(--tab-ease);
 }
 
-.conn-tab:hover {
+.conn-tab::before, .conn-tab::after,
+.coll-tab::before, .coll-tab::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: var(--tab-shoulder);
+  pointer-events: none;
+  transition: width var(--tab-morph) var(--tab-ease);
+}
+
+.conn-tab, .coll-tab { --tab-merge: var(--bg-surface); }
+
+.conn-tab::before, .coll-tab::before {
+  right: 100%;
+  background: radial-gradient(circle at 0 0,
+    transparent var(--tab-shoulder), var(--tab-merge) calc(var(--tab-shoulder) + 0.5px));
+}
+
+.conn-tab::after, .coll-tab::after {
+  left: 100%;
+  background: radial-gradient(circle at 100% 0,
+    transparent var(--tab-shoulder), var(--tab-merge) calc(var(--tab-shoulder) + 0.5px));
+}
+
+.conn-tab.active::before, .conn-tab.active::after,
+.coll-tab.active::before, .coll-tab.active::after {
+  width: var(--tab-shoulder);
+}
+
+.conn-tab:not(.active):hover, .coll-tab:not(.active):hover {
   background: rgba(255, 255, 255, 0.06);
   color: #f8fafc;
 }
 
-.conn-tab.active {
-  background: var(--bg-surface) !important;
+.conn-tab.active, .coll-tab.active {
+  background: var(--tab-merge) !important;
   color: var(--fg) !important;
   font-weight: 600 !important;
-  border-color: var(--border) var(--border) transparent var(--border);
-  border-bottom: 2px solid var(--accent) !important;
-  box-shadow: 0 -1px 0 var(--accent) inset !important;
+  border: 0 !important;
+  /* L'accento passa SOPRA la tab: sotto sarebbe una linea di separazione dal
+     pannello, esattamente ciò che la forma sta togliendo. */
+  box-shadow: inset 0 2px 0 var(--accent) !important;
 }
 
 .conn-tab .dot {
@@ -1119,8 +1182,11 @@ header {
   align-items: flex-end;
   gap: 4px;
   padding: 6px 12px 0 12px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  /* Riga di separazione dipinta nello sfondo, non come border: vedi
+     .tab-bar-wrap. */
+  background:
+    linear-gradient(to top, var(--border) 0 1px, transparent 1px),
+    var(--bg-2);
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
@@ -1129,38 +1195,8 @@ header {
 }
 #coll-tab-bar::-webkit-scrollbar { display: none; }
 
-.coll-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 14px;
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-bottom: 2px solid transparent;
-  border-radius: 6px 6px 0 0;
-  color: #94a3b8;
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-  flex-shrink: 0;
-  transition: all 0.18s ease;
-  margin-bottom: -1px;
-}
-
-.coll-tab:hover {
-  background: rgba(255, 255, 255, 0.07);
-  color: #f8fafc;
-}
-
-.coll-tab.active {
-  background: var(--bg-surface) !important;
-  color: var(--fg) !important;
-  font-weight: 600 !important;
-  border-color: var(--border) var(--border) transparent var(--border);
-  border-bottom: 2px solid var(--accent) !important;
-  box-shadow: 0 -1px 0 var(--accent) inset !important;
-}
+/* Forma e stati stanno nel blocco condiviso con .conn-tab (vedi "smart
+   corner"): qui restano solo le differenze del coll-tab. */
 
 /* Tab in ANTEPRIMA (un clic nella sidebar): provvisorio, il prossimo clic su
    un'altra collection lo rimpiazza. Il corsivo è la stessa convenzione di
@@ -2067,12 +2103,38 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 }
 .resizer:hover, .resizer.dragging { background: var(--accent-2); }
 
-/* ---------- Riordino tab via drag & drop (conn-tab e coll-tab) ---------- */
-.conn-tab.dragging, .coll-tab.dragging { opacity: 0.4; }
-.conn-tab.drag-over { box-shadow: inset 2px 0 0 var(--accent); }
-.coll-tab.drag-over { box-shadow: inset 2px 0 0 var(--accent-2); }
+/* ---------- Riordino tab via drag & drop (conn-tab e coll-tab) ----------------
+   La tab in mano si SOLLEVA dalla barra: perde le spallucce (sollevata non è
+   fusa con niente), chiude il raggio su tutti e quattro gli angoli e diventa
+   una pastiglia in ombra. È la stessa transizione del morph, quindi la si vede
+   trasformarsi invece di cambiare aspetto di colpo.
+
+   Le tab che restano non si accendono di una riga colorata: si SPOSTANO per
+   fare posto, così si vede dove finirà quella trascinata invece di doverlo
+   dedurre da un bordo. Da che parte scivolano lo decide makeDraggable
+   (utils.js) confrontando le posizioni: chi verrà scavalcato da sinistra apre
+   il varco a destra, e viceversa. Con un verso fisso, metà dei trascinamenti
+   indicherebbe il punto sbagliato. */
+
 .conn-tab[draggable="true"], .coll-tab[draggable="true"] { cursor: grab; }
-.conn-tab.dragging, .coll-tab.dragging { cursor: grabbing; }
+
+.conn-tab.dragging, .coll-tab.dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+  border-radius: var(--tab-radius) !important;
+  background: var(--bg-elevated) !important;
+  color: var(--fg) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55) !important;
+  transform: translateY(-2px) scale(0.97);
+}
+
+.conn-tab.dragging::before, .conn-tab.dragging::after,
+.coll-tab.dragging::before, .coll-tab.dragging::after {
+  width: 0 !important;
+}
+
+.conn-tab.drag-slide-left, .coll-tab.drag-slide-left { transform: translateX(-12px); }
+.conn-tab.drag-slide-right, .coll-tab.drag-slide-right { transform: translateX(12px); }
 
 /* ---------- Selezione multipla e bulk delete ---------- */
 
@@ -4366,8 +4428,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     width: 100%;
-    background: var(--bg-2);
-    border-bottom: 1px solid var(--border);
+    /* Colore e assenza di hairline restano quelli delle regole base: qui
+       cambiano solo scorrimento e larghezza. Ridichiararli spezzerebbe la
+       fusione della tab attiva col pannello (vedi "smart corner"). */
   }
   #tab-bar::-webkit-scrollbar, #coll-tab-bar::-webkit-scrollbar { display: none; }
   #tab-bar .tab, #tab-bar .tab-item, #coll-tab-bar .coll-tab, .tab-item {

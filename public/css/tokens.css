@@ -23,6 +23,13 @@
   --bg-4:       #1a2236;        /* Hover state elevated */
   --bg-surface: #161b22;        /* Cards, inputs, modal */
   --bg-elevated:#1f2937;        /* Dropdowns, tooltips */
+  /* Geometria delle tab (vedi "smart corner" in style.css). La spalluccia non
+     va oltre il raggio superiore, altrimenti la tab sembra appoggiata su un
+     piedistallo invece di uscire dal pannello. */
+  --tab-radius:  10px;
+  --tab-shoulder:10px;
+  --tab-morph:   0.24s;
+  --tab-ease:    cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Borders — very subtle */
   --border:      rgba(255, 255, 255, 0.07);   /* Hairline */
