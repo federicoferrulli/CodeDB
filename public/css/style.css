@@ -1184,14 +1184,20 @@ header {
 
 /* ---------- Sidebar ---------- */
 
+/* Lo scroll sta sull'ALBERO, non sull'aside: titolo e casella di ricerca
+   devono restare in vista mentre si scorre un elenco lungo di database —
+   altrimenti per cercare bisogna prima risalire in cima. Stessa struttura
+   di #conn-sidebar/#conn-tree. */
 #sidebar {
   width: 230px;
   min-width: 180px;
   background: var(--bg-2);
   border-right: 1px solid var(--border);
-  overflow-y: auto;
+  overflow: hidden;
   padding: 8px 0;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-title {
@@ -1245,7 +1251,15 @@ header {
 
 #new-db-btn:hover { color: var(--accent); }
 
-#db-tree { list-style: none; margin: 0; padding: 0; }
+#db-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
 
 
 
