@@ -673,8 +673,16 @@ button.ghost:hover, .btn-ghost:hover {
   transform: translateZ(0);
 }
 
+/* Le larghezze le decide il <colgroup> costruito da table-cols.js misurando il
+   contenuto: `fixed` le rende stabili durante lo scorrimento virtualizzato (con
+   `auto` il browser le ricalcolerebbe sulle sole righe nel DOM, cioè a ogni
+   scroll), e `max-content` lascia che la tabella sia PIÙ LARGA del pannello —
+   da cui la barra orizzontale. Con `width: 100%` non poteva esserlo, e venti
+   colonne diventavano venti strisce illeggibili. Il `min-width` evita il vuoto
+   a destra quando le colonne sono poche. */
 #query-result-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
 }
@@ -685,6 +693,49 @@ button.ghost:hover, .btn-ghost:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 6px 10px;
+}
+
+/* Intestazione: ordinamento al clic e maniglia di ridimensionamento.
+   Niente `position: relative` — la regola .query-table th la rende `sticky`,
+   che è già un posizionamento e fa da contenitore per la maniglia assoluta. */
+#query-result-table th {
+  cursor: pointer;
+  user-select: none;
+}
+
+#query-result-table th.qt-sorted {
+  color: var(--accent, #007acc);
+}
+
+.qt-sort-ind {
+  margin-left: 4px;
+  font-size: 0.7em;
+  opacity: 0.9;
+}
+
+.qt-col-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  /* Non è un bordo visibile: si scopre passandoci sopra, come nelle griglie a
+     cui l'utente è abituato. */
+  background: transparent;
+}
+
+.qt-col-resizer:hover,
+.qt-col-resizer.dragging {
+  background: var(--accent, #007acc);
+}
+
+/* Durante il trascinamento il cursore deve restare col-resize su tutta la
+   pagina, altrimenti sfarfalla appena esce dalla maniglia. */
+body.qt-resizing,
+body.qt-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 #audit-log-list.loading-state {
@@ -983,7 +1034,8 @@ header {
 #tab-bar {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  /* 2px, non 4: vedi "Separatori fra tab adiacenti". */
+  gap: 2px;
   /* padding-left ≥ --tab-shoulder: la spalluccia sinistra della prima tab
      attiva sporge fuori dalla tab e senza spazio verrebbe tagliata. */
   padding: 6px 12px 0 12px;
@@ -1058,7 +1110,7 @@ header {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 14px;
+  padding: 7px 15px;
   background: transparent;
   border: 0;
   border-radius: var(--tab-radius) var(--tab-radius) 0 0;
@@ -1089,6 +1141,47 @@ header {
 }
 
 .conn-tab, .coll-tab { --tab-merge: var(--bg-surface); }
+
+/* ---------- Separatori fra tab adiacenti -------------------------------------
+   Senza cornici, due tab inattive vicine diventano un unico elenco di parole:
+   serve un confine, ma disegnarlo attorno a ognuna toglierebbe risalto alla
+   sola che deve emergere. Come nei browser, quindi: una hairline verticale fra
+   due tab inattive, che SPARISCE accanto alla tab attiva e sotto il puntatore
+   — dove c'è già una superficie a fare da confine, una riga in più è rumore.
+
+   È disegnata come background-image e non con un ::before, che qui è occupato
+   dalle spallucce: un gradiente alto il 50% dà anche la riga ACCORCIATA, che
+   una hairline a tutta altezza non darebbe (a 34px peserebbe come un bordo).
+   Il colore di fondo resta il background-color, dipinto sotto l'immagine.
+
+   Da qui il `gap` di soli 2px: la riga sta sul bordo sinistro della tab, e con
+   un varco più largo apparirebbe accostata a quella di destra invece che in
+   mezzo alle due. Lo spazio fra i nomi non si perde, lo recupera il padding
+   (2+15+15 = i 32px di prima). Chi misura il varco in JS per il trascinamento
+   deve restare allineato a questo valore. */
+
+.conn-tab + .conn-tab, .coll-tab + .coll-tab {
+  background-image: linear-gradient(to bottom,
+    transparent 25%, var(--border-2) 25%, var(--border-2) 75%, transparent 75%);
+  background-size: 1px 100%;
+  background-position: left center;
+  background-repeat: no-repeat;
+}
+
+/* La tab attiva e quella sotto il puntatore riscrivono `background` per intero
+   (shorthand), quindi perdono da sé la propria riga: qui resta da togliere
+   quella della tab SUCCESSIVA, che appoggerebbe su una superficie piena. */
+.conn-tab.active + .conn-tab, .conn-tab:hover + .conn-tab,
+.coll-tab.active + .coll-tab, .coll-tab:hover + .coll-tab {
+  background-image: none;
+}
+
+/* Durante un trascinamento le tab scorrono: le righe finirebbero in mezzo al
+   movimento, dove non separano più niente. */
+#tab-bar:has(.dragging) .conn-tab,
+#coll-tab-bar:has(.dragging) .coll-tab {
+  background-image: none;
+}
 
 .conn-tab::before, .coll-tab::before {
   right: 100%;
@@ -1180,7 +1273,8 @@ header {
 #coll-tab-bar {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
+  /* 2px, non 4: vedi "Separatori fra tab adiacenti". */
+  gap: 2px;
   padding: 6px 12px 0 12px;
   /* Riga di separazione dipinta nello sfondo, non come border: vedi
      .tab-bar-wrap. */
@@ -2957,6 +3051,29 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-size: 0.8em;
   color: var(--fg-dim);
   margin-left: auto;
+}
+
+/* Filtro dello Schema Browser. Il nodo escluso si nasconde con una classe e non
+   con uno `style.display` inline: quello sopravviveva alla ricerca successiva e
+   litigava con qualunque regola di layout aggiunta dopo. */
+.schema-node.schema-nascosto { display: none; }
+
+/* Nodo che corrisponde davvero alla ricerca: gli antenati restano visibili
+   perché fanno da percorso, ma non sono ciò che si stava cercando. */
+.schema-node.schema-hit > .schema-node-label {
+  background: rgba(0, 122, 204, 0.18);
+  box-shadow: inset 2px 0 0 var(--accent, #007acc);
+}
+
+.query-schema-filtro-nota {
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .query-main-panel {

@@ -802,6 +802,9 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 26: Guida introduttiva (quando si apre, novità per versione, traguardi)
   require('./unit-onboarding');
 
+  // Test 27: Colonne della tabella dei risultati (larghezze misurate, ordinamento EJSON)
+  require('./unit-table-cols');
+
   console.log('\nTutti i test unitari superati con successo!');
 })();
 

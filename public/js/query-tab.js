@@ -13,6 +13,7 @@ import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
 import { initCharts, renderChart, resizeChart } from './charts.js';
+import { ordinaRighe, larghezzeColonne, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 const escapeHtml = esc;
@@ -238,8 +239,21 @@ export function initQueryTab() {
   }
 
   if (schemaSearchInput) {
+    // Debounce: l'albero può avere migliaia di nodi campo e il filtro li visita
+    // tutti; a ogni tasto premuto sarebbe una visita completa.
+    let attesaFiltro = 0;
     schemaSearchInput.addEventListener('input', (e) => {
-      filterQuerySchemaBrowser(e.target.value.toLowerCase());
+      const valore = e.target.value;
+      clearTimeout(attesaFiltro);
+      attesaFiltro = setTimeout(() => filterQuerySchemaBrowser(valore), 120);
+    });
+    // Esc svuota la ricerca senza dover cancellare a mano.
+    schemaSearchInput.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !schemaSearchInput.value) return;
+      e.stopPropagation();
+      schemaSearchInput.value = '';
+      clearTimeout(attesaFiltro);
+      filterQuerySchemaBrowser('');
     });
   }
 
@@ -624,11 +638,210 @@ export function renderResults(data) {
   }
 }
 
-let queryTableRows = [];
+/* --------------------------------------------------------------------------
+ * Tabella dei risultati: colonne misurate, ordinabili e ridimensionabili.
+ * La logica pura (chiavi di confronto EJSON, calcolo delle larghezze) sta in
+ * `table-cols.js`; qui restano DOM ed eventi.
+ * ------------------------------------------------------------------------ */
+
+let queryTableRows = [];   // righe NELL'ORDINE MOSTRATO (≠ currentResults se ordinate)
 let queryTableCols = [];
 let queryVScrollAttached = false;
+let queryHeaderAttached = false;
+let queryOrdine = { col: null, dir: 1 };   // dir: 1 crescente, -1 decrescente
+let queryLarghezze = new Map();            // colonna → px
+let queryLarghezzeManuali = new Set();     // colonne allargate a mano: non si ricalcolano
+let queryColsSig = '';                     // firma del set di colonne
+let queryRigheRef = null;                  // riferimento all'ultimo result set reso
+let queryResizeInCorso = false;
 const QUERY_ROW_H = 36;
 const QUERY_OVERSCAN = 6;
+
+/** Il testo che finisce in cella: identico a quello disegnato dalla griglia. */
+function testoCella(val) {
+  const res = displayValue(val);
+  return (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
+}
+
+/**
+ * Misuratore di testo per le larghezze: un canvas fuori dal documento con lo
+ * stesso font della tabella. Serve un canvas e non un nodo di prova perché
+ * misurare 200 righe × N colonne inserendo elementi nel DOM significherebbe
+ * altrettanti reflow a ogni query.
+ */
+let ctxMisura = null;
+function misuratoreTesto(tabella) {
+  if (ctxMisura === null) {
+    try { ctxMisura = document.createElement('canvas').getContext('2d'); } catch { ctxMisura = false; }
+  }
+  // Nessun canvas (ambiente esotico): stima grossolana, meglio di niente.
+  if (!ctxMisura) return (t) => String(t ?? '').length * 7;
+  const cs = getComputedStyle(tabella);
+  ctxMisura.font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  const ctx = ctxMisura;
+  return (t) => ctx.measureText(String(t ?? '')).width;
+}
+
+/** Ricalcola le larghezze, rispettando quelle già scelte a mano dall'utente. */
+function calcolaLarghezze(righe, colonne, tabella) {
+  const daMisurare = colonne.filter((c) => !queryLarghezzeManuali.has(c));
+  const nuove = larghezzeColonne(righe, daMisurare, {
+    misura: misuratoreTesto(tabella),
+    testo: testoCella,
+  });
+  colonne.forEach((c) => {
+    if (nuove.has(c)) queryLarghezze.set(c, nuove.get(c));
+    else if (!queryLarghezze.has(c)) queryLarghezze.set(c, LARGH_MIN);
+  });
+}
+
+/** Scrive le larghezze correnti nel <colgroup> (creandolo se manca). */
+function applicaColgroup(table) {
+  let cg = table.querySelector('colgroup');
+  if (!cg) {
+    cg = document.createElement('colgroup');
+    table.insertBefore(cg, table.firstChild);
+  }
+  cg.innerHTML = '';
+  queryTableCols.forEach((c) => {
+    const col = document.createElement('col');
+    col.style.width = `${queryLarghezze.get(c) || LARGH_MIN}px`;
+    cg.appendChild(col);
+  });
+}
+
+/** Intestazione: etichetta, freccia di ordinamento e maniglia di larghezza. */
+function costruisciIntestazione(thead) {
+  thead.innerHTML = '';
+  const tr = document.createElement('tr');
+  queryTableCols.forEach((colName) => {
+    const th = document.createElement('th');
+    th.dataset.col = colName;
+    th.title = `${colName} — clic per ordinare, trascina il bordo destro per allargare (doppio clic: adatta al contenuto)`;
+
+    const label = document.createElement('span');
+    label.textContent = colName;
+    th.appendChild(label);
+
+    if (queryOrdine.col === colName) {
+      th.classList.add('qt-sorted');
+      const ind = document.createElement('span');
+      ind.className = 'qt-sort-ind';
+      ind.textContent = queryOrdine.dir < 0 ? '▼' : '▲';
+      th.appendChild(ind);
+    }
+
+    const rz = document.createElement('div');
+    rz.className = 'qt-col-resizer';
+    rz.dataset.col = colName;
+    th.appendChild(rz);
+
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr);
+}
+
+/**
+ * Ordinamento a TRE stati: crescente → decrescente → nessuno. Il terzo stato
+ * non è un vezzo: senza, l'ordine con cui il database ha restituito le righe
+ * (che in una query con ORDER BY o in una pipeline è il risultato voluto) non
+ * si potrebbe più recuperare se non rieseguendo la query.
+ */
+function ordinaPer(col) {
+  if (queryOrdine.col !== col) queryOrdine = { col, dir: 1 };
+  else if (queryOrdine.dir === 1) queryOrdine = { col, dir: -1 };
+  else queryOrdine = { col: null, dir: 1 };
+
+  queryTableRows = queryOrdine.col
+    ? ordinaRighe(currentResults, queryOrdine.col, queryOrdine.dir)
+    : currentResults;
+
+  const table = $('#query-result-table');
+  if (!table) return;
+  costruisciIntestazione(table.querySelector('thead'));
+  const container = $('#query-table-view');
+  if (container) container.scrollTop = 0;
+  renderQueryVirtualWindow();
+}
+
+/** Larghezza della colonna adattata al contenuto del campione (doppio clic). */
+function autoAdatta(col) {
+  const table = $('#query-result-table');
+  const idx = queryTableCols.indexOf(col);
+  if (!table || idx < 0) return;
+  const w = larghezzeColonne(queryTableRows, [col], {
+    misura: misuratoreTesto(table),
+    testo: testoCella,
+    max: 800, // a mano si concede più del tetto automatico: l'ha chiesto l'utente
+  }).get(col);
+  if (!w) return;
+  queryLarghezze.set(col, w);
+  queryLarghezzeManuali.add(col);
+  const colEl = table.querySelectorAll('colgroup col')[idx];
+  if (colEl) colEl.style.width = `${w}px`;
+}
+
+function iniziaRidimensiona(handle, ev) {
+  const col = handle.dataset.col;
+  const idx = queryTableCols.indexOf(col);
+  const table = $('#query-result-table');
+  if (!table || idx < 0) return;
+  ev.preventDefault();
+
+  const colEl = table.querySelectorAll('colgroup col')[idx];
+  const startX = ev.clientX;
+  const startW = queryLarghezze.get(col) || LARGH_MIN;
+  handle.classList.add('dragging');
+  document.body.classList.add('qt-resizing');
+
+  const onMove = (e) => {
+    const w = Math.max(48, Math.round(startW + (e.clientX - startX)));
+    queryLarghezze.set(col, w);
+    queryLarghezzeManuali.add(col);
+    if (colEl) colEl.style.width = `${w}px`;
+  };
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    handle.classList.remove('dragging');
+    document.body.classList.remove('qt-resizing');
+    // Il `click` arriva subito dopo il `mouseup`: senza questa bandiera, il
+    // rilascio della maniglia ordinerebbe anche la colonna.
+    queryResizeInCorso = true;
+    setTimeout(() => { queryResizeInCorso = false; }, 0);
+  };
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+/* Gestori DELEGATI e registrati una volta sola: l'intestazione viene riscritta
+   a ogni query e a ogni cambio di ordinamento. */
+function attachQueryHeaderEvents() {
+  const table = $('#query-result-table');
+  if (!table || queryHeaderAttached) return;
+  const thead = table.querySelector('thead');
+  if (!thead) return;
+  queryHeaderAttached = true;
+
+  thead.addEventListener('click', (e) => {
+    if (queryResizeInCorso) return;
+    if (e.target.classList.contains('qt-col-resizer')) return;
+    const th = e.target.closest('th');
+    if (!th || !th.dataset.col) return;
+    ordinaPer(th.dataset.col);
+  });
+
+  thead.addEventListener('mousedown', (e) => {
+    if (!e.target.classList.contains('qt-col-resizer')) return;
+    iniziaRidimensiona(e.target, e);
+  });
+
+  thead.addEventListener('dblclick', (e) => {
+    if (!e.target.classList.contains('qt-col-resizer')) return;
+    e.preventDefault();
+    autoAdatta(e.target.dataset.col);
+  });
+}
 
 function renderQueryVirtualWindow() {
   const container = $('#query-table-view');
@@ -713,6 +926,12 @@ function renderResultsTable(rows) {
   tbody.innerHTML = '';
 
   if (!rows || rows.length === 0) {
+    const cg = table.querySelector('colgroup');
+    if (cg) cg.remove();
+    queryTableRows = [];
+    queryTableCols = [];
+    queryColsSig = '';
+    queryRigheRef = rows;
     tbody.innerHTML = '<tr><td style="color: var(--fg-dim); text-align: center;">Nessun risultato da mostrare</td></tr>';
     return;
   }
@@ -724,19 +943,40 @@ function renderResultsTable(rows) {
     }
   });
 
-  queryTableRows = rows;
   queryTableCols = Array.from(cols);
+  const sig = queryTableCols.join(' ');
+  const nuoveColonne = sig !== queryColsSig;
+  const nuoviDati = rows !== queryRigheRef;
+  queryColsSig = sig;
+  queryRigheRef = rows;
 
-  const headerTr = document.createElement('tr');
-  queryTableCols.forEach((colName) => {
-    const th = document.createElement('th');
-    th.textContent = colName;
-    headerTr.appendChild(th);
-  });
-  thead.appendChild(headerTr);
+  if (nuoveColonne) {
+    // Result set di un'altra forma: larghezze scelte a mano e ordinamento non
+    // hanno più un riferimento: si riparte da zero.
+    queryLarghezze = new Map();
+    queryLarghezzeManuali = new Set();
+    queryOrdine = { col: null, dir: 1 };
+  } else if (queryOrdine.col && !queryTableCols.includes(queryOrdine.col)) {
+    queryOrdine = { col: null, dir: 1 };
+  }
+
+  // Le larghezze si misurano sui dati nuovi; a parità di dati (cambio di vista,
+  // ordinamento) si riusano quelle già calcolate, altrimenti le colonne
+  // cambierebbero larghezza sotto gli occhi senza motivo.
+  if (nuoveColonne || nuoviDati) calcolaLarghezze(rows, queryTableCols, table);
+
+  // L'ordinamento è una vista: `currentResults` resta nell'ordine del database.
+  queryTableRows = queryOrdine.col
+    ? ordinaRighe(rows, queryOrdine.col, queryOrdine.dir)
+    : rows;
+
+  applicaColgroup(table);
+  costruisciIntestazione(thead);
 
   attachQueryVScroll();
+  attachQueryHeaderEvents();
   container.scrollTop = 0;
+  if (nuoveColonne || nuoviDati) container.scrollLeft = 0;
   renderQueryVirtualWindow();
 }
 
@@ -773,6 +1013,10 @@ export function renderQuerySchemaBrowser() {
     const dbName = typeof dbObj === 'string' ? dbObj : (dbObj && dbObj.name ? dbObj.name : String(dbObj));
     const dbNode = document.createElement('div');
     dbNode.className = 'schema-node';
+    // Nome "nudo" per la ricerca: il testo dell'etichetta porta con sé icone e
+    // tipo delle colonne, che nel confronto sono rumore.
+    dbNode.dataset.nome = dbName;
+    dbNode.dataset.tipo = 'db';
 
     const dbLabel = document.createElement('div');
     dbLabel.className = 'schema-node-label';
@@ -801,24 +1045,34 @@ export function renderQuerySchemaBrowser() {
       fetchCollectionsForSchemaBrowser(dbName, childrenContainer);
     }
   });
+
+  // L'albero è appena stato ricostruito: se una ricerca è in corso va
+  // ri-applicata, altrimenti la casella resta piena e il filtro sparito.
+  filtroSchemaAttivo = '';
+  riapplicaFiltroSchema();
 }
 
+/* Restituisce una promessa che si risolve a caricamento finito (anche in caso
+   di errore): serve al filtro, che dopo aver caricato i database mancanti deve
+   ri-applicarsi sui nodi appena comparsi. */
 function fetchCollectionsForSchemaBrowser(dbName, container) {
   container.innerHTML = '<div style="color: var(--fg-dim); padding: 4px;">Caricamento schema...</div>';
-  emit('db:schema', { db: dbName })
+  return emit('db:schema', { db: dbName })
     .then((res) => {
       // Schema Browser: il contenitore appartiene all'albero della connessione
       // mostrata; una risposta in ritardo di un altro tab lo riempirebbe di
       // tabelle inesistenti.
       if (!isForActiveTab(res)) return;
       renderSchemaTreeForDb(dbName, container, res.collections);
+      riapplicaFiltroSchema();
     })
     .catch(() => {
       // Fallback su db:collections in caso di errore
-      emit('db:collections', { db: dbName })
+      return emit('db:collections', { db: dbName })
         .then((res) => {
           if (!isForActiveTab(res)) return;
           renderSchemaTreeForDb(dbName, container, res.collections);
+          riapplicaFiltroSchema();
         })
         .catch((err) => {
           if (!isForActiveTab(err)) return;
@@ -840,6 +1094,8 @@ function renderSchemaTreeForDb(dbName, container, collections) {
 
     const collNode = document.createElement('div');
     collNode.className = 'schema-node';
+    collNode.dataset.nome = collName;
+    collNode.dataset.tipo = 'coll';
 
     const collLabel = document.createElement('div');
     collLabel.className = 'schema-node-label';
@@ -867,6 +1123,8 @@ function renderSchemaTreeForDb(dbName, container, collections) {
 
         const fieldNode = document.createElement('div');
         fieldNode.className = 'schema-node';
+        fieldNode.dataset.nome = fieldName;
+        fieldNode.dataset.tipo = 'campo';
 
         const fieldLabel = document.createElement('div');
         fieldLabel.className = 'schema-node-label';
@@ -901,16 +1159,158 @@ function renderSchemaTreeForDb(dbName, container, collections) {
   });
 }
 
+/* ---------------------------------------------------------------------------
+ * Filtro dello Schema Browser.
+ *
+ * L'albero ha tre livelli (database ▸ tabella/collezione ▸ campo) e la versione
+ * precedente confrontava la stringa cercata con l'etichetta di OGNI nodo,
+ * nascondendo quelli che non corrispondevano — senza mai guardare i figli. Su
+ * un albero gerarchico è il difetto peggiore possibile: cercando il nome di una
+ * tabella, il database che la contiene non corrisponde, viene nascosto, e con
+ * lui sparisce la tabella trovata. In pratica il filtro funzionava solo per i
+ * nomi di database.
+ *
+ * Le regole ora sono quelle che ci si aspetta da un albero:
+ *   1. un nodo resta visibile se corrisponde lui, un suo ANTENATO o un suo
+ *      DISCENDENTE (quindi il percorso verso un risultato non si interrompe);
+ *   2. i rami che portano a un risultato si APRONO da soli, altrimenti il match
+ *      resterebbe dentro un nodo chiuso;
+ *   3. cancellando la ricerca l'albero torna com'era, aperture comprese;
+ *   4. il confronto è sul NOME (dataset.nome), non sul testo dell'etichetta:
+ *      quello contiene anche il tipo della colonna, e cercare "int" tirava su
+ *      ogni colonna intera del database.
+ * Resta un limite dichiarato: i database non ancora espansi non hanno figli nel
+ * DOM (le tabelle si caricano su richiesta), quindi non sono cercabili finché
+ * non li si carica — e il pannello lo dice, con un pulsante che li carica.
+ * ------------------------------------------------------------------------- */
+
+let filtroSchemaAttivo = '';
+
+/**
+ * Ricorsione sull'albero. Restituisce DUE informazioni, e tenerle distinte è il
+ * punto: `visibile` (il nodo resta a schermo) e `trovato` (il nodo o qualcosa
+ * sotto di lui corrisponde davvero). Un discendente di un nodo trovato è
+ * visibile ma NON trovato — confondere le due cose fa aprire da solo l'intero
+ * sottoalbero di ogni risultato: cercata una tabella, si spalancano tutti i suoi
+ * campi, e cercato un database si spalanca tutto il database.
+ */
+function visitaNodoSchema(nodo, q, antenatoTrovato) {
+  const nome = (nodo.dataset.nome || '').toLowerCase();
+  const proprio = !!q && nome.includes(q);
+  const dentroUnMatch = antenatoTrovato || proprio;
+
+  const cont = nodo.querySelector(':scope > .schema-node-children');
+  let discendenteTrovato = false;
+  if (cont) {
+    cont.querySelectorAll(':scope > .schema-node').forEach((figlio) => {
+      if (visitaNodoSchema(figlio, q, dentroUnMatch).trovato) discendenteTrovato = true;
+    });
+  }
+
+  const visibile = !q || proprio || discendenteTrovato || antenatoTrovato;
+  nodo.classList.toggle('schema-nascosto', !visibile);
+  nodo.classList.toggle('schema-hit', proprio);
+
+  // Si apre solo il ramo che PORTA a un risultato; il nodo che corrisponde di
+  // suo resta com'era (trovata la tabella, i suoi campi non si spalancano).
+  if (cont && q && discendenteTrovato) cont.classList.remove('hidden');
+
+  return { visibile, trovato: proprio || discendenteTrovato };
+}
+
 function filterQuerySchemaBrowser(query) {
-  const nodes = document.querySelectorAll('#query-schema-tree .schema-node-label');
-  nodes.forEach((node) => {
-    const text = node.textContent.toLowerCase();
-    const parentNode = node.closest('.schema-node');
-    if (parentNode) {
-      const match = !query || text.includes(query);
-      parentNode.style.display = match ? 'block' : 'none';
-    }
+  const albero = $('#query-schema-tree');
+  if (!albero) return;
+  const q = String(query || '').trim().toLowerCase();
+
+  const contenitori = albero.querySelectorAll('.schema-node-children');
+
+  if (q && !filtroSchemaAttivo) {
+    // Inizio di una ricerca: si annota lo stato di apertura per poterlo
+    // ripristinare quando la casella viene svuotata.
+    contenitori.forEach((c) => { c.dataset.eraChiuso = c.classList.contains('hidden') ? '1' : '0'; });
+  }
+
+  albero.querySelectorAll(':scope > .schema-node').forEach((nodo) => {
+    visitaNodoSchema(nodo, q, false);
   });
+  const trovati = q ? albero.querySelectorAll('.schema-hit').length : 0;
+
+  if (!q && filtroSchemaAttivo) {
+    contenitori.forEach((c) => {
+      if (c.dataset.eraChiuso !== undefined) {
+        c.classList.toggle('hidden', c.dataset.eraChiuso === '1');
+        delete c.dataset.eraChiuso;
+      }
+    });
+  }
+
+  filtroSchemaAttivo = q;
+  aggiornaNotaFiltroSchema(albero, q, trovati);
+}
+
+/**
+ * Nota sotto l'albero: quanti risultati, e soprattutto quanti database NON sono
+ * stati cercati perché le loro tabelle non sono ancora state caricate. Senza
+ * questa riga, "nessun risultato" sarebbe una risposta falsa: la tabella cercata
+ * può benissimo esserci, in un database mai aperto.
+ */
+function aggiornaNotaFiltroSchema(albero, q, trovati) {
+  let nota = $('#query-schema-filtro-nota');
+  if (!nota) {
+    nota = document.createElement('div');
+    nota.id = 'query-schema-filtro-nota';
+    nota.className = 'query-schema-filtro-nota';
+    albero.parentNode.insertBefore(nota, albero.nextSibling);
+  }
+
+  if (!q) {
+    nota.classList.add('hidden');
+    nota.innerHTML = '';
+    return;
+  }
+
+  const daCaricare = [...albero.querySelectorAll(':scope > .schema-node')].filter((n) => {
+    const c = n.querySelector(':scope > .schema-node-children');
+    return c && c.children.length === 0;
+  });
+
+  nota.classList.remove('hidden');
+  nota.innerHTML = '';
+
+  const riga = document.createElement('div');
+  riga.textContent = trovati > 0
+    ? `${trovati} corrispondenz${trovati === 1 ? 'a' : 'e'}`
+    : 'Nessuna corrispondenza fra gli elementi già caricati';
+  nota.appendChild(riga);
+
+  if (daCaricare.length) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mini-btn';
+    btn.textContent = `Cerca anche negli altri ${daCaricare.length} database`;
+    btn.title = 'Le tabelle si caricano su richiesta: i database mai aperti non sono ancora cercabili';
+    btn.addEventListener('click', () => {
+      btn.disabled = true;
+      btn.textContent = 'Caricamento…';
+      Promise.all(daCaricare.map((n) => {
+        const c = n.querySelector(':scope > .schema-node-children');
+        c.classList.remove('hidden');
+        return fetchCollectionsForSchemaBrowser(n.dataset.nome, c);
+      })).then(() => {
+        filterQuerySchemaBrowser($('#query-schema-search')?.value || q);
+      });
+    });
+    nota.appendChild(btn);
+  }
+}
+
+/** Ri-applica il filtro corrente: l'albero viene ricostruito di continuo
+ *  (nuovi database, tabelle caricate su richiesta) e i nodi nuovi nascono
+ *  senza sapere che c'è una ricerca in corso. */
+function riapplicaFiltroSchema() {
+  const input = $('#query-schema-search');
+  if (input && input.value.trim()) filterQuerySchemaBrowser(input.value);
 }
 
 function insertTextInEditor(text) {
@@ -1113,7 +1513,11 @@ export function exportQueryResults(format) {
     return;
   }
 
-  const rows = currentResults;
+  // Si esporta quello che si VEDE: se la tabella è ordinata per una colonna, un
+  // CSV nell'ordine originale del database sarebbe una sorpresa silenziosa.
+  const rows = (queryOrdine.col && queryTableRows.length === currentResults.length)
+    ? queryTableRows
+    : currentResults;
   const cols = new Set();
   rows.forEach((r) => {
     if (r && typeof r === 'object') {
