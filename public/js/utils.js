@@ -2,7 +2,7 @@ import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { isGeometry, geometryLabel } from './geojson.js';
-import { isPlainObject, ejsonKind, fmtBytes, safeUUID } from './valori.js';
+import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve } from './valori.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -56,6 +56,31 @@ export function displayValue(v) {
   if (kind === 'object') return { text: JSON.stringify(simplify(v)), cls: 'type-obj' };
   if (kind === 'boolean') return { text: String(v), cls: 'type-bool', dataVal: String(v) };
   return { text: String(v), cls: '' };
+}
+
+/**
+ * Testo di una cella per il solo DISEGNO, con un tetto di caratteri.
+ *
+ * Identico a `displayValue` su tutto ciò che è breve; su oggetti e array si
+ * ferma dopo `max` caratteri invece di serializzare l'intero valore. Un
+ * documento da 25 MB in una cella costava ~144 ms di `simplify` + `stringify`
+ * per cella e per fotogramma di scorrimento (la griglia è virtualizzata e
+ * ridisegna ~20 righe alla volta), per mostrare i sessanta caratteri che
+ * entrano nella colonna.
+ *
+ * NON va usata dove il valore serve per intero — copia delle celle
+ * (`cellselect.js`), modifica al volo (`inlineEdit.js`), export: lì il testo
+ * troncato sarebbe perdita di dati, e quelle strade continuano a usare
+ * `displayValue`.
+ */
+export const MAX_TESTO_CELLA = 1000;
+
+export function displayValueBreve(v, max = MAX_TESTO_CELLA) {
+  if (v !== null && typeof v === 'object' && !isGeometry(v)
+      && (Array.isArray(v) || ejsonKind(v) === 'object')) {
+    return { text: jsonBreve(v, max, (foglia) => displayValue(foglia).text), cls: 'type-obj' };
+  }
+  return displayValue(v);
 }
 
 export function simplify(v) {

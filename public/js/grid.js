@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -367,7 +367,7 @@ function showExplainResult(res) {
       const tr = document.createElement('tr');
       for (const col of res.columns || []) {
         const td = document.createElement('td');
-        const { text, cls } = displayValue(row[col]);
+        const { text, cls } = displayValueBreve(row[col]);
         if (cls) td.className = cls;
         td.textContent = row[col] === undefined ? '' : text;
         tr.appendChild(td);
@@ -502,7 +502,13 @@ function buildRow(doc, rowIdx, canSelect) {
     // Coordinate per la selezione celle stile Excel (vedi cellselect.js).
     td.dataset.r = rowIdx;
     td.dataset.c = colIdx;
-    const { text, cls, dataVal } = displayValue(doc[col]);
+    // Testo LIMITATO: quello che si vede in cella, non il valore intero. La
+    // griglia è virtualizzata e ridisegna le righe visibili a ogni fotogramma
+    // di scorrimento; con un documento da 25 MB in una colonna, serializzarlo
+    // per intero costava ~144 ms per cella. Copia (cellselect.js) e modifica
+    // al volo (inlineEdit.js) continuano a passare da `displayValue`, che è
+    // esatto: lì un valore troncato sarebbe perdita di dati.
+    const { text, cls, dataVal } = displayValueBreve(doc[col]);
     const span = document.createElement('span');
     if (cls) span.className = cls;
     if (dataVal !== undefined) span.dataset.val = dataVal;

@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValue, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
+import { $, emit, displayValueBreve, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -657,10 +657,12 @@ let queryResizeInCorso = false;
 const QUERY_ROW_H = 36;
 const QUERY_OVERSCAN = 6;
 
-/** Il testo che finisce in cella: identico a quello disegnato dalla griglia. */
+/** Il testo che finisce in cella: identico a quello disegnato dalla griglia.
+ *  Per la MISURA delle colonne bastano pochi caratteri — oltre il tetto di
+ *  larghezza il resto non cambia il risultato e costerebbe una serializzazione
+ *  completa del valore. */
 function testoCella(val) {
-  const res = displayValue(val);
-  return (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
+  return displayValueBreve(val, 200).text ?? '';
 }
 
 /**
@@ -880,11 +882,16 @@ function renderQueryVirtualWindow() {
     queryTableCols.forEach((col) => {
       const td = document.createElement('td');
       const val = row ? row[col] : undefined;
-      const res = displayValue(val);
-      td.textContent = (res && typeof res === 'object') ? (res.text ?? '') : String(res ?? '');
-      if (res && res.cls) td.className = res.cls;
-      if (res && res.dataVal !== undefined) td.dataset.val = res.dataVal;
-      td.title = typeof val === 'object' ? JSON.stringify(val) : String(val ?? '');
+      // Testo LIMITATO: la cella ne mostra al massimo una sessantina di
+      // caratteri, e questo codice gira per ~20 righe a ogni fotogramma di
+      // scorrimento. Il `title` usa lo stesso testo: prima era un secondo
+      // `JSON.stringify` del valore intero — su un documento da 25 MB, 60 ms
+      // per cella per costruire un fumetto illeggibile.
+      const res = displayValueBreve(val);
+      td.textContent = res.text ?? '';
+      if (res.cls) td.className = res.cls;
+      if (res.dataVal !== undefined) td.dataset.val = res.dataVal;
+      td.title = res.text ?? '';
       tr.appendChild(td);
     });
     frag.appendChild(tr);

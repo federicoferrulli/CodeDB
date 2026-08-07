@@ -115,6 +115,42 @@ console.log('--- Test Unitari Colonne della Tabella Risultati ---');
   assert.strictEqual(larghezzeColonne(dati, ['breve'], {}).size, 0);
   console.log('  ✓ larghezzeColonne: minimo, tetto, intestazione inclusa, campione rispettato');
 
+  /* ------------------------------- jsonBreve ----------------------------- */
+
+  const { jsonBreve } = await import('../public/js/valori.js');
+  const foglia = (v) => (v && v.$date !== undefined ? new Date(v.$date).toISOString() : String(v));
+
+  // Fedele a JSON.stringify finché ci sta dentro.
+  assert.strictEqual(jsonBreve({ a: 1, b: 'x' }, 1000, foglia), '{"a":1,"b":"x"}');
+  assert.strictEqual(jsonBreve([1, [2, 3]], 1000, foglia), '[1,[2,3]]');
+  assert.strictEqual(jsonBreve(null, 1000, foglia), 'null');
+  assert.strictEqual(jsonBreve('ciao', 1000, foglia), '"ciao"');
+  // Forme EJSON: numeri senza virgolette, ObjectId con.
+  assert.strictEqual(jsonBreve({ n: { $numberLong: '900' } }, 1000, foglia), '{"n":900}');
+  assert.strictEqual(jsonBreve({ p: { $numberDecimal: '12.50' } }, 1000, foglia), '{"p":12.50}');
+  assert.strictEqual(jsonBreve({ _id: { $oid: 'a'.repeat(24) } }, 1000, foglia), `{"_id":"${'a'.repeat(24)}"}`);
+  assert.ok(jsonBreve({ d: { $date: 0 } }, 1000, foglia).includes('1970-01-01'), 'date formattate dal chiamante');
+
+  // Il taglio: rispetta il budget e lo DICHIARA con l'ellissi.
+  const enorme = { righe: [] };
+  for (let i = 0; i < 20000; i++) enorme.righe.push({ nome: 'x'.repeat(60), i });
+  const breve = jsonBreve(enorme, 100, foglia);
+  assert.ok(breve.length <= 101, `budget rispettato (${breve.length})`);
+  assert.ok(breve.endsWith('…'), 'il troncamento è visibile, non silenzioso');
+  assert.ok(breve.startsWith('{"righe":['), 'la parte iniziale è quella vera');
+
+  // Il costo dipende dal budget, NON dalla dimensione del valore: è tutto il
+  // punto dell'esercizio, quindi va verificato e non solo affermato.
+  const t0 = Date.now();
+  for (let i = 0; i < 50; i++) jsonBreve(enorme, 1000, foglia);
+  const conBudget = Date.now() - t0;
+  const t1 = Date.now();
+  JSON.stringify(enorme);
+  const intero = Date.now() - t1;
+  assert.ok(conBudget < Math.max(50, intero * 5),
+    `50 troncate (${conBudget}ms) devono costare quanto poche serializzazioni intere (1 = ${intero}ms)`);
+  console.log(`  ✓ jsonBreve: fedele, budget rispettato, costo indipendente dalla dimensione (50×=${conBudget}ms vs 1 intera=${intero}ms)`);
+
   console.log('--- Colonne della Tabella Risultati: tutti i test superati ---');
 })().catch((err) => {
   console.error('  ✗ Test colonne tabella risultati falliti:', err.message);

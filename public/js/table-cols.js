@@ -23,7 +23,10 @@
  * Provato da `test/unit-table-cols.js` (in `npm test`, nessun browser).
  * ------------------------------------------------------------------------- */
 
-import { ejsonKind, isPlainObject } from './valori.js';
+import { ejsonKind, isPlainObject, jsonBreve } from './valori.js';
+
+/** Caratteri della chiave di confronto per i valori senza ordine naturale. */
+const MAX_CHIAVE_TESTO = 200;
 
 /* Ranghi di tipo: righe di tipi diversi nella stessa colonna (capita con
  * MongoDB, che non ha schema) devono comunque avere un ordine totale, altrimenti
@@ -79,7 +82,11 @@ export function chiaveOrdinamento(v) {
   }
 
   // Oggetti, array, binari: nessun ordine naturale, ma un ordine STABILE sì.
-  try { return { r: R_ALTRO, n: null, s: JSON.stringify(v) }; } catch { return { r: R_ALTRO, n: null, s: String(v) }; }
+  // La chiave si ferma ai primi caratteri: un ordine "naturale" fra oggetti non
+  // esiste comunque, e serializzarli per intero significherebbe, su una colonna
+  // con dentro documenti da qualche MB, una stringa di quella dimensione per
+  // OGNI riga solo per decidere chi viene prima.
+  return { r: R_ALTRO, n: null, s: jsonBreve(v, MAX_CHIAVE_TESTO) };
 }
 
 /** Confronto crescente fra due chiavi di `chiaveOrdinamento`. */

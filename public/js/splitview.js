@@ -2,7 +2,7 @@
 
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
 import { openInsertDocForContext } from './insert.js';
 
@@ -1054,7 +1054,9 @@ function updatePaneUI(paneId) {
       cols.forEach((col) => {
         const td = document.createElement('td');
         const val = doc[col];
-        const disp = displayValue(val);
+        // Testo limitato, come nella griglia principale: qui si disegna, non si
+        // copia (vedi displayValueBreve in utils.js).
+        const disp = displayValueBreve(val);
         const span = document.createElement('span');
         if (disp.cls) span.className = disp.cls;
         if (disp.dataVal !== undefined) span.dataset.val = disp.dataVal;
