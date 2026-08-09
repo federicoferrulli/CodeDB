@@ -7,7 +7,7 @@
 // I dati arrivano dall'evento socket `health:connections`, che pinga ogni
 // sessione lato server (in parallelo, con timeout) e legge lo stato del tunnel.
 
-import { $, emit, esc } from './utils.js';
+import { $, emit, esc, iniziaCaricamento } from './utils.js';
 
 let autoTimer = null;
 const REFRESH_MS = 4000;
@@ -20,7 +20,13 @@ export function initHealth() {
   if (close) close.addEventListener('click', closeHealthModal);
 
   const refresh = $('#btn-refresh-health');
-  if (refresh) refresh.addEventListener('click', fetchHealth);
+  if (refresh) refresh.addEventListener('click', () => {
+    // Il pannello si ridisegna sul posto (non si svuota) ai refresh successivi:
+    // senza segnale sul pulsante, un clic su una connessione lenta non produce
+    // nulla di visibile finché la risposta non arriva.
+    const fine = iniziaCaricamento(refresh, '');
+    Promise.resolve(fetchHealth()).finally(fine);
+  });
 
   const auto = $('#health-auto-refresh');
   if (auto) auto.addEventListener('change', () => {

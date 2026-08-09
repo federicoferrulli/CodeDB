@@ -18,7 +18,7 @@
  *    passphrase nuova.
  */
 
-import { $, emit, toast } from './utils.js';
+import { $, emit, toast, conCaricamento } from './utils.js';
 
 const MIN_LUNGHEZZA = 8;
 
@@ -38,7 +38,6 @@ function apriModale() {
   if (!overlay) return;
 
   errore('');
-  mostra($('#passphrase-success'), false);
   ['#passphrase-current', '#passphrase-next', '#passphrase-confirm'].forEach((sel) => {
     const el = $(sel);
     if (el) el.value = '';
@@ -94,29 +93,30 @@ function invia(e) {
     return;
   }
 
+  // Riavvolgere la DEK e riscrivere il vault non è istantaneo (scrypt è lento
+  // di proposito), e questo è il pulsante da cui NON si deve poter partire due
+  // volte: il secondo tentativo troverebbe la passphrase attuale già cambiata.
   const bottone = $('#passphrase-form')?.querySelector('button[type="submit"]');
-  if (bottone) bottone.disabled = true;
 
-  emit('vault:setPassphrase', { current, next })
+  conCaricamento(bottone, () => emit('vault:setPassphrase', { current, next }), 'Cambio in corso…')
     .then((res) => {
-      const box = $('#passphrase-success');
-      if (box) {
-        box.textContent = res.migrated
-          ? `Passphrase impostata e vault migrato al formato protetto. ${res.avviso || ''}`
-          : `Passphrase cambiata. ${res.avviso || ''}`;
-        mostra(box, true);
-      }
-      toast(res.migrated ? 'Vault migrato e passphrase impostata' : 'Passphrase cambiata');
       chiudiAvviso(false); // i segreti ora sono protetti davvero
-      // La modale resta aperta qualche istante: l'avviso sul prossimo avvio è
-      // la cosa più importante di tutta l'operazione.
-      setTimeout(chiudiModale, 4000);
+      // A operazione riuscita la modale ha finito il suo lavoro e si chiude
+      // subito: restare aperta quattro secondi davanti a un messaggio già letto
+      // significa un pannello che non risponde più a niente in mezzo allo
+      // schermo, e l'utente che ci clicca sopra per farlo sparire.
+      chiudiModale();
+      // L'avviso sul prossimo avvio è la cosa più importante dell'operazione e
+      // NON deve andare perso con la modale: viaggia nel toast, la cui durata
+      // cresce con la lunghezza del testo (vedi `toast` in utils.js), quindi
+      // resta a schermo il tempo di leggerlo.
+      const esito = res.migrated
+        ? 'Vault migrato e passphrase impostata.'
+        : 'Passphrase cambiata.';
+      toast(`${esito} ${res.avviso || ''}`.trim());
     })
     .catch((err) => {
       errore((err && err.message) || 'Cambio passphrase non riuscito.');
-    })
-    .finally(() => {
-      if (bottone) bottone.disabled = false;
     });
 }
 

@@ -11,7 +11,7 @@
  * Con RBAC spento il pulsante non compare (nessun utente da gestire).
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, showToast, chiediTesto } from './utils.js';
+import { $, emit, esc, showToast, chiediTesto, conCaricamento } from './utils.js';
 import { socket } from './socket.js';
 
 // Cache locale dei dati caricati all'apertura della modale.
@@ -315,7 +315,8 @@ function wireForms() {
     const displayName = $('#subuser-name').value.trim();
     if (!email || !password) return;
     try {
-      await emit('users:create', { email, password, displayName });
+      await conCaricamento(subForm.querySelector('button[type="submit"]'),
+        () => emit('users:create', { email, password, displayName }), 'Creo…');
       $('#subuser-email').value = '';
       $('#subuser-password').value = '';
       $('#subuser-name').value = '';
@@ -340,7 +341,8 @@ function wireForms() {
     const collections = splitGlobs($('#grant-colls').value);
     const scope = (databases.length || collections.length) ? { databases, collections } : null;
     try {
-      await emit('grants:set', { subjectId, connName, role, scope });
+      await conCaricamento(grantForm.querySelector('button[type="submit"]'),
+        () => emit('grants:set', { subjectId, connName, role, scope }), 'Assegno…');
       $('#grant-dbs').value = '';
       $('#grant-colls').value = '';
       showToast('Permesso assegnato.', 'success');
@@ -357,7 +359,8 @@ function wireForms() {
     const label = $('#apikey-label').value.trim();
     const connScope = splitGlobs($('#apikey-scope').value);
     try {
-      const res = await emit('apikeys:create', { subjectId, label, connScope: connScope.length ? connScope : null });
+      const res = await conCaricamento(keyForm.querySelector('button[type="submit"]'),
+        () => emit('apikeys:create', { subjectId, label, connScope: connScope.length ? connScope : null }), 'Genero…');
       $('#apikey-label').value = '';
       showNewKey(res.key);
       await reload();
@@ -439,7 +442,7 @@ function wireListActions() {
     const action = btn.dataset.action;
     try {
       if (action === 'toggle-user') {
-        await emit('users:update', { id: btn.dataset.id, status: btn.dataset.status });
+        await conCaricamento(btn, () => emit('users:update', { id: btn.dataset.id, status: btn.dataset.status }), '');
         showToast(btn.dataset.status === 'suspended' ? 'Sottoutente sospeso.' : 'Sottoutente riattivato.', 'success');
         await reload();
       } else if (action === 'reset-pwd') {
@@ -451,20 +454,20 @@ function wireListActions() {
           ok: 'Aggiorna',
         });
         if (!pwd) return;
-        await emit('users:update', { id: btn.dataset.id, password: pwd });
+        await conCaricamento(btn, () => emit('users:update', { id: btn.dataset.id, password: pwd }), '');
         showToast('Password aggiornata (le sessioni attive del sottoutente sono state chiuse).', 'success');
       } else if (action === 'del-user') {
         if (!window.confirm(`Eliminare il sottoutente "${btn.dataset.email}"? I suoi permessi e le sue API key verranno rimossi.`)) return;
-        await emit('users:delete', { id: btn.dataset.id });
+        await conCaricamento(btn, () => emit('users:delete', { id: btn.dataset.id }), '');
         showToast('Sottoutente eliminato.', 'success');
         await reload();
       } else if (action === 'revoke-grant') {
-        await emit('grants:revoke', { subjectId: btn.dataset.subject, connName: btn.dataset.conn });
+        await conCaricamento(btn, () => emit('grants:revoke', { subjectId: btn.dataset.subject, connName: btn.dataset.conn }), '');
         showToast('Permesso revocato.', 'success');
         await reload();
       } else if (action === 'revoke-key') {
         if (!window.confirm('Revocare questa API key? I client che la usano perderanno subito l\'accesso.')) return;
-        await emit('apikeys:revoke', { id: btn.dataset.id });
+        await conCaricamento(btn, () => emit('apikeys:revoke', { id: btn.dataset.id }), '');
         showToast('API key revocata.', 'success');
         await reload();
       }

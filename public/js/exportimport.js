@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 
@@ -264,7 +264,9 @@ async function runImport() {
   // quello attivo quando parte il singolo blocco.
   const tabId = ctx && ctx.tabId;
   importing = true;
-  $('#import-run').disabled = true;
+  // L'import ha già la sua barra di avanzamento, ma il pulsante che l'ha
+  // avviato deve smettere di sembrare premibile.
+  const fineCaricamento = iniziaCaricamento($('#import-run'), 'Import…');
   let inserted = 0;
   let failed = 0;
   let aborted = false;
@@ -299,7 +301,7 @@ async function runImport() {
     }
   } finally {
     importing = false;
-    $('#import-run').disabled = false;
+    fineCaricamento();
   }
   setImportProgress(100, `${docs.length}/${docs.length}`);
 
@@ -565,7 +567,7 @@ async function runDbImport() {
   const stillConnected = () => !tabId || tabs.list.some((t) => t.id === tabId);
 
   dbImporting = true;
-  $('#dbimport-run').disabled = true;
+  const fineCaricamento = iniziaCaricamento($('#dbimport-run'), 'Import…');
   let inserted = 0;
   let failed = 0;
   let done = 0;
@@ -643,7 +645,7 @@ async function runDbImport() {
     pushErr(err.message);
   } finally {
     dbImporting = false;
-    $('#dbimport-run').disabled = false;
+    fineCaricamento();
   }
   setDbImportProgress(100, 'completato');
 

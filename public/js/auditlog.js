@@ -7,7 +7,7 @@
 // gemello, per la UI, dell'audit log del gateway MCP: una riga per ogni
 // scrittura (drop, delete, query di scrittura, backup...) su qualunque DBMS.
 
-import { $, emit, esc } from './utils.js';
+import { $, emit, esc, iniziaCaricamento } from './utils.js';
 
 // Etichette italiane degli eventi tracciati (fallback: l'evento grezzo).
 const EVENT_LABELS = {
@@ -71,7 +71,10 @@ export function initAuditLog() {
 
   // Aggiorna resta sulla pagina corrente; cambio filtri/dimensione riparte da capo.
   const refresh = $('#btn-refresh-audit');
-  if (refresh) refresh.addEventListener('click', fetchAudit);
+  if (refresh) refresh.addEventListener('click', () => {
+    const fine = iniziaCaricamento(refresh, '');
+    Promise.resolve(fetchAudit()).finally(fine);
+  });
 
   ['#audit-filter-event', '#audit-filter-status', '#audit-filter-category'].forEach((sel) => {
     const el = $(sel);

@@ -31,7 +31,13 @@
  * e anche in quel caso si ripiega sulla pagina delle release.
  * ------------------------------------------------------------------------- */
 
-const REPO = { owner: 'federicoferrulli', repo: 'CodeDB' };
+// Il repository UFFICIALE, cioè quello a cui punta il remote di git: è da lì
+// che arrivano le release, ed è quello che l'EULA cita come sorgente
+// ispezionabile. Deve coincidere con `repository` e `build.publish` in
+// package.json (lo verifica `npm test`): un feed che punta a un repository
+// inesistente non dà errore in fase di build — dà un aggiornamento che non
+// viene mai offerto.
+const REPO = { owner: 'federicoferrulli', repo: 'gui-mongodb' };
 const URL_RELEASES = `https://github.com/${REPO.owner}/${REPO.repo}/releases`;
 
 // Il controllo silenzioso all'avvio non deve competere con il caricamento della

@@ -3,19 +3,20 @@
 /* ---------------------------------------------------------------------------
  * Schermata "Informazioni & Licenza" (menu Impostazioni).
  *
- * Tre cose, in quest'ordine: versione installata, MANLEVA per esteso, licenza
- * AGPL-3.0 con il testo completo consultabile qui dentro, e l'elenco delle
- * librerie di terze parti con le loro licenze.
+ * Quattro cose, in quest'ordine: versione installata, MANLEVA per esteso,
+ * l'EULA (contratto con l'utente finale), la licenza AGPL-3.0 con il testo
+ * completo consultabile qui dentro, e l'elenco delle librerie di terze parti
+ * con le loro licenze.
  *
  * Nulla di questo è scritto nel client: arriva dall'evento `app:license`, che
- * legge `MANLEVA.md` (la stessa sorgente da cui si genera la pagina di
- * accettazione dell'installer NSIS) e le licenze delle dipendenze dai loro
+ * legge `MANLEVA.md` ed `EULA.md` (le stesse sorgenti da cui si genera la
+ * pagina di accettazione dell'installer NSIS) e le licenze dai loro
  * `package.json`. Un elenco scritto a mano nel frontend resterebbe indietro al
  * primo aggiornamento, dichiarando il falso proprio nella schermata che esiste
  * per dire il vero.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, toast } from './utils.js';
+import { $, emit, esc, toast, conCaricamento } from './utils.js';
 
 let dati = null;
 
@@ -49,7 +50,10 @@ async function initAggiornamentiDesktop() {
     // La chiusura del menu la fa `initSettingsMenu` (main.js) su ogni clic a
     // una .menu-item, con la sua animazione: farla anche qui la salterebbe.
     try {
-      await emit('app:updates:check');
+      // Il controllo interroga GitHub: dura, e l'esito arriva in un dialog
+      // NATIVO che può metterci qualche secondo a comparire — nel frattempo
+      // l'unica cosa a schermo è questa voce di menu.
+      await conCaricamento(btn, () => emit('app:updates:check'), 'Controllo…');
       // Il resto avviene nei dialog NATIVI del processo principale: qui non
       // c'è altro da mostrare, e un toast in più coprirebbe la finestra che
       // sta per aprirsi.
@@ -123,6 +127,13 @@ function disegna(corpo) {
     </section>
 
     <details class="about-dettaglio">
+      <summary>Contratto di licenza con l'utente finale (EULA)</summary>
+      <div class="about-eula">
+        ${markdownSemplice(dati.eula || 'EULA non disponibile in questa copia.')}
+      </div>
+    </details>
+
+    <details class="about-dettaglio">
       <summary>Testo completo della licenza (${esc(dati.licenza)})</summary>
       <pre class="about-licenza">${esc(dati.testoLicenza || 'Testo della licenza non disponibile in questa copia.')}</pre>
     </details>
@@ -170,20 +181,30 @@ function disegna(corpo) {
 }
 
 /**
- * Il sottoinsieme di markdown effettivamente usato in `MANLEVA.md`: titoli,
- * grassetto, codice inline e paragrafi. Non è un parser generico — l'input non
- * è arbitrario, è un file del progetto — ma l'escape viene comunque prima di
- * qualunque sostituzione, così un testo modificato domani non può iniettare
- * markup nella pagina.
+ * Il sottoinsieme di markdown effettivamente usato in `MANLEVA.md` ed
+ * `EULA.md`: titoli, grassetto, codice inline, elenchi puntati e paragrafi.
+ * Non è un parser generico — l'input non è arbitrario, è un file del progetto —
+ * ma l'escape viene comunque prima di qualunque sostituzione, così un testo
+ * modificato domani non può iniettare markup nella pagina.
  */
 function markdownSemplice(md) {
   const html = esc(md)
+    .replace(/\r\n?/g, '\n')
     .replace(/^#{2,}\s+(.+)$/gm, '<h4>$1</h4>')
     .replace(/^#\s+(.+)$/gm, '<h3>$1</h3>')
     .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>')
     .replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  return html.split(/\n{2,}/).map((blocco) => (
-    /^<h\d/.test(blocco.trim()) ? blocco : `<p>${blocco.replace(/\n/g, ' ')}</p>`
-  )).join('');
+  return html.split(/\n{2,}/).map((blocco) => {
+    const testo = blocco.trim();
+    if (/^<h\d/.test(testo)) return blocco;
+    // Elenco puntato: gli `- ` a inizio riga aprono una voce, le righe
+    // rientrate sotto una voce ne sono la continuazione (l'EULA manda a capo a
+    // 79 colonne, quindi quasi ogni voce occupa più righe).
+    if (/^-\s+/.test(testo)) {
+      const voci = testo.split(/\n(?=-\s+)/).map((v) => v.replace(/^-\s+/, '').replace(/\s*\n\s*/g, ' '));
+      return `<ul>${voci.map((v) => `<li>${v}</li>`).join('')}</ul>`;
+    }
+    return `<p>${blocco.replace(/\n/g, ' ')}</p>`;
+  }).join('');
 }

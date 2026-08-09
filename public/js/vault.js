@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, emit, toast } from './utils.js';
+import { $, emit, toast, conCaricamento } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { valutaAvvisoVault } from './passphrase.js';
 
@@ -114,9 +114,8 @@ function inviaReset(e) {
   }
 
   const bottone = $('#vault-reset-form')?.querySelector('button[type="submit"]');
-  if (bottone) bottone.disabled = true;
 
-  emit('vault:reset', { passphrase: next, confirm: true })
+  conCaricamento(bottone, () => emit('vault:reset', { passphrase: next, confirm: true }), 'Ricreo il vault…')
     .then((res) => {
       const box = $('#vault-reset-success');
       if (box) {
@@ -133,9 +132,6 @@ function inviaReset(e) {
     })
     .catch((err) => {
       erroreReset((err && err.message) || 'Azzeramento non riuscito.');
-    })
-    .finally(() => {
-      if (bottone) bottone.disabled = false;
     });
 }
 
@@ -150,7 +146,10 @@ export function initVault() {
       const passphrase = passphraseInput ? passphraseInput.value : '';
       if (errorEl) errorEl.classList.add('hidden');
 
-      emit('vault:unlock', { passphrase })
+      // Lo sblocco deriva la chiave con scrypt: è lento di proposito, e senza
+      // segnale la modale sembra semplicemente non rispondere.
+      const bottone = form.querySelector('button[type="submit"]');
+      conCaricamento(bottone, () => emit('vault:unlock', { passphrase }), 'Sblocco…')
         .then((res) => {
           if (res && res.ok) {
             hideVaultModal();

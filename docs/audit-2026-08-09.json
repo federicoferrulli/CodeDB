@@ -1,0 +1,200 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-08-09",
+  "versione_analizzata": "0.1.0-beta.1",
+  "tipo": "audit di piattaforma (analisi statica)",
+  "riepilogo": {
+    "totale": 12,
+    "critica": 1,
+    "alta": 5,
+    "media": 4,
+    "bassa": 2
+  },
+  "ambito_analizzato": [
+    "server.js — gate Origin dell'handshake, /handshake-check, io.use, delegate, mappa sessioni per tab, budget globali, handler vault, connessioni salvate, audit:list, backup:*, query:execute, executeQueryCode, shutdown",
+    "auth/ — guardStrategy.js (Proxy autorizzante), capabilities.js (EVENT/METHOD_CAPABILITY, isWriteSql, matchesAny), sqlClause.js (tokenizer verificato in esecuzione), assertConnAllowed/assertManage/assertWholeConnection in server.js",
+    "db/ — vault.js (KDF), MySqlStrategy.collectionAggregate/docUpdate/docDelete, PostgreSqlStrategy.parseRowId/makeId/docUpdate/docDelete/buildSelect, elenco completo dei metodi delle strategie confrontato con METHOD_CAPABILITY",
+    "backup/ — policy.js (confinamento percorsi, alias storage, webhook), engine.js (costruzione cartelle, safeName), restore.js (assertSafeSchemaSql, checksum dello schema), util.js safeName",
+    "mcp/McpGateway.js — guardHost, authenticate, proprietà della sessione MCP, blocco INTO OUTFILE",
+    "public/js/ — utils.js (contratto emit/_state/_tab/captureContext), live.js (routing dei push per tabId), exportimport.js (chunking dell'import), censimento delle scritture sul Proxy state",
+    "build/deploy — Dockerfile, docker-compose.yml, electron-main.js (webPreferences, setWindowOpenHandler, will-navigate)"
+  ],
+  "ambito_non_analizzato": [
+    "landing/ — escluso su richiesta (sito separato, repository git distinto)",
+    "Frontend: graph3d.js, query-tab.js, charts.js/chart-option.js, splitview.js, cellselect.js, geomap.js/geomulti.js, grid.js, colltabs.js, pending-queries.js, script-run.js, admin-rbac.js, onboarding.js — letti solo per il censimento delle scritture di stato, non riga per riga",
+    "db/MongoScript.js e MongoScriptRunner.js (sandbox dell'interprete): non ri-verificati, esiste una suite dedicata (test/unit-mongo-script.js) che ne prova le tre proprietà di sicurezza",
+    "db/SqlToMql.js, db/MongoShell.js, db/VirtualJoinEngine.js, db/ScriptRunner.js, db/sqlText.js (provato solo dall'esterno via isWriteSql), db/geometry.js, db/errors.js",
+    "auth/AppStore.js e auth/sessions.js: letti solo nei punti che risolvono capability e principal, non l'intero ciclo di vita di sessioni e API key",
+    "mcp/McpGateway.js: i singoli tool (analyze_pii, audit_schema, get_graph, backup_*) non sono stati letti uno per uno",
+    "test/, tools/, electron-aggiornamenti.js, backup/cli.js",
+    "Nessuna esecuzione: niente server avviato, niente test, nessun accesso a database, vault o connections.ini reali"
+  ],
+  "finding": [
+    {
+      "id": "CDB-A01",
+      "severita": "critica",
+      "titolo": "I backup non sono separati per tenant: un owner può elencare e ripristinare i backup di un altro",
+      "categoria": "autorizzazione / isolamento multi-tenant",
+      "modulo": "server.js",
+      "riferimenti": ["server.js:3339-3351", "server.js:3353-3372", "server.js:3282-3299", "server.js:1814-1819", "backup/lib/engine.js:396-402"],
+      "problema": "BACKUP_ROOT è una sola cartella per installazione e non è partizionata per ownerId, mentre il resto del modello multi-tenant lo è (connections.ini per-owner via connectionsFileFor, audit:list filtrato per ownerId/userId). I tre handler backup:list, backup:restore e backup:verify sono protetti da assertManage(), che a server.js:1815 fa `if (principal.root || principal.owner) return` — cioè passa per QUALUNQUE owner, non solo per l'amministratore dell'installazione. backup:list enumera tutte le sottocartelle di BACKUP_ROOT (nome = <connessione>_<database> di altri tenant) e backup:restore accetta group/backupId arbitrari purché corrispondano a `^[\\w.-]+$`, cioè esattamente i nomi appena ottenuti da backup:list.",
+      "scenario": "Istanza SaaS con CODEDB_RBAC=on e due tenant. L'owner del tenant A apre una connessione qualsiasi a un proprio database, emette `backup:list` e riceve i gruppi di tutti i tenant (es. `crm-produzione_clienti` del tenant B). Emette poi `backup:restore` con `{ group: 'crm-produzione_clienti', backupId: '20260808-101500Z_full', targetDb: 'copia', tabId: <suo tab> }`: il dump integrale del database del tenant B viene scritto dentro il database del tenant A, dove è leggibile con una normale SELECT. Nessun controllo di appartenenza viene mai eseguito sulla cartella di backup.",
+      "fix": "Partizionare la radice per tenant — `path.join(BACKUP_ROOT, principal.ownerId)` come radice passata a resolveBackupPath in tutti e quattro gli handler (run/list/restore/verify) — e distinguere `manage sul proprio tenant` da `amministrazione dell'installazione` (per esempio `assertInstallAdmin(principal)` = solo principal.root) per le operazioni che toccano risorse condivise. Per i backup già esistenti serve una migrazione o un fallback in sola lettura sulla radice storica per il solo root.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A02",
+      "severita": "alta",
+      "titolo": "vault:reset e vault:setPassphrase sono eseguibili da qualunque owner e agiscono su tutti i tenant",
+      "categoria": "autorizzazione / disponibilità",
+      "modulo": "server.js",
+      "riferimenti": ["server.js:2417-2449", "server.js:2459-2500", "server.js:651-691", "server.js:497-508", "server.js:1814-1819"],
+      "problema": "resetVault() sposta i file elencati da vaultFiles(), che include il connections.ini condiviso E tutti i file per-owner presenti in CONNECTIONS_DIR (server.js:501-505), poi genera una DEK nuova. Il gate è assertManage(), che passa per ogni principal.owner. Il commento di vault:setPassphrase riconosce che «il vault è unico per installazione, quindi l'operazione tocca TUTTI i tenant: è riservata a chi ha manage» — ma `manage` è precisamente la capability che ogni owner possiede sul proprio tenant.",
+      "scenario": "L'owner del tenant A invoca `vault:reset` con `{ passphrase: 'nuova', confirm: true }`. I connections.ini di TUTTI gli owner vengono rinominati in `*.pre-reset-<timestamp>` e cifrati con una DEK ormai perduta: ogni altro tenant perde l'accesso alle proprie connessioni salvate e i segreti restano illeggibili senza la vecchia passphrase, che nessuno degli utenti colpiti conosce. La variante meno rumorosa è `vault:setPassphrase`, che ri-avvolge la DEK con una passphrase scelta da A: al riavvio successivo l'intera installazione non parte finché A non fornisce la sua passphrase.",
+      "fix": "Riservare vault:reset e vault:setPassphrase all'amministratore dell'installazione (principal.root, o una capability dedicata non assegnabile ai ruoli di tenant). In alternativa, se il vault deve restare unico, limitare l'effetto di resetVault ai soli file dell'ownerId chiamante.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A03",
+      "severita": "alta",
+      "titolo": "Su SQL Raw lo scope è applicato a un bersaglio dedotto, non alle tabelle realmente toccate dalla query",
+      "categoria": "autorizzazione / bypass di scope",
+      "modulo": "server.js + auth/guardStrategy.js",
+      "riferimenti": ["server.js:1512-1520", "server.js:1541-1546", "auth/guardStrategy.js:104-121", "auth/guardStrategy.js:127-133", "db/MySqlStrategy.js:619-636", "auth/sqlClause.js:147-155"],
+      "problema": "executeQueryCode ricava il bersaglio del controllo con una regex sul PRIMO `FROM` del testo (`codeStr.match(/FROM\\s+[`\\\"]?([a-zA-Z0-9_-]+)/i)`, server.js:1513) e, se non trova nulla, ripiega su `payload.coll`, che arriva dal client. Quel valore diventa l'argomento su cui il Proxy confronta lo scope, ma la stringa SQL viene poi eseguita verbatim: MySqlStrategy.collectionAggregate ignora l'argomento `_coll` (riga 619) e usa `db` solo per una `USE`. La barriera pensata per questo caso — assertScopedClauses in guardStrategy.js:127-133 — ispeziona `payload.filter` e `payload.sort`, non `payload.pipeline`, cioè non tocca l'SQL Raw.",
+      "scenario": "Sottoutente con grant scope `{ databases: ['shop'], collections: ['ordini'] }` e capability read+write. (a) Lettura fuori perimetro: `collection:aggregate` con `db='shop'`, `coll='ordini'`, `pipeline=\"SELECT * FROM ordini JOIN utenti ON 1=1\"` — il primo FROM è `ordini`, lo scope passa, la query restituisce la tabella `utenti`. (b) Scrittura fuori perimetro: `pipeline=\"UPDATE utenti SET ruolo='admin'\"`, che non contiene alcun `FROM`: extractedColl è null, targetColl diventa il `coll` scelto dal client (`ordini`), il controllo passa e l'UPDATE colpisce `utenti`.",
+      "fix": "Per i principal con uno scope attivo, estendere il controllo all'SQL Raw: applicare assertScopedClauses (o una validazione equivalente) anche a `payload.pipeline`, oppure estrarre TUTTI gli identificatori di tabella dallo statement e pretendere che ognuno rientri nello scope, rifiutando ciò che non si riesce ad analizzare. Fino ad allora, documentare che lo scope su MySQL/PostgreSQL non è una barriera e che i sottoutenti vanno collegati con un utente DBMS a privilegi ridotti (come già dichiarato in auth/sqlClause.js per i soli filtri).",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A04",
+      "severita": "alta",
+      "titolo": "SELECT ... INTO OUTFILE non è classificato come scrittura: chi ha solo `read` scrive file sull'host del DBMS",
+      "categoria": "autorizzazione / classificazione delle operazioni",
+      "modulo": "auth/capabilities.js",
+      "riferimenti": ["auth/capabilities.js:43", "auth/capabilities.js:45-54", "mcp/McpGateway.js:87-97", "server.js:1541-1546", "db/MySqlStrategy.js:619-636"],
+      "problema": "SQL_WRITE_KEYWORDS non contiene INTO/OUTFILE/DUMPFILE/LOAD. Verificato in esecuzione: `isWriteSql(\"SELECT * INTO OUTFILE '/tmp/x' FROM u\")` restituisce false. Su MySQL quello statement scrive un file sul filesystem del server di database con i privilegi dell'utente DBMS. Il gateway MCP lo blocca esplicitamente (McpGateway.js:97), il percorso socket no: `collection:aggregate` e `query:execute` lo eseguono con la sola capability `read`, e la barriera indipendente `expectRead` (transazione di sola lettura) è implementata solo in PostgreSqlStrategy. La stessa funzione decide la categoria dell'audit, quindi l'operazione resta registrata come *lettura* nello Storico Azioni.",
+      "scenario": "Sottoutente con ruolo `viewer` (sola lettura) su una connessione MySQL. Dalla tab Query & Aggregate esegue `SELECT * FROM clienti INTO OUTFILE '/var/lib/mysql-files/dump.csv'`: il pre-check di delegate chiede `read`, il Proxy risolve `dynamic` → `read`, la query passa e il file viene creato sul server MySQL. Nell'audit compare una riga `category: 'read'`.",
+      "fix": "Aggiungere alla regex le forme che scrivono fuori dal database — `\\bINTO\\s+(OUT|DUMP)FILE\\b`, `\\bLOAD\\s+DATA\\b`, `\\bLOAD_FILE\\s*\\(` — trattandole come scrittura, e replicare sul percorso socket il blocco già presente nel gateway MCP. Complemento utile: applicare `START TRANSACTION READ ONLY` anche su MySQL quando `expectRead` è impostato, così la barriera non dipende dal parser.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A05",
+      "severita": "alta",
+      "titolo": "L'export delle connessioni ri-cifra i segreti con SHA-256 senza salt, e il file risultante non è re-importabile",
+      "categoria": "crittografia / segreti",
+      "modulo": "server.js + db/vault.js",
+      "riferimenti": ["server.js:2667-2675", "db/vault.js:82-92", "server.js:2694-2701", "server.js:377-379"],
+      "problema": "connections:export deriva la chiave con `crypto.createHash('sha256').update(pass).digest()` (server.js:2672), cioè con la KDF del vault v1 che db/vault.js:82 dichiara «Solo per migrare»: nessun salt, un solo passaggio di hash, quindi miliardi di tentativi al secondo su GPU. È esattamente il difetto che il formato v2 (scrypt + salt, vault.js:87-92) esiste per risolvere, e lo si applica al file che per definizione lascia la macchina. Seconda conseguenza, funzionale: connections:import valida ogni `ENC:` con decryptRaw (server.js:2697), che usa la DEK corrente dell'installazione. Su un vault v2 la DEK è casuale e non sarà mai uguale a SHA256(passphrase), quindi un file esportato con una passphrase scelta viene rifiutato anche sull'installazione che gira con QUELLA passphrase — il flusso descritto nel commento a server.js:2661-2666 non è realizzabile.",
+      "scenario": "L'utente esporta le connessioni indicando una passphrase per spostarle su un'altra macchina e invia il .ini per email. Chi lo intercetta attacca offline una KDF non salata e priva di costo: una passphrase di dieci caratteri cade in tempi ragionevoli, e da lì si ottengono password dei database e delle chiavi SSH. Sull'altra macchina, intanto, l'import fallisce con «cifrato con un'altra passphrase» anche avviando il server con la passphrase corretta.",
+      "fix": "Fare passare l'export dal formato v2: generare un salt per il file, derivare la chiave con Vault.deriveKek(passphrase, salt) e scrivere salt e parametri KDF nell'intestazione del file esportato; all'import, leggere quell'intestazione e derivare la stessa chiave invece di confrontare con la DEK locale. Mantenere la lettura del vecchio formato per i file già esportati.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A06",
+      "severita": "alta",
+      "titolo": "Esporre l'istanza in rete con RBAC spento richiede una sola variabile, che nell'immagine Docker è già impostata",
+      "categoria": "configurazione / autenticazione",
+      "modulo": "server.js + Dockerfile + docker-compose.yml",
+      "riferimenti": ["server.js:3609-3628", "Dockerfile:23", "Dockerfile:30", "docker-compose.yml:33-43", "mcp/McpGateway.js:1548-1583", "server.js:213-223"],
+      "problema": "assertTransportSafe impedisce l'avvio fuori dal loopback solo finché CODEDB_TRUST_PROXY_TLS non vale 1; con RBAC spento si limita a stampare un avviso (server.js:3614-3617) e prosegue. Ma quella variabile significa «davanti c'è un proxy HTTPS», non «l'autenticazione è attiva», ed è impostata a 1 sia nel Dockerfile (riga 30) sia come default nel compose (`${CODEDB_TRUST_PROXY_TLS:-1}`), mentre CODEDB_RBAC ha default `off`. In quella configurazione cadono entrambe le barriere residue: checkOrigin con bind non-loopback accetta ogni richiesta priva di header Origin (server.js:219-221), e guardHost di /mcp fa lo stesso (McpGateway.js:1554), mentre authenticate() restituisce ROOT_PRINCIPAL perché rbacOn() è false.",
+      "scenario": "Un utente segue il commento di docker-compose.yml e imposta `BIND_ADDR=0.0.0.0` in .env per condividere l'istanza col team, dimenticando `CODEDB_RBAC=on` (le due righe sono adiacenti nel commento, ma nulla le lega). Il server parte: l'unico segno è una riga di log. Chiunque raggiunga la porta ottiene, senza credenziali, ROOT_PRINCIPAL sul socket — lettura, scrittura, DDL, export del vault, backup — e un endpoint /mcp non autenticato.",
+      "fix": "Rifiutare l'avvio quando HOST esce dal loopback con CODEDB_RBAC spento, salvo una dichiarazione esplicita e distinta (es. CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1) che compaia anche nei log a ogni avvio; oppure legare la partenza alla presenza di un control plane. In subordine, togliere il default a 1 di CODEDB_TRUST_PROXY_TLS dal compose e lasciarlo solo nel Dockerfile, dove il bind è interno al container.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A07",
+      "severita": "media",
+      "titolo": "PostgreSQL: modifica o eliminazione di una riga senza chiave primaria colpisce tutte le righe identiche",
+      "categoria": "integrità dei dati",
+      "modulo": "db/PostgreSqlStrategy.js",
+      "riferimenti": ["db/PostgreSqlStrategy.js:369-374", "db/PostgreSqlStrategy.js:809-838", "db/PostgreSqlStrategy.js:849-857", "db/MySqlStrategy.js:775", "db/MySqlStrategy.js:796"],
+      "problema": "makeId ripiega sull'INTERA riga quando la tabella non ha chiave primaria (`const cols = pkCols.length ? pkCols : allCols`), quindi l'`_id` virtuale non identifica una riga ma un VALORE. docUpdate e docDelete costruiscono la WHERE da quell'oggetto ed eseguono senza alcun limite di righe; MySqlStrategy, sullo stesso percorso, aggiunge `LIMIT 1` (righe 775 e 796). L'asimmetria non è dichiarata da nessuna parte.",
+      "scenario": "Tabella PostgreSQL di staging senza PK contenente tre righe identiche (caso ordinario dopo un import ripetuto). L'utente apre la griglia, corregge un campo sulla prima riga e salva: `UPDATE ... WHERE col1 = $1 AND col2 = $2 ...` corrisponde a tutte e tre e le modifica insieme. Idem con l'eliminazione della singola riga, che ne cancella tre. La risposta riporta `modified: 3`, ma la griglia mostra un'operazione riuscita e il danno è già applicato.",
+      "fix": "Su PostgreSQL usare `ctid` per le tabelle senza PK: `DELETE FROM t WHERE ctid = (SELECT ctid FROM t WHERE <match> LIMIT 1)` e la forma equivalente per l'UPDATE. In alternativa, quando pkCols è vuoto, rifiutare la modifica in linea spiegando che la tabella non ha una chiave primaria, invece di agire su un bersaglio ambiguo.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A08",
+      "severita": "media",
+      "titolo": "L'import a blocchi stima la dimensione su un campione: con documenti eterogenei il messaggio supera il limite del socket",
+      "categoria": "edge case sui dati / robustezza",
+      "modulo": "public/js/exportimport.js",
+      "riferimenti": ["public/js/exportimport.js:45-70", "public/js/exportimport.js:18-28", "server.js:250"],
+      "problema": "blocchiDiImport misura con JSON.stringify solo i primi CAMPIONE_DIM = 50 documenti e per tutti i successivi usa la MEDIA di quel campione (righe 54-60). Il tetto CHUNK_BYTES di 3 MB protegge quindi solo se il file è omogeneo: se le dimensioni crescono dopo le prime cinquanta righe, il blocco reale supera i 5 MB di maxHttpBufferSize (server.js:250) e Socket.IO chiude la connessione. Il commento alle righe 36-43 dichiara il compromesso, ma il margine 3/5 MB assorbe un errore di stima, non un ordine di grandezza.",
+      "scenario": "File JSON con 50 righe di anagrafica (200 byte) seguite da 2000 righe con un campo note da 100 KB. La media stimata resta ~200 byte, quindi si formano blocchi da CHUNK = 500 documenti: il blocco pesa ~50 MB e il messaggio viene rifiutato. L'import si interrompe a metà con un errore di rete, lasciando i documenti già inviati nella collection.",
+      "fix": "Ricalibrare in corsa: rimisurare periodicamente (es. ogni 50 documenti o quando la dimensione stimata del blocco supera metà del tetto) e, in ogni caso, misurare davvero il documento quando il blocco corrente si avvicina a CHUNK_BYTES. Costo trascurabile rispetto alla serializzazione già prevista.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A09",
+      "severita": "media",
+      "titolo": "Un'eccezione non catturata termina l'intero processo: in Electron chiude l'applicazione e gli script in corso",
+      "categoria": "disponibilità / ciclo di vita",
+      "modulo": "server.js",
+      "riferimenti": ["server.js:3577-3581", "server.js:3494-3504", "electron-main.js:265-272", "docker-compose.yml:59"],
+      "problema": "L'handler di uncaughtException chiama gracefulShutdown, che termina il processo. In un servizio multi-utente significa che un errore isolato in una sessione fa cadere le sessioni di tutti; in Electron server.js gira NELLO STESSO processo della finestra, quindi l'applicazione desktop si chiude, portandosi via gli script della tab Query & Aggregate in esecuzione (che vivono nella sessione del socket). Solo l'esecuzione in Docker ha un supervisore (`restart: unless-stopped`); avvio da sorgente, launcher CodeDB.cmd/codedb.sh e app installata non ne hanno.",
+      "scenario": "Un driver emette un errore su un event emitter fuori da qualsiasi try (una socket TCP che cade mentre un change stream è attivo è la via più semplice). Nell'app desktop la finestra si chiude senza spiegazione mentre uno script di migrazione è a metà; l'utente non sa a quale istruzione si sia fermato, perché anche il pannello di avanzamento è sparito.",
+      "fix": "Distinguere gli errori recuperabili: registrare l'eccezione, chiudere la sola sessione coinvolta e proseguire, riservando l'uscita ai casi in cui lo stato del processo è davvero compromesso. Nell'ambiente Electron, sostituire l'uscita con un dialog che segnala il problema e mantiene la finestra. Documentare comunque un supervisore per gli avvii da sorgente.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A10",
+      "severita": "media",
+      "titolo": "Il nome della cartella di gruppo di un backup arriva dal client: si può scrivere nel gruppo di un altro tenant",
+      "categoria": "integrità / isolamento multi-tenant",
+      "modulo": "server.js + backup/lib/engine.js",
+      "riferimenti": ["server.js:3318", "backup/lib/engine.js:396-402", "backup/lib/util.js:103-105"],
+      "problema": "In backup:run il nome usato per la cartella è `payload.connName || payload.label || 'ui-session'` (server.js:3318), cioè una stringa scelta dal client e mai confrontata con `sess.connName`, che è il nome su cui poggiano davvero i permessi. runBackup costruisce `<destRoot>/<safeName(connName)>_<safeName(db)>` (engine.js:398). safeName impedisce il path traversal (i separatori diventano `_`, verificato: `[^\\w.-]+` sostituisce `/` e `\\`), ma non impedisce di scegliere il nome di un gruppo esistente e di aggiungervi backup e voci di catalogo.",
+      "scenario": "Il tenant A esegue un backup di un proprio database indicando `connName: 'crm-produzione'` e `db: 'clienti'`, cioè il gruppo del tenant B. Il dump di A finisce in `crm-produzione_clienti/` e viene aggiunto al catalogo di gruppo. Nella schermata Catalogo & Ripristino del tenant B compare come «ultimo backup»: se B ripristina, sovrascrive i propri dati con quelli di A. Combinato con CDB-A01, il gruppo è anche direttamente enumerabile.",
+      "fix": "Usare `sess.connName` (o l'etichetta derivata dalla sessione) per il nome del gruppo e trattare `payload.connName` come sola etichetta di log, oltre a partizionare la radice per ownerId come da CDB-A01.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A11",
+      "severita": "bassa",
+      "titolo": "Il confinamento dei percorsi di backup non risolve i collegamenti simbolici",
+      "categoria": "filesystem",
+      "modulo": "backup/lib/policy.js",
+      "riferimenti": ["backup/lib/policy.js:33-45"],
+      "problema": "resolveBackupPath confronta il percorso normalizzato con la radice usando path.resolve/path.relative, che lavorano sulla stringa e non seguono i symlink. Un collegamento presente dentro BACKUP_ROOT e puntato all'esterno supera il controllo.",
+      "scenario": "Chi ha già accesso al filesystem del server (o un container in cui la cartella dei backup è un volume condiviso) crea `backups/fuori -> /etc`. Da quel momento `backup:run` con `dest: 'fuori'` scrive fuori dal perimetro previsto pur passando dalla politica.",
+      "fix": "Dopo la risoluzione, applicare fs.realpathSync (con fallback sul percorso non ancora esistente, risalendo al primo antenato reale) e ripetere il confronto con la radice reale.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A12",
+      "severita": "bassa",
+      "titolo": "I percorsi dei file elencati nel manifest di un backup non sono confinati alla cartella del backup",
+      "categoria": "filesystem",
+      "modulo": "backup/lib/restore.js + server.js",
+      "riferimenti": ["backup/lib/restore.js:143-152", "server.js:3441-3447"],
+      "problema": "Sia la verifica (server.js:3443) sia la lettura dello schema (restore.js:144) compongono `path.join(backupDir, f.path)` con un valore che proviene dal manifest.json su disco, senza verificare che resti dentro backupDir. I manifest sono scritti dal motore, quindi oggi il valore è affidabile; ma è un file di dati, non codice, e il checksum protegge il CONTENUTO dei file elencati, non il campo `path` del manifest stesso.",
+      "scenario": "Un manifest alterato a mano (o proveniente da una cartella di backup ricevuta da terzi, scenario reso concreto da CDB-A01) con `\"path\": \"../../../../etc/passwd\"` fa leggere quel file a backup:verify, che ne riporta l'esito del confronto — un oracolo sull'esistenza e sul contenuto di file fuori dal perimetro.",
+      "fix": "Applicare a ogni `f.path` lo stesso confinamento di resolveBackupPath usando backupDir come radice, rifiutando le voci che ne escono.",
+      "stato": "aperto"
+    }
+  ],
+  "priorita_intervento": [
+    {
+      "id": "CDB-A01",
+      "motivo": "È l'unico rilievo che espone dati di un altro tenant senza alcuna condizione particolare, e il fix è circoscritto: una radice per ownerId nei quattro handler di backup."
+    },
+    {
+      "id": "CDB-A02",
+      "motivo": "Stessa causa radice di CDB-A01 (assertManage confonde amministratore del tenant e dell'installazione) e si corregge insieme; qui l'effetto è distruttivo e non richiede nemmeno una connessione aperta."
+    },
+    {
+      "id": "CDB-A04",
+      "motivo": "Poche righe di regex più il blocco già scritto nel gateway MCP: costo minimo, e finché resta aperto anche l'audit racconta il falso, cioè si perde la traccia usata per accorgersi degli altri problemi."
+    },
+    {
+      "id": "CDB-A06",
+      "motivo": "Un solo controllo all'avvio evita la configurazione peggiore possibile; va fatto prima di qualunque distribuzione dell'immagine Docker, perché dopo cambierebbe il comportamento di installazioni già in esercizio."
+    },
+    {
+      "id": "CDB-A03",
+      "motivo": "Il più costoso dei rilievi di autorizzazione (serve analizzare l'SQL, non una regex) e per questo va pianificato: nel frattempo la scelta onesta è dichiarare che lo scope su SQL non è una barriera e richiedere un utente DBMS a privilegi ridotti per i sottoutenti."
+    }
+  ]
+}

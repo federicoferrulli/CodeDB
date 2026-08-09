@@ -1,7 +1,11 @@
 # Manleva e limitazione di responsabilità
 
+Versione 1.0 — 9 agosto 2026
+
 CodeDB è distribuito con licenza **GNU Affero General Public License v3.0 only
-(AGPL-3.0-only)**. Il testo completo della licenza è nel file `LICENSE.md`.
+(AGPL-3.0-only)**. Il testo completo della licenza è nel file `LICENSE.md`; le
+condizioni d'uso sono nel contratto con l'utente finale (`EULA.md`), di cui le
+presenti clausole sono parte integrante.
 
 Il software è fornito **"così com'è"**, senza garanzie di alcun tipo, esplicite o
 implicite, comprese — a titolo esemplificativo e non esaustivo — le garanzie di

@@ -3971,6 +3971,111 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   display: flex;
   gap: 6px;
 }
+
+/* --- Catalogo: l'ultimo backup in evidenza, lo storico dietro un clic --- */
+.backup-latest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-1);
+}
+.backup-latest-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.backup-latest-when {
+  font-weight: 600;
+  color: var(--fg);
+}
+.backup-latest .backup-id {
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+  font-weight: 400;
+}
+.backup-history-toggle {
+  margin-top: 8px;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.backup-history-toggle:hover {
+  color: var(--fg);
+  text-decoration: underline;
+}
+.backup-history {
+  margin-top: 4px;
+}
+#backup-catalog-filter {
+  flex: 1;
+  min-width: 160px;
+}
+/* Avanzamento del ripristino */
+.restore-progress {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.restore-progress-head {
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+.restore-progress.esito-ok .restore-progress-head { color: #00e676; }
+.restore-progress.esito-ko .restore-progress-head { color: #ff6b6b; }
+.restore-progress-log {
+  max-height: 140px;
+  overflow-y: auto;
+  padding: 6px 10px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--fg-dim);
+}
+.restore-progress-log .riga-ko { color: #ff6b6b; }
+
+.backup-chain {
+  font-size: 0.75rem;
+  color: var(--fg-dim);
+  white-space: nowrap;
+}
+.backup-chain.rotta {
+  color: #ffb300;
+  font-weight: 600;
+}
+.backup-table .backup-chain {
+  display: block;
+  margin-top: 2px;
+}
+/* I backup di altre connessioni restano raggiungibili, ma non si confondono
+   con quelli su cui il ripristino scriverebbe senza sorprese. */
+.backup-altri-sep {
+  margin: 16px 0 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+}
+.backup-group-estranea {
+  opacity: 0.82;
+  border-style: dashed;
+}
+.backup-group-estranea:hover {
+  opacity: 1;
+}
 .btn-sm {
   padding: 4px 8px;
   font-size: 0.78rem;
@@ -3979,6 +4084,54 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .verify-result-row td {
   background: var(--bg-1);
   padding: 8px 12px;
+}
+.backup-latest + .verify-result-cell {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* --- Conferma di ripristino --- */
+.restore-target {
+  margin: 10px 0;
+  padding: 8px 10px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+.restore-target-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+.restore-target-row span {
+  color: var(--fg-dim);
+}
+.restore-target-row strong {
+  font-family: monospace;
+  word-break: break-all;
+  text-align: right;
+}
+.restore-warning {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 179, 0, 0.4);
+  border-radius: 6px;
+  background: rgba(255, 179, 0, 0.12);
+  color: #ffb300;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.restore-drop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 0.85rem;
 }
 .status-pass {
   color: #00e676;
@@ -3994,6 +4147,42 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-size: 0.75rem;
   color: var(--fg-dim);
 }
+/* ---------------------------------------------------------------------------
+   Pulsante in attesa (vedi iniziaCaricamento in utils.js). Il cerchietto usa
+   `currentColor`, quindi funziona identico su pulsante primario, secondario e
+   pericoloso senza una variante per ciascuno.
+   -------------------------------------------------------------------------- */
+.btn-spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  margin-right: 6px;
+  vertical-align: -0.12em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btn-spin 0.6s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Pulsante-icona: nessuna etichetta accanto, quindi nessun margine. */
+.btn-solo-spinner .btn-spinner { margin-right: 0; }
+
+/* Un pulsante in attesa resta leggibile: `disabled` di solito lo sbiadisce
+   fino a farlo sembrare inattivo, ma qui sta lavorando e deve dirlo. */
+button[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Niente rotazione, ma il cerchietto resta: è il segnale, non l'animazione. */
+  .btn-spinner { animation: none; opacity: 0.7; }
+}
+
 .empty-state,
 .loading-spinner {
   padding: 24px 12px;
@@ -6131,6 +6320,26 @@ button.linklike:hover {
 .about-dettaglio { margin-top: var(--space-md); border-top: 1px solid var(--border); padding-top: var(--space-sm); }
 .about-dettaglio summary { cursor: pointer; font-size: 0.8rem; color: var(--fg-dim); }
 .about-dettaglio summary:hover { color: var(--fg); }
+
+/* EULA: testo lungo ma da LEGGERE, non da consultare come il testo di licenza
+   — quindi tipografia normale (non monospazio) dentro un riquadro scorrevole,
+   così la modale non diventa un rotolo di sei schermate. */
+.about-eula {
+  margin: var(--space-sm) 0 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.about-eula h3 { margin: 0 0 var(--space-sm); font-size: 0.9rem; }
+.about-eula h4 { margin: var(--space-md) 0 var(--space-2xs); font-size: 0.82rem; }
+.about-eula p { margin: 0 0 var(--space-sm); font-size: 0.78rem; line-height: 1.6; color: var(--fg-dim); }
+.about-eula ul { margin: 0 0 var(--space-sm); padding-left: var(--space-lg); }
+.about-eula li { font-size: 0.78rem; line-height: 1.6; color: var(--fg-dim); margin-bottom: var(--space-2xs); }
+.about-eula strong { color: var(--fg); }
+.about-eula code { font-family: var(--font-mono); font-size: 0.73rem; color: var(--accent-hover); }
 
 .about-licenza {
   margin: var(--space-sm) 0 0;

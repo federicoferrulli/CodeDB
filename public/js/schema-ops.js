@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab, chiediTesto } from './utils.js';
+import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab, chiediTesto, conCaricamento } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
@@ -216,7 +216,7 @@ export function initSchemaOps() {
   $('#dbcreate-save').addEventListener('click', () => {
     const db = $('#dbcreate-name').value.trim();
     const coll = $('#dbcreate-coll').value.trim();
-    emit('db:create', { db, coll }).then((res) => {
+    conCaricamento($('#dbcreate-save'), () => emit('db:create', { db, coll }), 'Creo…').then((res) => {
       closeModal('#dbcreate-overlay');
       toast(`${dbWord(true)} "${db}" creato`);
       res._state.expandedDbs.add(db);
@@ -242,7 +242,7 @@ export function initSchemaOps() {
     const payload = { db: creatingCollDb, name };
     const isSql = isSqlType(state.dbType);
     if (isSql) payload.columns = readColRows();
-    emit('collection:create', payload).then((res) => {
+    conCaricamento($('#collcreate-save'), () => emit('collection:create', payload), 'Creo…').then((res) => {
       closeModal('#collcreate-overlay');
       toast(`${isSql ? 'Tabella' : 'Collection'} "${name}" creata`);
       res._state.expandedDbs.add(creatingCollDb);
@@ -273,7 +273,7 @@ export function initSchemaOps() {
       ? `Eliminare la colonna "${name}" e tutti i suoi dati?\nL'operazione non è reversibile.`
       : `Rimuovere il campo "${name}" da TUTTI i documenti della collection?\nL'operazione non è reversibile.`;
     if (!confirm(msg)) return;
-    emit('column:drop', { db: state.db, coll: state.coll, name }).then((res) => {
+    conCaricamento(delBtn, () => emit('column:drop', { db: state.db, coll: state.coll, name }), '').then((res) => {
       toast(`${collWord(true)} "${name}" ${colDone('eliminat')}` +
         (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
@@ -297,7 +297,7 @@ export function initSchemaOps() {
     const payload = colEditOldName
       ? { db: state.db, coll: state.coll, oldName: colEditOldName, column }
       : { db: state.db, coll: state.coll, column };
-    emit(event, payload).then((res) => {
+    conCaricamento($('#coledit-save'), () => emit(event, payload), 'Salvo…').then((res) => {
       closeModal('#coledit-overlay');
       const verb = colEditOldName ? 'modificat' : 'aggiunt';
       const done = `${collWord(true)} "${column.name}" ${colDone(verb)}`;

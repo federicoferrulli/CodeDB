@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -864,13 +864,15 @@ export function deleteSelectedDocs() {
   // A ondate, non tutte insieme (CDB-51): una cancellazione multipla di
   // centinaia di righe riempirebbe la coda del socket e il pool della sessione,
   // lasciando in attesa ogni altra operazione dell'utente.
-  eseguiAOndate(ids, 8, (id) =>
+  // A ondate significa che l'operazione dura: il pulsante deve dirlo, e
+  // soprattutto non deve poter partire una seconda volta sugli stessi id.
+  conCaricamento($('#delete-selected-btn'), () => eseguiAOndate(ids, 8, (id) =>
     emit('doc:delete', {
       db: state.db,
       coll: state.coll,
       id,
     })
-  ).then((results) => {
+  ), 'Elimino…').then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
     origin.st.selectedDocs.clear();
@@ -897,11 +899,11 @@ export function deleteAllWithFilter() {
     : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${count}righe` : `TUTTI i ${count}documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
   if (!confirm(msg)) return;
 
-  emit('collection:deleteMany', {
+  conCaricamento($('#delete-all-btn'), () => emit('collection:deleteMany', {
     db: state.db,
     coll: state.coll,
     filter,
-  }).then((res) => {
+  }), 'Elimino…').then((res) => {
     res._state.selectedDocs.clear();
     toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
     if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura

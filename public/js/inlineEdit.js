@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext } from './utils.js';
+import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, conCaricamento } from './utils.js';
 import { runQuery, renderGrid } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
 
@@ -214,13 +214,13 @@ export function initInlineEdit() {
     const db = editDocContext ? editDocContext.db : state.db;
     const coll = editDocContext ? editDocContext.coll : state.coll;
 
-    emit('doc:replace', {
+    conCaricamento($('#editdoc-save'), () => emit('doc:replace', {
       tabId,
       db,
       coll,
       id: idOf(editingDoc),
       doc: $('#editdoc-json').value,
-    }).then((res) => {
+    }), 'Salvo…').then((res) => {
       closeModal('#editdoc-overlay');
       toast('Documento aggiornato');
       if (editDocContext && editDocContext.onSaveSuccess) {

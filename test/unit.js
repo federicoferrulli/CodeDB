@@ -500,10 +500,16 @@ console.log('--- Test Unitari CodeDB ---');
     assert.ok(/senza garanzie/i.test(manleva) && /non rispondono/i.test(manleva),
       'MANLEVA.md deve contenere l\'esclusione di garanzia e la limitazione di responsabilità');
 
-    // L'installer deve mostrarla: senza `nsis.license` il setup non presenta
+    // L'EULA è l'altra metà dell'accordo: sta nello stesso file generato,
+    // perché l'installer è il punto in cui l'utente lo accetta davvero.
+    const eula = fs.readFileSync(path.join(radice, 'EULA.md'), 'utf8');
+    assert.ok(/EULA/i.test(eula) && /AGPL-3\.0/.test(eula),
+      'EULA.md deve dichiarare l\'accordo con l\'utente finale e la licenza applicata');
+
+    // L'installer deve mostrarli: senza `nsis.license` il setup non presenta
     // alcuna pagina di accettazione.
     assert.strictEqual(pkg.build.nsis.license, 'build/license.txt',
-      'build.nsis.license deve puntare al file generato da MANLEVA.md');
+      'build.nsis.license deve puntare al file generato da MANLEVA.md ed EULA.md');
 
     assert.ok(fs.existsSync(USCITA), 'build/license.txt deve esistere (npm run electron:licenza)');
     const generato = fs.readFileSync(USCITA, 'utf8');
@@ -516,7 +522,17 @@ console.log('--- Test Unitari CodeDB ---');
     // .gitattributes lo dichiara `eol=crlf`.
     const soloTesto = (s) => s.replace(/\r\n?/g, '\n');
     assert.strictEqual(soloTesto(generato), soloTesto(contenutoLicenza()),
-      'build/license.txt è disallineato da MANLEVA.md: rigeneralo con `npm run electron:licenza`');
+      'build/license.txt è disallineato da MANLEVA.md/EULA.md: rigeneralo con `npm run electron:licenza`');
+
+    // Entrambe le parti devono esserci: una pagina di accettazione che mostra
+    // la sola manleva chiederebbe di accettare metà accordo.
+    assert.ok(/Contratto di licenza con l'utente finale/.test(generato),
+      'build/license.txt deve contenere anche l\'EULA');
+
+    // Gli elenchi puntati dell'EULA non devono fondersi nel paragrafo
+    // precedente: è proprio l'elenco degli obblighi da accettare.
+    assert.ok(/\n\s+- /.test(soloTesto(generato)),
+      'build/license.txt deve conservare gli elenchi puntati dell\'EULA');
 
     // I paragrafi devono restare separati: su Windows `MANLEVA.md` arriva con
     // CRLF e una divisione ingenua li fondeva tutti in un muro di testo — il
@@ -529,6 +545,30 @@ console.log('--- Test Unitari CodeDB ---');
     // caratteri illeggibili proprio nella schermata da accettare.
     assert.strictEqual(generato.charCodeAt(0), 0xFEFF, 'build/license.txt deve iniziare con il BOM UTF-8');
     assert.ok(!/[*`#]/.test(generato), 'il markdown non deve arrivare nell\'installer come testo');
+
+    // La landing pubblica la SUA copia dell'EULA (`landing/license.html`), che
+    // non si può generare da `EULA.md` — è un sito a parte, con un altro
+    // impianto. Resta però il difetto che questo test esiste per impedire: due
+    // versioni divergenti dello stesso accordo, una accettata all'installazione
+    // e una pubblicata sul sito. Non si confronta il testo parola per parola
+    // (la pagina ha una sua forma), ma le clausole che, mancando da una parte,
+    // cambiano ciò a cui l'utente si è obbligato.
+    const paginaEula = path.join(radice, 'landing', 'license.html');
+    if (fs.existsSync(paginaEula)) {
+      const pagina = fs.readFileSync(paginaEula, 'utf8');
+      const clausole = [
+        [/art\.\s*13/i, 'l\'obbligo AGPL sul software offerto via rete (art. 13)'],
+        [/indennizzare/i, 'l\'obbligo di manleva e difesa'],
+        [/legge italiana/i, 'la legge applicabile'],
+        [/foro/i, 'il foro competente'],
+        [/federicoferrulli\/gui-mongodb/, 'il repository ufficiale'],
+        [/Versione 1\.0/, 'la versione dell\'accordo'],
+      ];
+      for (const [re, cosa] of clausole) {
+        assert.ok(re.test(eula), `EULA.md non dichiara ${cosa}`);
+        assert.ok(re.test(pagina), `landing/license.html è disallineato da EULA.md: manca ${cosa}`);
+      }
+    }
 
     // Gli script di build devono rigenerarlo, altrimenti l'installer resterebbe
     // con la manleva della build precedente.
@@ -560,6 +600,14 @@ console.log('--- Test Unitari CodeDB ---');
     if (pub.provider === 'github') {
       assert.strictEqual(pub.owner, upd.REPO.owner, 'build.publish.owner deve coincidere con il repo usato dal modulo aggiornamenti');
       assert.strictEqual(pub.repo, upd.REPO.repo, 'build.publish.repo deve coincidere con il repo usato dal modulo aggiornamenti');
+
+      // …e con il repository dichiarato dal pacchetto, che è quello che l'EULA
+      // cita come sorgente ispezionabile: due nomi diversi significano un feed
+      // di aggiornamenti che punta altrove rispetto al codice pubblicato, e la
+      // concessione della AGPL che rimanda a un repository che può non esistere.
+      const url = (pkg.repository && pkg.repository.url) || '';
+      assert.ok(url.includes(`${pub.owner}/${pub.repo}`),
+        `package.json repository (${url}) deve puntare allo stesso repo di build.publish (${pub.owner}/${pub.repo})`);
     }
 
     // Feed personalizzato (server statico HTTP): HTTPS obbligatorio fuori dal

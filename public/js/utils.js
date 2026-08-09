@@ -135,6 +135,93 @@ export function cut(s, n) {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 }
 
+/* ---------------------------------------------------------------------------
+ * Stato di CARICAMENTO dei pulsanti.
+ *
+ * Tutta la comunicazione col server passa da Socket.IO con acknowledgment, cioè
+ * da un'attesa che può durare da pochi millisecondi a parecchi secondi (una
+ * connessione remota dietro un tunnel SSH, un backup, un cambio di passphrase
+ * che riavvolge il vault). Senza un segnale, un pulsante premuto è
+ * indistinguibile da un pulsante non premuto: l'utente ripreme — e sui
+ * pulsanti che scrivono questo non è un fastidio estetico ma una **doppia
+ * operazione** (due documenti inseriti, due backup avviati).
+ *
+ * Il pattern che c'era prima era scritto a mano a ogni chiamata: disabilita,
+ * riscrivi `textContent`, ripristina nel `then` E nel `catch`. Tre difetti
+ * ricorrenti — l'etichetta originale ripetuta come stringa letterale in tre
+ * punti (che divergono alla prima modifica), il ripristino dimenticato in uno
+ * dei due rami (pulsante morto per sempre) e il salto del layout quando
+ * "⚡ Testa Connessione" diventa "Verifica…".
+ *
+ * Qui l'etichetta si SALVA invece di riscriverla, il ripristino sta in un
+ * `finally` (quindi vale anche per i rifiuti e per le eccezioni sincrone) e la
+ * larghezza viene bloccata per la durata dell'attesa.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Mette un pulsante in attesa. Restituisce la funzione che lo rimette com'era —
+ * idempotente, così chiamarla due volte non fa danni.
+ */
+export function iniziaCaricamento(btn, testo) {
+  if (!btn || btn.dataset.caricamento === '1') return () => {};
+
+  const htmlPrec = btn.innerHTML;
+  const eraDisabilitato = btn.disabled;
+  const minWidthPrec = btn.style.minWidth;
+
+  // Larghezza bloccata: l'etichetta di attesa è quasi sempre più corta di
+  // quella normale, e un pulsante che si restringe fa saltare quelli accanto
+  // proprio mentre l'utente sta guardando se è successo qualcosa.
+  const larghezza = btn.getBoundingClientRect().width;
+  if (larghezza) btn.style.minWidth = `${Math.ceil(larghezza)}px`;
+  // Il cerchietto ha `margin-right`: su un pulsante-icona senza etichetta
+  // sposterebbe il disegno fuori centro.
+  if (testo === '') btn.classList.add('btn-solo-spinner');
+
+  btn.dataset.caricamento = '1';
+  btn.disabled = true;
+  btn.setAttribute('aria-busy', 'true');
+  // `testo: ''` significa "solo il cerchietto": è il caso dei pulsanti-icona
+  // (elimina colonna, ricarica), dove una parola non ci starebbe.
+  const etichetta = testo == null ? 'Attendere…' : String(testo);
+  btn.innerHTML = `<span class="btn-spinner" aria-hidden="true"></span>${etichetta ? esc(etichetta) : ''}`;
+
+  let finito = false;
+  return () => {
+    if (finito) return;
+    finito = true;
+    btn.innerHTML = htmlPrec;
+    btn.disabled = eraDisabilitato;
+    btn.removeAttribute('aria-busy');
+    btn.style.minWidth = minWidthPrec;
+    btn.classList.remove('btn-solo-spinner');
+    delete btn.dataset.caricamento;
+  };
+}
+
+/**
+ * Esegue `azione()` tenendo `btn` in attesa finché la promessa non si chiude.
+ * Restituisce la stessa promessa, quindi si incastra in una catena esistente
+ * senza cambiarne il comportamento: `conCaricamento(btn, () => emit(…), 'Salvo…')
+ * .then(…)`. Un'azione sincrona (o che lancia) rimette comunque il pulsante a
+ * posto.
+ */
+export function conCaricamento(btn, azione, testo) {
+  const fine = iniziaCaricamento(btn, testo);
+  let p;
+  try {
+    p = azione();
+  } catch (err) {
+    fine();
+    throw err;
+  }
+  if (!p || typeof p.then !== 'function') {
+    fine();
+    return p;
+  }
+  return p.finally(fine);
+}
+
 let toastTimer = null;
 export function toast(msg, isError = false) {
   const el = $('#toast');

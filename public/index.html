@@ -182,8 +182,10 @@
             Dal prossimo avvio servirà la nuova passphrase.</span>
         </div>
 
+        <!-- Nessun riquadro di successo: a operazione riuscita la modale si
+             chiude subito e l'esito (con l'avviso sul prossimo avvio) sta nel
+             toast, che sopravvive alla chiusura. -->
         <div id="passphrase-error" class="error hidden"></div>
-        <div id="passphrase-success" class="success-box hidden"></div>
 
         <div class="modal-actions">
           <button type="button" id="passphrase-cancel" class="ghost">Annulla</button>
@@ -1763,10 +1765,58 @@
       <!-- Scheda 2: Catalogo & Ripristino -->
       <div id="section-backup-catalog" class="modal-tab-content hidden">
         <div class="catalog-toolbar">
-          <span>Cataloghi dei backup presenti nel server:</span>
+          <input type="search" id="backup-catalog-filter" class="hidden"
+                 placeholder="Filtra per gruppo o database…" spellcheck="false" autocomplete="off" />
+          <span id="backup-catalog-hint">Cataloghi dei backup presenti nel server:</span>
           <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</button>
         </div>
+        <!-- Avanzamento del ripristino: alimentato dai push `backup:progress`. -->
+        <div id="restore-progress" class="restore-progress hidden">
+          <div class="restore-progress-head"><span id="restore-progress-title"></span></div>
+          <div id="restore-progress-log" class="restore-progress-log"></div>
+        </div>
         <div id="backup-catalog-list" class="catalog-list-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Conferma di ripristino =====================
+       Una sola domanda al posto di tre dialoghi in fila (destinazione +
+       conferma + drop): le due risposte dell'80% dei casi — il database
+       d'origine e "senza DROP" — sono già impostate, e restano modificabili
+       nello stesso posto in cui si legge la connessione su cui si scriverà. -->
+  <div id="restore-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="restore-title">
+    <div class="modal">
+      <h2 id="restore-title">⚡ Ripristino del backup</h2>
+      <p class="subtitle" id="restore-subtitle"></p>
+
+      <div class="restore-target">
+        <div class="restore-target-row"><span>Backup</span><strong id="restore-backup-id"></strong></div>
+        <div class="restore-target-row"><span>Connessione di destinazione</span><strong id="restore-conn"></strong></div>
+        <div class="restore-target-row hidden" id="restore-chain-row"><span>Backup applicati in catena</span><strong
+            id="restore-chain"></strong></div>
+      </div>
+
+      <!-- Il backup viene da un'altra connessione: qui si scrive comunque su
+           quella aperta, ed è l'unico modo di sbagliare ambiente in un clic. -->
+      <div id="restore-warning" class="restore-warning hidden"></div>
+
+      <div class="form-row">
+        <label>Database di destinazione
+          <input type="text" id="restore-target-db" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+
+      <label class="cursor-pointer restore-drop-row">
+        <input type="checkbox" id="restore-drop" />
+        Elimina (DROP) le collection/tabelle di destinazione prima di ripristinare
+      </label>
+      <p class="modal-hint">Senza l'eliminazione i dati del backup vengono sovrascritti per chiave (upsert) e ciò
+        che nel backup non c'è resta al suo posto.</p>
+
+      <div class="modal-actions">
+        <button type="button" id="restore-cancel" class="ghost">Annulla</button>
+        <button type="button" id="restore-ok" class="primary">⚡ Ripristina</button>
       </div>
     </div>
   </div>

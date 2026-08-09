@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, fmtBytes, esc, toast, isForActiveTab } from './utils.js';
+import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento } from './utils.js';
 
 export function loadDetails() {
   if (!state.db || !state.coll) return;
@@ -66,7 +66,7 @@ export function initDetails() {
     const name = btn.dataset.name;
     const extra = name.toUpperCase() === 'PRIMARY' ? '\nAttenzione: è la chiave primaria della tabella.' : '';
     if (!confirm(`Eliminare l'indice "${name}"?${extra}`)) return;
-    emit('index:drop', { db: state.db, coll: state.coll, name }).then((res) => {
+    conCaricamento(btn, () => emit('index:drop', { db: state.db, coll: state.coll, name }), '').then((res) => {
       toast(`Indice "${name}" eliminato`);
       // loadDetails() rilegge db/coll dal Proxy: ha senso solo se il tab che ha
       // eliminato l'indice è ancora quello mostrato.
@@ -86,13 +86,14 @@ export function initDetails() {
   $('#idxcreate-cancel').addEventListener('click', () => $('#idxcreate-overlay').classList.add('hidden'));
 
   $('#idxcreate-save').addEventListener('click', () => {
-    emit('index:create', {
+    // La creazione di un indice su una tabella grande può durare minuti.
+    conCaricamento($('#idxcreate-save'), () => emit('index:create', {
       db: state.db,
       coll: state.coll,
       name: $('#idxcreate-name').value,
       fields: $('#idxcreate-fields').value,
       unique: $('#idxcreate-unique').checked,
-    }).then((res) => {
+    }), 'Creo…').then((res) => {
       $('#idxcreate-overlay').classList.add('hidden');
       toast(`Indice "${res.name}" creato`);
       if (isForActiveTab(res)) loadDetails();

@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -298,22 +298,19 @@ export function initConnection() {
   $('#conn-test-btn')?.addEventListener('click', () => {
     const cfg = readConnForm();
     const btn = $('#conn-test-btn');
-    btn.disabled = true;
-    btn.textContent = 'Verifica…';
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');
 
-    emit('connections:test', cfg)
+    // Etichetta salvata e ripristinata da `conCaricamento`: prima "⚡ Testa
+    // Connessione" era una stringa letterale ripetuta in tre punti, e bastava
+    // rinominare il pulsante nell'HTML perché al primo clic cambiasse nome.
+    conCaricamento(btn, () => emit('connections:test', cfg), 'Verifica…')
       .then((res) => {
-        btn.disabled = false;
-        btn.textContent = '⚡ Testa Connessione';
         const msg = $('#connect-test-msg');
         msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;
         msg.classList.remove('hidden');
       })
       .catch((err) => {
-        btn.disabled = false;
-        btn.textContent = '⚡ Testa Connessione';
         const errorEl = $('#connect-error');
         errorEl.textContent = `Errore di connessione: ${err.message}`;
         errorEl.classList.remove('hidden');
@@ -325,17 +322,11 @@ export function initConnection() {
     const cfg = readConnForm();
     if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#connect-btn');
-    btn.disabled = true;
-    btn.textContent = 'Connessione…';
     $('#connect-error').classList.add('hidden');
-    connectAndOpenTab(cfg).then(() => {
-      btn.disabled = false;
-      btn.textContent = 'Connetti';
+    conCaricamento(btn, () => connectAndOpenTab(cfg), 'Connessione…').then(() => {
       cancelEditConn();
       closeConnModal();
     }).catch((err) => {
-      btn.disabled = false;
-      btn.textContent = 'Connetti';
       const errorEl = $('#connect-error');
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');
@@ -365,7 +356,7 @@ export function initConnection() {
       err.classList.remove('hidden');
       return;
     }
-    emit('connections:save', { name, oldName: editingConn, cfg }).then(() => {
+    conCaricamento($('#conn-save-btn'), () => emit('connections:save', { name, oldName: editingConn, cfg }), 'Salvo…').then(() => {
       toast(`Connessione "${name}" salvata`);
       cancelEditConn();
       closeConnModal();
@@ -390,7 +381,7 @@ export function initConnection() {
 
   $('#connexport-run').addEventListener('click', () => {
     const passphrase = $('#connexport-pass').value;
-    emit('connections:export', { passphrase }).then((res) => {
+    conCaricamento($('#connexport-run'), () => emit('connections:export', { passphrase }), 'Esporto…').then((res) => {
       const blob = new Blob([res.ini], { type: 'text/plain' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
@@ -410,15 +401,17 @@ export function initConnection() {
     const file = e.target.files[0];
     e.target.value = '';
     if (!file) return;
-    file.text().then((ini) => {
-      emit('connections:import', { ini }).then((res) => {
+    // Il pulsante visibile è "Importa", non il campo file nascosto che ha
+    // appena aperto il selettore: è quello che deve mostrare l'attesa.
+    conCaricamento($('#conn-import-btn'), () => file.text().then((ini) => {
+      return emit('connections:import', { ini }).then((res) => {
         const parts = [];
         if (res.imported) parts.push(`${res.imported} importate`);
         if (res.overwritten) parts.push(`${res.overwritten} sovrascritte`);
         toast(`Connessioni: ${parts.join(', ')}`);
         loadSavedConnections();
       }).catch((err) => toast(err.message, true));
-    });
+    }), 'Importo…');
   });
 
   // Nessun pulsante "Disconnetti": chiudere la connessione significa chiudere

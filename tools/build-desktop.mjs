@@ -32,7 +32,10 @@ const IGNORE = [
   /^\/tools($|\/)/,
   /^\/connections\.ini.*$/,
   /^\/(codedb|mcp-audit)\.(log|err\.log)$/,
-  /^\/(README|AGENT|CLAUDE|REVISIONE-CODEBASE|LICENSE)\.md$/,
+  // LICENSE.md, MANLEVA.md ed EULA.md NON si escludono: l'app li legge a
+  // runtime per la schermata "Informazioni & Licenza", e la AGPL pretende che
+  // la copia della licenza accompagni il programma distribuito.
+  /^\/(README|AGENT|CLAUDE|REVISIONE-CODEBASE)\.md$/,
   /^\/strategy_.*\.md$/,
   /^\/(CodeDB\.cmd|codedb\.sh)$/,
 ];

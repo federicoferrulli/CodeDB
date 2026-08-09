@@ -11,7 +11,7 @@
  * ------------------------------------------------------------------------- */
 
 import { socket, setToken, getToken } from './socket.js';
-import { $, emit } from './utils.js';
+import { $, emit, iniziaCaricamento } from './utils.js';
 import { clearAllHistory } from './queryhistory.js';
 
 let currentUser = null;
@@ -83,7 +83,9 @@ export function initAuth() {
       const btn = $('#login-submit');
       const errorEl = $('#login-error');
       if (errorEl) errorEl.classList.add('hidden');
-      if (btn) btn.disabled = true;
+      // La password viene verificata con scrypt: l'attesa è percepibile, ed è
+      // il primo pulsante che un utente nuovo preme.
+      const fineCaricamento = iniziaCaricamento(btn, 'Accesso…');
       try {
         const data = await login($('#login-email').value.trim(), $('#login-password').value);
         setToken(data.token || '');
@@ -96,7 +98,7 @@ export function initAuth() {
       } catch (err) {
         showError(err.message || 'Accesso non riuscito.');
       } finally {
-        if (btn) btn.disabled = false;
+        fineCaricamento();
       }
     });
   }

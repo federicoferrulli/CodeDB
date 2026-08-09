@@ -106,6 +106,7 @@ function datiLicenza() {
     autore: pkg.author || '',
     repository: (pkg.repository && pkg.repository.url) || '',
     manleva: leggi('MANLEVA.md'),
+    eula: leggi('EULA.md'),
     testoLicenza: leggi('LICENSE.md'),
     dipendenze: [...dipendenze, ...VENDORIZZATE],
   };
@@ -2346,9 +2347,10 @@ io.on('connection', (socket) => {
    * Licenza, manleva ed elenco delle librerie di terze parti, per la schermata
    * "Informazioni & Licenza" (`public/js/about.js`).
    *
-   * Il testo della manleva NON è scritto qui: si legge da `MANLEVA.md`, che è
-   * anche la sorgente di `build/license.txt` mostrato dall'installer. Due copie
-   * dello stesso impegno legale divergerebbero alla prima correzione.
+   * Il testo della manleva e dell'EULA NON è scritto qui: si legge da
+   * `MANLEVA.md` ed `EULA.md`, che sono anche le sorgenti di
+   * `build/license.txt` mostrato dall'installer. Due copie dello stesso
+   * impegno legale divergerebbero alla prima correzione.
    *
    * Le licenze delle dipendenze si leggono dai loro `package.json` invece di
    * essere elencate a mano: un elenco scritto a mano resta indietro al primo
@@ -3377,6 +3379,24 @@ io.on('connection', (socket) => {
 
     const t0 = Date.now();
     const connName = payload.connName || 'ui-session';
+    const backupId = String(payload.backupId || path.basename(backupDir));
+
+    // Il ripristino di un database vero dura minuti, e l'ack arriva solo alla
+    // fine: senza un segnale intermedio il pulsante gira e basta, e non c'è modo
+    // di distinguere "sta lavorando" da "si è piantato". Le righe che
+    // `runRestore` scrive già nel log — catena risolta, database di
+    // destinazione, una per collection e per layer — SONO il progresso che
+    // serve: le si intercetta invece di aprire un secondo canale, così
+    // backup/lib resta intatto e la CLI si comporta esattamente come prima.
+    const inviaProgresso = (riga, errore) => {
+      socket.emit('backup:progress', { tabId, backupId, riga: String(riga), errore: !!errore });
+    };
+    const logUi = {
+      ...log,
+      info: (msg) => { log.info(msg); inviaProgresso(msg, false); },
+      error: (msg) => { log.error(msg); inviaProgresso(msg, true); },
+    };
+
     try {
       const summary = await log.run(`restore conn=${connName} da=${path.basename(backupDir)} (via UI)`, async () => {
         return await runRestore({
@@ -3384,7 +3404,7 @@ io.on('connection', (socket) => {
           targetDb: payload.targetDb || null,
           // Il DDL del backup viene eseguito sul database: dall'interfaccia non
           // si può scavalcare la validazione, la deroga resta solo nella CLI.
-          onlyCollections, drop: !!payload.drop, log, allowUnsafeSchema: false,
+          onlyCollections, drop: !!payload.drop, log: logUi, allowUnsafeSchema: false,
         });
       });
       await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);

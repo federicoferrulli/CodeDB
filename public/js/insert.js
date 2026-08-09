@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError, conCaricamento } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 
@@ -373,12 +373,14 @@ export function initInsert() {
     const coll = insertContext ? insertContext.coll : state.coll;
     const dbType = insertContext ? insertContext.dbType : state.dbType;
 
-    emit('doc:insert', {
+    // Un inserimento premuto due volte sono due documenti: qui lo stato di
+    // attesa non è cortesia, è la protezione dal doppio invio.
+    conCaricamento($('#insert-save'), () => emit('doc:insert', {
       tabId,
       db,
       coll,
       doc: docText,
-    }).then((res) => {
+    }), 'Inserisco…').then((res) => {
       closeModal('#insert-overlay');
       toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
       if (insertContext && insertContext.onSaveSuccess) {
