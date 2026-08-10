@@ -717,6 +717,51 @@ console.log('--- Test Unitari CodeDB ---');
     assert.strictEqual(upd.confrontaVersioni('v1.0.0', '1.0.0'), 0, 'il prefisso "v" è ignorato');
     assert.ok(upd.confrontaVersioni('1.2.0-beta.1', '1.2.0') < 0, 'una pre-release vale meno della versione finale');
     assert.ok(upd.confrontaVersioni('1.2.0', '1.2.0-beta.1') > 0, 'e viceversa');
+    // Le componenti di pre-release si confrontano una per una: per confronto
+    // testuale "beta.10" starebbe PRIMA di "beta.9", cioè la decima beta non
+    // verrebbe mai offerta a chi ha la nona.
+    assert.ok(upd.confrontaVersioni('1.2.0-beta.10', '1.2.0-beta.9') > 0, 'beta.10 > beta.9 (numerico)');
+    assert.ok(upd.confrontaVersioni('1.2.0-beta', '1.2.0-beta.1') < 0, 'meno identificatori = versione minore');
+    assert.ok(upd.confrontaVersioni('1.2.0-alpha.3', '1.2.0-beta.1') < 0, 'alpha < beta');
+    assert.strictEqual(upd.confrontaVersioni('1.2.0+build.9', '1.2.0'), 0, 'i metadati di build non contano');
+
+    // Pre-release: la scelta è ESPLICITA. Il valore implicito di
+    // electron-updater ("solo chi ha una beta installata") sparisce da solo alla
+    // prima versione stabile, e non dà modo né di provare le beta partendo da
+    // una stabile né di escluderle su una macchina che oggi ne ha una.
+    assert.strictEqual(upd.versioneDiPreRelease('0.1.1-beta.1'), true, '-beta.1 è una pre-release');
+    assert.strictEqual(upd.versioneDiPreRelease('1.0.0'), false, '1.0.0 non lo è');
+    assert.strictEqual(upd.versioneDiPreRelease('v0.1.0-b'), true, 'anche la forma corta -b');
+    assert.strictEqual(upd.permettePreRelease({}, '0.2.0-beta.1'), true,
+      'chi ha installato una beta continua a ricevere le beta');
+    assert.strictEqual(upd.permettePreRelease({}, '1.0.0'), false,
+      'chi ha una versione stabile non riceve le beta senza chiederlo');
+    assert.strictEqual(upd.permettePreRelease({ CODEDB_UPDATE_PRERELEASE: '1' }, '1.0.0'), true,
+      'la variabile d\'ambiente permette di iscriversi al canale di prova');
+    assert.strictEqual(upd.permettePreRelease({ CODEDB_UPDATE_PRERELEASE: 'off' }, '0.2.0-beta.1'), false,
+      'e di uscirne anche partendo da una beta');
+    assert.strictEqual(upd.permettePreRelease({ CODEDB_UPDATE_PRERELEASE: 'forse' }, '1.0.0'), false,
+      'un valore non riconosciuto non deve valere "sì" per caso');
+
+    // Metà SERVER del canale di prova: una beta pubblicata su GitHub come
+    // release normale diventa la `/releases/latest` del repository, cioè viene
+    // offerta anche a chi le pre-release non le ha mai volute. Il tipo di
+    // release lo decide quindi la versione, non un valore fisso in package.json.
+    {
+      const pubblica = require('../tools/pubblica.js');
+      for (const v of ['0.1.1-beta.1', '1.0.0', 'v2.0.0-rc.1', '1.2.3+build.4']) {
+        assert.strictEqual(pubblica.versioneDiPreRelease(v), upd.versioneDiPreRelease(v),
+          `tools/pubblica.js e electron-aggiornamenti.js devono concordare su ${v}`);
+      }
+      assert.strictEqual(pubblica.preRelease({}, '0.1.1-beta.1'), true, 'una beta si pubblica come pre-release');
+      assert.strictEqual(pubblica.preRelease({}, '1.0.0'), false, 'una stabile no');
+      assert.strictEqual(pubblica.preRelease({ CODEDB_RELEASE_PRERELEASE: '0' }, '1.0.0-rc.1'), false,
+        'la variabile d\'ambiente permette il rilascio fuori regola');
+      for (const p of ['win', 'mac', 'linux']) {
+        assert.ok(/tools\/pubblica\.js/.test(pkg.scripts[`release:${p}`]),
+          `release:${p} deve passare da tools/pubblica.js, altrimenti una beta finisce pubblicata come release stabile`);
+      }
+    }
 
     // Note di rilascio: markup ridotto a testo e lunghezza limitata (finiscono
     // in un dialog nativo, che non interpreta HTML).
@@ -904,6 +949,12 @@ console.log('--- Test Unitari CodeDB ---');
   // l'interfaccia (Grafo 3D) e il gateway MCP. Erano due copie già divergenti:
   // un ordine di popolamento sbagliato e un report GDPR pieno di falsi positivi
   // non sembrano rotti, sembrano risposte.
+  // Test 24-sexies: conversione valore -> testo di cella. Prova che il costo
+  // dipende dal TETTO e non dalla dimensione del valore: e' cio' che decide se
+  // il thread principale regge lo scorrimento di una tabella con dentro JSON o
+  // stringhe da megabyte.
+  require('./unit-valori');
+
   require('./unit-schema-analisi');
 
   // Test 24-quinquies: generatori e lettori di schema (DDL, DBML, Mermaid).

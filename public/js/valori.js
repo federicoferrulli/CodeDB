@@ -70,6 +70,24 @@ export function jsonBreve(v, max = 1000, fmtFoglia) {
     }
   };
 
+  /**
+   * `JSON.stringify` di una stringa, senza costruirla tutta.
+   *
+   * `scrivi` tronca DOPO aver ricevuto il testo: su una foglia da cinque
+   * megabyte — un campo `note`, un log, un base64 dentro un documento —
+   * significava allocare cinque megabyte per tenerne mille. Il costo del
+   * disegno tornava così a dipendere dalla dimensione del valore, che è
+   * esattamente ciò che questa funzione esiste per evitare. Si taglia prima:
+   * un carattere può espandersi in sei (`à`), quindi si prende un margine
+   * abbondante e si lascia a `scrivi` il taglio esatto.
+   */
+  const scriviStringa = (s) => {
+    if (troncato) return;
+    const restanti = max - out.length;
+    const grezza = s.length > restanti * 6 ? s.slice(0, restanti * 6) : s;
+    scrivi(JSON.stringify(grezza));
+  };
+
   const vai = (x) => {
     if (troncato) return;
 
@@ -89,30 +107,57 @@ export function jsonBreve(v, max = 1000, fmtFoglia) {
       // Numeri: senza virgolette, come li produrrebbe simplify + stringify.
       if (kind === 'number') { scrivi(String(x.$numberInt ?? x.$numberLong ?? x.$numberDouble)); return; }
       if (kind === 'decimal') { scrivi(String(x.$numberDecimal)); return; }
-      if (kind === 'oid') { scrivi(JSON.stringify(String(x.$oid))); return; }
+      if (kind === 'oid') { scriviStringa(String(x.$oid)); return; }
       if (kind !== 'object') {
         // date, binari: la forma leggibile la conosce solo il chiamante
-        scrivi(JSON.stringify(typeof fmtFoglia === 'function' ? fmtFoglia(x) : x));
+        const foglia = typeof fmtFoglia === 'function' ? fmtFoglia(x) : x;
+        if (typeof foglia === 'string') scriviStringa(foglia);
+        else scrivi(JSON.stringify(foglia));
         return;
       }
       scrivi('{');
       let primo = true;
-      for (const k of Object.keys(x)) {
+      // `for…in` e non `Object.keys(x)`: quest'ultimo costruisce l'ARRAY di
+      // tutte le chiavi prima ancora che il ciclo cominci, quindi il costo
+      // tornava a dipendere dalla dimensione del documento anche quando il
+      // budget si esaurisce alla terza chiave. Su un documento con
+      // cinquantamila campi erano ~5,5 ms per cella, cioè ~110 ms per
+      // fotogramma di scorrimento — il blocco del thread principale sui "JSON
+      // pesanti". `for…in` è pigro e si ferma davvero al `break`.
+      // L'ordine di visita è lo stesso di `Object.keys`.
+      for (const k in x) {
         if (troncato) break;
+        if (!Object.prototype.hasOwnProperty.call(x, k)) continue;
         if (!primo) scrivi(',');
         primo = false;
-        scrivi(JSON.stringify(k) + ':');
+        scriviStringa(k);
+        scrivi(':');
         vai(x[k]);
       }
       scrivi('}');
       return;
     }
 
+    // Le stringhe passano dal taglio anticipato: sono la foglia che pesa.
+    if (typeof x === 'string') { scriviStringa(x); return; }
     scrivi(JSON.stringify(x === undefined ? null : x));
   };
 
   vai(v);
   return troncato ? out + '…' : out;
+}
+
+/**
+ * Taglia un testo destinato al solo DISEGNO, segnalando il taglio.
+ *
+ * Sta qui e non in `utils.js` perché è la parte che decide quanto lavoro dovrà
+ * fare il browser, e va provata in Node: un testo non limitato finisce in
+ * `textContent` (un nodo di testo da megabyte da impaginare), in `title` e in
+ * `measureText`, tre volte per cella e per fotogramma di scorrimento.
+ */
+export function tronca(testo, max) {
+  const s = String(testo == null ? '' : testo);
+  return s.length > max ? s.slice(0, max) + '…' : s;
 }
 
 /** Identificativo locale: `crypto.randomUUID` dove c'è, altrimenti un ripiego. */

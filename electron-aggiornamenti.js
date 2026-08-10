@@ -21,6 +21,19 @@
  *  3. Il feed personalizzato deve essere HTTPS (loopback escluso, per le prove).
  *     Su HTTP semplice chi sta in mezzo alla rete non "vede" un aggiornamento:
  *     lo SOSTITUISCE, ed è un eseguibile che l'utente lancerà da solo.
+ *  4. Le PRE-RELEASE sono ammesse ma DICHIARATE: chi installa una beta continua
+ *     a ricevere le beta, chi ha una versione stabile no — a meno che non lo
+ *     chieda con `CODEDB_UPDATE_PRERELEASE=1` (vedi `permettePreRelease`).
+ *
+ * PRE-RELEASE, le due metà del problema. `electron-updater` decide da sé:
+ * `allowPrerelease` vale `true` solo se la versione INSTALLATA contiene una
+ * componente di pre-release. Ci si affida quindi a un valore implicito che
+ * sparisce da solo alla prima 1.0.0, e senza alcun modo per chi vuole provare
+ * le beta di riceverle: qui la scelta è esplicita e sovrascrivibile.
+ * L'altra metà sta nella PUBBLICAZIONE (`tools/pubblica.js`): una beta caricata
+ * su GitHub come release normale diventa la `/releases/latest` del repository,
+ * cioè viene offerta anche a chi le pre-release non le ha mai volute — la
+ * seconda metà è quella che protegge gli utenti stabili, non questa.
  *
  * Nota di distribuzione: l'aggiornamento automatico funziona solo con i pacchetti
  * prodotti da `electron-builder` (npm run build:win/mac/linux), che scrivono
@@ -76,14 +89,62 @@ function feedPersonalizzato(env) {
 }
 
 /**
+ * `true` se la versione contiene una componente di pre-release (`1.2.0-beta.1`,
+ * `0.1.1-b`), cioè la stessa condizione con cui `electron-updater` decide il
+ * proprio `allowPrerelease` predefinito. Funzione PURA.
+ */
+function versioneDiPreRelease(v) {
+  const s = String(v || '').trim().replace(/^v/i, '');
+  const pre = s.split('+')[0].split('-').slice(1).join('-');
+  return pre.length > 0;
+}
+
+/**
+ * Decide se accettare gli aggiornamenti alle PRE-RELEASE.
+ *
+ * Regola: la variabile `CODEDB_UPDATE_PRERELEASE` comanda (`1`/`on`/`true`/`si`
+ * per accettarle, `0`/`off`/`false`/`no` per rifiutarle); in sua assenza vale il
+ * criterio implicito di `electron-updater`, cioè "chi ha installato una beta
+ * continua a ricevere le beta". Renderlo esplicito serve a due cose: chi vuole
+ * provare le beta partendo da una versione stabile può dirlo, e chi distribuisce
+ * l'app a un'azienda può escluderle anche dalle macchine che oggi hanno una beta
+ * installata — con il valore implicito nessuna delle due era possibile.
+ *
+ * Funzione PURA (nessun accesso a Electron), così è verificabile in Node.
+ *
+ * @param {object} env variabili d'ambiente
+ * @param {string} versioneCorrente versione installata (`app.getVersion()`)
+ */
+function permettePreRelease(env, versioneCorrente) {
+  const e = env || process.env;
+  const v = String(e.CODEDB_UPDATE_PRERELEASE ?? '').trim().toLowerCase();
+  if (v) {
+    if (['1', 'on', 'true', 'si', 'sì', 'yes'].includes(v)) return true;
+    if (['0', 'off', 'false', 'no'].includes(v)) return false;
+    // Un valore non riconosciuto non deve valere "sì" per caso: si ricade sul
+    // criterio predefinito, che è quello prudente.
+  }
+  return versioneDiPreRelease(versioneCorrente);
+}
+
+/**
  * Confronto di versioni in stile semver, usato SOLO come rete di sicurezza
  * quando `electron-updater` non riporta `isUpdateAvailable`. Ritorna >0 se `a`
  * è più recente di `b`. Le pre-release (`1.2.0-beta.1`) valgono meno della
  * versione finale corrispondente. Funzione PURA.
+ *
+ * Le componenti di pre-release si confrontano una per una come vuole semver, e
+ * NON come stringhe intere: per confronto testuale `beta.10` verrebbe prima di
+ * `beta.9`, cioè la decima beta non verrebbe mai offerta a chi ha la nona —
+ * finché le pre-release non erano un canale d'aggiornamento la sfumatura non si
+ * vedeva, ora sì.
  */
 function confrontaVersioni(a, b) {
   const spezza = (v) => {
-    const [core, pre = ''] = String(v || '0').trim().replace(/^v/i, '').split('-');
+    const s = String(v || '0').trim().replace(/^v/i, '').split('+')[0];
+    const i = s.indexOf('-');
+    const core = i === -1 ? s : s.slice(0, i);
+    const pre = i === -1 ? '' : s.slice(i + 1);
     return { nums: core.split('.').map((n) => parseInt(n, 10) || 0), pre };
   };
   const x = spezza(a);
@@ -95,7 +156,28 @@ function confrontaVersioni(a, b) {
   if (x.pre === y.pre) return 0;
   if (!x.pre) return 1;   // 1.2.0 > 1.2.0-beta
   if (!y.pre) return -1;
-  return x.pre > y.pre ? 1 : -1;
+
+  const px = x.pre.split('.');
+  const py = y.pre.split('.');
+  for (let i = 0; i < Math.max(px.length, py.length); i++) {
+    const ax = px[i];
+    const ay = py[i];
+    // Meno identificatori = versione minore (1.2.0-beta < 1.2.0-beta.1).
+    if (ax === undefined) return -1;
+    if (ay === undefined) return 1;
+    const nx = /^\d+$/.test(ax) ? parseInt(ax, 10) : null;
+    const ny = /^\d+$/.test(ay) ? parseInt(ay, 10) : null;
+    if (nx !== null && ny !== null) {
+      if (nx !== ny) return nx > ny ? 1 : -1;
+    } else if (nx !== null) {
+      return -1;              // numerico < alfanumerico (semver)
+    } else if (ny !== null) {
+      return 1;
+    } else if (ax !== ay) {
+      return ax > ay ? 1 : -1;
+    }
+  }
+  return 0;
 }
 
 /** Note di rilascio ridotte a testo semplice e accorciate per un dialog nativo. */
@@ -138,9 +220,22 @@ function creaGestoreAggiornamenti({ getWindow }) {
     autoUpdater.autoInstallOnAppQuit = true;   // se scaricato, si installa alla chiusura
     autoUpdater.logger = console;
 
+    // Pre-release: scelta ESPLICITA, non il valore implicito di electron-updater
+    // (vedi `permettePreRelease` e la nota in testa al file).
+    autoUpdater.allowPrerelease = permettePreRelease(process.env, app.getVersion());
+
     const feed = feedPersonalizzato();
     if (feed && feed.errore) throw new Error(feed.errore);
     if (feed) autoUpdater.setFeedURL(feed);
+
+    // Canale esplicito (`beta`, `alpha`, `latest`…): con il provider GitHub non
+    // arriva dal feed, che lì non si imposta, quindi va detto all'updater. Vale
+    // anche per PASSARE a un altro canale: assegnare `channel` porta con sé
+    // `allowDowngrade = true` (è electron-updater a farlo), altrimenti tornare
+    // da una beta al canale stabile non offrirebbe mai nulla — la stabile ha un
+    // numero più basso della beta che la precede.
+    const canale = String(process.env.CODEDB_UPDATE_CHANNEL || '').trim();
+    if (canale) autoUpdater.channel = canale;
 
     return autoUpdater;
   }
@@ -242,6 +337,12 @@ function creaGestoreAggiornamenti({ getWindow }) {
     inCorso = true;
     try {
       const autoUpdater = caricaUpdater();
+      // Il canale va detto all'utente: "CodeDB è aggiornata" significa cose
+      // diverse a seconda che le pre-release siano incluse o no, e senza questa
+      // riga chi ha una beta non ha modo di sapere quale delle due sta leggendo.
+      const canale = autoUpdater.allowPrerelease
+        ? 'Canale: versioni di prova (pre-release) incluse.'
+        : 'Canale: solo versioni stabili.';
       const res = await autoUpdater.checkForUpdates();
       const info = res && res.updateInfo;
       const nuova = info && info.version;
@@ -257,7 +358,7 @@ function creaGestoreAggiornamenti({ getWindow }) {
             type: 'info',
             title: 'CodeDB — Aggiornamenti',
             message: 'CodeDB è aggiornata.',
-            detail: `Versione installata: ${app.getVersion()}`,
+            detail: `Versione installata: ${app.getVersion()}\n${canale}`,
             buttons: ['Ok']
           });
         }
@@ -265,11 +366,14 @@ function creaGestoreAggiornamenti({ getWindow }) {
       }
 
       const note = noteRilascio(info);
+      const pre = versioneDiPreRelease(nuova)
+        ? '\nÈ una VERSIONE DI PROVA (pre-release): può contenere difetti non ancora corretti.'
+        : '';
       const r = await msg({
         type: 'info',
         title: 'CodeDB — Aggiornamenti',
         message: `È disponibile CodeDB ${nuova}.`,
-        detail: `Versione installata: ${app.getVersion()}\n${note ? `\nNovità:\n${note}\n` : ''}`,
+        detail: `Versione installata: ${app.getVersion()}${pre}\n${note ? `\nNovità:\n${note}\n` : ''}`,
         buttons: ['Scarica ora', 'Vedi la release', 'Più tardi'],
         defaultId: 0,
         cancelId: 2
@@ -298,6 +402,8 @@ function creaGestoreAggiornamenti({ getWindow }) {
 module.exports = {
   creaGestoreAggiornamenti,
   feedPersonalizzato,
+  permettePreRelease,
+  versioneDiPreRelease,
   confrontaVersioni,
   noteRilascio,
   URL_RELEASES,

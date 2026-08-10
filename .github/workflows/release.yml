@@ -14,6 +14,12 @@
 #     installer come artefatti scaricabili. È il modo per ottenere un `.dmg`
 #     senza avere un Mac e senza pubblicare niente.
 #
+# Il TIPO di release (stabile o pre-release) non si sceglie qui: lo decide la
+# versione in package.json, tramite `tools/pubblica.js` (invocato dagli script
+# `release:*`). Un tag `v0.2.0-beta.1` produce quindi una release marcata come
+# pre-release su GitHub, che `electron-updater` offre solo a chi ha una versione
+# di prova installata o ha impostato CODEDB_UPDATE_PRERELEASE=1.
+#
 # La release creata da electron-builder è una BOZZA: i tre job vi aggiungono i
 # propri file in momenti diversi, e pubblicarla automaticamente significherebbe
 # esporre una release incompleta a chi in quel momento cerca aggiornamenti.

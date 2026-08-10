@@ -2,7 +2,7 @@ import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { isGeometry, geometryLabel } from './geojson.js';
-import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve } from './valori.js';
+import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve, tronca } from './valori.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -68,6 +68,16 @@ export function displayValue(v) {
  * ridisegna ~20 righe alla volta), per mostrare i sessanta caratteri che
  * entrano nella colonna.
  *
+ * Il tetto vale per OGNI tipo di valore, non solo per oggetti e array. Una
+ * colonna TEXT/BLOB con dentro un documento, un log o un base64 è una STRINGA
+ * semplice: prendeva il ramo `displayValue` e tornava indietro per intero, e da
+ * lì finiva in tre posti che la pagano tutti e tre — `textContent` (un nodo di
+ * testo da megabyte da impaginare), `title` (un attributo della stessa
+ * dimensione, per un fumetto che nessuno leggerà) e `measureText` durante il
+ * calcolo delle larghezze. Moltiplicato per le ~20 righe che la griglia
+ * virtualizzata ridisegna a ogni fotogramma di scorrimento, è il blocco del
+ * thread principale.
+ *
  * NON va usata dove il valore serve per intero — copia delle celle
  * (`cellselect.js`), modifica al volo (`inlineEdit.js`), export: lì il testo
  * troncato sarebbe perdita di dati, e quelle strade continuano a usare
@@ -75,12 +85,63 @@ export function displayValue(v) {
  */
 export const MAX_TESTO_CELLA = 1000;
 
+/**
+ * Memoria dei testi già calcolati, per identità del VALORE.
+ *
+ * La griglia è virtualizzata: le stesse venti righe vengono ridisegnate a ogni
+ * fotogramma di scorrimento, quindi lo stesso valore viene riconvertito decine
+ * di volte al secondo. Sui documenti molto larghi il costo non è il testo
+ * prodotto (mille caratteri) ma l'ENUMERAZIONE delle chiavi, che è O(campi) e
+ * non si può evitare: un documento con cinquantamila campi costa ~6 ms, cioè
+ * ~120 ms per fotogramma. Calcolarlo una volta sola lo rende un costo di
+ * apertura invece che di scorrimento.
+ *
+ * La chiave è l'oggetto stesso, e vale perché i valori NON vengono mai mutati
+ * sul posto: dopo una scrittura `inlineEdit`/`cellselect` fanno un refetch
+ * (`runQuery`), che sostituisce `state.docs` con oggetti nuovi. La WeakMap
+ * lascia poi che tutto se ne vada con la pagina di risultati.
+ *
+ * Il risultato è CONDIVISO fra i chiamanti: va trattato come sola lettura.
+ */
+const memoTestoBreve = new WeakMap();
+
 export function displayValueBreve(v, max = MAX_TESTO_CELLA) {
+  const memoizzabile = v !== null && typeof v === 'object';
+  if (memoizzabile) {
+    const perMax = memoTestoBreve.get(v);
+    const gia = perMax && perMax.get(max);
+    if (gia) return gia;
+  }
+  const r = calcolaTestoBreve(v, max);
+  if (memoizzabile) {
+    let perMax = memoTestoBreve.get(v);
+    if (!perMax) { perMax = new Map(); memoTestoBreve.set(v, perMax); }
+    perMax.set(max, r);
+  }
+  return r;
+}
+
+function calcolaTestoBreve(v, max) {
   if (v !== null && typeof v === 'object' && !isGeometry(v)
       && (Array.isArray(v) || ejsonKind(v) === 'object')) {
-    return { text: jsonBreve(v, max, (foglia) => displayValue(foglia).text), cls: 'type-obj' };
+    return { text: jsonBreve(v, max, (foglia) => displayValueBreve(foglia, max).text), cls: 'type-obj' };
   }
-  return displayValue(v);
+  // Le stringhe si tagliano PRIMA di chiamare displayValue: passargliele intere
+  // significherebbe costruire comunque il valore grande (String(v) su una
+  // stringa è gratis, ma le altre forme no) e, soprattutto, non protegge dal
+  // caso più comune.
+  if (typeof v === 'string' && v.length > max) {
+    return { text: tronca(v, max), cls: '' };
+  }
+  const r = displayValue(v);
+  // Rete finale: qualunque ramo di displayValue produca un testo oltre il
+  // tetto (una stringa dentro un wrapper EJSON, un tipo aggiunto in futuro)
+  // viene tagliato lo stesso. Il valore intero resta disponibile a chi serve,
+  // che chiama displayValue direttamente.
+  if (typeof r.text === 'string' && r.text.length > max) {
+    return { ...r, text: tronca(r.text, max) };
+  }
+  return r;
 }
 
 export function simplify(v) {
