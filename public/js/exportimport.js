@@ -41,22 +41,40 @@ const CAMPIONE_DIM = 50;
  * limite vero lo applica il server, e il margine di 3 MB su 5 assorbe l'errore
  * della stima. I documenti molto grandi restano misurati singolarmente finché
  * il campione non è completo, che è il caso in cui la stima conta davvero.
+ *
+ * Il margine 3/5 assorbe però un ERRORE di stima, non un ordine di grandezza
+ * (CDB-A08): con documenti eterogenei — le prime cinquanta righe piccole e le
+ * successive con un campo testo lungo — il blocco reale superava i 5 MB e
+ * Socket.IO chiudeva la connessione. Due correzioni, entrambe a costo
+ * trascurabile rispetto alla serializzazione che avverrà comunque:
+ *  · si RIMISURA periodicamente (ogni RICALIBRA documenti), così la media segue
+ *    il file invece di restare ferma alle prime righe;
+ *  · quando il blocco corrente ha già superato metà del tetto si misura DAVVERO
+ *    ogni documento, cioè esattamente dove sbagliare costa la connessione.
  */
+// Ogni quanti documenti si torna a misurare per aggiornare la media.
+const RICALIBRA = 200;
+
 function blocchiDiImport(docs) {
   const blocchi = [];
   let corrente = [];
   let byte = 0;
   let misurati = 0;
   let sommaMisurata = 0;
+  let daUltimaMisura = 0;
 
   for (const doc of docs) {
     let dim;
-    if (misurati < CAMPIONE_DIM) {
+    // Vicino al tetto la stima non basta più: lì si misura sempre.
+    const vicinoAlTetto = byte > CHUNK_BYTES / 2;
+    if (misurati < CAMPIONE_DIM || vicinoAlTetto || daUltimaMisura >= RICALIBRA) {
       dim = JSON.stringify(doc).length;
       sommaMisurata += dim;
       misurati += 1;
+      daUltimaMisura = 0;
     } else {
       dim = Math.ceil(sommaMisurata / misurati);
+      daUltimaMisura += 1;
     }
     if (corrente.length && (corrente.length >= CHUNK || byte + dim > CHUNK_BYTES)) {
       blocchi.push(corrente);

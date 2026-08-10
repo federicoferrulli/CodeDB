@@ -46,12 +46,41 @@ const RAGGIO_M = 6371008.8;
 
 const RAD = Math.PI / 180;
 
+/**
+ * Differenza di longitudine normalizzata nell'intervallo ±180°.
+ *
+ * Senza normalizzazione un lato che attraversa l'antimeridiano — da 179,5° a
+ * −179,5°, cioè un grado di distanza — risulta lungo 359°: la lunghezza
+ * diventa quasi il giro del mondo e l'area del poligono un numero privo di
+ * senso. Non è un caso di laboratorio: le Figi, le Chatham, le rotte del
+ * Pacifico e qualunque riquadro globale ci passano sopra.
+ */
+function deltaLon(lon1, lon2) {
+  return ((Number(lon2) - Number(lon1) + 540) % 360) - 180;
+}
+
+/**
+ * La geometria attraversa l'antimeridiano?
+ *
+ * Il segnale è un LATO la cui differenza di longitudine grezza supera i 180°:
+ * significa che i due estremi stanno ai due capi opposti della scala e che il
+ * cammino breve passa oltre ±180°. Non basta guardare la larghezza del
+ * riquadro: una linea che va da −170° a +170° passando per lo zero è larga 340°
+ * e non attraversa un bel niente.
+ */
+function attraversaLinea(punti) {
+  for (let i = 1; i < punti.length; i++) {
+    if (Math.abs(Number(punti[i][0]) - Number(punti[i - 1][0])) > 180) return true;
+  }
+  return false;
+}
+
 /** Distanza in metri fra due posizioni [lon, lat] (formula dell'emisenoverso). */
 export function distanzaM(a, b) {
   const f1 = Number(a[1]) * RAD;
   const f2 = Number(b[1]) * RAD;
   const df = f2 - f1;
-  const dl = (Number(b[0]) - Number(a[0])) * RAD;
+  const dl = deltaLon(a[0], b[0]) * RAD;
   const h = Math.sin(df / 2) ** 2 + Math.cos(f1) * Math.cos(f2) * Math.sin(dl / 2) ** 2;
   return 2 * RAGGIO_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
@@ -74,7 +103,7 @@ function areaAnello(anello) {
   for (let i = 0; i < anello.length - 1; i++) {
     const [lon1, lat1] = anello[i];
     const [lon2, lat2] = anello[i + 1];
-    somma += (Number(lon2) - Number(lon1)) * RAD
+    somma += deltaLon(lon1, lon2) * RAD
       * (2 + Math.sin(Number(lat1) * RAD) + Math.sin(Number(lat2) * RAD));
   }
   return Math.abs(somma * RAGGIO_M * RAGGIO_M / 2);
@@ -127,6 +156,7 @@ export function misureGeometria(geo) {
     tipo: geo && geo.type ? geo.type : '?',
     vertici: 0,
     proiettata: false,
+    attraversaAntimeridiano: false,
     lunghezzaM: null,
     perimetroM: null,
     areaM2: null,
@@ -146,6 +176,13 @@ export function misureGeometria(geo) {
     ],
     [Infinity, Infinity, -Infinity, -Infinity]
   );
+  // Il riquadro non sa avvolgersi: preso come min/max delle longitudini, una
+  // geometria a cavallo dell'antimeridiano produce un rettangolo che copre
+  // quasi tutto il pianeta invece della striscia stretta in cui sta davvero.
+  // Non lo si corregge — un riquadro che si avvolge non è rappresentabile in
+  // quella forma — lo si DICHIARA, così l'inquadratura automatica e il
+  // riepilogo non sembrano semplicemente sbagliati.
+  base.attraversaAntimeridiano = attraversaLinea(punti);
 
   const { linee, poligoni } = scomponi(geo);
   if (linee.length) base.lunghezzaM = linee.reduce((t, l) => t + lunghezzaSpezzata(l), 0);
@@ -194,6 +231,7 @@ export function statisticheGeo(voci) {
   let conLunghezza = 0;
   let conArea = 0;
   let proiettate = 0;
+  let antimeridiano = 0;
   let bbox = null;
   let sommaLon = 0;
   let sommaLat = 0;
@@ -203,6 +241,7 @@ export function statisticheGeo(voci) {
     perTipo.set(g.tipo, (perTipo.get(g.tipo) || 0) + 1);
     vertici += g.vertici;
     if (g.proiettata) { proiettate++; continue; }
+    if (g.attraversaAntimeridiano) antimeridiano++;
     if (g.lunghezzaM !== null) { lunghezzaM += g.lunghezzaM; conLunghezza++; }
     if (g.areaM2 !== null) { areaM2 += g.areaM2; perimetroM += g.perimetroM || 0; conArea++; }
     if (g.bbox) {
@@ -226,6 +265,12 @@ export function statisticheGeo(voci) {
     vuote,
     nonGeometriche,
     proiettate,
+    // Geometrie a cavallo della linea del cambiamento di data: le misure sono
+    // corrette (la differenza di longitudine e' normalizzata), ma il RIQUADRO
+    // di delimitazione no: non sa avvolgersi, e inquadrarci sopra la mappa
+    // mostrerebbe mezzo pianeta invece della striscia in cui la geometria sta
+    // davvero. Si dichiara.
+    antimeridiano,
     vertici,
     perTipo: [...perTipo.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     bbox,

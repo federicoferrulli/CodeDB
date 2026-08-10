@@ -404,7 +404,18 @@ export function initConnection() {
     // Il pulsante visibile è "Importa", non il campo file nascosto che ha
     // appena aperto il selettore: è quello che deve mostrare l'attesa.
     conCaricamento($('#conn-import-btn'), () => file.text().then((ini) => {
-      return emit('connections:import', { ini }).then((res) => {
+      // Un file esportato con una passphrase scelta porta un'intestazione che
+      // lo dichiara: la si riconosce qui per chiedere la passphrase PRIMA di
+      // mandare il file, invece di far tornare un errore dal server.
+      const conPassphrase = /^\s*\[__codedb_export__\]/m.test(ini);
+      const passphrase = conPassphrase
+        ? (window.prompt('Questo file è stato esportato con una passphrase. Inseriscila per importarlo:') || '')
+        : '';
+      if (conPassphrase && !passphrase) {
+        toast('Import annullato: senza la passphrase i segreti non sono leggibili.', true);
+        return null;
+      }
+      return emit('connections:import', { ini, passphrase }).then((res) => {
         const parts = [];
         if (res.imported) parts.push(`${res.imported} importate`);
         if (res.overwritten) parts.push(`${res.overwritten} sovrascritte`);

@@ -941,7 +941,7 @@ function legaNativo(target, nome, ctx) {
       // controllo viene PRIMA di adattare gli argomenti, altrimenti
       // `filter(fn)` verrebbe rifiutato invece di essere eseguito.
       if (ASINCRONI_CON_CALLBACK.has(nome) && isFunzioneScript(args[0])) {
-        return eseguiConCallback(target, nome, args[0], ctx);
+        return eseguiConCallback(target, nome, args[0], ctx, args.slice(1));
       }
       // Una funzione passata a un metodo che non la prevede non ha modo di
       // essere invocata: meglio dirlo che ignorarla.
@@ -956,7 +956,7 @@ function legaNativo(target, nome, ctx) {
 
 const ASINCRONI_CON_CALLBACK = new Set(['map', 'filter', 'forEach', 'find', 'findIndex', 'some', 'every', 'reduce', 'sort']);
 
-async function eseguiConCallback(arr, nome, fn, ctx) {
+async function eseguiConCallback(arr, nome, fn, ctx, resto = []) {
   // La chiamata di una funzione dello script la sa fare solo il valutatore
   // (MongoScriptRunner.js), che la inietta nel contesto: qui si conosce il
   // linguaggio, non come si esegue.
@@ -990,8 +990,16 @@ async function eseguiConCallback(arr, nome, fn, ctx) {
     return true;
   }
   if (nome === 'reduce') {
-    let acc = arr[0];
-    let start = 1;
+    // Il valore iniziale è il SECONDO argomento e va letto: ignorarlo non
+    // produceva un errore ma un risultato sbagliato in silenzio —
+    // [1,2,3].reduce((a,b)=>a+b, 10) dava 6 invece di 16, e con un accumulatore
+    // di tipo diverso dagli elementi ([{n:2}].reduce((a,x)=>a+x.n, 0)) dava NaN.
+    const conIniziale = resto.length > 0;
+    let acc = conIniziale ? resto[0] : arr[0];
+    let start = conIniziale ? 0 : 1;
+    if (!conIniziale && arr.length === 0) {
+      throw errore('reduce() su un array vuoto senza valore iniziale.');
+    }
     for (let i = start; i < arr.length; i++) acc = await chiama(acc, arr[i], i, arr);
     return acc;
   }

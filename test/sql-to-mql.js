@@ -78,14 +78,29 @@ check('IN e NOT IN', () => {
   eq(translate('SELECT * FROM t WHERE n NOT IN (1,2,3)').filter, { n: { $nin: [1, 2, 3] } });
 });
 
-check('LIKE → regex con jolly', () => {
+// CDB-A19 — il flag `i` costa l'INDICE: una regex case-insensitive non è
+// sargable. Un pattern ancorato a un prefisso è esattamente il caso in cui
+// l'indice servirebbe, quindi lì il confronto resta sensibile alle maiuscole
+// (che su MongoDB è anche il comportamento naturale); dove la scansione è
+// comunque inevitabile il flag resta.
+check('LIKE ancorato a un prefisso: nessun flag "i", così l\'indice è usabile', () => {
   const p = translate("SELECT * FROM t WHERE name LIKE 'Mar%'");
-  eq(p.filter, { name: { $regex: '^Mar.*$', $options: 'i' } });
+  eq(p.filter, { name: { $regex: '^Mar.*$' } });
 });
 
-check('LIKE con _ singolo carattere', () => {
+check('LIKE con _ singolo carattere (ancorato)', () => {
   const p = translate("SELECT * FROM t WHERE code LIKE 'A_C'");
-  eq(p.filter, { code: { $regex: '^A.C$', $options: 'i' } });
+  eq(p.filter, { code: { $regex: '^A.C$' } });
+});
+
+check('LIKE non ancorato: il flag "i" resta, l\'indice non era usabile comunque', () => {
+  const p = translate("SELECT * FROM t WHERE name LIKE '%mar%'");
+  eq(p.filter, { name: { $regex: '^.*mar.*$', $options: 'i' } });
+});
+
+check('ILIKE chiede esplicitamente il confronto insensibile', () => {
+  const p = translate("SELECT * FROM t WHERE name ILIKE 'Mar%'");
+  eq(p.filter, { name: { $regex: '^Mar.*$', $options: 'i' } });
 });
 
 check('IS NULL / IS NOT NULL', () => {

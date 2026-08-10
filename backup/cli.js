@@ -18,7 +18,7 @@ const { runBackup } = require('./lib/engine');
 const { runRestore } = require('./lib/restore');
 const { parseStorage, uploadBackupDir } = require('./lib/storage');
 const { notifySlack } = require('./lib/notify');
-const { readCatalog, readManifest, sha256File, formatBytes } = require('./lib/util');
+const { readCatalog, readManifest, sha256File, formatBytes, fileDelBackup } = require('./lib/util');
 
 // CODEDB_BACKUPS_DIR: stesso override rispettato dal gateway MCP (mcp/McpGateway.js),
 // così CLI e MCP condividono la cartella di default anche nell'app Electron pacchettizzata.
@@ -86,6 +86,48 @@ NOTE
 
 const FLAGS = new Set(['--no-compress', '--drop', '--quiet', '--allow-unsafe-schema', '--help', '-h']);
 
+/**
+ * Opzioni con valore riconosciute. Sono esattamente quelle elencate nell'aiuto
+ * qui sopra.
+ *
+ * Senza questo elenco ogni `--qualcosa valore` finiva in `args.qualcosa` e, se
+ * nessun comando lo leggeva, veniva ignorato SENZA UNA PAROLA. Le opzioni di
+ * `restore` che decidono la destinazione o l'ampiezza dell'operazione —
+ * `--target-db`, `--collections`, `--since-field` — sono proprio quelle scritte
+ * con un trattino interno o al plurale, cioè quelle in cui il refuso è più
+ * facile: `--targetdb prova` non ripristinava su "prova", ripristinava in
+ * silenzio sul database di ORIGINE.
+ */
+const OPZIONI = new Set([
+  'conn', 'owner', 'dest', 'slack-webhook',
+  'db', 'type', 'collections', 'since-field', 'compress-level', 'storage',
+  'from', 'target-db',
+]);
+
+/** Distanza di edit, per suggerire l'opzione che l'utente intendeva scrivere. */
+function distanza(a, b) {
+  const m = a.length; const n = b.length;
+  let prec = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      cur[j] = Math.min(prec[j] + 1, cur[j - 1] + 1, prec[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    prec = cur;
+  }
+  return prec[n];
+}
+
+function suggerisci(chiave) {
+  let migliore = null; let dist = Infinity;
+  for (const o of [...OPZIONI, ...[...FLAGS].map((f) => f.replace(/^--?/, ''))]) {
+    const d = distanza(chiave.toLowerCase(), o.toLowerCase());
+    if (d < dist) { dist = d; migliore = o; }
+  }
+  // Oltre un terzo dei caratteri di differenza non è più un refuso.
+  return dist <= Math.max(2, Math.ceil(chiave.length / 3)) ? migliore : null;
+}
+
 function parseArgs(argv) {
   const args = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -96,6 +138,13 @@ function parseArgs(argv) {
       args[a.replace(/^--?/, '')] = true;
     } else {
       const key = a.replace(/^--/, '');
+      if (!OPZIONI.has(key)) {
+        const forse = suggerisci(key);
+        throw new Error(
+          `Opzione sconosciuta: ${a}.${forse ? ` Forse intendevi --${forse}?` : ''}`
+          + ' Vedi: node backup/cli.js help'
+        );
+      }
       const val = argv[i + 1];
       if (val === undefined || val.startsWith('--')) throw new Error(`Valore mancante per l'opzione ${a}.`);
       args[key] = val;
@@ -232,14 +281,50 @@ function cmdList(args) {
   if (!found) console.log(`Nessun backup trovato in ${destRoot}.`);
 }
 
+/**
+ * File di dati/schema/indici presenti nella cartella del backup, in forma
+ * relativa e con le barre normalizzate, per il confronto col manifest.
+ * `manifest.json`, `catalog.json` e il log non sono file DICHIARATI: non
+ * devono comparire fra gli "extra".
+ */
+function elencaFileBackup(backupDir) {
+  const esclusi = new Set(['manifest.json', 'catalog.json', 'backup.log']);
+  const out = [];
+  const cammina = (dir, prefisso) => {
+    let voci;
+    try {
+      voci = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return; // cartella sparita nel frattempo: lo dirà il ramo "MANCANTE"
+    }
+    for (const v of voci) {
+      const rel = prefisso ? `${prefisso}/${v.name}` : v.name;
+      if (v.isDirectory()) cammina(path.join(dir, v.name), rel);
+      else if (!esclusi.has(rel)) out.push(rel);
+    }
+  };
+  cammina(backupDir, '');
+  return out;
+}
+
 async function cmdVerify(args) {
   const backupDir = path.resolve(requireOpt(args, 'from', 'cartella del backup'));
   const manifest = readManifest(backupDir);
   let ok = 0;
   let failed = 0;
+  // Un file senza checksum non è "integro": è NON VERIFICABILE, ed è un'altra
+  // cosa. Saltandolo in silenzio il rapporto diceva «N file integri, 0
+  // problemi» anche su un backup di cui non era stato controllato nulla.
+  const nonVerificabili = [];
+  const dichiarati = new Set();
+
   for (const f of manifest.files) {
-    if (!f.sha256) continue; // schema/indici: file piccoli senza checksum
-    const full = path.join(backupDir, f.path);
+    dichiarati.add(String(f.path).replace(/\\/g, '/'));
+    if (!f.sha256) {
+      nonVerificabili.push(f.path);
+      continue;
+    }
+    const full = fileDelBackup(backupDir, f.path);
     if (!fs.existsSync(full)) {
       console.error(`MANCANTE  ${f.path}`);
       failed += 1;
@@ -254,8 +339,30 @@ async function cmdVerify(args) {
       failed += 1;
     }
   }
-  console.log(`\nVerifica di ${manifest.id}: ${ok} file integri, ${failed} problemi.`);
-  if (failed) throw new Error('Verifica fallita: il backup è incompleto o corrotto.');
+
+  // Il confronto va fatto anche NELL'ALTRO VERSO: iterando solo `manifest.files`
+  // un file di dati presente sul disco ma tolto dal manifest non veniva
+  // notato, e un manifest a cui siano state sottratte delle voci passava la
+  // verifica senza una parola.
+  const suDisco = elencaFileBackup(backupDir);
+  const extra = suDisco.filter((p) => !dichiarati.has(p));
+  for (const p of extra) console.error(`NON DICHIARATO  ${p} (presente sul disco ma assente dal manifest)`);
+
+  for (const p of nonVerificabili) console.warn(`SENZA CHECKSUM  ${p}`);
+
+  console.log(
+    `\nVerifica di ${manifest.id}: ${ok} file verificati, ${failed} problemi, `
+    + `${nonVerificabili.length} non verificabili, ${extra.length} non dichiarati.`
+  );
+  if (failed || extra.length) {
+    throw new Error('Verifica fallita: il backup è incompleto, corrotto o non corrisponde al manifest.');
+  }
+  if (nonVerificabili.length) {
+    throw new Error(
+      `Verifica incompleta: ${nonVerificabili.length} file del manifest non hanno un checksum e non sono `
+      + 'stati controllati. Un backup recente non dovrebbe averne: rifallo per ottenerne uno verificabile.'
+    );
+  }
 }
 
 /* --- Main -------------------------------------------------------------------- */

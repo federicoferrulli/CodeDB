@@ -117,7 +117,7 @@ const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
 const { createLogger, formatDuration } = require('./backup/lib/logger');
-const { readCatalog, readManifest, sha256File, formatBytes } = require('./backup/lib/util');
+const { readCatalog, readManifest, sha256File, formatBytes, fileDelBackup } = require('./backup/lib/util');
 const { notifySlack } = require('./backup/lib/notify');
 
 const { ROOT_PRINCIPAL, rbacOn } = require('./auth/principal');
@@ -348,6 +348,12 @@ const CONN_FIELDS = [
 // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
 // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
 const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
+
+// Sezione di intestazione dei file esportati con una passphrase scelta: porta
+// il salt e i parametri scrypt con cui ridervare la chiave sull'altra macchina.
+// Il nome comincia e finisce con `__` perché non possa essere scambiato per una
+// connessione (assertConnName rifiuta comunque i nomi che non sembrano tali).
+const SEZIONE_EXPORT = '__codedb_export__';
 
 // Chiave con cui i segreti sono cifrati. Nel formato v2 è la **DEK** casuale
 // sbustata dalla passphrase (db/vault.js); nei vault v1 non ancora migrati è
@@ -2814,16 +2820,65 @@ io.on('connection', (socket) => {
     const conns = loadConnections(principal.ownerId);
     if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
     const pass = passphrase == null ? '' : String(passphrase);
-    const cryptoKey = pass !== '' ? crypto.createHash('sha256').update(pass).digest() : encryptionKey;
-    const toSave = encryptSections(conns, cryptoKey);
-    cb({ ok: true, ini: stringifyIni(toSave) });
+    if (pass === '') {
+      // Nessuna passphrase indicata: si esporta con la chiave dell'installazione
+      // corrente, cioè il file è utile solo su questa macchina.
+      cb({ ok: true, ini: stringifyIni(encryptSections(conns, encryptionKey)) });
+      return;
+    }
+    // Con una passphrase scelta il file per definizione LASCIA la macchina, e
+    // fino a qui veniva cifrato con SHA256(passphrase): nessun salt, un solo
+    // passaggio di hash, cioè miliardi di tentativi al secondo su GPU — proprio
+    // il difetto che il formato v2 del vault esiste per risolvere. Si usa la
+    // stessa derivazione del vault (scrypt + salt casuale per file) e i
+    // parametri viaggiano in un'intestazione, così l'import può rifarla.
+    const salt = crypto.randomBytes(16);
+    const chiave = Vault.deriveKek(pass, salt, Vault.SCRYPT);
+    const toSave = encryptSections(conns, chiave);
+    const conIntestazione = {
+      [SEZIONE_EXPORT]: {
+        version: String(Vault.VERSION),
+        kdf: 'scrypt',
+        salt: salt.toString('hex'),
+        N: String(Vault.SCRYPT.N),
+        r: String(Vault.SCRYPT.r),
+        p: String(Vault.SCRYPT.p),
+        keylen: String(Vault.SCRYPT.keylen),
+      },
+      ...toSave,
+    };
+    cb({ ok: true, ini: stringifyIni(conIntestazione) });
   });
 
   // Importa connessioni da un file .ini: le sezioni con lo stesso nome di una
   // connessione esistente vengono sovrascritte, le altre aggiunte.
-  safeOn('connections:import', ({ ini }, cb) => {
+  safeOn('connections:import', ({ ini, passphrase } = {}, cb) => {
     assertManage(principal);
     const incoming = parseIni(String(ini || ''));
+    // Intestazione di un file esportato con una passphrase scelta: dice come
+    // ridervarne la chiave. Senza, l'unico modo era confrontare i segreti con la
+    // DEK locale — che su un vault v2 è casuale e non coincide MAI con una
+    // chiave derivata da una passphrase, quindi il flusso "esporta con
+    // passphrase, importa sull'altra macchina" non era realizzabile.
+    const intestazione = incoming[SEZIONE_EXPORT];
+    delete incoming[SEZIONE_EXPORT];
+    let chiaveFile = null;
+    if (intestazione) {
+      const pass = passphrase == null ? '' : String(passphrase);
+      if (!pass) {
+        throw new Error('Questo file è stato esportato con una passphrase: indicala per poterlo importare.');
+      }
+      const salt = Buffer.from(String(intestazione.salt || ''), 'hex');
+      if (!salt.length) throw new Error('Intestazione del file di export incompleta: manca il salt.');
+      chiaveFile = Vault.deriveKek(pass, salt, {
+        N: Number(intestazione.N) || Vault.SCRYPT.N,
+        r: Number(intestazione.r) || Vault.SCRYPT.r,
+        p: Number(intestazione.p) || Vault.SCRYPT.p,
+        keylen: Number(intestazione.keylen) || Vault.SCRYPT.keylen,
+        maxmem: Vault.SCRYPT.maxmem,
+      });
+    }
+
     const names = Object.keys(incoming);
     if (!names.length) throw new Error('Nessuna connessione trovata nel file importato.');
     const conns = loadConnections(principal.ownerId);
@@ -2833,16 +2888,27 @@ io.on('connection', (socket) => {
       assertConnName(name);
       const cfg = sanitizeConnCfg(incoming[name]);
       if (!Object.keys(cfg).length) continue; // sezione senza campi utili
-      // I segreti cifrati devono decifrarsi con la passphrase corrente: un
-      // "ENC:" estraneo verrebbe scoperto solo al riavvio, e con
-      // decryptFailures > 0 il server rifiuterebbe di partire.
+      // I segreti cifrati devono poter essere letti QUI: un "ENC:" estraneo
+      // verrebbe scoperto solo al riavvio, e con decryptFailures > 0 il server
+      // rifiuterebbe di partire. Con l'intestazione si decifra con la chiave del
+      // FILE e si ri-cifra con quella dell'installazione, altrimenti nel vault
+      // resterebbe un segreto che solo il file sa aprire.
       for (const f of SECRET_FIELDS) {
-        if (cfg[f] && cfg[f].startsWith('ENC:')) {
+        if (!cfg[f] || !cfg[f].startsWith('ENC:')) continue;
+        if (chiaveFile) {
+          let chiaro;
           try {
-            decryptRaw(cfg[f]);
+            chiaro = Vault.decryptWith(cfg[f], chiaveFile);
           } catch {
-            throw new Error(`Il segreto "${f}" della connessione "${name}" è cifrato con un'altra passphrase: esporta/importa con la stessa passphrase, oppure rimuovi i segreti dal file e reinseriscili dopo l'import.`);
+            throw new Error(`Il segreto "${f}" della connessione "${name}" non si apre con la passphrase indicata: controllala e riprova.`);
           }
+          cfg[f] = encryptSecret(chiaro, encryptionKey);
+          continue;
+        }
+        try {
+          decryptRaw(cfg[f]);
+        } catch {
+          throw new Error(`Il segreto "${f}" della connessione "${name}" è cifrato con un'altra passphrase: esporta/importa con la stessa passphrase, oppure rimuovi i segreti dal file e reinseriscili dopo l'import.`);
         }
       }
       if (conns[name]) overwritten += 1; else imported += 1;
@@ -3151,9 +3217,14 @@ io.on('connection', (socket) => {
     // finisce spesso con un commento di chiusura, e mandarlo al database
     // produrrebbe un errore di sintassi per qualcosa che l'utente non ha
     // nemmeno scritto come comando.
+    // Qui si divide per ESEGUIRE, non per classificare: dividere male romperebbe
+    // le istruzioni dell'utente, quindi vale il dialetto vero della connessione
+    // (su MySQL la barra rovesciata dentro un literal è un escape, su
+    // PostgreSQL no — vedi la nota in db/sqlText.js).
+    const dialetto = { backslashEscape: (sess.dbType || '') === 'mysql' };
     const statements = jsMongo
       ? [{ sql: codeStr, line: 1 }]
-      : splitStatementsDetailed(codeStr).filter((st) => stripSqlNoise(st.sql).trim().length > 0);
+      : splitStatementsDetailed(codeStr, dialetto).filter((st) => stripSqlNoise(st.sql, dialetto).trim().length > 0);
     if (!statements.length) throw new Error('Lo script non contiene istruzioni eseguibili.');
     if (statements.length > MAX_SCRIPT_STATEMENTS) {
       throw new Error(`Lo script contiene ${statements.length} istruzioni: il massimo per esecuzione è ${MAX_SCRIPT_STATEMENTS}. Caricalo come file per eseguirlo a blocchi.`);
@@ -3193,21 +3264,32 @@ io.on('connection', (socket) => {
 
     run.start(makeScriptExecutor(session, ctx, holder, run))
       .then((stato) => finalizzaScript(session, run, stato))
-      .catch((err) => {
-        console.error('[script] errore imprevisto nel ciclo:', err && err.message);
-        // Il run va portato a uno stato TERMINALE e annunciato (CDB-67):
-        // altrimenti il client, che ricava la fine solo dai push, resta con un
-        // pannello "in esecuzione" che non si chiude e non risponde ai comandi.
-        try {
-          const stato = run.fail(err);
-          finalizzaScript(session, run, stato);
-        } catch (e2) {
-          console.error('[script] impossibile chiudere il run:', e2 && e2.message);
-        }
-        // Un run concluso non deve restare nella mappa della sessione.
-        try { scriptsOf(session).delete(run.id); } catch { /* sessione già chiusa */ }
-      });
+      .catch((err) => chiudiRunInErrore(session, run, err, 'nel ciclo'));
   });
+
+  /**
+   * Chiusura di un run finito in errore IMPREVISTO (CDB-67).
+   *
+   * Il run va portato a uno stato TERMINALE e annunciato: il client ricava la
+   * fine solo dai push, quindi senza questo resta con un pannello "in
+   * esecuzione" che non si chiude e non risponde ai comandi, e non viene
+   * scritta la voce di audit di chiusura.
+   *
+   * Sta in una funzione perché i punti di ingresso del ciclo sono DUE —
+   * `script:execute` e `script:resume` — e la correzione era stata applicata a
+   * uno solo: alla ripresa il run restava `running` per sempre.
+   */
+  function chiudiRunInErrore(session, run, err, dove) {
+    console.error(`[script] errore imprevisto ${dove}:`, err && err.message);
+    try {
+      const stato = run.fail(err);
+      finalizzaScript(session, run, stato);
+    } catch (e2) {
+      console.error('[script] impossibile chiudere il run:', e2 && e2.message);
+    }
+    // Un run concluso non deve restare nella mappa della sessione.
+    try { scriptsOf(session).delete(run.id); } catch { /* sessione già chiusa */ }
+  }
 
   function finalizzaScript(session, run, stato) {
     if (stato.status !== 'done' && stato.status !== 'aborted') return;
@@ -3269,9 +3351,7 @@ io.on('connection', (socket) => {
 
     run.resume(makeScriptExecutor(session, run.ctx, run.holder, run), fromIndex)
       .then((stato) => finalizzaScript(session, run, stato))
-      .catch((err) => {
-        console.error('[script] errore imprevisto alla ripresa:', err && err.message);
-      });
+      .catch((err) => chiudiRunInErrore(session, run, err, 'alla ripresa'));
   });
 
   // Stato di un run (ripristino della UI dopo un F5 o un cambio di tab).
@@ -3464,7 +3544,13 @@ io.on('connection', (socket) => {
     const compress = payload.noCompress !== true;
 
     const t0 = Date.now();
-    const connName = payload.connName || payload.label || 'ui-session';
+    // Il nome del GRUPPO (`<conn>_<db>` sul disco) viene dalla SESSIONE, mai dal
+    // client: è il nome su cui poggiano davvero i permessi. Con il valore del
+    // payload — mai confrontato con sess.connName — safeName impediva il path
+    // traversal ma non impediva di scegliere il nome del gruppo di un altro
+    // tenant e di aggiungervi backup e voci di catalogo. Quello del client
+    // resta solo come etichetta nel log.
+    const connName = sess.connName || payload.connName || payload.label || 'ui-session';
     try {
       const summary = await log.run(`backup ${type} conn=${connName} db=${db} (via UI)`, async () => {
         const result = await runBackup({
@@ -3532,7 +3618,9 @@ io.on('connection', (socket) => {
       : null;
 
     const t0 = Date.now();
-    const connName = payload.connName || 'ui-session';
+    // Solo etichetta per il log: il bersaglio del ripristino è `backupDir`, già
+    // confinato da resolveBackupPath dentro la radice del tenant.
+    const connName = sess.connName || payload.connName || 'ui-session';
     const backupId = String(payload.backupId || path.basename(backupDir));
 
     // Il ripristino di un database vero dura minuti, e l'ack arriva solo alla
@@ -3594,7 +3682,7 @@ io.on('connection', (socket) => {
     const details = [];
     for (const f of manifest.files) {
       if (!f.sha256) continue;
-      const full = path.join(backupDir, f.path);
+      const full = fileDelBackup(backupDir, f.path);
       if (!fs.existsSync(full)) {
         details.push({ file: f.path, status: 'MISSING' });
         failed++;
@@ -3728,9 +3816,42 @@ async function gracefulShutdown(signal) {
   }
 }
 
+/**
+ * Un'eccezione non catturata è RECUPERABILE?
+ *
+ * Terminare sempre è la scelta sbagliata quasi ovunque: `server.js` è un
+ * processo unico che ospita tutte le sessioni Socket.IO, il gateway MCP e —
+ * nell'app desktop — la finestra Electron, quindi un errore isolato in una
+ * sessione faceva cadere le sessioni di TUTTI, chiudeva l'applicazione desktop
+ * e si portava via gli script in corso. Un supervisore che riavvii esiste solo
+ * in Docker (`restart: unless-stopped`): avvio da sorgente, launcher e app
+ * installata non ne hanno.
+ *
+ * Restano non recuperabili i casi in cui lo stato del processo è davvero
+ * compromesso: memoria esaurita e stack esaurito. Lì proseguire significa
+ * comportamento indefinito, e uscire in modo ordinato è meglio che continuare.
+ */
+function eccezioneFatale(err) {
+  if (!err) return false;
+  if (err instanceof RangeError && /call stack/i.test(err.message || '')) return true;
+  const nome = String((err && err.name) || '');
+  const msg = String((err && err.message) || '');
+  return /heap out of memory|allocation failed/i.test(msg) || nome === 'AssertionError';
+}
+
 function registerGlobalExceptionHandlers() {
   process.on('uncaughtException', (err, origin) => {
     console.error(`[Process] Uncaught Exception (${origin}):`, err);
+    if (!eccezioneFatale(err)) {
+      // Si registra e si prosegue: le altre sessioni, i backup in corso e la
+      // finestra dell'app desktop non devono cadere per un errore isolato.
+      console.error(
+        '[Process] Errore considerato recuperabile: il server resta in esecuzione. '
+        + "Se il problema si ripete, l'errore qui sopra è il punto da correggere."
+      );
+      return;
+    }
+    console.error('[Process] Stato del processo compromesso: chiusura ordinata.');
     gracefulShutdown('uncaughtException');
   });
 

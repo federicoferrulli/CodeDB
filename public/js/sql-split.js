@@ -66,9 +66,16 @@ export function splitStatements(code) {
     }
 
     if (c === "'") {
+      // La barra rovesciata è un escape solo con il prefisso E'…' di
+      // PostgreSQL: altrove è un carattere ordinario. Deve valere
+      // esattamente la regola di db/sqlText.js — i due splitter non
+      // possono divergere (test/unit-sql-split-client.js).
+      const conEscape = s[i - 1] === 'E' || s[i - 1] === 'e'
+        ? (s[i - 2] === undefined || !/[A-Za-z0-9_$]/.test(s[i - 2]))
+        : false;
       i++;
       while (i < s.length) {
-        if (s[i] === '\\') { avanza(i + 2); continue; }
+        if (conEscape && s[i] === '\\') { avanza(i + 2); continue; }
         if (s[i] === "'") { if (s[i + 1] === "'") { avanza(i + 2); continue; } avanza(i + 1); break; }
         avanza(i + 1);
       }

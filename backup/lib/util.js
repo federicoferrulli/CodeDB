@@ -231,6 +231,28 @@ function readManifest(backupDir) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
+/**
+ * Percorso di un file DICHIARATO nel manifest, confinato dentro la cartella del
+ * backup.
+ *
+ * Il manifest è un file di DATI, non codice: i checksum proteggono il contenuto
+ * dei file elencati, non il campo `path` del manifest stesso. Oggi lo scrive il
+ * motore e il valore è affidabile, ma un backup arriva anche da fuori (una
+ * copia ricevuta, un ripristino da un archivio) e comporre `path.join(dir,
+ * f.path)` senza controlli lascia leggere qualunque file della macchina.
+ */
+function fileDelBackup(backupDir, relativo, cosa = 'file') {
+  const base = path.resolve(backupDir);
+  const full = path.resolve(base, String(relativo == null ? '' : relativo));
+  const rel = path.relative(base, full);
+  if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new Error(
+      `Il manifest dichiara un ${cosa} fuori dalla cartella del backup ("${relativo}"): il backup è alterato o corrotto.`
+    );
+  }
+  return full;
+}
+
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
@@ -249,5 +271,6 @@ module.exports = {
   readCatalog,
   appendToCatalog,
   readManifest,
+  fileDelBackup,
   formatBytes,
 };

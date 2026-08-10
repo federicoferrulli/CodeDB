@@ -477,12 +477,55 @@ console.log('--- Test Unitari CodeDB ---');
     assert.ok(/globalThis\.__codedbDesktop/.test(mainSrc),
       'electron-main.js deve esporre il ponte __codedbDesktop al server incorporato');
 
-    // I segreti non devono finire dentro l'installer.
-    for (const escluso of ['!connections.ini', '!.env', '!conns/**']) {
+    // I SEGRETI NON DEVONO FINIRE DENTRO IL PACCHETTO, per NESSUNO dei due
+    // percorsi di pacchettizzazione. Erano due elenchi indipendenti — `IGNORE`
+    // in tools/build-desktop.mjs e `build.files` qui — e mancavano in entrambi
+    // `vault.json` (il salt scrypt e la DEK avvolta dello sviluppatore) e
+    // `provenienza/` (il registro che la documentazione tiene fuori da git
+    // perché pubblicarlo «consegnerebbe l'elenco di cosa cancellare»). Il
+    // controllo storico guardava tre voci e solo in package.json.
+    const { ESCLUSIONI, regexPackager } = require('../tools/esclusioni-distribuzione');
+
+    // 1) build.files rispecchia l'elenco unico.
+    for (const escluso of ESCLUSIONI) {
       assert.ok((pkg.build.files || []).includes(escluso),
-        `build.files deve escludere ${escluso} dal pacchetto distribuito`);
+        `build.files deve escludere ${escluso}: allinealo a tools/esclusioni-distribuzione.js`);
+    }
+
+    // 2) Il percorso @electron/packager esclude gli STESSI file. Si prova sui
+    //    percorsi veri, non sui pattern: è ciò che finisce nel pacchetto.
+    const rxPackager = regexPackager();
+    const daEscludere = [
+      '/vault.json', '/vault.json.bak', '/provenienza/impronte.json',
+      '/.env', '/connections.ini', '/connections.ini.bak',
+      '/data/conns/507f1f77bcf86cd799439011.ini',
+      '/ui-audit.log', '/ui-audit.log.1', '/mcp-audit.log', '/codedb.log',
+      '/backups/x/manifest.json', '/test/unit.js', '/docs/x.md', '/tools/x.js',
+    ];
+    for (const p of daEscludere) {
+      assert.ok(rxPackager.some((r) => r.test(p)),
+        `IGNORE di build-desktop.mjs deve escludere ${p} dal pacchetto`);
+      // …e lo stesso file non deve passare nemmeno da electron-builder.
+      const nome = p.replace(/^\//, '');
+      assert.ok(
+        ESCLUSIONI.some((e) => {
+          const g = e.slice(1);
+          if (g.endsWith('/**')) return nome.startsWith(g.slice(0, -2));
+          const rx = new RegExp(`^${g.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`);
+          return rx.test(nome);
+        }),
+        `build.files deve escludere ${p} dal pacchetto`
+      );
+    }
+
+    // 3) Ciò che DEVE restare non è stato escluso per eccesso di zelo: la AGPL
+    //    pretende che la licenza accompagni il programma, e l'app legge
+    //    MANLEVA.md/EULA.md a runtime per "Informazioni & Licenza".
+    for (const p of ['/server.js', '/public/js/main.js', '/LICENSE.md', '/MANLEVA.md', '/EULA.md']) {
+      assert.ok(!rxPackager.some((r) => r.test(p)), `${p} NON deve essere escluso dal pacchetto`);
     }
     console.log('  OK   Electron: AppUserModelID allineato a build.appId (barra applicazioni) passed');
+    console.log('  OK   Distribuzione: segreti e registro di provenienza esclusi da ENTRAMBI i pacchettizzatori (CDB-A57)');
   }
 
   // Test 5k-bis: licenza e manleva. Il testo compare in due posti — la pagina
@@ -540,6 +583,46 @@ console.log('--- Test Unitari CodeDB ---');
     // su Linux (da cui il fallimento in CI).
     assert.ok(soloTesto(generato).includes('\n\n'),
       'build/license.txt deve conservare le righe vuote fra i paragrafi');
+
+    // IL MARKDOWN DEVE ESSERE SPARITO. È l'asserzione complementare, e rende
+    // inutile inseguire i costrutti uno per uno: il confronto qui sopra è fra
+    // il file e l'output della STESSA funzione, quindi un costrutto non gestito
+    // resta grezzo da entrambe le parti e passa inosservato — finché non compare
+    // nella schermata che l'utente deve accettare. Un rimando alla AGPL o al
+    // repository ufficiale è esattamente ciò che si aggiunge a un EULA.
+    const residui = [
+      [/\][ ]*\(/, 'link markdown [testo](url)'],
+      [/\*\*/, 'grassetto **'],
+      [/`/, 'codice inline con backtick'],
+      [/^#{1,6}\s/m, 'titoli #'],
+      [/^\s*>\s/m, 'citazioni >'],
+    ];
+    for (const [rx, nome] of residui) {
+      assert.ok(!rx.test(soloTesto(generato)),
+        `build/license.txt contiene ancora ${nome}: testoSemplice() non lo converte, e arriverebbe grezzo alla schermata di accettazione`);
+    }
+
+    // La riga orizzontale non si può cercare nel generato: l'impaginatore ne
+    // scrive una LUNGA di suo per separare manleva ed EULA. Si prova quindi la
+    // conversione direttamente, su un campione che contiene ogni costrutto.
+    const { testoSemplice } = require('../tools/genera-licenza');
+    const campione = [
+      '# Titolo',
+      '## Sottotitolo',
+      '---',
+      'Vedi la [licenza AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) e il',
+      '**repository ufficiale** con il file `LICENSE.md`.',
+      '> Nota importante.',
+      'Testo in *corsivo* e in _corsivo_.',
+    ].join('\n');
+    const convertito = testoSemplice(campione);
+    assert.ok(convertito.includes('licenza AGPL-3.0 (https://www.gnu.org/licenses/agpl-3.0.html)'),
+      `Un link deve diventare "testo (url)": ottenuto ${JSON.stringify(convertito)}`);
+    for (const [rx, nome] of [...residui, [/^\s*(?:[-*_]\s*){3,}$/m, 'righe orizzontali']]) {
+      assert.ok(!rx.test(convertito), `testoSemplice() deve rimuovere: ${nome}`);
+    }
+    assert.ok(convertito.includes('Nota importante.') && convertito.includes('corsivo'),
+      'La conversione non deve perdere il testo');
 
     // NSIS legge il file come ANSI senza BOM: gli accenti italiani diventano
     // caratteri illeggibili proprio nella schermata da accettare.
@@ -817,6 +900,17 @@ console.log('--- Test Unitari CodeDB ---');
   // geometrie proiettate escluse dai totali)
   require('./unit-geo-stats');
 
+  // Test 24-quater: euristiche di analisi dello schema, condivise fra
+  // l'interfaccia (Grafo 3D) e il gateway MCP. Erano due copie già divergenti:
+  // un ordine di popolamento sbagliato e un report GDPR pieno di falsi positivi
+  // non sembrano rotti, sembrano risposte.
+  require('./unit-schema-analisi');
+
+  // Test 24-quinquies: generatori e lettori di schema (DDL, DBML, Mermaid).
+  // Producono un artefatto che l'utente porta via: un DDL con due PRIMARY KEY
+  // nella stessa CREATE TABLE si scopre solo quando qualcuno lo esegue.
+  require('./unit-schema-export');
+
   // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
   // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
   // momento il registro (vedi docs/provenienza.md) promette qualcosa che il
@@ -867,7 +961,29 @@ console.log('--- Test Unitari CodeDB ---');
   // funzione. Nessun database richiesto.
   require('./unit-avvio-rete');
 
-  console.log('\nTutti i test unitari superati con successo!');
-})();
+  // La riga finale NON si stampa qui.
+  //
+  // Due motivi, entrambi verificati (CDB-A64). Primo: dodici sotto-suite su
+  // venti segnalano il fallimento con `process.exitCode = 1` invece di
+  // lanciare, quindi il flusso arrivava comunque fin qui e dichiarava che era
+  // andato tutto bene mentre il codice di uscita diceva il contrario. Secondo:
+  // le sotto-suite scritte come IIFE asincrono restituiscono il controllo a
+  // `require()` appena finisce la loro parte SINCRONA, quindi la riga poteva
+  // essere stampata prima che avessero eseguito una sola asserzione.
+  //
+  // L'hook `exit` gira quando il ciclo di eventi si e' svuotato (cioe' dopo le
+  // sotto-suite asincrone) e vede il codice di uscita definitivo.
+})().catch((err) => {
+  console.error('\nErrore non gestito nella suite unitaria:', err && err.stack ? err.stack : err);
+  process.exitCode = 1;
+});
+
+process.on('exit', (code) => {
+  if (code === 0) {
+    console.log('\nTutti i test unitari superati con successo!');
+  } else {
+    console.error(`\nSuite unitaria FALLITA (codice di uscita ${code}): cerca "FAIL" o "falliti" qui sopra.`);
+  }
+});
 
 

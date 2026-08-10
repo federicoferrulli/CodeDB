@@ -114,6 +114,32 @@ prova('hasMultipleStatements invariato sui casi storici', () => {
   assert.strictEqual(hasMultipleStatements('SELECT 1;'), false);
 });
 
+/* CDB-A15 — barra rovesciata dentro un literal: differenza di dialetto.
+ * Su PostgreSQL (standard_conforming_strings=on) non è un escape, quindi
+ * trattarla come tale faceva LEGGERE UNA SOLA istruzione dove il database ne
+ * esegue due — e la seconda era una DROP classificata come lettura. */
+const BS = String.fromCharCode(92);
+
+prova('ANSI (predefinito): la barra rovesciata non nasconde un\'istruzione', () => {
+  const sql = `SELECT 'x${BS}'; DROP TABLE utenti; SELECT '`;
+  const parti = splitStatements(sql);
+  assert.ok(parti.length > 1, `PostgreSQL esegue più istruzioni: lo splitter deve vederle (viste ${parti.length})`);
+  assert.ok(parti.some((p) => /DROP/i.test(p)), 'La DROP non deve finire dentro una stringa');
+  const { isWriteSql } = require('../auth/capabilities');
+  assert.strictEqual(isWriteSql(sql), true, 'Questo testo è una SCRITTURA, non una lettura');
+});
+
+prova('Il prefisso E\'…\' di PostgreSQL reintroduce gli escape', () => {
+  const sql = `SELECT E'x${BS}'; SELECT 1`;
+  assert.strictEqual(splitStatements(sql).length, 1, 'In E\'…\' la barra rovesciata è un escape');
+});
+
+prova('Con backslashEscape: true vale la semantica MySQL', () => {
+  const sql = `INSERT INTO t VALUES ('it${BS}'s'); SELECT 1`;
+  const mysql = splitStatements(sql, { backslashEscape: true });
+  assert.strictEqual(mysql.length, 2, 'Su MySQL lo script si divide correttamente in due istruzioni');
+});
+
 if (falliti) {
   console.error(`\n${falliti} test falliti.`);
   process.exitCode = 1;

@@ -2,6 +2,22 @@ import { state } from './state.js';
 import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { activeTab } from './tabs.js';
+// Le euristiche di analisi dello schema stanno in un modulo condiviso col
+// gateway MCP: erano due copie scritte a mano, e l'euristica PII era gia'
+// divergente fra le due (vedi la nota in testa a schema-analisi.js).
+import {
+  detectImplicitRelations, analyzeDependencies as calcolaDipendenze,
+  auditSchema as calcolaSalute, terminePii,
+} from './schema-analisi.js';
+// Generatori e lettori di schema: funzioni pure, quindi fuori dal modulo di
+// interfaccia e provate in Node (test/unit-schema-export.js). Producono un
+// artefatto che l'utente PORTA VIA: un DDL con due PRIMARY KEY nella stessa
+// CREATE TABLE si scopre solo quando qualcuno prova a eseguirlo.
+import {
+  parseSchemaInput,
+  buildMermaidDiagram as generaMermaid, buildDbmlDiagram as generaDbml,
+  buildSqlDdl as generaDdl,
+} from './schema-export.js';
 import { setView } from './main.js';
 
 let graphInstance = null;
@@ -357,40 +373,12 @@ export function renderGraph3d() {
   graphResizeObserver.observe(canvas);
 }
 
-function detectImplicitRelations(collections, existingRelations) {
-  const existingSet = new Set((existingRelations || []).map((r) => `${r.from}.${r.field}->${r.to}`));
-  const implicit = [];
-
-  for (const c of collections) {
-    for (const f of c.fields || []) {
-      if (f.name === '_id' || f.pk) continue;
-      const low = f.name.toLowerCase();
-      const match = low.match(/^(.+?)_?ids?$/);
-      if (match) {
-        const base = match[1];
-        const target = collections.find((x) => x.name.toLowerCase() === base || x.name.toLowerCase() === base + 's');
-        if (target && target.name !== c.name) {
-          const key = `${c.name}.${f.name}->${target.name}`;
-          if (!existingSet.has(key)) {
-            implicit.push({
-              from: c.name,
-              field: f.name,
-              to: target.name,
-              many: true,
-              implicit: true,
-            });
-            existingSet.add(key);
-          }
-        }
-      }
-    }
-  }
-  return implicit;
-}
-
+// L'euristica vive nel modulo condiviso: qui basta sapere SE il campo e'
+// sensibile. La ricerca per sottostringa marcava "author", "passenger" e
+// "authorized_at" come dati personali (`pass`, `auth`), e la stessa regola
+// esisteva in una seconda versione, piu' ampia, nel gateway MCP.
 function isPIIField(fieldName) {
-  const sensitiveRegex = /(email|phone|telephon|password|pass|ssn|fiscal|creditcard|iban|token|auth|secret)/i;
-  return sensitiveRegex.test(fieldName);
+  return terminePii(fieldName) !== null;
 }
 
 function getTablePrefix(name) {
@@ -583,62 +571,14 @@ function analyzeDependencies() {
     return;
   }
 
-  const inDegree = new Map();
-  const outDegree = new Map();
-  const adj = new Map();
-
-  for (const c of schema.collections) {
-    inDegree.set(c.name, 0);
-    outDegree.set(c.name, 0);
-    adj.set(c.name, []);
-  }
-
-  const rels = schema.relations || [];
-  // Adiacenza INVERSA (to → from): serve al Kahn qui sotto, che parte dalle
-  // tabelle senza FK uscenti e deve poter raggiungere CHI le referenzia.
-  const rev = new Map();
-  for (const c of schema.collections) rev.set(c.name, []);
-  const viste = new Set();
-  for (const r of rels) {
-    // Un'auto-referenza (categoria.parent_id → categoria) non ordina nulla fra
-    // tabelle diverse e, contata, produrrebbe un ciclo permanente; gli archi
-    // duplicati (due FK verso la stessa tabella) gonfierebbero il contatore.
-    if (!r || r.from === r.to) continue;
-    const chiave = `${r.from}\u0000${r.to}`;
-    if (viste.has(chiave)) continue;
-    viste.add(chiave);
-    outDegree.set(r.from, (outDegree.get(r.from) || 0) + 1);
-    inDegree.set(r.to, (inDegree.get(r.to) || 0) + 1);
-    if (adj.has(r.from)) adj.get(r.from).push(r.to);
-    if (rev.has(r.to)) rev.get(r.to).push(r.from);
-  }
-
-  const rootTables = schema.collections.filter((c) => (outDegree.get(c.name) || 0) === 0);
-  const leafTables = schema.collections.filter((c) => (inDegree.get(c.name) || 0) === 0);
-
-  // Ordine di popolamento: Kahn sull'outDegree. Una tabella è popolabile quando
-  // tutte quelle da cui dipende (le sue FK uscenti) lo sono già, quindi si parte
-  // da chi non ha FK uscenti e si decrementa il contatore dei PREDECESSORI.
-  const restanti = new Map(outDegree);
-  const queue = schema.collections.filter((c) => restanti.get(c.name) === 0).map((c) => c.name);
-  const seedOrder = [];
-  const emesse = new Set(queue);
-
-  while (queue.length > 0) {
-    const node = queue.shift();
-    seedOrder.push(node);
-    for (const dipendente of rev.get(node) || []) {
-      restanti.set(dipendente, (restanti.get(dipendente) || 1) - 1);
-      if (restanti.get(dipendente) === 0 && !emesse.has(dipendente)) {
-        emesse.add(dipendente);
-        queue.push(dipendente);
-      }
-    }
-  }
-
-  // Quello che resta non è ordinabile: sono FK che formano un ciclo. Accodarle
-  // in silenzio darebbe un elenco plausibile e sbagliato, quindi si dichiarano.
-  const inCiclo = schema.collections.map((c) => c.name).filter((n) => !emesse.has(n));
+  // Il calcolo sta nel modulo condiviso: qui resta solo il disegno. Prima era
+  // scritto due volte — qui e nel gateway MCP — con lo stesso ordinamento
+  // topologico sbagliato in entrambe le copie.
+  const dip = calcolaDipendenze(schema, showImplicitRelations);
+  const rootTables = dip.root_tables;
+  const leafTables = dip.leaf_tables;
+  const seedOrder = dip.seeding_order;
+  const inCiclo = dip.cyclic_tables;
 
   let html = `<div style="margin-bottom:14px;">
     <h3 style="margin:0 0 4px 0; color:var(--fg,#e1e4e8);">Analisi Architetturale Dipendenze</h3>
@@ -647,12 +587,12 @@ function analyzeDependencies() {
 
   html += `<div class="audit-issue-item" style="border-left-color:#00e676; margin-bottom:12px;">
     <div class="audit-issue-title" style="color:#00e676;">▸ ROOT — Tabelle indipendenti (${rootTables.length}) senza FK uscenti</div>
-    <div class="audit-issue-desc">${rootTables.map((r) => `<b>${esc(r.name)}</b>`).join(', ') || 'Nessuna'}</div>
+    <div class="audit-issue-desc">${rootTables.map((r) => `<b>${esc(r)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
   html += `<div class="audit-issue-item" style="border-left-color:#4a9eff; margin-bottom:12px;">
     <div class="audit-issue-title" style="color:#4a9eff;">▸ LEAF — Tabelle terminali (${leafTables.length})</div>
-    <div class="audit-issue-desc">${leafTables.map((l) => `<b>${esc(l.name)}</b>`).join(', ') || 'Nessuna'}</div>
+    <div class="audit-issue-desc">${leafTables.map((l) => `<b>${esc(l)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
   html += `<div class="audit-issue-item" style="border-left-color:#f5a623;">
@@ -690,45 +630,20 @@ function runSchemaAudit() {
     return;
   }
 
-  const issues = [];
-  let score = 100;
-
-  const neighborsMap = new Map();
-  for (const c of schema.collections) neighborsMap.set(c.name, 0);
-  for (const r of schema.relations || []) {
-    neighborsMap.set(r.from, (neighborsMap.get(r.from) || 0) + 1);
-    neighborsMap.set(r.to, (neighborsMap.get(r.to) || 0) + 1);
-  }
-
-  const orphans = schema.collections.filter((c) => (neighborsMap.get(c.name) || 0) === 0);
-  if (orphans.length) {
-    score -= Math.min(30, orphans.length * 10);
-    issues.push({
-      type: 'warn',
-      title: `Tabelle Orfane (${orphans.length})`,
-      desc: `Le seguenti tabelle non hanno alcuna relazione dichiarata o implicita: ${orphans.map((o) => `<b>${esc(o.name)}</b>`).join(', ')}.`,
-    });
-  }
-
-  const oversized = schema.collections.filter((c) => c.fields && c.fields.length > 25);
-  if (oversized.length) {
-    score -= Math.min(20, oversized.length * 5);
-    issues.push({
-      type: 'warn',
-      title: `Tabelle Molto Grandi (${oversized.length})`,
-      desc: `Tabelle con più di 25 colonne (potenziale refactoring): ${oversized.map((o) => `<b>${esc(o.name)} (${o.fields.length} campi)</b>`).join(', ')}.`,
-    });
-  }
-
-  const missingPk = schema.collections.filter((c) => !(c.fields || []).some((f) => f.pk || f.name === '_id'));
-  if (missingPk.length) {
-    score -= Math.min(30, missingPk.length * 15);
-    issues.push({
-      type: 'bad',
-      title: `Tabelle senza Chiave Primaria (${missingPk.length})`,
-      desc: `Tabelle prive di PK esplicita o campo _id: ${missingPk.map((m) => `<b>${esc(m.name)}</b>`).join(', ')}.`,
-    });
-  }
+  // Il calcolo sta nel modulo condiviso col gateway MCP (una copia sola), e le
+  // penalità sono PROPORZIONALI alla dimensione dello schema: con quelle
+  // assolute il punteggio non poteva scendere sotto 20 e tre tabelle orfane
+  // costavano uguale su tre tabelle e su trecento.
+  //
+  // Le relazioni IMPLICITE contano davvero quando l'opzione è attiva: il testo
+  // diceva «alcuna relazione dichiarata o implicita» ma il conteggio usava le
+  // sole schema.relations, quindi una tabella collegata da un `cliente_id`
+  // risultava orfana e faceva perdere punti per un difetto che non ha.
+  const relazioni = [...(schema.relations || [])];
+  if (showImplicitRelations) relazioni.push(...detectImplicitRelations(schema.collections, relazioni));
+  const salute = calcolaSalute({ collections: schema.collections, relations: relazioni });
+  let score = salute.health_score;
+  const issues = salute.issues.map((x) => ({ type: x.type, title: x.title, desc: esc(x.description) }));
 
   score = Math.max(0, score);
   let scoreClass = 'audit-score-good';
@@ -739,7 +654,7 @@ function runSchemaAudit() {
     <div class="audit-score-val ${scoreClass}">${score}%</div>
     <div>
       <h3 style="margin:0; color:var(--fg,#e1e4e8);">Punteggio Salute Schema</h3>
-      <small style="color:var(--fg-dim,#8b949e);">${schema.collections.length} tabelle analizzate, ${schema.relations ? schema.relations.length : 0} relazioni controllate.</small>
+      <small style="color:var(--fg-dim,#8b949e);">${schema.collections.length} tabelle analizzate, ${relazioni.length} relazioni controllate${showImplicitRelations ? ' (implicite comprese)' : ''}.</small>
     </div>
   </div>`;
 
@@ -857,147 +772,6 @@ function renderDiffReport(snapshot) {
   if (diffContent) {
     diffContent.innerHTML = html;
   }
-}
-
-function parseSchemaInput(text, format) {
-  const collections = [];
-  const relations = [];
-
-  if (format === 'dbml') {
-    const tableRegex = /Table\s+["']?([a-zA-Z0-9_]+)["']?\s*\{([^}]+)\}/gi;
-    let match;
-    while ((match = tableRegex.exec(text)) !== null) {
-      const tableName = match[1];
-      const body = match[2];
-      const fields = [];
-      const lines = body.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('//')) continue;
-        const parts = trimmed.split(/\s+/);
-        if (parts.length >= 1) {
-          const fName = parts[0].replace(/["']/g, '');
-          const fType = parts[1] || 'varchar';
-          const isPk = trimmed.includes('[pk]');
-          fields.push({ name: fName, types: [fType], pk: isPk });
-        }
-      }
-      collections.push({ name: tableName, fields });
-    }
-
-    const refRegex = /Ref:\s*["']?([a-zA-Z0-9_]+)["']?\."?([a-zA-Z0-9_]+)"?\s*>\s*["']?([a-zA-Z0-9_]+)["']?\."?([a-zA-Z0-9_]+)"?/gi;
-    let refMatch;
-    while ((refMatch = refRegex.exec(text)) !== null) {
-      relations.push({
-        from: refMatch[1],
-        field: refMatch[2],
-        to: refMatch[3],
-        many: true,
-      });
-    }
-  } else {
-    const tableRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([a-zA-Z0-9_]+)`?\s*\(([^;]+)\);/gi;
-    let match;
-    while ((match = tableRegex.exec(text)) !== null) {
-      const tableName = match[1];
-      const body = match[2];
-      const fields = [];
-      const lines = body.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim().replace(/,$/, '');
-        if (!trimmed || trimmed.startsWith('--') || trimmed.toUpperCase().startsWith('PRIMARY KEY') || trimmed.toUpperCase().startsWith('CONSTRAINT')) continue;
-        const parts = trimmed.split(/\s+/);
-        if (parts.length >= 1) {
-          const fName = parts[0].replace(/`/g, '');
-          const fType = parts[1] || 'VARCHAR';
-          const isPk = trimmed.toUpperCase().includes('PRIMARY KEY');
-          fields.push({ name: fName, types: [fType], pk: isPk });
-        }
-      }
-      collections.push({ name: tableName, fields });
-    }
-
-    const fkRegex = /FOREIGN\s+KEY\s*\(`?([a-zA-Z0-9_]+)`?\)\s*REFERENCES\s*`?([a-zA-Z0-9_]+)`?\s*\(`?([a-zA-Z0-9_]+)`?\)/gi;
-    let fkMatch;
-    while ((fkMatch = fkRegex.exec(text)) !== null) {
-      relations.push({
-        from: 'imported',
-        field: fkMatch[1],
-        to: fkMatch[2],
-        many: true,
-      });
-    }
-  }
-
-  return { collections, relations };
-}
-
-function sanitizeName(str) {
-  if (!str) return 'entity';
-  return String(str).replace(/[^a-zA-Z0-9_]/g, '_');
-}
-
-function buildMermaidDiagram() {
-  const schema = state.dbSchema || currentSchemaData;
-  if (!schema || !schema.collections || !schema.collections.length) return '';
-  let lines = ['erDiagram'];
-  for (const c of schema.collections) {
-    const cName = sanitizeName(c.name);
-    lines.push(`    ${cName} {`);
-    for (const f of c.fields || []) {
-      const typeStr = (f.types && f.types[0]) ? sanitizeName(f.types[0]) : 'string';
-      const fName = sanitizeName(f.name);
-      lines.push(`        ${typeStr} ${fName}`);
-    }
-    lines.push('    }');
-  }
-  for (const r of schema.relations || []) {
-    const fromName = sanitizeName(r.from);
-    const toName = sanitizeName(r.to);
-    const fieldName = sanitizeName(r.field);
-    lines.push(`    ${fromName} ||--o{ ${toName} : "${fieldName}"`);
-  }
-  return lines.join('\n');
-}
-
-function buildDbmlDiagram() {
-  const schema = state.dbSchema || currentSchemaData;
-  if (!schema || !schema.collections || !schema.collections.length) return '';
-  let lines = [`// Database Markup Language (DBML) per dbdiagram.io`, `Project "${state.db || 'database'}" {`, `  database_type: '${state.dbType || 'MySQL'}'`, `}`, ''];
-  for (const c of schema.collections) {
-    lines.push(`Table "${c.name}" {`);
-    for (const f of c.fields || []) {
-      const typeStr = (f.types && f.types[0]) ? f.types[0] : 'varchar';
-      const isPk = f.pk || f.name === '_id';
-      lines.push(`  "${f.name}" ${typeStr}${isPk ? ' [pk]' : ''}`);
-    }
-    lines.push('}\n');
-  }
-  for (const r of schema.relations || []) {
-    lines.push(`Ref: "${r.from}"."${r.field}" > "${r.to}"."_id"`);
-  }
-  return lines.join('\n');
-}
-
-function buildSqlDdl() {
-  const schema = state.dbSchema || currentSchemaData;
-  if (!schema || !schema.collections || !schema.collections.length) return '';
-  let lines = [`-- Script DDL generato per database ${state.db || 'db'}`, ''];
-  for (const c of schema.collections) {
-    lines.push(`CREATE TABLE \`${c.name}\` (`);
-    const colDefs = [];
-    for (const f of c.fields || []) {
-      const isPk = f.pk || f.name === '_id';
-      const type = (f.types && f.types[0]) ? f.types[0].toUpperCase() : 'VARCHAR(255)';
-      colDefs.push(`  \`${f.name}\` ${type}${isPk ? ' NOT NULL PRIMARY KEY' : ''}`);
-    }
-    lines.push(colDefs.join(',\n'));
-    lines.push(');\n');
-  }
-  for (const r of schema.relations || []) {
-    lines.push(`ALTER TABLE \`${r.from}\` ADD CONSTRAINT \`fk_${r.from}_${r.field}\` FOREIGN KEY (\`${r.field}\`) REFERENCES \`${r.to}\` (\`id\`);`);
-  }
-  return lines.join('\n');
 }
 
 function hashString(str) {
@@ -1378,7 +1152,7 @@ export function initGraph3d() {
   const exportMermaidBtn = $('#graph3d-export-mermaid');
   if (exportMermaidBtn) {
     exportMermaidBtn.addEventListener('click', () => {
-      const mermaidText = buildMermaidDiagram();
+      const mermaidText = generaMermaid(state.dbSchema || currentSchemaData);
       if (!mermaidText) {
         toast('Nessun dato di schema disponibile per Mermaid.', true);
         return;
@@ -1415,7 +1189,7 @@ export function initGraph3d() {
   const exportDbmlBtn = $('#graph3d-export-dbml');
   if (exportDbmlBtn) {
     exportDbmlBtn.addEventListener('click', () => {
-      const dbmlText = buildDbmlDiagram();
+      const dbmlText = generaDbml(state.dbSchema || currentSchemaData, { db: state.db || 'database', dbType: state.dbType || 'MySQL' });
       if (!dbmlText) {
         toast('Nessun dato di schema disponibile per DBML.', true);
         return;
@@ -1452,7 +1226,7 @@ export function initGraph3d() {
   const exportSqlBtn = $('#graph3d-export-sql');
   if (exportSqlBtn) {
     exportSqlBtn.addEventListener('click', () => {
-      const sqlText = buildSqlDdl();
+      const sqlText = generaDdl(state.dbSchema || currentSchemaData, { db: state.db || 'db' });
       if (!sqlText) {
         toast('Nessun dato di schema disponibile per SQL DDL.', true);
         return;

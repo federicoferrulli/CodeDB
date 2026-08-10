@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { EJSON } = require('bson');
-const { readLines, readManifest } = require('./util');
+const { readLines, readManifest, fileDelBackup } = require('./util');
 
 const BATCH_SIZE = 500;
 
@@ -141,7 +141,7 @@ function assertSafeSchemaSql(sql, expectedTable, { allowUnsafeSchema = false } =
 // Legge il file di schema verificandone, quando il manifest lo dichiara, il
 // checksum: un file alterato sul disco non deve poter essere eseguito.
 function readSchemaFile(layerDir, schemaFile, expectedTable, opts) {
-  const full = path.join(layerDir, schemaFile.path);
+  const full = fileDelBackup(layerDir, schemaFile.path, 'file di schema');
   const sql = fs.readFileSync(full, 'utf8');
   if (schemaFile.sha256) {
     const actual = crypto.createHash('sha256').update(fs.readFileSync(full)).digest('hex');
@@ -180,7 +180,7 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
       }
       batch = [];
     };
-    for await (const line of readLines(path.join(layer.dir, f.path))) {
+    for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
       batch.push(EJSON.parse(line, { relaxed: false }));
       applied += 1;
       if (batch.length >= BATCH_SIZE) await flush();
@@ -277,7 +277,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
         applied += batch.length;
         batch = [];
       };
-      for await (const line of readLines(path.join(layer.dir, f.path))) {
+      for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
         const row = EJSON.parse(line, { relaxed: true });
         const colsRiga = Object.keys(row);
         if (!columns) columns = colsRiga;
@@ -398,7 +398,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       }
       batch = [];
     };
-    for await (const line of readLines(path.join(layer.dir, f.path))) {
+    for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
       batch.push(line);
       if (batch.length >= BATCH_SIZE) await flush();
     }

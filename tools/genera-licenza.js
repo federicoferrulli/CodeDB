@@ -46,11 +46,23 @@ const COLONNE = 78;
  */
 function testoSemplice(md) {
   return md
-    .replace(/\r\n?/g, '\n')           // CRLF/CR → LF (vedi sopra)
-    .replace(/^#\s+/gm, '')            // titolo di primo livello
-    .replace(/^#{2,}\s+/gm, '')        // sottotitoli
-    .replace(/\*\*(.+?)\*\*/gs, '$1')  // grassetto
-    .replace(/`([^`]+)`/g, '$1');      // codice inline
+    .replace(/\r\n?/g, '\n')                        // CRLF/CR → LF (vedi sopra)
+    .replace(/^\s*(?:[-*_]\s*){3,}$/gm, '')         // riga orizzontale (--- / ***)
+    .replace(/^#{1,6}\s+/gm, '')                    // titoli di qualunque livello
+    .replace(/^\s*>\s?/gm, '')                      // citazioni
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '$1')     // immagini: resta la didascalia
+    // Link: `[testo](url)` → `testo (url)`. In un testo legale i rimandi — alla
+    // AGPL, al repository ufficiale, a un indirizzo PEC — sono la cosa che si
+    // aggiunge più spesso, e senza questa riga arrivavano GREZZI alla schermata
+    // di accettazione dell'installer, parentesi quadre comprese. Se testo e URL
+    // coincidono (il caso `[https://…](https://…)`) non si ripete due volte.
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_m, testo, url) => (testo.trim() === url.trim() ? testo : `${testo} (${url})`))
+    .replace(/<(https?:\/\/[^>]+)>/g, '$1')         // link automatici <http://…>
+    .replace(/\*\*(.+?)\*\*/gs, '$1')               // grassetto **…**
+    .replace(/__(.+?)__/gs, '$1')                   // grassetto __…__
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1$2')      // corsivo *…* (non le liste)
+    .replace(/(^|[^_\w])_([^_\n]+)_/g, '$1$2')      // corsivo _…_
+    .replace(/`([^`]+)`/g, '$1');                   // codice inline
 }
 
 /** Manda a capo un testo continuo, con un rientro sulle righe successive. */
@@ -100,7 +112,7 @@ function genera() {
   return testo;
 }
 
-module.exports = { genera, contenutoLicenza, SORGENTE, SORGENTE_EULA, USCITA };
+module.exports = { genera, contenutoLicenza, testoSemplice, SORGENTE, SORGENTE_EULA, USCITA };
 
 if (require.main === module) {
   genera();

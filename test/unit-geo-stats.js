@@ -177,6 +177,46 @@ function quadrato(lon0, lat0, lato = 1) {
   // Deve restare un GeoJSON valido, cioè analizzabile da chiunque altro.
   assert.doesNotThrow(() => JSON.parse(JSON.stringify(fc)));
 
+  /* --------------------------- antimeridiano (CDB-A38) -------------------- */
+
+  // Un grado di longitudine a cavallo di ±180° è un grado, non 359: senza
+  // normalizzazione la distanza diventava quasi il giro del mondo e l'area del
+  // poligono un numero privo di senso. È l'unica approssimazione che non era
+  // dichiarata da nessuna parte.
+  const attraverso = distanzaM([179.5, 0], [-179.5, 0]);
+  const equivalente = distanzaM([0.5, 0], [1.5, 0]);
+  assert.ok(Math.abs(attraverso - equivalente) < 1,
+    `Un grado resta un grado anche a cavallo dell'antimeridiano: ${Math.round(attraverso)} m contro ${Math.round(equivalente)} m`);
+  assert.ok(attraverso < 120000, `La distanza non deve essere il giro del mondo: ${Math.round(attraverso)} m`);
+
+  // Stessa cosa per l'area: un quadrato di un grado a cavallo della linea deve
+  // misurare quanto un quadrato di un grago altrove alla stessa latitudine.
+  const quadratoAttraverso = misureGeometria({
+    type: 'Polygon',
+    coordinates: [[[179.5, 0], [-179.5, 0], [-179.5, 1], [179.5, 1], [179.5, 0]]],
+  });
+  const quadratoNormale = misureGeometria({
+    type: 'Polygon',
+    coordinates: [[[0.5, 0], [1.5, 0], [1.5, 1], [0.5, 1], [0.5, 0]]],
+  });
+  const scarto = Math.abs(quadratoAttraverso.areaM2 - quadratoNormale.areaM2) / quadratoNormale.areaM2;
+  assert.ok(scarto < 0.01,
+    `L'area a cavallo dell'antimeridiano deve coincidere con quella equivalente (scarto ${(scarto * 100).toFixed(1)}%)`);
+
+  // Il riquadro invece NON sa avvolgersi: non lo si corregge, lo si dichiara.
+  assert.strictEqual(quadratoAttraverso.attraversaAntimeridiano, true,
+    'La geometria a cavallo della linea va riconosciuta e segnalata');
+  assert.strictEqual(quadratoNormale.attraversaAntimeridiano, false,
+    'Una geometria normale non deve essere segnalata');
+
+  // Una geometria davvero larga (non a cavallo) non è un falso positivo.
+  const mondiale = misureGeometria({
+    type: 'LineString',
+    coordinates: [[-170, 0], [-80, 0], [0, 0], [80, 0], [170, 0]],
+  });
+  assert.strictEqual(mondiale.attraversaAntimeridiano, false,
+    'Una geometria larga ma continua non attraversa l\'antimeridiano');
+
   console.log('✓ Statistiche selezione geometrica: OK');
 })().catch((err) => {
   console.error('✗ Statistiche selezione geometrica:', err.message);

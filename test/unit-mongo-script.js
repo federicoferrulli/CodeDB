@@ -380,6 +380,28 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
     await deveFallire('db.c.find({}).toArray();', /Nessun database selezionato/, hostFinto(), { db: null });
   });
 
+  /* === reduce: il valore iniziale conta (CDB-A14) ======================= */
+
+  await prova('reduce() rispetta il valore iniziale', async () => {
+    // Ignorarlo non produceva un errore ma un risultato SBAGLIATO in silenzio,
+    // che è il difetto peggiore in un'aggregazione.
+    const somma = await esegui('print([1,2,3].reduce(function(a,b){ return a+b; }, 10));');
+    assert.deepStrictEqual(somma.output, ['16'], 'Il valore iniziale deve essere usato');
+
+    const vuoto = await esegui('print([].reduce(function(a,b){ return a+b; }, 0));');
+    assert.deepStrictEqual(vuoto.output, ['0'], 'Array vuoto con valore iniziale: torna il valore iniziale');
+
+    // Accumulatore di tipo diverso dagli elementi: senza il valore iniziale
+    // l'accumulatore partiva dall'OGGETTO e il risultato era NaN.
+    const oggetti = await esegui('print([{n:2},{n:3}].reduce(function(a,x){ return a+x.n; }, 0));');
+    assert.deepStrictEqual(oggetti.output, ['5'], 'L\'accumulatore deve partire dal valore iniziale');
+
+    const senza = await esegui('print([1,2,3].reduce(function(a,b){ return a+b; }));');
+    assert.deepStrictEqual(senza.output, ['6'], 'Senza valore iniziale la semantica resta quella standard');
+
+    await deveFallire('[].reduce(function(a,b){ return a+b; });', /array vuoto/i);
+  });
+
   /* === Regex: l'unico costrutto senza budget (CDB-A44) ================== */
 
   await prova('BUDGET: un quantificatore annidato è rifiutato prima di eseguire', async () => {

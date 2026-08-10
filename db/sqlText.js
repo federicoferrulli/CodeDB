@@ -20,6 +20,55 @@
  * passerebbe per una lettura perché la prima parola non è una keyword.
  * ------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------
+ * La barra rovesciata dentro un literal: una differenza di DIALETTO che qui
+ * pesa parecchio.
+ *
+ * MySQL la tratta come carattere di escape; PostgreSQL, con
+ * `standard_conforming_strings=on` (predefinito dalla 9.1), NO — lì un literal
+ * che finisce con una barra rovesciata è un literal COMPLETO, e solo la forma
+ * `E'…'` reintroduce gli escape.
+ *
+ * Trattarla sempre come escape (il comportamento storico di questo modulo)
+ * significa, su PostgreSQL, LEGGERE MENO ISTRUZIONI di quante ne verranno
+ * eseguite: una stringa che termina con la barra rovesciata "assorbe" il resto
+ * del testo, la DROP che segue finisce dentro quella che lo splitter crede una
+ * stringa e `isWriteSql` risponde "lettura" — mentre la DROP viene eseguita
+ * davvero, perché `collectionAggregate` usa il simple query protocol, e finisce
+ * nell'audit come lettura.
+ *
+ * Il predefinito è quindi ANSI (barra rovesciata ordinaria), che è la direzione
+ * CONSERVATIVA per entrambi i dialetti: al massimo si divide PIÙ del dovuto, e
+ * dividere di più fa classificare come SCRITTURA, cioè chiedere la capability
+ * più alta invece della più bassa. Chi divide uno script per ESEGUIRLO — dove
+ * dividere male romperebbe le istruzioni — passa il dialetto vero con
+ * `{ backslashEscape: true }`.
+ * ------------------------------------------------------------------------- */
+
+/** Indice subito dopo un literal fra apici singoli aperto in `apertura`. */
+function fineLiteral(s, apertura, backslashEscape) {
+  let i = apertura + 1;
+  while (i < s.length) {
+    if (backslashEscape && s[i] === '\\') { i += 2; continue; }
+    if (s[i] === "'") { if (s[i + 1] === "'") { i += 2; continue; } return i + 1; }
+    i++;
+  }
+  return s.length;
+}
+
+/**
+ * L'apice in posizione `i` apre un literal in cui la barra rovesciata è un
+ * escape? Sempre nel dialetto MySQL; in ANSI solo con il prefisso `E`/`e` di
+ * PostgreSQL, che va riconosciuto come parola a sé (`E'x'`, non `nomeE'x'`).
+ */
+function literalConEscape(s, i, backslashEscape) {
+  if (backslashEscape) return true;
+  const prev = s[i - 1];
+  if (prev !== 'E' && prev !== 'e') return false;
+  const prima = s[i - 2];
+  return prima === undefined || !/[A-Za-z0-9_$]/.test(prima);
+}
+
 /**
  * Rimuove commenti (`--`, `#`, `/* *\/`), stringhe letterali e identificatori
  * quotati, sostituendoli con segnaposto neutri. Il risultato non è SQL
@@ -29,7 +78,7 @@
  * una parola chiave: `SELECT "update" FROM t` è una lettura, e senza questa
  * sostituzione verrebbe scambiata per una scrittura.
  */
-function stripSqlNoise(sql, { keepIdentifiers = false } = {}) {
+function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false } = {}) {
   const s = String(sql == null ? '' : sql);
   let out = '';
   let i = 0;
@@ -63,12 +112,7 @@ function stripSqlNoise(sql, { keepIdentifiers = false } = {}) {
     }
 
     if (c === "'") {
-      i++;
-      while (i < s.length) {
-        if (s[i] === '\\') { i += 2; continue; }
-        if (s[i] === "'") { if (s[i + 1] === "'") { i += 2; continue; } i++; break; }
-        i++;
-      }
+      i = fineLiteral(s, i, literalConEscape(s, i, backslashEscape));
       out += " '' ";
       continue;
     }
@@ -117,7 +161,7 @@ function stripSqlNoise(sql, { keepIdentifiers = false } = {}) {
  *   `start`/`end` = offset nel sorgente; `line` = riga 1-based del primo
  *   carattere non bianco (serve a puntare l'errore nell'editor).
  */
-function splitStatementsDetailed(sql) {
+function splitStatementsDetailed(sql, { backslashEscape = false } = {}) {
   const s = String(sql == null ? '' : sql);
   const out = [];
   let i = 0;
@@ -165,12 +209,7 @@ function splitStatementsDetailed(sql) {
     }
 
     if (c === "'") {
-      i++;
-      while (i < s.length) {
-        if (s[i] === '\\') { i += 2; continue; }
-        if (s[i] === "'") { if (s[i + 1] === "'") { i += 2; continue; } i++; break; }
-        i++;
-      }
+      i = fineLiteral(s, i, literalConEscape(s, i, backslashEscape));
       continue;
     }
 
@@ -204,14 +243,14 @@ function splitStatements(sql, opts) {
   // Il testo va normalizzato DOPO la divisione: normalizzare prima cancella i
   // commenti ma lascia il loro posto vuoto, e chi classifica vuole comunque il
   // codice ripulito, istruzione per istruzione.
-  return splitStatementsDetailed(sql)
+  return splitStatementsDetailed(sql, opts)
     .map((st) => stripSqlNoise(st.sql, opts).trim())
     .filter(Boolean);
 }
 
 /** Più di un'istruzione nello stesso testo? */
-function hasMultipleStatements(sql) {
-  return splitStatements(sql).length > 1;
+function hasMultipleStatements(sql, opts) {
+  return splitStatements(sql, opts).length > 1;
 }
 
 module.exports = {

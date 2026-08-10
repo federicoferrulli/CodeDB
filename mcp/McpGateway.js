@@ -196,34 +196,85 @@ function makeMermaidEntityIdResolver() {
   };
 }
 
+// Cella di tabella markdown: la barra verticale chiude la colonna, e su
+// MongoDB è un carattere legale in un nome di campo — senza neutralizzarla le
+// colonne slittano e il dizionario dati diventa illeggibile.
+function cellaMd(v) {
+  return String(v == null ? '' : v)
+    .replace(/\|/g, '\\|')
+    .replace(/\r?\n/g, ' ');
+}
+
+
+// Tetto in byte del documento prodotto dalle risorse MCP. Tutto il resto
+// dell'applicazione dichiara e applica un tetto (resultCap sulle righe,
+// CODEDB_MAX_RESULT_BYTES sui byte, docPerLettura negli script, i tetti di
+// disegno di geomulti.js): queste due risorse erano l'unico punto senza.
+function tettoRisorsaBytes() {
+  const n = parseInt(process.env.CODEDB_MAX_RESULT_BYTES, 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 32 * 1024 * 1024) : 32 * 1024 * 1024;
+}
+
 function renderSchemaMarkdown(db, schema) {
+  const collections = (schema && schema.collections) || [];
+  const relations = (schema && schema.relations) || [];
   const entityId = makeMermaidEntityIdResolver();
-  for (const c of schema.collections) entityId(c.name); // popola il resolver nell'ordine dello schema
-  const lines = [`# Schema di \`${db}\``, '', '## Diagramma UML (Mermaid)', '', '```mermaid', 'erDiagram'];
-  for (const c of schema.collections) {
-    lines.push(`  ${entityId(c.name)} {`);
-    for (const f of c.fields) {
-      lines.push(`    ${mermaidId(f.types.join('_'))} ${mermaidId(f.name)}`);
+  for (const c of collections) entityId(c.name); // popola il resolver nell'ordine dello schema
+
+  const tetto = tettoRisorsaBytes();
+  let byte = 0;
+  let troncatoA = -1;
+
+  // Il documento si costruisce a blocchi per COLLEZIONE, così il troncamento
+  // cade su un confine leggibile invece che a metà di una tabella markdown.
+  const testa = [`# Schema di \`${db}\``, '', '## Diagramma UML (Mermaid)', '', '```mermaid', 'erDiagram'];
+  const corpoUml = [];
+  for (let k = 0; k < collections.length; k++) {
+    const c = collections[k];
+    const blocco = [`  ${entityId(c.name)} {`];
+    for (const f of c.fields || []) {
+      blocco.push(`    ${mermaidId((f.types || []).join('_'))} ${mermaidId(f.name)}`);
     }
-    lines.push('  }');
+    blocco.push('  }');
+    const dim = blocco.join('\n').length;
+    if (byte + dim > tetto) { troncatoA = k; break; }
+    byte += dim;
+    corpoUml.push(...blocco);
   }
-  for (const r of schema.relations) {
-    lines.push(`  ${entityId(r.from)} ${r.many ? '}o--o{' : '}o--||'} ${entityId(r.to)} : "${r.field}"`);
+  const mostrate = troncatoA < 0 ? collections.length : troncatoA;
+
+  const lines = [...testa, ...corpoUml];
+  // L'etichetta della relazione finisce dentro una stringa Mermaid fra
+  // virgolette: interpolare il nome del campo GREZZO rompeva il diagramma al
+  // primo apice doppio, mentre entità, campi e tipi passavano già tutti da
+  // mermaidId.
+  for (const r of relations) {
+    lines.push(`  ${entityId(r.from)} ${r.many ? '}o--o{' : '}o--||'} ${entityId(r.to)} : "${mermaidId(r.field)}"`);
   }
   lines.push('```', '', '## Dizionario dati', '');
-  for (const c of schema.collections) {
+  for (const c of collections.slice(0, mostrate)) {
     lines.push(`### ${c.name}`, '', '| Campo | Tipi | Presenza % |', '| --- | --- | --- |');
-    for (const f of c.fields) {
-      lines.push(`| ${f.name} | ${f.types.join(', ')} | ${f.presence} |`);
+    for (const f of c.fields || []) {
+      lines.push(`| ${cellaMd(f.name)} | ${cellaMd((f.types || []).join(', '))} | ${cellaMd(f.presence)} |`);
     }
     lines.push('');
   }
-  if (schema.relations.length) {
+  if (relations.length) {
     lines.push('## Relazioni', '');
-    for (const r of schema.relations) {
+    for (const r of relations) {
       lines.push(`- \`${r.from}.${r.field}\` → \`${r.to}\`${r.many ? ' (uno-a-molti)' : ''}`);
     }
     lines.push('');
+  }
+  if (troncatoA >= 0) {
+    // Un documento tagliato in silenzio fa credere che il database sia più
+    // piccolo di com'è: il troncamento si dichiara e si dice cosa usare.
+    lines.push(
+      `> ⚠ Schema troncato: mostrate ${mostrate} collezioni su ${collections.length} `
+      + `(limite di ${Math.round(tetto / 1048576)} MB per risorsa). `
+      + 'Per il dettaglio di una singola tabella usa lo strumento `get_schema`.',
+      ''
+    );
   }
   return lines.join('\n');
 }
@@ -232,230 +283,32 @@ function renderSchemaMarkdown(db, schema) {
  * Generatori ed euristiche analitiche (Shortest Path, Dipendenze, PII, Audit)
  * ------------------------------------------------------------------------- */
 
-function detectImplicitRelations(collections, existingRelations) {
-  const existingSet = new Set((existingRelations || []).map((r) => `${r.from}.${r.field}->${r.to}`));
-  const implicit = [];
-
-  for (const c of collections || []) {
-    for (const f of c.fields || []) {
-      if (f.name === '_id' || f.pk) continue;
-      const low = f.name.toLowerCase();
-      const match = low.match(/^(.+?)_?ids?$/);
-      if (match) {
-        const base = match[1];
-        const target = (collections || []).find((x) => x.name.toLowerCase() === base || x.name.toLowerCase() === base + 's');
-        if (target && target.name !== c.name) {
-          const key = `${c.name}.${f.name}->${target.name}`;
-          if (!existingSet.has(key)) {
-            implicit.push({
-              from: c.name,
-              field: f.name,
-              to: target.name,
-              many: true,
-              implicit: true,
-            });
-            existingSet.add(key);
-          }
-        }
-      }
-    }
+/* ---------------------------------------------------------------------------
+ * Le euristiche analitiche (relazioni implicite, cammino minimo, dipendenze,
+ * PII, salute dello schema) vivono in UN SOLO posto: `public/js/schema-analisi.js`.
+ *
+ * Stavano qui e, identiche, anche in `public/js/graph3d.js`: due copie scritte
+ * a mano, tre uguali carattere per carattere (compreso lo stesso ordinamento
+ * topologico sbagliato) e una — l'euristica PII — già divergente, con sei
+ * termini in più da questa parte. Due risposte diverse alla stessa domanda
+ * sullo stesso database, a seconda che la si ponga dall'interfaccia o da un
+ * client AI, senza che nessuno dei due lati lo dichiari.
+ *
+ * Il modulo condiviso è ESM perché deve poterlo caricare anche il browser; da
+ * qui, che è CommonJS, si usa un `import()` dinamico memoizzato una volta sola.
+ * ------------------------------------------------------------------------- */
+let analisiPromise = null;
+function caricaAnalisi() {
+  if (!analisiPromise) {
+    const url = require('url').pathToFileURL(
+      require('path').join(__dirname, '..', 'public', 'js', 'schema-analisi.js')
+    ).href;
+    analisiPromise = import(url);
   }
-  return implicit;
+  return analisiPromise;
 }
 
-function computeShortestPath(schema, startNode, endNode, includeImplicit = true) {
-  if (!schema || !schema.collections) return null;
-  const adj = new Map();
-  for (const c of schema.collections) adj.set(c.name, []);
-
-  const rels = [...(schema.relations || [])];
-  if (includeImplicit) {
-    rels.push(...detectImplicitRelations(schema.collections, rels));
-  }
-
-  for (const r of rels) {
-    if (adj.has(r.from)) adj.get(r.from).push({ to: r.to, field: r.field });
-    if (adj.has(r.to)) adj.get(r.to).push({ to: r.from, field: r.field });
-  }
-
-  if (!adj.has(startNode) || !adj.has(endNode)) return null;
-
-  const queue = [[startNode]];
-  const visited = new Set([startNode]);
-
-  while (queue.length > 0) {
-    const path = queue.shift();
-    const curr = path[path.length - 1];
-
-    if (curr === endNode) {
-      const edges = [];
-      for (let i = 0; i < path.length - 1; i++) {
-        edges.push(`${path[i]}->${path[i + 1]}`);
-      }
-      return { found: true, from: startNode, to: endNode, distance: path.length - 1, path, edges };
-    }
-
-    const neighbors = adj.get(curr) || [];
-    for (const n of neighbors) {
-      if (!visited.has(n.to)) {
-        visited.add(n.to);
-        queue.push([...path, n.to]);
-      }
-    }
-  }
-
-  return { found: false, from: startNode, to: endNode, message: `Nessun cammino trovato tra ${startNode} e ${endNode}` };
-}
-
-function analyzeDependencies(schema, includeImplicit = false) {
-  if (!schema || !schema.collections || !schema.collections.length) {
-    return { root_tables: [], leaf_tables: [], seeding_order: [], total_tables: 0 };
-  }
-
-  const inDegree = new Map();
-  const outDegree = new Map();
-  const adj = new Map();
-
-  for (const c of schema.collections) {
-    inDegree.set(c.name, 0);
-    outDegree.set(c.name, 0);
-    adj.set(c.name, []);
-  }
-
-  const rels = [...(schema.relations || [])];
-  if (includeImplicit) {
-    rels.push(...detectImplicitRelations(schema.collections, rels));
-  }
-
-  for (const r of rels) {
-    outDegree.set(r.from, (outDegree.get(r.from) || 0) + 1);
-    inDegree.set(r.to, (inDegree.get(r.to) || 0) + 1);
-    if (adj.has(r.from)) adj.get(r.from).push(r.to);
-  }
-
-  const rootTables = schema.collections.filter((c) => (outDegree.get(c.name) || 0) === 0).map((c) => c.name);
-  const leafTables = schema.collections.filter((c) => (inDegree.get(c.name) || 0) === 0).map((c) => c.name);
-
-  const inDegreeCopy = new Map(outDegree);
-  const queue = schema.collections.filter((c) => inDegreeCopy.get(c.name) === 0).map((c) => c.name);
-  const seedingOrder = [];
-
-  while (queue.length > 0) {
-    const node = queue.shift();
-    seedingOrder.push(node);
-    const neighbors = adj.get(node) || [];
-    for (const n of neighbors) {
-      inDegreeCopy.set(n, (inDegreeCopy.get(n) || 1) - 1);
-      if (inDegreeCopy.get(n) === 0 && !seedingOrder.includes(n)) {
-        queue.push(n);
-      }
-    }
-  }
-
-  for (const c of schema.collections) {
-    if (!seedingOrder.includes(c.name)) seedingOrder.push(c.name);
-  }
-
-  return {
-    root_tables: rootTables,
-    leaf_tables: leafTables,
-    seeding_order: seedingOrder,
-    total_tables: schema.collections.length,
-  };
-}
-
-const PII_REGEX = /(email|phone|telephon|password|pass|ssn|fiscal|creditcard|iban|token|auth|secret|address|dob|birth|ip|vat|tax)/i;
-
-function analyzePii(schema) {
-  if (!schema || !schema.collections) {
-    return { total_pii_fields: 0, affected_tables_count: 0, pii_by_table: {} };
-  }
-
-  const piiByTable = {};
-  let totalPiiFields = 0;
-
-  for (const c of schema.collections) {
-    const sensitiveFields = [];
-    for (const f of c.fields || []) {
-      if (PII_REGEX.test(f.name)) {
-        sensitiveFields.push({
-          field: f.name,
-          types: f.types || [],
-          presence: f.presence,
-        });
-        totalPiiFields++;
-      }
-    }
-    if (sensitiveFields.length > 0) {
-      piiByTable[c.name] = sensitiveFields;
-    }
-  }
-
-  return {
-    total_pii_fields: totalPiiFields,
-    affected_tables_count: Object.keys(piiByTable).length,
-    pii_by_table: piiByTable,
-  };
-}
-
-function auditSchema(schema) {
-  if (!schema || !schema.collections) {
-    return { health_score: 100, total_tables: 0, issues: [], metric_summary: {} };
-  }
-
-  const issues = [];
-  let score = 100;
-
-  const degreeMap = new Map();
-  for (const c of schema.collections) degreeMap.set(c.name, 0);
-  for (const r of schema.relations || []) {
-    degreeMap.set(r.from, (degreeMap.get(r.from) || 0) + 1);
-    degreeMap.set(r.to, (degreeMap.get(r.to) || 0) + 1);
-  }
-
-  const orphanTables = schema.collections.filter((c) => (degreeMap.get(c.name) || 0) === 0).map((c) => c.name);
-  if (orphanTables.length) {
-    score -= Math.min(30, orphanTables.length * 10);
-    issues.push({
-      type: 'warn',
-      title: `Tabelle Orfane (${orphanTables.length})`,
-      description: `Tabelle senza alcuna relazione: ${orphanTables.join(', ')}`,
-    });
-  }
-
-  const oversizedTables = schema.collections.filter((c) => c.fields && c.fields.length > 25).map((c) => `${c.name} (${c.fields.length} campi)`);
-  if (oversizedTables.length) {
-    score -= Math.min(20, oversizedTables.length * 5);
-    issues.push({
-      type: 'warn',
-      title: `Tabelle Oversize (${oversizedTables.length})`,
-      description: `Tabelle con più di 25 campi: ${oversizedTables.join(', ')}`,
-    });
-  }
-
-  const missingPkTables = schema.collections.filter((c) => !(c.fields || []).some((f) => f.pk || f.name === '_id')).map((c) => c.name);
-  if (missingPkTables.length) {
-    score -= Math.min(30, missingPkTables.length * 15);
-    issues.push({
-      type: 'bad',
-      title: `Tabelle Senza Chiave Primaria (${missingPkTables.length})`,
-      description: `Tabelle prive di PK o _id: ${missingPkTables.join(', ')}`,
-    });
-  }
-
-  return {
-    health_score: Math.max(0, score),
-    total_tables: schema.collections.length,
-    issues,
-    metric_summary: {
-      orphan_tables: orphanTables,
-      oversized_tables: oversizedTables,
-      missing_pk_tables: missingPkTables,
-    },
-  };
-}
-
-function buildGraphData(schema, includeImplicit = true) {
+async function buildGraphData(schema, includeImplicit = true) {
   if (!schema || !schema.collections) {
     return { nodes: [], links: [], stats: { node_count: 0, edge_count: 0, implicit_count: 0 } };
   }
@@ -466,6 +319,7 @@ function buildGraphData(schema, includeImplicit = true) {
   const rels = [...(schema.relations || [])];
   let implicitCount = 0;
   if (includeImplicit) {
+    const { detectImplicitRelations } = await caricaAnalisi();
     const implicitRels = detectImplicitRelations(schema.collections, rels);
     implicitCount = implicitRels.length;
     rels.push(...implicitRels);
@@ -744,6 +598,7 @@ function buildMcpServer(session, deps) {
   }, async ({ connection_id, db, from_table, to_table, include_implicit }) => {
     const sess = requireDbSession(connection_id);
     const schema = await sess.strategy.dbSchema(String(db || '').trim());
+    const { computeShortestPath } = await caricaAnalisi();
     const res = computeShortestPath(schema, String(from_table || '').trim(), String(to_table || '').trim(), include_implicit !== false);
     if (!res) throw new Error(`Impossibile calcolare il cammino: tabella sorgente "${from_table}" o destinazione "${to_table}" non trovata nello schema.`);
     return jsonResult(res);
@@ -763,6 +618,7 @@ function buildMcpServer(session, deps) {
   }, async ({ connection_id, db, include_implicit }) => {
     const sess = requireDbSession(connection_id);
     const schema = await sess.strategy.dbSchema(String(db || '').trim());
+    const { analyzeDependencies } = await caricaAnalisi();
     return jsonResult(analyzeDependencies(schema, !!include_implicit));
   });
 
@@ -779,6 +635,7 @@ function buildMcpServer(session, deps) {
   }, async ({ connection_id, db }) => {
     const sess = requireDbSession(connection_id);
     const schema = await sess.strategy.dbSchema(String(db || '').trim());
+    const { analyzePii } = await caricaAnalisi();
     return jsonResult(analyzePii(schema));
   });
 
@@ -786,7 +643,7 @@ function buildMcpServer(session, deps) {
     title: 'Diagnostica e audit dello schema',
     description:
       'Esegue una diagnosi dello stato di salute dello schema del database: rileva tabelle orfane, tabelle oversize (>25 campi), ' +
-      'tabelle senza chiave primaria (PK) e calcola un punteggio complessivo di salute (0-100).',
+      'tabelle senza chiave primaria (PK) e calcola un punteggio complessivo di salute (0-100), con penalità proporzionali alla dimensione dello schema.',
     inputSchema: {
       connection_id: z.string(),
       db: z.string().describe('Nome del database'),
@@ -795,6 +652,7 @@ function buildMcpServer(session, deps) {
   }, async ({ connection_id, db }) => {
     const sess = requireDbSession(connection_id);
     const schema = await sess.strategy.dbSchema(String(db || '').trim());
+    const { auditSchema } = await caricaAnalisi();
     return jsonResult(auditSchema(schema));
   });
 
@@ -836,7 +694,7 @@ function buildMcpServer(session, deps) {
   }, async ({ connection_id, db, include_implicit }) => {
     const sess = requireDbSession(connection_id);
     const schema = await sess.strategy.dbSchema(String(db || '').trim());
-    return jsonResult(buildGraphData(schema, include_implicit !== false));
+    return jsonResult(await buildGraphData(schema, include_implicit !== false));
   });
 
   // --- Fase 3: scritture con conferma esplicita (human-in-the-loop) -----------
@@ -1396,8 +1254,27 @@ function buildMcpServer(session, deps) {
       const dbName = String(db || '').trim();
       if (!dbName) throw new Error('Nome del database mancante nell\'URI (graph://{connectionId}/{db}).');
       const schema = await sess.strategy.dbSchema(dbName);
-      const graphData = buildGraphData(schema, true);
-      return { contents: [{ uri: uri.href, mimeType: 'application/json', text: JSON.stringify(graphData, null, 2) }] };
+      const graphData = await buildGraphData(schema, true);
+      let testo = JSON.stringify(graphData, null, 2);
+      const tetto = tettoRisorsaBytes();
+      if (Buffer.byteLength(testo) > tetto) {
+        // Come per schema://: il taglio si DICHIARA. Un grafo tagliato in
+        // silenzio fa credere che il database abbia meno tabelle di quante ne
+        // ha, ed è la risorsa da cui nasce il rendering 3D/2D.
+        const quanti = Math.max(1, Math.floor(graphData.nodes.length * (tetto / Buffer.byteLength(testo)) * 0.9));
+        const tenuti = new Set(graphData.nodes.slice(0, quanti).map((n) => n.id));
+        testo = JSON.stringify({
+          ...graphData,
+          nodes: graphData.nodes.slice(0, quanti),
+          links: graphData.links.filter((l) => tenuti.has(l.source) && tenuti.has(l.target)),
+          truncated: true,
+          truncation_note:
+            `Grafo troncato: ${quanti} nodi su ${graphData.nodes.length} (limite di `
+            + `${Math.round(tetto / 1048576)} MB per risorsa). Usa lo strumento get_graph su un `
+            + 'database più piccolo, oppure get_schema per una singola tabella.',
+        }, null, 2);
+      }
+      return { contents: [{ uri: uri.href, mimeType: 'application/json', text: testo }] };
     }
   );
 

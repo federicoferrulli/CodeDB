@@ -537,7 +537,13 @@ export function runPaneQuery(paneId, opts = {}) {
 }
 
 function emitPaneQuery(tabId, event, payload) {
-  return emit(event, { tabId, ...(payload || {}) });
+  // Il tabId va scritto DOPO lo spread, non prima: davanti, qualunque `tabId`
+  // nel payload — anche un `undefined` esplicito — lo sovrascriverebbe, e da
+  // qui passano anche doc:update e doc:delete, cioè delle scritture. È lo
+  // stesso ordine, e la stessa ragione, della emit() di utils.js.
+  const msg = { ...(payload || {}) };
+  msg.tabId = tabId;
+  return emit(event, msg);
 }
 
 export function renderSplitView() {

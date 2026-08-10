@@ -69,8 +69,12 @@ const PASSI = [
   {
     sel: '.view-tabs',
     opzionale: true,
-    titolo: 'Cinque viste sugli stessi dati',
-    testo: 'Dati (griglia modificabile), Dettagli (indici e schema), UML, Grafo 3D e ⚡ Query & Aggregate.',
+    // Erano cinque quando UML e Grafo 3D erano schede: ora descrivono lo
+    // SCHEMA e stanno nel menu Visualizza, e su un tab a livello database
+    // applyViewTabsFor ne nasconde altre due. Un passo del tour che indica
+    // schede inesistenti è peggio di nessun passo.
+    titolo: 'Tre viste sugli stessi dati',
+    testo: 'Dati (griglia modificabile), Dettagli (indici e schema) e ⚡ Query & Aggregate. UML e Grafo 3D descrivono lo schema e stanno nel menu Visualizza.',
   },
   {
     sel: '.view-tab[data-view="query"]',
@@ -150,6 +154,18 @@ function barrieraAperta() {
  *   risposta di `vault:status`): si concede una finestra di cortesia perché
  *   compaia, invece di concludere che non ci sia.
  */
+// Attesa in corso, MEMOIZZATA.
+//
+// `disegnaChecklist` richiama `attendiAccesso()` a ogni invocazione mentre una
+// barriera è aperta, ed è agganciata all'evento `codedb:traguardo` oltre a
+// essere chiamata da cinque punti diversi: ogni chiamata creava due nuovi
+// MutationObserver (uno per barriera) sullo stesso nodo, e nessuno di essi si
+// disconnetteva finché il vault restava bloccato — cioè per tutto il tempo in
+// cui l'utente cerca la passphrase. Le promesse restituite, mai risolte,
+// tenevano appese anche le catene `.then`. Con la memoizzazione l'osservatore è
+// uno solo e la promessa è condivisa da tutti i chiamanti.
+let attesaInCorso = null;
+
 async function attendiAccesso(opz) {
   if (opz && opz.apparira && !barrieraAperta()) {
     for (let i = 0; i < 30 && !barrieraAperta(); i++) {
@@ -157,19 +173,32 @@ async function attendiAccesso(opz) {
     }
   }
   if (!barrieraAperta()) return Promise.resolve();
-  return new Promise((resolve) => {
-    const obs = new MutationObserver(() => {
+  if (attesaInCorso) return attesaInCorso;
+
+  attesaInCorso = new Promise((resolve) => {
+    let osservatore = null;
+    const chiudi = () => {
+      if (osservatore) osservatore.disconnect();
+      osservatore = null;
+      attesaInCorso = null;
+    };
+    osservatore = new MutationObserver(() => {
       if (barrieraAperta()) return;
-      obs.disconnect();
+      chiudi();
       // Un istante dopo lo sblocco: la sidebar delle connessioni si sta ancora
       // popolando (`loadSavedConnections`) e il tour misura elementi reali.
       setTimeout(resolve, 400);
     });
+    let agganciati = 0;
     for (const sel of BARRIERE) {
       const el = document.querySelector(sel);
-      if (el) obs.observe(el, { attributes: true, attributeFilter: ['class'] });
+      if (el) { osservatore.observe(el, { attributes: true, attributeFilter: ['class'] }); agganciati++; }
     }
+    // Nessuna barriera nel DOM: la promessa non si risolverebbe mai, e con essa
+    // resterebbe appeso chi la attende.
+    if (!agganciati) { chiudi(); resolve(); }
   });
+  return attesaInCorso;
 }
 
 /**
@@ -281,7 +310,7 @@ function apriBenvenuto() {
       <button type="button" class="onb-scelta" data-azione="chiudi">
         <i data-lucide="hand"></i>
         <span class="onb-scelta-titolo">Esploro da solo</span>
-        <span class="onb-scelta-nota">Riapri la guida da Strumenti &amp; Utility quando ti serve.</span>
+        <span class="onb-scelta-nota">Riapri la guida dal menu Impostazioni quando ti serve.</span>
       </button>
     </div>
   `);

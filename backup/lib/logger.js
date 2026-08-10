@@ -1,5 +1,7 @@
 'use strict';
 
+const { redigi } = require('./redazione');
+
 /* ---------------------------------------------------------------------------
  * Log delle attività di backup/restore: ogni riga su file (append) e in
  * console. Il file registra inizio/fine, stato, durata ed eventuali errori.
@@ -48,7 +50,9 @@ function createLogger(logFile, { quiet = false } = {}) {
         write('INFO  ', `FINE ${label} — stato=SUCCESSO durata=${formatDuration(Date.now() - t0)}`);
         return result;
       } catch (err) {
-        const msg = (err && err.message) || String(err);
+        // Il log resta sul disco accanto ai backup e viene copiato con essi:
+        // vale la stessa redazione della notifica Slack.
+        const msg = redigi((err && err.message) || String(err));
         write('ERRORE', `FINE ${label} — stato=FALLITO durata=${formatDuration(Date.now() - t0)} errore=${msg}`);
         throw err;
       }

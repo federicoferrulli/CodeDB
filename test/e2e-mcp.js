@@ -97,9 +97,12 @@ let testServer = null;
     mongo = new MongoClient('mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 5000 });
     await mongo.connect();
     await mongo.db(DB).dropDatabase().catch(() => {});
+    // `email` è un dato personale, `descrizione` e `tipo` NO: con l'euristica a
+    // sottostringa (`ip` dentro `descrizione`) risultavano sensibili tutti e
+    // tre, e un'asserzione sulla sola forma del risultato non lo rivelava.
     const ins = await mongo.db(DB).collection('people').insertMany([
-      { name: 'Ada', age: 36, city: 'Torino' },
-      { name: 'Bruno', age: 41, city: 'Bari', tags: ['a', 'b'] },
+      { name: 'Ada', age: 36, city: 'Torino', email: 'ada@example.test', descrizione: 'x', tipo: 'a' },
+      { name: 'Bruno', age: 41, city: 'Bari', tags: ['a', 'b'], email: 'bruno@example.test', descrizione: 'y', tipo: 'b' },
     ]);
     await mongo.db(DB).collection('orders').insertOne({ people_id: ins.insertedIds[0], amount: 10 });
 
@@ -167,17 +170,43 @@ let testServer = null;
     const sp = await call(mcp1.client, 'get_shortest_path', { connection_id: cid, db: DB, from_table: 'orders', to_table: 'people' });
     assert(sp.ok && sp.data.found && sp.data.path.includes('orders') && sp.data.path.includes('people'), 'get_shortest_path trova il cammino tra orders e people');
 
+    // Le asserzioni qui sotto guardano il VALORE, non la forma. Verificare che
+    // `seeding_order` sia un array lungo almeno due passa identica con un
+    // ordine casuale, e questi quattro strumenti esistono solo per la
+    // correttezza del numero che restituiscono.
     const deps = await call(mcp1.client, 'analyze_dependencies', { connection_id: cid, db: DB });
-    assert(deps.ok && Array.isArray(deps.data.seeding_order) && deps.data.seeding_order.length >= 2, 'analyze_dependencies calcola seeding order');
+    assert(deps.ok, `analyze_dependencies: ${deps.text}`);
+    const iPeople = deps.data.seeding_order.indexOf('people');
+    const iOrders = deps.data.seeding_order.indexOf('orders');
+    assert(iPeople >= 0 && iOrders >= 0, 'analyze_dependencies elenca entrambe le collezioni');
+    // orders.people_id → people: "people" va popolata PRIMA.
+    assert(iPeople < iOrders, `seeding order: people (${iPeople}) deve precedere orders (${iOrders})`);
+    assert(deps.data.root_tables.includes('people'), 'people non ha FK uscenti: è una tabella ROOT');
+    assert(Array.isArray(deps.data.cyclic_tables) && deps.data.cyclic_tables.length === 0, 'nessun ciclo in questo schema');
 
     const pii = await call(mcp1.client, 'analyze_pii', { connection_id: cid, db: DB });
-    assert(pii.ok && typeof pii.data.total_pii_fields === 'number', 'analyze_pii scansiona i dati sensibili');
+    assert(pii.ok, `analyze_pii: ${pii.text}`);
+    const campiPii = (pii.data.pii_by_table.people || []).map((f) => f.field);
+    assert(campiPii.includes('email'), 'analyze_pii deve riconoscere "email"');
+    assert(!campiPii.includes('descrizione') && !campiPii.includes('tipo'),
+      `analyze_pii non deve marcare "descrizione"/"tipo" come dati personali (visti: ${campiPii.join(', ')})`);
+    assert(pii.data.total_pii_fields === 1, `analyze_pii: un solo campo sensibile, non ${pii.data.total_pii_fields}`);
+    assert((pii.data.pii_by_table.people || []).every((f) => f.matched_term),
+      'ogni corrispondenza deve dire QUALE termine l\'ha prodotta');
 
     const audit = await call(mcp1.client, 'audit_schema', { connection_id: cid, db: DB });
-    assert(audit.ok && typeof audit.data.health_score === 'number' && Array.isArray(audit.data.issues), 'audit_schema valuta la salute dello schema');
+    assert(audit.ok, `audit_schema: ${audit.text}`);
+    assert(audit.data.health_score >= 0 && audit.data.health_score <= 100,
+      `health_score fuori intervallo: ${audit.data.health_score}`);
+    // Due collezioni con _id e una relazione fra loro: nessun difetto.
+    assert(audit.data.health_score === 100,
+      `schema sano: atteso 100, ottenuto ${audit.data.health_score} (${JSON.stringify(audit.data.issues)})`);
+    assert(audit.data.metric_summary.missing_pk_tables.length === 0, 'entrambe le collezioni hanno _id');
 
     const empty = await call(mcp1.client, 'filter_empty_tables', { connection_id: cid, db: DB });
-    assert(empty.ok && Array.isArray(empty.data.non_empty_tables), 'filter_empty_tables identifica le tabelle popolate e vuote');
+    assert(empty.ok, `filter_empty_tables: ${empty.text}`);
+    assert(empty.data.non_empty_tables.some((t) => (t.name || t) === 'people'),
+      'people contiene documenti: deve risultare popolata');
 
     const graph = await call(mcp1.client, 'get_graph', { connection_id: cid, db: DB });
     assert(graph.ok && Array.isArray(graph.data.nodes) && Array.isArray(graph.data.links) && graph.data.stats.node_count >= 2, 'get_graph restituisce nodi ed archi per la visualizzazione 3D/2D');

@@ -11,6 +11,11 @@ import { packager } from '@electron/packager';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+
+// L'elenco delle esclusioni è CommonJS perché lo legge anche npm test: qui si
+// carica con createRequire invece di duplicarlo in forma ESM.
+const { regexPackager } = createRequire(import.meta.url)('./esclusioni-distribuzione.js');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -22,23 +27,11 @@ const ICON = {
   linux: path.join(ROOT, 'public', 'codedb.png'),
 }[platform];
 
-const IGNORE = [
-  /^\/\.git($|\/)/,
-  /^\/dist($|\/)/,
-  /^\/test($|\/)/,
-  /^\/docs($|\/)/,
-  /^\/issue($|\/)/,
-  /^\/backups($|\/)/,
-  /^\/tools($|\/)/,
-  /^\/connections\.ini.*$/,
-  /^\/(codedb|mcp-audit)\.(log|err\.log)$/,
-  // LICENSE.md, MANLEVA.md ed EULA.md NON si escludono: l'app li legge a
-  // runtime per la schermata "Informazioni & Licenza", e la AGPL pretende che
-  // la copia della licenza accompagni il programma distribuito.
-  /^\/(README|AGENT|CLAUDE|REVISIONE-CODEBASE)\.md$/,
-  /^\/strategy_.*\.md$/,
-  /^\/(CodeDB\.cmd|codedb\.sh)$/,
-];
+// Le esclusioni vengono da un elenco UNICO condiviso con electron-builder
+// (tools/esclusioni-distribuzione.js): erano due liste indipendenti, e nessuna
+// delle due escludeva vault.json e il registro dei marcatori di provenienza.
+const IGNORE = regexPackager();
+
 
 async function main() {
   console.log(`Pacchettizzazione CodeDB per ${platform}...`);

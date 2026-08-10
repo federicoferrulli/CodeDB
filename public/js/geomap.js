@@ -221,7 +221,12 @@ function trascina(ev, percorso, quota) {
     // quanto abbia senso ridisegnare, e lavorare a ogni evento è tempo buttato.
     if (!raf) raf = requestAnimationFrame(applica);
   };
+  let finito = false;
   const rilascia = () => {
+    // Il rilascio può arrivare due volte (dalla mappa e dal documento): la
+    // seconda non deve ricostruire tutto una seconda volta.
+    if (finito) return;
+    finito = true;
     if (raf) { cancelAnimationFrame(raf); applica(); }
     // Sulle geometrie grandi il testo NON è stato aggiornato durante il
     // trascinamento (vedi sopra): senza questa riga resterebbe indietro rispetto
@@ -232,10 +237,21 @@ function trascina(ev, percorso, quota) {
     mappa.dragging.enable();
     mappa.off('mousemove', muovi);
     mappa.off('mouseup', rilascia);
+    document.removeEventListener('mouseup', rilascia);
+    document.removeEventListener('pointerup', rilascia);
     disegna(); // una sola ricostruzione, a trascinamento finito
   };
   mappa.on('mousemove', muovi);
   mappa.on('mouseup', rilascia);
+  // Leaflet emette `mouseup` solo per eventi che avvengono DENTRO il proprio
+  // contenitore: rilasciando il pulsante fuori dal riquadro della mappa —
+  // gesto normalissimo trascinando un vertice verso il bordo — `rilascia()`
+  // non veniva mai eseguito. Restavano `trascinando = true`, il pan della
+  // mappa disabilitato e i due gestori attaccati, e al rientro del puntatore
+  // il vertice ricominciava a inseguirlo senza che nessun pulsante fosse
+  // premuto. Il documento riceve il rilascio ovunque avvenga.
+  document.addEventListener('mouseup', rilascia);
+  document.addEventListener('pointerup', rilascia);
 }
 
 /**
@@ -399,6 +415,10 @@ function leggiTesto() {
   err.classList.add('hidden');
   stato.geo = parsed;
   aggiornaIntestazione();
+  // Il selettore del tipo deve seguire il JSON: restando indietro mostrava il
+  // tipo PRECEDENTE, e il primo cambiamento successivo — o anche solo un clic
+  // sul selettore — riconvertiva la geometria appena digitata verso quel tipo.
+  preparaSelettoreTipo(stato.readOnly);
   disegna();
 }
 

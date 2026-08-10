@@ -42,7 +42,7 @@
 const AGG_FUNCS = new Set(['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']);
 const KEYWORDS = new Set([
   'SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET',
-  'AND', 'OR', 'NOT', 'IN', 'LIKE', 'IS', 'NULL', 'BETWEEN', 'AS', 'ASC', 'DESC',
+  'AND', 'OR', 'NOT', 'IN', 'LIKE', 'ILIKE', 'IS', 'NULL', 'BETWEEN', 'AS', 'ASC', 'DESC',
   'TRUE', 'FALSE', 'DISTINCT', 'JOIN', 'UNION',
   // JOIN e varianti
   'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'CROSS', 'ON', 'USING', 'ALL',
@@ -412,9 +412,21 @@ function parseCondition(p) {
     return { [col]: negated ? { $nin: list } : { $in: list } };
   }
 
-  if (p.eatKw('LIKE')) {
+  const insensibileEsplicito = p.isKw('ILIKE');
+  if (p.eatKw('LIKE') || p.eatKw('ILIKE')) {
     const pat = parseValue(p);
-    const rx = { $regex: likeToRegex(pat), $options: 'i' };
+    const regex = likeToRegex(pat);
+    // Il flag `i` costa l'INDICE: una regex case-insensitive non è sargable,
+    // quindi `LIKE 'Mar%'` — che con l'ancoraggio iniziale potrebbe usare un
+    // indice sul campo — degradava sempre a scansione dell'intera collection,
+    // senza che nulla lo dicesse. Su MongoDB il confronto è per natura
+    // sensibile alle maiuscole: lo si lascia tale quando il pattern è ancorato
+    // a un prefisso (il caso in cui l'indice serve davvero) e lo si rende
+    // insensibile altrove, dove la scansione è comunque inevitabile. Per
+    // chiedere esplicitamente l'insensibilità c'è `ILIKE`.
+    const ancorato = /^\^[^.*+?[\]{}()|\\]/.test(regex);
+    const insensibile = insensibileEsplicito || !ancorato;
+    const rx = insensibile ? { $regex: regex, $options: 'i' } : { $regex: regex };
     return { [col]: negated ? { $not: rx } : rx };
   }
 
@@ -427,7 +439,7 @@ function parseCondition(p) {
   }
 
   if (negated) {
-    throw new Error(`"NOT" può precedere solo IN, LIKE o BETWEEN (colonna "${col}").`);
+    throw new Error(`"NOT" può precedere solo IN, LIKE/ILIKE o BETWEEN (colonna "${col}").`);
   }
 
   // Operatore di confronto

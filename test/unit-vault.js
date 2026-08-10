@@ -167,6 +167,43 @@ prova('La scrittura del meta conserva la generazione precedente (CDB-68)', () =>
   }
 });
 
+/* CDB-A05 — l'export con passphrase scelta è il file che per definizione LASCIA
+ * la macchina, e veniva cifrato con SHA256(passphrase): nessun salt, un solo
+ * passaggio di hash. Deve passare dalla stessa derivazione del vault, e il
+ * file deve essere ri-apribile altrove a partire dalla sola intestazione. */
+prova('Export con passphrase: scrypt + salt, e la chiave si ridervia dall\'intestazione', () => {
+  const crypto = require('crypto');
+  const salt = crypto.randomBytes(16);
+  const chiave = V.deriveKek('passphrase di prova', salt, V.SCRYPT);
+
+  // La chiave NON deve essere SHA256(passphrase): è il difetto da chiudere.
+  const legacy = V.legacyKey('passphrase di prova');
+  assert.ok(!chiave.equals(legacy), 'La derivazione dell\'export non deve essere quella v1 senza salt');
+
+  // Due file esportati con la STESSA passphrase hanno chiavi diverse: è il
+  // salt per file a rendere impraticabile l'attacco offline precalcolato.
+  const altroSalt = crypto.randomBytes(16);
+  assert.ok(!V.deriveKek('passphrase di prova', altroSalt, V.SCRYPT).equals(chiave),
+    'Salt diversi devono produrre chiavi diverse');
+
+  // Round-trip: l'intestazione contiene tutto il necessario per riaprirlo.
+  const cifrato = V.encryptWith('segreto del database', chiave);
+  const intestazione = {
+    salt: salt.toString('hex'),
+    N: String(V.SCRYPT.N), r: String(V.SCRYPT.r), p: String(V.SCRYPT.p),
+    keylen: String(V.SCRYPT.keylen),
+  };
+  const riderivata = V.deriveKek('passphrase di prova', Buffer.from(intestazione.salt, 'hex'), {
+    N: Number(intestazione.N), r: Number(intestazione.r), p: Number(intestazione.p),
+    keylen: Number(intestazione.keylen), maxmem: V.SCRYPT.maxmem,
+  });
+  assert.strictEqual(V.decryptWith(cifrato, riderivata), 'segreto del database',
+    'Il file deve essere riapribile sull\'altra macchina con la sola passphrase');
+
+  assert.throws(() => V.decryptWith(cifrato, V.deriveKek('sbagliata', salt, V.SCRYPT)),
+    'Una passphrase sbagliata non deve aprire il file');
+});
+
 if (falliti) {
   console.error(`\n${falliti} test falliti.`);
   process.exitCode = 1;

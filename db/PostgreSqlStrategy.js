@@ -492,6 +492,23 @@ class PostgreSqlStrategy extends DbStrategy {
     return { sql: placeholder, param: toSqlValue(value) };
   }
 
+  /**
+   * Condizione WHERE che colpisce UNA SOLA riga.
+   *
+   * Quando la tabella non ha chiave primaria, `makeId` ripiega sull'intera riga:
+   * l'`_id` virtuale non identifica più una riga ma un VALORE, e su una tabella
+   * con righe duplicate un UPDATE o un DELETE dalla griglia le colpiva TUTTE —
+   * mentre MySqlStrategy, sullo stesso percorso, aggiunge `LIMIT 1`.
+   * PostgreSQL non ammette `LIMIT` in UPDATE/DELETE, ma ha il `ctid`, che
+   * identifica fisicamente la riga: si seleziona il primo ctid che corrisponde
+   * e si agisce solo su quello.
+   */
+  async bersaglioRiga(db, coll, whereSql) {
+    const pk = await this.primaryKey(db, coll);
+    if (pk.length) return whereSql; // la chiave primaria è già univoca
+    return `ctid = (SELECT ctid FROM ${qtable(db, coll)} WHERE ${whereSql} LIMIT 1)`;
+  }
+
   parseRowId(rawId) {
     const id = parseClientValue(rawId);
     if (!id || typeof id !== 'object' || Array.isArray(id)) {
@@ -831,7 +848,7 @@ class PostgreSqlStrategy extends DbStrategy {
     params.push(...where.params);
 
     const res = await pool.query(
-      `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${whereSql}`,
+      `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${await this.bersaglioRiga(db, coll, whereSql)}`,
       params
     );
     return { matched: res.rowCount, modified: res.rowCount };
@@ -850,7 +867,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const where = this.parseRowId(payload.id);
     const res = await pool.query(
-      `DELETE FROM ${qtable(db, coll)} WHERE ${where.sql}`,
+      `DELETE FROM ${qtable(db, coll)} WHERE ${await this.bersaglioRiga(db, coll, where.sql)}`,
       where.params
     );
     return { deleted: res.rowCount };

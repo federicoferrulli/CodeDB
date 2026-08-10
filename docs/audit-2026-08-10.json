@@ -178,7 +178,8 @@
       "problema": "Le quattro asserzioni sui tool analitici verificano soltanto la FORMA del risultato: `Array.isArray(deps.data.seeding_order) && seeding_order.length >= 2`, `typeof pii.data.total_pii_fields === 'number'`, `typeof audit.data.health_score === 'number' && Array.isArray(audit.data.issues)`, `Array.isArray(empty.data.non_empty_tables)`. Nessuna di esse può distinguere una risposta corretta da una sbagliata: passano identiche con un ordine di seeding casuale, con un conteggio PII pieno di falsi positivi e con un punteggio che non sa scendere sotto 20. Sono inoltre sei delle undici asserzioni puramente strutturali di TUTTA la suite e2e (le altre confrontano valori attesi): la debolezza è concentrata esattamente sui quattro tool la cui unica ragione d'essere è la correttezza del numero che restituiscono.",
       "scenario": "Tre rilievi di questo stesso audit — CDB-A22/A52 (l'ordine di seeding non è topologico), CDB-A53 (l'euristica PII marca `descrizione` e `tipo`) e CDB-A54 (il punteggio ha intervallo reale 20-100) — vivono sotto queste tre asserzioni, che sono verdi da sempre. La suite ha quindi dato per mesi la garanzia che quei tool «funzionano», mentre verificava solo che restituissero un array e un numero.",
       "fix": "Sostituire le asserzioni di forma con casi a risposta nota su uno schema di prova costruito apposta: due tabelle con una FK dichiarata devono produrre `seeding_order` con la tabella referenziata PRIMA di quella che la referenzia; una tabella con una colonna `email` e una `descrizione` deve produrre `total_pii_fields === 1` e non 2; due schemi di qualità diversa devono produrre due punteggi ordinati correttamente. Sono asserzioni che si scrivono una volta e che avrebbero intercettato tutti e tre i difetti.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Le asserzioni sui quattro strumenti analitici guardano ora il VALORE: seeding_order deve mettere people prima di orders, analyze_pii deve trovare esattamente il campo email e NON descrizione/tipo (aggiunti apposta alla fixture), audit_schema deve valere 100 su uno schema sano ed essere dentro 0-100, filter_empty_tables deve riconoscere people come popolata. NOTA: e2e-mcp richiede un MongoDB locale, non disponibile su questa macchina — verificata la sola sintassi."
     },
     {
       "id": "CDB-A64",
@@ -196,7 +197,8 @@
       "problema": "`test/unit.js` richiama venti sotto-suite con `require()` dentro il proprio IIFE asincrono e chiude stampando incondizionatamente la riga di successo. Due conseguenze. (1) Dodici sotto-suite su venti segnalano il fallimento con `process.exitCode = 1` invece di lanciare: il codice di uscita risulta corretto, ma il flusso di `unit.js` prosegue e la riga finale dichiara che è andato tutto bene. (2) Le sotto-suite scritte come IIFE asincrono (`(async () => { … })().catch(…)`) restituiscono il controllo a `require()` appena finisce la loro parte sincrona: la riga «Tutti i test unitari superati con successo!» può quindi essere stampata PRIMA che quelle suite abbiano eseguito una sola asserzione.",
       "scenario": "Un test rotto in unit-charts o unit-rbac produce un output che termina con la riga di successo, con il messaggio di errore sepolto qualche decina di righe più in alto in mezzo alle centinaia di righe «OK». Chi lancia `npm test` a mano legge l'ultima riga e conclude che è verde; solo la CI, che guarda il codice di uscita, si accorge della differenza. Nel caso peggiore — una sotto-suite asincrona il cui corpo resta appeso su una promessa che non si risolve mai — il ciclo di eventi si svuota, il processo esce con codice 0 e la suite risulta superata senza aver verificato nulla.",
       "fix": "Rendere `unit.js` responsabile dell'esito: attendere le sotto-suite (esportare da ciascuna una funzione `async` invece di eseguirla al require) e stampare la riga di successo solo se `process.exitCode` non è stato impostato. È una modifica meccanica e circoscritta che restituisce all'output la stessa affidabilità che il codice di uscita ha già.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "La riga finale la stampa un hook process.on(\"exit\"), che gira a ciclo di eventi svuotato e vede il codice di uscita definitivo: con una sotto-suite fallita stampa «Suite unitaria FALLITA (codice di uscita 1)». L'IIFE ha ora un .catch che segna exitCode. Verificato inserendo una sotto-suite che fallisce di proposito."
     },
     {
       "id": "CDB-A65",
@@ -213,7 +215,8 @@
       "problema": "Le tre suite scritte per proteggere le parti «che sbagliate mentono» condividono la stessa forma di lacuna: verificano che la proprietà dichiarata valga nel caso in cui vale, non che non ci siano casi in cui cade. (a) `unit-charts.js` riga 160 fissa «Il valore di \"Altro\" è la somma della coda» usando la sola aggregazione `somma`, dove sommare è corretto per definizione; non esiste alcun caso con `media`, `mediana`, `min` o `distinti`, che è esattamente dove il comportamento è sbagliato (CDB-A24). Su 115 asserzioni, nessuna verifica l'aritmetica di `applicaAgg` con un'aggregazione non additiva. (b) `unit-mongo-script.js` verifica accuratamente che cosa la sandbox NON lascia raggiungere (require, process, constructor, call/apply), ma non che cosa i budget NON riescono a fermare: manca la classe di casi «costrutto legale e ammesso che consuma tempo senza consumare passi», dove sta CDB-A44. (c) `unit-errors.js` verifica che i codici riconosciuti producano la spiegazione giusta, ma non la proprietà complementare e dichiarata («nessuna invenzione»): manca il caso di un messaggio NON riconosciuto che assomiglia a uno riconosciuto, dove sta CDB-A49.",
       "scenario": "Il progetto ha investito nella separazione dei moduli puri proprio per poterli provare (chart-option.js staccato da charts.js, cell-stats.js da cellselect.js, onboarding-stato.js da onboarding.js), e la motivazione scritta in testa a ognuno è che «un'aggregazione errata non produce un grafico rotto ma un grafico plausibile e falso». La separazione è stata fatta bene; le asserzioni che ne sfruttano la possibilità coprono però la metà facile del problema. Il risultato è che i tre difetti che quelle suite esistono per intercettare sono passati.",
       "fix": "Per ciascuna delle tre, aggiungere la classe di casi mancante: un'aggregazione non additiva con `maxCategorie` attivo; uno script che rispetta tutti i budget dichiarati e supera comunque il tempo massimo; un errore con codice noto il cui testo contiene una parola chiave di un'altra regola. Sono tre casi, uno per suite, e coprono tre rilievi.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Aggiunta a ciascuna delle tre suite la classe di casi mancante: aggregazioni NON additive con maxCategorie attivo (unit-charts), un costrutto legale che consuma tempo senza consumare passi — la regex a quantificatore annidato — (unit-mongo-script), e un errore con codice noto il cui testo contiene la parola chiave di un'altra regola (unit-errors)."
     },
     {
       "id": "CDB-A66",
@@ -232,7 +235,8 @@
       "problema": "Nessun file in `test/` nomina `graph3d`, `geomap`, `geomulti`, `query-tab`, `cellselect`, `inlineEdit`, `dbtree` o `exportimport`. Sono coperti i moduli PURI estratti apposta (chart-option, cell-stats, geo-stats, table-cols, onboarding-stato, highlighter, query-formatter, sql-split-client), che è la scelta giusta e ben eseguita; ma le funzioni non-DOM rimaste dentro i moduli di interfaccia — la BFS del cammino minimo, l'ordinamento topologico, il rilevamento delle relazioni implicite, la conversione markdown/Mermaid, il parsing DBML/SQL, la chiusura degli anelli dei poligoni — sono pure quanto quelle già estratte e non sono provate da nulla.",
       "scenario": "Delle 47 voci di questo audit, 24 vengono dai moduli di presentazione e almeno sette (CDB-A22, A29, A30, A40, e le tre parti di CDB-A55) riguardano funzioni che non toccano il DOM e sarebbero state intercettate da una manciata di asserzioni. La correlazione fra «non ha test» e «ha difetti» è, in questo repository, diretta e misurabile.",
       "fix": "Estrarre in moduli foglia le funzioni pure rimaste dentro graph3d.js (analisi dello schema e generatori di export) — che è anche il fix di CDB-A52, perché quel modulo diventa quello condiviso con il gateway MCP — e coprirle con la stessa forma di test già usata per chart-option.js. Per l'editor geografico, le funzioni di chiusura degli anelli e conversione di tipo stanno già quasi tutte in geojson.js, che è foglia: basta provarle.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Estratti da graph3d.js due moduli foglia — public/js/schema-analisi.js (analisi) e public/js/schema-export.js (generatori e lettori) — coperti da test/unit-schema-analisi.js e test/unit-schema-export.js, entrambi in npm test. Restano non provate le sole parti che toccano il DOM."
     },
     {
       "id": "CDB-A57",
@@ -251,7 +255,8 @@
       "problema": "Esistono DUE elenchi di esclusione indipendenti — `IGNORE` in tools/build-desktop.mjs (@electron/packager, usato da `npm run dist:*`) e `build.files` in package.json (electron-builder, usato da `npm run build:*` e `release:*`) — e nessuno dei due esclude tutto ciò che il `.gitignore` considera privato. Mancano in ENTRAMBI: `vault.json` (gitignored alle righe 5-6) e `provenienza/` (gitignored alle righe 30-35). Mancano nel SOLO percorso packager, dove l'elenco è più corto: `.env`, `ui-audit.log` (`IGNORE` nomina `codedb.log`, `codedb.err.log` e `mcp-audit.log` ma non questo) e `data/conns/**` (il pattern `/^\\/connections\\.ini.*$/` copre solo il file di radice, e l'esclusione `!conns/**` di electron-builder è ancorata alla radice, quindi non copre `data/conns/`). Tutti e quattro i file esistono nell'albero di lavoro in questo momento. Il test che dovrebbe impedirlo (test/unit.js:481) controlla tre sole voci — `!connections.ini`, `!.env`, `!conns/**` — e solo dentro `build.files`: l'elenco del packager non è verificato affatto.",
       "scenario": "Chiunque scarichi l'installer o lo zip lo apre come un archivio (`app.asar` compreso, che non è cifrato) e trova: (a) `vault.json`, cioè il salt scrypt e la DEK avvolta dello sviluppatore — materiale su cui si può montare offline esattamente l'attacco che il formato v2 è stato introdotto per rendere impraticabile, con la differenza che qui il file arriva a tutti invece che a chi ruba un disco; (b) `provenienza/impronte.json`, il registro dei marcatori che la documentazione tiene fuori da git con la motivazione esplicita che pubblicarlo «consegnerebbe l'elenco di cosa cancellare» — distribuirlo in ogni copia dell'applicazione annulla il meccanismo di provenienza per intero; (c) dal percorso `dist:*`, anche `.env` con `MONGO_ROOT_PASSWORD`/`MYSQL_ROOT_PASSWORD` (che docker-compose rende obbligatorie) ed eventualmente `GUI_MONGO_PASSPHRASE`, più `ui-audit.log` con nomi di connessione, database e collezioni di ogni operazione fatta sulla macchina di sviluppo.",
       "fix": "Derivare le esclusioni da un elenco UNICO condiviso dai due strumenti (un modulo che esporta i pattern, letto da build-desktop.mjs e replicato in build.files da uno script di verifica) e aggiungervi `vault.json`, `vault.*`, `provenienza/**`, `data/**`, `ui-audit.log*`, `.env*`. Estendere l'asserzione di test/unit.js a tutte queste voci E a `IGNORE` del packager; meglio ancora, far fallire il test se un pattern presente in `.gitignore` non ha un corrispondente in entrambi gli elenchi di distribuzione. Nel frattempo, verificare i pacchetti già pubblicati: se `vault.json` o `provenienza/impronte.json` sono usciti, vanno considerati compromessi (passphrase da cambiare, registro dei marcatori da rigenerare).",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Le esclusioni vengono da un elenco UNICO (tools/esclusioni-distribuzione.js), letto da build-desktop.mjs e replicato in build.files di package.json. Vi sono stati aggiunti vault.json/vault.*, provenienza/**, data/**, .env*, ui-audit.log*. Il test verifica ora ENTRAMBI i percorsi su percorsi di file veri (vault.json, provenienza/impronte.json, .env, data/conns/<id>.ini, ui-audit.log…) e verifica anche che ciò che DEVE restare (LICENSE.md, MANLEVA.md, EULA.md, il codice) non sia escluso per eccesso. NOTA per il manutentore: se sono già stati pubblicati pacchetti, vanno considerati compromessi — passphrase da cambiare e registro dei marcatori da rigenerare."
     },
     {
       "id": "CDB-A58",
@@ -268,7 +273,8 @@
       "problema": "`parseArgs` non ha alcuna lista di opzioni riconosciute: ogni `--qualcosa valore` finisce in `args.qualcosa` e, se nessun comando lo legge, viene ignorato senza una parola. Le opzioni di `restore` che cambiano la DESTINAZIONE o l'AMPIEZZA dell'operazione sono proprio quelle scritte con un trattino interno o al plurale — `--target-db`, `--collections`, `--since-field` — cioè quelle in cui il refuso è più facile.",
       "scenario": "`node backup/cli.js restore --conn produzione --from backups/produzione_shop/2026…_full --targetdb shop_copia`: il trattino dimenticato fa sì che `args['target-db']` resti indefinito, quindi `targetDb: null` e il ripristino avviene sul database di ORIGINE letto dal manifest, cioè `shop` in produzione. Il comando riesce, il log dice «Restore completato su \"shop\"» e la notifica Slack lo conferma: chi lo ha lanciato credeva di popolare una copia. Lo stesso vale per `--collection` invece di `--collections`, che trasforma un ripristino selettivo in un ripristino integrale, e per `--targetdb` combinato con `--drop`.",
       "fix": "Dichiarare l'insieme delle opzioni valide (l'aiuto in testa al file le elenca già tutte) e rifiutare l'esecuzione su un'opzione sconosciuta, suggerendo la più simile. È la difesa standard di qualunque CLI, e qui protegge un comando distruttivo. In aggiunta: quando `--target-db` è assente, `restore` dovrebbe DIRE su quale database sta per scrivere prima di iniziare, non solo dopo aver finito.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "parseArgs dichiara l'insieme delle opzioni valide (le stesse dell'aiuto) e rifiuta quelle sconosciute suggerendo la più simile per distanza di edit: \"--targetdb prova\" ora si ferma con «Forse intendevi --target-db?» invece di ripristinare in silenzio sul database di origine."
     },
     {
       "id": "CDB-A59",
@@ -285,7 +291,8 @@
       "problema": "In caso di fallimento la CLI compone la notifica con `${(err && err.message) || err}` e `notifySlack` la invia tale e quale a un servizio esterno. Non c'è alcuna redazione, e nulla nel percorso garantisce che il messaggio del driver non contenga credenziali: il driver MongoDB, di fronte a una stringa di connessione malformata o non risolvibile, riporta comunemente l'URI nel messaggio — e una connessione salvata in modalità URI contiene `mongodb://utente:password@host`. Lo stesso vale per un errore di `ssh2` che cita il percorso della chiave privata, o per un errore di rete che espone host e porta di una macchina interna.",
       "scenario": "Un backup notturno pianificato con `--slack-webhook` fallisce perché l'URI della connessione ha un carattere non codificato: nel canale Slack — che è un servizio esterno, indicizzato, con una cronologia che resta — compare la password del database di produzione. Il resto dell'applicazione è molto attento a non far uscire i segreti (i `SECRET_FIELDS` non tornano mai al browser, `list_saved_connections` non li espone mai, l'export li ri-cifra): questo è l'unico punto in cui un segreto può uscire dalla macchina, e per giunta verso l'esterno.",
       "fix": "Passare il testo della notifica da una funzione di redazione prima dell'invio: sostituire la parte credenziali di qualunque URI (`\\w+://[^:]+:[^@]+@` → `$1://***:***@`), i valori dei `SECRET_FIELDS` noti della connessione in uso, e i percorsi delle chiavi private. Applicarla anche al file di log, che pure conserva `err.message` (`backup/lib/logger.js`).",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "backup/lib/redazione.js oscura la parte credenziali di qualunque URI e i percorsi delle chiavi private; la redazione è applicata dentro notifySlack (così una notifica aggiunta in futuro nasce protetta) e in backup/lib/logger.js, perché backup.log resta sul disco accanto ai backup e viene copiato con essi."
     },
     {
       "id": "CDB-A60",
@@ -301,7 +308,8 @@
       "problema": "Due lacune. (1) `if (!f.sha256) continue;` salta in silenzio ogni voce priva di checksum e non la conteggia da nessuna parte: il rapporto finale dice «N file integri, 0 problemi» senza distinguere «verificati» da «non verificabili». Il commento accanto («schema/indici: file piccoli senza checksum») è inoltre superato — il checksum viene ora calcolato anche per i file `schema/`, proprio perché il loro DDL viene eseguito sul database di destinazione. (2) La verifica itera solo `manifest.files`: un file di dati presente nella cartella ma assente dal manifest non viene notato, e un manifest a cui siano state tolte delle voci passa la verifica.",
       "scenario": "Un backup con il manifest troncato o manomesso — o semplicemente prodotto da una versione precedente che non calcolava i checksum degli schemi — supera `verify` con un rapporto pulito, e il `restore` successivo esegue un DDL che nessuno ha verificato. L'intero senso di `verify` è dare una risposta affidabile prima di un ripristino.",
       "fix": "Contare e riportare a parte i file senza checksum («N verificati, M non verificabili»), uscire con esito non nullo se ce ne sono in un backup recente, e confrontare l'elenco dei file sul disco con quello del manifest segnalando gli extra e i mancanti.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "verify distingue «verificati» da «non verificabili» e li conta a parte, confronta i file sul disco con quelli dichiarati nel manifest segnalando i NON DICHIARATI, ed esce con esito non nullo sia sui problemi sia sui file privi di checksum."
     },
     {
       "id": "CDB-A61",
@@ -316,7 +324,8 @@
       "problema": "`testoSemplice` rimuove titoli, grassetto e codice inline — «solo ciò che compare davvero in MANLEVA.md», come dichiara il commento. Non tratta però link `[testo](url)`, corsivo, elenchi numerati, citazioni `>` né righe orizzontali, che in un testo legale sono tutt'altro che improbabili: il rimando alla AGPL, al repository ufficiale o a un indirizzo PEC sono esattamente le cose che si aggiungono a un EULA. Il test di allineamento (test/unit.js:488-546) confronta il file generato con l'output della stessa funzione: se il markdown resta grezzo, resta grezzo da entrambe le parti e l'asserzione passa. Verifica il BOM, gli elenchi e le righe vuote, ma non che il markdown sia sparito.",
       "scenario": "Si aggiunge a EULA.md la riga «Il testo integrale è disponibile su [gnu.org](https://www.gnu.org/licenses/agpl-3.0.html)». `npm run electron:licenza` rigenera, `npm test` passa, e nella schermata che l'utente deve accettare per installare CodeDB compare la sintassi markdown con le parentesi quadre. È il difetto che il modulo stesso definisce peggiore: nessuno se ne accorge, perché nessuno rilegge la pagina dell'installer.",
       "fix": "Gestire anche link (`[t](u)` → `t (u)`), corsivo, elenchi numerati e righe orizzontali; e soprattutto aggiungere al test l'asserzione complementare — che il file generato NON contenga residui di markdown (`[`…`](`, `**`, backtick, `#` a inizio riga) —, che è il controllo che rende inutile inseguire i costrutti uno per uno.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "testoSemplice gestisce link ([t](u) → «t (u)»), link automatici, immagini, corsivo, grassetto __, elenchi, citazioni e righe orizzontali. Il test ha ora l'asserzione complementare — il file generato NON deve contenere residui di markdown — più una prova diretta della conversione su un campione con ogni costrutto: è ciò che rende inutile inseguirli uno per uno."
     },
     {
       "id": "CDB-A62",
@@ -332,7 +341,8 @@
       "problema": "Due limiti nello stesso meccanismo. (1) `impegno()` produce un solo SHA-256 sull'insieme di TUTTI i marcatori: pubblicato in docs/provenienza.md e datato dalla cronologia di git, vale finché il registro non cambia. Aggiungere un marcatore per una funzionalità nuova — o correggere il regex di uno esistente — cambia l'hash, e la data pubblicata smette di corrispondere al registro corrente: da quel momento, per provare che un marcatore esisteva già in una certa data, serve conservare a parte la vecchia copia del registro, cosa che il tool non chiede e la documentazione non spiega. È la parte del meccanismo che ha valore solo se è databile. (2) `ESTENSIONI` non comprende `.sh`, `.cmd`, `.ps1`, `.sql`, `Dockerfile` né i file senza estensione: marcatori collocati in `codedb.sh`, `CodeDB.cmd`, `tools/*.ps1` o nel Dockerfile non verrebbero mai trovati, né nell'auto-verifica né su un albero sospetto.",
       "scenario": "Il progetto è in beta e i marcatori sono destinati a crescere. Al primo marcatore aggiunto, `npm run impronte` continua a funzionare ma l'impronta in docs/provenienza.md è quella vecchia: chi la aggiorna perde la datazione dei marcatori precedenti, chi non la aggiorna pubblica un'impronta che non corrisponde. In entrambi i casi il valore probatorio — che dipende interamente dalla data — si degrada senza che nulla lo segnali.",
       "fix": "Rendere il registro append-only con un campo `dal` (data) per marcatore, e pubblicare l'hash PER MARCATORE oltre a quello complessivo: così aggiungerne uno nuovo non tocca la datazione dei precedenti, e ogni marcatore porta con sé la propria prova temporale. Aggiungere le estensioni mancanti a `ESTENSIONI` e i file senza estensione con nome noto (Dockerfile, Makefile).",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "impegniPerMarcatore() pubblica un hash PER MARCATORE (con campo `dal` facoltativo) oltre a quello complessivo: aggiungerne uno nuovo accoda una riga e non tocca la datazione dei precedenti. Le righe sono pubblicate in docs/provenienza.md con la spiegazione del perché. ESTENSIONI comprende ora .sh/.cmd/.bat/.ps1/.psm1/.sql/.env/.conf/.toml/.xml/.svg e i file senza estensione con nome noto (Dockerfile, Makefile, LICENSE…)."
     },
     {
       "id": "CDB-A52",
@@ -353,7 +363,8 @@
       "problema": "`analyzeDependencies`, `analyzePii`, `auditSchema`, `detectImplicitRelations` e la ricerca del cammino minimo esistono in DUE copie indipendenti — una nel modulo dell'interfaccia, una nel gateway MCP — senza alcun modulo condiviso. Tre delle quattro copie sono oggi carattere per carattere identiche (compreso il difetto dell'ordinamento topologico, CDB-A22, che è stato quindi scritto due volte); la quarta, l'euristica PII, è GIÀ divergente: il gateway riconosce sei termini in più (`address`, `dob`, `birth`, `ip`, `vat`, `tax`). La divergenza non è teorica né futura: è nel codice adesso.",
       "scenario": "Sullo stesso schema, il pannello dettagli del Grafo 3D non marca `indirizzo_spedizione` mentre `analyze_pii` lo riporta all'assistente come dato personale; l'utente che confronta le due risposte non ha modo di capire quale sia quella giusta, e nessuna delle due dichiara di usare un'euristica diversa dall'altra. Più in generale, correggere CDB-A22 o CDB-A39 in un solo file lascia il difetto vivo nell'altro — ed è il modo in cui una correzione risulta fatta e non lo è.",
       "fix": "Estrarre le euristiche in un modulo condiviso senza dipendenze (per esempio `db/schemaAnalisi.js`, come `db/geometry.js` e `db/sqlText.js` sono condivisi fra server e strategie) e importarlo dalle due parti; l'interfaccia lo può caricare come modulo ESM se scritto in forma neutra, altrimenti resta un solo punto da riallineare invece di cinque. Un test che confronti gli esiti delle due copie sullo stesso schema di prova impedisce la ricomparsa.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Le cinque euristiche vivono ora in un solo modulo, public/js/schema-analisi.js (ESM, foglia): graph3d.js lo importa staticamente, mcp/McpGateway.js con un import() dinamico memoizzato. Le 223 righe duplicate nel gateway sono state rimosse. Test: test/unit-schema-analisi.js (in npm test)."
     },
     {
       "id": "CDB-A53",
@@ -370,7 +381,8 @@
       "problema": "`PII_REGEX` cerca sottostringhe senza confini di parola, e fra i termini ce ne sono quattro corti e comunissimi: `ip`, `pass`, `auth`, `tax`. `ip` da solo cattura `tipo`, `descrizione`, `zip`, `shipping`, `recipient`, `equipment`, `participant`, `principale`, `script`, `multiplo`; `pass` cattura `passeggero`, `passo`, `bypass`; `auth` cattura `author`, `authorized_at`. Su uno schema italiano — dove `tipo` e `descrizione` sono fra i nomi di colonna più frequenti in assoluto — quasi ogni tabella risulta contenere PII.",
       "scenario": "Il prompt `analizza-gdpr` (riga 1459) istruisce l'assistente a eseguire `analyze_pii` e poi a «produrre un report in markdown con l'elenco delle tabelle contenenti PII, la classificazione dei rischi e le raccomandazioni di cifratura/anonimizzazione». L'AI riceve un elenco in cui `articoli.descrizione` e `ordini.tipo` figurano come campi sensibili, non ha modo di sapere che vengono da una corrispondenza su «ip», e produce in buona fede un documento di conformità che raccomanda di cifrare la descrizione degli articoli. Il danno non è tecnico ma di fiducia: un'analisi privacy con decine di falsi positivi viene scartata in blocco, e con essa i tre o quattro campi che erano davvero PII.",
       "fix": "Ancorare ai confini di token — separatori `_`, `-`, `.`, cambio di maiuscola — invece che alla sottostringa: `(^|[_.\\-]|(?<=[a-z])(?=[A-Z]))(ip|email|…)([_.\\-]|$|(?=[A-Z]))`. Per `ip` in particolare pretendere una forma riconoscibile (`ip`, `ip_address`, `client_ip`, `indirizzo_ip`) invece della sottostringa nuda. Restituire inoltre nel risultato il termine che ha prodotto la corrispondenza, così l'assistente (e l'utente) possono valutare un falso positivo invece di doverlo indovinare.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "terminePii() confronta i TOKEN del nome (divisione su separatori e cambio di maiuscola), non le sottostringhe, e i termini corti o prefisso di parole comuni (ip, auth, tax, cf, dob, vat, card, mail, birth) valgono solo come token intero. Ogni corrispondenza porta con sé matched_term, così un falso positivo si valuta invece di indovinarlo. Test: quindici controesempi (tipo, descrizione, zip, author, authorized_at, passeggero…) e venti veri positivi."
     },
     {
       "id": "CDB-A54",
@@ -387,7 +399,8 @@
       "problema": "Due difetti nella formula. (1) Le tre penalità sono limitate a 30, 20 e 30 punti: il minimo raggiungibile è 100−80 = 20, quindi il `Math.max(0, score)` finale non entra mai in gioco e l'intervallo dichiarato nella descrizione del tool («punteggio complessivo di salute (0-100)») è in realtà 20-100. Uno schema completamente privo di chiavi primarie e di relazioni ottiene 20, cioè lo stesso di uno che ha solo qualche difetto in più del minimo. (2) Le penalità sono ASSOLUTE e non proporzionali: tre tabelle orfane costano 30 punti sia in uno schema di tre tabelle (dove sono il 100% del database) sia in uno di trecento (dove sono l'1%). Poiché ogni penalità satura al proprio tetto con 2-3 occorrenze, qualunque schema di medie dimensioni con qualche imperfezione atterra sullo stesso punteggio, e il numero smette di distinguere.",
       "scenario": "Il prompt `diagnostica-schema` chiede all'assistente di riportare «il punteggio di salute». Due database molto diversi — uno da 8 tabelle con 3 orfane e nessuna PK, uno da 400 tabelle ben modellate con 3 orfane residue e 2 senza PK — ricevono entrambi 20 e 50 rispettivamente per ragioni che non riflettono la loro qualità relativa. Un punteggio che non ordina correttamente due schemi è peggio dell'elenco puntato dei problemi, che invece è corretto.",
       "fix": "Rendere le penalità proporzionali alla dimensione dello schema (`orfane / totale`, `senzaPk / totale`) e togliere i tetti, oppure — più semplice e più onesto — smettere di pubblicare un punteggio unico e restituire le tre metriche normalizzate (`metric_summary` esiste già e contiene i dati grezzi giusti). Se il punteggio resta, va corretta la descrizione del tool perché dichiari l'intervallo reale.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Le penalità sono proporzionali (quante/totale) e i pesi sommano a 100, quindi uno schema in cui ogni tabella è orfana e priva di PK arriva davvero a 0: l'intervallo dichiarato è quello vero. metric_summary espone anche le tre metriche normalizzate. La descrizione del tool dichiara la proporzionalità. Test: punteggio sotto 20 sullo schema malato, e tre orfane su 300 pesano meno che tre su tre."
     },
     {
       "id": "CDB-A55",
@@ -404,7 +417,8 @@
       "problema": "Tre omissioni nello stesso generatore, tutte incoerenti con ciò che il file già fa correttamente due righe più in là. (1) Riga 211: l'etichetta della relazione interpola `r.field` GREZZO dentro una stringa Mermaid fra virgolette, mentre nomi di entità, campi e tipi passano tutti da `entityId`/`mermaidId`; un campo con un apice doppio rompe il diagramma. (2) Righe 215-218: il dizionario dati costruisce righe di tabella markdown con `| ${f.name} | … |` senza neutralizzare la barra verticale, che su MongoDB è un carattere legale in un nome di campo e fa slittare le colonne. (3) Righe 205, 206, 210 e 221 usano `c.fields`, `f.types` e `schema.relations` senza le guardie `|| []` applicate sistematicamente altrove nel file (`analyzePii` riga 379, `auditSchema` righe 411 e 436): uno schema privo di uno di quei campi fa fallire la lettura della risorsa con un TypeError invece di produrre un documento parziale.",
       "scenario": "Un client MCP legge `schema://…/negozio` su un database MongoDB in cui una collezione ha il campo `prezzo|iva`: la tabella del dizionario dati acquista una colonna e tutte le righe successive appaiono disallineate, mentre il diagramma Mermaid — se un nome di campo relazionale contiene un apice doppio — non viene renderizzato affatto dal client, che mostra un errore di sintassi al posto dello schema.",
       "fix": "Passare `r.field` da `mermaidId` come già si fa per gli altri identificatori; sostituire `|` con `\\|` nelle celle della tabella markdown; aggiungere le tre guardie `|| []` mancanti.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "r.field passa da mermaidId come gli altri identificatori; le celle della tabella markdown passano da cellaMd (barra verticale e a capo neutralizzati); collections/fields/relations hanno le guardie || [] mancanti."
     },
     {
       "id": "CDB-A56",
@@ -420,7 +434,8 @@
       "problema": "`schema://` serializza in markdown OGNI collezione con OGNI campo, e `graph://` l'intero grafo di nodi e archi, senza limite né troncamento dichiarato. Tutto il resto dell'applicazione dichiara e applica un tetto: `DbStrategy.resultCap` sulle righe, `CODEDB_MAX_RESULT_BYTES` (32 MB) sui byte, `docPerLettura` negli script, i tetti di disegno di geomulti.js.",
       "scenario": "Un database di ERP con 900 tabelle da 60 colonne produce un documento markdown di alcuni megabyte, che il client MCP inserisce nel contesto del modello: la richiesta viene rifiutata per lunghezza, oppure consuma in un colpo solo il contesto disponibile — e la descrizione della risorsa invita esplicitamente a usarla al posto di `get_schema` («sempre aggiornata»), quindi è il percorso consigliato.",
       "fix": "Applicare un tetto in byte con troncamento DICHIARATO in coda al documento («… schema troncato: N collezioni su M»), coerente con `CODEDB_MAX_RESULT_BYTES`, e suggerire nel testo troncato di usare `get_schema` su un database specifico.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Entrambe le risorse hanno un tetto in byte allineato a CODEDB_MAX_RESULT_BYTES (default 32 MB) con troncamento DICHIARATO in coda — schema:// su un confine di collezione, graph:// sui nodi con gli archi coerenti — e il testo indica quale strumento usare al posto della risorsa."
     },
     {
       "id": "CDB-A44",
@@ -736,7 +751,8 @@
       "problema": "`trascina()` registra `mousemove` e `mouseup` su `mappa`, cioè sull'istanza Leaflet, che li emette solo per eventi che avvengono DENTRO il proprio contenitore. Se il pulsante viene rilasciato fuori dal riquadro della mappa, `rilascia()` non viene mai eseguito: `trascinando` resta `true`, `mappa.dragging` resta disabilitato, i due gestori restano attaccati e il vertice continua a inseguire il puntatore al rientro.",
       "scenario": "La modale affianca mappa e JSON: trascinare un vertice verso il bordo destro per allargare una geometria porta naturalmente il puntatore sopra la casella di testo. Al rilascio l'editor resta agganciato — la mappa non si sposta più con il trascinamento (dragging disabilitato), il vertice segue il mouse a ogni rientro, `disegnaManiglie()` non si ricalcola più su moveend/zoomend (riga 439 esce se `trascinando`) e il JSON non viene riscritto. L'unica via d'uscita è chiudere e riaprire la modale, perdendo le modifiche non salvate.",
       "fix": "Registrare `mouseup` (e `pointerup`/`mouseleave` sul documento) su `document`, oltre che sulla mappa, e rimuovere entrambi in `rilascia()`. In alternativa usare `setPointerCapture` sull'elemento della maniglia.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Il rilascio è registrato anche su document (mouseup e pointerup) oltre che sulla mappa, con una guardia contro il doppio invio e la rimozione di entrambi in rilascia(): rilasciando il vertice fuori dal riquadro il trascinamento finisce, il pan torna attivo e il vertice non insegue più il puntatore al rientro."
     },
     {
       "id": "CDB-A29",
@@ -753,7 +769,8 @@
       "problema": "`runSchemaAudit` calcola i gradi usando solo `schema.relations`, mentre il testo mostrato all'utente recita «Le seguenti tabelle non hanno alcuna relazione dichiarata **o implicita**». Le relazioni implicite (`detectImplicitRelations`) sono invece incluse da `renderGraph3d` e da `computeShortestPath` quando `showImplicitRelations` è attivo — che è il valore predefinito. La stessa omissione è in `analyzeDependencies` (riga 543).",
       "scenario": "Database MongoDB senza chiavi esterne dichiarate, dove tutte le relazioni sono dedotte dai nomi (`user_id`, `order_ids`). Sul Grafo 3D si vedono decine di archi viola fra le collection; aprendo «Diagnostica salute schema» le stesse collection sono elencate come «Tabelle Orfane», il punteggio scende di 30 punti e il testo afferma esplicitamente che nemmeno le relazioni implicite esistono. Anche root/leaf e la sequenza di seeding sono calcolati sul grafo sbagliato.",
       "fix": "Costruire l'insieme delle relazioni una volta sola (`relazioniEffettive()`, dichiarate + implicite se `showImplicitRelations`) e usarlo in `renderGraph3d`, `computeShortestPath`, `analyzeDependencies` e `runSchemaAudit`. Se si preferisce che l'audit resti sulle sole FK dichiarate, cambiare il testo perché dica quello che fa.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "runSchemaAudit costruisce l'elenco delle relazioni includendo le implicite quando l'opzione è attiva (era dichiarato nel testo ma non fatto), e l'etichetta dice quante relazioni sono state controllate e se comprendono le implicite."
     },
     {
       "id": "CDB-A30",
@@ -768,7 +785,8 @@
       "problema": "Il regex delle FK è globale e scorre l'INTERO testo, quindi non sa in quale `CREATE TABLE` si trovasse la clausola. Il codice se la cava scrivendo `from: 'imported'` — un segnaposto letterale. Il ramo DBML (righe 807-816) fa invece la cosa giusta, perché la sintassi `Ref:` porta con sé la tabella d'origine.",
       "scenario": "Si importa un dump `.sql` con 20 tabelle e 35 FOREIGN KEY. Il grafo risultante contiene 20 nodi più 35 archi che partono tutti da un nodo `imported` che non esiste fra le collections: in `renderGraph3d` gli archi vengono scartati dal filtro `nodeIdsSet.has(r.from)` (riga 185) e spariscono senza dire nulla; in `renderDiffReport`, `analyzeDependencies` e `runSchemaAudit` invece contano, gonfiando i gradi di un nodo fantasma e facendo risultare orfane tabelle che orfane non sono.",
       "fix": "Cercare le FOREIGN KEY dentro il corpo di ciascuna `CREATE TABLE` (il regex delle tabelle cattura già `match[2]` = corpo), attribuendo `from: tableName`. Le `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` fuori dal corpo vanno riconosciute con un secondo regex che catturi la tabella dall'ALTER.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Le FOREIGN KEY di un file SQL si cercano dentro il corpo di ciascuna CREATE TABLE (origine = quella tabella) e negli ALTER TABLE … ADD CONSTRAINT (origine = la tabella dell'ALTER): la tabella-segnaposto \"imported\" non esiste più. Il corpo viene diviso sulle virgole a profondità zero, così una CREATE TABLE su riga singola viene letta correttamente, e la PRIMARY KEY dichiarata in coda marca i campi come chiave."
     },
     {
       "id": "CDB-A32",
@@ -872,7 +890,8 @@
       "problema": "`leggiTesto()` sostituisce `stato.geo` con quanto digitato e aggiorna intestazione, avvisi e disegno, ma non richiama `preparaSelettoreTipo()`. Il `<select>` continua quindi a mostrare il tipo precedente.",
       "scenario": "Si apre un `Point` e si incolla nel JSON un `Polygon` valido: la mappa disegna correttamente il poligono, ma il selettore continua a dire «Point». Toccando il selettore per qualsiasi motivo si scatena `cambiaTipo('Point')`, che riduce il poligono al suo primo vertice — la geometria appena incollata viene distrutta da un'interazione che sembrava innocua.",
       "fix": "Chiamare `preparaSelettoreTipo(stato.readOnly)` in coda a `leggiTesto()`, dopo `aggiornaIntestazione()`.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "leggiTesto() richiama preparaSelettoreTipo(stato.readOnly) dopo aggiornaIntestazione(): il selettore segue il JSON digitato e non può più riconvertire la geometria verso il tipo precedente."
     },
     {
       "id": "CDB-A38",
@@ -888,7 +907,8 @@
       "problema": "`areaAnello` usa `(lon2 - lon1)` senza normalizzare la differenza nell'intervallo ±180°, e il calcolo del riquadro di delimitazione prende min/max delle longitudini senza tenere conto dell'avvolgimento. Una geometria che attraversa la linea del cambiamento di data ha un lato con Δlon ≈ 359° invece di ≈ 1°.",
       "scenario": "Un poligono attorno alle Figi o alla Chukotka restituisce un'area grossolanamente sbagliata (in pratica il complemento sulla sfera) e un riquadro che copre l'intero globo, il quale a sua volta trascina il riquadro complessivo della selezione e quindi l'inquadratura della mappa. Il file dichiara con cura ogni altra approssimazione (errore ellissoidale sotto lo 0,5%, geometrie proiettate escluse, centro = media dei vertici): questa manca del tutto.",
       "fix": "Normalizzare la differenza di longitudine (`((dlon + 540) % 360) - 180`) in `areaAnello` e in `distanzaM`; per il riquadro, riconoscere l'attraversamento e dichiararlo nell'interfaccia — oppure, come minimo, aggiungere la nota fra le approssimazioni dichiarate.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "deltaLon() normalizza la differenza di longitudine in ±180° in distanzaM e in areaAnello, quindi lunghezze e aree a cavallo dell'antimeridiano sono corrette. Il riquadro non è correggibile in quella forma e viene DICHIARATO: misureGeometria espone attraversaAntimeridiano (riconosciuto da un lato con differenza grezza oltre 180°, non dalla larghezza del riquadro — una linea da -170° a +170° non attraversa nulla) e geomulti.js lo riporta fra le note. Test: quattro casi in test/unit-geo-stats.js, compreso il controesempio della geometria larga ma continua."
     },
     {
       "id": "CDB-A39",
@@ -903,7 +923,8 @@
       "problema": "Il regex `/(email|phone|telephon|password|pass|ssn|fiscal|creditcard|iban|token|auth|secret)/i` cerca sottostringhe senza confini di parola. `pass` cattura `passenger`, `passo`, `password_hint`, `bypass`; `auth` cattura `author`, `authorized_at`, `authority`; `ssn` cattura qualunque `…ssn…`.",
       "scenario": "Su uno schema editoriale ogni tabella con `author` mostra il distintivo arancione PII, mentre su uno schema di trasporti lo mostra `passenger_count`. Un distintivo che compare dove non serve smette di essere letto anche dove serve. Da confrontare inoltre con l'euristica del tool MCP `analyze_pii` (area 3, ancora non letta): se le due divergono, due schermate della stessa applicazione danno due risposte diverse sullo stesso schema.",
       "fix": "Ancorare ai confini di token (`(^|[_.\\-])(pass(word|phrase)?|auth(_token)?|…)([_.\\-]|$)`) e allineare l'elenco a quello del gateway MCP, tenendone una copia sola.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "L'euristica del pannello dettagli è la stessa del modulo condiviso: \"author\", \"passenger\" e \"authorized_at\" non sono più marcati come dati personali."
     },
     {
       "id": "CDB-A40",
@@ -918,7 +939,8 @@
       "problema": "`buildSqlDdl` emette `NOT NULL PRIMARY KEY` per OGNI campo con `pk`, quindi una chiave primaria composta produce due clausole PRIMARY KEY nella stessa `CREATE TABLE` — rifiutata da MySQL e da PostgreSQL. Inoltre le `ALTER TABLE … FOREIGN KEY` referenziano sempre la colonna `(id)`, mentre `buildDbmlDiagram` per la stessa relazione scrive `> \"tabella\".\"_id\"`: due export dello stesso schema dichiarano due colonne bersaglio diverse, e nessuna delle due è letta dallo schema reale.",
       "scenario": "Si esporta il DDL per ricreare lo schema in un ambiente di prova: lo script si ferma sulla prima tabella con chiave composta, e le tabelle che passano generano vincoli verso una colonna `id` che su MongoDB (dove la PK è `_id`) non esiste.",
       "fix": "Raccogliere i campi `pk` e chiudere la `CREATE TABLE` con un'unica `PRIMARY KEY (a, b)`; per le FK usare la chiave primaria reale della tabella bersaglio (già disponibile in `collections[].fields[].pk`), con `_id` come ripiego su MongoDB.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "buildSqlDdl raccoglie i campi pk e chiude la CREATE TABLE con un'unica clausola PRIMARY KEY (a, b); DDL e DBML usano entrambi colonnaBersaglio(), che legge la chiave primaria REALE della tabella di destinazione (con _id come ripiego su MongoDB). Estratti in public/js/schema-export.js e provati da test/unit-schema-export.js."
     },
     {
       "id": "CDB-A41",
@@ -935,7 +957,8 @@
       "problema": "Lo stato di apertura viene fotografato in `dataset.eraChiuso` solo nel passaggio da «nessuna ricerca» a «ricerca attiva» (`q && !filtroSchemaAttivo`). I contenitori creati DOPO — cioè quelli dei database caricati dal pulsante «Cerca anche negli altri N database», o dall'espansione automatica del database attivo — non ricevono mai quell'attributo, perché al momento della loro `riapplicaFiltroSchema` il filtro è già attivo. Svuotando la casella, il ramo di ripristino (riga 1248) li salta.",
       "scenario": "Si cerca una tabella, si preme «Cerca anche negli altri 12 database», si trova quello che serve e si svuota la casella: l'albero resta con dodici database completamente espansi, decine di tabelle e centinaia di colonne a schermo, e va richiuso a mano uno per uno.",
       "fix": "Assegnare `dataset.eraChiuso` alla creazione del contenitore (in `renderQuerySchemaBrowser`/`renderSchemaTreeForDb`) quando un filtro è attivo, oppure, più semplicemente, considerare «chiuso» il valore predefinito per i contenitori privi dell'attributo nel ramo di ripristino.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Nel ramo di ripristino un contenitore privo di dataset.eraChiuso vale CHIUSO: quelli nati durante la ricerca (database caricati da \"Cerca anche negli altri N database\", espansione automatica) non venivano mai fotografati e restavano spalancati dopo aver svuotato la casella."
     },
     {
       "id": "CDB-A42",
@@ -951,7 +974,8 @@
       "problema": "Due testi non sono stati aggiornati dopo due riorganizzazioni dell'interfaccia già recepite altrove. (a) Riga 284: «Riapri la guida da **Strumenti & Utility** quando ti serve» — il menu si chiama Impostazioni, come dicono gli altri passi dello stesso file (riga 85-86) e i commenti di `connmanager.js`. (b) Righe 70-74: il passo puntato su `.view-tabs` è intitolato «Cinque viste sugli stessi dati» ed elenca Dati, Dettagli, UML, Grafo 3D e Query & Aggregate, ma UML e Grafo 3D non sono più schede lì dentro: stanno nel menu «Visualizza», e su un tab a livello database `applyViewTabsFor` ne nasconde altre due.",
       "scenario": "L'utente al primo avvio legge un'istruzione che indica un menu inesistente, e nel tour vede un riquadro luminoso su una barra con tre schede mentre il fumetto ne annuncia cinque. È il primo contatto con il programma, cioè il momento in cui una discrepanza costa di più.",
       "fix": "Aggiornare i due testi; il secondo può nominare le tre schede e rimandare al menu Visualizza per UML e Grafo 3D.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Il passo sulle viste si intitola «Tre viste sugli stessi dati» ed elenca Dati, Dettagli e Query & Aggregate rimandando al menu Visualizza per UML e Grafo 3D; il testo del benvenuto cita il menu Impostazioni e non più «Strumenti & Utility»."
     },
     {
       "id": "CDB-A43",
@@ -967,7 +991,8 @@
       "problema": "L'osservatore creato alla riga 161 si disconnette SOLO quando la barriera si chiude. `disegnaChecklist` (riga 493) richiama `attendiAccesso()` a ogni invocazione mentre una barriera è aperta, e `disegnaChecklist` è agganciata all'evento `codedb:traguardo` (riga 121) oltre a essere chiamata da cinque punti diversi: ogni chiamata crea due nuovi osservatori (uno per barriera) sullo stesso nodo. La promessa restituita non viene mai risolta né rigettata se l'utente abbandona la schermata della passphrase, quindi anche le catene `.then` restano appese.",
       "scenario": "Effetto contenuto (l'utente sblocca il vault e tutti gli osservatori si disconnettono insieme), ma con il vault lasciato bloccato a lungo e un'applicazione che emette traguardi, gli osservatori si moltiplicano e ognuno rilancia `disegnaChecklist` allo sblocco, che ridisegna il pannello N volte.",
       "fix": "Memoizzare la promessa (`let attesaInCorso; if (attesaInCorso) return attesaInCorso;`) e disconnettere l'osservatore anche in caso di annullamento.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "attendiAccesso memoizza la promessa (attesaInCorso): un solo osservatore invece di due per ogni chiamata di disegnaChecklist, disconnesso in tutti i casi di uscita, e se nessuna barriera è nel DOM la promessa si risolve subito invece di restare appesa."
     }
   ],
   "priorita_intervento": [

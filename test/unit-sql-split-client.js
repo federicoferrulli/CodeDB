@@ -67,6 +67,12 @@ function prova(nome, fn) {
       '',
       "db.users.find({ a: 1 });\ndb.users.count()",
       'SELECT 1; -- coda',
+      // CDB-A15: la barra rovesciata dentro un literal e il prefisso E'…' di
+      // PostgreSQL. Sono il caso in cui i due splitter possono divergere senza
+      // che nulla lo segnali, ed è anche quello che decide se una DROP viene
+      // vista o resta nascosta dentro una stringa.
+      `SELECT 'x${String.fromCharCode(92)}'; DROP TABLE utenti; SELECT '`,
+      `SELECT E'x${String.fromCharCode(92)}'; SELECT 1`,
     ];
     for (const caso of casi) {
       const client = splitStatements(caso).map((x) => x.sql);

@@ -24,23 +24,55 @@
  * ------------------------------------------------------------------------- */
 
 const path = require('path');
+const fs = require('fs');
+
+/**
+ * Percorso reale di `p`, seguendo i collegamenti simbolici. Se `p` non esiste
+ * ancora — il caso normale per una destinazione di backup — si risale al primo
+ * antenato che esiste, se ne prende il percorso reale e vi si riattacca la
+ * parte mancante: è l'unico modo di dire dove il file FINIREBBE davvero.
+ */
+function percorsoReale(p) {
+  let corrente = path.resolve(p);
+  const coda = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(corrente), ...coda);
+    } catch {
+      const padre = path.dirname(corrente);
+      if (padre === corrente) return path.resolve(p); // radice irraggiungibile
+      coda.unshift(path.basename(corrente));
+      corrente = padre;
+    }
+  }
+}
 
 /**
  * Risolve un percorso di backup confinandolo dentro `root`.
  * Un percorso vuoto vale `root`. Rifiuta tutto ciò che ne esce (`..`, percorsi
  * assoluti, altro disco su Windows) con un messaggio che dice cosa fare.
+ *
+ * Il confronto si fa DUE volte: sulla stringa normalizzata e sul percorso
+ * REALE. path.resolve/path.relative lavorano sul testo e non seguono i
+ * collegamenti simbolici, quindi un link dentro BACKUP_ROOT che punta fuori
+ * superava il controllo e la scrittura finiva altrove.
  */
 function resolveBackupPath(raw, root, what = 'destinazione') {
   const base = path.resolve(root);
+  const nonConsentito = () => new Error(
+    `Percorso di ${what} non consentito: da qui si può usare solo la cartella dei backup del server. ` +
+    'Per una destinazione diversa usa la CLI (npm run backup) oppure imposta CODEDB_BACKUPS_DIR.'
+  );
   if (raw == null || String(raw).trim() === '') return base;
   const target = path.resolve(base, String(raw));
   const rel = path.relative(base, target);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    throw new Error(
-      `Percorso di ${what} non consentito: da qui si può usare solo la cartella dei backup del server. ` +
-      'Per una destinazione diversa usa la CLI (npm run backup) oppure imposta CODEDB_BACKUPS_DIR.'
-    );
-  }
+  if (rel.startsWith('..') || path.isAbsolute(rel)) throw nonConsentito();
+
+  const baseReale = percorsoReale(base);
+  const targetReale = percorsoReale(target);
+  const relReale = path.relative(baseReale, targetReale);
+  if (relReale.startsWith('..') || path.isAbsolute(relReale)) throw nonConsentito();
+
   return target;
 }
 

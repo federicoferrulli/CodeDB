@@ -247,6 +247,14 @@ function renderAvvisi(st, disegnate, motivo) {
       + '(probabilmente PROIETTATE, es. metri EPSG:3857): non sono disegnate né misurate, perché sulla mappa '
       + 'finirebbero in un punto a caso.');
   }
+  if (st.antimeridiano) {
+    // Lunghezze e aree sono corrette (la differenza di longitudine è
+    // normalizzata); è il riquadro che non sa avvolgersi, e inquadrarci sopra
+    // la mappa mostrerebbe mezzo pianeta. Meglio dirlo che lasciarlo intuire.
+    parti.push(`${st.antimeridiano} geometrie attraversano l'antimeridiano (±180°): lunghezze e aree sono `
+      + 'corrette, ma il riquadro di delimitazione le fa sembrare larghe quanto il pianeta e l\'inquadratura '
+      + 'automatica ne risente.');
+  }
   el.innerHTML = parti.map(esc).join('<br>');
   el.classList.toggle('hidden', !parti.length);
 }

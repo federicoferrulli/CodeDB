@@ -67,6 +67,15 @@ const SALTA = new Set(['node_modules', '.git', 'dist', 'build', 'backups', 'cove
 const ESTENSIONI = new Set([
   '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.json', '.html', '.htm', '.css',
   '.md', '.txt', '.ini', '.yml', '.yaml', '.vue', '.svelte', '.py', '.go', '.java', '.cs', '.php', '.rb',
+  // Script e configurazioni: un marcatore collocato in `codedb.sh`, in
+  // `CodeDB.cmd` o in `tools/*.ps1` non veniva trovato NE' nell'auto-verifica
+  // ne' su un albero sospetto, cioe' era un marcatore che non esisteva.
+  '.sh', '.cmd', '.bat', '.ps1', '.psm1', '.sql', '.env', '.conf', '.toml', '.xml', '.svg',
+]);
+
+// File SENZA estensione con nome noto: stessa ragione di sopra.
+const NOMI_SENZA_ESTENSIONE = new Set([
+  'Dockerfile', 'Makefile', 'Procfile', 'LICENSE', 'NOTICE', '.gitattributes', '.dockerignore',
 ]);
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -92,12 +101,42 @@ function leggiRegistro() {
  * esclusi) perché l'impegno deve valere sui MARCATORI, non sulla formattazione
  * del file né sulle note, che possono essere riscritte senza cambiare nulla.
  */
+function canonicoDi(m) {
+  return [m.id, m.categoria, m.regola].join('\u0000');
+}
+
+/** Impronta di UN marcatore: e' la sua prova temporale individuale. */
+function impegnoMarcatore(m) {
+  return crypto.createHash('sha256').update(canonicoDi(m), 'utf8').digest('hex');
+}
+
 function impegno(reg) {
-  const canonico = reg.marcatori
-    .map((m) => [m.id, m.categoria, m.regola].join('\u0000'))
-    .sort()
-    .join('\u0001');
+  const canonico = reg.marcatori.map(canonicoDi).sort().join('\u0001');
   return crypto.createHash('sha256').update(canonico, 'utf8').digest('hex');
+}
+
+/**
+ * Impegni PER MARCATORE, in forma pubblicabile.
+ *
+ * L'impegno complessivo ha valore solo se e' DATABILE, e un solo hash
+ * sull'intero registro smette di esserlo al primo cambiamento: aggiungere un
+ * marcatore per una funzionalita' nuova, o correggere il regex di uno gia'
+ * presente, cambia l'hash, e la data gia' pubblicata non corrisponde piu' al
+ * registro corrente. Da quel momento, per provare che un marcatore esisteva
+ * gia' a una certa data servirebbe conservare a parte la vecchia copia del
+ * registro: cosa che lo strumento non chiedeva e la documentazione non
+ * spiegava. Ed e' la parte del meccanismo che ha valore solo se e' databile.
+ *
+ * Con un hash per marcatore ognuno porta la PROPRIA prova: pubblicando questo
+ * elenco, aggiungerne uno nuovo non tocca la datazione dei precedenti — le
+ * righe gia' pubblicate restano identiche, e la loro data resta valida. Il
+ * campo `dal` (facoltativo, scritto quando il marcatore entra nel registro)
+ * dichiara da quando esiste.
+ */
+function impegniPerMarcatore(reg) {
+  return reg.marcatori
+    .map((m) => ({ id: m.id, dal: m.dal || null, sha256: impegnoMarcatore(m) }))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
 }
 
 function* fileDi(dir) {
@@ -113,7 +152,7 @@ function* fileDi(dir) {
     if (v.isDirectory()) {
       if (SALTA.has(v.name)) continue;
       yield* fileDi(p);
-    } else if (v.isFile() && ESTENSIONI.has(path.extname(v.name).toLowerCase())) {
+    } else if (v.isFile() && (ESTENSIONI.has(path.extname(v.name).toLowerCase()) || NOMI_SENZA_ESTENSIONE.has(v.name))) {
       yield p;
     }
   }
@@ -254,11 +293,25 @@ function main() {
 
   if (soloImpegno) {
     const h = impegno(reg);
-    if (json) console.log(JSON.stringify({ impegno: h, marcatori: reg.marcatori.length, creato: reg.creato }, null, 2));
-    else {
+    const perMarcatore = impegniPerMarcatore(reg);
+    if (json) {
+      console.log(JSON.stringify({
+        impegno: h, marcatori: reg.marcatori.length, creato: reg.creato, per_marcatore: perMarcatore,
+      }, null, 2));
+    } else {
       console.log(`Impronta SHA-256 del registro: ${h}`);
       console.log(`Marcatori: ${reg.marcatori.length} · registro creato il ${reg.creato}`);
-      console.log('\nRiporta questa impronta in docs/provenienza.md e committa: la data del commit è la prova.');
+      console.log('\nImpronte PER MARCATORE (una riga ciascuna, da pubblicare in docs/provenienza.md):');
+      for (const m of perMarcatore) {
+        console.log(`  ${m.sha256}  ${m.id}${m.dal ? `  (dal ${m.dal})` : ''}`);
+      }
+      console.log(
+        '\nPubblica QUESTE righe, non solo l\'impronta complessiva.\n'
+        + 'L\'impegno vale se è databile, e un hash unico su tutto il registro smette di esserlo\n'
+        + 'al primo cambiamento: aggiungere un marcatore o correggerne il regex cambia l\'hash, e la\n'
+        + 'data già pubblicata non corrisponde più. Le righe per marcatore, invece, restano identiche:\n'
+        + 'aggiungerne uno nuovo non tocca la datazione dei precedenti. La data del commit è la prova.'
+      );
     }
     return;
   }
@@ -277,6 +330,7 @@ function main() {
     console.log(JSON.stringify({
       cartella: dir,
       impegno: impegno(reg),
+      impegni_per_marcatore: impegniPerMarcatore(reg),
       esaminati: ris.esaminati,
       punteggio: p,
       marcatori: ris.regole.map((r) => ({
@@ -298,4 +352,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { impegno, analizza, punteggio, leggiRegistro, PESI };
+module.exports = { impegno, impegnoMarcatore, impegniPerMarcatore, analizza, punteggio, leggiRegistro, PESI };

@@ -218,7 +218,8 @@
       "problema": "connections:export deriva la chiave con `crypto.createHash('sha256').update(pass).digest()` (server.js:2672), cioè con la KDF del vault v1 che db/vault.js:82 dichiara «Solo per migrare»: nessun salt, un solo passaggio di hash, quindi miliardi di tentativi al secondo su GPU. È esattamente il difetto che il formato v2 (scrypt + salt, vault.js:87-92) esiste per risolvere, e lo si applica al file che per definizione lascia la macchina. Seconda conseguenza, funzionale: connections:import valida ogni `ENC:` con decryptRaw (server.js:2697), che usa la DEK corrente dell'installazione. Su un vault v2 la DEK è casuale e non sarà mai uguale a SHA256(passphrase), quindi un file esportato con una passphrase scelta viene rifiutato anche sull'installazione che gira con QUELLA passphrase — il flusso descritto nel commento a server.js:2661-2666 non è realizzabile.",
       "scenario": "L'utente esporta le connessioni indicando una passphrase per spostarle su un'altra macchina e invia il .ini per email. Chi lo intercetta attacca offline una KDF non salata e priva di costo: una passphrase di dieci caratteri cade in tempi ragionevoli, e da lì si ottengono password dei database e delle chiavi SSH. Sull'altra macchina, intanto, l'import fallisce con «cifrato con un'altra passphrase» anche avviando il server con la passphrase corretta.",
       "fix": "Fare passare l'export dal formato v2: generare un salt per il file, derivare la chiave con Vault.deriveKek(passphrase, salt) e scrivere salt e parametri KDF nell'intestazione del file esportato; all'import, leggere quell'intestazione e derivare la stessa chiave invece di confrontare con la DEK locale. Mantenere la lettura del vecchio formato per i file già esportati.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "L'export con passphrase scelta passa dalla derivazione del vault v2: salt casuale per file + Vault.deriveKek (scrypt), con salt e parametri KDF scritti nella sezione di intestazione [__codedb_export__]. All'import l'intestazione viene letta, la chiave ridervata dalla passphrase indicata e i segreti RI-CIFRATI con la chiave dell'installazione (prima si confrontavano con la DEK locale, che su un vault v2 è casuale: il flusso esporta-qui/importa-là non era realizzabile). Il client riconosce l'intestazione e chiede la passphrase prima di inviare. Test: round-trip e controesempi in test/unit-vault.js."
     },
     {
       "id": "CDB-A06",
@@ -267,7 +268,8 @@
       "problema": "makeId ripiega sull'INTERA riga quando la tabella non ha chiave primaria (`const cols = pkCols.length ? pkCols : allCols`), quindi l'`_id` virtuale non identifica una riga ma un VALORE. docUpdate e docDelete costruiscono la WHERE da quell'oggetto ed eseguono senza alcun limite di righe; MySqlStrategy, sullo stesso percorso, aggiunge `LIMIT 1` (righe 775 e 796). L'asimmetria non è dichiarata da nessuna parte.",
       "scenario": "Tabella PostgreSQL di staging senza PK contenente tre righe identiche (caso ordinario dopo un import ripetuto). L'utente apre la griglia, corregge un campo sulla prima riga e salva: `UPDATE ... WHERE col1 = $1 AND col2 = $2 ...` corrisponde a tutte e tre e le modifica insieme. Idem con l'eliminazione della singola riga, che ne cancella tre. La risposta riporta `modified: 3`, ma la griglia mostra un'operazione riuscita e il danno è già applicato.",
       "fix": "Su PostgreSQL usare `ctid` per le tabelle senza PK: `DELETE FROM t WHERE ctid = (SELECT ctid FROM t WHERE <match> LIMIT 1)` e la forma equivalente per l'UPDATE. In alternativa, quando pkCols è vuoto, rifiutare la modifica in linea spiegando che la tabella non ha una chiave primaria, invece di agire su un bersaglio ambiguo.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "bersaglioRiga(): quando la tabella non ha chiave primaria, UPDATE e DELETE passano da \"ctid = (SELECT ctid … LIMIT 1)\", quindi colpiscono una sola riga come già faceva MySqlStrategy con LIMIT 1."
     },
     {
       "id": "CDB-A08",
@@ -283,7 +285,8 @@
       "problema": "blocchiDiImport misura con JSON.stringify solo i primi CAMPIONE_DIM = 50 documenti e per tutti i successivi usa la MEDIA di quel campione (righe 54-60). Il tetto CHUNK_BYTES di 3 MB protegge quindi solo se il file è omogeneo: se le dimensioni crescono dopo le prime cinquanta righe, il blocco reale supera i 5 MB di maxHttpBufferSize (server.js:250) e Socket.IO chiude la connessione. Il commento alle righe 36-43 dichiara il compromesso, ma il margine 3/5 MB assorbe un errore di stima, non un ordine di grandezza.",
       "scenario": "File JSON con 50 righe di anagrafica (200 byte) seguite da 2000 righe con un campo note da 100 KB. La media stimata resta ~200 byte, quindi si formano blocchi da CHUNK = 500 documenti: il blocco pesa ~50 MB e il messaggio viene rifiutato. L'import si interrompe a metà con un errore di rete, lasciando i documenti già inviati nella collection.",
       "fix": "Ricalibrare in corsa: rimisurare periodicamente (es. ogni 50 documenti o quando la dimensione stimata del blocco supera metà del tetto) e, in ogni caso, misurare davvero il documento quando il blocco corrente si avvicina a CHUNK_BYTES. Costo trascurabile rispetto alla serializzazione già prevista.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "blocchiDiImport ricalibra la media ogni 200 documenti e misura DAVVERO ogni documento quando il blocco corrente ha superato metà del tetto: la stima non può più sbagliare di un ordine di grandezza proprio dove costa la connessione."
     },
     {
       "id": "CDB-A09",
@@ -300,7 +303,8 @@
       "problema": "L'handler di uncaughtException chiama gracefulShutdown, che termina il processo. In un servizio multi-utente significa che un errore isolato in una sessione fa cadere le sessioni di tutti; in Electron server.js gira NELLO STESSO processo della finestra, quindi l'applicazione desktop si chiude, portandosi via gli script della tab Query & Aggregate in esecuzione (che vivono nella sessione del socket). Solo l'esecuzione in Docker ha un supervisore (`restart: unless-stopped`); avvio da sorgente, launcher CodeDB.cmd/codedb.sh e app installata non ne hanno.",
       "scenario": "Un driver emette un errore su un event emitter fuori da qualsiasi try (una socket TCP che cade mentre un change stream è attivo è la via più semplice). Nell'app desktop la finestra si chiude senza spiegazione mentre uno script di migrazione è a metà; l'utente non sa a quale istruzione si sia fermato, perché anche il pannello di avanzamento è sparito.",
       "fix": "Distinguere gli errori recuperabili: registrare l'eccezione, chiudere la sola sessione coinvolta e proseguire, riservando l'uscita ai casi in cui lo stato del processo è davvero compromesso. Nell'ambiente Electron, sostituire l'uscita con un dialog che segnala il problema e mantiene la finestra. Documentare comunque un supervisore per gli avvii da sorgente.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "uncaughtException non termina più il processo per un errore isolato: eccezioneFatale() distingue i casi in cui lo stato è davvero compromesso (heap esaurito, stack esaurito) da tutto il resto, che viene registrato lasciando vive le altre sessioni, i backup in corso e la finestra dell'app desktop."
     },
     {
       "id": "CDB-A10",
@@ -316,7 +320,8 @@
       "problema": "In backup:run il nome usato per la cartella è `payload.connName || payload.label || 'ui-session'` (server.js:3318), cioè una stringa scelta dal client e mai confrontata con `sess.connName`, che è il nome su cui poggiano davvero i permessi. runBackup costruisce `<destRoot>/<safeName(connName)>_<safeName(db)>` (engine.js:398). safeName impedisce il path traversal (i separatori diventano `_`, verificato: `[^\\w.-]+` sostituisce `/` e `\\`), ma non impedisce di scegliere il nome di un gruppo esistente e di aggiungervi backup e voci di catalogo.",
       "scenario": "Il tenant A esegue un backup di un proprio database indicando `connName: 'crm-produzione'` e `db: 'clienti'`, cioè il gruppo del tenant B. Il dump di A finisce in `crm-produzione_clienti/` e viene aggiunto al catalogo di gruppo. Nella schermata Catalogo & Ripristino del tenant B compare come «ultimo backup»: se B ripristina, sovrascrive i propri dati con quelli di A. Combinato con CDB-A01, il gruppo è anche direttamente enumerabile.",
       "fix": "Usare `sess.connName` (o l'etichetta derivata dalla sessione) per il nome del gruppo e trattare `payload.connName` come sola etichetta di log, oltre a partizionare la radice per ownerId come da CDB-A01.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Il nome del gruppo di backup viene da sess.connName (quello su cui poggiano i permessi); il valore del payload resta solo etichetta di log."
     },
     {
       "id": "CDB-A11",
@@ -330,7 +335,8 @@
       "problema": "resolveBackupPath confronta il percorso normalizzato con la radice usando path.resolve/path.relative, che lavorano sulla stringa e non seguono i symlink. Un collegamento presente dentro BACKUP_ROOT e puntato all'esterno supera il controllo.",
       "scenario": "Chi ha già accesso al filesystem del server (o un container in cui la cartella dei backup è un volume condiviso) crea `backups/fuori -> /etc`. Da quel momento `backup:run` con `dest: 'fuori'` scrive fuori dal perimetro previsto pur passando dalla politica.",
       "fix": "Dopo la risoluzione, applicare fs.realpathSync (con fallback sul percorso non ancora esistente, risalendo al primo antenato reale) e ripetere il confronto con la radice reale.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "resolveBackupPath confronta anche i percorsi REALI (percorsoReale() risale al primo antenato esistente e applica realpathSync), quindi un collegamento simbolico dentro BACKUP_ROOT che punta fuori non passa più."
     },
     {
       "id": "CDB-A12",
@@ -345,7 +351,8 @@
       "problema": "Sia la verifica (server.js:3443) sia la lettura dello schema (restore.js:144) compongono `path.join(backupDir, f.path)` con un valore che proviene dal manifest.json su disco, senza verificare che resti dentro backupDir. I manifest sono scritti dal motore, quindi oggi il valore è affidabile; ma è un file di dati, non codice, e il checksum protegge il CONTENUTO dei file elencati, non il campo `path` del manifest stesso.",
       "scenario": "Un manifest alterato a mano (o proveniente da una cartella di backup ricevuta da terzi, scenario reso concreto da CDB-A01) con `\"path\": \"../../../../etc/passwd\"` fa leggere quel file a backup:verify, che ne riporta l'esito del confronto — un oracolo sull'esistenza e sul contenuto di file fuori dal perimetro.",
       "fix": "Applicare a ogni `f.path` lo stesso confinamento di resolveBackupPath usando backupDir come radice, rifiutando le voci che ne escono.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "fileDelBackup() in backup/lib/util.js confina ogni percorso dichiarato nel manifest dentro la cartella del backup; usata nella verifica (server.js e CLI), nella lettura dello schema e in tutte e tre le letture dei file di dati del restore."
     },
     {
       "id": "CDB-A13",
@@ -391,7 +398,8 @@
       "problema": "In eseguiConCallback il ramo `reduce` fa `let acc = arr[0]; let start = 1;` e non legge mai il secondo argomento passato dallo script (la variabile `start`, dichiarata con let e mai riassegnata, è il residuo della gestione perduta). L'accumulatore iniziale scelto dall'utente viene quindi scartato. Verificato in esecuzione con l'interprete reale: `[1,2,3].reduce((a,b)=>a+b, 10)` restituisce 6 invece di 16; `[].reduce((a,b)=>a+b, 0)` restituisce undefined invece di 0; `[{n:2},{n:3}].reduce((a,x)=>a+x.n, 0)` restituisce NaN invece di 5, perché l'accumulatore parte dall'oggetto. La suite test/unit-mongo-script.js non copre il caso.",
       "scenario": "Uno script di riconciliazione nella tab Query & Aggregate somma gli importi di un risultato: `const totale = righe.reduce((acc, r) => acc + r.importo, 0)`. Poiché l'accumulatore parte dal PRIMO DOCUMENTO invece che da 0, `totale` è NaN; se lo script scrive quel valore in una collection di riepilogo (`db.totali.insertOne({ totale })`), il dato sbagliato viene salvato senza alcun errore. Con array di numeri il risultato è invece plausibile ma semplicemente errato del valore iniziale.",
       "fix": "Passare gli argomenti oltre il callback a eseguiConCallback e implementare la semantica standard: con valore iniziale `acc = init, start = 0`; senza, `acc = arr[0], start = 1`, e su array vuoto senza valore iniziale lanciare TypeError come fa JavaScript. Aggiungere i tre casi alla suite.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "reduce() legge il secondo argomento: con valore iniziale acc=init e start=0, senza acc=arr[0] e start=1, e su array vuoto senza valore iniziale lancia un errore invece di restituire undefined. Cinque casi aggiunti alla suite."
     },
     {
       "id": "CDB-A15",
@@ -409,7 +417,8 @@
       "problema": "Lo splitter tratta il backslash come carattere di escape dentro le stringhe (semantica MySQL). PostgreSQL, con `standard_conforming_strings=on` (default dalla 9.1), NON lo fa: `'x\\'` è un literal completo. Verificato in esecuzione: `splitStatements(\"SELECT 'x\\\\'; DROP TABLE utenti; SELECT '\")` restituisce UNA sola istruzione e `isWriteSql(...)` restituisce false, perché il DROP finisce dentro quella che lo splitter crede una stringa e viene rimosso da stripSqlNoise. PostgreSQL invece esegue davvero due istruzioni, dato che collectionAggregate chiama `client.query(sql)` senza parametri, cioè in simple query protocol (il codice stesso lo prevede: gestisce `Array.isArray(res)` per i risultati multipli).",
       "scenario": "Un owner (o chiunque, con RBAC spento) esegue dalla tab Query & Aggregate `SELECT 'x\\'; DROP TABLE utenti; SELECT '` su una connessione PostgreSQL. La tabella viene eliminata, ma nello Storico Azioni compare una riga `category: 'read'`, `op: 'Query di lettura (SQL)'`. Chi indaga a posteriori su una tabella sparita non trova alcuna scrittura registrata in quel momento. Non è invece un'escalation di privilegi: per i sottoutenti guardStrategy imposta expectRead e PostgreSqlStrategy apre `BEGIN READ ONLY`, che rifiuta il DROP; su MySQL `multipleStatements: false` (MySqlStrategy.js:129) impedisce l'esecuzione della seconda istruzione.",
       "fix": "Rendere lo splitter consapevole del dialetto: su PostgreSQL trattare il backslash come carattere ordinario dentro i literal (e riconoscere il prefisso `E'...'`, dove invece è un escape). In assenza di questa distinzione, la scelta conservativa è considerare AMBIGUO un testo che contiene un backslash dentro una stringa e classificarlo come scrittura, invece di dedurne una lettura.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Lo splitter è consapevole del dialetto: la barra rovesciata dentro un literal è un escape solo con { backslashEscape: true } (MySQL) o dopo il prefisso E'…' di PostgreSQL. Il predefinito ANSI è la direzione conservativa — al massimo si divide di più, e dividere di più fa classificare come SCRITTURA. L'esecuzione degli script passa il dialetto vero della connessione. Il gemello client (public/js/sql-split.js) segue la stessa regola e i due casi sono nella verifica di non-divergenza."
     },
     {
       "id": "CDB-A16",
@@ -424,7 +433,8 @@
       "problema": "`emitPaneQuery` compone `emit(event, { tabId, ...(payload || {}) })`: il tabId del riquadro viene messo PRIMA dello spread, quindi qualunque `tabId` presente nel payload — anche un `undefined` esplicito — lo sovrascrive. È esattamente il difetto che utils.js:447-451 documenta e che in emit() è stato corretto scrivendo il tabId DOPO lo spread. Oggi nessun chiamante passa tabId nel payload, quindi il difetto non si manifesta: è latente, ma il modulo lo usa anche per doc:update e doc:delete (righe 639, 667, 693), cioè per scritture.",
       "scenario": "Un futuro chiamante di emitPaneQuery passa un payload che include `tabId` (per esempio riusando un oggetto costruito altrove, dove il campo vale undefined): la richiesta perde il tab del riquadro, il server ricade sulla sessione \"default\" e una `doc:delete` colpisce la connessione sbagliata, o fallisce con «Nessuna connessione attiva» senza che il codice chiamante sappia perché.",
       "fix": "Invertire l'ordine come in emit(): `const msg = { ...(payload || {}) }; msg.tabId = tabId;`.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "emitPaneQuery scrive il tabId DOPO lo spread del payload, come emit()."
     },
     {
       "id": "CDB-A17",
@@ -440,7 +450,8 @@
       "problema": "Il gestore di `script:execute` porta il run a uno stato TERMINALE quando il ciclo fallisce in modo imprevisto: `run.fail(err)`, `finalizzaScript` e rimozione dalla mappa della sessione (righe 3049-3059, con il commento che spiega perché — CDB-67). Il gestore di `script:resume`, che avvia esattamente lo stesso ciclo, si limita invece a `console.error` (righe 3123-3125): il run resta `running`, non viene mai emesso un push terminale, non viene tolto dalla mappa e nessuna voce di audit di chiusura viene scritta. La correzione CDB-67 è stata applicata a uno solo dei due punti di ingresso.",
       "scenario": "Uno script viene messo in pausa e poi ripreso; durante la ripresa la connessione al database cade (o il Proxy autorizzante rigetta in modo inatteso). Il pannello #script-run-panel resta fermo sull'ultima istruzione con lo stato \"in esecuzione\": Pausa e Interrompi non hanno effetto perché nulla progredisce, il pulsante di chiusura non compare e la scheda resta nel registro delle query in sospeso finché non si ricarica la pagina. Nell'audit non compare la riga di fine script, quindi resta anche una traccia incompleta.",
       "fix": "Estrarre la gestione già scritta in script:execute in una funzione e usarla in entrambi i `.catch`: `run.fail(err)` → `finalizzaScript` → `scriptsOf(session).delete(run.id)`.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "chiudiRunInErrore(): la chiusura del run in errore imprevisto è una funzione sola, usata da entrambi i punti di ingresso del ciclo (script:execute e script:resume)."
     },
     {
       "id": "CDB-A18",
@@ -486,7 +497,8 @@
       "problema": "La traduzione di `LIKE 'a%'` produce `{ $regex: '^a.*$', $options: 'i' }` (verificato in esecuzione). L'ancoraggio iniziale permetterebbe a MongoDB di usare un indice sul campo, ma il flag `i` lo impedisce: una regex case-insensitive non è sargable, quindi la query degrada sempre a scansione della collection. La scelta di `i` è difendibile (su MySQL le collation `_ci` rendono LIKE insensibile alle maiuscole), ma il costo non è dichiarato da nessuna parte.",
       "scenario": "Dalla tab ⚡ Query & Aggregate un utente esegue `SELECT * FROM eventi WHERE codice LIKE 'AB%'` su una collection da milioni di documenti con indice su `codice`: invece di una ricerca per prefisso si ottiene una scansione completa, che con il tetto di 10.000 righe e il timeout di query finisce spesso in errore invece che in un risultato.",
       "fix": "Rendere il flag `i` opzionale e non predefinito su MongoDB (dove il confronto è case-sensitive per natura), oppure aggiungerlo solo quando il pattern non è ancorato a un prefisso; in alternativa segnalarlo nell'interfaccia come nota accanto al risultato, così chi vede una query lenta sa perché.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": "Il flag \"i\" non viene più aggiunto quando il pattern è ancorato a un prefisso — il caso in cui l'indice servirebbe — perché una regex case-insensitive non è sargable; resta dove la scansione è comunque inevitabile. Per chiedere esplicitamente il confronto insensibile c'è ILIKE. Test aggiornati e ampliati."
     }
   ],
   "priorita_intervento": [
