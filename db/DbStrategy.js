@@ -220,7 +220,7 @@ DbStrategy.singular = singular;
  * severa renderebbe inutilizzabili database che esistono già.
  */
 // eslint-disable-next-line no-control-regex
-const UNSAFE_NAME_CHARS = /[<>&"'`;\\ -]/;
+const UNSAFE_NAME_CHARS = /[<>&"'`;\\\x00-\x1f\x7f]/;
 
 function assertCreatableName(name, what = 'oggetto') {
   const s = String(name == null ? '' : name);

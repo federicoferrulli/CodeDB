@@ -34,11 +34,11 @@ const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 // Stesse politiche del percorso socket: la destinazione cloud e il webhook non
 // possono arrivare dal client (qui: dal client MCP, cioè dall'AI e da chi
 // detiene la API key). Vedi backup/lib/policy.js.
-const { resolveStorageAlias, resolveSlackWebhook } = require('../backup/lib/policy');
+const { resolveStorageAlias, resolveSlackWebhook, backupRootFor } = require('../backup/lib/policy');
 const { createLogger } = require('../backup/lib/logger');
 const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
-const { ROOT_PRINCIPAL } = require('../auth/principal');
+const { ROOT_PRINCIPAL, rbacOn } = require('../auth/principal');
 const { can, canUseConnection, canWholeConnection } = require('../auth/permissions');
 const { spiegaErrore } = require('../db/errors');
 
@@ -63,6 +63,12 @@ const MCP_PATH = '/mcp';
 // CODEDB_BACKUPS_DIR: override usato dall'app Electron pacchettizzata, la cui
 // cartella di installazione è di sola lettura (vedi electron-main.js).
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups');
+// Radice dei backup del tenant della sessione MCP: con RBAC attivo ogni owner
+// ha la propria (`tenants/<ownerId>`), esattamente come sul canale socket.
+// Senza, `list_backups` mostrerebbe i gruppi di tutti i tenant e
+// `restore_backup` accetterebbe quei nomi così come sono.
+const backupRootOf = (session) =>
+  backupRootFor(BACKUP_ROOT, sessionPrincipal(session).ownerId, { rbac: rbacOn() });
 const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
 const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -1159,14 +1165,15 @@ function buildMcpServer(session, deps) {
     const level = Math.min(Math.max(parseInt(args.compress_level, 10) || 1, 1), 9);
     const compress = !args.no_compress;
 
-    const log = createLogger(path.join(BACKUP_ROOT, 'backup.log'), { quiet: true });
+    const destRoot = backupRootOf(session);
+    const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
     const auditBase = { sessionId: session.id, connection: sess.name, dbType: sess.dbType, operation: 'backup', db, type };
     try {
       const summary = await log.run(`backup ${type} conn=${sess.name} db=${db} (via MCP)`, async () => {
         const result = await runBackup({
           session: sess, connName: sess.name, db, type, onlyCollections,
           sinceField: args.since_field ? String(args.since_field).trim() : null,
-          destRoot: BACKUP_ROOT, compress, level, log,
+          destRoot, compress, level, log,
         });
         if (storage) await uploadBackupDir(storage, result.backupDir, log);
         return result;
@@ -1200,11 +1207,12 @@ function buildMcpServer(session, deps) {
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async ({ group }) => {
     const groups = {};
-    if (fs.existsSync(BACKUP_ROOT)) {
-      for (const entry of fs.readdirSync(BACKUP_ROOT, { withFileTypes: true })) {
+    const root = backupRootOf(session);
+    if (fs.existsSync(root)) {
+      for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
         if (!entry.isDirectory()) continue;
         if (group && entry.name !== String(group).trim()) continue;
-        const { backups } = readCatalog(path.join(BACKUP_ROOT, entry.name));
+        const { backups } = readCatalog(path.join(root, entry.name));
         if (backups.length) groups[entry.name] = backups;
       }
     }
@@ -1226,7 +1234,7 @@ function buildMcpServer(session, deps) {
     if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
       throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
     }
-    const backupDir = path.join(BACKUP_ROOT, group, backupId);
+    const backupDir = path.join(backupRootOf(session), group, backupId);
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
@@ -1295,7 +1303,7 @@ function buildMcpServer(session, deps) {
     if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
       throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
     }
-    const backupDir = path.join(BACKUP_ROOT, group, backupId);
+    const backupDir = path.join(backupRootOf(session), group, backupId);
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
@@ -1306,7 +1314,7 @@ function buildMcpServer(session, deps) {
     const token = String(args.confirm_token || '').trim();
     if (token) {
       const pending = confirmFlow.consume(token, 'restore', (p) => p.connectionId === String(args.connection_id), 'connessione');
-      const log = createLogger(path.join(BACKUP_ROOT, 'backup.log'), { quiet: true });
+      const log = createLogger(path.join(backupRootOf(session), 'backup.log'), { quiet: true });
       try {
         const summary = await log.run(`restore conn=${sess.name} da=${group}/${backupId} (via MCP)`, () => runRestore({
           session: sess,

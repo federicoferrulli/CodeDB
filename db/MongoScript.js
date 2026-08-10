@@ -739,6 +739,92 @@ const METODI_DATA = new Set([
 ]);
 const METODI_REGEX = new Set(['test', 'exec', 'toString']);
 
+/* ---------------------------------------------------------------------------
+ * Espressioni regolari: l'unico buco nel principio "tutto ha un budget".
+ *
+ * L'esecuzione di una regex è UNA chiamata nativa, sincrona e non
+ * interrompibile: mentre gira, il ciclo di eventi di Node è fermo e nessuno dei
+ * budget del runner — che vivono fra un nodo dell'AST e il successivo — può
+ * intervenire. `tempoMs` NON è quindi un limite forte finché lo script gira nel
+ * processo principale, che ospita tutte le sessioni Socket.IO, il gateway MCP
+ * e (nell'app desktop) la finestra Electron: tre righe con un quantificatore
+ * annidato congelavano l'applicazione per ogni utente collegato.
+ *
+ * Due reti, entrambe a costo nullo e nessuna delle due completa:
+ *  1. si rifiutano in fase di valutazione i pattern con quantificatore annidato
+ *     — `(a+)+`, `(a*)*`, `(a+)*` — cioè la forma che produce il tempo
+ *     esponenziale nei casi pratici;
+ *  2. si limita la lunghezza del testo su cui una regex può essere applicata.
+ * La difesa completa sarebbe eseguire gli script in un worker_thread con
+ * `terminate()` alla scadenza; finché non c'è, valgono queste.
+ * ------------------------------------------------------------------------- */
+
+/** Testo più lungo di così non viene dato in pasto a una regex. */
+const MAX_TESTO_REGEX = 5000;
+
+/**
+ * Rifiuta i pattern con un quantificatore applicato a un gruppo che ne contiene
+ * già uno. È il caso che esplode: ogni carattere in più raddoppia il tempo.
+ */
+function assertRegexSicura(pattern, line) {
+  const p = String(pattern);
+  // Pila dei gruppi aperti: per ognuno si annota se al suo interno è comparso
+  // un quantificatore.
+  const pila = [];
+  let inClasse = false;
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i];
+    if (ch === '\\') { i++; continue; }
+    if (inClasse) { if (ch === ']') inClasse = false; continue; }
+    if (ch === '[') { inClasse = true; continue; }
+    if (ch === '(') { pila.push(false); continue; }
+    if (ch === ')') {
+      const conteneva = pila.pop();
+      // Quantificatore SUBITO dopo la parentesi chiusa?
+      const dopo = p[i + 1];
+      const quantificato = dopo === '*' || dopo === '+'
+        || (dopo === '{' && /^\{\d*,?\d*\}/.test(p.slice(i + 1)));
+      if (quantificato) {
+        if (conteneva) {
+          throw errore(
+            'Espressione regolare rifiutata: un quantificatore applicato a un gruppo che ne contiene già uno '
+            + '(per esempio (a+)+) può richiedere tempo esponenziale e bloccherebbe il server. Riscrivi il pattern.',
+            line
+          );
+        }
+        // Il gruppo quantificato conta come quantificatore per chi lo contiene.
+        if (pila.length) pila[pila.length - 1] = true;
+      }
+      continue;
+    }
+    if (ch === '*' || ch === '+' || (ch === '{' && /^\{\d*,?\d*\}/.test(p.slice(i)))) {
+      if (pila.length) pila[pila.length - 1] = true;
+    }
+  }
+  return p;
+}
+
+/**
+ * Nega l'applicazione di una regex a un testo smisurato. Vale sia per
+ * `re.test(s)`/`re.exec(s)` sia per i metodi di stringa che accettano una regex
+ * (`match`, `replace`, `search`, `split`), che sono la stessa chiamata nativa
+ * non interrompibile vista dall'altro lato.
+ */
+function assertTestoRegex(target, nome, args) {
+  let soggetto = null;
+  if (target instanceof RegExp) {
+    if (nome === 'test' || nome === 'exec') soggetto = args[0];
+  } else if (typeof target === 'string' && args.some((a) => a instanceof RegExp)) {
+    soggetto = target;
+  }
+  if (typeof soggetto === 'string' && soggetto.length > MAX_TESTO_REGEX) {
+    throw errore(
+      `Espressione regolare applicata a un testo di ${soggetto.length} caratteri: il limite è ${MAX_TESTO_REGEX}. `
+      + 'Una regex non è interrompibile e su un testo lungo può bloccare il server.'
+    );
+  }
+}
+
 /**
  * Accesso a una proprietà. È il cuore della sandbox: qui si decide cosa uno
  * script può raggiungere partendo da un valore.
@@ -860,6 +946,9 @@ function legaNativo(target, nome, ctx) {
       // Una funzione passata a un metodo che non la prevede non ha modo di
       // essere invocata: meglio dirlo che ignorarla.
       if (args.some(isFunzioneScript)) return adattaCallback();
+      // Una regex è una chiamata nativa non interrompibile: nessun budget del
+      // runner può fermarla una volta partita (vedi la nota su MAX_TESTO_REGEX).
+      assertTestoRegex(target, nome, args);
       return target[nome](...args);
     },
   };
@@ -1087,6 +1176,8 @@ module.exports = {
   bson,
   errore,
   isFunzioneScript,
+  assertRegexSicura,
+  MAX_TESTO_REGEX,
   NOMI_VIETATI,
 };
 

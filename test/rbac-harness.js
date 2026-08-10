@@ -79,6 +79,10 @@ async function startRbacServer({ maxSubUsers = 1, verbose = false } = {}) {
       CODEDB_UI_AUDIT_FILE: path.join(dir, 'ui-audit.log'),
       CODEDB_MCP_AUDIT_FILE: path.join(dir, 'mcp-audit.log'),
       CODEDB_BACKUPS_DIR: path.join(dir, 'backups'),
+      // Finestra di ri-validazione del principal sui socket già connessi
+      // (CDB-A13): in esercizio 30 s, qui accorciata perché un test non può
+      // aspettarli — la logica provata è la stessa.
+      CODEDB_REVALIDATE_PRINCIPAL_MS: '200',
     },
     stdio: verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   });

@@ -45,6 +45,32 @@ function resolveBackupPath(raw, root, what = 'destinazione') {
 }
 
 /**
+ * Radice dei backup di un tenant.
+ *
+ * `BACKUP_ROOT` è una sola cartella per installazione, mentre il resto del
+ * modello multi-tenant è partizionato per owner (`connectionsFileFor` per le
+ * connessioni, i filtri `ownerId`/`userId` per l'audit). Senza questa
+ * partizione `backup:list` enumera i gruppi `<connessione>_<database>` di TUTTI
+ * i tenant e `backup:restore` accetta quei nomi così come sono: l'owner del
+ * tenant A si riversa il dump del tenant B dentro un proprio database e lo
+ * legge con una normale SELECT. La capability `manage` non basta a impedirlo —
+ * ce l'ha ogni owner sul PROPRIO tenant, non sull'installazione.
+ *
+ * `local` e l'assenza di RBAC valgono la radice storica: l'installazione
+ * mono-utente (e l'app desktop) non deve vedere i propri backup spostarsi, e il
+ * principal root — l'unico amministratore dell'installazione — continua a
+ * leggere tutto ciò che c'era prima. I tenant vanno sotto `tenants/<ownerId>`
+ * invece che direttamente sotto la radice, così un gruppo di backup non può
+ * mai chiamarsi come l'id di un altro tenant.
+ */
+function backupRootFor(root, ownerId, { rbac = true } = {}) {
+  const base = path.resolve(root);
+  const id = String(ownerId == null ? '' : ownerId).trim();
+  if (!rbac || !id || id === 'local') return base;
+  return path.join(base, 'tenants', id.replace(/[^A-Za-z0-9_.-]/g, '_'));
+}
+
+/**
  * Alias di storage cloud pre-approvati lato server, da CODEDB_BACKUP_STORAGE
  * nella forma `nome=s3://bucket/prefisso,altro=gs://bucket/prefisso`.
  * Senza la variabile lo storage cloud dai client è disattivato: resta
@@ -94,4 +120,4 @@ function resolveSlackWebhook(raw) {
   return wanted;
 }
 
-module.exports = { resolveBackupPath, resolveStorageAlias, resolveSlackWebhook, storageAliases };
+module.exports = { resolveBackupPath, backupRootFor, resolveStorageAlias, resolveSlackWebhook, storageAliases };

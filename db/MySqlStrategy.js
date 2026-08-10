@@ -316,7 +316,7 @@ class MySqlStrategy extends DbStrategy {
   // nome, tipo e — per le geometriche — SRID. `SRS_ID` esiste da MySQL 8; su
   // 5.7 la query fallisce e si ripiega senza (là il SRID non è vincolato).
   async tableColumnsInfo(db, coll) {
-    const chiave = `${db} ${coll}`;
+    const chiave = `${db}\u0000${coll}`;
     const ora = Date.now();
     const hit = this._geoCache.get(chiave);
     if (hit && hit.scade > ora) return hit.info;
@@ -616,11 +616,16 @@ class MySqlStrategy extends DbStrategy {
   // payload.readOnly (usato dal gateway MCP): esegue dentro una transazione
   // READ ONLY — il motore rifiuta qualsiasi scrittura, comprese quelle
   // annidate in CTE o EXPLAIN ANALYZE — e con un timeout di 30 secondi.
+  // payload.expectRead: la query è stata CLASSIFICATA come lettura e chi la
+  // esegue è un sottoutente (vedi guardStrategy). È la stessa barriera che
+  // PostgreSqlStrategy applicava già, e che qui mancava: se il parser sbaglia,
+  // a rifiutare la scrittura è il MOTORE. Non copre l'I/O su file (scrivere un
+  // file non è una scrittura transazionale): quello è negato a monte dal Proxy.
   async collectionAggregate(db, _coll, payload) {
     const pool = this.requirePool();
     const sql = String(payload.pipeline || '').trim();
     if (!sql) throw new Error('Inserisci una query SQL da eseguire.');
-    const readOnly = !!payload.readOnly;
+    const readOnly = !!payload.readOnly || !!payload.expectRead;
     const conn = await pool.getConnection();
     try {
       if (payload && payload.opHandle) {

@@ -453,9 +453,34 @@ function applicaAgg(agg, acc) {
       const m = Math.floor(v.length / 2);
       return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
     }
-    case 'primo': return acc.primo;
+    // Il grafico vuole un numero: tutte le altre aggregazioni passano da
+    // numero(), e senza qui un DECIMAL di MySQL o un $numberLong finiva grezzo
+    // in series.data — la serie non veniva disegnata male, spariva.
+    case 'primo': return numero(acc.primo);
     default: return acc.somma;
   }
+}
+
+// Le sole aggregazioni per cui la somma della coda coincide col ricalcolo.
+const AGG_ADDITIVE = new Set(['somma', 'conteggio']);
+
+// Fonde più accumulatori in uno solo, come se le righe fossero state raccolte
+// insieme fin dall'inizio: è ciò che rende "Altro" un valore vero anche per
+// media, mediana, minimo, massimo e distinti.
+function fondiAcc(lista) {
+  const out = nuovoAcc();
+  for (const a of lista) {
+    if (!a) continue;
+    out.somma += a.somma;
+    out.n += a.n;
+    out.righe += a.righe;
+    if (a.min !== null) out.min = out.min === null ? a.min : Math.min(out.min, a.min);
+    if (a.max !== null) out.max = out.max === null ? a.max : Math.max(out.max, a.max);
+    for (const v of a.valori) out.valori.push(v);
+    for (const d of a.distinti) out.distinti.add(d);
+    if (out.primo === null) out.primo = a.primo;
+  }
+  return out;
 }
 
 function nuovoAcc() {
@@ -545,7 +570,9 @@ function calcolaDati(righe, c) {
 
   notaSenzaData(senzaData, c);
   const dati = serieAttive.map((s, i) => accs[i].map((acc) => applicaAgg(s.agg, acc)));
-  return ordinaERiduci(chiavi, serieAttive, dati, c, false);
+  // Gli accumulatori seguono i valori fino in fondo: servono a ricalcolare
+  // "Altro" sull'insieme dei residui invece di sommare aggregazioni.
+  return ordinaERiduci(chiavi, serieAttive, dati, c, false, accs);
 }
 
 function notaSenzaData(quante, c) {
@@ -574,8 +601,12 @@ function notaTroppiPunti(n) {
  *   coda NON si somma in "Altro" (sommare punti grezzi inventa un valore che nei
  *   dati non esiste — lì si tronca e lo si dice), e i valori uguali sull'asse X
  *   restano punti distinti.
+ * @param {Array|null} accs accumulatori per serie e categoria. Con questi la
+ *   categoria "Altro" viene RICALCOLATA sull'insieme dei valori residui: la
+ *   somma delle medie (o dei minimi, o dei conteggi di distinti) è un numero che
+ *   nei dati non esiste, ed è tipicamente la barra più alta del grafico.
  */
-function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false) {
+function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = null) {
   let ordine = categorie.map((_, i) => i);
 
   const totali = ordine.map((i) => dati.reduce((acc, d) => acc + (numero(d[i]) || 0), 0));
@@ -608,10 +639,27 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false) {
     avvisi.push(`Mostrati i primi ${max} punti su ${max + scartati}: senza raggruppamento la coda non si può sommare senza inventare un valore.`);
   } else if (max > 0 && cats.length > max) {
     const scartate = cats.length - max;
-    const coda = vals.map((d) => d.slice(max).reduce((a, v) => a + (numero(v) || 0), 0));
+    const indiciCoda = ordine.slice(max);
+    const coda = serieAttive.map((s, i) => {
+      const accSerie = accs && accs[i];
+      if (accSerie) {
+        // Ricalcolo esatto: si fondono gli accumulatori delle categorie residue
+        // e si riapplica LA STESSA aggregazione della serie.
+        const fuso = fondiAcc(indiciCoda.map((k) => accSerie[k]));
+        return applicaAgg(s.agg, fuso);
+      }
+      // Senza accumulatori si può sommare solo ciò che è additivo.
+      if (!AGG_ADDITIVE.has(s.agg)) return null;
+      return vals[i].slice(max).reduce((a, v) => a + (numero(v) || 0), 0);
+    });
     cats = cats.slice(0, max).concat([`Altro (${scartate})`]);
     vals = vals.map((d, i) => d.slice(0, max).concat([coda[i]]));
-    avvisi.push(`${scartate} categorie oltre le prime ${max} sono state sommate in "Altro".`);
+    const nonAdditive = serieAttive.some((s) => !AGG_ADDITIVE.has(s.agg));
+    avvisi.push(
+      nonAdditive && accs
+        ? `${scartate} categorie oltre le prime ${max} sono raccolte in "Altro": il valore è ricalcolato sull'insieme dei residui, non è la somma dei loro valori.`
+        : `${scartate} categorie oltre le prime ${max} sono state sommate in "Altro".`
+    );
   } else if (cats.length > CATEGORICA.length && famigliaDi(serieAttive[0]?.tipo) === 'circolare') {
     avvisi.push(`${cats.length} fette: oltre l'ottava i colori verificati finiscono. Imposta "Max categorie" per ripiegare la coda in "Altro".`);
   }
@@ -619,20 +667,44 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false) {
   return { categorie: cats, valori: vals, serieAttive };
 }
 
+// Tetto proprio della mappa di calore, applicato quando l'utente non ha
+// impostato "Max categorie". Oltre queste soglie le celle diventano invisibili
+// (e sono già migliaia di rettangoli da disegnare): è l'unica forma di grafico
+// che non passava da ordinaERiduci e quindi non aveva alcuna rete.
+const HEATMAP_MAX_CAT = 60;
+
 /** Dati della mappa di calore: [indiceX, indiceY, valore] + le due liste. */
 function calcolaHeatmap(righe, c, s) {
   const catX = []; const idxX = new Map();
   const catY = []; const idxY = new Map();
   const accs = new Map();
+  const tetto = Number(c.maxCategorie) > 0 ? Number(c.maxCategorie) : HEATMAP_MAX_CAT;
+  const fuoriX = new Set(); const fuoriY = new Set();
 
   for (const riga of righe) {
     const kx = categoria(estrai(riga, c.campoX));
     const ky = categoria(estrai(riga, s.campoY2));
-    if (!idxX.has(kx)) { idxX.set(kx, catX.length); catX.push(kx); }
-    if (!idxY.has(ky)) { idxY.set(ky, catY.length); catY.push(ky); }
+    // Le prime `tetto` categorie incontrate entrano, le altre restano fuori e
+    // si contano: ripiegarle in un "Altro" bidimensionale sommerebbe celle che
+    // non hanno nulla in comune.
+    if (!idxX.has(kx)) {
+      if (catX.length >= tetto) { fuoriX.add(kx); continue; }
+      idxX.set(kx, catX.length); catX.push(kx);
+    }
+    if (!idxY.has(ky)) {
+      if (catY.length >= tetto) { fuoriY.add(ky); continue; }
+      idxY.set(ky, catY.length); catY.push(ky);
+    }
     const k = `${kx}\u0000${ky}`;
     if (!accs.has(k)) accs.set(k, nuovoAcc());
     accumula(accs.get(k), s.agg === 'conteggio' ? 1 : estrai(riga, s.campoY));
+  }
+
+  if (fuoriX.size || fuoriY.size) {
+    const parti = [];
+    if (fuoriX.size) parti.push(`${fuoriX.size} sull'asse X`);
+    if (fuoriY.size) parti.push(`${fuoriY.size} sull'asse Y`);
+    avvisi.push(`Mappa di calore limitata a ${tetto} categorie per asse: ${parti.join(' e ')} sono escluse. Restringi la query oppure cambia "Max categorie".`);
   }
 
   const dati = [];
@@ -782,18 +854,38 @@ function bloccoTitolo(c) {
   };
 }
 
+/** Numero grezzo di un punto della serie, che sia scalare o coppia [x, y]. */
+function valorePunto(v) {
+  const grezzo = Array.isArray(v) ? v[1] : v;
+  return numero(grezzo);
+}
+
 /** Etichette dirette: mai un numero su ogni punto se i punti sono molti. */
-function bloccoEtichette(s, fmt, n) {
+function bloccoEtichette(s, fmt, valori) {
   if (!s.etichette) return { show: false };
-  if (n > 40) {
-    avvisi.push(`Serie "${s.nome || s.campoY}": ${n} punti, etichette su ognuno sarebbero illeggibili — mostrate solo sul valore massimo.`);
-    return { show: false };
-  }
-  return {
-    show: true,
+  const n = Array.isArray(valori) ? valori.length : Number(valori) || 0;
+  const base = {
     position: s.posEtichette || 'top',
     color: INK.primario, // token di testo, NON il colore della serie
     fontSize: 10,
+  };
+  if (n > 40) {
+    // L'avviso promette l'etichetta sul solo massimo, e qui la si mette
+    // davvero: prima si annunciava un comportamento e se ne attuava un altro
+    // (nessuna etichetta), cioè l'unico caso peggiore di non dire nulla.
+    avvisi.push(`Serie "${s.nome || s.campoY}": ${n} punti, etichette su ognuno sarebbero illeggibili — mostrata solo sul valore massimo.`);
+    const numeri = Array.isArray(valori) ? valori.map(valorePunto).filter((x) => x !== null) : [];
+    if (!numeri.length) return { show: false };
+    const massimo = Math.max(...numeri);
+    return {
+      ...base,
+      show: true,
+      formatter: (p) => (valorePunto(p.value) === massimo ? fmt(valorePunto(p.value)) : ''),
+    };
+  }
+  return {
+    ...base,
+    show: true,
     formatter: (p) => fmt(p.value === null || p.value === undefined ? '' : (Array.isArray(p.value) ? p.value[1] : p.value)),
   };
 }
@@ -812,7 +904,7 @@ function serieCartesiana(s, i, c, valori, fmt) {
     colorBy: 'series',
     itemStyle: { color: colore, opacity: opacita },
     emphasis: { focus: 'series' },
-    label: bloccoEtichette(s, fmt, valori.length),
+    label: bloccoEtichette(s, fmt, valori),
   };
 
   if (s.tipo === 'bar') {

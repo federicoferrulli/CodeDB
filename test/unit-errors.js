@@ -98,6 +98,20 @@ function errore(message, extra = {}) {
     assert.ok(spiegaErrore(err).includes(err.message), `${nota}: il dettaglio tecnico resta in coda`);
   }
   console.log(`  OK   ${casi.length} errori tipici di driver riconosciuti`);
+
+  // CDB-A49 — controesempio: la parola "deadlock" nel NOME di un oggetto non è
+  // un deadlock. Cercarla come sottostringa faceva vincere una regola più a
+  // monte, e la spiegazione giusta (tabella inesistente) non veniva raggiunta.
+  const tabellaFinta = errore('relation "deadlock_log" does not exist', { code: '42P01' });
+  const dTab = descriviErrore(tabellaFinta);
+  assert.ok(dTab, 'Una tabella inesistente deve essere riconosciuta');
+  assert.ok(!/deadlock/i.test(dTab.causa), `Il nome dell'oggetto non deve produrre la spiegazione del deadlock (ottenuto: "${dTab.causa}")`);
+  assert.ok(/non esiste|non trovat/i.test(dTab.causa), `Deve spiegare l'oggetto mancante (ottenuto: "${dTab.causa}")`);
+
+  // La rete testuale resta, ma ancorata alla frase completa del driver.
+  const veroDeadlock = errore('Deadlock found when trying to get lock; try restarting transaction');
+  assert.ok(/deadlock/i.test(descriviErrore(veroDeadlock).causa), 'Un deadlock vero resta riconosciuto anche senza codice');
+  console.log('  OK   "deadlock" nel nome di un oggetto non è un deadlock (CDB-A49)');
 }
 
 // --- Il timeout citato è quello realmente configurato -----------------------

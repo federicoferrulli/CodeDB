@@ -538,6 +538,12 @@ function duplicateRow(rowIndex, withKey) {
     ta.setSelectionRange(0, 0);
   }
 
+  // Bersaglio congelato all'APERTURA della modale, non letto al clic su OK
+  // (stesso motivo di CDB-A18): la modale resta aperta quanto l'utente vuole e
+  // nel frattempo può cambiare tab, mentre `state` punta sempre a quello attivo.
+  const { tabId, st } = captureContext();
+  const bersaglio = { tabId, db: st.db, coll: st.coll };
+
   // Sostituisce il listener del bottone OK ad ogni apertura.
   const oldOk = document.getElementById('duprow-ok');
   const newOk = oldOk.cloneNode(true);
@@ -553,8 +559,7 @@ function duplicateRow(rowIndex, withKey) {
     }
     errEl.classList.add('hidden');
     emit('doc:insert', {
-      db: state.db,
-      coll: state.coll,
+      ...bersaglio,
       doc: JSON.stringify(parsed),
     }).then((res) => {
       overlay.classList.add('hidden');
@@ -743,6 +748,14 @@ function pasteIntoGrid(text) {
   // non alla risposta, o la selezione e il refresh finirebbero su un'altra
   // tabella se l'utente si sposta nel frattempo.
   const origin = captureContext();
+  // Il BERSAGLIO va congelato insieme al contesto, non riletto a ogni richiesta
+  // (CDB-A18). `state` è un Proxy sul tab ATTIVO e `emit()` inietta il tab
+  // attivo al momento della chiamata: siccome le ondate distribuiscono le
+  // scritture nel tempo, cambiare tab a metà incolla dirottava le rimanenti su
+  // un'altra connessione, con gli id presi però dalle righe di questa. È lo
+  // stesso motivo per cui exportimport.js passa un tabId esplicito a ogni blocco.
+  const { tabId, st } = origin;
+  const bersaglio = { tabId, db: st.db, coll: st.coll };
   // Le scritture partono a ONDATE, non tutte insieme (CDB-51): incollare da un
   // foglio di calcolo può produrre centinaia di `doc:update`, e mandarli in un
   // colpo solo riempie la coda del socket e satura il pool di connessioni della
@@ -750,7 +763,7 @@ function pasteIntoGrid(text) {
   // in attesa dietro di esse. Il limite non rallenta i casi piccoli, che
   // rientrano tutti nella prima ondata.
   eseguiAOndate(updates, 8, (u) =>
-    emit('doc:update', { db: state.db, coll: state.coll, id: u.id, set: u.set })
+    emit('doc:update', { ...bersaglio, id: u.id, set: u.set })
   ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length) toast(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, true);

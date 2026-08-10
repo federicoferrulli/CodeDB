@@ -125,14 +125,21 @@ const { AppStore } = require('./auth/AppStore');
 const { createEntitlementProvider } = require('./auth/EntitlementProvider');
 const { guardStrategy } = require('./auth/guardStrategy');
 const { isWriteSql, isWriteMongoPipeline, eventCapability } = require('./auth/capabilities');
-const { can, allowedConnections, canUseConnection, canWholeConnection } = require('./auth/permissions');
+const { can, allowedConnections, canUseConnection, canWholeConnection, isInstallAdmin } = require('./auth/permissions');
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
 
 // Politiche sulle destinazioni di backup richieste da un client (percorso
 // locale, storage cloud, webhook): vedi backup/lib/policy.js. La CLI non le usa.
-const { resolveBackupPath: confineBackupPath, resolveStorageAlias, resolveSlackWebhook } = require('./backup/lib/policy');
-const resolveBackupPath = (raw, what) => confineBackupPath(raw, BACKUP_ROOT, what);
+const { resolveBackupPath: confineBackupPath, backupRootFor, resolveStorageAlias, resolveSlackWebhook } = require('./backup/lib/policy');
+
+// Radice dei backup del tenant a cui appartiene il principal: con RBAC attivo
+// ogni owner ha la propria (`tenants/<ownerId>`), come per connections.ini.
+// Vedi backupRootFor in backup/lib/policy.js per il perché.
+const backupRootOf = (principal) =>
+  backupRootFor(BACKUP_ROOT, principal && principal.ownerId, { rbac: rbacOn() });
+// Confina un percorso indicato dal client dentro la radice del SUO tenant.
+const resolveBackupPath = (principal, raw, what) => confineBackupPath(raw, backupRootOf(principal), what);
 
 // Audit log delle operazioni critiche/di scrittura eseguite dalla Web UI, su un
 // file separato da quello del gateway MCP (mcp-audit.log) ma con lo stesso
@@ -1303,20 +1310,18 @@ function mongoScriptHost(session, runId, opHandle, run = null) {
   // anche negli script: l'interprete gira nel processo CodeDB, `$where` no.
   const controlla = (testo) => {
     if (!testo) return;
+    // Il payload dell'interprete porta stringhe EJSON, ma un chiamante futuro
+    // potrebbe passare l'oggetto già analizzato: senza questo ramo la JSON.parse
+    // fallirebbe e il controllo verrebbe saltato in silenzio.
+    if (typeof testo === 'object') { assertNoServerJs(testo); return; }
     try { assertNoServerJs(JSON.parse(testo)); } catch (err) {
       if (err && /\$where|\$function|\$accumulator/.test(err.message)) throw err;
     }
   };
 
-  return {
-    find: (db, coll, payload) => {
-      controlla(payload.filter);
-      return esegui((s) => s.collectionFind(db, coll, { ...payload, runId, opHandle }));
-    },
-    aggregate: (db, coll, payload) => {
-      controlla(payload.pipeline);
-      return esegui((s) => s.collectionAggregate(db, coll, { ...payload, runId, opHandle }));
-    },
+  const metodi = {
+    find: (db, coll, payload) => esegui((s) => s.collectionFind(db, coll, { ...payload, runId, opHandle })),
+    aggregate: (db, coll, payload) => esegui((s) => s.collectionAggregate(db, coll, { ...payload, runId, opHandle })),
     count: (db, coll, payload) => esegui((s) => s.collectionCount(db, coll, payload)),
     write: (db, coll, payload) => eseguiScrivendo((s) => s.shellWrite(db, coll, payload)),
     listCollections: (db) => esegui((s) => s.listCollections(db)),
@@ -1333,6 +1338,27 @@ function mongoScriptHost(session, runId, opHandle, run = null) {
     })),
     dropIndex: (db, coll, nome) => eseguiScrivendo((s) => s.dropIndex(db, coll, nome)),
   };
+
+  // Il controllo si applica UNA VOLTA SOLA, avvolgendo i metodi, invece di
+  // essere ripetuto in ognuno: ripetendolo, `count` e `write` erano rimasti
+  // scoperti e da uno script si arrivava a `$where` dentro la parte di
+  // selezione di un update o di un delete — cioè JavaScript arbitrario nel
+  // processo mongod, che decide anche QUALI documenti eliminare. Avvolgendo,
+  // un metodo aggiunto in futuro nasce protetto: è la stessa ragione per cui
+  // il Proxy autorizzante avvolge la strategia invece di controllare handler
+  // per handler.
+  const CAMPI_CON_JS = ['filter', 'pipeline', 'update'];
+  const protetto = {};
+  for (const [nome, fn] of Object.entries(metodi)) {
+    protetto[nome] = (...args) => {
+      for (const a of args) {
+        if (!a || typeof a !== 'object') continue;
+        for (const campo of CAMPI_CON_JS) if (a[campo] !== undefined) controlla(a[campo]);
+      }
+      return fn(...args);
+    };
+  }
+  return protetto;
 }
 
 /**
@@ -1511,7 +1537,11 @@ async function executeQueryCode(session, payload) {
     db = newDb;
   }
 
-  // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo)
+  // Estrazione automatica della collezione/tabella dal FROM della query SQL (es. SELECT * FROM pippo).
+  // È un'ETICHETTA (audit, bersaglio nominale), non una barriera: il nome è
+  // dedotto dal primo FROM e, se manca, arriva dal client, mentre la stringa SQL
+  // viene eseguita verbatim. Lo scope su SQL libero è verificato sui nomi
+  // CITATI nella query, dal Proxy autorizzante (auth/sqlTables.js, CDB-A03).
   const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
   const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
   const targetColl = extractedColl || coll;
@@ -1784,6 +1814,32 @@ function principalOf(carrier) {
   return (carrier && carrier.principal) || ROOT_PRINCIPAL;
 }
 
+/**
+ * Chiude SUBITO i socket di un soggetto.
+ *
+ * Cancellare la riga della sessione nel control plane non tocca una connessione
+ * WebSocket già stabilita: il principal era risolto una volta sola
+ * nell'handshake, quindi una scheda lasciata aperta continuava a leggere,
+ * scrivere ed eseguire DDL con i permessi di prima — e Socket.IO si riconnette
+ * da sé, quindi poteva durare giorni. La ri-validazione periodica del socket
+ * (`rivalidaPrincipal`) chiude comunque la finestra, ma qui la revoca passa da
+ * questa istanza e non c'è ragione di far aspettare mezzo minuto.
+ *
+ * Le sessioni DB aperte dal socket vengono chiuse dal suo handler `disconnect`.
+ */
+function disconnettiSocketDi(userId, motivo) {
+  if (!rbacOn() || !userId) return 0;
+  let chiusi = 0;
+  for (const s of io.sockets.sockets.values()) {
+    if (s.principal && String(s.principal.id) === String(userId)) {
+      s.disconnect(true);
+      chiusi++;
+    }
+  }
+  if (chiusi) console.log(`[Auth] ${chiusi} socket chiusi per l'utente "${userId}" (${motivo}).`);
+  return chiusi;
+}
+
 async function resolvePrincipalFromToken(token) {
   if (!rbacOn()) return ROOT_PRINCIPAL;
   if (!appStore || !token) return null;
@@ -1816,6 +1872,20 @@ function assertManage(principal) {
   if (!can(principal, { capability: 'manage' })) {
     throw new Error('Permesso negato: operazione riservata all\'amministratore dell\'account.');
   }
+}
+
+/**
+ * Gate delle operazioni che toccano l'INSTALLAZIONE e non un singolo tenant.
+ * La decisione vive in auth/permissions.js (`isInstallAdmin`, provata in Node):
+ * qui resta solo il messaggio, che deve dire cosa fare.
+ */
+function assertInstallAdmin(principal, cosa) {
+  if (isInstallAdmin(principal)) return;
+  throw new Error(
+    `Permesso negato: ${cosa} riguarda l'intera installazione (la chiave dei segreti e le connessioni salvate di TUTTI gli account), ` +
+    'quindi è riservata a chi la amministra. Cosa fare: eseguila dall\'account indicato in CODEDB_OWNER_EMAIL, ' +
+    'oppure elenca gli amministratori abilitati in CODEDB_VAULT_ADMINS e riavvia il server.',
+  );
 }
 
 /**
@@ -2060,7 +2130,63 @@ io.on('connection', (socket) => {
 
   // Chi è l'utente di questo socket: risolto dal gate dell'handshake (io.use).
   // Con RBAC spento è l'owner locale e nessun controllo ha effetto.
-  const principal = principalOf(socket);
+  //
+  // `let` e non `const`: il principal viene RI-VALIDATO periodicamente (vedi
+  // rivalidaPrincipal). Risolverlo una volta sola nell'handshake significava
+  // che sospendere un utente, cambiargli la password, cancellarlo o revocargli
+  // un grant non aveva alcun effetto su una scheda già aperta — il socket
+  // restava vivo con i permessi di prima, e Socket.IO si riconnette da sé,
+  // quindi poteva durare giorni. `auth/sessions.js` dichiara invece che «la
+  // revoca è la cancellazione di una riga ed è immediata»: per la UI non lo
+  // era. Il gateway MCP non ha mai avuto il problema perché risolve la API key
+  // a ogni richiesta HTTP.
+  let principal = principalOf(socket);
+
+  /**
+   * Ri-valida il principal del socket, con una cache breve.
+   *
+   * Interrogare il control plane a ogni evento costerebbe una query per ogni
+   * scroll della griglia; non interrogarlo mai significa che una revoca non
+   * arriva mai. `REVALIDA_PRINCIPAL_MS` è il compromesso: la finestra entro cui
+   * una revoca ha effetto su un socket già connesso, e insieme il tetto al
+   * traffico verso il control plane. Non è l'unica via — `disconnettiPrincipal`
+   * chiude i socket SUBITO quando la revoca passa da questa istanza — ma è
+   * quella che funziona anche quando la modifica arriva da un'altra istanza,
+   * dalla CLI o direttamente sul database.
+   *
+   * `false` = sessione non più valida: il socket viene chiuso. Al ritorno il
+   * client trova `auth_required` e mostra il login, che è il comportamento già
+   * previsto per un token scaduto.
+   */
+  const REVALIDA_PRINCIPAL_MS = Math.max(
+    parseInt(process.env.CODEDB_REVALIDATE_PRINCIPAL_MS, 10) || 30000, 100,
+  );
+  let ultimaRivalida = Date.now();
+
+  async function rivalidaPrincipal() {
+    if (!rbacOn()) return true;
+    if (Date.now() - ultimaRivalida < REVALIDA_PRINCIPAL_MS) return true;
+    ultimaRivalida = Date.now();
+    const auth = socket.handshake.auth || {};
+    const fresco = auth.apiKey
+      ? await resolvePrincipalFromApiKey(auth.apiKey)
+      : await resolvePrincipalFromToken(auth.token);
+    if (!fresco) {
+      console.warn(`[Auth] Sessione revocata o scaduta per "${principal.email || principal.id}": socket chiuso.`);
+      // Il socket si chiude DOPO che l'ack è stato scritto (vedi safeOn):
+      // disconnettere prima significa lasciare il client in attesa di una
+      // risposta che non arriverà mai, cioè un'interfaccia bloccata invece di
+      // un messaggio che dice di accedere di nuovo.
+      return false;
+    }
+    // Non solo "esiste ancora": anche i GRANT vengono riletti, quindi togliere
+    // o restringere un permesso ha effetto entro la stessa finestra.
+    principal = fresco;
+    // `socket.principal` è ciò che `disconnettiSocketDi` interroga: va tenuto
+    // allineato, altrimenti la chiusura attiva cercherebbe un'identità vecchia.
+    socket.principal = fresco;
+    return true;
+  }
 
   /** @type {Map<string, { strategy: import('./db/DbStrategy'), tunnel: { close: () => void }|null }>} */
   const sessions = new Map();
@@ -2108,6 +2234,16 @@ io.on('connection', (socket) => {
         if (!done && typeof ack === 'function') ack(res);
         done = true;
       };
+      // Il token può essere stato revocato, l'utente sospeso o i grant
+      // cambiati DOPO l'handshake: si ricontrolla prima di servire l'evento.
+      if (!(await rivalidaPrincipal())) {
+        cb({ ok: false, error: 'Sessione non più valida: accedi di nuovo.' });
+        // Prima l'ack, poi la chiusura: invertirli fa perdere la risposta e il
+        // client resta in attesa per sempre (il `disconnect` chiude anche i
+        // pacchetti ancora in coda). Il timer a 0 lascia passare la scrittura.
+        setTimeout(() => socket.disconnect(true), 0);
+        return;
+      }
       try {
         await fn(payload || {}, cb);
       } catch (err) {
@@ -2380,6 +2516,10 @@ io.on('connection', (socket) => {
       // e un avviso in quel caso sarebbe solo rumore. Non dice QUALI segreti né
       // quanti valgono: solo se esistono.
       segreti: haSegretiSalvati(principal && principal.ownerId),
+      // Chi non amministra l'installazione non può cambiare la passphrase né
+      // azzerare il vault (CDB-A02): la UI nasconde i comandi invece di
+      // offrirli e farli fallire con un permesso negato.
+      amministrabile: isInstallAdmin(principal),
     });
   });
 
@@ -2409,13 +2549,17 @@ io.on('connection', (socket) => {
    *
    * È l'unico modo di uscire da un vault bloccato senza conoscere la
    * passphrase, quindi non chiede (e non può chiedere) alcun segreto: la
-   * barriera è l'accesso stesso all'applicazione — con RBAC acceso serve la
-   * capability `manage`, con RBAC spento chi apre la UI è già l'amministratore
-   * della macchina. Cosa distrugge va detto senza giri di parole, ed è per
-   * questo che il client deve dichiararlo esplicitamente con `confirm: true`.
+   * barriera è l'accesso stesso all'applicazione — con RBAC spento chi apre la
+   * UI è già l'amministratore della macchina, con RBAC acceso serve
+   * l'amministratore dell'INSTALLAZIONE (`assertInstallAdmin`). Cosa distrugge
+   * va detto senza giri di parole, ed è per questo che il client deve
+   * dichiararlo esplicitamente con `confirm: true`.
    */
   safeOn('vault:reset', ({ passphrase, confirm } = {}, cb) => {
-    assertManage(principal);
+    // Non `manage`: resetVault sposta il connections.ini condiviso E quelli di
+    // OGNI owner, poi genera una DEK nuova — i segreti degli altri tenant
+    // restano cifrati con una chiave che nessuno possiede più (CDB-A02).
+    assertInstallAdmin(principal, 'azzerare il vault');
 
     if (confirm !== true) {
       throw new Error('Conferma mancante: l\'operazione elimina le connessioni salvate.');
@@ -2452,12 +2596,13 @@ io.on('connection', (socket) => {
    * Cambia (o imposta) la passphrase del vault.
    *
    * Il vault è unico per installazione, quindi l'operazione tocca TUTTI i
-   * tenant: è riservata a chi ha `manage`. Si pretende la passphrase attuale
-   * anche a vault già sbloccato — chi si siede a una sessione lasciata aperta
-   * non deve poter cambiare la chiave dei segreti altrui.
+   * tenant: è riservata a chi amministra l'INSTALLAZIONE, non a chi ha `manage`
+   * — che è ogni owner sul proprio account (CDB-A02). Si pretende inoltre la
+   * passphrase attuale anche a vault già sbloccato: chi si siede a una sessione
+   * lasciata aperta non deve poter cambiare la chiave dei segreti altrui.
    */
   safeOn('vault:setPassphrase', ({ current, next } = {}, cb) => {
-    assertManage(principal);
+    assertInstallAdmin(principal, 'cambiare la passphrase del vault');
 
     if (encryptionKey === null) {
       throw new Error('Vault bloccato: sbloccalo con la passphrase attuale prima di cambiarla.');
@@ -2759,7 +2904,10 @@ io.on('connection', (socket) => {
   safeOn('users:update', async ({ id, status, displayName, password }, cb) => {
     const store = requireRbac();
     assertManage(principal);
-    await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
+    const esito = await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
+    // Sospensione o cambio password: le sessioni sono state cancellate, ma un
+    // socket già connesso sopravviverebbe alla riga cancellata (CDB-A13).
+    if (esito.revocate) disconnettiSocketDi(id, 'sospensione o cambio password');
     auditUi({ event: 'users:update', category: 'write', status: 'ok', op: 'Modifica sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
@@ -2768,6 +2916,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     await store.deleteSubUser(principal.ownerId, id);
+    disconnettiSocketDi(id, 'utente eliminato');
     auditUi({ event: 'users:delete', category: 'write', status: 'ok', op: 'Eliminazione sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
@@ -3296,7 +3445,7 @@ io.on('connection', (socket) => {
     const onlyCollections = payload.collections
       ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
       : null;
-    const destRoot = resolveBackupPath(payload.dest, 'destinazione');
+    const destRoot = resolveBackupPath(principal, payload.dest, 'destinazione');
     // La destinazione cloud non arriva mai dal client: solo alias pre-approvati.
     const storageUrl = resolveStorageAlias(payload.storage);
     // Portare una copia integrale del database fuori dal perimetro è un atto
@@ -3338,7 +3487,10 @@ io.on('connection', (socket) => {
 
   safeOn('backup:list', ({ dest }, cb) => {
     assertManage(principal);
-    const destRoot = resolveBackupPath(dest, 'elenco');
+    // La radice è quella del tenant: `manage` è l'amministratore del PROPRIO
+    // account, non dell'installazione, e senza partizione questo elenco
+    // rivelerebbe i gruppi <connessione>_<database> di tutti gli altri.
+    const destRoot = resolveBackupPath(principal, dest, 'elenco');
     const groups = {};
     if (fs.existsSync(destRoot)) {
       for (const entry of fs.readdirSync(destRoot, { withFileTypes: true })) {
@@ -3357,20 +3509,22 @@ io.on('connection', (socket) => {
     // Il restore riscrive interi database: operazione da amministratore.
     assertManage(principal);
 
-    let backupDir = payload.from ? resolveBackupPath(payload.from, 'origine') : null;
+    // group/backupId sono nomi restituiti da backup:list, quindi vanno risolti
+    // nella radice del tenant: altrimenti basta indicarne uno di un altro owner.
+    let backupDir = payload.from ? resolveBackupPath(principal, payload.from, 'origine') : null;
     if (!backupDir && payload.group && payload.backupId) {
       const group = String(payload.group).trim();
       const backupId = String(payload.backupId).trim();
       if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
         throw new Error('Parametri "group" o "backupId" non validi.');
       }
-      backupDir = path.join(BACKUP_ROOT, group, backupId);
+      backupDir = path.join(backupRootOf(principal), group, backupId);
     }
     if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error('Cartella backup non valida o manifest.json mancante.');
     }
 
-    const destRoot = resolveBackupPath(payload.dest, 'destinazione');
+    const destRoot = resolveBackupPath(principal, payload.dest, 'destinazione');
     const webhook = resolveSlackWebhook(payload.slackWebhook);
     const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
     const onlyCollections = payload.collections
@@ -3422,14 +3576,14 @@ io.on('connection', (socket) => {
 
   safeOn('backup:verify', async (payload, cb) => {
     assertManage(principal);
-    let backupDir = payload.from ? resolveBackupPath(payload.from, 'origine') : null;
+    let backupDir = payload.from ? resolveBackupPath(principal, payload.from, 'origine') : null;
     if (!backupDir && payload.group && payload.backupId) {
       const group = String(payload.group).trim();
       const backupId = String(payload.backupId).trim();
       if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
         throw new Error('Parametri "group" o "backupId" non validi.');
       }
-      backupDir = path.join(BACKUP_ROOT, group, backupId);
+      backupDir = path.join(backupRootOf(principal), group, backupId);
     }
     if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error('Cartella backup non trovata o manifest.json mancante.');
@@ -3589,41 +3743,96 @@ function registerGlobalExceptionHandlers() {
 }
 
 /* ---------------------------------------------------------------------------
- * Sicurezza del trasporto.
+ * Sicurezza del trasporto e dell'accesso.
  *
  * Il server è solo `http.createServer`: su HTTP viaggiano in chiaro la password
  * di accesso (POST /auth/login), il token di sessione (handshake Socket.IO e
  * ogni riconnessione), la passphrase del vault (vault:unlock) e le credenziali
  * complete dei database digitate nel form — password SSH e passphrase delle
  * chiavi private comprese. Finché tutto resta su 127.0.0.1 il rischio è teorico;
- * appena si esce dal loopback (il Dockerfile imposta HOST=0.0.0.0) chiunque sia
- * sul percorso legge la chiave di tutti i segreti dell'installazione.
+ * appena si esce dal loopback chiunque sia sul percorso legge la chiave di tutti
+ * i segreti dell'installazione.
  *
  * Implementare TLS nell'app non è la scelta giusta — un reverse proxy fa il
  * lavoro meglio — ma l'errore va reso impossibile: se si esce dal loopback senza
  * dichiarare di essere dietro un proxy TLS, il server NON parte e spiega come
  * configurarlo. `CODEDB_TRUST_PROXY_TLS=1` è la dichiarazione esplicita.
+ *
+ * La cifratura però non è autenticazione, e le due cose erano legate a una sola
+ * variabile: con `CODEDB_TRUST_PROXY_TLS=1` e `CODEDB_RBAC=off` il server
+ * partiva con un semplice avviso, e in quella configurazione **cadono tutte le
+ * barriere** — `checkOrigin` accetta ogni richiesta priva di header `Origin`,
+ * `guardHost` di `/mcp` fa lo stesso, e `authenticate()` restituisce
+ * ROOT_PRINCIPAL perché l'RBAC è spento. Chiunque raggiunga la porta ottiene
+ * lettura, scrittura, DDL, backup ed export del vault senza credenziali, e
+ * l'unico segno è una riga di log a cui nessuno assiste. Da qui il secondo
+ * controllo: fuori dal loopback senza autenticazione il server **non parte**,
+ * salvo una dichiarazione distinta e volutamente lunga da scrivere
+ * (`CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1`), che viene ripetuta a ogni avvio.
  * ------------------------------------------------------------------------- */
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]']);
 
+/**
+ * Indirizzo su cui l'istanza è DAVVERO raggiungibile.
+ *
+ * Dentro un container `HOST=0.0.0.0` è l'unico bind sensato ed è un indirizzo
+ * INTERNO: a decidere chi arriva alla porta è come viene pubblicata
+ * (`ports:` in docker-compose.yml). Guardare il solo `HOST` porterebbe quindi a
+ * rifiutare l'avvio di uno stack pubblicato su loopback — cioè sicuro — e ad
+ * accettare quello pubblicato su `0.0.0.0`. `CODEDB_PUBLIC_BIND` è la
+ * dichiarazione di chi pubblica la porta; il compose la ricava da `BIND_ADDR`,
+ * così una sola variabile in `.env` resta la fonte di verità.
+ */
+function bindEsposto() {
+  const dichiarato = String(process.env.CODEDB_PUBLIC_BIND || '').trim();
+  return dichiarato || process.env.HOST || '127.0.0.1';
+}
+
+function fuoriDalLoopback(host) {
+  return !LOOPBACK_HOSTS.has(String(host || '').trim().toLowerCase());
+}
+
 function assertTransportSafe(host) {
-  const h = String(host || '').trim().toLowerCase();
-  if (LOOPBACK_HOSTS.has(h)) return;
-  if (String(process.env.CODEDB_TRUST_PROXY_TLS || '').trim() === '1') {
-    console.log('[TLS] HOST non di loopback con CODEDB_TRUST_PROXY_TLS=1: si assume un reverse proxy che termina HTTPS.');
-    if (!rbacOn()) {
-      console.warn('[Sicurezza] ATTENZIONE: CODEDB_RBAC è spento e il server è raggiungibile dalla rete:');
-      console.warn('            chiunque arrivi alla porta ottiene lettura, scrittura e DDL su tutte le connessioni salvate.');
-    }
+  if (!fuoriDalLoopback(host)) return;
+  if (String(process.env.CODEDB_TRUST_PROXY_TLS || '').trim() !== '1') {
+    console.error(`Avvio rifiutato: l'istanza è raggiungibile su "${host}", oltre il loopback, ma il server parla solo HTTP.`);
+    console.error('Su HTTP viaggiano in chiaro password di accesso, token di sessione, passphrase del vault e credenziali dei database.');
+    console.error('');
+    console.error('Mettilo dietro un reverse proxy che termina HTTPS (nginx, Caddy, Traefik) e poi riavvia con:');
+    console.error('  CODEDB_TRUST_PROXY_TLS=1');
+    console.error('Esempio minimo con Caddy:   codedb.example.com { reverse_proxy 127.0.0.1:' + PORT + ' }');
+    console.error('Per un uso locale, lascia HOST=127.0.0.1 (default).');
+    process.exit(1);
+  }
+  console.log(`[TLS] Esposizione "${host}" con CODEDB_TRUST_PROXY_TLS=1: si assume un reverse proxy che termina HTTPS.`);
+}
+
+/**
+ * Fuori dal loopback senza RBAC il server non parte: "c'è un proxy HTTPS
+ * davanti" e "l'accesso è autenticato" sono due affermazioni diverse, e
+ * confonderle è ciò che rendeva l'esposizione anonima una svista da una riga.
+ */
+function assertAuthSafe(host) {
+  if (!fuoriDalLoopback(host) || rbacOn()) return;
+  if (String(process.env.CODEDB_ALLOW_UNAUTHENTICATED_NETWORK || '').trim() === '1') {
+    console.warn('┌──────────────────────────────────────────────────────────────────────────┐');
+    console.warn('│ ATTENZIONE: CodeDB è raggiungibile dalla rete SENZA AUTENTICAZIONE.      │');
+    console.warn('│ Chiunque arrivi alla porta ha lettura, scrittura, DDL, backup ed export  │');
+    console.warn('│ del vault su tutte le connessioni salvate. Sei tu ad averlo dichiarato   │');
+    console.warn('│ con CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1. Per chiudere: CODEDB_RBAC=on │');
+    console.warn('└──────────────────────────────────────────────────────────────────────────┘');
     return;
   }
-  console.error(`Avvio rifiutato: HOST="${host}" espone CodeDB oltre il loopback, ma il server parla solo HTTP.`);
-  console.error('Su HTTP viaggiano in chiaro password di accesso, token di sessione, passphrase del vault e credenziali dei database.');
+  console.error(`Avvio rifiutato: l'istanza è raggiungibile su "${host}" ma CODEDB_RBAC è spento, cioè NON c'è autenticazione.`);
+  console.error('Chiunque raggiunga la porta otterrebbe lettura, scrittura, DDL, backup ed export del vault');
+  console.error('su tutte le connessioni salvate, senza credenziali e senza lasciare un attore nell\'audit.');
   console.error('');
-  console.error('Mettilo dietro un reverse proxy che termina HTTPS (nginx, Caddy, Traefik) e poi riavvia con:');
-  console.error('  CODEDB_TRUST_PROXY_TLS=1');
-  console.error('Esempio minimo con Caddy:   codedb.example.com { reverse_proxy 127.0.0.1:' + PORT + ' }');
-  console.error('Per un uso locale, lascia HOST=127.0.0.1 (default).');
+  console.error('Attiva l\'autenticazione (control plane MongoDB dedicato, vedi .env.example):');
+  console.error('  CODEDB_RBAC=on  CODEDB_APP_DB_URI=...  CODEDB_OWNER_EMAIL=...  CODEDB_OWNER_PASSWORD=...');
+  console.error('Per un uso locale, lascia HOST=127.0.0.1 (default) — o BIND_ADDR=127.0.0.1 con Docker.');
+  console.error('');
+  console.error('Se l\'accesso alla porta è già limitato da altro (rete privata, VPN, firewall) e vuoi');
+  console.error('assumerti il rischio, dichiaralo: CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1');
   process.exit(1);
 }
 
@@ -3694,7 +3903,11 @@ async function startServer() {
   }
 
   const HOST = process.env.HOST || '127.0.0.1';
-  assertTransportSafe(HOST);
+  // Non `HOST`, che dentro un container è un indirizzo interno: conta dove la
+  // porta è davvero pubblicata (vedi bindEsposto).
+  const esposto = bindEsposto();
+  assertTransportSafe(esposto);
+  assertAuthSafe(esposto);
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`La porta ${PORT} è già in uso: probabilmente CodeDB è già in esecuzione.`);

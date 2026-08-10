@@ -61,6 +61,12 @@ export function freshState() {
     // fatta in un tab dirottava le query di tutti gli altri.
     queryDb: null,
     queryColl: null,
+    // Query in volo nella tab ⚡ Query & Aggregate. Sta qui per la stessa
+    // ragione: come variabile di modulo, "Ferma query" prendeva il runId di un
+    // tab e lo mandava con il tabId di un altro — annullando la query
+    // sbagliata, o nessuna. Lanciare una query in un tab, inoltre, cancellava
+    // il riferimento a quella ancora in volo nell'altro.
+    queryRunId: null,
     // Configurazione della vista Grafici della tab ⚡ Query & Aggregate (serie,
     // assi, legenda, tavolozza; vedi charts.js). Sta qui per la stessa ragione
     // di queryDb: due tab su due connessioni diverse mostrano due grafici

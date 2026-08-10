@@ -20,11 +20,12 @@
  * ------------------------------------------------------------------------- */
 
 const {
-  METHOD_CAPABILITY, CAPABILITY_LABEL, isWriteSql, isWriteMongoPipeline,
+  METHOD_CAPABILITY, CAPABILITY_LABEL, isWriteSql, isFileIoSql, isWriteMongoPipeline,
   matchesAny, shellWriteCapability,
 } = require('./capabilities');
 const { can, scopeFor } = require('./permissions');
 const { assertScopedClauses } = require('./sqlClause');
+const { assertTabelleNelloScope } = require('./sqlTables');
 
 function denied(capability, connName, db, coll) {
   const label = CAPABILITY_LABEL[capability] || capability;
@@ -127,9 +128,42 @@ function guardStrategy(strategy, ctx) {
         if (target.type && target.type !== 'mongodb' && scopeFor(principal, connName)) {
           try {
             assertScopedClauses(args[2]);
+            // SQL Raw: lo scope era confrontato con un bersaglio DEDOTTO (una
+            // regex sul primo FROM, o il `coll` scelto dal client quando il FROM
+            // non c'era), mentre la stringa veniva eseguita verbatim — le
+            // strategie SQL ignorano l'argomento `coll`. Bastava una JOIN per
+            // leggere fuori perimetro, o una UPDATE senza FROM per scriverci.
+            // Qui si guardano i nomi CITATI nella query (CDB-A03).
+            if (args[2] && typeof args[2] === 'object' && args[2].pipeline != null) {
+              assertTabelleNelloScope(args[2].pipeline, scopeFor(principal, connName), args[0]);
+            }
           } catch (err) {
             return spec.sync ? (() => { throw err; })() : Promise.reject(err);
           }
+        }
+
+        // I/O su file dell'host del DBMS (INTO OUTFILE/DUMPFILE, LOAD DATA,
+        // LOAD_FILE): non è un'operazione sui dati della connessione, quindi
+        // nessuna capability la autorizza per un sottoutente — con `write` si
+        // scriverebbe comunque FUORI dal perimetro dello scope, sul filesystem
+        // del server di database, e la transazione READ ONLY non lo impedisce
+        // (scrivere un file non è una scrittura transazionale).
+        //
+        // Si guardano tutti e tre i campi di SQL grezzo, non il solo `pipeline`
+        // di SQL Raw: su MySQL `… WHERE 1 INTO OUTFILE '/tmp/x'` è sintassi
+        // valida, quindi anche la casella "filtro" della griglia è una porta.
+        //
+        // L'owner resta libero: sulla propria macchina un export via OUTFILE è
+        // un uso legittimo, ed è la stessa scelta già fatta per `expectRead`.
+        if (!principal.owner && target.type && target.type !== 'mongodb'
+            && args[2] && typeof args[2] === 'object'
+            && [args[2].pipeline, args[2].filter, args[2].sort].some((t) => t && isFileIoSql(t))) {
+          const err = new Error(
+            'Permesso negato: questa istruzione legge o scrive un file sul server del database ' +
+            '(INTO OUTFILE/DUMPFILE, LOAD DATA, LOAD_FILE) e non sui dati della connessione. ' +
+            'Cosa fare: per portare fuori dei dati usa l\'esportazione della griglia o un backup.'
+          );
+          return spec.sync ? (() => { throw err; })() : Promise.reject(err);
         }
 
         // Barriera indipendente dal parser: quando un SQL Raw è stato

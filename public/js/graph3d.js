@@ -1,9 +1,49 @@
 import { state } from './state.js';
 import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab } from './utils.js';
 import { openCollTab } from './colltabs.js';
+import { activeTab } from './tabs.js';
 import { setView } from './main.js';
 
 let graphInstance = null;
+let graphResizeObserver = null;
+// Le texture delle etichette sono identiche a parità di nome del nodo e vengono
+// ricreate a ogni ridisegno: su uno schema da 60 tabelle sono 60 canvas 256×128
+// per volta, mai liberati. Si memoizzano per nome e si liberano con l'istanza.
+let textTextureCache = new Map();
+
+// Il grafo viene ridisegnato da molti comandi (modalità colore, filtro salti,
+// cammino minimo, sua cancellazione): senza distruggere l'istanza precedente
+// ogni ridisegno lascia vivo un contesto WebGL e il suo loop di animazione, e
+// oltre il tetto del browser (~16 in Chrome) il canvas diventa nero fino a un
+// ricaricamento della pagina.
+function distruggiGrafo() {
+  const vecchia = graphInstance;
+  graphInstance = null;
+  if (vecchia) {
+    try {
+      if (typeof vecchia._destructor === 'function') {
+        vecchia._destructor();
+      } else {
+        if (typeof vecchia.pauseAnimation === 'function') vecchia.pauseAnimation();
+        const r = typeof vecchia.renderer === 'function' ? vecchia.renderer() : null;
+        if (r) {
+          if (typeof r.forceContextLoss === 'function') r.forceContextLoss();
+          if (typeof r.dispose === 'function') r.dispose();
+        }
+      }
+    } catch (err) {
+      console.warn('Chiusura del grafo 3D precedente non riuscita:', err);
+    }
+  }
+  for (const t of textTextureCache.values()) {
+    try {
+      if (t && typeof t.dispose === 'function') t.dispose();
+    } catch {
+      /* una texture già liberata non è un problema */
+    }
+  }
+  textTextureCache = new Map();
+}
 let currentSchemaData = null;
 let selectedNodeId = null;
 let autoRotateActive = false;
@@ -54,7 +94,14 @@ const SCHEMA_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minuti
 
 export function loadGraph3d(force) {
   if (!state.db) return;
-  const cacheKey = `gui-db:schema-cache:${state.db}`;
+  // La chiave deve contenere la CONNESSIONE: due tab aperti su database
+  // omonimi (tipicamente "app" in produzione e in sviluppo) si scambiavano lo
+  // schema, e il grafo mostrava le tabelle dell'altra macchina senza dirlo. Il
+  // tabId non basta come sostituto — è la connessione a determinare lo schema —
+  // ma è la chiave giusta per un tab su una connessione non salvata.
+  const tab = activeTab();
+  const chiaveConn = (tab && (tab.connName || tab.id)) || 'default';
+  const cacheKey = `gui-db:schema-cache:${chiaveConn}:${state.db}`;
 
   if (!force) {
     const cachedText = sessionStorage.getItem(cacheKey);
@@ -113,6 +160,7 @@ export function renderGraph3d() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema || !schema.collections || !schema.collections.length) {
     if (canvas) {
+      distruggiGrafo();
       canvas.innerHTML = '<div class="uml-msg" style="color:#aaa; padding:20px;">Nessuna tabella/collection trovata nello schema.</div>';
     }
     return;
@@ -120,6 +168,7 @@ export function renderGraph3d() {
 
   currentSchemaData = schema;
   updatePathUI();
+  distruggiGrafo();
   canvas.innerHTML = '';
 
   const colorMode = ($('#graph3d-color-mode') && $('#graph3d-color-mode').value) || 'prefix';
@@ -295,13 +344,17 @@ export function renderGraph3d() {
     graphInstance.controls().autoRotateSpeed = 1.5;
   }
 
-  const resizeObserver = new ResizeObserver(() => {
+  // Un solo osservatore per tutta la vita della pagina: crearne uno per
+  // ridisegno lasciava in vita quelli precedenti, che continuavano a chiamare
+  // .width()/.height() su istanze ormai orfane.
+  if (graphResizeObserver) graphResizeObserver.disconnect();
+  graphResizeObserver = new ResizeObserver(() => {
     if (graphInstance && canvas && canvas.clientWidth > 0) {
       graphInstance.width(canvas.clientWidth);
       graphInstance.height(canvas.clientHeight);
     }
   });
-  resizeObserver.observe(canvas);
+  graphResizeObserver.observe(canvas);
 }
 
 function detectImplicitRelations(collections, existingRelations) {
@@ -541,35 +594,51 @@ function analyzeDependencies() {
   }
 
   const rels = schema.relations || [];
+  // Adiacenza INVERSA (to → from): serve al Kahn qui sotto, che parte dalle
+  // tabelle senza FK uscenti e deve poter raggiungere CHI le referenzia.
+  const rev = new Map();
+  for (const c of schema.collections) rev.set(c.name, []);
+  const viste = new Set();
   for (const r of rels) {
+    // Un'auto-referenza (categoria.parent_id → categoria) non ordina nulla fra
+    // tabelle diverse e, contata, produrrebbe un ciclo permanente; gli archi
+    // duplicati (due FK verso la stessa tabella) gonfierebbero il contatore.
+    if (!r || r.from === r.to) continue;
+    const chiave = `${r.from}\u0000${r.to}`;
+    if (viste.has(chiave)) continue;
+    viste.add(chiave);
     outDegree.set(r.from, (outDegree.get(r.from) || 0) + 1);
     inDegree.set(r.to, (inDegree.get(r.to) || 0) + 1);
     if (adj.has(r.from)) adj.get(r.from).push(r.to);
+    if (rev.has(r.to)) rev.get(r.to).push(r.from);
   }
 
   const rootTables = schema.collections.filter((c) => (outDegree.get(c.name) || 0) === 0);
   const leafTables = schema.collections.filter((c) => (inDegree.get(c.name) || 0) === 0);
 
-  // Ordine di popolamento (Topological Sort)
-  const inDegreeCopy = new Map(outDegree); // Tabelle senza FK uscenti per prime
-  const queue = schema.collections.filter((c) => inDegreeCopy.get(c.name) === 0).map((c) => c.name);
+  // Ordine di popolamento: Kahn sull'outDegree. Una tabella è popolabile quando
+  // tutte quelle da cui dipende (le sue FK uscenti) lo sono già, quindi si parte
+  // da chi non ha FK uscenti e si decrementa il contatore dei PREDECESSORI.
+  const restanti = new Map(outDegree);
+  const queue = schema.collections.filter((c) => restanti.get(c.name) === 0).map((c) => c.name);
   const seedOrder = [];
+  const emesse = new Set(queue);
 
   while (queue.length > 0) {
     const node = queue.shift();
     seedOrder.push(node);
-    const neighbors = adj.get(node) || [];
-    for (const n of neighbors) {
-      inDegreeCopy.set(n, (inDegreeCopy.get(n) || 1) - 1);
-      if (inDegreeCopy.get(n) === 0 && !seedOrder.includes(n)) {
-        queue.push(n);
+    for (const dipendente of rev.get(node) || []) {
+      restanti.set(dipendente, (restanti.get(dipendente) || 1) - 1);
+      if (restanti.get(dipendente) === 0 && !emesse.has(dipendente)) {
+        emesse.add(dipendente);
+        queue.push(dipendente);
       }
     }
   }
 
-  for (const c of schema.collections) {
-    if (!seedOrder.includes(c.name)) seedOrder.push(c.name);
-  }
+  // Quello che resta non è ordinabile: sono FK che formano un ciclo. Accodarle
+  // in silenzio darebbe un elenco plausibile e sbagliato, quindi si dichiarano.
+  const inCiclo = schema.collections.map((c) => c.name).filter((n) => !emesse.has(n));
 
   let html = `<div style="margin-bottom:14px;">
     <h3 style="margin:0 0 4px 0; color:var(--fg,#e1e4e8);">Analisi Architetturale Dipendenze</h3>
@@ -594,6 +663,18 @@ function analyzeDependencies() {
       </ol>
     </div>
   </div>`;
+
+  if (inCiclo.length) {
+    html += `<div class="audit-issue-item" style="border-left-color:#e5534b; margin-top:12px;">
+      <div class="audit-issue-title" style="color:#e5534b;">⚠ Ciclo di chiavi esterne (${inCiclo.length} tabelle)</div>
+      <div class="audit-issue-desc">
+        Queste tabelle dipendono l'una dall'altra e <b>non hanno un ordine di popolamento valido</b>:
+        ${inCiclo.map((n) => `<b>${esc(n)}</b>`).join(', ')}.<br/>
+        Vanno inserite in più passaggi (prima le righe con la FK a NULL, poi l'aggiornamento) oppure
+        con i vincoli temporaneamente disattivati.
+      </div>
+    </div>`;
+  }
 
   const depsContent = $('#deps-content');
   if (depsContent) {
@@ -765,8 +846,8 @@ function renderDiffReport(snapshot) {
       html += `<div class="audit-issue-item" style="border-left-color:#f5a623;">
         <div class="audit-issue-title"><span class="diff-tag diff-changed">~ TABELLA MODIFICATA</span> ${esc(m.name)}</div>
         <div class="audit-issue-desc">
-          ${m.addedFields.length ? `<span style="color:#00e676;">+ Campi aggiunti: ${m.addedFields.join(', ')}</span><br/>` : ''}
-          ${m.removedFields.length ? `<span style="color:#e5534b;">- Campi rimossi: ${m.removedFields.join(', ')}</span>` : ''}
+          ${m.addedFields.length ? `<span style="color:#00e676;">+ Campi aggiunti: ${m.addedFields.map(esc).join(', ')}</span><br/>` : ''}
+          ${m.removedFields.length ? `<span style="color:#e5534b;">- Campi rimossi: ${m.removedFields.map(esc).join(', ')}</span>` : ''}
         </div>
       </div>`;
     }
@@ -929,6 +1010,8 @@ function hashString(str) {
 }
 
 function createTextTexture(text) {
+  const inCache = textTextureCache.get(text);
+  if (inCache) return inCache;
   const canvas = document.createElement('canvas');
   canvas.width = 256;
   canvas.height = 128;
@@ -953,6 +1036,7 @@ function createTextTexture(text) {
   ctx.fillText(truncated, 128, 64);
 
   const texture = new THREE.CanvasTexture(canvas);
+  textTextureCache.set(text, texture);
   return texture;
 }
 

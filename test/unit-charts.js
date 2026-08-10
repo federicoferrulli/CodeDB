@@ -160,6 +160,34 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.deepStrictEqual(opt.series[0].data, [20, 15, 1], 'Il valore di "Altro" è la somma della coda');
   console.log('  OK   Ordinamento e ripiegamento della coda in "Altro"');
 
+  // CDB-A24 — controesempio: con un'aggregazione NON additiva la coda non si
+  // somma. Sommare medie (o minimi, o conteggi di distinti) produce un numero
+  // che nei dati non esiste, e in un grafico è tipicamente la barra più alta.
+  const perMedia = [
+    { citta: 'Milano', importo: 100 },
+    { citta: 'Roma', importo: 90 },
+    { citta: 'Napoli', importo: 10 },
+    { citta: 'Bari', importo: 20 },
+    { citta: 'Torino', importo: 30 },
+  ];
+  const cfgMedia = cfgBase({ ordina: 'val-desc', maxCategorie: 2 });
+  cfgMedia.serie[0].agg = 'media';
+  opt = costruisciOption(perMedia, cfgMedia);
+  assert.deepStrictEqual(opt.xAxis.data, ['Milano', 'Roma', 'Altro (3)'], 'Anche con "media" la coda si ripiega in "Altro"');
+  // Media dei residui: (10 + 20 + 30) / 3 = 20. La somma delle medie darebbe 60.
+  assert.strictEqual(opt.series[0].data[2], 20, '"Altro" deve essere la media dei residui, non la somma delle medie');
+
+  const cfgMin = cfgBase({ ordina: 'val-desc', maxCategorie: 2 });
+  cfgMin.serie[0].agg = 'min';
+  opt = costruisciOption(perMedia, cfgMin);
+  assert.strictEqual(opt.series[0].data[2], 10, '"Altro" con "min" è il minimo dei residui, non la somma dei minimi');
+
+  const cfgMediana = cfgBase({ ordina: 'val-desc', maxCategorie: 2 });
+  cfgMediana.serie[0].agg = 'mediana';
+  opt = costruisciOption(perMedia, cfgMediana);
+  assert.strictEqual(opt.series[0].data[2], 20, '"Altro" con "mediana" è la mediana dei residui');
+  console.log('  OK   "Altro" ricalcolato per le aggregazioni non additive (CDB-A24)');
+
   /* ----------------------- Regole di leggibilità ------------------------- */
 
   // Nessun doppio asse Y: due scale verticali sullo stesso riquadro fanno
@@ -284,6 +312,45 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   }));
   assert.ok(senzaY2.graphic && /seconda categoria/i.test(senzaY2.graphic.style.text), 'Serve un messaggio esplicito, non un grafico vuoto');
   console.log('  OK   Mappa di calore senza secondo campo: messaggio esplicito');
+
+  // CDB-A27 — controesempio: due colonne ad alta cardinalità. Era l'unica forma
+  // di grafico senza tetto, quindi senza avviso e senza limite al disegno.
+  const tanteCoppie = [];
+  for (let i = 0; i < 300; i++) tanteCoppie.push({ a: 'a' + i, b: 'b' + i, v: i });
+  azzeraAvvisi();
+  opt = costruisciOption(tanteCoppie, cfgBase({
+    campoX: 'a',
+    serie: [{ ...cfgBase().serie[0], tipo: 'heatmap', campoY: 'v', campoY2: 'b', agg: 'somma' }],
+  }));
+  assert.ok(opt.xAxis.data.length <= 60, 'La mappa di calore deve avere un tetto di categorie sull\'asse X');
+  assert.ok(opt.yAxis.data.length <= 60, 'La mappa di calore deve avere un tetto di categorie sull\'asse Y');
+  assert.ok(prendiAvvisi().some((a) => /Mappa di calore limitata/i.test(a)), 'Il troncamento va DICHIARATO, non fatto in silenzio');
+  console.log('  OK   Mappa di calore: tetto di cardinalità dichiarato (CDB-A27)');
+
+  // CDB-A26 — "Primo valore" su valori EJSON: senza conversione la serie non
+  // veniva disegnata male, spariva.
+  const decimali = [
+    { citta: 'Roma', importo: { $numberDecimal: '12.50' } },
+    { citta: 'Milano', importo: { $numberDecimal: '7.25' } },
+  ];
+  const cfgPrimo = cfgBase();
+  cfgPrimo.serie[0].agg = 'primo';
+  opt = costruisciOption(decimali, cfgPrimo);
+  assert.deepStrictEqual(opt.series[0].data, [12.5, 7.25], '"Primo valore" deve arrivare a ECharts come numero, non come EJSON');
+  console.log('  OK   "Primo valore" convertito in numero (CDB-A26)');
+
+  // CDB-A36 — l'avviso prometteva l'etichetta sul solo massimo e non ne mostrava
+  // nessuna: o si attua o non si annuncia.
+  const moltiPunti = [];
+  for (let i = 0; i < 50; i++) moltiPunti.push({ citta: 'c' + i, importo: i });
+  const cfgEtich = cfgBase();
+  cfgEtich.serie[0].etichette = true;
+  opt = costruisciOption(moltiPunti, cfgEtich);
+  const lab = opt.series[0].label;
+  assert.strictEqual(lab.show, true, 'Con molti punti le etichette restano attive, ma solo sul massimo');
+  assert.ok(lab.formatter({ value: 49 }), 'Il massimo deve avere la sua etichetta');
+  assert.strictEqual(lab.formatter({ value: 3 }), '', 'Gli altri punti non devono avere etichetta');
+  console.log('  OK   Etichette sul solo valore massimo, come annunciato (CDB-A36)');
 
   /* -------------------------------- Radar -------------------------------- */
 

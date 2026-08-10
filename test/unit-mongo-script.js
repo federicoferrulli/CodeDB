@@ -380,6 +380,75 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
     await deveFallire('db.c.find({}).toArray();', /Nessun database selezionato/, hostFinto(), { db: null });
   });
 
+  /* === Regex: l'unico costrutto senza budget (CDB-A44) ================== */
+
+  await prova('BUDGET: un quantificatore annidato è rifiutato prima di eseguire', async () => {
+    // Una regex è una chiamata nativa e non interrompibile: mentre gira, nessun
+    // budget del runner può intervenire, quindi `tempoMs` non la fermerebbe.
+    // Verificato che lo script non venga eseguito, non che sia lento: se questo
+    // controllo cade, il test stesso bloccherebbe il processo.
+    await deveFallire('/(a+)+$/.test("aaaa!");', /quantificatore|esponenziale/i);
+    await deveFallire('var r = /(x*)*/; r.test("x");', /quantificatore|esponenziale/i);
+  });
+
+  await prova('Le regex normali continuano a funzionare', async () => {
+    const r = await esegui('print(/^ab+c$/.test("abbbc"));');
+    assert.ok(String(r.output.join(' ')).includes('true'), 'Una regex innocua deve funzionare');
+  });
+
+  await prova('BUDGET: una regex non si applica a un testo smisurato', async () => {
+    await deveFallire(
+      'var s = ""; for (var i = 0; i < 6000; i++) s = s + "a"; /a+b/.test(s);',
+      /limite|caratteri/i,
+      hostFinto(),
+      { limiti: { iterazioni: 100000, passi: 2000000 } }
+    );
+  });
+
+  /* === Scritture: filtro obbligatorio (CDB-A45) ========================= */
+
+  await prova('deleteMany/updateMany senza filtro non diventano "tutti i documenti"', async () => {
+    // L'interprete non deve inventare un filtro: se `filter` manca nel payload,
+    // la strategia lo deve pretendere (MongoDbStrategy.shellWrite). Qui si
+    // verifica il presupposto — che il campo NON venga sintetizzato a {} —
+    // perché è ciò che rende possibile il rifiuto a valle.
+    const h = hostFinto();
+    await esegui('db.utenti.deleteMany();', h);
+    const w = h.chiamate.find((c) => c.op === 'write');
+    assert.strictEqual(w.payload.filter, undefined, 'Un filtro assente non deve arrivare come {}');
+
+    const { MongoDbStrategy } = (() => {
+      try { return { MongoDbStrategy: require('../db/MongoDbStrategy') }; } catch { return {}; }
+    })();
+    if (MongoDbStrategy) {
+      // Client finto: la collezione registra le chiamate, così se il filtro
+      // mancante passasse si vedrebbe un deleteMany({}) invece di un errore.
+      let arrivate = 0;
+      const collFinta = {
+        deleteMany: async () => { arrivate++; return { deletedCount: 0 }; },
+        updateMany: async () => { arrivate++; return { matchedCount: 0, modifiedCount: 0 }; },
+      };
+      const s = Object.create(MongoDbStrategy.prototype);
+      s.requireClient = () => ({ db: () => ({ collection: () => collFinta }) });
+
+      await assert.rejects(
+        () => s.shellWrite('db', 'c', { op: 'deleteMany' }),
+        /richiede un filtro/,
+        'deleteMany senza filtro deve essere rifiutato, non valere "tutti i documenti"'
+      );
+      await assert.rejects(
+        () => s.shellWrite('db', 'c', { op: 'updateMany', update: '{"$set":{"a":1}}' }),
+        /richiede un filtro/,
+        'updateMany senza filtro deve essere rifiutato'
+      );
+      assert.strictEqual(arrivate, 0, 'Nessuna di queste chiamate deve raggiungere il driver');
+
+      // Il filtro esplicito {} resta ammesso: è la dichiarazione di intenti.
+      await s.shellWrite('db', 'c', { op: 'deleteMany', filter: '{}' });
+      assert.strictEqual(arrivate, 1, 'deleteMany({}) esplicito deve passare');
+    }
+  });
+
   /* === Riconoscimento =================================================== */
 
   await prova('sembraScriptJs distingue script e comandi singoli', () => {

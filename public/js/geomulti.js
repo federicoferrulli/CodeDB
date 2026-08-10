@@ -108,7 +108,14 @@ function etichettaGeo(g) {
   const misure = [];
   if (g.lunghezzaM !== null) misure.push(formattaDistanza(g.lunghezzaM));
   if (g.areaM2 !== null) misure.push(formattaArea(g.areaM2));
-  return [`#${g.indice + 1} ${geometryLabel(g.geo)}`, dove, misure.join(' · ')].filter(Boolean).join('<br>');
+  // Leaflet inserisce un tooltip di tipo stringa con innerHTML, e qui dentro
+  // finisce il NOME della colonna, che viene dal database: su MongoDB un campo
+  // può chiamarsi in qualunque modo. Senza esc() basta un campo chiamato
+  // "<img onerror=…>" accanto a una geometria per eseguire codice nella pagina.
+  return [`#${g.indice + 1} ${geometryLabel(g.geo)}`, dove, misure.join(' · ')]
+    .filter(Boolean)
+    .map(esc)
+    .join('<br>');
 }
 
 function tuttiIPunti() {

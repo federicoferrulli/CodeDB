@@ -14,7 +14,11 @@
     {
       "data": "2026-08-10 (3a passata)",
       "cosa": "Chiuso l'ambito residuo: db/SqlToMql.js e db/MongoShell.js (provati in esecuzione), db/ScriptRunner.js e il percorso script:resume in server.js, db/geometry.js, i tool analitici del gateway MCP, la logica dei percorsi di SCRITTURA del frontend (cellselect.js, grid.js), gli harness dei test e backup/lib/connstore.js.",
-      "aggiunti": ["CDB-A17", "CDB-A18", "CDB-A19"],
+      "aggiunti": [
+        "CDB-A17",
+        "CDB-A18",
+        "CDB-A19"
+      ],
       "verificati_senza_rilievo": [
         "SqlToMql: la traduzione LIKE→regex ESCAPA i metacaratteri (provato: '.*' → '^\\\\.\\\\*$', '(a+)+$' → literal), quindi non si inietta una regex né una ReDoS dal testo SQL",
         "MongoShell: il parser accetta $where/$function, ma executeQueryCode applica assertNoServerJs su ENTRAMBI i rami del piano (server.js:1659 aggregate, 1664 find), quindi l'operatore viene rifiutato prima di raggiungere il driver",
@@ -27,7 +31,12 @@
     {
       "data": "2026-08-10",
       "cosa": "Seconda passata sull'ambito dichiarato non analizzato il 2026-08-09: auth/AppStore.js e auth/sessions.js (ciclo di vita completo), db/MongoScript.js e MongoScriptRunner.js (sandbox e metodi nativi), db/sqlText.js (provato dall'interno), db/VirtualJoinEngine.js, i tool backup del gateway MCP, i moduli frontend grandi (escaping e instradamento per tab), backup/lib/connstore.js, electron-aggiornamenti.js.",
-      "aggiunti": ["CDB-A13", "CDB-A14", "CDB-A15", "CDB-A16"],
+      "aggiunti": [
+        "CDB-A13",
+        "CDB-A14",
+        "CDB-A15",
+        "CDB-A16"
+      ],
       "estesi": [
         "CDB-A01: il tool MCP restore_backup (McpGateway.js:1282-1301) usa lo stesso BACKUP_ROOT condiviso con `group` arbitrario, quindi il rilievo vale anche per il canale MCP",
         "CDB-A03: db/VirtualJoinEngine.js:44-79 è una seconda porta della stessa debolezza — `sourceA.table`/`sourceA.db` sono dichiarati dal client e indipendenti da `sourceA.query`, che è SQL libero"
@@ -75,11 +84,28 @@
       "titolo": "I backup non sono separati per tenant: un owner può elencare e ripristinare i backup di un altro",
       "categoria": "autorizzazione / isolamento multi-tenant",
       "modulo": "server.js",
-      "riferimenti": ["server.js:3339-3351", "server.js:3353-3372", "server.js:3282-3299", "server.js:1814-1819", "backup/lib/engine.js:396-402", "mcp/McpGateway.js:1282-1301"],
+      "riferimenti": [
+        "server.js:3339-3351",
+        "server.js:3353-3372",
+        "server.js:3282-3299",
+        "server.js:1814-1819",
+        "backup/lib/engine.js:396-402",
+        "mcp/McpGateway.js:1282-1301"
+      ],
       "problema": "BACKUP_ROOT è una sola cartella per installazione e non è partizionata per ownerId, mentre il resto del modello multi-tenant lo è (connections.ini per-owner via connectionsFileFor, audit:list filtrato per ownerId/userId). I tre handler backup:list, backup:restore e backup:verify sono protetti da assertManage(), che a server.js:1815 fa `if (principal.root || principal.owner) return` — cioè passa per QUALUNQUE owner, non solo per l'amministratore dell'installazione. backup:list enumera tutte le sottocartelle di BACKUP_ROOT (nome = <connessione>_<database> di altri tenant) e backup:restore accetta group/backupId arbitrari purché corrispondano a `^[\\w.-]+$`, cioè esattamente i nomi appena ottenuti da backup:list.",
       "scenario": "Istanza SaaS con CODEDB_RBAC=on e due tenant. L'owner del tenant A apre una connessione qualsiasi a un proprio database, emette `backup:list` e riceve i gruppi di tutti i tenant (es. `crm-produzione_clienti` del tenant B). Emette poi `backup:restore` con `{ group: 'crm-produzione_clienti', backupId: '20260808-101500Z_full', targetDb: 'copia', tabId: <suo tab> }`: il dump integrale del database del tenant B viene scritto dentro il database del tenant A, dove è leggibile con una normale SELECT. Nessun controllo di appartenenza viene mai eseguito sulla cartella di backup.",
       "fix": "Partizionare la radice per tenant — `path.join(BACKUP_ROOT, principal.ownerId)` come radice passata a resolveBackupPath in tutti e quattro gli handler (run/list/restore/verify) — e distinguere `manage sul proprio tenant` da `amministrazione dell'installazione` (per esempio `assertInstallAdmin(principal)` = solo principal.root) per le operazioni che toccano risorse condivise. Per i backup già esistenti serve una migrazione o un fallback in sola lettura sulla radice storica per il solo root.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Radice dei backup partizionata per tenant: backupRootFor(BACKUP_ROOT, ownerId) in backup/lib/policy.js restituisce BACKUP_ROOT/tenants/<ownerId> con RBAC attivo, e la radice storica per RBAC spento o ownerId \"local\" (installazione mono-utente, app desktop, principal root).",
+        "dove": [
+          "backup/lib/policy.js (backupRootFor)",
+          "server.js (backupRootOf + resolveBackupPath per-principal nei quattro handler backup:run/list/restore/verify)",
+          "mcp/McpGateway.js (backupRootOf per backup_database, list_backups, verify_backup, restore_backup)"
+        ],
+        "test": "test/unit-rbac.js — \"Backup partizionati per tenant (CDB-A01)\": radici distinte per tenant, ownerId ostile confinato, resolveBackupPath dalla radice del tenant A non raggiunge quella del tenant B. npm test e test/e2e-rbac.js verdi."
+      }
     },
     {
       "id": "CDB-A02",
@@ -87,11 +113,28 @@
       "titolo": "vault:reset e vault:setPassphrase sono eseguibili da qualunque owner e agiscono su tutti i tenant",
       "categoria": "autorizzazione / disponibilità",
       "modulo": "server.js",
-      "riferimenti": ["server.js:2417-2449", "server.js:2459-2500", "server.js:651-691", "server.js:497-508", "server.js:1814-1819"],
+      "riferimenti": [
+        "server.js:2417-2449",
+        "server.js:2459-2500",
+        "server.js:651-691",
+        "server.js:497-508",
+        "server.js:1814-1819"
+      ],
       "problema": "resetVault() sposta i file elencati da vaultFiles(), che include il connections.ini condiviso E tutti i file per-owner presenti in CONNECTIONS_DIR (server.js:501-505), poi genera una DEK nuova. Il gate è assertManage(), che passa per ogni principal.owner. Il commento di vault:setPassphrase riconosce che «il vault è unico per installazione, quindi l'operazione tocca TUTTI i tenant: è riservata a chi ha manage» — ma `manage` è precisamente la capability che ogni owner possiede sul proprio tenant.",
       "scenario": "L'owner del tenant A invoca `vault:reset` con `{ passphrase: 'nuova', confirm: true }`. I connections.ini di TUTTI gli owner vengono rinominati in `*.pre-reset-<timestamp>` e cifrati con una DEK ormai perduta: ogni altro tenant perde l'accesso alle proprie connessioni salvate e i segreti restano illeggibili senza la vecchia passphrase, che nessuno degli utenti colpiti conosce. La variante meno rumorosa è `vault:setPassphrase`, che ri-avvolge la DEK con una passphrase scelta da A: al riavvio successivo l'intera installazione non parte finché A non fornisce la sua passphrase.",
       "fix": "Riservare vault:reset e vault:setPassphrase all'amministratore dell'installazione (principal.root, o una capability dedicata non assegnabile ai ruoli di tenant). In alternativa, se il vault deve restare unico, limitare l'effetto di resetVault ai soli file dell'ownerId chiamante.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Distinto l'amministratore dell'INSTALLAZIONE da quello di un tenant. vault:reset e vault:setPassphrase passano ora da assertInstallAdmin (isInstallAdmin in auth/permissions.js) invece che da assertManage, che passa per qualunque owner. L'elenco degli abilitati arriva dall'ambiente — CODEDB_VAULT_ADMINS, in mancanza CODEDB_OWNER_EMAIL — quindi non è assegnabile dai ruoli di tenant; con RBAC spento decide principal.root e nulla cambia.",
+        "dove": [
+          "auth/permissions.js (isInstallAdmin, installAdminEmails)",
+          "server.js (assertInstallAdmin, gate di vault:reset e vault:setPassphrase, campo amministrabile in vault:status)",
+          "public/js/passphrase.js (applicaPermessiVault) e public/js/vault.js: i due comandi vengono nascosti a chi non può, invece di fallire"
+        ],
+        "note": "vault:unlock resta a manage: richiede di conoscere la passphrase e a vault bloccato l'istanza è inservibile per tutti i tenant.",
+        "test": "test/unit-rbac.js — \"Vault riservato all'amministratore dell'installazione (CDB-A02)\": root, owner di CODEDB_OWNER_EMAIL, altro owner, sottoutente omonimo, SaaS senza variabili, elenco esplicito. npm test e test/e2e-rbac.js verdi."
+      }
     },
     {
       "id": "CDB-A03",
@@ -99,11 +142,37 @@
       "titolo": "Su SQL Raw lo scope è applicato a un bersaglio dedotto, non alle tabelle realmente toccate dalla query",
       "categoria": "autorizzazione / bypass di scope",
       "modulo": "server.js + auth/guardStrategy.js",
-      "riferimenti": ["server.js:1512-1520", "server.js:1541-1546", "auth/guardStrategy.js:104-121", "auth/guardStrategy.js:127-133", "db/MySqlStrategy.js:619-636", "auth/sqlClause.js:147-155", "db/VirtualJoinEngine.js:44-79", "db/VirtualJoinEngine.js:117-124"],
+      "riferimenti": [
+        "server.js:1512-1520",
+        "server.js:1541-1546",
+        "auth/guardStrategy.js:104-121",
+        "auth/guardStrategy.js:127-133",
+        "db/MySqlStrategy.js:619-636",
+        "auth/sqlClause.js:147-155",
+        "db/VirtualJoinEngine.js:44-79",
+        "db/VirtualJoinEngine.js:117-124"
+      ],
       "problema": "executeQueryCode ricava il bersaglio del controllo con una regex sul PRIMO `FROM` del testo (`codeStr.match(/FROM\\s+[`\\\"]?([a-zA-Z0-9_-]+)/i)`, server.js:1513) e, se non trova nulla, ripiega su `payload.coll`, che arriva dal client. Quel valore diventa l'argomento su cui il Proxy confronta lo scope, ma la stringa SQL viene poi eseguita verbatim: MySqlStrategy.collectionAggregate ignora l'argomento `_coll` (riga 619) e usa `db` solo per una `USE`. La barriera pensata per questo caso — assertScopedClauses in guardStrategy.js:127-133 — ispeziona `payload.filter` e `payload.sort`, non `payload.pipeline`, cioè non tocca l'SQL Raw.",
       "scenario": "Sottoutente con grant scope `{ databases: ['shop'], collections: ['ordini'] }` e capability read+write. (a) Lettura fuori perimetro: `collection:aggregate` con `db='shop'`, `coll='ordini'`, `pipeline=\"SELECT * FROM ordini JOIN utenti ON 1=1\"` — il primo FROM è `ordini`, lo scope passa, la query restituisce la tabella `utenti`. (b) Scrittura fuori perimetro: `pipeline=\"UPDATE utenti SET ruolo='admin'\"`, che non contiene alcun `FROM`: extractedColl è null, targetColl diventa il `coll` scelto dal client (`ordini`), il controllo passa e l'UPDATE colpisce `utenti`.",
       "fix": "Per i principal con uno scope attivo, estendere il controllo all'SQL Raw: applicare assertScopedClauses (o una validazione equivalente) anche a `payload.pipeline`, oppure estrarre TUTTI gli identificatori di tabella dallo statement e pretendere che ognuno rientri nello scope, rifiutando ciò che non si riesce ad analizzare. Fino ad allora, documentare che lo scope su MySQL/PostgreSQL non è una barriera e che i sottoutenti vanno collegati con un utente DBMS a privilegi ridotti (come già dichiarato in auth/sqlClause.js per i soli filtri).",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Nuovo modulo auth/sqlTables.js: tabelleCitate() estrae TUTTI i nomi di tabella dello statement (tokenizzazione su stripSqlNoise, quindi stringhe e commenti non contano) e assertTabelleNelloScope() pretende che ognuno rientri nello scope, confrontando anche la parte qualificata con i `databases`. Agganciato nel Proxy autorizzante accanto ad assertScopedClauses, quindi solo per i principal con uno scope attivo e solo sulle strategie SQL.",
+        "dove": [
+          "auth/sqlTables.js (nuovo)",
+          "auth/guardStrategy.js: assertTabelleNelloScope su payload.pipeline quando esiste uno scope",
+          "server.js: la regex sul primo FROM resta ma e' dichiarata per quello che e' — un'etichetta per l'audit, non una barriera"
+        ],
+        "proprieta": [
+          "Nel dubbio si RIFIUTA: una funzione tabella (FROM generate_series(...)) non e' riconducibile a un nome e viene negata dicendolo, invece di passare per omissione.",
+          "Un nome dichiarato NELLA query non e' una tabella: CTE e tabelle derivate sono alias locali, e ammetterli non apre nulla perche' il contenuto della CTE viene analizzato lo stesso (WITH x AS (SELECT * FROM segreti) estrae segreti).",
+          "Si applica solo ai principal con scope attivo, come gia' per le clausole libere: owner e sottoutenti senza scope non perdono nulla di cio' che fanno oggi."
+        ],
+        "copertura_virtualjoin": "VirtualJoinEngine chiama la stessa collectionAggregate della strategia avvolta nel Proxy, quindi sourceA.query e sourceB.query sono coperte senza codice dedicato.",
+        "limite": "Resta un filtro sintattico, non una barriera assoluta: le DDL con bersagli in posizioni inconsuete oltre CREATE/DROP INDEX ... ON non sono coperte, e per un sottoutente con ddl E scope la protezione solida resta aprire la connessione con un utente DBMS a privilegi ridotti. Il messaggio d'errore lo dice.",
+        "test": "test/unit-sql-tables.js (in npm test): 22 casi di estrazione, rumore (stringhe/commenti/identificatori quotati), CTE e tabelle derivate, forme non analizzabili, applicazione dello scope con glob e con i due scenari del rilievo, piu' otto query legittime che devono continuare a funzionare. test/unit-rbac.js: blocco CDB-A03 sul Proxy — le due query del rilievo non raggiungono il database, quella dentro l'ambito si', owner e sottoutenti senza scope invariati, pipeline MongoDB non toccata. npm test, e2e, e2e-mysql, e2e-mcp, e2e-query-engine ed e2e-rbac verdi."
+      }
     },
     {
       "id": "CDB-A04",
@@ -111,11 +180,28 @@
       "titolo": "SELECT ... INTO OUTFILE non è classificato come scrittura: chi ha solo `read` scrive file sull'host del DBMS",
       "categoria": "autorizzazione / classificazione delle operazioni",
       "modulo": "auth/capabilities.js",
-      "riferimenti": ["auth/capabilities.js:43", "auth/capabilities.js:45-54", "mcp/McpGateway.js:87-97", "server.js:1541-1546", "db/MySqlStrategy.js:619-636"],
+      "riferimenti": [
+        "auth/capabilities.js:43",
+        "auth/capabilities.js:45-54",
+        "mcp/McpGateway.js:87-97",
+        "server.js:1541-1546",
+        "db/MySqlStrategy.js:619-636"
+      ],
       "problema": "SQL_WRITE_KEYWORDS non contiene INTO/OUTFILE/DUMPFILE/LOAD. Verificato in esecuzione: `isWriteSql(\"SELECT * INTO OUTFILE '/tmp/x' FROM u\")` restituisce false. Su MySQL quello statement scrive un file sul filesystem del server di database con i privilegi dell'utente DBMS. Il gateway MCP lo blocca esplicitamente (McpGateway.js:97), il percorso socket no: `collection:aggregate` e `query:execute` lo eseguono con la sola capability `read`, e la barriera indipendente `expectRead` (transazione di sola lettura) è implementata solo in PostgreSqlStrategy. La stessa funzione decide la categoria dell'audit, quindi l'operazione resta registrata come *lettura* nello Storico Azioni.",
       "scenario": "Sottoutente con ruolo `viewer` (sola lettura) su una connessione MySQL. Dalla tab Query & Aggregate esegue `SELECT * FROM clienti INTO OUTFILE '/var/lib/mysql-files/dump.csv'`: il pre-check di delegate chiede `read`, il Proxy risolve `dynamic` → `read`, la query passa e il file viene creato sul server MySQL. Nell'audit compare una riga `category: 'read'`.",
       "fix": "Aggiungere alla regex le forme che scrivono fuori dal database — `\\bINTO\\s+(OUT|DUMP)FILE\\b`, `\\bLOAD\\s+DATA\\b`, `\\bLOAD_FILE\\s*\\(` — trattandole come scrittura, e replicare sul percorso socket il blocco già presente nel gateway MCP. Complemento utile: applicare `START TRANSACTION READ ONLY` anche su MySQL quando `expectRead` è impostato, così la barriera non dipende dal parser.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Tre interventi. (1) isFileIoSql riconosce INTO OUT|DUMPFILE, LOAD DATA e LOAD_FILE( sul testo normalizzato, e isWriteSql lo include: cambia sia la capability richiesta sia la categoria nell'audit. (2) Il Proxy autorizzante nega l'operazione ai sottoutenti qualunque capability abbiano — il file esce comunque dal perimetro dello scope — controllando pipeline, filter E sort, perché su MySQL \"… WHERE 1 INTO OUTFILE\" è sintassi valida e la casella filtro della griglia era una seconda porta; l'owner resta libero come per expectRead. (3) MySqlStrategy.collectionAggregate onora ora expectRead con START TRANSACTION READ ONLY, barriera che esisteva solo su PostgreSQL.",
+        "dove": [
+          "auth/capabilities.js (SQL_FILE_IO, isFileIoSql, isWriteSql)",
+          "auth/guardStrategy.js (rifiuto esplicito su pipeline/filter/sort)",
+          "db/MySqlStrategy.js (expectRead → START TRANSACTION READ ONLY)"
+        ],
+        "note": "La transazione READ ONLY non copre l'I/O su file (scrivere un file non è una scrittura transazionale): a fermarlo è il rifiuto del Proxy. Con RBAC spento non cambia nulla — il Proxy non è applicato — ma l'audit registra ora l'operazione come scrittura.",
+        "test": "test/unit-rbac.js — \"I/O su file del DBMS negato e classificato scrittura (CDB-A04)\": 7 forme riconosciute, 5 controprove senza falsi positivi (stringhe, commenti, colonne infile_path/outfile_path), rifiuto del Proxy su SQL Raw e su filtro della griglia, owner non toccato, expectRead propagato. npm test, e2e-rbac ed e2e-mysql verdi."
+      }
     },
     {
       "id": "CDB-A05",
@@ -123,7 +209,12 @@
       "titolo": "L'export delle connessioni ri-cifra i segreti con SHA-256 senza salt, e il file risultante non è re-importabile",
       "categoria": "crittografia / segreti",
       "modulo": "server.js + db/vault.js",
-      "riferimenti": ["server.js:2667-2675", "db/vault.js:82-92", "server.js:2694-2701", "server.js:377-379"],
+      "riferimenti": [
+        "server.js:2667-2675",
+        "db/vault.js:82-92",
+        "server.js:2694-2701",
+        "server.js:377-379"
+      ],
       "problema": "connections:export deriva la chiave con `crypto.createHash('sha256').update(pass).digest()` (server.js:2672), cioè con la KDF del vault v1 che db/vault.js:82 dichiara «Solo per migrare»: nessun salt, un solo passaggio di hash, quindi miliardi di tentativi al secondo su GPU. È esattamente il difetto che il formato v2 (scrypt + salt, vault.js:87-92) esiste per risolvere, e lo si applica al file che per definizione lascia la macchina. Seconda conseguenza, funzionale: connections:import valida ogni `ENC:` con decryptRaw (server.js:2697), che usa la DEK corrente dell'installazione. Su un vault v2 la DEK è casuale e non sarà mai uguale a SHA256(passphrase), quindi un file esportato con una passphrase scelta viene rifiutato anche sull'installazione che gira con QUELLA passphrase — il flusso descritto nel commento a server.js:2661-2666 non è realizzabile.",
       "scenario": "L'utente esporta le connessioni indicando una passphrase per spostarle su un'altra macchina e invia il .ini per email. Chi lo intercetta attacca offline una KDF non salata e priva di costo: una passphrase di dieci caratteri cade in tempi ragionevoli, e da lì si ottengono password dei database e delle chiavi SSH. Sull'altra macchina, intanto, l'import fallisce con «cifrato con un'altra passphrase» anche avviando il server con la passphrase corretta.",
       "fix": "Fare passare l'export dal formato v2: generare un salt per il file, derivare la chiave con Vault.deriveKek(passphrase, salt) e scrivere salt e parametri KDF nell'intestazione del file esportato; all'import, leggere quell'intestazione e derivare la stessa chiave invece di confrontare con la DEK locale. Mantenere la lettura del vecchio formato per i file già esportati.",
@@ -135,11 +226,30 @@
       "titolo": "Esporre l'istanza in rete con RBAC spento richiede una sola variabile, che nell'immagine Docker è già impostata",
       "categoria": "configurazione / autenticazione",
       "modulo": "server.js + Dockerfile + docker-compose.yml",
-      "riferimenti": ["server.js:3609-3628", "Dockerfile:23", "Dockerfile:30", "docker-compose.yml:33-43", "mcp/McpGateway.js:1548-1583", "server.js:213-223"],
+      "riferimenti": [
+        "server.js:3609-3628",
+        "Dockerfile:23",
+        "Dockerfile:30",
+        "docker-compose.yml:33-43",
+        "mcp/McpGateway.js:1548-1583",
+        "server.js:213-223"
+      ],
       "problema": "assertTransportSafe impedisce l'avvio fuori dal loopback solo finché CODEDB_TRUST_PROXY_TLS non vale 1; con RBAC spento si limita a stampare un avviso (server.js:3614-3617) e prosegue. Ma quella variabile significa «davanti c'è un proxy HTTPS», non «l'autenticazione è attiva», ed è impostata a 1 sia nel Dockerfile (riga 30) sia come default nel compose (`${CODEDB_TRUST_PROXY_TLS:-1}`), mentre CODEDB_RBAC ha default `off`. In quella configurazione cadono entrambe le barriere residue: checkOrigin con bind non-loopback accetta ogni richiesta priva di header Origin (server.js:219-221), e guardHost di /mcp fa lo stesso (McpGateway.js:1554), mentre authenticate() restituisce ROOT_PRINCIPAL perché rbacOn() è false.",
       "scenario": "Un utente segue il commento di docker-compose.yml e imposta `BIND_ADDR=0.0.0.0` in .env per condividere l'istanza col team, dimenticando `CODEDB_RBAC=on` (le due righe sono adiacenti nel commento, ma nulla le lega). Il server parte: l'unico segno è una riga di log. Chiunque raggiunga la porta ottiene, senza credenziali, ROOT_PRINCIPAL sul socket — lettura, scrittura, DDL, export del vault, backup — e un endpoint /mcp non autenticato.",
       "fix": "Rifiutare l'avvio quando HOST esce dal loopback con CODEDB_RBAC spento, salvo una dichiarazione esplicita e distinta (es. CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1) che compaia anche nei log a ogni avvio; oppure legare la partenza alla presenza di un control plane. In subordine, togliere il default a 1 di CODEDB_TRUST_PROXY_TLS dal compose e lasciarlo solo nel Dockerfile, dove il bind è interno al container.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Separate le due dichiarazioni. assertAuthSafe rifiuta l'avvio quando l'istanza esce dal loopback con CODEDB_RBAC spento, salvo CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1 — distinta, prolissa, e stampata come riquadro d'avviso a ogni avvio. Entrambi i controlli guardano ora bindEsposto() = CODEDB_PUBLIC_BIND || HOST invece del solo HOST: dentro un container 0.0.0.0 e' l'indirizzo interno, quindi guardare HOST rifiuterebbe uno stack pubblicato su loopback (sicuro) e accetterebbe quello pubblicato in rete.",
+        "dove": [
+          "server.js (bindEsposto, fuoriDalLoopback, assertTransportSafe rivista, assertAuthSafe, chiamate all'avvio)",
+          "Dockerfile: via CODEDB_TRUST_PROXY_TLS=1 fisso, al suo posto CODEDB_PUBLIC_BIND=127.0.0.1",
+          "docker-compose.yml: CODEDB_PUBLIC_BIND ricavata da BIND_ADDR, tolto il default :-1 di CODEDB_TRUST_PROXY_TLS, aggiunta CODEDB_ALLOW_UNAUTHENTICATED_NETWORK",
+          ".env.example e CLAUDE.md"
+        ],
+        "note": "Chi usa \"docker run\" a mano pubblicando la porta in rete deve dichiarare -e CODEDB_PUBLIC_BIND=0.0.0.0: il server non puo' conoscere l'indirizzo di pubblicazione, e il limite e' scritto nel Dockerfile.",
+        "test": "test/unit-avvio-rete.js (in npm test, nessun database): sei configurazioni con processi veri — loopback, fuori dal loopback senza TLS, il buco (TLS=1 + RBAC off) ora rifiutato, la via d'uscita esplicita che parte e lo dichiara, container pubblicato su loopback che parte, container pubblicato in rete che viene rifiutato. npm test, e2e ed e2e-rbac verdi."
+      }
     },
     {
       "id": "CDB-A07",
@@ -147,7 +257,13 @@
       "titolo": "PostgreSQL: modifica o eliminazione di una riga senza chiave primaria colpisce tutte le righe identiche",
       "categoria": "integrità dei dati",
       "modulo": "db/PostgreSqlStrategy.js",
-      "riferimenti": ["db/PostgreSqlStrategy.js:369-374", "db/PostgreSqlStrategy.js:809-838", "db/PostgreSqlStrategy.js:849-857", "db/MySqlStrategy.js:775", "db/MySqlStrategy.js:796"],
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:369-374",
+        "db/PostgreSqlStrategy.js:809-838",
+        "db/PostgreSqlStrategy.js:849-857",
+        "db/MySqlStrategy.js:775",
+        "db/MySqlStrategy.js:796"
+      ],
       "problema": "makeId ripiega sull'INTERA riga quando la tabella non ha chiave primaria (`const cols = pkCols.length ? pkCols : allCols`), quindi l'`_id` virtuale non identifica una riga ma un VALORE. docUpdate e docDelete costruiscono la WHERE da quell'oggetto ed eseguono senza alcun limite di righe; MySqlStrategy, sullo stesso percorso, aggiunge `LIMIT 1` (righe 775 e 796). L'asimmetria non è dichiarata da nessuna parte.",
       "scenario": "Tabella PostgreSQL di staging senza PK contenente tre righe identiche (caso ordinario dopo un import ripetuto). L'utente apre la griglia, corregge un campo sulla prima riga e salva: `UPDATE ... WHERE col1 = $1 AND col2 = $2 ...` corrisponde a tutte e tre e le modifica insieme. Idem con l'eliminazione della singola riga, che ne cancella tre. La risposta riporta `modified: 3`, ma la griglia mostra un'operazione riuscita e il danno è già applicato.",
       "fix": "Su PostgreSQL usare `ctid` per le tabelle senza PK: `DELETE FROM t WHERE ctid = (SELECT ctid FROM t WHERE <match> LIMIT 1)` e la forma equivalente per l'UPDATE. In alternativa, quando pkCols è vuoto, rifiutare la modifica in linea spiegando che la tabella non ha una chiave primaria, invece di agire su un bersaglio ambiguo.",
@@ -159,7 +275,11 @@
       "titolo": "L'import a blocchi stima la dimensione su un campione: con documenti eterogenei il messaggio supera il limite del socket",
       "categoria": "edge case sui dati / robustezza",
       "modulo": "public/js/exportimport.js",
-      "riferimenti": ["public/js/exportimport.js:45-70", "public/js/exportimport.js:18-28", "server.js:250"],
+      "riferimenti": [
+        "public/js/exportimport.js:45-70",
+        "public/js/exportimport.js:18-28",
+        "server.js:250"
+      ],
       "problema": "blocchiDiImport misura con JSON.stringify solo i primi CAMPIONE_DIM = 50 documenti e per tutti i successivi usa la MEDIA di quel campione (righe 54-60). Il tetto CHUNK_BYTES di 3 MB protegge quindi solo se il file è omogeneo: se le dimensioni crescono dopo le prime cinquanta righe, il blocco reale supera i 5 MB di maxHttpBufferSize (server.js:250) e Socket.IO chiude la connessione. Il commento alle righe 36-43 dichiara il compromesso, ma il margine 3/5 MB assorbe un errore di stima, non un ordine di grandezza.",
       "scenario": "File JSON con 50 righe di anagrafica (200 byte) seguite da 2000 righe con un campo note da 100 KB. La media stimata resta ~200 byte, quindi si formano blocchi da CHUNK = 500 documenti: il blocco pesa ~50 MB e il messaggio viene rifiutato. L'import si interrompe a metà con un errore di rete, lasciando i documenti già inviati nella collection.",
       "fix": "Ricalibrare in corsa: rimisurare periodicamente (es. ogni 50 documenti o quando la dimensione stimata del blocco supera metà del tetto) e, in ogni caso, misurare davvero il documento quando il blocco corrente si avvicina a CHUNK_BYTES. Costo trascurabile rispetto alla serializzazione già prevista.",
@@ -171,7 +291,12 @@
       "titolo": "Un'eccezione non catturata termina l'intero processo: in Electron chiude l'applicazione e gli script in corso",
       "categoria": "disponibilità / ciclo di vita",
       "modulo": "server.js",
-      "riferimenti": ["server.js:3577-3581", "server.js:3494-3504", "electron-main.js:265-272", "docker-compose.yml:59"],
+      "riferimenti": [
+        "server.js:3577-3581",
+        "server.js:3494-3504",
+        "electron-main.js:265-272",
+        "docker-compose.yml:59"
+      ],
       "problema": "L'handler di uncaughtException chiama gracefulShutdown, che termina il processo. In un servizio multi-utente significa che un errore isolato in una sessione fa cadere le sessioni di tutti; in Electron server.js gira NELLO STESSO processo della finestra, quindi l'applicazione desktop si chiude, portandosi via gli script della tab Query & Aggregate in esecuzione (che vivono nella sessione del socket). Solo l'esecuzione in Docker ha un supervisore (`restart: unless-stopped`); avvio da sorgente, launcher CodeDB.cmd/codedb.sh e app installata non ne hanno.",
       "scenario": "Un driver emette un errore su un event emitter fuori da qualsiasi try (una socket TCP che cade mentre un change stream è attivo è la via più semplice). Nell'app desktop la finestra si chiude senza spiegazione mentre uno script di migrazione è a metà; l'utente non sa a quale istruzione si sia fermato, perché anche il pannello di avanzamento è sparito.",
       "fix": "Distinguere gli errori recuperabili: registrare l'eccezione, chiudere la sola sessione coinvolta e proseguire, riservando l'uscita ai casi in cui lo stato del processo è davvero compromesso. Nell'ambiente Electron, sostituire l'uscita con un dialog che segnala il problema e mantiene la finestra. Documentare comunque un supervisore per gli avvii da sorgente.",
@@ -183,7 +308,11 @@
       "titolo": "Il nome della cartella di gruppo di un backup arriva dal client: si può scrivere nel gruppo di un altro tenant",
       "categoria": "integrità / isolamento multi-tenant",
       "modulo": "server.js + backup/lib/engine.js",
-      "riferimenti": ["server.js:3318", "backup/lib/engine.js:396-402", "backup/lib/util.js:103-105"],
+      "riferimenti": [
+        "server.js:3318",
+        "backup/lib/engine.js:396-402",
+        "backup/lib/util.js:103-105"
+      ],
       "problema": "In backup:run il nome usato per la cartella è `payload.connName || payload.label || 'ui-session'` (server.js:3318), cioè una stringa scelta dal client e mai confrontata con `sess.connName`, che è il nome su cui poggiano davvero i permessi. runBackup costruisce `<destRoot>/<safeName(connName)>_<safeName(db)>` (engine.js:398). safeName impedisce il path traversal (i separatori diventano `_`, verificato: `[^\\w.-]+` sostituisce `/` e `\\`), ma non impedisce di scegliere il nome di un gruppo esistente e di aggiungervi backup e voci di catalogo.",
       "scenario": "Il tenant A esegue un backup di un proprio database indicando `connName: 'crm-produzione'` e `db: 'clienti'`, cioè il gruppo del tenant B. Il dump di A finisce in `crm-produzione_clienti/` e viene aggiunto al catalogo di gruppo. Nella schermata Catalogo & Ripristino del tenant B compare come «ultimo backup»: se B ripristina, sovrascrive i propri dati con quelli di A. Combinato con CDB-A01, il gruppo è anche direttamente enumerabile.",
       "fix": "Usare `sess.connName` (o l'etichetta derivata dalla sessione) per il nome del gruppo e trattare `payload.connName` come sola etichetta di log, oltre a partizionare la radice per ownerId come da CDB-A01.",
@@ -195,7 +324,9 @@
       "titolo": "Il confinamento dei percorsi di backup non risolve i collegamenti simbolici",
       "categoria": "filesystem",
       "modulo": "backup/lib/policy.js",
-      "riferimenti": ["backup/lib/policy.js:33-45"],
+      "riferimenti": [
+        "backup/lib/policy.js:33-45"
+      ],
       "problema": "resolveBackupPath confronta il percorso normalizzato con la radice usando path.resolve/path.relative, che lavorano sulla stringa e non seguono i symlink. Un collegamento presente dentro BACKUP_ROOT e puntato all'esterno supera il controllo.",
       "scenario": "Chi ha già accesso al filesystem del server (o un container in cui la cartella dei backup è un volume condiviso) crea `backups/fuori -> /etc`. Da quel momento `backup:run` con `dest: 'fuori'` scrive fuori dal perimetro previsto pur passando dalla politica.",
       "fix": "Dopo la risoluzione, applicare fs.realpathSync (con fallback sul percorso non ancora esistente, risalendo al primo antenato reale) e ripetere il confronto con la radice reale.",
@@ -207,7 +338,10 @@
       "titolo": "I percorsi dei file elencati nel manifest di un backup non sono confinati alla cartella del backup",
       "categoria": "filesystem",
       "modulo": "backup/lib/restore.js + server.js",
-      "riferimenti": ["backup/lib/restore.js:143-152", "server.js:3441-3447"],
+      "riferimenti": [
+        "backup/lib/restore.js:143-152",
+        "server.js:3441-3447"
+      ],
       "problema": "Sia la verifica (server.js:3443) sia la lettura dello schema (restore.js:144) compongono `path.join(backupDir, f.path)` con un valore che proviene dal manifest.json su disco, senza verificare che resti dentro backupDir. I manifest sono scritti dal motore, quindi oggi il valore è affidabile; ma è un file di dati, non codice, e il checksum protegge il CONTENUTO dei file elencati, non il campo `path` del manifest stesso.",
       "scenario": "Un manifest alterato a mano (o proveniente da una cartella di backup ricevuta da terzi, scenario reso concreto da CDB-A01) con `\"path\": \"../../../../etc/passwd\"` fa leggere quel file a backup:verify, che ne riporta l'esito del confronto — un oracolo sull'esistenza e sul contenuto di file fuori dal perimetro.",
       "fix": "Applicare a ogni `f.path` lo stesso confinamento di resolveBackupPath usando backupDir come radice, rifiutando le voci che ne escono.",
@@ -219,11 +353,30 @@
       "titolo": "La revoca di una sessione o di una API key non ha effetto sui socket già connessi",
       "categoria": "autenticazione / ciclo di vita delle sessioni",
       "modulo": "server.js + auth/AppStore.js",
-      "riferimenti": ["server.js:1982-1998", "server.js:2063", "auth/AppStore.js:338-358", "auth/AppStore.js:181-209", "auth/sessions.js:6-11", "auth/sessions.js:17"],
+      "riferimenti": [
+        "server.js:1982-1998",
+        "server.js:2063",
+        "auth/AppStore.js:338-358",
+        "auth/AppStore.js:181-209",
+        "auth/sessions.js:6-11",
+        "auth/sessions.js:17"
+      ],
       "problema": "Il principal viene risolto UNA SOLA VOLTA, nel gate dell'handshake (server.js:1991-1996), e da lì in poi `io.on('connection')` ne cattura una copia (`const principal = principalOf(socket)`, riga 2063) usata da tutti gli handler per l'intera vita del socket. Nessun handler ri-valida il token né rilegge lo stato dell'utente. Di conseguenza `deleteSessionsForUser` (invocato da updateSubUser alla sospensione o al cambio password, e da deleteSubUser) cancella la riga nel control plane ma non tocca la connessione WebSocket già stabilita, e nemmeno la scadenza della sessione (SESSION_TTL_MS, 12 ore di default) viene mai applicata a un socket aperto. L'intestazione di auth/sessions.js dichiara invece che «nel control plane ne vive solo l'hash SHA-256, quindi la revoca è la cancellazione di una riga ed è immediata»: per la UI non è così. Il gateway MCP non ha il problema, perché authenticate() risolve la API key a ogni richiesta HTTP (McpGateway.js:1575-1583).",
       "scenario": "Un collaboratore viene sospeso o licenziato: l'amministratore mette il sottoutente su `suspended` dal pannello Utenti & Permessi e vede sparire le sessioni. Se la scheda del browser del collaboratore è rimasta aperta, il suo socket resta connesso e continua a leggere, scrivere ed eseguire DDL con i grant di prima — finché non chiude la scheda o non cade la rete. Un socket Socket.IO con riconnessione automatica può restare vivo per giorni; alla riconnessione, invece, il token ormai cancellato verrebbe respinto, il che rende il difetto intermittente e difficile da attribuire.",
       "fix": "Ri-validare il principal periodicamente e sugli eventi che contano: rileggere sessione/utente in `delegate()` con una cache breve (30-60 s) e disconnettere il socket quando la sessione non esiste più o è scaduta. In più, alla sospensione o cancellazione di un sottoutente, chiudere attivamente i suoi socket (`io.sockets.sockets` filtrati per `socket.principal.id` → `socket.disconnect(true)`), che è l'unico modo per rendere la revoca davvero immediata.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Due reti indipendenti. (1) rivalidaPrincipal() in safeOn rilegge sessione, stato dell'utente e GRANT con una finestra di 30 s (env CODEDB_REVALIDATE_PRINCIPAL_MS) e chiude il socket se la sessione non esiste piu' o e' scaduta: copre anche le revoche arrivate da un'altra istanza, dalla CLI o direttamente sul control plane. Il principal del socket e' ora un `let` riassegnato, quindi anche restringere un grant ha effetto entro la stessa finestra. (2) disconnettiSocketDi() chiude SUBITO i socket del soggetto quando la revoca passa da questa istanza: users:update con sospensione o cambio password (updateSubUser ritorna ora `revocate`) e users:delete.",
+        "dove": [
+          "server.js: principal del socket da const a let, rivalidaPrincipal + gancio in safeOn, disconnettiSocketDi, chiamate in users:update e users:delete",
+          "auth/AppStore.js: updateSubUser ritorna { updated, revocate }",
+          "test/rbac-harness.js: CODEDB_REVALIDATE_PRINCIPAL_MS=200 per non far aspettare 30 s ai test"
+        ],
+        "dettaglio_non_ovvio": "L'ack va scritto PRIMA della disconnessione (setTimeout 0): disconnettere prima fa morire il pacchetto di risposta con la connessione e il client resta in attesa per sempre. Trovato provandolo — la prima stesura faceva andare in stallo il test e2e.",
+        "note": "apikeys:revoke non chiude attivamente i socket (l'id della chiave non e' tracciato sul socket): li copre la ri-validazione entro la finestra. La revoca di un grant non chiude il socket di proposito: il principal viene semplicemente riletto con i permessi nuovi.",
+        "test": "test/e2e-rbac.js, sezioni 11 e 12: la sospensione chiude il socket gia' aperto entro 4 s e il token non ne apre piu' di nuovi; una sessione cancellata FUORI dal percorso socket (POST /auth/logout) fa rifiutare l'evento successivo con \"Sessione non piu' valida\". npm test, e2e, e2e-rbac ed e2e-rbac-mcp verdi."
+      }
     },
     {
       "id": "CDB-A14",
@@ -231,7 +384,10 @@
       "titolo": "reduce() dell'interprete MongoScript ignora il valore iniziale e restituisce risultati sbagliati in silenzio",
       "categoria": "correttezza dei dati",
       "modulo": "db/MongoScript.js",
-      "riferimenti": ["db/MongoScript.js:903-908", "db/MongoScript.js:868"],
+      "riferimenti": [
+        "db/MongoScript.js:903-908",
+        "db/MongoScript.js:868"
+      ],
       "problema": "In eseguiConCallback il ramo `reduce` fa `let acc = arr[0]; let start = 1;` e non legge mai il secondo argomento passato dallo script (la variabile `start`, dichiarata con let e mai riassegnata, è il residuo della gestione perduta). L'accumulatore iniziale scelto dall'utente viene quindi scartato. Verificato in esecuzione con l'interprete reale: `[1,2,3].reduce((a,b)=>a+b, 10)` restituisce 6 invece di 16; `[].reduce((a,b)=>a+b, 0)` restituisce undefined invece di 0; `[{n:2},{n:3}].reduce((a,x)=>a+x.n, 0)` restituisce NaN invece di 5, perché l'accumulatore parte dall'oggetto. La suite test/unit-mongo-script.js non copre il caso.",
       "scenario": "Uno script di riconciliazione nella tab Query & Aggregate somma gli importi di un risultato: `const totale = righe.reduce((acc, r) => acc + r.importo, 0)`. Poiché l'accumulatore parte dal PRIMO DOCUMENTO invece che da 0, `totale` è NaN; se lo script scrive quel valore in una collection di riepilogo (`db.totali.insertOne({ totale })`), il dato sbagliato viene salvato senza alcun errore. Con array di numeri il risultato è invece plausibile ma semplicemente errato del valore iniziale.",
       "fix": "Passare gli argomenti oltre il callback a eseguiConCallback e implementare la semantica standard: con valore iniziale `acc = init, start = 0`; senza, `acc = arr[0], start = 1`, e su array vuoto senza valore iniziale lanciare TypeError come fa JavaScript. Aggiungere i tre casi alla suite.",
@@ -243,7 +399,13 @@
       "titolo": "Su PostgreSQL una query multi-istruzione può essere classificata come lettura: l'audit registra il falso",
       "categoria": "classificazione delle operazioni / integrità dell'audit",
       "modulo": "db/sqlText.js",
-      "riferimenti": ["db/sqlText.js", "auth/capabilities.js:26-53", "db/PostgreSqlStrategy.js:691-737", "auth/guardStrategy.js:143-145", "db/MySqlStrategy.js:129"],
+      "riferimenti": [
+        "db/sqlText.js",
+        "auth/capabilities.js:26-53",
+        "db/PostgreSqlStrategy.js:691-737",
+        "auth/guardStrategy.js:143-145",
+        "db/MySqlStrategy.js:129"
+      ],
       "problema": "Lo splitter tratta il backslash come carattere di escape dentro le stringhe (semantica MySQL). PostgreSQL, con `standard_conforming_strings=on` (default dalla 9.1), NON lo fa: `'x\\'` è un literal completo. Verificato in esecuzione: `splitStatements(\"SELECT 'x\\\\'; DROP TABLE utenti; SELECT '\")` restituisce UNA sola istruzione e `isWriteSql(...)` restituisce false, perché il DROP finisce dentro quella che lo splitter crede una stringa e viene rimosso da stripSqlNoise. PostgreSQL invece esegue davvero due istruzioni, dato che collectionAggregate chiama `client.query(sql)` senza parametri, cioè in simple query protocol (il codice stesso lo prevede: gestisce `Array.isArray(res)` per i risultati multipli).",
       "scenario": "Un owner (o chiunque, con RBAC spento) esegue dalla tab Query & Aggregate `SELECT 'x\\'; DROP TABLE utenti; SELECT '` su una connessione PostgreSQL. La tabella viene eliminata, ma nello Storico Azioni compare una riga `category: 'read'`, `op: 'Query di lettura (SQL)'`. Chi indaga a posteriori su una tabella sparita non trova alcuna scrittura registrata in quel momento. Non è invece un'escalation di privilegi: per i sottoutenti guardStrategy imposta expectRead e PostgreSqlStrategy apre `BEGIN READ ONLY`, che rifiuta il DROP; su MySQL `multipleStatements: false` (MySqlStrategy.js:129) impedisce l'esecuzione della seconda istruzione.",
       "fix": "Rendere lo splitter consapevole del dialetto: su PostgreSQL trattare il backslash come carattere ordinario dentro i literal (e riconoscere il prefisso `E'...'`, dove invece è un escape). In assenza di questa distinzione, la scelta conservativa è considerare AMBIGUO un testo che contiene un backslash dentro una stringa e classificarlo come scrittura, invece di dedurne una lettura.",
@@ -255,7 +417,10 @@
       "titolo": "Nella vista affiancata il tabId è scritto prima dello spread del payload (difetto latente)",
       "categoria": "frontend / instradamento delle richieste",
       "modulo": "public/js/splitview.js",
-      "riferimenti": ["public/js/splitview.js:539-541", "public/js/utils.js:447-451"],
+      "riferimenti": [
+        "public/js/splitview.js:539-541",
+        "public/js/utils.js:447-451"
+      ],
       "problema": "`emitPaneQuery` compone `emit(event, { tabId, ...(payload || {}) })`: il tabId del riquadro viene messo PRIMA dello spread, quindi qualunque `tabId` presente nel payload — anche un `undefined` esplicito — lo sovrascrive. È esattamente il difetto che utils.js:447-451 documenta e che in emit() è stato corretto scrivendo il tabId DOPO lo spread. Oggi nessun chiamante passa tabId nel payload, quindi il difetto non si manifesta: è latente, ma il modulo lo usa anche per doc:update e doc:delete (righe 639, 667, 693), cioè per scritture.",
       "scenario": "Un futuro chiamante di emitPaneQuery passa un payload che include `tabId` (per esempio riusando un oggetto costruito altrove, dove il campo vale undefined): la richiesta perde il tab del riquadro, il server ricade sulla sessione \"default\" e una `doc:delete` colpisce la connessione sbagliata, o fallisce con «Nessuna connessione attiva» senza che il codice chiamante sappia perché.",
       "fix": "Invertire l'ordine come in emit(): `const msg = { ...(payload || {}) }; msg.tabId = tabId;`.",
@@ -267,7 +432,11 @@
       "titolo": "Un errore imprevisto durante la RIPRESA di uno script lascia il run bloccato in \"in esecuzione\"",
       "categoria": "ciclo di vita / interfaccia",
       "modulo": "server.js",
-      "riferimenti": ["server.js:3121-3125", "server.js:3045-3060", "db/ScriptRunner.js:272-280"],
+      "riferimenti": [
+        "server.js:3121-3125",
+        "server.js:3045-3060",
+        "db/ScriptRunner.js:272-280"
+      ],
       "problema": "Il gestore di `script:execute` porta il run a uno stato TERMINALE quando il ciclo fallisce in modo imprevisto: `run.fail(err)`, `finalizzaScript` e rimozione dalla mappa della sessione (righe 3049-3059, con il commento che spiega perché — CDB-67). Il gestore di `script:resume`, che avvia esattamente lo stesso ciclo, si limita invece a `console.error` (righe 3123-3125): il run resta `running`, non viene mai emesso un push terminale, non viene tolto dalla mappa e nessuna voce di audit di chiusura viene scritta. La correzione CDB-67 è stata applicata a uno solo dei due punti di ingresso.",
       "scenario": "Uno script viene messo in pausa e poi ripreso; durante la ripresa la connessione al database cade (o il Proxy autorizzante rigetta in modo inatteso). Il pannello #script-run-panel resta fermo sull'ultima istruzione con lo stato \"in esecuzione\": Pausa e Interrompi non hanno effetto perché nulla progredisce, il pulsante di chiusura non compare e la scheda resta nel registro delle query in sospeso finché non si ricarica la pagina. Nell'audit non compare la riga di fine script, quindi resta anche una traccia incompleta.",
       "fix": "Estrarre la gestione già scritta in script:execute in una funzione e usarla in entrambi i `.catch`: `run.fail(err)` → `finalizzaScript` → `scriptsOf(session).delete(run.id)`.",
@@ -279,11 +448,31 @@
       "titolo": "Incolla di celle e cancellazione multipla scrivono sulla collection ATTIVA al momento, non su quella d'origine",
       "categoria": "frontend / stato condiviso su percorsi di scrittura",
       "modulo": "public/js/cellselect.js + public/js/grid.js",
-      "riferimenti": ["public/js/cellselect.js:745-753", "public/js/grid.js:839-840", "public/js/grid.js:863-874", "public/js/utils.js:278-296", "public/js/utils.js:434-441", "public/js/exportimport.js:265-290"],
+      "riferimenti": [
+        "public/js/cellselect.js:745-753",
+        "public/js/grid.js:839-840",
+        "public/js/grid.js:863-874",
+        "public/js/utils.js:278-296",
+        "public/js/utils.js:434-441",
+        "public/js/exportimport.js:265-290"
+      ],
       "problema": "Entrambe le operazioni chiamano `captureContext()` — e il commento dice esplicitamente perché — ma poi usano il contesto catturato SOLO per decidere se ridipingere a fine operazione. Le scritture leggono `db: state.db, coll: state.coll` dal Proxy dello stato (che punta sempre al tab ATTIVO) e non passano alcun `tabId`, quindi `emit()` inietta il tab attivo al momento della chiamata. Poiché `eseguiAOndate` (utils.js:278-296) esegue l'azione con 8 lavoratori che si servono dalla coda man mano, quelle chiamate sono distribuite nel TEMPO: ognuna rilegge lo stato quando parte. È il contrario di quanto fa exportimport.js, che passa `tabId` esplicito a ogni blocco proprio perché «cambiare tab a metà import dirotta i blocchi rimanenti su un'altra connessione — con danno permanente, perché sono scritture».",
       "scenario": "L'utente seleziona 400 righe nella tabella `ordini` della connessione A e lancia 🗑 Elimina; l'operazione dura (8 alla volta su un database remoto). Mentre gira, passa al tab della connessione B, aperto su `clienti` — cosa che l'interfaccia incoraggia, visto che esiste un registro delle query in sospeso proprio per lavorare durante le attese. Le `doc:delete` non ancora partite vengono inviate con il tabId di B e con `db`/`coll` di B: gli id provengono però dalle righe di `ordini`. Su MongoDB un `_id` che esiste anche in `clienti` viene cancellato lì; su MySQL/PostgreSQL l'`_id` virtuale è un oggetto `{colonna: valore}` e, se le due tabelle condividono il nome della chiave, la DELETE colpisce la riga omonima della tabella sbagliata. Stesso meccanismo con l'incolla da Excel, che invia `doc:update`.",
       "fix": "Congelare il bersaglio prima di partire e passarlo esplicitamente, come già fa exportimport.js: `const { tabId, st } = captureContext();` e poi `emit('doc:delete', { tabId, db: st.db, coll: st.coll, id })`. In più, interrompere l'operazione quando `origin.isStillActive()` diventa falso non è sufficiente né corretto (le scritture vanno completate sul bersaglio giusto): il punto è l'indirizzo, non l'interruzione.",
-      "stato": "aperto"
+      "stato": "risolto",
+      "risoluzione": {
+        "data": "2026-08-10",
+        "cosa": "Il bersaglio (tabId + db + coll) viene congelato con captureContext() prima di partire e passato esplicitamente a ogni richiesta, come gia' faceva exportimport.js. isStillActive() torna a essere solo la decisione su COSA ridipingere: le scritture vanno completate, sul bersaglio giusto, non interrotte.",
+        "dove": [
+          "public/js/cellselect.js: incolla da foglio di calcolo (doc:update a ondate) e modale \"duplica riga\" (doc:insert, bersaglio congelato all'apertura)",
+          "public/js/grid.js: deleteDocs e deleteSelectedDocs (doc:delete a ondate), deleteDoc singola e deleteAllWithFilter (collection:deleteMany)",
+          "public/js/insert.js: senza contesto esplicito il bersaglio si sintetizza all'APERTURA della modale invece di rileggere state al salvataggio",
+          "public/js/inlineEdit.js: il ripiego di salvaCampo usa contestoScrittura() e non captureContext(), che non porta db/coll (bersaglio indefinito)"
+        ],
+        "esteso": "Oltre ai due percorsi del rilievo sono stati corretti gli altri con la stessa causa: duplica riga, inserimento e la deleteMany con filtro. La regola e' ora uniforme — nessuna scrittura del frontend legge il bersaglio dal Proxy state.",
+        "test": "test/unit-scritture-bersaglio.js (in npm test): controllo STATICO su grid.js, cellselect.js, inlineEdit.js, insert.js, exportimport.js e splitview.js — ogni emit di doc:insert/update/replace/delete, collection:deleteMany e collection:import deve portare un tabId e non deve leggere state.db/state.coll. Verificato che il rilevatore fallisce reintroducendo il difetto. 11 scritture ispezionate. npm test ed e2e verdi.",
+        "limite": "Verifica statica: i moduli coinvolti importano utils.js, che sta in un ciclo di import che carica l'intera applicazione, quindi non sono caricabili in Node; riprodurre il difetto vero richiede due connessioni vive in un browser."
+      }
     },
     {
       "id": "CDB-A19",
@@ -291,7 +480,9 @@
       "titolo": "LIKE tradotto in regex case-insensitive: la query non può usare l'indice su MongoDB",
       "categoria": "efficienza",
       "modulo": "db/SqlToMql.js",
-      "riferimenti": ["db/SqlToMql.js"],
+      "riferimenti": [
+        "db/SqlToMql.js"
+      ],
       "problema": "La traduzione di `LIKE 'a%'` produce `{ $regex: '^a.*$', $options: 'i' }` (verificato in esecuzione). L'ancoraggio iniziale permetterebbe a MongoDB di usare un indice sul campo, ma il flag `i` lo impedisce: una regex case-insensitive non è sargable, quindi la query degrada sempre a scansione della collection. La scelta di `i` è difendibile (su MySQL le collation `_ci` rendono LIKE insensibile alle maiuscole), ma il costo non è dichiarato da nessuna parte.",
       "scenario": "Dalla tab ⚡ Query & Aggregate un utente esegue `SELECT * FROM eventi WHERE codice LIKE 'AB%'` su una collection da milioni di documenti con indice su `codice`: invece di una ricerca per prefisso si ottiene una scansione completa, che con il tetto di 10.000 righe e il timeout di query finisce spesso in errore invece che in un risultato.",
       "fix": "Rendere il flag `i` opzionale e non predefinito su MongoDB (dove il confronto è case-sensitive per natura), oppure aggiungerlo solo quando il pattern non è ancorato a un prefisso; in alternativa segnalarlo nell'interfaccia come nota accanto al risultato, così chi vede una query lenta sa perché.",

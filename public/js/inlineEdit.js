@@ -98,7 +98,11 @@ export function buildEditor(current) {
  * confermata dopo un cambio di tab finirebbe nella tabella sbagliata.
  */
 function salvaCampo(doc, field, value, ctx) {
-  const c = ctx || captureContext();
+  // `contestoScrittura()` e non `captureContext()`: quest'ultima non porta
+  // db/coll, quindi il ripiego avrebbe scritto con un bersaglio indefinito.
+  // Oggi entrambi i chiamanti passano `ctx`, ma il ripiego non deve essere
+  // una trappola per il prossimo.
+  const c = ctx || contestoScrittura();
   return emit('doc:update', {
     tabId: c.tabId,
     db: c.db,

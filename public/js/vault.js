@@ -2,13 +2,17 @@
 
 import { $, emit, toast, conCaricamento } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
-import { valutaAvvisoVault } from './passphrase.js';
+import { valutaAvvisoVault, applicaPermessiVault } from './passphrase.js';
 
 const MIN_LUNGHEZZA = 8;
 
 export function checkVaultStatus() {
   emit('vault:status', {})
     .then((res) => {
+      // Cambio passphrase e azzeramento toccano l'INTERA installazione, quindi
+      // con RBAC attivo sono riservati a chi la amministra: chi non lo è non
+      // deve nemmeno vederli offerti (vedi assertInstallAdmin in server.js).
+      applicaPermessiVault(res);
       if (res && res.locked) {
         showVaultModal();
       } else {

@@ -42,6 +42,29 @@ const { stripSqlNoise, splitStatements } = require('../db/sqlText');
 // contengono come prefisso (`updated_at`, `deleted`, `create_time`).
 const SQL_WRITE_KEYWORDS = /\b(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|MERGE|GRANT|REVOKE|RENAME|CALL|COPY|VACUUM|REINDEX|CLUSTER|LOCK|SET|DO|EXECUTE|PREPARE)\b/i;
 
+/**
+ * Statement che leggono o scrivono il FILESYSTEM dell'host del DBMS.
+ *
+ * `SELECT … INTO OUTFILE '/var/lib/mysql-files/x.csv'` comincia per SELECT e non
+ * contiene una sola keyword di scrittura SQL: era classificato lettura, quindi
+ * eseguibile con la sola capability `read` — e registrato nell'audit **come
+ * lettura**, cioè senza traccia del fatto che un file è comparso sul server di
+ * database. Nemmeno la transazione READ ONLY lo ferma: scrivere un file non è
+ * una scrittura transazionale. Il gateway MCP lo bloccava già a monte
+ * (`SQL_FORBIDDEN`), il percorso socket no.
+ *
+ * `LOAD DATA [LOCAL] INFILE` è il verso opposto (dal file alla tabella) e
+ * `LOAD_FILE()` legge un file qualsiasi restituendolo in una colonna: nessuno
+ * dei tre è una lettura del database, e tutti e tre valgono la capability più
+ * alta invece della più bassa.
+ */
+const SQL_FILE_IO = /\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD\s+DATA\b|\bLOAD_FILE\s*\(/i;
+
+/** L'istruzione tocca il filesystem dell'host del DBMS? (testo già grezzo) */
+function isFileIoSql(code) {
+  return SQL_FILE_IO.test(stripSqlNoise(String(code || '')));
+}
+
 function isWriteSql(code) {
   const raw = String(code || '').trim();
   if (!raw) return false;
@@ -50,7 +73,8 @@ function isWriteSql(code) {
   // bisogno, e il costo di sbagliarsi (una DROP eseguita come "lettura") è
   // enormemente superiore a quello di chiedere la capability di scrittura.
   if (statements.length > 1) return true;
-  return SQL_WRITE_KEYWORDS.test(stripSqlNoise(raw));
+  const testo = stripSqlNoise(raw);
+  return SQL_WRITE_KEYWORDS.test(testo) || SQL_FILE_IO.test(testo);
 }
 
 // Pipeline MongoDB che materializza dati (unica forma di scrittura via pipeline).
@@ -240,6 +264,7 @@ function matchesAny(patterns, value) {
 
 module.exports = {
   isWriteSql,
+  isFileIoSql,
   isWriteMongoPipeline,
   EVENT_CAPABILITY,
   eventCapability,

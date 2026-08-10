@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValueBreve, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -951,7 +951,7 @@ function renderResultsTable(rows) {
   });
 
   queryTableCols = Array.from(cols);
-  const sig = queryTableCols.join(' ');
+  const sig = queryTableCols.join('\u0000');
   const nuoveColonne = sig !== queryColsSig;
   const nuoviDati = rows !== queryRigheRef;
   queryColsSig = sig;
@@ -1245,10 +1245,14 @@ function filterQuerySchemaBrowser(query) {
 
   if (!q && filtroSchemaAttivo) {
     contenitori.forEach((c) => {
-      if (c.dataset.eraChiuso !== undefined) {
-        c.classList.toggle('hidden', c.dataset.eraChiuso === '1');
-        delete c.dataset.eraChiuso;
-      }
+      // Chi non ha l'attributo è nato DURANTE la ricerca — i database caricati
+      // da "Cerca anche negli altri N database", o l'espansione automatica del
+      // database attivo — e il suo stato di apertura non è mai stato deciso
+      // dall'utente: il predefinito è chiuso. Saltarli li lasciava spalancati
+      // dopo aver svuotato la casella.
+      const eraChiuso = c.dataset.eraChiuso === undefined ? '1' : c.dataset.eraChiuso;
+      c.classList.toggle('hidden', eraChiuso === '1');
+      delete c.dataset.eraChiuso;
     });
   }
 
@@ -1332,7 +1336,9 @@ function insertTextInEditor(text) {
   updateEditorHighlight();
 }
 
-let currentRunId = null;
+// La query in volo vive nello stato del TAB (`state.queryRunId`, freshState in
+// tabs.js): come variabile di modulo, runId e tabId potevano appartenere a due
+// tab diversi. Vedi la nota lì e la migrazione già fatta per queryDb.
 
 /* ---------------------------------------------------------------------------
  * Bersaglio della tab Query & Aggregate.
@@ -1384,10 +1390,14 @@ export function cancelActiveQuery() {
   const stopBtn = $('#query-stop-btn');
   if (stopBtn) stopBtn.classList.add('hidden');
 
-  if (currentRunId) {
-    const runIdToCancel = currentRunId;
-    currentRunId = null;
-    const curTab = activeTab();
+  // runId e tabId devono venire dallo STESSO tab: si legge il tab attivo una
+  // volta sola e da lì il suo runId, invece di incrociare una variabile di
+  // modulo con il tab del momento.
+  const curTab = activeTab();
+  const st = (curTab && curTab.state) || state;
+  const runIdToCancel = st.queryRunId;
+  if (runIdToCancel) {
+    st.queryRunId = null;
     const currentTabId = curTab ? curTab.id : undefined;
     emit('query:cancel', { tabId: currentTabId, runId: runIdToCancel })
       .catch((err) => console.warn('[QueryTab] Errore invio query:cancel:', err));
@@ -1438,10 +1448,12 @@ export function runQuery(opzioni = {}) {
   const runId = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
     : (Date.now() + '-' + Math.random().toString(36).slice(2));
-  currentRunId = runId;
-
   const curTab = activeTab();
   const currentTabId = curTab ? curTab.id : undefined;
+  // Il run appartiene al tab che lo lancia: il tab d'origine è quello a cui
+  // andranno l'annullamento e l'azzeramento alla risposta.
+  const statoRun = (curTab && curTab.state) || state;
+  statoRun.queryRunId = runId;
   const { db: targetDb, coll: targetColl } = queryTarget();
   const connName = state.connName || state.connId || 'Default';
   const collTabId = state.activeCollId || null;
@@ -1470,16 +1482,25 @@ export function runQuery(opzioni = {}) {
     .then((res) => {
       const elapsed = Math.round(performance.now() - executionStartTime);
       if (stopBtn) stopBtn.classList.add('hidden');
-      if (currentRunId === runId) currentRunId = null;
+      // Si azzera nello stato del TAB D'ORIGINE (res._state), non in quello
+      // attivo al ritorno della risposta.
+      const stRun = (res && res._state) || statoRun;
+      if (stRun.queryRunId === runId) stRun.queryRunId = null;
 
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
       const rows = res.data || res.docs || res.rows || [];
 
-      // Se il server segnala un cambio di database (es. via USE <dbname>)
+      // Se il server segnala un cambio di database (es. via USE <dbname>).
+      // Il bersaglio appartiene al tab CHE HA ESEGUITO, non a quello attivo al
+      // ritorno della risposta: `state` è un Proxy sul tab attivo, quindi
+      // scriverci direttamente spostava il bersaglio del tab sbagliato — e la
+      // query successiva partiva verso un altro database senza alcun avviso.
       if (res && res.activeDb) {
-        // `USE <db>` nel Query Engine: da qui in poi il bersaglio e' esplicito.
-        setQueryTarget(res.activeDb, null);
+        const st = res._state || state;
+        st.queryDb = res.activeDb;
+        st.queryColl = null;
+        if (isForActiveTab(res)) renderQueryTarget();
       }
 
       // Il pannello dei risultati è unico: i risultati di un tab passato in
@@ -1499,7 +1520,8 @@ export function runQuery(opzioni = {}) {
     .catch((err) => {
       const elapsed = Math.round(performance.now() - executionStartTime);
       if (stopBtn) stopBtn.classList.add('hidden');
-      if (currentRunId === runId) currentRunId = null;
+      const stRunErr = (err && err._state) || statoRun;
+      if (stRunErr.queryRunId === runId) stRunErr.queryRunId = null;
 
       pendingHandle.fail(err, elapsed);
       if (isForActiveTab(err)) {
@@ -1537,14 +1559,39 @@ export function exportQueryResults(format) {
   let filename = `query_result_${Date.now()}`;
   let mimeType = 'text/plain';
 
+  // "Quello che si vede" vale anche per i VALORI, non solo per l'ordine delle
+  // righe: la tabella disegna un ObjectId come 507f… e una data come istante
+  // leggibile, mentre l'export scriveva la forma EJSON grezza. displayValue è
+  // la forma esatta e non troncata — la stessa che la griglia dati copia negli
+  // appunti (cellselect.js), così due export della stessa cella coincidono.
+  // L'EJSON integrale resta nel solo formato JSON, dove è il contenuto giusto.
+  const testoCella = (val) => (val === null || val === undefined ? '' : displayValue(val).text);
+
+  // Letterali SQL, non stringhe infilate fra apici. Tre difetti distinti da
+  // chiudere: NULL fra apici diventava la stringa vuota e i numeri diventavano
+  // stringhe; l'apice veniva protetto con la barra rovesciata, che è
+  // un'estensione MySQL (su PostgreSQL, uno dei tre DBMS supportati, lo
+  // standard è il RADDOPPIO e lo script risultava errato o interpretato
+  // diversamente); e la barra rovesciata nel valore non veniva raddoppiata,
+  // quindi un valore che finisce con "\" spostava la fine della stringa e
+  // concatenava il valore successivo.
+  const letteraleSql = (v) => {
+    if (v === null || v === undefined) return 'NULL';
+    if (typeof v === 'boolean') return v ? '1' : '0';
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';
+    const testo = testoCella(v);
+    // Un $numberLong/$numberDecimal è un numero, non un testo.
+    if (ejsonKind(v) === 'number' && testo !== '' && Number.isFinite(Number(testo))) return testo;
+    return `'${testo.replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+  };
+
   if (format === 'csv') {
     filename += '.csv';
     mimeType = 'text/csv';
     content = headers.join(',') + '\n';
     rows.forEach((r) => {
       const vals = headers.map((h) => {
-        const val = r ? r[h] : '';
-        const strVal = typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '');
+        const strVal = testoCella(r ? r[h] : '');
         return `"${strVal.replace(/"/g, '""')}"`;
       });
       content += vals.join(',') + '\n';
@@ -1557,11 +1604,8 @@ export function exportQueryResults(format) {
     filename += '.sql';
     mimeType = 'application/sql';
     content = rows.map((r) => {
-      const rowCols = Object.keys(r).map((k) => `\`${k}\``).join(', ');
-      const vals = Object.values(r).map((v) => {
-        const strVal = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v ?? '');
-        return `'${strVal.replace(/'/g, "\\'")}'`;
-      }).join(', ');
+      const rowCols = Object.keys(r).map((k) => `\`${k.replace(/`/g, '``')}\``).join(', ');
+      const vals = Object.values(r).map(letteraleSql).join(', ');
       return `INSERT INTO \`query_result\` (${rowCols}) VALUES (${vals});`;
     }).join('\n');
   }

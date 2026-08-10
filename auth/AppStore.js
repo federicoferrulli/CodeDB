@@ -195,8 +195,11 @@ class AppStore {
     );
     if (!res.matchedCount) throw new Error('Sottoutente non trovato.');
     // Sospensione: le sessioni e le API key attive vanno chiuse subito.
-    if (patch.status === 'suspended' || patch.passwordHash) await this.deleteSessionsForUser(subjectId);
-    return { updated: res.modifiedCount };
+    // `revocate` lo dice a chi chiama: cancellare la riga della sessione non
+    // tocca un socket GIÀ connesso, che va chiuso a parte (server.js).
+    const revocate = !!(patch.status === 'suspended' || patch.passwordHash);
+    if (revocate) await this.deleteSessionsForUser(subjectId);
+    return { updated: res.modifiedCount, revocate };
   }
 
   async deleteSubUser(ownerId, subjectId) {

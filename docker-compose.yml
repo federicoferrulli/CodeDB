@@ -16,8 +16,12 @@
 #   CODEDB_RBAC=on             # ...e allora l'autenticazione diventa necessaria
 #   CODEDB_TRUST_PROXY_TLS=1   # dichiarazione che davanti c'è un proxy HTTPS
 #
-# Senza `CODEDB_TRUST_PROXY_TLS=1` il server rifiuta comunque di partire fuori
-# dal loopback: su HTTP viaggerebbero in chiaro password, token e passphrase.
+# Le tre righe non sono consigli: con BIND_ADDR fuori dal loopback il server
+# RIFIUTA DI PARTIRE se manca l'una o l'altra. Senza `CODEDB_TRUST_PROXY_TLS=1`
+# perché su HTTP viaggerebbero in chiaro password, token e passphrase; senza
+# `CODEDB_RBAC=on` perché non ci sarebbe alcuna autenticazione — e quelle due
+# cose sono diverse, mentre prima una sola variabile (con default a 1 proprio
+# qui) le disattivava entrambe lasciando solo un avviso nel log.
 # Le porte dei DATABASE hanno un bind separato (DB_BIND_ADDR) e restano su
 # loopback anche quando si espone la GUI: quasi mai serve raggiungerli da fuori.
 # ---------------------------------------------------------------------------
@@ -37,10 +41,18 @@ services:
       - CODEDB_APP_DB_URI=${CODEDB_APP_DB_URI:-}
       - CODEDB_OWNER_EMAIL=${CODEDB_OWNER_EMAIL:-}
       - CODEDB_OWNER_PASSWORD=${CODEDB_OWNER_PASSWORD:-}
-      # Il Dockerfile la imposta a 1 perché il bind 0.0.0.0 è INTERNO al
-      # container; qui la si può azzerare per far rifiutare l'avvio se si espone
-      # la porta senza un reverse proxy HTTPS davanti.
-      - CODEDB_TRUST_PROXY_TLS=${CODEDB_TRUST_PROXY_TLS:-1}
+      # Dove la porta è PUBBLICATA (la stessa BIND_ADDR di `ports:`): è questo
+      # che il server guarda, non HOST, che nel container è interno. Con
+      # BIND_ADDR=0.0.0.0 l'avvio pretende sia CODEDB_TRUST_PROXY_TLS=1 sia
+      # l'autenticazione, invece di limitarsi a un avviso nel log.
+      - CODEDB_PUBLIC_BIND=${BIND_ADDR:-127.0.0.1}
+      # Dichiarazione "davanti c'è un proxy HTTPS". NESSUN DEFAULT a 1: prima
+      # c'era, e insieme al default CODEDB_RBAC=off bastava BIND_ADDR=0.0.0.0
+      # per pubblicare in rete una GUI con pieni poteri e senza credenziali.
+      - CODEDB_TRUST_PROXY_TLS=${CODEDB_TRUST_PROXY_TLS:-}
+      # Ultima spiaggia consapevole: esporre in rete SENZA autenticazione
+      # (rete privata, VPN, firewall). Lasciala vuota se non sai cos'è.
+      - CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=${CODEDB_ALLOW_UNAUTHENTICATED_NETWORK:-}
       # Passphrase per decifrare i segreti (password DB, SSH) in
       # connections.ini; senza, i segreti restano bloccati finche' non viene
       # sbloccato il vault dalla UI. Impostare via .env, mai in chiaro qui.

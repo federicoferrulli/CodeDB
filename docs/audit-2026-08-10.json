@@ -1,0 +1,1019 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-08-10",
+  "versione_analizzata": "0.1.0-beta.1",
+  "tipo": "audit di piattaforma (analisi statica) — CHIUSURA COMPLETA dell ambito dichiarato non analizzato in docs/audit-2026-08-09.json",
+  "riepilogo": {
+    "totale": 47,
+    "critica": 1,
+    "alta": 9,
+    "media": 19,
+    "bassa": 18
+  },
+  "note_revisione": [
+    {
+      "data": "2026-08-10 (4a passata — area 5 di 5, chiusura)",
+      "cosa": "Aperta l'ultima voce: «test/: verificata solo l'isolamento degli harness, non la copertura o la correttezza delle asserzioni». Esaminati la struttura di test/unit.js e delle 20 sotto-suite che richiama, la forma delle asserzioni nei 17 file e2e, e la copertura effettiva confrontandola con i 43 rilievi delle quattro passate precedenti. Con questa passata l'ambito dichiarato non analizzato il 2026-08-09 è chiuso per intero.",
+      "aggiunti": [
+        "CDB-A63",
+        "CDB-A64",
+        "CDB-A65",
+        "CDB-A66"
+      ],
+      "verificati_senza_rilievo": [
+        "La suite è nel complesso solida e confronta VALORI, non forme: su 17 file e2e e circa 470 asserzioni, quelle puramente strutturali (typeof / Array.isArray / length >= n) sono 11 — e sei di queste stanno tutte in e2e-mcp.js sugli strumenti analitici (vedi CDB-A63). Il resto verifica risultati attesi con deepStrictEqual e confronti espliciti",
+        "Isolamento degli harness confermato anche in questa lettura più ampia: nessun file di test scrive nel vault reale, nella connections.ini reale o nella cartella backups del repository",
+        "unit-vault.js e unit-script-runner.js usano un contatore `falliti` con un helper che cattura la singola asserzione: un test rotto non interrompe gli altri e il conteggio finale porta l'esito, che è il comportamento corretto per una suite senza framework",
+        "unit-rbac.js (87 asserzioni) e unit-mongo-script.js (42) sono le due suite più esigenti del progetto e provano proprietà negative reali (permessi negati, identificatori non raggiungibili, costruttori vietati), non solo il percorso felice",
+        "unit-charts.js prova davvero le tre regole di leggibilità dichiarate (colore legato allo slot della serie, nessun secondo asse Y, legenda assente con una serie sola): la parte che il modulo prometteva di rendere verificabile lo è"
+      ]
+    },
+    {
+      "data": "2026-08-10 (4a passata — area 4 di 5)",
+      "cosa": "Aperta la voce «tools/ e la CLI backup/cli.js oltre allo strato connstore». Letti riga per riga: backup/cli.js (parsing argomenti, risoluzione della connessione, i quattro comandi), backup/lib/notify.js, tools/genera-licenza.js, tools/impronte.js, tools/build-desktop.mjs, e per confronto `build.files` in package.json e le asserzioni di test/unit.js sulle esclusioni.",
+      "aggiunti": [
+        "CDB-A57",
+        "CDB-A58",
+        "CDB-A59",
+        "CDB-A60",
+        "CDB-A61",
+        "CDB-A62"
+      ],
+      "verificati_senza_rilievo": [
+        "backup/cli.js — la CLI non accetta MAI credenziali da riga di comando: `resolveSavedConnection` legge solo connections.ini e chiede la passphrase con prompt mascherato soltanto se `hasEncryptedSecrets` trova davvero segreti cifrati. `--owner`/CODEDB_OWNER_ID selezionano il file del tenant, coerentemente con l'isolamento multi-tenant del vault",
+        "backup/cli.js — `establishConnection`/`teardownConnection` sono in un `try/finally` in entrambi i comandi lunghi, quindi né un backup né un restore falliti lasciano una connessione o un tunnel SSH appesi",
+        "backup/cli.js — il fallimento del restore riporta anche quanto è stato applicato prima di fermarsi (`err.summary`), che è l'informazione che serve davvero quando il database di destinazione resta in uno stato intermedio",
+        "backup/lib/notify.js — la notifica è correttamente best-effort (try/catch che logga e non rilancia) e ha un timeout di 10 s: non può far fallire né appendere un backup riuscito",
+        "tools/genera-licenza.js — la normalizzazione dei fine riga in ingresso e il BOM UTF-8 in uscita sono implementati come descritto, e `impagina` conserva davvero gli elenchi puntati dell'EULA: la forma usata nelle sorgenti attuali (riga introduttiva, riga vuota, voci `- `) viene riconosciuta e resa correttamente",
+        "tools/impronte.js — la protezione contro l'auto-conferma c'è ed è giusta (il registro viene saltato sia per percorso assoluto sia per nome file, altrimenti ogni analisi darebbe 100%), la distinzione fra occorrenze nel codice e nella sola documentazione è applicata al punteggio, e `verdetto` è deliberatamente prudente",
+        "tools/impronte.js — `fileDi` non attraversa i collegamenti simbolici (`Dirent.isDirectory()` è falso per un symlink), quindi un albero sospetto con cicli di link non manda in ricorsione infinita l'analisi",
+        "tools/build-desktop.mjs — la scelta di @electron/packager al posto di electron-builder è motivata correttamente (nessun download di winCodeSign, nessun symlink da estrarre) e `prune: true` esclude le devDependencies"
+      ]
+    },
+    {
+      "data": "2026-08-10 (4a passata — area 3 di 5)",
+      "cosa": "Aperta la voce «mcp/McpGateway.js: risorse e prompts non letti; dei tool verificata l'autorizzazione, non la correttezza dell'analisi prodotta». Lette riga per riga: le due risorse (schema://, graph://), i quattro prompts, e le cinque funzioni analitiche (getShortestPath, analyzeDependencies, analyzePii, auditSchema, buildGraphData) più il generatore renderSchemaMarkdown.",
+      "aggiunti": [
+        "CDB-A52",
+        "CDB-A53",
+        "CDB-A54",
+        "CDB-A55",
+        "CDB-A56"
+      ],
+      "estesi": [
+        "CDB-A22: il difetto dell'ordinamento topologico NON è solo del frontend. `mcp/McpGateway.js:339-357` contiene la stessa identica implementazione (`inDegreeCopy = new Map(outDegree)` con adiacenza diretta), esposta come tool `analyze_dependencies` e citata esplicitamente dal prompt `diagnostica-schema`, che istruisce l'assistente a riportare «la sequenza ottima di popolamento/seeding». Il risultato sbagliato viene quindi presentato da un'AI come conclusione di un'analisi.",
+        "CDB-A39: confronto con l'euristica PII del gateway completato — le due liste DIVERGONO davvero. `mcp/McpGateway.js:367` aggiunge sei termini che `public/js/graph3d.js:339` non ha (address, dob, birth, ip, vat, tax), quindi la stessa colonna può risultare PII per l'AI e non per il distintivo nell'interfaccia, e viceversa. Vedi CDB-A52 e CDB-A53."
+      ],
+      "verificati_senza_rilievo": [
+        "Autorizzazione delle RISORSE: `requireDbSession` (riga 548-552) risolve il connection_id nella sola mappa `session.dbSessions` della sessione MCP chiamante, e sia schema:// sia graph:// leggono lo schema con `sess.strategy.dbSchema(...)` — cioè attraverso la strategia già avvolta nel Proxy autorizzante, che per `dbSchema` FILTRA invece di negare. Le risorse non aprono quindi alcuna via laterale rispetto ai tool: la conclusione della passata precedente sull'autorizzazione dei tool si estende integralmente a queste due",
+        "PROMPTS: i quattro template non eseguono nulla e non toccano il database — sono testo che istruisce il client. Gli argomenti (`connessione`, `db`, `periodo`) sono validati da zod e interpolati in un messaggio destinato a un'AI, non in codice né in una query: non c'è alcuna injection, e i valori li fornisce lo stesso client che leggerà il prompt. Tutti e quattro chiudono con `disconnect_database`, quindi non lasciano sessioni appese",
+        "`getShortestPath` (righe ~280-308) — BFS corretta: coda di cammini, `visited` popolato all'inserimento e non all'estrazione (nessun nodo accodato due volte), archi resi bidirezionali prima della visita",
+        "`detectImplicitRelations` (righe 235-260) — identica alla copia del frontend e corretta nel suo ambito: il regex `^(.+?)_?ids?$` con quantificatore pigro estrae la base giusta sia da `user_id` sia da `userid`, e `existingSet` evita di duplicare una relazione già dichiarata",
+        "`buildGraphData` — include le relazioni implicite per impostazione predefinita (`includeImplicit = true`), coerentemente con la vista Grafo 3D dell'interfaccia"
+      ]
+    },
+    {
+      "data": "2026-08-10 (4a passata — area 2 di 5)",
+      "cosa": "Aperta la voce «db/errors.js e db/MongoScriptRunner.js verificati solo dall'esterno». Letti riga per riga: il valutatore dell'AST (budget, scope, completion record, try/catch/finally), gli oggetti `db`/collezione/cursore esposti allo script, e le otto regole di riconoscimento di spiegaErrore con il loro ordine. Tre rilievi sono stati confermati eseguendo l'interprete contro un host finto in memoria (nessun database reale coinvolto): la resistenza alla ricorsione catastrofica delle espressioni regolari, il filtro predefinito delle scritture e il passaggio degli operatori JavaScript lato server.",
+      "aggiunti": [
+        "CDB-A44",
+        "CDB-A45",
+        "CDB-A46",
+        "CDB-A47",
+        "CDB-A48",
+        "CDB-A49",
+        "CDB-A50",
+        "CDB-A51"
+      ],
+      "verificati_senza_rilievo": [
+        "MongoScriptRunner — i completion record propagano correttamente break/continue/return attraverso Block, While, DoWhile, For, ForOf e ForIn; in `For` il `continue` esegue comunque `nodo.update`, come in JavaScript. `eseguiProgramma` rifiuta break/continue fuori da un ciclo",
+        "MongoScriptRunner — l'incatturabilità dei budget è effettiva: `Try` rilancia `err.budget` sia dal blocco sia dal gestore (righe 606 e 616), e il finalizzatore non può inghiottire l'eccezione perché l'esito viene tenuto da parte e rilanciato a mano invece di usare un `finally` di JavaScript",
+        "MongoScriptRunner — `chiamaFunzione` decrementa `this.profondita` in un `finally`, quindi una ricorsione che supera il limite non lascia il contatore sporco per le chiamate successive",
+        "MongoScriptRunner — `assegnaA` blocca l'assegnamento sugli oggetti host (`__host`/`__funzione`/`__chiamabile`) e sui NOMI_VIETATI (`constructor`, `__proto__`, `prototype`), quindi la sandbox non si buca dal lato della scrittura",
+        "MongoScriptRunner — il budget di memoria è applicato dove serve davvero (concatenazione di stringhe in `applicaBinario`, metodi nativi in MongoScript.legaNativo) e stima per eccesso sulle stringhe",
+        "MongoScriptRunner — `aggrega` accoda `$sort`/`$skip`/`$limit` DOPO la pipeline dell'utente, che è l'ordine corretto per la catena `.aggregate([…]).sort().limit()`",
+        "server.js:1296-1336 (mongoScriptHost) — l'adattamento fra il vocabolario della shell (`keys`/`options`) e quello delle strategie (`fields`/`unique`/`name`) è corretto, e ogni metodo passa da `executeWithReconnect` sulla strategia già avvolta nel Proxy autorizzante: l'RBAC vale davvero per ogni riga di script",
+        "errors.js — la difesa contro gli errori difettosi regge: `testo()` protegge getter e toString che esplodono, e `descriviErrore` avvolge OGNI regola in un try/catch, quindi una regola rotta non può mai sostituire l'errore vero con un crash del gestore",
+        "errors.js — l'idempotenza è reale (marcatore «Cosa fare:» controllato prima di tutto) e la proprietà «nessuna invenzione» è rispettata da tutte le regole tranne quella descritta in CDB-A49",
+        "errors.js — il caso non ovvio dichiarato in CLAUDE.md è implementato come promesso: `regolaTimeout` riga 271-273 si tira indietro quando in un MongoServerSelectionError compare una causa di rete concreta, lasciando parlare `regolaRete`"
+      ]
+    },
+    {
+      "data": "2026-08-10 (4a passata — area 1 di 5)",
+      "cosa": "Aperta la voce «Frontend, logica di PRESENTAZIONE non verificata riga per riga». Letti riga per riga: public/js/geo-stats.js, geojson.js, geomap.js, geomulti.js, chart-option.js, charts.js, graph3d.js, colltabs.js, onboarding.js, query-tab.js. Oggetto della lettura è ciò che i moduli DISEGNANO e CALCOLANO (posizionamento, misure geografiche, aggregazioni dei grafici, algoritmi di grafo), non l'escaping e l'instradamento per tab già coperti il 2026-08-09 — che però hanno prodotto due rilievi comunque (CDB-A20, CDB-A21), su percorsi che le passate precedenti non avevano toccato.",
+      "aggiunti": [
+        "CDB-A20",
+        "CDB-A21",
+        "CDB-A22",
+        "CDB-A23",
+        "CDB-A24",
+        "CDB-A25",
+        "CDB-A26",
+        "CDB-A27",
+        "CDB-A28",
+        "CDB-A29",
+        "CDB-A30",
+        "CDB-A31",
+        "CDB-A32",
+        "CDB-A33",
+        "CDB-A34",
+        "CDB-A35",
+        "CDB-A36",
+        "CDB-A37",
+        "CDB-A38",
+        "CDB-A39",
+        "CDB-A40",
+        "CDB-A41",
+        "CDB-A42",
+        "CDB-A43"
+      ],
+      "verificati_senza_rilievo": [
+        "geo-stats.js — la formula dell'eccesso sferico di areaAnello è quella canonica (Chamberlain & Duquette) e il raggio 6371008.8 m è il raggio medio WGS84, lo stesso usato da PostGIS per le misure sferiche su geography; l'errore dichiarato (<0,5%) è realistico. La separazione lunghezza/perimetro/area per famiglia è coerente fra calcolo, riepilogo e barra di stato. Unica lacuna: l'antimeridiano (CDB-A38)",
+        "geojson.js — posizioni()/scriviPosizione() sono l'inverso l'una dell'altra anche sui percorsi dentro GeometryCollection ('geometries', i, …); chiuso() e fuoriDaLonLat() si comportano come dichiarato",
+        "geomap.js — la chiusura dell'anello durante il trascinamento (scriviPosizioneChiudendo) e l'eliminazione di un vertice (eliminaVertice + chiudiAnello) producono in tutti i casi un anello valido: cancellando il vertice di chiusura si ottiene [D,B,C,D], che è lo STESSO anello di [B,C,D,B], non una forma diversa. I minimi per tipo (4 per Polygon, 2 per LineString) sono corretti",
+        "chart-option.js — la tavolozza non viene mai ciclata oltre gli 8 slot senza dichiararlo, non esiste alcun secondo asse Y, e il colore è legato allo slot della serie e non alla posizione: le tre regole dichiarate in testa al file sono effettivamente imposte dal codice. numero() copre tutte le forme EJSON che le strategie producono",
+        "colltabs.js — l'instradamento per tab è corretto anche nei rami asincroni: closeCollTabsWhere/updateCollTabs accettano lo `st` esplicito e su un tab non attivo modificano solo la struttura senza toccare il DOM; renderCollTabBar registra i gestori dragover/drop una volta sola (guardia bar.dataset.wired); saveActiveSnapshot tronca a 500 righe e marca docsParziali, e activate() rifà la query invece di mostrarne una parte",
+        "onboarding.js — la logica delle barriere d'accesso (vault/login) fa quello che dichiara: attende, interroga vault:status invece di dedurlo dalle classi, e la checklist non compare mai sopra la modale della passphrase. posizionaPasso() copre davvero i tre casi (sotto/sopra/a lato) e limita il fumetto dentro il viewport in entrambe le direzioni",
+        "query-tab.js — la virtualizzazione della tabella dei risultati usa displayValueBreve sia per il testo sia per il title (nessun secondo JSON.stringify per cella), e il filtro gerarchico dello Schema Browser tiene effettivamente distinti `visibile` e `trovato`, quindi un nodo trovato non spalanca il proprio sottoalbero"
+      ]
+    }
+  ],
+  "ambito_analizzato": [
+    "public/js/geo-stats.js — misure geografiche (haversine, eccesso sferico, bbox, centro), formattazione, FeatureCollection",
+    "public/js/geojson.js — riconoscimento, percorsi delle posizioni, chiusura anelli, rilevamento coordinate proiettate",
+    "public/js/geomap.js — editor di una geometria: trascinamento vertici, aggiunta/eliminazione, conversione di tipo, sincronizzazione mappa⇄JSON",
+    "public/js/geomulti.js — mappa di una selezione di celle: disegno, riepilogo, elenco, evidenziazione nei due versi, esportazione GeoJSON",
+    "public/js/chart-option.js — aggregazioni, ordinamento e ripiegamento in «Altro», suggerimenti, tipo effettivo dell'asse X, costruzione dell'option ECharts",
+    "public/js/charts.js — autoConfigura/allineaAsseX, fusione dell'override JSON, barra rapida, preimpostazioni, export PNG/JSON",
+    "public/js/graph3d.js — costruzione del grafo, relazioni implicite, cammino minimo BFS, matrice delle dipendenze, audit dello schema, diff con snapshot, import DBML/SQL, export Mermaid/DBML/DDL",
+    "public/js/colltabs.js — ciclo di vita dei coll-tab, snapshot, anteprima, tab a livello database",
+    "public/js/onboarding.js — barriere d'accesso, tour, posizionamento dello spotlight, checklist",
+    "public/js/query-tab.js — tabella dei risultati virtualizzata, Schema Browser e suo filtro, bersaglio della query, esecuzione/annullamento, esportazione dei risultati",
+    "db/MongoScriptRunner.js — budget (passi, iterazioni, profondità, tempo, chiamate DB, output, memoria), scope e completion record, try/catch/finally, oggetti db/collezione/cursore, accesso al database",
+    "db/errors.js — le otto regole di riconoscimento, il loro ordine, idempotenza e comportamento sugli errori non riconosciuti",
+    "server.js:1296-1336 — mongoScriptHost, il punto in cui l'interprete tocca le strategie",
+    "mcp/McpGateway.js — risorse schema:// e graph://, i quattro prompts, e le funzioni analitiche getShortestPath, analyzeDependencies, analyzePii, auditSchema, buildGraphData, detectImplicitRelations, renderSchemaMarkdown",
+    "backup/cli.js — parsing argomenti, resolveSavedConnection, backup/restore/list/verify; backup/lib/notify.js",
+    "tools/genera-licenza.js, tools/impronte.js, tools/build-desktop.mjs, e per confronto build.files di package.json",
+    "test/ — struttura di unit.js e delle 20 sotto-suite, forma delle asserzioni nei 17 file e2e, copertura effettiva confrontata con i rilievi di questo audit"
+  ],
+  "ambito_non_analizzato": [
+    "landing/ — escluso su richiesta di Keus",
+    "public/vendor/ (Leaflet, ECharts, Three.js/ForceGraph3D): librerie di terze parti non modificate",
+    "Nessuna esecuzione contro risorse reali: nessun server avviato, nessuna suite eseguita, nessun browser. Le sole esecuzioni sono state ispezioni binarie dei sorgenti in Node e una prova di `git diff` su un file contenente byte NUL (modifica ripristinata subito con `git checkout --`)"
+  ],
+  "finding": [
+    {
+      "id": "CDB-A63",
+      "severita": "media",
+      "titolo": "Gli strumenti analitici sono coperti da asserzioni che non possono fallire su una risposta sbagliata",
+      "categoria": "copertura dei test",
+      "modulo": "test/e2e-mcp.js",
+      "riferimenti": [
+        "test/e2e-mcp.js:171",
+        "test/e2e-mcp.js:174",
+        "test/e2e-mcp.js:177",
+        "test/e2e-mcp.js:180"
+      ],
+      "problema": "Le quattro asserzioni sui tool analitici verificano soltanto la FORMA del risultato: `Array.isArray(deps.data.seeding_order) && seeding_order.length >= 2`, `typeof pii.data.total_pii_fields === 'number'`, `typeof audit.data.health_score === 'number' && Array.isArray(audit.data.issues)`, `Array.isArray(empty.data.non_empty_tables)`. Nessuna di esse può distinguere una risposta corretta da una sbagliata: passano identiche con un ordine di seeding casuale, con un conteggio PII pieno di falsi positivi e con un punteggio che non sa scendere sotto 20. Sono inoltre sei delle undici asserzioni puramente strutturali di TUTTA la suite e2e (le altre confrontano valori attesi): la debolezza è concentrata esattamente sui quattro tool la cui unica ragione d'essere è la correttezza del numero che restituiscono.",
+      "scenario": "Tre rilievi di questo stesso audit — CDB-A22/A52 (l'ordine di seeding non è topologico), CDB-A53 (l'euristica PII marca `descrizione` e `tipo`) e CDB-A54 (il punteggio ha intervallo reale 20-100) — vivono sotto queste tre asserzioni, che sono verdi da sempre. La suite ha quindi dato per mesi la garanzia che quei tool «funzionano», mentre verificava solo che restituissero un array e un numero.",
+      "fix": "Sostituire le asserzioni di forma con casi a risposta nota su uno schema di prova costruito apposta: due tabelle con una FK dichiarata devono produrre `seeding_order` con la tabella referenziata PRIMA di quella che la referenzia; una tabella con una colonna `email` e una `descrizione` deve produrre `total_pii_fields === 1` e non 2; due schemi di qualità diversa devono produrre due punteggi ordinati correttamente. Sono asserzioni che si scrivono una volta e che avrebbero intercettato tutti e tre i difetti.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A64",
+      "severita": "media",
+      "titolo": "`npm test` stampa «Tutti i test unitari superati con successo!» anche quando una sotto-suite è fallita",
+      "categoria": "affidabilità dei test",
+      "modulo": "test/unit.js",
+      "riferimenti": [
+        "test/unit.js:772-855",
+        "test/unit.js:857",
+        "test/unit-cell-stats.js (coda)",
+        "test/unit-rbac.js (coda)",
+        "test/unit-vault.js (coda)"
+      ],
+      "problema": "`test/unit.js` richiama venti sotto-suite con `require()` dentro il proprio IIFE asincrono e chiude stampando incondizionatamente la riga di successo. Due conseguenze. (1) Dodici sotto-suite su venti segnalano il fallimento con `process.exitCode = 1` invece di lanciare: il codice di uscita risulta corretto, ma il flusso di `unit.js` prosegue e la riga finale dichiara che è andato tutto bene. (2) Le sotto-suite scritte come IIFE asincrono (`(async () => { … })().catch(…)`) restituiscono il controllo a `require()` appena finisce la loro parte sincrona: la riga «Tutti i test unitari superati con successo!» può quindi essere stampata PRIMA che quelle suite abbiano eseguito una sola asserzione.",
+      "scenario": "Un test rotto in unit-charts o unit-rbac produce un output che termina con la riga di successo, con il messaggio di errore sepolto qualche decina di righe più in alto in mezzo alle centinaia di righe «OK». Chi lancia `npm test` a mano legge l'ultima riga e conclude che è verde; solo la CI, che guarda il codice di uscita, si accorge della differenza. Nel caso peggiore — una sotto-suite asincrona il cui corpo resta appeso su una promessa che non si risolve mai — il ciclo di eventi si svuota, il processo esce con codice 0 e la suite risulta superata senza aver verificato nulla.",
+      "fix": "Rendere `unit.js` responsabile dell'esito: attendere le sotto-suite (esportare da ciascuna una funzione `async` invece di eseguirla al require) e stampare la riga di successo solo se `process.exitCode` non è stato impostato. È una modifica meccanica e circoscritta che restituisce all'output la stessa affidabilità che il codice di uscita ha già.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A65",
+      "severita": "media",
+      "titolo": "Le tre suite più mature provano le proprietà dichiarate ma non i controesempi, e i difetti stanno nei controesempi",
+      "categoria": "copertura dei test",
+      "modulo": "test/unit-charts.js, test/unit-mongo-script.js, test/unit-errors.js",
+      "riferimenti": [
+        "test/unit-charts.js:158-161",
+        "test/unit-charts.js:17-20",
+        "test/unit-mongo-script.js",
+        "test/unit-errors.js"
+      ],
+      "problema": "Le tre suite scritte per proteggere le parti «che sbagliate mentono» condividono la stessa forma di lacuna: verificano che la proprietà dichiarata valga nel caso in cui vale, non che non ci siano casi in cui cade. (a) `unit-charts.js` riga 160 fissa «Il valore di \"Altro\" è la somma della coda» usando la sola aggregazione `somma`, dove sommare è corretto per definizione; non esiste alcun caso con `media`, `mediana`, `min` o `distinti`, che è esattamente dove il comportamento è sbagliato (CDB-A24). Su 115 asserzioni, nessuna verifica l'aritmetica di `applicaAgg` con un'aggregazione non additiva. (b) `unit-mongo-script.js` verifica accuratamente che cosa la sandbox NON lascia raggiungere (require, process, constructor, call/apply), ma non che cosa i budget NON riescono a fermare: manca la classe di casi «costrutto legale e ammesso che consuma tempo senza consumare passi», dove sta CDB-A44. (c) `unit-errors.js` verifica che i codici riconosciuti producano la spiegazione giusta, ma non la proprietà complementare e dichiarata («nessuna invenzione»): manca il caso di un messaggio NON riconosciuto che assomiglia a uno riconosciuto, dove sta CDB-A49.",
+      "scenario": "Il progetto ha investito nella separazione dei moduli puri proprio per poterli provare (chart-option.js staccato da charts.js, cell-stats.js da cellselect.js, onboarding-stato.js da onboarding.js), e la motivazione scritta in testa a ognuno è che «un'aggregazione errata non produce un grafico rotto ma un grafico plausibile e falso». La separazione è stata fatta bene; le asserzioni che ne sfruttano la possibilità coprono però la metà facile del problema. Il risultato è che i tre difetti che quelle suite esistono per intercettare sono passati.",
+      "fix": "Per ciascuna delle tre, aggiungere la classe di casi mancante: un'aggregazione non additiva con `maxCategorie` attivo; uno script che rispetta tutti i budget dichiarati e supera comunque il tempo massimo; un errore con codice noto il cui testo contiene una parola chiave di un'altra regola. Sono tre casi, uno per suite, e coprono tre rilievi.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A66",
+      "severita": "bassa",
+      "titolo": "Nessun modulo di presentazione del frontend ha test, ed è l'area con più della metà dei rilievi",
+      "categoria": "copertura dei test",
+      "modulo": "test/",
+      "riferimenti": [
+        "public/js/graph3d.js",
+        "public/js/geomap.js",
+        "public/js/geomulti.js",
+        "public/js/query-tab.js",
+        "public/js/cellselect.js",
+        "public/js/dbtree.js"
+      ],
+      "problema": "Nessun file in `test/` nomina `graph3d`, `geomap`, `geomulti`, `query-tab`, `cellselect`, `inlineEdit`, `dbtree` o `exportimport`. Sono coperti i moduli PURI estratti apposta (chart-option, cell-stats, geo-stats, table-cols, onboarding-stato, highlighter, query-formatter, sql-split-client), che è la scelta giusta e ben eseguita; ma le funzioni non-DOM rimaste dentro i moduli di interfaccia — la BFS del cammino minimo, l'ordinamento topologico, il rilevamento delle relazioni implicite, la conversione markdown/Mermaid, il parsing DBML/SQL, la chiusura degli anelli dei poligoni — sono pure quanto quelle già estratte e non sono provate da nulla.",
+      "scenario": "Delle 47 voci di questo audit, 24 vengono dai moduli di presentazione e almeno sette (CDB-A22, A29, A30, A40, e le tre parti di CDB-A55) riguardano funzioni che non toccano il DOM e sarebbero state intercettate da una manciata di asserzioni. La correlazione fra «non ha test» e «ha difetti» è, in questo repository, diretta e misurabile.",
+      "fix": "Estrarre in moduli foglia le funzioni pure rimaste dentro graph3d.js (analisi dello schema e generatori di export) — che è anche il fix di CDB-A52, perché quel modulo diventa quello condiviso con il gateway MCP — e coprirle con la stessa forma di test già usata per chart-option.js. Per l'editor geografico, le funzioni di chiusura degli anelli e conversione di tipo stanno già quasi tutte in geojson.js, che è foglia: basta provarle.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A57",
+      "severita": "alta",
+      "titolo": "Entrambi i percorsi di pacchettizzazione distribuiscono `vault.json` e il registro privato dei marcatori di provenienza",
+      "categoria": "esposizione di dati / distribuzione",
+      "modulo": "tools/build-desktop.mjs + package.json (build.files)",
+      "riferimenti": [
+        "tools/build-desktop.mjs:25-41",
+        "package.json build.files",
+        "test/unit.js:480-483",
+        ".gitignore:5-6",
+        ".gitignore:14",
+        ".gitignore:30-35"
+      ],
+      "problema": "Esistono DUE elenchi di esclusione indipendenti — `IGNORE` in tools/build-desktop.mjs (@electron/packager, usato da `npm run dist:*`) e `build.files` in package.json (electron-builder, usato da `npm run build:*` e `release:*`) — e nessuno dei due esclude tutto ciò che il `.gitignore` considera privato. Mancano in ENTRAMBI: `vault.json` (gitignored alle righe 5-6) e `provenienza/` (gitignored alle righe 30-35). Mancano nel SOLO percorso packager, dove l'elenco è più corto: `.env`, `ui-audit.log` (`IGNORE` nomina `codedb.log`, `codedb.err.log` e `mcp-audit.log` ma non questo) e `data/conns/**` (il pattern `/^\\/connections\\.ini.*$/` copre solo il file di radice, e l'esclusione `!conns/**` di electron-builder è ancorata alla radice, quindi non copre `data/conns/`). Tutti e quattro i file esistono nell'albero di lavoro in questo momento. Il test che dovrebbe impedirlo (test/unit.js:481) controlla tre sole voci — `!connections.ini`, `!.env`, `!conns/**` — e solo dentro `build.files`: l'elenco del packager non è verificato affatto.",
+      "scenario": "Chiunque scarichi l'installer o lo zip lo apre come un archivio (`app.asar` compreso, che non è cifrato) e trova: (a) `vault.json`, cioè il salt scrypt e la DEK avvolta dello sviluppatore — materiale su cui si può montare offline esattamente l'attacco che il formato v2 è stato introdotto per rendere impraticabile, con la differenza che qui il file arriva a tutti invece che a chi ruba un disco; (b) `provenienza/impronte.json`, il registro dei marcatori che la documentazione tiene fuori da git con la motivazione esplicita che pubblicarlo «consegnerebbe l'elenco di cosa cancellare» — distribuirlo in ogni copia dell'applicazione annulla il meccanismo di provenienza per intero; (c) dal percorso `dist:*`, anche `.env` con `MONGO_ROOT_PASSWORD`/`MYSQL_ROOT_PASSWORD` (che docker-compose rende obbligatorie) ed eventualmente `GUI_MONGO_PASSPHRASE`, più `ui-audit.log` con nomi di connessione, database e collezioni di ogni operazione fatta sulla macchina di sviluppo.",
+      "fix": "Derivare le esclusioni da un elenco UNICO condiviso dai due strumenti (un modulo che esporta i pattern, letto da build-desktop.mjs e replicato in build.files da uno script di verifica) e aggiungervi `vault.json`, `vault.*`, `provenienza/**`, `data/**`, `ui-audit.log*`, `.env*`. Estendere l'asserzione di test/unit.js a tutte queste voci E a `IGNORE` del packager; meglio ancora, far fallire il test se un pattern presente in `.gitignore` non ha un corrispondente in entrambi gli elenchi di distribuzione. Nel frattempo, verificare i pacchetti già pubblicati: se `vault.json` o `provenienza/impronte.json` sono usciti, vanno considerati compromessi (passphrase da cambiare, registro dei marcatori da rigenerare).",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A58",
+      "severita": "media",
+      "titolo": "La CLI di backup accetta in silenzio qualunque opzione sconosciuta: un refuso in `--target-db` ripristina sul database di origine",
+      "categoria": "bug funzionale / perdita di dati",
+      "modulo": "backup/cli.js",
+      "riferimenti": [
+        "backup/cli.js:87-106",
+        "backup/cli.js:193",
+        "backup/cli.js:182",
+        "backup/cli.js:194"
+      ],
+      "problema": "`parseArgs` non ha alcuna lista di opzioni riconosciute: ogni `--qualcosa valore` finisce in `args.qualcosa` e, se nessun comando lo legge, viene ignorato senza una parola. Le opzioni di `restore` che cambiano la DESTINAZIONE o l'AMPIEZZA dell'operazione sono proprio quelle scritte con un trattino interno o al plurale — `--target-db`, `--collections`, `--since-field` — cioè quelle in cui il refuso è più facile.",
+      "scenario": "`node backup/cli.js restore --conn produzione --from backups/produzione_shop/2026…_full --targetdb shop_copia`: il trattino dimenticato fa sì che `args['target-db']` resti indefinito, quindi `targetDb: null` e il ripristino avviene sul database di ORIGINE letto dal manifest, cioè `shop` in produzione. Il comando riesce, il log dice «Restore completato su \"shop\"» e la notifica Slack lo conferma: chi lo ha lanciato credeva di popolare una copia. Lo stesso vale per `--collection` invece di `--collections`, che trasforma un ripristino selettivo in un ripristino integrale, e per `--targetdb` combinato con `--drop`.",
+      "fix": "Dichiarare l'insieme delle opzioni valide (l'aiuto in testa al file le elenca già tutte) e rifiutare l'esecuzione su un'opzione sconosciuta, suggerendo la più simile. È la difesa standard di qualunque CLI, e qui protegge un comando distruttivo. In aggiunta: quando `--target-db` è assente, `restore` dovrebbe DIRE su quale database sta per scrivere prima di iniziare, non solo dopo aver finito.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A59",
+      "severita": "media",
+      "titolo": "Il messaggio d'errore grezzo viene inoltrato a Slack senza alcuna redazione: può contenere l'URI di connessione con la password",
+      "categoria": "esposizione di credenziali",
+      "modulo": "backup/cli.js + backup/lib/notify.js",
+      "riferimenti": [
+        "backup/cli.js:171",
+        "backup/cli.js:210",
+        "backup/lib/notify.js:8-22",
+        "backup/lib/policy.js"
+      ],
+      "problema": "In caso di fallimento la CLI compone la notifica con `${(err && err.message) || err}` e `notifySlack` la invia tale e quale a un servizio esterno. Non c'è alcuna redazione, e nulla nel percorso garantisce che il messaggio del driver non contenga credenziali: il driver MongoDB, di fronte a una stringa di connessione malformata o non risolvibile, riporta comunemente l'URI nel messaggio — e una connessione salvata in modalità URI contiene `mongodb://utente:password@host`. Lo stesso vale per un errore di `ssh2` che cita il percorso della chiave privata, o per un errore di rete che espone host e porta di una macchina interna.",
+      "scenario": "Un backup notturno pianificato con `--slack-webhook` fallisce perché l'URI della connessione ha un carattere non codificato: nel canale Slack — che è un servizio esterno, indicizzato, con una cronologia che resta — compare la password del database di produzione. Il resto dell'applicazione è molto attento a non far uscire i segreti (i `SECRET_FIELDS` non tornano mai al browser, `list_saved_connections` non li espone mai, l'export li ri-cifra): questo è l'unico punto in cui un segreto può uscire dalla macchina, e per giunta verso l'esterno.",
+      "fix": "Passare il testo della notifica da una funzione di redazione prima dell'invio: sostituire la parte credenziali di qualunque URI (`\\w+://[^:]+:[^@]+@` → `$1://***:***@`), i valori dei `SECRET_FIELDS` noti della connessione in uso, e i percorsi delle chiavi private. Applicarla anche al file di log, che pure conserva `err.message` (`backup/lib/logger.js`).",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A60",
+      "severita": "bassa",
+      "titolo": "`verify` dichiara integro un backup i cui checksum siano assenti o i cui file non siano nel manifest",
+      "categoria": "correttezza della verifica",
+      "modulo": "backup/cli.js",
+      "riferimenti": [
+        "backup/cli.js:235-259",
+        "backup/cli.js:241",
+        "backup/cli.js:257"
+      ],
+      "problema": "Due lacune. (1) `if (!f.sha256) continue;` salta in silenzio ogni voce priva di checksum e non la conteggia da nessuna parte: il rapporto finale dice «N file integri, 0 problemi» senza distinguere «verificati» da «non verificabili». Il commento accanto («schema/indici: file piccoli senza checksum») è inoltre superato — il checksum viene ora calcolato anche per i file `schema/`, proprio perché il loro DDL viene eseguito sul database di destinazione. (2) La verifica itera solo `manifest.files`: un file di dati presente nella cartella ma assente dal manifest non viene notato, e un manifest a cui siano state tolte delle voci passa la verifica.",
+      "scenario": "Un backup con il manifest troncato o manomesso — o semplicemente prodotto da una versione precedente che non calcolava i checksum degli schemi — supera `verify` con un rapporto pulito, e il `restore` successivo esegue un DDL che nessuno ha verificato. L'intero senso di `verify` è dare una risposta affidabile prima di un ripristino.",
+      "fix": "Contare e riportare a parte i file senza checksum («N verificati, M non verificabili»), uscire con esito non nullo se ce ne sono in un backup recente, e confrontare l'elenco dei file sul disco con quello del manifest segnalando gli extra e i mancanti.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A61",
+      "severita": "bassa",
+      "titolo": "Il convertitore markdown→testo dell'installer copre tre soli costrutti: un link nell'EULA arriverebbe grezzo alla schermata di accettazione",
+      "categoria": "correttezza dell'output",
+      "modulo": "tools/genera-licenza.js",
+      "riferimenti": [
+        "tools/genera-licenza.js:48-55",
+        "test/unit.js:488-546"
+      ],
+      "problema": "`testoSemplice` rimuove titoli, grassetto e codice inline — «solo ciò che compare davvero in MANLEVA.md», come dichiara il commento. Non tratta però link `[testo](url)`, corsivo, elenchi numerati, citazioni `>` né righe orizzontali, che in un testo legale sono tutt'altro che improbabili: il rimando alla AGPL, al repository ufficiale o a un indirizzo PEC sono esattamente le cose che si aggiungono a un EULA. Il test di allineamento (test/unit.js:488-546) confronta il file generato con l'output della stessa funzione: se il markdown resta grezzo, resta grezzo da entrambe le parti e l'asserzione passa. Verifica il BOM, gli elenchi e le righe vuote, ma non che il markdown sia sparito.",
+      "scenario": "Si aggiunge a EULA.md la riga «Il testo integrale è disponibile su [gnu.org](https://www.gnu.org/licenses/agpl-3.0.html)». `npm run electron:licenza` rigenera, `npm test` passa, e nella schermata che l'utente deve accettare per installare CodeDB compare la sintassi markdown con le parentesi quadre. È il difetto che il modulo stesso definisce peggiore: nessuno se ne accorge, perché nessuno rilegge la pagina dell'installer.",
+      "fix": "Gestire anche link (`[t](u)` → `t (u)`), corsivo, elenchi numerati e righe orizzontali; e soprattutto aggiungere al test l'asserzione complementare — che il file generato NON contenga residui di markdown (`[`…`](`, `**`, backtick, `#` a inizio riga) —, che è il controllo che rende inutile inseguire i costrutti uno per uno.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A62",
+      "severita": "bassa",
+      "titolo": "L'impegno di provenienza è un unico hash su tutti i marcatori: aggiungerne o correggerne uno invalida la data già pubblicata",
+      "categoria": "provenienza",
+      "modulo": "tools/impronte.js",
+      "riferimenti": [
+        "tools/impronte.js:95-101",
+        "tools/impronte.js:67-70",
+        "docs/provenienza.md"
+      ],
+      "problema": "Due limiti nello stesso meccanismo. (1) `impegno()` produce un solo SHA-256 sull'insieme di TUTTI i marcatori: pubblicato in docs/provenienza.md e datato dalla cronologia di git, vale finché il registro non cambia. Aggiungere un marcatore per una funzionalità nuova — o correggere il regex di uno esistente — cambia l'hash, e la data pubblicata smette di corrispondere al registro corrente: da quel momento, per provare che un marcatore esisteva già in una certa data, serve conservare a parte la vecchia copia del registro, cosa che il tool non chiede e la documentazione non spiega. È la parte del meccanismo che ha valore solo se è databile. (2) `ESTENSIONI` non comprende `.sh`, `.cmd`, `.ps1`, `.sql`, `Dockerfile` né i file senza estensione: marcatori collocati in `codedb.sh`, `CodeDB.cmd`, `tools/*.ps1` o nel Dockerfile non verrebbero mai trovati, né nell'auto-verifica né su un albero sospetto.",
+      "scenario": "Il progetto è in beta e i marcatori sono destinati a crescere. Al primo marcatore aggiunto, `npm run impronte` continua a funzionare ma l'impronta in docs/provenienza.md è quella vecchia: chi la aggiorna perde la datazione dei marcatori precedenti, chi non la aggiorna pubblica un'impronta che non corrisponde. In entrambi i casi il valore probatorio — che dipende interamente dalla data — si degrada senza che nulla lo segnali.",
+      "fix": "Rendere il registro append-only con un campo `dal` (data) per marcatore, e pubblicare l'hash PER MARCATORE oltre a quello complessivo: così aggiungerne uno nuovo non tocca la datazione dei precedenti, e ogni marcatore porta con sé la propria prova temporale. Aggiungere le estensioni mancanti a `ESTENSIONI` e i file senza estensione con nome noto (Dockerfile, Makefile).",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A52",
+      "severita": "media",
+      "titolo": "Le cinque funzioni analitiche sono duplicate fra interfaccia e gateway MCP, e sono già divergenti",
+      "categoria": "duplicazione / coerenza",
+      "modulo": "mcp/McpGateway.js + public/js/graph3d.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:310-365",
+        "public/js/graph3d.js:526-603",
+        "mcp/McpGateway.js:367",
+        "public/js/graph3d.js:338-341",
+        "mcp/McpGateway.js:401-456",
+        "public/js/graph3d.js:605-684",
+        "mcp/McpGateway.js:235-260",
+        "public/js/graph3d.js:307-336"
+      ],
+      "problema": "`analyzeDependencies`, `analyzePii`, `auditSchema`, `detectImplicitRelations` e la ricerca del cammino minimo esistono in DUE copie indipendenti — una nel modulo dell'interfaccia, una nel gateway MCP — senza alcun modulo condiviso. Tre delle quattro copie sono oggi carattere per carattere identiche (compreso il difetto dell'ordinamento topologico, CDB-A22, che è stato quindi scritto due volte); la quarta, l'euristica PII, è GIÀ divergente: il gateway riconosce sei termini in più (`address`, `dob`, `birth`, `ip`, `vat`, `tax`). La divergenza non è teorica né futura: è nel codice adesso.",
+      "scenario": "Sullo stesso schema, il pannello dettagli del Grafo 3D non marca `indirizzo_spedizione` mentre `analyze_pii` lo riporta all'assistente come dato personale; l'utente che confronta le due risposte non ha modo di capire quale sia quella giusta, e nessuna delle due dichiara di usare un'euristica diversa dall'altra. Più in generale, correggere CDB-A22 o CDB-A39 in un solo file lascia il difetto vivo nell'altro — ed è il modo in cui una correzione risulta fatta e non lo è.",
+      "fix": "Estrarre le euristiche in un modulo condiviso senza dipendenze (per esempio `db/schemaAnalisi.js`, come `db/geometry.js` e `db/sqlText.js` sono condivisi fra server e strategie) e importarlo dalle due parti; l'interfaccia lo può caricare come modulo ESM se scritto in forma neutra, altrimenti resta un solo punto da riallineare invece di cinque. Un test che confronti gli esiti delle due copie sullo stesso schema di prova impedisce la ricomparsa.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A53",
+      "severita": "media",
+      "titolo": "L'euristica PII del gateway MCP marca `descrizione`, `tipo` e `zip` come dati personali, e da lì nasce un report GDPR",
+      "categoria": "correttezza dell'analisi prodotta",
+      "modulo": "mcp/McpGateway.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:367",
+        "mcp/McpGateway.js:369-399",
+        "mcp/McpGateway.js:769-784",
+        "mcp/McpGateway.js:1459-1481"
+      ],
+      "problema": "`PII_REGEX` cerca sottostringhe senza confini di parola, e fra i termini ce ne sono quattro corti e comunissimi: `ip`, `pass`, `auth`, `tax`. `ip` da solo cattura `tipo`, `descrizione`, `zip`, `shipping`, `recipient`, `equipment`, `participant`, `principale`, `script`, `multiplo`; `pass` cattura `passeggero`, `passo`, `bypass`; `auth` cattura `author`, `authorized_at`. Su uno schema italiano — dove `tipo` e `descrizione` sono fra i nomi di colonna più frequenti in assoluto — quasi ogni tabella risulta contenere PII.",
+      "scenario": "Il prompt `analizza-gdpr` (riga 1459) istruisce l'assistente a eseguire `analyze_pii` e poi a «produrre un report in markdown con l'elenco delle tabelle contenenti PII, la classificazione dei rischi e le raccomandazioni di cifratura/anonimizzazione». L'AI riceve un elenco in cui `articoli.descrizione` e `ordini.tipo` figurano come campi sensibili, non ha modo di sapere che vengono da una corrispondenza su «ip», e produce in buona fede un documento di conformità che raccomanda di cifrare la descrizione degli articoli. Il danno non è tecnico ma di fiducia: un'analisi privacy con decine di falsi positivi viene scartata in blocco, e con essa i tre o quattro campi che erano davvero PII.",
+      "fix": "Ancorare ai confini di token — separatori `_`, `-`, `.`, cambio di maiuscola — invece che alla sottostringa: `(^|[_.\\-]|(?<=[a-z])(?=[A-Z]))(ip|email|…)([_.\\-]|$|(?=[A-Z]))`. Per `ip` in particolare pretendere una forma riconoscibile (`ip`, `ip_address`, `client_ip`, `indirizzo_ip`) invece della sottostringa nuda. Restituire inoltre nel risultato il termine che ha prodotto la corrispondenza, così l'assistente (e l'utente) possono valutare un falso positivo invece di doverlo indovinare.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A54",
+      "severita": "media",
+      "titolo": "Il `health_score` dichiarato «0-100» non può scendere sotto 20 e non tiene conto della dimensione dello schema",
+      "categoria": "correttezza dell'analisi prodotta",
+      "modulo": "mcp/McpGateway.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:401-456",
+        "mcp/McpGateway.js:785-800",
+        "public/js/graph3d.js:605-684",
+        "mcp/McpGateway.js:1483-1505"
+      ],
+      "problema": "Due difetti nella formula. (1) Le tre penalità sono limitate a 30, 20 e 30 punti: il minimo raggiungibile è 100−80 = 20, quindi il `Math.max(0, score)` finale non entra mai in gioco e l'intervallo dichiarato nella descrizione del tool («punteggio complessivo di salute (0-100)») è in realtà 20-100. Uno schema completamente privo di chiavi primarie e di relazioni ottiene 20, cioè lo stesso di uno che ha solo qualche difetto in più del minimo. (2) Le penalità sono ASSOLUTE e non proporzionali: tre tabelle orfane costano 30 punti sia in uno schema di tre tabelle (dove sono il 100% del database) sia in uno di trecento (dove sono l'1%). Poiché ogni penalità satura al proprio tetto con 2-3 occorrenze, qualunque schema di medie dimensioni con qualche imperfezione atterra sullo stesso punteggio, e il numero smette di distinguere.",
+      "scenario": "Il prompt `diagnostica-schema` chiede all'assistente di riportare «il punteggio di salute». Due database molto diversi — uno da 8 tabelle con 3 orfane e nessuna PK, uno da 400 tabelle ben modellate con 3 orfane residue e 2 senza PK — ricevono entrambi 20 e 50 rispettivamente per ragioni che non riflettono la loro qualità relativa. Un punteggio che non ordina correttamente due schemi è peggio dell'elenco puntato dei problemi, che invece è corretto.",
+      "fix": "Rendere le penalità proporzionali alla dimensione dello schema (`orfane / totale`, `senzaPk / totale`) e togliere i tetti, oppure — più semplice e più onesto — smettere di pubblicare un punteggio unico e restituire le tre metriche normalizzate (`metric_summary` esiste già e contiene i dati grezzi giusti). Se il punteggio resta, va corretta la descrizione del tool perché dichiari l'intervallo reale.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A55",
+      "severita": "bassa",
+      "titolo": "La risorsa `schema://` produce Mermaid e tabelle markdown rotti da nomi di campo con caratteri speciali",
+      "categoria": "correttezza dell'output",
+      "modulo": "mcp/McpGateway.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:199-229",
+        "mcp/McpGateway.js:211",
+        "mcp/McpGateway.js:215-218",
+        "mcp/McpGateway.js:205"
+      ],
+      "problema": "Tre omissioni nello stesso generatore, tutte incoerenti con ciò che il file già fa correttamente due righe più in là. (1) Riga 211: l'etichetta della relazione interpola `r.field` GREZZO dentro una stringa Mermaid fra virgolette, mentre nomi di entità, campi e tipi passano tutti da `entityId`/`mermaidId`; un campo con un apice doppio rompe il diagramma. (2) Righe 215-218: il dizionario dati costruisce righe di tabella markdown con `| ${f.name} | … |` senza neutralizzare la barra verticale, che su MongoDB è un carattere legale in un nome di campo e fa slittare le colonne. (3) Righe 205, 206, 210 e 221 usano `c.fields`, `f.types` e `schema.relations` senza le guardie `|| []` applicate sistematicamente altrove nel file (`analyzePii` riga 379, `auditSchema` righe 411 e 436): uno schema privo di uno di quei campi fa fallire la lettura della risorsa con un TypeError invece di produrre un documento parziale.",
+      "scenario": "Un client MCP legge `schema://…/negozio` su un database MongoDB in cui una collezione ha il campo `prezzo|iva`: la tabella del dizionario dati acquista una colonna e tutte le righe successive appaiono disallineate, mentre il diagramma Mermaid — se un nome di campo relazionale contiene un apice doppio — non viene renderizzato affatto dal client, che mostra un errore di sintassi al posto dello schema.",
+      "fix": "Passare `r.field` da `mermaidId` come già si fa per gli altri identificatori; sostituire `|` con `\\|` nelle celle della tabella markdown; aggiungere le tre guardie `|| []` mancanti.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A56",
+      "severita": "bassa",
+      "titolo": "Le due risorse MCP non hanno alcun tetto di dimensione, unico punto dell'applicazione senza",
+      "categoria": "risorse",
+      "modulo": "mcp/McpGateway.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:1375-1381",
+        "mcp/McpGateway.js:1394-1401",
+        "mcp/McpGateway.js:199-229"
+      ],
+      "problema": "`schema://` serializza in markdown OGNI collezione con OGNI campo, e `graph://` l'intero grafo di nodi e archi, senza limite né troncamento dichiarato. Tutto il resto dell'applicazione dichiara e applica un tetto: `DbStrategy.resultCap` sulle righe, `CODEDB_MAX_RESULT_BYTES` (32 MB) sui byte, `docPerLettura` negli script, i tetti di disegno di geomulti.js.",
+      "scenario": "Un database di ERP con 900 tabelle da 60 colonne produce un documento markdown di alcuni megabyte, che il client MCP inserisce nel contesto del modello: la richiesta viene rifiutata per lunghezza, oppure consuma in un colpo solo il contesto disponibile — e la descrizione della risorsa invita esplicitamente a usarla al posto di `get_schema` («sempre aggiornata»), quindi è il percorso consigliato.",
+      "fix": "Applicare un tetto in byte con troncamento DICHIARATO in coda al documento («… schema troncato: N collezioni su M»), coerente con `CODEDB_MAX_RESULT_BYTES`, e suggerire nel testo troncato di usare `get_schema` su un database specifico.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A44",
+      "severita": "critica",
+      "titolo": "Un'espressione regolare in uno script MongoDB blocca l'INTERO processo CodeDB: nessun budget può fermarla",
+      "categoria": "denial of service",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:655",
+        "db/MongoScriptRunner.js:321-335",
+        "db/MongoScript.js:740",
+        "db/MongoScript.js:150-166",
+        "db/MongoScriptRunner.js:16-20"
+      ],
+      "problema": "Il nodo `Regex` costruisce una `RegExp` nativa (`new RegExp(pattern, flags)`) e `METODI_REGEX` espone `test`, `exec` e `toString`. L'esecuzione di una regex è UNA sola chiamata nativa, sincrona e non interrompibile: mentre gira, il ciclo di eventi di Node è fermo. Tutti i budget del modulo — passi, iterazioni, profondità, chiamate al database, e soprattutto `tempoMs` e l'interruzione cooperativa `this.interrotto` — sono controllati dentro `passo()`, cioè fra un nodo dell'AST e il successivo: nessuno di essi può intervenire DURANTE una chiamata nativa. È l'unica falla nel principio dichiarato in testa al file («Tutto ha un budget… un `while(true)` deve fermare sé stesso»), e riguarda l'unico costrutto che può consumare tempo esponenziale senza consumare un solo passo.",
+      "scenario": "Verificato eseguendo l'interprete contro un host finto in memoria: lo script `var s=''; for (var i=0;i<32;i++) s=s+'a'; s=s+'!'; /(a+)+$/.test(s);` con `limiti.tempoMs = 2000` ha tenuto il processo Node occupato per oltre 30 secondi (interrotto dall'esterno, non da sé). Trentadue caratteri e tre righe. Aggiungendo qualche `a` il tempo raddoppia a ogni carattere. Conseguenza: `server.js` è un processo unico che ospita TUTTE le sessioni Socket.IO, il gateway MCP e — nell'app desktop — la finestra Electron. Uno script del genere non rallenta la sessione di chi lo ha lanciato: congela l'applicazione per ogni utente collegato, i change stream, i backup in corso e l'HEALTHCHECK del container, che dopo tre tentativi falliti fa riavviare il servizio. Con `CODEDB_RBAC=off` basta raggiungere l'interfaccia; con RBAC attivo basta la capability `read`, la più bassa che esista, perché la regex non tocca il database.",
+      "fix": "Tre strade, in ordine di robustezza. (1) Eseguire gli script in un `worker_thread` con `worker.terminate()` alla scadenza: è l'unica difesa completa, perché copre anche le allocazioni e i cicli nativi futuri, e il budget di tempo diventa reale invece che cooperativo. (2) Se lo si vuole evitare, sostituire `RegExp` nativa con un motore a tempo lineare (RE2 via `node-re2`) — nessuna dipendenza nativa nuova è oggi accettata nel progetto, quindi va valutato. (3) Come mitigazione immediata e a costo nullo, rifiutare in fase di analisi (`MongoScript.js`, dove la regex è già riconosciuta dal tokenizer) i pattern con quantificatore annidato (`(…+)+`, `(…*)*`, `(…+)*`) e limitare la lunghezza della stringa su cui `test`/`exec` possono essere invocati — parziale, ma toglie il caso pratico. In tutti i casi va dichiarato che `tempoMs` non è un limite forte finché l'esecuzione resta nel processo principale.",
+      "stato": "risolto",
+      "risoluzione": "Due reti a costo nullo, entrambe in MongoScript.js: assertRegexSicura() rifiuta in fase di valutazione i pattern con quantificatore annidato ((a+)+, (a*)*, (a+)*) e assertTestoRegex() nega l'applicazione di una regex a un testo oltre MAX_TESTO_REGEX (5000 caratteri), sia da re.test/exec sia dai metodi di stringa che accettano una regex. La nota in testa al modulo dichiara che tempoMs NON è un limite forte finché lo script gira nel processo principale: la difesa completa resta il worker_thread con terminate(). Test: tre casi in test/unit-mongo-script.js."
+    },
+    {
+      "id": "CDB-A45",
+      "severita": "alta",
+      "titolo": "`deleteMany()` e `updateMany()` senza filtro colpiscono l'intera collezione invece di essere rifiutati",
+      "categoria": "perdita di dati",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:181",
+        "db/MongoScriptRunner.js:178",
+        "db/MongoScriptRunner.js:419-429",
+        "db/MongoDbStrategy.js:876",
+        "db/MongoDbStrategy.js:910-927"
+      ],
+      "problema": "In `scrivi()` il payload include `filter` solo se `args.filter !== undefined`; chiamando `db.c.deleteMany()` senza argomenti il campo non viene inviato, e in `MongoDbStrategy.shellWrite` il filtro si risolve con `parseQueryObject(payload.filter, {})`, cioè il valore predefinito `{}` — che per MongoDB significa «tutti i documenti». Lo stesso vale per `updateMany(undefined, {$set:…})`, `deleteOne()`, `updateOne()` e `findOneAndDelete()`. Il vero mongosh, che questo interprete dichiara di imitare, rifiuta la chiamata con `MongoInvalidArgumentError: Selector must be a valid JavaScript object` — non esiste un modo accidentale di cancellare tutto.",
+      "scenario": "Verificato con un host finto: lo script `db.utenti.deleteMany();` produce il payload `{\"op\":\"deleteMany\"}` e `db.utenti.updateMany(undefined, {$set:{attivo:false}})` produce `{\"op\":\"updateMany\",\"update\":\"…\"}` — in entrambi i casi senza `filter`, quindi con `{}` al suo posto. Il caso realistico non è la malizia ma la distrazione: si scrive `db.ordini.deleteMany()` intendendo di incollare il filtro un momento dopo, oppure si costruisce il filtro in una variabile che a runtime risulta `undefined` (`var f = mappa[chiave]; db.ordini.deleteMany(f);`). L'intera collezione sparisce, l'operazione risulta riuscita e nell'audit compare come una normale scrittura. Da notare il contrasto con il ramo SQL, dove CLAUDE.md dichiara che `UPDATE`/`DELETE` senza `WHERE` sono ammessi ma SEGNALANO che toccano tutto: qui non c'è né rifiuto né segnalazione.",
+      "fix": "Rendere il filtro obbligatorio in `shellWrite` per tutte le operazioni che ne prevedono uno: `parseQueryObject(payload.filter, null)` e, se nullo, errore esplicito («Serve un filtro: per agire su tutti i documenti scrivi esplicitamente {}»). È la stessa forma di difesa già adottata due funzioni sopra per l'aggiornamento senza operatori (MongoDbStrategy.js:882-891), con la stessa motivazione.",
+      "stato": "risolto",
+      "risoluzione": "shellWrite pretende il filtro: parseQueryObject(payload.filter, null) e, se assente, errore esplicito che indica come agire su tutti i documenti ({} scritto a mano). Vale per update*/replace*/delete*/findOneAnd*. Test con client finto che verifica che la chiamata non raggiunga il driver."
+    },
+    {
+      "id": "CDB-A46",
+      "severita": "alta",
+      "titolo": "Il divieto di `$where`/`$function` non copre i percorsi `count` e `write`: da uno script il JavaScript lato server passa",
+      "categoria": "sicurezza / esecuzione di codice",
+      "modulo": "server.js",
+      "riferimenti": [
+        "server.js:1302-1320",
+        "server.js:1321",
+        "db/MongoDbStrategy.js:700-708",
+        "db/MongoDbStrategy.js:872-939",
+        "db/MongoScriptRunner.js:162-164",
+        "db/MongoScriptRunner.js:419-429"
+      ],
+      "problema": "`mongoScriptHost` definisce il controllo `controlla()` (che applica `assertNoServerJs`) e lo invoca su DUE dei suoi metodi: `find.filter` (riga 1313) e `aggregate.pipeline` (riga 1317). Gli altri due che accettano un filtro dell'utente — `count` (riga 1320) e `write` (riga 1321) — non lo chiamano. A valle, `collectionCount` passa il filtro al driver dopo un semplice `parseQueryObject`, e `shellWrite` lo usa per `updateOne/updateMany/replaceOne/deleteOne/deleteMany/findOneAndUpdate/findOneAndDelete`. MongoDB accetta `$where` nella parte di selezione di un update e di un delete esattamente come in una find, quindi il divieto è aggirabile su due percorsi su quattro.",
+      "scenario": "Verificato con un host finto: `db.utenti.count({ $where: \"this.x > 1\" })` arriva a `count` con `filter: \"{\\\"$where\\\":\\\"this.x > 1\\\"}\"`, e `db.utenti.deleteMany({ $where: \"sleep(99999)\" })` arriva a `write` con lo stesso filtro intatto. Il primo esegue JavaScript arbitrario nel processo `mongod` con i privilegi dell'utente di connessione; il secondo lo fa dentro un'operazione di cancellazione, quindi la funzione decide anche QUALI documenti eliminare. `$where` con un ciclo occupato blocca il thread del database — cioè trasforma il rilievo in un denial of service sul DBMS, che è precisamente ciò che il divieto documentato in CLAUDE.md esiste per impedire («l'interprete gira nel processo CodeDB, non nel server MongoDB»).",
+      "fix": "Chiamare `controlla(payload.filter)` anche in `count` e in `write` (per quest'ultimo anche su `payload.update`, dove `$function` può comparire in una pipeline di aggiornamento). Meglio ancora: applicare il controllo una volta sola all'ingresso di `mongoScriptHost`, avvolgendo i metodi invece di ripetere la chiamata — così un metodo aggiunto in futuro nasce protetto, che è la stessa ragione per cui il Proxy autorizzante avvolge la strategia invece di controllare handler per handler.",
+      "stato": "risolto",
+      "risoluzione": "Il controllo assertNoServerJs si applica una volta sola avvolgendo TUTTI i metodi di mongoScriptHost (campi filter/pipeline/update di qualunque argomento), invece di essere ripetuto in due su quattro: un metodo aggiunto in futuro nasce protetto. controlla() accetta anche l'oggetto già analizzato, che prima faceva fallire la JSON.parse e saltare il controllo in silenzio."
+    },
+    {
+      "id": "CDB-A47",
+      "severita": "media",
+      "titolo": "Il budget dell'output conta le RIGHE, non i byte: `printjson` in un ciclo aggira il limite di memoria",
+      "categoria": "risorse / denial of service",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:372-376",
+        "db/MongoScriptRunner.js:46-56",
+        "db/MongoScriptRunner.js:360-370",
+        "db/MongoScriptRunner.js:836-844"
+      ],
+      "problema": "`stampa()` è l'unico punto che accumula dati senza passare da `contaMemoria`. Il limite `output: 1000` conta le righe conservate, ma ogni riga è `JSON.stringify(semplifica(a), null, 2)` di un valore arbitrario: il budget di memoria (50 MB per VALORE) non si applica né alla stringa prodotta né all'array `this.output` che le trattiene tutte fino alla fine dello script. La nota di CDB-65 in testa al file spiega proprio che gli altri budget contano OPERAZIONI e non fermano un'allocazione singola: qui la contromisura non è stata estesa.",
+      "scenario": "`for (var i=0;i<1000;i++) printjson(db.grande.find().limit(10000).toArray());` sta dentro tutti i budget dichiarati — 1000 iterazioni su un milione consentite, 1000 chiamate al database su 5000, 1000 righe di output esattamente al limite — e trattiene in memoria mille copie serializzate e indentate di un result set che può arrivare al tetto di `docPerLettura` (10.000 documenti) o di `CODEDB_MAX_RESULT_BYTES` (32 MB). Il processo Node esaurisce l'heap e muore, portandosi dietro le sessioni di tutti gli utenti — cioè esattamente lo scenario che il budget di memoria è stato introdotto per evitare.",
+      "fix": "Chiamare `this.contaMemoria(riga.length * 2, 'l\\'output di print')` in `stampa` e tenere anche un totale cumulativo dei byte già accumulati in `this.output`, non solo la dimensione della singola riga.",
+      "stato": "risolto",
+      "risoluzione": "stampa() conta i byte prodotti — la singola riga e il totale cumulativo in this.outputBytes — attraverso contaMemoria, così printjson in un ciclo non aggira più il budget una riga alla volta."
+    },
+    {
+      "id": "CDB-A49",
+      "severita": "media",
+      "titolo": "`spiegaErrore` scambia per deadlock un errore di tabella inesistente il cui nome contiene «deadlock»",
+      "categoria": "correttezza dei messaggi",
+      "modulo": "db/errors.js",
+      "riferimenti": [
+        "db/errors.js:259-264",
+        "db/errors.js:541-550",
+        "db/errors.js:305-310",
+        "db/errors.js:22-24"
+      ],
+      "problema": "`regolaTimeout` riconosce il deadlock con `code === 'ER_LOCK_DEADLOCK' || code === '40P01' || msg.includes('deadlock')`. L'ultima alternativa è una ricerca di sottostringa su tutto il messaggio, senza confini di parola e senza richiedere alcun codice. `regolaTimeout` è terza nell'elenco `REGOLE`, mentre `regolaOggetti` — che riconosce correttamente `42P01`/`ER_NO_SUCH_TABLE` — è sesta: la prima regola che risponde vince, quindi il messaggio giusto non viene mai raggiunto. È l'unico punto in cui il modulo viola la propria proprietà dichiarata «nessuna invenzione: meglio un errore tecnico che una spiegazione plausibile e sbagliata».",
+      "scenario": "Una query su una tabella che non esiste il cui nome contiene la parola — `SELECT * FROM deadlock_events` su PostgreSQL restituisce `42P01: relation \"deadlock_events\" does not exist`, che in minuscolo contiene «deadlock». All'utente viene detto «Deadlock: due operazioni si aspettano a vicenda e il database ne ha annullata una. Cosa fare: riprova l'operazione…». Chi riprova ottiene lo stesso errore e va a cercare una transazione concorrente che non esiste, mentre il problema è un nome di tabella sbagliato. Tabelle e colonne che contengono «deadlock» o «lock» sono normali proprio nelle applicazioni che monitorano i database, cioè fra i primi utilizzatori di uno strumento come questo.",
+      "fix": "Richiedere il codice per il deadlock (`code === 'ER_LOCK_DEADLOCK' || code === '40P01'`) e, se si vuole tenere il riconoscimento testuale come rete di sicurezza, ancorarlo a una frase completa del driver (`'deadlock found when trying to get lock'` per MySQL, `'deadlock detected'` per PostgreSQL) invece che alla parola sola. Come regola generale per il modulo: un riconoscimento basato su una sola parola comune non è mai sufficiente quando quella parola può comparire in un identificatore scelto dall'utente.",
+      "stato": "risolto",
+      "risoluzione": "Il deadlock si riconosce dal codice (ER_LOCK_DEADLOCK/40P01) o dalla frase completa del driver (\"deadlock found when trying to get lock\", \"deadlock detected\"), non dalla parola sola. Test: relation \"deadlock_log\" does not exist (42P01) deve produrre la spiegazione dell'oggetto mancante."
+    },
+    {
+      "id": "CDB-A48",
+      "severita": "bassa",
+      "titolo": "L'output di uno script viene troncato in silenzio oltre le 1000 righe",
+      "categoria": "messaggi all'utente",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:372-376",
+        "db/MongoScriptRunner.js:17-20"
+      ],
+      "problema": "`if (this.output.length >= this.limiti.output) return;` scarta le righe eccedenti senza aggiungere alcuna nota, mentre ogni altro budget del modulo termina con un errore esplicito — il file dichiara in testa che «il superamento è un errore chiaro, non un blocco».",
+      "scenario": "Uno script diagnostico che stampa una riga per documento su una collezione da 5000 elementi mostra le prime 1000 e tace sulle altre 4000. Chi legge conclude che il ciclo si sia fermato lì, e cerca il difetto nella propria condizione di uscita invece che nel limite dell'output.",
+      "fix": "Alla prima riga scartata accodare una nota (`… output troncato: superato il limite di 1000 righe`) e non aggiungerne altre.",
+      "stato": "risolto",
+      "risoluzione": "Alla prima riga scartata si accoda \"… output troncato: superato il limite di N righe\" e non se ne aggiungono altre."
+    },
+    {
+      "id": "CDB-A50",
+      "severita": "bassa",
+      "titolo": "Un valore catturato da `catch` perde tutte le sue proprietà tranne `message`",
+      "categoria": "aderenza al linguaggio",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:609-612",
+        "db/MongoScriptRunner.js:580-591"
+      ],
+      "problema": "`Throw` conserva il valore lanciato in `err.valore`, ma il gestore lo scarta: `interno.dichiara(nodo.param, { message: … })` lega alla variabile un oggetto nuovo con il solo campo `message`.",
+      "scenario": "Lo schema comune `try { throw { codice: 'DUPLICATO', id: doc._id } } catch (e) { if (e.codice === 'DUPLICATO') … }` non funziona: `e.codice` è `undefined` e il ramo non viene mai preso, senza alcun errore. Lo script sembra corretto e prende silenziosamente la strada sbagliata.",
+      "fix": "Legare `err.valore` quando presente (`nodo.param` → `err.lanciataDalloScript ? err.valore : { message: … }`), conservando l'oggetto originale per i lanci dello script e la forma `{ message }` per gli errori del motore e del driver.",
+      "stato": "risolto",
+      "risoluzione": "Il catch lega err.valore quando lo script ha lanciato un OGGETTO, così le sue proprietà sopravvivono; per i valori primitivi e per gli errori del motore/driver resta la forma { message }, che in questo dialetto è il modo documentato di leggere un throw 'testo'."
+    },
+    {
+      "id": "CDB-A51",
+      "severita": "bassa",
+      "titolo": "`sembraScriptJs` guarda dentro le stringhe: un comando shell con «if» o «return» in un valore prende l'altro interprete",
+      "categoria": "instradamento",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:906-912"
+      ],
+      "problema": "Il riconoscimento è un unico `\\b(var|let|const|function|if|for|while|do|try|return|throw)\\b` applicato al testo grezzo, senza distinguere il codice dai letterali di stringa e dai commenti. Le parole `if`, `do`, `for` e `return` sono comunissime nei dati.",
+      "scenario": "`db.note.find({ testo: \"do not delete\" })` e `db.log.find({ msg: \"if you can read this\" })` vengono instradati all'interprete di script invece che a `MongoShell`. Nella maggior parte dei casi il risultato è lo stesso, ma i due percorsi non sono equivalenti: cambiano la forma del risultato restituito alla UI (`ultimiDocumenti` contro il descrittore del piano), la classificazione nell'audit e i budget applicati. È un instradamento deciso dal contenuto dei dati dell'utente, che è la condizione in cui una differenza di comportamento diventa impossibile da riprodurre a comando.",
+      "fix": "Riusare il tokenizer di `MongoScript.js`, che già distingue stringhe e commenti, e cercare le parole chiave fra i soli token di tipo identificatore.",
+      "stato": "risolto",
+      "risoluzione": "sembraScriptJs passa dal tokenizer di MongoScript.js e cerca le parole chiave fra i soli token kw/ident: le stesse parole dentro una stringa o un commento non dirottano più il testo sull'interprete sbagliato."
+    },
+    {
+      "id": "CDB-A20",
+      "severita": "alta",
+      "titolo": "XSS nel tooltip della mappa multi-geometria: il nome della colonna non è escapato",
+      "categoria": "sicurezza / XSS",
+      "modulo": "public/js/geomulti.js",
+      "riferimenti": [
+        "public/js/geomulti.js:106-112",
+        "public/js/geomulti.js:98",
+        "public/js/cellselect.js:136-146",
+        "public/js/cellselect.js:316-324"
+      ],
+      "problema": "`etichettaGeo(g)` compone una stringa HTML (usa `<br>` come separatore) che viene passata a `layer.bindTooltip(...)`; Leaflet inserisce il contenuto di un tooltip stringa con `innerHTML`. Nella stringa finisce `g.colonna`, cioè il NOME del campo/colonna proveniente dal database — `vociSelezionate()` in cellselect.js lo prende da `state.columns[c]`. È l'unico punto del file in cui non viene applicato l'helper `esc()` definito alla riga 159 e usato in tutti gli altri render (riepilogo, elenco, avvisi).",
+      "scenario": "Su MongoDB un nome di campo può contenere qualunque carattere tranne il punto iniziale e il NUL. Un documento con un campo `<img src=x onerror=alert(document.cookie)>` accanto a un campo geometrico: l'utente seleziona le celle geometriche e apre «🗺 Mostra le N geometrie su mappa…», poi passa il mouse su una forma — il tooltip esegue il payload nel contesto della pagina, dove vive il token di sessione RBAC in sessionStorage (`codedb:token`). Su MySQL/PostgreSQL lo stesso vale per una colonna creata con identificatore quotato.",
+      "fix": "Applicare `esc()` a `dove` (e, per uniformità, all'intera composizione) oppure costruire il contenuto del tooltip come nodo DOM e passarlo a `bindTooltip`, usando `textContent` per le parti che vengono dai dati.",
+      "stato": "risolto",
+      "risoluzione": "etichettaGeo applica esc() a tutte le parti del tooltip prima di comporle: il nome della colonna non può più eseguire codice tramite innerHTML di Leaflet."
+    },
+    {
+      "id": "CDB-A21",
+      "severita": "alta",
+      "titolo": "XSS nel confronto di schema: i nomi dei campi aggiunti/rimossi finiscono in innerHTML senza escaping",
+      "categoria": "sicurezza / XSS",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:764-772",
+        "public/js/graph3d.js:775-778",
+        "public/js/graph3d.js:729-735"
+      ],
+      "problema": "In `renderDiffReport` i nomi di TABELLA passano da `esc()` (righe 756, 761, 766), ma le due righe successive interpolano `m.addedFields.join(', ')` e `m.removedFields.join(', ')` grezzi nella stringa HTML poi assegnata a `#diff-content`.innerHTML. L'incoerenza a due righe di distanza indica una svista, non una scelta.",
+      "scenario": "Due sorgenti indipendenti. (a) Lo schema VIVO: un campo MongoDB chiamato `<img src=x onerror=…>` compare fra i campi aggiunti appena si confronta con uno snapshot precedente. (b) Il FILE snapshot JSON scelto dall'utente: `parseSchemaInput`/`renderDiffReport` non validano nulla, quindi un file ricevuto da un collega o scaricato da un ticket può portare il payload in `snapCol.fields[].name` e comparire fra i campi «rimossi».",
+      "fix": "`m.addedFields.map(esc).join(', ')` e `m.removedFields.map(esc).join(', ')`.",
+      "stato": "risolto",
+      "risoluzione": "renderDiffReport applica esc() anche a addedFields/removedFields."
+    },
+    {
+      "id": "CDB-A22",
+      "severita": "alta",
+      "titolo": "La «Sequenza Ottima di Popolamento» non è un ordinamento topologico: è l'ordine del catalogo",
+      "categoria": "correttezza dell'analisi prodotta",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:553-572",
+        "public/js/graph3d.js:544-548",
+        "public/js/graph3d.js:589-596"
+      ],
+      "problema": "`inDegreeCopy = new Map(outDegree)` inizializza i contatori con il numero di archi USCENTI, ma il ciclo li decrementa sul BERSAGLIO (`adj` è from→to) — cioè decrementa un contatore che conta un insieme di archi diverso da quello percorso. La coda parte dai nodi con outDegree 0, che per definizione non hanno archi uscenti: `adj.get(node)` è vuoto, nessun contatore viene mai decrementato e il `while` termina dopo aver svuotato la coda iniziale. Il `for` finale (riga 570) accoda tutte le tabelle restanti nell'ordine in cui `schema.collections` le elenca. Non c'è alcun ciclo da rilevare né alcun ordinamento: il risultato è «tabelle senza FK uscenti, poi il resto nell'ordine del catalogo».",
+      "scenario": "Schema con `ordini → clienti → paesi` e altre 40 tabelle. La finestra «Analisi Architetturale Dipendenze» presenta come «Sequenza Ottima di Popolamento (Seeding)» un elenco numerato in cui `ordini` può comparire prima di `clienti`. Chi lo usa per scrivere un seeder o per decidere l'ordine di TRUNCATE ottiene violazioni di chiave esterna, e l'elenco è plausibile abbastanza da non far sospettare lo strumento.",
+      "fix": "Costruire l'adiacenza INVERSA (to→from) e decrementare l'outDegree dei predecessori: partendo dai nodi con outDegree 0 (le tabelle di cui nessun'altra ha bisogno prima) si ottiene l'ordine di popolamento corretto. Aggiungere il rilevamento del ciclo: se alla fine `seedOrder.length < collections.length`, le tabelle residue formano un ciclo di FK e vanno DICHIARATE come tali invece di essere accodate in silenzio.",
+      "stato": "risolto",
+      "risoluzione": "Kahn corretto: adiacenza inversa (to→from), decremento dell'outDegree dei predecessori, archi duplicati e auto-referenze ignorati, e le tabelle residue vengono dichiarate come ciclo di FK invece di essere accodate in silenzio."
+    },
+    {
+      "id": "CDB-A23",
+      "severita": "alta",
+      "titolo": "Il Grafo 3D perde un contesto WebGL a ogni ridisegno: dopo una quindicina di interazioni smette di disegnare",
+      "categoria": "risorse non liberate",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:206",
+        "public/js/graph3d.js:298-304",
+        "public/js/graph3d.js:279-291",
+        "public/js/graph3d.js:931-957",
+        "public/js/graph3d.js:47",
+        "public/js/graph3d.js:989-992"
+      ],
+      "problema": "`renderGraph3d()` svuota il contenitore con `canvas.innerHTML = ''` e crea una NUOVA istanza `ForceGraph3D(...)` senza distruggere la precedente: non viene mai chiamato `_destructor()` né `pauseAnimation()`, quindi il renderer Three.js dell'istanza vecchia resta vivo con il suo contesto WebGL e il suo loop di animazione. Tre risorse si accumulano insieme: (1) i contesti WebGL, (2) un `ResizeObserver` nuovo a ogni chiamata senza `disconnect()` di quello precedente — che continua a chiamare `.width()/.height()` su un'istanza orfana —, (3) le `CanvasTexture` e le `SpriteMaterial` create da `createTextTexture` per ogni nodo, mai `dispose()`ate.",
+      "scenario": "`renderGraph3d()` non è chiamata solo all'apertura: la invocano il cambio di modalità colore, il filtro sui salti, `clearShortestPath()`, il calcolo e la cancellazione del cammino minimo. Un utente che prova quattro modalità colore, tre filtri e due cammini ha già creato una decina di istanze. I browser mantengono un tetto di contesti WebGL (~16 in Chrome): superato il tetto il più vecchio viene perso e compare `WARNING: Too many active WebGL contexts` — il grafo diventa un riquadro nero e l'unico rimedio è ricaricare la pagina. Su uno schema con 60 tabelle sono anche 60 texture 256×128 non liberate per ridisegno.",
+      "fix": "Tenere il riferimento all'istanza precedente e, in testa a `renderGraph3d`, chiamare `graphInstance._destructor()` (o almeno `pauseAnimation()` + `renderer().dispose()` + `renderer().forceContextLoss()`); creare il `ResizeObserver` una volta sola (o `disconnect()` del precedente, come già si fa in charts.js:215); memoizzare le texture per nome di nodo e liberarle alla distruzione.",
+      "stato": "risolto",
+      "risoluzione": "distruggiGrafo() chiama _destructor() (o pauseAnimation + forceContextLoss + dispose) prima di ogni ridisegno, il ResizeObserver è uno solo (disconnect del precedente) e le CanvasTexture sono memoizzate per nome e liberate con l'istanza."
+    },
+    {
+      "id": "CDB-A24",
+      "severita": "alta",
+      "titolo": "La categoria «Altro» somma anche aggregazioni non additive: media, mediana, minimo e massimo producono un valore inventato",
+      "categoria": "correttezza del dato mostrato",
+      "modulo": "public/js/chart-option.js",
+      "riferimenti": [
+        "public/js/chart-option.js:609-614",
+        "public/js/chart-option.js:383-391",
+        "public/js/chart-option.js:442-459",
+        "public/js/chart-option.js:11-13"
+      ],
+      "problema": "In `ordinaERiduci` il ripiegamento della coda oltre `maxCategorie` esegue sempre `d.slice(max).reduce((a, v) => a + (numero(v) || 0), 0)`, cioè una SOMMA, qualunque sia l'aggregazione della serie. È corretto solo per `somma` e `conteggio`. Per `media`, `mediana`, `min`, `max` e `distinti` il valore di «Altro» è la somma delle medie (o dei minimi, o dei conteggi di distinti) delle categorie residue: un numero che nei dati non esiste e che non risponde ad alcuna domanda. Il ramo per i punti grezzi, due righe sopra (602-608), affronta esattamente questo problema e sceglie di troncare dichiarandolo — la stessa cautela manca qui.",
+      "scenario": "Non è ipotetico ed è raggiungibile in un clic: il suggerimento incorporato `cat-media` («Media X per Y», riga 383) imposta insieme `agg: 'media'` e `maxCategorie: 8`. Su una query con 30 categorie il grafico mostra 8 barre di medie più una barra «Altro (22)» che vale la somma di 22 medie — tipicamente la barra più alta del grafico, letta come «la categoria residua è quella con la media più alta». L'avviso mostrato all'utente («22 categorie oltre le prime 8 sono state sommate in \"Altro\"») descrive l'operazione ma non il fatto che sia priva di senso per quel calcolo.",
+      "fix": "Distinguere le aggregazioni additive dalle altre. Per le additive, comportamento attuale. Per le altre, due opzioni corrette: ricalcolare l'aggregazione sull'INSIEME dei valori residui (richiede di conservare gli accumulatori oltre `applicaAgg`, che è la soluzione giusta), oppure troncare dichiarandolo come già si fa in modalità grezza. In nessun caso sommare.",
+      "stato": "risolto",
+      "risoluzione": "Gli accumulatori arrivano fino a ordinaERiduci: \"Altro\" viene RICALCOLATO fondendo gli accumulatori dei residui e riapplicando la stessa aggregazione (esatto anche per mediana e distinti), e l'avviso lo dichiara. Test: controesempi media/min/mediana in test/unit-charts.js."
+    },
+    {
+      "id": "CDB-A31",
+      "severita": "alta",
+      "titolo": "`USE <db>` scrive il bersaglio nel tab SBAGLIATO: setQueryTarget sta fuori dalla guardia isForActiveTab",
+      "categoria": "instradamento per tab / contratto di emit()",
+      "modulo": "public/js/query-tab.js",
+      "riferimenti": [
+        "public/js/query-tab.js:1479-1483",
+        "public/js/query-tab.js:1488",
+        "public/js/query-tab.js:1354-1358",
+        "public/js/query-tab.js:1361-1363"
+      ],
+      "problema": "Nel `.then()` di `query:execute` la riga `if (res && res.activeDb) setQueryTarget(res.activeDb, null)` è eseguita PRIMA e FUORI dal blocco `if (isForActiveTab(res))`. `setQueryTarget` scrive `state.queryDb`/`state.queryColl` e `state` è il Proxy che delega al tab ATTIVO AL MOMENTO DELLA RISPOSTA, non al tab che ha inviato la richiesta. È esattamente la violazione del contratto documentato in CLAUDE.md («ogni callback deve scrivere `res._state`»), su un percorso che non era stato coperto.",
+      "scenario": "Tab A aperto su MySQL di produzione, tab B su MySQL di sviluppo. Nel tab A si esegue `USE staging;` e, mentre la risposta è in volo, si passa al tab B. Al ritorno dell'ack il bersaglio di **B** diventa `staging` e l'etichetta `#query-target-label` di B lo mostra come bersaglio esplicito. La query successiva scritta in B — che l'utente crede diretta al proprio database — parte verso `staging` sulla connessione di B. Se è una scrittura, colpisce il database sbagliato senza alcun avviso.",
+      "fix": "Spostare la chiamata dentro il blocco `isForActiveTab(res)`, oppure — meglio, perché il bersaglio appartiene al tab d'origine anche quando non è quello attivo — scriverlo su `res._state` (`res._state.queryDb = res.activeDb`) e chiamare `renderQueryTarget()` solo se `isForActiveTab(res)`.",
+      "stato": "risolto",
+      "risoluzione": "Il bersaglio di USE viene scritto su res._state (il tab d'origine) e renderQueryTarget() è chiamata solo se isForActiveTab(res)."
+    },
+    {
+      "id": "CDB-A25",
+      "severita": "media",
+      "titolo": "La cache dello schema del Grafo 3D non distingue la connessione: due tab su database omonimi si scambiano lo schema",
+      "categoria": "isolamento fra tab / cache",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:53-74",
+        "public/js/graph3d.js:90-97"
+      ],
+      "problema": "La chiave è `gui-db:schema-cache:${state.db}` — solo il nome del database. `sessionStorage` è unico per ORIGINE, quindi condiviso da tutti i tab di connessione dell'applicazione. Nomi di database omonimi fra server diversi non sono un caso limite: `test`, `public` (lo schema predefinito di ogni PostgreSQL), `postgres`, `mysql`, `admin`, e in generale lo stesso nome logico fra ambiente di sviluppo e di produzione.",
+      "scenario": "Tab A su PostgreSQL di produzione, schema `public`, salva la cache. Entro 10 minuti (SCHEMA_CACHE_TTL_MS) si apre il tab B su PostgreSQL di sviluppo e si va sul Grafo 3D dello schema `public`: `loadGraph3d` trova la voce in cache, la carica in `state.dbSchema` e disegna — senza alcuna richiesta al server — lo schema di PRODUZIONE. Da lì il pannello dettagli, l'audit dello schema, il diff e gli export DDL/DBML/Mermaid descrivono tutti il database sbagliato, e `state.dbSchemaFor` viene impostato a `state.db`, quindi nulla segnala l'incoerenza.",
+      "fix": "Includere nella chiave l'identità della connessione e il tipo di DBMS: `gui-db:schema-cache:${state.connId || state.connName}:${state.dbType}:${state.db}`.",
+      "stato": "risolto",
+      "risoluzione": "La chiave della cache di sessione include la connessione (connName, o il tabId per le connessioni non salvate) oltre al database."
+    },
+    {
+      "id": "CDB-A26",
+      "severita": "media",
+      "titolo": "L'aggregazione «Primo valore» passa EJSON grezzo a ECharts: la serie sparisce senza spiegazione",
+      "categoria": "correttezza del dato mostrato",
+      "modulo": "public/js/chart-option.js",
+      "riferimenti": [
+        "public/js/chart-option.js:456",
+        "public/js/chart-option.js:465-476",
+        "public/js/chart-option.js:547"
+      ],
+      "problema": "`accumula` memorizza `acc.primo = val` con il valore NON convertito, e `applicaAgg('primo')` lo restituisce tale e quale. Tutte le altre aggregazioni passano da `numero()` (somma/media/min/max/mediana) o restituiscono un intero (conteggio/distinti). In modalità aggregata il valore finisce direttamente in `series.data`.",
+      "scenario": "Una colonna DECIMAL di MySQL arriva come `{\"$numberDecimal\":\"12.50\"}` e un timestamp come `{\"$date\":…}` (convenzione EJSON documentata in CLAUDE.md). Scegliendo «Calcolo → Primo valore» su quella colonna, `series.data` diventa un elenco di oggetti: ECharts non disegna nulla, l'asse resta vuoto e non compare alcun avviso — sembra che la query non abbia restituito dati. Con le stesse identiche impostazioni e «Somma» il grafico funziona, il che rende il difetto difficile da attribuire.",
+      "fix": "`acc.primo = numero(val)` (conservando eventualmente il valore originale a parte se dovesse servire come etichetta), oppure applicare `numero()` in `applicaAgg` al ritorno del ramo `primo`.",
+      "stato": "risolto",
+      "risoluzione": "applicaAgg(\"primo\") passa da numero(), come tutte le altre aggregazioni. Test aggiunto."
+    },
+    {
+      "id": "CDB-A27",
+      "severita": "media",
+      "titolo": "La mappa di calore non ha alcun tetto di cardinalità né avviso: due colonne ad alta cardinalità bloccano la finestra",
+      "categoria": "robustezza / prestazioni",
+      "modulo": "public/js/chart-option.js",
+      "riferimenti": [
+        "public/js/chart-option.js:623-649",
+        "public/js/chart-option.js:601-617",
+        "public/js/chart-option.js:556-563"
+      ],
+      "problema": "`calcolaHeatmap` costruisce `catX`, `catY` e un accumulatore per ogni coppia distinta, senza applicare `c.maxCategorie` e senza emettere alcun avviso. Ogni altra forma di grafico passa da `ordinaERiduci` (ripiegamento in «Altro» o troncamento dichiarato) e i punti grezzi hanno la soglia `TROPPI_PUNTI` con nota esplicita: la mappa di calore è l'unica senza rete.",
+      "scenario": "Il suggerimento `incrocio` è prudente (sceglie solo campi con 2÷30 valori distinti), ma la barra rapida lascia scegliere a mano «Righe» e «Colonne» fra TUTTE le colonne. Su un result set da 10.000 righe con `email` in X e `created_at` in Y si generano fino a 10.000 categorie per asse e 10.000 celle, più le due assi con 10.000 etichette: la scheda si blocca per decine di secondi e non c'è nulla che spieghi perché.",
+      "fix": "Applicare `maxCategorie` (o un tetto proprio) alle due liste e dichiarare quante categorie sono state escluse, come fa `ordinaERiduci`.",
+      "stato": "risolto",
+      "risoluzione": "calcolaHeatmap applica maxCategorie (o il tetto proprio HEATMAP_MAX_CAT = 60) a entrambi gli assi e dichiara quante categorie sono escluse. Test aggiunto."
+    },
+    {
+      "id": "CDB-A28",
+      "severita": "media",
+      "titolo": "Editor geografico: rilasciando un vertice fuori dalla mappa il trascinamento non finisce mai",
+      "categoria": "bug funzionale",
+      "modulo": "public/js/geomap.js",
+      "riferimenti": [
+        "public/js/geomap.js:193-239",
+        "public/js/geomap.js:237-238",
+        "public/js/geomap.js:319-326",
+        "public/js/geomap.js:439"
+      ],
+      "problema": "`trascina()` registra `mousemove` e `mouseup` su `mappa`, cioè sull'istanza Leaflet, che li emette solo per eventi che avvengono DENTRO il proprio contenitore. Se il pulsante viene rilasciato fuori dal riquadro della mappa, `rilascia()` non viene mai eseguito: `trascinando` resta `true`, `mappa.dragging` resta disabilitato, i due gestori restano attaccati e il vertice continua a inseguire il puntatore al rientro.",
+      "scenario": "La modale affianca mappa e JSON: trascinare un vertice verso il bordo destro per allargare una geometria porta naturalmente il puntatore sopra la casella di testo. Al rilascio l'editor resta agganciato — la mappa non si sposta più con il trascinamento (dragging disabilitato), il vertice segue il mouse a ogni rientro, `disegnaManiglie()` non si ricalcola più su moveend/zoomend (riga 439 esce se `trascinando`) e il JSON non viene riscritto. L'unica via d'uscita è chiudere e riaprire la modale, perdendo le modifiche non salvate.",
+      "fix": "Registrare `mouseup` (e `pointerup`/`mouseleave` sul documento) su `document`, oltre che sulla mappa, e rimuovere entrambi in `rilascia()`. In alternativa usare `setPointerCapture` sull'elemento della maniglia.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A29",
+      "severita": "media",
+      "titolo": "L'audit dello schema dichiara di considerare le relazioni implicite e non lo fa, e toglie punti per questo",
+      "categoria": "correttezza dell'analisi prodotta",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:615-630",
+        "public/js/graph3d.js:543",
+        "public/js/graph3d.js:489-492",
+        "public/js/graph3d.js:137-140"
+      ],
+      "problema": "`runSchemaAudit` calcola i gradi usando solo `schema.relations`, mentre il testo mostrato all'utente recita «Le seguenti tabelle non hanno alcuna relazione dichiarata **o implicita**». Le relazioni implicite (`detectImplicitRelations`) sono invece incluse da `renderGraph3d` e da `computeShortestPath` quando `showImplicitRelations` è attivo — che è il valore predefinito. La stessa omissione è in `analyzeDependencies` (riga 543).",
+      "scenario": "Database MongoDB senza chiavi esterne dichiarate, dove tutte le relazioni sono dedotte dai nomi (`user_id`, `order_ids`). Sul Grafo 3D si vedono decine di archi viola fra le collection; aprendo «Diagnostica salute schema» le stesse collection sono elencate come «Tabelle Orfane», il punteggio scende di 30 punti e il testo afferma esplicitamente che nemmeno le relazioni implicite esistono. Anche root/leaf e la sequenza di seeding sono calcolati sul grafo sbagliato.",
+      "fix": "Costruire l'insieme delle relazioni una volta sola (`relazioniEffettive()`, dichiarate + implicite se `showImplicitRelations`) e usarlo in `renderGraph3d`, `computeShortestPath`, `analyzeDependencies` e `runSchemaAudit`. Se si preferisce che l'audit resti sulle sole FK dichiarate, cambiare il testo perché dica quello che fa.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A30",
+      "severita": "media",
+      "titolo": "Import di schema SQL: tutte le chiavi esterne vengono attribuite a una tabella inesistente chiamata «imported»",
+      "categoria": "bug funzionale",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:839-848",
+        "public/js/graph3d.js:817-837"
+      ],
+      "problema": "Il regex delle FK è globale e scorre l'INTERO testo, quindi non sa in quale `CREATE TABLE` si trovasse la clausola. Il codice se la cava scrivendo `from: 'imported'` — un segnaposto letterale. Il ramo DBML (righe 807-816) fa invece la cosa giusta, perché la sintassi `Ref:` porta con sé la tabella d'origine.",
+      "scenario": "Si importa un dump `.sql` con 20 tabelle e 35 FOREIGN KEY. Il grafo risultante contiene 20 nodi più 35 archi che partono tutti da un nodo `imported` che non esiste fra le collections: in `renderGraph3d` gli archi vengono scartati dal filtro `nodeIdsSet.has(r.from)` (riga 185) e spariscono senza dire nulla; in `renderDiffReport`, `analyzeDependencies` e `runSchemaAudit` invece contano, gonfiando i gradi di un nodo fantasma e facendo risultare orfane tabelle che orfane non sono.",
+      "fix": "Cercare le FOREIGN KEY dentro il corpo di ciascuna `CREATE TABLE` (il regex delle tabelle cattura già `match[2]` = corpo), attribuendo `from: tableName`. Le `ALTER TABLE … ADD CONSTRAINT … FOREIGN KEY` fuori dal corpo vanno riconosciute con un secondo regex che catturi la tabella dall'ALTER.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A32",
+      "severita": "media",
+      "titolo": "«Ferma query» può annullare la query di un altro tab, o non annullare nulla",
+      "categoria": "instradamento per tab",
+      "modulo": "public/js/query-tab.js",
+      "riferimenti": [
+        "public/js/query-tab.js:1335",
+        "public/js/query-tab.js:1383-1398",
+        "public/js/query-tab.js:1441"
+      ],
+      "problema": "`currentRunId` è una variabile di MODULO, mentre le sessioni sono per tab. `cancelActiveQuery()` prende il `runId` dalla variabile globale ma lo invia con il `tabId` del tab ATTIVO in quel momento: le due informazioni possono appartenere a tab diversi. Inoltre lanciare una query nel tab B sovrascrive `currentRunId` mentre la query del tab A è ancora in volo.",
+      "scenario": "Si lancia una query lenta nel tab A, si passa al tab B e si lancia una seconda query. `currentRunId` ora è quello di B. Tornando su A e premendo «Ferma», viene inviato `{ tabId: A, runId: <runId di B> }`: la sessione di A non conosce quel runId e non annulla nulla (la query di A continua a girare), mentre l'interfaccia mostra «Query annullata dall'utente» e nasconde il pulsante di stop — cioè toglie all'utente l'unico comando per fermarla davvero. Nell'ordine inverso si annulla la query di un tab che l'utente non stava guardando.",
+      "fix": "Spostare `currentRunId` nello stato del tab (`state.queryRunId`, come già fatto per `state.queryDb` — vedi la nota alle righe 1337-1351, che descrive esattamente questa migrazione per un'altra variabile di modulo).",
+      "stato": "risolto",
+      "risoluzione": "currentRunId è migrata in state.queryRunId (freshState in tabs.js): annullamento e azzeramento leggono runId e tabId dallo stesso tab."
+    },
+    {
+      "id": "CDB-A33",
+      "severita": "media",
+      "titolo": "L'export SQL dei risultati produce istruzioni non valide e non sicure da rieseguire",
+      "categoria": "correttezza dell'output / injection",
+      "modulo": "public/js/query-tab.js",
+      "riferimenti": [
+        "public/js/query-tab.js:1556-1566"
+      ],
+      "problema": "L'unico escaping applicato ai valori è `replace(/'/g, \"\\\\'\")`. Tre problemi distinti: (1) l'escaping con barra rovesciata è un'estensione MySQL — su PostgreSQL (che è uno dei tre DBMS supportati) `NO_BACKSLASH_ESCAPES` è il comportamento standard e l'apice va raddoppiato, quindi lo script è sintatticamente errato o interpretato diversamente; (2) le barre rovesciate presenti nel valore NON vengono raddoppiate, quindi un valore che termina con `\\` produce `'…\\'` e sposta la fine della stringa, rompendo l'istruzione e potenzialmente concatenando il valore successivo; (3) ogni valore è racchiuso fra apici, quindi NULL diventa la stringa vuota e i numeri diventano stringhe.",
+      "scenario": "Si esportano in SQL i risultati di una query su una tabella con un campo percorso Windows (`C:\\dati\\`) o una descrizione con un apice. Il file generato, eseguito per popolare un ambiente di prova, fallisce con un errore di sintassi in un punto che non c'entra con il dato corrotto — oppure, nel caso peggiore, viene eseguito con una `INSERT` i cui valori sono sfalsati di una colonna. Un valore costruito ad arte in un campo di testo può chiudere la stringa e aggiungere un'istruzione arbitraria, che l'utente esegue di sua mano sul proprio database.",
+      "fix": "Raddoppiare l'apice (`''`) e la barra rovesciata secondo il dialetto, emettere `NULL` senza apici per i valori nulli e i numeri senza apici; oppure riusare la generazione SQL già esistente in `exportimport.js`, che è il modulo dedicato agli export.",
+      "stato": "risolto",
+      "risoluzione": "letteraleSql emette NULL senza apici, i numeri senza apici, raddoppia apice e barra rovesciata e protegge i backtick dei nomi di colonna."
+    },
+    {
+      "id": "CDB-A35",
+      "severita": "media",
+      "titolo": "Nove file sorgente contengono byte di controllo grezzi (U+0000, U+0001): ripgrep li salta e le ricerche nel repository perdono metà file",
+      "categoria": "manutenibilità / strumenti",
+      "modulo": "trasversale",
+      "riferimenti": [
+        "db/DbStrategy.js:223",
+        "db/MySqlStrategy.js:319",
+        "db/PostgreSqlStrategy.js:1110",
+        "public/js/backupmanager.js:480",
+        "public/js/cell-stats.js:106-108",
+        "public/js/grid.js:196",
+        "public/js/query-tab.js:954",
+        "test/unit.js:410",
+        "tools/impronte.js:97"
+      ],
+      "problema": "In nove file un separatore U+0000 (e in tools/impronte.js anche U+0001) è scritto come CARATTERE GREZZO dentro il letterale di stringa invece che come sequenza di escape `'\\u0000'`. È JavaScript valido e funziona, ma ripgrep — e quindi ogni ricerca fatta con gli strumenti moderni — smette di leggere il file al primo byte NUL e restituisce «binary file matches» senza mostrare alcuna riga. Verificato durante questo audit: la ricerca di `riapplicaFiltroSchema` in query-tab.js non ha prodotto risultati pur essendo presente sei volte, e il fallback su `grep -a` è stato necessario. `git diff` invece funziona (l'euristica di git guarda solo i primi 8 KB), quindi il difetto è invisibile finché non si cerca qualcosa.",
+      "scenario": "Un difetto in `grid.js` dopo la riga 196, in `query-tab.js` dopo la 954 o in `PostgreSqlStrategy.js` dopo la 1110 non viene trovato da nessuna ricerca testuale nel repository: chi cerca il nome di una funzione riceve zero risultati e conclude che non esista. Sono quattro dei file più grandi e più modificati del progetto. Il caso più delicato è `tools/impronte.js:97`, dove i due caratteri di controllo entrano nel calcolo dell'impronta SHA-256 del registro dei marcatori di provenienza: un editor o un trasferimento che li normalizzi cambia l'impronta pubblicata in docs/provenienza.md, e la verifica di provenienza smette di corrispondere senza che nulla lo spieghi.",
+      "fix": "Sostituire i caratteri grezzi con le sequenze di escape `'\\u0000'` / `'\\u0001'` — identiche a runtime, visibili nell'editor, cercabili. In `db/DbStrategy.js:223` il NUL è dentro una classe di caratteri (`/[<>&\"'`;\\\\\\u0000-\\u001f]/`): lì l'escape rende anche leggibile l'estremo inferiore dell'intervallo, oggi invisibile. Un controllo in `npm test` che rifiuti byte di controllo nei sorgenti impedisce la ricomparsa.",
+      "stato": "risolto",
+      "risoluzione": "Sostituiti i byte di controllo grezzi con le sequenze di escape equivalenti (\u0000, \u0000 nella classe di caratteri di DbStrategy): i valori delle stringhe sono identici, ma i file tornano testo e ripgrep non li salta più."
+    },
+    {
+      "id": "CDB-A34",
+      "severita": "bassa",
+      "titolo": "L'export dei risultati non esporta «quello che si vede»: i valori EJSON escono in forma grezza",
+      "categoria": "coerenza dell'output",
+      "modulo": "public/js/query-tab.js",
+      "riferimenti": [
+        "public/js/query-tab.js:1523-1527",
+        "public/js/query-tab.js:1545-1551",
+        "public/js/query-tab.js:890-894",
+        "public/js/cellselect.js"
+      ],
+      "problema": "Il commento alle righe 1523-1525 stabilisce il principio («Si esporta quello che si VEDE») e lo applica correttamente all'ORDINE delle righe, ma non ai VALORI: la tabella disegna con `displayValueBreve` (un ObjectId appare come `507f…`, una data come istante leggibile) mentre l'export CSV scrive `JSON.stringify(val)`, cioè `{\"$oid\":\"507f…\"}`. La copia dalla griglia dati (`cellselect.js`) usa invece `displayValue`, quindi due export della stessa cella danno due testi diversi.",
+      "scenario": "Si esporta in CSV il risultato di una query MongoDB per aprirlo in un foglio di calcolo: la colonna `_id` contiene `{\"$oid\":\"...\"}` e le date `{\"$date\":\"...\"}`, con virgolette raddoppiate dentro le celle. Il file va ripulito a mano prima di essere utilizzabile.",
+      "fix": "Usare `displayValue` (la forma esatta, non troncata) per CSV e SQL, lasciando l'EJSON integrale al solo formato JSON, dove è il contenuto corretto.",
+      "stato": "risolto",
+      "risoluzione": "CSV e SQL esportano displayValue(v).text, la stessa forma esatta che copia la griglia dati; l'EJSON integrale resta nel solo formato JSON."
+    },
+    {
+      "id": "CDB-A36",
+      "severita": "bassa",
+      "titolo": "L'avviso sulle etichette dei punti promette un comportamento che non viene attuato",
+      "categoria": "messaggi all'utente",
+      "modulo": "public/js/chart-option.js",
+      "riferimenti": [
+        "public/js/chart-option.js:785-799"
+      ],
+      "problema": "Con più di 40 punti `bloccoEtichette` emette l'avviso «…etichette su ognuno sarebbero illeggibili — mostrate solo sul valore massimo» e poi restituisce `{ show: false }`: nessuna etichetta viene mostrata, nemmeno sul massimo.",
+      "scenario": "L'utente attiva le etichette, legge l'avviso, e cerca sul grafico l'etichetta del picco che gli è stata promessa. Non c'è. Conclude che il grafico sia difettoso invece che l'opzione inapplicabile.",
+      "fix": "O implementare il comportamento (`label` con `formatter` che restituisce testo solo per il valore massimo della serie), o correggere l'avviso in «etichette disattivate: troppi punti».",
+      "stato": "risolto",
+      "risoluzione": "bloccoEtichette riceve i valori e attua ciò che annuncia: con oltre 40 punti l'etichetta compare sul solo valore massimo. Test aggiunto."
+    },
+    {
+      "id": "CDB-A37",
+      "severita": "bassa",
+      "titolo": "Editor geografico: il selettore del tipo non segue il JSON modificato a mano e può riconvertire la geometria",
+      "categoria": "coerenza dell'interfaccia",
+      "modulo": "public/js/geomap.js",
+      "riferimenti": [
+        "public/js/geomap.js:382-403",
+        "public/js/geomap.js:450-465",
+        "public/js/geomap.js:516-534"
+      ],
+      "problema": "`leggiTesto()` sostituisce `stato.geo` con quanto digitato e aggiorna intestazione, avvisi e disegno, ma non richiama `preparaSelettoreTipo()`. Il `<select>` continua quindi a mostrare il tipo precedente.",
+      "scenario": "Si apre un `Point` e si incolla nel JSON un `Polygon` valido: la mappa disegna correttamente il poligono, ma il selettore continua a dire «Point». Toccando il selettore per qualsiasi motivo si scatena `cambiaTipo('Point')`, che riduce il poligono al suo primo vertice — la geometria appena incollata viene distrutta da un'interazione che sembrava innocua.",
+      "fix": "Chiamare `preparaSelettoreTipo(stato.readOnly)` in coda a `leggiTesto()`, dopo `aggiornaIntestazione()`.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A38",
+      "severita": "bassa",
+      "titolo": "Le misure geografiche non gestiscono l'antimeridiano, ed è l'unica approssimazione non dichiarata",
+      "categoria": "correttezza del calcolo",
+      "modulo": "public/js/geo-stats.js",
+      "riferimenti": [
+        "public/js/geo-stats.js:71-81",
+        "public/js/geo-stats.js:142-148",
+        "public/js/geo-stats.js:17-29"
+      ],
+      "problema": "`areaAnello` usa `(lon2 - lon1)` senza normalizzare la differenza nell'intervallo ±180°, e il calcolo del riquadro di delimitazione prende min/max delle longitudini senza tenere conto dell'avvolgimento. Una geometria che attraversa la linea del cambiamento di data ha un lato con Δlon ≈ 359° invece di ≈ 1°.",
+      "scenario": "Un poligono attorno alle Figi o alla Chukotka restituisce un'area grossolanamente sbagliata (in pratica il complemento sulla sfera) e un riquadro che copre l'intero globo, il quale a sua volta trascina il riquadro complessivo della selezione e quindi l'inquadratura della mappa. Il file dichiara con cura ogni altra approssimazione (errore ellissoidale sotto lo 0,5%, geometrie proiettate escluse, centro = media dei vertici): questa manca del tutto.",
+      "fix": "Normalizzare la differenza di longitudine (`((dlon + 540) % 360) - 180`) in `areaAnello` e in `distanzaM`; per il riquadro, riconoscere l'attraversamento e dichiararlo nell'interfaccia — oppure, come minimo, aggiungere la nota fra le approssimazioni dichiarate.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A39",
+      "severita": "bassa",
+      "titolo": "L'euristica PII del pannello dettagli marca «author», «passenger» e «authorized_at» come dati personali",
+      "categoria": "correttezza dell'analisi prodotta",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:338-341",
+        "public/js/graph3d.js:400-412"
+      ],
+      "problema": "Il regex `/(email|phone|telephon|password|pass|ssn|fiscal|creditcard|iban|token|auth|secret)/i` cerca sottostringhe senza confini di parola. `pass` cattura `passenger`, `passo`, `password_hint`, `bypass`; `auth` cattura `author`, `authorized_at`, `authority`; `ssn` cattura qualunque `…ssn…`.",
+      "scenario": "Su uno schema editoriale ogni tabella con `author` mostra il distintivo arancione PII, mentre su uno schema di trasporti lo mostra `passenger_count`. Un distintivo che compare dove non serve smette di essere letto anche dove serve. Da confrontare inoltre con l'euristica del tool MCP `analyze_pii` (area 3, ancora non letta): se le due divergono, due schermate della stessa applicazione danno due risposte diverse sullo stesso schema.",
+      "fix": "Ancorare ai confini di token (`(^|[_.\\-])(pass(word|phrase)?|auth(_token)?|…)([_.\\-]|$)`) e allineare l'elenco a quello del gateway MCP, tenendone una copia sola.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A40",
+      "severita": "bassa",
+      "titolo": "Il DDL esportato dal Grafo 3D è invalido su chiavi composte e i due export dichiarano colonne bersaglio diverse",
+      "categoria": "correttezza dell'output",
+      "modulo": "public/js/graph3d.js",
+      "riferimenti": [
+        "public/js/graph3d.js:901-920",
+        "public/js/graph3d.js:882-899"
+      ],
+      "problema": "`buildSqlDdl` emette `NOT NULL PRIMARY KEY` per OGNI campo con `pk`, quindi una chiave primaria composta produce due clausole PRIMARY KEY nella stessa `CREATE TABLE` — rifiutata da MySQL e da PostgreSQL. Inoltre le `ALTER TABLE … FOREIGN KEY` referenziano sempre la colonna `(id)`, mentre `buildDbmlDiagram` per la stessa relazione scrive `> \"tabella\".\"_id\"`: due export dello stesso schema dichiarano due colonne bersaglio diverse, e nessuna delle due è letta dallo schema reale.",
+      "scenario": "Si esporta il DDL per ricreare lo schema in un ambiente di prova: lo script si ferma sulla prima tabella con chiave composta, e le tabelle che passano generano vincoli verso una colonna `id` che su MongoDB (dove la PK è `_id`) non esiste.",
+      "fix": "Raccogliere i campi `pk` e chiudere la `CREATE TABLE` con un'unica `PRIMARY KEY (a, b)`; per le FK usare la chiave primaria reale della tabella bersaglio (già disponibile in `collections[].fields[].pk`), con `_id` come ripiego su MongoDB.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A41",
+      "severita": "bassa",
+      "titolo": "Schema Browser: i database caricati durante una ricerca restano spalancati quando la ricerca viene svuotata",
+      "categoria": "coerenza dell'interfaccia",
+      "modulo": "public/js/query-tab.js",
+      "riferimenti": [
+        "public/js/query-tab.js:1235-1239",
+        "public/js/query-tab.js:1246-1253",
+        "public/js/query-tab.js:1294-1312",
+        "public/js/query-tab.js:1318-1321"
+      ],
+      "problema": "Lo stato di apertura viene fotografato in `dataset.eraChiuso` solo nel passaggio da «nessuna ricerca» a «ricerca attiva» (`q && !filtroSchemaAttivo`). I contenitori creati DOPO — cioè quelli dei database caricati dal pulsante «Cerca anche negli altri N database», o dall'espansione automatica del database attivo — non ricevono mai quell'attributo, perché al momento della loro `riapplicaFiltroSchema` il filtro è già attivo. Svuotando la casella, il ramo di ripristino (riga 1248) li salta.",
+      "scenario": "Si cerca una tabella, si preme «Cerca anche negli altri 12 database», si trova quello che serve e si svuota la casella: l'albero resta con dodici database completamente espansi, decine di tabelle e centinaia di colonne a schermo, e va richiuso a mano uno per uno.",
+      "fix": "Assegnare `dataset.eraChiuso` alla creazione del contenitore (in `renderQuerySchemaBrowser`/`renderSchemaTreeForDb`) quando un filtro è attivo, oppure, più semplicemente, considerare «chiuso» il valore predefinito per i contenitori privi dell'attributo nel ramo di ripristino.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A42",
+      "severita": "bassa",
+      "titolo": "La guida introduttiva cita un menu che non esiste più e conta cinque viste dove ne mostra tre",
+      "categoria": "documentazione nell'interfaccia",
+      "modulo": "public/js/onboarding.js",
+      "riferimenti": [
+        "public/js/onboarding.js:284",
+        "public/js/onboarding.js:70-74",
+        "public/js/colltabs.js:35-40"
+      ],
+      "problema": "Due testi non sono stati aggiornati dopo due riorganizzazioni dell'interfaccia già recepite altrove. (a) Riga 284: «Riapri la guida da **Strumenti & Utility** quando ti serve» — il menu si chiama Impostazioni, come dicono gli altri passi dello stesso file (riga 85-86) e i commenti di `connmanager.js`. (b) Righe 70-74: il passo puntato su `.view-tabs` è intitolato «Cinque viste sugli stessi dati» ed elenca Dati, Dettagli, UML, Grafo 3D e Query & Aggregate, ma UML e Grafo 3D non sono più schede lì dentro: stanno nel menu «Visualizza», e su un tab a livello database `applyViewTabsFor` ne nasconde altre due.",
+      "scenario": "L'utente al primo avvio legge un'istruzione che indica un menu inesistente, e nel tour vede un riquadro luminoso su una barra con tre schede mentre il fumetto ne annuncia cinque. È il primo contatto con il programma, cioè il momento in cui una discrepanza costa di più.",
+      "fix": "Aggiornare i due testi; il secondo può nominare le tre schede e rimandare al menu Visualizza per UML e Grafo 3D.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-A43",
+      "severita": "bassa",
+      "titolo": "`attendiAccesso` accumula MutationObserver mai disconnessi finché il vault resta bloccato",
+      "categoria": "risorse non liberate",
+      "modulo": "public/js/onboarding.js",
+      "riferimenti": [
+        "public/js/onboarding.js:153-173",
+        "public/js/onboarding.js:489-496",
+        "public/js/onboarding.js:121"
+      ],
+      "problema": "L'osservatore creato alla riga 161 si disconnette SOLO quando la barriera si chiude. `disegnaChecklist` (riga 493) richiama `attendiAccesso()` a ogni invocazione mentre una barriera è aperta, e `disegnaChecklist` è agganciata all'evento `codedb:traguardo` (riga 121) oltre a essere chiamata da cinque punti diversi: ogni chiamata crea due nuovi osservatori (uno per barriera) sullo stesso nodo. La promessa restituita non viene mai risolta né rigettata se l'utente abbandona la schermata della passphrase, quindi anche le catene `.then` restano appese.",
+      "scenario": "Effetto contenuto (l'utente sblocca il vault e tutti gli osservatori si disconnettono insieme), ma con il vault lasciato bloccato a lungo e un'applicazione che emette traguardi, gli osservatori si moltiplicano e ognuno rilancia `disegnaChecklist` allo sblocco, che ridisegna il pannello N volte.",
+      "fix": "Memoizzare la promessa (`let attesaInCorso; if (attesaInCorso) return attesaInCorso;`) e disconnettere l'osservatore anche in caso di annullamento.",
+      "stato": "aperto"
+    }
+  ],
+  "priorita_intervento": [
+    {
+      "id": "CDB-A44",
+      "motivo": "È l'unico rilievo che ferma l'intero servizio per TUTTI gli utenti a partire da tre righe scritte da chiunque abbia la capability più bassa, e nessuno dei sette budget esistenti può intervenire. La mitigazione parziale (rifiuto dei quantificatori annidati) costa poco e va messa subito; l'esecuzione in worker_thread è la correzione vera e va pianificata, perché rende reale anche il limite di tempo."
+    },
+    {
+      "id": "CDB-A45",
+      "motivo": "Perdita di dati silenziosa e irreversibile da una distrazione di battitura, su un percorso che dichiara di imitare mongosh — dove la stessa chiamata è un errore. Il fix è una riga nello stesso punto in cui una difesa identica è già stata scritta per l'aggiornamento senza operatori."
+    },
+    {
+      "id": "CDB-A46",
+      "motivo": "Riapre, su due percorsi su quattro, una porta che il progetto ha esplicitamente chiuso e documentato come chiusa; costa due chiamate a una funzione già scritta nello stesso file."
+    },
+    {
+      "id": "CDB-A57",
+      "motivo": "Ogni copia gia distribuita porta fuori il vault dello sviluppatore e il registro dei marcatori che la documentazione tiene fuori da git proprio per non consegnarlo: e l unico rilievo con un effetto retroattivo sui pacchetti gia pubblicati, quindi va valutato prima ancora di essere corretto."
+    },
+    {
+      "id": "CDB-A20",
+      "motivo": "Esecuzione di codice arbitrario nel contesto della pagina, dove vive il token di sessione RBAC, a partire da un dato del database — cioè da qualcosa che l'utente non controlla. Il fix è una chiamata a `esc()` già presente nello stesso file."
+    },
+    {
+      "id": "CDB-A21",
+      "motivo": "Stessa classe di CDB-A20 e stesso costo di correzione (due `.map(esc)`), con la variante che qui il vettore può essere un file snapshot ricevuto da terzi."
+    },
+    {
+      "id": "CDB-A31",
+      "motivo": "È l'unico rilievo di questa passata che può far scrivere sul database sbagliato: un `USE` che cambia il bersaglio di un altro tab non lascia alcuna traccia visibile prima dell'esecuzione. Si corregge spostando due righe dentro la guardia già presente."
+    },
+    {
+      "id": "CDB-A22",
+      "motivo": "Uno strumento di analisi che dà una risposta sbagliata è peggio di uno strumento assente, perché la risposta è plausibile e viene usata per scrivere seeder e ordini di TRUNCATE. Il fix è invertire l'adiacenza: poche righe."
+    },
+    {
+      "id": "CDB-A24",
+      "motivo": "Stessa ragione: il grafico non è rotto, è falso, e ci si arriva con un clic su un suggerimento incorporato dell'applicazione."
+    },
+    {
+      "id": "CDB-A23",
+      "motivo": "Degrado progressivo che porta il Grafo 3D a smettere di funzionare durante una sessione normale, con il solo rimedio del ricaricamento della pagina; la causa non è deducibile da ciò che l'utente vede."
+    },
+    {
+      "id": "CDB-A35",
+      "motivo": "Non è un difetto per l'utente ma per chi mantiene il codice: nasconde alle ricerche metà di quattro dei file più grandi del progetto, e ha già ostacolato questo stesso audit. La correzione è meccanica e verificabile con un controllo in `npm test`."
+    }
+  ]
+}

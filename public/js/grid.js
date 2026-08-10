@@ -193,7 +193,7 @@ export function runQuery(opts = {}) {
 // Firma della combinazione che determina il totale: pagina e ordinamento non
 // la influenzano, solo database, collection/tabella e filtro.
 function countKeyFor(p) {
-  return `${p.db} ${p.coll} ${p.filter || ''}`;
+  return `${p.db}\u0000${p.coll}\u0000${p.filter || ''}`;
 }
 
 // Il totale è "esatto" solo se noto e NON stimato dai metadati: solo un totale
@@ -812,9 +812,11 @@ function fetchMore() {
 export function deleteDoc(doc) {
   const { text } = displayValue(doc._id);
   if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
+  const origin = captureContext();
   emit('doc:delete', {
-    db: state.db,
-    coll: state.coll,
+    tabId: origin.tabId,
+    db: origin.st.db,
+    coll: origin.st.coll,
     id: idOf(doc),
   }).then((res) => {
     toast('Documento eliminato');
@@ -837,7 +839,9 @@ export function deleteDocs(docs) {
   if (!confirm(`Eliminare ${ids.length} ${cosa}? Questa azione non si può annullare.`)) return;
 
   const origin = captureContext();
-  eseguiAOndate(ids, 8, (id) => emit('doc:delete', { db: state.db, coll: state.coll, id }))
+  // Bersaglio congelato, non riletto a ogni richiesta: vedi deleteSelectedDocs.
+  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
+  eseguiAOndate(ids, 8, (id) => emit('doc:delete', { ...bersaglio, id }))
     .then((results) => {
       const failed = results.filter((r) => r.status === 'rejected');
       const ok = results.length - failed.length;
@@ -861,17 +865,23 @@ export function deleteSelectedDocs() {
   // Tab e collection d'origine catturati prima di partire: le risposte arrivano
   // a operazione lunga conclusa, quando l'utente può essere altrove.
   const origin = captureContext();
+  // E il BERSAGLIO va congelato con loro (CDB-A18). `state` è un Proxy sul tab
+  // ATTIVO ed `emit()` inietta il tab attivo AL MOMENTO DELLA CHIAMATA: siccome
+  // le ondate distribuiscono le cancellazioni nel tempo, passare a un altro tab
+  // mentre l'operazione gira mandava le rimanenti su un'altra connessione, con
+  // gli id presi però dalle righe di questa — su MongoDB un `_id` presente
+  // anche là veniva cancellato là, e su SQL l'`_id` virtuale `{colonna: valore}`
+  // colpiva la riga omonima della tabella sbagliata. Il punto non è fermarsi
+  // (le scritture vanno completate) ma indirizzarle: `isStillActive()` decide
+  // solo se ridipingere.
+  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
   // A ondate, non tutte insieme (CDB-51): una cancellazione multipla di
   // centinaia di righe riempirebbe la coda del socket e il pool della sessione,
   // lasciando in attesa ogni altra operazione dell'utente.
   // A ondate significa che l'operazione dura: il pulsante deve dirlo, e
   // soprattutto non deve poter partire una seconda volta sugli stessi id.
   conCaricamento($('#delete-selected-btn'), () => eseguiAOndate(ids, 8, (id) =>
-    emit('doc:delete', {
-      db: state.db,
-      coll: state.coll,
-      id,
-    })
+    emit('doc:delete', { ...bersaglio, id })
   ), 'Elimino…').then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
@@ -899,9 +909,13 @@ export function deleteAllWithFilter() {
     : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${count}righe` : `TUTTI i ${count}documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
   if (!confirm(msg)) return;
 
+  // Una sola richiesta, e la `confirm()` blocca il thread — ma il bersaglio si
+  // congela lo stesso: la regola "una scrittura non legge il Proxy `state`" vale
+  // qui come altrove, ed è verificata da test/unit-scritture-bersaglio.js.
+  const origin = captureContext();
+  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
   conCaricamento($('#delete-all-btn'), () => emit('collection:deleteMany', {
-    db: state.db,
-    coll: state.coll,
+    ...bersaglio,
     filter,
   }), 'Elimino…').then((res) => {
     res._state.selectedDocs.clear();

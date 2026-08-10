@@ -22,7 +22,7 @@
 
 const {
   parse, getMember, aEjson, aEjsonStr, semplifica, testo, verita,
-  costruisciGlobali, errore, NOMI_VIETATI,
+  costruisciGlobali, errore, assertRegexSicura, tokenize, NOMI_VIETATI,
 } = require('./MongoScript');
 
 /**
@@ -370,8 +370,23 @@ class Interprete {
   }
 
   stampa(args, json = false) {
-    if (this.output.length >= this.limiti.output) return;
+    if (this.outputTroncato) return;
+    if (this.output.length >= this.limiti.output) {
+      // Ogni altro budget del modulo termina con un messaggio esplicito: un
+      // output tagliato in silenzio fa credere che lo script si sia fermato lì.
+      this.outputTroncato = true;
+      this.output.push(`… output troncato: superato il limite di ${this.limiti.output} righe.`);
+      return;
+    }
     const riga = args.map((a) => (json ? JSON.stringify(semplifica(a), null, 2) : testo(a))).join(' ');
+    // `stampa` era l'unico punto che accumulava dati senza passare dal budget
+    // di memoria: una riga è `JSON.stringify` di un valore arbitrario, e
+    // l'array le trattiene tutte fino alla fine dello script. Si conta sia la
+    // singola riga sia il totale già accumulato, altrimenti `printjson` in un
+    // ciclo aggirerebbe il limite una riga alla volta.
+    this.outputBytes = (this.outputBytes || 0) + riga.length * 2;
+    this.contaMemoria(riga.length * 2, 'l\'output di print');
+    this.contaMemoria(this.outputBytes, 'l\'output complessivo dello script');
     this.output.push(riga);
   }
 
@@ -608,7 +623,18 @@ class Interprete {
           else {
             const interno = new Scope(scope);
             if (nodo.param) {
-              interno.dichiara(nodo.param, { message: err && err.message ? err.message : String(err) });
+              // `throw` dello script conserva il valore lanciato in
+              // `err.valore`: se è un OGGETTO va legato com'è, altrimenti
+              // `throw { codice: 42, dettaglio: … }` arrivava al catch come un
+              // oggetto col solo `message` e tutto il resto spariva.
+              // Un valore primitivo resta invece nella forma `{ message }`:
+              // in questo dialetto `e.message` è il modo documentato di leggere
+              // un `throw 'testo'`, e la sola forma che vale anche per gli
+              // errori del motore e del driver, che non hanno altro.
+              const lanciato = err && err.lanciataDalloScript && err.valore && typeof err.valore === 'object'
+                ? err.valore
+                : { message: err && err.message ? err.message : String(err) };
+              interno.dichiara(nodo.param, lanciato);
             }
             try {
               esito = await this.esegui(nodo.handler, interno);
@@ -652,7 +678,12 @@ class Interprete {
       case 'Num': case 'Str': case 'Bool': return nodo.value;
       case 'Null': return null;
       case 'Undef': return undefined;
-      case 'Regex': return new RegExp(nodo.value.pattern, nodo.value.flags);
+      // Una regex è l'unico costrutto che può consumare tempo esponenziale
+      // senza consumare un solo passo, e mentre gira nessun budget può
+      // intervenire: si rifiutano qui i pattern a quantificatore annidato.
+      case 'Regex':
+        assertRegexSicura(nodo.value.pattern, nodo.line);
+        return new RegExp(nodo.value.pattern, nodo.value.flags);
 
       case 'Tpl': {
         let out = nodo.parti[0] || '';
@@ -903,12 +934,27 @@ async function eseguiScript(code, host, opzioni = {}) {
  * MQL o una SELECT)? Serve a `query:execute`/`script:execute` per scegliere
  * l'interprete invece della divisione per `;`, che non conosce i blocchi `{}`.
  */
+const PAROLE_SCRIPT = new Set([
+  'var', 'let', 'const', 'function', 'if', 'for', 'while', 'do', 'try', 'return', 'throw',
+]);
+
 function sembraScriptJs(code) {
   const s = String(code || '');
-  // Costrutti che solo un vero script può contenere.
-  if (/\b(var|let|const|function|if|for|while|do|try|return|throw)\b/.test(s)) return true;
-  if (/=>/.test(s)) return true;
-  return false;
+  if (!s.trim()) return false;
+  // Il riconoscimento passa dal TOKENIZER, non da una regex sul testo grezzo:
+  // `if`, `do`, `for` e `return` sono parole comunissime nei dati, e un comando
+  // shell come db.log.find({ nota: 'do not delete' }) finiva all'interprete
+  // sbagliato. Il tokenizer distingue già stringhe, template e commenti.
+  try {
+    for (const t of tokenize(s)) {
+      if ((t.t === 'kw' || t.t === 'ident') && PAROLE_SCRIPT.has(t.v)) return true;
+      if (t.t === 'op' && t.v === '=>') return true;
+    }
+    return false;
+  } catch {
+    // Testo che il tokenizer non sa leggere (SQL, frammenti): non è uno script.
+    return false;
+  }
 }
 
 module.exports = { eseguiScript, sembraScriptJs, Interprete, LIMITI_DEFAULT };

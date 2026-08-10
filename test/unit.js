@@ -407,7 +407,7 @@ console.log('--- Test Unitari CodeDB ---');
     const pericolosi = [
       '<img src=x onerror=alert(1)>',
       'a"b', "a'b", 'a`b', 'a;b', 'a\\b', 'a<b', 'a&b',
-      'a\nb', 'a b', '   ', '',
+      'a\nb', 'a\u0000b', '   ', '',
     ];
     for (const n of pericolosi) {
       assert.throws(() => assertCreatableName(n, 'del database'), /non valido|mancante/,
@@ -852,6 +852,20 @@ console.log('--- Test Unitari CodeDB ---');
 
   // Test 27: Colonne della tabella dei risultati (larghezze misurate, ordinamento EJSON)
   require('./unit-table-cols');
+
+  // Test 27-ter: scope dei permessi su SQL libero — le tabelle CITATE nella
+  // query, non un bersaglio dedotto dal primo FROM (CDB-A03).
+  require('./unit-sql-tables');
+
+  // Test 27-bis: le SCRITTURE del frontend congelano il bersaglio invece di
+  // rileggerlo dal Proxy `state`, che punta al tab attivo alla chiamata.
+  require('./unit-scritture-bersaglio');
+
+  // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
+  // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
+  // Avvia processi veri: la decisione sta nel percorso di avvio, non in una
+  // funzione. Nessun database richiesto.
+  require('./unit-avvio-rete');
 
   console.log('\nTutti i test unitari superati con successo!');
 })();

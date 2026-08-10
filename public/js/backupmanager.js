@@ -477,7 +477,7 @@ const idVerifica = (group, backupId) => `verify-res-${group}-${backupId}`;
 // gruppo ricostruisce l'intero catalogo, e senza questa memoria cancellerebbe
 // il risultato di un checksum appena calcolato altrove.
 const esitiVerifica = new Map();
-const chiaveVerifica = (group, backupId) => `${group} ${backupId}`;
+const chiaveVerifica = (group, backupId) => `${group}\u0000${backupId}`;
 const esitoDi = (group, backupId) => esitiVerifica.get(chiaveVerifica(group, backupId)) || '';
 
 /**

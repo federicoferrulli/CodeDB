@@ -159,6 +159,23 @@ export function valutaAvvisoVault(stato) {
   box.classList.remove('hidden');
 }
 
+/**
+ * Adegua l'interfaccia a chi sta guardando: con RBAC attivo il cambio
+ * passphrase e l'azzeramento del vault sono riservati all'amministratore
+ * dell'INSTALLAZIONE, perché la chiave dei segreti è una sola per tutti i
+ * tenant. Un comando offerto e poi rifiutato è peggio di un comando assente —
+ * sembra un guasto — quindi si nasconde: la voce "Cambia Passphrase" nel menu
+ * Impostazioni e il "Ho dimenticato la passphrase" della modale di sblocco.
+ *
+ * `amministrabile` assente (server più vecchio) vale "sì": nessuna installazione
+ * esistente perde un comando per colpa di una risposta incompleta.
+ */
+export function applicaPermessiVault(stato) {
+  const puo = !stato || stato.amministrabile !== false;
+  $('#btn-change-passphrase')?.classList.toggle('hidden', !puo);
+  $('#vault-forgot')?.classList.toggle('hidden', !puo);
+}
+
 export function initPassphrase() {
   const imposta = $('#vault-hint-set');
   const rimanda = $('#vault-hint-later');

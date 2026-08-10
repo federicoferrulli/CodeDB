@@ -143,6 +143,57 @@ function connect(token) {
     assert(listAfter.ok && listAfter.connections.length === 0, 'dopo la revoca il sottoutente non vede più connessioni');
     sock3.close();
 
+    console.log('11. sospensione: il socket GIÀ aperto viene chiuso (CDB-A13)');
+    // Il principal era risolto una sola volta nell'handshake: sospendere un
+    // utente cancellava la riga della sessione ma non toccava la scheda già
+    // aperta, che continuava a leggere e scrivere con i permessi di prima —
+    // e Socket.IO si riconnette da sé, quindi poteva durare giorni.
+    const riLogin = await login(VIEWER.email, VIEWER.password);
+    const sockVivo = await connect(riLogin.token);
+    assert(sockVivo.connected, 'il sottoutente ha di nuovo un socket aperto');
+    const chiuso = new Promise((resolve) => sockVivo.once('disconnect', () => resolve(true)));
+    const sospeso = await emit(ownerSock, 'users:update', { id: created.user.id, status: 'suspended' });
+    assert(sospeso.ok, 'sottoutente sospeso');
+    const esito = await Promise.race([
+      chiuso,
+      new Promise((resolve) => setTimeout(() => resolve(false), 4000)),
+    ]);
+    assert(esito === true, 'la sospensione chiude subito il socket già connesso');
+    sockVivo.close();
+
+    // E il token non serve più nemmeno per una connessione nuova.
+    let respinto = false;
+    try {
+      const s = await connect(riLogin.token);
+      s.close();
+    } catch (err) {
+      respinto = err && err.message === 'auth_required';
+    }
+    assert(respinto, 'dopo la sospensione il token non apre più alcun socket');
+
+    console.log('12. revoca che NON passa da questa istanza: la ri-validazione la coglie');
+    // La chiusura attiva copre le revoche fatte da qui. Una revoca arrivata da
+    // un'altra istanza, dalla CLI o direttamente sul control plane no: la
+    // seconda rete è la ri-validazione periodica del principal, che qui si
+    // simula con /auth/logout (cancella la riga della sessione senza toccare i
+    // socket). Con la finestra dell'harness a 200 ms non serve attendere.
+    await emit(ownerSock, 'users:update', { id: created.user.id, status: 'active' });
+    const login2 = await login(VIEWER.email, VIEWER.password);
+    const sockOrfano = await connect(login2.token);
+    const primaOk = await emit(sockOrfano, 'connections:list');
+    assert(primaOk.ok, 'il socket funziona finché la sessione esiste');
+    const risp = await fetch(`${BASE}/auth/logout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: login2.token }),
+    });
+    assert(risp.ok, 'sessione cancellata nel control plane, senza toccare i socket');
+    await new Promise((r) => setTimeout(r, 300)); // oltre la finestra di ri-validazione
+    const dopo = await emit(sockOrfano, 'connections:list');
+    assert(dopo && dopo.ok === false && /non più valida/.test(dopo.error || ''),
+      `l'evento successivo è rifiutato: ${JSON.stringify(dopo)}`);
+    sockOrfano.close();
+
     console.log('\nTest RBAC completati.');
   } catch (err) {
     console.error('  FAIL errore inatteso:', err && err.message);

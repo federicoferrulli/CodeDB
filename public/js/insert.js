@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError, conCaricamento } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError, conCaricamento, captureContext } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 
@@ -280,12 +280,19 @@ let insertContext = null;
 let insertAperture = 0;
 
 export function openInsertDocForContext(ctx = null) {
-  insertContext = ctx;
+  // Il bersaglio si congela all'APERTURA (CDB-A18). Senza contesto esplicito lo
+  // si sintetizza dal tab corrente invece di rileggere `state` al salvataggio:
+  // la modale resta aperta quanto vuole l'utente, che nel frattempo può
+  // cambiare tab, e `state` è un Proxy sul tab ATTIVO — il documento sarebbe
+  // finito nella collection sbagliata, senza alcun segnale.
+  insertContext = ctx || {
+    tabId: captureContext().tabId,
+    db: state.db,
+    coll: state.coll,
+    dbType: state.dbType,
+  };
   const apertura = ++insertAperture;
-  const db = ctx ? ctx.db : state.db;
-  const coll = ctx ? ctx.coll : state.coll;
-  const tabId = ctx ? ctx.tabId : undefined;
-  const dbType = ctx ? ctx.dbType : state.dbType;
+  const { db, coll, tabId, dbType } = insertContext;
   const isSql = isSqlType(dbType);
 
   $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
@@ -368,10 +375,8 @@ export function initInsert() {
     } else {
       docText = $('#insert-json').value;
     }
-    const tabId = insertContext ? insertContext.tabId : undefined;
-    const db = insertContext ? insertContext.db : state.db;
-    const coll = insertContext ? insertContext.coll : state.coll;
-    const dbType = insertContext ? insertContext.dbType : state.dbType;
+    // Bersaglio congelato all'apertura della modale, mai riletto da `state`.
+    const { tabId, db, coll, dbType } = insertContext || {};
 
     // Un inserimento premuto due volte sono due documenti: qui lo stato di
     // attesa non è cortesia, è la protezione dal doppio invio.

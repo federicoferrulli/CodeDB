@@ -89,4 +89,42 @@ function canWholeConnection(principal, connName, capability) {
   return unrestricted(scope.databases) && unrestricted(scope.collections);
 }
 
-module.exports = { can, grantFor, scopeFor, allowedConnections, canUseConnection, canWholeConnection };
+/**
+ * Amministratore dell'INSTALLAZIONE, che non è l'amministratore di un tenant.
+ *
+ * `manage` è la capability che OGNI owner possiede sul proprio account: come
+ * gate per le risorse condivise da tutta l'istanza non distingue nulla. Il
+ * vault è la risorsa condivisa per eccellenza — chiave unica e `connections.ini`
+ * di ogni owner — quindi con il solo `manage` l'owner del tenant A poteva
+ * azzerarlo o richiuderlo con una passphrase propria, lasciando gli altri
+ * tenant con segreti cifrati da una chiave che nessuno possiede più.
+ *
+ * L'elenco arriva dall'AMBIENTE, non dal control plane, proprio perché non deve
+ * essere assegnabile da dentro l'applicazione: `CODEDB_VAULT_ADMINS` (email
+ * separate da virgola) e, in mancanza, `CODEDB_OWNER_EMAIL` — che il provider
+ * locale documenta già come «il primo owner (amministratore) dell'istanza»,
+ * quindi il self-hosted a un tenant solo continua a funzionare come prima. In
+ * un'istanza SaaS (provider esterno, nessuna delle due variabili) l'elenco è
+ * vuoto e l'operazione non è raggiungibile da alcun cliente: si fa sulla
+ * macchina.
+ *
+ * `env` è iniettabile per i test; in esercizio è `process.env`.
+ */
+function installAdminEmails(env = process.env) {
+  const raw = String(env.CODEDB_VAULT_ADMINS || env.CODEDB_OWNER_EMAIL || '').trim();
+  return new Set(raw.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+}
+
+function isInstallAdmin(principal, env = process.env) {
+  if (!principal) return false;
+  // RBAC spento: chi apre l'interfaccia è già l'amministratore della macchina.
+  if (principal.root) return true;
+  if (!principal.owner) return false;
+  const email = String(principal.email || '').trim().toLowerCase();
+  return !!email && installAdminEmails(env).has(email);
+}
+
+module.exports = {
+  can, grantFor, scopeFor, allowedConnections, canUseConnection, canWholeConnection,
+  installAdminEmails, isInstallAdmin,
+};

@@ -1107,7 +1107,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const BLOCCO = 200;
     const gruppi = new Map(); // firma delle colonne -> { cols, elementi }
     for (const p of parsed) {
-      const firma = p.cols.join(' ');
+      const firma = p.cols.join('\u0000');
       if (!gruppi.has(firma)) gruppi.set(firma, { cols: p.cols, elementi: [] });
       gruppi.get(firma).elementi.push(p);
     }

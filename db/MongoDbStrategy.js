@@ -873,7 +873,23 @@ class MongoDbStrategy extends DbStrategy {
     const client = this.requireClient();
     const c = client.db(db).collection(coll);
     const op = String(payload.op || '');
-    const filtro = () => parseQueryObject(payload.filter, {});
+    // Il filtro è OBBLIGATORIO. Senza questa riga `db.c.deleteMany()` — il
+    // campo `filter` semplicemente assente nel payload — ripiegava su `{}`, che
+    // per MongoDB significa "tutti i documenti": l'intera collezione spariva,
+    // l'operazione risultava riuscita e nell'audit compariva come una normale
+    // scrittura. Il vero mongosh, che questo interprete imita, rifiuta la
+    // chiamata. Stessa forma di difesa dell'aggiornamento senza operatori qui
+    // sotto, e stessa motivazione.
+    const filtro = () => {
+      const f = parseQueryObject(payload.filter, null);
+      if (f === null || f === undefined) {
+        throw new Error(`${op} richiede un filtro: per agire su TUTTI i documenti scrivilo esplicitamente, ${op}({}).`);
+      }
+      if (typeof f !== 'object' || Array.isArray(f)) {
+        throw new Error(`${op}: il filtro deve essere un oggetto.`);
+      }
+      return f;
+    };
     const opzioni = () => parseQueryObject(payload.options, {}) || {};
 
     // Un "aggiornamento" senza operatori ($set, $inc…) sostituirebbe l'intero

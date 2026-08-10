@@ -272,6 +272,97 @@ function fakeStrategy() {
     console.log('  OK   Classificazione SQL lettura/scrittura senza bypass (CDB-02)');
   }
 
+  // --- I/O su file dell'host del DBMS (CDB-A04) -----------------------------
+  {
+    const { isWriteSql, isFileIoSql } = require('../auth/capabilities');
+
+    // Cominciano per SELECT e non contengono keyword di scrittura SQL: prima
+    // erano `read`, quindi eseguibili da un viewer e registrati come LETTURE.
+    const suFile = [
+      "SELECT * FROM clienti INTO OUTFILE '/var/lib/mysql-files/dump.csv'",
+      "select id into dumpfile '/tmp/x' from u",
+      "SELECT * FROM t INTO   OUTFILE '/tmp/x'",
+      "LOAD DATA INFILE '/etc/passwd' INTO TABLE t",
+      "LOAD DATA LOCAL INFILE '/etc/passwd' INTO TABLE t",
+      "SELECT LOAD_FILE('/etc/shadow')",
+      "SELECT load_file ('/etc/shadow')",
+    ];
+    for (const q of suFile) {
+      assert.strictEqual(isFileIoSql(q), true, `I/O su file da riconoscere: ${q}`);
+      assert.strictEqual(isWriteSql(q), true, `I/O su file vale scrittura (capability e audit): ${q}`);
+    }
+
+    // Nessun falso positivo: la normalizzazione toglie stringhe e commenti,
+    // quindi le stesse parole dentro un dato o un nome non contano.
+    const innocue = [
+      "SELECT * FROM log WHERE msg = 'INTO OUTFILE /tmp/x'",
+      'SELECT * FROM t -- INTO OUTFILE /tmp/x',
+      'SELECT infile_path, outfile_path FROM configurazioni',
+      'SELECT * FROM caricamenti WHERE tipo = 1',
+      'INSERT INTO clienti (nome) VALUES (1)',
+    ];
+    for (const q of innocue) {
+      assert.strictEqual(isFileIoSql(q), false, `non è I/O su file: ${q}`);
+    }
+    // …ma una INSERT resta una scrittura per la keyword, non per il file.
+    assert.strictEqual(isWriteSql('INSERT INTO clienti (nome) VALUES (1)'), true);
+
+    // Il Proxy nega l'operazione a un sottoutente qualunque sia la capability:
+    // il file finisce comunque FUORI dallo scope, sul filesystem del server.
+    const raw = {
+      type: 'mysql',
+      async collectionAggregate() { return { docs: [], columns: [], total: 0 }; },
+      async collectionFind() { return { docs: [], columns: [], total: 0 }; },
+    };
+    const editor = makePrincipal(
+      { _id: 'u1', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'editor', capabilities: ['read', 'write'], scope: null }],
+    );
+    const g = guardStrategy(raw, { principal: editor, connName: 'c' });
+    await assert.rejects(
+      () => g.collectionAggregate('db', null, { pipeline: "SELECT * FROM t INTO OUTFILE '/tmp/x'" }),
+      /file sul server del database/,
+      'SQL Raw con INTO OUTFILE negato al sottoutente anche con capability di scrittura',
+    );
+    // Su MySQL `… WHERE 1 INTO OUTFILE '…'` è sintassi valida: anche la casella
+    // "filtro" della griglia è una porta, non solo SQL Raw.
+    await assert.rejects(
+      () => g.collectionFind('db', 't', { filter: "1 INTO OUTFILE '/tmp/x'" }),
+      /file sul server del database/,
+      'il filtro della griglia non può contenere un I/O su file',
+    );
+    await assert.doesNotReject(
+      () => g.collectionFind('db', 't', { filter: 'eta > 30' }),
+      'un filtro normale continua a funzionare',
+    );
+
+    // L'owner resta libero (stessa scelta di expectRead): sulla propria
+    // installazione un export via OUTFILE è un uso legittimo.
+    const owner = makePrincipal({ _id: 'o1', ownerId: 'o1', type: 'owner' }, []);
+    const go = guardStrategy(raw, { principal: owner, connName: 'c' });
+    await assert.doesNotReject(
+      () => go.collectionAggregate('db', null, { pipeline: "SELECT * FROM t INTO OUTFILE '/tmp/x'" }),
+      'l\'owner non è soggetto al blocco',
+    );
+
+    // La barriera indipendente dal parser ora c'è anche su MySQL: una lettura
+    // eseguita da un sottoutente porta expectRead, che la strategia traduce in
+    // START TRANSACTION READ ONLY.
+    const visto = {};
+    const raw2 = {
+      type: 'mysql',
+      async collectionAggregate(_db, _coll, payload) { visto.expectRead = payload.expectRead; return { docs: [] }; },
+    };
+    const viewer = makePrincipal(
+      { _id: 'u2', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'viewer', capabilities: ['read'], scope: null }],
+    );
+    await guardStrategy(raw2, { principal: viewer, connName: 'c' })
+      .collectionAggregate('db', null, { pipeline: 'SELECT 1' });
+    assert.strictEqual(visto.expectRead, true, 'una lettura di un sottoutente viaggia con expectRead');
+    console.log('  OK   I/O su file del DBMS negato e classificato scrittura (CDB-A04)');
+  }
+
   /* --- Barriera READ ONLY indipendente dal parser (CDB-02) ------------------- */
   {
     const seen = [];
@@ -388,6 +479,138 @@ function fakeStrategy() {
     await assert.rejects(() => store.verifySubUser('mario@azienda.it', 'password-A'),
       (e) => e.ambiguousLogin === true, 'credenziali ambigue fra tenant: accesso rifiutato con motivo');
     console.log('  OK   Login sottoutenti: isolamento fra tenant omonimi (CDB-44)');
+  }
+
+  // --- Isolamento multi-tenant della cartella dei backup (CDB-A01) ----------
+  {
+    const path = require('path');
+    const { backupRootFor, resolveBackupPath } = require('../backup/lib/policy');
+    const ROOT = path.resolve('/srv/codedb/backups');
+
+    // RBAC spento (e app desktop): i backup restano dov'erano, altrimenti
+    // un aggiornamento farebbe "sparire" i backup dell'installazione esistente.
+    assert.strictEqual(backupRootFor(ROOT, 'qualsiasi', { rbac: false }), ROOT,
+      'con RBAC spento la radice dei backup non cambia');
+    assert.strictEqual(backupRootFor(ROOT, 'local', { rbac: true }), ROOT,
+      'l\'owner locale (root dell\'installazione) usa la radice storica');
+    assert.strictEqual(backupRootFor(ROOT, '', { rbac: true }), ROOT,
+      'senza ownerId si ricade sulla radice storica');
+
+    // Due tenant, due radici distinte e nessuna contenuta nell'altra.
+    const a = backupRootFor(ROOT, 'ownerA', { rbac: true });
+    const b = backupRootFor(ROOT, 'ownerB', { rbac: true });
+    assert.notStrictEqual(a, b, 'due tenant non condividono la radice dei backup');
+    assert.ok(path.relative(a, b).startsWith('..'),
+      'la radice di un tenant non sta dentro quella di un altro');
+    assert.ok(a.startsWith(ROOT) && b.startsWith(ROOT), 'entrambe restano dentro BACKUP_ROOT');
+
+    // Un ownerId ostile non può risalire la gerarchia né uscire dalla radice.
+    const ostile = backupRootFor(ROOT, '../../etc', { rbac: true });
+    assert.ok(!path.relative(ROOT, ostile).startsWith('..'),
+      'un ownerId con ../ resta confinato dentro BACKUP_ROOT');
+
+    // Il confinamento del percorso richiesto dal client si applica alla radice
+    // del tenant: da lì non si raggiunge quella di un altro.
+    assert.throws(() => resolveBackupPath('../ownerB', a, 'origine'),
+      /non consentito/, 'dal tenant A non si può indicare la cartella del tenant B');
+    assert.strictEqual(resolveBackupPath('', a, 'elenco'), a,
+      'percorso vuoto = radice del proprio tenant');
+    console.log('  OK   Backup partizionati per tenant (CDB-A01)');
+  }
+
+  // --- SQL Raw: lo scope vale sulle tabelle CITATE (CDB-A03) ---------------
+  {
+    const eseguite = [];
+    const raw = {
+      type: 'mysql',
+      async collectionAggregate(db, coll, payload) { eseguite.push(payload.pipeline); return { docs: [] }; },
+    };
+    const conScope = makePrincipal(
+      { _id: 'u1', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'editor', capabilities: ['read', 'write'], scope: { databases: ['shop'], collections: ['ordini'] } }],
+    );
+    const g = guardStrategy(raw, { principal: conScope, connName: 'c' });
+
+    // Lettura fuori perimetro: il primo FROM è nello scope, la JOIN no.
+    await assert.rejects(
+      () => g.collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM ordini JOIN utenti ON 1=1' }),
+      /"utenti" è fuori dal tuo ambito/,
+      'la JOIN fuori perimetro non passa più con il primo FROM nello scope',
+    );
+    // Scrittura fuori perimetro: nessun FROM, quindi il bersaglio lo sceglieva
+    // il client — bastava dichiarare `coll: 'ordini'`.
+    await assert.rejects(
+      () => g.collectionAggregate('shop', 'ordini', { pipeline: "UPDATE utenti SET ruolo='admin'" }),
+      /"utenti" è fuori dal tuo ambito/,
+      'una UPDATE senza FROM non è più autorizzata dal coll dichiarato dal client',
+    );
+    assert.strictEqual(eseguite.length, 0, 'nessuna delle due ha raggiunto il database');
+
+    // Il lavoro legittimo dello stesso utente continua a passare.
+    await g.collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM ordini WHERE totale > 100' });
+    assert.strictEqual(eseguite.length, 1, 'la query dentro l\'ambito viene eseguita');
+
+    // Owner e sottoutenti SENZA scope non perdono nulla: stessa regola già
+    // adottata per le clausole libere della griglia.
+    const senzaScope = makePrincipal(
+      { _id: 'u2', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'editor', capabilities: ['read', 'write'], scope: null }],
+    );
+    await guardStrategy(raw, { principal: senzaScope, connName: 'c' })
+      .collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM utenti' });
+    const owner = makePrincipal({ _id: 'o1', ownerId: 'o1', type: 'owner' }, []);
+    await guardStrategy(raw, { principal: owner, connName: 'c' })
+      .collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM utenti' });
+    assert.strictEqual(eseguite.length, 3, 'senza scope attivo la restrizione non si applica');
+
+    // Su MongoDB `pipeline` è EJSON, non SQL: la regola non deve toccarlo.
+    const mongo = { type: 'mongodb', async collectionAggregate() { return { docs: [] }; } };
+    await assert.doesNotReject(
+      () => guardStrategy(mongo, { principal: conScope, connName: 'c' })
+        .collectionAggregate('shop', 'ordini', { pipeline: '[{"$match":{"from":"utenti"}}]' }),
+      'la pipeline MongoDB non passa dall\'analizzatore SQL',
+    );
+    console.log('  OK   Scope su SQL Raw applicato alle tabelle citate (CDB-A03)');
+  }
+
+  // --- Amministratore dell'installazione vs del tenant (CDB-A02) -----------
+  {
+    const { isInstallAdmin, installAdminEmails } = require('../auth/permissions');
+    const ownerA = { id: 'a', type: 'owner', owner: true, root: false, ownerId: 'a', email: 'a@azienda.it', capabilities: ['read', 'write', 'ddl', 'delete', 'manage'] };
+    const ownerB = { ...ownerA, id: 'b', ownerId: 'b', email: 'b@azienda.it' };
+    const sub = { id: 's', type: 'subuser', owner: false, root: false, ownerId: 'a', email: 'a@azienda.it', capabilities: [] };
+
+    // RBAC spento: l'owner locale è l'amministratore della macchina.
+    assert.strictEqual(isInstallAdmin(ROOT_PRINCIPAL, {}), true,
+      'con RBAC spento il principal root amministra l\'installazione');
+
+    // Self-hosted a un tenant solo: l'owner di CODEDB_OWNER_EMAIL continua a
+    // poter cambiare la passphrase, ed è l'unico.
+    const envLocale = { CODEDB_OWNER_EMAIL: 'A@Azienda.IT' };
+    assert.strictEqual(isInstallAdmin(ownerA, envLocale), true,
+      'l\'owner indicato in CODEDB_OWNER_EMAIL amministra l\'installazione (confronto senza maiuscole)');
+    assert.strictEqual(isInstallAdmin(ownerB, envLocale), false,
+      'un altro owner NON può toccare il vault condiviso');
+    assert.strictEqual(isInstallAdmin(sub, envLocale), false,
+      'un sottoutente non lo è nemmeno con la stessa email dell\'owner');
+
+    // SaaS: nessuna delle due variabili, quindi nessun cliente può azzerare il
+    // vault dell'istanza — l'operazione resta sulla macchina.
+    assert.strictEqual(isInstallAdmin(ownerA, {}), false,
+      'senza variabili d\'ambiente nessun owner amministra l\'installazione');
+
+    // Elenco esplicito: vince su CODEDB_OWNER_EMAIL e ammette più account.
+    const envElenco = { CODEDB_OWNER_EMAIL: 'z@azienda.it', CODEDB_VAULT_ADMINS: ' a@azienda.it , b@azienda.it ' };
+    assert.strictEqual(isInstallAdmin(ownerA, envElenco), true, 'CODEDB_VAULT_ADMINS abilita A');
+    assert.strictEqual(isInstallAdmin(ownerB, envElenco), true, 'CODEDB_VAULT_ADMINS abilita anche B');
+    assert.strictEqual(isInstallAdmin({ ...ownerA, email: 'z@azienda.it' }, envElenco), false,
+      'con CODEDB_VAULT_ADMINS impostata, CODEDB_OWNER_EMAIL da sola non basta più');
+
+    assert.strictEqual(installAdminEmails({ CODEDB_VAULT_ADMINS: ' , ,' }).size, 0,
+      'una lista di sole virgole non abilita nessuno');
+    assert.strictEqual(isInstallAdmin({ ...ownerA, email: '' }, envLocale), false,
+      'un owner senza email non corrisponde a nessuna voce dell\'elenco');
+    console.log('  OK   Vault riservato all\'amministratore dell\'installazione (CDB-A02)');
   }
 
   console.log('\nTutti i test unitari RBAC superati!');

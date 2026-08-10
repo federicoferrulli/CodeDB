@@ -256,7 +256,17 @@ function regolaTimeout(err) {
       rimedio: 'attendi la fine dell\'operazione concorrente e riprova',
     };
   }
-  if (code === 'ER_LOCK_DEADLOCK' || code === '40P01' || msg.includes('deadlock')) {
+  // Il riconoscimento richiede il CODICE, o in mancanza la frase completa del
+  // driver. Cercare la sola parola "deadlock" nel messaggio è una ricerca di
+  // sottostringa su un testo che contiene i nomi scelti dall'utente: una
+  // tabella `deadlock_log` inesistente produceva la spiegazione del deadlock,
+  // e visto che questa regola è terza mentre quella degli oggetti mancanti è
+  // sesta, il messaggio giusto non veniva mai raggiunto. È l'unico punto in cui
+  // il modulo violava la propria regola: meglio l'errore tecnico che una
+  // spiegazione plausibile e sbagliata, che manda a cercare la causa sbagliata.
+  if (code === 'ER_LOCK_DEADLOCK' || code === '40P01'
+      || msg.includes('deadlock found when trying to get lock')
+      || msg.includes('deadlock detected')) {
     return {
       causa: 'Deadlock: due operazioni si aspettano a vicenda e il database ne ha annullata una',
       rimedio: 'riprova l\'operazione; se accade spesso, esegui le scritture nello stesso ordine di tabella oppure a blocchi più piccoli',
