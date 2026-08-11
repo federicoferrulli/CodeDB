@@ -27,6 +27,7 @@ import {
   isGeometry, geometryLabel, fmtCoord, posizioni, scriviPosizione, chiuso, fuoriDaLonLat,
 } from './geojson.js';
 import { caricaLeaflet, tileAttive, impostaTile, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
+import { tokenTema } from './theme.js';
 
 // Ri-esportati per comodita' di chi apre l'editor: chi importa geomap.js ha
 // gia' quello che serve per riconoscere ed etichettare una geometria.
@@ -160,7 +161,13 @@ function disegnaManiglie() {
 
   for (const { percorso, pos } of visibili) {
     const m = L.circleMarker(latlng(pos), {
-      radius: 6, color: '#fff', weight: 2, fillColor: '#e0a800', fillOpacity: 1,
+      // Il contorno della maniglia è l'unico colore che segue il tema: con le
+      // tile spente il fondo della mappa è quello della modale, e un anello
+      // bianco su fondo chiaro non si vede. Il riempimento invece resta fisso,
+      // come i colori delle geometrie: deve staccare dalle tile di
+      // OpenStreetMap, che non cambiano con il tema dell'applicazione.
+      radius: 6, color: tokenTema('--geo-handle-outline', '#fff'), weight: 2,
+      fillColor: '#e0a800', fillOpacity: 1,
       renderer: rendererManiglie,
     }).addTo(gruppoManiglie);
     manigliePerPercorso.set(percorso.join('/'), m);

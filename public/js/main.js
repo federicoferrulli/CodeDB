@@ -36,6 +36,7 @@ import { initScriptRun } from './script-run.js';
 import { initPassphrase } from './passphrase.js';
 import { initOnboarding } from './onboarding.js';
 import { initAbout } from './about.js';
+import { initTheme } from './theme.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -221,6 +222,11 @@ initSessionPersistence();
 initSplitView();
 initSettingsMenu();
 initAbout();
+// Presto: lo script in linea dell'`<head>` ha già dipinto la palette giusta,
+// ma il CSS di un tema PERSONALIZZATO lo conosce solo questo modulo — prima
+// che lo aggiunga si vede la sola base, e più tardi lo si vedrebbe cambiare
+// sotto gli occhi.
+initTheme();
 // Per ultima: decide da sé se aprirsi (primo avvio o dopo un aggiornamento) e
 // deve trovare il resto dell'interfaccia già montato, perché il tour indica
 // elementi reali e salta quelli che non ci sono.

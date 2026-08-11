@@ -33,7 +33,38 @@ import { state } from './state.js';
 import {
   CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
   campiDisponibili, costruisciOption, coloreSerie, suggerimenti, azzeraAvvisi, prendiAvvisi, INK,
+  applicaInk,
 } from './chart-option.js';
+import { tokenTema } from './theme.js';
+
+/**
+ * La cromatura del grafico letta dai token del tema in vigore.
+ *
+ * Nomi delle chiavi = quelli di `INK`; i valori sono token CSS. Se un token
+ * manca, `tokenTema` torna stringa vuota e `applicaInk` lascia il valore
+ * precedente: meglio la cromatura del tema scuro che un `color: ''`, che
+ * ECharts accetta e disegna nero su nero.
+ */
+function inkDalTema() {
+  return {
+    fondo: tokenTema('--bg-surface'),
+    primario: tokenTema('--fg'),
+    secondario: tokenTema('--chart-text') || tokenTema('--fg-dim'),
+    muto: tokenTema('--chart-text') || tokenTema('--fg-dim'),
+    griglia: tokenTema('--chart-grid'),
+    asse: tokenTema('--chart-axis'),
+    tooltipFondo: tokenTema('--bg-elevated'),
+    tooltipBordo: tokenTema('--border-2'),
+    // NON segue il tema: sta dentro un segmento colorato dalla tavolozza
+    // categorica, che è fissa. Legarlo a `--fg` renderebbe l'etichetta nera
+    // dentro una barra scura appena si passa al tema chiaro.
+    suColore: '#ffffff',
+    zoomFondo: tokenTema('--ov-40'),
+    zoomArea: tokenTema('--ov-60'),
+    zoomSelezione: tokenTema('--accent-glow'),
+    zoomManiglia: tokenTema('--accent'),
+  };
+}
 
 /* --------------------------- Stato dell'interfaccia ---------------------- */
 
@@ -224,6 +255,11 @@ export async function renderChart(righe) {
       osservatore.observe(contenitore);
     }
   }
+
+  // Il canvas non eredita nulla dal CSS: la cromatura del grafico va LETTA dai
+  // token e passata al costruttore dell'option a ogni disegno, altrimenti sul
+  // tema chiaro assi ed etichette restano grigio chiaro su bianco.
+  applicaInk(inkDalTema());
 
   azzeraAvvisi();
   const noteExtra = [];
@@ -708,6 +744,14 @@ export function initCharts() {
   const host = $('#chart-builder');
   const barra = $('#chart-quickbar');
   if (!host) return;
+
+  // Il grafico è disegnato su canvas: al cambio tema non si ritinge da solo
+  // come il resto della pagina, va ricostruita l'option. Si ridisegna solo se
+  // c'è davvero un grafico in vita, altrimenti ogni cambio tema pagherebbe una
+  // costruzione inutile.
+  document.addEventListener('codedb:tema', () => {
+    if (grafico && !grafico.isDisposed() && $('#query-chart-canvas')) disegna();
+  });
 
   // Un solo gestore per i controlli del pannello E della barra rapida: ognuno
   // dichiara dove scrivere con data-path (e con data-serie in quale serie),

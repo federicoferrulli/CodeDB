@@ -1006,6 +1006,11 @@ console.log('--- Test Unitari CodeDB ---');
   // rileggerlo dal Proxy `state`, che punta al tab attivo alla chiamata.
   require('./unit-scritture-bersaglio');
 
+  // Test 27-quater: temi — conversioni di colore, contrasto, derivazione delle
+  // famiglie di token e validazione di un tema importato (che finisce in un
+  // selettore CSS, quindi va trattato come dato ostile).
+  require('./unit-tema');
+
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

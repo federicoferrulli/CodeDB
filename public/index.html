@@ -17,6 +17,40 @@
   <link rel="stylesheet" href="css/style.css" />
   <script src="js/lucide.min.js"></script>
 
+  <!-- ===================== Tema: applicazione PRIMA del primo paint =====================
+       Deve stare qui, in linea e sincrono. `public/js/theme.js` è un modulo
+       ESM, quindi differito: quando viene eseguito la pagina è già stata
+       dipinta almeno una volta e chi usa il tema chiaro vedrebbe un lampo nero
+       a ogni avvio (e chi usa quello scuro un lampo bianco, peggio ancora).
+       Qui si scrive solo l'attributo che sceglie la palette; il CSS di un
+       eventuale tema personalizzato lo aggiunge `theme.js` subito dopo — è uno
+       scarto sulla base, quindi nel frattempo si vede la base giusta e non
+       un'interfaccia scomposta.
+       Le due chiavi sono le stesse di `theme.js` (`chiaveStorage`): se
+       divergono, il tema salvato non viene più ritrovato. -->
+  <script>
+    (function () {
+      try {
+        var scelto = localStorage.getItem('codedb:tema') || 'auto';
+        var base;
+        if (scelto === 'light' || scelto === 'dark') {
+          base = scelto;
+        } else if (scelto === 'auto') {
+          base = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+            ? 'light' : 'dark';
+        } else {
+          // Tema personalizzato: la sua base sta nell'elenco dei temi salvati.
+          var temi = JSON.parse(localStorage.getItem('codedb:temi') || '{}');
+          base = temi[scelto] && temi[scelto].base === 'light' ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', base);
+      } catch (e) {
+        // Storage non disponibile o illeggibile: resta il tema scuro storico,
+        // che è anche il default del CSS. Mai lasciare la pagina senza tema.
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
 </head>
 
 <body>
@@ -520,6 +554,10 @@
         <button id="btn-updates" class="menu-item hidden" type="button"
           title="Verifica se è disponibile una nuova versione di CodeDB">
           <i data-lucide="download-cloud"></i> Controlla Aggiornamenti
+        </button>
+        <button id="btn-theme" class="menu-item" type="button"
+          title="Tema chiaro, scuro o personalizzato">
+          <i data-lucide="palette"></i> Tema
         </button>
         <button id="btn-about" class="menu-item" type="button"
           title="Versione, licenza AGPL-3.0 e manleva">
@@ -1920,6 +1958,35 @@
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Tema =====================
+       L'elenco e l'editor stanno nella stessa finestra: scegliere un tema e
+       ritoccarlo sono la stessa attività, e separarli costringerebbe a
+       chiudere e riaprire per vedere l'effetto di una modifica. L'editor parte
+       nascosto e l'anteprima è dal vivo sull'applicazione VERA dietro la
+       modale — un riquadro di anteprima mostrerebbe quattro colori su un
+       fondo finto, cioè la cosa che non serve sapere. -->
+  <div id="modal-theme" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>🎨 Tema</h2>
+        <button type="button" id="btn-close-theme-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Scegli un tema o creane uno tuo. Le modifiche si vedono subito
+        sull'applicazione dietro questa finestra; chiudendo senza salvare torna quello in uso.</p>
+
+      <div class="catalog-toolbar">
+        <button type="button" id="btn-tema-nuovo" class="btn btn-sm btn-secondary">＋ Nuovo tema</button>
+        <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary">⭱ Importa da file</button>
+      </div>
+
+      <div id="theme-list" class="theme-list"></div>
+      <div id="theme-editor" class="theme-editor hidden"></div>
+
+      <input type="file" id="tema-import-file" accept=".json,application/json" class="hidden" />
     </div>
   </div>
 

@@ -14,8 +14,8 @@ html, body {
   background: var(--bg);
   /* Subtle atmospheric gradient — not jarring, just gives depth */
   background-image:
-    radial-gradient(ellipse 70% 60% at 0% 0%, rgba(99, 102, 241, 0.045) 0%, transparent 55%),
-    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(139, 92, 246, 0.035) 0%, transparent 55%);
+    radial-gradient(ellipse 70% 60% at 0% 0%, var(--glow-1) 0%, transparent 55%),
+    radial-gradient(ellipse 60% 50% at 100% 100%, var(--glow-2) 0%, transparent 55%);
   background-attachment: fixed;
   color: var(--fg);
   font-family: var(--font-sans);
@@ -36,7 +36,7 @@ html, body {
 /* Custom Scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.3) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 ::-webkit-scrollbar {
@@ -49,12 +49,12 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.25);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.5);
+  background: var(--scrollbar-thumb-hover);
 }
 
 ::-webkit-scrollbar-corner {
@@ -122,9 +122,9 @@ html, body {
 .skeleton {
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.03) 25%,
-    rgba(255, 255, 255, 0.07) 37%,
-    rgba(255, 255, 255, 0.03) 63%
+    var(--skeleton-1) 25%,
+    var(--skeleton-2) 37%,
+    var(--skeleton-1) 63%
   );
   background-size: 200% 100%;
   animation: skeletonShimmer 1.5s infinite ease-in-out;

@@ -75,7 +75,21 @@ export const TAVOLOZZE = {
   divergente: { etichetta: 'Divergente blu↔rosso (polarità)', colori: DIVERGENTE },
 };
 
-// Cromatura del grafico: sempre token di testo/superficie, mai colori di serie.
+/*
+ * Cromatura del grafico: sempre token di testo/superficie, mai colori di serie.
+ *
+ * I valori qui sono quelli del tema SCURO, che è il default e ciò che questo
+ * modulo deve produrre quando gira in Node (i test non hanno un documento da
+ * cui leggere). A finestra aperta li sovrascrive `applicaInk()`, chiamata da
+ * `charts.js` con i token veri del tema in vigore: un canvas non eredita nulla
+ * dal CSS, quindi sul tema chiaro le etichette resterebbero grigio chiaro su
+ * bianco — non un grafico brutto, un grafico ILLEGGIBILE.
+ *
+ * La tavolozza CATEGORICA invece NON segue il tema, ed è deliberato: quei
+ * colori sono verificati uno per uno per la visione con deficit dei colori e
+ * hanno un ordine fisso, mentre i token del tema li sceglie l'utente. Un
+ * grafico deve restare leggibile anche sopra un tema fatto in casa.
+ */
 export const INK = {
   fondo: '#161b22',      // --bg-surface
   primario: '#e2e8f0',   // --fg
@@ -83,7 +97,33 @@ export const INK = {
   muto: '#8892a4',
   griglia: 'rgba(255, 255, 255, 0.07)',
   asse: 'rgba(255, 255, 255, 0.18)',
+  // Riquadro del tooltip: è una superficie sollevata sopra il grafico.
+  tooltipFondo: '#1f2937',
+  tooltipBordo: 'rgba(255,255,255,0.12)',
+  // Etichetta scritta DENTRO un segmento colorato (imbuto, torta): il suo
+  // fondo è un colore di serie, non del tema.
+  suColore: '#ffffff',
+  // Barra dello zoom.
+  zoomFondo: 'rgba(255,255,255,0.04)',
+  zoomArea: 'rgba(255,255,255,0.06)',
+  zoomSelezione: 'rgba(99,102,241,0.18)',
+  zoomManiglia: '#6366f1',
 };
+
+/**
+ * Sostituisce la cromatura con quella del tema in vigore. Accetta solo le
+ * chiavi note e solo valori non vuoti: un token assente (tema personalizzato
+ * che non lo ridefinisce, `getComputedStyle` che torna stringa vuota) deve
+ * lasciare il valore precedente, non azzerarlo — un `color: ''` in ECharts non
+ * dà errore, disegna nero su nero.
+ */
+export function applicaInk(valori) {
+  if (!valori) return;
+  for (const chiave of Object.keys(INK)) {
+    const v = valori[chiave];
+    if (typeof v === 'string' && v.trim()) INK[chiave] = v.trim();
+  }
+}
 
 /* ============================ Modello di configurazione =================== */
 
@@ -832,8 +872,8 @@ function bloccoTooltip(c, famiglia, fmt) {
     // Il mirino verticale su una serie temporale è quello che rende leggibile
     // un grafico a linee: senza, si legge a occhio la posizione sull'asse.
     axisPointer: { type: famiglia === 'cartesiano' ? 'line' : 'none', lineStyle: { color: INK.asse, width: 1 } },
-    backgroundColor: '#1f2937',
-    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: INK.tooltipFondo,
+    borderColor: INK.tooltipBordo,
     borderWidth: 1,
     textStyle: { ...testoBase, color: INK.primario, fontSize: 12 },
     valueFormatter: fmt,
@@ -1125,7 +1165,7 @@ export function costruisciOption(righe, c, box = {}) {
           bottom: 20,
           minSize: '10%',
           gap: 2, // il vuoto fra i segmenti è del colore del fondo
-          label: { show: true, position: 'inside', color: '#ffffff', fontSize: 11, formatter: (p) => `${p.name}: ${fmtY(p.value)}` },
+          label: { show: true, position: 'inside', color: INK.suColore, fontSize: 11, formatter: (p) => `${p.name}: ${fmtY(p.value)}` },
           itemStyle: { borderColor: INK.fondo, borderWidth: 2 },
         }],
       };
@@ -1198,11 +1238,11 @@ export function costruisciOption(righe, c, box = {}) {
         height: 16,
         bottom: 4,
         borderColor: 'transparent',
-        backgroundColor: 'rgba(255,255,255,0.04)',
-        fillerColor: 'rgba(99,102,241,0.18)',
-        handleStyle: { color: '#6366f1' },
+        backgroundColor: INK.zoomFondo,
+        fillerColor: INK.zoomSelezione,
+        handleStyle: { color: INK.zoomManiglia },
         moveHandleSize: 4,
-        dataBackground: { lineStyle: { color: INK.asse }, areaStyle: { color: 'rgba(255,255,255,0.06)' } },
+        dataBackground: { lineStyle: { color: INK.asse }, areaStyle: { color: INK.zoomArea } },
         // Le etichette agli estremi dello slider ricadrebbero sulla banda delle
         // etichette dell'asse: il valore lo dice già l'asse.
         showDetail: false,

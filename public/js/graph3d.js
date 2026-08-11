@@ -19,6 +19,7 @@ import {
   buildSqlDdl as generaDdl,
 } from './schema-export.js';
 import { setView } from './main.js';
+import { tokenTema } from './theme.js';
 
 let graphInstance = null;
 let graphResizeObserver = null;
@@ -84,7 +85,7 @@ function updatePathUI() {
       badge.classList.remove('hidden');
       if (badgeText) {
         badgeText.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>Cammino (${activeShortestPath.nodes.length - 1} passaggi): ` +
-          activeShortestPath.nodes.map((n) => `<b style="color:#00e676;">${esc(n)}</b>`).join(' → ');
+          activeShortestPath.nodes.map((n) => `<b style="color:var(--status-ok);">${esc(n)}</b>`).join(' → ');
       }
     }
   } else {
@@ -138,7 +139,7 @@ export function loadGraph3d(force) {
 
   const canvas = $('#graph3d-canvas');
   if (canvas) {
-    canvas.innerHTML = '<div class="uml-msg" style="color:#aaa; padding:20px;">Caricamento schema database…</div>';
+    canvas.innerHTML = '<div class="uml-msg" style="color:var(--fg-dim); padding:20px;">Caricamento schema database…</div>';
   }
 
   emit('db:schema', { db: state.db })
@@ -177,7 +178,7 @@ export function renderGraph3d() {
   if (!schema || !schema.collections || !schema.collections.length) {
     if (canvas) {
       distruggiGrafo();
-      canvas.innerHTML = '<div class="uml-msg" style="color:#aaa; padding:20px;">Nessuna tabella/collection trovata nello schema.</div>';
+      canvas.innerHTML = '<div class="uml-msg" style="color:var(--fg-dim); padding:20px;">Nessuna tabella/collection trovata nello schema.</div>';
     }
     return;
   }
@@ -263,7 +264,27 @@ export function renderGraph3d() {
     return;
   }
 
+  /*
+   * Tavolozza dei nodi: NON segue il tema, come quella dei grafici. Sono
+   * colori d'identità (un colore per prefisso di tabella) scelti per essere
+   * distinguibili fra loro, mentre i token del tema li sceglie l'utente: un
+   * tema personalizzato non deve poter rendere due tabelle dello stesso
+   * colore. Sono tinte sature di media luminosità, leggibili sia sul fondo
+   * scuro sia su quello chiaro.
+   */
   const prefixColors = ['#4a9eff', '#50e3c2', '#f5a623', '#b8e986', '#bd10e0', '#9013fe', '#e65100', '#ff4081', '#00e676'];
+
+  /*
+   * Ciò che invece il tema DEVE decidere è come si spegne un nodo fuori
+   * selezione: era un grigio-blu scuro fisso, cioè "quasi il fondo" solo
+   * finché il fondo era scuro. Sul tema chiaro quegli stessi valori sono
+   * macchie scure su bianco — l'esatto contrario dell'attenuare.
+   */
+  const spento = tokenTema('--graph-dim', 'rgba(50, 55, 65, 0.25)');
+  const spentoForte = tokenTema('--graph-dim-strong', 'rgba(40, 45, 55, 0.2)');
+  const spentoArco = tokenTema('--graph-dim-link', 'rgba(40, 45, 55, 0.15)');
+  const spentoArcoDebole = tokenTema('--graph-dim-link-weak', 'rgba(30, 35, 45, 0.12)');
+  const coloreArco = tokenTema('--graph-link-active', '#4a9eff');
 
   const pathNodeSet = activeShortestPath ? new Set(activeShortestPath.nodes) : null;
   const pathEdgeSet = activeShortestPath ? new Set(activeShortestPath.edges) : null;
@@ -271,13 +292,13 @@ export function renderGraph3d() {
   graphInstance = ForceGraph3D({ preserveDrawingBuffer: true })(canvas)
     .graphData(graphData)
     .nodeId('id')
-    .nodeLabel((node) => `<div style="background:rgba(15,20,28,0.95); padding:8px 12px; border-radius:6px; border:1px solid #4a9eff; font-family:sans-serif; color:#fff; font-size:12px;"><b>${esc(node.name)}</b><br/><small style="color:#aaa;">${node.fieldCount} campi • ${node.degree} relazioni</small></div>`)
+    .nodeLabel((node) => `<div style="background:var(--bg-elevated); padding:8px 12px; border-radius:6px; border:1px solid var(--accent); font-family:sans-serif; color:var(--fg); font-size:12px;"><b>${esc(node.name)}</b><br/><small style="color:var(--fg-dim);">${node.fieldCount} campi • ${node.degree} relazioni</small></div>`)
     .nodeColor((node) => {
       if (pathNodeSet) {
-        return pathNodeSet.has(node.id) ? '#00e676' : 'rgba(40, 45, 55, 0.2)';
+        return pathNodeSet.has(node.id) ? '#00e676' : spentoForte;
       }
       if (selectedNodeId && selectedNodeId !== node.id && !isNeighbor(selectedNodeId, node.id, neighborsMap)) {
-        return 'rgba(50, 55, 65, 0.25)';
+        return spento;
       }
       if (colorMode === 'degree') {
         return getDegreeColor(node.degree);
@@ -292,7 +313,7 @@ export function renderGraph3d() {
       return link.implicit ? 4 : 2;
     })
     .linkDirectionalParticleSpeed((link) => (link.implicit ? 0.012 : 0.006))
-    .linkLabel((link) => `<span style="color:#aaa;">${esc(link.label)}${link.implicit ? ' (Implicita)' : ''}${link.many ? ' [N]' : ''}</span>`)
+    .linkLabel((link) => `<span style="color:var(--fg-dim);">${esc(link.label)}${link.implicit ? ' (Implicita)' : ''}${link.many ? ' [N]' : ''}</span>`)
     .linkColor((link) => {
       const srcId = typeof link.source === 'object' ? link.source.id : link.source;
       const tgtId = typeof link.target === 'object' ? link.target.id : link.target;
@@ -303,13 +324,13 @@ export function renderGraph3d() {
         return '#00e676';
       }
       if (pathEdgeSet) {
-        return 'rgba(30, 35, 45, 0.12)';
+        return spentoArcoDebole;
       }
       if (link.implicit) return '#bd10e0';
       if (selectedNodeId && srcId !== selectedNodeId && tgtId !== selectedNodeId) {
-        return 'rgba(40, 45, 55, 0.15)';
+        return spentoArco;
       }
-      return '#4a9eff';
+      return coloreArco;
     })
     .linkWidth((link) => {
       const srcId = typeof link.source === 'object' ? link.source.id : link.source;
@@ -442,10 +463,10 @@ function showTableDetailsPanel(tableName, highlightQuery) {
     const isPii = isPIIField(f.name);
     const typeStr = (f.types || []).join(' | ') || 'any';
     const isMatched = highlightQuery && f.name.toLowerCase().includes(highlightQuery.toLowerCase());
-    const highlightStyle = isMatched ? 'style="background: rgba(74, 158, 255, 0.25); border: 1px solid #4a9eff;"' : '';
+    const highlightStyle = isMatched ? 'style="background: var(--status-info-bg); border: 1px solid var(--status-info);"' : '';
 
     html += `<li ${highlightStyle}>
-      <span class="field-name">${esc(f.name)} ${isPii ? '<span title="Campo sensibile (PII/GDPR)" style="color:#f5a623;font-size:0.75rem;font-weight:600;border:1px solid rgba(245,166,35,0.4);border-radius:2px;padding:1px 4px;">PII</span>' : ''} ${isMatched ? '<span style="color:#4a9eff;font-size:0.75rem;">●</span>' : ''}</span>
+      <span class="field-name">${esc(f.name)} ${isPii ? '<span title="Campo sensibile (PII/GDPR)" style="color:var(--status-warn);font-size:0.75rem;font-weight:600;border:1px solid var(--status-warn-bd);border-radius:2px;padding:1px 4px;">PII</span>' : ''} ${isMatched ? '<span style="color:var(--status-info);font-size:0.75rem;">●</span>' : ''}</span>
       <span>
         ${isPk ? '<span class="field-badge pk">PK</span> ' : ''}
         <span class="field-badge">${esc(typeStr)}</span>
@@ -464,7 +485,7 @@ function showTableDetailsPanel(tableName, highlightQuery) {
       const target = isOutgoing ? r.to : r.from;
       const arrow = isOutgoing ? '→' : '←';
       html += `<li>
-        <span><strong style="color:#4a9eff">${arrow}</strong> ${esc(target)}</span>
+        <span><strong style="color:var(--status-info)">${arrow}</strong> ${esc(target)}</span>
         <span class="field-badge" style="cursor:pointer;" data-jump-node="${esc(target)}" title="Centra nel grafo 3D">${esc(r.field)}</span>
       </li>`;
     }
@@ -585,18 +606,18 @@ function analyzeDependencies() {
     <small style="color:var(--fg-dim,#8b949e);">Identificazione tabelle Root/Leaf e sequenza ottima per seeding e svuotamento.</small>
   </div>`;
 
-  html += `<div class="audit-issue-item" style="border-left-color:#00e676; margin-bottom:12px;">
-    <div class="audit-issue-title" style="color:#00e676;">▸ ROOT — Tabelle indipendenti (${rootTables.length}) senza FK uscenti</div>
+  html += `<div class="audit-issue-item" style="border-left-color:var(--status-ok); margin-bottom:12px;">
+    <div class="audit-issue-title" style="color:var(--status-ok);">▸ ROOT — Tabelle indipendenti (${rootTables.length}) senza FK uscenti</div>
     <div class="audit-issue-desc">${rootTables.map((r) => `<b>${esc(r)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
-  html += `<div class="audit-issue-item" style="border-left-color:#4a9eff; margin-bottom:12px;">
-    <div class="audit-issue-title" style="color:#4a9eff;">▸ LEAF — Tabelle terminali (${leafTables.length})</div>
+  html += `<div class="audit-issue-item" style="border-left-color:var(--status-info); margin-bottom:12px;">
+    <div class="audit-issue-title" style="color:var(--status-info);">▸ LEAF — Tabelle terminali (${leafTables.length})</div>
     <div class="audit-issue-desc">${leafTables.map((l) => `<b>${esc(l)}</b>`).join(', ') || 'Nessuna'}</div>
   </div>`;
 
-  html += `<div class="audit-issue-item" style="border-left-color:#f5a623;">
-    <div class="audit-issue-title" style="color:#f5a623;">⟳ Sequenza Ottima di Popolamento (Seeding)</div>
+  html += `<div class="audit-issue-item" style="border-left-color:var(--status-warn);">
+    <div class="audit-issue-title" style="color:var(--status-warn);">⟳ Sequenza Ottima di Popolamento (Seeding)</div>
     <div class="audit-issue-desc">
       <ol style="margin:6px 0 0 18px; padding:0; color:var(--fg,#e1e4e8);">
         ${seedOrder.map((s) => `<li style="padding:2px 0;"><b>${esc(s)}</b></li>`).join('')}
@@ -605,8 +626,8 @@ function analyzeDependencies() {
   </div>`;
 
   if (inCiclo.length) {
-    html += `<div class="audit-issue-item" style="border-left-color:#e5534b; margin-top:12px;">
-      <div class="audit-issue-title" style="color:#e5534b;">⚠ Ciclo di chiavi esterne (${inCiclo.length} tabelle)</div>
+    html += `<div class="audit-issue-item" style="border-left-color:var(--danger); margin-top:12px;">
+      <div class="audit-issue-title" style="color:var(--danger);">⚠ Ciclo di chiavi esterne (${inCiclo.length} tabelle)</div>
       <div class="audit-issue-desc">
         Queste tabelle dipendono l'una dall'altra e <b>non hanno un ordine di popolamento valido</b>:
         ${inCiclo.map((n) => `<b>${esc(n)}</b>`).join(', ')}.<br/>
@@ -659,8 +680,8 @@ function runSchemaAudit() {
   </div>`;
 
   if (!issues.length) {
-    html += `<div class="audit-issue-item" style="border-left-color:#00e676;">
-      <div class="audit-issue-title" style="color:#00e676;">✓ Nessun problema rilevato!</div>
+    html += `<div class="audit-issue-item" style="border-left-color:var(--status-ok);">
+      <div class="audit-issue-title" style="color:var(--status-ok);">✓ Nessun problema rilevato!</div>
       <div class="audit-issue-desc">Lo schema rispetta tutte le best practice di strutturazione.</div>
     </div>`;
   } else {
@@ -742,27 +763,27 @@ function renderDiffReport(snapshot) {
   let html = `<div style="font-size:0.95rem; margin-bottom:12px; color:var(--fg-dim,#8b949e);">Risultato del confronto tra lo schema corrente ed il file JSON locale.</div>`;
 
   if (!addedTables.length && !removedTables.length && !modifiedTables.length) {
-    html += `<div class="audit-issue-item" style="border-left-color:#00e676;">
-      <div class="audit-issue-title" style="color:#00e676;">✓ Schemi identici</div>
+    html += `<div class="audit-issue-item" style="border-left-color:var(--status-ok);">
+      <div class="audit-issue-title" style="color:var(--status-ok);">✓ Schemi identici</div>
       <div class="audit-issue-desc">Nessuna differenza trovata rispetto al file JSON selezionato.</div>
     </div>`;
   } else {
     for (const t of addedTables) {
-      html += `<div class="audit-issue-item" style="border-left-color:#00e676;">
+      html += `<div class="audit-issue-item" style="border-left-color:var(--status-ok);">
         <div class="audit-issue-title"><span class="diff-tag diff-added">+ TABELLA AGGIUNTA</span> ${esc(t)}</div>
       </div>`;
     }
     for (const t of removedTables) {
-      html += `<div class="audit-issue-item" style="border-left-color:#e5534b;">
+      html += `<div class="audit-issue-item" style="border-left-color:var(--danger);">
         <div class="audit-issue-title"><span class="diff-tag diff-removed">- TABELLA RIMOSSA</span> ${esc(t)}</div>
       </div>`;
     }
     for (const m of modifiedTables) {
-      html += `<div class="audit-issue-item" style="border-left-color:#f5a623;">
+      html += `<div class="audit-issue-item" style="border-left-color:var(--status-warn);">
         <div class="audit-issue-title"><span class="diff-tag diff-changed">~ TABELLA MODIFICATA</span> ${esc(m.name)}</div>
         <div class="audit-issue-desc">
-          ${m.addedFields.length ? `<span style="color:#00e676;">+ Campi aggiunti: ${m.addedFields.map(esc).join(', ')}</span><br/>` : ''}
-          ${m.removedFields.length ? `<span style="color:#e5534b;">- Campi rimossi: ${m.removedFields.map(esc).join(', ')}</span>` : ''}
+          ${m.addedFields.length ? `<span style="color:var(--status-ok);">+ Campi aggiunti: ${m.addedFields.map(esc).join(', ')}</span><br/>` : ''}
+          ${m.removedFields.length ? `<span style="color:var(--danger);">- Campi rimossi: ${m.removedFields.map(esc).join(', ')}</span>` : ''}
         </div>
       </div>`;
     }
@@ -790,8 +811,11 @@ function createTextTexture(text) {
   canvas.width = 256;
   canvas.height = 128;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(15, 20, 28, 0.85)';
-  ctx.strokeStyle = '#4a9eff';
+  // Targhetta del nodo: è un canvas vero, quindi i colori vanno LETTI dai
+  // token. Con i valori fissi di prima, sul tema chiaro ogni etichetta restava
+  // una placca blu-notte con scritta bianca in mezzo a un grafo chiaro.
+  ctx.fillStyle = tokenTema('--graph-label-bg', 'rgba(15, 20, 28, 0.85)');
+  ctx.strokeStyle = tokenTema('--graph-label-bd', '#4a9eff');
   ctx.lineWidth = 4;
   if (ctx.roundRect) {
     ctx.roundRect(4, 4, 248, 120, 12);
@@ -802,7 +826,7 @@ function createTextTexture(text) {
   ctx.stroke();
 
   ctx.font = 'Bold 28px sans-serif';
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = tokenTema('--graph-label-fg', '#ffffff');
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
@@ -815,6 +839,20 @@ function createTextTexture(text) {
 }
 
 export function initGraph3d() {
+  /*
+   * Al cambio tema il grafo va RICOSTRUITO, non solo ridisegnato: i colori
+   * spenti e quelli degli archi vengono letti una volta sola quando si crea
+   * l'istanza, e le targhette dei nodi sono texture memorizzate per nome —
+   * senza svuotare la cache resterebbero le placche del tema precedente anche
+   * dopo il ridisegno, che è il difetto più difficile da attribuire al tema.
+   * `renderGraph3d` chiama `distruggiGrafo`, che la svuota già.
+   * Solo se il grafo è davvero in vita: altrimenti ogni cambio tema pagherebbe
+   * la ricostruzione di una vista che nessuno sta guardando.
+   */
+  document.addEventListener('codedb:tema', () => {
+    if (graphInstance && $('#graph3d-canvas')) renderGraph3d();
+  });
+
   const searchInput = $('#graph3d-search');
   if (searchInput) {
     searchInput.addEventListener('input', (e) => {
@@ -932,16 +970,16 @@ export function initGraph3d() {
 
       if (!res) {
         activeShortestPath = null;
-        if (resDiv) resDiv.innerHTML = `<div style="color:#e5534b;">Nessun cammino trovato tra <b>${esc(start)}</b> e <b>${esc(end)}</b>.</div>`;
+        if (resDiv) resDiv.innerHTML = `<div style="color:var(--danger);">Nessun cammino trovato tra <b>${esc(start)}</b> e <b>${esc(end)}</b>.</div>`;
         updatePathUI();
         renderGraph3d();
       } else {
         activeShortestPath = res;
         if (resDiv) {
-          resDiv.innerHTML = `<div class="audit-issue-item" style="border-left-color:#00e676;">
-            <div class="audit-issue-title" style="color:#00e676;">✓ Cammino Minimo Trovato (${res.nodes.length - 1} passaggi)</div>
+          resDiv.innerHTML = `<div class="audit-issue-item" style="border-left-color:var(--status-ok);">
+            <div class="audit-issue-title" style="color:var(--status-ok);">✓ Cammino Minimo Trovato (${res.nodes.length - 1} passaggi)</div>
             <div class="audit-issue-desc" style="font-size:0.95rem; margin-top:6px;">
-              ${res.nodes.map((n) => `<b style="color:#00e676;">${esc(n)}</b>`).join(' → ')}
+              ${res.nodes.map((n) => `<b style="color:var(--status-ok);">${esc(n)}</b>`).join(' → ')}
             </div>
           </div>`;
         }

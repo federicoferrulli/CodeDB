@@ -1,9 +1,40 @@
 /* ==========================================================================
-   CodeDB Design Tokens — "Deep Night SaaS" Palette
+   CodeDB Design Tokens
+   --------------------------------------------------------------------------
+   Il file è diviso in TRE blocchi, e la divisione non è cosmetica:
+
+     1. `:root`                — token SENZA colore (font, spaziature, raggi,
+                                 z-index, transizioni, geometria delle tab).
+                                 Non cambiano mai da un tema all'altro, quindi
+                                 duplicarli in ogni palette significherebbe
+                                 solo farli divergere.
+     2. `:root`, `[data-theme="dark"]` — palette SCURA "Deep Night", il tema
+                                 storico e il default: senza attributo, o con
+                                 un valore che non conosciamo, si vede
+                                 esattamente quello che si vedeva prima.
+     3. `[data-theme="light"]` — palette CHIARA.
+
+   Un tema PERSONALIZZATO non è un quarto blocco: è un `<style>` iniettato da
+   `theme.js` che ridefinisce alcuni token su `:root[data-theme-custom="…"]`,
+   sopra una delle due palette di base. Così un tema dell'utente eredita da
+   subito ogni token che non ha voluto toccare — comprese le decine che
+   nessun editor ragionevole esporrebbe — e non può risultare "mezzo nudo"
+   quando in futuro se ne aggiungerà uno nuovo.
+
+   REGOLA PER CHI AGGIUNGE STILE: nessun colore cablato in `style.css`. Un
+   `rgba(255,255,255,.08)` scritto a mano è invisibile sul tema scuro e
+   diventa una macchia bianca su quello chiaro, e non se ne accorge nessuno
+   finché un utente non apre il tema chiaro. Le famiglie che servono ci sono
+   già: `--ov-*` per le velature neutre, `--status-*` per gli stati,
+   `--syn-*` per i colori di sintassi e dei tipi di valore.
    ========================================================================== */
 
 /* Import fonts */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ==========================================================================
+   1. Token indipendenti dal tema
+   ========================================================================== */
 
 :root {
   /* Safe Area Insets */
@@ -15,14 +46,9 @@
   /* Fonts */
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
+  /* Alias storico: `style.css` usa `var(--mono, monospace)` in un punto. */
+  --mono: var(--font-mono);
 
-  /* ── Deep Night Palette ── */
-  --bg:         #0d1117;        /* Main content background (GitHub dark navy) */
-  --bg-2:       #090d12;        /* Sidebar — slightly darker */
-  --bg-3:       #111827;        /* Header / elevated surfaces */
-  --bg-4:       #1a2236;        /* Hover state elevated */
-  --bg-surface: #161b22;        /* Cards, inputs, modal */
-  --bg-elevated:#1f2937;        /* Dropdowns, tooltips */
   /* Geometria delle tab (vedi "smart corner" in style.css). La spalluccia non
      va oltre il raggio superiore, altrimenti la tab sembra appoggiata su un
      piedistallo invece di uscire dal pannello. */
@@ -30,62 +56,6 @@
   --tab-shoulder:10px;
   --tab-morph:   0.24s;
   --tab-ease:    cubic-bezier(0.22, 1, 0.36, 1);
-
-  /* Borders — very subtle */
-  --border:      rgba(255, 255, 255, 0.07);   /* Hairline */
-  --border-2:    rgba(255, 255, 255, 0.12);   /* Marked */
-  --border-3:    rgba(255, 255, 255, 0.18);   /* Strong (focus ring base) */
-  --border-focus: #6366f1;
-
-  /* Foreground */
-  --fg:          #e2e8f0;       /* Main text — slightly off-white, softer */
-  --fg-dim:      #8892a4;       /* Secondary text */
-  --fg-muted:    #4a5568;       /* Disabled / placeholder */
-  --fg-inverted: #ffffff;
-
-  /* ── Accent — Indigo Violet (SaaS primary) ── */
-  --accent:       #6366f1;      /* Electric indigo — primary actions */
-  --accent-2:     #4f46e5;      /* Deeper indigo — pressed state */
-  --accent-hover: #818cf8;      /* Lighter indigo — hover */
-  --accent-violet: #6366f1;
-  --accent-glow:  rgba(99, 102, 241, 0.18);
-
-  --focus: #6366f1;
-
-  /* ── Semantic Colors — Desaturated Pastel ── */
-  --danger:      #f87171;       /* Soft red */
-  --danger-bg:   rgba(248, 113, 113, 0.1);
-  --success:     #86efac;       /* Sage green — pastel */
-  --success-bg:  rgba(134, 239, 172, 0.1);
-  --warning:     #fbbf24;       /* Amber ocre */
-  --warning-bg:  rgba(251, 191, 36, 0.1);
-  --info:        #60a5fa;       /* Soft blue */
-  --info-bg:     rgba(96, 165, 250, 0.1);
-
-  /* Selection & Hover */
-  --sel:   rgba(99, 102, 241, 0.15);
-  --hover: rgba(255, 255, 255, 0.05);
-  --input-bg: var(--bg-surface);
-  --input-border: var(--border-2);
-  --btn-bg: var(--bg-surface);
-  --btn-hover: var(--bg-4);
-
-  /* Glassmorphism */
-  --glass-bg:     rgba(13, 17, 23, 0.82);
-  --glass-border: rgba(255, 255, 255, 0.1);
-
-  /* Shadows */
-  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
-  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
-  --shadow-lg:  0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
-  --shadow-glow-indigo: 0 0 20px rgba(99, 102, 241, 0.35);
-  --shadow-glow-green:  0 0 16px rgba(134, 239, 172, 0.25);
-
-  /* DB Type Accent Colors */
-  --badge-mongo:   #86efac;   /* Sage green */
-  --badge-mysql:   #60a5fa;   /* Soft blue */
-  --badge-postgres: #a78bfa;  /* Soft violet */
 
   /* Rhythmic Spacing Scale */
   --space-3xs: 2px;
@@ -118,4 +88,489 @@
   --z-toast:    2000;
 
   font-size: 13px;
+}
+
+/* ==========================================================================
+   2. Tema SCURO — "Deep Night" (default)
+   --------------------------------------------------------------------------
+   Vale sia senza attributo sia con `data-theme="dark"`: se `localStorage` è
+   illeggibile o contiene un valore di un'altra versione, l'applicazione resta
+   quella di sempre invece di presentarsi senza colori.
+   ========================================================================== */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* ── Superfici ── */
+  --bg:         #0d1117;        /* Sfondo del contenuto (GitHub dark navy) */
+  --bg-2:       #090d12;        /* Sidebar — leggermente più scura */
+  --bg-3:       #111827;        /* Header / superfici sollevate */
+  --bg-4:       #1a2236;        /* Hover di una superficie sollevata */
+  --bg-surface: #161b22;        /* Card, input, modali */
+  --bg-elevated:#1f2937;        /* Menu a tendina, tooltip */
+  /* Superficie INCASSATA: codice, log, celle di output. Sul tema scuro è più
+     scura dello sfondo, su quello chiaro è più grigia — in entrambi i casi
+     "sotto" al piano della pagina. Era usata in sette punti di `style.css`
+     senza essere mai definita: `background: var(--bg-1)` non ha valore, quindi
+     quei pannelli erano semplicemente TRASPARENTI. */
+  --bg-1:       #0b0f14;
+  /* Alias storici, usati in un punto ciascuno. */
+  --bg-alt:     var(--bg-surface);
+  --panel:      var(--bg-elevated);
+
+  /* ── Velature neutre ──
+     Bianco sul tema scuro, NERO su quello chiaro: è l'unica famiglia che deve
+     INVERTIRSI, ed è la ragione per cui non si scrive `rgba(255,255,255,…)` a
+     mano — su fondo chiaro diventa una macchia bianca invisibile a chi la
+     scrive.
+     Il numero nel nome è l'alfa in millesimi. È una scala scomoda da leggere
+     ma deliberata: i valori sono esattamente quelli che `style.css` aveva
+     cablati, quindi il tema scuro dopo la conversione è identico al pixel e
+     un'eventuale regressione non può nascondersi dentro un arrotondamento.
+     Sul tema chiaro le alfa NON sono le stesse: il nero su bianco pesa molto
+     più del bianco su nero, e ricopiarle darebbe un'interfaccia sporca di
+     grigio. */
+  --ov-18:  rgba(255, 255, 255, 0.018);
+  --ov-30:  rgba(255, 255, 255, 0.03);
+  --ov-40:  rgba(255, 255, 255, 0.04);
+  --ov-50:  rgba(255, 255, 255, 0.05);
+  --ov-60:  rgba(255, 255, 255, 0.06);
+  --ov-70:  rgba(255, 255, 255, 0.07);
+  --ov-80:  rgba(255, 255, 255, 0.08);
+  --ov-90:  rgba(255, 255, 255, 0.09);
+  --ov-100: rgba(255, 255, 255, 0.10);
+  --ov-120: rgba(255, 255, 255, 0.12);
+  --ov-150: rgba(255, 255, 255, 0.15);
+  --ov-160: rgba(255, 255, 255, 0.16);
+  --ov-200: rgba(255, 255, 255, 0.20);
+
+  /* Tinta delle ombre scritte in linea (glow, contorni delle tab), stessa
+     convenzione: nero puro sul tema scuro, grigio-blu molto più tenue su
+     quello chiaro, dove il nero pieno produce l'alone sporco tipico dei temi
+     chiari ottenuti invertendo. */
+  --sh-250: rgba(0, 0, 0, 0.25);
+  --sh-300: rgba(0, 0, 0, 0.30);
+  --sh-400: rgba(0, 0, 0, 0.40);
+  --sh-450: rgba(0, 0, 0, 0.45);
+  --sh-500: rgba(0, 0, 0, 0.50);
+  --sh-550: rgba(0, 0, 0, 0.55);
+  --sh-600: rgba(0, 0, 0, 0.60);
+  --sh-680: rgba(3, 6, 12, 0.68);
+  --sh-700: rgba(0, 0, 0, 0.70);
+  --sh-800: rgba(0, 0, 0, 0.80);
+  --sh-850: rgba(0, 0, 0, 0.85);
+
+  /* ── Bordi ── */
+  --border:      rgba(255, 255, 255, 0.07);   /* Filo */
+  --border-2:    rgba(255, 255, 255, 0.12);   /* Marcato */
+  --border-3:    rgba(255, 255, 255, 0.18);   /* Forte (base dell'anello di fuoco) */
+  --border-focus: #6366f1;
+
+  /* ── Testo ── */
+  --fg:          #e2e8f0;       /* Testo principale — bianco sporco, più morbido */
+  --fg-dim:      #8892a4;       /* Testo secondario */
+  --fg-muted:    #4a5568;       /* Disabilitato / segnaposto */
+  --fg-bright:   #f8fafc;       /* Titoli, valori in evidenza */
+  --fg-inverted: #ffffff;
+  /* Testo SOPRA una superficie d'accento (pulsante primario, badge pieno).
+     Non è `--fg-inverted`: su un tema chiaro con accento scuro resta bianco,
+     ma un tema personalizzato con accento giallo lo vorrà nero. */
+  --on-accent:   #ffffff;
+  /* Testo sopra la tinta CHIARA dell'accento (`--accent-hover`), dove il
+     progetto sceglie il nero: sul tema scuro l'accento-hover è un indaco
+     chiaro e il nero ci si legge meglio del bianco. Sul tema chiaro la stessa
+     tinta è più satura e il rapporto si ribalta, quindi il token si inverte —
+     un solo `--on-accent` costringerebbe a sbagliarne uno dei due. */
+  --on-accent-soft: #000000;
+
+  /* ── Accento — Indigo Violet ── */
+  --accent:       #6366f1;      /* Indaco elettrico — azioni primarie */
+  --accent-2:     #4f46e5;      /* Indaco profondo — stato premuto */
+  --accent-hover: #818cf8;      /* Indaco chiaro — hover */
+  --accent-violet: #6366f1;
+  --accent-glow:  rgba(99, 102, 241, 0.18);
+  --accent-soft:  rgba(99, 102, 241, 0.12);   /* Velo d'accento: righe scelte, chip */
+  --accent-line:  rgba(99, 102, 241, 0.30);   /* Bordo d'accento */
+  /* Velo APPENA percettibile: la riga della griglia sotto il puntatore. Su una
+     sola riga la differenza con `--accent-soft` non si nota, su una tabella
+     intera sì — per questo è un token a parte e non un arrotondamento. */
+  --accent-veil:  rgba(99, 102, 241, 0.06);
+
+  --focus: #6366f1;
+
+  /* ── Colori semantici — pastello desaturato ── */
+  --danger:      #f87171;       /* Rosso morbido */
+  --danger-bg:   rgba(248, 113, 113, 0.1);
+  --danger-line: rgba(248, 113, 113, 0.3);
+  --err-fg:      #f87171;       /* Alias: testo d'errore */
+  --success:     #86efac;       /* Verde salvia — pastello */
+  --success-bg:  rgba(134, 239, 172, 0.1);
+  --success-line: rgba(134, 239, 172, 0.3);
+  --ok:          #86efac;       /* Alias storico */
+  --warning:     #fbbf24;       /* Ambra ocra */
+  --warning-bg:  rgba(251, 191, 36, 0.1);
+  --warning-line: rgba(251, 191, 36, 0.3);
+  --info:        #60a5fa;       /* Blu morbido */
+  --info-bg:     rgba(96, 165, 250, 0.1);
+  --info-line:   rgba(96, 165, 250, 0.3);
+
+  /* ── Stati: badge, esiti, latenze, categorie dell'audit ──
+     Famiglia separata da quella semantica perché qui il colore è un'ETICHETTA
+     letta a colpo d'occhio in una tabella (verde = riuscito, ambra = scrittura)
+     e vuole più saturazione del rosso morbido di un messaggio d'errore. */
+  --status-ok:      #00e676;
+  --status-ok-bg:   rgba(0, 230, 118, 0.15);
+  --status-ok-bd:   rgba(0, 230, 118, 0.3);
+  --status-warn:    #ffb300;
+  --status-warn-bg: rgba(255, 179, 0, 0.15);
+  --status-warn-bd: rgba(255, 179, 0, 0.3);
+  --status-err:     #ff6b6b;
+  --status-err-bg:  rgba(255, 107, 107, 0.15);
+  --status-err-bd:  rgba(255, 107, 107, 0.3);
+  /* Come `--accent-veil`: tinge un'intera riga dello storico senza renderla
+     una macchia rossa. */
+  --status-err-veil: rgba(255, 107, 107, 0.06);
+  --status-info:    #4a9eff;
+  --status-info-bg: rgba(74, 158, 255, 0.15);
+  --status-info-bd: rgba(74, 158, 255, 0.3);
+  --status-idle:    #8892a4;
+  --status-idle-bg: rgba(140, 140, 140, 0.15);
+
+  /* ── Diff (export dello schema, confronto di documenti) ── */
+  --diff-add-bg: rgba(0, 230, 118, 0.2);
+  --diff-del-bg: rgba(229, 83, 75, 0.2);
+  --diff-chg-bg: rgba(245, 166, 35, 0.2);
+
+  /* ── Selezione e hover ── */
+  --sel:   rgba(99, 102, 241, 0.15);
+  --hover: rgba(255, 255, 255, 0.05);
+  --input-bg: var(--bg-surface);
+  --input-border: var(--border-2);
+  --btn-bg: var(--bg-surface);
+  --btn-hover: var(--bg-4);
+
+  /* ── Vetro e velo delle modali ── */
+  --glass-bg:     rgba(13, 17, 23, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --scrim:        rgba(5, 9, 18, 0.75);      /* Fondo dietro una modale */
+  --scrim-strong: rgba(5, 9, 18, 0.88);      /* Fondo delle finestre a mappa */
+
+  /* ── Ombre ──
+     `--shadow-color*` esiste perché una manciata di ombre sono scritte in
+     linea in `style.css` (glow, contorni delle tab) e devono schiarire con il
+     tema come le altre. */
+  --shadow-color:        rgba(0, 0, 0, 0.45);
+  --shadow-color-strong: rgba(0, 0, 0, 0.7);
+  --shadow-sm:  0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md:  0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-lg:  0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.06) inset;
+  --shadow-glow-indigo: 0 0 20px rgba(99, 102, 241, 0.35);
+  --shadow-glow-green:  0 0 16px rgba(134, 239, 172, 0.25);
+
+  /* Raccordo fra una tab attiva e il pannello sottostante ("smart corner"):
+     deve valere ESATTAMENTE lo sfondo del pannello, altrimenti si vede la
+     cucitura. Era usato tre volte senza essere definito. */
+  --tab-merge: var(--bg);
+
+  /* ── Accenti per tipo di database ── */
+  /* Testo dei badge "tipo di database": tinte pastello, leggibili sul fondo. */
+  --badge-mongo:   #86efac;   /* Verde salvia */
+  --badge-mysql:   #60a5fa;   /* Blu morbido */
+  --badge-postgres: #a78bfa;  /* Viola morbido */
+  /* Pallino di stato nelle tab di connessione: è un SEGNO pieno, non del
+     testo, quindi vuole la tinta satura del prodotto e non la pastello. */
+  --dot-mongo:      #10b981;
+  --dot-mysql:      #00f2fe;
+  --dot-postgres:   #8b5cf6;
+  /* Il suo alone va tenuto TRASLUCIDO: con il colore pieno il pallino si porta
+     dietro un disco opaco invece di un bagliore. */
+  --dot-mongo-glow:    rgba(16, 185, 129, 0.6);
+  --dot-mysql-glow:    rgba(0, 242, 254, 0.6);
+  --dot-postgres-glow: rgba(139, 92, 246, 0.6);
+
+  /* ── Colori "di codice" ──
+     Sono TRE tavolozze distinte, e restano distinte perché rispondono a tre
+     domande diverse: l'editor evidenzia la SINTASSI (One Dark), l'albero JSON
+     distingue i nodi (Dracula), la griglia colora il TIPO del valore. Fonderle
+     sembra un riordino e invece toglie informazione — nella griglia il verde
+     dice "numero", nell'editor dice "stringa".
+     È anche la famiglia che sul tema chiaro va RIFATTA e non schiarita: un
+     giallo pastello leggibile su navy sparisce sul bianco. */
+
+  /* Evidenziatore dell'editor (query-highlighter.js) */
+  --hl-keyword:  #c678dd;
+  --hl-type:     #e5c07b;
+  --hl-function: #61afef;
+  --hl-string:   #98c379;
+  --hl-number:   #d19a66;
+  --hl-comment:  #7f848e;
+  --hl-key:      #e06c75;
+  --hl-operator: #56b6c2;
+
+  /* Albero JSON dei risultati */
+  --json-key:     #ff79c6;
+  --json-string:  #f1fa8c;
+  --json-number:  #bd93f9;
+  --json-boolean: #ffb86c;
+  --json-null:    #6272a4;
+
+  /* Tipo del valore nelle celle della griglia */
+  --val-oid:   #93c5fd;
+  --val-num:   #86efac;
+  --val-true:  #86efac;
+  --val-false: #f87171;
+  --val-date:  #fcd34d;
+  --val-obj:   #c4b5fd;
+  --val-geo:   #4ec9b0;
+
+  /* ── Superfici di disegno lette dal JS ──
+     Grafici (ECharts), grafo 3D (Three.js) e mappe (Leaflet) disegnano su
+     canvas: non ereditano nulla dal CSS e devono LEGGERE questi token, vedi
+     `temaGrafico()` in chart-option.js. */
+  --chart-bg:     transparent;
+  --chart-text:   #8892a4;
+  --chart-axis:   rgba(255, 255, 255, 0.18);
+  --chart-grid:   rgba(255, 255, 255, 0.07);
+  --graph-bg:     #0d1117;
+  --graph-link:   #4a5568;
+  /* Grafo 3D: come si SPEGNE ciò che è fuori selezione. Non è un grigio fisso
+     ma "quasi il fondo", quindi cambia con il tema — altrimenti sul chiaro i
+     nodi attenuati diventano i più scuri della scena. */
+  --graph-dim:            rgba(50, 55, 65, 0.25);
+  --graph-dim-strong:     rgba(40, 45, 55, 0.2);
+  --graph-dim-link:       rgba(40, 45, 55, 0.15);
+  --graph-dim-link-weak:  rgba(30, 35, 45, 0.12);
+  --graph-link-active:    #4a9eff;
+  /* Targhetta col nome della tabella: è una texture di canvas, non del CSS. */
+  --graph-label-bg: rgba(15, 20, 28, 0.85);
+  --graph-label-bd: #4a9eff;
+  --graph-label-fg: #ffffff;
+  /* Contorno delle maniglie di trascinamento sulla mappa. */
+  --geo-handle-outline: #ffffff;
+
+  /* Aloni atmosferici del fondo pagina (base.css). */
+  --glow-1: rgba(99, 102, 241, 0.045);
+  --glow-2: rgba(139, 92, 246, 0.035);
+
+  /* Barre di scorrimento. */
+  --scrollbar-thumb:       rgba(99, 102, 241, 0.25);
+  --scrollbar-thumb-hover: rgba(99, 102, 241, 0.5);
+
+  /* Sfarfallio dello scheletro di caricamento. */
+  --skeleton-1: rgba(255, 255, 255, 0.03);
+  --skeleton-2: rgba(255, 255, 255, 0.07);
+}
+
+/* ==========================================================================
+   3. Tema CHIARO
+   --------------------------------------------------------------------------
+   Non è il tema scuro invertito: le tinte pastello che reggono su un fondo
+   navy sono illeggibili sul bianco (contrasto sotto 2:1), quindi accento,
+   stati e colori di sintassi hanno valori PROPRI, scelti sopra 4.5:1 per il
+   testo e 3:1 per i bordi e i segni.
+   ========================================================================== */
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* ── Superfici ──
+     Il piano di lettura è bianco e le CORNICI sono grigie: l'opposto del tema
+     scuro, dove la sidebar è più scura del contenuto. Un tema chiaro con la
+     sidebar più chiara del contenuto sembra scolorito. */
+  --bg:         #ffffff;
+  --bg-2:       #f2f5f9;
+  --bg-3:       #eef2f7;
+  --bg-4:       #e2e8f0;
+  --bg-surface: #ffffff;
+  --bg-elevated:#ffffff;
+  --bg-1:       #f4f7fa;
+  --bg-alt:     var(--bg-surface);
+  --panel:      var(--bg-elevated);
+
+  /* ── Velature neutre — NERE, e alleggerite (≈0,7× l'alfa del tema scuro) ── */
+  --ov-18:  rgba(15, 23, 42, 0.012);
+  --ov-30:  rgba(15, 23, 42, 0.022);
+  --ov-40:  rgba(15, 23, 42, 0.030);
+  --ov-50:  rgba(15, 23, 42, 0.038);
+  --ov-60:  rgba(15, 23, 42, 0.045);
+  --ov-70:  rgba(15, 23, 42, 0.052);
+  --ov-80:  rgba(15, 23, 42, 0.060);
+  --ov-90:  rgba(15, 23, 42, 0.068);
+  --ov-100: rgba(15, 23, 42, 0.078);
+  --ov-120: rgba(15, 23, 42, 0.095);
+  --ov-150: rgba(15, 23, 42, 0.120);
+  --ov-160: rgba(15, 23, 42, 0.130);
+  --ov-200: rgba(15, 23, 42, 0.170);
+
+  --sh-250: rgba(15, 23, 42, 0.07);
+  --sh-300: rgba(15, 23, 42, 0.09);
+  --sh-400: rgba(15, 23, 42, 0.11);
+  --sh-450: rgba(15, 23, 42, 0.12);
+  --sh-500: rgba(15, 23, 42, 0.14);
+  --sh-550: rgba(15, 23, 42, 0.15);
+  --sh-600: rgba(15, 23, 42, 0.17);
+  --sh-680: rgba(15, 23, 42, 0.19);
+  --sh-700: rgba(15, 23, 42, 0.20);
+  --sh-800: rgba(15, 23, 42, 0.24);
+  --sh-850: rgba(15, 23, 42, 0.26);
+
+  /* ── Bordi ── */
+  --border:      rgba(15, 23, 42, 0.10);
+  --border-2:    rgba(15, 23, 42, 0.15);
+  --border-3:    rgba(15, 23, 42, 0.22);
+  --border-focus: #4f46e5;
+
+  /* ── Testo ── */
+  --fg:          #1f2937;
+  --fg-dim:      #5b6673;
+  --fg-muted:    #97a1ad;
+  --fg-bright:   #0b1220;
+  --fg-inverted: #ffffff;
+  --on-accent:   #ffffff;
+  --on-accent-soft: #ffffff;
+
+  /* ── Accento — indaco più profondo, per reggere sul bianco ── */
+  --accent:       #4f46e5;
+  --accent-2:     #4338ca;
+  --accent-hover: #6366f1;
+  --accent-violet: #4f46e5;
+  --accent-glow:  rgba(79, 70, 229, 0.16);
+  --accent-soft:  rgba(79, 70, 229, 0.10);
+  --accent-line:  rgba(79, 70, 229, 0.28);
+  --accent-veil:  rgba(79, 70, 229, 0.055);
+
+  --focus: #4f46e5;
+
+  /* ── Colori semantici ── */
+  --danger:      #c92a2a;
+  --danger-bg:   rgba(201, 42, 42, 0.09);
+  --danger-line: rgba(201, 42, 42, 0.28);
+  --err-fg:      #c92a2a;
+  --success:     #12805c;
+  --success-bg:  rgba(18, 128, 92, 0.10);
+  --success-line: rgba(18, 128, 92, 0.28);
+  --ok:          #12805c;
+  --warning:     #96601a;
+  --warning-bg:  rgba(150, 96, 26, 0.11);
+  --warning-line: rgba(150, 96, 26, 0.28);
+  --info:        #0b62d0;
+  --info-bg:     rgba(11, 98, 208, 0.09);
+  --info-line:   rgba(11, 98, 208, 0.28);
+
+  /* ── Stati ── */
+  --status-ok:      #0f7a4a;
+  --status-ok-bg:   rgba(15, 122, 74, 0.12);
+  --status-ok-bd:   rgba(15, 122, 74, 0.30);
+  --status-warn:    #96601a;
+  --status-warn-bg: rgba(150, 96, 26, 0.13);
+  --status-warn-bd: rgba(150, 96, 26, 0.30);
+  --status-err:     #c92a2a;
+  --status-err-bg:  rgba(201, 42, 42, 0.11);
+  --status-err-bd:  rgba(201, 42, 42, 0.30);
+  --status-err-veil: rgba(201, 42, 42, 0.055);
+  --status-info:    #0b62d0;
+  --status-info-bg: rgba(11, 98, 208, 0.11);
+  --status-info-bd: rgba(11, 98, 208, 0.30);
+  --status-idle:    #6b7684;
+  --status-idle-bg: rgba(107, 118, 132, 0.13);
+
+  /* ── Diff ── */
+  --diff-add-bg: rgba(15, 122, 74, 0.16);
+  --diff-del-bg: rgba(201, 42, 42, 0.14);
+  --diff-chg-bg: rgba(150, 96, 26, 0.16);
+
+  /* ── Selezione e hover ── */
+  --sel:   rgba(79, 70, 229, 0.13);
+  --hover: rgba(15, 23, 42, 0.04);
+  --input-bg: #ffffff;
+  --input-border: var(--border-2);
+  --btn-bg: #ffffff;
+  --btn-hover: var(--bg-4);
+
+  /* ── Vetro e velo delle modali ── */
+  --glass-bg:     rgba(255, 255, 255, 0.86);
+  --glass-border: rgba(15, 23, 42, 0.09);
+  --scrim:        rgba(15, 23, 42, 0.36);
+  --scrim-strong: rgba(15, 23, 42, 0.52);
+
+  /* ── Ombre — grigio-blu e molto più tenui: il nero pieno su fondo chiaro
+     produce l'alone sporco tipico dei temi chiari fatti invertendo. ── */
+  --shadow-color:        rgba(15, 23, 42, 0.12);
+  --shadow-color-strong: rgba(15, 23, 42, 0.20);
+  --shadow-sm:  0 1px 2px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-md:  0 4px 14px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.06);
+  --shadow-lg:  0 16px 44px rgba(15, 23, 42, 0.16), 0 4px 14px rgba(15, 23, 42, 0.09);
+  --shadow-glass: 0 8px 28px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(15, 23, 42, 0.05) inset;
+  --shadow-glow-indigo: 0 0 18px rgba(79, 70, 229, 0.28);
+  --shadow-glow-green:  0 0 14px rgba(18, 128, 92, 0.22);
+
+  --tab-merge: var(--bg);
+
+  /* ── Accenti per tipo di database ── */
+  --badge-mongo:   #0f7a4a;
+  --badge-mysql:   #0b62d0;
+  --badge-postgres: #6532c8;
+  --dot-mongo:      #0f9d63;
+  --dot-mysql:      #0b8bd0;
+  --dot-postgres:   #7c4ddb;
+  --dot-mongo-glow:    rgba(15, 157, 99, 0.45);
+  --dot-mysql-glow:    rgba(11, 139, 208, 0.45);
+  --dot-postgres-glow: rgba(124, 77, 219, 0.45);
+
+  /* ── Colori "di codice" — impianto chiaro, non il pastello scurito.
+     L'editor passa a One Light, che è la controparte studiata di One Dark;
+     l'albero JSON e i tipi della griglia conservano la stessa ASSOCIAZIONE
+     colore→significato (rosa = chiave, verde = numero) con tinte che reggono
+     sul bianco. ── */
+
+  --hl-keyword:  #a626a4;
+  --hl-type:     #9a6a00;
+  --hl-function: #4078f2;
+  --hl-string:   #3f7f2f;
+  --hl-number:   #986801;
+  --hl-comment:  #8a8f98;
+  --hl-key:      #d0332b;
+  --hl-operator: #0184bc;
+
+  --json-key:     #c2185b;
+  --json-string:  #0a5c36;
+  --json-number:  #6532c8;
+  --json-boolean: #b3541e;
+  --json-null:    #6b7684;
+
+  --val-oid:   #0a52a8;
+  --val-num:   #0f7a4a;
+  --val-true:  #0f7a4a;
+  --val-false: #c92a2a;
+  --val-date:  #8a5a00;
+  --val-obj:   #6532c8;
+  --val-geo:   #0c7c8c;
+
+  /* ── Superfici di disegno lette dal JS ── */
+  --chart-bg:     transparent;
+  --chart-text:   #5b6673;
+  --chart-axis:   rgba(15, 23, 42, 0.22);
+  --chart-grid:   rgba(15, 23, 42, 0.09);
+  --graph-bg:     #f4f7fa;
+  --graph-link:   #97a1ad;
+  --graph-dim:            rgba(15, 23, 42, 0.13);
+  --graph-dim-strong:     rgba(15, 23, 42, 0.10);
+  --graph-dim-link:       rgba(15, 23, 42, 0.09);
+  --graph-dim-link-weak:  rgba(15, 23, 42, 0.07);
+  --graph-link-active:    #0b62d0;
+  --graph-label-bg: rgba(255, 255, 255, 0.92);
+  --graph-label-bd: #0b62d0;
+  --graph-label-fg: #1f2937;
+  --geo-handle-outline: #1f2937;
+
+  --glow-1: rgba(79, 70, 229, 0.05);
+  --glow-2: rgba(139, 92, 246, 0.04);
+
+  --scrollbar-thumb:       rgba(79, 70, 229, 0.28);
+  --scrollbar-thumb-hover: rgba(79, 70, 229, 0.5);
+
+  --skeleton-1: rgba(15, 23, 42, 0.045);
+  --skeleton-2: rgba(15, 23, 42, 0.09);
 }
