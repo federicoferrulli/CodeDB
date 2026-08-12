@@ -126,6 +126,7 @@ const { createEntitlementProvider } = require('./auth/EntitlementProvider');
 const { guardStrategy } = require('./auth/guardStrategy');
 const { isWriteSql, isWriteMongoPipeline, eventCapability } = require('./auth/capabilities');
 const { can, allowedConnections, canUseConnection, canWholeConnection, isInstallAdmin } = require('./auth/permissions');
+const { motivoNonTerminabile, diagnosi: diagnosiSessioni } = require('./db/sessioni');
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
 
@@ -2755,6 +2756,103 @@ io.on('connection', (socket) => {
       return entry;
     }));
     cb({ ok: true, connections: entries });
+  });
+
+  /* --- Monitor delle sessioni del SERVER di database ------------------------
+   * Vicino a `health:connections` ma di natura diversa, e la differenza è il
+   * motivo per cui sono due pannelli e non uno: là si guardano le connessioni
+   * di CodeDB (le nostre), qui TUTTE quelle del server — comprese quelle di
+   * altre applicazioni, di altri sviluppatori e dei processi di servizio.
+   *
+   * Perché non passano da `delegate()`: quello risolve la capability con lo
+   * scope db/collezione, che qui non ha alcun bersaglio da confrontare (una
+   * sessione non appartiene a un database in modo stabile — cambia con USE, e
+   * su MongoDB un'operazione può toccarne più d'uno). Vale quindi la stessa
+   * regola di backup: capability sull'INTERA connessione, senza scope.
+   *
+   * `read` per guardare, `manage` per terminare. La lista mostra il testo delle
+   * query altrui, cioè dati fuori da qualunque scope: chiede perciò la lettura
+   * sull'intera connessione, la stessa che serve a portarsela via con un
+   * backup. Terminare è un'altra cosa — interrompe il lavoro di qualcun altro,
+   * potenzialmente a metà di una transazione — e resta amministrazione.
+   * ---------------------------------------------------------------------- */
+  safeOn('db:sessions', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    assertWholeConnection(principal, sess.connName, 'read', 'vedere le sessioni attive sul server');
+
+    const res = await sess.strategy.listSessions();
+    // Il MOTIVO per cui una riga non è terminabile lo calcola il server e lo
+    // manda già scritto, invece di lasciare che il client riapplichi le stesse
+    // regole: sarebbe una seconda copia di `motivoNonTerminabile`, cioè due
+    // idee di "cosa si può uccidere" destinate a divergere alla prima
+    // correzione — con l'interfaccia dalla parte sbagliata (offre, e il
+    // server rifiuta) oppure, peggio, il contrario.
+    const capacita = res.capacita || {};
+    res.sessioni = (res.sessioni || []).map((s) => ({
+      ...s,
+      blocchi: {
+        query: motivoNonTerminabile(s, 'query', capacita),
+        connessione: motivoNonTerminabile(s, 'connessione', capacita),
+      },
+    }));
+    // Il verdetto ("chi sta bloccando cosa, e su quale riga agire") si calcola
+    // DOPO i blocchi, perché l'azione che propone dev'essere un'azione
+    // possibile: suggerire di terminare una connessione di CodeDB o un
+    // processo di servizio sarebbe il consiglio peggiore del pannello.
+    res.diagnosi = diagnosiSessioni(res.sessioni);
+    // Lettura di dati altrui: va nello Storico Azioni come le altre letture
+    // esplicite. L'auto-refresh del pannello arriva marcato `_bg` e non viene
+    // registrato, altrimenti un pannello lasciato aperto riempirebbe il log.
+    if (!payload._bg) {
+      auditWrite(sess, 'db:sessions', {}, { op: 'Elenco sessioni del server' }, 'ok',
+        { count: (res.sessioni || []).length }, null, 'read');
+    }
+    cb({ ok: true, ...res });
+  });
+
+  safeOn('db:killSession', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    assertWholeConnection(principal, sess.connName, 'manage', 'terminare le sessioni sul server');
+
+    const id = String(payload.id == null ? '' : payload.id).trim();
+    if (!id) throw new Error('Id della sessione da terminare mancante.');
+    const modo = payload.modo === 'connessione' ? 'connessione' : 'query';
+
+    // Le regole su cosa NON si può terminare (connessioni di CodeDB, processi
+    // di servizio del DBMS) vengono riapplicate QUI sullo stato corrente del
+    // server, non prese per buone dal client: nell'interfaccia servono a
+    // disabilitare un pulsante, qui sono la barriera vera — un evento socket
+    // costruito a mano non passa dai pulsanti. Rileggere la lista costa una
+    // query e RESTRINGE anche la finestra fra il disegno della tabella e il
+    // clic, in cui quel pid può essere già stato riassegnato a un altro
+    // processo: non la chiude — fra questa lettura e il kill resta un istante,
+    // e nessun DBMS offre un "termina la sessione X solo se è ancora quella
+    // che ho visto". Il rischio residuo è quello di qualunque `kill` per pid.
+    const stato = await sess.strategy.listSessions();
+    const bersaglio = (stato.sessioni || []).find((s) => String(s.id) === id);
+    const motivo = motivoNonTerminabile(bersaglio, modo, stato.capacita || {});
+    if (motivo) throw new Error(motivo);
+
+    try {
+      const res = await sess.strategy.killSession(id, modo);
+      auditWrite(sess, 'db:killSession', { db: bersaglio.db }, {
+        op: modo === 'connessione' ? 'Terminazione connessione DB' : 'Annullamento query altrui',
+        sessionId: id,
+        sessionUser: bersaglio.utente || null,
+        sessionQuery: bersaglio.query ? bersaglio.query.slice(0, 500) : null,
+      }, 'ok', null, null);
+      cb({ ok: true, ...res });
+    } catch (err) {
+      auditWrite(sess, 'db:killSession', { db: bersaglio.db }, {
+        op: modo === 'connessione' ? 'Terminazione connessione DB' : 'Annullamento query altrui',
+        sessionId: id,
+      }, 'error', null, err);
+      throw err;
+    }
   });
 
   safeOn('connections:delete', ({ name }, cb) => {

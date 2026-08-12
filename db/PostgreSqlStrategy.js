@@ -3,6 +3,7 @@
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const sessioni = require('./sessioni');
 
 // Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
 const GEO_CACHE_MS = 15000;
@@ -180,6 +181,10 @@ class PostgreSqlStrategy extends DbStrategy {
       database: (cfg.database || 'postgres').trim() || 'postgres',
       connectionTimeoutMillis: 6000,
       max: 8,
+      // Compare in `pg_stat_activity.application_name` e nei log del server:
+      // è così che il monitor delle sessioni riconosce le connessioni di
+      // CodeDB e non offre di terminarle (vedi db/sessioni.js).
+      application_name: sessioni.APP_NAME,
     });
 
     pool.on('error', (err) => {
@@ -759,6 +764,109 @@ class PostgreSqlStrategy extends DbStrategy {
     } finally {
       client.release();
     }
+  }
+
+  /* --- Monitor delle sessioni ---------------------------------------------
+   * `pg_stat_activity`. Due cose che nessuno degli altri due DBMS ha e che
+   * vanno conservate fino all'interfaccia: `backend_type` separa i processi di
+   * servizio (autovacuum, checkpointer, walwriter) dai client veri, e lo stato
+   * `idle in transaction` — fermo, invisibile fra le query lente, e con i lock
+   * ancora in mano — che è quasi sempre la risposta a "perché è tutto bloccato
+   * se non sta girando niente".
+   * ---------------------------------------------------------------------- */
+  async listSessions() {
+    const pool = this.requirePool();
+    const { rows } = await pool.query(
+      `SELECT pid,
+              usename,
+              client_addr::text AS client_addr,
+              client_port,
+              datname,
+              state,
+              query,
+              wait_event_type,
+              wait_event,
+              backend_type,
+              application_name,
+              -- Il dato che rende il pannello una risposta invece di un
+              -- elenco: chi tiene il lock che questa sessione sta aspettando.
+              -- Senza, si termina la vittima e non cambia niente.
+              --
+              -- Si chiama SOLO sulle righe che stanno davvero aspettando un
+              -- lock pesante, che è l'unico caso in cui può restituire
+              -- qualcosa: la funzione prende per un istante l'accesso
+              -- esclusivo allo stato condiviso del lock manager, e la
+              -- documentazione avverte di non chiamarla di frequente. Su un
+              -- server con cinquecento sessioni erano cinquecento prese ogni
+              -- cinque secondi — proprio mentre il database è in difficoltà,
+              -- cioè quando questo pannello è aperto. Il risultato non cambia:
+              -- un backend in attesa di un lock pesante ha per definizione
+              -- wait_event_type = 'Lock'.
+              CASE WHEN wait_event_type = 'Lock' THEN pg_blocking_pids(pid) END AS blocking,
+              EXTRACT(EPOCH FROM (now() - COALESCE(
+                CASE WHEN state = 'active' THEN query_start ELSE state_change END,
+                backend_start))) AS secondi
+         FROM pg_stat_activity
+        ORDER BY secondi DESC NULLS LAST
+        LIMIT $1`,
+      [sessioni.MAX_SESSIONI + 1]
+    );
+
+    // Senza il ruolo `pg_monitor`/`pg_read_all_stats` (o la superutenza) le
+    // righe altrui ci sono ma il testo della query è sostituito da
+    // "<insufficient privilege>": la tabella sembra completa mentre la
+    // colonna che serve è vuota, quindi lo si dice.
+    const nascoste = rows.some((r) => String(r.query || '').includes('insufficient privilege'));
+    const nota = nascoste
+      ? 'Il testo delle query degli altri utenti non è visibile: serve il ruolo "pg_monitor" (o "pg_read_all_stats") sull\'utente della connessione.'
+      : null;
+
+    const troncato = rows.length > sessioni.MAX_SESSIONI;
+    const usate = rows.slice(0, sessioni.MAX_SESSIONI);
+    const coppie = [];
+    for (const r of usate) {
+      for (const b of (Array.isArray(r.blocking) ? r.blocking : [])) coppie.push({ attesa: r.pid, blocca: b });
+    }
+    const lista = sessioni.ordina(sessioni.collegaBlocchi(
+      sessioni.normalizzaPostgres(usate, { processIDs: this.processIDsDelPool() }),
+      coppie
+    ));
+    return {
+      sessioni: lista,
+      capacita: { annullaQuery: true, terminaConnessione: true, saBloccanti: true },
+      troncato,
+      nota,
+    };
+  }
+
+  /**
+   * PID dei backend del NOSTRO pool. Come per mysql2 non c'è un'API pubblica:
+   * si legge `_clients` in modo difensivo. È il secondo dei due segnali usati
+   * per riconoscere le connessioni di CodeDB — l'altro, `application_name`,
+   * copre anche le connessioni di un'ALTRA istanza di CodeDB, che questo non
+   * vedrebbe.
+   */
+  processIDsDelPool() {
+    const ids = [];
+    try {
+      for (const c of (this.pool && this.pool._clients) || []) {
+        if (c && c.processID != null) ids.push(c.processID);
+      }
+    } catch { /* internals non disponibili */ }
+    return ids;
+  }
+
+  async killSession(id, modo) {
+    const pool = this.requirePool();
+    const pid = Number(String(id).trim());
+    if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Id di sessione non valido: "${id}".`);
+    // `pg_terminate_backend` chiude la connessione (la transazione in corso
+    // viene annullata dal server); `pg_cancel_backend` ferma la sola query e
+    // lascia in piedi sessione e transazione.
+    const fn = modo === 'connessione' ? 'pg_terminate_backend' : 'pg_cancel_backend';
+    const res = await pool.query(`SELECT ${fn}($1) AS esito`, [pid]);
+    const esito = !!(res.rows && res.rows[0] && res.rows[0].esito);
+    return { terminata: esito, modo: modo === 'connessione' ? 'connessione' : 'query' };
   }
 
   async cancelQuery(opHandle) {

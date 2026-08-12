@@ -4,6 +4,7 @@ const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const sessioni = require('./sessioni');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
@@ -686,6 +687,165 @@ class MySqlStrategy extends DbStrategy {
       } finally {
         if (readOnly) await conn.query('ROLLBACK').catch(() => {});
       }
+    } finally {
+      conn.release();
+    }
+  }
+
+  /* --- Monitor delle sessioni ---------------------------------------------
+   * `information_schema.PROCESSLIST`: senza il privilegio PROCESS il server non
+   * dà errore, restituisce le sole sessioni dell'utente collegato — una lista
+   * corta e perfettamente credibile. Si controllano quindi i grant e lo si
+   * dichiara, perché "nessuno sta bloccando il database" e "non ti è dato
+   * vedere chi lo sta bloccando" portano a decisioni opposte.
+   * ---------------------------------------------------------------------- */
+  async listSessions() {
+    const pool = this.requirePool();
+    const conn = await pool.getConnection();
+    try {
+      // ORDER BY … LIMIT sposta ordinamento e troncamento sul server: la riga
+      // che interessa (quella che gira da più tempo) è la prima, quindi non è
+      // mai fra quelle scartate dal tetto.
+      const [rows] = await conn.query(
+        `SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO
+           FROM information_schema.PROCESSLIST
+          ORDER BY TIME DESC
+          LIMIT ${sessioni.MAX_SESSIONI + 1}`
+      );
+
+      // I privilegi dell'utente della connessione non cambiano mentre il
+      // pannello è aperto: si chiedono una volta sola per connessione, invece
+      // che a ogni refresh (il pannello si aggiorna ogni 5 s, e sarebbe una
+      // query in più ogni volta solo per decidere il testo di una nota).
+      if (this._notaPrivilegi === undefined) {
+        this._notaPrivilegi = null;
+        try {
+          const [grants] = await conn.query('SHOW GRANTS FOR CURRENT_USER()');
+          const testo = grants.map((r) => Object.values(r)[0]).join('\n');
+          if (!/\b(PROCESS|ALL PRIVILEGES)\b/i.test(testo)) {
+            this._notaPrivilegi = 'Vengono mostrate solo le sessioni dell\'utente collegato: manca il privilegio PROCESS, necessario per vedere quelle degli altri utenti.';
+          }
+        } catch { /* SHOW GRANTS negato: si preferisce nessuna nota a una sbagliata */ }
+      }
+      const nota = this._notaPrivilegi;
+
+      const { coppie, saBloccanti, transazioni } = await this.attesePerLock(conn);
+      const troncato = rows.length > sessioni.MAX_SESSIONI;
+      const lista = sessioni.ordina(sessioni.collegaBlocchi(
+        sessioni.normalizzaMysql(rows.slice(0, sessioni.MAX_SESSIONI), {
+          threadIds: this.threadIdsDelPool(),
+          transazioni,
+        }),
+        coppie
+      ));
+      return {
+        sessioni: lista,
+        capacita: { annullaQuery: true, terminaConnessione: true, saBloccanti },
+        troncato,
+        nota,
+      };
+    } finally {
+      conn.release();
+    }
+  }
+
+  /**
+   * Coppie "chi aspetta → chi tiene il lock" per i lock InnoDB.
+   *
+   * Non è un di più: davanti a "il database è fermo" si vede la sessione in
+   * attesa, la si termina, e non cambia nulla — quella è la vittima. Il lock
+   * ce l'ha un'altra, spesso una connessione che non sta eseguendo niente e
+   * che quindi non compare fra le query lente.
+   *
+   * Due dialetti e nessuno dei due garantito: `performance_schema.data_lock_waits`
+   * esiste da MySQL 8, `information_schema.innodb_lock_waits` era la forma di
+   * 5.7 (e MariaDB); entrambe richiedono privilegi che l'utente della
+   * connessione può non avere. Il fallimento non è un errore da mostrare — il
+   * resto del pannello funziona benissimo lo stesso — ma nemmeno da nascondere:
+   * torna `saBloccanti: false`, e l'interfaccia dice che questo database non
+   * sa indicare il bloccante invece di far credere che non ce ne siano.
+   *
+   * Restano fuori i lock di METADATO ("Waiting for table metadata lock", il
+   * caso tipico di una ALTER dietro una transazione aperta): stanno in
+   * `performance_schema.metadata_locks`, con un'altra forma. Limite noto.
+   */
+  async attesePerLock(conn) {
+    const query = (sql) => conn.query(sql).then(([r]) => r);
+    const mappa = (rows) => rows
+      .filter((r) => r.attesa != null && r.blocca != null)
+      .map((r) => ({ attesa: String(r.attesa), blocca: String(r.blocca) }));
+
+    // Thread con una transazione aperta: su MySQL non c'è uno stato che lo
+    // dica (un `Sleep` con i lock in mano è indistinguibile da un `Sleep`
+    // qualunque), ed è proprio la sessione che finisce col bloccare tutti.
+    let transazioni = [];
+    try {
+      transazioni = (await query('SELECT trx_mysql_thread_id AS id FROM information_schema.innodb_trx'))
+        .map((r) => r.id).filter((v) => v != null);
+    } catch { /* privilegi mancanti: si rinuncia al dettaglio, non al pannello */ }
+
+    try {
+      return {
+        transazioni,
+        coppie: mappa(await query(
+          `SELECT r.trx_mysql_thread_id AS attesa, b.trx_mysql_thread_id AS blocca
+             FROM performance_schema.data_lock_waits w
+             JOIN information_schema.innodb_trx r ON r.trx_id = w.REQUESTING_ENGINE_TRANSACTION_ID
+             JOIN information_schema.innodb_trx b ON b.trx_id = w.BLOCKING_ENGINE_TRANSACTION_ID`
+        )),
+        saBloccanti: true,
+      };
+    } catch (_e8) {
+      try {
+        return {
+          transazioni,
+          coppie: mappa(await query(
+            `SELECT r.trx_mysql_thread_id AS attesa, b.trx_mysql_thread_id AS blocca
+               FROM information_schema.innodb_lock_waits w
+               JOIN information_schema.innodb_trx r ON r.trx_id = w.requesting_trx_id
+               JOIN information_schema.innodb_trx b ON b.trx_id = w.blocking_trx_id`
+          )),
+          saBloccanti: true,
+        };
+      } catch (_e57) {
+        return { transazioni, coppie: [], saBloccanti: false };
+      }
+    }
+  }
+
+  /**
+   * Id dei thread del NOSTRO pool. mysql2 non ha un'API pubblica per
+   * enumerarli (come per le statistiche del pool in `health()`): si leggono in
+   * modo difensivo i contatori interni. Un fallimento qui non è grave in sé ma
+   * lo diventa nell'interfaccia — le connessioni di CodeDB comparirebbero come
+   * terminabili — quindi l'assenza del dato vale "non lo so", e il monitor
+   * segnala comunque la connessione con cui sta interrogando (che è certa).
+   */
+  threadIdsDelPool() {
+    const ids = [];
+    try {
+      const raw = (this.pool && this.pool.pool) || this.pool;
+      const all = raw && raw._allConnections;
+      const arr = !all ? [] : (typeof all.toArray === 'function' ? all.toArray() : Array.from(all));
+      for (const c of arr) {
+        const id = c && (c.threadId != null ? c.threadId : (c.connection && c.connection.threadId));
+        if (id != null) ids.push(id);
+      }
+    } catch { /* internals non disponibili */ }
+    return ids;
+  }
+
+  async killSession(id, modo) {
+    const pool = this.requirePool();
+    // L'id arriva dal client: va usato come NUMERO in un comando che non
+    // ammette parametri preparati (`KILL` non li accetta), quindi se non è un
+    // intero non si costruisce alcuna stringa SQL con esso.
+    const num = Number(String(id).trim());
+    if (!Number.isInteger(num) || num <= 0) throw new Error(`Id di sessione non valido: "${id}".`);
+    const conn = await pool.getConnection();
+    try {
+      await conn.query(modo === 'connessione' ? `KILL CONNECTION ${num}` : `KILL QUERY ${num}`);
+      return { terminata: true, modo: modo === 'connessione' ? 'connessione' : 'query' };
     } finally {
       conn.release();
     }

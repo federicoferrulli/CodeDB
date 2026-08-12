@@ -1011,6 +1011,13 @@ console.log('--- Test Unitari CodeDB ---');
   // selettore CSS, quindi va trattato come dato ostile).
   require('./unit-tema');
 
+  // Test 27-quinquies: monitor delle sessioni del server di database. Le tre
+  // fonti ($currentOp, PROCESSLIST, pg_stat_activity) non si somigliano, e la
+  // normalizzazione sbagliata non produce una tabella storta ma un pulsante
+  // "Termina" accanto alla riga sbagliata. Nessun database: le righe di prova
+  // hanno la forma esatta di quelle vere.
+  require('./unit-sessioni');
+
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

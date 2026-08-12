@@ -4316,6 +4316,156 @@ button[aria-busy="true"] {
 .health-lat-good { background: var(--status-ok-bg); color: var(--status-ok); border: 1px solid var(--status-ok-bd); }
 .health-lat-warn { background: var(--status-warn-bg); color: var(--status-warn); border: 1px solid var(--status-warn-bd); }
 .health-lat-bad { background: var(--status-err-bg); color: var(--status-err); border: 1px solid var(--status-err-bd); }
+.health-warn { color: var(--status-warn); font-weight: 600; }
+
+/* Sessioni & Query attive sul server di database.
+   Nessun colore cablato: le famiglie --status-* sono le stesse del pannello
+   Salute, così i due gemelli restano leggibili in entrambi i temi. */
+/* Più larga della `modal-lg` standard: sette colonne, e quella che serve
+   davvero — il testo della query — è l'ultima a ricevere spazio. A 850 px si
+   riduceva a "SELEC…", cioè alla sola conferma che una query esiste. */
+#modal-sessions .modal.modal-lg { max-width: 1180px; }
+
+.sessions-toolbar { justify-content: flex-start; gap: 16px; flex-wrap: wrap; }
+.sessions-toolbar #btn-refresh-sessions { margin-left: auto; }
+.sessions-conn { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-dim); }
+.sessions-conn select { max-width: 220px; padding: 3px 6px; font-size: 0.82rem; }
+
+/* Il verdetto. Ha il peso visivo che aveva la tabella perché è la risposta:
+   la tabella è la prova, e si legge dopo. Il colore del bordo sinistro è
+   l'unico segnale di gravità — il testo resta sui token di leggibilità, come
+   per i grafici (un rosso leggibile come bordo non lo è come testo lungo). */
+.sessions-verdict {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  background: var(--ov-40);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--fg-muted);
+  border-radius: 6px;
+}
+.sessions-verdict:empty { display: none; }
+.sessions-verdict-titolo { font-size: 0.98rem; font-weight: 600; color: var(--fg); }
+.sessions-verdict-dettaglio { margin-top: 3px; font-size: 0.84rem; color: var(--fg-dim); }
+.sessions-verdict-azione { flex: 0 0 auto; }
+.sessions-verdict-ok { border-left-color: var(--status-ok); }
+.sessions-verdict-attenzione { border-left-color: var(--status-warn); background: var(--status-warn-bg); }
+.sessions-verdict-allarme { border-left-color: var(--status-err); background: var(--status-err-bg); }
+
+.sessions-note {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--status-warn-bg);
+  border: 1px solid var(--status-warn-bd);
+  border-radius: 6px;
+  font-size: 0.82rem;
+  color: var(--status-warn);
+}
+.sessions-note div + div { margin-top: 4px; }
+
+/* `fixed` non è un dettaglio di stile: senza, la colonna della query si
+   dimensiona sul contenuto (una SELECT lunga vale centinaia di pixel) e spinge
+   FUORI dalla finestra proprio la colonna delle azioni, cioè i pulsanti per
+   cui il pannello esiste. Con le larghezze dichiarate, l'unica colonna
+   elastica è la query — che è anche l'unica che si può accorciare senza
+   perdere nulla, visto che il testo intero resta nel `title`. */
+.sessions-table { font-size: 0.84rem; table-layout: fixed; width: 100%; }
+.sessions-table td { vertical-align: top; }
+.sessions-table th:nth-child(1), .sessions-table td:nth-child(1) { width: 62px; }
+.sessions-table th:nth-child(2), .sessions-table td:nth-child(2) { width: 150px; }
+.sessions-table th:nth-child(3), .sessions-table td:nth-child(3) { width: 96px; }
+.sessions-table th:nth-child(4), .sessions-table td:nth-child(4) { width: 124px; }
+.sessions-table th:nth-child(5), .sessions-table td:nth-child(5) { width: 92px; }
+.sessions-table th:nth-child(7), .sessions-table td:nth-child(7) { width: 210px; }
+/* Nomi utente e host lunghi non devono allargare una colonna a larghezza
+   fissa: si spezzano invece di sfondare. */
+.sessions-table td:nth-child(2), .sessions-table td:nth-child(3) { overflow-wrap: anywhere; }
+.sessions-id { font-family: var(--font-mono); color: var(--fg-dim); white-space: nowrap; }
+.sessions-table .health-lat { white-space: nowrap; }
+
+/* Una riga sola: una query da 4000 caratteri manderebbe la riga a coprire
+   mezzo schermo. Il testo intero resta nel `title`. */
+.sessions-query {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--fg-dim);
+}
+
+.sessions-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ov-80);
+  border: 1px solid var(--border);
+  font-size: 0.7rem;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* I due pulsanti stanno incolonnati: affiancati costringerebbero la colonna a
+   ~300 px, cioè a rubare alla query lo spazio che serve a capire cosa si sta
+   per fermare. Il motivo testuale (quando nessuna delle due azioni è
+   possibile) va a capo qui dentro, non in orizzontale. */
+.sessions-actions {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  font-size: 0.78rem;
+}
+.sessions-actions button { white-space: nowrap; }
+
+/* L'azione alternativa: raggiungibile, ma non alla pari con quella giusta per
+   lo stato della riga. Un secondo pulsante pieno le metterebbe sullo stesso
+   piano, ed è proprio la scelta che il pannello vuole fare per l'utente. */
+.sessions-alt {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--fg-dim);
+  font-size: 0.74rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  text-align: right;
+}
+.sessions-alt:hover { color: var(--fg); }
+.sessions-alt-off { font-size: 0.72rem; color: var(--fg-muted); }
+
+/* La riga di chi blocca gli altri: è quella su cui si agisce, e per stato può
+   essere la più tranquilla della tabella. */
+.sessions-row-blocca > td { background: var(--status-err-veil); }
+
+.sessions-hidden {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--fg-muted);
+}
+.sessions-hidden button {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  color: var(--fg-dim);
+  font-size: 0.78rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.sessions-hidden button:hover { color: var(--fg); }
+/* Un pulsante disabilitato qui non è "spento": ha sempre un `title` che dice
+   perché, ed è l'unica cosa che distingue una regola da un guasto. */
+.sessions-actions button[disabled] { opacity: 0.45; cursor: not-allowed; }
 
 /* ===================== Modalità Split-View Multi-Pannello ===================== */
 #workspace.split-active {

@@ -4,6 +4,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { isGeoJson } = require('./geometry');
+const sessioni = require('./sessioni');
 
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
@@ -251,6 +252,12 @@ class MongoDbStrategy extends DbStrategy {
     const client = new MongoClient(uri, {
       serverSelectionTimeoutMS: 6000,
       connectTimeoutMS: 6000,
+      // Presentarsi per nome al server non è cosmesi: è l'unico modo, nel
+      // monitor delle sessioni, di distinguere le connessioni di CodeDB da
+      // quelle degli altri client — cioè di non offrire all'utente il
+      // pulsante che ucciderebbe la propria scheda. Compare in $currentOp e
+      // nei log del server come `appName`.
+      appName: sessioni.APP_NAME,
     });
     await client.connect();
     // Force a round-trip so bad credentials fail here and not later.
@@ -764,6 +771,69 @@ class MongoDbStrategy extends DbStrategy {
     } catch (err) {
       return { cancelled: false };
     }
+  }
+
+  /* --- Monitor delle sessioni ---------------------------------------------
+   * `$currentOp` mostra solo le operazioni IN CORSO: MongoDB non ha un
+   * equivalente della connessione "addormentata" di MySQL o della sessione
+   * "idle in transaction" di PostgreSQL, e `idleConnections: false` lo rende
+   * esplicito invece di riempire la tabella di righe senza contenuto. Su un
+   * server tranquillo il monitor sarà quindi quasi vuoto: è la verità, non un
+   * malfunzionamento, e l'interfaccia lo dichiara nella nota.
+   * ---------------------------------------------------------------------- */
+  async listSessions() {
+    const client = this.requireClient();
+    const admin = client.db('admin');
+
+    let ops;
+    let nota = null;
+    try {
+      ops = await admin.aggregate([
+        { $currentOp: { allUsers: true, idleConnections: false, idleSessions: false } },
+      ]).toArray();
+    } catch (err) {
+      // `allUsers: true` richiede il privilegio `inprog` su cluster: senza, si
+      // ripiega sulle sole operazioni dell'utente collegato DICENDOLO. Restare
+      // in silenzio darebbe una lista corta e credibile — cioè la risposta
+      // sbagliata a "chi sta bloccando il database".
+      ops = await admin.aggregate([
+        { $currentOp: { allUsers: false, idleConnections: false, idleSessions: false } },
+      ]).toArray();
+      nota = 'Vengono mostrate solo le operazioni dell\'utente collegato: al ruolo manca il privilegio "inprog" sul cluster, necessario per vedere quelle degli altri utenti.';
+    }
+
+    // Si ordina PRIMA di troncare: al contrario si scarterebbero righe a caso,
+    // e fra quelle scartate ci sarebbe proprio l'operazione lenta che si sta
+    // cercando. Le fonti SQL ottengono lo stesso con ORDER BY … LIMIT.
+    const tutte = sessioni.ordina(sessioni.normalizzaMongo(ops));
+    const troncato = tutte.length > sessioni.MAX_SESSIONI;
+    const lista = tutte.slice(0, sessioni.MAX_SESSIONI);
+    return {
+      sessioni: lista,
+      // MongoDB sa fermare l'OPERAZIONE (killOp) ma non chiudere la
+      // connessione di un altro client: non esiste un comando che lo faccia.
+      // `saBloccanti: false` = non sa dire CHI tiene il lock che un'altra
+      // operazione sta aspettando (`waitingForLock` dice solo che aspetta):
+      // l'interfaccia lo dichiara invece di lasciar credere che non ci siano
+      // blocchi in corso.
+      capacita: { annullaQuery: true, terminaConnessione: false, saBloccanti: false },
+      troncato,
+      nota,
+    };
+  }
+
+  async killSession(id, modo) {
+    const client = this.requireClient();
+    if (modo === 'connessione') {
+      throw new Error('MongoDB non permette di chiudere la connessione di un altro client: si può solo annullare l\'operazione in corso.');
+    }
+    // L'opid è numerico sul server singolo e una stringa "shard:numero" via
+    // mongos: `killOp` accetta entrambe le forme, ma non la stringa "123" al
+    // posto del numero 123 — da qui la riconversione.
+    const raw = String(id);
+    const op = /^\d+$/.test(raw) ? Number(raw) : raw;
+    const res = await client.db('admin').command({ killOp: 1, op });
+    return { terminata: !!(res && res.ok), modo: 'query' };
   }
 
   // Piano di esecuzione: explain() sul find o sull'aggregate corrente,

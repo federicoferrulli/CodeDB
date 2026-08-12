@@ -535,6 +535,12 @@
           title="Stato di salute delle connessioni attive">
           <i data-lucide="activity"></i> Salute Connessioni
         </button>
+        <!-- Vicino a "Salute Connessioni" ma è un'altra cosa: là si guardano le
+             connessioni di CodeDB, qui TUTTE quelle del server di database. -->
+        <button id="btn-sessions" class="menu-item" type="button"
+          title="Sessioni e query in corso sul server di database">
+          <i data-lucide="gauge"></i> Sessioni &amp; Query
+        </button>
         <div class="menu-divider"></div>
         <button id="btn-admin-rbac" class="menu-item hidden" type="button"
           title="Gestione sottoutenti, permessi e API key">
@@ -1958,6 +1964,58 @@
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ============= Sessioni & Query del server di database =============
+       Il gemello "verso l'esterno" del pannello Salute: là le connessioni di
+       CodeDB, qui tutte quelle del server — comprese quelle di altre
+       applicazioni e i processi di servizio del DBMS.
+
+       La connessione da interrogare si sceglie dall'elenco dei tab aperti: il
+       monitor descrive un SERVER, non una collection, quindi legarlo al tab
+       attivo costringerebbe a cambiare scheda per guardare l'altro database.
+
+       Nessun `backdrop-filter` da disattivare qui: il pannello si ridisegna
+       ogni 5 s, non a ogni fotogramma come la mappa. -->
+  <div id="modal-sessions" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>🩺 Sessioni &amp; Query attive</h2>
+        <button type="button" id="btn-close-sessions-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Cosa sta girando adesso sul server di database, di chiunque sia. Le connessioni
+        aperte da CodeDB e i processi di servizio del server non sono terminabili.</p>
+
+      <div class="catalog-toolbar sessions-toolbar">
+        <label class="sessions-conn">
+          Connessione
+          <select id="sessions-conn-select"></select>
+        </label>
+        <label class="health-auto">
+          <input type="checkbox" id="sessions-only-active" checked> Solo attive
+        </label>
+        <label class="health-auto">
+          <input type="checkbox" id="sessions-auto-refresh" checked> Auto-refresh (5s)
+        </label>
+        <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+
+      <!-- Il verdetto: la riga che risponde alla domanda per cui si è aperto
+           il pannello, con il pulsante che agisce sulla sessione giusta. Sta
+           SOPRA la tabella perché nel caso che conta — qualcuno è bloccato —
+           la riga da colpire non è quella che salta all'occhio: la vittima è
+           ferma e visibile, chi tiene il lock spesso non sta eseguendo nulla. -->
+      <div id="sessions-verdict" class="sessions-verdict"></div>
+
+      <div id="sessions-note" class="sessions-note hidden"></div>
+      <div id="sessions-list" class="catalog-list-container"></div>
+      <!-- Ciò su cui non si può agire (connessioni di CodeDB, processi di
+           servizio) non sta nella tabella ma qui, contato in una riga: sono
+           righe che l'utente non può usare e che, moltiplicate per gli otto
+           slot del pool, sono quasi sempre la maggioranza dell'elenco. -->
+      <div id="sessions-hidden" class="sessions-hidden hidden"></div>
     </div>
   </div>
 

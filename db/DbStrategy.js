@@ -151,6 +151,32 @@ class DbStrategy {
    * @returns {Promise<{ cancelled: boolean }>}
    */
   async cancelQuery(_opHandle) { return { cancelled: false }; }
+
+  /**
+   * Sessioni e query attive sul SERVER di database — tutte, non solo quelle di
+   * CodeDB. È il pannello "chi sta occupando il database in questo momento",
+   * e la sua controparte è `killSession`.
+   *
+   * Il descrittore comune e le regole su cosa sia terminabile stanno in
+   * `db/sessioni.js`: le strategie si limitano a interrogare la propria fonte
+   * (`$currentOp`, `information_schema.PROCESSLIST`, `pg_stat_activity`) e a
+   * passare le righe grezze al normalizzatore.
+   *
+   * `capacita` dichiara cosa il DBMS sa davvero fare: MongoDB annulla
+   * l'operazione ma non chiude la connessione altrui, e l'interfaccia deve
+   * dirlo invece di offrire un pulsante che fallirà.
+   *
+   * @returns {Promise<{ sessioni: object[], capacita: { annullaQuery: boolean, terminaConnessione: boolean }, troncato?: boolean, nota?: string }>}
+   */
+  async listSessions() { throw unsupported(); }
+
+  /**
+   * Termina una sessione altrui sul server di database.
+   * @param {string} _id id della sessione (opid Mongo, thread MySQL, pid PG)
+   * @param {'query'|'connessione'} _modo annulla la sola operazione o chiude tutto
+   * @returns {Promise<{ terminata: boolean, modo: string }>}
+   */
+  async killSession(_id, _modo) { throw unsupported(); }
 }
 
 /* ---------------------------------------------------------------------------
