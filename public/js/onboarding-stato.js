@@ -61,10 +61,13 @@ export const TRAGUARDI = [
  */
 export const NOVITA = [
   {
-    versione: '0.1.0',
+    versione: '0.1.2-beta.1',
     punti: [
-      'Aggiornamenti automatici dell\'app desktop: menu CodeDB → “Controlla aggiornamenti…”.',
-      'Guida introduttiva e primi passi, richiamabili dal menu Impostazioni.',
+      'Aggiunto il monitoraggio delle connessioni attive e delle query in esecuzione, con la possibilità di annullare query lunghe o bloccanti',
+      'Il pannello Sessioni dice anche chi blocca chi: il verdetto in cima indica la sessione da fermare, non quella che sta subendo il blocco.',
+      'Temi chiaro, scuro e personalizzati: menu Impostazioni → Tema. Il tema personalizzato parte da 7 colori guida e avvisa quando il contrasto non è leggibile.',
+      '“Automatico” segue le impostazioni del sistema anche mentre l\'app è aperta, per chi passa a scuro al tramonto.',
+      'Scorrimento della griglia molto più fluido sui valori grandi: le celle con oggetti o JSON voluminosi non bloccano più il DOM.',
     ],
   },
 ];
