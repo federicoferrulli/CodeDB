@@ -262,6 +262,178 @@ function assertCreatableName(name, what = 'oggetto') {
 
 DbStrategy.assertCreatableName = assertCreatableName;
 
+/**
+ * Tipo SQL di una colonna, scritto dall'utente e interpolato nel DDL.
+ *
+ * Il NOME della colonna viene quotato (`qid`), il tipo no: non esiste un
+ * "escape per tipi", perché `VARCHAR(255)` o `TIMESTAMP WITH TIME ZONE` devono
+ * arrivare al motore come sintassi, non come stringa. L'unica difesa possibile
+ * è quindi pretendere che il testo ABBIA la forma di un tipo.
+ *
+ * Non è teoria. Su PostgreSQL le DDL passano da `pool.query(testo)` senza
+ * parametri, cioè dal SIMPLE QUERY PROTOCOL, che esegue tutte le istruzioni
+ * separate da `;` — lo stesso meccanismo che `auth/capabilities.js` documenta
+ * per la classificazione dell'SQL Raw. Un tipo come
+ *
+ *     text; CREATE ROLE evil SUPERUSER LOGIN PASSWORD 'x'; --
+ *
+ * trasformava quindi `column:add`/`column:alter` in esecuzione di SQL
+ * arbitrario: per un sottoutente con la sola capability `ddl` e uno scope
+ * limitato a una tabella era l'uscita completa dal proprio perimetro. Su MySQL
+ * `multipleStatements:false` ferma il punto e virgola, ma non le clausole
+ * aggiuntive — `INT, RENAME TO tabella_fuori_scope` in un `CHANGE COLUMN`
+ * sposta la tabella fuori dallo scope, cioè proprio ciò che `coll2` di
+ * `renameCollection` esiste per impedire.
+ *
+ * COSA SI AMMETTE: parole (lettere, cifre, `_`), separate da spazi, con
+ * eventuali argomenti fra parentesi — numeri, parole, virgole e literal fra
+ * apici singoli, perché `ENUM('a','b')` e `SET('x')` di MySQL e
+ * `geometry(Point,4326)` di PostGIS sono tipi legittimi — e il suffisso `[]`
+ * degli array PostgreSQL. Fuori dai literal restano vietati `;`, i quoting
+ * (`"`, backtick), la barra rovesciata e gli introduttori di commento: sono
+ * esattamente i caratteri che servono a uscire dalla posizione "tipo". La
+ * virgola è ammessa solo DENTRO le parentesi, perché a livello superiore è il
+ * separatore delle specifiche di un ALTER.
+ *
+ * DUE REGOLE DI POSIZIONE, che sono ciò che distingue un TIPO da un'ESPRESSIONE.
+ * Senza di esse i soli vincoli sui caratteri lasciavano passare
+ *
+ *     text USING pg_read_file('/etc/passwd')      (ALTER COLUMN … TYPE)
+ *     text DEFAULT pg_read_file('/etc/passwd')    (ADD COLUMN)
+ *
+ * cioè la valutazione di un'espressione arbitraria con l'utente DBMS della
+ * connessione, che porta il contenuto di un file dell'host dentro una colonna
+ * leggibile con una normale SELECT. Non è un residuo accettabile: è la stessa
+ * cosa che `isFileIoSql` vieta altrove proprio perché «il file finisce comunque
+ * fuori dal perimetro dello scope». Le regole:
+ *
+ *  1. **I literal stanno solo dentro le parentesi.** Nei tipi veri compaiono
+ *     unicamente come argomenti (`ENUM('a','b')`, `SET('x')`); a livello
+ *     superiore un literal è per forza il valore di una clausola.
+ *  2. **Un solo gruppo di parentesi, e attaccato alla prima o alla seconda
+ *     parola.** È dove sta negli argomenti di un tipo — `VARCHAR(255)`,
+ *     `timestamp(3) with time zone`, `character varying(50)`, `bit varying(8)`
+ *     — mentre una chiamata di funzione in coda a una clausola cade sempre
+ *     dalla terza parola in poi. Blocca anche `REFERENCES altra(id)` e
+ *     `GENERATED ALWAYS AS (…) STORED`.
+ *
+ * LIMITE DICHIARATO, ora piccolo: restano possibili le clausole di sole parole
+ * (`text NOT NULL`, `int PRIMARY KEY`, `text UNIQUE`). Non valutano nulla, non
+ * nominano altri oggetti e agiscono sulla stessa tabella già dentro lo scope.
+ * Per un sottoutente con `ddl` la barriera di fondo resta comunque quella
+ * dichiarata altrove: aprirgli la connessione con un utente DBMS a privilegi
+ * ridotti.
+ */
+const MAX_TYPE_LEN = 200;
+
+function assertColumnType(type, what = 'colonna') {
+  const s = String(type == null ? '' : type).trim();
+  if (!s) throw new Error(`Tipo della ${what} mancante.`);
+
+  const rifiuta = (perche) => {
+    throw new Error(
+      `Tipo di ${what} non valido: "${s.slice(0, 80)}" — ${perche}. ` +
+      'Sono ammessi i tipi SQL nella forma normale (es. INT, VARCHAR(255), ' +
+      'DECIMAL(10,2), TIMESTAMP WITH TIME ZONE, TEXT[], ENUM(\'a\',\'b\')). ' +
+      'Per una definizione più complessa usa la tab ⚡ Query & Aggregate con un ALTER TABLE esplicito.'
+    );
+  };
+
+  if (s.length > MAX_TYPE_LEN) rifiuta(`supera i ${MAX_TYPE_LEN} caratteri`);
+
+  let profondita = 0;
+  let parole = 0;          // parole incontrate a livello superiore
+  let gruppi = 0;          // gruppi di parentesi aperti a livello superiore
+  let inParola = false;    // si sta attraversando una parola (per contarle una volta)
+  let ultimaParola = '';   // ultima parola di livello superiore, per la regola 2
+
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const eCarattereDiParola = /[A-Za-z0-9_]/.test(c);
+    if (profondita === 0) {
+      if (eCarattereDiParola) {
+        if (!inParola) { parole++; ultimaParola = ''; }
+        ultimaParola += c;
+      }
+      inParola = eCarattereDiParola;
+    }
+
+    // Literal fra apici singoli: il contenuto è un DATO (i valori di ENUM/SET),
+    // quindi non lo si ispeziona — ma lo si deve attraversare correttamente,
+    // apici raddoppiati compresi, o il resto dell'analisi guarderebbe il testo
+    // sbagliato. La barra rovesciata è vietata ovunque proprio perché in MySQL
+    // sarebbe un escape e permetterebbe di non chiudere mai il literal.
+    if (c === "'") {
+      // Fuori dalle parentesi un literal non è mai parte di un tipo: è il
+      // valore di una clausola (`text DEFAULT 'x'`). Vedi la regola 1.
+      if (profondita === 0) rifiuta("un valore fra apici può comparire solo fra parentesi, come argomento del tipo");
+      i++;
+      for (;;) {
+        if (i >= s.length) rifiuta('un apice non è mai chiuso');
+        if (s[i] === "'") {
+          if (s[i + 1] === "'") { i += 2; continue; }
+          break;
+        }
+        if (s[i] === '\\') rifiuta('la barra rovesciata non è ammessa');
+        i++;
+      }
+      continue;
+    }
+
+    if (c === '(') {
+      // Regola 2: un solo gruppo, e attaccato al NOME DEL TIPO.
+      //
+      // Normalmente è la prima parola (`VARCHAR(255)`, `timestamp(3) with time
+      // zone`). L'unica eccezione reale è `varying`, che completa il nome di due
+      // tipi standard — `character varying(50)` e `bit varying(8)` — ed è
+      // esattamente la forma che `information_schema.columns` restituisce su
+      // PostgreSQL, cioè quella che pre-riempie il form di modifica: escluderla
+      // significherebbe rifiutare il tipo che CodeDB stesso propone.
+      //
+      // Senza il vincolo sulla parola, `parole <= 2` lasciava passare
+      // `text USING (pg_read_file('/etc/passwd'))` e `text USING (SELECT … FROM
+      // segreti)`: `USING` occupava la seconda posizione e la parentesi
+      // successiva sembrava un elenco di argomenti.
+      if (profondita === 0) {
+        if (gruppi >= 1) rifiuta('un tipo ha al massimo un elenco di argomenti fra parentesi');
+        if (parole > 2 || (parole === 2 && ultimaParola.toLowerCase() !== 'varying')) {
+          rifiuta('le parentesi seguono il nome del tipo, non una clausola successiva');
+        }
+        gruppi++;
+      }
+      profondita++;
+      // Nessun tipo ha argomenti annidati: la profondità 2 è sempre una
+      // chiamata di funzione o una sotto-query dentro una clausola. Seconda
+      // rete, indipendente dal conteggio delle parole.
+      if (profondita > 1) rifiuta('gli argomenti di un tipo non contengono altre parentesi');
+      continue;
+    }
+    if (c === ')') {
+      profondita--;
+      if (profondita < 0) rifiuta('le parentesi non sono bilanciate');
+      continue;
+    }
+    // La virgola è legittima SOLO fra parentesi (`DECIMAL(10,2)`,
+    // `geometry(Point,4326)`, `ENUM('a','b')`). A livello superiore è invece il
+    // separatore delle specifiche di un ALTER: `INT, RENAME TO altra_tabella`
+    // in un `CHANGE COLUMN` di MySQL sposta la tabella fuori dallo scope, ed è
+    // il vettore che sopravvive anche con `multipleStatements:false`.
+    if (c === ',') {
+      if (profondita === 0) rifiuta('la virgola può comparire solo fra parentesi');
+      continue;
+    }
+    if (c === '[' || c === ']' || c === '.' || c === ' ') continue;
+    if (/[A-Za-z0-9_]/.test(c)) continue;
+
+    rifiuta(`il carattere "${c}" non è ammesso in un tipo`);
+  }
+  if (profondita !== 0) rifiuta('le parentesi non sono bilanciate');
+
+  return s;
+}
+
+DbStrategy.assertColumnType = assertColumnType;
+
 // Tetto massimo di righe/documenti restituiti da una lettura. Il default (500)
 // preserva il comportamento della griglia paginata; il Query Engine passa un
 // `payload.maxRows` più alto per non troncare i risultati di una query

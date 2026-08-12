@@ -3237,11 +3237,19 @@ io.on('connection', (socket) => {
       const adesso = Date.now();
       if (!importante && adesso - ultimoInvio < SCRIPT_PROGRESS_MS) return;
       ultimoInvio = adesso;
+      // Il RESOCONTO completo solo negli eventi terminali: allegarlo a ogni
+      // avanzamento significava rispedire fino a 500 istruzioni col loro testo
+      // a ogni push, e gli errori — che non vengono diradati né scartati —
+      // rendevano il traffico quadratico nella lunghezza dello script (vedi
+      // ScriptRunner.state). L'evento porta comunque il proprio `result`, che è
+      // ciò che il pannello aggiunge al log riga per riga; chi ha bisogno del
+      // resoconto intero (ripristino dopo un F5) lo chiede con `script:state`.
+      const terminale = ev.tipo === 'done' || ev.tipo === 'paused' || ev.tipo === 'aborted';
       socket.emit('script:progress', {
         tabId: tab,
         ...ev,
-        stato: run.state(),
-        ...(ev.tipo === 'done' || ev.tipo === 'paused' ? { ultimoRisultato: holder.last } : {}),
+        stato: run.state({ conResults: terminale }),
+        ...(terminale ? { ultimoRisultato: holder.last } : {}),
       });
     };
   }
@@ -3319,7 +3327,7 @@ io.on('connection', (socket) => {
     // le istruzioni dell'utente, quindi vale il dialetto vero della connessione
     // (su MySQL la barra rovesciata dentro un literal è un escape, su
     // PostgreSQL no — vedi la nota in db/sqlText.js).
-    const dialetto = { backslashEscape: (sess.dbType || '') === 'mysql' };
+    const dialetto = { backslashEscape: (session.dbType || '') === 'mysql' };
     const statements = jsMongo
       ? [{ sql: codeStr, line: 1 }]
       : splitStatementsDetailed(codeStr, dialetto).filter((st) => stripSqlNoise(st.sql, dialetto).trim().length > 0);

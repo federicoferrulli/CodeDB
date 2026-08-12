@@ -167,13 +167,25 @@ function splitStatementsDetailed(sql, { backslashEscape = false } = {}) {
   let i = 0;
   let stmtStart = 0;
 
-  // Riga del carattere `pos` (1-based), calcolata solo quando serve emettere
-  // un'istruzione: contare le newline a ogni carattere sarebbe sprecato su file
-  // da megabyte.
+  // Riga del carattere `pos` (1-based).
+  //
+  // Il conteggio è INCREMENTALE e non riparte da capo a ogni istruzione: le
+  // chiamate arrivano in ordine crescente di `pos` (si emette un'istruzione
+  // dopo l'altra), quindi basta ricordare dove si era arrivati. Ripartire da
+  // zero rendeva la divisione quadratica — `O(N × L)` — e non su un percorso
+  // raro: `splitStatements` è usata da `isWriteSql`, cioè da OGNI
+  // `collection:aggregate` e `query:execute` su MySQL/PostgreSQL. Un testo di
+  // 2,5 MB fatto di `a;` ripetuto vale ~10¹² passi in un ciclo sincrono che non
+  // cede mai il controllo: il processo si ferma e non torna più, portandosi via
+  // tutte le sessioni, il gateway MCP e la finestra dell'app desktop.
+  // Il gemello client (`public/js/sql-split.js`) tiene la riga così da sempre.
+  let ultimaPos = 0;
+  let ultimaRiga = 1;
   const lineAt = (pos) => {
-    let line = 1;
-    for (let k = 0; k < pos && k < s.length; k++) if (s[k] === '\n') line++;
-    return line;
+    const fine = Math.min(pos, s.length);
+    for (let k = ultimaPos; k < fine; k++) if (s[k] === '\n') ultimaRiga++;
+    if (fine > ultimaPos) ultimaPos = fine;
+    return ultimaRiga;
   };
 
   const push = (end) => {

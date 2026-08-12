@@ -30,7 +30,7 @@ import { initHealth } from './health.js';
 import { initSessions } from './sessions.js';
 import { initSessionPersistence } from './session-restore.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
-import { initSplitView } from './splitview.js';
+import { initSplitView, splitInPrimoPiano, contestoPaneAFuoco, mostraPannelliAffiancati } from './splitview.js';
 import { initAdminRbac } from './admin-rbac.js';
 import { initPendingQueries } from './pending-queries.js';
 import { initScriptRun } from './script-run.js';
@@ -49,6 +49,28 @@ if ('serviceWorker' in navigator) {
 
 
 export function setView(view) {
+  // Con la Split-View aperta le viste non sono alternative ai pannelli, sono
+  // alternative FRA LORO su un pannello: Dettagli, UML e Query descrivono una
+  // collection, e quella da descrivere è quella del pannello a fuoco. La tab
+  // "Affiancati" riporta ai pannelli.
+  // Solo se l'area affiancata è il coll-tab ATTIVO: i pannelli restano vivi
+  // anche mentre si guarda un'altra collection, ma da lì non devono più
+  // decidere né la vista né il bersaglio.
+  if (splitInPrimoPiano()) {
+    if (view === 'split' || view === 'data') {
+      // I pannelli sono la vista dati: "Dati" non ha una griglia propria da
+      // mostrare qui (la sua tab è nascosta, vedi applyViewTabsFor).
+      view = 'split';
+      mostraPannelliAffiancati(true);
+    } else {
+      const ctx = contestoPaneAFuoco();
+      if (ctx) { state.db = ctx.db; state.coll = ctx.coll; }
+      mostraPannelliAffiancati(false);
+    }
+  } else if (view === 'split') {
+    return; // nessuna area affiancata da mostrare
+  }
+
   state.view = view;
   document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view-menu-item').forEach((t) => t.classList.toggle('active', t.dataset.view === view));

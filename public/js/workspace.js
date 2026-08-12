@@ -5,7 +5,9 @@ import { activeTab } from './tabs.js';
 import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
 import { renderDbTree, refreshDbTree } from './dbtree.js';
 import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
-import { renderCollTabBar, applyViewTabsFor } from './colltabs.js';
+import {
+  renderCollTabBar, applyViewTabsFor, currentCollTab, salvaSnapshotQuery, applicaSnapshotQuery,
+} from './colltabs.js';
 import { deactivateSplitView, renderSplitView, discardSplitViewIfOrphan } from './splitview.js';
 import { setView } from './main.js';
 
@@ -13,10 +15,12 @@ import { setView } from './main.js';
 // dallo stato del tab attivo. Mentre un tab è attivo la verità per gli input è
 // il DOM: lo snapshot nello stato avviene solo al momento di lasciare il tab.
 
-// La Split-View stacca dal DOM tutti i figli di #workspace (toolbar e viste
-// comprese) e li conserva finché non la si chiude: mentre è attiva gli id della
-// toolbar NON esistono e ogni $('#…') qui dentro sarebbe null.
-function splitDomDetached() {
+// La Split-View non stacca più i figli di #workspace (li nasconde il CSS),
+// quindi gli id della toolbar esistono sempre. Resta però vero che i loro valori
+// appartengono al coll-tab lasciato entrando nell'area affiancata: sovrascrivere
+// lo snapshot con quelli significherebbe congelare il filtro di un altro
+// momento.
+function splitAttiva() {
   const ws = $('#workspace');
   return !!ws && ws.classList.contains('split-active');
 }
@@ -24,9 +28,13 @@ function splitDomDetached() {
 export function saveWorkspaceInputs() {
   const tab = activeTab();
   if (!tab || !tab.state.connected) return;
-  // Con la Split-View attiva gli input non sono nel DOM: lo snapshot del
-  // coll-tab precedente è già stato preso quando si è passati all'area affiancata.
-  if (splitDomDetached()) return;
+  // Lo snapshot del coll-tab precedente è già stato preso quando si è passati
+  // all'area affiancata: gli input a schermo ora non descrivono alcun coll-tab.
+  if (splitAttiva()) return;
+  // Il codice della tab ⚡ segue il coll-tab come già filtro e sort: questa è
+  // la funzione che significa "sto lasciando questo tab", quindi è qui che va
+  // conservato (`activate` non viene richiamata al cambio di tab di connessione).
+  salvaSnapshotQuery(currentCollTab());
   const s = tab.state;
   s.filter = $('#filter-input').value;
   s.sort = $('#sort-input').value;
@@ -42,11 +50,13 @@ export function renderWorkspace() {
   // Il tab che ospitava l'area affiancata è stato chiuso: lo stato dei pannelli
   // è orfano, va buttato (altrimenti resterebbe agganciato a sessioni morte).
   discardSplitViewIfOrphan();
-  // La Split-View è del tab attivo solo se il suo coll-tab è quello attivo:
-  // in ogni altro caso (cambio tab, chiusura, disconnessione) i figli di
-  // #workspace vanno RIMESSI prima di toccarne gli id, altrimenti sono null.
-  const splitCt = connected && tab.state.collTabs.find((c) => c.isSplitTab);
-  const splitActive = !!(splitCt && splitCt.id === tab.state.activeCollId);
+  // La Split-View è del tab attivo solo se il suo coll-tab è quello attivo: in
+  // ogni altro caso (cambio tab, chiusura, disconnessione) i pannelli vanno
+  // tolti di mezzo, altrimenti resterebbero a schermo sopra un'altra connessione.
+  // Le aree affiancate possono essere più d'una: quella da disegnare è quella
+  // del coll-tab ATTIVO, non la prima che si trova nell'elenco.
+  const attivoCt = connected && tab.state.collTabs.find((c) => c.id === tab.state.activeCollId);
+  const splitActive = !!(attivoCt && attivoCt.isSplitTab);
   if (!splitActive) deactivateSplitView();
 
   $('#welcome').classList.toggle('hidden', connected);
@@ -70,12 +80,17 @@ export function renderWorkspace() {
   }
   renderCollTabBar();
 
-  // Area Split-View attiva: la toolbar e le viste normali non sono nel DOM,
-  // si ridisegnano i pannelli affiancati e si esce.
+  // Area Split-View attiva: si ridisegnano i pannelli affiancati e si esce
+  // (toolbar e viste normali restano in pagina, nascoste dal CSS).
   if (splitActive) {
     renderSplitView();
     return;
   }
+
+  // Cambio di TAB DI CONNESSIONE: `activate` non viene richiamata, quindi la
+  // pulizia della vista ⚡ passa da qui. Senza, risultati, grafico, metriche e
+  // pannello script di un server restavano a schermo sotto il nome di un altro.
+  applicaSnapshotQuery(currentCollTab());
 
   applyDbTypeToWorkspace();
   $('#query-mode').value = state.queryMode || 'find';

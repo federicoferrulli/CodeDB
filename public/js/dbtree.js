@@ -183,6 +183,9 @@ export function renderCollectionsList(dbName, container, collections) {
       showContextMenu(e.clientX, e.clientY, [
         { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name) },
         { label: '🔲 Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
+        // Stando già dentro un'area affiancata, la voce sopra aggiunge un
+        // pannello lì: questa è l'unico modo di aprirne una seconda.
+        { label: '🔲 Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
         { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
         { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
         '---',

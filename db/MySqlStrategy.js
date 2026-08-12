@@ -89,6 +89,11 @@ function columnSql(c) {
   const name = String((c && c.name) || '').trim();
   const type = String((c && c.type) || '').trim();
   if (!name || !type) throw new Error('Ogni colonna deve avere nome e tipo.');
+  // Il nome è quotato, il tipo NON può esserlo (deve arrivare al motore come
+  // sintassi): l'unica difesa è pretendere che abbia la forma di un tipo, o
+  // `INT, RENAME TO altra_tabella` in un CHANGE COLUMN porta la tabella fuori
+  // dallo scope di chi ha la sola capability `ddl`. Vedi DbStrategy.
+  DbStrategy.assertColumnType(type);
   let s = `${qid(name)} ${type}`;
   if (c.nullable === false) s += ' NOT NULL';
   if (c.default != null && String(c.default).trim() !== '') s += ` DEFAULT ${defaultSql(c.default)}`;
@@ -703,13 +708,23 @@ class MySqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const conn = await pool.getConnection();
     try {
-      // ORDER BY … LIMIT sposta ordinamento e troncamento sul server: la riga
-      // che interessa (quella che gira da più tempo) è la prima, quindi non è
-      // mai fra quelle scartate dal tetto.
+      // ORDER BY … LIMIT sposta ordinamento e troncamento sul server, così la
+      // riga che interessa non è mai fra quelle scartate dal tetto.
+      //
+      // Il solo `TIME DESC` non bastava, e sbagliava nel verso peggiore: in
+      // PROCESSLIST `TIME` è il tempo trascorso nello STATO CORRENTE, che per un
+      // thread `Sleep` è da quanto è inattivo. Su un server con centinaia di
+      // connessioni applicative aperte da ore le prime 500 righe erano tutte
+      // `Sleep`, e la query che gira da quaranta secondi — l'unica ragione per
+      // cui questo pannello viene aperto — cadeva oltre il tetto: non compariva
+      // in tabella e non entrava in `diagnosi()`, che rispondeva «nessuna query
+      // lenta». Un verdetto falso, non incompleto. Le sessioni che stanno
+      // facendo qualcosa vengono quindi prima, e solo dentro quei due gruppi
+      // conta la durata.
       const [rows] = await conn.query(
         `SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO
            FROM information_schema.PROCESSLIST
-          ORDER BY TIME DESC
+          ORDER BY (COMMAND <> 'Sleep') DESC, TIME DESC
           LIMIT ${sessioni.MAX_SESSIONI + 1}`
       );
 

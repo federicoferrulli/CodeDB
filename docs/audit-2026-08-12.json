@@ -1,0 +1,155 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-08-12",
+  "versione_analizzata": "0.1.2-beta.1",
+  "tipo": "audit di piattaforma (analisi statica) — passata mirata sul codice entrato dopo la chiusura di docs/audit-2026-08-10.json, più una riverifica dei confini di fiducia (trasporto, RBAC, vault, percorsi di backup, gate SQL del gateway MCP)",
+  "riepilogo": {
+    "totale": 6,
+    "critica": 0,
+    "alta": 3,
+    "media": 2,
+    "bassa": 1
+  },
+  "note_revisione": [
+    {
+      "data": "2026-08-12",
+      "cosa": "Audit richiesto da Keus su tutta la codebase, landing/ esclusa. I cinque audit precedenti (2026-07-31 → 2026-08-10) risultano chiusi: tutti i 66 rilievi hanno stato «risolto» e le correzioni sono state riscontrate nel codice. La passata si è concentrata sui confini di fiducia e sui tre commit entrati dopo l'ultima chiusura (064a7b7 backup/geo, f0ddd7a rendering celle, 2eaec3a temi, 9a84a13 monitor sessioni), da cui provengono tre dei sei rilievi. Tutti i rilievi sono stati corretti nella stessa sessione e verificati: npm test verde (exit 0), npm run impronte 62/62, prove mirate sui due validatori nuovi.",
+      "aggiunti": ["CDB-A67", "CDB-A68", "CDB-A69", "CDB-A70", "CDB-A71", "CDB-A72"]
+    }
+  ],
+  "ambito_analizzato": [
+    "server.js — letto integralmente (trasporto, gate Origin, vault, RBAC, delegate, query/script, backup, shutdown)",
+    "auth/ — capabilities.js, guardStrategy.js, permissions.js, sqlTables.js letti integralmente",
+    "db/ — sqlText.js, vault.js, sessioni.js, ScriptRunner.js, DbStrategy.js (helper statici) letti integralmente; MySqlStrategy.js e PostgreSqlStrategy.js sui percorsi DDL, monitor sessioni, quoting e kill",
+    "backup/lib/policy.js — confinamento percorsi, alias storage, webhook",
+    "mcp/McpGateway.js — guardie SQL di lettura e scrittura, gate API key, flusso di conferma",
+    "public/js/ — valori.js, theme.js, theme-colori.js (validazione dei temi importati), sessions.js (escaping e disegno), sql-split.js",
+    "docs/audit-2026-07-31 → 2026-08-10 — riscontro della chiusura dei rilievi precedenti"
+  ],
+  "ambito_non_analizzato": [
+    "landing/ — escluso su richiesta di Keus",
+    "public/vendor/ (Leaflet, ECharts, Three.js/ForceGraph3D): librerie di terze parti non modificate",
+    "Frontend, moduli di presentazione non letti riga per riga: graph3d.js, query-tab.js, charts.js/chart-option.js, geomap.js/geomulti.js/geo-stats.js, splitview.js, pending-queries.js, exportimport.js, admin-rbac.js, onboarding*.js, grid.js, cellselect.js. Di alcuni è stato campionato l'escaping nei punti innerHTML; non la correttezza di ciò che disegnano né i percorsi di scrittura, già coperti da CDB-A18 e CDB-A31 dell'audit precedente",
+    "db/MongoScript.js e db/MongoScriptRunner.js: non riletti (coperti dall'audit 2026-08-10, rilievi CDB-A44..A51)",
+    "mcp/McpGateway.js: risorse (schema://, graph://), prompts e strumenti analitici non riletti",
+    "backup/lib/engine.js e restore.js oltre alla politica dei percorsi; backup/cli.js; tools/; electron-*.js; test/",
+    "Nessuna esecuzione contro risorse reali: nessun server avviato, nessuna suite e2e, nessun accesso a database, vault o connections.ini reali. Le esecuzioni sono state: git log, il caricamento dei moduli modificati, npm test (sole suite unitarie, nessun database), npm run impronte e tre script di prova su funzioni pure in una cartella temporanea"
+  ],
+  "finding": [
+    {
+      "id": "CDB-A67",
+      "severita": "alta",
+      "titolo": "Il tipo di colonna arriva grezzo nel DDL: su PostgreSQL il simple query protocol lo trasforma in SQL arbitrario",
+      "categoria": "injection / bypass dello scope",
+      "modulo": "db/PostgreSqlStrategy.js (variante ridotta in db/MySqlStrategy.js)",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:105-121",
+        "db/PostgreSqlStrategy.js:1302-1306",
+        "db/PostgreSqlStrategy.js:1308-1338",
+        "db/MySqlStrategy.js:88-97",
+        "db/MySqlStrategy.js:1242-1261"
+      ],
+      "problema": "columnSql() interpola il tipo come è arrivato dal client — `let s = `${qid(name)} ${type}`` — e alterColumn lo mette anche in `ALTER COLUMN … TYPE ${type}` e nel ripiego `USING …::${type}`. Il NOME è quotato con qid, il TIPO no. Queste query vanno a pool.query(testo) senza parametri, cioè in simple query protocol, che su PostgreSQL esegue tutte le istruzioni separate da `;`. È esattamente il meccanismo che auth/capabilities.js:26-31 documenta per giustificare la classificazione multi-statement dell'SQL Raw: la lezione era stata applicata al Query Engine ma non ai costruttori DDL. Su MySQL multipleStatements:false ferma il punto e virgola, ma non la virgola, che nella grammatica di ALTER apre una nuova specifica.",
+      "scenario": "Un sottoutente con capability `ddl` e scope {databases:['public'], collections:['ordini']} emette column:alter { db:'public', coll:'ordini', oldName:'nota', column:{ name:'nota', type:\"text; CREATE ROLE evil SUPERUSER LOGIN PASSWORD 'x'; --\" } }. can() passa (il bersaglio è nello scope) e assertTabelleNelloScope non è coinvolta (non è SQL Raw): il server esegue `ALTER TABLE public.ordini ALTER COLUMN \"nota\" TYPE text; CREATE ROLE evil SUPERUSER …`. Lo scope è aggirato del tutto. Su MySQL lo stesso campo con type = 'INT, RENAME TO tabella_fuori_scope' in un CHANGE COLUMN sposta la tabella fuori dal perimetro, che è ciò che spec.coll2 di renameCollection esiste per impedire.",
+      "fix": "Nuova DbStrategy.assertColumnType(): pretende che il testo abbia la FORMA di un tipo. Vincoli sui caratteri (niente `;`, quoting, barra rovesciata, introduttori di commento; virgola solo dentro le parentesi) PIÙ due regole di posizione, che sono ciò che distingue un tipo da un'espressione: i literal stanno solo dentro le parentesi, e il gruppo di parentesi è uno solo e attaccato al nome del tipo (prima parola, o seconda quando è `varying`). Come rete indipendente, nessuna parentesi annidata. Chiamata dai due columnSql e, separatamente, dal ramo ALTER COLUMN … TYPE di PostgreSQL, che non passa da columnSql.",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12 in due passaggi. La prima stesura, coi soli vincoli sui caratteri, lasciava aperta la valutazione di ESPRESSIONI — `text USING pg_read_file('/etc/passwd')`, `text DEFAULT …`, `text REFERENCES altra(id)`, `text USING (SELECT p FROM segreti)` — che non esegue istruzioni aggiuntive ma porta un file dell'host o una tabella fuori scope dentro una colonna leggibile con una normale SELECT: la stessa cosa che isFileIoSql vieta altrove, quindi non un residuo accettabile. Chiusa con le due regole di posizione. Verifica finale: 30 tipi reali dei tre DBMS accettati (compreso `character varying`, la forma che information_schema restituisce al form di modifica su PostgreSQL) e 22 payload ostili bloccati. Aggiunto test/unit-tipi-colonna.js, incluso in npm test: questa classe di difetto non aveva alcuna copertura, ed è il motivo per cui è vissuta a lungo. Limite residuo, ora piccolo e dichiarato: le clausole di sole parole (`text NOT NULL`, `int PRIMARY KEY`) restano possibili — non valutano nulla, non nominano altri oggetti e agiscono sulla stessa tabella già dentro lo scope."
+    },
+    {
+      "id": "CDB-A68",
+      "severita": "alta",
+      "titolo": "La divisione degli statement è quadratica: una sola richiesta blocca il processo in modo permanente",
+      "categoria": "denial of service",
+      "modulo": "db/sqlText.js",
+      "riferimenti": [
+        "db/sqlText.js:173-186",
+        "db/sqlText.js:242-249",
+        "auth/capabilities.js:68-78",
+        "server.js:2291"
+      ],
+      "problema": "lineAt(pos) contava le newline ripartendo dall'inizio del testo a ogni istruzione emessa: costo O(N × L). Non è un percorso raro — splitStatements() alimenta isWriteSql(), quindi eventCapability() in delegate(), resolveCapability() del Proxy autorizzante e classifyAudit(): OGNI collection:aggregate e query:execute su MySQL/PostgreSQL ci passa. Il ciclo è sincrono e non cede mai il controllo all'event loop, quindi nessun timeout può interromperlo (CODEDB_QUERY_TIMEOUT_MS agisce sul database) e uncaughtException non è coinvolto. Il gemello client public/js/sql-split.js:37 teneva già la riga in modo incrementale, che è la forma corretta.",
+      "scenario": "Un utente con la sola capability `read` su una connessione MySQL incolla nella casella SQL Raw il testo 'a;' ripetuto 400.000 volte (800 KB, ben sotto il maxHttpBufferSize di 5 MB) ed esegue. Misurato: l'algoritmo precedente impiega ~5 minuti di ciclo sincrono su quel testo (estrapolato da 58/196/748 ms su 5k/10k/20k istruzioni, andamento quadratico confermato); a 5 MB si va nelle ore. Per tutta la durata cadono le sessioni Socket.IO di ogni utente, il gateway MCP e — nell'app desktop — la finestra Electron; i backup in corso si interrompono. Il processo non si riprende da solo e un supervisore esiste solo in Docker.",
+      "fix": "Conteggio incrementale: le chiamate a lineAt arrivano in ordine crescente di pos (si emette un'istruzione dopo l'altra), quindi basta ricordare ultima posizione e ultima riga e riprendere da lì. Guardia contro una chiamata non monotòna per non ciclare all'indietro.",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12. Stesso testo di 800 KB / 400.000 istruzioni: 42 ms per splitStatementsDetailed e 43 ms per isWriteSql (prima ~5 minuti). Numeri di riga verificati identici su un campione con commenti, literal contenenti `;` e istruzioni multi-riga."
+    },
+    {
+      "id": "CDB-A69",
+      "severita": "alta",
+      "titolo": "Gateway MCP: la sola lettura non copre LOAD_FILE()/LOAD DATA, e il divieto di INTO OUTFILE si aggira con un commento",
+      "categoria": "bypass di autorizzazione / I-O su filesystem",
+      "modulo": "mcp/McpGateway.js",
+      "riferimenti": [
+        "mcp/McpGateway.js:92-105",
+        "auth/capabilities.js:45-66",
+        "auth/guardStrategy.js:145-167"
+      ],
+      "problema": "Il gate MCP era una seconda copia, più debole, del controllo che auth/capabilities.js fa correttamente. Due differenze: (a) la regex /\\binto\\s+(outfile|dumpfile)\\b/i girava sul testo GREZZO, mentre isFileIoSql normalizza prima con stripSqlNoise, quindi un INTO seguito da un commento invece che da uno spazio la aggirava (MySQL lo accetta); (b) LOAD DATA e LOAD_FILE( non erano nell'elenco, e mentre LOAD come primo token è fermato dalla whitelist, `SELECT LOAD_FILE(…)` comincia per SELECT e passa. La transazione READ ONLY non ferma nessuno dei due: leggere o scrivere un file non è un'operazione transazionale. Il Proxy autorizzante coprirebbe entrambi i casi, ma solo per i principal NON owner (guardStrategy.js:158): la configurazione tipica di MCP — RBAC spento, oppure API key dell'owner — non lo attraversa.",
+      "scenario": "Un client AI collegato a /mcp su una connessione MySQL chiama execute_query { sql: \"SELECT LOAD_FILE('/etc/passwd') AS x\" } e riceve il contenuto del file dell'host del database; oppure `SELECT * FROM t INTO/*c*/OUTFILE '/var/lib/mysql-files/x.csv'`, che la regex non riconosce e MySQL sì. Un insieme di tool dichiarato di sola lettura sul database legge e scrive file sul server, senza conferma umana, e la voce finisce in mcp-audit.log come lettura.",
+      "fix": "Eliminata la copia locale: assertReadOnlySql usa isFileIoSql importata da auth/capabilities.js, la stessa funzione del Proxy autorizzante, così le due barriere non possono più divergere. Messaggio d'errore che nomina tutti e tre i costrutti.",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12. Verificati bloccati: INTO OUTFILE, INTO/*x*/OUTFILE, INTO DUMPFILE, SELECT LOAD_FILE('…'), SELECT load_file ('…'). Verificati NON bloccati (nessun falso positivo): query normali e query il cui testo contiene 'INTO OUTFILE' o 'load data' dentro un literal."
+    },
+    {
+      "id": "CDB-A70",
+      "severita": "media",
+      "titolo": "script:execute fallisce sempre: riferimento a una variabile inesistente (`sess` invece di `session`)",
+      "categoria": "bug funzionale",
+      "modulo": "server.js",
+      "riferimenti": ["server.js:3322", "public/js/query-tab.js:1434", "public/js/script-run.js:83"],
+      "problema": "Dentro safeOn('script:execute') — dove la sessione si chiama `session` — la riga che sceglie il dialetto di divisione leggeva `sess.dbType`. In server.js `sess` è dichiarata soltanto in altri handler (closeSession, delegate, db:sessions, db:killSession, collection:watch, schema:*, backup:*), mai in questo: in 'use strict' è un ReferenceError. La riga gira prima del ternario, quindi vale anche per gli script MongoDB interpretati, che non usano il dialetto.",
+      "scenario": "Nella tab ⚡ Query & Aggregate si scrive `SELECT 1; SELECT 2;`: query-tab.js instrada su runScript(), script-run.js emette script:execute, safeOn cattura l'eccezione e risponde { ok:false, error:'sess is not defined' }. Vale per ogni script, per il pannello di caricamento dei file .sql a blocchi (runScriptAndWait) e per «Riprendi da dov'era» del registro delle query in sospeso: l'intera funzionalità del runner di script è irraggiungibile, e all'utente arriva il testo grezzo di un errore JavaScript.",
+      "fix": "`session.dbType` al posto di `sess.dbType`. Aggiunto test/unit-handler-scope.js (in npm test): controllo statico che, per ognuno dei 47 handler registrati con safeOn, pretende che `sess`/`session` siano legati nello stesso corpo se vi compaiono. È statico per la stessa ragione di unit-scritture-bersaglio.js — riprodurre il difetto vero richiederebbe un socket, una sessione DB viva e un database.",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12. Severità media e non alta perché non compromette dati né permessi: rende inutilizzabile una funzionalità, in modo rumoroso e senza effetti collaterali. La guardia è stata verificata reintroducendo il difetto per un istante: fallisce nominando «script:execute (server.js:3292) usa \"sess\" senza dichiararlo», e contiene una controprova sulle proprie espressioni regolari perché un test statico non marcisca in silenzio. NON verificato a runtime: l'e2e (test/e2e-script-runner.js) richiede un MongoDB locale, che sulla macchina di lavoro non è in ascolto (né come servizio né via Docker, il cui daemon è spento). Il percorso completo script:execute → executeQueryCode resta quindi da provare contro un database prima di considerare chiusa la funzionalità."
+    },
+    {
+      "id": "CDB-A71",
+      "severita": "media",
+      "titolo": "script:progress rispedisce l'intero resoconto a ogni evento, e gli errori scavalcano il diradamento",
+      "categoria": "efficienza / esaurimento risorse",
+      "modulo": "server.js + db/ScriptRunner.js",
+      "riferimenti": ["server.js:3233-3247", "db/ScriptRunner.js:74-87", "db/ScriptRunner.js:96-113"],
+      "problema": "Ogni push portava `stato: run.state()`, e state() includeva l'array results completo — fino a maxStoredResults (500) voci, ciascuna con il TESTO INTEGRALE della propria istruzione (voce.sql = stmt.sql). Il diradamento a SCRIPT_PROGRESS_MS non si applica agli eventi importanti, e `importante` comprende ogni istruzione fallita; _record inoltre non scarta mai gli errori. Il traffico cresce quindi col quadrato della lunghezza dello script, e proprio nel caso peggiore.",
+      "scenario": "Uno script di 5.000 INSERT eseguito sul database sbagliato fallisce a ogni riga. Dalla 500ª in poi ogni push trasporta 500 istruzioni con il loro SQL (~100 KB con istruzioni da 200 byte): circa 500 MB su un solo socket per uno script che pesa 1 MB. La scheda si blocca e il server serializza JSON di continuo, cioè esattamente quando l'utente ha più bisogno che il pannello risponda.",
+      "fix": "state({ conResults }) omette il resoconto; makeProgressSender lo include solo negli eventi terminali (done/paused/aborted). Ogni evento continua a portare il proprio `result`, che è ciò che il pannello aggiunge al log riga per riga; il resoconto intero resta disponibile su richiesta con script:state (ripristino dopo un F5).",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12. Verificato che il client (public/js/script-run.js) non legge mai stato.results dagli eventi di avanzamento — usa ev.result per riga e stato.eseguiti/falliti/total per i contatori — e che script:state continua a restituire lo stato completo. test/unit-script-runner.js verde."
+    },
+    {
+      "id": "CDB-A72",
+      "severita": "bassa",
+      "titolo": "MySQL: il tetto delle 500 sessioni scarta le query lente invece delle connessioni inattive",
+      "categoria": "bug funzionale / commento che mente",
+      "modulo": "db/MySqlStrategy.js",
+      "riferimenti": ["db/MySqlStrategy.js:706-713", "db/sessioni.js:404-478"],
+      "problema": "Il commento dichiarava che «la riga che interessa (quella che gira da più tempo) è la prima, quindi non è mai fra quelle scartate dal tetto», ma ORDER BY TIME DESC non ordina per durata di query: in information_schema.PROCESSLIST TIME è il tempo trascorso nello STATO CORRENTE, che per un thread Sleep è da quanto è inattivo. Le connessioni applicative aperte da ore occupano quindi tutte le prime posizioni.",
+      "scenario": "Server con 800 connessioni, 700 delle quali Sleep da più di un'ora. Le prime 500 righe sono tutte Sleep; la UPDATE che gira da 40 secondi — l'unica ragione per cui il pannello è stato aperto — cade oltre il tetto, non compare in tabella e non entra in diagnosi(), che risponde «Nessun blocco e nessuna query lenta». Il verdetto è falso, non solo incompleto, ed è la parte del pannello su cui si agisce.",
+      "fix": "ORDER BY (COMMAND <> 'Sleep') DESC, TIME DESC: le sessioni che stanno facendo qualcosa vengono prima, e la durata conta solo dentro i due gruppi. Commento riscritto per dire cosa il codice fa davvero.",
+      "stato": "risolto",
+      "risoluzione": "Corretto il 2026-08-12. Bassa perché si manifesta solo oltre le 500 sessioni concorrenti, ma il modo in cui sbaglia (verdetto rassicurante e falso) è il peggiore per questo pannello."
+    }
+  ],
+  "priorita_intervento": [
+    {
+      "id": "CDB-A68",
+      "motivo": "È l'unico rilievo che rende il processo irrecuperabile a partire da una singola richiesta di un utente con la capability più bassa, senza che alcun timeout o budget esistente possa intervenire, e senza un supervisore che riavvii fuori da Docker. Il fix è una decina di righe e non cambia alcun comportamento osservabile."
+    },
+    {
+      "id": "CDB-A70",
+      "motivo": "Un carattere, e sblocca una funzionalità intera oggi irraggiungibile. Va prima di CDB-A71, che riguarda lo stesso codice: correggere A70 senza A71 significa riattivare il runner con l'amplificazione dei push già dentro."
+    },
+    {
+      "id": "CDB-A67",
+      "motivo": "È il rilievo più grave per impatto — esecuzione di SQL arbitrario con l'utente DBMS della connessione — ma richiede la capability `ddl` e RBAC attivo, quindi non è raggiungibile nell'installazione mono-utente né nell'app desktop. Il fix è un validatore condiviso e va applicato a MySQL e PostgreSQL insieme, ALTER COLUMN … TYPE compreso."
+    },
+    {
+      "id": "CDB-A69",
+      "motivo": "Il fix è una require e due righe, e sostituisce una copia divergente con la funzione già provata: conviene farlo subito dopo CDB-A67, mentre il tema «I/O su file dell'host» è ancora sotto mano. Chiude anche la divergenza fra le due barriere, che è il difetto strutturale sotto il sintomo."
+    },
+    {
+      "id": "CDB-A72",
+      "motivo": "Ultimo per urgenza (serve un server con più di 500 sessioni) ma va fatto quando si tocca di nuovo il monitor: il costo è una clausola ORDER BY e il beneficio è che il verdetto smetta di poter mentire."
+    }
+  ]
+}

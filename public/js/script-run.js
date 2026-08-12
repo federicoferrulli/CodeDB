@@ -260,6 +260,22 @@ function nascondiPannello() {
   if (p) p.classList.add('hidden');
 }
 
+/**
+ * Chiude il pannello al cambio di contesto (altra collection, altra
+ * connessione): chiamata da `resetQueryView` in `query-tab.js`.
+ *
+ * Azzera anche `runVisibile`, che è una variabile di modulo unica per tutta
+ * l'applicazione: senza, Pausa/Riprendi/Interrompi resterebbero puntati sul run
+ * di un'altra connessione e agirebbero da un pannello che non è più visibile.
+ *
+ * NON abortisce lo script: quello vive lato server e resta raggiungibile dal
+ * registro delle query in sospeso, che è il posto giusto per ritrovarlo.
+ */
+export function nascondiPannelloScript() {
+  runVisibile = null;
+  nascondiPannello();
+}
+
 const ETICHETTA_STATO = {
   running: { cls: 'status-running', testo: '⏳ In esecuzione' },
   paused: { cls: 'status-paused', testo: '⏸ In pausa' },

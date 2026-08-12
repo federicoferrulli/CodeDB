@@ -106,6 +106,10 @@ function columnSql(c) {
   const name = String((c && c.name) || '').trim();
   let type = String((c && c.type) || '').trim();
   if (!name || !type) throw new Error('Ogni colonna deve avere nome e tipo.');
+  // Qui le DDL passano dal simple query protocol (`pool.query` senza
+  // parametri), che esegue tutto ciò che è separato da `;`: un tipo non
+  // validato era esecuzione di SQL arbitrario. Vedi DbStrategy.assertColumnType.
+  DbStrategy.assertColumnType(type);
 
   if (c.autoIncrement) {
     if (/bigint/i.test(type)) type = 'BIGSERIAL';
@@ -1312,6 +1316,10 @@ class PostgreSqlStrategy extends DbStrategy {
     const col = payload.column || {};
     const newName = String(col.name || '').trim();
     const type = String(col.type || '').trim();
+    // Questo ramo NON passa da columnSql: il tipo finisce direttamente in
+    // `ALTER COLUMN … TYPE ${type}` e nel ripiego `USING …::${type}`, quindi la
+    // validazione va ripetuta qui o resta la porta aperta.
+    if (type) DbStrategy.assertColumnType(type);
 
     if (newName && newName !== oldName) {
       await pool.query(`ALTER TABLE ${qtable(db, coll)} RENAME COLUMN ${qid(oldName)} TO ${qid(newName)}`);

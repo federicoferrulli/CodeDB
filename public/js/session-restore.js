@@ -30,8 +30,14 @@ function collTabInputs(t, c) {
       id: c.id,
       isSplitTab: true,
       db: 'Split-View',
-      coll: '🔲 Area Split-View',
-      splitSnap: getSplitStateSnapshot() || c.splitSnap || null,
+      // L'etichetta è quella che si vede sul tab (nome scelto dall'utente o
+      // tabelle contenute): le aree possono essere più d'una, e ripristinarle
+      // tutte con lo stesso nome renderebbe impossibile distinguerle.
+      coll: c.coll || '🔲 Affiancati',
+      nomeSplit: c.nomeSplit || null,
+      // Lo snapshot va chiesto PER QUESTA area: senza l'id si otterrebbe sempre
+      // quella a schermo, e le altre verrebbero salvate con i pannelli di questa.
+      splitSnap: getSplitStateSnapshot(c.id) || c.splitSnap || null,
     };
   }
 
@@ -118,14 +124,17 @@ function reconnectTab(info) {
       });
       tab.state.collTabs = (info.collTabs || []).map((c) => {
         if (c.isSplitTab) {
-          if (c.splitSnap) {
-            restoreSplitStateSnapshot(c.splitSnap);
-          }
+          // L'id del coll-tab è la CHIAVE dell'area: va conservato, altrimenti
+          // più aree ripristinate insieme finirebbero sulla stessa chiave e si
+          // sovrascriverebbero a vicenda.
+          const id = c.id || ('splitview_' + safeUUID());
+          if (c.splitSnap) restoreSplitStateSnapshot(c.splitSnap, id);
           return {
-            id: c.id || ('splitview_' + safeUUID()),
+            id,
             isSplitTab: true,
             db: 'Split-View',
-            coll: '🔲 Area Split-View',
+            coll: c.coll || '🔲 Affiancati',
+            nomeSplit: c.nomeSplit || null,
             snap: null,
             splitSnap: c.splitSnap,
           };

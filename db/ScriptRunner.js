@@ -70,9 +70,23 @@ class ScriptRun {
   /** Istruzione attualmente in esecuzione (per l'annullamento reale). */
   get currentStatement() { return this._current; }
 
-  /** Fotografia dello stato, sicura da serializzare verso il client. */
-  state() {
-    return {
+  /**
+   * Fotografia dello stato, sicura da serializzare verso il client.
+   *
+   * `conResults: false` omette il resoconto. Serve ai push di avanzamento, che
+   * sono molti: `results` conserva fino a `maxStoredResults` voci e ognuna
+   * porta il TESTO INTEGRALE della propria istruzione, quindi allegarlo a ogni
+   * evento fa crescere il traffico con il quadrato della lunghezza dello
+   * script. Il caso peggiore non è teorico: le istruzioni FALLITE scavalcano il
+   * diradamento (un errore deve arrivare subito) e non vengono mai scartate da
+   * `_record`, quindi uno script di 5.000 righe eseguito sul database sbagliato
+   * spediva 5.000 volte le stesse 500 voci — centinaia di MB su un socket per
+   * uno script da un megabyte, proprio quando l'utente ha più bisogno che il
+   * pannello risponda. Il resoconto viaggia perciò solo negli eventi terminali
+   * e su richiesta esplicita (`script:state`).
+   */
+  state({ conResults = true } = {}) {
+    const base = {
       id: this.id,
       status: this.status,
       cursor: this.cursor,
@@ -82,8 +96,8 @@ class ScriptRun {
       omessi: this.omessi,
       startedAt: this.startedAt,
       endedAt: this.endedAt,
-      results: this.results,
     };
+    return conResults ? { ...base, results: this.results } : base;
   }
 
   /**

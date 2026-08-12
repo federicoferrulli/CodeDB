@@ -10,6 +10,7 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, cut, toast, isSqlType } from './utils.js';
+import { CHIAVE_QE } from './query-history-store.js';
 
 const MAX_ENTRIES = 50;
 // Prefisso unificato con il resto dell'applicazione (CDB-64): le chiavi di
@@ -115,7 +116,13 @@ function potaChiavi() {
  * condiviso restavano leggibili al prossimo utente che apriva l'applicazione.
  */
 export function clearAllHistory() {
-  for (const k of chiaviStorico()) {
+  // Comprende la cronologia della tab ⚡ (`query-history-store.js`): questo
+  // resta l'UNICO punto che ripulisce tutto. Una chiave dimenticata qui
+  // lascerebbe leggibile al prossimo utente il testo delle query, che contiene
+  // valori dei dati. Non entra invece in `chiaviStorico`, usata anche dalla
+  // potatura per numero di chiavi: quella butta le più vecchie, e la cronologia
+  // della tab ⚡ è una chiave sola che si pota da sé (MAX_VOCI).
+  for (const k of [...chiaviStorico(), CHIAVE_QE]) {
     try { localStorage.removeItem(k); } catch { /* ignora */ }
   }
 }

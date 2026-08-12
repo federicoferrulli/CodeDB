@@ -40,6 +40,9 @@ const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require
 const { notifySlack } = require('../backup/lib/notify');
 const { ROOT_PRINCIPAL, rbacOn } = require('../auth/principal');
 const { can, canUseConnection, canWholeConnection } = require('../auth/permissions');
+// Stessa funzione usata dal Proxy autorizzante sul percorso socket: il divieto
+// di I/O su file non deve esistere in due versioni (vedi assertReadOnlySql).
+const { isFileIoSql } = require('../auth/capabilities');
 const { spiegaErrore } = require('../db/errors');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
@@ -90,17 +93,37 @@ function errMsg(err, ctx) {
 // può contenere DML): per questo la query viene comunque eseguita dentro una
 // transazione READ ONLY (vedi flag readOnly di MySqlStrategy).
 const SQL_READONLY_START = /^[\s(]*(select|with|show|describe|desc|explain|table|values)\b/i;
-// INTO OUTFILE/DUMPFILE scrive file sul server: non è coperto dalla
-// transazione READ ONLY, va bloccato a monte.
-const SQL_FORBIDDEN = /\binto\s+(outfile|dumpfile)\b/i;
 
+/**
+ * I/O sul filesystem dell'host del DBMS: non è coperto dalla transazione READ
+ * ONLY (scrivere o leggere un file non è un'operazione transazionale), quindi
+ * va bloccato a monte.
+ *
+ * La decisione è delegata a `isFileIoSql` di auth/capabilities.js invece di
+ * essere riscritta qui. Qui viveva una seconda copia più debole — la regex
+ * `\binto\s+(outfile|dumpfile)\b` applicata al TESTO GREZZO — con due
+ * conseguenze: un `INTO` seguito da un COMMENTO invece che da uno spazio, e poi
+ * da `OUTFILE`, la aggirava (MySQL accetta il commento lì in mezzo, la regex
+ * pretende `\s+`); e `LOAD DATA` e
+ * `LOAD_FILE()` non erano nell'elenco — quest'ultimo comincia per SELECT,
+ * quindi `SELECT LOAD_FILE('/etc/passwd')` superava anche la whitelist del
+ * primo token. Un tool dichiarato di sola lettura sul database leggeva e
+ * scriveva file sull'host. `isFileIoSql` normalizza prima con `stripSqlNoise`
+ * (via commenti, stringhe, identificatori quotati) e copre tutti e tre i casi:
+ * è la stessa funzione che il Proxy autorizzante usa sul percorso socket, così
+ * le due barriere non possono più divergere.
+ */
 function assertReadOnlySql(sql) {
   const text = String(sql || '');
   if (!SQL_READONLY_START.test(text)) {
     throw new Error('In modalità MCP sono ammesse solo query di lettura (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN, TABLE, VALUES).');
   }
-  if (SQL_FORBIDDEN.test(text)) {
-    throw new Error('INTO OUTFILE/DUMPFILE non è ammesso in modalità MCP.');
+  if (isFileIoSql(text)) {
+    throw new Error(
+      "In modalità MCP non è ammesso l'I/O su file dell'host del database "
+      + '(INTO OUTFILE/DUMPFILE, LOAD DATA, LOAD_FILE): è una lettura o una scrittura '
+      + 'sul filesystem del server, non sui dati della connessione.'
+    );
   }
 }
 

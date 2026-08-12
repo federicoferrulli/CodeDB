@@ -1,18 +1,19 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, positionFixedDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
 import { highlightQueryCode } from './query-highlighter.js';
 import { isScript, countStatements } from './sql-split.js';
-import { runScript, runScriptAndWait } from './script-run.js';
+import { runScript, runScriptAndWait, nascondiPannelloScript } from './script-run.js';
+import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
 import { refreshDbTree } from './dbtree.js';
 import { formatCode } from './query-formatter.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
-import { initCharts, renderChart, resizeChart } from './charts.js';
+import { initCharts, renderChart, resizeChart, clearChart } from './charts.js';
 import { ordinaRighe, larghezzeColonne, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
@@ -27,6 +28,22 @@ let activeSqlChunker = null;
 let currentChunkIndex = 0;
 let isChunkRunning = false;
 let stopChunkRunRequested = false;
+
+/**
+ * Chiude il file SQL aperto a blocchi. Sta qui, e non dentro la chiusura di
+ * `initSqlChunking`, perché serve anche a `resetQueryView`: un file aperto
+ * appartiene al contesto in cui lo si è aperto, e trovarne il pannello su
+ * un'altra connessione con i pulsanti "Esegui tutti i chunk" attivi è
+ * esattamente il tipo di equivoco che questo intervento elimina.
+ */
+function chiudiFileSql() {
+  activeSqlChunker = null;
+  currentChunkIndex = 0;
+  const panel = $('#query-sql-chunk-panel');
+  if (panel) panel.classList.add('hidden');
+  const prog = $('#chunk-progress-container');
+  if (prog) prog.classList.add('hidden');
+}
 
 export function updateEditorHighlight() {
   const editorInput = $('#query-editor-input');
@@ -88,6 +105,7 @@ function aggiornaModalitaScript(code) {
 export function initQueryTab() {
   initSnippetManager();
   initSqlChunking();
+  initQeHistory();
   const targetEngineSelect = $('#query-target-engine');
   const runBtn = $('#query-run-btn');
   const stopBtn = $('#query-stop-btn');
@@ -101,7 +119,12 @@ export function initQueryTab() {
   const highlightPre = $('#query-editor-highlight');
 
   if (targetEngineSelect) {
-    targetEngineSelect.addEventListener('change', updateEditorHighlight);
+    targetEngineSelect.addEventListener('change', () => {
+      updateEditorHighlight();
+      // Il motore si legge ora dal pulsante del bersaglio: senza questo, la
+      // scelta appena fatta resterebbe visibile solo aprendo di nuovo il menu.
+      renderQueryTarget();
+    });
   }
 
   // Toggle Schema Browser Drawer (Mobile)
@@ -122,33 +145,18 @@ export function initQueryTab() {
     });
   }
 
-  // Export Dropdown Menu (Mobile)
-  const exportMenuBtn = $('#query-export-menu-btn');
-  const exportMenu = $('#query-export-menu');
-  if (exportMenuBtn && exportMenu) {
-    exportMenuBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const isHidden = exportMenu.classList.contains('hidden');
-      document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
-      if (isHidden) {
-        positionFixedDropdown(exportMenuBtn, exportMenu);
-      }
-    });
-
-    const bindExportClick = (mobId, mainId) => {
-      const mobBtn = $(mobId);
-      const mainBtn = $(mainId);
-      if (mobBtn && mainBtn) {
-        mobBtn.addEventListener('click', () => {
-          exportMenu.classList.add('hidden');
-          mainBtn.click();
-        });
-      }
-    };
-    bindExportClick('#query-export-csv-mob', '#query-export-csv');
-    bindExportClick('#query-export-json-mob', '#query-export-json');
-    bindExportClick('#query-export-sql-mob', '#query-export-sql');
-  }
+  // Esportazione dei risultati: un solo menu, uguale su desktop e mobile.
+  // Prima c'erano tre pulsanti nella barra PIÙ un menu identico riservato al
+  // mobile, con una seconda serie di id (`-mob`) che rilanciavano il click su
+  // quelli veri — sei elementi e due strade da tenere allineate a mano per tre
+  // azioni. Le voci del menu portano ora gli id storici, quindi chi le aggancia
+  // (`initSnippetManager`) non cambia di una riga.
+  initToolbarDropdown('#query-export-menu-btn', '#query-export-menu');
+  // Altre azioni sull'editor (cronologia, apri file, snippet, pulisci) e
+  // scelta del motore/bersaglio: stesso meccanismo.
+  initToolbarDropdown('#query-editor-more-btn', '#query-editor-more-menu');
+  initToolbarDropdown('#query-target-btn', '#query-target-menu');
+  initToolbarDropdown('#chart-export-menu-btn', '#chart-export-menu');
 
   // Switch vista risultati (Tabella / JSON Tree / Grafici)
   if (resModeTableBtn && resModeJsonBtn) {
@@ -383,9 +391,7 @@ function initSqlChunking() {
 
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
-      activeSqlChunker = null;
-      currentChunkIndex = 0;
-      if (chunkPanel) chunkPanel.classList.add('hidden');
+      chiudiFileSql();
       toast('File SQL chiuso.');
     });
   }
@@ -599,6 +605,16 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
     else if (status === 'error') statusBadge.textContent = '✖ Errore';
   }
 
+  // `idle` significa "non c'è nessun risultato": le due metriche vanno
+  // NASCOSTE, non lasciate al valore di prima. Senza questo ramo «42 ms ·
+  // 1.203 righe» sopravviveva al cambio di collection e continuava a
+  // descrivere una query eseguita altrove — il numero più fuorviante di tutti,
+  // perché ha l'aria di essere appena stato calcolato.
+  if (status === 'idle') {
+    if (timeMetric) timeMetric.classList.add('hidden');
+    if (countMetric) countMetric.classList.add('hidden');
+  }
+
   if (timeMs !== null && timeMetric && timeVal) {
     timeVal.textContent = timeMs;
     timeMetric.classList.remove('hidden');
@@ -636,6 +652,76 @@ export function renderResults(data) {
   } else {
     renderResultsJsonTree(currentResults);
   }
+}
+
+/**
+ * Riporta la vista ⚡ allo stato iniziale: nessun risultato, nessun grafico,
+ * nessuna metrica, nessun errore.
+ *
+ * Serve perché quasi tutto lo stato di questa vista vive in variabili di MODULO
+ * (`currentResults`, `activeViewMode`, le larghezze e l'ordinamento della
+ * tabella) e nel DOM, che è unico e condiviso da tutti i tab: senza un
+ * azzeramento esplicito, aprendo un'altra collection — o addirittura un'altra
+ * connessione — restavano a schermo i risultati, il grafico, i badge
+ * «✓ Completato · 42 ms · 1.203 righe», il box errore, la riga rossa nel gutter
+ * e il resoconto di uno script girato su un altro server. Non è un difetto
+ * estetico: si legge una tabella credendo che descriva ciò che si sta guardando
+ * adesso.
+ *
+ * NON tocca il testo dell'editor (lo conserva `colltabs.js` per coll-tab) né
+ * `spazioGraficoDato`, che è la scelta dell'utente sul divisorio: rimetterla a
+ * posto a ogni cambio di tab è il modo più sicuro di far sembrare rotto un
+ * resizer (stessa ragione già spiegata sopra, in `allargaRisultatiPerGrafico`).
+ *
+ * Ogni `$()` resta protetto: con la Split-View attiva il DOM della toolbar è
+ * staccato e questi id semplicemente non esistono.
+ */
+export function resetQueryView() {
+  currentResults = [];
+  queryTableRows = [];
+  queryTableCols = [];
+  queryOrdine = { col: null, dir: 1 };
+  queryLarghezze = new Map();
+  queryLarghezzeManuali = new Set();
+  queryColsSig = '';
+  queryRigheRef = null;
+
+  renderResultsTable([]);
+  renderResultsJsonTree([]);
+  clearChart();
+
+  // La modalità vista appartiene a risultati che non ci sono più. Non si passa
+  // da `setResultsViewMode`, che ridisegnerebbe e sposterebbe il divisorio.
+  activeViewMode = 'table';
+  const viste = {
+    table: { btn: '#res-mode-table', view: '#query-table-view' },
+    json: { btn: '#res-mode-json', view: '#query-json-view' },
+    chart: { btn: '#res-mode-chart', view: '#query-chart-view' },
+  };
+  for (const [nome, sel] of Object.entries(viste)) {
+    const btn = $(sel.btn);
+    const view = $(sel.view);
+    if (btn) btn.classList.toggle('active', nome === 'table');
+    if (view) view.classList.toggle('hidden', nome !== 'table');
+  }
+
+  updateQueryMetrics('idle');
+  segnalaRigaErrore(0);
+  const stopBtn = $('#query-stop-btn');
+  if (stopBtn) stopBtn.classList.add('hidden');
+
+  // Il pannello dello script si NASCONDE, ma il run non viene abortito: vive
+  // lato server e resta raggiungibile dal registro delle query in sospeso.
+  nascondiPannelloScript();
+
+  // Un file SQL aperto a blocchi appartiene al contesto in cui è stato aperto.
+  // Se però l'esecuzione sequenziale è in volo non si tocca nulla: chiuderlo
+  // sotto i piedi di chi sta eseguendo sarebbe peggio del residuo.
+  if (!isChunkRunning) chiudiFileSql();
+
+  const ricerca = $('#query-schema-search');
+  if (ricerca) ricerca.value = '';
+  filterQuerySchemaBrowser(''); // ripristina l'albero (e azzera filtroSchemaAttivo)
 }
 
 /* --------------------------------------------------------------------------
@@ -1368,8 +1454,21 @@ export function queryTarget() {
   return { db: state.queryDb || state.db || null, coll: state.queryColl || state.coll || null };
 }
 
+// Etichette brevi del motore per il pulsante: quelle della select dicono anche
+// a cosa serve ciascun motore, e servono l\u00ec dentro (si sceglie una volta); nella
+// barra deve restare leggibile il bersaglio, che \u00e8 l'informazione che cambia.
+const ETICHETTA_MOTORE = {
+  auto: '\u26a1 Auto',
+  mysql: '\ud83d\uddc4 MySQL',
+  postgresql: '\ud83d\uddc4 PostgreSQL',
+  mongodb: '\ud83c\udf43 MongoDB',
+  crossdb: '\ud83d\udd00 Cross-DB',
+};
+
 // Indicatore sempre visibile nella barra della tab: prima non c'era modo di
-// sapere su quale database si stesse per eseguire.
+// sapere su quale database si stesse per eseguire. Da qui passa anche il
+// MOTORE, che \u00e8 la seconda met\u00e0 della stessa domanda ("dove e come gira") e
+// prima occupava una select larga sempre a schermo.
 export function renderQueryTarget() {
   const el = $('#query-target-label');
   if (!el) return;
@@ -1377,11 +1476,31 @@ export function renderQueryTarget() {
   const explicit = !!state.queryDb;
   el.textContent = db ? `${db}${coll ? ' \u25b8 ' + coll : ''}` : 'nessun database selezionato';
   el.classList.toggle('query-target-explicit', explicit);
-  el.title = db
-    ? (explicit
-      ? `Bersaglio scelto a mano nello Schema Browser. Clicca per tornare al contesto della collection aperta (${state.db || 'nessuna'}).`
-      : 'Bersaglio: la collection aperta nel workspace.')
-    : 'Apri una collection oppure scegli una tabella nello Schema Browser.';
+
+  const motore = $('#query-target-engine')?.value || 'auto';
+  const etichettaMotore = $('#query-target-engine-label');
+  if (etichettaMotore) {
+    etichettaMotore.textContent = ETICHETTA_MOTORE[motore] || motore;
+    // Un motore FORZATO \u00e8 una scelta che sopravvive a ogni esecuzione e non si
+    // vede pi\u00f9 da nessun'altra parte: va distinto da "Auto", altrimenti una
+    // query che gira sul motore sbagliato non ha alcun indizio a schermo.
+    etichettaMotore.classList.toggle('query-engine-explicit', motore !== 'auto');
+  }
+
+  const btn = $('#query-target-btn');
+  if (btn) {
+    btn.title = [
+      motore === 'auto'
+        ? 'Motore: deciso dal tipo del database corrente.'
+        : `Motore forzato: ${ETICHETTA_MOTORE[motore] || motore}.`,
+      db
+        ? (explicit
+          ? `Bersaglio scelto a mano nello Schema Browser (la collection aperta \u00e8 ${state.db || 'nessuna'}).`
+          : 'Bersaglio: la collection aperta nel workspace.')
+        : 'Apri una collection oppure scegli una tabella nello Schema Browser.',
+    ].join('\n');
+  }
+
   const reset = $('#query-target-reset');
   if (reset) reset.classList.toggle('hidden', !explicit);
 }
@@ -1429,6 +1548,20 @@ export function runQuery(opzioni = {}) {
   // con progresso, pausa e ripresa) invece dell'ack unico di `query:execute`.
   // Il conteggio qui serve solo a scegliere la strada: quante siano davvero lo
   // decide il server, che è l'unico a dividere il testo per l'esecuzione.
+  // La cronologia registra al LANCIO, non alla risposta: una query annullata,
+  // andata in timeout o interrotta da un F5 è proprio quella che si vuole
+  // ritrovare, e alla risposta non ci arriverebbe mai. L'esito si aggiunge dopo.
+  const bersaglioStorico = queryTarget();
+  const idStorico = registraEsecuzione({
+    code,
+    engine,
+    db: bersaglioStorico.db,
+    coll: bersaglioStorico.coll,
+    conn: connCorrente(),
+    dbType: state.dbType,
+    script: isScript(code),
+  });
+
   if (isScript(code)) {
     const { db: scriptDb, coll: scriptColl } = queryTarget();
     return runScript({
@@ -1490,6 +1623,7 @@ export function runQuery(opzioni = {}) {
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
       const rows = res.data || res.docs || res.rows || [];
+      aggiornaEsecuzione(idStorico, { esito: 'ok', ms: elapsed, righe: rows.length });
 
       // Se il server segnala un cambio di database (es. via USE <dbname>).
       // Il bersaglio appartiene al tab CHE HA ESEGUITO, non a quello attivo al
@@ -1524,6 +1658,7 @@ export function runQuery(opzioni = {}) {
       if (stRunErr.queryRunId === runId) stRunErr.queryRunId = null;
 
       pendingHandle.fail(err, elapsed);
+      aggiornaEsecuzione(idStorico, { esito: 'errore', ms: elapsed });
       if (isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
         renderResults([]);

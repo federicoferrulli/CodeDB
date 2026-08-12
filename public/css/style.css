@@ -2409,7 +2409,8 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 /* ---------------- Storico query (queryhistory.js) ---------------- */
 .query-history-wrap { position: relative; display: inline-flex; }
-#query-history-panel {
+#query-history-panel,
+#qe-history-panel {
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
@@ -2470,6 +2471,55 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-size: 0.75rem;
   color: var(--fg-dim);
   word-break: break-all;
+}
+
+/* --- Cronologia della tab Query & Aggregate (qe-history.js) --------------- */
+/* Riusa le classi .query-history-* qui sopra; qui c'è solo ciò che cambia:
+   il pannello è più largo (ci sta il codice), ha una barra di filtri fissa e
+   la parte che scorre è la SOLA lista. */
+#qe-history-panel {
+  width: 460px;
+  max-height: 440px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.qe-history-filtri {
+  display: flex;
+  gap: 6px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.qe-history-filtri input[type="search"] { flex: 1 1 auto; min-width: 0; }
+.qe-history-filtri select { flex: 0 0 auto; max-width: 45%; }
+.qe-history-filtri input,
+.qe-history-filtri select { font-size: 0.78rem; padding: 3px 6px; }
+.qe-history-list { overflow-y: auto; flex: 1 1 auto; }
+.qe-history-target {
+  flex: 1 1 auto;
+  margin: 0 8px;
+  color: var(--fg-dim);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qe-history-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+.qe-history-esito { font-size: 0.72rem; color: var(--fg-dim); }
+.qe-history-esito-ok { color: var(--status-ok); }
+.qe-history-esito-err { color: var(--status-err); }
+.qe-history-esito-script { color: var(--accent); }
+.qe-history-run {
+  font-size: 0.72rem;
+  padding: 1px 8px;
+  line-height: 1.4;
 }
 /* --- Export / import di collection e tabelle ----------------------------- */
 .import-progress {
@@ -2913,16 +2963,10 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   flex-wrap: wrap;
 }
 
-.query-engine-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-}
-
-/* Bersaglio della query: sempre visibile nella barra della tab. Un bersaglio
-   scelto a mano nello Schema Browser e' evidenziato, per distinguerlo da quello
-   che segue la collection aperta. */
+/* Motore + bersaglio della query: un solo controllo, perche' rispondono alla
+   stessa domanda ("dove e come gira"). Un bersaglio scelto a mano nello Schema
+   Browser e un motore forzato sono evidenziati: sono scelte che sopravvivono a
+   ogni esecuzione e non si vedono da nessun'altra parte. */
 .query-target-selector {
   display: flex;
   align-items: center;
@@ -2930,13 +2974,32 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-weight: 500;
 }
 
+.query-target-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 420px;
+  padding: 4px 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-2);
+  border-radius: 4px;
+  color: var(--fg-dim);
+  font-size: 0.85rem;
+}
+
+.query-target-btn:hover { border-color: var(--accent); }
+.query-target-sep { color: var(--fg-dim); opacity: 0.6; }
+.query-target-btn .dropdown-caret { color: var(--fg-dim); font-size: 0.75em; }
+
+.query-target-engine-label { white-space: nowrap; }
+.query-target-engine-label.query-engine-explicit {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .query-target-label {
   font-family: var(--mono, monospace);
   font-size: 0.85em;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: var(--input-bg);
-  border: 1px solid var(--border-2);
   color: var(--fg-dim);
   max-width: 260px;
   overflow: hidden;
@@ -2945,9 +3008,21 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 }
 
 .query-target-label.query-target-explicit {
-  color: var(--fg);
-  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
 }
+
+/* Il menu del bersaglio ospita un controllo, non solo voci cliccabili. */
+.toolbar-dropdown-menu .dropdown-label {
+  display: block;
+  padding: 6px 12px 2px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--fg-dim);
+}
+#query-target-menu { min-width: 260px; padding-bottom: 6px; }
+#query-target-menu .styled-select { width: calc(100% - 24px); margin: 0 12px 6px; }
 
 .styled-select {
   background: var(--input-bg);
@@ -3005,8 +3080,9 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 }
 
 .mobile-only-btn { display: none !important; }
-.mobile-export-dropdown { display: none !important; }
-.desktop-export-group { display: inline-flex; align-items: center; gap: 6px; }
+/* `.mobile-export-dropdown` / `.desktop-export-group` non esistono piu': l'export
+   dei risultati e' un solo menu, uguale su desktop e mobile. Erano sei elementi
+   per tre azioni, con due serie di id da tenere allineate a mano. */
 .tab-label-short { display: none; }
 .tab-label-full { display: inline; }
 .sidebar-title-actions { display: flex; align-items: center; gap: 6px; }
@@ -4476,20 +4552,23 @@ button[aria-busy="true"] {
   padding: 0 !important;
 }
 
-.split-global-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 14px;
-  background: var(--bg-3);
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9rem;
+/* I figli del workspace NON vengono più staccati dal DOM: li nasconde questa
+   regola. Staccarli faceva sparire con loro le tab Dati/Dettagli/⚡ Query —
+   irraggiungibili finché la Split-View era aperta — e rendeva `null` ogni
+   $('#…') sulla toolbar. La testata resta visibile: è da lì che si passa a una
+   vista sul pannello a fuoco e si torna indietro con "Affiancati". */
+#workspace.split-active.split-mostra-pannelli > *:not(.workspace-head):not(.split-container) {
+  display: none !important;
 }
-.split-global-actions {
-  display: flex;
-  gap: 8px;
+/* …e viceversa: guardando una vista normale i pannelli restano vivi, solo
+   nascosti (lo stato della Split-View non si tocca). */
+#workspace.split-active:not(.split-mostra-pannelli) > .split-container {
+  display: none !important;
 }
 
+/* Nessuna barra d'intestazione dell'area: nome, conteggio e comandi stavano in
+   una riga sempre presente che ripeteva il coll-tab e la ✕ del tab. I comandi
+   sono nel menu ⋯ dei pannelli e nel menu del tab; qui resta solo il contenuto. */
 .split-container {
   display: flex;
   flex: 1;
@@ -4497,6 +4576,10 @@ button[aria-busy="true"] {
   height: 100%;
   overflow: hidden;
   position: relative;
+  /* I pannelli non toccano i bordi del workspace: il piccolo margine li fa
+     leggere come riquadri distinti invece che come un'unica tabella spezzata. */
+  padding: var(--space-2xs);
+  background: var(--bg-2);
 }
 
 .split-layout-row {
@@ -4517,44 +4600,89 @@ button[aria-busy="true"] {
   overflow: hidden;
 }
 
+/* `flex-grow` lo scrive il JS dalla quota tenuta nell'albero del layout. I
+   minimi in pixel NON stanno qui: bloccavano lo shrink e facevano mentire le
+   quote (un pannello "al 20%" restava a 180px). Il minimo lo impone `trascina()`
+   in split-layout.js, che è anche l'unico posto dove va cambiato. */
 .split-pane {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
-  background: var(--bg-1, #131518);
-  border: 1px solid var(--border, #2a2e35);
-  min-width: 180px;
-  min-height: 140px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
   position: relative;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+/* Il pannello a fuoco decide dove agiscono scorciatoie e tab vista: si segnala
+   con una barra d'accento sulla testata oltre al bordo, perché il solo colore
+   non è un indizio sufficiente (e sparisce del tutto in scala di grigi). */
 .split-pane.focused {
-  border: 1px solid var(--accent, #0096ff);
+  border-color: var(--accent);
   box-shadow: inset 0 0 0 1px var(--info-line);
 }
-
-.split-resizer-v {
-  width: 6px;
-  background: var(--border, #2a2e35);
-  cursor: col-resize;
-  transition: background 0.15s ease;
-  z-index: 10;
+.split-pane.focused > .split-pane-head {
+  box-shadow: inset 0 3px 0 0 var(--accent);
 }
-.split-resizer-v:hover, .split-resizer-v.dragging {
-  background: var(--accent, #0096ff);
+.split-pane:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
+/* Un pannello massimizzato: gli altri escono di scena senza toccare l'albero,
+   così uscendo si ritrova il layout esatto di prima. */
+.split-container.has-maximized .split-pane:not(.maximized),
+.split-container.has-maximized .split-resizer-v,
+.split-container.has-maximized .split-resizer-h {
+  display: none;
+}
+.split-container.has-maximized .split-pane.maximized {
+  flex: 1 1 100% !important;
+}
+
+.split-resizer-v,
 .split-resizer-h {
-  height: 6px;
-  background: var(--border, #2a2e35);
-  cursor: row-resize;
+  background: var(--border);
   transition: background 0.15s ease;
   z-index: 10;
+  /* Obbligatorio per il trascinamento su touch: senza, il browser interpreta il
+     gesto come uno scorrimento e il separatore non si muove. */
+  touch-action: none;
 }
+.split-resizer-v:hover, .split-resizer-v.dragging,
 .split-resizer-h:hover, .split-resizer-h.dragging {
-  background: var(--accent, #0096ff);
+  background: var(--accent);
+}
+.split-resizer-v:focus-visible,
+.split-resizer-h:focus-visible {
+  background: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* `flex: 0 0` e non la sola dimensione: da figli flex si sarebbero ristretti,
+   e con essi l'area su cui si può afferrare. */
+.split-resizer-v {
+  flex: 0 0 6px;
+  cursor: col-resize;
+}
+.split-resizer-h {
+  flex: 0 0 6px;
+  cursor: row-resize;
+}
+
+/* Durante il trascinamento: niente selezione di testo accidentale e nessuna
+   transizione da ricalcolare a ogni fotogramma. */
+body.split-resizing {
+  user-select: none;
+  cursor: grabbing;
+}
+body.split-resizing .split-pane {
+  transition: none;
 }
 
 /* Overlay di preview drop-zone durante il Drag & Drop */
@@ -4585,45 +4713,73 @@ button[aria-busy="true"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  background: var(--bg-2, #1a1d21);
+  gap: var(--space-xs);
+  flex-wrap: wrap;
+  padding: var(--space-2xs) var(--space-sm);
+  background: var(--bg-2);
   border-bottom: 1px solid var(--border);
+  cursor: default;
+  user-select: none;
+}
+
+/* Il nome della connessione compare solo quando i pannelli ne confrontano più
+   d'una — è la stessa regola del prefisso col database sui coll-tab. Con tutti
+   i pannelli sulla stessa connessione sarebbe la stessa parola ripetuta su ogni
+   testata, e a rimetterci sarebbero i nomi di database e tabella, che su un
+   pannello stretto sono la prima cosa a essere troncata. */
+.split-container.una-connessione .split-pane-head .conn-name,
+.split-container.una-connessione .split-pane-head .db-icon,
+.split-container.una-connessione .split-pane-head .sep-conn {
+  display: none;
 }
 
 .split-pane-title {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
   font-size: 0.88rem;
   font-weight: 500;
 }
+.split-pane-title .conn-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
+/* Larghezza in percentuale e non 140px fissi: su un pannello largo i nomi
+   reali delle tabelle ci stanno, e troncarli comunque non serviva a nulla. */
 .split-pane-title select {
-  background: var(--input-bg, #0d0e10);
-  color: var(--fg, #e1e4e8);
+  background: var(--input-bg);
+  color: var(--fg);
   border: 1px solid var(--border);
   border-radius: 3px;
   padding: 2px 6px;
   font-size: 0.85rem;
-  max-width: 140px;
+  min-width: 0;
+  max-width: 34%;
 }
 
 .split-pane-tools {
   display: flex;
   gap: 4px;
+  flex: 0 0 auto;
 }
 
 .split-pane-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   padding: 6px 10px;
-  background: var(--bg-3, #22262c);
+  background: var(--bg-3);
   border-bottom: 1px solid var(--border);
 }
 
 .split-pane-toolbar input[type="text"] {
-  flex: 1;
+  flex: 1 1 140px;
+  min-width: 0;
   padding: 4px 8px;
   font-size: 0.85rem;
   background: var(--input-bg);
@@ -4738,12 +4894,22 @@ button[aria-busy="true"] {
 }
 
 .pane-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 10px;
   background: var(--danger-bg);
   border-bottom: 1px solid var(--danger-line);
   color: var(--status-err);
   font-size: 0.82rem;
 }
+.pane-error-banner.hidden { display: none; }
+.pane-error-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pane-retry-btn { flex: 0 0 auto; }
 
 .split-pane-statusbar {
   display: flex;
@@ -4813,6 +4979,47 @@ button[aria-busy="true"] {
 
 .badge.match { color: var(--status-ok); font-weight: bold; }
 .badge.diff { color: var(--status-warn); font-weight: bold; }
+
+/* ---------- Split-View su schermi stretti e dispositivi a tocco ---------- */
+
+/* Stesso punto di rottura del resto dell'interfaccia (e di responsive.js).
+   Due pannelli affiancati su una finestra stretta non sono due viste, sono due
+   colonne di puntini di sospensione: si impilano. */
+@media (max-width: 900px) {
+  .split-layout-row {
+    flex-direction: column;
+  }
+  .split-layout-row > .split-resizer-v {
+    flex-basis: 6px;
+    cursor: row-resize;
+  }
+  .split-pane-title select {
+    max-width: 45%;
+  }
+  /* Su schermo stretto ogni pixel verticale conta: i pannelli si toccano e il
+     riquadro esterno sparisce. */
+  .split-container {
+    padding: 0;
+  }
+  .split-pane {
+    border-radius: 0;
+  }
+}
+
+/* Un separatore da 6px è afferrabile col mouse, non con un dito. */
+@media (pointer: coarse) {
+  .split-resizer-v { flex-basis: 12px; }
+  .split-resizer-h { flex-basis: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .split-pane,
+  .split-resizer-v,
+  .split-resizer-h,
+  .drop-zone-overlay {
+    transition: none;
+  }
+}
 
 /* ===================== Responsive & Mobile Drawer Styles ===================== */
 
@@ -5007,8 +5214,6 @@ button[aria-busy="true"] {
   .tab-label-full { display: none !important; }
   .tab-label-short { display: inline !important; }
   .mobile-only-btn { display: inline-flex !important; }
-  .desktop-export-group { display: none !important; }
-  .mobile-export-dropdown { display: inline-flex !important; }
 
   /* ---- Vista Query & Aggregate: Schema Sidebar come Off-Canvas Drawer su Mobile ---- */
   .query-layout-body {
@@ -5077,9 +5282,9 @@ button[aria-busy="true"] {
   .results-actions, .editor-tools {
     flex-wrap: wrap;
   }
-  /* Selettore engine a tutta larghezza per non spingere fuori la topbar. */
-  .query-engine-selector .styled-select {
-    flex: 1;
+  /* Il bersaglio non deve spingere fuori la topbar: si accorcia lui. */
+  .query-target-btn {
+    max-width: 100%;
     min-width: 0;
   }
 

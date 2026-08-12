@@ -7,8 +7,9 @@ import { exportImportMenuItems } from './exportimport.js';
 import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
-import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView } from './splitview.js';
+import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
 import { markAbandonedByCollTab } from './pending-queries.js';
+import { resetQueryView, updateEditorHighlight } from './query-tab.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
@@ -32,10 +33,22 @@ function parolaColl() {
 // riusciva nemmeno a creare la prima tabella con una query. Ha la sola vista
 // ⚡ Query & Aggregate: le altre (Dati, Dettagli, UML, Grafo 3D) descrivono una
 // collection che qui non esiste.
+//
+// Con la Split-View attiva compare invece la tab "🔲 Affiancati": le altre
+// restano cliccabili e agiscono sul pannello a fuoco (vedi `setView`). Prima il
+// workspace veniva staccato dal DOM insieme alle sue tab, quindi per aprire
+// Dettagli o Query & Aggregate bisognava chiudere l'area affiancata.
 export function applyViewTabsFor(ct) {
   const soloQuery = !!(ct && ct.isDbTab);
+  const split = !!(ct && ct.isSplitTab);
   document.querySelectorAll('.view-tab').forEach((el) => {
-    el.classList.toggle('hidden', soloQuery && el.dataset.view !== 'query');
+    const vista = el.dataset.view;
+    if (vista === 'split') { el.classList.toggle('hidden', !split); return; }
+    // In Split-View i pannelli SONO la vista dati: "Dati" mostrerebbe la griglia
+    // singola con i risultati di prima, cioè dati vecchi sotto un'altra
+    // etichetta. Al suo posto c'è "Affiancati".
+    if (vista === 'data' && split) { el.classList.add('hidden'); return; }
+    el.classList.toggle('hidden', soloQuery && vista !== 'query');
   });
 }
 
@@ -51,8 +64,44 @@ export function applyViewTabsFor(ct) {
 // cioè esattamente ciò che accade dopo un refresh della pagina.
 const MAX_DOCS_SNAPSHOT = 500;
 
+/**
+ * Conserva il CODICE della tab ⚡ per il coll-tab indicato.
+ *
+ * Sta a parte da `saveActiveSnapshot` perché quello esce subito per i tab
+ * split e per i tab a livello database — mentre il codice dell'editor ha senso
+ * proprio anche lì: il tab-database è il coll-tab nato per la sola vista Query,
+ * ed è quello in cui si scrive la prima CREATE TABLE.
+ *
+ * Il resto della vista (risultati, grafico, metriche, pannello script) NON si
+ * conserva: descrive un'esecuzione, e un'esecuzione appartiene al momento in
+ * cui è avvenuta. Il codice invece è lavoro dell'utente.
+ */
+export function salvaSnapshotQuery(ct) {
+  if (!ct) return;
+  const editor = $('#query-editor-input');
+  if (!editor) return; // pagina non ancora montata
+  ct.snapQuery = {
+    code: editor.value || '',
+    engine: $('#query-target-engine')?.value || 'auto',
+  };
+}
+
+/** Vista ⚡ pulita e codice del coll-tab ripristinato (o editor vuoto). */
+export function applicaSnapshotQuery(ct) {
+  resetQueryView();
+  const editor = $('#query-editor-input');
+  if (!editor) return;
+  const q = (ct && ct.snapQuery) || null;
+  editor.value = q ? (q.code || '') : '';
+  const engine = $('#query-target-engine');
+  if (engine) engine.value = q ? (q.engine || 'auto') : 'auto';
+  // Ridisegna evidenziazione, numeri di riga ed etichetta "Esegui Script (N)".
+  updateEditorHighlight();
+}
+
 function saveActiveSnapshot() {
   const ct = currentCollTab();
+  salvaSnapshotQuery(ct);
   if (!ct || ct.isSplitTab || ct.isDbTab) return;
   const docs = Array.isArray(state.docs) ? state.docs : [];
   const troppi = docs.length > MAX_DOCS_SNAPSHOT;
@@ -89,6 +138,9 @@ function activate(ct, { fresh }) {
     markTreeSelection();
     applyViewTabsFor(ct);
     renderSplitView();
+    // La vista attiva è "Affiancati": senza, tornando sul tab della Split-View
+    // resterebbe evidenziata la tab della vista di prima.
+    setView('split');
     return;
   }
 
@@ -121,6 +173,7 @@ function activate(ct, { fresh }) {
     renderCollTabBar();
     markTreeSelection();
     applyViewTabsFor(ct);
+    applicaSnapshotQuery(ct);
     setView('query');
     return;
   }
@@ -135,6 +188,11 @@ function activate(ct, { fresh }) {
   // aperto un altro.
   state.queryDb = null;
   state.queryColl = null;
+  // Stesso principio, applicato al resto della vista ⚡: risultati, grafico,
+  // metriche, box errore, riga rossa nel gutter e pannello script descrivono
+  // un'esecuzione fatta sulla collection che si sta lasciando. Il codice
+  // dell'editor invece è lavoro dell'utente e viene ripristinato da qui.
+  applicaSnapshotQuery(ct);
   state.watching = false;
   // La selezione bulk è legata alla pagina corrente: un _id (es. PK intera
   // MySQL) potrebbe coincidere tra tabelle diverse, quindi si azzera.
@@ -304,7 +362,9 @@ export function closeCollTab(id) {
   if (i < 0) return;
 
   if (list[i].isSplitTab) {
-    closeSplitView();
+    // Con più aree affiancate aperte va chiusa PROPRIO questa, che non è
+    // necessariamente quella a schermo.
+    closeSplitView({ collTabId: id });
     return;
   }
 
@@ -325,6 +385,10 @@ export function closeCollTab(id) {
 // sbagliato. Su un tab non attivo si aggiorna solo la struttura, mai il DOM.
 export function closeCollTabsWhere(pred, st = null) {
   const t = activeTab();
+  // I PANNELLI delle aree affiancate vanno chiusi a parte: il predicato guarda
+  // `db`/`coll` del coll-tab, e per un'area valgono 'Split-View' — quindi non
+  // corrispondeva mai e restavano riquadri puntati su un database eliminato.
+  chiudiPaneDove(pred, st || (t ? t.state : null));
   if (st && (!t || t.state !== st)) {
     const list = st.collTabs;
     for (const c of list.filter(pred)) {
@@ -342,6 +406,9 @@ export function closeCollTabsWhere(pred, st = null) {
 // Applica una modifica a tutti i coll-tab (es. rename di db/collection).
 export function updateCollTabs(fn, st = null) {
   const t = activeTab();
+  // …e ai pannelli affiancati, per la stessa ragione: senza, dopo una rinomina
+  // continuavano a interrogare il vecchio nome.
+  aggiornaPaneDove(fn, st || (t ? t.state : null));
   if (st && (!t || t.state !== st)) {
     st.collTabs.forEach(fn);
     return; // tab in background: nessuna barra da ridisegnare
@@ -407,7 +474,11 @@ export function renderCollTabBar() {
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '') + (ct.preview ? ' preview' : '');
     el.title = (ct.isDbTab
       ? `${ct.db} — solo Query & Aggregate (nessuna ${parolaColl()})`
-      : `${ct.db} ▸ ${ct.coll}`)
+      : ct.isSplitTab
+        // "Split-View ▸ 🔲 ordini + clienti" ripeterebbe due volte la stessa
+        // cosa: qui il contesto utile è che è un'area, e cosa contiene.
+        ? `Area affiancata: ${ct.coll}\nTasto destro per rinominarla`
+        : `${ct.db} ▸ ${ct.coll}`)
       + (ct.preview ? '\nAnteprima: doppio clic per fissare il tab' : '');
 
     // Il tab-database mostra già il proprio database, quello di split-view non
@@ -442,10 +513,19 @@ export function renderCollTabBar() {
       e.preventDefault();
       // Il tab-database non ha una collection: split-view ed export/import,
       // che lavorano su una collection, non hanno bersaglio.
-      showContextMenu(e.clientX, e.clientY, ct.isDbTab ? [
+      // Il tab dell'area affiancata non è una collection: le voci che lavorano
+      // su una (split-view, export/import) puntavano al database inventato
+      // "Split-View", cioè a nulla.
+      showContextMenu(e.clientX, e.clientY, ct.isSplitTab ? [
+        { label: '✏️ Rinomina area…', action: () => chiediNomeAreaSplit(ct.id) },
+        { label: '⌗ Pareggia i pannelli', action: () => pareggiaPannelli(null, ct.id) },
+        '---',
+        { label: '✕ Chiudi Split-View', action: () => closeCollTab(ct.id) },
+      ] : ct.isDbTab ? [
         { label: '✕ Chiudi tab', action: () => closeCollTab(ct.id) },
       ] : [
         { label: '🔲 Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
+        { label: '🔲 Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }, { nuovaArea: true }) },
         '---',
         ...exportImportMenuItems(ct.db, ct.coll),
         '---',
@@ -466,7 +546,9 @@ export function renderCollTabBar() {
         // senza ridisegnare la barra (siamo dentro il dragstart, ricostruire i
         // nodi ora annullerebbe il trascinamento in corso).
         pinCollTab(ct.id, { render: false });
-        return ct.isDbTab ? null : { db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id };
+        // …e nemmeno il tab dell'area affiancata: il suo payload avrebbe creato
+        // un pannello puntato su un database inesistente.
+        return (ct.isDbTab || ct.isSplitTab) ? null : { db: ct.db, coll: ct.coll, tabId: t.id, collTabId: ct.id };
       }
     );
 

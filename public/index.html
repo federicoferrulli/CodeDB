@@ -629,6 +629,11 @@
                    nel coll-tab attivo qui sopra e nell'albero a sinistra. -->
               <div class="workspace-head">
                 <div class="view-tabs">
+                  <!-- Visibile solo con la Split-View aperta (applyViewTabsFor):
+                       è il modo di tornare ai pannelli dopo essere passati a
+                       Dettagli o Query, che agiscono sul pannello a fuoco. -->
+                  <button class="view-tab hidden" data-view="split"><i data-lucide="columns-2"></i> <span class="tab-label-full">Affiancati</span><span
+                      class="tab-label-short">Split</span></button>
                   <button class="view-tab active" data-view="data"><i data-lucide="table"></i> <span class="tab-label-full">Dati</span><span
                       class="tab-label-short">Dati</span></button>
                   <button class="view-tab" data-view="details"><i data-lucide="info"></i> <span class="tab-label-full">Dettagli</span><span
@@ -888,24 +893,33 @@
               <!-- ------------------- Vista Query & Aggregate ------------------- -->
               <div id="view-query" class="view-panel hidden">
                 <div class="query-topbar">
-                  <div class="query-engine-selector">
-                    <label for="query-target-engine">Target Engine:</label>
-                    <select id="query-target-engine" class="styled-select">
-                      <option value="auto"><i data-lucide="zap"></i> Auto-detect (DB corrente)</option>
-                      <option value="mysql"><i data-lucide="database"></i> MySQL (SQL Runner)</option>
-                      <option value="postgresql"><i data-lucide="database"></i> PostgreSQL (SQL Runner)</option>
-                      <option value="mongodb"><i data-lucide="database"></i> MongoDB (MQL / Aggregate)</option>
-                      <option value="crossdb"><i data-lucide="shuffle"></i> Cross-DB (Virtual JOIN)</option>
-                    </select>
-                  </div>
-
-                  <!-- Bersaglio effettivo della query: senza, non c'era modo di
-                       sapere su quale database si stesse per eseguire. -->
-                  <div class="query-target-selector">
-                    <label>Esegui su:</label>
-                    <span id="query-target-label" class="query-target-label">—</span>
-                    <button id="query-target-reset" class="mini-btn hidden" type="button"
-                      title="Torna al contesto della collection aperta">✕</button>
+                  <!-- Dove e COME gira la query: una domanda sola, quindi un
+                       controllo solo. Prima erano due gruppi affiancati — la
+                       select "Target Engine" (larga, cinque voci, quasi sempre
+                       su Auto) e l'indicatore "Esegui su:" — che occupavano
+                       stabilmente metà barra per un'informazione che si legge
+                       in un colpo d'occhio e si cambia di rado. -->
+                  <div class="query-target-selector toolbar-dropdown-wrap">
+                    <button type="button" id="query-target-btn" class="query-target-btn dropdown-trigger-btn"
+                      aria-haspopup="true" aria-expanded="false"
+                      title="Motore e database su cui girerà la query">
+                      <span id="query-target-engine-label" class="query-target-engine-label">⚡ Auto</span>
+                      <span class="query-target-sep">·</span>
+                      <span id="query-target-label" class="query-target-label">—</span>
+                      <span class="dropdown-caret">▾</span>
+                    </button>
+                    <div id="query-target-menu" class="toolbar-dropdown-menu hidden">
+                      <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
+                      <select id="query-target-engine" class="styled-select">
+                        <option value="auto">⚡ Auto-detect (DB corrente)</option>
+                        <option value="mysql">🗄 MySQL (SQL Runner)</option>
+                        <option value="postgresql">🗄 PostgreSQL (SQL Runner)</option>
+                        <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
+                        <option value="crossdb">🔀 Cross-DB (Virtual JOIN)</option>
+                      </select>
+                      <button id="query-target-reset" class="dropdown-item hidden" type="button"
+                        title="Torna al contesto della collection aperta">↩ Torna alla collection aperta</button>
+                    </div>
                   </div>
 
                   <div class="query-actions">
@@ -914,7 +928,6 @@
                     <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> <span id="query-run-label">Esegui Query</span></button>
                     <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query"><i data-lucide="square"></i>
                       Annulla</button>
-                    <button id="query-snippet-btn" class="ghost" title="Snippet & Template"><i data-lucide="book"></i> Snippets</button>
                     <!-- Visibile solo quando l'editor contiene più istruzioni: per una
                          query singola la scelta non avrebbe senso. -->
                     <label id="query-stop-on-error-wrap" class="query-inline-check hidden"
@@ -959,11 +972,29 @@
                     <div id="query-editor-container" class="query-editor-container">
                       <div class="editor-header">
                         <span id="query-editor-title">Editor Query (SQL / MQL JSON)</span>
+                        <!-- Una sola azione porta un'etichetta, ed è Formatta:
+                             è l'unica che si usa MENTRE si scrive. Aprire un
+                             file, ripescare una query, incollare uno snippet e
+                             svuotare l'editor sono azioni di inizio o fine
+                             lavoro, e stanno nel menu ⋯. -->
                         <div class="editor-tools">
-                          <button id="query-open-sql-btn" class="mini-btn" title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri SQL</button>
                           <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
                           <button id="query-format-btn" class="mini-btn" title="Formatta il codice"><i data-lucide="sparkles"></i> Formatta</button>
-                          <button id="query-clear-btn" class="mini-btn" title="Pulisci editor"><i data-lucide="eraser"></i> Pulisci</button>
+                          <span class="query-history-wrap toolbar-dropdown-wrap">
+                            <button type="button" id="query-editor-more-btn" class="mini-btn dropdown-trigger-btn"
+                              aria-haspopup="true" aria-expanded="false" title="Altre azioni sull'editor">⋯</button>
+                            <div id="query-editor-more-menu" class="toolbar-dropdown-menu hidden">
+                              <button id="qe-history-btn" class="dropdown-item" type="button"
+                                title="Cronologia delle query eseguite in questa tab">🕘 Cronologia query</button>
+                              <button id="query-open-sql-btn" class="dropdown-item" type="button"
+                                title="Apri ed esegui file SQL">📂 Apri file SQL…</button>
+                              <button id="query-snippet-btn" class="dropdown-item" type="button"
+                                title="Snippet &amp; Template">📖 Snippet &amp; Template</button>
+                              <button id="query-clear-btn" class="dropdown-item" type="button"
+                                title="Pulisci editor">🧹 Pulisci editor</button>
+                            </div>
+                            <div id="qe-history-panel" class="hidden"></div>
+                          </span>
                         </div>
                       </div>
                       <!-- Pannello Gestione Chunk File SQL Grandi -->
@@ -1019,22 +1050,18 @@
                           <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
                           <button id="res-mode-chart" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
                         </div>
+                        <!-- Un solo ingresso all'esportazione. Prima erano sei
+                             pulsanti per tre azioni: tre nella barra su desktop
+                             e un menu identico per il mobile, cioè due strade
+                             per la stessa cosa da tenere allineate a mano. -->
                         <div class="results-actions">
-                          <div class="desktop-export-group">
-                            <button id="query-export-csv" class="mini-btn" title="Esporta CSV">📥 CSV</button>
-                            <button id="query-export-json" class="mini-btn" title="Esporta JSON">📥 JSON</button>
-                            <button id="query-export-sql" class="mini-btn" title="Esporta SQL">📥 SQL</button>
-                          </div>
-                          <div class="mobile-export-dropdown toolbar-dropdown-wrap">
+                          <div class="toolbar-dropdown-wrap">
                             <button type="button" id="query-export-menu-btn" class="mini-btn dropdown-trigger-btn"
-                              title="Esporta Risultati">📥 Esporta ▾</button>
+                              aria-haspopup="true" aria-expanded="false" title="Esporta i risultati">📥 Esporta ▾</button>
                             <div id="query-export-menu" class="toolbar-dropdown-menu hidden">
-                              <button id="query-export-csv-mob" class="dropdown-item" type="button">📥 Esporta
-                                CSV</button>
-                              <button id="query-export-json-mob" class="dropdown-item" type="button">📥 Esporta
-                                JSON</button>
-                              <button id="query-export-sql-mob" class="dropdown-item" type="button">📥 Esporta
-                                SQL</button>
+                              <button id="query-export-csv" class="dropdown-item" type="button">📥 Esporta CSV</button>
+                              <button id="query-export-json" class="dropdown-item" type="button">📥 Esporta JSON</button>
+                              <button id="query-export-sql" class="dropdown-item" type="button">📥 Esporta SQL (INSERT)</button>
                             </div>
                           </div>
                         </div>
@@ -1098,8 +1125,17 @@
                                     title="Grafici già pronti, dedotti dalla forma dei risultati">💡 Suggeriti ▾</button>
                                   <div id="chart-suggest-menu" class="toolbar-dropdown-menu hidden"></div>
                                 </div>
-                                <button type="button" id="chart-export-png" class="mini-btn" title="Scarica il grafico come immagine PNG">🖼 PNG</button>
-                                <button type="button" id="chart-export-option" class="mini-btn" title="Scarica l'option ECharts generata">⤓ option</button>
+                                <!-- Stesso trattamento dell'export dei risultati:
+                                     due esportazioni = un solo menu. Quickbar,
+                                     Suggeriti e Personalizza restano com'erano. -->
+                                <div class="toolbar-dropdown-wrap">
+                                  <button type="button" id="chart-export-menu-btn" class="mini-btn dropdown-trigger-btn"
+                                    aria-haspopup="true" aria-expanded="false" title="Esporta il grafico">⤓ Esporta ▾</button>
+                                  <div id="chart-export-menu" class="toolbar-dropdown-menu hidden">
+                                    <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come immagine PNG">🖼 Immagine PNG</button>
+                                    <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts generata">⤓ Option ECharts (JSON)</button>
+                                  </div>
+                                </div>
                                 <button type="button" id="chart-toggle-builder" class="mini-btn"
                                   title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON">⚙ Personalizza</button>
                               </div>

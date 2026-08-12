@@ -309,6 +309,28 @@ function disegna() {
   renderChart(righeCorrenti);
 }
 
+/**
+ * Svuota il grafico (cambio di collection o di connessione).
+ *
+ * Il canvas ECharts non si ridisegna da solo: `renderChart` è invocata solo da
+ * `renderResults`, quindi finché non si rilancia una query resterebbe a schermo
+ * il grafico dei dati di un altro contesto — con la sua legenda, i suoi assi e
+ * i suoi numeri, che nulla lascia sospettare vengano da un altro database.
+ * L'istanza NON viene distrutta: ricrearla costa, e `resizeChart` e il
+ * ResizeObserver continuano a funzionare su quella esistente.
+ */
+export function clearChart() {
+  righeCorrenti = [];
+  ultimoOption = null;
+  if (grafico && !grafico.isDisposed()) grafico.clear();
+  const vuoto = $('#chart-empty');
+  if (vuoto) {
+    vuoto.classList.remove('hidden');
+    vuoto.textContent = 'Esegui una query: i risultati compaiono qui come grafico.';
+  }
+  aggiornaAvvisi([]);
+}
+
 /** Il contenitore è nascosto quando si cambia vista: al ritorno va rimisurato. */
 export function resizeChart() {
   if (grafico && !grafico.isDisposed()) grafico.resize();

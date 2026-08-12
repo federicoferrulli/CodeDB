@@ -1,6 +1,7 @@
 'use strict';
 
 import { $ } from './utils.js';
+import { notificaCambioLarghezza } from './splitview.js';
 
 // Modalità mobile/tablet (vedi media query in style.css): le due sidebar
 // diventano drawer a scomparsa pilotati dagli hamburger nell'header.
@@ -66,4 +67,9 @@ export function initResponsive() {
 
   // Tornando alla larghezza desktop i drawer si resettano.
   mq.addEventListener('change', closeDrawers);
+  // …e i pannelli affiancati si riadattano: sotto i 900px il CSS li impila,
+  // quindi le quote vanno riapplicate sull'asse nuovo e un eventuale pannello
+  // massimizzato va ripristinato (a schermo stretto sarebbe una schermata da
+  // cui non si capisce come uscire).
+  mq.addEventListener('change', notificaCambioLarghezza);
 }

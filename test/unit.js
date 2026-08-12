@@ -998,6 +998,10 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 27: Colonne della tabella dei risultati (larghezze misurate, ordinamento EJSON)
   require('./unit-table-cols');
 
+  // Test 27-quater: cronologia della tab Query & Aggregate (dedup globale,
+  // tetti, filtri, storage rotto).
+  require('./unit-query-history');
+
   // Test 27-ter: scope dei permessi su SQL libero — le tabelle CITATE nella
   // query, non un bersaglio dedotto dal primo FROM (CDB-A03).
   require('./unit-sql-tables');
@@ -1005,6 +1009,19 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 27-bis: le SCRITTURE del frontend congelano il bersaglio invece di
   // rileggerlo dal Proxy `state`, che punta al tab attivo alla chiamata.
   require('./unit-scritture-bersaglio');
+
+  // Test 27-septies: in server.js la sessione di un tab ha due nomi (`sess` e
+  // `session`) a seconda dell'handler, e in script:execute era finito quello
+  // sbagliato — ReferenceError, cioè runner di script morto (CDB-A70).
+  // Controllo statico, come unit-scritture-bersaglio: riprodurre il difetto
+  // vero richiederebbe un socket, una sessione DB viva e un database.
+  require('./unit-handler-scope');
+
+  // Test 27-sexies: il TIPO di una colonna è sintassi interpolata nel DDL, e su
+  // PostgreSQL le DDL usano il simple query protocol: senza validazione,
+  // column:add/column:alter erano esecuzione di SQL arbitrario per chi ha la
+  // sola capability `ddl` (CDB-A67). Nessun database.
+  require('./unit-tipi-colonna');
 
   // Test 27-quater: temi — conversioni di colore, contrasto, derivazione delle
   // famiglie di token e validazione di un tema importato (che finisce in un
@@ -1017,6 +1034,12 @@ console.log('--- Test Unitari CodeDB ---');
   // "Termina" accanto alla riga sbagliata. Nessun database: le righe di prova
   // hanno la forma esatta di quelle vere.
   require('./unit-sessioni');
+
+  // Test 27-octies: geometria della Split-View. Le quote dei pannelli non sono
+  // stili inline ma dati dell'albero, perché il DOM viene rimontato a ogni
+  // aggiunta o chiusura; sbagliata, questa matematica non lancia errori — dà
+  // proporzioni storte o un pannello vivo che nessuno disegna. Nessun browser.
+  require('./unit-split-layout');
 
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
