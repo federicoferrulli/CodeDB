@@ -259,14 +259,127 @@
   background: var(--warning-bg);
   border: 1px solid var(--warning-line);
 }
-/* Le tile di Leaflet restano leggibili anche sul tema scuro. */
-.geomap-canvas .leaflet-container { background: transparent; }
+/* Le tile di Leaflet restano leggibili anche sul tema scuro.
+   NB: Leaflet mette la classe `leaflet-container` SUL div che gli si passa, non
+   su un figlio: il selettore discendente non ha mai agganciato nulla, e con le
+   tile spente restava il grigio chiaro predefinito della libreria — un rettangolo
+   bianco dentro un'interfaccia scura. Si tengono entrambe le forme perché
+   l'editor incapsula la mappa in un contenitore proprio. */
+.geomap-canvas .leaflet-container,
+.geomap-canvas.leaflet-container { background: transparent; }
 
 @media (max-width: 860px) {
   .geomap-body { flex-direction: column; }
   .geomap-canvas { height: 300px; }
   .geomap-json { height: 160px; }
   .geomulti-side { height: auto; max-height: 320px; }
+}
+
+/* --------- Grafico della selezione di celle (cellgrafico.js) --------------
+   Gemello della mappa qui sopra: una finestra che mostra ciò che si è appena
+   selezionato. Più larga di `.modal.wide` perché il contenuto è un disegno, non
+   un modulo: a 660px un grafico a barre con otto categorie diventa un pettine. */
+/* Doppia classe: la regola deve battere `.modal.wide` (0,2,0), che altrimenti
+   vince per specificità e riporta la finestra a 660px. */
+.modal.cellchart-modal { width: min(1000px, calc(100vw - 24px)); }
+/* I controlli stanno su UNA fascia sopra il disegno e vanno a capo da soli: sono
+   quattro decisioni, non un pannello a fisarmonica (vedi la nota in testa a
+   cellgrafico.js). */
+.cellchart-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+}
+.cellchart-campo { display: flex; flex-direction: column; gap: 3px; }
+.cellchart-campo > span { color: var(--fg-dim); font-size: 0.74rem; }
+.cellchart-campo select { min-width: 130px; }
+.cellchart-misure { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; }
+.cellchart-misure > span { color: var(--fg-dim); font-size: 0.74rem; margin-right: 2px; }
+/* Una misura accesa o spenta si vede dal colore pieno: sono interruttori, e un
+   elenco di caselle di spunta avrebbe occupato il triplo dello spazio. */
+.cellchart-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border-2);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+.cellchart-chip:hover { border-color: var(--accent); color: var(--fg); }
+.cellchart-chip.attiva { background: var(--accent-soft); border-color: var(--accent); color: var(--fg-bright); }
+.cellchart-solo-conteggio, .cellchart-conta { color: var(--fg-dim); font-size: 0.74rem; margin-left: auto; }
+.cellchart-canvas { height: min(56vh, 460px); min-height: 220px; width: 100%; }
+.cellchart-note {
+  max-height: 64px;
+  overflow: auto;
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.78rem;
+  color: var(--warning);
+  line-height: 1.35;
+}
+.cellchart-note > div::before { content: '⚠ '; }
+
+@media (max-width: 860px) {
+  .cellchart-canvas { height: 46vh; }
+  .cellchart-conta { display: none; }
+}
+
+/* ---------- Vista 🗺 Mappa dei risultati (query-map.js) --------------------
+   Stessa mappa della selezione di celle, ma incassata nel pannello dei
+   risultati invece che in una modale: l'altezza non è quindi fissa come lì, la
+   detta il pannello (che l'utente ridimensiona col divisorio). Da qui i
+   `min-height: 0` su tutta la catena flex — senza, il contenuto impone la sua
+   altezza naturale e la mappa sfora sotto il bordo del pannello. */
+#query-map-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* `position: relative` per il messaggio di vuoto, che è sovrapposto (come nei
+     Grafici: comparendo e sparendo non deve spostare la mappa); `overflow:
+     hidden` perché la colonna qui dentro si ripartisce lo spazio del pannello e
+     non deve produrre una seconda barra di scorrimento sopra quella dell'elenco. */
+  position: relative;
+  overflow: hidden;
+}
+#query-map-view.hidden { display: none; }
+.qmap-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+}
+.qmap-check { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); }
+/* Il conteggio spinge le due esportazioni a destra: sono azioni finali, non
+   controlli della mappa. */
+.qmap-conta { color: var(--fg-dim); font-size: 0.76rem; margin-left: auto; }
+.qmap-nota { flex: 0 0 auto; padding: 4px 6px; font-size: 0.78rem; color: var(--warning); }
+.qmap-nota::before { content: '⚠ '; }
+.qmap-body { flex: 1 1 auto; display: flex; gap: 8px; min-height: 0; padding: 6px; }
+#query-map-view .geomap-canvas { flex: 2 1 0; min-width: 0; height: auto; min-height: 160px; }
+/* Colonna destra: riepilogo sopra, elenco scorrevole sotto — come nella modale
+   della selezione, di cui questa vista è la gemella. */
+.qmap-side { flex: 1.1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+#qmap-summary { flex: 0 1 auto; min-height: 0; max-height: 46%; overflow: auto; font-size: 0.78rem; }
+#qmap-list { flex: 1 1 auto; min-height: 60px; overflow: auto; font-size: 0.78rem; }
+#query-map-view .warning { flex: 0 0 auto; margin: 4px 6px; }
+
+@media (max-width: 900px) {
+  /* In verticale la mappa resta sopra e l'elenco sotto: affiancarli su schermo
+     stretto lascerebbe a entrambi una colonna inutilizzabile. */
+  .qmap-body { flex-direction: column; }
+  #query-map-view .geomap-canvas { flex: 1 1 auto; min-height: 200px; }
+  .qmap-side { flex: 0 0 auto; max-height: 40%; }
 }
 
 .modal h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 700; color: var(--fg-bright); letter-spacing: -0.015em; }
@@ -1676,6 +1789,21 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 /* Selezione celle stile Excel */
 #grid tbody { user-select: none; }
+/* Su iOS il tocco prolungato apre da sé il menu di sistema "Copia/Cerca" e
+   annulla il puntatore: la pressione lunga con cui si apre la modifica di una
+   cella (vedi collegaToccoProlungato in grid.js) veniva interrotta prima di
+   scattare, e col dito la cella restava non modificabile. `user-select: none`
+   qui sopra non basta — il callout è una cosa a parte. */
+#grid tbody { -webkit-touch-callout: none; }
+/* `manipulation` = niente zoom da doppio tocco, scorrimento e pizzico intatti:
+   senza, il doppio tocco che apre la modifica ingrandirebbe anche la tabella. */
+#grid tbody td { touch-action: manipulation; }
+/* Sulle celle GIÀ selezionate il dito non scorre: è da lì che parte
+   l'allargamento della selezione (vedi cellselect.js). Il consenso va dato in
+   CSS e non con preventDefault, perché una volta che il browser ha iniziato a
+   scorrere non lo ferma più nessuno. Resta confinato alle celle selezionate
+   proprio per non togliere lo scorrimento al resto della griglia. */
+#grid tbody td.cell-selected { touch-action: none; }
 #grid td.editing { user-select: text; }
 #grid td.cell-selected { background: var(--accent-glow) !important; }
 #grid td.cell-focus { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: 0 0 0 4px var(--accent-soft); }
@@ -6964,4 +7092,360 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
   /* Su schermo stretto i comandi della riga non hanno un "passaggio del
      mouse": restano sempre visibili, altrimenti sono irraggiungibili. */
   .tema-card-azioni { opacity: 1; }
+}
+
+/* ===================== Pannello di scelta (chiavi esterne 🔗) =====================
+   Compare accanto alla riga quando si modifica una cella collegata.
+
+   Deliberatamente NON una barra laterale, e la differenza non è estetica: una
+   sidebar è una parte stabile dell'applicazione, sempre al suo posto, mentre
+   questo è un aiuto momentaneo che appartiene a UNA cella e se ne va quando la
+   modifica finisce. Da qui le tre scelte che lo distinguono: staccato dai bordi
+   (non ci si "attacca"), alto quanto il contenuto e non quanto la finestra, e
+   allineato alla riga in modifica (vedi allineaAllaCella in fk-vista.js) —
+   così l'occhio collega il pannello alla cella invece che alla finestra.
+
+   Non è nemmeno una modale: la cella deve restare visibile e scrivibile mentre
+   si sceglie, quindi niente overlay che copre e niente trappola per il fuoco.
+
+   Tutti i colori passano dai token: cablarli qui renderebbe il pannello
+   illeggibile nei temi personalizzati (vedi tokens.css). */
+.fk-pannello {
+  position: fixed;
+  right: var(--space-lg);
+  top: 96px;
+  width: min(400px, calc(100vw - var(--space-xl)));
+  /* Alto quanto serve, mai più della finestra: è il contenuto a decidere. */
+  max-height: min(560px, calc(100vh - 140px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-xl);
+  box-shadow: 0 18px 48px var(--sh-450), 0 2px 8px var(--sh-300);
+  overflow: hidden;
+  /* Sotto le modali (--z-modal): se una si apre sopra il pannello, deve
+     coprirlo. Sopra tutto il resto del workspace. */
+  z-index: calc(var(--z-modal) - 1);
+  /* Entra da destra di poco e in dissolvenza: uno scorrimento da fuori schermo
+     è il gesto di un cassetto, e direbbe la cosa sbagliata su cos'è. */
+  opacity: 0;
+  transform: translateX(20px) scale(0.98);
+  transform-origin: right center;
+  transition: opacity var(--transition-fast), transform var(--transition-normal);
+  pointer-events: none;
+}
+.fk-pannello.aperto {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+/* `hidden` toglie il pannello dal flusso solo a transizione finita: senza,
+   sparirebbe di colpo invece di uscire in dissolvenza. Lo fa fk-vista.js. */
+.fk-pannello.hidden { display: none; }
+
+/* La maniglia del drawer esiste solo nella disposizione mobile: sul desktop il
+   pannello si chiude col ✕ o con Esc e non si trascina. */
+.fk-grab { display: none; }
+
+/* Maniglie di ridimensionamento: una a sinistra per la larghezza, una in basso
+   per l'altezza. La zona sensibile è più larga della riga che si vede (8px
+   contro 2px di segno visibile) — una maniglia spessa quanto il suo bordo si
+   "manca" a ogni tentativo, ed è il motivo per cui certi pannelli sembrano non
+   ridimensionabili. */
+.fk-res {
+  position: absolute;
+  z-index: 1;
+  background: transparent;
+  transition: background var(--transition-fast);
+}
+.fk-res:hover, .fk-res.dragging { background: var(--accent-line); }
+.fk-res:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.fk-res-x {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+.fk-res-y {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+/* Durante il trascinamento il cursore resta quello della maniglia ovunque vada,
+   e il testo sotto non si seleziona: senza, si trascina via mezza tabella. */
+body.fk-resizing { user-select: none; }
+body.fk-resizing * { cursor: inherit !important; }
+
+.fk-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-md) var(--space-lg) var(--space-xs);
+}
+.fk-header-testo { min-width: 0; }
+/* L'occhiello dice COSA si sta guardando, così il titolo può essere il solo
+   nome della tabella: "clienti.id" senza spiegazioni intorno. */
+.fk-occhiello {
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--fg-muted);
+}
+.fk-header h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-family: var(--mono);
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fk-header .close-btn {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: var(--fg-dim);
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.fk-header .close-btn:hover { color: var(--fg-bright); background: var(--ov-80); }
+
+.fk-origine {
+  margin: 0;
+  padding: 0 var(--space-lg) var(--space-sm);
+  font-size: 0.78rem;
+}
+.fk-origine.ipotesi { color: var(--warning); }
+
+.fk-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 0 var(--space-lg) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  min-height: 0;
+}
+
+.fk-sezione h4 {
+  margin: 0 0 var(--space-sm);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--fg-dim);
+}
+.fk-sezione-elenco { display: flex; flex-direction: column; min-height: 0; }
+
+/* Riga riferita: coppie campo/valore su due colonne, il valore in monospazio
+   perché è quello che finirà davvero nella cella. Sta su una superficie sua
+   perché è la RISPOSTA ("chi è il cliente 42"), mentre l'elenco sotto è la
+   scelta: due cose diverse, non un unico elenco di testo. */
+.fk-riga {
+  display: grid;
+  grid-template-columns: minmax(72px, 34%) 1fr;
+  gap: var(--space-2xs) var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--ov-40);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  max-height: 170px;
+  overflow-y: auto;
+}
+.fk-riga .fk-campo { color: var(--fg-dim); font-size: 0.85rem; overflow-wrap: anywhere; }
+.fk-riga .fk-valore { font-family: var(--mono); font-size: 0.85rem; color: var(--fg); overflow-wrap: anywhere; }
+.fk-riga .fk-valore.nullo { color: var(--fg-muted); font-style: italic; }
+.fk-vuoto { color: var(--fg-dim); font-size: 0.88rem; }
+.fk-vuoto.avviso { color: var(--warning); }
+
+.fk-cerca {
+  width: 100%;
+  margin-bottom: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+}
+.fk-cerca:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px var(--accent-glow); }
+
+.fk-elenco {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-y: auto;
+  /* In px e non in vh: l'altezza del pannello è già limitata, e un tetto
+     relativo alla finestra su uno schermo alto lo farebbe crescere fino a
+     sembrare di nuovo una barra laterale. */
+  max-height: 220px;
+}
+.fk-voce {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 0.84rem;
+  text-align: left;
+  cursor: pointer;
+}
+.fk-voce:last-child { border-bottom: none; }
+.fk-voce:hover { background: var(--ov-60); }
+.fk-voce:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -2px; }
+.fk-voce.scelta { background: var(--accent-soft); color: var(--fg-bright); }
+/* La spunta occupa il suo posto anche quando non c'è: senza, il testo delle
+   voci scivola di lato appena si cambia selezione. */
+.fk-voce .fk-spunta { flex: 0 0 1em; color: var(--accent); }
+.fk-voce .fk-testo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fk-voce.corrente .fk-spunta::before { content: '✓'; }
+
+.fk-nota { padding: var(--space-xs) 0 0; font-size: 0.8rem; }
+
+.fk-actions {
+  flex: 0 0 auto;
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+  padding: var(--space-sm) var(--space-lg);
+  border-top: 1px solid var(--border);
+  background: var(--ov-30);
+}
+
+/* Indicatore sulle celle collegate della griglia. È uno pseudo-elemento e non
+   un nodo: la griglia è virtualizzata e ricostruisce le righe visibili a ogni
+   fotogramma di scorrimento, dove una `<span>` in più per cella si sente. */
+#grid td.fk-cella { position: relative; padding-right: 18px; }
+#grid td.fk-cella::after {
+  content: '🔗';
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.72em;
+  opacity: 0.55;
+  pointer-events: none;
+}
+/* Il collegamento solo ipotizzato (MongoDB) si distingue da quello dichiarato:
+   presentare un'ipotesi come certezza fa fidare di un riferimento inesistente. */
+#grid td.fk-cella.fk-ipotesi::after { content: '≈'; opacity: 0.5; }
+#grid td.fk-cella:hover::after { opacity: 1; }
+
+/* Pulsante 🔗 accanto all'editor inline della cella. */
+td.editing .fk-apri-btn {
+  flex: 0 0 auto;
+  margin-left: var(--space-3xs);
+  padding: 0 var(--space-2xs);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+td.editing .fk-apri-btn:hover { color: var(--fg-bright); border-color: var(--accent-line); background: var(--accent-soft); }
+td.editing.fk-cella { display: flex; align-items: center; gap: var(--space-3xs); }
+/* Con l'editor aperto l'indicatore permanente sarebbe un doppione del pulsante. */
+#grid td.editing.fk-cella::after { content: none; }
+td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
+
+@media (max-width: 900px) {
+  /* Su schermo stretto affiancare non è più possibile: il pannello si appoggia
+     in basso, dove non copre la riga in modifica. L'allineamento verticale
+     calcolato in JS va quindi neutralizzato — da qui l'`!important`, che
+     sovrascrive il `top` inline. */
+  /* Su schermo stretto il pannello diventa un DRAWER DAL BASSO: attaccato al
+     bordo inferiore per tutta la larghezza, angoli arrotondati solo in alto,
+     che sale da sotto. È la forma che su mobile dice da sé come si chiude —
+     si spinge giù — ed è dove il pollice arriva senza spostare la mano.
+
+     Due vincoli che non si vedono guardando un browser desktop ristretto:
+
+     1. `--fk-tastiera` lo solleva all'apertura della tastiera virtuale: le
+        unità viewport NON si accorciano quando compare, quindi la casella di
+        ricerca finirebbe sotto i tasti mentre ci si scrive. Il valore lo
+        aggiorna fk-vista.js leggendo `visualViewport`.
+     2. `--fk-chiusura` è lo spostamento del trascinamento verso il basso: si
+        scrive durante lo swipe e si azzera al rilascio (vedi collegaSwipeFk).
+
+     `!important` su misura e posizione sovrascrive gli stili inline scritti per
+     il desktop (allineamento alla cella, misura ricordata): qui la disposizione
+     è una sola e la sceglie il CSS. */
+  .fk-pannello {
+    --fk-tastiera: 0px;
+    --fk-chiusura: 0px;
+    right: 0;
+    left: 0;
+    width: auto !important;
+    top: auto !important;
+    bottom: 0;
+    padding-bottom: var(--sab);
+    /* Il drawer COPRE la barra di navigazione invece di starle sopra: è una
+       superficie temporanea che prende il posto della pagina, e lasciare
+       scoperti quattro pulsanti sotto un foglio sospeso li rendeva solo
+       toccabili per sbaglio. */
+    margin-bottom: var(--fk-tastiera);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    border-bottom: none;
+    max-height: min(78vh, calc(100vh - var(--fk-tastiera) - 56px)) !important;
+    box-shadow: 0 -12px 40px var(--sh-450);
+    transform: translateY(calc(100% + var(--fk-chiusura)));
+    transform-origin: bottom center;
+    transition: opacity var(--transition-fast), transform var(--transition-normal), margin-bottom var(--transition-fast);
+  }
+  .fk-pannello.aperto { transform: translateY(var(--fk-chiusura)); }
+  /* Durante lo swipe il drawer deve seguire il dito senza inerzia. */
+  .fk-pannello.trascinando { transition: none; }
+
+  /* Maniglia: il segno che dice "trascinami giù". Larga tutta la testata perché
+     è anche il bersaglio dello swipe, non solo un disegno. */
+  .fk-grab {
+    display: block;
+    padding: var(--space-sm) 0 var(--space-2xs);
+    cursor: grab;
+    touch-action: none; /* lo swipe è nostro: il browser non deve scorrerci */
+  }
+  .fk-grab span {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto;
+    border-radius: var(--radius-full);
+    background: var(--border-3);
+  }
+  .fk-header { padding-top: var(--space-2xs); }
+  /* Niente ridimensionamento dove la disposizione è obbligata. */
+  .fk-res { display: none; }
+  .fk-elenco { max-height: 34vh; }
+  .fk-riga { max-height: 110px; }
+
+  /* Bersagli grandi abbastanza da colpire col dito: il progetto stesso fissa il
+     minimo a 44px (--touch-target-min, e 48px nella bottom nav). Le voci
+     dell'elenco sono la cosa che si tocca di più in questo pannello. */
+  .fk-voce { min-height: var(--touch-target-min); padding: var(--space-sm); font-size: 0.9rem; }
+  .fk-cerca { min-height: var(--touch-target-min); font-size: 1rem; }
+  .fk-actions button { min-height: var(--touch-target-min); flex: 1 1 auto; }
+  .fk-header .close-btn { min-width: 40px; min-height: 40px; font-size: 1.2rem; }
+  /* Il 🔗 nell'editor è l'UNICO modo di aprire il pannello su mobile (lì non si
+     apre da solo, vedi inlineEdit.js): a 18px sarebbe irraggiungibile. */
+  td.editing .fk-apri-btn { min-width: 40px; min-height: 36px; font-size: 1.05em; }
+}
+
+/* Chi ha chiesto meno animazioni vede il pannello comparire, non arrivare. */
+@media (prefers-reduced-motion: reduce) {
+  .fk-pannello { transition: none; transform: none; }
+  .fk-pannello.aperto { transform: none; }
 }

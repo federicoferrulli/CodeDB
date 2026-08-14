@@ -198,7 +198,18 @@ class AppStore {
     // `revocate` lo dice a chi chiama: cancellare la riga della sessione non
     // tocca un socket GIÀ connesso, che va chiuso a parte (server.js).
     const revocate = !!(patch.status === 'suspended' || patch.passwordHash);
-    if (revocate) await this.deleteSessionsForUser(subjectId);
+    if (revocate) {
+      // Le API key rappresentano lo stesso utente: lasciarle attive dopo un
+      // cambio password o una sospensione vanificherebbe la revoca delle
+      // sessioni UI. Manteniamo le righe per l'audit, marcandole come revocate.
+      await Promise.all([
+        this.deleteSessionsForUser(subjectId),
+        this.col('api_keys').updateMany(
+          { subjectId: String(subjectId), revokedAt: null },
+          { $set: { revokedAt: new Date() } },
+        ),
+      ]);
+    }
     return { updated: res.modifiedCount, revocate };
   }
 
@@ -232,7 +243,11 @@ class AppStore {
   }
 
   async setGrant({ ownerId, subjectId, connName, role, scope }) {
-    const subject = await this.col('users').findOne({ _id: String(subjectId), ownerId: String(ownerId) });
+    const subject = await this.col('users').findOne({
+      _id: String(subjectId),
+      ownerId: String(ownerId),
+      type: 'subuser',
+    });
     if (!subject) throw new Error('Sottoutente non trovato.');
     const capabilities = await this.roleCapabilities(ownerId, role);
     if (!capabilities) throw new Error(`Ruolo "${role}" inesistente.`);
@@ -252,6 +267,28 @@ class AppStore {
       ownerId: String(ownerId), subjectId: String(subjectId), connName: String(connName),
     });
     return { deleted: res.deletedCount };
+  }
+
+  /**
+   * Revoca tutti i grant legati al nome di una connessione.
+   *
+   * I grant sono indicizzati per connName: lasciarli nel control plane dopo
+   * delete/rename farebbe riottenere l'accesso ai vecchi soggetti quando lo
+   * stesso nome venisse creato di nuovo. Gli id distinti servono al server per
+   * chiudere immediatamente i socket che hanno ancora il principal in memoria.
+   */
+  async revokeGrantsForConnection(ownerId, connName) {
+    const query = {
+      ownerId: String(ownerId),
+      connName: String(connName),
+    };
+    const grants = this.col('grants');
+    const rows = await grants.find(query).project({ subjectId: 1 }).toArray();
+    const subjectIds = [...new Set(
+      rows.map((row) => String(row && row.subjectId || '')).filter(Boolean)
+    )];
+    const res = await grants.deleteMany(query);
+    return { deleted: res.deletedCount, subjectIds };
   }
 
   /** Grant di un soggetto, già denormalizzati con le capability del ruolo. */

@@ -101,7 +101,14 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(main);
+  app.whenReady().then(main).catch((err) => {
+    // Anche gli errori fuori dai rami di avvio previsti (per esempio nella
+    // creazione della BrowserWindow) devono terminare con un messaggio, non
+    // come rejection non gestita lasciando il processo Electron sospeso.
+    console.error('[Electron] Avvio non riuscito:', err);
+    dialog.showErrorBox(APP_NAME, `Avvio di CodeDB non riuscito: ${err.message || err}`);
+    app.quit();
+  });
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
@@ -287,7 +294,9 @@ function createWindow() {
     let schema = '';
     try { schema = new URL(url).protocol; } catch { schema = ''; }
     if (schema === 'http:' || schema === 'https:') {
-      shell.openExternal(url);
+      shell.openExternal(url).catch((err) => {
+        console.warn('[Electron] Impossibile aprire il link esterno: ' + err.message);
+      });
     } else {
       console.warn(`[Electron] Apertura esterna rifiutata (schema "${schema || 'sconosciuto'}"): ${url}`);
     }
@@ -300,11 +309,16 @@ function createWindow() {
   // dell'applicazione, indistinguibile da essa.
   mainWindow.webContents.on('will-navigate', (event, url) => {
     const nostra = `http://${HOST}:${PORT}`;
-    if (url.startsWith(nostra)) return;
+    let destinazione = null;
+    try { destinazione = new URL(url); } catch { /* URL non valida: rifiutata sotto */ }
+    if (destinazione && destinazione.origin === new URL(nostra).origin) return;
     event.preventDefault();
-    let schema = '';
-    try { schema = new URL(url).protocol; } catch { schema = ''; }
-    if (schema === 'http:' || schema === 'https:') shell.openExternal(url);
+    const schema = destinazione ? destinazione.protocol : '';
+    if (schema === 'http:' || schema === 'https:') {
+      shell.openExternal(url).catch((err) => {
+        console.warn('[Electron] Impossibile aprire il link esterno: ' + err.message);
+      });
+    }
   });
 
   mainWindow.on('closed', () => {

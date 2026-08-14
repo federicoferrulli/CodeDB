@@ -97,6 +97,7 @@ const FINE_LISTA = new Set([
   'except', 'set', 'into', 'returning', 'window', 'for', 'on', 'using', 'as',
   'fetch', 'qualify',
 ]);
+const FINE_USING_DATI = new Set(['where', 'returning', 'when', 'on', 'order', 'limit']);
 // Nomi che compaiono dopo un introduttore ma non sono tabelle.
 const NON_TABELLE = new Set(['select', 'values', 'dual', 'table', 'unnest', 'lateral', 'only', 'exists']);
 
@@ -133,6 +134,10 @@ function tabelleCitate(sql) {
   const locali = nomiLocali(tok);
   const tabelle = [];
   let nonAnalizzabile = null;
+  // PostgreSQL DELETE e SQL standard MERGE introducono ulteriori sorgenti con
+  // USING. Non va confuso con `JOIN ... USING (colonna)`, dove USING è seguito
+  // da una parentesi e NON nomina una tabella.
+  let statementConUsingDati = false;
 
   const registra = (tokNome, permettiListaColonne) => {
     const nome = tokNome.valore;
@@ -152,8 +157,58 @@ function tabelleCitate(sql) {
 
   for (let i = 0; i < tok.length; i++) {
     const t = tok[i];
+    if (t.tipo === ';') { statementConUsingDati = false; continue; }
     if (t.tipo !== 'id') continue;
     const parola = t.valore.toLowerCase();
+
+    if (parola === 'delete' || parola === 'merge') statementConUsingDati = true;
+    if (statementConUsingDati && FINE_USING_DATI.has(parola)) {
+      statementConUsingDati = false;
+    }
+
+    if (parola === 'using' && statementConUsingDati) {
+      // Una sola clausola USING introduce le sorgenti; gli eventuali USING
+      // successivi appartengono ai JOIN contenuti nella clausola stessa.
+      statementConUsingDati = false;
+      let j = i + 1;
+      while (j < tok.length && tok[j].tipo === 'id' && SALTA.has(tok[j].valore.toLowerCase())) j++;
+      // JOIN ... USING (colonna) e sorgenti derivate `USING (SELECT ...)`:
+      // nessun nome immediato. La SELECT interna verrà comunque scandita.
+      if (tok[j] && tok[j].tipo === '(') continue;
+      if (!eNomeTabella(tok[j])) {
+        nonAnalizzabile = nonAnalizzabile || 'il bersaglio di USING non è un nome di tabella';
+        continue;
+      }
+      // `USING funzione_tabella(...)`: il risultato può leggere qualunque
+      // oggetto e non ha un nome confrontabile con lo scope.
+      if (tok[j + 1] && tok[j + 1].tipo === '(') {
+        nonAnalizzabile = nonAnalizzabile || `la funzione tabella "${tok[j].valore}" in USING`;
+        continue;
+      }
+      registra(tok[j]);
+      j++;
+      // DELETE ... USING ammette una lista separata da virgole. MERGE ne usa
+      // una sola, ma lo stesso ciclo è conservativo e copre entrambi.
+      for (;;) {
+        while (tok[j] && tok[j].tipo !== ','
+          && !(tok[j].tipo === 'id' && FINE_LISTA.has(tok[j].valore.toLowerCase()))) j++;
+        if (!tok[j] || tok[j].tipo !== ',') break;
+        j++;
+        while (j < tok.length && tok[j].tipo === 'id' && SALTA.has(tok[j].valore.toLowerCase())) j++;
+        if (!eNomeTabella(tok[j])) {
+          nonAnalizzabile = nonAnalizzabile || 'un elemento della lista USING non è un nome di tabella';
+          break;
+        }
+        if (tok[j + 1] && tok[j + 1].tipo === '(') {
+          nonAnalizzabile = nonAnalizzabile || `la funzione tabella "${tok[j].valore}" in USING`;
+          break;
+        }
+        registra(tok[j]);
+        j++;
+      }
+      i = Math.max(i, j - 1);
+      continue;
+    }
 
     if (indiceConOn && parola === 'on') {
       let j = i + 1;

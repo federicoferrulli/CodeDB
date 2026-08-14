@@ -1,18 +1,30 @@
 import { state } from './state.js';
-import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento } from './utils.js';
+import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext } from './utils.js';
+
+let indexCreateContext = null;
+
+function captureDetailsTarget() {
+  return { ...captureContext(), db: state.db, coll: state.coll, dbType: state.dbType };
+}
 
 export function loadDetails() {
   if (!state.db || !state.coll) return;
-  emit('collection:stats', { db: state.db, coll: state.coll }).then((res) => {
+  const origin = captureDetailsTarget();
+  emit('collection:stats', {
+    tabId: origin.tabId,
+    db: origin.db,
+    coll: origin.coll,
+  }).then((res) => {
     // La vista Dettagli è un DOM unico: statistiche e indici di un tab non più
     // in primo piano descriverebbero una collection diversa da quella mostrata.
-    if (!isForActiveTab(res)) return;
-    renderDetails(res);
-  }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });
+    if (!origin.isStillActive()) return;
+    renderDetails(res, origin.dbType);
+  }).catch((err) => { if (origin.isStillActive()) toast(err.message, true); });
 }
 
-export function renderDetails({ stats, indexes, fields, sampled }) {
-  const isMysql = state.dbType === 'mysql';
+export function renderDetails({ stats, indexes, fields, sampled }, dbType = state.dbType) {
+  // Le stesse etichette e azioni colonna valgono per entrambi i DB SQL.
+  const isMysql = isSqlType(dbType);
   const rows = [
     [isMysql ? 'Righe (stima)' : 'Documenti', stats.count == null ? '—' : stats.count],
     ['Dimensione dati', fmtBytes(stats.size)],
@@ -63,10 +75,13 @@ export function initDetails() {
   $('#index-table').addEventListener('click', (e) => {
     const btn = e.target.closest('.idx-del');
     if (!btn) return;
+    const origin = captureDetailsTarget();
     const name = btn.dataset.name;
     const extra = name.toUpperCase() === 'PRIMARY' ? '\nAttenzione: è la chiave primaria della tabella.' : '';
     if (!confirm(`Eliminare l'indice "${name}"?${extra}`)) return;
-    conCaricamento(btn, () => emit('index:drop', { db: state.db, coll: state.coll, name }), '').then((res) => {
+    conCaricamento(btn, () => emit('index:drop', {
+      tabId: origin.tabId, db: origin.db, coll: origin.coll, name,
+    }), '').then((res) => {
       toast(`Indice "${name}" eliminato`);
       // loadDetails() rilegge db/coll dal Proxy: ha senso solo se il tab che ha
       // eliminato l'indice è ancora quello mostrato.
@@ -75,6 +90,7 @@ export function initDetails() {
   });
 
   $('#index-add-btn').addEventListener('click', () => {
+    indexCreateContext = captureDetailsTarget();
     $('#idxcreate-name').value = '';
     $('#idxcreate-fields').value = '';
     $('#idxcreate-unique').checked = false;
@@ -83,18 +99,25 @@ export function initDetails() {
     $('#idxcreate-fields').focus();
   });
 
-  $('#idxcreate-cancel').addEventListener('click', () => $('#idxcreate-overlay').classList.add('hidden'));
+  $('#idxcreate-cancel').addEventListener('click', () => {
+    indexCreateContext = null;
+    $('#idxcreate-overlay').classList.add('hidden');
+  });
 
   $('#idxcreate-save').addEventListener('click', () => {
+    const ctx = indexCreateContext;
+    if (!ctx) return;
     // La creazione di un indice su una tabella grande può durare minuti.
     conCaricamento($('#idxcreate-save'), () => emit('index:create', {
-      db: state.db,
-      coll: state.coll,
+      tabId: ctx.tabId,
+      db: ctx.db,
+      coll: ctx.coll,
       name: $('#idxcreate-name').value,
       fields: $('#idxcreate-fields').value,
       unique: $('#idxcreate-unique').checked,
     }), 'Creo…').then((res) => {
       $('#idxcreate-overlay').classList.add('hidden');
+      indexCreateContext = null;
       toast(`Indice "${res.name}" creato`);
       if (isForActiveTab(res)) loadDetails();
     }).catch((err) => {

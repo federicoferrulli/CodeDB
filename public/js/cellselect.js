@@ -1,21 +1,23 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, isForActiveTab, captureContext, eseguiAOndate } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi } from './utils.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
 import { statistiche, statistichePerColonna, formattaNumero, riassuntoBreve } from './cell-stats.js';
 import { statisticheGeo, riassuntoGeoBreve } from './geo-stats.js';
 import { apriMappaSelezione } from './geomulti.js';
+import { apriGraficoSelezione } from './cellgrafico.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
 // Ctrl+click sull'header (seleziona la colonna), frecce (con Shift estendono),
 // Ctrl+A, copia negli appunti (Ctrl+C in TSV; dal menu contestuale anche JSON,
 // CSV, Markdown, SQL INSERT), incolla da Excel (Ctrl+V, aggiorna i documenti),
-// esportazione CSV della selezione e STATISTICHE dei valori numerici (somma,
+// esportazione CSV della selezione, STATISTICHE dei valori numerici (somma,
 // media, mediana, min, max… nella barra di stato e nel pannello 📊, calcolate
-// dal modulo puro `cell-stats.js`).
+// dal modulo puro `cell-stats.js`) e GRAFICO delle celle selezionate (📈, che
+// disegna con `cellgrafico.js` ciò che `cell-chart.js` deduce dalla selezione).
 // Lo stato vive per tab in `state.cellSel` (chiavi "riga:colonna" sugli indici
 // di state.docs/state.columns), così la selezione sopravvive ai re-render.
 
@@ -224,12 +226,21 @@ function showCellStats() {
           grezzo (senza separatori, da incollare in una query)</p>
         <div id="cellstats-body"></div>
         <div class="modal-actions">
+          <button id="cellstats-chart" class="ghost">📈 Grafico</button>
           <button id="cellstats-copy" class="ghost">Copia riepilogo</button>
           <button id="cellstats-close" class="primary">Chiudi</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
     document.getElementById('cellstats-close').addEventListener('click', () => overlay.classList.add('hidden'));
+    // Chi guarda i numeri della selezione è esattamente chi potrebbe volerne la
+    // forma: il grafico si apre da qui senza rifare la strada dal menu del tasto
+    // destro. Il pannello si chiude, altrimenti resterebbe sotto la finestra del
+    // grafico con i suoi numeri visibili ai bordi.
+    document.getElementById('cellstats-chart').addEventListener('click', () => {
+      overlay.classList.add('hidden');
+      mostraGraficoSelezione();
+    });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
     // Copia del singolo valore: un gestore delegato una volta sola, perché il
     // corpo della modale viene riscritto a ogni apertura.
@@ -313,14 +324,24 @@ function contaGeometrieSelezionate() {
   return statisticheGeo(vociSelezionate()).totale;
 }
 
-function mostraMappaSelezione() {
-  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
+// Titolo comune alle finestre che mostrano la selezione (mappa e grafico): da
+// dove vengono questi dati, senza scrivere venti nomi di colonna.
+function titoloSelezione() {
   const { cols } = selectionGrid();
   const nomi = cols.map((c) => state.columns[c]).filter(Boolean);
-  apriMappaSelezione({
-    voci: vociSelezionate(),
-    titolo: [state.coll, nomi.length <= 3 ? nomi.join(', ') : `${nomi.length} colonne`].filter(Boolean).join(' · '),
-  });
+  return [state.coll, nomi.length <= 3 ? nomi.join(', ') : `${nomi.length} colonne`].filter(Boolean).join(' · ');
+}
+
+function mostraMappaSelezione() {
+  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  apriMappaSelezione({ voci: vociSelezionate(), titolo: titoloSelezione() });
+}
+
+// --- Grafico della selezione ------------------------------------------------
+
+function mostraGraficoSelezione() {
+  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  apriGraficoSelezione({ voci: vociSelezionate(), titolo: titoloSelezione() });
 }
 
 // TSV della selezione: le celle non selezionate dentro il rettangolo di
@@ -345,7 +366,7 @@ function buildJson() {
     return typeof v === 'string' ? v : JSON.stringify(v ?? null, null, 2);
   }
   const objs = rows.map((r) => {
-    const obj = {};
+    const obj = Object.create(null);
     for (const c of cols) {
       if (has.has(key(r, c))) obj[state.columns[c]] = state.docs[r]?.[state.columns[c]] ?? null;
     }
@@ -383,10 +404,10 @@ function buildMarkdown() {
 }
 
 function sqlString(s) {
-  return "'" + String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+  return "'" + String(s).replace(/'/g, "''") + "'";
 }
 
-// Letterale SQL (dialetto MySQL) da un valore EJSON.
+// Letterale SQL standard da un valore EJSON, valido su MySQL e PostgreSQL.
 function sqlLiteral(v) {
   if (v === null || v === undefined) return 'NULL';
   if (typeof v === 'number') return String(v);
@@ -409,11 +430,16 @@ function sqlLiteral(v) {
 function buildSqlInsert() {
   const { rows, cols } = selectionGrid();
   const has = sel().cells;
-  const ident = (s) => '`' + String(s).replace(/`/g, '``') + '`';
+  const postgres = state.dbType === 'postgresql' || state.dbType === 'postgres';
+  const quote = postgres ? '"' : '`';
+  const ident = (s) => quote + String(s).split(quote).join(quote + quote) + quote;
+  const table = postgres && state.db
+    ? ident(state.db) + '.' + ident(state.coll || 'tabella')
+    : ident(state.coll || 'tabella');
   const values = rows.map((r) =>
     '(' + cols.map((c) => (has.has(key(r, c)) ? sqlLiteral(cellRaw(r, c)) : 'NULL')).join(', ') + ')'
   );
-  return `INSERT INTO ${ident(state.coll || 'tabella')} (${cols.map((c) => ident(state.columns[c])).join(', ')}) VALUES\n`
+  return 'INSERT INTO ' + table + ' (' + cols.map((c) => ident(state.columns[c])).join(', ') + ') VALUES\n'
     + values.join(',\n') + ';';
 }
 
@@ -541,7 +567,8 @@ function duplicateRow(rowIndex, withKey) {
   // Bersaglio congelato all'APERTURA della modale, non letto al clic su OK
   // (stesso motivo di CDB-A18): la modale resta aperta quanto l'utente vuole e
   // nel frattempo può cambiare tab, mentre `state` punta sempre a quello attivo.
-  const { tabId, st } = captureContext();
+  const origin = captureContext();
+  const { tabId, st } = origin;
   const bersaglio = { tabId, db: st.db, coll: st.coll };
 
   // Sostituisce il listener del bottone OK ad ogni apertura.
@@ -561,11 +588,12 @@ function duplicateRow(rowIndex, withKey) {
     emit('doc:insert', {
       ...bersaglio,
       doc: JSON.stringify(parsed),
-    }).then((res) => {
+    }).then(() => {
       overlay.classList.add('hidden');
       toast(isSql ? 'Riga duplicata' : 'Documento duplicato');
       // runQuery rilegge dagli input del workspace: solo se il tab è ancora quello.
-      if (isForActiveTab(res)) runQuery({ auto: true });
+      if (origin.isStillActive()) runQuery({ auto: true });
+      else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
     }).catch((err) => {
       errEl.textContent = friendlyInsertError(err.message);
       errEl.classList.remove('hidden');
@@ -720,7 +748,7 @@ function pasteIntoGrid(text) {
       skipped += line.length;
       return;
     }
-    const set = {};
+    const set = Object.create(null);
     let any = false;
     line.forEach((value, j) => {
       const col = state.columns[start.c + j];
@@ -739,7 +767,7 @@ function pasteIntoGrid(text) {
     toast('Nessuna cella aggiornabile a partire da qui', true);
     return;
   }
-  const docWord = state.dbType === 'mysql' ? 'righe' : 'documenti';
+  const docWord = isSqlType(state.dbType) ? 'righe' : 'documenti';
   let msg = `Incollare ${cellsCount} celle in ${updates.length} ${docWord}?`;
   if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o sulla colonna _id)`;
   if (!confirm(msg)) return;
@@ -768,7 +796,10 @@ function pasteIntoGrid(text) {
     const failed = results.filter((r) => r.status === 'rejected');
     if (failed.length) toast(`${results.length - failed.length} aggiornati, ${failed.length} falliti: ${failed[0].reason.message}`, true);
     else toast(`${cellsCount} celle incollate in ${updates.length} ${docWord}`);
-    if (!origin.isStillActive()) return; // le righe sono scritte: nulla da ridipingere qui
+    if (!origin.isStillActive()) {
+      marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
+      return; // le righe sono scritte: nulla da ridipingere qui
+    }
     // Lascia selezionata l'area incollata (ri-applicata dal render di runQuery).
     const width = Math.max(...grid.map((l) => l.length));
     s.anchor = { r: start.r, c: start.c };
@@ -869,6 +900,73 @@ export function initCellSelect() {
     dragBase = null;
   });
 
+  /* ------------------ Trascinamento col dito (mobile) ------------------- *
+   * Il trascinamento sopra usa `mousedown`/`mouseover`, che col dito non
+   * arrivano: il browser emula il mouse solo al RILASCIO di un tocco fermo, e
+   * `mouseover` durante uno scorrimento non lo emette affatto. Su un telefono
+   * la selezione rettangolare quindi non esisteva.
+   *
+   * IL PROBLEMA VERO NON È LEGGERE IL DITO, È NON RUBARE LO SCORRIMENTO. In una
+   * griglia di dati il trascinamento è il modo con cui si scorre la tabella:
+   * assegnarlo alla selezione la renderebbe immobile, che è molto peggio del
+   * problema che risolve.
+   *
+   * Da qui la regola: si estende la selezione solo partendo da una cella GIÀ
+   * selezionata. Ovunque altro il dito scorre come sempre. È lo stesso
+   * significato del tocco prolungato (vedi grid.js): si tocca una cella per
+   * sceglierla, e da lì la si allarga. Il consenso a non scorrere si dà in CSS
+   * (`touch-action: none` sulle sole celle selezionate), perché una volta che il
+   * browser ha iniziato a scorrere nessun preventDefault lo ferma più.
+   * --------------------------------------------------------------------- */
+
+  let dito = null;
+
+  tbody.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse') return; // il mouse ha già il suo percorso
+    const td = e.target.closest('td[data-c]');
+    if (!td || td.classList.contains('editing')) return;
+    // Solo da dentro la selezione: altrimenti questo tocco è uno scorrimento,
+    // un tocco singolo o l'inizio di una pressione lunga.
+    if (!sel().cells.has(key(Number(td.dataset.r), Number(td.dataset.c)))) return;
+    dito = { id: e.pointerId, mosso: false };
+    sel().anchor = sel().anchor || cellFromTd(td);
+  });
+
+  tbody.addEventListener('pointermove', (e) => {
+    if (!dito || e.pointerId !== dito.id) return;
+    // `elementFromPoint` e non `e.target`: durante un trascinamento tattile il
+    // bersaglio resta la cella iniziale (cattura implicita del puntatore),
+    // quindi seguire `e.target` selezionerebbe sempre e solo quella.
+    const el = document.elementFromPoint(e.clientX, e.clientY);
+    const td = el && el.closest && el.closest('td[data-c]');
+    if (!td) return;
+    const s = sel();
+    if (!s.anchor) return;
+    dito.mosso = true;
+    const cella = cellFromTd(td);
+    s.focus = cella;
+    s.cells = new Set(rectKeys(s.anchor, cella));
+    applyCellSelection({ leggero: true }); // il riassunto geografico a fine gesto
+  });
+
+  const fineDito = () => {
+    if (!dito) return;
+    if (dito.mosso) applyCellSelection();
+    dito = null;
+  };
+  tbody.addEventListener('pointerup', fineDito);
+  tbody.addEventListener('pointercancel', fineDito);
+
+  // Trascinando piano, la pressione supera comunque la soglia del sistema e il
+  // browser emette `contextmenu` a metà gesto: il menu si aprirebbe sopra una
+  // selezione che si sta ancora tirando. In cattura, quindi prima del gestore
+  // che apre il menu qui sotto.
+  tbody.addEventListener('contextmenu', (e) => {
+    if (!dito || !dito.mosso) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+
   // Ctrl/Shift+click sull'header: selezione dell'intera colonna (il click
   // semplice continua a ordinare, vedi renderGrid).
   $('#grid thead').addEventListener('mousedown', (e) => {
@@ -930,6 +1028,7 @@ export function initCellSelect() {
       { label: 'Copia avanzato ▸', action: advanced },
       '---',
       { label: '📊 Statistiche selezione…', action: showCellStats },
+      { label: '📈 Grafico della selezione…', action: mostraGraficoSelezione },
       ...(geometrie ? [{
         label: `🗺 Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
         action: mostraMappaSelezione,

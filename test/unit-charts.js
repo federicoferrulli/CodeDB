@@ -472,6 +472,19 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.deepStrictEqual(opt.xAxis.data, ['(vuoto)'], 'Una categoria assente si etichetta "(vuoto)"');
   console.log('  OK   Categoria assente etichettata "(vuoto)"');
 
+  // …e nemmeno una categoria NUMERICA. `ejsonKind` risponde "number" sia per il
+  // wrapper EJSON sia per un numero nudo: il ramo che legge `Object.values(v)[0]`
+  // trasformava ogni etichetta in "undefined", con le barre però giuste — cioè
+  // un grafico che sembra disegnato bene ed è illeggibile.
+  opt = costruisciOption(
+    [{ n: 1, v: 10 }, { n: 2, v: 20 }, { n: 3, v: 30 }],
+    cfgBase({ campoX: 'n', aggrega: false, serie: [{ ...cfgBase().serie[0], campoY: 'v', agg: 'primo' }] }),
+  );
+  assert.deepStrictEqual(opt.xAxis.data, ['1', '2', '3'], 'Un asse su una colonna numerica mostra i numeri, non "undefined"');
+  opt = costruisciOption([{ b: true, v: 1 }], cfgBase({ campoX: 'b', serie: [{ ...cfgBase().serie[0], campoY: 'v' }] }));
+  assert.deepStrictEqual(opt.xAxis.data, ['true'], 'Anche un booleano è una categoria leggibile');
+  console.log('  OK   Categoria numerica/booleana etichettata col suo valore');
+
   /* --------------------------- Titolo e tooltip -------------------------- */
 
   opt = costruisciOption(vendite, cfgBase({ titolo: 'Vendite', sottotitolo: 'per città' }));

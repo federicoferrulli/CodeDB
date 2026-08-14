@@ -35,36 +35,11 @@ import {
   campiDisponibili, costruisciOption, coloreSerie, suggerimenti, azzeraAvvisi, prendiAvvisi, INK,
   applicaInk,
 } from './chart-option.js';
-import { tokenTema } from './theme.js';
-
-/**
- * La cromatura del grafico letta dai token del tema in vigore.
- *
- * Nomi delle chiavi = quelli di `INK`; i valori sono token CSS. Se un token
- * manca, `tokenTema` torna stringa vuota e `applicaInk` lascia il valore
- * precedente: meglio la cromatura del tema scuro che un `color: ''`, che
- * ECharts accetta e disegna nero su nero.
- */
-function inkDalTema() {
-  return {
-    fondo: tokenTema('--bg-surface'),
-    primario: tokenTema('--fg'),
-    secondario: tokenTema('--chart-text') || tokenTema('--fg-dim'),
-    muto: tokenTema('--chart-text') || tokenTema('--fg-dim'),
-    griglia: tokenTema('--chart-grid'),
-    asse: tokenTema('--chart-axis'),
-    tooltipFondo: tokenTema('--bg-elevated'),
-    tooltipBordo: tokenTema('--border-2'),
-    // NON segue il tema: sta dentro un segmento colorato dalla tavolozza
-    // categorica, che è fissa. Legarlo a `--fg` renderebbe l'etichetta nera
-    // dentro una barra scura appena si passa al tema chiaro.
-    suColore: '#ffffff',
-    zoomFondo: tokenTema('--ov-40'),
-    zoomArea: tokenTema('--ov-60'),
-    zoomSelezione: tokenTema('--accent-glow'),
-    zoomManiglia: tokenTema('--accent'),
-  };
-}
+// Libreria e cromatura del tema stanno in `chart-runtime.js`: le condivide con
+// il grafico della selezione di celle (cellgrafico.js), che altrimenti
+// scaricherebbe una seconda copia di ECharts e terrebbe un secondo elenco di
+// token da allineare a mano a ogni modifica del tema.
+import { caricaEcharts, inkDalTema } from './chart-runtime.js';
 
 /* --------------------------- Stato dell'interfaccia ---------------------- */
 
@@ -73,34 +48,6 @@ let grafico = null;      // istanza ECharts
 let osservatore = null;  // ResizeObserver del contenitore
 let ultimoOption = null; // option effettivamente applicata (per l'export JSON)
 let timerRidisegno = 0;  // debounce del ridisegno su cambio dimensioni
-
-/* ============================ Caricamento libreria ======================== */
-
-let echarts = null;
-let caricamento = null;
-
-function caricaRisorsa(tag, attrs) {
-  return new Promise((resolve, reject) => {
-    const el = document.createElement(tag);
-    Object.assign(el, attrs);
-    el.addEventListener('load', () => resolve());
-    el.addEventListener('error', () => reject(new Error('Impossibile caricare ECharts da public/vendor/echarts.')));
-    document.head.appendChild(el);
-  });
-}
-
-async function caricaEcharts() {
-  if (echarts) return echarts;
-  if (!caricamento) {
-    caricamento = (async () => {
-      await caricaRisorsa('script', { src: '/vendor/echarts/echarts.min.js' });
-      if (!window.echarts) throw new Error('ECharts caricato ma non disponibile (window.echarts assente).');
-      echarts = window.echarts;
-      return echarts;
-    })().catch((err) => { caricamento = null; throw err; });
-  }
-  return caricamento;
-}
 
 /** Configurazione del tab attivo, creata alla prima richiesta. */
 function cfg() {
@@ -233,8 +180,9 @@ export async function renderChart(righe) {
   const c = cfg();
   autoConfigura(righeCorrenti, c);
 
+  let echarts;
   try {
-    await caricaEcharts();
+    echarts = await caricaEcharts();
   } catch (err) {
     if (vuoto) { vuoto.classList.remove('hidden'); vuoto.textContent = err.message; }
     return;

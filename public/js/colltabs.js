@@ -10,6 +10,7 @@ import { setView } from './main.js';
 import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
 import { markAbandonedByCollTab } from './pending-queries.js';
 import { resetQueryView, updateEditorHighlight } from './query-tab.js';
+import { chiudiPannelloFk } from './fk-vista.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
@@ -132,6 +133,9 @@ function markTreeSelection() {
 function activate(ct, { fresh }) {
   const t = activeTab();
   t.state.activeCollId = ct.id;
+  // Il pannello di riferimento è ancorato a una cella di QUESTA griglia: dopo
+  // il cambio di scheda parlerebbe di una tabella che non è più sotto.
+  chiudiPannelloFk();
 
   if (ct.isSplitTab) {
     renderCollTabBar();
@@ -208,6 +212,7 @@ function activate(ct, { fresh }) {
   $('#live-badge').classList.add('hidden');
 
   const s = ct.snap;
+  const datiSporchi = !!ct.dataDirty;
   // Input da ripristinare dopo un refresh (una tantum): presenti solo finché il
   // coll-tab non ha ancora uno snapshot proprio (vedi session-restore.js).
   const r = (!s && ct.restore) ? ct.restore : null;
@@ -225,7 +230,7 @@ function activate(ct, { fresh }) {
   renderCollTabBar();
   markTreeSelection();
 
-  if (fresh || !s) {
+  if (fresh || !s || datiSporchi) {
     state.skip = 0;
     state.docs = [];
     state.columns = [];
@@ -235,7 +240,7 @@ function activate(ct, { fresh }) {
     // un'azione dell'utente: marcata `auto` così l'audit non la registra
     // (coerente con polling/refresh post-scrittura). L'apertura "vera" di una
     // collection (r assente) resta invece tracciata come lettura utente.
-    runQuery(r ? { auto: true } : undefined);
+    runQuery((r || datiSporchi) ? { auto: true } : undefined);
     if (r) ct.restore = null; // input ripristinati: da qui in poi vale lo snapshot
   } else if (s.docsParziali) {
     // Snapshot alleggerito (CDB-62): i risultati completi non sono stati

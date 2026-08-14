@@ -1049,6 +1049,11 @@
                           <button id="res-mode-table" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
                           <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
                           <button id="res-mode-chart" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
+                          <!-- Compare SOLO se nei risultati ci sono davvero
+                               geometrie (query-map.js): su una query di conteggi
+                               sarebbe una scheda che si apre su un riquadro
+                               vuoto, cioè una funzione che sembra rotta. -->
+                          <button id="res-mode-map" class="mode-btn hidden" title="Nessuna geometria nei risultati"><i data-lucide="map"></i> Mappa</button>
                         </div>
                         <!-- Un solo ingresso all'esportazione. Prima erano sei
                              pulsanti per tre azioni: tre nella barra su desktop
@@ -1148,6 +1153,33 @@
                               <div id="chart-builder" class="chart-builder"></div>
                             </div>
                           </div>
+                        </div>
+
+                        <!-- Vista MAPPA dei risultati: stessa mappa della
+                             selezione di celle (geo-vista.js), con i dati presi
+                             dalle righe invece che dalle celle evidenziate.
+                             Leaflet è vendorizzato e caricato su richiesta. -->
+                        <div id="query-map-view" class="results-panel-view hidden">
+                          <div class="qmap-toolbar">
+                            <button type="button" id="qmap-fit" class="mini-btn" title="Inquadra tutte le geometrie">⤢ Inquadra tutto</button>
+                            <label class="qmap-check" title="Le tile arrivano da OpenStreetMap: richiede rete">
+                              <input type="checkbox" id="qmap-tiles" /> Sfondo mappa
+                            </label>
+                            <span id="qmap-conta" class="qmap-conta"></span>
+                            <button type="button" id="qmap-copy" class="mini-btn" title="Copia il riepilogo in TSV">Copia riepilogo</button>
+                            <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come FeatureCollection">⤓ GeoJSON</button>
+                          </div>
+                          <div id="qmap-nota" class="qmap-nota hidden"></div>
+                          <div id="qmap-warning" class="warning hidden"></div>
+                          <div id="qmap-body" class="qmap-body">
+                            <div id="qmap-canvas" class="geomap-canvas"></div>
+                            <div class="qmap-side">
+                              <div id="qmap-summary"></div>
+                              <div id="qmap-list" class="geomulti-list"></div>
+                              <div id="qmap-list-note" class="dim geomap-note hidden"></div>
+                            </div>
+                          </div>
+                          <div id="qmap-empty" class="chart-empty">Esegui una query: le geometrie contenute nei risultati compaiono qui sulla mappa.</div>
                         </div>
                       </div>
                     </div>
@@ -1269,6 +1301,53 @@
       </div>
     </div>
   </div>
+
+  <!-- ============ Pannello di scelta delle chiavi esterne (🔗) ============
+       Compare accanto alla riga quando si modifica una cella collegata.
+       Deliberatamente NON è una barra laterale: staccato dai bordi, alto quanto
+       il suo contenuto e allineato alla cella, perché è un aiuto momentaneo a
+       QUELLA cella e non una parte stabile dell'applicazione. Non è nemmeno una
+       modale: la cella deve restare visibile e scrivibile mentre si sceglie. -->
+  <aside id="fk-pannello" class="fk-pannello hidden" aria-hidden="true" aria-label="Scegli un riferimento">
+    <!-- Maniglie di ridimensionamento. Sono `separator` con tabindex perché il
+         trascinamento non è l'unico modo di ridimensionare: chi non può
+         trascinare le usa con le frecce. -->
+    <div id="fk-res-x" class="fk-res fk-res-x" role="separator" tabindex="0"
+         aria-orientation="vertical" aria-label="Larghezza del pannello (frecce sinistra/destra)"></div>
+    <div id="fk-res-y" class="fk-res fk-res-y" role="separator" tabindex="0"
+         aria-orientation="horizontal" aria-label="Altezza del pannello (frecce su/giù)"></div>
+    <!-- Maniglia del drawer: visibile solo su mobile. È l'affordance che dice
+         "questo si trascina giù per chiudersi", e il bersaglio dello swipe. -->
+    <div id="fk-grab" class="fk-grab" aria-hidden="true"><span></span></div>
+    <div class="fk-header">
+      <div class="fk-header-testo">
+        <span class="fk-occhiello">Riferimento</span>
+        <h3 id="fk-title">Riferimento</h3>
+      </div>
+      <button type="button" id="fk-close" class="close-btn" title="Chiudi (Esc)" aria-label="Chiudi">✕</button>
+    </div>
+    <p id="fk-origine" class="fk-origine dim"></p>
+
+    <div class="fk-body">
+      <section class="fk-sezione">
+        <h4>Riga riferita</h4>
+        <div id="fk-riga" class="fk-riga"></div>
+      </section>
+
+      <section class="fk-sezione fk-sezione-elenco">
+        <h4 id="fk-elenco-titolo">Scegli un'altra riga</h4>
+        <input type="search" id="fk-cerca" class="fk-cerca" placeholder="Cerca nella tabella…"
+               autocomplete="off" spellcheck="false" aria-label="Cerca nella tabella di riferimento" />
+        <div id="fk-elenco" class="fk-elenco" role="listbox" aria-labelledby="fk-elenco-titolo"></div>
+        <div id="fk-elenco-nota" class="dim fk-nota hidden"></div>
+      </section>
+    </div>
+
+    <div class="fk-actions">
+      <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova scheda">Apri tabella ↗</button>
+      <button type="button" id="fk-usa" class="primary" disabled>Usa questo valore</button>
+    </div>
+  </aside>
 
   <!-- ===================== Modale modifica documento (riga) ===================== -->
   <div id="editdoc-overlay" class="overlay hidden">

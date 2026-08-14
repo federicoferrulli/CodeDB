@@ -2,11 +2,18 @@
 
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { splitStatements } = require('./sqlText');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const sessioni = require('./sessioni');
 
 // Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
 const GEO_CACHE_MS = 15000;
+
+// Tipi (`udt_name`) su cui ha senso cercare con ILIKE nel pannello di
+// riferimento: vedi relatedRows. Fuori restano numeri, date e binari, dove la
+// ricerca testuale costa una conversione riga per riga e non risponde comunque
+// alla domanda posta.
+const TESTUALI_PG = new Set(['varchar', 'text', 'bpchar', 'char', 'name', 'citext', 'json', 'jsonb', 'uuid']);
 
 // Schemi che CodeDB non deve mai mostrare ne' modificare. Il livello
 // "database" dell'interfaccia corrisponde allo SCHEMA (vedi la nota su qtable),
@@ -675,6 +682,29 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
+  // Lettura con timeout per-query, dentro una transazione READ ONLY: una query
+  // lenta degrada con errore invece di tenere occupata una connessione del pool.
+  // È il ramo "senza opHandle" di collectionFind estratto per riuso — qui non
+  // c'è un runId da annullare, sono letture brevi avviate da un pannello.
+  async queryConTimeout(sql, params) {
+    const pool = this.requirePool();
+    const ms = DbStrategy.queryTimeoutMs();
+    if (ms <= 0) return pool.query(sql, params);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN READ ONLY');
+      await client.query(`SET LOCAL statement_timeout = ${ms}`);
+      const res = await client.query(sql, params);
+      await client.query('COMMIT');
+      return res;
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
   // Senza filtro usa la stima istantanea del planner (pg_class.reltuples) invece
   // di un COUNT(*) che scansiona l'intera tabella. Se la stima non è disponibile
@@ -732,16 +762,23 @@ class PostgreSqlStrategy extends DbStrategy {
     // sempre pulita al pool.
     const schema = schemaOf(db);
     let pathSet = false;
+    let readTxOpen = false;
     try {
       if (payload && payload.opHandle && client.processID) {
         payload.opHandle.processID = client.processID;
       }
       if (readOnly) {
         await client.query('BEGIN READ ONLY');
+        // Segnare la transazione subito dopo BEGIN: anche un errore nel primo
+        // SET LOCAL deve fare ROLLBACK prima di restituire il client al pool.
+        readTxOpen = true;
         await client.query('SET LOCAL statement_timeout = 30000');
-        await client.query(`SET LOCAL search_path TO ${qid(schema)}, public`);
+        // Un solo schema: aggiungere `public` come ripiego farebbe risolvere
+        // un nome non qualificato fuori dal database/schema autorizzato quando
+        // la tabella non esiste nello schema selezionato.
+        await client.query(`SET LOCAL search_path TO ${qid(schema)}`);
       } else {
-        await client.query(`SET search_path TO ${qid(schema)}, public`);
+        await client.query(`SET search_path TO ${qid(schema)}`);
         pathSet = true;
       }
       try {
@@ -762,10 +799,17 @@ class PostgreSqlStrategy extends DbStrategy {
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
         return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
-        if (readOnly) await client.query('ROLLBACK').catch(() => {});
+        if (readTxOpen) {
+          await client.query('ROLLBACK').catch(() => {});
+          readTxOpen = false;
+        }
         if (pathSet) await client.query('RESET search_path').catch(() => {});
       }
     } finally {
+      // Rete di sicurezza per errori avvenuti durante i SET LOCAL, prima di
+      // entrare nel blocco che esegue la query. Un client con una transazione
+      // READ ONLY rimasta aperta avvelenerebbe la richiesta successiva del pool.
+      if (readTxOpen) await client.query('ROLLBACK').catch(() => {});
       client.release();
     }
   }
@@ -893,19 +937,27 @@ class PostgreSqlStrategy extends DbStrategy {
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
+      if (splitStatements(sql).length !== 1) {
+        throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
+      }
     } else {
       const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
       sql = `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
     }
 
+    const client = await pool.connect();
+    let transactionOpen = false;
     try {
-      const res = await pool.query(`EXPLAIN (FORMAT JSON) ${sql}`);
+      await client.query('BEGIN READ ONLY');
+      transactionOpen = true;
+      await client.query('SET LOCAL statement_timeout = 30000');
+      await client.query(`SET LOCAL search_path TO ${qid(schemaOf(db))}`);
+      const res = await client.query(`EXPLAIN (FORMAT JSON) ${sql}`);
       const plan = res.rows[0]['QUERY PLAN'] || res.rows[0][Object.keys(res.rows[0])[0]];
       return { format: 'json', plan: Array.isArray(plan) ? plan[0] : plan, query: sql };
-    } catch (_err) {
-      const res = await pool.query(`EXPLAIN ${sql}`);
-      const columns = res.fields ? res.fields.map((f) => f.name) : ['QUERY PLAN'];
-      return { format: 'table', rows: res.rows.map(serializeRow), columns, query: sql };
+    } finally {
+      if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
+      client.release();
     }
   }
 
@@ -1081,6 +1133,106 @@ class PostgreSqlStrategy extends DbStrategy {
     }
 
     return { collections, relations };
+  }
+
+  // Chiavi esterne uscenti dalla sola tabella indicata (pannello di riferimento
+  // della griglia). Qui `ccu.table_schema` conta doppio: nella UI il "database"
+  // È lo schema, quindi una FK verso un altro schema è a tutti gli effetti una
+  // FK verso un altro database, e il pannello deve saperlo per interrogare la
+  // tabella giusta invece di una omonima nello schema di partenza.
+  async columnRelations(db, coll) {
+    const pool = this.requirePool();
+    const schema = schemaOf(db);
+    const res = await pool.query(
+      `SELECT kcu.column_name,
+              ccu.table_schema AS referenced_table_schema,
+              ccu.table_name   AS referenced_table_name,
+              ccu.column_name  AS referenced_column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         JOIN information_schema.constraint_column_usage ccu
+           ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_schema = $1
+          AND tc.table_name = $2
+     ORDER BY kcu.ordinal_position`,
+      [schema, coll]
+    );
+    return res.rows.map((r) => ({
+      campo: r.column_name,
+      db: r.referenced_table_schema || schema,
+      tabella: r.referenced_table_name,
+      colonna: r.referenced_column_name,
+      origine: 'vincolo',
+      molti: false,
+    }));
+  }
+
+  async relatedRows(db, coll, payload) {
+    const pool = this.requirePool();
+    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
+    const table = qtable(db, coll);
+    const [pk, sel, info] = await Promise.all([
+      this.primaryKey(db, coll),
+      this.selectListFor(db, coll),
+      this.tableColumnsInfo(db, coll),
+    ]);
+
+    // La colonna viene dal descrittore della FK, quindi dal catalogo — ma
+    // l'evento socket è raggiungibile anche con un payload confezionato a mano,
+    // e `qid` quoterebbe qualsiasi nome senza domande.
+    if (!info.columns.some((c) => c.name === colonna)) {
+      throw new Error(`La colonna "${colonna}" non esiste nella tabella "${coll}".`);
+    }
+
+    const conds = [];
+    const params = [];
+    const ph = () => `$${params.length}`;
+    if (haValore) {
+      // Il valore arriva in Extended JSON come tutti gli altri: una FK può
+      // essere un bigint o una data, non solo un intero piccolo.
+      const v = toSqlValue(deserializeClientObject({ v: valore }).v);
+      if (v === null) {
+        // IS NULL e non `= NULL`: quest'ultimo non è mai vero, e una cella vuota
+        // avrebbe mostrato "nessuna riga" anche dove la riga esiste.
+        conds.push(`${qid(colonna)} IS NULL`);
+      } else {
+        params.push(v);
+        conds.push(`${qid(colonna)} = ${ph()}`);
+      }
+    }
+    if (cerca) {
+      // Il confronto sulla colonna chiave passa dal testo: la chiave è spesso
+      // un intero o un uuid, e `= $n` con un parametro stringa farebbe fallire
+      // la query invece di non trovare nulla.
+      params.push(cerca);
+      const or = [`${qid(colonna)}::text = ${ph()}`];
+      params.push(`%${DbStrategy.escapeLike(cerca)}%`);
+      const like = ph();
+      for (const c of info.columns) {
+        if (!TESTUALI_PG.has(String(c.type).toLowerCase())) continue;
+        or.push(`${qid(c.name)}::text ILIKE ${like}`);
+        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
+      }
+      conds.push(`(${or.join(' OR ')})`);
+    }
+
+    const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+    const order = pk.length ? ` ORDER BY ${pk.map(qid).join(', ')}` : '';
+    params.push(limit);
+    const limitPh = ph();
+    params.push(skip);
+    const sql = `SELECT ${sel.list} FROM ${table}${where}${order} LIMIT ${limitPh} OFFSET ${ph()}`;
+
+    const res = await this.queryConTimeout(sql, params);
+    const rows = res.rows;
+    PostgreSqlStrategy.geoRowsToJson(rows, sel.geo);
+
+    const columns = res.fields ? res.fields.map((f) => f.name) : [];
+    const capped = DbStrategy.truncateBySize(rows);
+    const righe = capped.rows.map((r) => serializeRow({ ...r, _id: this.makeId(r, pk, columns) }));
+    return { righe, colonne: columns, chiave: pk, troncato: !!capped.truncated };
   }
 
   async collectionExport(db, coll, payload) {
@@ -1316,33 +1468,78 @@ class PostgreSqlStrategy extends DbStrategy {
     const col = payload.column || {};
     const newName = String(col.name || '').trim();
     const type = String(col.type || '').trim();
+    if (!newName) throw new Error('Nome della colonna mancante.');
     // Questo ramo NON passa da columnSql: il tipo finisce direttamente in
     // `ALTER COLUMN … TYPE ${type}` e nel ripiego `USING …::${type}`, quindi la
     // validazione va ripetuta qui o resta la porta aperta.
     if (type) DbStrategy.assertColumnType(type);
+    if (newName !== oldName) DbStrategy.assertCreatableName(newName, 'della colonna');
 
-    if (newName && newName !== oldName) {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} RENAME COLUMN ${qid(oldName)} TO ${qid(newName)}`);
-    }
+    // Rename, tipo, nullabilità e default formano UNA modifica logica. Prima
+    // erano query indipendenti: se il cast falliva dopo il rename, l'utente
+    // riceveva un errore ma la colonna era già stata rinominata. La transazione
+    // rende l'operazione atomica; il SAVEPOINT permette il solo ripiego USING
+    // senza lasciare la transazione nello stato aborted di PostgreSQL.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const current = await client.query(
+        `SELECT column_default
+           FROM information_schema.columns
+          WHERE table_schema = $1 AND table_name = $2 AND column_name = $3`,
+        [schemaOf(db), coll, oldName],
+      );
+      if (!current.rowCount) throw new Error(`La colonna "${oldName}" non esiste nella tabella "${coll}".`);
+      const currentDefault = current.rows[0].column_default == null
+        ? '' : String(current.rows[0].column_default).trim();
 
-    const targetName = newName || oldName;
-    if (type) {
-      try {
-        await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type}`);
-      } catch (err) {
-        if (/cannot be cast automatically/i.test(err.message || '')) {
-          await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type} USING ${qid(targetName)}::${type}`);
-        } else {
-          throw err;
+      if (newName && newName !== oldName) {
+        await client.query(`ALTER TABLE ${qtable(db, coll)} RENAME COLUMN ${qid(oldName)} TO ${qid(newName)}`);
+      }
+
+      const targetName = newName || oldName;
+      if (type) {
+        await client.query('SAVEPOINT codedb_tipo_colonna');
+        try {
+          await client.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type}`);
+          await client.query('RELEASE SAVEPOINT codedb_tipo_colonna');
+        } catch (err) {
+          await client.query('ROLLBACK TO SAVEPOINT codedb_tipo_colonna');
+          if (/cannot be cast automatically/i.test(err.message || '')) {
+            await client.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} TYPE ${type} USING ${qid(targetName)}::${type}`);
+          } else {
+            throw err;
+          }
         }
       }
+      if (col.nullable === false) {
+        await client.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} SET NOT NULL`);
+      } else if (col.nullable === true) {
+        await client.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} DROP NOT NULL`);
+      }
+
+      // Il form invia sempre il default. Se è identico a quello letto dal
+      // catalogo (per esempio nextval(...) di una SERIAL) lo si conserva senza
+      // reinterpretarlo. Una modifica usa invece lo stesso encoder ristretto
+      // della creazione: literal/numero/keyword sicure, mai SQL arbitrario.
+      if (Object.prototype.hasOwnProperty.call(col, 'default')) {
+        const requestedDefault = String(col.default == null ? '' : col.default).trim();
+        if (requestedDefault !== currentDefault) {
+          const clause = requestedDefault
+            ? `SET DEFAULT ${defaultSql(requestedDefault)}`
+            : 'DROP DEFAULT';
+          await client.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} ${clause}`);
+        }
+      }
+
+      await client.query('COMMIT');
+      this._geoCache.clear();
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
     }
-    if (col.nullable === false) {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} SET NOT NULL`);
-    } else if (col.nullable === true) {
-      await pool.query(`ALTER TABLE ${qtable(db, coll)} ALTER COLUMN ${qid(targetName)} DROP NOT NULL`);
-    }
-    this._geoCache.clear();
   }
 
   async dropColumn(db, coll, name) {
@@ -1372,22 +1569,57 @@ class PostgreSqlStrategy extends DbStrategy {
     return { name };
   }
 
-  async dropIndex(db, _coll, name) {
+  async dropIndex(db, coll, name) {
     const pool = this.requirePool();
     const idx = String(name || '').trim();
     if (!idx) throw new Error('Nome dell\'indice da eliminare mancante.');
-    // Qualificato: senza schema l'indice veniva risolto dal search_path e si
-    // poteva eliminare l'omonimo di un altro schema.
-    await pool.query(`DROP INDEX ${qid(schemaOf(db))}.${qid(idx)}`);
+    const table = String(coll || '').trim();
+    if (!table) throw new Error('Tabella proprietaria dell\'indice mancante.');
+    const schema = schemaOf(db);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SET LOCAL lock_timeout = \'10s\'');
+      // Il lock rende atomici controllo e DROP rispetto alle DDL sulla tabella.
+      await client.query(`LOCK TABLE ${qtable(schema, table)} IN ACCESS EXCLUSIVE MODE`);
+      const found = await client.query(
+        `SELECT 1
+           FROM pg_catalog.pg_class i
+           JOIN pg_catalog.pg_namespace n ON n.oid = i.relnamespace
+           JOIN pg_catalog.pg_index x ON x.indexrelid = i.oid
+           JOIN pg_catalog.pg_class t ON t.oid = x.indrelid
+          WHERE n.nspname = $1 AND i.relname = $2 AND t.relname = $3`,
+        [schema, idx, table]
+      );
+      if (!found.rowCount) {
+        throw new Error('L\'indice indicato non appartiene alla tabella selezionata.');
+      }
+      await client.query(`DROP INDEX ${qid(schema)}.${qid(idx)}`);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async tableFields(db, table) {
     const pool = this.requirePool();
     const res = await pool.query(
-      `SELECT column_name AS name, data_type AS ctype, udt_name AS udt, is_nullable AS nullable, column_default AS cdefault
-         FROM information_schema.columns
-        WHERE table_schema = $2 AND table_name = $1
-     ORDER BY ordinal_position`,
+      `SELECT c.column_name AS name,
+              pg_catalog.format_type(a.atttypid, a.atttypmod) AS ctype,
+              c.is_nullable AS nullable,
+              c.column_default AS cdefault
+         FROM information_schema.columns c
+         JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+         JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
+         JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid
+                                       AND a.attname = c.column_name
+                                       AND a.attnum > 0
+                                       AND NOT a.attisdropped
+        WHERE c.table_schema = $2 AND c.table_name = $1
+     ORDER BY c.ordinal_position`,
       [table, schemaOf(db)]
     );
 
@@ -1396,7 +1628,10 @@ class PostgreSqlStrategy extends DbStrategy {
 
     return res.rows.map((c) => ({
       name: c.name,
-      types: [String(c.ctype === 'USER-DEFINED' ? c.udt : (c.ctype || c.udt || 'varchar'))],
+      // format_type conserva i modificatori che information_schema.data_type
+      // perde (varchar(80), numeric(12,2), timestamp(3), array). Senza, salvare
+      // soltanto la nullabilità cambiava anche il tipo della colonna.
+      types: [String(c.ctype || 'varchar')],
       presence: c.nullable === 'YES' ? 0 : 100,
       nullable: c.nullable === 'YES',
       default: c.cdefault == null ? null : String(c.cdefault),

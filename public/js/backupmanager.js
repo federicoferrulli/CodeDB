@@ -1,8 +1,8 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento } from './utils.js';
-import { activeTab } from './tabs.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext } from './utils.js';
+import { activeTab, tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnaTraguardo } from './onboarding-stato.js';
@@ -512,8 +512,21 @@ async function verifyBackupIntegrity(group, backupId, bottone) {
     if (res.valid) {
       esito = `<div class="status-pass">✅ Verifica SHA-256 SUPERATA: tutti i ${res.okCount} file di dati sono integri.</div>`;
     } else {
-      const detailsHtml = res.details.map(d => `<li>${esc(d.file)}: <strong>${esc(d.status)}</strong></li>`).join('');
-      esito = `<div class="status-fail">❌ Verifica FALLITA: ${res.failedCount} file corrotti o mancanti su ${res.okCount + res.failedCount}.<ul>${detailsHtml}</ul></div>`;
+      const failed = Number(res.failedCount) || 0;
+      const unverifiable = Number(res.unverifiableCount) || 0;
+      const extra = Number(res.extraCount) || 0;
+      const problemi = [
+        failed ? `${failed} ${failed === 1 ? 'file corrotto o mancante' : 'file corrotti o mancanti'}` : '',
+        unverifiable ? `${unverifiable} ${unverifiable === 1 ? 'file senza checksum verificabile' : 'file senza checksum verificabile'}` : '',
+        extra ? `${extra} ${extra === 1 ? 'file extra non dichiarato nel manifest' : 'file extra non dichiarati nel manifest'}` : '',
+      ].filter(Boolean);
+      if (!problemi.length) problemi.push('il contenuto non corrisponde al manifest');
+      const detailsHtml = (res.details || [])
+        .map((d) => `<li>${esc(d.file)}: <strong>${esc(d.status)}</strong></li>`)
+        .join('');
+      const dettagli = detailsHtml ? `<ul>${detailsHtml}</ul>` : '';
+      esito = `<div class="status-fail">❌ Verifica FALLITA: ${problemi.join(', ')}. `
+        + `${Number(res.okCount) || 0} file verificati correttamente.${dettagli}</div>`;
     }
   } catch (err) {
     esito = `<div class="status-fail">Errore durante la verifica: ${esc(err.message)}</div>`;
@@ -531,7 +544,11 @@ async function promptRestoreBackup(group, backupId, origDb, bottone) {
   // mentre si è connessi a "collaudo" — o viceversa. Prima nulla lo diceva e la
   // sola domanda era il nome del database: un ripristino sull'ambiente sbagliato
   // era a un clic di distanza. Ora la destinazione è scritta nella conferma.
-  const tab = activeTab();
+  // Connessione e tab sono parte della conferma: vanno congelati PRIMA di
+  // attendere la risposta della modale. L'header resta utilizzabile sopra gli
+  // overlay e la ripresa di una query sospesa può cambiare tab nel frattempo.
+  const origin = captureContext();
+  const tab = origin.tab;
   if (!tab || !tab.dbType) {
     toast('Connettiti prima a un database: il ripristino scrive sulla connessione attiva.', true);
     return;
@@ -559,7 +576,7 @@ async function promptRestoreBackup(group, backupId, origDb, bottone) {
   });
   if (!scelta) return;
 
-  executeRestore(group, backupId, scelta.targetDb, scelta.drop, bottone);
+  await executeRestore(group, backupId, scelta.targetDb, scelta.drop, bottone, origin);
 }
 
 /**
@@ -634,10 +651,10 @@ function chiediRipristino({ backupId, conn, dbSuggerito, layer = 1, gruppoEstran
   });
 }
 
-async function executeRestore(group, backupId, targetDb, drop, bottone) {
-  const tab = activeTab();
-  if (!tab || !tab.dbType) {
-    toast('Connettiti prima a un database per eseguire il ripristino.', true);
+async function executeRestore(group, backupId, targetDb, drop, bottone, origin) {
+  const tab = origin && origin.tab;
+  if (!tab || !tabs.list.includes(tab) || !tab.dbType) {
+    toast('La connessione scelta per il ripristino non è più aperta. Riaprila e conferma di nuovo.', true);
     return;
   }
 
@@ -646,6 +663,7 @@ async function executeRestore(group, backupId, targetDb, drop, bottone) {
   const fineCaricamento = iniziaCaricamento(bottone, '');
   try {
     const res = await emit('backup:restore', {
+      tabId: origin.tabId,
       group,
       backupId,
       targetDb,
@@ -659,13 +677,21 @@ async function executeRestore(group, backupId, targetDb, drop, bottone) {
     // Un ripristino crea collection e tabelle che nell'albero non ci sono: senza
     // questa ricarica la sidebar continua a mostrare lo schema di prima, e
     // l'unico modo di vedere i dati appena riportati è ricaricare la pagina.
-    refreshDbTree();
+    tab.state.schemaDirty = true;
+    if (!origin.tabId || tabs.activeId === origin.tabId) {
+      tab.state.schemaDirty = false;
+      refreshDbTree();
+    }
   } catch (err) {
     toast(`❌ Ripristino fallito: ${err.message}`, true);
     chiudiProgresso(`❌ Ripristino fallito: ${err.message}`, false);
     // Anche un ripristino fallito può aver applicato una parte dei layer: lo
     // schema a sinistra va riletto comunque, non è più quello di prima.
-    refreshDbTree();
+    tab.state.schemaDirty = true;
+    if (!origin.tabId || tabs.activeId === origin.tabId) {
+      tab.state.schemaDirty = false;
+      refreshDbTree();
+    }
   } finally {
     fineCaricamento();
   }

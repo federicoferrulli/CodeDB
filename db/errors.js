@@ -27,6 +27,22 @@
 // Marcatore di un messaggio già passato di qui: serve all'idempotenza.
 const MARCATORE = 'Cosa fare:';
 
+// I driver possono includere la stringa di connessione nel messaggio (specie
+// quando la URI è malformata). Prima di inviarlo al browser o all'audit si
+// eliminano userinfo, query string e frammento: tutti possono contenere segreti.
+const URI_NEL_TESTO = /\b([a-z][a-z0-9+.-]*:\/\/)([^\s'\x22<>]+)/gi;
+
+function redigiUri(testo) {
+  return String(testo == null ? '' : testo).replace(URI_NEL_TESTO, (_tutto, schema, resto) => {
+    let pulito = resto;
+    const at = pulito.lastIndexOf('@');
+    if (at >= 0) pulito = '***@' + pulito.slice(at + 1);
+    const query = pulito.search(/[?#]/);
+    if (query >= 0) pulito = pulito.slice(0, query) + '?…';
+    return schema + pulito;
+  });
+}
+
 // Estrazione difensiva del messaggio: questa funzione sta sul percorso di OGNI
 // errore dell'applicazione, quindi non può a sua volta fallire — un oggetto con
 // un getter `message` difettoso (o un toString che esplode) trasformerebbe un
@@ -585,13 +601,13 @@ function descriviErrore(err, ctx = {}) {
 function spiegaErrore(err, ctx = {}) {
   const msg = testo(err);
   const d = descriviErrore(err, ctx);
-  if (!d) return msg;
+  if (!d) return redigiUri(msg);
   // Il dettaglio tecnico resta in coda: senza, una segnalazione dalla beta
   // arriva senza il codice del driver e non è diagnosticabile. Fa eccezione ciò
   // che era già un messaggio nostro: ripeterlo aggiungerebbe solo rumore.
   const tecnico = d.tecnico && d.tecnico !== d.causa && !d.nascondiTecnico
     ? ` (dettaglio tecnico: ${d.tecnico})` : '';
-  return `${d.causa}. ${MARCATORE} ${d.rimedio}.${tecnico}`;
+  return redigiUri(`${d.causa}. ${MARCATORE} ${d.rimedio}.${tecnico}`);
 }
 
-module.exports = { spiegaErrore, descriviErrore, MARCATORE };
+module.exports = { spiegaErrore, descriviErrore, redigiUri, MARCATORE };

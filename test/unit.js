@@ -297,6 +297,179 @@ console.log('--- Test Unitari CodeDB ---');
     console.log('  OK   Sink di backup: errori propagati, nessun blocco (CDB-46) passed');
   }
 
+  // Test 5e-bis: integrità end-to-end dei backup. Nomi distinti non devono
+  // collidere, il verificatore deve controllare entrambi i versi del manifest e
+  // il restore deve fermarsi PRIMA di scrivere se un layer è corrotto.
+  {
+    const {
+      createFileSink, readLines, safeName, sha256File, verifyBackupDir,
+    } = require('../backup/lib/util');
+    const { preflightChain } = require('../backup/lib/restore');
+    const { notifySlack } = require('../backup/lib/notify');
+
+    assert.strictEqual(safeName('clienti'), 'clienti', 'un nome storico già sicuro resta stabile');
+    assert.notStrictEqual(
+      safeName('clienti vip'),
+      safeName('clienti_vip'),
+      'due nomi che condividono lo stem normalizzato non devono condividere il file'
+    );
+    assert.notStrictEqual(safeName('Foo'), safeName('foo'), 'la differenza di maiuscole deve sopravvivere su Windows');
+    assert.notStrictEqual(safeName('CON'), 'CON', 'i nomi riservati di Windows devono essere riscritti');
+
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-backup-hardening-'));
+    try {
+      const abortPath = path.join(temp, 'annullato.ndjson');
+      const abortSink = createFileSink(abortPath, { compress: false });
+      abortSink.writeLine('{"parziale":true}');
+      await abortSink.abort(new Error('annullamento test'));
+      assert.throws(
+        () => abortSink.writeLine('{"tardi":true}'),
+        /annullamento test/,
+        'un sink annullato deve rifiutare altre scritture'
+      );
+
+      await assert.rejects(
+        async () => {
+          for await (const _line of readLines(path.join(temp, 'mancante.ndjson.gz'))) {
+            // Nessuna riga attesa.
+          }
+        },
+        /ENOENT|no such file/i,
+        'un errore dello stream sorgente gzip deve emergere e non lasciare il restore appeso'
+      );
+
+      const dataDir = path.join(temp, 'data');
+      fs.mkdirSync(dataDir, { recursive: true });
+      const dataPath = path.join(dataDir, 'clienti.ndjson');
+      const originale = '{"_id":1}\n';
+      fs.writeFileSync(dataPath, originale, 'utf8');
+      const file = {
+        path: 'data/clienti.ndjson',
+        collection: 'clienti',
+        kind: 'data',
+        count: 1,
+        bytes: Buffer.byteLength(originale),
+        sha256: await sha256File(dataPath),
+      };
+      const manifest = {
+        tool: 'codedb-backup',
+        version: 1,
+        id: '20260814-120000000Z_full',
+        type: 'full',
+        dbType: 'mongodb',
+        db: 'test',
+        files: [file],
+      };
+      const manifestPath = path.join(temp, 'manifest.json');
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+      let report = await verifyBackupDir(temp);
+      assert.strictEqual(report.valid, true, 'file dichiarato, dimensione e checksum corretti: backup valido');
+      assert.strictEqual(report.okCount, 1, 'il file integro deve risultare verificato');
+
+      const extraPath = path.join(temp, 'non-dichiarato.txt');
+      fs.writeFileSync(extraPath, 'extra', 'utf8');
+      report = await verifyBackupDir(temp);
+      assert.strictEqual(report.extraCount, 1, 'un file sottratto dal manifest deve essere rilevato sul disco');
+      assert.strictEqual(report.valid, false, 'un file non dichiarato invalida il backup');
+      fs.unlinkSync(extraPath);
+
+      // Stessa dimensione, contenuto diverso: il controllo deve arrivare fino
+      // allo SHA-256 e il preflight deve impedire qualunque restore.
+      fs.writeFileSync(dataPath, '{"_id":2}\n', 'utf8');
+      report = await verifyBackupDir(temp);
+      assert.strictEqual(report.failedCount, 1, 'una modifica a byte invariati deve risultare corrotta');
+      assert(report.details.some((d) => d.status === 'CORRUPTED'), 'il dettaglio deve identificare la corruzione');
+      await assert.rejects(
+        preflightChain([{ dir: temp, manifest }], { info() {} }),
+        /Nessuna modifica è stata applicata/,
+        'la catena corrotta deve fermarsi prima del database'
+      );
+
+      // Compatibilità: un manifest storico senza checksum resta ripristinabile,
+      // ma non può essere presentato come verificato.
+      fs.writeFileSync(dataPath, originale, 'utf8');
+      const storico = { ...manifest, files: [{ ...file }] };
+      delete storico.files[0].sha256;
+      fs.writeFileSync(manifestPath, JSON.stringify(storico, null, 2), 'utf8');
+      report = await verifyBackupDir(temp);
+      assert.strictEqual(report.unverifiableCount, 1, 'il checksum assente deve essere esplicito');
+      assert.strictEqual(report.valid, false, 'non verificabile non equivale a valido');
+      const avvisi = [];
+      const preflight = await preflightChain(
+        [{ dir: temp, manifest: storico }],
+        { info(message) { avvisi.push(message); } }
+      );
+      assert.strictEqual(preflight.unverifiableCount, 1, 'il preflight deve contare i file storici');
+      assert(avvisi.some((m) => /senza checksum/.test(m)), 'il restore storico deve produrre un avviso');
+
+      // Anche una voce manifest strutturalmente nulla deve diventare un
+      // dettaglio utilizzabile da UI/MCP, non un TypeError.
+      fs.writeFileSync(manifestPath, JSON.stringify({ ...manifest, files: [null] }, null, 2), 'utf8');
+      report = await verifyBackupDir(temp);
+      assert(report.details.some((d) => d.status === 'INVALID_ENTRY'), 'voce nulla del manifest rilevata');
+
+      // La notifica è un confine esterno: gli URI citati dagli errori dei
+      // driver devono essere redatti prima di entrare nel body Slack.
+      const fetchOriginale = global.fetch;
+      let corpoSlack = null;
+      const erroriLog = [];
+      global.fetch = async (_url, options) => {
+        corpoSlack = JSON.parse(options.body);
+        return { ok: true, status: 200 };
+      };
+      try {
+        await notifySlack(
+          'https://hooks.slack.com/services/T/B/X',
+          'Errore mongodb://utente:segreto-super@localhost:27017/db',
+          { info() {}, error(message) { erroriLog.push(message); } }
+        );
+      } finally {
+        global.fetch = fetchOriginale;
+      }
+      assert(corpoSlack && !corpoSlack.text.includes('segreto-super'), 'la password non deve uscire verso Slack');
+      assert(corpoSlack.text.includes('utente:***@'), 'la redazione deve conservare un messaggio diagnostico utile');
+      assert.strictEqual(erroriLog.length, 0, 'il mock Slack deve risultare riuscito');
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('  OK   Integrità backup, preflight restore e redazione Slack passed');
+  }
+
+  // Test 5e-ter: la CLI deve decifrare anche le URI complete. Una URI contiene
+  // spesso le credenziali e il server la salva quindi come segreto ENC:.
+  {
+    const Vault = require('../db/vault');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-connstore-uri-'));
+    const ini = path.join(temp, 'connections.ini');
+    const modulo = require.resolve('../backup/lib/connstore');
+    const envPrecedente = process.env.CODEDB_CONNECTIONS_FILE;
+    try {
+      const passphrase = 'passphrase-test-uri';
+      const uri = 'mongodb://utente:password-uri@localhost:27017/database';
+      const { meta, dataKey } = Vault.createMeta(passphrase);
+      Vault.writeMeta(ini, meta);
+      fs.writeFileSync(
+        ini,
+        '[connessione-uri]\ndbType=mongodb\nuri=' + Vault.encryptWith(uri, dataKey) + '\n',
+        'utf8'
+      );
+
+      process.env.CODEDB_CONNECTIONS_FILE = ini;
+      delete require.cache[modulo];
+      const connstore = require('../backup/lib/connstore');
+      assert.strictEqual(connstore.hasEncryptedSecrets(), true, 'la URI ENC: deve richiedere la passphrase');
+      const caricate = connstore.loadConnections(passphrase);
+      assert.strictEqual(caricate['connessione-uri'].uri, uri, 'la CLI deve consegnare al driver la URI in chiaro');
+    } finally {
+      delete require.cache[modulo];
+      if (envPrecedente === undefined) delete process.env.CODEDB_CONNECTIONS_FILE;
+      else process.env.CODEDB_CONNECTIONS_FILE = envPrecedente;
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('  OK   Connstore CLI: URI cifrata decifrata passed');
+  }
+
   // Test 5f: politiche sulle destinazioni richieste da un client (CDB-06/CDB-43).
   // Percorso locale confinato, storage cloud solo per alias pre-approvati,
   // webhook solo verso Slack: dal socket e dal gateway MCP non si deve poter
@@ -941,9 +1114,24 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 24: Statistiche della selezione di celle (valori EJSON, precisione)
   require('./unit-cell-stats');
 
+  // Test 24-ter: Grafico della selezione di celle (asse dedotto, una serie per
+  // colonna numerica, raggruppamento solo se i valori dell'asse si ripetono)
+  // Sbagliato non lancia: disegna barre plausibili e false.
+  require('./unit-cell-chart');
+
   // Test 24-bis: Statistiche di una selezione GEOMETRICA (misure sferiche,
   // geometrie proiettate escluse dai totali)
   require('./unit-geo-stats');
+
+  // Test 24-quater: Geometrie dentro i RISULTATI di una query (vista 🗺 Mappa):
+  // dove si cerca (sottodocumenti, array) e dove no (valori EJSON)
+  require('./unit-geo-risultati');
+
+  // Test 24-quinquies: decisioni del pannello 🔗 delle chiavi esterne (quale
+  // campo è collegato e dove, quale colonna fa da etichetta, quando due chiavi
+  // sono la stessa chiave). Sbagliate non lanciano: aprono un pannello che
+  // sembra funzionare e mostra un elenco di righe indistinguibili.
+  require('./unit-fk-relazioni');
 
   // Test 24-quater: euristiche di analisi dello schema, condivise fra
   // l'interfaccia (Grafo 3D) e il gateway MCP. Erano due copie già divergenti:

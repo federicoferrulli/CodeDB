@@ -1,5 +1,7 @@
 'use strict';
 
+const { redigi } = require('./redazione');
+
 /* ---------------------------------------------------------------------------
  * Notifica Slack (incoming webhook) al termine delle operazioni. Un errore
  * di notifica non deve mai far fallire il backup: viene solo loggato.

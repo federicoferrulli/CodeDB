@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -60,17 +60,19 @@ function updateWizardSummary() {
   const dbIcon = { mongodb: '🍃', mysql: '🐬', postgresql: '🐘', postgres: '🐘' }[cfg.dbType] || '🗄';
   const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
 
-  let html = `<div><strong>${dbIcon} ${dbTypeName}</strong> — `;
-  if (cfg.uri) {
-    html += `URI: <code>${cfg.uri}</code>`;
+  let html = `<div><strong>${esc(dbIcon)} ${esc(dbTypeName)}</strong> — `;
+  if (cfg.connectionMode === 'uri') {
+    // Una URI può contenere password e token nella query string: il riepilogo
+    // conferma la modalità senza duplicare il segreto nel DOM.
+    html += 'URI MongoDB completa configurata';
   } else {
-    html += `Host: <strong>${cfg.host || 'localhost'}:${cfg.port || ''}</strong>`;
-    if (cfg.username) html += ` | User: <strong>${cfg.username}</strong>`;
-    if (cfg.database) html += ` | DB: <strong>${cfg.database}</strong>`;
-    if (cfg.authSource) html += ` | Auth: <strong>${cfg.authSource}</strong>`;
+    html += `Host: <strong>${esc(cfg.host || 'localhost')}:${esc(cfg.port || '')}</strong>`;
+    if (cfg.username) html += ` | User: <strong>${esc(cfg.username)}</strong>`;
+    if (cfg.database) html += ` | DB: <strong>${esc(cfg.database)}</strong>`;
+    if (cfg.authSource) html += ` | Auth: <strong>${esc(cfg.authSource)}</strong>`;
   }
   if (cfg.ssh === 'true') {
-    html += `<br>🔒 <strong>Tunnel SSH attivo</strong>: <code>${cfg.sshUser || 'user'}@${cfg.sshHost || 'bastion'}:${cfg.sshPort || '22'}</code>`;
+    html += `<br>🔒 <strong>Tunnel SSH attivo</strong>: <code>${esc(cfg.sshUser || 'user')}@${esc(cfg.sshHost || 'bastion')}:${esc(cfg.sshPort || '22')}</code>`;
   }
   html += `</div>`;
   summaryBox.innerHTML = html;
@@ -123,6 +125,7 @@ function readConnForm() {
       username: form.elements.username.value,
       password: form.elements.password.value,
     };
+  cfg.connectionMode = usingUri ? 'uri' : 'fields';
   if (!usingUri) {
     if (isSql) cfg.database = form.elements.database.value;
     else cfg.authSource = form.elements.authSource.value;
@@ -231,8 +234,9 @@ export function startEditConn(name) {
     const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType.includes('postgres');
     const defaultPort = dbType === 'mysql' ? '3306' : (dbType.includes('postgres') ? '5432' : '27017');
     form.elements.dbType.value = dbType;
-    selectConnTab(f.uri && !isSql ? 'uri' : 'fields');
-    form.elements.uri.value = f.uri || '';
+    selectConnTab(res.hasUri && !isSql ? 'uri' : 'fields');
+    form.elements.uri.value = '';
+    form.elements.uri.placeholder = res.hasUri ? '(invariata se lasciata vuota)' : '';
     form.elements.host.value = f.host || 'localhost';
     form.elements.port.value = f.port || defaultPort;
     form.elements.username.value = f.username || '';
@@ -269,6 +273,7 @@ function cancelEditConn() {
   const form = $('#connect-form');
   form.reset();
   form.elements.password.placeholder = '';
+  form.elements.uri.placeholder = '';
   form.elements.sshPassword.placeholder = '(vuoto se usi una chiave)';
   form.elements.sshPassphrase.placeholder = '(se la chiave è protetta)';
   syncConnForm();
@@ -297,6 +302,7 @@ export function initConnection() {
 
   $('#conn-test-btn')?.addEventListener('click', () => {
     const cfg = readConnForm();
+    if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#conn-test-btn');
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');

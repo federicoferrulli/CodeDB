@@ -14,7 +14,7 @@
  */
 
 const assert = require('assert');
-const { spiegaErrore, descriviErrore, MARCATORE } = require('../db/errors');
+const { spiegaErrore, descriviErrore, redigiUri, MARCATORE } = require('../db/errors');
 
 console.log('--- Test Errori Parlanti ---');
 
@@ -49,6 +49,17 @@ function errore(message, extra = {}) {
   assert.strictEqual(spiegaErrore(null), '', 'errore nullo: stringa vuota, nessun crash');
   assert.strictEqual(spiegaErrore('testo semplice'), 'testo semplice', 'una stringa non riconosciuta resta tale');
   console.log('  OK   Errori sconosciuti restituiti immutati');
+}
+
+// --- Redazione delle URI -----------------------------------------------------
+{
+  const uri = 'mongodb://utente:segretissimo@db.example/app?authToken=abc#frag';
+  const msg = spiegaErrore(new Error('URI non valida: ' + uri));
+  assert.ok(msg.includes('mongodb://***@db.example/app?…'), 'schema e destinazione restano diagnosticabili');
+  assert.ok(!msg.includes('utente') && !msg.includes('segretissimo') && !msg.includes('authToken') && !msg.includes('abc'),
+    'userinfo, query string e frammento non devono uscire nel messaggio');
+  assert.strictEqual(redigiUri(msg), msg, 'la redazione deve essere idempotente');
+  console.log('  OK   Segreti nelle URI rimossi dagli errori');
 }
 
 // --- Rete: la destinazione compare nel messaggio quando è nota ---------------

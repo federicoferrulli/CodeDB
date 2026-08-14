@@ -18,7 +18,7 @@ const { runBackup } = require('./lib/engine');
 const { runRestore } = require('./lib/restore');
 const { parseStorage, uploadBackupDir } = require('./lib/storage');
 const { notifySlack } = require('./lib/notify');
-const { readCatalog, readManifest, sha256File, formatBytes, fileDelBackup } = require('./lib/util');
+const { readCatalog, verifyBackupDir, formatBytes } = require('./lib/util');
 
 // CODEDB_BACKUPS_DIR: stesso override rispettato dal gateway MCP (mcp/McpGateway.js),
 // così CLI e MCP condividono la cartella di default anche nell'app Electron pacchettizzata.
@@ -281,85 +281,37 @@ function cmdList(args) {
   if (!found) console.log(`Nessun backup trovato in ${destRoot}.`);
 }
 
-/**
- * File di dati/schema/indici presenti nella cartella del backup, in forma
- * relativa e con le barre normalizzate, per il confronto col manifest.
- * `manifest.json`, `catalog.json` e il log non sono file DICHIARATI: non
- * devono comparire fra gli "extra".
- */
-function elencaFileBackup(backupDir) {
-  const esclusi = new Set(['manifest.json', 'catalog.json', 'backup.log']);
-  const out = [];
-  const cammina = (dir, prefisso) => {
-    let voci;
-    try {
-      voci = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return; // cartella sparita nel frattempo: lo dirà il ramo "MANCANTE"
-    }
-    for (const v of voci) {
-      const rel = prefisso ? `${prefisso}/${v.name}` : v.name;
-      if (v.isDirectory()) cammina(path.join(dir, v.name), rel);
-      else if (!esclusi.has(rel)) out.push(rel);
-    }
-  };
-  cammina(backupDir, '');
-  return out;
-}
-
 async function cmdVerify(args) {
   const backupDir = path.resolve(requireOpt(args, 'from', 'cartella del backup'));
-  const manifest = readManifest(backupDir);
-  let ok = 0;
-  let failed = 0;
-  // Un file senza checksum non è "integro": è NON VERIFICABILE, ed è un'altra
-  // cosa. Saltandolo in silenzio il rapporto diceva «N file integri, 0
-  // problemi» anche su un backup di cui non era stato controllato nulla.
-  const nonVerificabili = [];
-  const dichiarati = new Set();
-
-  for (const f of manifest.files) {
-    dichiarati.add(String(f.path).replace(/\\/g, '/'));
-    if (!f.sha256) {
-      nonVerificabili.push(f.path);
-      continue;
-    }
-    const full = fileDelBackup(backupDir, f.path);
-    if (!fs.existsSync(full)) {
-      console.error(`MANCANTE  ${f.path}`);
-      failed += 1;
-      continue;
-    }
-    const actual = await sha256File(full);
-    if (actual === f.sha256) {
-      console.log(`OK        ${f.path}`);
-      ok += 1;
+  const report = await verifyBackupDir(backupDir);
+  for (const d of report.details) {
+    if (d.status === 'OK') {
+      console.log(`OK        ${d.file}`);
+    } else if (d.status === 'UNVERIFIABLE') {
+      console.warn(`SENZA CHECKSUM  ${d.file}`);
+    } else if (d.status === 'UNDECLARED') {
+      console.error(`NON DICHIARATO  ${d.file} (presente sul disco ma assente dal manifest)`);
+    } else if (d.status === 'MISSING') {
+      console.error(`MANCANTE  ${d.file}`);
+    } else if (d.status === 'CORRUPTED' && d.expected && d.actual) {
+      console.error(`CORROTTO  ${d.file} (atteso ${d.expected.slice(0, 12)}…, trovato ${d.actual.slice(0, 12)}…)`);
+    } else if (d.status === 'CORRUPTED' && d.expectedBytes != null) {
+      console.error(`CORROTTO  ${d.file} (attesi ${d.expectedBytes} byte, trovati ${d.actualBytes})`);
     } else {
-      console.error(`CORROTTO  ${f.path} (atteso ${f.sha256.slice(0, 12)}…, trovato ${actual.slice(0, 12)}…)`);
-      failed += 1;
+      console.error(`PROBLEMA  ${d.file} (${d.status}${d.error ? ': ' + d.error : ''})`);
     }
   }
-
-  // Il confronto va fatto anche NELL'ALTRO VERSO: iterando solo `manifest.files`
-  // un file di dati presente sul disco ma tolto dal manifest non veniva
-  // notato, e un manifest a cui siano state sottratte delle voci passava la
-  // verifica senza una parola.
-  const suDisco = elencaFileBackup(backupDir);
-  const extra = suDisco.filter((p) => !dichiarati.has(p));
-  for (const p of extra) console.error(`NON DICHIARATO  ${p} (presente sul disco ma assente dal manifest)`);
-
-  for (const p of nonVerificabili) console.warn(`SENZA CHECKSUM  ${p}`);
 
   console.log(
-    `\nVerifica di ${manifest.id}: ${ok} file verificati, ${failed} problemi, `
-    + `${nonVerificabili.length} non verificabili, ${extra.length} non dichiarati.`
+    `\nVerifica di ${report.backupId}: ${report.okCount} file verificati, ${report.failedCount} problemi, `
+    + `${report.unverifiableCount} non verificabili, ${report.extraCount} non dichiarati.`
   );
-  if (failed || extra.length) {
+  if (report.failedCount || report.extraCount) {
     throw new Error('Verifica fallita: il backup è incompleto, corrotto o non corrisponde al manifest.');
   }
-  if (nonVerificabili.length) {
+  if (report.unverifiableCount) {
     throw new Error(
-      `Verifica incompleta: ${nonVerificabili.length} file del manifest non hanno un checksum e non sono `
+      `Verifica incompleta: ${report.unverifiableCount} file del manifest non hanno un checksum e non sono `
       + 'stati controllati. Un backup recente non dovrebbe averne: rifallo per ottenerne uno verificabile.'
     );
   }

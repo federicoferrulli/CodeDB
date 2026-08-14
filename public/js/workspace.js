@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
 import { renderDbTree, refreshDbTree } from './dbtree.js';
-import { renderGrid, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
+import { renderGrid, runQuery, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
 import {
   renderCollTabBar, applyViewTabsFor, currentCollTab, salvaSnapshotQuery, applicaSnapshotQuery,
 } from './colltabs.js';
@@ -124,7 +124,15 @@ export function renderWorkspace() {
   if (state.db && state.coll) {
     $('#placeholder').classList.add('hidden');
     $('#workspace').classList.remove('hidden');
-    renderGrid(); // i dati sono già nello stato del tab: nessuna nuova query
+    if (state.dataDirty || (activeCt && activeCt.dataDirty)) {
+      // Un change stream può aver segnalato modifiche mentre questa connessione
+      // era in background: non mostrare come aggiornati i documenti in cache.
+      // I marker vengono consumati da grid.runQuery solo dopo una risposta
+      // valida; se la lettura fallisce devono provocare un nuovo tentativo.
+      runQuery({ auto: true });
+    } else {
+      renderGrid(); // i dati sono già nello stato del tab: nessuna nuova query
+    }
     setView(state.view || 'data');
   } else {
     $('#workspace').classList.add('hidden');

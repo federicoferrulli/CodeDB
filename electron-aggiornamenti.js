@@ -270,7 +270,11 @@ function creaGestoreAggiornamenti({ getWindow }) {
       defaultId: 0,
       cancelId: 1
     });
-    if (r.response === 0) shell.openExternal(URL_RELEASES);
+    if (r.response === 0) {
+      await shell.openExternal(URL_RELEASES).catch((err) => {
+        console.warn('[Aggiornamenti] Impossibile aprire la pagina delle release: ' + err.message);
+      });
+    }
   }
 
   /** Scarica l'aggiornamento mostrando l'avanzamento nella barra delle applicazioni. */
@@ -378,7 +382,12 @@ function creaGestoreAggiornamenti({ getWindow }) {
         defaultId: 0,
         cancelId: 2
       });
-      if (r.response === 1) { shell.openExternal(URL_RELEASES); return; }
+      if (r.response === 1) {
+        await shell.openExternal(URL_RELEASES).catch((err) => {
+          console.warn('[Aggiornamenti] Impossibile aprire la pagina delle release: ' + err.message);
+        });
+        return;
+      }
       if (r.response !== 0) return;
 
       await scarica(autoUpdater, nuova);

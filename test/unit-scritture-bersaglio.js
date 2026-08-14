@@ -35,9 +35,15 @@ const JS = path.join(__dirname, '..', 'public', 'js');
 const EVENTI_SCRITTURA = [
   'doc:insert', 'doc:update', 'doc:replace', 'doc:delete',
   'collection:deleteMany', 'collection:import',
+  'db:create', 'db:rename', 'db:drop',
+  'collection:create', 'collection:rename', 'collection:drop',
+  'column:drop', 'index:create', 'index:drop', 'backup:restore',
 ];
 
-const FILE = ['grid.js', 'cellselect.js', 'inlineEdit.js', 'insert.js', 'exportimport.js', 'splitview.js'];
+const FILE = [
+  'grid.js', 'cellselect.js', 'inlineEdit.js', 'insert.js', 'exportimport.js',
+  'splitview.js', 'schema-ops.js', 'details.js', 'backupmanager.js',
+];
 
 /**
  * Estrae il testo dell'oggetto payload passato a `emit('<evento>', { … })`,
@@ -92,5 +98,5 @@ for (const nome of FILE) {
   }
 }
 
-assert.ok(controllati >= 8, `attese almeno 8 scritture da ispezionare, trovate ${controllati}`);
+assert.ok(controllati >= 18, `attese almeno 18 scritture da ispezionare, trovate ${controllati}`);
 console.log(`  OK   Le ${controllati} scritture del frontend congelano il bersaglio (CDB-A18)`);

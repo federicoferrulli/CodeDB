@@ -1,6 +1,6 @@
 'use strict';
 
-import { isGeometry, posizioni, fuoriDaLonLat } from './geojson.js';
+import { isGeometry, normalizzaGeometria, posizioni, fuoriDaLonLat } from './geojson.js';
 
 /* ---------------------------------------------------------------------------
  * Statistiche di una selezione di celle GEOMETRICHE (quante geometrie, di che
@@ -205,12 +205,17 @@ export function raccogliGeometrie(voci) {
   for (const v of voci) {
     const valore = v && typeof v === 'object' && 'valore' in v ? v.valore : v;
     if (valore === null || valore === undefined || valore === '') { vuote++; continue; }
-    if (!isGeometry(valore)) { nonGeometriche++; continue; }
+    // `normalizzaGeometria` e non `isGeometry`: la stessa geometria arriva come
+    // oggetto GeoJSON (MongoDB), come TESTO (ST_AsGeoJSON in una query scritta a
+    // mano) o come coppia {x,y} (il tipo `point` nativo di PostgreSQL). Chi
+    // seleziona quelle celle si aspetta la mappa in tutti e tre i casi.
+    const geo = normalizzaGeometria(valore);
+    if (!geo) { nonGeometriche++; continue; }
     geometrie.push({
-      geo: valore,
+      geo,
       colonna: v && v.colonna !== undefined ? v.colonna : '',
       riga: v && v.riga !== undefined ? v.riga : null,
-      ...misureGeometria(valore),
+      ...misureGeometria(geo),
     });
   }
   return { geometrie, vuote, nonGeometriche };

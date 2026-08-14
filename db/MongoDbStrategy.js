@@ -259,9 +259,18 @@ class MongoDbStrategy extends DbStrategy {
       // nei log del server come `appName`.
       appName: sessioni.APP_NAME,
     });
-    await client.connect();
-    // Force a round-trip so bad credentials fail here and not later.
-    await client.db('admin').command({ ping: 1 });
+    try {
+      await client.connect();
+      // Force a round-trip so bad credentials fail here and not later.
+      await client.db('admin').command({ ping: 1 });
+    } catch (err) {
+      // La strategia non è ancora pubblicata alla sessione, quindi il normale
+      // teardown non può raggiungere questo client. Senza chiuderlo qui, ogni
+      // tentativo fallito può lasciare timer/socket del driver fino alla loro
+      // scadenza naturale e una raffica di login errati esaurisce le risorse.
+      await client.close().catch(() => {});
+      throw err;
+    }
     this.client = client;
     this.uri = uri;
   }
@@ -274,6 +283,7 @@ class MongoDbStrategy extends DbStrategy {
       this.client = null;
       await c.close().catch(() => {});
     }
+    this.uri = null;
   }
 
   async health() {
@@ -356,7 +366,7 @@ class MongoDbStrategy extends DbStrategy {
   }
 
   async renameDatabase(db, newName) {
-    const client = this.requireClient();
+    this.requireClient();
     const from = String(db || '').trim();
     const to = String(newName || '').trim();
     assertDbName(from);
@@ -364,36 +374,13 @@ class MongoDbStrategy extends DbStrategy {
     DbStrategy.assertCreatableName(to, 'del database');
     if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
     if (SYSTEM_DBS.has(from)) throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
-    const existing = await this.listDatabases();
-    if (existing.some((d) => d.name === to)) throw new Error(`Il database "${to}" esiste già.`);
-
-    // MongoDB non supporta la rinomina diretta: copia ogni collection nel
-    // nuovo db ($out cross-database, MongoDB >= 4.4) e poi elimina l'originale.
-    const source = client.db(from);
-    const allColls = await source.listCollections({}, { nameOnly: true }).toArray();
-    const colls = allColls.filter((c) => c.type !== 'view');
-    const views = allColls.filter((c) => c.type === 'view');
-    if (views.length) {
-      // $out non copia le view: proseguendo, il drop del db sorgente le
-      // farebbe sparire in silenzio. Meglio rifiutare che perdere dati.
-      throw new Error(
-        `Il database contiene ${views.length} view (${views.map((v) => v.name).join(', ')}) ` +
-        'che non possono essere copiate nel nuovo nome: eliminale o ricreale manualmente prima di rinominare.'
-      );
-    }
-    if (!colls.length) throw new Error('Il database non contiene collection da copiare.');
-    for (const c of colls) {
-      await source.collection(c.name)
-        .aggregate([{ $match: {} }, { $out: { db: to, coll: c.name } }])
-        .toArray();
-      const indexes = await source.collection(c.name).indexes().catch(() => []);
-      for (const idx of indexes) {
-        if (idx.name === '_id_') continue;
-        const { key, name, v, ns, ...opts } = idx;
-        await client.db(to).collection(c.name).createIndex(key, { name, ...opts }).catch(() => {});
-      }
-    }
-    await source.dropDatabase();
+    // MongoDB non offre una rinomina atomica del database. Copiare e poi
+    // eliminare il sorgente perderebbe scritture concorrenti, opzioni e
+    // validatori; la vecchia emulazione falliva inoltre in silenzio sugli indici.
+    throw new Error(
+      'MongoDB non supporta una rinomina atomica e sicura del database. ' +
+      'Esegui un backup verificato, ripristinalo col nuovo nome e rimuovi il database originale solo dopo i controlli.'
+    );
   }
 
   async dropDatabase(db) {
@@ -565,6 +552,93 @@ class MongoDbStrategy extends DbStrategy {
     }
     collections.sort((a, b) => a.name.localeCompare(b.name));
     return { collections, relations: DbStrategy.detectRelations(collections) };
+  }
+
+  // Riferimenti uscenti dalla sola collection indicata (pannello di riferimento
+  // della griglia). MongoDB non dichiara chiavi esterne: qui c'è la stessa
+  // euristica del diagramma UML — `cliente_id` verso `clienti`, un ObjectId che
+  // porta il nome di una collection — e per questo l'origine è 'euristica'.
+  // Il pannello lo mostra con un badge diverso: un'ipotesi presentata come
+  // certezza è il modo migliore per far fidare l'utente di un collegamento
+  // che non esiste.
+  //
+  // Il costo è un elenco di nomi più UN campionamento, non uno per collection
+  // come in `dbSchema`: questa risposta serve a ogni apertura di collection.
+  async columnRelations(db, coll) {
+    const client = this.requireClient();
+    const database = client.db(db);
+    const infos = (await database.listCollections({}, { nameOnly: true }).toArray())
+      .filter((c) => c.type !== 'view');
+    const schema = await sampleSchema(database.collection(coll), 50);
+    const byName = DbStrategy.indexCollectionNames(infos.map((c) => c.name));
+    const relations = DbStrategy.relationsForCollection({ name: coll, fields: schema.fields }, byName);
+    return relations.map((r) => ({
+      campo: r.field,
+      db,
+      tabella: r.to,
+      // L'euristica è per costruzione un riferimento all'`_id`: "cliente_id"
+      // significa "l'_id di un documento di clienti", mai un altro suo campo.
+      colonna: '_id',
+      origine: 'euristica',
+      molti: !!r.many,
+    }));
+  }
+
+  async relatedRows(db, coll, payload) {
+    const client = this.requireClient();
+    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
+    const collection = client.db(db).collection(coll);
+
+    const conds = [];
+    if (haValore) {
+      const v = EJSON.deserialize({ v: valore }, { relaxed: false }).v;
+      const cond = { [colonna]: v };
+      // Una stringa esadecimale di 24 caratteri su un campo che è davvero un
+      // ObjectId non troverebbe nulla: è lo stesso motivo per cui la griglia
+      // promuove gli _id nei filtri (vedi promoteFilterObjectIds).
+      await this.promoteFilterObjectIds(collection, cond);
+      conds.push(cond);
+    }
+    if (cerca) {
+      // `$or` fra l'uguaglianza sulla chiave e una ricerca testuale sugli altri
+      // campi. `$regex` con `$options: 'i'` e non un indice testuale: qui non si
+      // può contare sull'esistenza di un indice `text`, e la ricerca è su poche
+      // decine di risultati per volta.
+      const rx = { $regex: DbStrategy.escapeRegex(cerca), $options: 'i' };
+      const chiave = { [colonna]: cerca };
+      await this.promoteFilterObjectIds(collection, chiave);
+      const or = [chiave];
+      const campi = (await sampleSchema(collection, 20)).fields;
+      for (const f of campi) {
+        if (f.name === colonna || !f.types.includes('string')) continue;
+        or.push({ [f.name]: rx });
+        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
+      }
+      conds.push({ $or: or });
+    }
+    const filter = conds.length === 1 ? conds[0] : (conds.length ? { $and: conds } : {});
+
+    const findOpts = {};
+    const maxTimeMS = DbStrategy.queryTimeoutMs();
+    if (maxTimeMS > 0) findOpts.maxTimeMS = maxTimeMS;
+    const cursor = collection.find(filter, findOpts).sort({ _id: 1 }).skip(skip).limit(limit);
+    const collected = await DbStrategy.collectCapped(cursor, limit);
+
+    // Colonne = unione delle chiavi dei documenti restituiti, come in
+    // collectionFind: su MongoDB non esiste un elenco di colonne dichiarate.
+    const colonne = [];
+    const viste = new Set();
+    for (const doc of collected.docs) {
+      for (const key of Object.keys(doc)) {
+        if (!viste.has(key)) { viste.add(key); colonne.push(key); }
+      }
+    }
+    return {
+      righe: collected.docs.map(serialize),
+      colonne,
+      chiave: ['_id'],
+      troncato: !!collected.truncated,
+    };
   }
 
   // Il campo è memorizzato come ObjectId? Probe a costo fisso pensato per
@@ -1013,11 +1087,15 @@ class MongoDbStrategy extends DbStrategy {
       }
       case 'findOneAndUpdate': {
         const res = await c.findOneAndUpdate(filtro(), aggiornamento(), opzioni());
-        return { doc: res && res.value ? serialize(res.value) : null };
+        // Driver MongoDB 6: per default torna direttamente il documento;
+        // le versioni/configurazioni con includeResultMetadata usano `.value`.
+        const doc = res && Object.prototype.hasOwnProperty.call(res, 'value') ? res.value : res;
+        return { doc: doc ? serialize(doc) : null };
       }
       case 'findOneAndDelete': {
         const res = await c.findOneAndDelete(filtro(), opzioni());
-        return { doc: res && res.value ? serialize(res.value) : null };
+        const doc = res && Object.prototype.hasOwnProperty.call(res, 'value') ? res.value : res;
+        return { doc: doc ? serialize(doc) : null };
       }
       default:
         throw new Error(`Operazione di scrittura non supportata: "${op}".`);

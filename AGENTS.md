@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Regola per le risposte
 
@@ -55,7 +55,6 @@ node test/unit-tema.js        # Test validazione temi e contrasti WCAG
 node test/unit-tipi-colonna.js# Test validazione sintattica tipi colonna DDL
 node test/unit-split-layout.js# Test geometria ed albero Split-View
 node test/unit-sessioni.js    # Test normalizzazione sessioni DB
-node test/unit-fk-relazioni.js# Test decisioni del pannello 🔗 (chiavi esterne)
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -111,7 +110,7 @@ CodeDB è un'interfaccia stile DBeaver con supporto multi-database (**MongoDB**,
 * **Vista mappa condivisa (`geo-vista.js`)**: motore riusabile (disegno, elenco cliccabile, riepilogo, avvisi, tetti di disegno, export GeoJSON) usato sia dalla modale della selezione di celle sia dalla scheda 🗺 Mappa dei risultati della tab ⚡. Ogni istanza è indipendente: le due viste possono coesistere nella stessa pagina.
 
 ### 7. Gateway MCP (`mcp/McpGateway.js`)
-* Implementa il **Model Context Protocol** per client AI (Claude Code, Cursor, ecc.) via Streamable HTTP (`/mcp`).
+* Implementa il **Model Context Protocol** per client AI (Codex, Cursor, ecc.) via Streamable HTTP (`/mcp`).
 * Protegibile da API Key (`Authorization: Bearer cdb_...`) sotto RBAC.
 * Offre tool di esplorazione, schema audit, analisi PII/GDPR, ricerca BFS, ed esecuzione query/scritture sicure (`execute_write` con `confirm_token`).
 
@@ -143,7 +142,6 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
 * **Custom Charts (`charts.js` / `chart-option.js`)**: Generatore di grafici ECharts 6.1.0 (vendorizzato) con aggregazione lato client, suggerimenti automatici e palette accessibili WCAG. Il caricamento della libreria e la cromatura del tema stanno in `chart-runtime.js`, condivisi con il grafico della selezione.
 * **Selezioni & Statistiche Excel (`cellselect.js` / `cell-stats.js`)**: Copia/incolla multi-formato (TSV, CSV, JSON, SQL) e pannello statistiche numeriche immediate ($\Sigma$, $\bar{x}$, min, max, mediana, stddev) con compensazione Kahan.
 * **Grafico della selezione (`cellgrafico.js` / `cell-chart.js`)**: Voce 📈 del menu contestuale della griglia (e pulsante nel pannello 📊) che disegna le celle selezionate in una finestra ECharts. Lo strato puro `cell-chart.js` deduce dalla selezione l'asse X (data → categoria → ordinale di riga `#`), una serie per colonna numerica e il raggruppamento — acceso solo se i valori dell'asse si ripetono davvero.
-* **Pannello di riferimento delle chiavi esterne (`fk-vista.js` / `fk-relazioni.js`)**: le colonne collegate portano un indicatore in griglia (🔗 vincolo dichiarato, ≈ ipotesi) e, al doppio clic, un pulsante che fa scorrere da destra un pannello con la riga riferita e l'elenco cercabile da cui scegliere un altro valore. Non è una modale: la cella resta in modifica. I dati arrivano da `collection:relations` (FK della sola tabella aperta, mirata — non `db:schema`) e `relation:rows` (righe della tabella riferita, con filtro **parametrizzato** dentro ogni strategia: su SQL il `filter` di `collectionFind` è un frammento WHERE grezzo e non va composto altrove). Lo strato puro `fk-relazioni.js` normalizza i descrittori delle tre sorgenti e sceglie dai dati la colonna-etichetta dell'elenco.
 * **Monitor Sessioni (`sessions.js` / `db/sessioni.js`)**: Gestione sessioni DB attive con diagnosi automatica dei lock ("chi blocca chi") ed annullamento/kill sicuro.
 * **Temi (`theme.js` / `theme-colori.js` / `tokens.css`)**: Temi chiaro, scuro e personalizzati gestiti via CSS Custom Properties, applicati istantaneamente via script inline per evitare FOUC.
 

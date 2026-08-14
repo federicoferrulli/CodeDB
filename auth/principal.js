@@ -4,10 +4,11 @@
  * Principal = "chi sta parlando" con il server, sia da UI (token di sessione)
  * sia da MCP (API key). È l'unico oggetto che il motore dei permessi consulta.
  *
- * Con il flag CODEDB_RBAC spento (default, e sempre nell'app desktop Electron)
- * ogni richiesta viaggia con ROOT_PRINCIPAL: `can()` risponde sempre true e
- * `guardStrategy()` restituisce la strategia non avvolta, quindi il percorso di
- * esecuzione è identico a quello di prima dell'introduzione dell'RBAC.
+* Con il flag CODEDB_RBAC spento (default, e sempre nell'app desktop Electron)
+* ogni richiesta viaggia con ROOT_PRINCIPAL: `can()` risponde sempre true e
+ * `guardStrategy()` mantiene le invarianti indipendenti dai grant (per esempio
+ * niente JavaScript lato server MongoDB o SQL Raw multi-statement), mentre
+ * nessuna operazione viene negata per capability o scope.
  * ------------------------------------------------------------------------- */
 
 const ALL_CAPABILITIES = ['read', 'write', 'ddl', 'delete', 'manage'];

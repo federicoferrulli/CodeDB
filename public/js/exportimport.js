@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 
@@ -114,7 +114,9 @@ export async function exportCollection(db, coll, format) {
   // Anche l'export va ancorato al tab d'origine: senza, cambiare connessione a
   // metà scaricamento farebbe arrivare i blocchi successivi da un'altra
   // connessione e il file prodotto conterrebbe dati di due database diversi.
-  const { tabId } = captureContext();
+  const origin = captureContext();
+  const { tabId } = origin;
+  const dbType = origin.st.dbType;
   try {
     for (;;) {
       const res = await emit('collection:export', { tabId, db, coll, skip, after, limit: CHUNK, format });
@@ -149,7 +151,7 @@ export async function exportCollection(db, coll, format) {
     mime = 'application/json;charset=utf-8';
   }
   downloadBlob(text, `${db}.${coll}.${ext}`, mime);
-  toast(`Esportati ${lines.length} ${state.dbType === 'mysql' ? 'righe' : 'documenti'} da "${coll}"`);
+  toast(`Esportati ${lines.length} ${isSqlType(dbType) ? 'righe' : 'documenti'} da "${coll}"`);
 }
 
 /* ---------------------------------------------------------------------------
@@ -193,14 +195,14 @@ function parseCsv(text) {
 }
 
 // Prepara i batch a partire dal testo incollato/caricato, secondo il dbType.
-function buildDocs(text) {
-  if (state.dbType === 'mysql') {
+function buildDocs(text, dbType = state.dbType) {
+  if (isSqlType(dbType)) {
     const rows = parseCsv(text);
     if (rows.length < 2) throw new Error('CSV vuoto o senza righe di dati: serve una riga di intestazione più almeno una riga.');
     const header = rows[0].map((h) => h.trim());
     if (header.some((h) => !h)) throw new Error('La riga di intestazione del CSV contiene colonne senza nome.');
     return rows.slice(1).map((r) => {
-      const obj = {};
+      const obj = Object.create(null);
       header.forEach((col, i) => {
         const v = r[i];
         obj[col] = v === '' || v === undefined ? null : v; // MySQL converte i tipi dalle stringhe
@@ -232,13 +234,18 @@ function setImportProgress(pct, label) {
 }
 
 export function openImportModal(db, coll) {
+  if (importing) {
+    toast('Attendi il completamento dell’import già in corso.', true);
+    return;
+  }
   // Il contesto (tab + coll-tab) va congelato all'apertura: l'import dura minuti
   // e la modale non blocca l'app, quindi l'utente può cambiare tab mentre i
   // blocchi partono. Senza un tabId esplicito, emit() userebbe il tab ATTIVO al
   // momento di ciascun blocco e le righe finirebbero in un'altra connessione.
-  importTarget = { db, coll, ctx: captureContext() };
+  const ctx = captureContext();
+  importTarget = { db, coll, dbType: ctx.st.dbType, ctx };
   importing = false;
-  const isMysql = state.dbType === 'mysql';
+  const isMysql = isSqlType(importTarget.dbType);
   $('#import-title').textContent = `Importa in "${coll}"`;
   $('#import-subtitle').textContent = isMysql
     ? `Tabella: ${db} ▸ ${coll} — formato CSV con riga di intestazione (nomi colonna).`
@@ -271,7 +278,7 @@ async function runImport() {
   }
   let docs;
   try {
-    docs = buildDocs(text);
+    docs = buildDocs(text, importTarget.dbType);
   } catch (err) {
     showError('#import-error', err.message);
     return;
@@ -325,7 +332,7 @@ async function runImport() {
 
   // Report finale: conteggio ok/errori e prime cause di errore.
   const report = $('#import-report');
-  const word = state.dbType === 'mysql' ? 'righe' : 'documenti';
+  const word = isSqlType(importTarget.dbType) ? 'righe' : 'documenti';
   let html = `<strong>${inserted}</strong> ${word} su ${docs.length} importati` +
     (failed ? `, <strong class="import-failed">${failed}</strong> con errori.` : '.');
   if (errors.length) {
@@ -340,13 +347,15 @@ async function runImport() {
     aborted || !!failed
   );
 
-  // Aggiorna griglia e sidebar solo se l'utente sta ancora guardando il tab in
-  // cui è avvenuto l'import: le due funzioni leggono il workspace condiviso.
-  if (!inserted || (ctx && !ctx.isStillActive())) return;
-  if (state.db === db && state.coll === coll) {
+  // La griglia richiede lo stesso coll-tab; per la sidebar basta che sia ancora
+  // attivo il tab di connessione, perché l'albero è condiviso da tutti i coll-tab.
+  if (!inserted) return;
+  if (ctx.isStillActive() && state.db === db && state.coll === coll) {
     import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-import
+  } else {
+    marcaDatiSporchi(ctx, db, coll);
   }
-  refreshDbTree();
+  if (!ctx.tabId || tabs.activeId === ctx.tabId) refreshDbTree();
 }
 
 export function initExportImport() {
@@ -365,28 +374,40 @@ export function initExportImport() {
 
   // --- Import di interi database ---------------------------------------------
   $('#dbimport-cancel').addEventListener('click', () => {
-    if (!dbImporting) closeModal('#dbimport-overlay');
+    if (!dbImporting) {
+      dbImportContext = null;
+      dbImportAperture++;
+      closeModal('#dbimport-overlay');
+    }
   });
   $('#dbimport-run').addEventListener('click', runDbImport);
   $('#dbimport-file').addEventListener('change', (e) => {
+    const ctx = dbImportContext;
+    const apertura = dbImportAperture;
     dbImportData = null;
     showError('#dbimport-error', '');
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
+      if (!ctx || ctx !== dbImportContext || apertura !== dbImportAperture) return;
       try {
-        dbImportData = validateDbExport(String(reader.result || ''));
+        dbImportData = validateDbExport(String(reader.result || ''), ctx.dbType);
         if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
         const docs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0);
+        const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
         $('#dbimport-subtitle').textContent =
           `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
-          `${dbImportData.collections.length} ${collWord()}, ${docs} ${state.dbType === 'mysql' ? 'righe' : 'documenti'}.`;
+          `${dbImportData.collections.length} ${entita}, ${docs} ${isSqlType(dbImportData.dbType) ? 'righe' : 'documenti'}.`;
       } catch (err) {
         showError('#dbimport-error', err.message);
       }
     };
-    reader.onerror = () => showError('#dbimport-error', 'Impossibile leggere il file selezionato.');
+    reader.onerror = () => {
+      if (ctx === dbImportContext && apertura === dbImportAperture) {
+        showError('#dbimport-error', 'Impossibile leggere il file selezionato.');
+      }
+    };
     reader.readAsText(file);
   });
 }
@@ -421,19 +442,35 @@ const SYSTEM_DBS = {
   mongodb: ['admin', 'config', 'local'],
 };
 
-function isSystemDb(name) {
-  return (SYSTEM_DBS[state.dbType] || []).includes(String(name).toLowerCase());
+function isSystemDb(name, dbType = state.dbType) {
+  return (SYSTEM_DBS[dbType] || []).includes(String(name).toLowerCase());
 }
 
+function isPostgresDbType(dbType) {
+  return dbType === 'postgresql' || dbType === 'postgres';
+}
+
+const POSTGRES_DB_ROUNDTRIP_BLOCKED =
+  'Export/import completo PostgreSQL temporaneamente bloccato: il DDL corrente ' +
+  'mantiene lo schema sorgente e non conserva ancora tutti gli indici e i vincoli. ' +
+  'Usa il backup oppure un export CSV per tabella.';
+
 export async function exportDatabase(db) {
-  const isSql = isSqlType(state.dbType);
-  if (isSystemDb(db)) {
+  const origin = captureContext();
+  const { tabId } = origin;
+  const dbType = origin.st.dbType;
+  if (isPostgresDbType(dbType)) {
+    toast(POSTGRES_DB_ROUNDTRIP_BLOCKED, true);
+    return;
+  }
+  const isSql = isSqlType(dbType);
+  const entita = isSql ? 'tabelle' : 'collection';
+  if (isSystemDb(db, dbType)) {
     toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
     return;
   }
   // Export di un intero database: decine di richieste in sequenza, quindi il tab
   // d'origine va congelato qui (vedi nota in testa al modulo).
-  const { tabId } = captureContext();
   let collections;
   try {
     // Solo collection/tabelle "vere": le view sono derivate.
@@ -443,7 +480,7 @@ export async function exportDatabase(db) {
     return;
   }
   if (!collections.length) {
-    toast(`Il database "${db}" non contiene ${collWord()} da esportare.`, true);
+    toast(`Il database "${db}" non contiene ${entita} da esportare.`, true);
     return;
   }
 
@@ -491,23 +528,25 @@ export async function exportDatabase(db) {
   // aprono anche con le versioni precedenti.
   let generatore = 'CodeDB';
   try {
-    const info = await emit('app:info');
+    const info = await emit('app:info', { tabId });
     if (info && info.version) generatore = `CodeDB ${info.version}`;
   } catch { /* la firma non deve poter far fallire un export */ }
 
   const text =
     `{ "formato": ${JSON.stringify(DB_EXPORT_FORMAT)}, "versione": 1, ` +
     `"generatore": ${JSON.stringify(generatore)}, "creato": ${JSON.stringify(new Date().toISOString())}, ` +
-    `"dbType": ${JSON.stringify(state.dbType)}, "db": ${JSON.stringify(db)},\n"collections": [\n` +
+    `"dbType": ${JSON.stringify(dbType)}, "db": ${JSON.stringify(db)},\n"collections": [\n` +
     parts.join(',\n') + '\n] }\n';
   downloadBlob(text, `${db}.codedb.json`, 'application/json;charset=utf-8');
-  toast(`Esportato il database "${db}": ${collections.length} ${collWord()}, ${exported} ${state.dbType === 'mysql' ? 'righe' : 'documenti'}`);
+  toast(`Esportato il database "${db}": ${collections.length} ${entita}, ${exported} ${isSql ? 'righe' : 'documenti'}`);
 }
 
 /* --- Import di un intero database ----------------------------------------- */
 
 let dbImportData = null; // contenuto validato del file selezionato
 let dbImporting = false;
+let dbImportContext = null;
+let dbImportAperture = 0;
 
 function setDbImportProgress(pct, label) {
   $('#dbimport-progress').classList.remove('hidden');
@@ -515,7 +554,7 @@ function setDbImportProgress(pct, label) {
   $('#dbimport-progress-label').textContent = label || '';
 }
 
-function validateDbExport(text) {
+function validateDbExport(text, dbType = state.dbType) {
   let parsed;
   try {
     parsed = JSON.parse(text);
@@ -525,8 +564,8 @@ function validateDbExport(text) {
   if (!parsed || parsed.formato !== DB_EXPORT_FORMAT || !Array.isArray(parsed.collections)) {
     throw new Error('Il file non è un export di database di CodeDB (atteso "formato": "codedb-database").');
   }
-  if (parsed.dbType !== state.dbType) {
-    throw new Error(`Il file è un export ${parsed.dbType}, ma questa connessione è ${state.dbType}.`);
+  if (parsed.dbType !== dbType) {
+    throw new Error(`Il file è un export ${parsed.dbType}, ma questa connessione è ${dbType}.`);
   }
   for (const c of parsed.collections) {
     if (!c || typeof c.name !== 'string' || !Array.isArray(c.docs)) {
@@ -537,9 +576,21 @@ function validateDbExport(text) {
 }
 
 export function openDbImportModal() {
+  if (dbImporting) {
+    toast('Attendi il completamento dell’import del database già in corso.', true);
+    return;
+  }
+  const origin = captureContext();
+  const dbType = origin.st.dbType;
+  if (isPostgresDbType(dbType)) {
+    toast(POSTGRES_DB_ROUNDTRIP_BLOCKED, true);
+    return;
+  }
+  dbImportContext = { ...origin, dbType };
+  dbImportAperture++;
   dbImportData = null;
   dbImporting = false;
-  $('#dbimport-subtitle').textContent = state.dbType === 'mysql'
+  $('#dbimport-subtitle').textContent = isSqlType(dbImportContext.dbType)
     ? 'Ricrea tabelle (CREATE TABLE del file) e righe in uno schema di destinazione.'
     : 'Ricrea collection, documenti e indici in un database di destinazione.';
   $('#dbimport-file').value = '';
@@ -563,24 +614,28 @@ async function runDbImport() {
     showError('#dbimport-error', 'Seleziona prima un file .codedb.json valido.');
     return;
   }
+  const ctx = dbImportContext;
+  if (!ctx || (ctx.tabId && !tabs.list.some((t) => t.id === ctx.tabId))) {
+    showError('#dbimport-error', 'La connessione scelta per l’import non è più aperta.');
+    return;
+  }
   const target = $('#dbimport-target').value.trim();
   if (!target) {
     showError('#dbimport-error', 'Indica il database di destinazione.');
     return;
   }
-  if (isSystemDb(target)) {
+  if (isSystemDb(target, ctx.dbType)) {
     showError('#dbimport-error', `"${target}" è un database di sistema: scegli un'altra destinazione.`);
     return;
   }
   const drop = $('#dbimport-drop').checked;
-  const isSql = isSqlType(state.dbType);
+  const isSql = isSqlType(ctx.dbType);
   const totalDocs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0) || 1;
 
   // Import di un intero database: è l'operazione più lunga dell'app (schema +
-  // dati + indici, collection per collection). Il tab di destinazione si congela
-  // qui, altrimenti un cambio di connessione a metà riverserebbe le collection
-  // rimanenti su un altro database (vedi nota in testa al modulo).
-  const ctx = captureContext();
+  // dati + indici, collection per collection). Si riusa il contesto congelato
+  // all'apertura della modale: un cambio di connessione non deve spostare le
+  // collection rimanenti su un altro database.
   const tabId = ctx.tabId;
   const stillConnected = () => !tabId || tabs.list.some((t) => t.id === tabId);
 
@@ -633,6 +688,13 @@ async function runDbImport() {
       // e la connessione cade a metà import.
       let i = 0;
       for (const batch of blocchiDiImport(c.docs)) {
+        if (!stillConnected()) {
+          const rimaste = c.docs.length - i;
+          failed += rimaste;
+          done += rimaste;
+          pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
+          break;
+        }
         setDbImportProgress((done / totalDocs) * 100, `${c.name}: ${i}/${c.docs.length}…`);
         i += batch.length;
         try {
@@ -679,13 +741,17 @@ async function runDbImport() {
   toast(failed || errors.length ? 'Import del database completato con errori' : `Database "${target}" importato`, !!(failed || errors.length));
   // La sidebar mostra i database del tab attivo: aggiornarla da un altro tab
   // sostituirebbe il suo albero con quello della connessione di destinazione.
-  if (ctx.isStillActive()) refreshDbTree();
+  ctx.st.schemaDirty = true;
+  if (!ctx.tabId || tabs.activeId === ctx.tabId) {
+    ctx.st.schemaDirty = false;
+    refreshDbTree();
+  }
 }
 
 // Voci di menu contestuale per una collection/tabella, condivise tra la
 // sidebar (dbtree) e i coll-tab.
 export function exportImportMenuItems(db, coll) {
-  const items = state.dbType === 'mysql'
+  const items = isSqlType(state.dbType)
     ? [
         { label: '⤓ Esporta CSV', action: () => exportCollection(db, coll, 'csv') },
         { label: '⤓ Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },

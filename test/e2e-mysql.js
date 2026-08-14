@@ -163,6 +163,47 @@ async function runTests() {
     assert(schema.ok && schema.relations.some((r) => r.from === 'orders' && r.field === 'people_id' && r.to === TABLE),
       'relazione orders.people_id -> people rilevata');
 
+    console.log('11-bis. collection:relations + relation:rows (pannello 🔗 della griglia)');
+    // Il pannello delle chiavi esterne NON passa da db:schema: quello descrive
+    // tutto il database ed è troppo caro da chiedere a ogni apertura di tabella.
+    const rel = await emit('collection:relations', { db: DB, coll: 'orders' });
+    assert(rel.ok && rel.relazioni.length === 1, `una sola FK uscente da "orders" (${rel.ok ? rel.relazioni.length : rel.error})`);
+    const fkDesc = rel.ok && rel.relazioni[0];
+    assert(fkDesc && fkDesc.campo === 'people_id' && fkDesc.tabella === TABLE && fkDesc.colonna === 'id',
+      `descrittore completo: ${JSON.stringify(fkDesc)}`);
+    assert(fkDesc && fkDesc.origine === 'vincolo',
+      'un vincolo dichiarato non deve essere presentato come ipotesi');
+    assert(fkDesc && fkDesc.db === DB, 'lo schema riferito è esplicito (una FK può attraversare i database)');
+    // La tabella di partenza non ha FK uscenti: l'assenza è una risposta valida,
+    // non un errore (altrimenti la griglia mostrerebbe un avviso su ogni tabella).
+    const relPeople = await emit('collection:relations', { db: DB, coll: TABLE });
+    assert(relPeople.ok && relPeople.relazioni.length === 0, 'nessuna FK uscente da "people"');
+
+    // Riga riferita: è la domanda "chi è il cliente 42".
+    const bruno = await emit('collection:find', { db: DB, coll: TABLE, filter: "name = 'Bruno'" });
+    const brunoId = bruno.docs[0].id;
+    const rigaRif = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', valore: brunoId, limit: 1 });
+    assert(rigaRif.ok && rigaRif.righe.length === 1 && rigaRif.righe[0].name === 'Bruno',
+      `riga riferita risolta (${rigaRif.ok ? JSON.stringify(rigaRif.righe[0] && rigaRif.righe[0].name) : rigaRif.error})`);
+
+    // Un valore che non corrisponde a nulla deve dare zero righe, non un errore:
+    // scoprire che il riferimento è rotto è proprio uno degli usi del pannello.
+    const orfano = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', valore: 999999, limit: 1 });
+    assert(orfano.ok && orfano.righe.length === 0, 'riferimento inesistente = zero righe, non errore');
+
+    // Ricerca per il selettore: filtra sulle colonne testuali.
+    const cerca = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', cerca: 'Bru', limit: 50 });
+    assert(cerca.ok && cerca.righe.length === 1 && cerca.righe[0].name === 'Bruno',
+      `ricerca testuale (${cerca.ok ? cerca.righe.length : cerca.error} righe)`);
+    // I metacaratteri di LIKE vanno neutralizzati: chi cerca "%" cerca il
+    // carattere, non "qualsiasi cosa".
+    const jolly = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', cerca: '%', limit: 50 });
+    assert(jolly.ok && jolly.righe.length === 0, '"%" cercato come carattere, non come jolly');
+
+    // Colonna inventata: rifiutata prima di finire quotata dentro la query.
+    const finta = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'non_esiste', valore: 1 });
+    assert(!finta.ok && /non esiste/i.test(finta.error), 'colonna inesistente rifiutata');
+
     console.log('12. doc:delete');
     const del = await emit('doc:delete', { db: DB, coll: TABLE, id });
     assert(del.ok && del.deleted === 1, 'riga eliminata');
@@ -217,14 +258,16 @@ async function runTests() {
 
     console.log('14. db:rename / db:drop');
     const ren = await emit('db:rename', { db: DB, newName: DB2 });
-    assert(ren.ok, `database rinominato in "${DB2}" (${ren.ok ? 'ok' : ren.error})`);
-    const renCheck = await emit('collection:find', { db: DB2, coll: TABLE, filter: '' });
-    assert(renCheck.ok && renCheck.total === 1, 'dati presenti nel database rinominato');
+    assert(!ren.ok && /non supporta una rinomina atomica/i.test(ren.error || ''),
+      'rinomina database non atomica rifiutata senza spostare o eliminare tabelle');
+    const renCheck = await emit('collection:find', { db: DB, coll: TABLE, filter: '' });
+    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la rinomina rifiutata');
     const dbs = await emit('db:list', {});
-    assert(dbs.ok && !dbs.databases.some((d) => d.name === DB), 'il vecchio nome non esiste più');
+    assert(dbs.ok && dbs.databases.some((d) => d.name === DB)
+      && !dbs.databases.some((d) => d.name === DB2), 'nessun database parziale creato dalla rinomina');
     const sysDrop = await emit('db:drop', { db: 'mysql' });
     assert(!sysDrop.ok, 'eliminazione di uno schema di sistema rifiutata');
-    const drop = await emit('db:drop', { db: DB2 });
+    const drop = await emit('db:drop', { db: DB });
     assert(drop.ok, `database "${DB2}" eliminato`);
 
     console.log('15. mongo:disconnect');

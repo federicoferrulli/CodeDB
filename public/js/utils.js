@@ -153,7 +153,9 @@ export function simplify(v) {
   if (kind === 'number') return isPlainObject(v) ? Number(Object.values(v)[0]) : v;
   if (kind === 'decimal') return Number(v.$numberDecimal);
   if (kind === 'object') {
-    const out = {};
+    // I nomi dei campi arrivano dal database: un campo chiamato __proto__ non
+    // deve cambiare il prototipo dell'oggetto né sparire dalla copia.
+    const out = Object.create(null);
     for (const [k, val] of Object.entries(v)) out[k] = simplify(val);
     return out;
   }
@@ -511,20 +513,64 @@ export function emit(event, payload) {
   // cancellava il tabId iniettato, il server ripiegava sulla sessione "default"
   // e rispondeva "Nessuna connessione attiva al database.".
   const tab = pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab();
+  const pinnedMancante = !!pinned && !tab;
   const withTab = (extra) => {
     const out = { ...(payload || {}), ...(extra || {}) };
     out.tabId = tab ? tab.id : pinned;
     return out;
   };
-  const stamp = (res) => Object.assign(res, { _tab: tab, _state: tab ? tab.state : state });
+  // Se il chiamante porta il tabId di un tab già chiuso, un piccolo sentinella
+  // conserva l'identità dell'origine: `isForActiveTab()` deve risultare falso e
+  // non mostrare l'errore nel workspace di un'altra connessione.
+  const tabStamp = tab || (pinnedMancante ? { id: pinned, orphan: true } : null);
+  const stamp = (res) => Object.assign(res, {
+    _tab: tabStamp,
+    _state: tab ? tab.state : (pinnedMancante ? null : state),
+  });
   return new Promise((resolve, reject) => {
+    let settled = false;
+    let onTabClosed = null;
+    const cleanup = () => {
+      if (onTabClosed && typeof window !== 'undefined') {
+        window.removeEventListener('codedb:tab-closed', onTabClosed);
+      }
+    };
+    const resolveOnce = (value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(value);
+    };
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
     // Anche gli errori portano l'origine: i callback di errore devono poter
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
-    const fail = (msg) => reject(stamp(new Error(msg)));
+    const fail = (msg) => rejectOnce(stamp(new Error(msg)));
+    const tabChiuso = () => pinnedMancante || !!(tab && !tabs.list.includes(tab));
+    const failTabChiuso = () => {
+      const err = new Error('Operazione interrotta: il tab di origine è stato chiuso.');
+      err.name = 'AbortError';
+      err.code = 'TAB_CLOSED';
+      rejectOnce(stamp(err));
+    };
+    onTabClosed = (e) => {
+      if (tab && e.detail && e.detail.tabId === tab.id) failTabChiuso();
+    };
+    if (tab && typeof window !== 'undefined') {
+      window.addEventListener('codedb:tab-closed', onTabClosed);
+    }
+    if (tabChiuso()) {
+      failTabChiuso();
+      return;
+    }
     socket.emit(event, withTab(), (res) => {
-      if (tab && !tabs.list.includes(tab)) return; // tab chiuso: risposta orfana
+      if (tabChiuso()) { failTabChiuso(); return; }
       if (res && res.ok) {
-        resolve(stamp(res));
+        resolveOnce(stamp(res));
       } else {
         const errMsg = String((res && res.error) || '');
         const isNoSession = errMsg.includes('Nessuna connessione attiva');
@@ -536,12 +582,14 @@ export function emit(event, payload) {
         if (isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
           const cfg = { saved: tab.connName || tab.connCfg.saved };
           socket.emit('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
+            if (tabChiuso()) { failTabChiuso(); return; }
             if (connRes && connRes.ok) {
               tab.state.connected = true;
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
               socket.emit(event, withTab({ _reconnected: true }), (retryRes) => {
+                if (tabChiuso()) { failTabChiuso(); return; }
                 if (retryRes && retryRes.ok) {
-                  resolve(stamp(retryRes));
+                  resolveOnce(stamp(retryRes));
                 } else {
                   fail(retryRes ? retryRes.error : 'Errore dopo la riconnessione');
                 }
@@ -583,6 +631,20 @@ export function captureContext() {
     tabId: tab ? tab.id : undefined,
     isStillActive: () => activeTab() === tab && st.activeCollId === collId,
   };
+}
+
+// Segna come obsoleti i dati della collection toccata da una scrittura che si
+// conclude mentre l'utente guarda un altro contesto. Il flag piatto copre la
+// collection corrente del tab; quello sul coll-tab conserva l'informazione
+// anche quando il bersaglio non era in primo piano.
+export function marcaDatiSporchi(ctx, db, coll) {
+  const st = ctx && (ctx.st || (ctx.tab && ctx.tab.state));
+  if (!st) return;
+  const ct = Array.isArray(st.collTabs)
+    ? st.collTabs.find((c) => !c.isDbTab && !c.isSplitTab && c.db === db && c.coll === coll)
+    : null;
+  if (ct) ct.dataDirty = true;
+  if (st.db === db && st.coll === coll) st.dataDirty = true;
 }
 
 // Evento socket senza risposta (fire-and-forget), sempre col tabId del tab

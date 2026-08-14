@@ -36,13 +36,16 @@ const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 // detiene la API key). Vedi backup/lib/policy.js.
 const { resolveStorageAlias, resolveSlackWebhook, backupRootFor } = require('../backup/lib/policy');
 const { createLogger } = require('../backup/lib/logger');
-const { readCatalog, readManifest, sha256File, safeName, formatBytes } = require('../backup/lib/util');
+const { readCatalog, verifyBackupDir, safeName, formatBytes } = require('../backup/lib/util');
 const { notifySlack } = require('../backup/lib/notify');
 const { ROOT_PRINCIPAL, rbacOn } = require('../auth/principal');
 const { can, canUseConnection, canWholeConnection } = require('../auth/permissions');
 // Stessa funzione usata dal Proxy autorizzante sul percorso socket: il divieto
 // di I/O su file non deve esistere in due versioni (vedi assertReadOnlySql).
-const { isFileIoSql } = require('../auth/capabilities');
+const {
+  analyzeSql, sqlCapability,
+  analyzeMongoPipeline, assertNoMongoServerJs,
+} = require('../auth/capabilities');
 const { spiegaErrore } = require('../db/errors');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
@@ -55,9 +58,75 @@ const WRITE_OP_CAPABILITY = {
 };
 
 // Principal della sessione MCP: risolto dalla API key nell'handshake HTTP.
-// Con RBAC spento resta l'owner locale e nessun controllo ha effetto.
+// Con RBAC spento resta l'owner locale: non si applicano i grant RBAC,
+// mentre restano attive le invarianti di sicurezza del proxy.
 function sessionPrincipal(session) {
   return (session && session.principal) || ROOT_PRINCIPAL;
+}
+
+function credentialFingerprint(rawKey) {
+  return crypto.createHash('sha256').update(String(rawKey || ''), 'utf8').digest();
+}
+
+function sameCredentialFingerprint(a, b) {
+  if (a == null || b == null) return a == null && b == null;
+  const left = Buffer.isBuffer(a) ? a : Buffer.from(a);
+  const right = Buffer.isBuffer(b) ? b : Buffer.from(b);
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+function sameMcpIdentity(session, principal, fingerprint) {
+  return !!session && !!principal
+    && sessionPrincipal(session).id === principal.id
+    && sameCredentialFingerprint(session.credentialFingerprint, fingerprint);
+}
+
+// Una sessione MCP vive più a lungo della singola richiesta HTTP. Il principal
+// viene però risolto di nuovo dalla API key a OGNI richiesta: propagare il
+// valore aggiornato ai guardCtx già aperti rende immediati revoche di grant,
+// cambi di scope e restrizioni connScope senza forzare una riconnessione DB.
+function refreshSessionPrincipal(session, principal) {
+  if (!session || !principal) return;
+  session.principal = principal;
+  if (!session.dbSessions || typeof session.dbSessions.values !== 'function') return;
+  for (const dbSess of session.dbSessions.values()) {
+    if (dbSess && dbSess.guardCtx) dbSess.guardCtx.principal = principal;
+  }
+}
+
+// `readOnly` appartiene alla configurazione salvata, non alla connessione
+// fisica: può cambiare mentre una dbSession MCP è ancora aperta. Rileggerlo
+// prima di ogni operazione distruttiva rende la revoca effettiva subito e la
+// rimozione della connessione è trattata in modo conservativo come sola lettura.
+function refreshWritesAllowed(session, dbSess, deps) {
+  if (!dbSess || !deps || typeof deps.loadConnections !== 'function') return false;
+  const all = deps.loadConnections(sessionPrincipal(session).ownerId) || {};
+  const saved = all[dbSess.name];
+  const flag = saved && saved.readOnly;
+  const allowed = !!saved && String(flag == null ? '' : flag).trim().toLowerCase() === 'false';
+  dbSess.writesAllowed = allowed;
+  return allowed;
+}
+
+function backupVerificationPayload(report) {
+  const details = Array.isArray(report && report.details) ? report.details : [];
+  const category = (status) => details.filter((item) => item && item.status === status);
+  const missing = category('MISSING');
+  const mismatch = category('CORRUPTED');
+  const unverifiable = category('UNVERIFIABLE');
+  const extra = category('UNDECLARED');
+  return {
+    backup_id: report && report.backupId,
+    ok_files: Number(report && report.okCount) || 0,
+    failed_files: Number(report && report.failedCount) || 0,
+    missing_files: missing.length,
+    mismatched_files: mismatch.length,
+    unverifiable_files: Number(report && report.unverifiableCount) || 0,
+    extra_files: Number(report && report.extraCount) || 0,
+    valid: !!(report && report.valid),
+    categories: { missing, mismatch, unverifiable, extra },
+    details,
+  };
 }
 
 const MCP_PATH = '/mcp';
@@ -72,6 +141,23 @@ const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..',
 // `restore_backup` accetterebbe quei nomi così come sono.
 const backupRootOf = (session) =>
   backupRootFor(BACKUP_ROOT, sessionPrincipal(session).ownerId, { rbac: rbacOn() });
+
+function resolveBackupSelection(root, rawGroup, rawBackupId) {
+  const group = String(rawGroup || '').trim();
+  const backupId = String(rawBackupId || '').trim();
+  // `safeName(x) === x` è la stessa grammatica usata quando i backup vengono
+  // creati. In particolare rifiuta `.`, `..`, nomi assoluti e device Windows.
+  if (!group || !backupId || safeName(group) !== group || safeName(backupId) !== backupId) {
+    throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
+  }
+  const base = path.resolve(root);
+  const backupDir = path.resolve(base, group, backupId);
+  const relative = path.relative(base, backupDir);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('Percorso del backup non consentito: la selezione deve restare nella cartella backup del tenant.');
+  }
+  return { group, backupId, backupDir };
+}
 const MAX_MCP_SESSIONS = 32;                 // client MCP contemporanei
 const MCP_SESSION_TTL_MS = 30 * 60 * 1000;   // sessioni inattive chiuse dopo 30'
 const SWEEP_INTERVAL_MS = 60 * 1000;
@@ -115,15 +201,22 @@ const SQL_READONLY_START = /^[\s(]*(select|with|show|describe|desc|explain|table
  */
 function assertReadOnlySql(sql) {
   const text = String(sql || '');
-  if (!SQL_READONLY_START.test(text)) {
-    throw new Error('In modalità MCP sono ammesse solo query di lettura (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN, TABLE, VALUES).');
+  const analysis = analyzeSql(text);
+  if (analysis.multipleStatements) {
+    throw new Error('In modalità MCP è ammesso un solo statement SQL per chiamata.');
   }
-  if (isFileIoSql(text)) {
+  if (analysis.fileIo) {
     throw new Error(
       "In modalità MCP non è ammesso l'I/O su file dell'host del database "
-      + '(INTO OUTFILE/DUMPFILE, LOAD DATA, LOAD_FILE): è una lettura o una scrittura '
+      + '(INTO OUTFILE/DUMPFILE, LOAD DATA/XML, LOAD_FILE, COPY o funzioni file PostgreSQL): '
+      + 'è una lettura o una scrittura '
       + 'sul filesystem del server, non sui dati della connessione.'
     );
+  }
+  const statement = analysis.statements[0] || '';
+  if (!SQL_READONLY_START.test(statement)
+      || analysis.capabilities.some((capability) => capability !== 'read')) {
+    throw new Error('In modalità MCP sono ammesse solo query di lettura (SELECT, WITH, SHOW, DESCRIBE, EXPLAIN, TABLE, VALUES).');
   }
 }
 
@@ -134,14 +227,62 @@ function assertReadOnlySql(sql) {
 const SQL_WRITE_START = /^\s*(insert|update|delete|replace)\b/i;
 const SQL_NEEDS_WHERE = /^\s*(update|delete)\b/i;
 
+function hasTopLevelSqlKeyword(statement, keyword) {
+  const text = String(statement || '');
+  const wanted = String(keyword || '').toLowerCase();
+  let depth = 0;
+  let found = false;
+  for (let i = 0; i < text.length;) {
+    const ch = text[i];
+    if (ch === '(') { depth++; i++; continue; }
+    if (ch === ')') {
+      if (depth === 0) return false; // forma sbilanciata: fail-closed
+      depth--;
+      i++;
+      continue;
+    }
+    if (/[A-Za-z_]/.test(ch)) {
+      let j = i + 1;
+      while (j < text.length && /[A-Za-z0-9_$]/.test(text[j])) j++;
+      if (depth === 0 && text.slice(i, j).toLowerCase() === wanted) found = true;
+      i = j;
+      continue;
+    }
+    i++;
+  }
+  return found && depth === 0;
+}
+
 function assertWriteSql(sql) {
   const text = String(sql || '');
-  if (!SQL_WRITE_START.test(text)) {
+  const analysis = analyzeSql(text);
+  if (analysis.multipleStatements) {
+    throw new Error('execute_write ammette un solo statement SQL per chiamata.');
+  }
+  const statement = analysis.statements[0] || '';
+  // `read` è ammesso INSIEME a write/delete, non da solo: `analyzeSql` lo
+  // aggiunge ormai a ogni istruzione, perché anche una mutativa può restituire
+  // dati (`UPDATE … RETURNING`, `CREATE TABLE … AS SELECT`). Pretendere che le
+  // capability fossero esattamente {write, delete} rendeva quindi impossibile
+  // QUALUNQUE execute_write, incluso un semplice INSERT.
+  //
+  // Ciò che questa barriera deve davvero impedire resta invariato ed è il
+  // motivo per cui non basta guardare la keyword iniziale: niente `ddl` e
+  // niente `manage`, in nessuna posizione dell'istruzione.
+  const AMMESSE = ['read', 'write', 'delete'];
+  const mutativa = analysis.capabilities.some((c) => c === 'write' || c === 'delete');
+  if (!SQL_WRITE_START.test(statement)
+      || !mutativa
+      || analysis.capabilities.some((capability) => !AMMESSE.includes(capability))) {
     throw new Error('execute_write ammette solo INSERT, UPDATE, DELETE o REPLACE (niente DDL).');
   }
-  if (SQL_NEEDS_WHERE.test(text) && !/\bwhere\b/i.test(text)) {
+  if (analysis.fileIo) {
+    throw new Error("execute_write non ammette l'I/O su file dell'host del database.");
+  }
+  if (SQL_NEEDS_WHERE.test(statement) && !hasTopLevelSqlKeyword(statement, 'where')) {
     throw new Error('UPDATE e DELETE senza clausola WHERE non sono ammessi: specifica sempre le righe interessate.');
   }
+  return sqlCapability(statement);
 }
 
 // Parse di un oggetto EJSON che deve esistere e non essere vuoto (filtri e
@@ -163,17 +304,10 @@ function parseNonEmptyObject(text, label) {
 // ammessi solo al livello superiore della pipeline (mai nei sub-pipeline di
 // $lookup/$facet/$unionWith), quindi basta controllare gli stage top-level.
 function assertReadOnlyPipeline(pipelineText) {
-  let stages;
-  try {
-    stages = EJSON.parse(String(pipelineText || '[]'), { relaxed: false });
-  } catch (err) {
-    throw new Error(`Pipeline non valida: ${errMsg(err)}`);
-  }
-  if (!Array.isArray(stages)) return; // "deve essere un array": lo segnala la strategia
-  for (const stage of stages) {
-    if (stage && typeof stage === 'object' && ('$out' in stage || '$merge' in stage)) {
-      throw new Error('Gli stage $out e $merge non sono ammessi in modalità MCP (sola lettura).');
-    }
+  const analysis = analyzeMongoPipeline(pipelineText);
+  assertNoMongoServerJs(analysis.pipeline, 'Pipeline MongoDB');
+  if (analysis.write) {
+    throw new Error('Gli stage $out e $merge non sono ammessi in modalità MCP (sola lettura).');
   }
 }
 
@@ -476,26 +610,30 @@ function buildMcpServer(session, deps) {
       throw new Error('Raggiunto il limite globale di connessioni al database: riprova più tardi.');
     }
     const connName = String(saved || '');
+    const guardCtx = { principal: sessionPrincipal(session), connName };
     let conn;
     try {
       // La strategia torna già avvolta nel Proxy autorizzante: da qui in poi
       // ogni tool è soggetto ai permessi del soggetto della API key, senza
       // controlli sparsi tool per tool.
-      conn = await deps.establishConnection({ saved: connName }, { principal: sessionPrincipal(session), connName });
+      conn = await deps.establishConnection({ saved: connName }, guardCtx);
     } catch (err) {
       deps.releaseGlobalSession();
       throw err;
     }
     const connectionId = crypto.randomUUID();
-    // writesAllowed valutato al momento della connessione: serve readOnly=false
-    // esplicito nella connessione salvata (default: sola lettura).
-    const writesAllowed = String(conn.effective.readOnly || '').trim().toLowerCase() === 'false';
+    // Valore iniziale mostrato nella risposta. Prima di ogni scrittura viene
+    // riletto dal file del tenant (refreshWritesAllowed), così una revoca a
+    // caldo non resta congelata nella sessione MCP.
+    const initialReadOnly = conn.effective.readOnly;
+    const writesAllowed = String(initialReadOnly == null ? '' : initialReadOnly).trim().toLowerCase() === 'false';
     session.dbSessions.set(connectionId, {
       strategy: conn.strategy,
       tunnel: conn.tunnel,
       dbType: conn.dbType,
       name: String(saved || ''),
       writesAllowed,
+      guardCtx,
     });
     let databases = [];
     try { databases = await conn.strategy.listDatabases(); } catch { /* la lista è facoltativa */ }
@@ -593,6 +731,9 @@ function buildMcpServer(session, deps) {
     if (args.pipeline && String(args.pipeline).trim()) {
       assertReadOnlyPipeline(args.pipeline);
       return jsonResult(await sess.strategy.collectionAggregate(db, coll, { pipeline: args.pipeline }));
+    }
+    if (args.filter && String(args.filter).trim()) {
+      assertNoMongoServerJs(args.filter, 'Filtro MongoDB');
     }
     return jsonResult(await sess.strategy.collectionFind(db, coll, {
       filter: args.filter,
@@ -855,8 +996,8 @@ function buildMcpServer(session, deps) {
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   }, async (args) => {
     const sess = requireDbSession(args.connection_id);
-    if (!sess.writesAllowed) {
-      throw new Error(`La connessione "${sess.name}" è in sola lettura: per abilitare le scritture imposta readOnly=false nella sua sezione di connections.ini, oppure usa il tool set_connection_read_only (richiede la conferma esplicita dell'utente umano) e poi riconnettiti.`);
+    if (!refreshWritesAllowed(session, sess, deps)) {
+      throw new Error(`La connessione "${sess.name}" è in sola lettura: per abilitare le scritture imposta readOnly=false nella sua sezione di connections.ini, oppure usa il tool set_connection_read_only (richiede la conferma esplicita dell'utente umano).`);
     }
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
@@ -865,13 +1006,20 @@ function buildMcpServer(session, deps) {
     // deve nemmeno ottenere l'anteprima e il confirm_token (la scrittura vera è
     // già bloccata dal Proxy autorizzante al secondo passo, ma emettere un token
     // a un utente in sola lettura è di per sé sbagliato). Per il DML su SQL
-    // (args.sql, nessun args.operation) la capability minima è 'write'.
-    const writeCap = WRITE_OP_CAPABILITY[String(args.operation || '').trim()]
-      || (args.sql ? 'write' : null);
-    if (writeCap && !can(sessionPrincipal(session), {
-      connName: sess.name, capability: writeCap, db, coll: args.collection || null,
-    })) {
-      throw new Error(`Permesso negato: la API key usata non ha i privilegi di scrittura sulla connessione "${sess.name}".`);
+    // (args.sql, nessun args.operation) DELETE richiede `delete`, mentre
+    // INSERT/UPDATE/REPLACE richiedono `write`.
+    const operationCap = WRITE_OP_CAPABILITY[String(args.operation || '').trim()];
+    const requiredCaps = operationCap
+      ? [operationCap]
+      : (args.sql ? ['read', assertWriteSql(args.sql)] : []);
+    const missingCap = requiredCaps.find((capability) => !can(sessionPrincipal(session), {
+      connName: sess.name, capability, db, coll: args.collection || null,
+    }));
+    if (missingCap) {
+      throw new Error(
+        'Permesso negato: la API key usata non ha i privilegi di scrittura sulla connessione "'
+        + sess.name + '".'
+      );
     }
 
     sweepPendingWrites();
@@ -936,7 +1084,7 @@ function buildMcpServer(session, deps) {
       'con read_only=true torna in sola lettura. Funziona in due passaggi come execute_write: ' +
       'primo passo SENZA confirm_token per ottenere anteprima e token; mostra l\'anteprima all\'utente umano e ' +
       'richiama col token solo dopo la sua approvazione esplicita. NON confermare mai di tua iniziativa. ' +
-      'Il cambio vale per le connessioni aperte da quel momento in poi: riapri con connect_database per applicarlo. ' +
+      'Il cambio vale anche per le connessioni MCP già aperte dalla richiesta successiva. ' +
       'Ogni richiesta ed esecuzione viene registrata nell\'audit log.',
     inputSchema: {
       connection_name: z.string().describe('Nome della connessione salvata (vedi list_saved_connections)'),
@@ -1110,43 +1258,13 @@ function buildMcpServer(session, deps) {
     },
     annotations: { readOnlyHint: true, openWorldHint: false },
   }, async (args) => {
-    const group = String(args.group || '').trim();
-    const backupId = String(args.backup_id || '').trim();
-    if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
-      throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
-    }
-    const backupDir = path.join(backupRootOf(session), group, backupId);
+    const { group, backupId, backupDir } = resolveBackupSelection(
+      backupRootOf(session), args.group, args.backup_id,
+    );
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
-    const manifest = readManifest(backupDir);
-    let ok = 0;
-    let failed = 0;
-    const details = [];
-    for (const f of manifest.files) {
-      if (!f.sha256) continue;
-      const full = path.join(backupDir, f.path);
-      if (!fs.existsSync(full)) {
-        details.push({ file: f.path, status: 'MISSING' });
-        failed++;
-        continue;
-      }
-      const actual = await sha256File(full);
-      if (actual === f.sha256) {
-        details.push({ file: f.path, status: 'OK' });
-        ok++;
-      } else {
-        details.push({ file: f.path, status: 'CORRUPTED', expected: f.sha256, actual });
-        failed++;
-      }
-    }
-    return jsonResult({
-      backup_id: manifest.id,
-      ok_files: ok,
-      failed_files: failed,
-      valid: failed === 0,
-      details,
-    });
+    return jsonResult(backupVerificationPayload(await verifyBackupDir(backupDir)));
   });
 
   tool('restore_backup', {
@@ -1170,7 +1288,7 @@ function buildMcpServer(session, deps) {
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
   }, async (args) => {
     const sess = requireDbSession(args.connection_id);
-    if (!sess.writesAllowed) {
+    if (!refreshWritesAllowed(session, sess, deps)) {
       throw new Error(`La connessione "${sess.name}" è in sola lettura: il restore scrive sul database e richiede readOnly=false in connections.ini (vedi set_connection_read_only).`);
     }
     // Il restore riscrive interi database e usa anche il driver nativo:
@@ -1179,12 +1297,9 @@ function buildMcpServer(session, deps) {
       throw new Error(`Permesso negato: la API key usata non può ripristinare backup sulla connessione "${sess.name}".`);
     }
     // Il percorso è ricostruito da componenti validati: niente path traversal.
-    const group = String(args.group || '').trim();
-    const backupId = String(args.backup_id || '').trim();
-    if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
-      throw new Error('Parametri "group" o "backup_id" non validi: usa i valori restituiti da list_backups.');
-    }
-    const backupDir = path.join(backupRootOf(session), group, backupId);
+    const { group, backupId, backupDir } = resolveBackupSelection(
+      backupRootOf(session), args.group, args.backup_id,
+    );
     if (!fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error(`Backup "${group}/${backupId}" non trovato: verifica con list_backups.`);
     }
@@ -1481,29 +1596,34 @@ function attachMcp(app, deps) {
   }
 
   async function authenticate(req, res) {
-    if (!deps.rbacOn || !deps.rbacOn()) return ROOT_PRINCIPAL;
-    const principal = await deps.resolveApiKey(apiKeyFromRequest(req));
+    if (!deps.rbacOn || !deps.rbacOn()) {
+      return { principal: ROOT_PRINCIPAL, credentialFingerprint: null };
+    }
+    const rawKey = apiKeyFromRequest(req);
+    const principal = await deps.resolveApiKey(rawKey);
     if (!principal) {
       res.status(401).json(rpcError(-32000, 'API key mancante o non valida: passa "Authorization: Bearer <api key>" (creala dal pannello di amministrazione di CodeDB).'));
       return null;
     }
-    return principal;
+    return { principal, credentialFingerprint: credentialFingerprint(rawKey) };
   }
 
   app.post(MCP_PATH, express.json({ limit: '5mb' }), async (req, res) => {
     if (!guardHost(req, res)) return;
-    const principal = await authenticate(req, res);
-    if (!principal) return;
+    const auth = await authenticate(req, res);
+    if (!auth) return;
+    const { principal, credentialFingerprint: requestFingerprint } = auth;
     try {
       const sid = req.headers['mcp-session-id'];
       const existing = sid ? mcpSessions.get(String(sid)) : undefined;
       if (existing) {
         // Una sessione MCP appartiene al soggetto che l'ha aperta: una API key
         // diversa non può proseguirla (né ereditarne le connessioni aperte).
-        if (sessionPrincipal(existing).id !== principal.id) {
-          res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente: reinizializza la connessione.'));
+        if (!sameMcpIdentity(existing, principal, requestFingerprint)) {
+          res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente o a un’altra API key: reinizializza la connessione.'));
           return;
         }
+        refreshSessionPrincipal(existing, principal);
         existing.lastActivity = Date.now();
         await existing.transport.handleRequest(req, res, req.body);
         return;
@@ -1519,7 +1639,16 @@ function attachMcp(app, deps) {
 
       // Nuova sessione: un McpServer e un transport dedicati, registrati
       // nella mappa quando l'SDK assegna il session id.
-      const session = { id: null, transport: null, principal, dbSessions: new Map(), pendingWrites: new Map(), lastActivity: Date.now(), destroyed: false };
+      const session = {
+        id: null,
+        transport: null,
+        principal,
+        credentialFingerprint: requestFingerprint,
+        dbSessions: new Map(),
+        pendingWrites: new Map(),
+        lastActivity: Date.now(),
+        destroyed: false,
+      };
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
         enableJsonResponse: true, // risposte JSON semplici: nessun push server→client
@@ -1541,18 +1670,20 @@ function attachMcp(app, deps) {
   // protocollo), DELETE = terminazione esplicita della sessione.
   const handleSessionRequest = async (req, res) => {
     if (!guardHost(req, res)) return;
-    const principal = await authenticate(req, res);
-    if (!principal) return;
+    const auth = await authenticate(req, res);
+    if (!auth) return;
+    const { principal, credentialFingerprint: requestFingerprint } = auth;
     const sid = req.headers['mcp-session-id'];
     const session = sid ? mcpSessions.get(String(sid)) : undefined;
     if (!session) {
       res.status(400).json(rpcError(-32000, 'Sessione MCP non valida o scaduta.'));
       return;
     }
-    if (sessionPrincipal(session).id !== principal.id) {
-      res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente.'));
+    if (!sameMcpIdentity(session, principal, requestFingerprint)) {
+      res.status(403).json(rpcError(-32000, 'Questa sessione MCP appartiene a un altro utente o a un’altra API key.'));
       return;
     }
+    refreshSessionPrincipal(session, principal);
     session.lastActivity = Date.now();
     try {
       await session.transport.handleRequest(req, res);
@@ -1566,4 +1697,17 @@ function attachMcp(app, deps) {
   return { shutdownMcp, mcpSessions };
 }
 
-module.exports = { attachMcp, assertReadOnlySql, assertReadOnlyPipeline, MCP_PATH };
+module.exports = {
+  attachMcp,
+  assertReadOnlySql,
+  assertWriteSql,
+  assertReadOnlyPipeline,
+  refreshSessionPrincipal,
+  refreshWritesAllowed,
+  credentialFingerprint,
+  sameMcpIdentity,
+  backupVerificationPayload,
+  resolveBackupSelection,
+  hasTopLevelSqlKeyword,
+  MCP_PATH,
+};

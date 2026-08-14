@@ -67,6 +67,43 @@ class DbStrategy {
   /** @returns {Promise<{collections, relations}>} per la vista UML. */
   async dbSchema(_db) { throw unsupported(); }
 
+  /**
+   * Chiavi esterne USCENTI della sola tabella/collection indicata, per il
+   * pannello di riferimento della griglia (doppio clic su una cella collegata).
+   *
+   * Non è `dbSchema(db)` ristretto: quello descrive TUTTO il database e su
+   * MongoDB campiona documenti per ogni collection, un costo che qui si
+   * pagherebbe a ogni apertura di tabella per usarne un ventesimo.
+   *
+   * `db` e `tabella` del descrittore non sono ridondanti con gli argomenti: una
+   * FK può puntare a un altro schema PostgreSQL o a un altro database MySQL, e
+   * il pannello deve interrogare QUEL bersaglio, non quello di partenza.
+   *
+   * `origine` distingue il vincolo dichiarato dall'ipotesi: 'vincolo' è una
+   * garanzia del DBMS, 'euristica' è un indovinello sul nome del campo. Un
+   * indovinello presentato come certezza è il modo migliore per far fidare
+   * l'utente di un collegamento che non esiste.
+   *
+   * @returns {Promise<Array<{campo, db, tabella, colonna, origine, molti}>>}
+   */
+  async columnRelations(_db, _coll) { throw unsupported(); }
+
+  /**
+   * Righe della tabella RIFERITA da una chiave esterna. Due usi, un metodo:
+   * `valore` (uguaglianza esatta) risolve "chi è il cliente 42", `cerca` (testo
+   * libero) alimenta l'elenco da cui scegliere un altro valore.
+   *
+   * Esiste come metodo a sé invece di appoggiarsi a `collectionFind` perché lì,
+   * sui DBMS SQL, il filtro è un frammento WHERE grezzo interpolato tal quale:
+   * comporlo altrove significherebbe incollare un valore di cella dentro una
+   * query — rotto al primo apostrofo nel migliore dei casi. Qui ogni strategia
+   * PARAMETRIZZA con i mezzi del proprio driver.
+   *
+   * payload: { colonna, valore?, cerca?, limit?, skip? }
+   * @returns {Promise<{righe, colonne, total: number|null, troncato: boolean}>}
+   */
+  async relatedRows(_db, _coll, _payload) { throw unsupported(); }
+
   /** @returns {Promise<{docs, columns, total, skip, limit}>} */
   async collectionFind(_db, _coll, _payload) { throw unsupported(); }
 
@@ -192,37 +229,61 @@ function singular(s) {
 // Euristica per l'UML: un campo "user_id" / "userId" / "user_ids" (oppure di
 // tipo ObjectId con nome corrispondente a una collection, anche al plurale)
 // viene considerato un riferimento verso quella collection/tabella.
-function detectRelations(collections) {
+// Indice dei nomi di collection per la risoluzione: forma intera e singolare,
+// entrambe minuscole, verso il nome REALE (che conserva le maiuscole).
+function indexCollectionNames(names) {
   const byName = new Map();
-  for (const c of collections) {
-    const low = c.name.toLowerCase();
-    byName.set(low, c.name);
-    byName.set(singular(low), c.name);
+  for (const name of names) {
+    const low = String(name).toLowerCase();
+    byName.set(low, name);
+    byName.set(singular(low), name);
   }
+  return byName;
+}
+
+// Relazioni uscenti da UNA sola collection, dato l'indice dei nomi esistenti.
+//
+// Estratta dal ciclo di `detectRelations` il giorno in cui è servita per il
+// pannello delle chiavi esterne della griglia: lì si conosce la collection
+// aperta e non si vuole campionare l'intero database per sapere dove punta un
+// suo campo. `detectRelations` la richiama a sua volta, così l'euristica resta
+// UNA: se il diagramma UML e il pannello divergessero, uno dei due starebbe
+// mostrando un collegamento che l'altro nega, senza modo di capire quale.
+function relationsForCollection(collection, byName) {
   const resolve = (base) => byName.get(base) || byName.get(base + 's') || byName.get(singular(base));
 
   const relations = [];
+  for (const f of collection.fields || []) {
+    if (f.name === '_id') continue;
+    const types = f.types || [];
+    const low = f.name.toLowerCase();
+    const m = low.match(/^(.+?)_?ids?$/);
+    if (!m && !types.includes('objectId')) continue;
+    const base = m ? m[1] : low;
+    const target = resolve(base);
+    if (!target || target === collection.name) continue;
+    relations.push({
+      from: collection.name,
+      field: f.name,
+      to: target,
+      many: types.includes('array') || /ids$/.test(low),
+    });
+  }
+  return relations;
+}
+
+function detectRelations(collections) {
+  const byName = indexCollectionNames(collections.map((c) => c.name));
+  const relations = [];
   for (const c of collections) {
-    for (const f of c.fields) {
-      if (f.name === '_id') continue;
-      const low = f.name.toLowerCase();
-      const m = low.match(/^(.+?)_?ids?$/);
-      if (!m && !f.types.includes('objectId')) continue;
-      const base = m ? m[1] : low;
-      const target = resolve(base);
-      if (!target || target === c.name) continue;
-      relations.push({
-        from: c.name,
-        field: f.name,
-        to: target,
-        many: f.types.includes('array') || /ids$/.test(low),
-      });
-    }
+    relations.push(...relationsForCollection(c, byName));
   }
   return relations;
 }
 
 DbStrategy.detectRelations = detectRelations;
+DbStrategy.relationsForCollection = relationsForCollection;
+DbStrategy.indexCollectionNames = indexCollectionNames;
 DbStrategy.singular = singular;
 
 /* ---------------------------------------------------------------------------
@@ -450,6 +511,56 @@ function resultCap(payload, fallback = 500) {
 }
 
 DbStrategy.resultCap = resultCap;
+
+// Parametri normalizzati di `relatedRows`, uguali per tutte le strategie: il
+// pannello delle chiavi esterne è uno solo e non deve comportarsi diversamente
+// a seconda del DBMS sotto.
+//
+// `haValore` è distinto da `valore` di proposito: cercare le righe con la
+// colonna a NULL è una richiesta legittima, e `valore == null` da solo non
+// permette di distinguerla da "nessun valore richiesto" (che invece elenca
+// tutto). Senza la distinzione, aprire il pannello su una cella vuota mostrava
+// l'intera tabella spacciandola per la riga riferita.
+function relatedRowsParams(payload) {
+  const p = payload || {};
+  const colonna = String(p.colonna == null ? '' : p.colonna).trim();
+  if (!colonna) throw new Error('Manca la colonna di riferimento da interrogare.');
+  return {
+    colonna,
+    valore: p.valore,
+    haValore: Object.prototype.hasOwnProperty.call(p, 'valore') && p.valore !== undefined,
+    cerca: p.cerca == null ? '' : String(p.cerca).trim(),
+    limit: Math.min(Math.max(parseInt(p.limit, 10) || 25, 1), 200),
+    skip: Math.max(parseInt(p.skip, 10) || 0, 0),
+  };
+}
+
+DbStrategy.relatedRowsParams = relatedRowsParams;
+
+// Quante colonne testuali al massimo entrano nella ricerca del pannello di
+// riferimento. Una tabella con quaranta colonne di testo produrrebbe quaranta
+// LIKE in OR su ogni battuta: la ricerca sarebbe corretta e inutilizzabile.
+DbStrategy.MAX_COLONNE_CERCA = 6;
+
+// Neutralizza i metacaratteri di LIKE nel testo cercato (`\` è il carattere di
+// escape predefinito sia su MySQL sia su PostgreSQL). Non è una difesa da
+// injection — i valori viaggiano come parametri — ma da un'altra sorpresa: chi
+// scrive "50%" cerca la stringa "50%", non "tutto ciò che inizia per 50".
+function escapeLike(s) {
+  return String(s).replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+DbStrategy.escapeLike = escapeLike;
+
+// L'equivalente di `escapeLike` per MongoDB, dove la ricerca del pannello passa
+// per `$regex`: senza, chi cerca "S.p.A." otterrebbe un'espressione regolare in
+// cui il punto vale "qualsiasi carattere", e una parentesi aperta farebbe
+// fallire la query invece di cercare una parentesi.
+function escapeRegex(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+DbStrategy.escapeRegex = escapeRegex;
 
 // Budget di memoria per il risultato di una singola lettura. Il tetto sulle
 // RIGHE non basta: poche righe con BLOB, testi lunghi o campi JSON estesi

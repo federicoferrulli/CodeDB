@@ -23,7 +23,11 @@ const Vault = require('../../db/vault');
 // il connections.ini reale (che contiene i segreti dell'utente).
 const CONNECTIONS_FILE = process.env.CODEDB_CONNECTIONS_FILE
   || path.join(__dirname, '..', '..', 'connections.ini');
-const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
+// Deve restare allineato ai campi segreti del server: una URI può contenere
+// username e password e viene quindi cifrata integralmente nel file INI.
+// Senza il campo uri qui la UI salvava correttamente ENC:..., ma la CLI passava
+// il ciphertext al driver e ogni backup pianificato falliva all'avvio.
+const SECRET_FIELDS = ['password', 'uri', 'sshPassword', 'sshPassphrase'];
 
 // Connessioni per tenant (CDB-50). Con RBAC attivo il server non scrive più nel
 // file condiviso: ogni owner ha `data/conns/<ownerId>.ini`. La CLI leggeva solo

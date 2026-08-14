@@ -39,8 +39,16 @@ function listFiles(dir, base = dir) {
   const out = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...listFiles(full, base));
-    else out.push({ full, rel: path.relative(base, full).split(path.sep).join('/') });
+    // Un backup può arrivare da una sorgente non fidata. Non seguire link o
+    // device speciali durante l'upload: altrimenti un symlink inserito nella
+    // cartella fa esfiltrare un file arbitrario dell'host verso lo storage.
+    const stat = fs.lstatSync(full);
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Il backup contiene un link simbolico non caricabile: ${full}.`);
+    }
+    if (stat.isDirectory()) out.push(...listFiles(full, base));
+    else if (stat.isFile()) out.push({ full, rel: path.relative(base, full).split(path.sep).join('/') });
+    else throw new Error(`Il backup contiene un file speciale non caricabile: ${full}.`);
   }
   return out;
 }

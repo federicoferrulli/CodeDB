@@ -13,7 +13,7 @@ export function freshState() {
   return {
     connected: false,
     connLabel: '',
-    dbType: 'mongodb',     // 'mongodb' | 'mysql'
+    dbType: 'mongodb',     // 'mongodb' | 'mysql' | 'postgresql'
     db: null,
     coll: null,
     skip: 0,
@@ -31,6 +31,8 @@ export function freshState() {
     loading: false,         // fetch di un blocco in corso (scroll infinito)
     exhausted: false,       // tutti i documenti caricati: niente altri blocchi
     liveTimer: null,
+    schemaTimer: null,
+    dataDirty: false,       // dati cambiati mentre il tab era in background
     pollingInterval: null,
     view: 'data',
     expandedDbs: new Set(), // db espansi nella sidebar
@@ -132,9 +134,13 @@ export function closeTab(id) {
   const i = tabs.list.findIndex((t) => t.id === id);
   if (i < 0) return;
   const [tab] = tabs.list.splice(i, 1);
+  if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('codedb:tab-closed', { detail: { tabId: tab.id } }));
+  }
   // Niente timer orfani: il polling e il debounce live appartengono al tab.
   clearInterval(tab.state.pollingInterval);
   clearTimeout(tab.state.liveTimer);
+  clearTimeout(tab.state.schemaTimer);
   // Chiude la sessione dedicata (strategia + eventuale tunnel) lato server.
   socket.emit('mongo:disconnect', { tabId: tab.id }, () => {});
   if (tabs.activeId === id) {
@@ -148,8 +154,12 @@ export function closeTab(id) {
 // connessione aperta". Le sessioni server sono già state chiuse dal server.
 export function closeAllTabs() {
   for (const tab of tabs.list) {
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('codedb:tab-closed', { detail: { tabId: tab.id } }));
+    }
     clearInterval(tab.state.pollingInterval);
     clearTimeout(tab.state.liveTimer);
+    clearTimeout(tab.state.schemaTimer);
   }
   tabs.list.length = 0;
   tabs.activeId = null;

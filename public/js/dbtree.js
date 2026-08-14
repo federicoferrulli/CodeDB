@@ -80,7 +80,9 @@ export function renderDbTree(databases) {
         '---',
         { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
-        { label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
+        ...((state.dbType === 'postgresql' || state.dbType === 'postgres')
+          ? [{ label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) }]
+          : []),
         { label: '⟳ Aggiorna elenco', action: refreshDbTree },
         '---',
         ...dbExportImportMenuItems(db.name),
@@ -242,14 +244,17 @@ export function initDbTree() {
   let searchTimer = null;
   $('#db-search').addEventListener('input', (e) => {
     const q = e.target.value.trim();
+    const originTab = activeTab();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => {
+      // Il timer appartiene al tab in cui è stato digitato il filtro.
+      if (!originTab || activeTab() !== originTab) return;
       if (!q) {
         refreshDbTree();
         return;
       }
       $('#db-tree').innerHTML = '<li class="node-label loading">ricerca in corso…</li>';
-      emit('db:search', { query: q }).then((res) => {
+      emit('db:search', { tabId: originTab.id, query: q }).then((res) => {
         if (!isForActiveTab(res)) return; // risultati di un'altra connessione
         renderDbTree(res.databases);
       }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });

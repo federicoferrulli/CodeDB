@@ -1,0 +1,165 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-08-15",
+  "versione_analizzata": "0.1.2-beta.1",
+  "tipo": "audit completo di piattaforma: sicurezza, correttezza, concorrenza, risorse e resilienza (analisi statica con correzioni)",
+  "riepilogo": { "totale": 12, "critica": 0, "alta": 9, "media": 3, "bassa": 0 },
+  "note_revisione": [{
+    "data": "2026-08-15",
+    "cosa": "Audit richiesto da Keus sull'intera piattaforma. Tutti i rilievi sono stati corretti nella stessa sessione. Eseguiti parsing JSON, node --check sui JavaScript modificati/aggiunti, scansione NUL e git diff --check. Server, database, npm test ed E2E non sono stati avviati: la procedura dell'audit richiede autorizzazione esplicita.",
+    "aggiunti": ["CDB-A73", "CDB-A74", "CDB-A75", "CDB-A76", "CDB-A77", "CDB-A78", "CDB-A79", "CDB-A80", "CDB-A81", "CDB-A82", "CDB-A83", "CDB-A84"]
+  }],
+  "ambito_analizzato": [
+    "server.js ed Electron: trasporto, autenticazione socket, connessioni, riconnessione e navigazione esterna",
+    "auth/ e mcp/: capability, scope SQL/MongoDB, revoca a caldo, identità MCP, conferme e backup MCP",
+    "db/: strategie MongoDB, MySQL e PostgreSQL, DDL, transazioni, metadati e rilascio risorse",
+    "backup/: engine, restore, cataloghi, percorsi, checksum, stream, snapshot, CLI, notifiche e storage cloud",
+    "public/js/: tab e contesti asincroni, griglia, editing, import/export, query, relazioni, geometrie e grafici",
+    "configurazione/packaging e test di regressione aggiunti"
+  ],
+  "ambito_non_analizzato": [
+    "public/js/lib e dipendenze vendorizzate; landing/ e artefatti build",
+    "Nessuna prova dinamica con DBMS, Socket.IO, Electron o provider cloud",
+    "Nessuna suite npm/unit/E2E eseguita senza autorizzazione esplicita"
+  ],
+  "finding": [
+    {
+      "id": "CDB-A73", "severita": "alta",
+      "titolo": "URI e segreti di connessione potevano riemergere in UI, log, copie di configurazione e build Docker",
+      "categoria": "esposizione credenziali",
+      "modulo": "server.js, public/js/connection.js, db/errors.js, backup/lib/connstore.js, .dockerignore",
+      "riferimenti": ["server.js:873", "server.js:901", "server.js:937", "server.js:2989", "public/js/connection.js:64", "db/errors.js:35"],
+      "problema": "Input URI con userinfo/query → connections:get, DOM, label/log o build context: password e opzioni sensibili potevano essere divulgate.",
+      "scenario": "mongodb://utente:password@host/db?authSource=admin raggiungeva sink visibili o persistenti.",
+      "fix": "URI trattato come segreto, UI limitata a hasUri, modalità URI/campi esclusiva, redazione centralizzata, migrazione cifrata e .dockerignore restrittivo.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A74", "severita": "alta",
+      "titolo": "Revoche RBAC e sessioni MCP potevano conservare privilegi o confondere API key dello stesso utente",
+      "categoria": "bypass autorizzazione / TOCTOU",
+      "modulo": "auth/AppStore.js, server.js, mcp/McpGateway.js",
+      "riferimenti": ["server.js:2282", "server.js:2362", "mcp/McpGateway.js:67", "mcp/McpGateway.js:78", "mcp/McpGateway.js:1608"],
+      "problema": "Input revoca/sospensione o seconda API key → principal/guardCtx già in memoria: socket e sessione MCP potevano continuare o alternare scope.",
+      "scenario": "Un session-id creato con key ampia veniva riusato con una key limitata dello stesso principal.",
+      "fix": "Revoca immediata di sessioni/key, rivalidazione a caldo e binding MCP anche all'impronta SHA-256 della credenziale senza conservarla in chiaro.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A75", "severita": "alta",
+      "titolo": "Backup MCP accettava '..' e readOnly poteva restare obsoleto",
+      "categoria": "path traversal / autorizzazione",
+      "modulo": "mcp/McpGateway.js, backup/lib/util.js",
+      "riferimenti": ["mcp/McpGateway.js:97", "mcp/McpGateway.js:145", "mcp/McpGateway.js:1261", "mcp/McpGateway.js:1292"],
+      "problema": "Input group='..'/backup_id='..' → path.join usciva dal tenant; execute_write/restore usavano inoltre il flag catturato all'apertura.",
+      "scenario": "Verify/restore poteva puntare fuori root o scrivere dopo una revoca readOnly.",
+      "fix": "Componenti safeName, confinamento resolve/relative condiviso e rilettura autorevole del flag prima di scrittura e restore.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A76", "severita": "alta",
+      "titolo": "La barriera SQL Raw non copriva commenti eseguibili, USING, funzioni pericolose e WHERE annidati",
+      "categoria": "injection / bypass scope / mass update",
+      "modulo": "auth/capabilities.js, auth/sqlTables.js, auth/guardStrategy.js, mcp/McpGateway.js",
+      "riferimenti": ["auth/capabilities.js:74", "auth/sqlTables.js:273", "auth/guardStrategy.js:295", "mcp/McpGateway.js:256"],
+      "problema": "Input UPDATE con WHERE solo in subquery, DELETE/MERGE ... USING, /*!...*/ o funzioni filesystem → parser/gate incompleto → esecuzione massiva o fuori scope.",
+      "scenario": "UPDATE t SET x=(SELECT max(y) FROM s WHERE ...), DELETE FROM ordini USING utenti.",
+      "fix": "Rifiuto commenti eseguibili, USING contestuale, WHERE top-level, read sempre richiesto e fail-close DDL/funzioni per principal scoped.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A77", "severita": "alta",
+      "titolo": "Pipeline MongoDB annidate potevano leggere o scrivere collection fuori scope",
+      "categoria": "bypass RBAC / server-side JavaScript",
+      "modulo": "auth/capabilities.js, auth/guardStrategy.js, db/MongoDbStrategy.js",
+      "riferimenti": ["auth/capabilities.js:222", "auth/guardStrategy.js:228", "auth/guardStrategy.js:333"],
+      "problema": "Input $lookup/$unionWith annidato o $out/$merge → aggregate del driver senza verifica ricorsiva completa di sorgenti/destinazioni.",
+      "scenario": "Una facet legge segreti e fa merge verso una collection non concessa.",
+      "fix": "Analisi ricorsiva cycle-safe di readTargets/writeTargets, capability read più mutazione e blocco di costrutti server-side per scope ristretto.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A78", "severita": "alta",
+      "titolo": "Rinomina database simulata e DDL incompleti potevano perdere dati o attributi",
+      "categoria": "integrità dati/schema",
+      "modulo": "db/MongoDbStrategy.js, db/MySqlStrategy.js, db/PostgreSqlStrategy.js",
+      "riferimenti": ["db/MySqlStrategy.js:1347", "db/PostgreSqlStrategy.js:1020"],
+      "problema": "Input rename o alter column → copia/drop non atomico oppure ricostruzione parziale di tipo, default, auto_increment, comment, collation e on-update.",
+      "scenario": "Errore a metà rename o modifica visuale di serial/varchar(40)/colonna generata produceva perdita o schema diverso.",
+      "fix": "Rename non atomico disabilitato fail-closed; ALTER PG atomico con format_type/default; attributi MySQL autorevoli preservati o rifiutati se non rappresentabili.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A79", "severita": "alta",
+      "titolo": "Alias, collisioni e link nei backup potevano fondere catene, uscire dalla root o esfiltrare file",
+      "categoria": "path traversal / collisione",
+      "modulo": "backup/lib/util.js, backup/lib/engine.js, backup/lib/storage.js",
+      "riferimenti": ["backup/lib/util.js:194", "backup/lib/util.js:213", "backup/lib/engine.js:105", "backup/lib/storage.js:38"],
+      "problema": "Input nomi lossy, ./../, case alias o symlink → sovrascrittura dump, lettura restore o upload cloud di file host.",
+      "scenario": "data/x symlink verso un segreto locale veniva enumerato da listFiles e caricato.",
+      "fix": "Nomi con hash, compatibilità legacy provata, canonicalizzazione platform-aware, lstat/realpath e rifiuto di link, junction e file speciali.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A80", "severita": "alta",
+      "titolo": "Restore/verify non condividevano una preflight completa della catena",
+      "categoria": "integrità backup / DDL",
+      "modulo": "backup/lib/restore.js, backup/lib/util.js, backup/cli.js, server.js, mcp/McpGateway.js",
+      "riferimenti": ["backup/lib/restore.js:46", "backup/lib/restore.js:110", "backup/lib/util.js:431"],
+      "problema": "Input manifest/baseId manomesso, checksum o file extra → DROP/CREATE/INSERT potevano iniziare prima di accertare tutti i layer.",
+      "scenario": "Un layer semanticamente estraneo o DDL alterata entra nella catena richiesta.",
+      "fix": "Verifier unico CLI/UI/MCP, preflight prima di ogni mutazione, identità/cronologia coerenti, checksum normalizzato e categorie esplicite per duplicati/extra/non verificabili.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A81", "severita": "alta",
+      "titolo": "Dump grandi potevano crescere in memoria, bloccarsi o essere incoerenti fra tabelle",
+      "categoria": "DoS / consistenza backup",
+      "modulo": "backup/lib/util.js, backup/lib/engine.js",
+      "riferimenti": ["backup/lib/util.js:30", "backup/lib/util.js:140", "backup/lib/engine.js:258", "backup/lib/engine.js:449", "backup/lib/engine.js:461"],
+      "problema": "Input milioni di righe, disco pieno o DDL concorrente → listener/promise accumulati, drain senza risveglio o tabelle lette in istanti diversi.",
+      "scenario": "Il processo resta appeso o produce un backup formalmente riuscito con riferimenti orfani.",
+      "fix": "stream.pipeline, listener rimovibili, abort/pulizia, lettore a stato singolo, cancellazione cursori e snapshot unica; PG usa lock iniziale e stesso client per metadati/dati.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A82", "severita": "media",
+      "titolo": "Azioni frontend ritardate potevano scrivere o aggiornare il tab sbagliato",
+      "categoria": "race condition / integrità dati",
+      "modulo": "public/js/inlineEdit.js, public/js/cellselect.js, public/js/schema-ops.js, public/js/grid.js, public/js/query-tab.js, public/js/fk-vista.js",
+      "riferimenti": ["public/js/inlineEdit.js:290", "public/js/cellselect.js:938", "public/js/schema-ops.js:238", "public/js/fk-vista.js:505"],
+      "problema": "Input apertura modale/query in A, cambio/chiusura tab, poi risposta o Salva → emit o stato globale del tab B.",
+      "scenario": "doc:replace riceve database/collection B e id della riga A; fallback/count/infinite-scroll contaminano B.",
+      "fix": "Context congelati con tabId/db/coll, token e state origine, chiusura pannelli al cambio tab, TAB_CLOSED innocuo e dirty consumato solo dopo successo.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A83", "severita": "media",
+      "titolo": "Supporto PostgreSQL UI e operazioni strategy generavano risultati non portabili o contesti errati",
+      "categoria": "correttezza funzionale",
+      "modulo": "public/js/exportimport.js, public/js/insert.js, public/js/cellselect.js, db/MySqlStrategy.js, db/PostgreSqlStrategy.js",
+      "riferimenti": ["public/js/exportimport.js:449", "public/js/insert.js:18", "public/js/cellselect.js:406"],
+      "problema": "Import DB PG conservava schema sorgente senza indici/FK; interval diventava number; copia INSERT usava quoting MySQL. USE/EXPLAIN/dropIndex/read-only tx avevano edge non sicuri.",
+      "scenario": "Import verso schema diverso o valore con apostrofo produceva DDL/SQL errato; errori setup lasciavano contesto o transazione inaffidabile.",
+      "fix": "Round-trip DB PG bloccato finché non fedele, tipi numerici ancorati, INSERT dialect-aware, USE fail-fast, EXPLAIN singolo, indice verificato e rollback garantito.",
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-A84", "severita": "media",
+      "titolo": "Risorse asincrone, risultato MongoDB 6 e strutture client speciali causavano leak o risultati falsi",
+      "categoria": "affidabilità / robustezza",
+      "modulo": "server.js, db/MongoDbStrategy.js, electron-main.js, public/js/geo-risultati.js, public/js/cell-chart.js",
+      "riferimenti": ["db/MongoDbStrategy.js:1088", "db/MongoDbStrategy.js:1095", "electron-main.js:287"],
+      "problema": "Retry dopo close creava sessioni orfane; connect falliti trattenevano client/URI; findOneAnd* leggeva sempre .value; geometrie tardive e chiavi __proto__ alteravano la UI.",
+      "scenario": "Close durante backoff o write MCP riuscita → pool orfano o doc:null; dati validi oltre campione non mostravano la mappa.",
+      "fix": "Cancellazione/teardown reconnect, close e pulizia URI, compatibilità return MongoDB 6, scansione geometrie budgetizzata e Object.create(null); rimossi anche byte NUL grezzi.",
+      "stato": "risolto"
+    }
+  ],
+  "priorita_intervento": [
+    "Eseguire npm test previa autorizzazione: non è stato avviato durante l'audit.",
+    "Eseguire gli E2E isolati MongoDB, MySQL, PostgreSQL, MCP/RBAC e backup con i tre DBMS disponibili.",
+    "Provare manualmente cambio/chiusura tab durante modifica, DDL, import, infinite scroll e query concorrenti.",
+    "Mantenere bloccato il round-trip database PostgreSQL finché schema, indici, FK e retarget non sono completi."
+  ]
+}

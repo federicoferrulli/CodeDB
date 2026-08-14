@@ -30,17 +30,26 @@
  *       questo terzo caso, non i primi due.)
  *
  * Si normalizza quindi il testo (via db/sqlText.js: via commenti, stringhe e
- * identificatori quotati) e poi si cerca una keyword di scrittura OVUNQUE, non
- * solo in testa. La normalizzazione è ciò che evita i falsi positivi: senza,
+ * identificatori quotati): il DML viene cercato OVUNQUE (per coprire le CTE),
+ * mentre il DDL — non annidabile in una CTE — deve aprire lo statement. La
+ * normalizzazione è ciò che evita i falsi positivi: senza,
  * `SELECT * FROM note WHERE testo = 'a;b'` e
  * `SELECT * FROM audit WHERE azione = 'DELETE'` verrebbero negate a chi le
  * esegue legittimamente oggi.
  * ------------------------------------------------------------------------- */
-const { stripSqlNoise, splitStatements } = require('../db/sqlText');
+const { EJSON } = require('bson');
+const { splitStatements } = require('../db/sqlText');
 
 // `\b` dopo la keyword impedisce i falsi positivi su nomi di colonna che la
 // contengono come prefisso (`updated_at`, `deleted`, `create_time`).
-const SQL_WRITE_KEYWORDS = /\b(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TRUNCATE|MERGE|GRANT|REVOKE|RENAME|CALL|COPY|VACUUM|REINDEX|CLUSTER|LOCK|SET|DO|EXECUTE|PREPARE)\b/i;
+const SQL_READ_START = /^[\s(]*(SELECT|WITH|SHOW|DESCRIBE|DESC|EXPLAIN|TABLE|VALUES)\b/i;
+const SQL_WRITE_KEYWORDS = /\b(INSERT|UPDATE|REPLACE|MERGE)\b/i;
+const SQL_DELETE_KEYWORDS = /\bDELETE\b/i;
+const SQL_DDL_START = /^[\s(]*(CREATE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|RENAME|CALL|COPY|VACUUM|REINDEX|CLUSTER|LOCK|SET|DO|EXECUTE|PREPARE|COMMENT|ANALYZE|REFRESH|DISCARD|RESET|LISTEN|UNLISTEN|NOTIFY)\b/i;
+const SQL_CAPABILITY_PRIORITY = ['ddl', 'delete', 'write', 'read'];
+// MySQL/MariaDB eseguono il contenuto di questi commenti; il lexer condiviso
+// li vede invece come commenti ordinari. SQL Raw li rifiuta esplicitamente.
+const SQL_EXECUTABLE_COMMENT = /\/\*(?:!\d*|M!)\s*/i;
 
 /**
  * Statement che leggono o scrivono il FILESYSTEM dell'host del DBMS.
@@ -53,33 +62,210 @@ const SQL_WRITE_KEYWORDS = /\b(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER|TR
  * una scrittura transazionale. Il gateway MCP lo bloccava già a monte
  * (`SQL_FORBIDDEN`), il percorso socket no.
  *
- * `LOAD DATA [LOCAL] INFILE` è il verso opposto (dal file alla tabella) e
+ * `LOAD DATA/XML [LOCAL] INFILE` è il verso opposto (dal file alla tabella) e
  * `LOAD_FILE()` legge un file qualsiasi restituendolo in una colonna: nessuno
- * dei tre è una lettura del database, e tutti e tre valgono la capability più
- * alta invece della più bassa.
+ * di questi è una lettura del database, e tutti valgono la capability più alta
+ * invece della più bassa.
  */
-const SQL_FILE_IO = /\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD\s+DATA\b|\bLOAD_FILE\s*\(/i;
+const SQL_FILE_IO = /\bINTO\s+(OUT|DUMP)FILE\b|\bLOAD\s+(?:DATA|XML)\b|\bLOAD_FILE\s*\(/i;
+const POSTGRES_FILE_FUNCTIONS = /\b(?:PG_READ_FILE|PG_READ_BINARY_FILE|PG_LS_DIR|PG_LS_LOGDIR|PG_LS_WALDIR|PG_LS_ARCHIVE_STATUSDIR|PG_LS_TMPDIR|PG_STAT_FILE|LO_IMPORT|LO_EXPORT|PG_FILE_WRITE|PG_FILE_RENAME|PG_FILE_UNLINK|PG_LOGDIR_LS)\s*\(/i;
 
 /** L'istruzione tocca il filesystem dell'host del DBMS? (testo già grezzo) */
 function isFileIoSql(code) {
-  return SQL_FILE_IO.test(stripSqlNoise(String(code || '')));
+  const statements = splitStatements(String(code || ''), { keepIdentifiers: true });
+  return statements.some((statement) =>
+    SQL_FILE_IO.test(statement)
+    || POSTGRES_FILE_FUNCTIONS.test(statement)
+    || /^\s*COPY\b/i.test(statement));
 }
 
-function isWriteSql(code) {
+function analyzeSql(code) {
   const raw = String(code || '').trim();
-  if (!raw) return false;
   const statements = splitStatements(raw);
+  const executableComment = SQL_EXECUTABLE_COMMENT.test(raw);
+  const fileIo = isFileIoSql(raw);
   // Più istruzioni nello stesso testo: nessuna lettura legittima della UI ne ha
   // bisogno, e il costo di sbagliarsi (una DROP eseguita come "lettura") è
   // enormemente superiore a quello di chiedere la capability di scrittura.
-  if (statements.length > 1) return true;
-  const testo = stripSqlNoise(raw);
-  return SQL_WRITE_KEYWORDS.test(testo) || SQL_FILE_IO.test(testo);
+  const found = new Set();
+  for (const statement of statements) {
+    // SQL Raw può sempre restituire o derivare dati, anche quando la keyword
+    // iniziale è mutativa (UPDATE/DELETE ... RETURNING) o DDL
+    // (CREATE TABLE ... AS SELECT). La capability mutativa non sostituisce
+    // quindi mai read: si somma ad essa.
+    found.add('read');
+    if (SQL_WRITE_KEYWORDS.test(statement)) found.add('write');
+    if (SQL_DELETE_KEYWORDS.test(statement)) found.add('delete');
+    if (SQL_DDL_START.test(statement)) found.add('ddl');
+    if (![SQL_READ_START, SQL_WRITE_KEYWORDS, SQL_DELETE_KEYWORDS, SQL_DDL_START]
+      .some((re) => re.test(statement))) found.add('ddl');
+  }
+  if (executableComment) {
+    // Non tentare di reinterpretare una seconda grammatica dentro il commento:
+    // classificazione massimamente conservativa e rifiuto esplicito nel Proxy.
+    found.add('write');
+    found.add('delete');
+    found.add('ddl');
+  }
+  if (fileIo) found.add('write');
+  if (!found.size) found.add('read');
+  const multipleStatements = statements.length > 1;
+  if (multipleStatements) found.add('ddl');
+  const capabilities = ['read', 'write', 'delete', 'ddl'].filter((cap) => found.has(cap));
+  const capability = SQL_CAPABILITY_PRIORITY.find((cap) => found.has(cap)) || 'ddl';
+  return {
+    statements,
+    capabilities,
+    capability,
+    multipleStatements,
+    executableComment,
+    fileIo,
+    write: multipleStatements || capabilities.some((cap) => cap !== 'read'),
+  };
 }
 
-// Pipeline MongoDB che materializza dati (unica forma di scrittura via pipeline).
+function sqlRequiredCapabilities(code) {
+  return analyzeSql(code).capabilities;
+}
+
+function sqlCapability(code) {
+  return analyzeSql(code).capability;
+}
+
+function isWriteSql(code) {
+  return analyzeSql(code).write;
+}
+
+const FORBIDDEN_MONGO_SERVER_JS = new Set(['$where', '$function', '$accumulator']);
+
+function parseMongoEjson(code, label) {
+  if (code == null || code === '') return null;
+  if (typeof code === 'object') return code;
+  try {
+    return EJSON.parse(String(code), { relaxed: false });
+  } catch (err) {
+    throw new Error(`${label || 'JSON MongoDB'} non valido: ${err.message}`);
+  }
+}
+
+function forbiddenMongoServerJs(node, seen = new WeakSet()) {
+  if (!node || typeof node !== 'object') return null;
+  if (seen.has(node)) return null;
+  seen.add(node);
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = forbiddenMongoServerJs(item, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  for (const key of Object.keys(node)) {
+    if (FORBIDDEN_MONGO_SERVER_JS.has(key)) return key;
+    const found = forbiddenMongoServerJs(node[key], seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+function assertNoMongoServerJs(code, label = 'Query MongoDB') {
+  if (code == null || code === '') return null;
+  const parsed = parseMongoEjson(code, label);
+  const operator = forbiddenMongoServerJs(parsed);
+  if (operator) {
+    throw new Error(`Operatore ${operator} non consentito: esegue JavaScript lato server MongoDB.`);
+  }
+  return parsed;
+}
+
+function mongoWriteTarget(operator, value) {
+  let into = value;
+  if (operator === '$merge' && value && typeof value === 'object' && !Array.isArray(value)) {
+    into = value.into;
+  }
+  if (typeof into === 'string') return { db: null, coll: into, operator };
+  if (into && typeof into === 'object' && !Array.isArray(into)) {
+    return {
+      db: into.db == null ? null : String(into.db),
+      coll: into.coll == null ? null : String(into.coll),
+      operator,
+    };
+  }
+  return { db: null, coll: null, operator };
+}
+
+function mongoReadTarget(operator, value) {
+  let source;
+  if (operator === '$unionWith') {
+    source = typeof value === 'string' ? value : value && value.coll;
+  } else {
+    source = value && typeof value === 'object' && !Array.isArray(value)
+      ? value.from
+      : null;
+  }
+  if (typeof source === 'string') return { db: null, coll: source, operator };
+  if (source && typeof source === 'object' && !Array.isArray(source)) {
+    return {
+      db: source.db == null ? null : String(source.db),
+      coll: source.coll == null ? null : String(source.coll),
+      operator,
+    };
+  }
+  return { db: null, coll: null, operator };
+}
+
+/**
+ * Visita semanticamente le pipeline, comprese quelle annidate in
+ * $lookup/$unionWith/$facet. Si guardano gli operatori al livello dello stage,
+ * non chiavi omonime dentro documenti letterali, così i dati non diventano
+ * falsi riferimenti a collection.
+ */
+function collectMongoPipelineTargets(pipeline, targets, readTargets, seen = new WeakSet()) {
+  if (!Array.isArray(pipeline) || seen.has(pipeline)) return;
+  seen.add(pipeline);
+  for (const stage of pipeline) {
+    if (!stage || typeof stage !== 'object' || Array.isArray(stage)) continue;
+    for (const [operator, value] of Object.entries(stage)) {
+      if (operator === '$out' || operator === '$merge') {
+        targets.push(mongoWriteTarget(operator, value));
+      }
+      if (operator === '$lookup' || operator === '$graphLookup' || operator === '$unionWith') {
+        const hasExternalSource = operator === '$graphLookup'
+          || typeof value === 'string'
+          || (value && typeof value === 'object' && !Array.isArray(value)
+            && (Object.prototype.hasOwnProperty.call(value, 'from')
+              || Object.prototype.hasOwnProperty.call(value, 'coll')));
+        // $lookup/$unionWith senza namespace possono usare una pipeline che
+        // inizia con $documents: non c'è una collection esterna da
+        // autorizzare. $graphLookup.from, invece, è sempre obbligatorio.
+        if (hasExternalSource) readTargets.push(mongoReadTarget(operator, value));
+        if (value && typeof value === 'object' && !Array.isArray(value)
+            && Array.isArray(value.pipeline)) {
+          collectMongoPipelineTargets(value.pipeline, targets, readTargets, seen);
+        }
+      } else if (operator === '$facet' && value && typeof value === 'object' && !Array.isArray(value)) {
+        for (const branch of Object.values(value)) {
+          collectMongoPipelineTargets(branch, targets, readTargets, seen);
+        }
+      }
+    }
+  }
+}
+
+function analyzeMongoPipeline(code) {
+  const pipeline = parseMongoEjson(code == null || code === '' ? '[]' : code, 'Pipeline MongoDB');
+  if (!Array.isArray(pipeline)) throw new Error('Pipeline MongoDB non valida: deve essere un array.');
+  const targets = [];
+  const readTargets = [];
+  collectMongoPipelineTargets(pipeline, targets, readTargets);
+  return { pipeline, write: targets.length > 0, targets, readTargets };
+}
+
 function isWriteMongoPipeline(code) {
-  return /"\$out"|"\$merge"/.test(String(code || ''));
+  try {
+    return analyzeMongoPipeline(code).write;
+  } catch {
+    return true;
+  }
 }
 
 // Capability per operazione della shell (metodo `shellWrite` delle strategie).
@@ -101,6 +287,15 @@ function shellWriteCapability(op) {
   return SHELL_WRITE_CAPABILITY[String(op || '')] || 'delete';
 }
 
+/** Capability complete: findOneAnd* restituisce anche il documento letto. */
+function shellWriteCapabilities(op) {
+  const operation = String(op || '');
+  const mutation = shellWriteCapability(operation);
+  return operation === 'findOneAndUpdate' || operation === 'findOneAndDelete'
+    ? ['read', mutation]
+    : [mutation];
+}
+
 /* --- Eventi socket ---------------------------------------------------------- */
 
 // Solo gli eventi che toccano i dati o le connessioni salvate. Un evento assente
@@ -113,6 +308,12 @@ const EVENT_CAPABILITY = {
   'db:schema': 'read',
   'collection:stats': 'read',
   'collection:ddl': 'read',
+  'collection:relations': 'read',
+  // Legge righe della tabella RIFERITA: il payload porta il suo db/coll, quindi
+  // lo scope viene applicato sul bersaglio giusto. Chi non può leggere
+  // "clienti" non ne vede le righe nel pannello di riferimento, anche se può
+  // leggere "ordini" che la referenzia.
+  'relation:rows': 'read',
   'collection:find': 'read',
   'collection:count': 'read',
   'collection:explain': 'read',
@@ -150,8 +351,7 @@ function eventCapability(event, payload, sess) {
   if (event === 'collection:aggregate') {
     const isSql = sess && sess.strategy && sess.strategy.type && sess.strategy.type !== 'mongodb';
     const code = payload && payload.pipeline;
-    if (isSql ? isWriteSql(code) : isWriteMongoPipeline(code)) return 'write';
-    return 'read';
+    return isSql ? sqlCapability(code) : (isWriteMongoPipeline(code) ? 'write' : 'read');
   }
   return EVENT_CAPABILITY[event] || null;
 }
@@ -183,6 +383,8 @@ const METHOD_CAPABILITY = {
 
   tableDdl:            { cap: 'read', db: 0, coll: 1 },
   collectionStats:     { cap: 'read', db: 0, coll: 1 },
+  columnRelations:     { cap: 'read', db: 0, coll: 1, filter: 'relations' },
+  relatedRows:         { cap: 'read', db: 0, coll: 1 },
   collectionFind:      { cap: 'read', db: 0, coll: 1 },
   collectionCount:     { cap: 'read', db: 0, coll: 1 },
   collectionExplain:   { cap: 'read', db: 0, coll: 1 },
@@ -263,8 +465,13 @@ function matchesAny(patterns, value) {
 }
 
 module.exports = {
+  analyzeSql,
+  sqlCapability,
+  sqlRequiredCapabilities,
   isWriteSql,
   isFileIoSql,
+  analyzeMongoPipeline,
+  assertNoMongoServerJs,
   isWriteMongoPipeline,
   EVENT_CAPABILITY,
   eventCapability,
@@ -272,6 +479,7 @@ module.exports = {
   CAPABILITY_LABEL,
   SHELL_WRITE_CAPABILITY,
   shellWriteCapability,
+  shellWriteCapabilities,
   globMatch,
   matchesAny,
 };

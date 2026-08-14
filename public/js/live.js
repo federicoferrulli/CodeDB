@@ -2,7 +2,7 @@ import { state } from './state.js';
 import { socket } from './socket.js';
 import { tabs } from './tabs.js';
 import { $, emit } from './utils.js';
-import { runQuery } from './grid.js';
+import { runQuery, svuotaRelazioni } from './grid.js';
 import { renderDbTree } from './dbtree.js';
 
 export function togglePolling() {
@@ -75,7 +75,8 @@ function refreshTreeAuto() {
   const search = $('#db-search');
   if (search.value.trim() || document.activeElement === search) return;
   emit('db:list', {}).then(async (res) => {
-    const expanded = res.databases.filter((d) => state.expandedDbs.has(d.name));
+    const originState = res._state || state;
+    const expanded = res.databases.filter((d) => originState.expandedDbs.has(d.name));
     await Promise.all(expanded.map((d) =>
       // tabId esplicito: la fetch resta sulla sessione che ha avviato il refresh
       // anche se l'utente cambia tab mentre è in volo.
@@ -94,26 +95,71 @@ export function initLive() {
   $('#polling-checkbox').addEventListener('change', togglePolling);
 
   socket.on('collection:changed', (change) => {
-    // Gli eventi push sono taggati col tabId della sessione: contano solo
-    // quelli del tab attivo (il workspace mostra i suoi dati).
-    if (change.tabId && change.tabId !== tabs.activeId) return;
-    if (change.db !== state.db || change.coll !== state.coll) return;
-    clearTimeout(state.liveTimer);
-    state.liveTimer = setTimeout(() => runQuery({ auto: true }), 300); // refresh da change stream: non tracciato
+    const tab = change.tabId
+      ? tabs.list.find((t) => t.id === change.tabId)
+      : tabs.list.find((t) => t.id === tabs.activeId);
+    if (!tab) return;
+    const collTab = tab.state.collTabs.find((ct) =>
+      !ct.isDbTab && !ct.isSplitTab && ct.db === change.db && ct.coll === change.coll
+    );
+    if (!collTab) return;
+    const corrente = tab.state.activeCollId === collTab.id
+      && change.db === tab.state.db && change.coll === tab.state.coll;
+    if (!corrente) {
+      collTab.dataDirty = true;
+      return;
+    }
+    clearTimeout(tab.state.liveTimer);
+    if (tab.id !== tabs.activeId) {
+      tab.state.dataDirty = true;
+      collTab.dataDirty = true;
+      return;
+    }
+    const db = tab.state.db;
+    const coll = tab.state.coll;
+    tab.state.liveTimer = setTimeout(() => {
+      tab.state.liveTimer = null;
+      if (!tabs.list.includes(tab)) return;
+      if (tab.id !== tabs.activeId) {
+        tab.state.dataDirty = true;
+        collTab.dataDirty = true;
+        return;
+      }
+      // Anche il coll-tab può essere cambiato durante il debounce.
+      if (tab.state.db !== db || tab.state.coll !== coll || tab.state.activeCollId !== collTab.id) {
+        collTab.dataDirty = true;
+        return;
+      }
+      // I marker dirty, se presenti, si consumano solo quando la lettura torna
+      // valida (grid.runQuery). Un errore non deve far sembrare fresca la cache.
+      runQuery({ auto: true }); // refresh da change stream: non tracciato
+    }, 300);
   });
 
-  let schemaTimer = null;
   socket.on('schema:changed', (info) => {
     const tab = tabs.list.find((t) => t.id === info.tabId);
     if (!tab) return;
+    // Le chiavi esterne sono metadati di schema: una DDL le rende obsolete, e
+    // un indicatore 🔗 acceso su un vincolo eliminato è peggio di nessun
+    // indicatore. Si svuota subito, anche per i tab in secondo piano: la cache
+    // è per collection, non per tab.
+    svuotaRelazioni();
     // Tab in background: si segna lo schema come sporco e si aggiorna
     // alla riattivazione (vedi renderWorkspace).
     if (tab.id !== tabs.activeId) {
       tab.state.schemaDirty = true;
       return;
     }
-    clearTimeout(schemaTimer);
-    schemaTimer = setTimeout(refreshTreeAuto, 300);
+    clearTimeout(tab.state.schemaTimer);
+    tab.state.schemaTimer = setTimeout(() => {
+      tab.state.schemaTimer = null;
+      if (!tabs.list.includes(tab)) return;
+      if (tab.id !== tabs.activeId) {
+        tab.state.schemaDirty = true;
+        return;
+      }
+      refreshTreeAuto();
+    }, 300);
   });
 
   socket.on('schema:unavailable', (info) => {

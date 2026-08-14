@@ -7,6 +7,7 @@
  * ------------------------------------------------------------------------- */
 
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
@@ -49,43 +50,128 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
   // close(): senza un `catch` sospeso, un errore prima di close() diventerebbe
   // una unhandled rejection.
   let failure = null;
+  let finalizzato = false;
+  let digest = null;
   const done = pipeline(...stages).catch((err) => { failure = err; throw err; });
   done.catch(() => { /* l'errore vero viene rilanciato da close()/writeLine() */ });
 
+  // Attesa di backpressure con listener rimovibili. Agganciare done.then() a
+  // ogni drain trattiene una reaction per ogni blocco fino alla chiusura del
+  // file: su dump grandi diventa una crescita lineare di memoria.
+  const attendiDrain = () => new Promise((resolve, reject) => {
+    const monitorati = [...new Set(stages)];
+    let conclusa = false;
+    const pulisci = () => {
+      entry.removeListener('drain', onDrain);
+      entry.removeListener('close', onClose);
+      for (const stream of monitorati) stream.removeListener('error', onError);
+    };
+    const termina = (fn, value) => {
+      if (conclusa) return;
+      conclusa = true;
+      pulisci();
+      fn(value);
+    };
+    const onDrain = () => termina(resolve);
+    const onError = (err) => termina(reject, err);
+    const onClose = () => termina(
+      reject,
+      failure || new Error('Sink di backup chiuso durante la scrittura.')
+    );
+
+    entry.once('drain', onDrain);
+    entry.once('close', onClose);
+    for (const stream of monitorati) stream.once('error', onError);
+    if (failure) onError(failure);
+  });
+
   return {
     writeLine(line) {
+      if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
       // Se la catena è già saltata, fermarsi subito invece di accodare dati che
       // nessuno scriverà mai.
       if (failure) throw failure;
       if (!entry.write(line + '\n')) {
         // L'attesa del 'drain' va messa in gara con la fine della catena: se la
-        // pipeline salta mentre siamo in attesa, il 'drain' non arriverà mai e
-        // il chiamante resterebbe appeso — lo stesso blocco che si sta correggendo.
-        return Promise.race([
-          once(entry, 'drain'),
-          done.then(() => { throw failure || new Error('Sink di backup chiuso durante la scrittura.'); }),
-        ]);
+      // pipeline salta mentre siamo in attesa, il 'drain' non arriverà mai e
+      // il chiamante resterebbe appeso — lo stesso blocco che si sta correggendo.
+        return attendiDrain();
       }
     },
     async close() {
+      if (digest) return digest;
+      if (finalizzato) {
+        await done;
+        return digest;
+      }
+      finalizzato = true;
       entry.end();
-      await done; // rigetta con l'errore originale, ovunque si sia verificato
-      return { bytes, sha256: hash.digest('hex') };
+      await done;
+      digest = { bytes, sha256: hash.digest('hex') };
+      return digest;
+    },
+    async abort(reason) {
+      if (!finalizzato) {
+        finalizzato = true;
+        const err = reason instanceof Error ? reason : new Error(String(reason || 'Scrittura del backup annullata.'));
+        if (!failure) failure = err;
+        entry.destroy(err);
+      }
+      try { await done; } catch { /* l'errore originale viene rilanciato dal chiamante */ }
+      // Il file a metà va RIMOSSO, non lasciato lì.
+      //
+      // Distruggere lo stream ferma la scrittura ma il file resta sul disco, e
+      // un backup annullato lasciava quindi un `.ndjson` troncato accanto a
+      // quelli buoni: `verifyBackupDir` lo trova come file non dichiarato dal
+      // manifest e dichiara l'intero backup non valido — cioè un backup sano
+      // segnalato come corrotto per via di uno scarto.
+      //
+      // Il difetto era pure intermittente, il che lo rendeva peggiore: se la
+      // `destroy` arriva prima che l'apertura asincrona del file sia completata
+      // il file non nasce affatto, e l'annullamento sembra pulito.
+      try {
+        await fsp.rm(filePath, { force: true });
+      } catch { /* file mai creato o già rimosso: nulla da fare */ }
     },
   };
 }
 
 // Itera le righe non vuote di un file NDJSON, decomprimendo se .gz.
 async function* readLines(filePath) {
-  let input = fs.createReadStream(filePath);
+  const source = fs.createReadStream(filePath);
+  let input = source;
   if (filePath.endsWith('.gz')) {
     const gunzip = zlib.createGunzip();
-    input.pipe(gunzip);
+    source.pipe(gunzip);
     input = gunzip;
   }
   const rl = readline.createInterface({ input, crlfDelay: Infinity });
-  for await (const line of rl) {
-    if (line.trim()) yield line;
+
+  // Una Promise.race per riga contro la stessa Promise d'errore accumula una
+  // reaction pendente per ogni record finché il file termina: milioni di righe
+  // significano milioni di closure trattenute. L'errore viene invece salvato e
+  // la chiusura di readline risveglia il suo unico iteratore.
+  let streamFailure = null;
+  const onError = (err) => {
+    if (!streamFailure) streamFailure = err;
+    rl.close();
+    if (!source.destroyed) source.destroy();
+    if (input !== source && !input.destroyed) input.destroy();
+  };
+  source.on('error', onError);
+  if (input !== source) input.on('error', onError);
+
+  try {
+    for await (const line of rl) {
+      if (line.trim()) yield line;
+    }
+    if (streamFailure) throw streamFailure;
+  } finally {
+    source.removeListener('error', onError);
+    if (input !== source) input.removeListener('error', onError);
+    rl.close();
+    if (!source.destroyed) source.destroy();
+    if (input !== source && !input.destroyed) input.destroy();
   }
 }
 
@@ -99,9 +185,42 @@ function sha256File(filePath) {
   });
 }
 
-// Nome file/cartella sicuro a partire da nomi di connessione/db arbitrari.
+// Nome file/cartella sicuro e praticamente iniettivo a partire da nomi
+// arbitrari. Il suffisso evita che nomi diversi normalizzati nello stesso stem
+// (per esempio "clienti VIP" e "clienti_VIP") condividano file o cataloghi.
+// I nomi gia' conformi e minuscoli restano invariati per non spezzare le
+// installazioni esistenti; quelli che su Windows sono riservati vengono sempre
+// riscritti.
 function safeName(name) {
-  return String(name).replace(/[^\w.-]+/g, '_');
+  const raw = String(name);
+  const nomeWindowsRiservato = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(raw);
+  const giaSicuro = /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/.test(raw)
+    && raw.length <= 80
+    && !nomeWindowsRiservato;
+  if (giaSicuro) return raw;
+
+  let stem = raw.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^\.+|\.+$/g, '');
+  if (!stem) stem = 'voce';
+  stem = stem.slice(0, 80);
+  // 96 bit mantengono il componente compatto anche sui percorsi Windows, ma
+  // rendono impraticabile una collisione anche con nomi scelti apposta.
+  const digestNome = crypto.createHash('sha256').update(raw, 'utf8').digest('hex').slice(0, 24);
+  return `${stem}-h${digestNome}`;
+}
+
+// Forma lessicale unica dei percorsi del manifest. Serve sia al confinamento
+// sia al rilevamento dei duplicati mascherati con ./ oppure segmento/../.
+function canonicalBackupPath(value) {
+  const raw = String(value == null ? '' : value).replace(/\\/g, '/');
+  const normalized = path.posix.normalize(raw);
+  return normalized === '.' ? '' : normalized;
+}
+
+// Linux distingue Foo da foo; Windows no. Il confronto deve seguire il file
+// system effettivo invece di fondere sempre i nomi e rifiutare backup validi.
+function backupPathKey(value) {
+  const canonical = canonicalBackupPath(value);
+  return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
 }
 
 /**
@@ -226,8 +345,29 @@ async function appendToCatalog(groupDir, entry) {
 }
 
 function readManifest(backupDir) {
-  const file = path.join(backupDir, 'manifest.json');
+  const dir = path.resolve(backupDir);
+  let dirStat;
+  try {
+    dirStat = fs.lstatSync(dir);
+  } catch {
+    throw new Error(`Cartella del backup non trovata: ${dir}.`);
+  }
+  if (!dirStat.isDirectory() || dirStat.isSymbolicLink()) {
+    throw new Error(`La cartella del backup non può essere un file, link simbolico o junction: ${dir}.`);
+  }
+
+  const file = path.join(dir, 'manifest.json');
   if (!fs.existsSync(file)) throw new Error(`Manifest non trovato: ${file} (la cartella non è un backup valido).`);
+  const manifestStat = fs.lstatSync(file);
+  if (!manifestStat.isFile() || manifestStat.isSymbolicLink()) {
+    throw new Error(`Il manifest non è un file regolare interno al backup: ${file}.`);
+  }
+  const realDir = fs.realpathSync(dir);
+  const realFile = fs.realpathSync(file);
+  const realRel = path.relative(realDir, realFile);
+  if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
+    throw new Error(`Il manifest esce dalla cartella reale del backup: ${file}.`);
+  }
   return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
@@ -243,14 +383,152 @@ function readManifest(backupDir) {
  */
 function fileDelBackup(backupDir, relativo, cosa = 'file') {
   const base = path.resolve(backupDir);
-  const full = path.resolve(base, String(relativo == null ? '' : relativo));
+  const canonical = canonicalBackupPath(relativo);
+  const full = path.resolve(base, canonical);
   const rel = path.relative(base, full);
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
     throw new Error(
       `Il manifest dichiara un ${cosa} fuori dalla cartella del backup ("${relativo}"): il backup è alterato o corrotto.`
     );
   }
+  if (fs.existsSync(full)) {
+    const real = fs.realpathSync(full);
+    const realBase = fs.realpathSync(base);
+    const realRel = path.relative(realBase, real);
+    if (!realRel || realRel.startsWith('..') || path.isAbsolute(realRel)) {
+      throw new Error(
+        `Il manifest dichiara un ${cosa} che tramite link simbolico esce dalla cartella del backup (${relativo}): il backup è alterato o corrotto.`
+      );
+    }
+  }
   return full;
+}
+
+function elencaFileBackup(backupDir) {
+  const esclusi = new Set(['manifest.json', 'catalog.json', 'backup.log']);
+  const out = [];
+  const cammina = (dir, prefisso) => {
+    let voci;
+    try {
+      voci = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const voce of voci) {
+      const rel = prefisso ? `${prefisso}/${voce.name}` : voce.name;
+      if (voce.isDirectory()) cammina(path.join(dir, voce.name), rel);
+      else if (!esclusi.has(rel)) out.push(rel);
+    }
+  };
+  cammina(backupDir, '');
+  return out;
+}
+
+// Verificatore unico per CLI, UI e MCP. Non lancia per un singolo file
+// alterato: raccoglie tutti i problemi in un rapporto strutturato. L'unico
+// errore fatale resta un manifest assente o illeggibile, perché senza di esso
+// non esiste un insieme autorevole di file da confrontare.
+async function verifyBackupDir(backupDir) {
+  const dir = path.resolve(backupDir);
+  const manifest = readManifest(dir);
+  if (!Array.isArray(manifest.files)) {
+    throw new Error('Il manifest del backup non contiene un elenco di file valido.');
+  }
+
+  let okCount = 0;
+  let failedCount = 0;
+  let unverifiableCount = 0;
+  const details = [];
+  const dichiarati = new Map();
+
+  for (const f of manifest.files) {
+    if (!f || typeof f !== 'object' || Array.isArray(f)) {
+      details.push({ file: '(voce manifest non valida)', status: 'INVALID_ENTRY' });
+      failedCount += 1;
+      continue;
+    }
+    const rel = canonicalBackupPath(f.path);
+    const key = backupPathKey(rel);
+    if (dichiarati.has(key)) {
+      details.push({ file: rel, status: 'DUPLICATE', other: dichiarati.get(key) });
+      failedCount += 1;
+      continue;
+    }
+    dichiarati.set(key, rel);
+
+    let full;
+    try {
+      full = fileDelBackup(dir, rel);
+    } catch (err) {
+      details.push({ file: rel, status: 'INVALID_PATH', error: err.message });
+      failedCount += 1;
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs.statSync(full);
+    } catch {
+      details.push({ file: rel, status: 'MISSING' });
+      failedCount += 1;
+      continue;
+    }
+    if (!stat.isFile()) {
+      details.push({ file: rel, status: 'INVALID_TYPE' });
+      failedCount += 1;
+      continue;
+    }
+    if (f.bytes != null) {
+      const expectedBytes = Number(f.bytes);
+      if (!Number.isSafeInteger(expectedBytes) || expectedBytes < 0) {
+        details.push({ file: rel, status: 'INVALID_SIZE', expectedBytes: f.bytes });
+        failedCount += 1;
+        continue;
+      }
+      if (stat.size !== expectedBytes) {
+        details.push({ file: rel, status: 'CORRUPTED', expectedBytes, actualBytes: stat.size });
+        failedCount += 1;
+        continue;
+      }
+    }
+    if (!f.sha256) {
+      details.push({ file: rel, status: 'UNVERIFIABLE' });
+      unverifiableCount += 1;
+      continue;
+    }
+    if (typeof f.sha256 !== 'string' || !/^[a-f0-9]{64}$/i.test(f.sha256)) {
+      details.push({ file: rel, status: 'INVALID_CHECKSUM' });
+      failedCount += 1;
+      continue;
+    }
+    try {
+      const actual = await sha256File(full);
+      if (actual === f.sha256.toLowerCase()) {
+        details.push({ file: rel, status: 'OK' });
+        okCount += 1;
+      } else {
+        details.push({ file: rel, status: 'CORRUPTED', expected: f.sha256, actual });
+        failedCount += 1;
+      }
+    } catch (err) {
+      details.push({ file: rel, status: 'READ_ERROR', error: err.message });
+      failedCount += 1;
+    }
+  }
+
+  const extra = elencaFileBackup(dir)
+    .filter((rel) => !dichiarati.has(backupPathKey(rel)));
+  for (const rel of extra) details.push({ file: rel, status: 'UNDECLARED' });
+
+  return {
+    manifest,
+    backupId: manifest.id,
+    okCount,
+    failedCount,
+    unverifiableCount,
+    extraCount: extra.length,
+    valid: failedCount === 0 && unverifiableCount === 0 && extra.length === 0,
+    details,
+  };
 }
 
 function formatBytes(n) {
@@ -266,11 +544,14 @@ module.exports = {
   createFileSink,
   readLines,
   sha256File,
+  canonicalBackupPath,
+  backupPathKey,
   safeName,
   makeBackupId,
   readCatalog,
   appendToCatalog,
   readManifest,
   fileDelBackup,
+  verifyBackupDir,
   formatBytes,
 };

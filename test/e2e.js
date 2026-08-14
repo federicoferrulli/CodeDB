@@ -127,6 +127,41 @@ async function runTests() {
       'relazione orders.people_id -> people rilevata'
     );
 
+    console.log('10-bis. collection:relations + relation:rows (pannello 🔗 della griglia)');
+    // MongoDB non dichiara chiavi esterne: qui il collegamento è un'IPOTESI sul
+    // nome del campo, e deve arrivare al client dichiarata come tale.
+    const rel = await emit('collection:relations', { db: DB, coll: 'orders' });
+    const fkDesc = rel.ok && rel.relazioni.find((r) => r.campo === 'people_id');
+    assert(fkDesc, `riferimento orders.people_id trovato (${rel.ok ? JSON.stringify(rel.relazioni) : rel.error})`);
+    assert(fkDesc && fkDesc.tabella === COLL && fkDesc.colonna === '_id',
+      "l'euristica punta all'_id della collection indovinata");
+    assert(fkDesc && fkDesc.origine === 'euristica',
+      "un'ipotesi non deve essere presentata come vincolo del database");
+
+    // Riga riferita: la chiave è un ObjectId, e il valore viaggia in EJSON.
+    const rigaRif = await emit('relation:rows', {
+      db: DB, coll: COLL, colonna: '_id', valore: { $oid: String(ins1.insertedId) }, limit: 1,
+    });
+    assert(rigaRif.ok && rigaRif.righe.length === 1,
+      `documento riferito risolto per ObjectId (${rigaRif.ok ? rigaRif.righe.length : rigaRif.error})`);
+    assert(rigaRif.ok && rigaRif.righe[0]._id && rigaRif.righe[0]._id.$oid === String(ins1.insertedId),
+      "l'_id torna in forma estesa ($oid), non come stringa");
+
+    // Un _id inesistente: zero documenti, non un errore.
+    const orfano = await emit('relation:rows', {
+      db: DB, coll: COLL, colonna: '_id', valore: { $oid: '0'.repeat(24) }, limit: 1,
+    });
+    assert(orfano.ok && orfano.righe.length === 0, 'riferimento inesistente = zero righe, non errore');
+
+    // Ricerca testuale per il selettore, sui campi stringa del campione.
+    const cerca = await emit('relation:rows', { db: DB, coll: COLL, colonna: '_id', cerca: 'Bru', limit: 50 });
+    assert(cerca.ok && cerca.righe.some((d) => d.name === 'Bruno'),
+      `ricerca testuale (${cerca.ok ? cerca.righe.length : cerca.error} documenti)`);
+    // I metacaratteri di regex vanno neutralizzati: senza, "(" farebbe fallire
+    // la query invece di non trovare nulla.
+    const meta = await emit('relation:rows', { db: DB, coll: COLL, colonna: '_id', cerca: '(', limit: 50 });
+    assert(meta.ok && meta.righe.length === 0, '"(" cercato come carattere, non come regex');
+
     console.log('11. doc:delete');
     const all = await emit('collection:find', { db: DB, coll: COLL, filter: '{ "name": "Ada" }' });
     const del = await emit('doc:delete', { db: DB, coll: COLL, id: JSON.stringify(all.docs[0]._id) });
@@ -181,13 +216,15 @@ async function runTests() {
     const dup = await emit('db:create', { db: TMP_DB, coll: 'c1' });
     assert(!dup.ok, 'creazione di un db già esistente rifiutata');
     const ren = await emit('db:rename', { db: TMP_DB, newName: TMP_DB2 });
-    assert(ren.ok, `database rinominato in "${TMP_DB2}"${ren.ok ? '' : ' (' + ren.error + ')'}`);
-    const renCheck = await emit('collection:find', { db: TMP_DB2, coll: 'c1', filter: '' });
-    assert(renCheck.ok && renCheck.total === 1, 'dati presenti nel database rinominato');
+    assert(!ren.ok && /non supporta una rinomina atomica/i.test(ren.error || ''),
+      'rinomina database non atomica rifiutata senza copiare o eliminare dati');
+    const renCheck = await emit('collection:find', { db: TMP_DB, coll: 'c1', filter: '' });
+    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la rinomina rifiutata');
     const list2 = await emit('db:list', {});
-    assert(list2.ok && !list2.databases.some((d) => d.name === TMP_DB), 'il vecchio nome non esiste più');
-    const drop1 = await emit('db:drop', { db: TMP_DB2 });
-    assert(drop1.ok, `database "${TMP_DB2}" eliminato`);
+    assert(list2.ok && list2.databases.some((d) => d.name === TMP_DB)
+      && !list2.databases.some((d) => d.name === TMP_DB2), 'nessun database parziale creato dalla rinomina');
+    const drop1 = await emit('db:drop', { db: TMP_DB });
+    assert(drop1.ok, `database "${TMP_DB}" eliminato`);
     const sysDrop = await emit('db:drop', { db: 'admin' });
     assert(!sysDrop.ok, 'eliminazione di un db di sistema rifiutata');
 

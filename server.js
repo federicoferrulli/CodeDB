@@ -117,7 +117,7 @@ const { runBackup } = require('./backup/lib/engine');
 const { runRestore } = require('./backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
 const { createLogger, formatDuration } = require('./backup/lib/logger');
-const { readCatalog, readManifest, sha256File, formatBytes, fileDelBackup } = require('./backup/lib/util');
+const { readCatalog, verifyBackupDir, formatBytes } = require('./backup/lib/util');
 const { notifySlack } = require('./backup/lib/notify');
 
 const { ROOT_PRINCIPAL, rbacOn } = require('./auth/principal');
@@ -217,6 +217,17 @@ function allowedOriginList() {
 function checkOrigin(req) {
   const origin = String((req.headers && req.headers.origin) || '').trim();
   const host = String((req.headers && req.headers.host) || '').trim();
+  const allowed = allowedOriginList();
+  const bindHost = String(process.env.HOST || '127.0.0.1').toLowerCase();
+  const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
+
+  // Origin e Host sono entrambi controllati dal browser che visita un dominio
+  // ostile. Accettare soltanto perché coincidono consentirebbe il DNS rebinding
+  // (evil.example -> 127.0.0.1). Su loopback, in assenza di una whitelist
+  // esplicita per il reverse proxy, l'Host deve quindi essere davvero locale.
+  if (loopbackBind && !allowed.length && !LOCAL_HOST_HEADER.test(host)) {
+    return { ok: false, reason: `header Host ${host} non consentito su un'istanza in ascolto solo su loopback` };
+  }
 
   if (!origin) {
     // Nessun Origin: non è una richiesta partita da una pagina web. Resta però
@@ -224,13 +235,10 @@ function checkOrigin(req) {
     // continua a essere quello ostile, quindi lo si pretende locale — ma solo
     // se il server è in ascolto su loopback (altrimenti si romperebbe l'accesso
     // legittimo da un'altra macchina).
-    const bindHost = String(process.env.HOST || '127.0.0.1').toLowerCase();
-    const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
     if (!loopbackBind || LOCAL_HOST_HEADER.test(host)) return { ok: true };
     return { ok: false, reason: `header Host "${host}" non consentito su un'istanza in ascolto solo su loopback` };
   }
 
-  const allowed = allowedOriginList();
   if (allowed.length) {
     if (allowed.includes(origin)) return { ok: true };
     return {
@@ -335,6 +343,9 @@ function withTimeout(promise, ms, label) {
 const CONNECTIONS_FILE = process.env.CODEDB_CONNECTIONS_FILE || path.join(__dirname, 'connections.ini');
 const CONN_FIELDS = [
   'dbType', 'uri', 'host', 'port', 'username', 'password', 'authSource', 'database',
+  // Modalità esplicita: evita di conservare una vecchia URI (che ha priorità
+  // sui campi host/porta) quando l'utente passa al form Parametri.
+  'connectionMode',
   // Cartella/gruppo di appartenenza nella sidebar del connection manager.
   'folder',
   // Fase 3 MCP: le scritture via execute_write sono consentite solo se la
@@ -348,7 +359,7 @@ const CONN_FIELDS = [
 ];
 // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
 // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
-const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase'];
+const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase', 'uri'];
 
 // Sezione di intestazione dei file esportati con una passphrase scelta: porta
 // il salt e i parametri scrypt con cui ridervare la chiave sull'altra macchina.
@@ -860,11 +871,12 @@ function assertConnName(name) {
 
 // Tiene solo i campi noti e non vuoti di una configurazione di connessione.
 function sanitizeConnCfg(cfg) {
-  return Object.fromEntries(
+  const clean = Object.fromEntries(
     CONN_FIELDS
       .filter((f) => cfg[f] != null && String(cfg[f]).trim() !== '')
       .map((f) => [f, String(cfg[f]).trim()])
   );
+  return preserveConnSecrets(clean, null);
 }
 
 // dbType assente nelle connessioni salvate prima del supporto multi-db.
@@ -876,11 +888,62 @@ function sshEnabled(cfg) {
   return String(cfg.ssh || '').trim().toLowerCase() === 'true';
 }
 
-// Etichetta mostrata in UI: eventuali credenziali nella URI vengono mascherate.
+function connMode(cfg) {
+  const mode = String((cfg && cfg.connectionMode) || '').trim().toLowerCase();
+  if (mode === 'uri' || mode === 'fields') return mode;
+  // Compatibilità coi file creati prima dell'introduzione del marcatore.
+  return cfg && cfg.uri && String(cfg.uri).trim() ? 'uri' : 'fields';
+}
+
+// Riusa soltanto i segreti coerenti con la modalità selezionata. In particolare,
+// passando da URI a Parametri la vecchia URI va eliminata: MongoDB le darebbe
+// priorità e continuerebbe a collegarsi alla destinazione precedente.
+function preserveConnSecrets(next, previous) {
+  const merged = { ...next, connectionMode: connMode(next) };
+  const previousMode = connMode(previous || {});
+  if (merged.connectionMode === 'uri') {
+    if (!merged.uri && previousMode === 'uri' && previous && previous.uri) merged.uri = previous.uri;
+    delete merged.password;
+    // L'app non combina URI e tunnel SSH: il tunnel deve riscrivere host e
+    // porta, cosa non sicura su una URI arbitraria. Non conservare credenziali
+    // SSH irraggiungibili in questa modalità.
+    delete merged.sshPassword;
+    delete merged.sshPassphrase;
+    return merged;
+  }
+  delete merged.uri;
+  if (previousMode === 'fields' && previous && !merged.password && previous.password) {
+    merged.password = previous.password;
+  }
+
+  // I segreti SSH sopravvivono a un aggiornamento solo mentre il tunnel resta
+  // attivo. Disattivandolo vengono rimossi invece di restare inutilizzati nel
+  // file delle connessioni.
+  if (sshEnabled(merged)) {
+    if (previousMode === 'fields' && previous) {
+      for (const f of ['sshPassword', 'sshPassphrase']) {
+        if (!merged[f] && previous[f]) merged[f] = previous[f];
+      }
+    }
+  } else {
+    delete merged.sshPassword;
+    delete merged.sshPassphrase;
+  }
+  return merged;
+}
+
+// Etichetta mostrata in UI: della URI conserva solo destinazione e percorso.
+// Query string, frammento e credenziali possono contenere token o password.
 function connLabel(cfg) {
   let base;
   if (cfg.uri && cfg.uri.trim()) {
-    base = cfg.uri.trim().replace(/\/\/[^@]+@/, '//***@');
+    try {
+      const parsed = new URL(cfg.uri.trim());
+      const auth = parsed.username || parsed.password ? '***@' : '';
+      base = `${parsed.protocol}//${auth}${parsed.host}${parsed.pathname || ''}`;
+    } catch {
+      base = 'URI MongoDB configurata';
+    }
   } else {
     const type = connDbType(cfg);
     base = `${(cfg.host || 'localhost').trim()}:${String(cfg.port || DbFactory.defaultPort(type)).trim()}`;
@@ -909,25 +972,20 @@ function resolveEffectiveCfg(cfg, ownerId) {
   }
   if (cfg.keepPasswordFrom) {
     const prev = conns[cfg.keepPasswordFrom];
-    if (prev) {
-      const merged = { ...effective };
-      for (const f of SECRET_FIELDS) {
-        if (!merged[f] && prev[f]) merged[f] = prev[f];
-      }
-      effective = merged;
-    }
+    if (prev) effective = preserveConnSecrets(effective, prev);
   }
-  return effective;
+  return preserveConnSecrets(effective, null);
 }
 
 // Apre tunnel SSH (se richiesto) e connette la strategia. In caso di errore
 // chiude quanto già aperto e rilancia; altrimenti restituisce le risorse
 // aperte, la cui chiusura è a carico del chiamante (teardownConnection).
 //
-// `guardCtx` = { principal, connName }: se presente (e il principal non è
-// root), la strategia restituita è avvolta nel Proxy autorizzante, quindi ogni
-// accesso ai dati che ne deriva — griglia, Query Engine, tool MCP — è già
-// soggetto ai permessi. Con RBAC spento resta null e nulla cambia.
+// `guardCtx` = { principal, connName }: se presente, la strategia restituita è
+// avvolta nel Proxy autorizzante, quindi ogni accesso ai dati che ne deriva —
+// griglia, Query Engine, tool MCP — è già soggetto ai permessi. Anche root passa
+// dal Proxy: `can()` gli concede tutto, ma restano attive le invarianti MongoDB
+// che vietano JavaScript lato server e validano le pipeline strutturalmente.
 async function establishConnection(cfg, guardCtx = null) {
   // Il lookup delle connessioni salvate avviene nel file del tenant richiedente
   // (guardCtx.principal.ownerId); con RBAC spento resta il file condiviso.
@@ -1026,6 +1084,13 @@ async function reconnectSession(sess, maxAttempts = 14) {
   if (!sess || !sess.effectiveCfg) {
     throw new Error('Impossibile riconnettersi: configurazione di connessione non disponibile.');
   }
+  const assertOpen = () => {
+    if (!sess.closed) return;
+    const err = new Error('Riconnessione annullata: la sessione è stata chiusa.');
+    err.code = 'SESSION_CLOSED';
+    throw err;
+  };
+  assertOpen();
   if (sess.reconnecting) {
     return sess.reconnectPromise;
   }
@@ -1036,16 +1101,35 @@ async function reconnectSession(sess, maxAttempts = 14) {
       const delayMs = Math.min(attempt * 5000, 60000);
       if (delayMs > 0) {
         console.log(`[Auto-Reconnect] Attesa di ${delayMs / 1000}s prima del tentativo ${attempt + 1}/${maxAttempts} per ${sess.label || 'sessione'}...`);
-        await new Promise((r) => setTimeout(r, delayMs));
+        const cancelled = await new Promise((resolve) => {
+          let settled = false;
+          const finish = (value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (sess.cancelReconnectWait === cancel) sess.cancelReconnectWait = null;
+            resolve(value);
+          };
+          const timer = setTimeout(() => finish(false), delayMs);
+          const cancel = () => finish(true);
+          sess.cancelReconnectWait = cancel;
+        });
+        if (cancelled) assertOpen();
       } else {
         console.log(`[Auto-Reconnect] Tentativo immediato (1/${maxAttempts}) di riconnessione automatica al DB per ${sess.label || 'sessione'}...`);
       }
 
       try {
+        assertOpen();
         await teardownConnection(sess).catch(() => {});
+        assertOpen();
         // Il contesto di autorizzazione va ripassato: senza, la riconnessione
         // automatica restituirebbe una strategia non protetta dal Proxy.
         const conn = await establishConnection(sess.effectiveCfg, sess.guardCtx || null);
+        if (sess.closed) {
+          await teardownConnection(conn).catch(() => {});
+          assertOpen();
+        }
         sess.strategy = conn.strategy;
         sess.tunnel = conn.tunnel;
         sess.dbType = conn.dbType;
@@ -1053,14 +1137,16 @@ async function reconnectSession(sess, maxAttempts = 14) {
         console.log(`[Auto-Reconnect] Riconnessione automatica al DB riuscita al tentativo ${attempt + 1} per ${sess.label}!`);
         return true;
       } catch (err) {
+        if (sess.closed || (err && err.code === 'SESSION_CLOSED')) throw err;
         lastErr = err;
-        console.warn(`[Auto-Reconnect] Tentativo ${attempt + 1}/${maxAttempts} fallito per ${sess.label || 'sessione'}: ${err.message}`);
+        console.warn(`[Auto-Reconnect] Tentativo ${attempt + 1}/${maxAttempts} fallito per ${sess.label || 'sessione'}: ${errMsg(err, { dbType: sess.dbType })}`);
       }
     }
 
     console.error(`[Auto-Reconnect] Tutti i ${maxAttempts} tentativi di riconnessione automatica sono falliti per ${sess.label || 'sessione'}.`);
-    throw new Error(`Connessione al database persa. Tentativo di riconnessione automatico fallito dopo ${maxAttempts} tentativi: ${lastErr ? lastErr.message : 'Errore sconosciuto'}`);
+    throw new Error(`Connessione al database persa. Tentativo di riconnessione automatico fallito dopo ${maxAttempts} tentativi: ${lastErr ? errMsg(lastErr, { dbType: sess.dbType }) : 'Errore sconosciuto'}`);
   })().finally(() => {
+    sess.cancelReconnectWait = null;
     sess.reconnecting = false;
     sess.reconnectPromise = null;
   });
@@ -1069,12 +1155,14 @@ async function reconnectSession(sess, maxAttempts = 14) {
 }
 
 async function executeWithReconnect(sess, actionFn) {
+  if (!sess || sess.closed) throw new Error('Sessione chiusa.');
   try {
     return await actionFn(sess.strategy);
   } catch (err) {
     if (isConnectionError(err, sess) && sess.effectiveCfg) {
       console.warn(`[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...`);
       await reconnectSession(sess);
+      if (sess.closed) throw new Error('Sessione chiusa durante la riconnessione.');
       return await actionFn(sess.strategy);
     }
     throw err;
@@ -1158,6 +1246,11 @@ const AUDIT_READS = {
   'collection:aggregate': (p) => ({ coll: p.coll, op: 'Aggregazione', pipeline: cutStr(p.pipeline, 300) }),
   'collection:explain':   (p) => ({ coll: p.coll, op: 'Piano di esecuzione (explain)' }),
   'collection:export':    (p) => ({ coll: p.coll, op: 'Export collection/tabella' }),
+  // Il pannello delle chiavi esterne legge righe VERE di un'altra tabella, non
+  // metadati: è una lettura di dati quanto una find, e come tale va tracciata.
+  // (`collection:relations` invece resta fuori, come db:schema: sono i soli
+  // nomi dei vincoli, chiesti a ogni apertura di tabella.)
+  'relation:rows':        (p) => ({ coll: p.coll, op: 'Lettura righe riferite (chiave esterna)', filter: cutStr(p.colonna, 80) }),
 };
 
 // `isWriteSql` e `isWriteMongoPipeline` vivono in auth/capabilities.js: audit e
@@ -1799,8 +1892,8 @@ function makeConnectLocks(maxInflight = MAX_INFLIGHT_CONNECTS) {
  * Autenticazione e RBAC multi-utente (flag CODEDB_RBAC)
  *
  * Spento (default, e sempre nell'app desktop Electron): ogni richiesta viaggia
- * con ROOT_PRINCIPAL, `can()` risponde sempre true e le strategie non vengono
- * avvolte — il comportamento è identico a quello storico mono-utente.
+ * con ROOT_PRINCIPAL e `can()` risponde sempre true. Le strategie restano
+ * avvolte per applicare le invarianti MongoDB indipendenti dai grant.
  *
  * Acceso: serve un control plane MongoDB (CODEDB_APP_DB_URI) con utenti, ruoli,
  * grant, API key e sessioni. La UI si autentica con un token opaco
@@ -1845,6 +1938,38 @@ function disconnettiSocketDi(userId, motivo) {
   }
   if (chiusi) console.log(`[Auth] ${chiusi} socket chiusi per l'utente "${userId}" (${motivo}).`);
   return chiusi;
+}
+
+/**
+ * Rimuove i grant che puntano al nome di una connessione prima che quel nome
+ * venga eliminato o riutilizzato e chiude i socket dei soggetti coinvolti.
+ * L'owner che sta eseguendo il comando non è un subject dei grant e conserva
+ * quindi il proprio socket fino all'ack.
+ */
+async function revocaAccessiConnessione(ownerId, connName, motivo) {
+  if (!rbacOn()) return { deleted: 0, subjectIds: [] };
+  const result = await requireStore().revokeGrantsForConnection(ownerId, connName);
+  for (const subjectId of result.subjectIds) {
+    // Difesa per eventuali grant owner legacy: la revoca va eseguita, ma il
+    // socket dell'owner deve restare vivo per ricevere l'ack dell'operazione.
+    if (String(subjectId) !== String(ownerId)) disconnettiSocketDi(subjectId, motivo);
+  }
+  return result;
+}
+
+// Connessioni salvate e grant vivono in due storage diversi. Serializzare per
+// tenant delete/rename e grants:set chiude la finestra in cui un grant potrebbe
+// essere reinserito sul vecchio nome fra la revoca e il salvataggio del file.
+const connectionAclLocks = new Map();
+function withConnectionAclLock(ownerId, fn) {
+  const key = String(ownerId || '');
+  const previous = connectionAclLocks.get(key) || Promise.resolve();
+  const current = previous.then(fn, fn);
+  const tail = current.then(() => {}, () => {});
+  connectionAclLocks.set(key, tail);
+  return current.finally(() => {
+    if (connectionAclLocks.get(key) === tail) connectionAclLocks.delete(key);
+  });
 }
 
 async function resolvePrincipalFromToken(token) {
@@ -2063,9 +2188,10 @@ io.use(async (socket, next) => {
     return;
   }
   const auth = socket.handshake.auth || {};
-  const principal = auth.apiKey
-    ? await resolvePrincipalFromApiKey(auth.apiKey)
-    : await resolvePrincipalFromToken(auth.token);
+  // Le API key appartengono al dominio MCP e possono essere limitate a una
+  // singola connessione. Accettarle come sessioni UI trasformerebbe quella key
+  // in accesso agli eventi amministrativi del socket.
+  const principal = await resolvePrincipalFromToken(auth.token);
   if (!principal) {
     next(new Error('auth_required'));
     return;
@@ -2175,9 +2301,7 @@ io.on('connection', (socket) => {
     if (Date.now() - ultimaRivalida < REVALIDA_PRINCIPAL_MS) return true;
     ultimaRivalida = Date.now();
     const auth = socket.handshake.auth || {};
-    const fresco = auth.apiKey
-      ? await resolvePrincipalFromApiKey(auth.apiKey)
-      : await resolvePrincipalFromToken(auth.token);
+    const fresco = await resolvePrincipalFromToken(auth.token);
     if (!fresco) {
       console.warn(`[Auth] Sessione revocata o scaduta per "${principal.email || principal.id}": socket chiuso.`);
       // Il socket si chiude DOPO che l'ack è stato scritto (vedi safeOn):
@@ -2192,6 +2316,13 @@ io.on('connection', (socket) => {
     // `socket.principal` è ciò che `disconnettiSocketDi` interroga: va tenuto
     // allineato, altrimenti la chiusura attiva cercherebbe un'identità vecchia.
     socket.principal = fresco;
+    // Le strategie già aperte leggono il principal dal contesto mutabile. Va
+    // aggiornato insieme al socket, altrimenti continuerebbero ad applicare i
+    // grant catturati al momento della connessione.
+    for (const sess of sessions.values()) {
+      sess.principal = fresco;
+      if (sess.guardCtx) sess.guardCtx.principal = fresco;
+    }
     return true;
   }
 
@@ -2204,6 +2335,8 @@ io.on('connection', (socket) => {
     // Rimuovi prima di await: evita doppie chiusure su chiamate concorrenti.
     sessions.delete(tabId);
     activeGlobalSessions--;
+    sess.closed = true;
+    if (typeof sess.cancelReconnectWait === 'function') sess.cancelReconnectWait();
     // Script ancora in corso su questa sessione: senza `abort` il ciclo
     // continuerebbe a eseguire istruzioni su una strategia che stiamo
     // chiudendo, e ogni passo fallirebbe rumorosamente dopo la disconnessione.
@@ -2382,6 +2515,7 @@ io.on('connection', (socket) => {
         effectiveCfg: conn.effective,
         principal,
         guardCtx,
+        closed: false,
         // Metadati per l'audit delle scritture (mai segreti): etichetta mostrata
         // in UI, nome della connessione salvata (se noto) e IP del client.
         label: connLabel(conn.effective),
@@ -2855,17 +2989,21 @@ io.on('connection', (socket) => {
     }
   });
 
-  safeOn('connections:delete', ({ name }, cb) => {
+  safeOn('connections:delete', async ({ name }, cb) =>
+    withConnectionAclLock(principal.ownerId, async () => {
     assertManage(principal);
     const conns = loadConnections(principal.ownerId);
     if (!conns[name]) throw new Error(`Connessione salvata "${name}" non trovata.`);
+    await revocaAccessiConnessione(
+      principal.ownerId, name, 'connessione salvata eliminata'
+    );
     delete conns[name];
     saveConnections(conns, principal.ownerId);
     cb({ ok: true });
-  });
+    }));
 
   // Campi di una connessione salvata per popolarne il form di modifica.
-  // La password non viene mai rimandata al browser: si segnala solo se esiste.
+  // I segreti non vengono mai rimandati al browser: si segnala solo se esistono.
   safeOn('connections:get', ({ name }, cb) => {
     if (!canUseConnection(principal, String(name || ''))) {
       throw new Error(`Permesso negato: nessun accesso alla connessione "${name}".`);
@@ -2874,7 +3012,12 @@ io.on('connection', (socket) => {
     if (!conn) throw new Error(`Connessione salvata "${name}" non trovata.`);
     const fields = { ...conn };
     const has = (f) => conn[f] != null && conn[f] !== '';
-    const flags = { hasPassword: has('password'), hasSshPassword: has('sshPassword'), hasSshPassphrase: has('sshPassphrase') };
+    const flags = {
+      hasPassword: has('password'),
+      hasUri: has('uri'),
+      hasSshPassword: has('sshPassword'),
+      hasSshPassphrase: has('sshPassphrase'),
+    };
     for (const f of SECRET_FIELDS) delete fields[f];
     cb({ ok: true, fields, ...flags });
   });
@@ -2882,7 +3025,8 @@ io.on('connection', (socket) => {
   // Crea o aggiorna una connessione salvata senza connettersi. oldName, se
   // diverso da name, rinomina la connessione. Password vuota nel form =
   // mantieni quella già salvata.
-  safeOn('connections:save', ({ name, oldName, cfg }, cb) => {
+  safeOn('connections:save', async ({ name, oldName, cfg }, cb) =>
+    withConnectionAclLock(principal.ownerId, async () => {
     assertManage(principal);
     name = String(name || '').trim();
     assertConnName(name);
@@ -2895,17 +3039,21 @@ io.on('connection', (socket) => {
     if (conns[name] && name !== oldName) {
       throw new Error(`Esiste già una connessione chiamata "${name}". Scegli un nome diverso.`);
     }
-    const next = sanitizeConnCfg(cfg || {});
-    if (previous) {
-      for (const f of SECRET_FIELDS) {
-        if (!next[f] && previous[f]) next[f] = previous[f];
-      }
+    let next = sanitizeConnCfg(cfg || {});
+    if (previous) next = preserveConnSecrets(next, previous);
+    if (connMode(next) === 'uri' && !next.uri) {
+      throw new Error('Inserisci la URI MongoDB completa.');
     }
-    if (oldName && oldName !== name) delete conns[oldName];
+    if (oldName && oldName !== name) {
+      await revocaAccessiConnessione(
+        principal.ownerId, oldName, 'connessione salvata rinominata'
+      );
+      delete conns[oldName];
+    }
     conns[name] = next;
     saveConnections(conns, principal.ownerId);
     cb({ ok: true });
-  });
+    }));
 
   // Esporta il file .ini completo (password incluse, ma cifrate). Con
   // `passphrase` i segreti vengono ri-cifrati con la sua chiave (SHA256), così
@@ -3095,12 +3243,21 @@ io.on('connection', (socket) => {
   safeOn('grants:set', async ({ subjectId, connName, role, scope }, cb) => {
     const store = requireRbac();
     assertManage(principal);
-    // Non si può concedere l'accesso a una connessione che non esiste: sarebbe
-    // un permesso silenziosamente inefficace.
-    if (!loadConnections(principal.ownerId)[String(connName || '').trim()]) {
-      throw new Error(`Connessione salvata "${connName}" non trovata.`);
-    }
-    const grant = await store.setGrant({ ownerId: principal.ownerId, subjectId, connName, role, scope });
+    const grant = await withConnectionAclLock(principal.ownerId, async () => {
+      // Il controllo di esistenza e la scrittura del grant condividono lo
+      // stesso lock di delete/rename: non si può reinserire un permesso sul
+      // vecchio nome durante la revoca.
+      if (!loadConnections(principal.ownerId)[String(connName || '').trim()]) {
+        throw new Error('Connessione salvata "' + connName + '" non trovata.');
+      }
+      return store.setGrant({
+        ownerId: principal.ownerId, subjectId, connName, role, scope,
+      });
+    });
+    // Il principal del socket contiene capability e scope denormalizzati.
+    // Chiudere le sessioni del soggetto rende effettiva subito anche una
+    // restrizione; altrimenti resterebbe una finestra fino alla rivalidazione.
+    disconnettiSocketDi(subjectId, 'permessi aggiornati');
     auditUi({ event: 'grants:set', category: 'write', status: 'ok', op: 'Assegnazione permessi', ...auditActor(principal), target: String(subjectId), connection: grant.connName, role: grant.role });
     cb({ ok: true, grant: { subjectId: grant.subjectId, connName: grant.connName, role: grant.role, scope: grant.scope } });
   });
@@ -3109,6 +3266,7 @@ io.on('connection', (socket) => {
     const store = requireRbac();
     assertManage(principal);
     const res = await store.revokeGrant(principal.ownerId, subjectId, connName);
+    disconnettiSocketDi(subjectId, 'permesso revocato');
     auditUi({ event: 'grants:revoke', category: 'write', status: 'ok', op: 'Revoca permessi', ...auditActor(principal), target: String(subjectId), connection: String(connName) });
     cb({ ok: true, ...res });
   });
@@ -3169,6 +3327,13 @@ io.on('connection', (socket) => {
   // --- Query, dettagli e mutazioni --------------------------------------------
 
   delegate('collection:stats', (strategy, { db, coll }) => strategy.collectionStats(db, coll));
+  // Chiavi esterne uscenti dalla tabella aperta e righe della tabella riferita:
+  // alimentano il pannello 🔗 della griglia (doppio clic su una cella collegata).
+  // `relation:rows` riceve db/coll della tabella RIFERITA, che su MySQL e
+  // PostgreSQL può stare in un altro database/schema — ed è quindi il bersaglio
+  // giusto su cui far valere lo scope dei permessi.
+  delegate('collection:relations', async (strategy, { db, coll }) => ({ relazioni: await strategy.columnRelations(db, coll) }));
+  delegate('relation:rows', (strategy, p) => strategy.relatedRows(p.db, p.coll, p));
   delegate('collection:find', (strategy, p) => strategy.collectionFind(p.db, p.coll, p));
   // Conteggio totale disaccoppiato: la griglia carica prima i documenti
   // (total = null) e chiede il conteggio a parte, così non aspetta la scansione
@@ -3782,34 +3947,16 @@ io.on('connection', (socket) => {
     if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
       throw new Error('Cartella backup non trovata o manifest.json mancante.');
     }
-    const manifest = readManifest(backupDir);
-    let ok = 0;
-    let failed = 0;
-    const details = [];
-    for (const f of manifest.files) {
-      if (!f.sha256) continue;
-      const full = fileDelBackup(backupDir, f.path);
-      if (!fs.existsSync(full)) {
-        details.push({ file: f.path, status: 'MISSING' });
-        failed++;
-        continue;
-      }
-      const actual = await sha256File(full);
-      if (actual === f.sha256) {
-        details.push({ file: f.path, status: 'OK' });
-        ok++;
-      } else {
-        details.push({ file: f.path, status: 'CORRUPTED', expected: f.sha256, actual });
-        failed++;
-      }
-    }
+    const report = await verifyBackupDir(backupDir);
     cb({
       ok: true,
-      backupId: manifest.id,
-      okCount: ok,
-      failedCount: failed,
-      valid: failed === 0,
-      details,
+      backupId: report.backupId,
+      okCount: report.okCount,
+      failedCount: report.failedCount,
+      unverifiableCount: report.unverifiableCount,
+      extraCount: report.extraCount,
+      valid: report.valid,
+      details: report.details,
     });
   });
 
@@ -4081,7 +4228,15 @@ function encryptPlaintextSecretsOnce() {
       SECRET_FIELDS.some((f) => sec[f] && !String(sec[f]).startsWith('ENC:')));
     if (!daCifrare) continue;
     try {
-      saveConnections(loadConnections(ownerId), ownerId);
+      const encoded = stringifyIni(encryptSections(loadConnections(ownerId)));
+      // Non usare saveConnections qui: ruoterebbe il file in chiaro in .bak.
+      // Si sovrascrivono prima entrambe le copie e soltanto alla fine il file
+      // corrente; se il processo si interrompe, il corrente resta rilevabile al
+      // prossimo avvio e la migrazione viene ripetuta.
+      try { fs.mkdirSync(path.dirname(file), { recursive: true }); } catch { /* già presente */ }
+      fs.writeFileSync(file + '.bak2', encoded, 'utf8');
+      fs.writeFileSync(file + '.bak', encoded, 'utf8');
+      fs.writeFileSync(file, encoded, 'utf8');
       console.log(`Segreti in chiaro cifrati in "${path.basename(file)}".`);
     } catch (err) {
       console.error(`Impossibile cifrare i segreti in chiaro di "${path.basename(file)}": ${errMsg(err)}`);

@@ -75,6 +75,18 @@ async function seed() {
     await c.query(`INSERT INTO "${SCHEMA_B}"."${TABLE}" (cliente, totale) VALUES ('B-uno', 100)`);
     // Tabella presente solo in B: serve a verificare che listCollections filtri.
     await c.query(`CREATE TABLE "${SCHEMA_B}".solo_b (id SERIAL PRIMARY KEY)`);
+    // Chiave esterna che ATTRAVERSA gli schemi. Nella UI il "database" è lo
+    // schema, quindi questa è a tutti gli effetti una FK verso un altro
+    // database: è il caso in cui è facile assumere lo schema di partenza e
+    // finire a interrogare la tabella omonima sbagliata — che qui esiste
+    // davvero in entrambi gli schemi, apposta.
+    await c.query(`CREATE TABLE "${SCHEMA_A}".righe (
+      id SERIAL PRIMARY KEY,
+      ordine_b_id INT REFERENCES "${SCHEMA_B}"."${TABLE}"(id),
+      nota TEXT
+    )`);
+    await c.query(`INSERT INTO "${SCHEMA_A}".righe (ordine_b_id, nota)
+                   SELECT id, 'riga uno' FROM "${SCHEMA_B}"."${TABLE}" WHERE cliente = 'B-uno'`);
   });
 }
 
@@ -114,7 +126,8 @@ async function runTests() {
   const collB = await emit('db:collections', { db: SCHEMA_B });
   const nA = collA.ok ? collA.collections.map((c) => c.name) : [];
   const nB = collB.ok ? collB.collections.map((c) => c.name) : [];
-  assert(collA.ok && nA.join(',') === TABLE, `schema A mostra esattamente le sue tabelle (${nA.join(', ')})`);
+  assert(collA.ok && nA.slice().sort().join(',') === [TABLE, 'righe'].sort().join(','),
+    `schema A mostra esattamente le sue tabelle (${nA.join(', ')})`);
   assert(collB.ok && nB.slice().sort().join(',') === [TABLE, 'solo_b'].sort().join(','),
     `schema B mostra esattamente le sue tabelle (${nB.join(', ')})`);
   // Le tabelle omonime in schemi diversi non devono comparire più volte: il
@@ -165,6 +178,34 @@ async function runTests() {
   const schemaColls = schema.ok ? schema.collections.map((c) => c.name).sort() : [];
   assert(schema.ok && schemaColls.join(',') === ['solo_b', TABLE].sort().join(','),
     `db:schema limitato allo schema B (${schemaColls.join(', ')})`);
+
+  console.log('9-bis. collection:relations + relation:rows attraverso gli schemi (pannello 🔗)');
+  const rel = await emit('collection:relations', { db: SCHEMA_A, coll: 'righe' });
+  const fkDesc = rel.ok && rel.relazioni.find((r) => r.campo === 'ordine_b_id');
+  assert(fkDesc, `FK di "righe" rilevata (${rel.ok ? JSON.stringify(rel.relazioni) : rel.error})`);
+  // Il punto del test: il bersaglio è nello schema B, non in quello aperto.
+  // Le due tabelle sono OMONIME, quindi un descrittore che dimentica lo schema
+  // sembrerebbe corretto e porterebbe a leggere le righe sbagliate.
+  assert(fkDesc && fkDesc.db === SCHEMA_B && fkDesc.tabella === TABLE && fkDesc.colonna === 'id',
+    `bersaglio qualificato con lo schema giusto (${JSON.stringify(fkDesc)})`);
+  assert(fkDesc && fkDesc.origine === 'vincolo', 'vincolo dichiarato, non ipotesi');
+
+  // Riga riferita letta DALLO SCHEMA B: 'B-uno', non 'A-uno'.
+  const righeA = await emit('collection:find', { db: SCHEMA_A, coll: 'righe', filter: '', limit: 50, skip: 0 });
+  const valore = righeA.ok && righeA.docs[0] && righeA.docs[0].ordine_b_id;
+  const rigaRif = await emit('relation:rows', { db: fkDesc.db, coll: fkDesc.tabella, colonna: fkDesc.colonna, valore, limit: 1 });
+  assert(rigaRif.ok && rigaRif.righe.length === 1 && rigaRif.righe[0].cliente === 'B-uno',
+    `riga riferita presa dallo schema B (${rigaRif.ok ? JSON.stringify(rigaRif.righe[0] && rigaRif.righe[0].cliente) : rigaRif.error})`);
+
+  // La ricerca resta confinata allo schema indicato: 'A-uno' esiste, ma in A.
+  const cercaB = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'id', cerca: 'A-uno', limit: 50 });
+  assert(cercaB.ok && cercaB.righe.length === 0, 'la ricerca non sconfina nell\'altro schema');
+  const cercaOk = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'id', cerca: 'B-uno', limit: 50 });
+  assert(cercaOk.ok && cercaOk.righe.length === 1, `ricerca testuale in B (${cercaOk.ok ? cercaOk.righe.length : cercaOk.error})`);
+
+  // Colonna inventata: rifiutata prima di finire quotata nella query.
+  const finta = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'non_esiste', valore: 1 });
+  assert(!finta.ok && /non esiste/i.test(finta.error), 'colonna inesistente rifiutata');
 
   console.log('10. SQL Raw: i nomi non qualificati si risolvono nello schema aperto');
   const raw = await emit('collection:aggregate', { db: SCHEMA_B, coll: TABLE, pipeline: `SELECT cliente FROM ${TABLE}` });

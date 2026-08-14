@@ -1,10 +1,12 @@
 import { state } from './state.js';
-import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
+import { indicizzaRelazioni, VINCOLO } from './fk-relazioni.js';
+import { activeTab } from './tabs.js';
 
 export function applyDbTypeToWorkspace() {
   const isSql = isSqlType(state.dbType);
@@ -62,6 +64,75 @@ export function selectCollection(dbName, collName, opts = {}) {
   openCollTab(dbName, collName, opts);
 }
 
+/* --------------------- Relazioni (chiavi esterne) ------------------------- *
+ * Quali colonne della tabella aperta puntano a un'altra tabella: serve alla
+ * griglia per marcare le celle collegate (🔗) e all'editor inline per offrire
+ * il pannello di riferimento.
+ *
+ * La cache sta QUI, in una Map di modulo, e non nello stato del tab. Due
+ * motivi. Primo: `buildRow` deve interrogarla in modo SINCRONO mentre costruisce
+ * le righe visibili, quindi non può essere una promessa. Secondo: le chiavi
+ * esterne di `shop.ordini` non cambiano perché si è passati a un altro tab, e
+ * tenendole nello stato andrebbero ricaricate a ogni cambio di coll-tab e
+ * ripulite a mano a ogni cambio di collection — due occasioni per lasciarsi
+ * dietro le relazioni della tabella sbagliata, che è esattamente il modo di
+ * accendere il 🔗 su una colonna che non c'entra nulla.
+ * ------------------------------------------------------------------------- */
+
+const relazioniCache = new Map();
+// Richieste già partite (anche fallite): senza, ogni pagina della griglia
+// rilancerebbe la stessa `collection:relations` su una tabella senza vincoli.
+const relazioniChieste = new Set();
+
+function chiaveRelazioni(st = state, tabId = activeTab()?.id) {
+  if (!st.db || !st.coll) return null;
+  return `${tabId || ''}\0${st.dbType || ''}\0${st.db}\0${st.coll}`;
+}
+
+/** Map campo → relazione per la collection mostrata ora, o null. */
+export function relazioniCorrenti() {
+  const k = chiaveRelazioni();
+  return k ? relazioniCache.get(k) || null : null;
+}
+
+/** Relazione di un singolo campo della collection corrente, o null. */
+export function relazioneDiCampo(campo) {
+  const rel = relazioniCorrenti();
+  return (rel && rel.get(campo)) || null;
+}
+
+/**
+ * Svuota la cache: le chiavi esterne sono metadati di schema, quindi una DDL
+ * (colonna aggiunta, vincolo creato o eliminato) le rende obsolete. Senza,
+ * l'indicatore resterebbe acceso su una colonna il cui vincolo non c'è più
+ * fino al prossimo ricaricamento della pagina.
+ */
+export function svuotaRelazioni() {
+  relazioniCache.clear();
+  relazioniChieste.clear();
+}
+
+// Chiede le relazioni della collection appena caricata, una volta sola. Il
+// fallimento è silenzioso di proposito: senza relazioni la griglia funziona
+// esattamente come prima, e un errore su una lettura di metadati non deve
+// coprire i dati che l'utente ha appena chiesto.
+function caricaRelazioni(st, originColl, originTabId) {
+  const k = chiaveRelazioni(st, originTabId);
+  if (!k || relazioniChieste.has(k)) return;
+  relazioniChieste.add(k);
+  emit('collection:relations', { tabId: originTabId, db: st.db, coll: st.coll })
+    .then((res) => {
+      const indice = indicizzaRelazioni(res.relazioni);
+      if (!indice.size) return; // niente da marcare: nessun ridisegno
+      relazioniCache.set(k, indice);
+      // Ridisegna solo se, nel frattempo, si guarda ancora quella collection.
+      if (isForActiveTab(res) && state.activeCollId === originColl && chiaveRelazioni() === k) {
+        renderGrid({ preserveScroll: true });
+      }
+    })
+    .catch(() => { /* nessuna relazione: la griglia resta quella di prima */ });
+}
+
 // opts.auto = lettura automatica (polling, live change stream, refresh dopo una
 // scrittura): marcata `_bg` così l'audit del server la ignora e non intasa lo
 // storico con le riletture non avviate dall'utente.
@@ -81,6 +152,13 @@ export function runQuery(opts = {}) {
   // fermata lato server (killOp / KILL QUERY / pg_cancel_backend).
   cancelInFlightFind();
   const runId = (state.gridRunId = newRunId());
+  // Una nuova combinazione di filtro/ordinamento rende obsoleto anche il count
+  // disaccoppiato precedente, che altrimenti può aggiornare il footer mentre la
+  // nuova find è ancora in volo. La paginazione mantiene invece lo stesso count.
+  if (!opts.keepCount) {
+    state.countToken = (state.countToken || 0) + 1;
+    state.countPending = false;
+  }
   // Coll-tab di origine: il `runId` da solo non basta a proteggere la risposta.
   // Passando a un altro coll-tab lo stato piatto (docs/columns/skip) viene
   // riusato per la nuova collection, quindi una risposta in ritardo scriverebbe
@@ -136,6 +214,12 @@ export function runQuery(opts = {}) {
     // Risposta che appartiene a un coll-tab non più mostrato: lo stato piatto
     // ora descrive un'altra collection, applicarla la corromperebbe.
     if (st.activeCollId !== originColl) return;
+    // Una lettura valida è il solo momento in cui il marker può essere
+    // consumato: azzerarlo prima della richiesta farebbe perdere il retry se il
+    // database risponde con errore o timeout.
+    st.dataDirty = false;
+    const originCt = st.collTabs.find((ct) => ct.id === originColl);
+    if (originCt) originCt.dataDirty = false;
     st.docs = res.docs;
     st.columns = res.columns;
     st.skip = res.skip;
@@ -177,10 +261,15 @@ export function runQuery(opts = {}) {
     // ancora quello in primo piano. Altrimenti i dati restano nel suo stato e
     // compariranno quando l'utente ci tornerà.
     if (isForActiveTab(res)) renderGrid();
+    // Chiavi esterne della tabella appena letta: dopo i dati, mai prima. È una
+    // lettura di metadati che non deve ritardare di un istante la griglia.
+    caricaRelazioni(st, originColl, res._tab ? res._tab.id : undefined);
     // Totale sconosciuto (find con filtro su collection grande): lo chiediamo a
     // parte, così la griglia è già utilizzabile mentre il conteggio gira. In
     // paginazione con totale già noto (reuseCount) non ripetiamo la scansione.
-    if (mode !== 'aggregate' && !reuseCount && res.total == null) requestTotalCount(payload, st, originColl);
+    if (mode !== 'aggregate' && !reuseCount && res.total == null) {
+      requestTotalCount(payload, st, originColl, res._tab ? res._tab.id : undefined);
+    }
   }).catch((err) => {
     // Errore di una find annullata/superata: non disturbare l'utente, la
     // richiesta più recente sta già gestendo la vista.
@@ -263,7 +352,7 @@ function computeExhausted(res, st = state) {
 // Conteggio totale disaccoppiato dalla find. Un token scarta le risposte
 // obsolete se nel frattempo l'utente rilancia la query, cambia coll-tab o
 // collection. Best-effort: un errore non deve rompere la griglia già mostrata.
-function requestTotalCount(payload, origin = state, originColl = state.activeCollId) {
+function requestTotalCount(payload, origin = state, originColl = state.activeCollId, originTabId) {
   const token = (origin.countToken = (origin.countToken || 0) + 1);
   const db = origin.db, coll = origin.coll;
   // Registra la firma conteggiata: le pagine successive (keepCount) la
@@ -272,7 +361,9 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
   origin.countPending = true;
   origin.countTimedOut = false;
   if (origin === state) updateFooter();
-  emit('collection:count', { db: payload.db, coll: payload.coll, filter: payload.filter, _bg: true })
+  emit('collection:count', {
+    tabId: originTabId, db: payload.db, coll: payload.coll, filter: payload.filter, _bg: true,
+  })
     .then((res) => {
       // Lo stato da aggiornare è quello del tab che ha chiesto il conteggio
       // (`origin`), non quello attivo alla risposta.
@@ -467,6 +558,9 @@ function buildHead(thead, canSelect) {
 // virtualizzato.
 function buildRow(doc, rowIdx, canSelect) {
   const tr = document.createElement('tr');
+  // Letto una volta per riga e non per cella: è una Map, ma la ricerca avviene
+  // dentro il ciclo di rendering delle righe visibili, a ogni fotogramma.
+  const relazioni = relazioniCorrenti();
 
   const selectTd = document.createElement('td');
   selectTd.className = 'grid-select-col';
@@ -520,9 +614,162 @@ function buildRow(doc, rowIdx, canSelect) {
       td.classList.add('editable');
       td.addEventListener('dblclick', () => startEdit(td, doc, col));
     }
+    // Colonna collegata a un'altra tabella: l'indicatore è uno pseudo-elemento
+    // CSS su una classe, non un nodo in più. Con la griglia virtualizzata una
+    // `<span>` per cella si paga a ogni fotogramma di scorrimento (è la stessa
+    // ragione per cui qui si usa `displayValueBreve` e non `displayValue`).
+    const rel = relazioni && relazioni.get(col);
+    if (rel) {
+      td.classList.add('fk-cella');
+      if (rel.origine !== VINCOLO) td.classList.add('fk-ipotesi');
+      td.title = `${text}\n🔗 ${rel.tabella}.${rel.colonna}`;
+    }
     tr.appendChild(td);
   });
   return tr;
+}
+
+/* --------------------------- Gesti tattili (mobile) ------------------------ *
+ * Col dito la griglia si poteva leggere ma non usare: la modifica si apre col
+ * doppio clic, e `dblclick` non è il doppio tocco — i browser mobili lo
+ * riservano allo zoom, quando lo consegnano lo fanno in ritardo e su molte
+ * configurazioni non lo consegnano affatto. Qui i tre gesti sono riconosciuti a
+ * mano, dagli eventi puntatore.
+ *
+ *   doppio tocco                    → modifica la cella
+ *   pressione lunga FUORI selezione → modifica la cella
+ *   pressione lunga DENTRO selezione→ menu contestuale
+ *   trascinamento DA una selezione  → allarga la selezione (in cellselect.js)
+ *   trascinamento altrove           → scorre la griglia, come sempre
+ *
+ * Le due regole che sembrano arbitrarie e non lo sono, entrambe figlie dello
+ * stesso vincolo — su un telefono c'è un solo dito e i gesti sono pochi:
+ *
+ * 1. LA PRESSIONE LUNGA SULLA SELEZIONE RESTA IL MENU. Oggi è l'unico modo di
+ *    aprirlo col dito (copia, statistiche, grafico, mappa, elimina):
+ *    prendendogliela senza restituire nulla, quelle funzioni sparirebbero tutte
+ *    dal mobile. E il menu agisce sulla SELEZIONE, quindi tenerlo lì è il
+ *    significato che aveva già.
+ *
+ * 2. IL TRASCINAMENTO SELEZIONA SOLO PARTENDO DALLA SELEZIONE. In una griglia
+ *    di dati il trascinamento è il modo con cui si scorre: darlo alla selezione
+ *    ovunque renderebbe la tabella immobile, molto peggio del problema risolto.
+ *
+ * In entrambe, la selezione è lo stato "armato": si tocca una cella per
+ * sceglierla, e da lì la si allarga o ci si agisce sopra.
+ *
+ * Il puntatore fine resta invariato: col mouse il doppio clic, il trascinamento
+ * e il tasto destro funzionano già.
+ * ------------------------------------------------------------------------- */
+
+const ATTESA_TOCCO_MS = 500;
+// Oltre questo spostamento non è più una pressione: è uno scorrimento della
+// griglia, e far comparire un editor mentre si scorre è il modo più rapido di
+// rendere una tabella inutilizzabile col dito.
+const TOLLERANZA_TOCCO_PX = 10;
+// Finestra del doppio tocco. `dblclick` NON si può usare col dito: i browser
+// mobili lo riservano allo zoom, quando lo consegnano lo fanno con ritardo e su
+// molte configurazioni non lo consegnano affatto. Si riconosce quindi a mano,
+// dai due tocchi ravvicinati sulla stessa cella.
+const DOPPIO_TOCCO_MS = 300;
+const DOPPIO_TOCCO_PX = 24;
+
+function collegaGestiTattili() {
+  const tbody = $('#grid tbody');
+  if (!tbody) return;
+
+  let timer = null;
+  let partenza = null;
+  // Il tocco prolungato ha già fatto il suo: gli eventi che il browser emette
+  // DOPO (il `contextmenu` nativo, il clic emulato) vanno ignorati, altrimenti
+  // si aprirebbe anche il menu sopra l'editor appena comparso.
+  let consumato = false;
+  // Ultimo tocco concluso, per riconoscere il doppio: cella, istante e punto.
+  let ultimo = null;
+
+  const annulla = () => {
+    clearTimeout(timer);
+    timer = null;
+    partenza = null;
+  };
+
+  // Apre la modifica se la cella è modificabile. Condivisa dal doppio tocco e
+  // dalla pressione lunga: due percorsi separati divergerebbero sulla domanda
+  // "questa cella si può modificare?", e una delle due finirebbe per aprire un
+  // editor su `_id` o su una riga senza chiave.
+  const modifica = (td) => {
+    const doc = state.docs[Number(td.dataset.r)];
+    const col = state.columns[Number(td.dataset.c)];
+    if (!doc || col === '_id' || !('_id' in doc)) return false;
+    startEdit(td, doc, col);
+    return true;
+  };
+
+  tbody.addEventListener('pointerdown', (e) => {
+    // Solo dito e penna: col mouse il doppio clic e il tasto destro ci sono già,
+    // e una pressione lunga del mouse è di solito l'inizio di un trascinamento
+    // di selezione.
+    if (e.pointerType === 'mouse') return;
+    const td = e.target.closest('td[data-c]');
+    if (!td || td.classList.contains('editing')) return;
+    annulla();
+    consumato = false;
+
+    // Doppio tocco: secondo tocco ravvicinato sulla stessa cella → modifica.
+    const ora = Date.now();
+    if (ultimo && ultimo.td === td
+      && ora - ultimo.t < DOPPIO_TOCCO_MS
+      && Math.abs(e.clientX - ultimo.x) < DOPPIO_TOCCO_PX
+      && Math.abs(e.clientY - ultimo.y) < DOPPIO_TOCCO_PX) {
+      ultimo = null;
+      if (modifica(td)) {
+        // Senza, il browser interpreta i due tocchi come "zoom sul contenuto" e
+        // ingrandisce la tabella sopra l'editor appena aperto.
+        e.preventDefault();
+        consumato = true;
+        return;
+      }
+    }
+    ultimo = { td, t: ora, x: e.clientX, y: e.clientY };
+
+    partenza = { x: e.clientX, y: e.clientY, td };
+    timer = setTimeout(() => {
+      timer = null;
+      if (!partenza || !document.contains(td)) return;
+      consumato = true;
+      // Sulla selezione il tocco prolungato resta il menu: lo apre il gestore
+      // `contextmenu` di cellselect.js, che il browser emette da sé al termine
+      // della pressione. Qui non si fa nulla e soprattutto non si segna
+      // l'evento come consumato. Idem dove non c'è nulla da modificare.
+      if (cellaNellaSelezione(td) || !modifica(td)) consumato = false;
+      // Una pressione lunga non deve poi valere come primo tocco di un doppio.
+      ultimo = null;
+    }, ATTESA_TOCCO_MS);
+  });
+
+  tbody.addEventListener('pointermove', (e) => {
+    if (!partenza) return;
+    if (Math.abs(e.clientX - partenza.x) > TOLLERANZA_TOCCO_PX
+      || Math.abs(e.clientY - partenza.y) > TOLLERANZA_TOCCO_PX) annulla();
+  });
+  tbody.addEventListener('pointerup', annulla);
+  tbody.addEventListener('pointercancel', annulla);
+
+  // In cattura e prima di cellselect.js: quando la pressione ha già aperto
+  // l'editor, il `contextmenu` nativo che segue non deve aprirci sopra il menu.
+  tbody.addEventListener('contextmenu', (e) => {
+    if (!consumato) return;
+    consumato = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+}
+
+// La cella fa parte della selezione corrente? Legge le stesse coordinate che
+// `cellselect.js` scrive sui `td` e la stessa forma di chiave (`riga:colonna`).
+function cellaNellaSelezione(td) {
+  const cells = state.cellSel && state.cellSel.cells;
+  return !!(cells && cells.size && cells.has(`${td.dataset.r}:${td.dataset.c}`));
 }
 
 // Riga "spacer" invisibile che occupa `h` px: simula le righe non renderizzate
@@ -766,10 +1013,11 @@ function maybeLoadMore() {
 
 // Carica e accoda il blocco successivo (solo modalità find).
 function fetchMore() {
+  const origin = captureContext();
   state.loading = true;
   updateInfiniteUI();
   const chunk = $('#page-size').value;
-  const originColl = state.activeCollId;
+  const originColl = origin.collId;
   emit('collection:find', {
     db: state.db,
     coll: state.coll,
@@ -801,7 +1049,10 @@ function fetchMore() {
     st.loading = false;
     if (isForActiveTab(res)) renderGrid({ preserveScroll: true });
   }).catch((err) => {
-    const st = (err && err._state) || state;
+    // TAB_CLOSED porta intenzionalmente _state: null: il fallback al Proxy
+    // globale toccherebbe il nuovo tab attivo. Lo stato catturato appartiene
+    // sempre alla richiesta, anche dopo la chiusura del tab.
+    const st = (err && err._state) || origin.st;
     st.loading = false;
     if (!isForActiveTab(err)) return;
     updateInfiniteUI();
@@ -813,10 +1064,9 @@ export function deleteDoc(doc) {
   const { text } = displayValue(doc._id);
   if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
   const origin = captureContext();
+  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
   emit('doc:delete', {
-    tabId: origin.tabId,
-    db: origin.st.db,
-    coll: origin.st.coll,
+    ...bersaglio,
     id: idOf(doc),
   }).then((res) => {
     toast('Documento eliminato');
@@ -824,7 +1074,8 @@ export function deleteDoc(doc) {
     // attivo un altro tab rileggerebbe la collection sbagliata. Se il tab non è
     // più in primo piano la scrittura è comunque avvenuta e i dati verranno
     // riletti al ritorno.
-    if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura: non è una lettura utente
+    if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura: non è una lettura utente
+    else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
   }).catch((err) => toast(err.message, true));
 }
 
@@ -848,6 +1099,7 @@ export function deleteDocs(docs) {
       if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
       else toast(`${ok} ${cosa} eliminati`);
       if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+      else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
     });
 }
 
@@ -889,6 +1141,7 @@ export function deleteSelectedDocs() {
     if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
     else toast(`${ok} documenti eliminati`);
     if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+    else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
   });
 }
 
@@ -920,7 +1173,8 @@ export function deleteAllWithFilter() {
   }), 'Elimino…').then((res) => {
     res._state.selectedDocs.clear();
     toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
-    if (isForActiveTab(res)) runQuery({ auto: true }); // refresh post-scrittura
+    if (origin.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+    else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
   }).catch((err) => toast(err.message, true));
 }
 
@@ -961,6 +1215,7 @@ export function updateBulkDeleteUI() {
 }
 
 export function initGrid() {
+  collegaGestiTattili();
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });
   // Refresh manuale = lettura utente, in place: keyset `from` ricarica la pagina
   // corrente senza tornare all'inizio (niente OFFSET profondo).

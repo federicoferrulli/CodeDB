@@ -17,7 +17,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { EJSON } = require('bson');
-const { readLines, readManifest, fileDelBackup } = require('./util');
+const { readLines, readManifest, fileDelBackup, verifyBackupDir } = require('./util');
 
 const BATCH_SIZE = 500;
 
@@ -53,7 +53,30 @@ function resolveChain(backupDir) {
     seen.add(dir);
     const manifest = readManifest(dir);
     chain.unshift({ dir, manifest });
-    if (manifest.type === 'full') return chain;
+    if (manifest.type === 'full') {
+      const expected = chain[0].manifest;
+      const normType = (v) => String(v === 'postgres' ? 'postgresql' : v);
+      let previousTime = -Infinity;
+      for (let i = 0; i < chain.length; i++) {
+        const layer = chain[i];
+        const m = layer.manifest;
+        const dirId = path.basename(layer.dir);
+        const time = Date.parse(m.startedAt);
+        if (m.id !== dirId) throw new Error(`Il manifest ${dirId} dichiara un id diverso (${m.id}).`);
+        if (!['full', 'incremental', 'differential'].includes(m.type)) throw new Error(`Tipo di backup non valido in ${m.id}.`);
+        if (m.connection !== expected.connection || m.db !== expected.db || normType(m.dbType) !== normType(expected.dbType)) {
+          throw new Error(`Il layer ${m.id} appartiene a una connessione/database diversa dal backup richiesto.`);
+        }
+        if (!Number.isFinite(time) || time < previousTime) throw new Error(`Cronologia non valida nel layer ${m.id}.`);
+        if (i === 0 && m.type !== 'full') throw new Error(`La catena non inizia con un backup full (layer ${m.id}).`);
+        if (i > 0 && m.baseId !== chain[i - 1].manifest.id) throw new Error(`baseId incoerente nel layer ${m.id}.`);
+        if (m.type === 'differential' && chain[i - 1].manifest.type !== 'full') {
+          throw new Error(`Il differenziale ${m.id} non è basato direttamente su un full.`);
+        }
+        previousTime = time;
+      }
+      return chain;
+    }
     if (!manifest.baseId) throw new Error(`Il backup ${manifest.id} è ${manifest.type} ma non ha un baseId.`);
     // Il baseId arriva da un file su disco, quindi vale come qualunque altro
     // input: `path.join(parent, '../../..')` uscirebbe dalla cartella dei
@@ -73,6 +96,54 @@ function resolveChain(backupDir) {
     }
     dir = baseDir;
   }
+}
+
+/**
+ * Controlla l'intera catena prima della prima modifica al database.
+ *
+ * I manifest storici possono non avere SHA-256: restano ripristinabili per
+ * compatibilità, ma vengono dichiarati esplicitamente non verificabili. Ogni
+ * checksum presente, la dimensione, il tipo e il confinamento di ogni file
+ * vengono invece validati. Basta un solo problema in qualunque layer per
+ * interrompere tutto prima di DROP/CREATE/INSERT.
+ */
+async function preflightChain(chain, log) {
+  let verifiedCount = 0;
+  let unverifiableCount = 0;
+
+  for (const layer of chain) {
+    let report;
+    try {
+      report = await verifyBackupDir(layer.dir);
+    } catch (err) {
+      throw new Error(
+        `Verifica preventiva fallita per il layer "${layer.manifest.id || path.basename(layer.dir)}": ${err.message}`
+      );
+    }
+
+    verifiedCount += report.okCount;
+    unverifiableCount += report.unverifiableCount;
+    if (report.failedCount || report.extraCount) {
+      const problemi = report.details
+        .filter((d) => d.status !== 'OK' && d.status !== 'UNVERIFIABLE')
+        .slice(0, 5)
+        .map((d) => `${d.file}: ${d.status}${d.error ? ` (${d.error})` : ''}`);
+      throw new Error(
+        `Verifica preventiva fallita per il layer "${report.backupId || layer.manifest.id}": `
+        + `${report.failedCount} file mancanti, corrotti o non validi e ${report.extraCount} non dichiarati. `
+        + `${problemi.join('; ')}. Nessuna modifica è stata applicata al database.`
+      );
+    }
+    if (report.unverifiableCount && log && typeof log.info === 'function') {
+      log.info(
+        `  ATTENZIONE: il layer ${report.backupId || layer.manifest.id} contiene `
+        + `${report.unverifiableCount} file storici senza checksum; esistenza e dimensione sono state controllate, `
+        + 'ma l\'integrità del contenuto non è dimostrabile.'
+      );
+    }
+  }
+
+  return { verifiedCount, unverifiableCount };
 }
 
 /* ---------------------------------------------------------------------------
@@ -194,13 +265,19 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     if (isFirst) {
       const idxFile = layer.manifest.files.find((x) => x.kind === 'indexes' && x.collection === f.collection);
       if (idxFile) {
-        const indexes = EJSON.deserialize(JSON.parse(fs.readFileSync(path.join(layer.dir, idxFile.path), 'utf8')), { relaxed: false });
+        const idxPath = fileDelBackup(layer.dir, idxFile.path, 'file degli indici');
+        const indexes = EJSON.deserialize(JSON.parse(fs.readFileSync(idxPath, 'utf8')), { relaxed: false });
         for (const idx of indexes) {
           if (idx.name === '_id_') continue;
           const { key, name, v, ns, ...opts } = idx;
-          await collection.createIndex(key, { name, ...opts }).catch((err) => {
-            log.error(`  Indice "${name}" su ${f.collection} non ricreato: ${err.message}`);
-          });
+          try {
+            await collection.createIndex(key, { name, ...opts });
+          } catch (err) {
+            throw new Error(
+              `Indice "${name || '(senza nome)'}" su "${f.collection}" non ricreato: ${err.message}. `
+              + 'Il ripristino è stato interrotto per non dichiarare riuscito un database privo dei vincoli originali.'
+            );
+          }
         }
       }
     }
@@ -428,6 +505,10 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   log.info(`Catena di ripristino (${chain.length} layer): ${chain.map((l) => l.manifest.id).join(' → ')}`);
   log.info(`Database di destinazione: ${db}`);
 
+  // Deve precedere anche un eventuale --drop: un backup alterato o incompleto
+  // non può provocare alcuna mutazione prima che TUTTA la catena sia valida.
+  await preflightChain(chain, log);
+
   if (onlyCollections) {
     const available = new Set(chain.flatMap((l) => l.manifest.files.filter((f) => f.kind === 'data').map((f) => f.collection)));
     for (const c of onlyCollections) {
@@ -482,4 +563,11 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   return summary;
 }
 
-module.exports = { runRestore, resolveChain, checkApplied, assertSafeSchemaSql, splitStatements };
+module.exports = {
+  runRestore,
+  resolveChain,
+  preflightChain,
+  checkApplied,
+  assertSafeSchemaSql,
+  splitStatements,
+};

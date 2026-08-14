@@ -281,6 +281,13 @@ function istante(v) {
 /** Etichetta di categoria: leggibile, stabile e mai `[object Object]`. */
 function categoria(v) {
   if (v === null || v === undefined) return '(vuoto)';
+  // I PRIMITIVI prima di tutto: `ejsonKind` risponde `number` sia per il
+  // wrapper `{$numberLong:…}` sia per un numero JavaScript nudo, e il ramo qui
+  // sotto fa `Object.values(v)[0]` — che su un numero vero è `undefined`. Un
+  // asse X su una colonna numerica (o sull'ordinale di riga del grafico della
+  // selezione) mostrava così una fila di etichette "undefined", mentre le barre
+  // erano giuste: il grafico sembrava disegnato bene e illeggibile.
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   const kind = ejsonKind(v);
   if (kind === 'oid') return v.$oid;
   if (kind === 'date') {

@@ -29,15 +29,14 @@ const path = require('path');
 const { EJSON } = require('bson');
 const { ObjectId } = require('mongodb');
 const {
-  createFileSink, safeName, makeBackupId, readCatalog, appendToCatalog, formatBytes,
+  createFileSink, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
 
 const TOOL_VERSION = 1;
 
-// Dimensione e SHA-256 di un file di schema appena scritto. Il restore esegue
-// questi file come SQL: senza checksum non c'è modo di accorgersi che sono stati
-// modificati dopo il backup (vedi assertSafeSchemaSql in restore.js).
-function schemaDigest(fullPath) {
+// Dimensione e SHA-256 di un file appena scritto. Dati, schema e indici devono
+// essere tutti verificabili prima di un ripristino.
+function fileDigest(fullPath) {
   const buf = fs.readFileSync(fullPath);
   return { bytes: buf.length, sha256: require('crypto').createHash('sha256').update(buf).digest('hex') };
 }
@@ -46,7 +45,7 @@ const SINCE_COLUMN_CANDIDATES = [
 ];
 
 // Determina il backup di partenza per incremental/differential dal catalogo.
-function resolveBase(groupDir, type) {
+function resolveBase(groupDir, type, expected) {
   if (type === 'full') return null;
   const backups = readCatalog(groupDir).backups.filter((b) => b.status === 'ok');
   const base = type === 'differential'
@@ -55,7 +54,89 @@ function resolveBase(groupDir, type) {
   if (!base) {
     throw new Error(`Nessun backup ${type === 'differential' ? 'full' : ''} precedente in ${groupDir}: esegui prima un backup full.`);
   }
-  return base;
+  const id = String(base.id || '');
+  if (!id || id === '.' || id === '..' || id.includes('/') || id.includes('\\')) {
+    throw new Error('Il catalogo contiene un id di backup di base non valido.');
+  }
+  const manifest = readManifest(path.join(groupDir, id));
+  const normType = (v) => String(v === 'postgres' ? 'postgresql' : v);
+  if (manifest.id !== id
+      || manifest.connection !== String(expected.connName)
+      || manifest.db !== String(expected.db)
+      || normType(manifest.dbType) !== normType(expected.dbType)
+      || !['full', 'incremental', 'differential'].includes(manifest.type)
+      || !Number.isFinite(Date.parse(manifest.startedAt))) {
+    throw new Error(`Il backup di base ${id} non appartiene semanticamente a questa catena.`);
+  }
+  if (type === 'differential' && manifest.type !== 'full') {
+    throw new Error(`Il backup differenziale richiede una base full, ma ${id} è ${manifest.type}.`);
+  }
+  return { ...base, ...manifest };
+}
+
+function legacySafeName(name) {
+  return String(name).replace(/[^\w.-]+/g, '_');
+}
+
+// Le installazioni aggiornate possono avere catene create col vecchio nome
+// lossy. Le si riusa solo se OGNI manifest del catalogo prova che il gruppo
+// appartiene esattamente alla stessa connessione e allo stesso database; in
+// presenza di una vecchia collisione si parte invece nel nuovo gruppo sicuro.
+function legacyGroupCompatible(groupDir, connName, db, dbType) {
+  try {
+    const catalog = JSON.parse(fs.readFileSync(path.join(groupDir, 'catalog.json'), 'utf8'));
+    const entries = (catalog.backups || []).filter((b) => b && b.status === 'ok');
+    if (!entries.length) return false;
+    const tipo = String(dbType === 'postgres' ? 'postgresql' : dbType);
+    return entries.every((entry) => {
+      const id = String(entry.id || '');
+      if (!/^[\w.-]+$/.test(id)) return false;
+      const manifest = JSON.parse(fs.readFileSync(path.join(groupDir, id, 'manifest.json'), 'utf8'));
+      const tipoManifest = String(manifest.dbType === 'postgres' ? 'postgresql' : manifest.dbType);
+      return manifest.connection === String(connName)
+        && manifest.db === String(db)
+        && tipoManifest === tipo;
+    });
+  } catch {
+    return false;
+  }
+}
+
+function backupGroupDir(destRoot, connName, db, dbType) {
+  const hardened = path.join(destRoot, `${safeName(connName)}_${safeName(db)}`);
+  if (fs.existsSync(hardened)) {
+    const stat = fs.lstatSync(hardened);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Il gruppo di backup non può essere un file, link simbolico o junction: ${hardened}.`);
+    }
+    return hardened;
+  }
+  const legacy = path.join(destRoot, `${legacySafeName(connName)}_${legacySafeName(db)}`);
+  if (legacy !== hardened && fs.existsSync(legacy)) {
+    const stat = fs.lstatSync(legacy);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error(`Il gruppo di backup legacy non può essere un file, link simbolico o junction: ${legacy}.`);
+    }
+    if (legacyGroupCompatible(legacy, connName, db, dbType)) return legacy;
+  }
+  return hardened;
+}
+
+function assertUniqueFilePaths(files) {
+  const seen = new Map();
+  for (const f of files) {
+    const rel = String(f.path || '').replace(/\\/g, '/');
+    const key = backupPathKey(rel);
+    if (!rel) throw new Error('Il backup ha prodotto un file senza percorso.');
+    if (seen.has(key)) {
+      const previous = seen.get(key);
+      throw new Error(
+        `Collisione nei file di backup: ${previous.path} (${previous.collection || previous.kind}) e ${rel} `
+        + `(${f.collection || f.kind}) indicano lo stesso percorso.`
+      );
+    }
+    seen.set(key, f);
+  }
 }
 
 /* --- Dump MongoDB --------------------------------------------------------- */
@@ -116,21 +197,29 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
     const cursor = collection.find(filter).batchSize(1000);
-    for await (const doc of cursor) {
-      await sink.writeLine(EJSON.stringify(doc, { relaxed: true }));
-      count += 1;
+    let digest;
+    try {
+      for await (const doc of cursor) {
+        await sink.writeLine(EJSON.stringify(doc, { relaxed: true }));
+        count += 1;
+      }
+      digest = await sink.close();
+    } catch (err) {
+      await cursor.close().catch(() => {});
+      await sink.abort(err);
+      throw err;
     }
-    const { bytes, sha256 } = await sink.close();
+    const { bytes, sha256 } = digest;
     files.push({ path: rel, collection: coll, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
     log.info(`  ${coll}: ${count} documenti → ${rel} (${formatBytes(bytes)})`);
 
     // Gli indici servono solo al restore del layer full.
     if (type === 'full') {
-      const indexes = await collection.indexes().catch(() => []);
+      const indexes = await collection.indexes();
       const relIdx = `indexes/${safeName(coll)}.json`;
       fs.mkdirSync(path.join(backupDir, 'indexes'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(EJSON.serialize(indexes, { relaxed: true }), null, 2), 'utf8');
-      files.push({ path: relIdx, collection: coll, kind: 'indexes' });
+      files.push({ path: relIdx, collection: coll, kind: 'indexes', ...fileDigest(path.join(backupDir, relIdx)) });
     }
   }
   return { files, notes };
@@ -159,7 +248,16 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
   const conn = await pool.getConnection();
   const files = [];
   const notes = [];
+  let inTransaction = false;
   try {
+    // Un'unica snapshot per tutte le tabelle: senza, ogni SELECT vedeva un
+    // istante diverso e il backup poteva contenere riferimenti orfani pur
+    // completandosi senza errori. La transazione mantiene inoltre i metadata
+    // lock fino al COMMIT, impedendo DDL concorrenti durante schema + dati.
+    await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+    await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
+    inTransaction = true;
+
     for (const table of collections) {
       // Definizione della tabella, per ricrearla al restore.
       const [[create]] = await conn.query(`SHOW CREATE TABLE ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}`);
@@ -168,7 +266,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       fs.writeFileSync(path.join(backupDir, relSchema), String(create['Create Table']) + ';\n', 'utf8');
       // Checksum anche per lo schema: il restore lo ESEGUE, quindi deve poter
       // verificare che il file non sia stato alterato sul disco.
-      files.push({ path: relSchema, collection: table, kind: 'schema', ...schemaDigest(path.join(backupDir, relSchema)) });
+      files.push({ path: relSchema, collection: table, kind: 'schema', ...fileDigest(path.join(backupDir, relSchema)) });
 
       let mode = 'full';
       let sinceColumn = null;
@@ -197,18 +295,31 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const stream = conn.connection
         .query({ sql: `SELECT * FROM ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}${where}`, values: params })
         .stream();
-      for await (const row of stream) {
-        await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
-        count += 1;
+      let digest;
+      try {
+        for await (const row of stream) {
+          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          count += 1;
+        }
+        digest = await sink.close();
+      } catch (err) {
+        stream.destroy();
+        await sink.abort(err);
+        throw err;
       }
-      const { bytes, sha256 } = await sink.close();
+      const { bytes, sha256 } = digest;
       files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
       log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
     }
+    await conn.query('COMMIT');
+    inTransaction = false;
+    return { files, notes };
+  } catch (err) {
+    if (inTransaction) await conn.query('ROLLBACK').catch(() => {});
+    throw err;
   } finally {
     conn.release();
   }
-  return { files, notes };
 }
 
 function pgQid(name) {
@@ -274,23 +385,100 @@ async function pgSinceColumn(pool, table, sinceField, schema = null) {
   return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
 }
 
+// Metadati PostgreSQL letti dallo STESSO client della snapshot. Delegare alla
+// strategy userebbe pool.query(), cioè un'altra connessione: un DDL concorrente
+// potrebbe allora far descrivere uno schema diverso da quello dei dati.
+async function pgPrimaryKey(client, table, schema) {
+  const res = await client.query(
+    `SELECT kcu.column_name AS name
+       FROM information_schema.table_constraints tc
+       JOIN information_schema.key_column_usage kcu
+         ON tc.constraint_name = kcu.constraint_name
+        AND tc.table_schema = kcu.table_schema
+      WHERE tc.constraint_type = 'PRIMARY KEY'
+        AND tc.table_schema = $2
+        AND tc.table_name = $1
+   ORDER BY kcu.ordinal_position`,
+    [table, schema]
+  );
+  return res.rows.map((r) => r.name);
+}
+
+function pgDefaultSql(value) {
+  const text = String(value).trim();
+  if (/^(NULL|CURRENT_TIMESTAMP(\(\d*\))?|NOW\(\)|TRUE|FALSE)$/i.test(text)) return text.toUpperCase();
+  if (/^-?\d+(\.\d+)?$/.test(text)) return text;
+  return `'${text.replace(/'/g, "''")}'`;
+}
+
+async function pgTableDdl(client, schema, table) {
+  const res = await client.query(
+    `SELECT column_name AS name, data_type AS ctype, udt_name AS udt,
+            is_nullable AS nullable, column_default AS cdefault
+       FROM information_schema.columns
+      WHERE table_schema = $2 AND table_name = $1
+   ORDER BY ordinal_position`,
+    [table, schema]
+  );
+  if (!res.rows.length) {
+    throw new Error(`La tabella PostgreSQL "${schema}.${table}" non ha colonne leggibili.`);
+  }
+  const pk = await pgPrimaryKey(client, table, schema);
+  const defs = res.rows.map((column) => {
+    const type = column.ctype === 'USER-DEFINED'
+      ? column.udt
+      : (column.ctype || column.udt || 'varchar');
+    let def = `${pgQid(column.name)} ${type}`;
+    if (column.nullable !== 'YES') def += ' NOT NULL';
+    if (column.cdefault != null) def += ` DEFAULT ${pgDefaultSql(column.cdefault)}`;
+    return def;
+  });
+  if (pk.length) defs.push(`PRIMARY KEY (${pk.map(pgQid).join(', ')})`);
+  return `CREATE TABLE ${pgQid(schema)}.${pgQid(table)} (\n  ${defs.join(',\n  ')}\n);`;
+}
+
 async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
   const pool = strategy.pool;
   const files = [];
   const notes = [];
   const BATCH = 1000;
+  const client = await pool.connect();
+  let inTransaction = false;
 
-  for (const table of collections) {
+  try {
+    await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    inTransaction = true;
+
+    // db è lo schema nel modello PostgreSQL di CodeDB. I nomi sono quindi già
+    // qualificabili senza alcuna SELECT di catalogo: il lock è il primo comando
+    // dopo BEGIN e precede la creazione della snapshot. Un solo LOCK statement
+    // evita inoltre finestre fra una tabella e la successiva.
+    const schema = String(db || 'public').trim() || 'public';
+    const qualificati = new Map(collections.map(
+      (table) => [table, `${pgQid(schema)}.${pgQid(table)}`]
+    ));
+    const lockTargets = [...qualificati.values()].sort((a, b) => a.localeCompare(b));
+    await client.query(`LOCK TABLE ${lockTargets.join(', ')} IN ACCESS SHARE MODE`);
+
+    // Solo dopo i lock si apre la snapshot e si leggono i metadati. Da questo
+    // punto schema, PK e pagine dati passano tutti dallo stesso client.
+    const risolte = new Map();
+    for (const table of collections) {
+      const resolved = await pgResolveSchema(client, table, schema);
+      const qualified = qualificati.get(table);
+      risolte.set(table, { resolved, qualified });
+    }
+
+    for (const table of collections) {
     // Schema in cui il nome viene davvero risolto: serve a qualificare le query
     // del dump, a scegliere la colonna incrementale giusta e a registrare nel
     // manifest COSA è stato salvato. `db` è già uno schema (vedi la nota su
     // qtable in PostgreSqlStrategy), quindi lo si preferisce quando c'è.
-    const resolved = await pgResolveSchema(pool, table, db).catch(() => ({ schema: db || null, ambiguous: [] }));
+    const { resolved, qualified } = risolte.get(table);
     // Riferimento qualificato usato da TUTTE le query del dump: senza, il nome
     // veniva risolto dal search_path e si poteva salvare la tabella omonima di
     // un altro schema — un backup che riesce ma contiene i dati sbagliati, e un
     // restore che poi li scrive sopra quelli buoni.
-    const qualified = resolved.schema ? `${pgQid(resolved.schema)}.${pgQid(table)}` : pgQid(table);
     if (resolved.ambiguous.length) {
       notes.push(
         `"${table}": esiste anche negli schemi ${resolved.ambiguous.join(', ')}; ` +
@@ -298,19 +486,19 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       );
       log.info(`  ATTENZIONE: "${table}" è omonima in ${resolved.ambiguous.join(', ')}: salvata ${resolved.schema || '?'}.${table}`);
     }
-    const ddl = await strategy.tableDdl(db, table);
+    const ddl = await pgTableDdl(client, resolved.schema || schema, table);
     if (ddl) {
       const relSchema = `schema/${safeName(table)}.sql`;
       fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relSchema), ddl + '\n', 'utf8');
-      files.push({ path: relSchema, collection: table, kind: 'schema', schema: resolved.schema || undefined, ...schemaDigest(path.join(backupDir, relSchema)) });
+      files.push({ path: relSchema, collection: table, kind: 'schema', schema: resolved.schema || undefined, ...fileDigest(path.join(backupDir, relSchema)) });
     }
 
     let mode = 'full';
     let sinceColumn = null;
     let sinceParam = null;
     if (since) {
-      sinceColumn = await pgSinceColumn(pool, table, sinceField, resolved.schema);
+      sinceColumn = await pgSinceColumn(client, table, sinceField, resolved.schema);
       if (sinceColumn) {
         mode = 'incremental';
         sinceParam = confineIncrementale(since);
@@ -319,11 +507,13 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       }
     }
 
-    const pk = await strategy.primaryKey(db, table);
+    const pk = await pgPrimaryKey(client, table, resolved.schema || schema);
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
 
+    let digest;
+    try {
     if (pk.length) {
       const pkCols = pk.map(pgQid).join(', ');
       let after = null;
@@ -340,7 +530,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         }
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH);
-        const res = await pool.query(
+        const res = await client.query(
           `SELECT * FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
           params
         );
@@ -368,7 +558,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         }
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH, offset);
-        const res = await pool.query(
+        const res = await client.query(
           `SELECT * FROM ${qualified}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
           params
         );
@@ -382,21 +572,34 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       }
     }
 
-    const { bytes, sha256 } = await sink.close();
+      digest = await sink.close();
+    } catch (err) {
+      await sink.abort(err);
+      throw err;
+    }
+    const { bytes, sha256 } = digest;
     // `schema` nel manifest: documenta da dove vengono i dati, così un restore
     // futuro (o un operatore) non deve indovinarlo.
     files.push({ path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined, mode, sinceColumn, count, bytes, sha256 });
     log.info(`  ${resolved.schema ? resolved.schema + '.' : ''}${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
+    }
+    await client.query('COMMIT');
+    inTransaction = false;
+    return { files, notes };
+  } catch (err) {
+    if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
-  return { files, notes };
 }
 
 /* --- Backup completo di un database --------------------------------------- */
 
 async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress, level, log }) {
   const { strategy, dbType } = session;
-  const groupDir = path.join(destRoot, `${safeName(connName)}_${safeName(db)}`);
-  const base = resolveBase(groupDir, type);
+  const groupDir = backupGroupDir(destRoot, connName, db, dbType);
+  const base = resolveBase(groupDir, type, { connName, db, dbType });
   const since = base ? base.startedAt : null;
   const id = makeBackupId(type);
   const backupDir = path.join(groupDir, id);
@@ -428,6 +631,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await dumpPostgreSql(args)
         : await dumpMongo(args);
+    assertUniqueFilePaths(result.files);
 
     const manifest = {
       tool: 'codedb-backup',

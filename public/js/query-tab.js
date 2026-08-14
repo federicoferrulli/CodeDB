@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -14,14 +14,16 @@ import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
 import { initCharts, renderChart, resizeChart, clearChart } from './charts.js';
+import {
+  initQueryMap, renderQueryMap, resizeQueryMap, clearQueryMap, aggiornaPulsanteMappa,
+} from './query-map.js';
 import { ordinaRighe, larghezzeColonne, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 const escapeHtml = esc;
 
-let activeViewMode = 'table'; // 'table' | 'json' | 'chart'
+let activeViewMode = 'table'; // 'table' | 'json' | 'chart' | 'map'
 let currentResults = [];
-let executionStartTime = 0;
 
 // Stato per il Chunking File SQL
 let activeSqlChunker = null;
@@ -158,14 +160,17 @@ export function initQueryTab() {
   initToolbarDropdown('#query-target-btn', '#query-target-menu');
   initToolbarDropdown('#chart-export-menu-btn', '#chart-export-menu');
 
-  // Switch vista risultati (Tabella / JSON Tree / Grafici)
+  // Switch vista risultati (Tabella / JSON Tree / Grafici / Mappa)
   if (resModeTableBtn && resModeJsonBtn) {
     resModeTableBtn.addEventListener('click', () => setResultsViewMode('table'));
     resModeJsonBtn.addEventListener('click', () => setResultsViewMode('json'));
   }
   const resModeChartBtn = $('#res-mode-chart');
   if (resModeChartBtn) resModeChartBtn.addEventListener('click', () => setResultsViewMode('chart'));
+  const resModeMapBtn = $('#res-mode-map');
+  if (resModeMapBtn) resModeMapBtn.addEventListener('click', () => setResultsViewMode('map'));
   initCharts();
+  initQueryMap();
 
   // Azioni editor e sincronizzazione highlight
   if (editorInput) {
@@ -527,14 +532,19 @@ function initVerticalResizer() {
   });
 }
 
-// Gestione modalità vista risultati (Tabella / JSON / Grafici)
+// Le quattro viste dei risultati: pulsante che le seleziona e pannello che
+// mostrano. Un solo elenco, usato sia dal cambio vista sia dall'azzeramento.
+const VISTE_RISULTATI = {
+  table: { btn: '#res-mode-table', view: '#query-table-view' },
+  json: { btn: '#res-mode-json', view: '#query-json-view' },
+  chart: { btn: '#res-mode-chart', view: '#query-chart-view' },
+  map: { btn: '#res-mode-map', view: '#query-map-view' },
+};
+
+// Gestione modalità vista risultati (Tabella / JSON / Grafici / Mappa)
 export function setResultsViewMode(mode) {
   activeViewMode = mode;
-  const viste = {
-    table: { btn: '#res-mode-table', view: '#query-table-view' },
-    json: { btn: '#res-mode-json', view: '#query-json-view' },
-    chart: { btn: '#res-mode-chart', view: '#query-chart-view' },
-  };
+  const viste = VISTE_RISULTATI;
   for (const [nome, sel] of Object.entries(viste)) {
     const btn = $(sel.btn);
     const view = $(sel.view);
@@ -547,22 +557,26 @@ export function setResultsViewMode(mode) {
   // dovrebbe ancora suggerirlo.
   if (mode === 'chart' && currentResults.length) segnaTraguardo('grafico');
 
-  if (mode === 'chart') allargaRisultatiPerGrafico();
+  // Grafico e mappa hanno lo stesso problema della tabella: in un pannello alto
+  // 230px non ci stanno.
+  if (mode === 'chart' || mode === 'map') allargaRisultatiPerDisegno();
   renderResults(currentResults);
-  // Il canvas del grafico era nascosto (larghezza 0) mentre si guardava un'altra
-  // vista: ECharts ha bisogno di rimisurarlo, altrimenti resta disegnato sulla
-  // dimensione precedente o non compare affatto.
+  // Il canvas era nascosto (larghezza 0) mentre si guardava un'altra vista:
+  // ECharts e Leaflet hanno bisogno di rimisurarlo, altrimenti restano
+  // disegnati sulla dimensione precedente o non compaiono affatto.
   if (mode === 'chart') requestAnimationFrame(resizeChart);
+  if (mode === 'map') requestAnimationFrame(resizeQueryMap);
 }
 
-// Un grafico ha bisogno di più altezza di una tabella: con la ripartizione di
-// default il pannello dei risultati è alto ~230px, e fra toolbar, assi e
-// legenda al disegno restano cento pixel. Alla PRIMA apertura dei Grafici si
-// sposta il divisorio una volta sola — poi decide l'utente, e la sua scelta non
-// viene più toccata (altrimenti ogni ritorno alla vista rimetterebbe tutto
-// dov'era, che è il modo più sicuro di far sembrare rotto un divisorio).
+// Un grafico (e una mappa ancora di più) ha bisogno di più altezza di una
+// tabella: con la ripartizione di default il pannello dei risultati è alto
+// ~230px, e fra toolbar, assi e legenda al disegno restano cento pixel. Alla
+// PRIMA apertura di una di queste viste si sposta il divisorio una volta sola —
+// poi decide l'utente, e la sua scelta non viene più toccata (altrimenti ogni
+// ritorno alla vista rimetterebbe tutto dov'era, che è il modo più sicuro di
+// far sembrare rotto un divisorio).
 let spazioGraficoDato = false;
-function allargaRisultatiPerGrafico() {
+function allargaRisultatiPerDisegno() {
   if (spazioGraficoDato) return;
   const editor = $('#query-editor-container');
   const risultati = $('#query-results-container');
@@ -639,8 +653,25 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 export function renderResults(data) {
   currentResults = Array.isArray(data) ? data : (data ? [data] : []);
 
+  // La scheda 🗺 Mappa esiste solo se in questi risultati ci sono geometrie. Se
+  // la si stava guardando e i nuovi risultati non ne hanno, si torna alla
+  // tabella: restare su una vista il cui pulsante è appena sparito lascerebbe a
+  // schermo un pannello che nessuna scheda dichiara.
+  const conGeometrie = aggiornaPulsanteMappa(currentResults);
+  if (activeViewMode === 'map' && !conGeometrie && currentResults.length) {
+    setResultsViewMode('table');
+    return;
+  }
+
   if (activeViewMode === 'table') {
     renderResultsTable(currentResults);
+  } else if (activeViewMode === 'map') {
+    // Asincrona solo al primo uso (carica Leaflet da public/vendor): un errore
+    // di caricamento non deve restare una promessa rifiutata in silenzio.
+    renderQueryMap(currentResults).catch((err) => {
+      console.error('[QueryTab] Errore nel rendering della mappa:', err);
+      toast(`Impossibile disegnare la mappa: ${err.message}`, true);
+    });
   } else if (activeViewMode === 'chart') {
     // `renderChart` è asincrona solo al primo uso (carica ECharts da
     // public/vendor): il risultato non serve a nessuno qui, ma un errore di
@@ -689,15 +720,12 @@ export function resetQueryView() {
   renderResultsTable([]);
   renderResultsJsonTree([]);
   clearChart();
+  clearQueryMap();
 
   // La modalità vista appartiene a risultati che non ci sono più. Non si passa
   // da `setResultsViewMode`, che ridisegnerebbe e sposterebbe il divisorio.
   activeViewMode = 'table';
-  const viste = {
-    table: { btn: '#res-mode-table', view: '#query-table-view' },
-    json: { btn: '#res-mode-json', view: '#query-json-view' },
-    chart: { btn: '#res-mode-chart', view: '#query-chart-view' },
-  };
+  const viste = VISTE_RISULTATI;
   for (const [nome, sel] of Object.entries(viste)) {
     const btn = $(sel.btn);
     const view = $(sel.view);
@@ -1149,26 +1177,29 @@ export function renderQuerySchemaBrowser() {
    di errore): serve al filtro, che dopo aver caricato i database mancanti deve
    ri-applicarsi sui nodi appena comparsi. */
 function fetchCollectionsForSchemaBrowser(dbName, container) {
+  const originTab = activeTab();
+  const tabId = originTab ? originTab.id : undefined;
   container.innerHTML = '<div style="color: var(--fg-dim); padding: 4px;">Caricamento schema...</div>';
-  return emit('db:schema', { db: dbName })
+  return emit('db:schema', { tabId, db: dbName })
     .then((res) => {
       // Schema Browser: il contenitore appartiene all'albero della connessione
       // mostrata; una risposta in ritardo di un altro tab lo riempirebbe di
       // tabelle inesistenti.
-      if (!isForActiveTab(res)) return;
+      if (container.isConnected === false || !isForActiveTab(res)) return;
       renderSchemaTreeForDb(dbName, container, res.collections);
       riapplicaFiltroSchema();
     })
-    .catch(() => {
+    .catch((schemaErr) => {
+      if (container.isConnected === false || !isForActiveTab(schemaErr)) return;
       // Fallback su db:collections in caso di errore
-      return emit('db:collections', { db: dbName })
+      return emit('db:collections', { tabId, db: dbName })
         .then((res) => {
-          if (!isForActiveTab(res)) return;
+          if (container.isConnected === false || !isForActiveTab(res)) return;
           renderSchemaTreeForDb(dbName, container, res.collections);
           riapplicaFiltroSchema();
         })
         .catch((err) => {
-          if (!isForActiveTab(err)) return;
+          if (container.isConnected === false || !isForActiveTab(err)) return;
           container.innerHTML = `<div style="color: var(--danger); font-size: 0.85em;">${escapeHtml(err.message || 'Errore caricamento')}</div>`;
         });
     });
@@ -1193,7 +1224,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
     const collLabel = document.createElement('div');
     collLabel.className = 'schema-node-label';
     collLabel.draggable = true;
-    const icon = state.dbType === 'mysql' ? '📋' : '📁';
+    const icon = isSqlType(state.dbType) ? '📋' : '📁';
     collLabel.innerHTML = `<span>${icon} <strong>${escapeHtml(collName)}</strong></span>`;
 
     // Drag & Drop
@@ -1573,7 +1604,9 @@ export function runQuery(opzioni = {}) {
     });
   }
   updateQueryMetrics('running');
-  executionStartTime = performance.now();
+  // Locale al singolo run: due query contemporanee, anche su tab diversi, non
+  // devono sovrascriversi l'istante di partenza.
+  const executionStartedAt = performance.now();
 
   const stopBtn = $('#query-stop-btn');
   if (stopBtn) stopBtn.classList.remove('hidden');
@@ -1613,12 +1646,14 @@ export function runQuery(opzioni = {}) {
     runId
   })
     .then((res) => {
-      const elapsed = Math.round(performance.now() - executionStartTime);
-      if (stopBtn) stopBtn.classList.add('hidden');
+      const elapsed = Math.round(performance.now() - executionStartedAt);
       // Si azzera nello stato del TAB D'ORIGINE (res._state), non in quello
       // attivo al ritorno della risposta.
       const stRun = (res && res._state) || statoRun;
-      if (stRun.queryRunId === runId) stRun.queryRunId = null;
+      const latest = stRun.queryRunId === runId;
+      const stessoContesto = latest && stRun.activeCollId === collTabId;
+      const strutturaCambiata = cambiaStruttura(code);
+      if (latest) stRun.queryRunId = null;
 
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
@@ -1630,7 +1665,7 @@ export function runQuery(opzioni = {}) {
       // ritorno della risposta: `state` è un Proxy sul tab attivo, quindi
       // scriverci direttamente spostava il bersaglio del tab sbagliato — e la
       // query successiva partiva verso un altro database senza alcun avviso.
-      if (res && res.activeDb) {
+      if (stessoContesto && res && res.activeDb) {
         const st = res._state || state;
         st.queryDb = res.activeDb;
         st.queryColl = null;
@@ -1640,26 +1675,31 @@ export function runQuery(opzioni = {}) {
       // Il pannello dei risultati è unico: i risultati di un tab passato in
       // background restano nello storico delle query in sospeso, ma non devono
       // sostituire ciò che l'utente sta guardando su un'altra connessione.
-      if (isForActiveTab(res)) {
+      if (latest && isForActiveTab(res) && stopBtn) stopBtn.classList.add('hidden');
+      if (strutturaCambiata) {
+        stRun.schemaDirty = true;
+        if (isForActiveTab(res)) {
+          stRun.schemaDirty = false;
+          refreshDbTree();
+        }
+      }
+      if (stessoContesto && isForActiveTab(res)) {
         updateQueryMetrics('success', elapsed, rows.length);
         renderResults(rows);
-        // Un DDL riuscito cambia l'albero: senza questo l'oggetto creato
-        // esisteva davvero ma non compariva nella sidebar finché non si
-        // riapriva la connessione, e sembrava che il comando non avesse
-        // fatto nulla.
-        if (cambiaStruttura(code)) refreshDbTree();
       }
       return res;
     })
     .catch((err) => {
-      const elapsed = Math.round(performance.now() - executionStartTime);
-      if (stopBtn) stopBtn.classList.add('hidden');
+      const elapsed = Math.round(performance.now() - executionStartedAt);
       const stRunErr = (err && err._state) || statoRun;
-      if (stRunErr.queryRunId === runId) stRunErr.queryRunId = null;
+      const latest = stRunErr.queryRunId === runId;
+      const stessoContesto = latest && stRunErr.activeCollId === collTabId;
+      if (latest) stRunErr.queryRunId = null;
 
       pendingHandle.fail(err, elapsed);
       aggiornaEsecuzione(idStorico, { esito: 'errore', ms: elapsed });
-      if (isForActiveTab(err)) {
+      if (latest && isForActiveTab(err) && stopBtn) stopBtn.classList.add('hidden');
+      if (stessoContesto && isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
         renderResults([]);
         // "… (riga 12)" nel messaggio: la riga viene evidenziata nel gutter e

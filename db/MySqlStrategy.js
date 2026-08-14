@@ -3,6 +3,7 @@
 const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { splitStatements } = require('./sqlText');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const sessioni = require('./sessioni');
 
@@ -12,6 +13,14 @@ const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_sche
 // proposito: una ALTER TABLE fatta da fuori si riflette al massimo dopo questo
 // intervallo, quelle fatte da qui svuotano la cache subito.
 const GEO_CACHE_MS = 15000;
+
+// Tipi su cui ha senso cercare col LIKE nel pannello di riferimento (vedi
+// relatedRows). Fuori da qui restano numeri, date e binari: un LIKE su una
+// colonna non testuale costringe MySQL a convertirla riga per riga e non
+// risponde comunque alla domanda che l'utente sta ponendo.
+const TESTUALI_MYSQL = new Set([
+  'char', 'varchar', 'tinytext', 'text', 'mediumtext', 'longtext', 'enum', 'set', 'json',
+]);
 
 /* ---------------------------------------------------------------------------
  * Helpers MySQL
@@ -219,7 +228,7 @@ class MySqlStrategy extends DbStrategy {
   }
 
   async renameDatabase(db, newName) {
-    const pool = this.requirePool();
+    this.requirePool();
     const from = String(db || '').trim();
     const to = String(newName || '').trim();
     assertDbName(from);
@@ -230,27 +239,13 @@ class MySqlStrategy extends DbStrategy {
       throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
     }
 
-    // MySQL non supporta RENAME DATABASE: si crea il nuovo schema e si
-    // spostano le tabelle con RENAME TABLE (le view non sono spostabili).
-    const [tables] = await pool.query(
-      `SELECT TABLE_NAME AS name FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
-      [from]
+    // MySQL non offre RENAME DATABASE. La vecchia emulazione spostava solo le
+    // tabelle base e poi eliminava lo schema sorgente, perdendo view, routine ed
+    // eventi e lasciando una finestra per scritture concorrenti. Fail-closed.
+    throw new Error(
+      'MySQL non supporta una rinomina atomica e completa del database. ' +
+      'Esegui un backup verificato, ripristinalo col nuovo nome e rimuovi il database originale solo dopo i controlli.'
     );
-    if (!tables.length) throw new Error('Il database non contiene tabelle da spostare.');
-    try {
-      await pool.query(`CREATE DATABASE ${qid(to)}`);
-    } catch (err) {
-      // Niente check preventivo via listDatabases() (costoso e soggetto a
-      // TOCTOU): si lascia decidere al motore e si traduce il suo errore.
-      if (err && err.code === 'ER_DB_CREATE_EXISTS') throw new Error(`Il database "${to}" esiste già.`);
-      throw err;
-    }
-    if (tables.length > 0) {
-      const renameParts = tables.map((t) => `${qtable(from, t.name)} TO ${qtable(to, t.name)}`);
-      await pool.query(`RENAME TABLE ${renameParts.join(', ')}`);
-    }
-    await pool.query(`DROP DATABASE ${qid(from)}`);
   }
 
   async dropDatabase(db) {
@@ -640,7 +635,7 @@ class MySqlStrategy extends DbStrategy {
           if (row && row.cid) payload.opHandle.connectionId = row.cid;
         } catch (_) {}
       }
-      if (db) await conn.query(`USE ${qid(db)}`).catch(() => {});
+      if (db) await conn.query(`USE ${qid(db)}`);
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
@@ -889,6 +884,9 @@ class MySqlStrategy extends DbStrategy {
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
+      if (splitStatements(sql, { backslashEscape: true }).length !== 1) {
+        throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
+      }
     } else {
       const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
       sql = `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
@@ -1073,6 +1071,93 @@ class MySqlStrategy extends DbStrategy {
     }
 
     return { collections, relations };
+  }
+
+  // Chiavi esterne uscenti dalla sola tabella indicata (pannello di riferimento
+  // della griglia). Si legge REFERENCED_TABLE_SCHEMA e non lo si dà per uguale a
+  // `db`: in MySQL una FK può attraversare i database, e assumendo lo schema di
+  // partenza il pannello interrogherebbe una tabella omonima sbagliata — o
+  // inesistente, che è il caso fortunato perché almeno si vede.
+  async columnRelations(db, coll) {
+    const pool = this.requirePool();
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+         FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+     ORDER BY ORDINAL_POSITION`,
+      [db, coll]
+    );
+    return rows.map((r) => ({
+      campo: r.COLUMN_NAME,
+      db: r.REFERENCED_TABLE_SCHEMA || db,
+      tabella: r.REFERENCED_TABLE_NAME,
+      colonna: r.REFERENCED_COLUMN_NAME,
+      origine: 'vincolo',
+      molti: false,
+    }));
+  }
+
+  async relatedRows(db, coll, payload) {
+    const pool = this.requirePool();
+    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
+    const table = qtable(db, coll);
+    const [pk, sel, info] = await Promise.all([
+      this.primaryKey(db, coll),
+      this.selectListFor(db, coll),
+      this.tableColumnsInfo(db, coll),
+    ]);
+
+    // La colonna arriva dal descrittore della FK, quindi da information_schema e
+    // non dall'utente — ma questo metodo è raggiungibile anche dal socket, e un
+    // payload confezionato a mano non deve poter nominare una colonna
+    // qualunque: `qid` la quoterebbe senza batter ciglio.
+    const noteCols = new Set(info.columns.map((c) => c.name));
+    if (!noteCols.has(colonna)) {
+      throw new Error(`La colonna "${colonna}" non esiste nella tabella "${coll}".`);
+    }
+
+    const conds = [];
+    const params = [];
+    if (haValore) {
+      // <=> e non =: con un valore NULL l'uguaglianza normale non è mai vera, e
+      // una cella vuota avrebbe mostrato "nessuna riga" anche dove la riga c'è.
+      // Il valore arriva in Extended JSON come tutti gli altri (una FK può
+      // essere un BIGINT o una data, non solo un intero piccolo).
+      conds.push(`${qid(colonna)} <=> ?`);
+      params.push(toSqlValue(deserializeClientObject({ v: valore }).v));
+    }
+    if (cerca) {
+      // CAST e non un confronto diretto. Su una chiave INT, `id = 'Bru'` non è
+      // un errore per MySQL: converte la stringa a 0 e restituisce le righe con
+      // id = 0. La ricerca sembrerebbe funzionare e mostrerebbe una riga che non
+      // c'entra nulla — il tipo di difetto che nessuno riconosce come tale.
+      const or = [`CAST(${qid(colonna)} AS CHAR) = ?`];
+      params.push(cerca);
+      // Si cerca sulle colonne testuali: un LIKE su un intero o su una data
+      // costringe MySQL a convertirle riga per riga, e il risultato non è
+      // quello che l'utente si aspetta comunque.
+      for (const c of info.columns) {
+        if (!TESTUALI_MYSQL.has(String(c.type).toLowerCase())) continue;
+        or.push(`${qid(c.name)} LIKE ?`);
+        params.push(`%${DbStrategy.escapeLike(cerca)}%`);
+        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
+      }
+      conds.push(`(${or.join(' OR ')})`);
+    }
+
+    const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
+    const order = pk.length ? ` ORDER BY ${pk.map(qid).join(', ')}` : '';
+    const ms = DbStrategy.queryTimeoutMs();
+    const q = { sql: `SELECT ${sel.list} FROM ${table}${where}${order} LIMIT ? OFFSET ?` };
+    if (ms > 0) q.timeout = ms;
+
+    const [rows, fields] = await pool.query(q, [...params, limit, skip]);
+    MySqlStrategy.geoRowsToJson(rows, sel.geo);
+
+    const columns = (fields || []).map((f) => f.name);
+    const capped = DbStrategy.truncateBySize(rows);
+    const righe = capped.rows.map((r) => serializeRow({ ...r, _id: this.makeId(r, pk, columns) }));
+    return { righe, colonne: columns, chiave: pk, troncato: !!capped.truncated };
   }
 
 
@@ -1263,8 +1348,42 @@ class MySqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const oldName = String((payload && payload.oldName) || '').trim();
     if (!oldName) throw new Error('Nome della colonna da modificare mancante.');
+    const [rows] = await pool.query(
+      `SELECT EXTRA AS extra, GENERATION_EXPRESSION AS generationExpression,
+              COLUMN_COMMENT AS comment, CHARACTER_SET_NAME AS charset, COLLATION_NAME AS collation
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
+      [db, coll, oldName]
+    );
+    const originale = rows[0];
+    if (!originale) throw new Error(`Colonna ${oldName} non trovata.`);
+    if (String(originale.generationExpression || '').trim()) {
+      throw new Error(
+        'La modifica visuale di una colonna generata non è supportata: usa una DDL esplicita per non perderne l’espressione.'
+      );
+    }
+    const extra = String(originale.extra || '');
+    const sconosciuti = extra
+      .replace(/auto_increment/ig, '')
+      .replace(/default_generated/ig, '')
+      .replace(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/ig, '')
+      .trim();
+    if (sconosciuti) {
+      throw new Error(`La colonna contiene attributi MySQL non modificabili in sicurezza (${sconosciuti}). Usa una DDL esplicita.`);
+    }
+    const column = { ...(payload.column || {}) };
+    // AUTO_INCREMENT è metadato autorevole del server: un client vecchio o un
+    // form incompleto non deve rimuoverlo accidentalmente.
+    column.autoIncrement = /auto_increment/i.test(extra);
+    let definizione = columnSql(column);
+    const tipoTestuale = /^(?:char|varchar|tinytext|text|mediumtext|longtext|enum|set)\b/i.test(String(column.type || '').trim());
+    if (tipoTestuale && originale.charset) definizione += ` CHARACTER SET ${qid(originale.charset)}`;
+    if (tipoTestuale && originale.collation) definizione += ` COLLATE ${qid(originale.collation)}`;
+    const onUpdate = extra.match(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/i);
+    if (onUpdate) definizione += ` ${onUpdate[0].toUpperCase()}`;
+    if (originale.comment) definizione += ` COMMENT ${mysql.escape(String(originale.comment))}`;
     await pool.query(
-      `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${columnSql(payload.column || {})}`
+      `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${definizione}`
     );
     this._geoCache.clear();
   }
