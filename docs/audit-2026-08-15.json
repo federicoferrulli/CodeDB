@@ -8,6 +8,10 @@
     "data": "2026-08-15",
     "cosa": "Audit richiesto da Keus sull'intera piattaforma. Tutti i rilievi sono stati corretti nella stessa sessione. Eseguiti parsing JSON, node --check sui JavaScript modificati/aggiunti, scansione NUL e git diff --check. Server, database, npm test ed E2E non sono stati avviati: la procedura dell'audit richiede autorizzazione esplicita.",
     "aggiunti": ["CDB-A73", "CDB-A74", "CDB-A75", "CDB-A76", "CDB-A77", "CDB-A78", "CDB-A79", "CDB-A80", "CDB-A81", "CDB-A82", "CDB-A83", "CDB-A84"]
+  }, {
+    "data": "2026-08-15 (seconda passata, richiesta da Keus)",
+    "cosa": "Riletti tutti e 12 i siti di fix confrontandoli con lo scenario dichiarato: nessuno risultava solo dichiarato. Eseguito npm test — mai avviato durante l'audit — con tutte le suite verdi. Chiusi poi i due punti che erano stati RINVIATI invece che risolti: il round-trip PostgreSQL (CDB-A83), bloccato in interfaccia con la nota 'temporaneamente', ora è implementato; e le colonne MySQL INVISIBLE (CDB-A78), che il fail-closed sugli EXTRA rendeva non modificabili. Aggiunto test/unit-ddl-roundtrip.js, provato per mutazione. Resta non eseguita ogni prova con un DBMS reale.",
+    "modificati": ["CDB-A78", "CDB-A83"]
   }],
   "ambito_analizzato": [
     "server.js ed Electron: trasporto, autenticazione socket, connessioni, riconnessione e navigazione esterna",
@@ -86,8 +90,9 @@
       "riferimenti": ["db/MySqlStrategy.js:1347", "db/PostgreSqlStrategy.js:1020"],
       "problema": "Input rename o alter column → copia/drop non atomico oppure ricostruzione parziale di tipo, default, auto_increment, comment, collation e on-update.",
       "scenario": "Errore a metà rename o modifica visuale di serial/varchar(40)/colonna generata produceva perdita o schema diverso.",
-      "fix": "Rename non atomico disabilitato fail-closed; ALTER PG atomico con format_type/default; attributi MySQL autorevoli preservati o rifiutati se non rappresentabili.",
-      "stato": "risolto"
+      "fix": "Rename non atomico disabilitato fail-closed; ALTER PG atomico con format_type/default; attributi MySQL autorevoli preservati o rifiutati se non rappresentabili. Aggiunta la VISIBILITÀ (MySQL 8.0.23+): INVISIBLE era fra gli EXTRA non riconosciuti, quindi una colonna nascosta non era modificabile affatto; ora viene preservata nella CHANGE COLUMN al posto imposto dalla grammatica (dopo DEFAULT, prima di AUTO_INCREMENT).",
+      "stato": "risolto",
+      "verifica": "npm test verde. Non provato su un MySQL 8 reale: la posizione di INVISIBLE nella column_definition è presa dalla grammatica documentata, non da un ALTER eseguito."
     },
     {
       "id": "CDB-A79", "severita": "alta",
@@ -141,8 +146,9 @@
       "riferimenti": ["public/js/exportimport.js:449", "public/js/insert.js:18", "public/js/cellselect.js:406"],
       "problema": "Import DB PG conservava schema sorgente senza indici/FK; interval diventava number; copia INSERT usava quoting MySQL. USE/EXPLAIN/dropIndex/read-only tx avevano edge non sicuri.",
       "scenario": "Import verso schema diverso o valore con apostrofo produceva DDL/SQL errato; errori setup lasciavano contesto o transazione inaffidabile.",
-      "fix": "Round-trip DB PG bloccato finché non fedele, tipi numerici ancorati, INSERT dialect-aware, USE fail-fast, EXPLAIN singolo, indice verificato e rollback garantito.",
-      "stato": "risolto"
+      "fix": "Tipi numerici ancorati, INSERT dialect-aware, USE fail-fast, EXPLAIN singolo, indice verificato e rollback garantito. Il round-trip PostgreSQL NON è più bloccato ma implementato: tableDdl emette la tabella NON qualificata (il retarget lo fa il search_path già allineato da collectionAggregate), legge PK/UNIQUE/CHECK da pg_get_constraintdef, mappa i default nextval(...) su serial e conserva GENERATED ... AS IDENTITY; il nuovo tableAuxDdl restituisce indici (pg_get_indexdef, esclusi quelli vincolari) e FK, che l'import applica in una SECONDA fase, dopo tutte le tabelle e tutti i dati.",
+      "stato": "risolto",
+      "verifica": "test/unit-ddl-roundtrip.js (pool finto con righe di catalogo reali), verde e provato per mutazione su tre regressioni: qualificazione dello schema, serial disattivato, FK rimesse nella CREATE TABLE. NON eseguito su un PostgreSQL reale: nessun server raggiungibile in sessione. Vedi priorita_intervento."
     },
     {
       "id": "CDB-A84", "severita": "media",
@@ -157,9 +163,10 @@
     }
   ],
   "priorita_intervento": [
-    "Eseguire npm test previa autorizzazione: non è stato avviato durante l'audit.",
-    "Eseguire gli E2E isolati MongoDB, MySQL, PostgreSQL, MCP/RBAC e backup con i tre DBMS disponibili.",
+    "FATTO il 2026-08-15: npm test eseguito, tutte le suite verdi.",
+    "Eseguire gli E2E isolati MongoDB, MySQL, PostgreSQL, MCP/RBAC e backup con i tre DBMS disponibili. In sessione non erano raggiungibili: né PostgreSQL su 5432 né Docker.",
     "Provare manualmente cambio/chiusura tab durante modifica, DDL, import, infinite scroll e query concorrenti.",
-    "Mantenere bloccato il round-trip database PostgreSQL finché schema, indici, FK e retarget non sono completi."
+    "PRIORITARIO: provare il round-trip PostgreSQL su un DB reale (CDB-A83, ora sbloccato). Da verificare in particolare su uno schema di DESTINAZIONE diverso da quello di origine, con tabelle legate da FK, una colonna serial e una a identità. Il test unitario prova il testo del DDL, non la sua esecuzione.",
+    "Verificare su un MySQL 8.0.23+ una CHANGE COLUMN su colonna INVISIBLE (CDB-A78)."
   ]
 }

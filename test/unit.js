@@ -1150,6 +1150,12 @@ console.log('--- Test Unitari CodeDB ---');
   // nella stessa CREATE TABLE si scopre solo quando qualcuno lo esegue.
   require('./unit-schema-export');
 
+  // Test 24-septies: DDL del round-trip export/import di un intero database.
+  // Il difetto qui non lancia e non si vede: un DDL che qualifica lo schema di
+  // ORIGINE fa "riuscire" l'import scrivendo nel posto sbagliato, e indici,
+  // vincoli e FK spariscono in silenzio. Vedi CDB-A83.
+  await require('./unit-ddl-roundtrip');
+
   // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
   // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
   // momento il registro (vedi docs/provenienza.md) promette qualcosa che il

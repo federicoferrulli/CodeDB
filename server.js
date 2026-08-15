@@ -3727,9 +3727,12 @@ io.on('connection', (socket) => {
 
   delegate('collection:export', (strategy, p) => strategy.collectionExport(p.db, p.coll, p));
   delegate('collection:import', (strategy, p) => strategy.collectionImport(p.db, p.coll, p));
-  // DDL della tabella (CREATE TABLE, solo MySQL; null per MongoDB): usato
+  // DDL della tabella (CREATE TABLE, solo SQL; null per MongoDB): usato
   // dall'export di interi database per rendere il file auto-contenuto.
   delegate('collection:ddl', async (strategy, p) => ({ ddl: await strategy.tableDdl(p.db, p.coll) }));
+  // Indici e chiavi esterne della tabella, da applicare in coda all'import
+  // quando tutte le tabelle esistono e i dati sono stati caricati.
+  delegate('collection:auxddl', async (strategy, p) => await strategy.tableAuxDdl(p.db, p.coll));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde

@@ -382,6 +382,7 @@ const METHOD_CAPABILITY = {
   dropIndex:           { cap: 'ddl', db: 0, coll: 1 },
 
   tableDdl:            { cap: 'read', db: 0, coll: 1 },
+  tableAuxDdl:         { cap: 'read', db: 0, coll: 1 },
   collectionStats:     { cap: 'read', db: 0, coll: 1 },
   columnRelations:     { cap: 'read', db: 0, coll: 1, filter: 'relations' },
   relatedRows:         { cap: 'read', db: 0, coll: 1 },

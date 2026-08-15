@@ -446,23 +446,10 @@ function isSystemDb(name, dbType = state.dbType) {
   return (SYSTEM_DBS[dbType] || []).includes(String(name).toLowerCase());
 }
 
-function isPostgresDbType(dbType) {
-  return dbType === 'postgresql' || dbType === 'postgres';
-}
-
-const POSTGRES_DB_ROUNDTRIP_BLOCKED =
-  'Export/import completo PostgreSQL temporaneamente bloccato: il DDL corrente ' +
-  'mantiene lo schema sorgente e non conserva ancora tutti gli indici e i vincoli. ' +
-  'Usa il backup oppure un export CSV per tabella.';
-
 export async function exportDatabase(db) {
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
-  if (isPostgresDbType(dbType)) {
-    toast(POSTGRES_DB_ROUNDTRIP_BLOCKED, true);
-    return;
-  }
   const isSql = isSqlType(dbType);
   const entita = isSql ? 'tabelle' : 'collection';
   if (isSystemDb(db, dbType)) {
@@ -491,8 +478,17 @@ export async function exportDatabase(db) {
     for (const c of collections) {
       let ddl = null;
       let indexes = null;
+      let postDdl = null;
       if (isSql) {
         ddl = (await emit('collection:ddl', { tabId, db, coll: c.name })).ddl;
+        // Indici e FK viaggiano a parte e vengono applicati in coda all'import:
+        // una FK verso una tabella non ancora creata fallirebbe. I DBMS che non
+        // li espongono (e i server più vecchi) semplicemente non ne mandano.
+        try {
+          const aux = await emit('collection:auxddl', { tabId, db, coll: c.name });
+          const statements = [...(aux.indexes || []), ...(aux.foreignKeys || [])];
+          if (statements.length) postDdl = statements;
+        } catch { /* server senza collection:auxddl: export comunque valido */ }
       } else {
         const stats = await emit('collection:stats', { tabId, db, coll: c.name });
         indexes = (stats.indexes || []).filter((i) => i.name !== '_id_');
@@ -511,7 +507,7 @@ export async function exportDatabase(db) {
       exported += lines.length;
       parts.push(
         `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
-        `"indexes": ${JSON.stringify(indexes)}, "docs": [\n    ` +
+        `"indexes": ${JSON.stringify(indexes)}, "postDdl": ${JSON.stringify(postDdl)}, "docs": [\n    ` +
         lines.join(',\n    ') + '\n  ] }'
       );
     }
@@ -571,6 +567,14 @@ function validateDbExport(text, dbType = state.dbType) {
     if (!c || typeof c.name !== 'string' || !Array.isArray(c.docs)) {
       throw new Error('File malformato: ogni collection deve avere "name" e l\'array "docs".');
     }
+    // `postDdl` viene eseguito come SQL: se c'è, dev'essere un elenco di
+    // stringhe. Senza questo controllo una voce non testuale finirebbe nella
+    // query come "undefined" e l'errore arriverebbe dal database, a import già
+    // iniziato e con metà dei dati caricati.
+    if (c.postDdl != null
+        && (!Array.isArray(c.postDdl) || c.postDdl.some((s) => typeof s !== 'string' || !s.trim()))) {
+      throw new Error(`File malformato: "postDdl" di "${c.name}" deve essere un elenco di istruzioni SQL.`);
+    }
   }
   return parsed;
 }
@@ -582,16 +586,12 @@ export function openDbImportModal() {
   }
   const origin = captureContext();
   const dbType = origin.st.dbType;
-  if (isPostgresDbType(dbType)) {
-    toast(POSTGRES_DB_ROUNDTRIP_BLOCKED, true);
-    return;
-  }
   dbImportContext = { ...origin, dbType };
   dbImportAperture++;
   dbImportData = null;
   dbImporting = false;
   $('#dbimport-subtitle').textContent = isSqlType(dbImportContext.dbType)
-    ? 'Ricrea tabelle (CREATE TABLE del file) e righe in uno schema di destinazione.'
+    ? 'Ricrea tabelle, righe, indici e chiavi esterne in uno schema di destinazione.'
     : 'Ricrea collection, documenti e indici in un database di destinazione.';
   $('#dbimport-file').value = '';
   $('#dbimport-target').value = '';
@@ -720,6 +720,33 @@ async function runDbImport() {
           pushErr(`${c.name}, indice "${idx.name}": ${err.message}`);
         }
       }));
+    }
+
+    // SQL, seconda fase: indici e chiavi esterne, quando TUTTE le tabelle
+    // esistono e tutte le righe sono state caricate. Prima di qui una FK verso
+    // una tabella ancora da creare fallirebbe, e una FK già attiva imporrebbe
+    // alle righe un ordine di inserimento che il file non descrive.
+    if (isSql) {
+      const coda = dbImportData.collections
+        .flatMap((c) => (c.postDdl || []).map((sql) => ({ coll: c.name, sql })));
+      for (let i = 0; i < coda.length; i++) {
+        if (!stillConnected()) {
+          pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
+          break;
+        }
+        setDbImportProgress(100, `indici e vincoli… ${i + 1}/${coda.length}`);
+        try {
+          await emit('collection:aggregate', {
+            tabId, db: target, coll: coda[i].coll, pipeline: coda[i].sql,
+          });
+        } catch (err) {
+          // Un indice o una FK che non si ricrea non invalida i dati già
+          // importati: si segnala e si prosegue con i restanti.
+          if (!/already exists|esiste già/i.test(err.message)) {
+            pushErr(`${coda[i].coll}, indici/vincoli: ${err.message}`);
+          }
+        }
+      }
     }
   } catch (err) {
     pushErr(err.message);

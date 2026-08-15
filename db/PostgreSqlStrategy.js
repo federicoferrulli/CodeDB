@@ -102,6 +102,14 @@ function whereFromId(id) {
   return { sql: sqlParts.join(' AND '), params };
 }
 
+// Tipo seriale equivalente, per colonna con default `nextval(...)`. I nomi a
+// sinistra sono quelli che restituisce `format_type`, non gli alias SQL.
+const SERIAL_PER_TIPO = {
+  smallint: 'smallserial',
+  integer: 'serial',
+  bigint: 'bigserial',
+};
+
 function defaultSql(v) {
   const t = String(v).trim();
   if (/^(NULL|CURRENT_TIMESTAMP(\(\d*\))?|NOW\(\)|TRUE|FALSE)$/i.test(t)) return t.toUpperCase();
@@ -1056,17 +1064,155 @@ class PostgreSqlStrategy extends DbStrategy {
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }
 
+  /**
+   * Esegue una funzione con il `search_path` fissato sullo schema indicato.
+   *
+   * Serve alle funzioni di catalogo `pg_get_constraintdef`/`pg_get_indexdef`:
+   * il testo che restituiscono qualifica con lo schema SOLO gli oggetti non
+   * visibili dal `search_path` corrente. Impostandolo sullo schema di origine
+   * si ottiene un DDL con nomi NON qualificati, cioè ripristinabile in uno
+   * schema diverso da quello di partenza — è lo stesso meccanismo con cui
+   * `pg_dump` produce dump reimportabili altrove. L'alternativa (riscrivere il
+   * testo con delle regex) fallirebbe su ogni nome che contiene un punto.
+   */
+  async conSearchPath(schema, fn) {
+    const pool = this.requirePool();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN READ ONLY');
+      try {
+        await client.query(`SET LOCAL search_path TO ${qid(schema)}`);
+        return await fn(client);
+      } finally {
+        await client.query('ROLLBACK').catch(() => {});
+      }
+    } finally {
+      client.release();
+    }
+  }
+
+  /**
+   * DDL della tabella: colonne, PRIMARY KEY, UNIQUE e CHECK.
+   *
+   * Il nome della tabella è volutamente NON qualificato. `collectionAggregate`
+   * allinea il `search_path` allo schema di destinazione prima di eseguire lo
+   * SQL, quindi un DDL non qualificato ricrea la tabella DOVE la si sta
+   * importando; qualificandola con lo schema di ORIGINE, l'import in uno schema
+   * diverso ricreava invece la tabella nello schema di partenza (o falliva).
+   * È la stessa forma che MySQL ottiene da `SHOW CREATE TABLE`.
+   *
+   * Le chiavi esterne NON stanno qui: vanno aggiunte quando tutte le tabelle
+   * esistono e i dati sono stati caricati (vedi `tableAuxDdl`).
+   */
   async tableDdl(db, coll) {
+    const schema = schemaOf(db);
     const fields = await this.tableFields(db, coll);
-    const pk = await this.primaryKey(db, coll);
+    if (!fields.length) return null;
+
+    // Colonne a identità: `GENERATED ... AS IDENTITY` (PG 10+) non compare nel
+    // default e va letto a parte, altrimenti si perde ricreando una colonna
+    // ordinaria senza generazione automatica.
+    const ident = await this.conSearchPath(schema, (client) => client.query(
+      `SELECT column_name AS name, identity_generation AS generation
+         FROM information_schema.columns
+        WHERE table_schema = $1 AND table_name = $2 AND is_identity = 'YES'`,
+      [schema, coll],
+    ));
+    const identita = new Map(ident.rows.map((r) => [r.name, String(r.generation || 'BY DEFAULT')]));
+
     const colDefs = fields.map((f) => {
+      const generation = identita.get(f.name);
+      if (generation) {
+        // L'identità implica già NOT NULL e la propria sequenza.
+        return `${qid(f.name)} ${f.types[0]} GENERATED ${generation} AS IDENTITY`;
+      }
+      // `DEFAULT nextval('<tabella>_<col>_seq')` è una colonna seriale. La
+      // sequenza vive nello schema di ORIGINE: riprodurre il default verbatim
+      // creerebbe una tabella che punta alla sequenza di un altro schema (o a
+      // una che non esiste). I tipi `serial` la ricreano invece da soli, con il
+      // nome giusto nello schema di destinazione.
+      const seriale = f.default != null && /\bnextval\s*\(/i.test(f.default)
+        ? SERIAL_PER_TIPO[String(f.types[0] || '').toLowerCase()]
+        : null;
+      if (seriale) {
+        let def = `${qid(f.name)} ${seriale}`;
+        if (!f.nullable) def += ' NOT NULL';
+        return def;
+      }
       let def = `${qid(f.name)} ${f.types[0]}`;
       if (!f.nullable) def += ' NOT NULL';
-      if (f.default != null) def += ` DEFAULT ${defaultSql(f.default)}`;
+      // Il default arriva già come espressione SQL dal catalogo
+      // (`now()`, `'x'::text`, `(a + b)`): va riprodotto verbatim, non
+      // ri-quotato come un letterale da `defaultSql` — che è invece la forma
+      // giusta per un default digitato dall'utente.
+      if (f.default != null) def += ` DEFAULT ${f.default}`;
       return def;
     });
-    if (pk.length) colDefs.push(`PRIMARY KEY (${pk.map(qid).join(', ')})`);
-    return `CREATE TABLE ${qtable(db, coll)} (\n  ${colDefs.join(',\n  ')}\n);`;
+
+    // Vincoli di tabella diversi dalle FK, nella forma autorevole del catalogo:
+    // `pg_get_constraintdef` conserva PK multi-colonna, UNIQUE parziali,
+    // espressioni CHECK e clausole che una ricostruzione a mano perde.
+    const vincoli = await this.conSearchPath(schema, (client) => client.query(
+      `SELECT pg_catalog.pg_get_constraintdef(c.oid) AS def
+         FROM pg_catalog.pg_constraint c
+         JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+         JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+        WHERE n.nspname = $1 AND t.relname = $2 AND c.contype IN ('p', 'u', 'c')
+     ORDER BY c.contype DESC, c.conname`,
+      [schema, coll],
+    ));
+    for (const r of vincoli.rows) colDefs.push(String(r.def));
+
+    return `CREATE TABLE ${qid(coll)} (\n  ${colDefs.join(',\n  ')}\n);`;
+  }
+
+  /**
+   * Istruzioni da eseguire DOPO che tutte le tabelle esistono e i dati sono
+   * stati caricati: indici non vincolari e chiavi esterne.
+   *
+   * L'ordine è essenziale. Una FK verso una tabella non ancora creata fallisce,
+   * e una FK attiva durante il caricamento impone alle righe un ordine di
+   * inserimento che l'export non conosce. Creare gli indici alla fine è inoltre
+   * molto più rapido che mantenerli aggiornati riga per riga.
+   */
+  async tableAuxDdl(db, coll) {
+    const schema = schemaOf(db);
+    return this.conSearchPath(schema, async (client) => {
+      const out = { indexes: [], foreignKeys: [] };
+
+      // Solo gli indici NON creati da un vincolo: quelli di PK/UNIQUE sono già
+      // dentro il CREATE TABLE e ricrearli darebbe un errore di duplicato.
+      const idx = await client.query(
+        `SELECT pg_catalog.pg_get_indexdef(x.indexrelid) AS def
+           FROM pg_catalog.pg_index x
+           JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid
+           JOIN pg_catalog.pg_class t ON t.oid = x.indrelid
+           JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = $1 AND t.relname = $2
+            AND NOT EXISTS (
+              SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = x.indexrelid
+            )
+       ORDER BY i.relname`,
+        [schema, coll],
+      );
+      for (const r of idx.rows) out.indexes.push(`${String(r.def)};`);
+
+      const fk = await client.query(
+        `SELECT c.conname AS name, pg_catalog.pg_get_constraintdef(c.oid) AS def
+           FROM pg_catalog.pg_constraint c
+           JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+           JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+          WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'f'
+       ORDER BY c.conname`,
+        [schema, coll],
+      );
+      for (const r of fk.rows) {
+        out.foreignKeys.push(
+          `ALTER TABLE ${qid(coll)} ADD CONSTRAINT ${qid(r.name)} ${String(r.def)};`
+        );
+      }
+      return out;
+    });
   }
 
   async dbSchema(db) {

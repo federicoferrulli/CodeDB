@@ -106,6 +106,10 @@ function columnSql(c) {
   let s = `${qid(name)} ${type}`;
   if (c.nullable === false) s += ' NOT NULL';
   if (c.default != null && String(c.default).trim() !== '') s += ` DEFAULT ${defaultSql(c.default)}`;
+  // La visibilità (MySQL 8.0.23+) va DOPO il default e PRIMA di
+  // AUTO_INCREMENT: è l'ordine imposto dalla grammatica di column_definition,
+  // non una preferenza. Fuori posto, l'ALTER viene rifiutato dal parser.
+  if (c.invisible) s += ' INVISIBLE';
   if (c.autoIncrement) s += ' AUTO_INCREMENT';
   return s;
 }
@@ -1366,6 +1370,7 @@ class MySqlStrategy extends DbStrategy {
     const sconosciuti = extra
       .replace(/auto_increment/ig, '')
       .replace(/default_generated/ig, '')
+      .replace(/\bINVISIBLE\b/ig, '')
       .replace(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/ig, '')
       .trim();
     if (sconosciuti) {
@@ -1375,6 +1380,10 @@ class MySqlStrategy extends DbStrategy {
     // AUTO_INCREMENT è metadato autorevole del server: un client vecchio o un
     // form incompleto non deve rimuoverlo accidentalmente.
     column.autoIncrement = /auto_increment/i.test(extra);
+    // Idem per la visibilità (MySQL 8.0.23+): senza conservarla, modificare il
+    // tipo di una colonna nascosta la rendeva visibile — cioè la faceva
+    // ricomparire in tutte le `SELECT *` delle applicazioni che la usano.
+    column.invisible = /\bINVISIBLE\b/i.test(extra);
     let definizione = columnSql(column);
     const tipoTestuale = /^(?:char|varchar|tinytext|text|mediumtext|longtext|enum|set)\b/i.test(String(column.type || '').trim());
     if (tipoTestuale && originale.charset) definizione += ` CHARACTER SET ${qid(originale.charset)}`;

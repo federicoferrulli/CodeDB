@@ -61,6 +61,18 @@ class DbStrategy {
    */
   async tableDdl(_db, _coll) { return null; }
 
+  /**
+   * Istruzioni DDL da applicare DOPO la creazione di tutte le tabelle e il
+   * caricamento dei dati: indici non vincolari e chiavi esterne.
+   *
+   * Sono separate da `tableDdl` per una ragione di ordine, non di stile: una FK
+   * verso una tabella non ancora creata fallisce, e una FK già attiva impone
+   * alle righe un ordine di inserimento che l'export non conosce.
+   *
+   * @returns {Promise<{indexes: string[], foreignKeys: string[]}>}
+   */
+  async tableAuxDdl(_db, _coll) { return { indexes: [], foreignKeys: [] }; }
+
   /** @returns {Promise<{stats, indexes, fields, sampled}>} */
   async collectionStats(_db, _coll) { throw unsupported(); }
 
