@@ -8,6 +8,35 @@ L'utente si chiama **Keus**: rivolgiti a lui per nome in ogni risposta.
 
 ---
 
+## Regola di completezza: chiudere davvero
+
+Non ridurre il lavoro perché sembra lungo. Se un problema richiede di correggere
+il motore prima della funzione, si corregge il motore. Non c'è credito per aver
+finito prima, e c'è un costo reale nel dichiarare risolto ciò che non lo è.
+
+In pratica:
+
+* **Non disabilitare al posto di correggere.** Nascondere un pulsante, bloccare
+  una funzione con un messaggio, aggiungere un `return` anticipato: sono
+  soluzioni solo quando la cosa giusta è davvero non fare quell'operazione (per
+  esempio perché il DBMS non offre un'alternativa sicura), e in quel caso vanno
+  spiegate. Una nota "temporaneamente bloccato" è un lavoro rinviato, non un fix.
+* **"Risolto" significa verificato.** Aver scritto il codice non è averlo
+  provato. Se i test non sono stati eseguiti, va detto; se sono stati eseguiti,
+  va detto cosa copre la prova e cosa no. Un rapporto che dichiara risolto
+  qualcosa di non provato vale meno di uno che dichiara onestamente il dubbio.
+* **Correggi la classe, non l'istanza.** Se una GEOMETRY non sopravvive al
+  backup, la domanda non è "come sistemo le geometrie" ma "quali altri tipi
+  hanno lo stesso problema". Chiudere solo il caso segnalato lascia il difetto
+  vivo e dà la falsa sicurezza di averlo eliminato.
+* **Un test che non fallisce mai non prova nulla.** Dopo averlo scritto,
+  verificane almeno una volta la sensibilità rompendo di proposito il codice che
+  dovrebbe proteggere.
+* **Finisci l'intero perimetro chiesto.** Se una parte va lasciata fuori, va
+  dichiarata esplicitamente, con il motivo — non semplicemente omessa.
+
+---
+
 ## Comandi Principali
 
 ```bash

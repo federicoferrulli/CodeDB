@@ -374,12 +374,16 @@ class MongoDbStrategy extends DbStrategy {
     DbStrategy.assertCreatableName(to, 'del database');
     if (from === to) throw new Error('Il nuovo nome coincide con quello attuale.');
     if (SYSTEM_DBS.has(from)) throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
-    // MongoDB non offre una rinomina atomica del database. Copiare e poi
-    // eliminare il sorgente perderebbe scritture concorrenti, opzioni e
-    // validatori; la vecchia emulazione falliva inoltre in silenzio sugli indici.
+    // MongoDB non offre una rinomina atomica del database, e questo metodo NON
+    // la emula: la vecchia emulazione copiava le collection e droppava il
+    // sorgente, perdendo opzioni, validatori e — in silenzio — gli indici.
+    // La rinomina passa da dump → verifica → restore, orchestrata dal server
+    // (`rinominaViaDump`), che eredita checksum e ripristino degli oggetti.
+    // Arrivare qui significa che qualcuno ha scavalcato quel percorso.
     throw new Error(
-      'MongoDB non supporta una rinomina atomica e sicura del database. ' +
-      'Esegui un backup verificato, ripristinalo col nuovo nome e rimuovi il database originale solo dopo i controlli.'
+      'La rinomina di un database MongoDB non passa da questo metodo: usa il ' +
+      'percorso dump/restore del server (db:rename), che copia anche indici, ' +
+      'view, opzioni e validatori e verifica il risultato prima di concludere.'
     );
   }
 

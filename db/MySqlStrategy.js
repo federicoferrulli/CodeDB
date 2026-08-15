@@ -243,12 +243,15 @@ class MySqlStrategy extends DbStrategy {
       throw new Error(`Il database di sistema "${from}" non può essere rinominato.`);
     }
 
-    // MySQL non offre RENAME DATABASE. La vecchia emulazione spostava solo le
-    // tabelle base e poi eliminava lo schema sorgente, perdendo view, routine ed
-    // eventi e lasciando una finestra per scritture concorrenti. Fail-closed.
+    // MySQL non offre RENAME DATABASE, e questo metodo NON lo emula: la vecchia
+    // emulazione spostava le sole tabelle base, perdendo view, routine, trigger
+    // ed eventi. La rinomina passa da dump → verifica → restore, orchestrata
+    // dal server (`rinominaViaDump`), che quegli oggetti li salva e li ricrea.
+    // Arrivare qui significa che qualcuno ha scavalcato quel percorso.
     throw new Error(
-      'MySQL non supporta una rinomina atomica e completa del database. ' +
-      'Esegui un backup verificato, ripristinalo col nuovo nome e rimuovi il database originale solo dopo i controlli.'
+      'La rinomina di un database MySQL non passa da questo metodo: usa il ' +
+      'percorso dump/restore del server (db:rename), che copia anche view, ' +
+      'routine, trigger, eventi e chiavi esterne e verifica il risultato.'
     );
   }
 

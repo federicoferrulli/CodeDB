@@ -59,37 +59,56 @@ export function openCreateDb() {
 
 export async function renameDb(name) {
   const origin = captureSchemaTarget({ word: dbWord(), wordCap: dbWord(true) });
-  if (origin.dbType !== 'postgresql' && origin.dbType !== 'postgres') {
-    toast('La rinomina completa del database non è disponibile: crea una nuova destinazione ed esegui un export/import controllato.', true);
-    return;
-  }
   // Su PostgreSQL il livello è lo SCHEMA e la rinomina è un ALTER SCHEMA
-  // istantaneo: la nota sulla copia vale solo per MongoDB/MySQL.
-  const isSchema = origin.word === 'schema';
+  // istantaneo. Su MongoDB e MySQL non esiste un comando equivalente: il server
+  // copia il database (dump → verifica → restore) e l'originale resta al suo
+  // posto se non si chiede diversamente. Sono due operazioni molto diverse per
+  // durata e conseguenze, e la modale deve dirlo invece di chiamarle entrambe
+  // "rinomina" e basta.
+  const nativa = origin.dbType === 'postgresql' || origin.dbType === 'postgres';
   const input = await chiediTesto({
     titolo: `Rinomina ${origin.word}`,
-    sottotitolo: isSchema ? '' : 'Le collection verranno copiate nel nuovo database.',
+    sottotitolo: nativa
+      ? ''
+      : `Il ${origin.word} verrà copiato — dati, indici, view, vincoli e opzioni — `
+        + 'e verificato prima di concludere. Su un database grande può richiedere tempo.',
     etichetta: `Nuovo nome per "${name}"`,
     valore: name,
     ok: 'Rinomina',
+    spunta: nativa ? null : {
+      etichetta: `Elimina "${name}" al termine (solo se la copia risulta completa)`,
+      valore: false,
+    },
   });
   if (input == null) return;
-  const newName = input.trim();
+  const testo = nativa ? input : input.testo;
+  const eliminaOrigine = nativa ? false : !!input.spunta;
+  const newName = String(testo || '').trim();
   if (!newName || newName === name) return;
-  emit('db:rename', { tabId: origin.tabId, db: name, newName }).then((res) => {
+  emit('db:rename', { tabId: origin.tabId, db: name, newName, eliminaOrigine }).then((res) => {
     // Lo stato da aggiornare è quello del tab che ha chiesto la rinomina, non di
     // quello attivo alla risposta: una rinomina copia le collection e può durare.
     const st = res._state;
-    toast(`${origin.wordCap} rinominato in "${newName}"`);
-    st.expandedDbs.delete(name);
-    st.expandedDbs.add(newName);
-    // I coll-tab aperti sul vecchio nome seguono la rinomina.
-    updateCollTabs((ct) => { if (ct.db === name) ct.db = newName; }, st);
-    if (st.db === name) {
-      st.db = newName;
-      st.dbSchema = null;
-      st.dbSchemaFor = null;
+    // L'originale sopravvive quando la rinomina è stata una COPIA e non si è
+    // chiesto di eliminarlo. In quel caso esistono due database, e spostare i
+    // coll-tab sul nuovo nome sarebbe una bugia: l'utente stava guardando
+    // l'originale, che è ancora lì.
+    const origineSparita = res.modo !== 'dump-restore' || res.origineEliminata === true;
+    toast(origineSparita
+      ? `${origin.wordCap} rinominato in "${newName}"`
+      : `${origin.wordCap} copiato in "${newName}" (${res.documenti} documenti/righe verificati). `
+        + `"${name}" è ancora presente: eliminalo tu quando hai controllato.`);
+    if (origineSparita) {
+      st.expandedDbs.delete(name);
+      // I coll-tab aperti sul vecchio nome seguono la rinomina.
+      updateCollTabs((ct) => { if (ct.db === name) ct.db = newName; }, st);
+      if (st.db === name) {
+        st.db = newName;
+        st.dbSchema = null;
+        st.dbSchemaFor = null;
+      }
     }
+    st.expandedDbs.add(newName);
     aggiornaAlberoDopoDdl(res);
     // Griglia e sidebar sono il workspace condiviso: si toccano solo se questo
     // tab è ancora quello in primo piano. Il nuovo nome nella barra dei coll-tab

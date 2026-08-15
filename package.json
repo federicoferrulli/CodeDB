@@ -48,11 +48,13 @@
     "test:e2e:rbac": "node test/e2e-rbac.js",
     "test:e2e:rbac-mcp": "node test/e2e-rbac-mcp.js",
     "test:e2e:cancel": "node test/e2e-query-cancel.js",
+    "test:e2e:playwright": "node test/e2e-playwright.js",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh",
     "electron:licenza": "node tools/genera-licenza.js",
     "impronte": "node tools/impronte.js",
-    "build:linux:docker": "node tools/build-linux-docker.js"
+    "build:linux:docker": "node tools/build-linux-docker.js",
+    "test:e2e:tipi-mysql": "node test/e2e-tipi-mysql.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
@@ -71,6 +73,7 @@
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "leaflet": "^1.9.4",
+    "playwright": "^1.62.1",
     "socket.io-client": "^4.8.3"
   },
   "productName": "CodeDB",

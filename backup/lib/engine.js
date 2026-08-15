@@ -31,6 +31,8 @@ const { ObjectId } = require('mongodb');
 const {
   createFileSink, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
+const { isSqlGeometryType } = require('../../db/geometry');
+const { pgCreateTable, pgAuxDdl, pgSchemaObjects, pgColonneDaSalvare } = require('../../db/pg-ddl');
 
 const TOOL_VERSION = 1;
 
@@ -222,6 +224,45 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       files.push({ path: relIdx, collection: coll, kind: 'indexes', ...fileDigest(path.join(backupDir, relIdx)) });
     }
   }
+
+  // Oggetti di database che non sono documenti: view e OPZIONI delle
+  // collection. Le opzioni sono la parte che sorprende: un validatore, una
+  // collection capped o una collation di default non stanno nei documenti né
+  // negli indici, quindi un restore le perdeva tutte e il database ripristinato
+  // accettava scritture che l'originale rifiutava. Solo nel full: gli
+  // incrementali contengono modifiche, non la forma del database.
+  if (type === 'full') {
+    const oggetti = { views: [], collectionOptions: [] };
+    const tutte = await client.db(db).listCollections().toArray();
+    for (const info of tutte) {
+      if (info.type === 'view') {
+        oggetti.views.push({
+          name: info.name,
+          viewOn: info.options && info.options.viewOn,
+          pipeline: (info.options && info.options.pipeline) || [],
+          collation: info.options && info.options.collation,
+        });
+        continue;
+      }
+      if (!collections.includes(info.name)) continue;
+      const opzioni = { ...(info.options || {}) };
+      // Non sono opzioni ricreabili: l'uuid appartiene all'istanza di origine e
+      // `idIndex` viene ricreato insieme agli indici.
+      delete opzioni.uuid;
+      delete opzioni.idIndex;
+      if (Object.keys(opzioni).length) oggetti.collectionOptions.push({ name: info.name, options: opzioni });
+    }
+    if (oggetti.views.length || oggetti.collectionOptions.length) {
+      const relOgg = 'objects/schema.json';
+      fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
+      fs.writeFileSync(
+        path.join(backupDir, relOgg),
+        JSON.stringify(EJSON.serialize(oggetti, { relaxed: true }), null, 2), 'utf8',
+      );
+      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      log.info(`  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.collectionOptions.length} collection con opzioni`);
+    }
+  }
   return { files, notes };
 }
 
@@ -242,6 +283,204 @@ async function mysqlSinceColumn(conn, db, table, sinceField) {
   return SINCE_COLUMN_CANDIDATES.find((c) => dateCols.has(c)) || null;
 }
 
+/**
+ * Oggetti di schema MySQL che NON sono tabelle: view, routine, trigger, eventi.
+ *
+ * Erano il buco dichiarato del motore: un backup "riuscito" di un database con
+ * delle view lo ripristinava senza, e nessun conteggio di righe lo segnalava —
+ * i conteggi tornavano, perché le view non hanno righe proprie. È anche il
+ * motivo per cui la rinomina di un database era stata disabilitata: senza
+ * questi oggetti, dump + restore non è una rinomina ma una perdita silenziosa.
+ *
+ * `SHOW CREATE ...` è la forma autorevole (la stessa che usa mysqldump):
+ * ricostruire le definizioni da information_schema perderebbe DEFINER,
+ * SQL SECURITY, il corpo esatto delle routine e i delimitatori dei trigger.
+ */
+async function mysqlSchemaObjects(conn, db) {
+  const mysql = require('mysql2');
+  const qdb = mysql.escapeId(db, true);
+  const out = { views: [], routines: [], triggers: [], events: [] };
+
+  const [views] = await conn.query(
+    `SELECT TABLE_NAME AS name FROM information_schema.TABLES
+      WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'VIEW' ORDER BY TABLE_NAME`,
+    [db],
+  );
+  for (const v of views) {
+    const [[row]] = await conn.query(`SHOW CREATE VIEW ${qdb}.${mysql.escapeId(v.name, true)}`);
+    if (row && row['Create View']) out.views.push({ name: v.name, ddl: String(row['Create View']) });
+  }
+
+  const [routines] = await conn.query(
+    `SELECT ROUTINE_NAME AS name, ROUTINE_TYPE AS type FROM information_schema.ROUTINES
+      WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_TYPE, ROUTINE_NAME`,
+    [db],
+  );
+  for (const r of routines) {
+    const tipo = String(r.type).toUpperCase() === 'FUNCTION' ? 'FUNCTION' : 'PROCEDURE';
+    const [[row]] = await conn.query(`SHOW CREATE ${tipo} ${qdb}.${mysql.escapeId(r.name, true)}`);
+    const ddl = row && (row[`Create ${tipo === 'FUNCTION' ? 'Function' : 'Procedure'}`]);
+    if (ddl) out.routines.push({ name: r.name, type: tipo, ddl: String(ddl) });
+  }
+
+  const [triggers] = await conn.query(
+    `SELECT TRIGGER_NAME AS name, EVENT_OBJECT_TABLE AS onTable FROM information_schema.TRIGGERS
+      WHERE TRIGGER_SCHEMA = ? ORDER BY EVENT_OBJECT_TABLE, ACTION_ORDER, TRIGGER_NAME`,
+    [db],
+  );
+  for (const t of triggers) {
+    const [[row]] = await conn.query(`SHOW CREATE TRIGGER ${qdb}.${mysql.escapeId(t.name, true)}`);
+    if (row && row['SQL Original Statement']) {
+      out.triggers.push({ name: t.name, table: t.onTable, ddl: String(row['SQL Original Statement']) });
+    }
+  }
+
+  // Gli eventi esistono solo se lo scheduler è compilato: su alcune varianti
+  // (e su MariaDB con feature disattivate) la tabella non è interrogabile, e
+  // non è un motivo per far fallire un backup.
+  try {
+    const [events] = await conn.query(
+      `SELECT EVENT_NAME AS name FROM information_schema.EVENTS
+        WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME`,
+      [db],
+    );
+    for (const e of events) {
+      const [[row]] = await conn.query(`SHOW CREATE EVENT ${qdb}.${mysql.escapeId(e.name, true)}`);
+      if (row && row['Create Event']) out.events.push({ name: e.name, ddl: String(row['Create Event']) });
+    }
+  } catch { /* scheduler eventi non disponibile: nessun evento da salvare */ }
+
+  return out;
+}
+
+/**
+ * Chiavi esterne di una tabella, separate dalla sua CREATE TABLE.
+ *
+ * `SHOW CREATE TABLE` le include in linea, e questo rende il ripristino
+ * dipendente dall'ordine alfabetico delle tabelle: se la figlia viene creata
+ * prima della padre, MySQL rifiuta con ER_FK_CANNOT_OPEN_PARENT e la tabella
+ * (con le sue righe) sparisce dal ripristino. Estraendole si possono applicare
+ * alla fine, quando tutte le tabelle esistono e i dati sono dentro — che è
+ * anche l'unico ordine in cui i dati stessi non violano i vincoli.
+ *
+ * A differenza di PostgreSQL, MySQL non ha un `pg_get_constraintdef`: la forma
+ * testuale di `SHOW CREATE TABLE` è l'unica fonte completa della definizione
+ * (azione referenziale compresa), quindi l'estrazione è per forza testuale.
+ * Ciò che NON deve restare affidato al testo è il CONTO: `atteseDalCatalogo`
+ * arriva da `information_schema` e, se non coincide con quante righe si sono
+ * riconosciute, il backup si ferma. Una regex che smette di corrispondere —
+ * per un cambio di formato di MySQL, o per una clausola non prevista —
+ * produrrebbe altrimenti uno schema privo di vincoli senza dire niente a
+ * nessuno: esattamente il tipo di silenzio che questo audit ha inseguito.
+ */
+function splitMySqlForeignKeys(createTable, tableName, atteseDalCatalogo = null) {
+  const mysql = require('mysql2');
+  const righe = String(createTable).split('\n');
+  const tenute = [];
+  const fk = [];
+  for (const riga of righe) {
+    const m = riga.match(/^\s*CONSTRAINT\s+(`(?:[^`]|``)+`)\s+FOREIGN KEY\s(.*?),?\s*$/i);
+    if (m) {
+      fk.push(`ALTER TABLE ${mysql.escapeId(tableName, true)} ADD CONSTRAINT ${m[1]} FOREIGN KEY ${m[2]};`);
+    } else {
+      tenute.push(riga);
+    }
+  }
+  if (atteseDalCatalogo != null && fk.length !== atteseDalCatalogo) {
+    throw new Error(
+      `Chiavi esterne di "${tableName}": il catalogo ne dichiara ${atteseDalCatalogo}, `
+      + `ma nella CREATE TABLE ne sono state riconosciute ${fk.length}. `
+      + 'Il backup si ferma invece di produrre uno schema incompleto.'
+    );
+  }
+  if (!fk.length) return { ddl: String(createTable), foreignKeys: [] };
+  // Tolta l'ultima voce dell'elenco, la precedente resta con una virgola
+  // sospesa: `CREATE TABLE (a INT,\n) ENGINE=...` non è sintassi valida.
+  for (let i = tenute.length - 1; i >= 0; i--) {
+    if (/^\s*\)/.test(tenute[i])) continue;
+    tenute[i] = tenute[i].replace(/,\s*$/, '');
+    break;
+  }
+  return { ddl: tenute.join('\n'), foreignKeys: fk };
+}
+
+/**
+ * Colonne geometriche di una tabella MySQL, con il loro SRID.
+ *
+ * Il motore non può appoggiarsi alla cache della strategia: gira sulla propria
+ * connessione dentro la transazione di snapshot, e deve descrivere lo stesso
+ * istante dei dati.
+ *
+ * @returns {Promise<Map<string, {srid: number|null}>>}
+ */
+/**
+ * Metadati delle colonne da salvare, e come leggerle senza perdere nulla.
+ *
+ * Tre decisioni vivono qui, tutte imparate da difetti reali (CDB-A86):
+ *
+ *  1. le colonne GENERATE (STORED o VIRTUAL) si ESCLUDONO. Sono derivate dalle
+ *     altre, come una view lo è dalle tabelle; MySQL rifiuta un INSERT che le
+ *     valorizzi, quindi salvarle faceva fallire il ripristino dell'intera
+ *     tabella. La destinazione le ricalcola dalla CREATE TABLE del backup;
+ *
+ *  2. le GEOMETRIE si leggono come WKB esadecimale. Il driver le consegna
+ *     altrimenti come `{x, y}`, forma che perde tipo e SRID e che non si può
+ *     reinserire;
+ *
+ *  3. i BIGINT si leggono come TESTO. Il driver li converte in Number, e oltre
+ *     2^53 il valore CAMBIA: -9223372036854775808 tornava
+ *     -9223372036854776000. Il backup riusciva, il ripristino falliva con "Out
+ *     of range" — e senza il vincolo di dominio avrebbe invece salvato un
+ *     numero diverso da quello che c'era, senza dirlo a nessuno. DECIMAL non ha
+ *     questo problema: mysql2 lo consegna già come stringa.
+ *
+ * @returns {Promise<{nomi: string[], geo: Map<string, {srid: number|null}>, select: string}>}
+ */
+// Tipi che il driver consegna come Buffer: vanno salvati in esadecimale.
+// `bit` è incluso: BIT(n) arriva come Buffer esattamente come un BLOB.
+const TIPI_BINARI_MYSQL = new Set([
+  'binary', 'varbinary', 'tinyblob', 'blob', 'mediumblob', 'longblob', 'bit',
+]);
+
+// Tipi temporali: si salvano come testo per non passare dal Date di JavaScript,
+// che tronca i microsecondi e reinterpreta i TIMESTAMP nel fuso del client.
+const TIPI_TEMPORALI_MYSQL = new Set(['date', 'datetime', 'timestamp', 'time']);
+
+async function mysqlColumnMeta(conn, db, table) {
+  const mysql = require('mysql2');
+  const [rows] = await conn.query(
+    `SELECT COLUMN_NAME AS name, DATA_TYPE AS dtype, EXTRA AS extra, SRS_ID AS srid
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
+    [db, table],
+  );
+  const salvabili = rows.filter((r) => !/GENERATED/i.test(String(r.extra || '')));
+  const geo = new Map();
+  const pezzi = [];
+  for (const r of salvabili) {
+    const id = mysql.escapeId(r.name, true);
+    const tipo = String(r.dtype || '').toLowerCase();
+    if (isSqlGeometryType(r.dtype)) {
+      geo.set(r.name, { srid: r.srid == null ? null : Number(r.srid) });
+      pezzi.push(`HEX(ST_AsBinary(${id})) AS ${id}`);
+    } else if (TIPI_BINARI_MYSQL.has(tipo)) {
+      // I binari il driver li consegna come Buffer, che NON sopravvive al
+      // giro EJSON del file NDJSON: torna come oggetto e MySQL lo rifiuta
+      // ("Data too long"). In esadecimale sono testo puro ed esatti.
+      pezzi.push(`HEX(${id}) AS ${id}`);
+    } else if (tipo === 'bigint' || TIPI_TEMPORALI_MYSQL.has(tipo)) {
+      // BIGINT: vedi sopra. Date e orari: il driver li converte in Date di
+      // JavaScript, che ha risoluzione al MILLISECONDO — un DATETIME(6) con
+      // .999999 tornava .999000, e un TIMESTAMP passava anche per il fuso
+      // orario del client. Come testo restano esattamente ciò che erano.
+      pezzi.push(`CAST(${id} AS CHAR) AS ${id}`);
+    } else {
+      pezzi.push(id);
+    }
+  }
+  return { nomi: salvabili.map((r) => r.name), geo, select: pezzi.join(', ') };
+}
+
 async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
   const mysql = require('mysql2');
   const pool = strategy.pool;
@@ -258,12 +497,27 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
     inTransaction = true;
 
+    const chiaviEsterne = [];
     for (const table of collections) {
-      // Definizione della tabella, per ricrearla al restore.
+      // Definizione della tabella, per ricrearla al restore. Le chiavi esterne
+      // vengono estratte e applicate alla fine: vedi splitMySqlForeignKeys.
       const [[create]] = await conn.query(`SHOW CREATE TABLE ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}`);
+      // Le FK si tolgono dal testo della CREATE TABLE, ma il loro numero viene
+      // confrontato con il CATALOGO: se la rimozione testuale non corrisponde a
+      // ciò che il database dichiara, il backup si ferma invece di produrre uno
+      // schema incompleto. Vedi splitMySqlForeignKeys.
+      const [fkCatalogo] = await conn.query(
+        `SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'`,
+        [db, table],
+      );
+      const separato = splitMySqlForeignKeys(
+        String(create['Create Table']), table, Number(fkCatalogo[0].n) || 0,
+      );
+      if (separato.foreignKeys.length) chiaviEsterne.push(...separato.foreignKeys);
       const relSchema = `schema/${safeName(table)}.sql`;
       fs.mkdirSync(path.join(backupDir, 'schema'), { recursive: true });
-      fs.writeFileSync(path.join(backupDir, relSchema), String(create['Create Table']) + ';\n', 'utf8');
+      fs.writeFileSync(path.join(backupDir, relSchema), separato.ddl + ';\n', 'utf8');
       // Checksum anche per lo schema: il restore lo ESEGUE, quindi deve poter
       // verificare che il file non sia stato alterato sul disco.
       files.push({ path: relSchema, collection: table, kind: 'schema', ...fileDigest(path.join(backupDir, relSchema)) });
@@ -290,14 +544,40 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
       const sink = createFileSink(path.join(backupDir, rel), { compress, level });
       let count = 0;
+      // Le colonne GEOMETRY non possono essere lette con `SELECT *`: il driver
+      // le consegna come oggetti `{x, y}` (o array di punti), una forma che
+      // PERDE il tipo geometrico e il SRID e che MySQL rifiuta di reinserire
+      // — "Cannot get geometry object from data you send to the GEOMETRY
+      // field". Il backup riusciva e il ripristino falliva riga per riga.
+      //
+      // Si salvano come WKB esadecimale e NON come GeoJSON, che pure è la
+      // convenzione dell'interfaccia (vedi geometry.js). Il motivo è la
+      // FEDELTÀ: ST_AsGeoJSON normalizza l'orientamento degli anelli di un
+      // poligono, e un anello invertito su un SRS geografico può scambiare
+      // l'interno con l'esterno — cioè restituire il complemento del poligono
+      // originale, senza errori e senza che nulla lo segnali. Un backup deve
+      // restituire il dato che ha preso, non un dato equivalente secondo
+      // qualche convenzione. WKB è la rappresentazione esatta.
+      // La lista si costruisce sempre per nome, mai `SELECT *`: è ciò che
+      // permette di escludere le generate e di leggere geometrie e BIGINT in
+      // una forma che si può reinserire. Vedi mysqlColumnMeta.
+      const { geo: geoCols, select: selectList } = await mysqlColumnMeta(conn, db, table);
+      if (!selectList) throw new Error(`La tabella "${table}" non ha colonne salvabili.`);
+      if (geoCols.size) {
+        notes.push(`"${table}": ${geoCols.size} colonne geometriche salvate come WKB esadecimale.`);
+      }
+
       // Streaming riga per riga sulla connessione non-promise: nessun
       // caricamento in memoria dell'intera tabella.
       const stream = conn.connection
-        .query({ sql: `SELECT * FROM ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}${where}`, values: params })
+        .query({ sql: `SELECT ${selectList} FROM ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}${where}`, values: params })
         .stream();
       let digest;
       try {
         for await (const row of stream) {
+          // HEX() restituisce già una stringa esadecimale: va nel file così
+          // com'è, e il restore la riconosce dal tipo della colonna di
+          // destinazione (vedi mysqlGeoTargetColumns).
           await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
           count += 1;
         }
@@ -308,9 +588,33 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
         throw err;
       }
       const { bytes, sha256 } = digest;
-      files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
+      // Il SRID di ORIGINE di ogni colonna geometrica va nel manifest: il WKB
+      // non lo contiene, e senza di esso il restore non saprebbe in quale
+      // sistema di riferimento la geometria era espressa.
+      const geoSrid = geoCols.size
+        ? Object.fromEntries([...geoCols].map(([c, i]) => [c, i.srid == null ? 0 : i.srid]))
+        : undefined;
+      files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256, geoSrid });
       log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
     }
+    // Oggetti di schema e chiavi esterne: un solo file per backup, applicato
+    // dal restore DOPO tabelle e dati. Sta dentro la stessa transazione delle
+    // letture, così descrive lo stesso istante dei dati.
+    const oggetti = await mysqlSchemaObjects(conn, db);
+    oggetti.foreignKeys = chiaviEsterne;
+    const totale = oggetti.views.length + oggetti.routines.length
+      + oggetti.triggers.length + oggetti.events.length + chiaviEsterne.length;
+    if (totale) {
+      const relOgg = 'objects/schema.json';
+      fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
+      fs.writeFileSync(path.join(backupDir, relOgg), JSON.stringify(oggetti, null, 2), 'utf8');
+      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      log.info(
+        `  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.routines.length} routine, `
+        + `${oggetti.triggers.length} trigger, ${oggetti.events.length} eventi, ${chiaviEsterne.length} chiavi esterne`
+      );
+    }
+
     await conn.query('COMMIT');
     inTransaction = false;
     return { files, notes };
@@ -404,37 +708,23 @@ async function pgPrimaryKey(client, table, schema) {
   return res.rows.map((r) => r.name);
 }
 
-function pgDefaultSql(value) {
-  const text = String(value).trim();
-  if (/^(NULL|CURRENT_TIMESTAMP(\(\d*\))?|NOW\(\)|TRUE|FALSE)$/i.test(text)) return text.toUpperCase();
-  if (/^-?\d+(\.\d+)?$/.test(text)) return text;
-  return `'${text.replace(/'/g, "''")}'`;
-}
-
+/**
+ * DDL della tabella PostgreSQL, dal modulo condiviso `db/pg-ddl.js`.
+ *
+ * Prima era una ricostruzione a mano, indipendente da quella della strategia:
+ * sole colonne più PRIMARY KEY, senza UNIQUE, CHECK, indici, identità né
+ * colonne generate, e con i default passati da un encoder che trasformava
+ * `nextval('s'::regclass)` nella STRINGA "nextval('s'::regclass)" — cioè una
+ * DDL che al ripristino assegnava un testo a una colonna intera (CDB-A87).
+ *
+ * Il client è quello della snapshot: lo schema descritto è lo stesso istante
+ * dei dati salvati.
+ */
 async function pgTableDdl(client, schema, table) {
-  const res = await client.query(
-    `SELECT column_name AS name, data_type AS ctype, udt_name AS udt,
-            is_nullable AS nullable, column_default AS cdefault
-       FROM information_schema.columns
-      WHERE table_schema = $2 AND table_name = $1
-   ORDER BY ordinal_position`,
-    [table, schema]
-  );
-  if (!res.rows.length) {
-    throw new Error(`La tabella PostgreSQL "${schema}.${table}" non ha colonne leggibili.`);
-  }
-  const pk = await pgPrimaryKey(client, table, schema);
-  const defs = res.rows.map((column) => {
-    const type = column.ctype === 'USER-DEFINED'
-      ? column.udt
-      : (column.ctype || column.udt || 'varchar');
-    let def = `${pgQid(column.name)} ${type}`;
-    if (column.nullable !== 'YES') def += ' NOT NULL';
-    if (column.cdefault != null) def += ` DEFAULT ${pgDefaultSql(column.cdefault)}`;
-    return def;
-  });
-  if (pk.length) defs.push(`PRIMARY KEY (${pk.map(pgQid).join(', ')})`);
-  return `CREATE TABLE ${pgQid(schema)}.${pgQid(table)} (\n  ${defs.join(',\n  ')}\n);`;
+  const q = (sql, params) => client.query(sql, params);
+  const ddl = await pgCreateTable(q, schema, table, { qualificato: true });
+  if (!ddl) throw new Error(`La tabella PostgreSQL "${schema}.${table}" non ha colonne leggibili.`);
+  return ddl;
 }
 
 async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
@@ -444,6 +734,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
   const BATCH = 1000;
   const client = await pool.connect();
   let inTransaction = false;
+  // Indici e chiavi esterne di TUTTE le tabelle, raccolti qui e applicati dal
+  // restore dopo tabelle e dati (terza fase).
+  const indiciEFk = [];
 
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
@@ -494,6 +787,23 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       files.push({ path: relSchema, collection: table, kind: 'schema', schema: resolved.schema || undefined, ...fileDigest(path.join(backupDir, relSchema)) });
     }
 
+    // Indici e chiavi esterne della tabella: applicati dal restore nella terza
+    // fase, quando tutte le tabelle esistono e i dati sono dentro. Una FK verso
+    // una tabella non ancora creata fallisce (CDB-A85, stessa logica di MySQL).
+    const aux = await pgAuxDdl(
+      (sql, p) => client.query(sql, p), resolved.schema || schema, table, { qualificato: true },
+    );
+    indiciEFk.push(...aux.indexes, ...aux.foreignKeys);
+
+    // Colonne da salvare e come leggerle: esclude le GENERATE (PostgreSQL
+    // rifiuta un INSERT che le valorizzi) e legge `bytea` in esadecimale e i
+    // temporali come testo, perché il driver li consegna come Buffer e come
+    // Date — forme che perdono byte e microsecondi (CDB-A87).
+    const { select: listaSelect, binarie: colonneBinarie } = await pgColonneDaSalvare(
+      (sql, p) => client.query(sql, p), resolved.schema || schema, table,
+    );
+    if (!listaSelect) throw new Error(`La tabella PostgreSQL "${table}" non ha colonne salvabili.`);
+
     let mode = 'full';
     let sinceColumn = null;
     let sinceParam = null;
@@ -531,7 +841,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH);
         const res = await client.query(
-          `SELECT * FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
+          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT ${params.length}`,
           params
         );
         if (!res.rows.length) break;
@@ -559,7 +869,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH, offset);
         const res = await client.query(
-          `SELECT * FROM ${qualified}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
+          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ctid LIMIT ${params.length - 1} OFFSET ${params.length}`,
           params
         );
         if (!res.rows.length) break;
@@ -580,9 +890,35 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     const { bytes, sha256 } = digest;
     // `schema` nel manifest: documenta da dove vengono i dati, così un restore
     // futuro (o un operatore) non deve indovinarlo.
-    files.push({ path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined, mode, sinceColumn, count, bytes, sha256 });
+    files.push({
+      path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined,
+      mode, sinceColumn, count, bytes, sha256,
+      // Colonne salvate in esadecimale: il restore deve sapere quali
+      // riconvertire con decode(?, 'hex').
+      binarie: colonneBinarie.size ? [...colonneBinarie] : undefined,
+    });
     log.info(`  ${resolved.schema ? resolved.schema + '.' : ''}${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
     }
+
+    // Oggetti dello schema (view, funzioni, trigger, sequenze) e vincoli
+    // differiti: un solo file per backup, applicato dal restore DOPO i dati.
+    // Senza, un backup PostgreSQL di uno schema con delle view lo ripristinava
+    // senza, e i conteggi di riga tornavano lo stesso (CDB-A87).
+    const oggetti = await pgSchemaObjects((sql, p) => client.query(sql, p), schema);
+    oggetti.foreignKeys = indiciEFk;
+    const totaleOggetti = oggetti.views.length + oggetti.routines.length
+      + oggetti.triggers.length + oggetti.sequences.length + indiciEFk.length;
+    if (totaleOggetti) {
+      const relOgg = 'objects/schema.json';
+      fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
+      fs.writeFileSync(path.join(backupDir, relOgg), JSON.stringify(oggetti, null, 2), 'utf8');
+      files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
+      log.info(
+        `  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.routines.length} funzioni, `
+        + `${oggetti.triggers.length} trigger, ${oggetti.sequences.length} sequenze, ${indiciEFk.length} indici/vincoli`
+      );
+    }
+
     await client.query('COMMIT');
     inTransaction = false;
     return { files, notes };
@@ -610,8 +946,19 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   const startedAt = new Date().toISOString();
   if (base) log.info(`Backup ${type} basato su ${base.id} (modifiche dal ${since}).`);
 
-  // Solo collection/tabelle "vere": le view sono derivate e non si ripristinano.
-  const all = (await strategy.listCollections(db)).filter((c) => c.type !== 'view').map((c) => c.name);
+  // Solo collection/tabelle "vere". Due esclusioni, per due motivi diversi:
+  //
+  //  - le VIEW sono derivate: i loro documenti non esistono, e vengono salvate
+  //    come definizione fra gli oggetti di schema, non come dati;
+  //  - le collection di SISTEMA (`system.views`, `system.js`, `system.profile`)
+  //    sono strutture interne del server. `listCollections` le restituisce, e
+  //    salvarle come dati produceva un backup che al ripristino falliva con
+  //    "cannot write to <db>.system.views": MongoDB non accetta insert diretti
+  //    lì. Bastava una view nel database perché il suo backup non fosse più
+  //    ripristinabile — e il backup risultava "riuscito".
+  const all = (await strategy.listCollections(db))
+    .filter((c) => c.type !== 'view' && !String(c.name).startsWith('system.'))
+    .map((c) => c.name);
   const collections = onlyCollections
     ? all.filter((c) => onlyCollections.includes(c))
     : all;
@@ -666,4 +1013,4 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   return { backupDir, id, collections: dataFiles.length, totalDocs, totalBytes };
 }
 
-module.exports = { runBackup };
+module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects };

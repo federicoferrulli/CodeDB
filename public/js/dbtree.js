@@ -80,9 +80,7 @@ export function renderDbTree(databases) {
         '---',
         { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
-        ...((state.dbType === 'postgresql' || state.dbType === 'postgres')
-          ? [{ label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) }]
-          : []),
+        { label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
         { label: '⟳ Aggiorna elenco', action: refreshDbTree },
         '---',
         ...dbExportImportMenuItems(db.name),

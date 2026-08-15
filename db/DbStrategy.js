@@ -33,6 +33,15 @@ class DbStrategy {
 
   async createDatabase(_db, _firstColl) { throw unsupported(); }
   async renameDatabase(_db, _newName) { throw unsupported(); }
+
+  /**
+   * Il DBMS sa rinominare un database con un comando atomico?
+   *
+   * Se no, il server esegue la rinomina come dump → verifica → restore (vedi
+   * `rinominaViaDump` in server.js). La distinzione sta qui e non nel
+   * chiamante perché è una proprietà del motore, non dell'interfaccia.
+   */
+  supportsNativeRename() { return false; }
   async dropDatabase(_db) { throw unsupported(); }
 
   /** @returns {Promise<Array<{name: string, type: string, count: number|null}>>} */

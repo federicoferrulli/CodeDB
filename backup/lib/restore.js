@@ -18,6 +18,13 @@ const path = require('path');
 const crypto = require('crypto');
 const { EJSON } = require('bson');
 const { readLines, readManifest, fileDelBackup, verifyBackupDir } = require('./util');
+const { isSqlGeometryType } = require('../../db/geometry');
+
+// Tipi che il dump salva in esadecimale perché il driver li consegna come
+// Buffer, che non sopravvive al giro EJSON del file NDJSON. Vedi engine.js.
+const TIPI_BINARI_MYSQL = new Set([
+  'binary', 'varbinary', 'tinyblob', 'blob', 'mediumblob', 'longblob', 'bit',
+]);
 
 const BATCH_SIZE = 500;
 
@@ -225,6 +232,251 @@ function readSchemaFile(layerDir, schemaFile, expectedTable, opts) {
   return assertSafeSchemaSql(sql, expectedTable, opts);
 }
 
+/**
+ * Colonne geometriche della tabella di DESTINAZIONE, con il loro SRID.
+ *
+ * Si leggono dopo la CREATE TABLE e dal database di destinazione, non dal
+ * manifest: è la destinazione a decidere come il valore va scritto, e un
+ * restore verso uno schema con SRID diverso deve seguire quello.
+ *
+ * @returns {Promise<Map<string, {srid: number|null}>>}
+ */
+async function mysqlGeoTargetColumns(conn, targetDb, table) {
+  const [rows] = await conn.query(
+    `SELECT COLUMN_NAME AS name, DATA_TYPE AS dtype, SRS_ID AS srid
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?`,
+    [targetDb, table],
+  );
+  const out = new Map();
+  for (const r of rows) {
+    const tipo = String(r.dtype || '').toLowerCase();
+    if (isSqlGeometryType(r.dtype)) {
+      out.set(r.name, { kind: 'geo', srid: r.srid == null ? null : Number(r.srid) });
+    } else if (TIPI_BINARI_MYSQL.has(tipo)) {
+      // Salvati in esadecimale dal dump (il Buffer del driver non sopravvive
+      // al giro EJSON): qui tornano binari con UNHEX.
+      out.set(r.name, { kind: 'bin' });
+    }
+  }
+  return out;
+}
+
+/* --- Oggetti di schema (terza fase del ripristino) ------------------------- */
+
+// Comandi ammessi nel file degli oggetti. Vale lo stesso principio di
+// `assertSafeSchemaSql`: il contenuto arriva dal DISCO, non da CodeDB, e un
+// backup può essere stato ricevuto da terzi. Qui però NON si può spezzare il
+// testo in istruzioni — il corpo di una routine o di un trigger contiene punti
+// e virgola legittimi — quindi si valida il comando iniziale e si conta sul
+// fatto che le connessioni non ammettono istruzioni multiple
+// (`multipleStatements: false` in MySqlStrategy).
+const SAFE_OBJECT_DDL = new RegExp(
+  '^(?:'
+  + 'ALTER\\s+TABLE\\b[\\s\\S]*\\bADD\\s+CONSTRAINT\\b'
+  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:ALGORITHM\\s*=\\s*\\w+\\s+)?(?:DEFINER\\s*=\\s*\\S+\\s+)?'
+  + '(?:SQL\\s+SECURITY\\s+(?:DEFINER|INVOKER)\\s+)?VIEW\\b'
+  + '|CREATE\\s+(?:DEFINER\\s*=\\s*\\S+\\s+)?(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\\b'
+  // Forme PostgreSQL: view materializzate, OR REPLACE FUNCTION, sequenze e
+  // indici (che su PG sono istruzioni a sé, non parte della CREATE TABLE).
+  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\b'
+  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:FUNCTION|PROCEDURE)\\b'
+  + '|CREATE\\s+(?:CONSTRAINT\\s+)?TRIGGER\\b'
+  + '|CREATE\\s+SEQUENCE\\b(?:\\s+IF\\s+NOT\\s+EXISTS\\b)?'
+  + '|CREATE\\s+(?:UNIQUE\\s+)?INDEX\\b(?:\\s+CONCURRENTLY\\b)?(?:\\s+IF\\s+NOT\\s+EXISTS\\b)?'
+  + ')', 'i',
+);
+
+function assertSafeObjectSql(sql, cosa) {
+  const testo = String(sql == null ? '' : sql).trim();
+  if (!testo) throw new Error(`Definizione vuota per ${cosa}.`);
+  if (!SAFE_OBJECT_DDL.test(testo)) {
+    throw new Error(
+      `La definizione di ${cosa} contenuta nel backup non è un oggetto di schema ammesso `
+      + `e non verrà eseguita: "${testo.slice(0, 80)}".`
+    );
+  }
+  return testo;
+}
+
+/**
+ * Un'istruzione DDL del backup può nominare il database di ORIGINE.
+ *
+ * `SHOW CREATE VIEW` e `SHOW CREATE TRIGGER` restituiscono definizioni che
+ * qualificano le tabelle con lo schema in cui vivevano. Ripristinandole in un
+ * database diverso — che è esattamente il caso della rinomina — la view
+ * continuerebbe a leggere le tabelle dell'ORIGINALE: il ripristino "riesce" e
+ * produce oggetti che puntano altrove, il modo più insidioso di sbagliare.
+ *
+ * La sostituzione è deliberatamente conservativa: agisce solo sulla forma
+ * `` `db`. `` esattamente uguale al nome di origine, non su testo libero.
+ */
+function riqualificaDdl(ddl, dbOrigine, dbDestinazione) {
+  if (!dbOrigine || dbOrigine === dbDestinazione) return String(ddl);
+  const esc = String(dbOrigine).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const riscritta = String(ddl).replace(
+    new RegExp('`' + esc + '`\\s*\\.', 'g'),
+    '`' + String(dbDestinazione).replace(/`/g, '``') + '`.',
+  );
+
+  // La sostituzione copre la forma che `SHOW CREATE VIEW`/`TRIGGER` producono
+  // davvero (nome fra backtick seguito da un punto). Se DOPO la riscrittura il
+  // nome del database di origine compare ancora, vuol dire che era scritto in
+  // una forma non prevista — e proseguire creerebbe un oggetto che continua a
+  // leggere il database ORIGINALE: il ripristino "riesce" e punta altrove.
+  // Meglio fermarsi e dirlo: era il fallimento silenzioso che questa funzione
+  // deve impedire, non uno che può permettersi di produrre.
+  const residuo = new RegExp('(^|[^\\w`])' + esc + '(?![\\w])', 'i');
+  if (residuo.test(riscritta.replace(new RegExp('`' + esc + '`(?!\\s*\\.)', 'g'), ''))) {
+    throw new Error(
+      `La definizione nomina ancora il database di origine "${dbOrigine}" in una forma non riscrivibile: `
+      + 'ripristinandola punterebbe alle tabelle originali invece che a quelle appena create.'
+    );
+  }
+  return riscritta;
+}
+
+/**
+ * Toglie la clausola DEFINER da una DDL.
+ *
+ * `SHOW CREATE ...` la include sempre, e nomina un utente dell'istanza di
+ * ORIGINE. Ripristinando altrove — o con un utente senza privilegio SUPER —
+ * MySQL rifiuta con ERROR 1227, e l'oggetto va perso per un motivo che non ha
+ * nulla a che vedere con i dati. Senza DEFINER l'oggetto nasce di proprietà di
+ * chi esegue il restore, che è il comportamento desiderabile.
+ */
+function senzaDefiner(ddl) {
+  return String(ddl).replace(/\sDEFINER\s*=\s*(`(?:[^`]|``)+`|'(?:[^']|'')*'|\S+)@(`(?:[^`]|``)+`|'(?:[^']|'')*'|\S+)/i, '');
+}
+
+/**
+ * Applica gli oggetti di schema di un backup al database di destinazione.
+ *
+ * L'ordine non è negoziabile: le chiavi esterne pretendono che tutte le tabelle
+ * esistano; le view possono poggiare su altre view (si riprova finché si fa
+ * progresso, invece di pretendere un ordinamento topologico che MySQL non
+ * espone); i trigger pretendono le loro tabelle; gli eventi non dipendono da
+ * nulla. Nessuno di questi oggetti fa fallire il ripristino dei DATI: un
+ * problema viene registrato in `problems`, che il chiamante trasforma in un
+ * ripristino dichiarato incompleto.
+ */
+async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOrigine, problems, log }) {
+  if (!oggetti || typeof oggetti !== 'object') return;
+
+  if (dbType === 'mongodb') {
+    const client = strategy.client;
+    for (const opt of oggetti.collectionOptions || []) {
+      try {
+        // `collMod` applica le opzioni a una collection che i dati hanno già
+        // creato; se non esiste ancora (collection vuota) la si crea.
+        await client.db(targetDb).command({ collMod: opt.name, ...opt.options });
+      } catch (err) {
+        if (/not found|NamespaceNotFound/i.test(err.message)) {
+          await client.db(targetDb).createCollection(opt.name, opt.options)
+            .catch((e) => problems.push(`opzioni di "${opt.name}": ${e.message}`));
+        } else {
+          problems.push(`opzioni di "${opt.name}": ${err.message}`);
+        }
+      }
+    }
+    for (const v of oggetti.views || []) {
+      try {
+        await client.db(targetDb).createCollection(v.name, {
+          viewOn: v.viewOn,
+          pipeline: v.pipeline || [],
+          ...(v.collation ? { collation: v.collation } : {}),
+        });
+      } catch (err) {
+        if (!/already exists/i.test(err.message)) problems.push(`view "${v.name}": ${err.message}`);
+      }
+    }
+    const n = (oggetti.views || []).length + (oggetti.collectionOptions || []).length;
+    if (n && log) log.info(`  Oggetti di schema applicati: ${n}`);
+    return;
+  }
+
+  // --- SQL -----------------------------------------------------------------
+  const esegui = async (sql, cosa) => {
+    const pulito = riqualificaDdl(senzaDefiner(assertSafeObjectSql(sql, cosa)), dbOrigine, targetDb);
+    await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
+    if (log) log.info(`  ${cosa} applicato/a`);
+  };
+
+  for (const fk of oggetti.foreignKeys || []) {
+    try {
+      await esegui(fk, 'vincolo');
+    } catch (err) {
+      if (!/duplicate|already exists|esiste già/i.test(err.message)) {
+        problems.push(`chiave esterna: ${err.message}`);
+      }
+    }
+  }
+
+  // Le view possono dipendere da altre view: invece di indovinare un ordine, si
+  // riprova finché almeno una riesce. Il ciclo termina sempre — o non resta
+  // nulla, o un giro intero non fa progresso.
+  let rimaste = [...(oggetti.views || [])];
+  while (rimaste.length) {
+    const falliti = [];
+    let progresso = false;
+    for (const v of rimaste) {
+      try {
+        await esegui(v.ddl, `view "${v.name}"`);
+        progresso = true;
+      } catch (err) {
+        falliti.push({ ...v, errore: err.message });
+      }
+    }
+    if (!progresso) {
+      for (const v of falliti) problems.push(`view "${v.name}": ${v.errore}`);
+      break;
+    }
+    rimaste = falliti;
+  }
+
+  for (const gruppo of [
+    { voci: oggetti.sequences || [], etichetta: (s) => `sequenza "${s.name}"` },
+    { voci: oggetti.routines || [], etichetta: (r) => `routine "${r.name}"` },
+    { voci: oggetti.triggers || [], etichetta: (t) => `trigger "${t.name}"` },
+    { voci: oggetti.events || [], etichetta: (e) => `evento "${e.name}"` },
+  ]) {
+    for (const voce of gruppo.voci) {
+      try {
+        await esegui(voce.ddl, gruppo.etichetta(voce));
+      } catch (err) {
+        problems.push(`${gruppo.etichetta(voce)}: ${err.message}`);
+      }
+    }
+  }
+
+  // --- Valore corrente delle sequenze (PostgreSQL), per ULTIMO --------------
+  //
+  // Va dopo i dati, non prima: `setval` fissa il contatore al valore che aveva
+  // l'originale, e caricare righe dopo averlo fissato lo lascerebbe indietro.
+  //
+  // È il pezzo che mancava del tutto: senza, una tabella con id 1..1000 si
+  // ripristina con i dati giusti ma la sequenza riparte da 1, e il primo
+  // INSERT dopo il ripristino sbatte contro la chiave primaria. Il restore si
+  // dichiara riuscito e la tabella non accetta più scritture.
+  for (const seq of oggetti.sequenceValues || []) {
+    const cosa = `valore della sequenza "${seq.name}"`;
+    try {
+      // Validazione dedicata: qui NON passa da `assertSafeObjectSql`, che
+      // ammette solo CREATE/ALTER. `setval` è una SELECT, e allargare quella
+      // barriera a "le SELECT" aprirebbe il file degli oggetti a qualunque
+      // lettura. La forma ammessa è quindi una sola, ed è questa.
+      const sql = String(seq.sql || '').trim();
+      if (!/^SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'(?:[^']|'')*'\s*,\s*-?\d+\s*(?:,\s*(?:true|false)\s*)?\)$/i.test(sql)) {
+        throw new Error(`istruzione non ammessa: "${sql.slice(0, 80)}"`);
+      }
+      await strategy.collectionAggregate(targetDb, null, { pipeline: sql });
+      if (log) log.info(`  ${cosa} ripristinato`);
+    } catch (err) {
+      problems.push(`${cosa}: ${err.message}`);
+    }
+  }
+}
+
 /* --- Restore MongoDB ------------------------------------------------------ */
 
 async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems }) {
@@ -339,6 +591,17 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
         }
       }
 
+      // Colonne geometriche della tabella di DESTINAZIONE, lette dopo la
+      // CREATE TABLE. Il backup le contiene come GeoJSON (vedi il dump): un
+      // segnaposto normale le passerebbe a MySQL come stringa e il motore
+      // risponderebbe "Cannot get geometry object from data you send to the
+      // GEOMETRY field". Vanno riscritte con ST_GeomFromGeoJSON e forzate al
+      // SRID della colonna, perché ST_GeomFromGeoJSON produce sempre 4326 e
+      // MySQL rifiuta la scrittura se non coincide con quello dichiarato.
+      const geoTarget = await mysqlGeoTargetColumns(conn, targetDb, f.collection);
+      // SRID con cui le geometrie erano espresse NELL'ORIGINE (vedi il dump).
+      const sridOrigine = f.geoSrid || {};
+
       // I layer successivi al primo (e le tabelle senza colonna data incluse
       // per intero in un incrementale) vanno applicati come upsert.
       const verb = isFirst ? 'INSERT' : 'REPLACE';
@@ -347,10 +610,42 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       let applied = 0;
       const flush = async () => {
         if (!batch.length) return;
-        await conn.query(
-          `${verb} INTO ${tableId} (${columns.map((c) => mysql.escapeId(c, true)).join(', ')}) VALUES ?`,
-          [batch]
-        );
+        const listaColonne = columns.map((c) => mysql.escapeId(c, true)).join(', ');
+        const geoNelBatch = columns.some((c) => geoTarget.has(c));
+        if (!geoNelBatch) {
+          // Percorso veloce, invariato: nessuna geometria, insert multiplo.
+          await conn.query(`${verb} INTO ${tableId} (${listaColonne}) VALUES ?`, [batch]);
+        } else {
+          // Con le geometrie ogni riga ha bisogno delle proprie espressioni,
+          // quindi la clausola VALUES si costruisce esplicitamente.
+          const params = [];
+          const tuple = batch.map((riga) => {
+            const segnaposti = columns.map((c, i) => {
+              const info = geoTarget.get(c);
+              const v = riga[i];
+              if (!info || v == null) { params.push(v); return '?'; }
+              // WKB esadecimale (formato del dump). I backup prodotti prima di
+              // questa correzione non contengono geometrie utilizzabili — il
+              // loro ripristino falliva — quindi non c'è un formato precedente
+              // da riconoscere qui.
+              params.push(String(v));
+              // Binari (BLOB, BINARY, BIT…): esadecimale nel dump, UNHEX qui.
+              if (info.kind === 'bin') return 'UNHEX(?)';
+              // Il SRID è quello di ORIGINE, preso dal manifest — MAI quello
+              // della colonna di destinazione. Usare il secondo faceva
+              // "riuscire" un ripristino verso una colonna con SRID diverso
+              // reinterpretando la geometria: stesse coordinate, punto diverso
+              // sulla Terra, nessun errore. Con il SRID di origine è MySQL
+              // stesso a rifiutare l'incompatibilità, ed è giusto che lo faccia
+              // il motore invece di noi.
+              return `ST_GeomFromWKB(UNHEX(?), ${Number(sridOrigine[c] ?? info.srid ?? 0)})`;
+            });
+            return `(${segnaposti.join(', ')})`;
+          });
+          await conn.query(
+            `${verb} INTO ${tableId} (${listaColonne}) VALUES ${tuple.join(', ')}`, params,
+          );
+        }
         applied += batch.length;
         batch = [];
       };
@@ -371,7 +666,9 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
           await flush();
           columns = colsRiga;
         }
-        batch.push(columns.map((c) => toSqlValue(row[c])));
+        // Le geometriche restano la stringa WKB del backup: `toSqlValue` non
+        // deve toccarla, la riscrive `flush` con ST_GeomFromWKB.
+        batch.push(columns.map((c) => (geoTarget.has(c) ? row[c] : toSqlValue(row[c]))));
         if (batch.length >= BATCH_SIZE) await flush();
       }
       await flush();
@@ -475,8 +772,28 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       }
       batch = [];
     };
+    // Le righe vanno passate a `collectionImport` come OGGETTI, non come testo:
+    // `EJSON.deserialize` di una stringa restituisce la stringa, che il metodo
+    // rifiuta ("la riga deve essere un oggetto") — cioè ogni riga sarebbe
+    // fallita. Qui si parsifica una volta sola, ed è anche il punto in cui le
+    // colonne salvate in esadecimale tornano binarie (CDB-A87).
+    const binarie = Array.isArray(f.binarie) ? f.binarie : [];
     for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
-      batch.push(line);
+      let riga;
+      try {
+        riga = EJSON.parse(line, { relaxed: true });
+      } catch (err) {
+        failed += 1;
+        if (firstErrors.length < 3) firstErrors.push(`riga non leggibile: ${err.message}`);
+        continue;
+      }
+      for (const col of binarie) {
+        // `encode(col,'hex')` nel dump: senza riconvertirlo, PostgreSQL
+        // scriverebbe in bytea i CARATTERI della stringa esadecimale invece
+        // dei byte che rappresentano.
+        if (typeof riga[col] === 'string') riga[col] = Buffer.from(riga[col], 'hex');
+      }
+      batch.push(riga);
       if (batch.length >= BATCH_SIZE) await flush();
     }
     await flush();
@@ -533,6 +850,29 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
         : await restoreLayerMongo(args);
   }
 
+  // Terza fase: oggetti di schema (chiavi esterne, view, routine, trigger,
+  // eventi; su MongoDB view e opzioni di collection). Va DOPO tabelle e dati e
+  // non prima, per due motivi indipendenti: una FK verso una tabella non ancora
+  // creata fallisce, e una FK già attiva impone alle righe un ordine di
+  // caricamento che il backup non descrive. Un ripristino selettivo
+  // (onlyCollections) non li tocca: gli oggetti descrivono l'intero database.
+  const oggetti = onlyCollections ? [] : chain
+    .map((l) => ({ layer: l, file: l.manifest.files.find((f) => f.kind === 'objects') }))
+    .filter((x) => x.file);
+  for (const { layer, file } of oggetti) {
+    try {
+      const testo = fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8');
+      await restoreSchemaObjects({
+        strategy, targetDb: db, dbType, oggetti: EJSON.parse(testo),
+        // Il database in cui il backup è stato PRESO: serve a riqualificare le
+        // DDL che nominano lo schema di origine (view e trigger di MySQL).
+        dbOrigine: layer.manifest.db, problems, log,
+      });
+    } catch (err) {
+      problems.push(`oggetti di schema del layer ${layer.manifest.id}: ${err.message}`);
+    }
+  }
+
   const summary = { targetDb: db, layers: chain.length, totalDocs: total, expectedDocs: expected, problems };
 
   // Un ripristino incompleto non deve mai risultare "riuscito": né in UI, né
@@ -567,6 +907,9 @@ module.exports = {
   runRestore,
   resolveChain,
   preflightChain,
+  restoreSchemaObjects,
+  riqualificaDdl,
+  senzaDefiner,
   checkApplied,
   assertSafeSchemaSql,
   splitStatements,

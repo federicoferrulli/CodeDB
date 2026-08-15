@@ -31,6 +31,35 @@ function isSqlGeometryType(dataType) {
   return SQL_GEOMETRY_TYPES.has(String(dataType || '').trim().toLowerCase());
 }
 
+/* ---------------------------------------------------------------------------
+ * PostgreSQL non ha gli stessi tipi geometrici di MySQL, e confonderli rompe.
+ *
+ * `point`, `polygon`, `line`, `lseg`, `box`, `path` e `circle` sono tipi NATIVI
+ * di PostgreSQL, presenti da sempre e senza alcun rapporto con PostGIS: non li
+ * si può passare a `ST_AsGeoJSON`, che appartiene a PostGIS e accetta solo
+ * `geometry` e `geography`. Usando l'elenco di MySQL, una tabella con una
+ * banale colonna `point` diventava illeggibile — la griglia falliva con
+ * "function st_asgeojson(point) does not exist".
+ *
+ * Su PostgreSQL sono quindi geometrie SOLO i due tipi di PostGIS.
+ * ------------------------------------------------------------------------- */
+const PG_GEOMETRY_TYPES = new Set(['geometry', 'geography']);
+
+// Tipi geometrici NATIVI di PostgreSQL: non sono PostGIS, ma vanno comunque
+// riconosciuti — il driver li consegna come oggetti ({x, y}) che non si possono
+// reinserire, quindi backup ed export devono leggerli come testo.
+const PG_NATIVE_GEOMETRY_TYPES = new Set([
+  'point', 'line', 'lseg', 'box', 'path', 'polygon', 'circle',
+]);
+
+function isPostgresGeometryType(dataType) {
+  return PG_GEOMETRY_TYPES.has(String(dataType || '').trim().toLowerCase());
+}
+
+function isPostgresNativeGeometryType(dataType) {
+  return PG_NATIVE_GEOMETRY_TYPES.has(String(dataType || '').trim().toLowerCase());
+}
+
 // Profondità dell'array `coordinates` per ciascun tipo: Point → [x, y],
 // LineString/MultiPoint → [[x, y], …], Polygon/MultiLineString → [[[x, y]…]…],
 // MultiPolygon → un livello ancora.
@@ -155,6 +184,9 @@ function potaCache(cache, max = 200) {
 }
 
 module.exports = {
+  isPostgresGeometryType,
+  isPostgresNativeGeometryType,
+  PG_NATIVE_GEOMETRY_TYPES,
   SQL_GEOMETRY_TYPES,
   potaCache,
   GEOJSON_TYPES,

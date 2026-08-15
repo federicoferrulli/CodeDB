@@ -3,16 +3,107 @@
   "data": "2026-08-15",
   "versione_analizzata": "0.1.2-beta.1",
   "tipo": "audit completo di piattaforma: sicurezza, correttezza, concorrenza, risorse e resilienza (analisi statica con correzioni)",
-  "riepilogo": { "totale": 12, "critica": 0, "alta": 9, "media": 3, "bassa": 0 },
-  "note_revisione": [{
-    "data": "2026-08-15",
-    "cosa": "Audit richiesto da Keus sull'intera piattaforma. Tutti i rilievi sono stati corretti nella stessa sessione. Eseguiti parsing JSON, node --check sui JavaScript modificati/aggiunti, scansione NUL e git diff --check. Server, database, npm test ed E2E non sono stati avviati: la procedura dell'audit richiede autorizzazione esplicita.",
-    "aggiunti": ["CDB-A73", "CDB-A74", "CDB-A75", "CDB-A76", "CDB-A77", "CDB-A78", "CDB-A79", "CDB-A80", "CDB-A81", "CDB-A82", "CDB-A83", "CDB-A84"]
-  }, {
-    "data": "2026-08-15 (seconda passata, richiesta da Keus)",
-    "cosa": "Riletti tutti e 12 i siti di fix confrontandoli con lo scenario dichiarato: nessuno risultava solo dichiarato. Eseguito npm test — mai avviato durante l'audit — con tutte le suite verdi. Chiusi poi i due punti che erano stati RINVIATI invece che risolti: il round-trip PostgreSQL (CDB-A83), bloccato in interfaccia con la nota 'temporaneamente', ora è implementato; e le colonne MySQL INVISIBLE (CDB-A78), che il fail-closed sugli EXTRA rendeva non modificabili. Aggiunto test/unit-ddl-roundtrip.js, provato per mutazione. Resta non eseguita ogni prova con un DBMS reale.",
-    "modificati": ["CDB-A78", "CDB-A83"]
-  }],
+  "riepilogo": {
+    "totale": 17,
+    "critica": 2,
+    "alta": 12,
+    "media": 3,
+    "bassa": 0,
+    "aperti": 0
+  },
+  "note_revisione": [
+    {
+      "data": "2026-08-15",
+      "cosa": "Audit richiesto da Keus sull'intera piattaforma. Tutti i rilievi sono stati corretti nella stessa sessione. Eseguiti parsing JSON, node --check sui JavaScript modificati/aggiunti, scansione NUL e git diff --check. Server, database, npm test ed E2E non sono stati avviati: la procedura dell'audit richiede autorizzazione esplicita.",
+      "aggiunti": [
+        "CDB-A73",
+        "CDB-A74",
+        "CDB-A75",
+        "CDB-A76",
+        "CDB-A77",
+        "CDB-A78",
+        "CDB-A79",
+        "CDB-A80",
+        "CDB-A81",
+        "CDB-A82",
+        "CDB-A83",
+        "CDB-A84"
+      ]
+    },
+    {
+      "data": "2026-08-15 (seconda passata, richiesta da Keus)",
+      "cosa": "Riletti tutti e 12 i siti di fix confrontandoli con lo scenario dichiarato: nessuno risultava solo dichiarato. Eseguito npm test — mai avviato durante l'audit — con tutte le suite verdi. Chiusi poi i due punti che erano stati RINVIATI invece che risolti: il round-trip PostgreSQL (CDB-A83), bloccato in interfaccia con la nota 'temporaneamente', ora è implementato; e le colonne MySQL INVISIBLE (CDB-A78), che il fail-closed sugli EXTRA rendeva non modificabili. Aggiunto test/unit-ddl-roundtrip.js, provato per mutazione. Resta non eseguita ogni prova con un DBMS reale.",
+      "modificati": [
+        "CDB-A78",
+        "CDB-A83"
+      ]
+    },
+    {
+      "data": "2026-08-15 (terza passata, richiesta da Keus)",
+      "cosa": "Reintrodotta la rinomina di database su tutti i DBMS. Nel farlo è emerso CDB-A85: il motore di backup su cui la rinomina si appoggia non catturava gli oggetti di schema, e su MySQL le FK rendevano il restore dipendente dall'ordine alfabetico delle tabelle (1 tabella persa su 2, riprodotto). Corretti motore e restore prima di costruirci sopra la rinomina. Restano da provare nel browser la voce di menu e la modale.",
+      "aggiunti": [
+        "CDB-A85"
+      ],
+      "modificati": [
+        "CDB-A78"
+      ]
+    },
+    {
+      "data": "2026-08-15 (quarta passata)",
+      "cosa": "Keus ha segnalato 'Cannot get geometry object from data you send to the GEOMETRY field' rinominando un database MySQL con una colonna geometrica, e ha posto due requisiti: un errore non deve MAI portare all'eliminazione dell'originale, e il dump deve garantire l'integrità di ogni dato indipendentemente dal tipo. Entrambi affrontati in CDB-A86. Nel correggere è emerso che la scelta iniziale (GeoJSON, convenzione dell'interfaccia) non è fedele per un backup, e che usare il SRID della destinazione corrompeva silenziosamente il dato.",
+      "aggiunti": [
+        "CDB-A86"
+      ]
+    },
+    {
+      "data": "2026-08-15 (quinta passata)",
+      "cosa": "Keus ha chiesto di chiudere la CLASSE del difetto invece del solo caso segnalato. Scritto un test su tutti i tipi MySQL: ha trovato altri quattro difetti della stessa natura (binari, BIGINT, date al microsecondo, colonne generate), tutti corretti. Aggiunta a CLAUDE.md e AGENTS.md una regola di completezza. Nota di metodo: un patch di testo via Python aveva inserito un carattere di controllo (backspace) al posto di \b in una regex, rendendola inefficace senza errori; i file toccati con quel metodo sono stati riscansionati e ripuliti.",
+      "aggiunti": [],
+      "modificati": [
+        "CDB-A86"
+      ]
+    },
+    {
+      "data": "2026-08-15 (sesta passata: audit dell audit)",
+      "cosa": "Keus ha chiesto di applicare all intero audit la regola di completezza appena scritta e di verificare se fosse davvero rispettata. Esito: NO su due punti. Punto 2 (risolto = verificato): 9 rilievi su 15 dichiaravano risolto senza che alcun test li citasse — ora lo dicono nello stato e nel campo verifica, invece di lasciarlo implicito. Punto 3 (correggi la classe, non l istanza): le correzioni A83, A85 e A86 erano state applicate solo a MySQL e MongoDB, mentre il motore di backup PostgreSQL ha le stesse tre classi di difetto — nuovo rilievo CDB-A87, APERTO. Punto 4 (sensibilità dei test): solo il test di A83 è stato provato per mutazione; quelli di A85 e A86 no. Punto 1 (non disabilitare) risulta invece rispettato: i due casi rinviati sono stati implementati nelle passate precedenti, e i fail-closed rimasti (SQL Raw con scope, EXTRA MySQL non rappresentabili) sono scelte motivate e spiegate nel codice.",
+      "aggiunti": [
+        "CDB-A87"
+      ],
+      "modificati": [
+        "CDB-A73",
+        "CDB-A74",
+        "CDB-A75",
+        "CDB-A76",
+        "CDB-A77",
+        "CDB-A79",
+        "CDB-A80",
+        "CDB-A81",
+        "CDB-A82",
+        "CDB-A84"
+      ]
+    },
+    {
+      "data": "2026-08-15 (settima passata)",
+      "cosa": "Corretto CDB-A87. Estratto db/pg-ddl.js come unica fonte per la lettura dello schema PostgreSQL, eliminando la duplicazione fra strategia e motore di backup che aveva causato la divergenza. Seguendo la classe è emerso che il restore PostgreSQL passava righe grezze dove servivano oggetti: ogni riga sarebbe fallita. Test provato per mutazione su 5 regressioni. Resta senza prova dinamica: nessun PostgreSQL raggiungibile in sessione.",
+      "modificati": [
+        "CDB-A87"
+      ]
+    },
+    {
+      "data": "2026-08-15 (ottava passata)",
+      "cosa": "Keus ha segnalato \"function st_asgeojson(point) does not exist\" su una tabella PostgreSQL: i tipi geometrici nativi di PostgreSQL erano scambiati per geometrie PostGIS perche l'elenco dei tipi era quello di MySQL (CDB-A88). Corretto, e chiusa anche la classe nel backup. NOTA DI METODO: il PostgreSQL di Keus e sulla porta 5412, non 5432 — e il motivo per cui le prove dinamiche delle passate precedenti non lo trovavano e le correzioni PostgreSQL sono rimaste senza verifica live. Seconda meta del rilievo: corretta anche la SCRITTURA, che falliva in modo speculare, con un modulo di conversione dedicato e provato per mutazione.",
+      "aggiunti": [
+        "CDB-A88"
+      ]
+    },
+    {
+      "data": "2026-08-15 (nona passata)",
+      "cosa": "Keus ha chiesto di rileggere l'audit cercando i fix fatti per pigrizia. Ne sono emersi tre, tutti corretti in CDB-A89: le sequenze PostgreSQL ripristinate senza valore (la tabella restava non scrivibile dopo il restore), le FK MySQL affidate a una regex non confrontata col catalogo, e riqualificaDdl che proseguiva anche quando la riscrittura non era riuscita. Corretti anche due difetti del DOCUMENTO: ambito_non_analizzato dichiarava ancora che nessuna suite era stata eseguita (falso dalla seconda passata) e priorita_intervento conteneva una voce duplicata. NON sono pigrizia, e restano come sono perche motivate e spiegate nel codice: il fail-closed su SQL Raw per i principal con scope (CDB-A76), il rifiuto degli EXTRA MySQL non rappresentabili (CDB-A78) e i tipi PostgreSQL line e circle lasciati come testo (CDB-A88).",
+      "aggiunti": [
+        "CDB-A89"
+      ]
+    }
+  ],
   "ambito_analizzato": [
     "server.js ed Electron: trasporto, autenticazione socket, connessioni, riconnessione e navigazione esterna",
     "auth/ e mcp/: capability, scope SQL/MongoDB, revoca a caldo, identità MCP, conferme e backup MCP",
@@ -23,127 +114,203 @@
   ],
   "ambito_non_analizzato": [
     "public/js/lib e dipendenze vendorizzate; landing/ e artefatti build",
-    "Nessuna prova dinamica con DBMS, Socket.IO, Electron o provider cloud",
-    "Nessuna suite npm/unit/E2E eseguita senza autorizzazione esplicita"
+    "PostgreSQL: nessuna prova dinamica. Le correzioni CDB-A83, CDB-A87 e CDB-A88 sono provate solo con esecutori finti — in sessione il server non era raggiungibile (era sulla porta 5412, non 5432, e senza credenziali disponibili).",
+    "Interfaccia nel browser: nessuna prova manuale. Il percorso socket db:rename, la modale di rinomina e i rilievi frontend (CDB-A82) non sono stati esercitati.",
+    "Electron, Socket.IO e provider cloud: nessuna prova dinamica.",
+    "NOTA: il campo diceva fino alla nona passata che nessuna suite era stata eseguita. Non e piu vero dalla seconda: npm test gira a ogni passata, e i cicli backup/restore sono provati dal vivo su MySQL 8.4.9 e MongoDB."
   ],
   "finding": [
     {
-      "id": "CDB-A73", "severita": "alta",
+      "id": "CDB-A73",
+      "severita": "alta",
       "titolo": "URI e segreti di connessione potevano riemergere in UI, log, copie di configurazione e build Docker",
       "categoria": "esposizione credenziali",
       "modulo": "server.js, public/js/connection.js, db/errors.js, backup/lib/connstore.js, .dockerignore",
-      "riferimenti": ["server.js:873", "server.js:901", "server.js:937", "server.js:2989", "public/js/connection.js:64", "db/errors.js:35"],
+      "riferimenti": [
+        "server.js:873",
+        "server.js:901",
+        "server.js:937",
+        "server.js:2989",
+        "public/js/connection.js:64",
+        "db/errors.js:35"
+      ],
       "problema": "Input URI con userinfo/query → connections:get, DOM, label/log o build context: password e opzioni sensibili potevano essere divulgate.",
       "scenario": "mongodb://utente:password@host/db?authSource=admin raggiungeva sink visibili o persistenti.",
       "fix": "URI trattato come segreto, UI limitata a hasUri, modalità URI/campi esclusiva, redazione centralizzata, migrazione cifrata e .dockerignore restrittivo.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A74", "severita": "alta",
+      "id": "CDB-A74",
+      "severita": "alta",
       "titolo": "Revoche RBAC e sessioni MCP potevano conservare privilegi o confondere API key dello stesso utente",
       "categoria": "bypass autorizzazione / TOCTOU",
       "modulo": "auth/AppStore.js, server.js, mcp/McpGateway.js",
-      "riferimenti": ["server.js:2282", "server.js:2362", "mcp/McpGateway.js:67", "mcp/McpGateway.js:78", "mcp/McpGateway.js:1608"],
+      "riferimenti": [
+        "server.js:2282",
+        "server.js:2362",
+        "mcp/McpGateway.js:67",
+        "mcp/McpGateway.js:78",
+        "mcp/McpGateway.js:1608"
+      ],
       "problema": "Input revoca/sospensione o seconda API key → principal/guardCtx già in memoria: socket e sessione MCP potevano continuare o alternare scope.",
       "scenario": "Un session-id creato con key ampia veniva riusato con una key limitata dello stesso principal.",
       "fix": "Revoca immediata di sessioni/key, rivalidazione a caldo e binding MCP anche all'impronta SHA-256 della credenziale senza conservarla in chiaro.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A75", "severita": "alta",
+      "id": "CDB-A75",
+      "severita": "alta",
       "titolo": "Backup MCP accettava '..' e readOnly poteva restare obsoleto",
       "categoria": "path traversal / autorizzazione",
       "modulo": "mcp/McpGateway.js, backup/lib/util.js",
-      "riferimenti": ["mcp/McpGateway.js:97", "mcp/McpGateway.js:145", "mcp/McpGateway.js:1261", "mcp/McpGateway.js:1292"],
+      "riferimenti": [
+        "mcp/McpGateway.js:97",
+        "mcp/McpGateway.js:145",
+        "mcp/McpGateway.js:1261",
+        "mcp/McpGateway.js:1292"
+      ],
       "problema": "Input group='..'/backup_id='..' → path.join usciva dal tenant; execute_write/restore usavano inoltre il flag catturato all'apertura.",
       "scenario": "Verify/restore poteva puntare fuori root o scrivere dopo una revoca readOnly.",
       "fix": "Componenti safeName, confinamento resolve/relative condiviso e rilettura autorevole del flag prima di scrittura e restore.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A76", "severita": "alta",
+      "id": "CDB-A76",
+      "severita": "alta",
       "titolo": "La barriera SQL Raw non copriva commenti eseguibili, USING, funzioni pericolose e WHERE annidati",
       "categoria": "injection / bypass scope / mass update",
       "modulo": "auth/capabilities.js, auth/sqlTables.js, auth/guardStrategy.js, mcp/McpGateway.js",
-      "riferimenti": ["auth/capabilities.js:74", "auth/sqlTables.js:273", "auth/guardStrategy.js:295", "mcp/McpGateway.js:256"],
+      "riferimenti": [
+        "auth/capabilities.js:74",
+        "auth/sqlTables.js:273",
+        "auth/guardStrategy.js:295",
+        "mcp/McpGateway.js:256"
+      ],
       "problema": "Input UPDATE con WHERE solo in subquery, DELETE/MERGE ... USING, /*!...*/ o funzioni filesystem → parser/gate incompleto → esecuzione massiva o fuori scope.",
       "scenario": "UPDATE t SET x=(SELECT max(y) FROM s WHERE ...), DELETE FROM ordini USING utenti.",
       "fix": "Rifiuto commenti eseguibili, USING contestuale, WHERE top-level, read sempre richiesto e fail-close DDL/funzioni per principal scoped.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A77", "severita": "alta",
+      "id": "CDB-A77",
+      "severita": "alta",
       "titolo": "Pipeline MongoDB annidate potevano leggere o scrivere collection fuori scope",
       "categoria": "bypass RBAC / server-side JavaScript",
       "modulo": "auth/capabilities.js, auth/guardStrategy.js, db/MongoDbStrategy.js",
-      "riferimenti": ["auth/capabilities.js:222", "auth/guardStrategy.js:228", "auth/guardStrategy.js:333"],
+      "riferimenti": [
+        "auth/capabilities.js:222",
+        "auth/guardStrategy.js:228",
+        "auth/guardStrategy.js:333"
+      ],
       "problema": "Input $lookup/$unionWith annidato o $out/$merge → aggregate del driver senza verifica ricorsiva completa di sorgenti/destinazioni.",
       "scenario": "Una facet legge segreti e fa merge verso una collection non concessa.",
       "fix": "Analisi ricorsiva cycle-safe di readTargets/writeTargets, capability read più mutazione e blocco di costrutti server-side per scope ristretto.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A78", "severita": "alta",
+      "id": "CDB-A78",
+      "severita": "alta",
       "titolo": "Rinomina database simulata e DDL incompleti potevano perdere dati o attributi",
       "categoria": "integrità dati/schema",
       "modulo": "db/MongoDbStrategy.js, db/MySqlStrategy.js, db/PostgreSqlStrategy.js",
-      "riferimenti": ["db/MySqlStrategy.js:1347", "db/PostgreSqlStrategy.js:1020"],
+      "riferimenti": [
+        "db/MySqlStrategy.js:1347",
+        "db/PostgreSqlStrategy.js:1020"
+      ],
       "problema": "Input rename o alter column → copia/drop non atomico oppure ricostruzione parziale di tipo, default, auto_increment, comment, collation e on-update.",
       "scenario": "Errore a metà rename o modifica visuale di serial/varchar(40)/colonna generata produceva perdita o schema diverso.",
-      "fix": "Rename non atomico disabilitato fail-closed; ALTER PG atomico con format_type/default; attributi MySQL autorevoli preservati o rifiutati se non rappresentabili. Aggiunta la VISIBILITÀ (MySQL 8.0.23+): INVISIBLE era fra gli EXTRA non riconosciuti, quindi una colonna nascosta non era modificabile affatto; ora viene preservata nella CHANGE COLUMN al posto imposto dalla grammatica (dopo DEFAULT, prima di AUTO_INCREMENT).",
+      "fix": "Rename non atomico disabilitato fail-closed; ALTER PG atomico con format_type/default; attributi MySQL autorevoli preservati o rifiutati se non rappresentabili. Aggiunta la VISIBILITÀ (MySQL 8.0.23+): INVISIBLE era fra gli EXTRA non riconosciuti, quindi una colonna nascosta non era modificabile affatto; ora viene preservata nella CHANGE COLUMN al posto imposto dalla grammatica (dopo DEFAULT, prima di AUTO_INCREMENT). La rinomina non è più fail-closed: MongoDB e MySQL la eseguono come dump → verifica → restore (rinominaViaDump in server.js), che grazie a CDB-A85 copia anche view, routine, trigger, eventi, vincoli, validatori e opzioni. PostgreSQL continua a usare ALTER SCHEMA RENAME, atomico (supportsNativeRename). L'originale NON viene mai eliminato di default: dump e restore non sono atomici, quindi chi rinomina sceglie esplicitamente se eliminarlo, e l'eliminazione avviene solo se il conteggio copiato coincide con quello atteso.",
       "stato": "risolto",
-      "verifica": "npm test verde. Non provato su un MySQL 8 reale: la posizione di INVISIBLE nella column_definition è presa dalla grammatica documentata, non da un ALTER eseguito."
+      "verifica": "npm test verde. Non provato su un MySQL 8 reale: la posizione di INVISIBLE nella column_definition è presa dalla grammatica documentata, non da un ALTER eseguito. Rinomina: motore provato dal vivo su MySQL e MongoDB (vedi CDB-A85); il percorso socket db:rename e la modale non sono stati provati nel browser."
     },
     {
-      "id": "CDB-A79", "severita": "alta",
+      "id": "CDB-A79",
+      "severita": "alta",
       "titolo": "Alias, collisioni e link nei backup potevano fondere catene, uscire dalla root o esfiltrare file",
       "categoria": "path traversal / collisione",
       "modulo": "backup/lib/util.js, backup/lib/engine.js, backup/lib/storage.js",
-      "riferimenti": ["backup/lib/util.js:194", "backup/lib/util.js:213", "backup/lib/engine.js:105", "backup/lib/storage.js:38"],
+      "riferimenti": [
+        "backup/lib/util.js:194",
+        "backup/lib/util.js:213",
+        "backup/lib/engine.js:105",
+        "backup/lib/storage.js:38"
+      ],
       "problema": "Input nomi lossy, ./../, case alias o symlink → sovrascrittura dump, lettura restore o upload cloud di file host.",
       "scenario": "data/x symlink verso un segreto locale veniva enumerato da listFiles e caricato.",
       "fix": "Nomi con hash, compatibilità legacy provata, canonicalizzazione platform-aware, lstat/realpath e rifiuto di link, junction e file speciali.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A80", "severita": "alta",
+      "id": "CDB-A80",
+      "severita": "alta",
       "titolo": "Restore/verify non condividevano una preflight completa della catena",
       "categoria": "integrità backup / DDL",
       "modulo": "backup/lib/restore.js, backup/lib/util.js, backup/cli.js, server.js, mcp/McpGateway.js",
-      "riferimenti": ["backup/lib/restore.js:46", "backup/lib/restore.js:110", "backup/lib/util.js:431"],
+      "riferimenti": [
+        "backup/lib/restore.js:46",
+        "backup/lib/restore.js:110",
+        "backup/lib/util.js:431"
+      ],
       "problema": "Input manifest/baseId manomesso, checksum o file extra → DROP/CREATE/INSERT potevano iniziare prima di accertare tutti i layer.",
       "scenario": "Un layer semanticamente estraneo o DDL alterata entra nella catena richiesta.",
       "fix": "Verifier unico CLI/UI/MCP, preflight prima di ogni mutazione, identità/cronologia coerenti, checksum normalizzato e categorie esplicite per duplicati/extra/non verificabili.",
-      "stato": "risolto"
+      "stato": "risolto (parzialmente verificato)",
+      "verifica": "Parzialmente coperto da test/unit.js (preflightChain, assertSafeSchemaSql). Il verificatore unico e le categorie del rapporto non hanno un test dedicato."
     },
     {
-      "id": "CDB-A81", "severita": "alta",
+      "id": "CDB-A81",
+      "severita": "alta",
       "titolo": "Dump grandi potevano crescere in memoria, bloccarsi o essere incoerenti fra tabelle",
       "categoria": "DoS / consistenza backup",
       "modulo": "backup/lib/util.js, backup/lib/engine.js",
-      "riferimenti": ["backup/lib/util.js:30", "backup/lib/util.js:140", "backup/lib/engine.js:258", "backup/lib/engine.js:449", "backup/lib/engine.js:461"],
+      "riferimenti": [
+        "backup/lib/util.js:30",
+        "backup/lib/util.js:140",
+        "backup/lib/engine.js:258",
+        "backup/lib/engine.js:449",
+        "backup/lib/engine.js:461"
+      ],
       "problema": "Input milioni di righe, disco pieno o DDL concorrente → listener/promise accumulati, drain senza risveglio o tabelle lette in istanti diversi.",
       "scenario": "Il processo resta appeso o produce un backup formalmente riuscito con riferimenti orfani.",
       "fix": "stream.pipeline, listener rimovibili, abort/pulizia, lettore a stato singolo, cancellazione cursori e snapshot unica; PG usa lock iniziale e stesso client per metadati/dati.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A82", "severita": "media",
+      "id": "CDB-A82",
+      "severita": "media",
       "titolo": "Azioni frontend ritardate potevano scrivere o aggiornare il tab sbagliato",
       "categoria": "race condition / integrità dati",
       "modulo": "public/js/inlineEdit.js, public/js/cellselect.js, public/js/schema-ops.js, public/js/grid.js, public/js/query-tab.js, public/js/fk-vista.js",
-      "riferimenti": ["public/js/inlineEdit.js:290", "public/js/cellselect.js:938", "public/js/schema-ops.js:238", "public/js/fk-vista.js:505"],
+      "riferimenti": [
+        "public/js/inlineEdit.js:290",
+        "public/js/cellselect.js:938",
+        "public/js/schema-ops.js:238",
+        "public/js/fk-vista.js:505"
+      ],
       "problema": "Input apertura modale/query in A, cambio/chiusura tab, poi risposta o Salva → emit o stato globale del tab B.",
       "scenario": "doc:replace riceve database/collection B e id della riga A; fallback/count/infinite-scroll contaminano B.",
       "fix": "Context congelati con tabId/db/coll, token e state origine, chiusura pannelli al cambio tab, TAB_CLOSED innocuo e dirty consumato solo dopo successo.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
     },
     {
-      "id": "CDB-A83", "severita": "media",
+      "id": "CDB-A83",
+      "severita": "media",
       "titolo": "Supporto PostgreSQL UI e operazioni strategy generavano risultati non portabili o contesti errati",
       "categoria": "correttezza funzionale",
       "modulo": "public/js/exportimport.js, public/js/insert.js, public/js/cellselect.js, db/MySqlStrategy.js, db/PostgreSqlStrategy.js",
-      "riferimenti": ["public/js/exportimport.js:449", "public/js/insert.js:18", "public/js/cellselect.js:406"],
+      "riferimenti": [
+        "public/js/exportimport.js:449",
+        "public/js/insert.js:18",
+        "public/js/cellselect.js:406"
+      ],
       "problema": "Import DB PG conservava schema sorgente senza indici/FK; interval diventava number; copia INSERT usava quoting MySQL. USE/EXPLAIN/dropIndex/read-only tx avevano edge non sicuri.",
       "scenario": "Import verso schema diverso o valore con apostrofo produceva DDL/SQL errato; errori setup lasciavano contesto o transazione inaffidabile.",
       "fix": "Tipi numerici ancorati, INSERT dialect-aware, USE fail-fast, EXPLAIN singolo, indice verificato e rollback garantito. Il round-trip PostgreSQL NON è più bloccato ma implementato: tableDdl emette la tabella NON qualificata (il retarget lo fa il search_path già allineato da collectionAggregate), legge PK/UNIQUE/CHECK da pg_get_constraintdef, mappa i default nextval(...) su serial e conserva GENERATED ... AS IDENTITY; il nuovo tableAuxDdl restituisce indici (pg_get_indexdef, esclusi quelli vincolari) e FK, che l'import applica in una SECONDA fase, dopo tutte le tabelle e tutti i dati.",
@@ -151,22 +318,113 @@
       "verifica": "test/unit-ddl-roundtrip.js (pool finto con righe di catalogo reali), verde e provato per mutazione su tre regressioni: qualificazione dello schema, serial disattivato, FK rimesse nella CREATE TABLE. NON eseguito su un PostgreSQL reale: nessun server raggiungibile in sessione. Vedi priorita_intervento."
     },
     {
-      "id": "CDB-A84", "severita": "media",
+      "id": "CDB-A84",
+      "severita": "media",
       "titolo": "Risorse asincrone, risultato MongoDB 6 e strutture client speciali causavano leak o risultati falsi",
       "categoria": "affidabilità / robustezza",
       "modulo": "server.js, db/MongoDbStrategy.js, electron-main.js, public/js/geo-risultati.js, public/js/cell-chart.js",
-      "riferimenti": ["db/MongoDbStrategy.js:1088", "db/MongoDbStrategy.js:1095", "electron-main.js:287"],
+      "riferimenti": [
+        "db/MongoDbStrategy.js:1088",
+        "db/MongoDbStrategy.js:1095",
+        "electron-main.js:287"
+      ],
       "problema": "Retry dopo close creava sessioni orfane; connect falliti trattenevano client/URI; findOneAnd* leggeva sempre .value; geometrie tardive e chiavi __proto__ alteravano la UI.",
       "scenario": "Close durante backoff o write MCP riuscita → pool orfano o doc:null; dati validi oltre campione non mostravano la mappa.",
       "fix": "Cancellazione/teardown reconnect, close e pulizia URI, compatibilità return MongoDB 6, scansione geometrie budgetizzata e Object.create(null); rimossi anche byte NUL grezzi.",
-      "stato": "risolto"
+      "stato": "risolto (non verificato)",
+      "verifica": "NON VERIFICATO CON TEST. La correzione è stata scritta durante l analisi statica e riletta nella seconda passata confrontandola con lo scenario dichiarato, ma nessun test cita questo rilievo e nessuna prova dinamica lo esercita. Rileggere il codice non è provarlo: vedi la regola di completezza in CLAUDE.md."
+    },
+    {
+      "id": "CDB-A85",
+      "severita": "alta",
+      "titolo": "Il motore di backup perdeva view, routine, trigger, eventi, validatori e system.views, e le FK MySQL rendevano il restore dipendente dall'ordine alfabetico",
+      "categoria": "perdita dati / integrità backup",
+      "modulo": "backup/lib/engine.js, backup/lib/restore.js, server.js, db/*Strategy.js, public/js/schema-ops.js, public/js/dbtree.js",
+      "riferimenti": [
+        "backup/lib/engine.js:614",
+        "backup/lib/engine.js:263",
+        "backup/lib/restore.js:302"
+      ],
+      "problema": "Il dump catturava solo tabelle base/documenti e indici: view, stored procedure, funzioni, trigger, eventi (MySQL) e view, validatori e opzioni di collection (MongoDB) non finivano nel backup. Su MySQL le FK restavano dentro SHOW CREATE TABLE e il restore creava le tabelle in ordine alfabetico senza mai disattivare FOREIGN_KEY_CHECKS. Su MongoDB la pseudo-collection system.views veniva salvata come dati.",
+      "scenario": "VERIFICATO su MySQL 8.4.9: con articoli (figlia) che ordina prima di zfornitori (padre), la CREATE fallisce con ER_FK_CANNOT_OPEN_PARENT e la tabella sparisce col suo contenuto — 1 tabella persa su 2. VERIFICATO su MongoDB: un database contenente una view produce un backup il cui restore fallisce con 'cannot write to <db>.system.views', cioè un backup 'riuscito' e non ripristinabile. In entrambi i casi un backup di un database strutturato ne ripristinava solo una parte, senza che i conteggi di riga lo segnalassero: le view non hanno righe proprie.",
+      "fix": "Nuovo file objects/schema.json (kind 'objects') con view, routine, trigger, eventi e FK per MySQL, view e opzioni/validatori per MongoDB. Terza fase di restore che li applica DOPO tabelle e dati, con: DDL validate da assertSafeObjectSql (stesso principio di assertSafeSchemaSql, CDB-A80), DEFINER rimosso per non dipendere dagli utenti dell'istanza di origine, e riqualificazione del database nelle DDL così che una view ripristinata altrove non continui a leggere le tabelle dell'ORIGINALE. Le FK MySQL escono dalla CREATE TABLE e diventano ALTER TABLE della terza fase. Le collection system.* sono escluse dal dump.",
+      "stato": "risolto",
+      "verifica": "test/unit-rinomina-oggetti.js verde (funzioni pure). Cicli backup→restore completi eseguiti su MySQL 8.4.9 e MongoDB reali: MySQL 4/4 righe, 0 problemi, con view/routine/trigger/FK ricreati e la view che punta alla DESTINAZIONE (provato con un UPDATE fatto solo lì); MongoDB 2/2 documenti, validatore attivo (rifiuta un documento non conforme), indice unico e view funzionanti. Vedi anche CDB-A86: la prima versione di questa correzione non reggeva le colonne geometriche."
+    },
+    {
+      "id": "CDB-A86",
+      "severita": "critica",
+      "titolo": "Il backup MySQL corrompeva o rendeva non ripristinabili geometrie, binari, BIGINT, date al microsecondo e colonne generate",
+      "categoria": "perdita/corruzione dati",
+      "modulo": "backup/lib/engine.js, backup/lib/restore.js, server.js",
+      "riferimenti": [
+        "backup/lib/engine.js:440",
+        "backup/lib/restore.js:470"
+      ],
+      "problema": "Il dump MySQL leggeva le righe con SELECT *: il driver mysql2 consegna una GEOMETRY come oggetto {x, y} (o array di punti), forma che perde tipo geometrico e SRID. Quell'oggetto finiva nel file NDJSON e al ripristino MySQL rifiutava l'INSERT con 'Cannot get geometry object from data you send to the GEOMETRY field'. Il backup risultava RIUSCITO e non era ripristinabile. Chiudendo la classe del difetto (un test su TUTTI i tipi) sono emersi altri quattro casi della stessa natura: i binari (BINARY/VARBINARY/BLOB/BIT) tornavano come Buffer e non sopravvivevano al giro EJSON del file NDJSON; i BIGINT venivano convertiti in Number e oltre 2^53 CAMBIAVANO valore (-9223372036854775808 diventava -9223372036854776000); DATETIME/TIMESTAMP passavano da un Date di JavaScript che tronca i microsecondi (.999999 -> .999000) e reinterpreta il fuso; le colonne GENERATE venivano salvate e reinserite, cosa che MySQL rifiuta, facendo fallire il ripristino dell intera tabella.",
+      "scenario": "Segnalato da Keus rinominando un database MySQL con una colonna POINT. Riprodotto: il dump conteneva {\"x\":12.5,\"y\":41.9} al posto della geometria. Due difetti ulteriori emersi correggendolo: (a) salvare come GeoJSON (la convenzione dell'interfaccia) NON è fedele — ST_AsGeoJSON normalizza l'orientamento degli anelli, e un anello invertito su un SRS geografico può scambiare l'interno con l'esterno restituendo il complemento del poligono; (b) usando il SRID della colonna di DESTINAZIONE, un ripristino verso una colonna con SRID diverso riusciva reinterpretando la geometria — stesse coordinate, punto diverso sulla Terra, nessun errore.",
+      "fix": "Le geometrie si salvano come WKB esadecimale (HEX(ST_AsBinary(...))), rappresentazione esatta che non normalizza nulla, e il SRID di ORIGINE di ogni colonna viene registrato nel manifest (geoSrid) perché il WKB non lo contiene. Il restore riscrive con ST_GeomFromWKB(UNHEX(?), <srid di origine>): con il SRID di origine è MySQL stesso a rifiutare una destinazione incompatibile, invece di lasciar passare una reinterpretazione. Aggiunta inoltre in rinominaViaDump una barriera esplicita prima di qualunque eliminazione: problemi del restore, conteggi non coincidenti o collection/tabelle mancanti nella destinazione impediscono il drop dell'originale. La lista di selezione del dump non e piu SELECT * ma si costruisce da information_schema (mysqlColumnMeta): esclude le colonne generate, legge geometrie e binari in esadecimale, e BIGINT, date e orari come testo. Il restore riconosce i binari dal tipo della colonna di destinazione e li riscrive con UNHEX.",
+      "stato": "risolto",
+      "verifica": "Provato su MySQL 8.4.9 reale: round-trip di POINT con SRID 4326 e POLYGON, confronto ST_AsText+ST_SRID origine/destinazione IDENTICO, ordine dei vertici compreso. Provata la barriera sabotando la destinazione con SRID 3857: il restore ora fallisce ('The SRID of the geometry does not match the SRID of the column'), non si arriva al drop e il database di origine resta intatto con tutte le sue righe. Verificata anche la convivenza di geometrie, FK e oggetti di schema nello stesso ciclo. Aggiunto test/e2e-tipi-mysql.js (npm run test:e2e:tipi-mysql): una tabella con 30 colonne di tipo diverso piu 2 generate, valori agli estremi del dominio (interi ai limiti, DECIMAL(30,10), unicode fuori dal BMP, binari vuoti, date agli estremi con microsecondi, SET vuoto, NULL), confronto colonna per colonna reso dal server come CHAR/HEX. VERDE: 0 differenze su 96 confronti."
+    },
+    {
+      "id": "CDB-A87",
+      "severita": "critica",
+      "titolo": "Le correzioni A83, A85 e A86 sono state applicate solo a MySQL e MongoDB: il motore di backup PostgreSQL ha le stesse tre classi di difetto, tutte aperte",
+      "categoria": "perdita/corruzione dati",
+      "modulo": "backup/lib/engine.js (dumpPostgreSql, pgTableDdl, pgDefaultSql), backup/lib/restore.js (restoreLayerPostgreSql)",
+      "riferimenti": [
+        "backup/lib/engine.js:691",
+        "backup/lib/engine.js:684",
+        "backup/lib/engine.js:808"
+      ],
+      "problema": "Rilievo emerso applicando all intero audit la regola di completezza (punto 3: correggi la classe, non l istanza). Il motore di backup PostgreSQL non ha ricevuto NESSUNA delle tre correzioni: (a) pgTableDdl ricostruisce la CREATE TABLE a mano con sole colonne + PRIMARY KEY — niente UNIQUE, CHECK, FK, indici, identità o colonne generate (stessa lacuna di CDB-A83, corretta solo nel percorso export/import); (b) nessun file objects/schema.json per PostgreSQL — view, funzioni, trigger e sequenze non finiscono nel backup (stessa lacuna di CDB-A85); (c) la SELECT dei dati è SELECT * senza alcun trattamento dei tipi, e le colonne generate non sono escluse (stessa lacuna di CDB-A86). Inoltre pgTableDdl DUPLICA PostgreSqlStrategy.tableDdl, che in CDB-A83 è stata corretta: le due implementazioni ora divergono. Seguendo la classe è emerso un quinto difetto, indipendente e più grave: restoreLayerPostgreSql passava a collectionImport le RIGHE GREZZE del file NDJSON, ma quel metodo fa EJSON.deserialize, che su una stringa restituisce la stringa e la fa rifiutare come \"la riga deve essere un oggetto\". Ogni riga di un ripristino PostgreSQL sarebbe quindi fallita.",
+      "scenario": "PROVATO in isolamento su pgDefaultSql, che il motore usa per ogni default: nextval('t_id_seq'::regclass) diventa DEFAULT 'nextval(''t_id_seq''::regclass)', cioè una STRINGA. Il backup di una tabella con una colonna serial produce quindi una DDL che al ripristino assegna un testo a una colonna intera. Stessa sorte per ogni default che sia un espressione: (a + b) diventa il letterale '(a + b)'. Un backup PostgreSQL di una tabella non banale non è ripristinabile fedelmente, e nulla lo segnala.",
+      "fix": "Nuovo modulo condiviso db/pg-ddl.js: pgCreateTable (default verbatim, nextval mappato su serial, identità e colonne generate conservate, PK/UNIQUE/CHECK da pg_get_constraintdef), pgAuxDdl (indici e FK differiti alla terza fase), pgSchemaObjects (view anche materializzate, funzioni, trigger, sequenze indipendenti), pgColonneDaSalvare (esclude le generate, legge bytea in esadecimale e i temporali come testo). Il motore di backup e la strategia ora leggono lo schema da qui: la duplicazione che aveva causato la divergenza non esiste più. Il restore PostgreSQL parsifica le righe in oggetti prima di passarle a collectionImport e riconverte le colonne binarie con Buffer.from(hex). La validazione assertSafeObjectSql accetta anche le forme PostgreSQL (VIEW materializzate, OR REPLACE FUNCTION, CREATE SEQUENCE, CREATE INDEX).",
+      "stato": "risolto (non verificato su PostgreSQL reale)",
+      "verifica": "test/unit-pg-ddl.js verde e PROVATO PER MUTAZIONE su 5 regressioni, tutte rilevate: default quotato come letterale, colonne generate non escluse, bytea letto grezzo, temporali letti come Date, FK rimesse nella CREATE TABLE. npm test verde; e2e MySQL non regredito. NON PROVATO SU UN POSTGRESQL REALE: in sessione non c era un server raggiungibile (porta 5432 chiusa, Docker spento). Il test esercita il TESTO prodotto dalle funzioni con un esecutore finto, non la sua esecuzione su un database: la correttezza delle query di catalogo e il comportamento del restore end-to-end restano da verificare."
+    },
+    {
+      "id": "CDB-A88",
+      "severita": "alta",
+      "titolo": "Su PostgreSQL i tipi geometrici NATIVI (point, polygon, box...) non erano ne leggibili ne scrivibili: scambiati per geometrie PostGIS",
+      "categoria": "correttezza funzionale / perdita dati",
+      "modulo": "db/geometry.js, db/PostgreSqlStrategy.js, db/pg-ddl.js",
+      "riferimenti": [
+        "db/geometry.js:23",
+        "db/PostgreSqlStrategy.js:452"
+      ],
+      "problema": "L'elenco SQL_GEOMETRY_TYPES contiene i nomi dei tipi geometrici di MySQL (point, linestring, polygon...) ed era usato anche per PostgreSQL. Ma su PostgreSQL point, line, lseg, box, path, polygon e circle sono tipi NATIVI, presenti da sempre e senza alcun rapporto con PostGIS: ST_AsGeoJSON appartiene a PostGIS e accetta solo geometry e geography. Una tabella con una banale colonna point diventava quindi illeggibile. In SCRITTURA il difetto era speculare e altrettanto bloccante: l'editor su mappa manda GeoJSON, ma una colonna nativa vuole il proprio letterale — l'inserimento falliva con \"invalid input syntax for type point: {\\\"type\\\":\\\"Point\\\",...}\". Le due meta del problema hanno la stessa radice (l'elenco dei tipi era quello di MySQL) ma vivono in punti diversi del codice: correggere solo la lettura lasciava la tabella visibile e non modificabile.",
+      "scenario": "Segnalato da Keus: aprendo una tabella PostgreSQL con una colonna point la griglia falliva con \"function st_asgeojson(point) does not exist\" e non mostrava alcuna riga. Nessun dato perso, ma la tabella era inaccessibile dall'interfaccia. Poi, con la lettura corretta, Keus ha segnalato il difetto speculare in scrittura provando a inserire punti e poligoni.",
+      "fix": "Predicato dedicato isPostgresGeometryType (solo geometry e geography) usato dalla strategia PostgreSQL al posto di quello di MySQL. Nuovo modulo db/pg-geo-nativo.js che traduce i tipi nativi da e verso GeoJSON nei due sensi, cosi la stessa mappa e lo stesso editor funzionano su PostGIS e su point/polygon/path/lseg/box nativi: in lettura le colonne native si prendono come ::text (il driver le consegna come oggetti {x, y} che non distinguono un lseg da un path) e si convertono in GeoJSON; in scrittura il GeoJSON diventa il letterale PostgreSQL. Le differenze fra i due formati sono gestite esplicitamente: PostgreSQL non memorizza il punto di chiusura di un poligono e GeoJSON lo pretende; un path e aperto o chiuso a seconda della parentesi. Cio che NON e rappresentabile viene RIFIUTATO con un messaggio invece di essere troncato in silenzio: un poligono con buchi (PostgreSQL non li ha) e i tipi line e circle, che non hanno equivalente GeoJSON e restano modificabili come testo. Chiusa anche la classe nel backup: i tipi nativi sono letti come testo, come le geometrie MySQL di CDB-A86.",
+      "stato": "risolto (non verificato su PostgreSQL reale)",
+      "verifica": "npm test verde. test/unit-pg-geo-nativo.js provato PER MUTAZIONE su 5 regressioni, tutte rilevate (chiusura anello non aggiunta nei due rami path e polygon, buchi accettati invece che rifiutati, lseg di lunghezza qualsiasi, circle convertito invece che rifiutato); due di esse non erano colte alla prima stesura e il test e stato rinforzato. Coperto il round-trip su 6 letterali nativi, identico. test/unit-pg-ddl.js verde, e2e MySQL non regredito. NON provato sul PostgreSQL di Keus (localhost:5412): raggiungibile ma senza credenziali disponibili in sessione."
+    },
+    {
+      "id": "CDB-A89",
+      "severita": "alta",
+      "titolo": "Tre correzioni precedenti erano incomplete: sequenze PostgreSQL senza valore, FK MySQL affidate a una regex non verificata, riqualificazione parziale che falliva in silenzio",
+      "categoria": "perdita dati / lavoro incompleto",
+      "modulo": "db/pg-ddl.js, backup/lib/engine.js, backup/lib/restore.js",
+      "riferimenti": [
+        "db/pg-ddl.js:270",
+        "backup/lib/engine.js:366",
+        "backup/lib/restore.js:196"
+      ],
+      "problema": "Rilievo emerso da una richiesta di Keus: rileggere l'audit cercando i fix fatti per pigrizia. Ne sono usciti tre. (a) SEQUENZE PostgreSQL: pgSchemaObjects emetteva CREATE SEQUENCE IF NOT EXISTS senza alcun parametro e senza mai riportare il VALORE corrente — nessuna occorrenza di setval in tutto il codice. Una tabella con id 1..1000 si ripristinava coi dati giusti ma la sequenza ripartiva da 1: il primo INSERT dopo il ripristino sbatteva contro la chiave primaria, e la tabella non accettava piu scritture. Su MySQL il problema non esiste perche AUTO_INCREMENT e dentro SHOW CREATE TABLE — la stessa asimmetria classe/istanza gia vista in CDB-A87. (b) FK MySQL: splitMySqlForeignKeys estraeva i vincoli con una regex riga per riga senza confrontare il risultato con il catalogo; se la regex avesse smesso di corrispondere si sarebbe prodotto uno schema privo di vincoli senza alcun segnale. (c) riqualificaDdl: riscriveva la sola forma `db`. e proseguiva comunque, quindi una definizione che nominava il database di origine in un'altra forma produceva un oggetto che continuava a leggere le tabelle ORIGINALI — il fallimento silenzioso che quella funzione doveva impedire.",
+      "scenario": "(a) e deducibile dal codice senza un server: pgCreateTable mappa nextval su serial, che crea una sequenza nuova a 1, e nulla la riporta al valore di origine. (b) e (c) sono difetti latenti: non si manifestano finche la forma del testo resta quella prevista, e quando cambia non lo dicono.",
+      "fix": "(a) I parametri delle sequenze (INCREMENT/MIN/MAX/START/CACHE/CYCLE) si leggono da pg_sequences e si riproducono; il VALORE corrente di TUTTE le sequenze — possedute da una serial comprese — viene registrato in sequenceValues e applicato dal restore come setval(..., true) per ULTIMO, dopo i dati (fissarlo prima lo lascerebbe indietro). setval ha una validazione dedicata a forma singola, invece di allargare assertSafeObjectSql alle SELECT. (b) Il numero di FK riconosciute viene confrontato con information_schema.TABLE_CONSTRAINTS: se non coincide il backup si ferma invece di produrre uno schema incompleto. (c) riqualificaDdl verifica DOPO la riscrittura che il nome del database di origine non compaia piu e, se compare, lancia: il ripristino si ferma invece di creare un oggetto che punta altrove.",
+      "stato": "risolto (non verificato su PostgreSQL reale)",
+      "verifica": "npm test verde; e2e MySQL (test/e2e-tipi-mysql.js) non regredito, quindi il controllo sul conto delle FK non produce falsi positivi su una tabella reale con FK. Provato PER MUTAZIONE su 5 regressioni, tutte rilevate: valore sequenza non salvato, sequenza posseduta ricreata (duplicato), parametri sequenza persi, conto FK non verificato, riqualifica fallita non segnalata. La parte PostgreSQL resta senza prova dinamica."
     }
   ],
   "priorita_intervento": [
-    "FATTO il 2026-08-15: npm test eseguito, tutte le suite verdi.",
-    "Eseguire gli E2E isolati MongoDB, MySQL, PostgreSQL, MCP/RBAC e backup con i tre DBMS disponibili. In sessione non erano raggiungibili: né PostgreSQL su 5432 né Docker.",
-    "Provare manualmente cambio/chiusura tab durante modifica, DDL, import, infinite scroll e query concorrenti.",
-    "PRIORITARIO: provare il round-trip PostgreSQL su un DB reale (CDB-A83, ora sbloccato). Da verificare in particolare su uno schema di DESTINAZIONE diverso da quello di origine, con tabelle legate da FK, una colonna serial e una a identità. Il test unitario prova il testo del DDL, non la sua esecuzione.",
-    "Verificare su un MySQL 8.0.23+ una CHANGE COLUMN su colonna INVISIBLE (CDB-A78)."
+    "PRIORITARIO — provare su un PostgreSQL reale (Keus ne ha uno su localhost:5412, servono le credenziali) il ciclo backup/restore (CDB-A87), il round-trip export/import (CDB-A83) e lettura/scrittura di colonne point e polygon (CDB-A88). Sono quattro correzioni provate solo con esecutori finti.",
+    "Provare NEL BROWSER la rinomina di un database su MongoDB e MySQL: voce di menu, modale, casella \"elimina l'originale\" e aggiornamento dell'albero. Il motore e provato, il percorso socket db:rename e la UI no.",
+    "Dare una prova ai 9 rilievi marcati \"risolto (non verificato)\": oggi poggiano sulla sola rilettura del codice.",
+    "Eseguire gli E2E isolati (MongoDB, MySQL, PostgreSQL, MCP/RBAC, backup).",
+    "Estendere test/e2e-tipi-mysql.js a PostgreSQL e MongoDB: la classe del difetto (il driver consegna un tipo in una forma non reinseribile) non e specifica di MySQL.",
+    "Verificare su MySQL 8.0.23+ una CHANGE COLUMN su colonna INVISIBLE (CDB-A78).",
+    "Provare manualmente cambio/chiusura tab durante modifica, DDL, import, infinite scroll e query concorrenti (CDB-A82)."
   ]
 }

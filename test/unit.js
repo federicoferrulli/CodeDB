@@ -1156,6 +1156,23 @@ console.log('--- Test Unitari CodeDB ---');
   // vincoli e FK spariscono in silenzio. Vedi CDB-A83.
   await require('./unit-ddl-roundtrip');
 
+  // Test 24-octies: oggetti di schema nel backup e rinomina di un database.
+  // Su MongoDB e MySQL la rinomina è dump → verifica → restore: se il backup
+  // non porta view, routine, trigger, vincoli e validatori, quella "rinomina"
+  // è una perdita silenziosa. Vedi CDB-A85.
+  await require('./unit-rinomina-oggetti');
+
+  // Test 24-novies: lettura dello schema PostgreSQL condivisa fra strategia e
+  // motore di backup. Erano due copie della stessa logica: correggendone una
+  // (CDB-A83) il backup ha continuato a produrre DDL rotte per un'intera
+  // revisione, senza che nulla lo segnalasse. Vedi CDB-A87.
+  await require('./unit-pg-ddl');
+
+  // Test 24-decies: tipi geometrici NATIVI di PostgreSQL (point, polygon, box…)
+  // tradotti da e verso GeoJSON. Non sono PostGIS: scambiarli per tali rendeva
+  // la tabella illeggibile, e l'editor su mappa non riusciva a scriverli.
+  require('./unit-pg-geo-nativo');
+
   // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
   // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
   // momento il registro (vedi docs/provenienza.md) promette qualcosa che il

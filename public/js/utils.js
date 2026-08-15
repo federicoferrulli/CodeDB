@@ -865,7 +865,15 @@ export function openModal(elOrId) {
  * A differenza di `prompt()` non blocca il thread: restituisce una Promise, e
  * chi la usa deve essere `async` o concatenare `.then`.
  */
-export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', password = false, ok = 'Conferma' } = {}) {
+/**
+ * Modale di richiesta testo. Con `spunta` mostra anche una casella opzionale e
+ * risolve con `{ testo, spunta }` invece della sola stringa: serve alle
+ * operazioni in cui la scelta non è "quale valore" ma "e poi cosa faccio"
+ * (la rinomina di un database e il destino dell'originale). Senza `spunta` il
+ * valore risolto resta la stringa di sempre, così i chiamanti esistenti non
+ * cambiano.
+ */
+export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', password = false, ok = 'Conferma', spunta = null } = {}) {
   const overlay = $('#askinput-overlay');
   // Senza la modale in pagina, meglio annullare che restare in attesa per sempre.
   if (!overlay) return Promise.resolve(null);
@@ -879,6 +887,17 @@ export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', passw
   input.type = password ? 'password' : 'text';
   input.value = valore == null ? '' : String(valore);
 
+  const rigaSpunta = $('#askinput-check-row');
+  const casella = $('#askinput-check');
+  if (rigaSpunta && casella) {
+    rigaSpunta.classList.toggle('hidden', !spunta);
+    // Sempre riazzerata all'apertura: una casella che ricorda la scelta
+    // precedente farebbe eliminare un database a chi apre la modale e conferma
+    // senza rileggerla.
+    casella.checked = !!(spunta && spunta.valore);
+    if (spunta) $('#askinput-check-label').textContent = spunta.etichetta || '';
+  }
+
   return new Promise((resolve) => {
     let chiuso = false;
     const finish = (res) => {
@@ -891,7 +910,7 @@ export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', passw
       closeModal(overlay);
       resolve(res);
     };
-    const onOk = () => finish(input.value);
+    const onOk = () => finish(spunta ? { testo: input.value, spunta: !!(casella && casella.checked) } : input.value);
     const onCancel = () => finish(null);
     const onEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); onOk(); } };
     // Esc lo intercetta anche handleModalEsc, che chiude la modale ma non

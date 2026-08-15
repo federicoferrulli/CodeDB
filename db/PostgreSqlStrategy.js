@@ -3,7 +3,8 @@
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
-const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const { pgNativoAGeoJson, geoJsonAPgNativo } = require('./pg-geo-nativo');
 const sessioni = require('./sessioni');
 
 // Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
@@ -292,6 +293,10 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
+  // Il livello "database" della UI è uno SCHEMA PostgreSQL, e ALTER SCHEMA
+  // RENAME è atomico e istantaneo: nessun dump/restore necessario.
+  supportsNativeRename() { return true; }
+
   async renameDatabase(db, newName) {
     const pool = this.requirePool();
     const from = String(db || '').trim();
@@ -443,9 +448,16 @@ class PostgreSqlStrategy extends DbStrategy {
     const info = {
       columns: res.rows.map((r) => ({ name: r.name, type: r.type, srid: null })),
       geo: new Map(),
+      geoNativo: new Map(),
     };
     for (const c of info.columns) {
-      if (isSqlGeometryType(c.type)) info.geo.set(c.name, c);
+      // Solo PostGIS: i tipi geometrici NATIVI di PostgreSQL (point, polygon,
+      // box...) non sono geometrie per ST_AsGeoJSON. Vedi db/geometry.js.
+      if (isPostgresGeometryType(c.type)) info.geo.set(c.name, c);
+      // Tipi geometrici nativi (point, polygon, box...): non sono PostGIS, ma
+      // la griglia e l'editor su mappa devono poterli leggere e scrivere lo
+      // stesso. Si traducono da e verso GeoJSON (vedi db/pg-geo-nativo.js).
+      else if (isPostgresNativeGeometryType(c.type)) info.geoNativo.set(c.name, c);
     }
 
     if (info.geo.size) {
@@ -479,18 +491,33 @@ class PostgreSqlStrategy extends DbStrategy {
   // il driver `pg` restituirebbe il WKB esadecimale, inutilizzabile.
   async selectListFor(db, coll) {
     const info = await this.tableColumnsInfo(db, coll);
-    if (!info.geo.size) return { list: '*', geo: info.geo };
+    if (!info.geo.size && !info.geoNativo.size) return { list: '*', geo: info.geo, geoNativo: info.geoNativo };
     const list = info.columns
-      .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
+      .map((c) => {
+        if (info.geo.has(c.name)) return `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}`;
+        // I tipi nativi il driver li consegna come oggetti ({x, y}) che non
+        // distinguono un lseg da un path: il TESTO di PostgreSQL invece è
+        // completo e traducibile in GeoJSON.
+        if (info.geoNativo.has(c.name)) return `${qid(c.name)}::text AS ${qid(c.name)}`;
+        return qid(c.name);
+      })
       .join(', ');
-    return { list, geo: info.geo };
+    return { list, geo: info.geo, geoNativo: info.geoNativo };
   }
 
-  static geoRowsToJson(rows, geo) {
-    if (!geo || !geo.size) return rows;
-    for (const row of rows) {
-      for (const col of geo.keys()) {
-        if (col in row) row[col] = parseGeoJsonText(row[col]);
+  static geoRowsToJson(rows, geo, geoNativo) {
+    if (geo && geo.size) {
+      for (const row of rows) {
+        for (const col of geo.keys()) {
+          if (col in row) row[col] = parseGeoJsonText(row[col]);
+        }
+      }
+    }
+    if (geoNativo && geoNativo.size) {
+      for (const row of rows) {
+        for (const [col, info] of geoNativo) {
+          if (col in row) row[col] = pgNativoAGeoJson(info.type, row[col]);
+        }
       }
     }
     return rows;
@@ -507,11 +534,20 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   // Espressione + parametro per una colonna in scrittura.
-  static geoBinding(col, value, geo, placeholder) {
+  static geoBinding(col, value, geo, placeholder, geoNativo) {
     const colInfo = geo && geo.get(col);
     if (colInfo && isGeoJson(value)) {
       assertGeoJson(value, `Colonna "${col}"`);
       return { sql: PostgreSqlStrategy.geoExpression(colInfo, placeholder), param: JSON.stringify(value) };
+    }
+    // Tipo nativo: l'editor manda GeoJSON, PostgreSQL vuole il proprio
+    // letterale — "(12.5,41.9)" e non {"type":"Point",...}. Senza questa
+    // conversione l'inserimento falliva con "invalid input syntax for type
+    // point" (CDB-A88).
+    const nativo = geoNativo && geoNativo.get(col);
+    if (nativo && value != null) {
+      if (isGeoJson(value)) assertGeoJson(value, `Colonna "${col}"`);
+      return { sql: placeholder, param: geoJsonAPgNativo(nativo.type, value) };
     }
     return { sql: placeholder, param: toSqlValue(value) };
   }
@@ -578,7 +614,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // singola, ordinamento di default), pagina con `pk > :after` invece di
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
     // Geometrie lette come GeoJSON: vedi selectListFor.
-    const { list: selectList, geo } = sel;
+    const { list: selectList, geo, geoNativo } = sel;
     const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
     const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
     const params = ks ? ks.params : [limit, skip];
@@ -611,7 +647,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // Keyset "indietro": la query gira in ordine pk DESC, qui si riordina ASC.
     let rows = res.rows;
     if (ks && ks.reverse) rows = rows.slice().reverse();
-    PostgreSqlStrategy.geoRowsToJson(rows, geo);
+    PostgreSqlStrategy.geoRowsToJson(rows, geo, geoNativo);
 
     // COUNT(*) su tabelle enormi è una scansione: bloccherebbe la griglia. Il
     // client della UI passa `deferCount` e chiede il totale a parte via
@@ -984,8 +1020,8 @@ class PostgreSqlStrategy extends DbStrategy {
     } else {
       // Le colonne geometriche non prendono il valore grezzo ma
       // ST_GeomFromGeoJSON col SRID della colonna (vedi geoBinding).
-      const { geo } = await this.tableColumnsInfo(db, coll);
-      const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`));
+      const { geo, geoNativo } = await this.tableColumnsInfo(db, coll);
+      const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`, geoNativo));
       const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING *`;
       res = await pool.query(sql, bind.map((b) => b.param));
     }
@@ -1003,10 +1039,10 @@ class PostgreSqlStrategy extends DbStrategy {
     const params = [];
     let idx = 1;
 
-    const { geo } = await this.tableColumnsInfo(db, coll);
+    const { geo, geoNativo } = await this.tableColumnsInfo(db, coll);
     for (const [col, val] of Object.entries(set)) {
       if (col === '_id') continue;
-      const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`);
+      const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo);
       assignments.push(`${qid(col)} = ${b.sql}`);
       params.push(b.param);
     }
@@ -1373,7 +1409,7 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const res = await this.queryConTimeout(sql, params);
     const rows = res.rows;
-    PostgreSqlStrategy.geoRowsToJson(rows, sel.geo);
+    PostgreSqlStrategy.geoRowsToJson(rows, sel.geo, sel.geoNativo);
 
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
     const capped = DbStrategy.truncateBySize(rows);
