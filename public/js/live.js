@@ -4,6 +4,7 @@ import { tabs } from './tabs.js';
 import { $, emit } from './utils.js';
 import { runQuery, svuotaRelazioni } from './grid.js';
 import { renderDbTree } from './dbtree.js';
+import { invalidaSchemaIntellisense } from './autocomplete.js';
 
 export function togglePolling() {
   const isEnabled = $('#polling-checkbox').checked;
@@ -144,6 +145,9 @@ export function initLive() {
     // indicatore. Si svuota subito, anche per i tab in secondo piano: la cache
     // è per collection, non per tab.
     svuotaRelazioni();
+    // Stessa ragione per il completamento automatico dell'editor: la sua copia
+    // dello schema proporrebbe tabelle e colonne che non ci sono più.
+    invalidaSchemaIntellisense();
     // Tab in background: si segna lo schema come sporco e si aggiorna
     // alla riattivazione (vedi renderWorkspace).
     if (tab.id !== tabs.activeId) {

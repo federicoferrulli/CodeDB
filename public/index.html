@@ -979,7 +979,8 @@
                              lavoro, e stanno nel menu ⋯. -->
                         <div class="editor-tools">
                           <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
-                          <button id="query-format-btn" class="mini-btn" title="Formatta il codice"><i data-lucide="sparkles"></i> Formatta</button>
+                          <button id="query-format-btn" class="mini-btn" title="Formatta il codice (Ctrl+Shift+F)"><i data-lucide="sparkles"></i> Formatta</button>
+                          <button id="query-minify-btn" class="mini-btn" title="Minifica: tutto su una riga (Ctrl+Shift+M)"><i data-lucide="minimize-2"></i></button>
                           <span class="query-history-wrap toolbar-dropdown-wrap">
                             <button type="button" id="query-editor-more-btn" class="mini-btn dropdown-trigger-btn"
                               aria-haspopup="true" aria-expanded="false" title="Altre azioni sull'editor">⋯</button>
@@ -1038,6 +1039,12 @@
                             placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
                         </div>
                       </div>
+                      <!-- Linting in linea: compare solo quando nell'editor c'è
+                           un documento JSON/BSON. Su SQL tace, perché lì
+                           l'errore lo dice il DBMS con più precisione. Sta
+                           FUORI da .editor-body, che è un flex in riga: lì
+                           dentro finirebbe di fianco al testo, non sotto. -->
+                      <div id="query-lint" class="lint-bar hidden" aria-live="polite"></div>
                     </div>
 
                     <div class="resizer-v" id="query-editor-resizer"></div>
@@ -1215,9 +1222,16 @@
       </div>
 
       <div id="insert-tab-json" class="tab-panel hidden">
+        <div class="json-tools">
+          <button type="button" id="insert-json-format" class="mini-btn"
+            title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+          <button type="button" id="insert-json-minify" class="mini-btn"
+            title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+        </div>
         <textarea id="insert-json" rows="14" spellcheck="false">{
 
 }</textarea>
+        <div id="insert-json-lint" class="lint-bar hidden" aria-live="polite"></div>
       </div>
 
       <div id="insert-error" class="error hidden"></div>
@@ -1354,7 +1368,14 @@
     <div class="modal wide">
       <h2>Modifica documento</h2>
       <p id="editdoc-id" class="doc-id-line"></p>
+      <div class="json-tools">
+        <button type="button" id="editdoc-format" class="mini-btn"
+          title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+        <button type="button" id="editdoc-minify" class="mini-btn"
+          title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+      </div>
       <textarea id="editdoc-json" rows="16" spellcheck="false"></textarea>
+      <div id="editdoc-lint" class="lint-bar hidden" aria-live="polite"></div>
       <div id="editdoc-error" class="error hidden"></div>
       <div class="modal-actions">
         <button id="editdoc-cancel" class="ghost">Annulla</button>

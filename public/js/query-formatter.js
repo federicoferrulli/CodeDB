@@ -21,6 +21,7 @@
  */
 
 import { SQL_KEYWORDS, SQL_TYPES, SQL_FUNCTIONS } from './query-highlighter.js';
+import { formattaJsonBson, minificaJsonBson, sembraJsonBson } from './json-bson.js';
 
 const INDENT = '  ';
 
@@ -56,10 +57,66 @@ export function formatCode(code) {
   }
 }
 
-/** Indentazione di un filtro MQL o di una pipeline (Extended JSON compreso). */
+/**
+ * Indentazione di un filtro MQL o di una pipeline (Extended JSON compreso).
+ *
+ * Non passa più da `JSON.parse` + `JSON.stringify`: quel giro rifiuta la
+ * sintassi della shell (`{ _id: ObjectId("…") }`, apici singoli, chiavi nude) e
+ * soprattutto **perde cifre** sugli interi oltre i 53 bit, che tornerebbero
+ * arrotondati senza un avviso. `formattaJsonBson` riemette i valori alla
+ * lettera. Il vecchio giro resta come ripiego per il JSON stretto.
+ */
 export function formatJsonLike(text) {
-  const parsed = JSON.parse(String(text));
-  return JSON.stringify(parsed, null, 2);
+  try {
+    return formattaJsonBson(text, { indent: INDENT });
+  } catch (err) {
+    return JSON.stringify(JSON.parse(String(text)), null, 2);
+  }
+}
+
+/**
+ * L'inverso di `formatCode`: tutto su una riga, senza spazi superflui.
+ *
+ * Serve a incollare un filtro in un campo che non va a capo, in una riga di
+ * log o in un comando della shell. Come per la formattazione, in caso di
+ * dubbio si restituisce il testo ORIGINALE invece di rischiare di corromperlo:
+ * gli script JavaScript, dove togliere gli a capo cambia il significato (ASI,
+ * commenti di riga), non vengono minificati affatto.
+ */
+export function minifyCode(code) {
+  const testo = String(code == null ? '' : code);
+  const trimmed = testo.trim();
+  if (!trimmed) return testo;
+
+  try {
+    if (sembraJsonBson(trimmed)) return minificaJsonBson(trimmed);
+    if (sembraJs(trimmed)) return testo;
+    return minifySql(trimmed);
+  } catch (_err) {
+    return testo;
+  }
+}
+
+/**
+ * SQL su una riga sola. I commenti spariscono (un `--` su una riga sola
+ * commenterebbe tutto il resto), stringhe e identificatori quotati restano
+ * intatti perché il tokenizzatore li tratta come unità indivisibili.
+ */
+export function minifySql(sql) {
+  const toks = tokenizzaSql(sql).filter((t) => t.t !== 'commento');
+  let out = '';
+  for (let i = 0; i < toks.length; i++) {
+    const tok = toks[i];
+    const prec = toks[i - 1];
+    if (!out) { out = tok.v; continue; }
+    const attaccato = (tok.t === 'punt' && tok.v !== '(')
+      || (tok.t === 'op' && (tok.v === '.' || tok.v === '::'))
+      || (prec && prec.t === 'punt' && prec.v === '(')
+      || (prec && prec.t === 'op' && (prec.v === '.' || prec.v === '::'))
+      || (tok.t === 'punt' && tok.v === '(' && prec && (prec.t === 'fn' || prec.t === 'ident' || prec.t === 'tipo'));
+    out += attaccato ? tok.v : ` ${tok.v}`;
+  }
+  return out;
 }
 
 /* ==========================================================================

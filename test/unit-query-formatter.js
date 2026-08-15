@@ -26,7 +26,9 @@ function prova(nome, fn) {
 
 (async () => {
   const url = pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'query-formatter.js')).href;
-  const { formatSql, formatCode, reindentJs, sembraJs, formatJsonLike } = await import(url);
+  const {
+    formatSql, formatCode, reindentJs, sembraJs, formatJsonLike, minifyCode, minifySql,
+  } = await import(url);
 
   console.log('--- Test unitari formattatore editor ---');
 
@@ -143,6 +145,39 @@ function prova(nome, fn) {
   prova('Un testo non analizzabile torna indietro intatto', () => {
     const rotto = '{ questo non è JSON valido';
     assert.strictEqual(formatCode(rotto), rotto);
+  });
+
+  /* --- Minificazione ----------------------------------------------------- */
+
+  prova('minifyCode comprime un documento MQL', () => {
+    assert.strictEqual(minifyCode('{\n  "stato": "attivo"\n}'), '{"stato":"attivo"}');
+  });
+
+  prova('minifyCode comprime l\'SQL su una riga', () => {
+    assert.strictEqual(
+      minifyCode('SELECT id, nome\nFROM utenti\nWHERE attivo = true'),
+      'SELECT id, nome FROM utenti WHERE attivo = true',
+    );
+  });
+
+  prova('La minificazione SQL non tocca il contenuto delle stringhe', () => {
+    assert.strictEqual(minifySql("SELECT * FROM t WHERE s = 'a  b'"), "SELECT * FROM t WHERE s = 'a  b'");
+  });
+
+  prova('La minificazione SQL toglie i commenti', () => {
+    assert.strictEqual(minifySql('SELECT 1 -- nota\nFROM t'), 'SELECT 1 FROM t');
+  });
+
+  prova('Uno script JavaScript NON viene minificato', () => {
+    // Togliere gli a capo a uno script ne cambia il significato (punto e
+    // virgola automatico, commenti di riga): meglio non fare nulla.
+    const src = 'const a = 1\nprint(a) // nota\n';
+    assert.strictEqual(minifyCode(src), src);
+  });
+
+  prova('Un testo non analizzabile torna indietro intatto anche minificando', () => {
+    const rotto = '{ "a": ';
+    assert.strictEqual(minifyCode(rotto), rotto);
   });
 
   /* --- Script JavaScript ------------------------------------------------ */

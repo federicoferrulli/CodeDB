@@ -2163,6 +2163,34 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-weight: bold;
 }
 
+/* Linting JSON/BSON in linea (editor ⚡, modali di inserimento e modifica) */
+.lint-bar {
+  font-family: Consolas, monospace;
+  font-size: 0.82em;
+  padding: 4px 10px;
+  border-top: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* I colori vengono dai token del tema: nessuna tinta cablata, altrimenti la
+   barra diventa illeggibile sul tema chiaro o su uno personalizzato. */
+.lint-bar.lint-ok { color: var(--success); }
+.lint-bar.lint-ko {
+  color: var(--danger);
+  background: var(--danger-bg);
+  cursor: pointer;
+}
+.lint-bar.lint-ko:hover { text-decoration: underline; }
+
+/* Barretta Formatta/Minifica sopra le aree di testo con un documento */
+.json-tools {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
 /* Autocomplete */
 .ac-wrap {
   position: relative;
@@ -2182,10 +2210,25 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 }
 .ac-list li {
   padding: 4px 10px; cursor: pointer; font-family: Consolas, monospace;
+  display: flex; align-items: baseline; gap: 6px; white-space: nowrap;
 }
 .ac-list li.active,
 .ac-list li:hover {
   background: var(--sel); color: var(--fg);
+}
+/* Icona del genere di suggerimento (campo, tabella, parola chiave…): dice a
+   colpo d'occhio se quello che si sta per accettare è un dato o una parola del
+   linguaggio. */
+.ac-icona { width: 1.1em; text-align: center; opacity: 0.85; flex: none; }
+.ac-testo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.ac-dettaglio {
+  flex: none; margin-left: 10px; font-size: 0.82em; color: var(--fg-dim);
+  max-width: 45%; overflow: hidden; text-overflow: ellipsis;
+}
+/* Nell'editor la lista non può stare dentro un contenitore posizionato (il
+   testo scorre): viene messa nel body e piazzata al cursore. */
+.ac-list.ac-flottante {
+  position: fixed; top: 0; left: 0; margin: 0; max-width: 320px;
 }
 
 /* ---------- Vista UML ---------- */

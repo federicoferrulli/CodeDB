@@ -9,7 +9,9 @@ import { isScript, countStatements } from './sql-split.js';
 import { runScript, runScriptAndWait, nascondiPannelloScript } from './script-run.js';
 import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
 import { refreshDbTree } from './dbtree.js';
-import { formatCode } from './query-formatter.js';
+import { formatCode, minifyCode } from './query-formatter.js';
+import { attachEditorAutocomplete, invalidaSchemaIntellisense } from './autocomplete.js';
+import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
 } from './query-editor.js';
@@ -104,6 +106,52 @@ function aggiornaModalitaScript(code) {
   if (wrap) wrap.classList.toggle('hidden', !script);
 }
 
+/**
+ * Formatta il contenuto dell'editor.
+ *
+ * `formatCode` sceglie da sé fra SQL, JSON/BSON e script JavaScript, e in caso
+ * di sintassi non analizzabile restituisce il testo invariato: una
+ * formattazione che corrompe il codice sarebbe molto peggio di una
+ * formattazione mancata. Quando il testo è un documento e non cambia nulla, il
+ * motivo lo dice il linter (riga e colonna), non un toast generico.
+ */
+function formattaEditor() {
+  const editorInput = $('#query-editor-input');
+  if (!editorInput) return;
+  const val = editorInput.value;
+  if (!val.trim()) return;
+
+  const formattato = formatCode(val);
+  if (formattato === val) {
+    const esito = aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
+    if (!esito || esito.ok) toast('Niente da formattare (o codice non analizzabile).');
+    return;
+  }
+  editorInput.value = formattato;
+  editorInput.setSelectionRange(0, 0);
+  updateEditorHighlight();
+  aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
+}
+
+/** Tutto su una riga sola. Sugli script JavaScript non si tocca niente. */
+function minificaEditor() {
+  const editorInput = $('#query-editor-input');
+  if (!editorInput) return;
+  const val = editorInput.value;
+  if (!val.trim()) return;
+
+  const minificato = minifyCode(val);
+  if (minificato === val) {
+    const esito = aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
+    if (!esito || esito.ok) toast('Niente da minificare: gli script JavaScript non si comprimono.');
+    return;
+  }
+  editorInput.value = minificato;
+  editorInput.setSelectionRange(minificato.length, minificato.length);
+  updateEditorHighlight();
+  aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
+}
+
 export function initQueryTab() {
   initSnippetManager();
   initSqlChunking();
@@ -185,22 +233,12 @@ export function initQueryTab() {
   }
 
   if (formatBtn && editorInput) {
-    formatBtn.addEventListener('click', () => {
-      const val = editorInput.value;
-      if (!val.trim()) return;
-      // `formatCode` sceglie da sé fra SQL, JSON/MQL e script JavaScript, e in
-      // caso di sintassi non analizzabile restituisce il testo invariato: una
-      // formattazione che corrompe il codice sarebbe molto peggio di una
-      // formattazione mancata. Prima qui funzionava solo il ramo JSON, e su
-      // SQL il pulsante non faceva nulla senza dirlo.
-      const formattato = formatCode(val);
-      if (formattato === val) {
-        toast('Niente da formattare (o codice non analizzabile).');
-        return;
-      }
-      editorInput.value = formattato;
-      updateEditorHighlight();
-    });
+    formatBtn.addEventListener('click', () => formattaEditor());
+  }
+
+  const minifyBtn = $('#query-minify-btn');
+  if (minifyBtn && editorInput) {
+    minifyBtn.addEventListener('click', () => minificaEditor());
   }
 
   if (clearBtn && editorInput) {
@@ -210,9 +248,20 @@ export function initQueryTab() {
     });
   }
 
-  // Shortcut tastiera per l'esecuzione (Ctrl+Enter / Cmd+Enter)
+  // Shortcut tastiera per l'esecuzione (Ctrl+Enter / Cmd+Enter) e per le due
+  // trasformazioni del testo (Ctrl+Shift+F formatta, Ctrl+Shift+M minifica).
   if (editorInput) {
     editorInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+        e.preventDefault();
+        formattaEditor();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'M' || e.key === 'm')) {
+        e.preventDefault();
+        minificaEditor();
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         // Con del testo selezionato si esegue SOLO quello: è il modo naturale
@@ -230,6 +279,28 @@ export function initQueryTab() {
 
   // Numeri di riga, Tab che indenta, evidenziazione della riga in errore.
   initQueryEditor({ onCambio: updateEditorHighlight });
+
+  // Completamento consapevole dello schema: dopo `FROM` propone tabelle, dopo
+  // `u.` le colonne di `u`, dopo `db.` le collezioni. Ctrl+Spazio lo apre a
+  // richiesta. Aggancio in fase di cattura, quindi Tab e Invio arrivano prima
+  // all'elenco aperto e solo dopo (se non c'è) all'indentazione e all'esecuzione.
+  if (editorInput) {
+    attachEditorAutocomplete(editorInput, {
+      motore: () => $('#query-target-engine')?.value || 'auto',
+      onApplicato: updateEditorHighlight,
+    });
+
+    // Linting in linea: vale solo quando nell'editor c'è un documento
+    // (filtro MQL, pipeline). Su SQL tace, perché lì l'errore lo dice il DBMS
+    // con molta più precisione di quanta ne potrebbe avere un parser client.
+    const barraLint = $('#query-lint');
+    if (barraLint) {
+      agganciaLint(editorInput, barraLint, {
+        soloSeJson: true,
+        onRiga: (riga) => segnalaRigaErrore(riga),
+      });
+    }
+  }
 
   if (runBtn) {
     runBtn.addEventListener('click', () => runQuery());
@@ -735,6 +806,8 @@ export function resetQueryView() {
 
   updateQueryMetrics('idle');
   segnalaRigaErrore(0);
+  const barraLint = $('#query-lint');
+  if (barraLint) { barraLint.classList.add('hidden'); barraLint.textContent = ''; }
   const stopBtn = $('#query-stop-btn');
   if (stopBtn) stopBtn.classList.add('hidden');
 
@@ -1677,6 +1750,9 @@ export function runQuery(opzioni = {}) {
       // sostituire ciò che l'utente sta guardando su un'altra connessione.
       if (latest && isForActiveTab(res) && stopBtn) stopBtn.classList.add('hidden');
       if (strutturaCambiata) {
+        // Anche il completamento automatico tiene una copia dello schema: dopo
+        // una DDL proporrebbe tabelle che non esistono più.
+        invalidaSchemaIntellisense();
         stRun.schemaDirty = true;
         if (isForActiveTab(res)) {
           stRun.schemaDirty = false;

@@ -1252,6 +1252,19 @@ console.log('--- Test Unitari CodeDB ---');
   // proporzioni storte o un pannello vivo che nessuno disegna. Nessun browser.
   require('./unit-split-layout');
 
+  // Test 27-novies: JSON/BSON — validazione, formattazione e minificazione dei
+  // documenti scritti a mano (editor ⚡ e modali). Qui la proprietà da
+  // proteggere è che formattare NON cambi un valore: un intero oltre i 53 bit
+  // o un ObjectId che passassero da JSON.parse tornerebbero indietro diversi,
+  // e la perdita sarebbe silenziosa. Nessun browser, nessun database.
+  require('./unit-json-bson');
+
+  // Test 27-decies: completamento automatico consapevole dello schema. Non si
+  // verifica che compaiano suggerimenti, ma che siano quelli del punto in cui
+  // sta il cursore (dopo FROM tabelle, dopo `u.` le colonne del solo `u`):
+  // un elenco sbagliato fa scrivere query che non esistono. Nessun browser.
+  require('./unit-intellisense');
+
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

@@ -3,6 +3,7 @@ import { socket } from './socket.js';
 import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
+import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
@@ -301,6 +302,9 @@ export function openInsertDocForContext(ctx = null) {
 
   $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
   $('#insert-json').value = '{\n  \n}';
+  // La barra del linting appartiene al documento precedente: si riparte muti.
+  const lintEl = $('#insert-json-lint');
+  if (lintEl) { lintEl.classList.add('hidden'); lintEl.textContent = ''; }
   insertJsonTouched = false;
   insertRows = [];
   $('#insert-form tbody').innerHTML = '';
@@ -352,6 +356,14 @@ export function initInsert() {
 
   $('#insert-json').addEventListener('input', () => { insertJsonTouched = true; });
 
+  // Il documento si controlla MENTRE si scrive: prima l'errore di sintassi
+  // usciva solo premendo "Inserisci", e il messaggio arrivava dal driver senza
+  // dire a quale riga guardare.
+  const jsonArea = $('#insert-json');
+  const jsonLint = $('#insert-json-lint');
+  agganciaLint(jsonArea, jsonLint);
+  collegaStrumentiJson(jsonArea, jsonLint, '#insert-json-format', '#insert-json-minify');
+
   $('#insert-addfield').addEventListener('click', () => {
     $('#insert-form-empty').classList.add('hidden');
     const row = addInsertRow({ nameEditable: true, kind: 'text', removable: true });
@@ -377,6 +389,15 @@ export function initInsert() {
         return;
       }
     } else {
+      // Un documento sintatticamente rotto non vale un giro di rete: l'errore
+      // del driver direbbe molto meno di riga e colonna.
+      const esito = aggiornaLint($('#insert-json'), $('#insert-json-lint'));
+      if (esito && !esito.ok) {
+        const el = $('#insert-error');
+        el.textContent = `Riga ${esito.riga}, colonna ${esito.colonna}: ${esito.messaggio}`;
+        el.classList.remove('hidden');
+        return;
+      }
       docText = $('#insert-json').value;
     }
     // Bersaglio congelato all'apertura della modale, mai riletto da `state`.

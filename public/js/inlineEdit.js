@@ -3,6 +3,7 @@ import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited
 import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, fuocoNelPannelloFk, pannelloFkMobile } from './fk-vista.js';
+import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
 
 /**
  * Costruisce l'input adatto al tipo del valore.
@@ -332,6 +333,8 @@ export function openEditDoc(doc, context = null) {
   $('#editdoc-id').textContent = `_id: ${displayValue(doc._id).text} (non modificabile)`;
   $('#editdoc-json').value = JSON.stringify(copy, null, 2);
   $('#editdoc-error').classList.add('hidden');
+  const lintEl = $('#editdoc-lint');
+  if (lintEl) { lintEl.classList.add('hidden'); lintEl.textContent = ''; }
   openModal('#editdoc-overlay');
   $('#editdoc-json').focus();
 }
@@ -339,8 +342,22 @@ export function openEditDoc(doc, context = null) {
 export function initInlineEdit() {
   $('#editdoc-cancel').addEventListener('click', () => closeModal('#editdoc-overlay'));
 
+  // Formatta / minifica / linting in linea, come nella modale di inserimento e
+  // nell'editor ⚡: stesse scorciatoie, stesso comportamento.
+  const jsonArea = $('#editdoc-json');
+  const jsonLint = $('#editdoc-lint');
+  agganciaLint(jsonArea, jsonLint);
+  collegaStrumentiJson(jsonArea, jsonLint, '#editdoc-format', '#editdoc-minify');
+
   $('#editdoc-save').addEventListener('click', () => {
     if (!editingDoc) return;
+    const esito = aggiornaLint(jsonArea, jsonLint);
+    if (esito && !esito.ok) {
+      const el = $('#editdoc-error');
+      el.textContent = `Riga ${esito.riga}, colonna ${esito.colonna}: ${esito.messaggio}`;
+      el.classList.remove('hidden');
+      return;
+    }
     const ctx = editDocContext;
     const doc = editingDoc;
     const tabId = ctx ? ctx.tabId : undefined;
