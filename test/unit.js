@@ -934,6 +934,32 @@ console.log('--- Test Unitari CodeDB ---');
         assert.ok(/tools\/pubblica\.js/.test(pkg.scripts[`release:${p}`]),
           `release:${p} deve passare da tools/pubblica.js, altrimenti una beta finisce pubblicata come release stabile`);
       }
+
+      // TAG DOPPI. La release sta sotto `v${version}`, ma `releases.atom` — il
+      // feed da cui electron-updater sceglie la versione — elenca anche i tag
+      // SENZA release: un `0.1.3-beta.1` creato a mano accanto a
+      // `v0.1.3-beta.1` compare per primo e l'updater cerca `latest.yml` dove
+      // non c'è nulla. È accaduto davvero con la 0.1.3-beta.1, e dalla build
+      // non si vedeva: artefatti tutti al loro posto, aggiornamento rotto.
+      assert.strictEqual(pubblica.tagDiRilascio('0.1.3-beta.1'), 'v0.1.3-beta.1');
+      assert.strictEqual(pubblica.tagDiRilascio('v1.0.0'), 'v1.0.0', 'la "v" non si raddoppia');
+
+      const tagFinti = ['v0.1.2-beta.1', '0.1.3-beta.1', 'v0.1.3-beta.1', 'V0.1.3-BETA.1', '0.1.3-beta.1'];
+      assert.deepStrictEqual(pubblica.tagDuplicati(tagFinti, '0.1.3-beta.1'),
+        ['0.1.3-beta.1', 'V0.1.3-BETA.1'],
+        'vanno segnalate tutte le scritture alternative della stessa versione, una volta sola ciascuna');
+      assert.deepStrictEqual(pubblica.tagDuplicati(tagFinti, '0.1.4-beta.1'), [],
+        'i tag di ALTRE versioni non sono duplicati');
+      assert.deepStrictEqual(pubblica.tagDuplicati(['v0.1.3-beta.1'], '0.1.3-beta.1'), [],
+        'il tag della release non è un duplicato di se stesso');
+      assert.deepStrictEqual(pubblica.tagDuplicati([], '0.1.3-beta.1'), [], 'nessun tag = nessun duplicato');
+
+      // La guardia deve essere chiamata PRIMA di electron-builder: scoprire il
+      // tag doppio dopo la pubblicazione significa avere già la release rotta.
+      const srcPubblica = fs.readFileSync(path.join(__dirname, '..', 'tools', 'pubblica.js'), 'utf8');
+      assert.ok(srcPubblica.indexOf('verificaTag(version)') !== -1
+        && srcPubblica.indexOf('verificaTag(version)') < srcPubblica.indexOf('electron-builder/cli.js'),
+        'verificaTag deve precedere l\'esecuzione di electron-builder');
     }
 
     // Note di rilascio: markup ridotto a testo e lunghezza limitata (finiscono
