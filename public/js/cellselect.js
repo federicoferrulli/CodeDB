@@ -4,7 +4,10 @@ import { state } from './state.js';
 import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi } from './utils.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
-import { statistiche, statistichePerColonna, formattaNumero, riassuntoBreve } from './cell-stats.js';
+import { formattaNumero, riassuntoBreve } from './cell-stats.js';
+// Il calcolo vero passa da `calcoli.js`: sotto le 50.000 celle gira qui come
+// prima, sopra su un Web Worker. Il modulo puro resta la sola implementazione.
+import { statisticheAsync, statistichePerColonnaAsync, sequenziatore } from './calcoli.js';
 import { statisticheGeo, riassuntoGeoBreve } from './geo-stats.js';
 import { apriMappaSelezione } from './geomulti.js';
 import { apriGraficoSelezione } from './cellgrafico.js';
@@ -51,7 +54,17 @@ export function clearCellSelection() {
 }
 
 // Oltre questa dimensione la selezione non viene analizzata a ogni re-render.
+//
+// La soglia è rimasta anche dopo il passaggio al Web Worker: il calcolo non
+// pesa più sul thread che disegna, ma la copia dei dati verso l'altro thread sì
+// — e farla a ogni fotogramma di un trascinamento su mezzo milione di celle
+// sarebbe un lavoro inutile. Il pannello 📊, che gira una volta sola, non ha
+// alcun tetto: lì i numeri si calcolano sempre, semplicemente altrove.
 const MAX_CELLE_RIASSUNTO = 20000;
+
+// Il riassunto è asincrono: durante un trascinamento partono molte richieste e
+// l'ultima a rispondere non è per forza l'ultima chiesta.
+const seqRiassunto = sequenziatore();
 
 // Ri-applica le classi CSS della selezione dopo un render della griglia,
 // scartando le celle ormai fuori dai limiti della pagina corrente.
@@ -73,26 +86,42 @@ export function applyCellSelection({ leggero = false } = {}) {
   const info = $('#cell-info');
   if (!info) return;
   if (s.cells.size <= 1) { info.textContent = ''; return; }
-  let testo = `${s.cells.size} celle selezionate`;
+  const base = `${s.cells.size} celle selezionate`;
+
+  // Una selezione di geometrie non ha numeri da sommare: il riassunto utile è
+  // un altro (quante, di che tipo, quanto estese) e sta nello stesso posto.
+  // NON durante il trascinamento (`leggero`): misurare lunghezze e aree
+  // significa una haversine per lato, e su una colonna di poligoni reali sono
+  // decine di migliaia di radici quadrate per fotogramma — cioè la selezione
+  // che si muove a scatti mentre la si trascina. A rilascio avvenuto si
+  // calcola una volta sola.
+  let codaGeo = '';
+  if (s.cells.size <= MAX_CELLE_RIASSUNTO && !leggero) {
+    const breveGeo = riassuntoGeoBreve(statisticheGeo(vociSelezionate()));
+    if (breveGeo) codaGeo = ' · ' + breveGeo;
+  }
+  // Il conteggio si scrive SUBITO: i numeri possono arrivare da un altro
+  // thread un istante dopo, ma l'utente deve vedere immediatamente che la
+  // selezione è cambiata.
+  info.textContent = base + codaGeo;
+
   // Il riassunto si ricalcola a ogni movimento del trascinamento: oltre la
   // soglia si mostra il solo conteggio e i numeri restano nel pannello 📊,
   // che gira una volta sola.
-  if (s.cells.size <= MAX_CELLE_RIASSUNTO) {
-    const breve = riassuntoBreve(statistiche(valoriSelezionati()));
-    if (breve) testo += ' · ' + breve;
-    // Una selezione di geometrie non ha numeri da sommare: il riassunto utile è
-    // un altro (quante, di che tipo, quanto estese) e sta nello stesso posto.
-    // NON durante il trascinamento (`leggero`): misurare lunghezze e aree
-    // significa una haversine per lato, e su una colonna di poligoni reali sono
-    // decine di migliaia di radici quadrate per fotogramma — cioè la selezione
-    // che si muove a scatti mentre la si trascina. A rilascio avvenuto si
-    // calcola una volta sola.
-    if (!leggero) {
-      const breveGeo = riassuntoGeoBreve(statisticheGeo(vociSelezionate()));
-      if (breveGeo) testo += ' · ' + breveGeo;
-    }
-  }
-  info.textContent = testo;
+  if (s.cells.size > MAX_CELLE_RIASSUNTO) return;
+
+  const token = seqRiassunto.nuovo();
+  statisticheAsync(valoriSelezionati()).then((st) => {
+    // Selezione cambiata nel frattempo: questo risultato descrive celle che non
+    // sono più quelle scelte, e scriverlo sarebbe peggio del silenzio.
+    if (!seqRiassunto.attuale(token)) return;
+    const breve = riassuntoBreve(st);
+    info.textContent = base + (breve ? ' · ' + breve : '') + codaGeo;
+  }).catch(() => {
+    // Qui il silenzio è la risposta giusta: il conteggio delle celle è già
+    // scritto, e un errore in una riga di stato che si aggiorna da sola
+    // sarebbe rumore su un'informazione accessoria.
+  });
 }
 
 // Valore testuale della cella come mostrato in griglia.
@@ -208,11 +237,15 @@ function statsTsv(st, perCol) {
 
 // Pannello 📊 con il riepilogo della selezione (costruito al volo come la
 // modale di duplicazione: non esiste nel DOM finché non serve).
-function showCellStats() {
+async function showCellStats() {
   if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
   const valori = valoriSelezionati();
-  const st = statistiche(valori);
-  const perCol = statistichePerColonna(valoriPerColonna());
+  // Qui non c'è nessun tetto: su una selezione enorme i due calcoli finiscono
+  // sul Web Worker (vedi calcoli.js) e la finestra resta viva nel frattempo.
+  const [st, perCol] = await Promise.all([
+    statisticheAsync(valori),
+    statistichePerColonnaAsync(valoriPerColonna()),
+  ]);
 
   let overlay = document.getElementById('cellstats-overlay');
   if (!overlay) {
@@ -858,9 +891,14 @@ export function initCellSelect() {
       // Su una selezione di sole geometrie il pannello 📊 non avrebbe nulla da
       // dire (nessun numero da sommare): il seguito naturale del riassunto
       // "🗺 12 Polygon · …" è la mappa, non una tabella di trattini.
-      const st = statistiche(valoriSelezionati());
-      if (!st.numerici && contaGeometrieSelezionate()) mostraMappaSelezione();
-      else showCellStats();
+      statisticheAsync(valoriSelezionati()).then((st) => {
+        if (!st.numerici && contaGeometrieSelezionate()) mostraMappaSelezione();
+        else showCellStats();
+      }).catch((err) => {
+        // Un calcolo fallito non deve restare una promessa rifiutata e basta:
+        // l'utente ha cliccato e si aspetta una risposta, anche se è un errore.
+        toast(`Statistiche non calcolabili: ${err.message}`, true);
+      });
     });
   }
 

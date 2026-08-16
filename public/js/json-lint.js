@@ -40,6 +40,7 @@ export function aggiornaLint(campo, barra, opts = {}) {
   if (!daControllare) {
     barra.classList.add('hidden');
     barra.textContent = '';
+    barra.onclick = null;
     if (typeof opts.onRiga === 'function') opts.onRiga(0);
     return null;
   }
@@ -53,6 +54,9 @@ export function aggiornaLint(campo, barra, opts = {}) {
     barra.textContent = '✓ Documento valido';
     barra.removeAttribute('title');
     barra.removeAttribute('role');
+    // Il gestore del clic apparteneva all'errore PRECEDENTE: lasciarlo attaccato
+    // farebbe saltare il cursore a una posizione che non vuol più dire niente.
+    barra.onclick = null;
     if (typeof opts.onRiga === 'function') opts.onRiga(0);
     return esito;
   }

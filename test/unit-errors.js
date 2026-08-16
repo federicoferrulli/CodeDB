@@ -123,6 +123,18 @@ function errore(message, extra = {}) {
   const veroDeadlock = errore('Deadlock found when trying to get lock; try restarting transaction');
   assert.ok(/deadlock/i.test(descriviErrore(veroDeadlock).causa), 'Un deadlock vero resta riconosciuto anche senza codice');
   console.log('  OK   "deadlock" nel nome di un oggetto non è un deadlock (CDB-A49)');
+
+  // Su PostgreSQL la causa più frequente di "relation does not exist" non è un
+  // nome sbagliato: è un nome giusto scritto senza virgolette, che il motore
+  // abbassa. Il messaggio deve dirlo, altrimenti si cerca una tabella che c'è.
+  const senzaApici = descriviErrore(errore('relation "diego.prova" does not exist', { code: '42P01' }));
+  assert.ok(/doppi apici/i.test(senzaApici.rimedio),
+    `Il rimedio deve parlare delle virgolette (ottenuto: "${senzaApici.rimedio}")`);
+  // Se il nome citato ha già delle maiuscole, quella spiegazione non c'entra.
+  const conMaiuscole = descriviErrore(errore('relation "diego.Prova" does not exist', { code: '42P01' }));
+  assert.ok(!/doppi apici/i.test(conMaiuscole.rimedio),
+    `Con un nome già quotato il consiglio sulle virgolette è fuori luogo (ottenuto: "${conMaiuscole.rimedio}")`);
+  console.log('  OK   PostgreSQL: il rimedio spiega le maiuscole non quotate');
 }
 
 // --- Il timeout citato è quello realmente configurato -----------------------

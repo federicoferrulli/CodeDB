@@ -40,6 +40,8 @@ import {
 // scaricherebbe una seconda copia di ECharts e terrebbe un secondo elenco di
 // token da allineare a mano a ogni modifica del tema.
 import { caricaEcharts, inkDalTema } from './chart-runtime.js';
+// Scansione dei campi e precalcolo: sotto soglia qui, sopra su un Web Worker.
+import { campiAsync, precalcolaGraficoAsync, sequenziatore, scordaPrecalcolo } from './calcoli.js';
 
 /* --------------------------- Stato dell'interfaccia ---------------------- */
 
@@ -105,8 +107,8 @@ function fondi(base, sopra) {
  * distinti: un grafico illeggibile che sembra un difetto del programma. Con la
  * distinzione, chi ha scelto a mano la sua colonna se la ritrova comunque.
  */
-function autoConfigura(righe, c) {
-  const campi = campiDisponibili(righe);
+function autoConfigura(righe, c, campiPronti = null) {
+  const campi = campiPronti || campiDisponibili(righe);
   if (!campi.length) return;
   const nomi = new Set(campi.map((f) => f.nome));
 
@@ -159,14 +161,26 @@ function allineaAsseX(c, tipoCampo) {
   c.assex.tipo = tipoCampo === 'data' ? 'time' : 'category';
 }
 
+// Da quando il disegno attraversa delle attese (i campi e il precalcolo
+// possono arrivare da un altro thread, la libreria si carica al primo uso), due
+// chiamate ravvicinate possono sovrapporsi: quella partita prima, se è la più
+// lenta, disegnerebbe DOPO l'altra i dati di un result set già sostituito.
+// Ogni disegno prende un numero e si ferma appena scopre di non essere più
+// l'ultimo.
+const seqDisegno = sequenziatore();
+
 /** Chiamata da query-tab quando la vista Chart è attiva o i risultati cambiano. */
 export async function renderChart(righe) {
   righeCorrenti = Array.isArray(righe) ? righe : [];
+  const disegno = seqDisegno.nuovo();
   const contenitore = $('#query-chart-canvas');
   if (!contenitore) return;
 
   const vuoto = $('#chart-empty');
   if (!righeCorrenti.length) {
+    // I campi appartengono ai risultati che non ci sono più: lasciarli farebbe
+    // costruire il pannello con le colonne della query precedente.
+    campiRighe = [];
     if (grafico) { grafico.clear(); }
     if (vuoto) {
       vuoto.classList.remove('hidden');
@@ -178,7 +192,13 @@ export async function renderChart(righe) {
   if (vuoto) vuoto.classList.add('hidden');
 
   const c = cfg();
-  autoConfigura(righeCorrenti, c);
+  // La scansione dei campi e il precalcolo del grafico sono le due parti che
+  // percorrono TUTTE le righe: oltre le 50.000 celle finiscono su un Web
+  // Worker, così la finestra resta reattiva mentre si aggregano i dati.
+  const campi = await campiAsync(righeCorrenti);
+  if (!seqDisegno.attuale(disegno)) return; // risultati già sostituiti
+  campiRighe = campi;
+  autoConfigura(righeCorrenti, c, campiRighe);
 
   let echarts;
   try {
@@ -187,6 +207,7 @@ export async function renderChart(righe) {
     if (vuoto) { vuoto.classList.remove('hidden'); vuoto.textContent = err.message; }
     return;
   }
+  if (!seqDisegno.attuale(disegno)) return;
 
   if (!grafico || grafico.isDisposed()) {
     grafico = echarts.init(contenitore, null, { renderer: 'canvas' });
@@ -213,12 +234,17 @@ export async function renderChart(righe) {
   const noteExtra = [];
   let option;
   try {
+    // Precalcolo (raggruppamento, aggregazione, ordinamento) eventualmente su
+    // un altro thread; il disegno resta qui, perché l'option contiene funzioni
+    // e quindi non può attraversare il confine fra i due thread.
+    const pre = await precalcolaGraficoAsync(righeCorrenti, c);
+    if (!seqDisegno.attuale(disegno)) return;
     // Le dimensioni VERE del riquadro: da qui dipendono i margini e il fatto di
     // disegnare o no la barra di zoom (vedi grigliaAdattata in chart-option.js).
     option = costruisciOption(righeCorrenti, c, {
       larghezza: contenitore.clientWidth,
       altezza: contenitore.clientHeight,
-    });
+    }, pre);
   } catch (err) {
     console.error('[Charts] Errore nella costruzione del grafico:', err);
     aggiornaAvvisi([`Impossibile costruire il grafico: ${err.message}`]);
@@ -269,6 +295,10 @@ function disegna() {
  */
 export function clearChart() {
   righeCorrenti = [];
+  campiRighe = [];
+  // Il precalcolo tenuto da parte punta all'array delle righe: lasciarlo lì
+  // significherebbe tenere in memoria un result set che non serve più.
+  scordaPrecalcolo();
   ultimoOption = null;
   if (grafico && !grafico.isDisposed()) grafico.clear();
   const vuoto = $('#chart-empty');
@@ -298,6 +328,11 @@ export function resizeChart() {
  */
 
 let campiCache = [];
+// I campi delle righe correnti, calcolati UNA volta per result set (in
+// `renderChart`, eventualmente sul Web Worker) e riusati da chi costruisce il
+// pannello: prima ogni ricostruzione rifaceva la scansione completa delle
+// righe, e su un result set grande erano due passate in più per ogni redraw.
+let campiRighe = [];
 
 function opzioni(lista, sel) {
   return lista.map((o) => {
@@ -384,7 +419,7 @@ function costruisciPannello() {
   const host = $('#chart-builder');
   if (!host) return;
   const c = cfg();
-  campiCache = righeCorrenti.length ? campiDisponibili(righeCorrenti) : [];
+  campiCache = righeCorrenti.length ? campiRighe : [];
   costruisciSuggeriti();
   const fam = famigliaDi((c.serie.find((s) => s.visibile !== false) || c.serie[0]).tipo);
   const cartesiano = fam === 'cartesiano';
@@ -632,7 +667,7 @@ function aggiornaPannello() {
   // Il pannello si ricostruisce solo se non è mai stato costruito o se le
   // colonne del result set sono cambiate: rifarlo a ogni ridisegno farebbe
   // perdere il fuoco mentre si digita.
-  const firma = campiDisponibili(righeCorrenti).map((f) => `${f.nome}:${f.tipo}`).join('|');
+  const firma = campiRighe.map((f) => `${f.nome}:${f.tipo}`).join('|');
   if (host.dataset.firma !== firma || !host.children.length) {
     const aperti = Array.from(host.querySelectorAll('.chart-group')).map((d) => d.open);
     costruisciPannello();

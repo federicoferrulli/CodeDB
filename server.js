@@ -35,6 +35,26 @@ const MongoScriptRunner = require('./db/MongoScriptRunner');
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
 
+/* ---------------------------------------------------------------------------
+ * Nome della tabella dedotto dal FROM di una query SQL.
+ *
+ * Serve come ETICHETTA (audit, bersaglio nominale): la verifica vera dello
+ * scope sta in `auth/sqlTables.js`, che analizza tutti i nomi citati. Ma
+ * un'etichetta sbagliata resta un difetto: `FROM diego."Prova"` registrava
+ * "diego", cioè lo schema, perché la vecchia regex si fermava al punto e non
+ * conosceva le virgolette.
+ * ------------------------------------------------------------------------- */
+const ID_SQL = '(?:`[^`]+`|"[^"]+"|\\[[^\\]]+\\]|[A-Za-z0-9_$\\-]+)';
+const RE_FROM_TABELLA = new RegExp(`FROM\\s+(${ID_SQL}(?:\\s*\\.\\s*${ID_SQL})*)`, 'i');
+
+function ultimoSegmentoNome(qualificato) {
+  const segmenti = String(qualificato || '').match(new RegExp(ID_SQL, 'g')) || [];
+  const ultimo = segmenti.length ? segmenti[segmenti.length - 1] : '';
+  // Via le virgolette: il nome che finisce nell'audit e nel confronto con lo
+  // scope è quello vero, non la sua forma quotata.
+  return ultimo.replace(/^[`"[]|[`"\]]$/g, '');
+}
+
 // Versione dichiarata al client dall'evento `app:info` (guida introduttiva).
 // Letta una volta sola all'avvio: non cambia mentre il processo è vivo.
 const APP_VERSION = (() => {
@@ -1759,8 +1779,12 @@ async function executeQueryCode(session, payload) {
   // dedotto dal primo FROM e, se manca, arriva dal client, mentre la stringa SQL
   // viene eseguita verbatim. Lo scope su SQL libero è verificato sui nomi
   // CITATI nella query, dal Proxy autorizzante (auth/sqlTables.js, CDB-A03).
-  const sqlFromMatch = codeStr.match(/FROM\s+[`"]?([a-zA-Z0-9_\-]+)[`"]?/i);
-  const extractedColl = sqlFromMatch ? sqlFromMatch[1] : null;
+  // Il nome può essere qualificato e quotato — `FROM diego."Prova"` — e in quel
+  // caso la tabella è l'ULTIMO segmento: la vecchia regex si fermava al punto e
+  // registrava lo schema ("diego") come se fosse la tabella, sia nell'audit sia
+  // nel bersaglio confrontato con lo scope.
+  const sqlFromMatch = codeStr.match(RE_FROM_TABELLA);
+  const extractedColl = sqlFromMatch ? ultimoSegmentoNome(sqlFromMatch[1]) : null;
   const targetColl = extractedColl || coll;
   const targetDb = db || session.strategy.currentDb || 'admin';
 

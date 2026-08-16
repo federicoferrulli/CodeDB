@@ -1265,6 +1265,13 @@ console.log('--- Test Unitari CodeDB ---');
   // un elenco sbagliato fa scrivere query che non esistono. Nessun browser.
   require('./unit-intellisense');
 
+  // Test 27-undecies: calcoli pesanti spostati su Web Worker. Il rischio non è
+  // la lentezza ma la DIVERGENZA fra i due percorsi (con e senza Worker): qui
+  // si prova che il dispatcher è unico, che il precalcolo del grafico dà
+  // esattamente lo stesso disegno di prima e che sopravvive alla copia fra
+  // thread. Nessun browser: il Worker vero si prova in Playwright.
+  require('./unit-calcoli');
+
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

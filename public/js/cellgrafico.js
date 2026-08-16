@@ -27,6 +27,7 @@ import {
 } from './chart-option.js';
 import { caricaEcharts, inkDalTema } from './chart-runtime.js';
 import { datiSelezione, configurazioneSelezione, colonneNumeriche, CAMPO_ORDINE } from './cell-chart.js';
+import { precalcolaGraficoAsync } from './calcoli.js';
 
 /* ----------------------------- Stato del pannello ------------------------ */
 
@@ -297,10 +298,13 @@ async function disegna() {
   azzeraAvvisi();
   let option;
   try {
+    // Come nella vista Grafici: il precalcolo può finire su un Web Worker (una
+    // selezione può contenere centinaia di migliaia di celle), il disegno no.
+    const pre = await precalcolaGraficoAsync(righe, cfg);
     option = costruisciOption(righe, cfg, {
       larghezza: contenitore.clientWidth,
       altezza: contenitore.clientHeight,
-    });
+    }, pre);
   } catch (err) {
     console.error('[Grafico selezione] Errore nella costruzione del grafico:', err);
     mostraNote([`Impossibile costruire il grafico: ${err.message}`]);

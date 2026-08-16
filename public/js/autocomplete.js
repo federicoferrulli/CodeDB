@@ -24,8 +24,22 @@ import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, emit, isSqlType } from './utils.js';
 import {
-  suggerisci, applicaSuggerimento, PAROLE_SQL_WHERE,
+  suggerisci, applicaSuggerimento, contestoQuery, PAROLE_SQL_WHERE,
 } from './intellisense.js';
+
+/**
+ * La lingua effettiva nel punto in cui sta il cursore. Serve al momento
+ * dell'accettazione: le virgolette attorno a un nome hanno senso in SQL, non
+ * dentro un filtro MQL (dove il campo sta già fra apici, come chiave JSON).
+ */
+function linguaCorrente(campo, ctx) {
+  return contestoQuery({
+    testo: campo.value,
+    cursore: campo.selectionStart ?? 0,
+    motore: ctx.motore || 'sql',
+    ripiego: ctx.ripiego || 'sql',
+  }).motore;
+}
 
 /* ==========================================================================
  * Cache dello schema
@@ -232,11 +246,32 @@ function agganciaMotore(campo, opts) {
   let ultimaRichiesta = false; // l'ultima apertura è stata chiesta con Ctrl+Spazio?
 
   function chiudi() {
+    annullaRicalcolo();
     list.classList.add('hidden');
     list.innerHTML = '';
     voci = [];
     attivo = -1;
     campo.removeAttribute('aria-activedescendant');
+  }
+
+  // Il ricalcolo dei suggerimenti percorre il testo attorno al cursore e
+  // ricostruisce l'elenco: farlo a OGNI tasto premuto, mentre si scrive veloce,
+  // è lavoro buttato — di quelle risposte se ne vede una sola, l'ultima. Si
+  // accoda al prossimo fotogramma, che è anche il momento in cui il disegno
+  // servirà davvero.
+  let attesaRicalcolo = 0;
+  const pianifica = typeof requestAnimationFrame === 'function'
+    ? requestAnimationFrame
+    : ((fn) => setTimeout(fn, 16));
+  const annulla = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : clearTimeout;
+
+  function annullaRicalcolo() {
+    if (attesaRicalcolo) { annulla(attesaRicalcolo); attesaRicalcolo = 0; }
+  }
+
+  function apriDopo(forzato) {
+    annullaRicalcolo();
+    attesaRicalcolo = pianifica(() => { attesaRicalcolo = 0; apri(forzato); });
   }
 
   function evidenzia() {
@@ -252,6 +287,8 @@ function agganciaMotore(campo, opts) {
       cursore,
       motore: ctx.motore || 'sql',
       ripiego: ctx.ripiego || 'sql',
+      dbms: ctx.dbms || '',
+      database: ctx.database || '',
       schema: ctx.schema || null,
       colonne: ctx.colonne || [],
       collezione: ctx.collezione || '',
@@ -281,7 +318,15 @@ function agganciaMotore(campo, opts) {
   function applica(i) {
     const voce = voci[i];
     if (!voce) return;
-    const { testo, cursore } = applicaSuggerimento(campo.value, campo.selectionStart ?? 0, voce.testo);
+    const ctx = opts.contesto() || {};
+    // Il tipo della voce e il motore servono a decidere se il nome va scritto
+    // fra virgolette: su PostgreSQL una tabella `Prova` non quotata diventa
+    // `prova`, e la query fallisce dicendo che la tabella non esiste.
+    const { testo, cursore } = applicaSuggerimento(campo.value, campo.selectionStart ?? 0, voce.testo, {
+      tipo: voce.tipo,
+      dbms: ctx.dbms || '',
+      lingua: linguaCorrente(campo, ctx),
+    });
     campo.value = testo;
     campo.setSelectionRange(cursore, cursore);
     campo.focus();
@@ -289,7 +334,7 @@ function agganciaMotore(campo, opts) {
     if (typeof opts.onApplicato === 'function') opts.onApplicato();
   }
 
-  campo.addEventListener('input', () => apri(false));
+  campo.addEventListener('input', () => apriDopo(false));
 
   campo.addEventListener('keydown', (e) => {
     // Ctrl+Spazio (o Cmd+Spazio): apre l'elenco completo dove sta il cursore.
@@ -338,7 +383,7 @@ function agganciaMotore(campo, opts) {
     }
   });
 
-  const ridisegna = () => { if (!list.classList.contains('hidden')) apri(ultimaRichiesta); };
+  const ridisegna = () => { if (!list.classList.contains('hidden')) apriDopo(ultimaRichiesta); };
   inAscolto.add(ridisegna);
 
   return { chiudi, apri };
@@ -370,6 +415,9 @@ export function attachAutocomplete(input, opts = {}) {
         schema: null,
         colonne: state.columns || [],
         collezione: state.coll || '',
+        // Anche qui il dialetto conta: in una condizione WHERE le funzioni del
+        // motore sono legittime (le sue clausole no, vedi `vocabolario`).
+        dbms: state.dbType || '',
         parole: opts.keywords !== false,
         // Nel filtro non si scrive una query intera: proporre `SELECT` o
         // `CREATE TABLE` sarebbe fuorviante. Nella casella di ordinamento
@@ -390,10 +438,21 @@ export function attachAutocomplete(input, opts = {}) {
  * il MOTORE di esecuzione, non la lingua: su MongoDB si può scrivere SQL (che
  * viene tradotto in MQL), quindi neppure "🍃 MongoDB" può escludere l'SQL.
  */
-function ripiegoLingua(sceltaMotore) {
+export function ripiegoLingua(sceltaMotore) {
   if (sceltaMotore === 'mysql' || sceltaMotore === 'postgresql' || sceltaMotore === 'crossdb') return 'sql';
   if (sceltaMotore === 'mongodb') return 'mongo';
   return isSqlType(state.dbType) ? 'sql' : 'mongo';
+}
+
+/**
+ * Il DBMS di cui proporre funzioni, clausole e tipi: quello scelto a mano nel
+ * selettore del bersaglio, altrimenti quello della connessione aperta. Con
+ * "Cross-DB" non se ne sceglie nessuno, perché la query ne tocca due.
+ */
+export function dbmsCorrente(sceltaMotore) {
+  if (sceltaMotore === 'mysql' || sceltaMotore === 'postgresql' || sceltaMotore === 'mongodb') return sceltaMotore;
+  if (sceltaMotore === 'crossdb') return '';
+  return state.dbType || '';
 }
 
 /**
@@ -417,6 +476,11 @@ export function attachEditorAutocomplete(textarea, opts = {}) {
         // istruzione va completata nella sua lingua.
         motore: 'auto',
         ripiego: ripiegoLingua(scelto),
+        dbms: dbmsCorrente(scelto),
+        // Il database (su PostgreSQL: lo schema) a cui appartengono le tabelle
+        // in cache: serve a capire se un nome qualificato parla di questo o di
+        // un altro schema.
+        database: state.db || '',
         schema: schemaCorrente(),
         colonne: state.columns || [],
         collezione: state.coll || '',

@@ -34,6 +34,9 @@ let avvisi = [];
 
 export function azzeraAvvisi() { avvisi = []; }
 export function prendiAvvisi() { return Array.from(new Set(avvisi)); }
+/* Le note prodotte altrove (nel Web Worker, dove il precalcolo gira su un
+   altro thread) tornano qui: la deduplica di `prendiAvvisi` fa il resto. */
+export function aggiungiAvvisi(lista) { if (Array.isArray(lista)) avvisi.push(...lista); }
 
 /* ============================== Tavolozze ================================ */
 
@@ -1050,11 +1053,62 @@ const ALTEZZA_MIN_SLIDER = 200;
  *   Serve per adattare margini e zoom allo spazio vero: senza, il grafico si
  *   disegna come se avesse sempre spazio in abbondanza.
  */
-export function costruisciOption(righe, c, box = {}) {
+/**
+ * La parte del grafico che DIPENDE DALLE RIGHE, separata dal disegno.
+ *
+ * Tutto ciò che costa qui dentro è proporzionale al numero di righe: dedurre il
+ * tipo dell'asse, raggruppare, aggregare, ordinare e ridurre le categorie. Il
+ * resto di `costruisciOption` lavora sui punti già calcolati (poche decine) e
+ * costa quanto costa comporre un oggetto.
+ *
+ * Sta a parte perché è **serializzabile**: entrano righe e configurazione,
+ * escono array di numeri e stringhe. Questo permette di eseguirla in un Web
+ * Worker su dataset grandi (vedi `calcoli.js`), cosa impossibile per l'option
+ * intera — che contiene funzioni (i `formatter` di ECharts) e quindi non
+ * attraversa il confine fra due thread.
+ *
+ * Il risultato si passa a `costruisciOption` come quarto argomento; senza, il
+ * calcolo avviene lì come prima.
+ */
+export function precalcola(righe, c) {
+  const tipoAsse = tipoAsseX(righe, c);
+  const cEff = { ...c, assex: { ...c.assex, tipo: tipoAsse } };
+  const serieAttive = cEff.serie.filter((s) => s.visibile !== false);
+  const prima = serieAttive[0] || cEff.serie[0];
+
+  // Le note raccolte da chi ha chiamato non sono affar nostro: si mettono da
+  // parte e si rimettono a posto. Azzerarle e basta funzionava solo perché in
+  // tutti i chiamanti di oggi `azzeraAvvisi()` viene subito prima — cioè per
+  // caso, non per costruzione.
+  const precedenti = avvisi;
+  avvisi = [];
+  const pre = { tipoAsse, avvisi: [], dati: null, heatmap: null };
+  try {
+    if (famigliaDi(prima && prima.tipo) === 'heatmap') {
+      if (prima && prima.campoY2) pre.heatmap = calcolaHeatmap(righe, cEff, prima);
+    } else {
+      pre.dati = calcolaDati(righe, cEff);
+    }
+    pre.avvisi = prendiAvvisi();
+  } finally {
+    avvisi = precedenti;
+  }
+  return pre;
+}
+
+/**
+ * @param {object} [pre] risultato di `precalcola` per le STESSE righe e la
+ *   stessa configurazione. Se manca, si calcola qui.
+ */
+export function costruisciOption(righe, c, box = {}, pre = null) {
+  // Le note del precalcolo (fatto magari su un altro thread) rientrano nel
+  // registro prima che se ne aggiungano altre qui.
+  if (pre) aggiungiAvvisi(pre.avvisi);
   // Da qui in giù si lavora sul tipo di asse EFFETTIVO: un asse temporale su un
   // campo senza date scarterebbe ogni punto (vedi tipoAsseX). La configurazione
   // dell'utente non viene modificata — solo interpretata.
-  c = { ...c, assex: { ...c.assex, tipo: tipoAsseX(righe, c) } };
+  c = { ...c, assex: { ...c.assex, tipo: pre ? pre.tipoAsse : tipoAsseX(righe, c) } };
+  const datiPronti = () => (pre && pre.dati ? pre.dati : calcolaDati(righe, c));
   const fmtY = formattatore(c.assey.formato);
   const serieAttive = c.serie.filter((s) => s.visibile !== false);
   const prima = serieAttive[0] || c.serie[0];
@@ -1075,7 +1129,7 @@ export function costruisciOption(righe, c, box = {}) {
     if (!prima.campoY2) {
       return { ...comune, graphic: messaggio('Scegli il campo della seconda categoria (asse Y) per la mappa di calore.') };
     }
-    const h = calcolaHeatmap(righe, c, prima);
+    const h = (pre && pre.heatmap) ? pre.heatmap : calcolaHeatmap(righe, c, prima);
     return {
       ...comune,
       legend: { show: false },
@@ -1116,7 +1170,7 @@ export function costruisciOption(righe, c, box = {}) {
 
   /* -------------------------------- Radar -------------------------------- */
   if (famiglia === 'radar') {
-    const d = calcolaDati(righe, c);
+    const d = datiPronti();
     return {
       ...comune,
       legend: bloccoLegenda(c, d.serieAttive.length),
@@ -1148,7 +1202,7 @@ export function costruisciOption(righe, c, box = {}) {
 
   /* --------------------------- Torta / imbuto ---------------------------- */
   if (famiglia === 'circolare') {
-    const d = calcolaDati(righe, c);
+    const d = datiPronti();
     if (d.serieAttive.length > 1) {
       avvisi.push('Torta, ciambella e imbuto mostrano UNA serie: le altre sono ignorate. Per confrontare più misure usa barre.');
     }
@@ -1203,7 +1257,7 @@ export function costruisciOption(righe, c, box = {}) {
   }
 
   /* ------------------------------ Cartesiano ----------------------------- */
-  const d = calcolaDati(righe, c);
+  const d = datiPronti();
   const asseValori = assePerConfig(c.assey, undefined, fmtY);
   const asseCategorie = { ...assePerConfig(c.assex, c.assex.tipo === 'time' ? 'time' : undefined), data: c.assex.tipo === 'time' ? undefined : d.categorie.map(String) };
 

@@ -30,6 +30,10 @@
  *   { tabelle: [ { nome: 'utenti', campi: [ { nome: 'id', tipo: 'int' } ] } ] }
  */
 
+import {
+  vocabolarioSql, METODI_DB_MONGO, quotaIdentificatore, ID_SQL, smarca, ultimoSegmento,
+} from './sql-dialetti.js';
+
 /* ==========================================================================
  * Vocabolari
  * ========================================================================== */
@@ -63,6 +67,16 @@ export const OPERATORI_MONGO = [
   '$unwind', '$addFields', '$set', '$unset', '$count', '$facet', '$sample',
   '$sum', '$avg', '$min', '$max', '$first', '$last', '$push', '$addToSet',
   '$concat', '$toUpper', '$toLower', '$dateToString', '$cond', '$ifNull',
+  // Stadi e operatori meno comuni, ma che sono esattamente quelli che non si
+  // ricordano a memoria — cioè quelli per cui un completamento serve davvero.
+  '$graphLookup', '$bucket', '$bucketAuto', '$replaceRoot', '$replaceWith',
+  '$sortByCount', '$setWindowFields', '$merge', '$out', '$geoNear', '$densify',
+  '$switch', '$let', '$map', '$filter', '$reduce', '$arrayElemAt', '$slice',
+  '$mergeObjects', '$objectToArray', '$arrayToObject', '$regexMatch',
+  '$dateFromString', '$dateDiff', '$toString', '$toInt', '$toDouble',
+  '$toObjectId', '$toDate', '$round', '$abs', '$multiply', '$divide',
+  '$subtract', '$add', '$strLenCP', '$split', '$trim', '$literal',
+  '$geoWithin', '$geoIntersects', '$near', '$nearSphere',
 ];
 
 export const METODI_MONGO = [
@@ -93,6 +107,13 @@ export const INIZI_SQL = [
   'ALTER TABLE', 'DROP TABLE', 'TRUNCATE', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'USE',
 ];
 
+// Regex del contesto DDL, compilate UNA volta: `posizioneTipoDdl` gira a ogni
+// tasto premuto, e costruirne tre nuove a ogni battuta è lavoro puro.
+const RE_DDL_TABELLA = /\b(CREATE|ALTER)\s+(TEMPORARY\s+)?TABLE\b/i;
+const RE_DOPO_ADD_COLONNA = new RegExp(
+  `\\b(?:ADD|MODIFY|CHANGE|ALTER)\\s+(?:COLUMN\\s+)?${ID_SQL}\\s+(?:TYPE\\s+)?$`, 'i');
+const RE_DOPO_NOME_COLONNA = new RegExp(`[(,]\\s*${ID_SQL}\\s+$`);
+
 const RE_INIZIO_SQL = /^(?:\s|--[^\n]*\n|#[^\n]*\n|\/\*[\s\S]*?\*\/)*\b(SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH|CREATE|ALTER|DROP|TRUNCATE|SHOW|DESCRIBE|DESC|EXPLAIN|USE|GRANT|REVOKE|SET)\b/i;
 
 /* ==========================================================================
@@ -110,6 +131,49 @@ function istruzioneCorrente(testo, cursore) {
   const prima = String(testo == null ? '' : testo).slice(0, Math.max(0, cursore));
   const puntoEVirgola = prima.lastIndexOf(';');
   return puntoEVirgola >= 0 ? prima.slice(puntoEVirgola + 1) : prima;
+}
+
+/**
+ * Il cursore è nel punto in cui una DDL vuole il TIPO di una colonna?
+ *
+ * Sono i due casi in cui il tipo è obbligatorio e non c'è nient'altro da
+ * scrivere: dentro l'elenco colonne di una `CREATE TABLE`, subito dopo il nome
+ * della colonna, e dopo `ADD`/`MODIFY`/`ALTER COLUMN nome` di una
+ * `ALTER TABLE`. Fuori di lì i tipi non si propongono: in una `SELECT`
+ * sarebbero rumore.
+ */
+export function posizioneTipoDdl(testo, cursore, inizioToken) {
+  const istruzione = istruzioneCorrente(testo, cursore);
+  if (!RE_DDL_TABELLA.test(istruzione)) return false;
+
+  const prima = String(testo).slice(0, inizioToken == null ? cursore : inizioToken);
+  // ALTER TABLE t ADD COLUMN nome |   /   ALTER COLUMN nome TYPE |
+  if (RE_DOPO_ADD_COLONNA.test(prima)) return true;
+  // CREATE TABLE t ( nome |   /   ..., nome |
+  const aperte = contaFuoriDaStringhe(prima, '(') - contaFuoriDaStringhe(prima, ')');
+  return aperte > 0 && RE_DOPO_NOME_COLONNA.test(prima);
+}
+
+/*
+ * Conta un carattere ignorando quelli dentro le stringhe. Una `)` in
+ * `COMMENT 'chiave)'` non chiude l'elenco delle colonne, e contarla faceva
+ * smettere di proporre i tipi nel bel mezzo di una CREATE TABLE; una `(` in
+ * un valore di DEFAULT faceva l'errore opposto.
+ */
+function contaFuoriDaStringhe(testo, carattere) {
+  let n = 0;
+  let apice = '';
+  for (let i = 0; i < testo.length; i++) {
+    const ch = testo[i];
+    if (apice) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === apice) apice = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { apice = ch; continue; }
+    if (ch === carattere) n++;
+  }
+  return n;
 }
 
 /**
@@ -152,12 +216,23 @@ export function tokenAlCursore(testo, cursore) {
   return { prefisso, qualificatore, inizio, pos };
 }
 
-/** L'ultima parola "vera" prima del token in scrittura (in maiuscolo). */
+/**
+ * L'ultima parola "vera" prima del token in scrittura (in maiuscolo).
+ *
+ * L'eventuale qualificatore già scritto (`schema.`, `alias.`) non conta come
+ * parola: senza saltarlo, `FROM diego.Pro` non avrebbe nessuna parola davanti
+ * e il completamento non capirebbe di essere dopo un `FROM`.
+ */
 function parolaPrecedente(testo, inizioToken) {
-  const prima = String(testo).slice(0, inizioToken).replace(/\s+$/, '');
+  const prima = String(testo).slice(0, inizioToken).replace(/\s+$/, '')
+    .replace(/(?:[\w$]+|"[^"]*"|`[^`]*`)\s*\.\s*$/, '')
+    .replace(/\s+$/, '');
   const m = /([\w$]+)$/.exec(prima);
   return m ? m[1].toUpperCase() : '';
 }
+
+const RE_TABELLA_CITATA = new RegExp(
+  `\\b(from|join|update|into)\\s+(${ID_SQL}(?:\\s*\\.\\s*${ID_SQL})*)(?:\\s+(?:as\\s+)?(${ID_SQL}))?`, 'gi');
 
 /**
  * Tabelle citate nella query, con il loro alias.
@@ -167,16 +242,19 @@ export function tabelleCitate(sql) {
   const s = String(sql == null ? '' : sql);
   const out = [];
   const visti = new Set();
-  const re = /\b(from|join|update|into)\s+([`"[]?[\w$.]+[`"\]]?)(?:\s+(?:as\s+)?([a-z_][\w$]*))?/gi;
   let m;
-  while ((m = re.exec(s)) !== null) {
-    const grezzo = m[2].replace(/^["`[]|["`\]]$/g, '');
-    // `db.tabella` o `schema.tabella`: il nome è l'ultimo pezzo.
-    const nome = grezzo.includes('.') ? grezzo.split('.').pop() : grezzo;
+  RE_TABELLA_CITATA.lastIndex = 0;
+  while ((m = RE_TABELLA_CITATA.exec(s)) !== null) {
+    // `schema.tabella`, con o senza virgolette: il nome è l'ultimo pezzo.
+    // Le virgolette vanno tolte, perché il nome vero è quello che si confronta
+    // con lo schema — su PostgreSQL `FROM diego."Prova" p` cita la tabella
+    // `Prova`, e prima quella forma non veniva riconosciuta affatto (quindi
+    // l'alias `p` non portava a nessuna colonna).
+    const nome = ultimoSegmento(m[2]);
     if (!nome) continue;
-    const aliasGrezzo = m[3] || '';
+    const aliasGrezzo = smarca(m[3] || '');
     const alias = NON_ALIAS.has(aliasGrezzo.toLowerCase()) ? '' : aliasGrezzo;
-    const chiave = `${nome} ${alias}`;
+    const chiave = `${nome} ${alias}`;
     if (visti.has(chiave)) continue;
     visti.add(chiave);
     out.push({ nome, alias });
@@ -224,10 +302,16 @@ export function contestoQuery({ testo = '', cursore = 0, motore = 'sql', ripiego
     return { ...base, tipo: 'campo', tabella: coll };
   }
 
-  if (qualificatore) return { ...base, tipo: 'colonna', qualificatore };
-
+  // Dopo `FROM`/`JOIN` un punto separa lo SCHEMA dalla tabella, non l'alias
+  // dalla colonna: `FROM diego.Prova` chiede una tabella dello schema `diego`.
+  // Questo controllo va prima di quello sul qualificatore, altrimenti lì si
+  // cercherebbero le colonne di una tabella che si chiama "diego".
   const prec = parolaPrecedente(testo, inizio);
   if (PAROLE_TABELLA.has(prec)) return { ...base, tipo: 'tabella' };
+
+  if (qualificatore) return { ...base, tipo: 'colonna', qualificatore };
+  // Il tipo di colonna si propone solo dove la DDL lo pretende.
+  if (posizioneTipoDdl(testo, cursore, inizio)) return { ...base, tipo: 'tipo' };
   return { ...base, tipo: 'colonna' };
 }
 
@@ -267,7 +351,7 @@ export function filtraCandidati(candidati, prefisso, limite = 12) {
     const voce = typeof c === 'string' ? { testo: c, tipo: 'parola', dettaglio: '' } : c;
     const testo = String(voce.testo || '');
     if (!testo) return;
-    const chiave = `${voce.tipo} ${testo.toLowerCase()}`;
+    const chiave = `${voce.tipo} ${testo.toLowerCase()}`;
     if (visti.has(chiave)) return;
 
     const basso = testo.toLowerCase();
@@ -297,6 +381,10 @@ export function filtraCandidati(candidati, prefisso, limite = 12) {
  * @param {object} opts.schema      { tabelle: [{ nome, campi }] } già caricato
  * @param {string[]} opts.colonne   colonne della tabella aperta (ripiego)
  * @param {string} opts.collezione  tabella/collezione aperta (ripiego)
+ * @param {string} opts.dbms        motore in uso ('mysql'|'postgresql'|'mongodb'):
+ *                                  aggiunge funzioni, clausole e tipi di quel dialetto
+ * @param {string} opts.database    database (su PostgreSQL: schema) a cui appartiene
+ *                                  lo schema caricato, per i nomi qualificati
  * @param {boolean} opts.parole     includere le parole chiave del linguaggio
  * @param {string[]} opts.vocabolario  parole chiave da usare al posto di quelle standard
  * @param {number} opts.limite
@@ -305,7 +393,13 @@ export function suggerisci(opts = {}) {
   const {
     testo = '', cursore = 0, motore = 'sql', ripiego = 'sql', schema = null,
     colonne = [], collezione = '', parole = true, vocabolario = null, limite = 12,
+    dbms = '', database = '',
   } = opts;
+
+  // Vocabolario del motore in uso. Con un DBMS sconosciuto (o non passato) è
+  // vuoto, e il completamento resta quello comune: aggiungere il dialetto non
+  // toglie mai niente a chi c'era prima.
+  const dialetto = vocabolarioSql(dbms);
 
   const ctx = contestoQuery({ testo, cursore, motore, ripiego });
   // Da qui in poi conta la lingua RISOLTA, non quella chiesta: con 'auto' è
@@ -320,8 +414,21 @@ export function suggerisci(opts = {}) {
 
   let candidati = [];
 
-  if (ctx.tipo === 'tabella' || ctx.tipo === 'collezione') {
-    candidati = nomiTabella;
+  if (ctx.tipo === 'tabella') {
+    // Nome qualificato: le tabelle che conosciamo sono quelle del database (su
+    // PostgreSQL: dello schema) aperto. Se il qualificatore ne indica un altro
+    // non si propone niente — proporre i nomi di QUESTO schema come se fossero
+    // di quello sarebbe un elenco falso.
+    const altroSchema = ctx.qualificatore && database
+      && ctx.qualificatore.toLowerCase() !== String(database).toLowerCase();
+    candidati = altroSchema ? [] : nomiTabella;
+  } else if (ctx.tipo === 'collezione') {
+    // Dopo `db.` non ci sono solo le collezioni: `db.getCollection(…)`,
+    // `db.runCommand(…)` e compagnia stanno lì e prima non comparivano.
+    candidati = nomiTabella
+      .concat(METODI_DB_MONGO.map((m) => ({ testo: m, tipo: 'metodo', dettaglio: 'db' })));
+  } else if (ctx.tipo === 'tipo') {
+    candidati = dialetto.tipi.map((t) => ({ testo: t, tipo: 'tipo', dettaglio: dialetto.nome }));
   } else if (ctx.tipo === 'metodo') {
     candidati = METODI_MONGO.map((m) => ({ testo: m, tipo: 'metodo', dettaglio: '' }));
   } else if (ctx.tipo === 'operatore') {
@@ -365,10 +472,19 @@ export function suggerisci(opts = {}) {
       candidati = (colonne || []).map((c) => ({ testo: String(c), tipo: 'campo', dettaglio: collezione }));
     }
     if (parole) {
+      // Funzioni: quelle comuni a tutti i dialetti più quelle del motore in
+      // uso. `soloQueste` è il caso di MongoDB via SQL→MQL, dove il traduttore
+      // riconosce i soli aggregati: proporre `UPPER` lì sarebbe una trappola.
+      // Le CLAUSOLE del dialetto seguono il vocabolario ristretto (nel filtro
+      // della griglia non si scrive `ON DUPLICATE KEY UPDATE`), le FUNZIONI no:
+      // in una condizione WHERE una `DATE_FORMAT` ci sta benissimo.
+      const funzioniComuni = dialetto.soloQueste ? [] : FUNZIONI_SQL;
       candidati = candidati
         .concat(nomiTabella)
         .concat((vocabolario || PAROLE_SQL).map((k) => ({ testo: k, tipo: 'parola', dettaglio: '' })))
-        .concat((vocabolario ? [] : FUNZIONI_SQL).map((k) => ({ testo: k, tipo: 'funzione', dettaglio: '' })));
+        .concat(vocabolario ? [] : dialetto.parole.map((k) => ({ testo: k, tipo: 'parola', dettaglio: dialetto.nome })))
+        .concat(funzioniComuni.map((k) => ({ testo: k, tipo: 'funzione', dettaglio: '' })))
+        .concat(dialetto.funzioni.map((k) => ({ testo: k, tipo: 'funzione', dettaglio: dialetto.nome })));
     }
   }
 
@@ -381,10 +497,29 @@ export function suggerisci(opts = {}) {
  * regola che decide quanto testo viene sostituito — la parte che, sbagliata,
  * mangia caratteri che l'utente aveva scritto.
  */
-export function applicaSuggerimento(testo, cursore, suggerimento) {
+export function applicaSuggerimento(testo, cursore, suggerimento, opts = {}) {
   const s = String(testo == null ? '' : testo);
-  const { inizio, pos } = tokenAlCursore(s, cursore);
-  const scelto = String(suggerimento || '');
+  let { inizio, pos } = tokenAlCursore(s, cursore);
+  let scelto = String(suggerimento || '');
+
+  // Nomi di tabella, collezione e colonna: si scrivono quotati quando il
+  // motore lo richiede. È il punto in cui si evita l'errore più insidioso di
+  // PostgreSQL — `FROM diego.Prova` cerca `diego.prova`, perché senza apici il
+  // motore abbassa il nome, e la tabella "non esiste".
+  const identificatore = opts.tipo === 'tabella' || opts.tipo === 'campo' || opts.tipo === 'colonna';
+  if (identificatore && opts.dbms && (opts.lingua || 'sql') === 'sql') {
+    scelto = quotaIdentificatore(scelto, opts.dbms);
+  }
+
+  // Se l'utente aveva già aperto le virgolette (`FROM "Pro`), quelle fanno
+  // parte del nome che si sta scrivendo: vanno sostituite insieme al resto,
+  // altrimenti si otterrebbe `""Prova"`.
+  const apice = scelto[0];
+  if (identificatore && (apice === '"' || apice === '`') && s[inizio - 1] === apice) {
+    inizio -= 1;
+    if (s[pos] === apice) pos += 1;
+  }
+
   // Il token in scrittura comprende già l'eventuale `$` iniziale, quindi la
   // sostituzione parte da lì: `$g` + `$gt` non deve dare `$$gt`.
   const nuovo = s.slice(0, inizio) + scelto + s.slice(pos);

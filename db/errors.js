@@ -329,9 +329,18 @@ function regolaOggetti(err) {
   const low = msg.toLowerCase();
 
   if (code === 'ER_NO_SUCH_TABLE' || code === '42P01') {
+    // Su PostgreSQL la causa più frequente non è un nome sbagliato: è un nome
+    // GIUSTO scritto senza virgolette. Il motore abbassa gli identificatori non
+    // quotati, quindi una tabella creata come "Prova" risponde solo a "Prova" —
+    // e l'errore, che cita il nome già abbassato ("prova"), sembra dire che la
+    // tabella non c'è. Dirlo qui evita mezz'ora di ricerche a vuoto.
+    const nome = (/relation "([^"]+)" does not exist/i.exec(msg) || [])[1] || '';
+    const forseMaiuscole = code === '42P01' && nome && nome === nome.toLowerCase();
     return {
       causa: 'La tabella indicata non esiste in questo database',
-      rimedio: 'controlla il nome (maiuscole comprese: su Linux MySQL le distingue) e che tu sia sul database giusto. Su PostgreSQL ricorda che il livello "database" della sidebar è lo schema',
+      rimedio: forseMaiuscole
+        ? 'se il nome ha delle maiuscole va scritto fra doppi apici — PostgreSQL abbassa gli identificatori non quotati, quindi `FROM schema.Prova` cerca `prova`: scrivi `FROM schema."Prova"`. Controlla poi il nome e ricorda che il livello "database" della sidebar è lo schema'
+        : 'controlla il nome (maiuscole comprese: su Linux MySQL le distingue) e che tu sia sul database giusto. Su PostgreSQL ricorda che il livello "database" della sidebar è lo schema',
     };
   }
   if (code === '3D000' || code === 'ER_BAD_DB_ERROR') {

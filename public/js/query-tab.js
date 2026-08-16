@@ -10,7 +10,11 @@ import { runScript, runScriptAndWait, nascondiPannelloScript } from './script-ru
 import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
 import { refreshDbTree } from './dbtree.js';
 import { formatCode, minifyCode } from './query-formatter.js';
-import { attachEditorAutocomplete, invalidaSchemaIntellisense } from './autocomplete.js';
+import {
+  attachEditorAutocomplete, invalidaSchemaIntellisense, ripiegoLingua, dbmsCorrente,
+} from './autocomplete.js';
+import { motoreDalTesto } from './intellisense.js';
+import { quotaIdentificatore } from './sql-dialetti.js';
 import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
@@ -1300,14 +1304,17 @@ function renderSchemaTreeForDb(dbName, container, collections) {
     const icon = isSqlType(state.dbType) ? '📋' : '📁';
     collLabel.innerHTML = `<span>${icon} <strong>${escapeHtml(collName)}</strong></span>`;
 
-    // Drag & Drop
+    // Drag & Drop e doppio clic inseriscono il nome nell'editor: va scritto
+    // come lo scriverebbe chi conosce il motore, cioè QUOTATO quando serve.
+    // Su PostgreSQL un nome con una maiuscola, senza apici, viene abbassato dal
+    // motore: `FROM diego.Prova` va a cercare `diego.prova` e la query fallisce
+    // dicendo che la tabella non esiste.
     collLabel.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', collName);
+      e.dataTransfer.setData('text/plain', nomePerEditor(collName));
     });
 
-    // Click per inserire nome nell'editor
     collLabel.addEventListener('dblclick', () => {
-      insertTextInEditor(collName);
+      insertTextInEditor(nomePerEditor(collName));
     });
 
     const fieldsContainer = document.createElement('div');
@@ -1330,11 +1337,11 @@ function renderSchemaTreeForDb(dbName, container, collections) {
         fieldLabel.innerHTML = `<span>🔹 ${escapeHtml(fieldName)}</span> ${fieldType ? `<span class="schema-node-type">${escapeHtml(fieldType)}</span>` : ''}`;
 
         fieldLabel.addEventListener('dragstart', (e) => {
-          e.dataTransfer.setData('text/plain', fieldName);
+          e.dataTransfer.setData('text/plain', nomePerEditor(fieldName));
         });
 
         fieldLabel.addEventListener('dblclick', () => {
-          insertTextInEditor(fieldName);
+          insertTextInEditor(nomePerEditor(fieldName));
         });
 
         fieldNode.appendChild(fieldLabel);
@@ -1512,6 +1519,26 @@ function aggiornaNotaFiltroSchema(albero, q, trovati) {
 function riapplicaFiltroSchema() {
   const input = $('#query-schema-search');
   if (input && input.value.trim()) filterQuerySchemaBrowser(input.value);
+}
+
+/**
+ * Il nome di una tabella o di una colonna come va scritto nell'editor.
+ *
+ * Su MongoDB in sintassi shell il nome si scrive nudo (`db.Prova.find()`); in
+ * SQL invece passa dalle regole del motore. La lingua la decide il testo già
+ * presente nell'editor, come per il completamento automatico.
+ */
+function nomePerEditor(nome) {
+  const editor = $('#query-editor-input');
+  const testo = editor ? editor.value : '';
+  const cursore = editor ? (editor.selectionStart || 0) : 0;
+  // Le stesse due regole del completamento automatico, prese da lì invece di
+  // riscriverle: due copie della stessa decisione divergono alla prima modifica
+  // che se ne ricorda una sola.
+  const scelto = $('#query-target-engine')?.value || 'auto';
+  const lingua = motoreDalTesto(testo, cursore) || ripiegoLingua(scelto);
+  if (lingua !== 'sql') return nome;
+  return quotaIdentificatore(nome, dbmsCorrente(scelto));
 }
 
 function insertTextInEditor(text) {
