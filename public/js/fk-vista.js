@@ -92,10 +92,9 @@ let tokenElenco = 0;
  * @param {object} opts.relazione  descrittore normalizzato (vedi fk-relazioni.js)
  * @param {*}      opts.valore     valore EJSON attuale della cella
  * @param {string} opts.dbCorrente database/schema della tabella di partenza
- * @param {Element} [opts.ancora]  la cella in modifica, per allineare il pannello
  * @param {function(*):void} opts.onScegli chiamata col valore scelto
  */
-export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, ancora, onScegli }) {
+export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, onScegli }) {
   if (!relazione) return;
   const pannello = $('#fk-pannello');
   if (!pannello) return;
@@ -129,11 +128,8 @@ export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, ancora, o
   // spostato verso il basso di quanto era stato trascinato l'ultima volta.
   pannello.classList.remove('trascinando');
   pannello.style.removeProperty('--fk-chiusura');
-  // La misura scelta dall'utente si riapplica PRIMA di allineare: l'allineamento
-  // dipende dall'altezza, e calcolarlo sulla misura di default farebbe sbordare
-  // un pannello che l'utente ha reso più alto.
   applicaMisura(pannello, leggiMisura());
-  allineaAllaCella(pannello, ancora);
+  riposizionaPannello(pannello);
   aggiornaTastiera();
   // Un fotogramma prima di animare: applicando `aperto` nello stesso frame in
   // cui si toglie `hidden`, il browser non ha uno stato di partenza da cui
@@ -388,39 +384,22 @@ function collegaSwipeFk(maniglia, pannello) {
 }
 
 /**
- * Allinea il pannello alla riga della cella in modifica.
+ * Riporta il pannello nella sua posizione di riposo (in alto a destra sul
+ * desktop, foglio in basso su mobile) togliendo ogni `top` calcolato.
  *
- * È ciò che lo fa leggere come un aiuto A QUELLA cella invece che come un
- * pannello dell'applicazione comparso a lato: l'occhio collega le due cose
- * perché stanno alla stessa altezza. L'allineamento si calcola una volta, e
- * scorrendo la griglia il pannello resta dov'è — inseguire la cella a ogni
- * fotogramma costerebbe un `getBoundingClientRect` per frame su una griglia
- * virtualizzata, e la cella può addirittura smettere di esistere.
+ * Il pannello si allineava alla riga della cella in modifica, così l'occhio
+ * collegava le due cose. Ma su una riga in fondo alla griglia finiva in fondo
+ * alla finestra, dove l'elenco dei candidati resta schiacciato contro il bordo
+ * e si legge male — ed è proprio quando si modificano le ultime righe che
+ * capita più spesso. Un posto fisso e prevedibile vale più dell'allineamento:
+ * il legame con la cella lo dicono già il titolo del pannello e la cella
+ * evidenziata in modifica.
  *
- * Il risultato viene sempre riportato dentro la finestra: ancorato a una riga
- * in fondo, un pannello alto 500px finirebbe per metà sotto il bordo.
+ * Resta comunque una funzione perché una misura salvata o un `top` inline di
+ * una versione precedente non devono sopravvivere all'apertura.
  */
-function allineaAllaCella(pannello, ancora) {
-  const MARGINE = 16;
-  // Su mobile non c'è nulla da allineare: il foglio sta in basso e il `top`
-  // inline verrebbe comunque sovrascritto dalla media query. Si toglie, così
-  // tornando a schermo largo non resta un `top` calcolato per un'altra
-  // disposizione.
-  if (pannelloFkMobile() || !ancora || !ancora.getBoundingClientRect) {
-    pannello.style.top = '';
-    return;
-  }
-  const cella = ancora.getBoundingClientRect();
-  // Il pannello è ancora su "Carico…", quindi più basso di quanto sarà: misurarlo
-  // adesso e basta lo lascerebbe ancorato troppo in basso, per poi vederlo
-  // sbordare sotto la finestra appena arrivano le righe. Si tiene il maggiore
-  // fra l'altezza attuale e una stima dell'altezza a contenuto pieno.
-  const altezza = Math.max(pannello.offsetHeight || 0, 420);
-  const massimo = window.innerHeight - altezza - MARGINE;
-  // Un filo sopra la cella, così la sua riga cade dentro il pannello e non sul
-  // bordo superiore.
-  const voluto = cella.top - MARGINE * 2;
-  pannello.style.top = `${Math.round(Math.min(Math.max(voluto, MARGINE), Math.max(massimo, MARGINE)))}px`;
+function riposizionaPannello(pannello) {
+  pannello.style.top = '';
 }
 
 export function chiudiPannelloFk() {
@@ -714,7 +693,7 @@ export function initFkVista() {
     // Cambiata la disposizione, gli stili inline dell'altra vanno rifatti da
     // zero: un `top` da desktop su un foglio mobile lo mette fuori posto.
     applicaMisura(pannello, leggiMisura());
-    allineaAllaCella(pannello, null);
+    riposizionaPannello(pannello);
     aggiornaTastiera();
   });
 

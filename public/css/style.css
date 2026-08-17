@@ -7143,10 +7143,15 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
    Deliberatamente NON una barra laterale, e la differenza non è estetica: una
    sidebar è una parte stabile dell'applicazione, sempre al suo posto, mentre
    questo è un aiuto momentaneo che appartiene a UNA cella e se ne va quando la
-   modifica finisce. Da qui le tre scelte che lo distinguono: staccato dai bordi
-   (non ci si "attacca"), alto quanto il contenuto e non quanto la finestra, e
-   allineato alla riga in modifica (vedi allineaAllaCella in fk-vista.js) —
-   così l'occhio collega il pannello alla cella invece che alla finestra.
+   modifica finisce. Da qui le due scelte che lo distinguono: staccato dai bordi
+   (non ci si "attacca") e alto quanto il contenuto, non quanto la finestra.
+
+   Sul desktop sta SEMPRE in alto a destra. Prima si allineava alla riga in
+   modifica, ma su una cella in fondo alla griglia il pannello scendeva col
+   mouse e l'elenco dei candidati finiva schiacciato contro il bordo inferiore
+   — proprio nel caso più frequente, l'inserimento in coda. Il legame con la
+   cella lo dicono il titolo del pannello e la cella evidenziata; la posizione
+   deve invece essere prevedibile, perché è lì che si va a cercarlo.
 
    Non è nemmeno una modale: la cella deve restare visibile e scrivibile mentre
    si sceglie, quindi niente overlay che copre e niente trappola per il fuoco.

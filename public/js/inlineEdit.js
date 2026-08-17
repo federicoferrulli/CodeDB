@@ -241,7 +241,7 @@ export function startEdit(td, doc, field) {
     // occupa la metà bassa e la tastiera virtuale il resto, quindi la cella che
     // si sta modificando sparirebbe sotto entrambi — l'aiuto coprirebbe proprio
     // ciò che deve aiutare. Lì il pannello si apre col 🔗, quando lo si vuole.
-    if (!pannelloFkMobile()) mostraPannelloFk(td, editor, doc, field, relazione);
+    if (!pannelloFkMobile()) mostraPannelloFk(editor, doc, field, relazione);
   }
 }
 
@@ -254,7 +254,7 @@ export function startEdit(td, doc, field) {
  * `salvaCampo` sullo stesso documento di partenza, non su quello che si trova
  * sotto il cursore adesso.
  */
-function mostraPannelloFk(td, editor, doc, field, relazione) {
+function mostraPannelloFk(editor, doc, field, relazione) {
   const { input, setValue, save } = editor;
   const ctx = contestoScrittura();
   apriPannelloFk({
@@ -262,9 +262,6 @@ function mostraPannelloFk(td, editor, doc, field, relazione) {
     valore: doc[field],
     dbCorrente: ctx.db,
     tabId: ctx.tabId,
-    // La cella a cui il pannello si allinea: è ciò che lo fa leggere come un
-    // aiuto a QUESTA riga e non come un pannello dell'applicazione.
-    ancora: td,
     onScegli: (valore) => {
       // Editor ancora vivo (il caso normale): si riempie e si salva dallo
       // stesso percorso dell'Invio, così validazione, messaggi ed eventuale
@@ -302,7 +299,7 @@ function aggiungiPulsanteFk(td, editor, doc, field, relazione) {
   btn.addEventListener('mousedown', (e) => e.preventDefault());
   btn.addEventListener('click', () => {
     if (pannelloFkAperto()) chiudiPannelloFk();
-    else mostraPannelloFk(td, editor, doc, field, relazione);
+    else mostraPannelloFk(editor, doc, field, relazione);
   });
   td.appendChild(btn);
 }
