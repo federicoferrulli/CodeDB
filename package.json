@@ -1,6 +1,6 @@
 {
   "name": "codedb",
-  "version": "0.1.3-beta.1",
+  "version": "0.1.4-beta.1",
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
   "author": "Federico 'Keus' Ferrulli",
