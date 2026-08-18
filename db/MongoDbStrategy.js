@@ -5,6 +5,9 @@ const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { isGeoJson } = require('./geometry');
 const sessioni = require('./sessioni');
+const {
+  pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice, riavvolgi,
+} = require('./duplica');
 
 const SYSTEM_DBS = new Set(['admin', 'config', 'local']);
 
@@ -586,6 +589,90 @@ class MongoDbStrategy extends DbStrategy {
       origine: 'euristica',
       molti: !!r.many,
     }));
+  }
+
+  /**
+   * Documento pronto da inserire come duplicato di quello ricevuto.
+   *
+   * Su MongoDB le chiavi sono due cose: l'`_id` e gli indici unici. L'`_id` si
+   * rifà sempre — se è un ObjectId basta NON scriverlo (lo genera il server, ed
+   * è la chiave nuova migliore possibile); se è un numero o una stringa
+   * ometterlo cambierebbe il TIPO della chiave, quindi si calcola un valore
+   * dello stesso tipo. Gli indici unici valgono come chiavi solo nella modalità
+   * "senza chiavi", e lì `null` non è una via d'uscita come in SQL: su MongoDB
+   * il campo assente vale null nell'indice e collide con gli altri, per questo
+   * quei campi sono trattati come non annullabili e ricevono un valore nuovo.
+   */
+  async duplicatePlan(db, coll, payload) {
+    const client = this.requireClient();
+    const collection = client.db(db).collection(coll);
+    const doc = documentoSorgente(payload.doc);
+
+    let indici = [];
+    try {
+      indici = await collection.indexes();
+    } catch { /* collection appena creata o vista: nessun indice da rispettare */ }
+
+    // I percorsi annidati ("indirizzo.cap") non sono chiavi di primo livello:
+    // toccarli qui creerebbe un campo con il punto nel nome invece di
+    // modificare il sottodocumento. Restano fuori, dichiarandolo.
+    const unicheGrezze = indici
+      .filter((i) => i.unique && i.name !== '_id_')
+      .map((i) => Object.keys(i.key || {}));
+    const annidate = [...new Set(unicheGrezze.flat().filter((n) => n.includes('.')))];
+    const uniche = unicheGrezze.map((cols) => cols.filter((n) => !n.includes('.')));
+
+    const haId = Object.prototype.hasOwnProperty.call(doc, '_id');
+    const idObjectId = haId && !!doc._id && typeof doc._id === 'object' && typeof doc._id.$oid === 'string';
+    const colonne = [{
+      name: '_id',
+      tipo: '',
+      pk: true,
+      nullable: false,
+      // Omettere l'_id fa generare un ObjectId nuovo: vale come ricalcolo solo
+      // se l'originale era a sua volta un ObjectId.
+      generabile: !haId || idObjectId,
+      generata: false,
+    }];
+    for (const nome of new Set(uniche.flat())) {
+      if (nome === '_id') continue;
+      colonne.push({ name: nome, tipo: '', pk: false, nullable: false, generabile: false, generata: false });
+    }
+
+    const piano = pianificaDuplicazione({
+      doc, colonne, uniche, conChiavi: payload.conChiavi === true, idVirtuale: false,
+    });
+    if (annidate.length && payload.conChiavi !== true) {
+      piano.note.push(`Chiavi uniche su campi annidati non toccate: ${annidate.map((n) => `«${n}»`).join(', ')}.`);
+    }
+
+    for (const nome of piano.ricalcola) {
+      const originale = valoreSemplice(doc[nome]);
+      const nuovo = await calcolaNuovoValore({
+        tipo: '',
+        originale,
+        massimo: async () => {
+          // Solo fra i valori NUMERICI: in una collection con _id misti
+          // (ObjectId e numeri) l'ordinamento BSON mette gli ObjectId sopra i
+          // numeri, e il "massimo" sarebbe una stringa esadecimale — cioe' un
+          // NaN, cioe' una chiave nuova che riparte da 1 sopra quelle esistenti.
+          const soloNumeri = { [nome]: { $type: ['int', 'long', 'double', 'decimal'] } };
+          const r = await collection
+            .find(soloNumeri, { projection: { [nome]: 1 }, sort: { [nome]: -1 }, limit: 1 })
+            .toArray();
+          return r.length ? valoreSemplice(EJSON.serialize(r[0], { relaxed: true })[nome]) : null;
+        },
+        esiste: async (v) => (await collection.countDocuments({ [nome]: v }, { limit: 1 })) > 0,
+      });
+      applicaRicalcolo(piano, nome, nuovo && { ...nuovo, valore: riavvolgi(doc[nome], nuovo.valore) }, {
+        pk: nome === '_id',
+        etichetta: `tipo ${typeof originale}`,
+      });
+    }
+    // JSON.stringify e non EJSON.stringify: `piano.doc` NON contiene valori
+    // BSON ma il testo EJSON gia' pronto arrivato dal client, e i campi non
+    // toccati devono tornare a `docInsert` esattamente come erano.
+    return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
   }
 
   async relatedRows(db, coll, payload) {

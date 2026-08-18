@@ -13,7 +13,7 @@ La **Manleva** (file `MANLEVA.md`, riportata insieme al presente accordo) ne
 costituisce parte integrante.
 
 Titolare: Federico Ferrulli. Contatti: `info@codedb.org`.
-Repository ufficiale: `https://github.com/federicoferrulli/gui-mongodb`.
+Repository ufficiale: `https://github.com/federicoferrulli/CodeDB`.
 
 ## 1. Concessione di licenza
 

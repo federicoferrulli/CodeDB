@@ -6,7 +6,7 @@
   "author": "Federico 'Keus' Ferrulli",
   "repository": {
     "type": "git",
-    "url": "https://github.com/federicoferrulli/gui-mongodb.git"
+    "url": "https://github.com/federicoferrulli/CodeDB.git"
   },
   "main": "electron-main.js",
   "bin": {
@@ -93,7 +93,7 @@
       {
         "provider": "github",
         "owner": "federicoferrulli",
-        "repo": "gui-mongodb",
+        "repo": "CodeDB",
         "releaseType": "release"
       }
     ],

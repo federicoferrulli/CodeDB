@@ -6,6 +6,10 @@ const { splitStatements } = require('./sqlText');
 const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const { pgNativoAGeoJson, geoJsonAPgNativo } = require('./pg-geo-nativo');
 const sessioni = require('./sessioni');
+const { randomUUID } = require('crypto');
+const {
+  pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
+} = require('./duplica');
 
 // Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
 const GEO_CACHE_MS = 15000;
@@ -1792,7 +1796,9 @@ class PostgreSqlStrategy extends DbStrategy {
       `SELECT c.column_name AS name,
               pg_catalog.format_type(a.atttypid, a.atttypmod) AS ctype,
               c.is_nullable AS nullable,
-              c.column_default AS cdefault
+              c.column_default AS cdefault,
+              c.is_identity AS identity,
+              c.is_generated AS generated
          FROM information_schema.columns c
          JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
          JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
@@ -1817,9 +1823,97 @@ class PostgreSqlStrategy extends DbStrategy {
       presence: c.nullable === 'YES' ? 0 : 100,
       nullable: c.nullable === 'YES',
       default: c.cdefault == null ? null : String(c.cdefault),
-      autoIncrement: /nextval/i.test(String(c.cdefault || '')),
+      // `serial` (nextval) e `GENERATED … AS IDENTITY` sono la stessa promessa:
+      // se la colonna non viene scritta, il database produce un valore nuovo.
+      autoIncrement: /nextval/i.test(String(c.cdefault || '')) || String(c.identity || '') === 'YES',
+      // Colonna calcolata (GENERATED ALWAYS AS … STORED): nominarla in un
+      // INSERT e' un errore, il valore lo fa il database.
+      generated: String(c.generated || '') === 'ALWAYS',
       key: pkSet.has(c.name) ? 'PRI' : '',
     }));
+  }
+
+  /**
+   * Indici della tabella con le COLONNE vere e il flag di unicita'.
+   * `pg_index.indkey` elenca gli attributi nell'ordine dell'indice; gli indici
+   * su espressione hanno attnum 0 e restano senza colonna (non sono una chiave
+   * su cui si possa ragionare per la duplicazione).
+   */
+  async indexList(db, table) {
+    const pool = this.requirePool();
+    const res = await pool.query(
+      `SELECT i.relname AS name, ix.indisunique AS unico, ix.indisprimary AS primaria,
+              a.attname AS colonna, k.ord
+         FROM pg_catalog.pg_class t
+         JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+         JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
+         JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+         JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
+         LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+        WHERE n.nspname = $2 AND t.relname = $1
+     ORDER BY i.relname, k.ord`,
+      [table, schemaOf(db)]
+    );
+    const byName = new Map();
+    for (const r of res.rows) {
+      let entry = byName.get(r.name);
+      if (!entry) byName.set(r.name, (entry = { name: r.name, key: {}, unique: !!r.unico, primary: !!r.primaria }));
+      if (r.colonna) entry.key[r.colonna] = 1;
+    }
+    return [...byName.values()];
+  }
+
+  /** Indici unici NON primari, come liste di colonne (vedi db/duplica.js). */
+  async uniqueIndexes(db, table) {
+    const indici = await this.indexList(db, table);
+    return indici.filter((i) => i.unique && !i.primary).map((i) => Object.keys(i.key));
+  }
+
+  /**
+   * Documento pronto da inserire come duplicato della riga ricevuta: le chiavi
+   * seguono la modalita' (vedi db/duplica.js), i valori nuovi si calcolano qui
+   * perche' solo il database sa qual e' il MAX e cosa e' gia' occupato.
+   */
+  async duplicatePlan(db, coll, payload) {
+    const pool = this.requirePool();
+    const doc = documentoSorgente(payload.doc);
+    const fields = await this.tableFields(db, coll);
+    if (!fields.length) throw new Error(`Tabella "${coll}" non trovata in "${db}".`);
+    const colonne = fields.map((f) => ({
+      name: f.name,
+      tipo: f.types[0],
+      pk: f.key === 'PRI',
+      nullable: f.nullable,
+      generabile: f.autoIncrement,
+      generata: f.generated,
+    }));
+    const piano = pianificaDuplicazione({
+      doc,
+      colonne,
+      uniche: await this.uniqueIndexes(db, coll),
+      conChiavi: payload.conChiavi === true,
+      idVirtuale: !fields.some((f) => f.name === '_id'),
+    });
+
+    const table = qtable(db, coll);
+    for (const nome of piano.ricalcola) {
+      const col = colonne.find((c) => c.name === nome);
+      const nuovo = await calcolaNuovoValore({
+        tipo: col.tipo,
+        originale: valoreSemplice(doc[nome]),
+        massimo: async () => {
+          const r = await pool.query(`SELECT MAX(${qid(nome)}) AS m FROM ${table}`);
+          return r.rows[0] ? r.rows[0].m : null;
+        },
+        esiste: async (v) => {
+          const r = await pool.query(`SELECT 1 FROM ${table} WHERE ${qid(nome)} = $1 LIMIT 1`, [v]);
+          return r.rows.length > 0;
+        },
+        uuid: () => randomUUID(),
+      });
+      applicaRicalcolo(piano, nome, nuovo, { pk: col.pk, etichetta: col.tipo });
+    }
+    return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
   }
 
   async collectionStats(db, coll) {
@@ -1837,11 +1931,10 @@ class PostgreSqlStrategy extends DbStrategy {
     const dataSize = Number(sizeRes.rows[0]?.data_size) || 0;
     const totalSize = Number(sizeRes.rows[0]?.total_size) || 0;
 
-    const idxRes = await pool.query(
-      `SELECT indexname FROM pg_indexes WHERE schemaname = $2 AND tablename = $1`,
-      [coll, schemaOf(db)]
-    );
-    const indexes = idxRes.rows.map((i) => ({ name: i.indexname, key: { [i.indexname]: 1 } }));
+    // `pg_indexes` da solo dava il nome dell'indice al posto delle colonne (e
+    // nessuna unicita'): la vista Dettagli mostrava "Chiavi: {idx_nome:1}", che
+    // non e' una chiave. Le colonne vere arrivano da pg_index (vedi indexList).
+    const indexes = await this.indexList(db, coll);
 
     const fields = await this.tableFields(db, coll);
 

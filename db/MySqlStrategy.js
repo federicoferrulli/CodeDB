@@ -6,6 +6,10 @@ const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const sessioni = require('./sessioni');
+const { randomUUID } = require('crypto');
+const {
+  pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
+} = require('./duplica');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
 
@@ -1454,8 +1458,78 @@ class MySqlStrategy extends DbStrategy {
       nullable: c.nullable === 'YES',
       default: c.cdefault == null ? null : String(c.cdefault),
       autoIncrement: /auto_increment/i.test(String(c.extra || '')),
+      // Colonna calcolata (VIRTUAL/STORED GENERATED): il valore lo fa il
+      // database e un INSERT che la nomina viene rifiutato.
+      generated: /GENERATED/i.test(String(c.extra || '')),
       key: String(c.ckey || ''),
     }));
+  }
+
+  /**
+   * Indici unici NON primari, come liste di colonne. La chiave primaria resta
+   * fuori: ha una sua strada nella duplicazione (vedi db/duplica.js).
+   */
+  async uniqueIndexes(db, table) {
+    const pool = this.requirePool();
+    try {
+      const [idx] = await pool.query(`SHOW INDEX FROM ${qtable(db, table)}`);
+      const byName = new Map();
+      for (const i of idx) {
+        if (Number(i.Non_unique) || i.Key_name === 'PRIMARY') continue;
+        if (!byName.has(i.Key_name)) byName.set(i.Key_name, []);
+        byName.get(i.Key_name)[Number(i.Seq_in_index || 1) - 1] = i.Column_name;
+      }
+      return [...byName.values()].map((cols) => cols.filter(Boolean));
+    } catch {
+      return []; // le view non hanno indici
+    }
+  }
+
+  /**
+   * Documento pronto da inserire come duplicato della riga ricevuta: chiavi
+   * risolte secondo la modalità (vedi db/duplica.js), valori nuovi calcolati
+   * qui perché solo il database sa qual è il MAX e cosa è già occupato.
+   */
+  async duplicatePlan(db, coll, payload) {
+    const pool = this.requirePool();
+    const doc = documentoSorgente(payload.doc);
+    const fields = await this.tableFields(db, coll);
+    if (!fields.length) throw new Error(`Tabella "${coll}" non trovata in "${db}".`);
+    const colonne = fields.map((f) => ({
+      name: f.name,
+      tipo: f.types[0],
+      pk: f.key === 'PRI',
+      nullable: f.nullable,
+      generabile: f.autoIncrement,
+      generata: f.generated,
+    }));
+    const piano = pianificaDuplicazione({
+      doc,
+      colonne,
+      uniche: await this.uniqueIndexes(db, coll),
+      conChiavi: payload.conChiavi === true,
+      idVirtuale: !fields.some((f) => f.name === '_id'),
+    });
+
+    const table = qtable(db, coll);
+    for (const nome of piano.ricalcola) {
+      const col = colonne.find((c) => c.name === nome);
+      const nuovo = await calcolaNuovoValore({
+        tipo: col.tipo,
+        originale: valoreSemplice(doc[nome]),
+        massimo: async () => {
+          const [[r]] = await pool.query(`SELECT MAX(${qid(nome)}) AS m FROM ${table}`);
+          return r ? r.m : null;
+        },
+        esiste: async (v) => {
+          const [rows] = await pool.query(`SELECT 1 FROM ${table} WHERE ${qid(nome)} = ? LIMIT 1`, [v]);
+          return rows.length > 0;
+        },
+        uuid: () => randomUUID(),
+      });
+      applicaRicalcolo(piano, nome, nuovo, { pk: col.pk, etichetta: col.tipo });
+    }
+    return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
   }
 
   async collectionStats(db, coll) {

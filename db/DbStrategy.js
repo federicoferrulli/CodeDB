@@ -150,6 +150,8 @@ class DbStrategy {
   async collectionExplain(_db, _coll, _payload) { throw unsupported(); }
 
   async docInsert(_db, _coll, _payload) { throw unsupported(); }
+  /** Documento pronto da inserire come duplicato: vedi db/duplica.js. */
+  async duplicatePlan(_db, _coll, _payload) { throw unsupported(); }
 
   /**
    * Aggiornamento di massa: payload = { filter, set } (per il gateway MCP).

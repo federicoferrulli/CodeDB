@@ -50,7 +50,7 @@
 // package.json (lo verifica `npm test`): un feed che punta a un repository
 // inesistente non dà errore in fase di build — dà un aggiornamento che non
 // viene mai offerto.
-const REPO = { owner: 'federicoferrulli', repo: 'gui-mongodb' };
+const REPO = { owner: 'federicoferrulli', repo: 'CodeDB' };
 const URL_RELEASES = `https://github.com/${REPO.owner}/${REPO.repo}/releases`;
 
 // Il controllo silenzioso all'avvio non deve competere con il caricamento della

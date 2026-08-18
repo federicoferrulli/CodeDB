@@ -162,6 +162,62 @@ async function runTests() {
     const meta = await emit('relation:rows', { db: DB, coll: COLL, colonna: '_id', cerca: '(', limit: 50 });
     assert(meta.ok && meta.righe.length === 0, '"(" cercato come carattere, non come regex');
 
+    console.log('10-ter. doc:duplicate (ObjectId rifatto, indici unici rispettati)');
+    // Su MongoDB "senza chiavi" non puo' cavarsela con NULL: un campo assente
+    // vale null nell'indice unico e collide con gli altri documenti. Il valore
+    // nuovo deve quindi essere calcolato davvero.
+    const DUPC = 'dup_docs';
+    await emit('collection:create', { db: DB, name: DUPC });
+    await emit('index:create', { db: DB, coll: DUPC, fields: '{"codice": 1}', unique: true, name: 'codice_unique' });
+    await emit('doc:insert', { db: DB, coll: DUPC, doc: '{ "codice": "A1", "nome": "Ada", "tags": ["x"] }' });
+    const dupSrc = await emit('collection:find', { db: DB, coll: DUPC, filter: '' });
+    const dupDoc = dupSrc.ok && dupSrc.docs[0];
+
+    const dSenza = await emit('doc:duplicate', { db: DB, coll: DUPC, doc: JSON.stringify(dupDoc), conChiavi: false });
+    assert(dSenza.ok, `duplicato senza chiavi inserito (${dSenza.ok ? 'ok' : dSenza.error})`);
+    const dopoSenza = await emit('collection:find', { db: DB, coll: DUPC, filter: '' });
+    const copia = dopoSenza.ok && dopoSenza.docs.find((d) => d._id.$oid !== dupDoc._id.$oid);
+    assert(dopoSenza.ok && dopoSenza.docs.length === 2, `due documenti (${dopoSenza.ok ? dopoSenza.docs.length : dopoSenza.error})`);
+    assert(copia && copia._id && copia._id.$oid, 'ObjectId nuovo generato dal server');
+    assert(copia && copia.codice !== 'A1', `campo unico ricalcolato (${copia && copia.codice})`);
+    assert(copia && copia.nome === 'Ada' && Array.isArray(copia.tags) && copia.tags[0] === 'x',
+      'il resto del documento e\' copiato, array compresi');
+
+    // Con chiavi: il campo unico resta, quindi l'inserimento fallisce con il
+    // messaggio parlante su E11000 - e' la semantica della voce di menu.
+    const dCon = await emit('doc:duplicate', { db: DB, coll: DUPC, doc: JSON.stringify(dupDoc), conChiavi: true });
+    assert(!dCon.ok && /duplicat|E11000/i.test(dCon.error || ''),
+      `con chiavi su un indice unico collidente: errore parlante (${dCon.ok ? 'inserito!' : dCon.error})`);
+
+    // Documento senza indici unici: "con chiavi" cambia solo l'_id.
+    const persona = await emit('collection:find', { db: DB, coll: COLL, filter: '{ "name": "Ada" }' });
+    const dPersona = await emit('doc:duplicate', { db: DB, coll: COLL, doc: JSON.stringify(persona.docs[0]), conChiavi: true });
+    assert(dPersona.ok, `documento duplicato con chiavi (${dPersona.ok ? 'ok' : dPersona.error})`);
+    const ade = await emit('collection:find', { db: DB, coll: COLL, filter: '{ "name": "Ada" }' });
+    assert(ade.ok && ade.docs.length === 2 && ade.docs[0]._id.$oid !== ade.docs[1]._id.$oid,
+      `due Ada con _id diversi (${ade.ok ? ade.docs.length : ade.error})`);
+    // Ripulisce: la sezione 11 elimina "la" Ada e conta i documenti rimasti.
+    await emit('doc:delete', { db: DB, coll: COLL, id: JSON.stringify(ade.docs[1]._id) });
+
+    // `_id` NUMERICO: ometterlo lo farebbe diventare un ObjectId, cioe' un tipo
+    // diverso nella stessa collection. Deve restare un numero, e nuovo.
+    await emit('doc:insert', { db: DB, coll: DUPC, doc: '{ "_id": 7, "codice": "N1" }' });
+    const num = await emit('collection:find', { db: DB, coll: DUPC, filter: '{ "codice": "N1" }' });
+    const dNum = await emit('doc:duplicate', { db: DB, coll: DUPC, doc: JSON.stringify(num.docs[0]), conChiavi: false });
+    assert(dNum.ok, `documento con _id numerico duplicato (${dNum.ok ? 'ok' : dNum.error})`);
+    const numDopo = await emit('collection:find', { db: DB, coll: DUPC, filter: '{ "_id": 8 }' });
+    assert(numDopo.ok && numDopo.docs.length === 1, `_id numerico ricalcolato a MAX+1 (${numDopo.ok ? numDopo.docs.length : numDopo.error})`);
+
+    // Anteprima: calcola e non scrive.
+    const primaAnt = await emit('collection:find', { db: DB, coll: DUPC, filter: '' });
+    const anteprima = await emit('doc:duplicate', {
+      db: DB, coll: DUPC, doc: JSON.stringify(dupDoc), conChiavi: false, soloAnteprima: true,
+    });
+    const dopoAnt = await emit('collection:find', { db: DB, coll: DUPC, filter: '' });
+    assert(anteprima.ok && !('_id' in JSON.parse(anteprima.doc || '{}')), 'anteprima senza _id');
+    assert(dopoAnt.ok && dopoAnt.docs.length === primaAnt.docs.length, 'l\'anteprima non scrive nulla');
+    await emit('collection:drop', { db: DB, coll: DUPC });
+
     console.log('11. doc:delete');
     const all = await emit('collection:find', { db: DB, coll: COLL, filter: '{ "name": "Ada" }' });
     const del = await emit('doc:delete', { db: DB, coll: COLL, id: JSON.stringify(all.docs[0]._id) });

@@ -149,6 +149,93 @@ async function runTests() {
     assert(stats.ok && stats.fields.some((f) => f.name === 'name' && f.types[0].startsWith('varchar')),
       'schema: colonna "name" varchar');
 
+    console.log('10-bis. doc:duplicate (duplicazione di una riga)');
+    // Duplicare una riga NON e' copiarla: la chiave primaria collide sempre, le
+    // colonne uniche collidono spesso e quelle calcolate non si possono nemmeno
+    // nominare in un INSERT. Qui si prova che a queste tre cose pensa il server.
+    const DUP = 'dup_test';
+    const ddlDup = await sql(DB,
+      `CREATE TABLE ${DUP} (
+         id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+         email VARCHAR(120) NOT NULL UNIQUE,
+         codice VARCHAR(10) NULL UNIQUE,
+         nome VARCHAR(50) NOT NULL,
+         nome_upper VARCHAR(50) AS (UPPER(nome)) STORED
+       )`);
+    assert(ddlDup.ok, `tabella "${DUP}" creata (PK auto, due uniche, una calcolata)`);
+    await emit('doc:insert', { db: DB, coll: DUP, doc: '{ "email": "ada@x.it", "codice": "A1", "nome": "Ada" }' });
+    const origine = await emit('collection:find', { db: DB, coll: DUP, filter: '', sort: 'id ASC' });
+    const riga = origine.ok && origine.docs[0];
+
+    // Senza chiavi: la primaria la genera il DBMS, le uniche vengono svuotate
+    // (NULL se la colonna lo permette, altrimenti un valore nuovo).
+    const dupSenza = await emit('doc:duplicate', {
+      db: DB, coll: DUP, doc: JSON.stringify(riga), conChiavi: false,
+    });
+    assert(dupSenza.ok, `duplicato senza chiavi inserito (${dupSenza.ok ? dupSenza.insertedId : dupSenza.error})`);
+    const dopoSenza = await emit('collection:find', { db: DB, coll: DUP, filter: '', sort: 'id ASC' });
+    const copia = dopoSenza.ok && dopoSenza.docs[1];
+    assert(copia && copia.id !== riga.id, `chiave primaria nuova (${riga && riga.id} -> ${copia && copia.id})`);
+    assert(copia && copia.nome === 'Ada', 'i dati veri sono quelli della riga sorgente');
+    assert(copia && copia.email !== riga.email, `email unica ricalcolata (${copia && copia.email})`);
+    assert(copia && copia.codice === null, 'colonna unica annullabile azzerata');
+    assert(copia && copia.nome_upper === 'ADA', 'colonna calcolata rifatta dal database, non copiata');
+
+    // Con chiavi: resta tutto tranne la primaria. Su questa tabella l'email
+    // unica viene conservata, quindi l'inserimento DEVE fallire - ed e' la
+    // risposta giusta, non un difetto: e' quello che "con chiavi" significa.
+    const dupCon = await emit('doc:duplicate', {
+      db: DB, coll: DUP, doc: JSON.stringify(riga), conChiavi: true,
+    });
+    assert(!dupCon.ok && /duplicat/i.test(dupCon.error || ''),
+      `con chiavi su una unica collidente: errore parlante (${dupCon.ok ? 'inserito!' : dupCon.error})`);
+
+    // Con chiavi su una tabella la cui sola chiave e' la primaria: passa, e la
+    // riga nuova e' identica tranne l'id.
+    const persona = await emit('collection:find', { db: DB, coll: TABLE, filter: "name = 'Bruno'" });
+    const dupPersona = await emit('doc:duplicate', {
+      db: DB, coll: TABLE, doc: JSON.stringify(persona.docs[0]), conChiavi: true,
+    });
+    assert(dupPersona.ok, `riga duplicata con chiavi (${dupPersona.ok ? 'ok' : dupPersona.error})`);
+    const bruni = await emit('collection:find', { db: DB, coll: TABLE, filter: "name = 'Bruno'", sort: 'id ASC' });
+    assert(bruni.ok && bruni.docs.length === 2 && bruni.docs[0].id !== bruni.docs[1].id,
+      `due Bruno con id diversi (${bruni.ok ? bruni.docs.map((d) => d.id).join(', ') : bruni.error})`);
+    assert(bruni.ok && bruni.docs[1].city === bruni.docs[0].city, 'gli altri campi sono copiati');
+    // Ripulisce: le sezioni successive contano le righe di "people".
+    await sql(DB, `DELETE FROM ${TABLE} WHERE id = ${bruni.docs[1].id}`);
+
+    // Chiave primaria composta senza AUTO_INCREMENT: si rifa' solo l'ultima
+    // componente, cosi' il duplicato resta dentro lo stesso ordine.
+    const ddlComposta = await sql(DB,
+      `CREATE TABLE dup_composta (
+         ordine_id INT NOT NULL,
+         riga INT NOT NULL,
+         qta INT NOT NULL,
+         PRIMARY KEY (ordine_id, riga)
+       )`);
+    assert(ddlComposta.ok, 'tabella con chiave primaria composta creata');
+    await emit('doc:insert', { db: DB, coll: 'dup_composta', doc: '{ "ordine_id": 3, "riga": 1, "qta": 5 }' });
+    const compOrig = await emit('collection:find', { db: DB, coll: 'dup_composta', filter: '' });
+    const dupComp = await emit('doc:duplicate', {
+      db: DB, coll: 'dup_composta', doc: JSON.stringify(compOrig.docs[0]), conChiavi: true,
+    });
+    assert(dupComp.ok, `chiave composta duplicata (${dupComp.ok ? 'ok' : dupComp.error})`);
+    const compDopo = await emit('collection:find', { db: DB, coll: 'dup_composta', filter: '', sort: 'riga ASC' });
+    assert(compDopo.ok && compDopo.docs.length === 2
+      && compDopo.docs[1].ordine_id === 3 && compDopo.docs[1].riga === 2,
+      `stessa ordine_id, riga nuova (${compDopo.ok ? JSON.stringify(compDopo.docs[1]) : compDopo.error})`);
+
+    // Anteprima: calcola e NON scrive - e' la modalita' "Duplica e modifica".
+    const primaDiAnteprima = await emit('collection:find', { db: DB, coll: DUP, filter: '' });
+    const anteprima = await emit('doc:duplicate', {
+      db: DB, coll: DUP, doc: JSON.stringify(riga), conChiavi: false, soloAnteprima: true,
+    });
+    const dopoAnteprima = await emit('collection:find', { db: DB, coll: DUP, filter: '' });
+    assert(anteprima.ok && anteprima.doc && !('id' in JSON.parse(anteprima.doc)),
+      'anteprima senza chiave primaria');
+    assert(dopoAnteprima.ok && dopoAnteprima.docs.length === primaDiAnteprima.docs.length,
+      'l\'anteprima non inserisce nulla');
+
     console.log('11. db:schema con foreign key (orders.people_id -> people)');
     const fk = await sql(DB,
       `CREATE TABLE orders (

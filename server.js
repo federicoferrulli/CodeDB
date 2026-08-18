@@ -1367,6 +1367,7 @@ const AUDIT_WRITES = {
   'index:create':          (p) => ({ coll: p.coll, op: 'Creazione indice' }),
   'index:drop':            (p) => ({ coll: p.coll, index: p.name, op: 'Eliminazione indice' }),
   'doc:insert':            (p) => ({ coll: p.coll, op: 'Inserimento documento/riga' }),
+  'doc:duplicate':         (p) => ({ coll: p.coll, op: p.soloAnteprima ? 'Anteprima duplicato' : 'Duplicazione documento/riga' }),
   'doc:update':            (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Aggiornamento documento/riga' }),
   'doc:replace':           (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Sostituzione documento/riga' }),
   'doc:delete':            (p) => ({ coll: p.coll, docId: cutStr(p.id, 120), op: 'Eliminazione documento/riga' }),
@@ -3501,6 +3502,17 @@ io.on('connection', (socket) => {
   delegate('collection:aggregate', (strategy, p) => strategy.collectionAggregate(p.db, p.coll, p));
   delegate('collection:explain', (strategy, p) => strategy.collectionExplain(p.db, p.coll, p));
   delegate('doc:insert', (strategy, p) => strategy.docInsert(p.db, p.coll, p));
+  // Duplicazione di una riga: il documento da inserire lo calcola il server
+  // (chiavi primarie rifatte, chiavi uniche svuotate o ricalcolate, colonne
+  // generate tolte) invece di lasciarlo comporre a mano nell'editor JSON.
+  // `soloAnteprima` restituisce il documento senza scriverlo: e' la modalita'
+  // "Duplica e modifica...", dove l'inserimento vero passa poi da doc:insert.
+  delegate('doc:duplicate', async (strategy, p) => {
+    const piano = await strategy.duplicatePlan(p.db, p.coll, p);
+    if (p.soloAnteprima === true) return { doc: piano.doc, note: piano.note, azioni: piano.azioni };
+    const esito = await strategy.docInsert(p.db, p.coll, { ...p, doc: piano.doc });
+    return { ...esito, doc: piano.doc, note: piano.note, azioni: piano.azioni };
+  });
   delegate('doc:update', (strategy, p) => strategy.docUpdate(p.db, p.coll, p));
   delegate('doc:replace', (strategy, p) => strategy.docReplace(p.db, p.coll, p));
   delegate('doc:delete', (strategy, p) => strategy.docDelete(p.db, p.coll, p));

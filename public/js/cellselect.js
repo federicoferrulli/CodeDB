@@ -502,43 +502,88 @@ function downloadFile(name, text, mime) {
 }
 
 // --- Duplica riga -----------------------------------------------------------
+//
+// La copia identica di una riga non e' inseribile appena c'e' una chiave: prima
+// toccava all'utente togliere l'`_id` a mano, o indovinare quale colonna unica
+// stava facendo fallire l'INSERT, davanti a un editor JSON. Ora il documento da
+// inserire lo calcola il server (`doc:duplicate` -> `duplicatePlan`), che i
+// vincoli li legge dal database:
+//   - senza chiavi: primaria e colonne uniche generate dal DBMS, azzerate o
+//     ricalcolate;
+//   - con chiavi:   resta tutto tranne la primaria, che e' sempre nuova.
+// L'editor rimane come terza voce, per chi vuole comunque metterci mano.
 
-// Genera un ObjectId a 24 hex lato client (4B timestamp + 5B random + 3B counter),
-// così il duplicato "con chiave" non collide con l'originale (evita E11000).
-let oidCounter = Math.floor(Math.random() * 0xffffff);
-function generateObjectId() {
-  const ts = Math.floor(Date.now() / 1000).toString(16).padStart(8, '0');
-  let rnd = '';
-  for (let i = 0; i < 10; i++) rnd += Math.floor(Math.random() * 16).toString(16);
-  oidCounter = (oidCounter + 1) % 0x1000000;
-  const cnt = oidCounter.toString(16).padStart(6, '0');
-  return (ts + rnd + cnt).slice(0, 24);
+function parolaRiga(isSql, n) {
+  if (isSql) return n === 1 ? 'riga' : 'righe';
+  return n === 1 ? 'documento' : 'documenti';
 }
 
-// Apre un modal di conferma con preview/editor JSON del documento da inserire.
-// `withKey`: se true mantiene la chiave nel documento; per MongoDB ne genera una
-//            NUOVA (l'utente può comunque cambiarla) così il duplicato è valido
-//            senza dover modificare a mano l'_id.
-//            se false la rimuove (il DB genererà una nuova chiave).
-function duplicateRow(rowIndex, withKey) {
-  const doc = state.docs[rowIndex];
-  if (!doc) { toast('Nessun documento selezionato', true); return; }
+// Le note del server (chiavi svuotate, valori ricalcolati, avvisi) sono la sola
+// spiegazione di che cosa e' cambiato rispetto all'originale: senza, il
+// duplicato sembra identico e non lo e'.
+function messaggioEsito(testa, note) {
+  const elenco = [...note].slice(0, 3);
+  return elenco.length ? `${testa} — ${elenco.join(' ')}` : testa;
+}
 
-  const isSql = isSqlType(state.dbType);
-  const rowWord = isSql ? 'riga' : 'documento';
+/**
+ * Duplica subito le righe indicate, senza passare da un editor.
+ * Una richiesta per volta e in ordine: il valore nuovo di una chiave si calcola
+ * dal MAX gia' presente, e due duplicati in parallelo lo leggerebbero uguale.
+ */
+function duplicaRighe(docs, conChiavi) {
+  if (!docs.length) { toast('Nessuna riga selezionata', true); return; }
+  const origin = captureContext();
+  const { tabId, st } = origin;
+  const bersaglio = { tabId, db: st.db, coll: st.coll };
+  const isSql = isSqlType(st.dbType);
+  const note = new Set();
+  let fatte = 0;
 
-  // Copia profonda escludendo o includendo la chiave primaria.
-  const cloned = JSON.parse(JSON.stringify(doc));
-  if (!withKey) {
-    delete cloned._id; // MongoDB: nuova ObjectId auto; SQL: server genera la PK
-  } else if (!isSql && cloned._id && typeof cloned._id === 'object' && cloned._id.$oid) {
-    // MongoDB con _id ObjectId: rigenera una chiave nuova per evitare il
-    // duplicate key error; resta modificabile dall'utente.
-    cloned._id = { $oid: generateObjectId() };
-  }
-  const initialJson = JSON.stringify(cloned, null, 2);
+  const passo = (i) => {
+    if (i >= docs.length) return Promise.resolve();
+    return emit('doc:duplicate', {
+      ...bersaglio,
+      doc: JSON.stringify(docs[i]),
+      conChiavi,
+    }).then((res) => {
+      fatte++;
+      for (const n of res.note || []) note.add(n);
+      return passo(i + 1);
+    });
+  };
 
-  // Costruisce il modal on-the-fly (non esiste ancora nel DOM).
+  passo(0).then(() => {
+    const suffisso = fatte === 1 ? (isSql ? 'a' : 'o') : (isSql ? 'e' : 'i');
+    toast(messaggioEsito(`${fatte} ${parolaRiga(isSql, fatte)} duplicat${suffisso}`, note));
+  }).catch((err) => {
+    // Parziale: le prime sono gia' state scritte, dirlo evita che l'utente
+    // ritenti dall'inizio e si ritrovi con dei doppioni in piu'.
+    const testa = fatte
+      ? `Duplicate ${fatte} di ${docs.length}, poi errore: ${friendlyInsertError(err.message)}`
+      : friendlyInsertError(err.message);
+    toast(testa, true);
+  }).then(() => {
+    if (!fatte) return;
+    // runQuery rilegge dagli input del workspace: solo se il tab e' ancora quello.
+    if (origin.isStillActive()) runQuery({ auto: true });
+    else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
+  });
+}
+
+/**
+ * Duplica con revisione: il server calcola lo stesso documento delle due voci
+ * dirette (`soloAnteprima`), l'utente lo corregge e conferma. La casella
+ * "mantieni le altre chiavi" ricalcola l'anteprima, perche' la differenza fra
+ * le due modalita' la decide il server, non il testo nella textarea.
+ */
+function duplicaConEditor(doc, conChiaviIniziale) {
+  const origin = captureContext();
+  const { tabId, st } = origin;
+  const bersaglio = { tabId, db: st.db, coll: st.coll };
+  const isSql = isSqlType(st.dbType);
+  const rowWord = parolaRiga(isSql, 1);
+
   const overlayId = 'duprow-overlay';
   let overlay = document.getElementById(overlayId);
   if (!overlay) {
@@ -549,6 +594,9 @@ function duplicateRow(rowIndex, withKey) {
       <div class="modal wide">
         <h2 id="duprow-title">Duplica riga</h2>
         <p id="duprow-desc" style="margin:0 0 8px;font-size:13px;color:var(--fg-dim,#888)"></p>
+        <label style="display:flex;gap:6px;align-items:center;margin:0 0 8px;font-size:13px">
+          <input type="checkbox" id="duprow-chiavi"> Mantieni le altre chiavi (cambia solo la primaria)
+        </label>
         <textarea id="duprow-json" rows="16" spellcheck="false"></textarea>
         <div id="duprow-error" class="error hidden"></div>
         <div class="modal-actions">
@@ -566,61 +614,49 @@ function duplicateRow(rowIndex, withKey) {
     });
   }
 
-  // Popola e mostra.
-  const title = withKey
-    ? `Duplica ${rowWord} (con chiave)`
-    : `Duplica ${rowWord} (senza chiave)`;
-  const desc = withKey
-    ? (isSql
-        ? `Modifica la chiave nel JSON qui sotto (dev'essere univoca), poi conferma l'inserimento.`
-        : `È stata generata una nuova chiave (selezionata qui sotto): modificala se vuoi, poi conferma.`)
-    : `Verifica il JSON del duplicato — la chiave è stata rimossa e verrà generata automaticamente.`;
-  document.getElementById('duprow-title').textContent = title;
-  document.getElementById('duprow-desc').textContent = desc;
   const ta = document.getElementById('duprow-json');
-  ta.value = initialJson;
   const errEl = document.getElementById('duprow-error');
+  const descEl = document.getElementById('duprow-desc');
+  const chiaviEl = document.getElementById('duprow-chiavi');
+  document.getElementById('duprow-title').textContent = `Duplica ${rowWord}`;
+  chiaviEl.checked = conChiaviIniziale === true;
   errEl.classList.add('hidden');
+  ta.value = '';
   overlay.classList.remove('hidden');
-  ta.focus();
 
-  // UX: la textarea deve mostrare la prima riga (dove sta l'_id da cambiare),
-  // non restare scrollata dopo il focus. Con chiave, pre-seleziona il valore
-  // dell'_id così l'utente può digitare subito la nuova chiave.
-  ta.scrollTop = 0;
-  if (withKey) {
-    // ObjectId: seleziona il valore hex di "$oid"; altrimenti il valore di "_id".
-    const m = /"\$oid"\s*:\s*"([0-9a-fA-F]{24})"/.exec(initialJson)
-           || /"_id"\s*:\s*/.exec(initialJson);
-    if (m && m[1] !== undefined) {
-      const start = m.index + m[0].indexOf(m[1]);
-      ta.setSelectionRange(start, start + m[1].length);
-    } else if (m) {
-      let start = m.index + m[0].length;
-      // Estende la selezione all'intero valore (stringa fra apici o token grezzo).
-      let end = start;
-      if (initialJson[start] === '"') {
-        end = initialJson.indexOf('"', start + 1);
-        end = end === -1 ? initialJson.length : end + 1;
-      } else {
-        while (end < initialJson.length && !/[,\n}]/.test(initialJson[end])) end++;
-      }
-      ta.setSelectionRange(start, end);
-    } else {
+  // Anteprima: la calcola il server. Finche' non arriva, la textarea resta
+  // vuota e disabilitata - un JSON modificabile che poi viene sovrascritto
+  // dalla risposta farebbe perdere le modifiche appena scritte.
+  const caricaAnteprima = () => {
+    ta.disabled = true;
+    descEl.textContent = 'Calcolo del duplicato…';
+    return emit('doc:duplicate', {
+      ...bersaglio,
+      doc: JSON.stringify(doc),
+      conChiavi: chiaviEl.checked,
+      soloAnteprima: true,
+    }).then((res) => {
+      ta.disabled = false;
+      ta.value = JSON.stringify(JSON.parse(res.doc), null, 2);
+      descEl.textContent = messaggioEsito("Controlla il duplicato, poi conferma l'inserimento.", res.note || []);
+      ta.scrollTop = 0;
+      ta.focus();
       ta.setSelectionRange(0, 0);
-    }
-  } else {
-    ta.setSelectionRange(0, 0);
-  }
+    }).catch((err) => {
+      ta.disabled = false;
+      descEl.textContent = '';
+      errEl.textContent = err.message;
+      errEl.classList.remove('hidden');
+    });
+  };
 
-  // Bersaglio congelato all'APERTURA della modale, non letto al clic su OK
-  // (stesso motivo di CDB-A18): la modale resta aperta quanto l'utente vuole e
-  // nel frattempo può cambiare tab, mentre `state` punta sempre a quello attivo.
-  const origin = captureContext();
-  const { tabId, st } = origin;
-  const bersaglio = { tabId, db: st.db, coll: st.coll };
+  chiaviEl.onchange = () => { errEl.classList.add('hidden'); caricaAnteprima(); };
+  caricaAnteprima();
 
-  // Sostituisce il listener del bottone OK ad ogni apertura.
+  // Sostituisce il listener del bottone OK ad ogni apertura. Il bersaglio e'
+  // congelato all'APERTURA, non letto al clic (stesso motivo di CDB-A18): la
+  // modale resta aperta quanto l'utente vuole e nel frattempo puo' cambiare
+  // tab, mentre `state` punta sempre a quello attivo.
   const oldOk = document.getElementById('duprow-ok');
   const newOk = oldOk.cloneNode(true);
   oldOk.replaceWith(newOk);
@@ -640,7 +676,6 @@ function duplicateRow(rowIndex, withKey) {
     }).then(() => {
       overlay.classList.add('hidden');
       toast(isSql ? 'Riga duplicata' : 'Documento duplicato');
-      // runQuery rilegge dagli input del workspace: solo se il tab è ancora quello.
       if (origin.isStillActive()) runQuery({ auto: true });
       else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
     }).catch((err) => {
@@ -1233,19 +1268,17 @@ export function initCellSelect() {
         label: `🗺 Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
         action: mostraMappaSelezione,
       }] : []),
-      '---',
-      {
-        label: 'Duplica riga ▸',
-        action: () => setTimeout(() => {
-          const { rows } = selectionGrid();
-          const r = rows.length ? rows[0] : sel().focus?.r;
-          if (r == null) { toast('Seleziona prima una riga', true); return; }
-          showContextMenu(x, y, [
-            { label: 'Senza chiave (nuova generata)', action: () => duplicateRow(r, false) },
-            { label: 'Con chiave personalizzabile',   action: () => duplicateRow(r, true)  },
-          ]);
-        }, 0),
-      },
+      ...(righe.length ? ['---', {
+        // Le due voci dirette inseriscono davvero: il documento lo calcola il
+        // server dai vincoli della tabella, non c'e' nulla da compilare a mano.
+        label: righe.length === 1 ? '⧉ Duplica riga ▸' : `⧉ Duplica le ${righe.length} righe ▸`,
+        action: () => setTimeout(() => showContextMenu(x, y, [
+          { label: 'Senza chiavi (le genera il database)', action: () => duplicaRighe(righe, false) },
+          { label: 'Con chiavi (nuova chiave primaria)',   action: () => duplicaRighe(righe, true) },
+          '---',
+          { label: 'Duplica e modifica…', action: () => duplicaConEditor(righe[0], true) },
+        ]), 0),
+      }] : []),
       '---',
       {
         label: 'Incolla (Ctrl+V)',

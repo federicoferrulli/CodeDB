@@ -817,7 +817,7 @@ console.log('--- Test Unitari CodeDB ---');
         [/indennizzare/i, 'l\'obbligo di manleva e difesa'],
         [/legge italiana/i, 'la legge applicabile'],
         [/foro/i, 'il foro competente'],
-        [/federicoferrulli\/gui-mongodb/, 'il repository ufficiale'],
+        [/federicoferrulli\/CodeDB/, 'il repository ufficiale'],
         [/Versione 1\.0/, 'la versione dell\'accordo'],
       ];
       for (const [re, cosa] of clausole) {
@@ -1303,6 +1303,12 @@ console.log('--- Test Unitari CodeDB ---');
   // esattamente lo stesso disegno di prima e che sopravvive alla copia fra
   // thread. Nessun browser: il Worker vero si prova in Playwright.
   require('./unit-calcoli');
+
+  // Test 27-duodecies: duplicazione di una riga. Le decisioni su chiavi
+  // primarie, indici unici e colonne calcolate stanno in un modulo puro
+  // (db/duplica.js) proprio perche' sbagliarle non si vede: il duplicato
+  // sembra corretto anche quando ha perso o conservato la chiave sbagliata.
+  require('./unit-duplica');
 
   // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).

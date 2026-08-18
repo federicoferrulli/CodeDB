@@ -336,6 +336,10 @@ const EVENT_CAPABILITY = {
   'index:drop': 'ddl',
   // Scritture sui dati
   'doc:insert': 'write',
+  // Duplicazione di una riga: legge i vincoli e inserisce. La capability
+  // richiesta e' quella dell'esito (scrittura); il Proxy autorizzante
+  // pretende comunque `read` per la lettura dei metadati.
+  'doc:duplicate': 'write',
   'doc:update': 'write',
   'doc:replace': 'write',
   'collection:import': 'write',
@@ -384,6 +388,7 @@ const METHOD_CAPABILITY = {
   tableDdl:            { cap: 'read', db: 0, coll: 1 },
   tableAuxDdl:         { cap: 'read', db: 0, coll: 1 },
   collectionStats:     { cap: 'read', db: 0, coll: 1 },
+  duplicatePlan:       { cap: 'read', db: 0, coll: 1 },
   columnRelations:     { cap: 'read', db: 0, coll: 1, filter: 'relations' },
   relatedRows:         { cap: 'read', db: 0, coll: 1 },
   collectionFind:      { cap: 'read', db: 0, coll: 1 },
