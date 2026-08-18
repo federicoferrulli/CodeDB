@@ -72,6 +72,7 @@ node test/e2e-postgres.js  # Test end-to-end PostgreSQL (verifica isolamento sch
 node test/e2e-mcp.js       # Test end-to-end gateway MCP (MongoDB)
 node test/e2e-mcp-mysql.js # Test end-to-end gateway MCP (MySQL)
 node test/e2e-query-engine.js  # Test Query Engine & Virtual JOINs
+node test/e2e-collazione-mysql.js # Test allineamento collation su MySQL reale
 node test/e2e-backup.js       # Test CLI Backup (MongoDB)
 node test/e2e-backup-mysql.js # Test CLI Backup (MySQL)
 node test/e2e-dbexport.js     # Test Export/Import intero DB via socket
@@ -90,6 +91,7 @@ node test/unit-sessioni.js    # Test normalizzazione sessioni DB
 node test/unit-fk-relazioni.js# Test decisioni del pannello 🔗 (chiavi esterne)
 node test/unit-scorrimento.js # Test velocità dello scorrimento automatico ai bordi
 node test/unit-duplica.js     # Test pianificazione della duplicazione di una riga
+node test/unit-collazione.js  # Test scelta della collation di connessione (MySQL)
 node test/e2e-tocco-griglia.js# Test gesto tattile + scorrimento automatico (Chromium, eventi touch nativi)
 node test/e2e-avvio-ui.js     # Test che la UI si carichi senza errori JS (catena degli init*)
 
@@ -115,7 +117,7 @@ CodeDB è un'interfaccia stile DBeaver con supporto multi-database (**MongoDB**,
 ### 2. Strategy Pattern (`db/`)
 * **`DbStrategy.js`**: Interfaccia astratta e helper euristici UML.
 * **`MongoDbStrategy.js`**: Strategia MongoDB su driver nativo (`MongoClient`). Supporta change streams (`collection:watch`).
-* **`MySqlStrategy.js`**: Pool `mysql2`.
+* **`MySqlStrategy.js`**: Pool `mysql2`. **Collation della connessione**: mysql2 non la chiede al server — senza `charset` impone una costante compilata nel driver (utf8mb4_unicode_ci), che nessuno ha scelto. Non è cosmetico: variabili utente `@x`, `CAST(… AS CHAR)` e `DATE_FORMAT()` ereditano `collation_connection` con coercibilità **IMPLICIT**, la stessa di una colonna, quindi confrontarli con una colonna di collation diversa dava l'errore 1267 «Illegal mix of collations» — in query corrette nel client `mysql` e in DBeaver. `scegliCollazione` si allinea al database (in mancanza al server, poi alla predefinita utf8mb4 del server) e `usaDatabase` rifà l'allineamento a ogni `USE`, perché `collation_connection` non segue il database. Sempre e solo **dentro utf8mb4**: adottare una collation di un altro charset (su server vecchi `collation_server` è latin1_swedish_ci) sposterebbe `character_set_connection` lasciando il client su utf8mb4, cioè caratteri persi in silenzio. Un confronto fra due colonne di collation diverse resta giustamente un errore: quello è lo schema, non la connessione.
 * **`PostgreSqlStrategy.js`**: Pool `pg`. **Nota**: Il livello "Database" nella UI equivale allo **Schema PostgreSQL** (`listDatabases()` elenca gli schemi e `qtable()` qualifica sempre le tabelle).
 * **Paginazione e Conteggio**: `collection:find` supporta `deferCount: true`. Il conteggio viene richiesto a parte con `collection:count` soggetto a timeout (`CODEDB_COUNT_TIMEOUT_MS`, default 5000ms) per evitare blocchi su tabelle enormi. Budget di byte sui risultati (`CODEDB_MAX_RESULT_BYTES`, default 32 MB).
 

@@ -1199,6 +1199,13 @@ console.log('--- Test Unitari CodeDB ---');
   // la tabella illeggibile, e l'editor su mappa non riusciva a scriverli.
   require('./unit-pg-geo-nativo');
 
+  // Test 24-undecies: scelta della collation di connessione su MySQL. Il
+  // driver ne impone una COMPILATA DENTRO DI SÉ, che nessuno ha scelto, e la
+  // ereditano variabili utente e CAST: bastava a far fallire in CodeDB query
+  // corrette altrove (errore 1267). Qui si prova la regola di scelta; che il
+  // server la accetti lo prova test/e2e-collazione-mysql.js.
+  require('./unit-collazione');
+
   // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
   // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
   // momento il registro (vedi docs/provenienza.md) promette qualcosa che il

@@ -450,6 +450,26 @@ function regolaVincoli(err) {
       rimedio: 'usa un valore più piccolo o un tipo numerico più capiente (BIGINT, NUMERIC)',
     };
   }
+  // MySQL 1267/1268/1270: confronto fra due testi di collation diverse. Il
+  // messaggio del driver è preciso ma muto sul rimedio, e per di più nomina
+  // due collation senza dire QUALE lato è quale. La coercibilità fra
+  // parentesi è l'informazione che orienta: IMPLICIT su entrambi i lati
+  // significa due colonne (o una colonna e una variabile), mai un letterale.
+  if (code === 'ER_CANT_AGGREGATE_2COLLATIONS' || code === 'ER_CANT_AGGREGATE_3COLLATIONS'
+    || code === 'ER_CANT_AGGREGATE_NCOLLATIONS' || low.includes('illegal mix of collations')) {
+    return {
+      causa: 'Confronto fra due testi con regole di ordinamento (collation) diverse: il database non sa quale delle due applicare',
+      rimedio: 'di solito le due tabelle sono nate con collation diverse (tipico di uno schema importato da un dump più vecchio). Per la singola query basta imporla sul confronto — «... ON a.x = b.y COLLATE utf8mb4_unicode_ci»; per risolverla alla radice allinea le tabelle con «ALTER TABLE nome CONVERT TO CHARACTER SET utf8mb4 COLLATE <la collation di riferimento>»',
+    };
+  }
+  // MySQL 1253: la collation indicata non appartiene al charset indicato. È un
+  // errore di DDL, non di confronto: si scrive, non si incontra.
+  if (code === 'ER_COLLATION_CHARSET_MISMATCH') {
+    return {
+      causa: 'La collation indicata non appartiene al set di caratteri indicato',
+      rimedio: 'usa una collation che inizia col nome del charset (per utf8mb4: utf8mb4_general_ci, utf8mb4_unicode_ci, utf8mb4_0900_ai_ci), oppure ometti CHARACTER SET e lascia decidere la collation',
+    };
+  }
   if (code === '2') { // Mongo BadValue
     return {
       causa: 'MongoDB ha rifiutato un valore della query',

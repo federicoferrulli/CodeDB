@@ -119,6 +119,52 @@ function columnSql(c) {
 }
 
 /* ---------------------------------------------------------------------------
+ * Collation della connessione
+ *
+ * mysql2 non chiede al server quale collation usare: se `charset` non è
+ * indicato ripiega su una COSTANTE compilata nel driver — oggi
+ * utf8mb4_unicode_ci (lib/connection_config.js). Il client `mysql` e DBeaver
+ * adottano invece la predefinita del server, e la differenza non è cosmetica:
+ * tutto ciò che eredita `collation_connection` — le variabili utente `@x`,
+ * `CAST(… AS CHAR)`, `DATE_FORMAT()` — ha coercibilità IMPLICIT, la stessa di
+ * una colonna. Confrontarlo con una colonna di collation diversa è l'errore
+ * 1267 «Illegal mix of collations»: una query corretta altrove che falliva
+ * SOLO in CodeDB, per una collation che l'utente non ha mai scelto.
+ *
+ * Ci si allinea al database (in mancanza, al server), ma SOLO dentro utf8mb4.
+ * Adottare la collation di un altro charset — su un server vecchio
+ * `collation_server` è spesso latin1_swedish_ci — cambierebbe
+ * `character_set_connection` lasciando `character_set_client` a utf8mb4: i
+ * letterali verrebbero convertiti a latin1 e i caratteri fuori da quel
+ * repertorio (emoji, ideogrammi) andrebbero persi per strada. Il ripiego è la
+ * collation utf8mb4 predefinita DEL SERVER, cioè quella che prendono le
+ * tabelle create senza COLLATE esplicito.
+ * ------------------------------------------------------------------------- */
+
+const PREFISSO_UTF8MB4 = 'utf8mb4_';
+
+// Nome di collation plausibile: finisce dentro uno `SET`, e il valore arriva
+// dal server, ma un identificatore si controlla comunque prima di comporlo.
+const RE_COLLAZIONE = /^[a-z0-9_]+$/i;
+
+/**
+ * Sceglie la collation a cui allineare la connessione fra le candidate, in
+ * ordine di specificità (database → server → predefinita utf8mb4 del server).
+ * Scarta tutto ciò che non è utf8mb4: vedi il commento sopra.
+ * @returns {string|null} `null` = nessuna candidata utilizzabile, si resta al
+ *   default del driver (cioè al comportamento di prima).
+ */
+function scegliCollazione({ database, server, utf8mb4 } = {}) {
+  for (const c of [database, server, utf8mb4]) {
+    const nome = String(c == null ? '' : c).trim();
+    if (!nome || !RE_COLLAZIONE.test(nome)) continue;
+    if (!nome.toLowerCase().startsWith(PREFISSO_UTF8MB4)) continue;
+    return nome;
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------------------------
  * Strategia MySQL: un pool dedicato per istanza (cioè per socket)
  * ------------------------------------------------------------------------- */
 
@@ -130,6 +176,9 @@ class MySqlStrategy extends DbStrategy {
     // conoscere a OGNI find, e information_schema non è gratis. Cache breve,
     // svuotata dalle DDL sulle colonne che passano da qui.
     this._geoCache = new Map();
+    // Collation a cui allineare ogni connessione del pool (null = default del
+    // driver). Decisa alla connessione, vedi scegliCollazione.
+    this.collazione = null;
   }
 
   get type() { return 'mysql'; }
@@ -151,13 +200,84 @@ class MySqlStrategy extends DbStrategy {
       connectionLimit: 8,
       multipleStatements: false,
     }).promise();
+
+    // Ogni connessione NUOVA riparte dal default del driver: il pool ne apre
+    // fino a `connectionLimit` e le riapre dopo una caduta, quindi l'allinea-
+    // mento va rifatto alla nascita di CIASCUNA, non una volta sola. mysql2
+    // serve i comandi di una connessione in ordine di arrivo: la `SET`
+    // accodata qui precede la query di chi ha chiesto la connessione.
+    pool.pool.on('connection', (conn) => {
+      if (!this.collazione) return;
+      conn.query(`SET collation_connection = ${mysql.escape(this.collazione)}`, () => {});
+    });
+
+    // Prima connessione: valida le credenziali (devono fallire QUI, non alla
+    // prima query dell'utente) e rileva la collation a cui allinearsi.
+    let conn;
     try {
-      await pool.query('SELECT 1'); // credenziali sbagliate falliscono qui
+      conn = await pool.getConnection();
     } catch (err) {
       await pool.end().catch(() => {});
       throw err;
     }
+    try {
+      // Il rilevamento non è essenziale: se fallisce (privilegi ridotti,
+      // server esotico, fork che non espone CHARACTER_SETS) si resta al
+      // default del driver — il comportamento di prima — invece di rifiutare
+      // una connessione che per tutto il resto funziona.
+      try {
+        this.collazione = await this.rilevaCollazione(conn);
+        if (this.collazione) {
+          // Questa connessione è nata prima che la collation fosse nota:
+          // l'handler qui sopra l'ha saltata, e senza questa riga tornerebbe
+          // nel pool disallineata.
+          await conn.query(`SET collation_connection = ${mysql.escape(this.collazione)}`);
+        }
+      } catch (_) {
+        this.collazione = null;
+      }
+    } finally {
+      conn.release();
+    }
     this.pool = pool;
+  }
+
+  /**
+   * Collation candidate lette dal server, in un solo giro. `@@collation_database`
+   * senza database predefinito vale quella del server, e va bene: è il ripiego
+   * successivo.
+   */
+  async rilevaCollazione(conn) {
+    const [[r]] = await conn.query(
+      `SELECT @@collation_database AS db, @@collation_server AS srv,
+              (SELECT DEFAULT_COLLATE_NAME FROM information_schema.CHARACTER_SETS
+                WHERE CHARACTER_SET_NAME = 'utf8mb4') AS u8`
+    );
+    return scegliCollazione({ database: r && r.db, server: r && r.srv, utf8mb4: r && r.u8 });
+  }
+
+  /**
+   * Cambio di database su una connessione del pool.
+   *
+   * Il `USE` da solo non basta: `collation_connection` NON segue il database, e
+   * due database dello stesso server possono avere collation diverse — è il
+   * caso normale quando accanto a uno schema nuovo vive un dump vecchio.
+   * Allinearsi solo alla connessione servirebbe quindi soltanto sul database
+   * predefinito. La scelta è fatta LATO SERVER in una sola istruzione: se la
+   * collation del database non è utf8mb4 si torna a quella rilevata alla
+   * connessione, per non portare `character_set_connection` fuori da utf8mb4
+   * (vedi il commento in testa al file). `LEFT(...)` e non `LIKE`: con
+   * NO_BACKSLASH_ESCAPES l'underscore di `'utf8mb4\_%'` non sarebbe più
+   * protetto e il confronto diventerebbe più largo del previsto.
+   */
+  async usaDatabase(conn, db) {
+    if (!db) return;
+    await conn.query(`USE ${qid(db)}`);
+    if (!this.collazione) return;
+    await conn.query(
+      "SET collation_connection = IF(LEFT(@@collation_database, 8) = 'utf8mb4_', @@collation_database, ?)",
+      [this.collazione]
+    );
   }
 
   async disconnect() {
@@ -646,7 +766,7 @@ class MySqlStrategy extends DbStrategy {
           if (row && row.cid) payload.opHandle.connectionId = row.cid;
         } catch (_) {}
       }
-      if (db) await conn.query(`USE ${qid(db)}`);
+      await this.usaDatabase(conn, db);
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
@@ -905,7 +1025,7 @@ class MySqlStrategy extends DbStrategy {
 
     const conn = await pool.getConnection();
     try {
-      await conn.query(`USE ${qid(db)}`);
+      await this.usaDatabase(conn, db);
       try {
         const [rows] = await conn.query(`EXPLAIN FORMAT=JSON ${sql}`);
         const raw = rows && rows[0] && (rows[0].EXPLAIN || rows[0][Object.keys(rows[0])[0]]);
@@ -1570,5 +1690,7 @@ class MySqlStrategy extends DbStrategy {
     };
   }
 }
+
+MySqlStrategy.scegliCollazione = scegliCollazione;
 
 module.exports = MySqlStrategy;
