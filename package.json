@@ -49,6 +49,8 @@
     "test:e2e:rbac-mcp": "node test/e2e-rbac-mcp.js",
     "test:e2e:cancel": "node test/e2e-query-cancel.js",
     "test:e2e:playwright": "node test/e2e-playwright.js",
+    "test:e2e:tocco": "node test/e2e-tocco-griglia.js",
+    "test:e2e:ui": "node test/e2e-avvio-ui.js",
     "shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/crea-collegamento.ps1",
     "shortcut-unix": "bash tools/crea-collegamento.sh",
     "electron:licenza": "node tools/genera-licenza.js",

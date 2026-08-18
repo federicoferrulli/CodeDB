@@ -1278,6 +1278,12 @@ console.log('--- Test Unitari CodeDB ---');
   // proporzioni storte o un pannello vivo che nessuno disegna. Nessun browser.
   require('./unit-split-layout');
 
+  // Test 27-octies-bis: velocità dello scorrimento automatico ai bordi mentre
+  // si trascina una selezione sulla griglia. Sbagliata non lancia: fa scappare
+  // la tabella dalla parte opposta al puntatore, oppure la fa scorrere mentre
+  // si seleziona tranquillamente in mezzo allo schermo. Nessun browser.
+  require('./unit-scorrimento');
+
   // Test 27-novies: JSON/BSON — validazione, formattazione e minificazione dei
   // documenti scritti a mano (editor ⚡ e modali). Qui la proprietà da
   // proteggere è che formattare NON cambi un valore: un intero oltre i 53 bit

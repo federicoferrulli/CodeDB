@@ -11,6 +11,9 @@ import { statisticheAsync, statistichePerColonnaAsync, sequenziatore } from './c
 import { statisticheGeo, riassuntoGeoBreve } from './geo-stats.js';
 import { apriMappaSelezione } from './geomulti.js';
 import { apriGraficoSelezione } from './cellgrafico.js';
+// Lo scorrimento automatico ai bordi durante il trascinamento: il calcolo della
+// velocità sta in un modulo puro, così è verificabile senza DOM.
+import { velocitaAsse, BORDO_DEFAULT } from './scorrimento-bordo.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
@@ -66,10 +69,23 @@ const MAX_CELLE_RIASSUNTO = 20000;
 // l'ultima a rispondere non è per forza l'ultima chiesta.
 const seqRiassunto = sequenziatore();
 
+// Vero mentre una selezione si sta trascinando (mouse o dito), compreso il
+// tempo in cui la griglia scorre da sola sotto il puntatore. Lo leggono le
+// chiamate di `applyCellSelection` che arrivano da fuori, per non pagare il
+// riassunto completo a ogni fotogramma.
+let trascinandoSelezione = false;
+
 // Ri-applica le classi CSS della selezione dopo un render della griglia,
 // scartando le celle ormai fuori dai limiti della pagina corrente.
 export function applyCellSelection({ leggero = false } = {}) {
   const s = sel();
+  // Chi chiama non sa sempre di essere dentro un trascinamento: mentre la
+  // selezione si allarga con lo scorrimento automatico, la griglia rifà da sé
+  // la finestra virtuale e ri-applica la selezione (renderVirtualWindow in
+  // grid.js). Quella chiamata è "pesante" per definizione, e cadrebbe più volte
+  // al secondo proprio sul telefono, dove costa di più. Finché il dito o il
+  // mouse tirano, il riassunto resta leggero comunque.
+  if (trascinandoSelezione) leggero = true;
   for (const k of [...s.cells]) {
     const [r, c] = k.split(':').map(Number);
     if (r >= state.docs.length || c >= state.columns.length) s.cells.delete(k);
@@ -905,6 +921,115 @@ export function initCellSelect() {
   let dragging = false;
   let dragBase = null; // celle già selezionate prima del drag (Ctrl+trascina = aggiunge)
 
+  /* --------- Scorrimento automatico ai bordi durante il trascinamento -------
+   * Trascinando fino al bordo della griglia la selezione si fermava con la
+   * parte visibile: per prendere le righe sotto bisognava rilasciare, scorrere
+   * e ripartire con Shift+click. Finché il puntatore resta sul bordo (o oltre,
+   * fuori dalla griglia) il contenitore scorre da solo e la selezione segue.
+   *
+   * La posizione del puntatore va tenuta a parte perché `mouseover` non basta:
+   * col mouse fermo sul bordo non arriva più nessun evento, ma lo scorrimento
+   * deve continuare; ed è lo scorrimento stesso a portare nuove celle sotto al
+   * cursore, quindi la selezione si estende dal ciclo, non dagli eventi.
+   * ------------------------------------------------------------------------- */
+
+  let puntatore = null; // ultima posizione nota del puntatore che trascina
+  let raf = 0;
+  // La fascia sensibile dipende da COSA trascina. Col dito serve più larga: il
+  // polpastrello copre una quarantina di pixel, quindi con la fascia del mouse
+  // lo scorrimento partirebbe solo quando il dito ha già passato il bordo — e
+  // lì sotto non si vede più nulla di ciò che si sta selezionando.
+  let bordo = BORDO_DEFAULT;
+  const BORDO_DITO = 72;
+  // Soglia oltre la quale un tocco è un trascinamento e non più una pressione
+  // (grid.js usa la stessa per la sua decisione speculare).
+  const TOLLERANZA_DITO_PX = 10;
+
+  const contenitore = () => tbody.closest('.grid-wrap');
+
+  // Estende la selezione alla cella sotto al puntatore. Le coordinate vengono
+  // riportate dentro l'area utile: fuori dalla griglia `elementFromPoint` non
+  // troverebbe nulla, e sotto l'intestazione (che è `sticky`) troverebbe un
+  // `th`, non la cella che quel punto copre.
+  function estendiAlPuntatore() {
+    if (!puntatore) return;
+    const box = contenitore();
+    if (!box) return;
+    const s = sel();
+    if (!s.anchor) return;
+    const r = box.getBoundingClientRect();
+    const rt = tbody.getBoundingClientRect();
+    const thead = $('#grid thead');
+    const altoUtile = Math.max(r.top + 1, thead ? thead.getBoundingClientRect().bottom + 1 : r.top + 1);
+    const x = Math.min(Math.max(puntatore.x, r.left + 1), r.right - 1);
+    const y = Math.min(Math.max(puntatore.y, altoUtile), Math.min(r.bottom - 1, rt.bottom - 1));
+    // `elementsFromPoint` al plurale: col dito capita di trascinare sopra
+    // qualcosa che sta davanti alla griglia (la barra inferiore del mobile, un
+    // pannello sovrapposto). Al singolare si otterrebbe quello, e la selezione
+    // smetterebbe di seguire proprio mentre la griglia scorre; qui si prende la
+    // prima cella nella pila, che è la cella che quel punto copre davvero.
+    const pila = document.elementsFromPoint ? document.elementsFromPoint(x, y) : [document.elementFromPoint(x, y)];
+    let td = null;
+    for (const el of pila) {
+      const cand = el && el.closest && el.closest('td[data-c]');
+      if (cand && tbody.contains(cand)) { td = cand; break; }
+    }
+    if (!td) return; // riga virtuale non ancora resa: al prossimo fotogramma
+    const cella = cellFromTd(td);
+    if (s.focus && s.focus.r === cella.r && s.focus.c === cella.c) return;
+    s.focus = cella;
+    const rect = rectKeys(s.anchor, cella);
+    s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
+    applyCellSelection({ leggero: true }); // il riassunto geografico a fine gesto
+  }
+
+  function passo() {
+    raf = 0;
+    if (!trascinamentoVivo() || !puntatore) { puntatore = null; return; }
+    const box = contenitore();
+    if (!box) return;
+    const r = box.getBoundingClientRect();
+    const dx = velocitaAsse(puntatore.x, r.left, r.right, { bordo });
+    const dy = velocitaAsse(puntatore.y, r.top, r.bottom, { bordo });
+    // Puntatore lontano dai bordi: il ciclo si sospende invece di girare a
+    // vuoto trenta volte al secondo (su un telefono è batteria). Lo riaccende
+    // il prossimo movimento — che è l'unico modo di tornare sul bordo.
+    if (!dx && !dy) return;
+    const sx = box.scrollLeft, sy = box.scrollTop;
+    box.scrollLeft += dx;
+    box.scrollTop += dy;
+    // Se il contenitore era già a fondo corsa non è cambiato nulla: inutile
+    // ricalcolare la selezione. Il ciclo però continua: con lo scorrimento
+    // infinito il fondo di adesso non è il fondo di fra un secondo.
+    if (box.scrollLeft !== sx || box.scrollTop !== sy) estendiAlPuntatore();
+    raf = requestAnimationFrame(passo);
+  }
+
+  const trascinamentoVivo = () => dragging || !!dito;
+
+  // Aggiorna la posizione nota e riaccende il ciclo se era sospeso.
+  //
+  // `avvia` è falso alla pressione iniziale: cliccare (o toccare) una cella che
+  // sta già vicino al bordo non deve far scappare la griglia. Lo scorrimento è
+  // una conseguenza del TRASCINARE fin sul bordo, quindi comincia al primo
+  // movimento vero, non alla pressione.
+  function aggiornaPuntatore(e, avvia = true) {
+    puntatore = { x: e.clientX, y: e.clientY };
+    if (avvia && !raf && trascinamentoVivo()) raf = requestAnimationFrame(passo);
+  }
+
+  function fermaScorrimento() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+    puntatore = null;
+  }
+
+  // Il mouse va seguito su `document`: uscendo dalla griglia (che è proprio il
+  // caso in cui serve scorrere) `tbody` non riceve più nulla.
+  document.addEventListener('mousemove', (e) => {
+    if (dragging) aggiornaPuntatore(e);
+  });
+
   tbody.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const td = e.target.closest('td[data-c]');
@@ -915,6 +1040,9 @@ export function initCellSelect() {
     dragging = true;
     dragBase = ctrl ? new Set(sel().cells) : null;
     applyCellSelection();
+    trascinandoSelezione = true;
+    bordo = BORDO_DEFAULT;
+    aggiornaPuntatore(e, false);
   });
 
   tbody.addEventListener('mouseover', (e) => {
@@ -930,13 +1058,17 @@ export function initCellSelect() {
     applyCellSelection({ leggero: true });
   });
 
-  document.addEventListener('mouseup', () => {
+  const fineMouse = () => {
     // Il riassunto geografico è stato saltato durante il trascinamento (troppo
     // caro per fotogramma): ora che la selezione è ferma si completa.
-    if (dragging) applyCellSelection();
+    if (!dragging) return;
     dragging = false;
+    trascinandoSelezione = !!dito;
+    applyCellSelection();
     dragBase = null;
-  });
+    fermaScorrimento();
+  };
+  document.addEventListener('mouseup', fineMouse);
 
   /* ------------------ Trascinamento col dito (mobile) ------------------- *
    * Il trascinamento sopra usa `mousedown`/`mouseover`, che col dito non
@@ -966,34 +1098,64 @@ export function initCellSelect() {
     // Solo da dentro la selezione: altrimenti questo tocco è uno scorrimento,
     // un tocco singolo o l'inizio di una pressione lunga.
     if (!sel().cells.has(key(Number(td.dataset.r), Number(td.dataset.c)))) return;
-    dito = { id: e.pointerId, mosso: false };
+    dito = { id: e.pointerId, mosso: false, x0: e.clientX, y0: e.clientY };
     sel().anchor = sel().anchor || cellFromTd(td);
+    // CATTURA ESPLICITA SUL `tbody`, ed è ciò che rende usabile lo scorrimento
+    // automatico col dito. Un tocco è già catturato implicitamente, ma DAL `td`
+    // iniziale: appena la griglia scorre, la virtualizzazione rifà la finestra
+    // visibile (`tbody.innerHTML = ''` in grid.js) e quel `td` esce dal
+    // documento. Con il bersaglio staccato gli eventi non risalgono più fin
+    // qui: il gesto si spezzava a metà e, peggio, non arrivava nemmeno il
+    // `pointerup` — il ciclo avrebbe continuato a scorrere a dito alzato. Il
+    // `tbody` invece è sempre lo stesso elemento: viene svuotato, mai sostituito.
+    try { tbody.setPointerCapture(e.pointerId); } catch { /* fuori dal DOM o id già rilasciato */ }
+    bordo = BORDO_DITO;
+    aggiornaPuntatore(e, false);
   });
 
   tbody.addEventListener('pointermove', (e) => {
     if (!dito || e.pointerId !== dito.id) return;
-    // `elementFromPoint` e non `e.target`: durante un trascinamento tattile il
-    // bersaglio resta la cella iniziale (cattura implicita del puntatore),
-    // quindi seguire `e.target` selezionerebbe sempre e solo quella.
-    const el = document.elementFromPoint(e.clientX, e.clientY);
-    const td = el && el.closest && el.closest('td[data-c]');
-    if (!td) return;
-    const s = sel();
-    if (!s.anchor) return;
+    // Un dito appoggiato non sta mai davvero fermo. Sotto la soglia il gesto è
+    // ancora una PRESSIONE, e sulla selezione la pressione lunga è l'unico modo
+    // di aprire il menu contestuale col dito (copia, statistiche, grafico): far
+    // scattare qui il trascinamento per due pixel di tremolio lo toglierebbe.
+    // È la stessa tolleranza con cui grid.js decide la stessa cosa.
+    if (!dito.mosso
+      && Math.abs(e.clientX - dito.x0) <= TOLLERANZA_DITO_PX
+      && Math.abs(e.clientY - dito.y0) <= TOLLERANZA_DITO_PX) return;
     dito.mosso = true;
-    const cella = cellFromTd(td);
-    s.focus = cella;
-    s.cells = new Set(rectKeys(s.anchor, cella));
-    applyCellSelection({ leggero: true }); // il riassunto geografico a fine gesto
+    trascinandoSelezione = true;
+    // `elementFromPoint` e non `e.target`: durante un trascinamento tattile il
+    // bersaglio resta la cella iniziale (cattura del puntatore), quindi seguire
+    // `e.target` selezionerebbe sempre e solo quella. È la stessa lettura che
+    // fa lo scorrimento automatico, quindi la si riusa: aggiornata la
+    // posizione, `estendiAlPuntatore` fa il resto.
+    aggiornaPuntatore(e);
+    estendiAlPuntatore();
   });
 
-  const fineDito = () => {
+  const fineDito = (e) => {
     if (!dito) return;
-    if (dito.mosso) applyCellSelection();
+    if (e && e.pointerId !== undefined && e.pointerId !== dito.id) return;
+    const mosso = dito.mosso;
+    if (e && e.pointerId !== undefined) {
+      try { tbody.releasePointerCapture(e.pointerId); } catch { /* già rilasciata */ }
+    }
     dito = null;
+    trascinandoSelezione = dragging;
+    // Dopo aver spento il flag: ora il riassunto completo (geometrie comprese)
+    // si calcola davvero, che è il senso di farlo a gesto finito.
+    if (mosso) applyCellSelection();
+    fermaScorrimento();
   };
   tbody.addEventListener('pointerup', fineDito);
   tbody.addEventListener('pointercancel', fineDito);
+  // Rete di sicurezza: se il gesto finisce senza che ce ne accorgiamo (finestra
+  // che perde il fuoco, app messa in secondo piano, cattura persa per una
+  // ragione qualsiasi), il ciclo di scorrimento non deve restare acceso.
+  const abbandona = () => { fineDito(); fineMouse(); };
+  window.addEventListener('blur', abbandona);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) abbandona(); });
 
   // Trascinando piano, la pressione supera comunque la soglia del sistema e il
   // browser emette `contextmenu` a metà gesto: il menu si aprirebbe sopra una
