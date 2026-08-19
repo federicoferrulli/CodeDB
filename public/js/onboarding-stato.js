@@ -66,6 +66,9 @@ export const NOVITA = [
       'La selezione delle celle scorre da sola: trascinando fino al bordo della griglia — o anche oltre, fuori dalla tabella — il contenuto scorre e la selezione lo segue, senza doversi fermare a metà per rotellare. La velocità cresce con quanto ci si spinge verso il bordo.',
       'Lo stesso gesto funziona col dito: la fascia sensibile al bordo è più larga perché il polpastrello lo copre, il trascinamento parte solo dopo 10 px di movimento (sotto resta una pressione, e la pressione lunga continua ad aprire il menu contestuale) e la selezione non si interrompe più quando lo scorrimento ricostruisce le righe.',
       'Pannello delle chiavi esterne: non copre più la cella in modifica e resta dentro i bordi della finestra anche sulle tabelle larghe o con la griglia scorsa in fondo.',
+      'Miglioramento della selezione con scorrimento',
+      'Bug Fixes sul duplica riga e miglioramento della usabilità',
+      'Query e Aggregate migliorato su encoding database'
     ],
   },
   {
