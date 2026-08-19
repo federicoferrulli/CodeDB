@@ -83,6 +83,7 @@ function errore(message, extra = {}) {
     [errore("Access denied for user 'root'@'localhost'", { code: 'ER_ACCESS_DENIED_ERROR' }), /accesso negato/i, 'MySQL auth'],
     [errore('password authentication failed', { code: '28P01' }), /password/i, 'PostgreSQL auth'],
     [errore('canceling statement due to statement timeout', { code: '57014' }), /tempo massimo/i, 'PG timeout'],
+    [errore('Query inactivity timeout', { code: 'PROTOCOL_SEQUENCE_TIMEOUT' }), /tempo massimo/i, 'tetto query libera MySQL'],
     [errore("Table 'shop.ordini' doesn't exist", { code: 'ER_NO_SUCH_TABLE' }), /non esiste/i, 'tabella assente'],
     [errore('relation "ordini" does not exist', { code: '42P01' }), /non esiste/i, 'relazione assente'],
     [errore("Unknown column 'nome' in 'field list'", { code: 'ER_BAD_FIELD_ERROR' }), /colonna/i, 'colonna assente'],

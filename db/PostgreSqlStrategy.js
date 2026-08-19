@@ -802,6 +802,14 @@ class PostgreSqlStrategy extends DbStrategy {
     // parser: se la classificazione sbaglia, e' il motore a rifiutare la
     // scrittura invece di lasciarla passare come "lettura".
     const readOnly = !!payload.readOnly || !!payload.expectRead;
+    // TETTO DI TEMPO — su ENTRAMBI i rami, non solo in lettura. Prima
+    // il limite valeva solo dentro la transazione READ ONLY, come costante
+    // `30000` scritta qui dentro: una scrittura sbagliata teneva una
+    // connessione del pool senza limite. Il valore viene ora dalla stessa fonte
+    // configurabile degli altri tetti dell'interfaccia
+    // (`DbStrategy.aggregateTimeoutMs`, env CODEDB_AGGREGATE_TIMEOUT_MS);
+    // <= 0 disattiva il limite.
+    const ms = DbStrategy.aggregateTimeoutMs();
     const client = await pool.connect();
     // SQL Raw: la query la scrive l'utente, quindi puo' qualificare gli schemi
     // come vuole. I nomi NON qualificati devono pero' risolversi nello schema
@@ -810,6 +818,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // sempre pulita al pool.
     const schema = schemaOf(db);
     let pathSet = false;
+    let timeoutSet = false;
     let readTxOpen = false;
     try {
       if (payload && payload.opHandle && client.processID) {
@@ -820,7 +829,7 @@ class PostgreSqlStrategy extends DbStrategy {
         // Segnare la transazione subito dopo BEGIN: anche un errore nel primo
         // SET LOCAL deve fare ROLLBACK prima di restituire il client al pool.
         readTxOpen = true;
-        await client.query('SET LOCAL statement_timeout = 30000');
+        if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
         // Un solo schema: aggiungere `public` come ripiego farebbe risolvere
         // un nome non qualificato fuori dal database/schema autorizzato quando
         // la tabella non esiste nello schema selezionato.
@@ -828,6 +837,13 @@ class PostgreSqlStrategy extends DbStrategy {
       } else {
         await client.query(`SET search_path TO ${qid(schema)}`);
         pathSet = true;
+        // Fuori da una transazione non c'è `SET LOCAL`: il valore resta sulla
+        // connessione, quindi va riazzerato nel `finally` come il search_path,
+        // altrimenti lo eredita chi prende questo client dal pool.
+        if (ms > 0) {
+          await client.query(`SET statement_timeout = ${ms}`);
+          timeoutSet = true;
+        }
       }
       try {
         const cap = DbStrategy.resultCap(payload);
@@ -852,6 +868,7 @@ class PostgreSqlStrategy extends DbStrategy {
           readTxOpen = false;
         }
         if (pathSet) await client.query('RESET search_path').catch(() => {});
+        if (timeoutSet) await client.query('RESET statement_timeout').catch(() => {});
       }
     } finally {
       // Rete di sicurezza per errori avvenuti durante i SET LOCAL, prima di

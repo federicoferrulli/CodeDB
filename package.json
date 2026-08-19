@@ -45,6 +45,8 @@
     "test:e2e:query": "node test/e2e-query-engine.js",
     "test:e2e:postgres": "node test/e2e-postgres.js",
     "test:unit:mcp-auth": "node test/unit-mcp-auth.js",
+    "test:unit:tetto-tempo": "node test/unit-tetto-tempo.js",
+    "test:e2e:tetto-scrittura": "node test/e2e-tetto-scrittura.js",
     "test:e2e:rbac": "node test/e2e-rbac.js",
     "test:e2e:rbac-mcp": "node test/e2e-rbac-mcp.js",
     "test:e2e:cancel": "node test/e2e-query-cancel.js",

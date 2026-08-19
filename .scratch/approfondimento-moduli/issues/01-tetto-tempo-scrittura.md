@@ -10,10 +10,10 @@ configurabile che governa gli altri tetti dell'interfaccia della strategia.
 
 **Bloccato da:** nessuno (si può iniziare subito).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Esiste un test che dimostra l'assenza del tetto sul ramo di scrittura e che **fallisce prima** della correzione, su entrambi i motori SQL
-- [ ] Dopo la correzione il test passa e il tetto vale su entrambi i rami dei due motori
-- [ ] Il valore del tetto proviene dalla fonte configurabile dell'interfaccia della strategia, non da una costante ripetuta
-- [ ] Cambiare la configurazione cambia il comportamento osservato in un test
-- [ ] Il comportamento su MongoDB resta invariato
+- [x] Esiste un test che dimostra l'assenza del tetto sul ramo di scrittura e che **fallisce prima** della correzione, su entrambi i motori SQL
+- [x] Dopo la correzione il test passa e il tetto vale su entrambi i rami dei due motori
+- [x] Il valore del tetto proviene dalla fonte configurabile dell'interfaccia della strategia, non da una costante ripetuta
+- [x] Cambiare la configurazione cambia il comportamento osservato in un test
+- [x] Il comportamento su MongoDB resta invariato

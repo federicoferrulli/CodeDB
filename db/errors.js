@@ -253,6 +253,15 @@ function regolaTimeout(err) {
       rimedio: 'restringi il filtro, aggiungi un indice sulle colonne filtrate/ordinate, oppure alza il limite con la variabile d\'ambiente CODEDB_QUERY_TIMEOUT_MS',
     };
   }
+  // MySQL: tetto di tempo della query libera (SQL Raw, lettura o scrittura).
+  // Non è un errore del server ma del driver: mysql2 smette di aspettare, la
+  // strategia uccide la query con KILL QUERY e butta via la connessione.
+  if (code === 'PROTOCOL_SEQUENCE_TIMEOUT' || msg.includes('query inactivity timeout')) {
+    return {
+      causa: `La query ha superato il tempo massimo consentito (${msAggregateTimeout()} ms) ed è stata interrotta`,
+      rimedio: 'restringi il filtro o l\'insieme di righe toccate, aggiungi un indice sulle colonne filtrate/ordinate; se l\'attesa lunga è prevista (un ALTER su una tabella grande, un UPDATE massivo), alza il limite con la variabile d\'ambiente CODEDB_AGGREGATE_TIMEOUT_MS',
+    };
+  }
   if (code === 'ER_QUERY_INTERRUPTED' || msg.includes('query execution was interrupted')) {
     return {
       causa: 'Query interrotta prima di finire',

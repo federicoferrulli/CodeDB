@@ -1249,6 +1249,10 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 25: Errori parlanti (traduzione dei codici dei driver)
   require('./unit-errors');
 
+  // Test 25-bis: tetto di tempo sulla query libera — vale anche in SCRITTURA,
+  // su entrambi i motori SQL, e segue la configurazione.
+  await require('./unit-tetto-tempo');
+
   // Test 26: Guida introduttiva (quando si apre, novità per versione, traguardi)
   require('./unit-onboarding');
 

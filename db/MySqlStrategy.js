@@ -747,18 +747,36 @@ class MySqlStrategy extends DbStrategy {
   // Modalità "SQL Raw": esegue una query libera nel contesto del database.
   // payload.readOnly (usato dal gateway MCP): esegue dentro una transazione
   // READ ONLY — il motore rifiuta qualsiasi scrittura, comprese quelle
-  // annidate in CTE o EXPLAIN ANALYZE — e con un timeout di 30 secondi.
+  // annidate in CTE o EXPLAIN ANALYZE.
   // payload.expectRead: la query è stata CLASSIFICATA come lettura e chi la
   // esegue è un sottoutente (vedi guardStrategy). È la stessa barriera che
   // PostgreSqlStrategy applicava già, e che qui mancava: se il parser sbaglia,
   // a rifiutare la scrittura è il MOTORE. Non copre l'I/O su file (scrivere un
   // file non è una scrittura transazionale): quello è negato a monte dal Proxy.
+  //
+  // TETTO DI TEMPO — vale su ENTRAMBI i rami, non solo in lettura.
+  // Prima il limite stava sul ramo di sola lettura, come costante `30000`
+  // scritta qui dentro: una scrittura sbagliata (un UPDATE che tocca l'intera
+  // tabella, un ALTER su milioni di righe) teneva una connessione del pool
+  // senza alcun limite, e cambiare la configurazione non cambiava nulla.
+  // Il valore viene ora da `DbStrategy.aggregateTimeoutMs()`, la stessa fonte
+  // (env CODEDB_AGGREGATE_TIMEOUT_MS) che governa il tetto delle aggregazioni
+  // su MongoDB; <= 0 disattiva il limite.
   async collectionAggregate(db, _coll, payload) {
     const pool = this.requirePool();
     const sql = String(payload.pipeline || '').trim();
     if (!sql) throw new Error('Inserisci una query SQL da eseguire.');
     const readOnly = !!payload.readOnly || !!payload.expectRead;
+    const tetto = DbStrategy.aggregateTimeoutMs();
+    const richiesta = { sql };
+    if (tetto > 0) richiesta.timeout = tetto;
     const conn = await pool.getConnection();
+    // Il timeout di mysql2 è lato CLIENT: allo scadere il driver smette di
+    // aspettare, ma il server continua a eseguire e il result set arriverà
+    // comunque, fuori sincrono con la richiesta successiva. Una connessione
+    // così non può tornare al pool: va uccisa la query sul server e distrutta
+    // la connessione.
+    let avvelenata = false;
     try {
       if (payload && payload.opHandle) {
         try {
@@ -770,7 +788,18 @@ class MySqlStrategy extends DbStrategy {
       if (readOnly) await conn.query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
-        const [result, fields] = await conn.query(readOnly ? { sql, timeout: 30000 } : sql);
+        let result, fields;
+        try {
+          [result, fields] = await conn.query(richiesta);
+        } catch (err) {
+          if (!MySqlStrategy.isDriverTimeout(err)) throw err;
+          avvelenata = true;
+          await this.uccidiSulServer(conn.threadId);
+          // L'errore del driver risale così com'è: a tradurlo in italiano
+          // (causa + rimedio, citando il limite configurato) è `spiegaErrore`,
+          // che è l'unico posto dove quel testo deve vivere.
+          throw err;
+        }
 
         if (Array.isArray(result)) {
           // Se la prima voce è un array o un oggetto con affectedRows, abbiamo multipleStatements
@@ -816,10 +845,48 @@ class MySqlStrategy extends DbStrategy {
         if (result && result.info) summary.info = result.info;
         return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
       } finally {
-        if (readOnly) await conn.query('ROLLBACK').catch(() => {});
+        // Su una connessione avvelenata non si parla più: il ROLLBACK finirebbe
+        // per leggere il result set arretrato della query uccisa.
+        if (readOnly && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
       }
     } finally {
-      conn.release();
+      if (avvelenata) { try { conn.destroy(); } catch (_) {} }
+      else conn.release();
+    }
+  }
+
+  // Riconosce lo scadere del timeout per-query di mysql2: il driver lancia un
+  // errore PROPRIO (`PROTOCOL_SEQUENCE_TIMEOUT`, «Query inactivity timeout»),
+  // non un errore del server.
+  //
+  // Il riconoscimento è STRETTO di proposito. Un `/timeout/i` sul messaggio
+  // pescherebbe anche `ER_LOCK_WAIT_TIMEOUT` («Lock wait timeout exceeded») e
+  // `ER_QUERY_TIMEOUT` («max_execution_time exceeded»), che sono errori del
+  // SERVER: lì la connessione è sana e la query è già finita, quindi ucciderla
+  // e buttare via la connessione è lavoro inutile, ma soprattutto l'utente si
+  // sentirebbe dire «hai superato CODEDB_AGGREGATE_TIMEOUT_MS» mentre il
+  // problema era un lock di un'altra transazione — due diagnosi opposte.
+  static isDriverTimeout(err) {
+    if (!err) return false;
+    if (err.code === 'PROTOCOL_SEQUENCE_TIMEOUT') return true;
+    return /query inactivity timeout/i.test(err.message || '');
+  }
+
+  // KILL QUERY su una SECONDA connessione: quella che sta eseguendo la query è
+  // occupata, il comando deve arrivare da un'altra sessione. Uccide la sola
+  // istruzione in corso, non la connessione.
+  async uccidiSulServer(threadId) {
+    const id = Number(threadId);
+    if (!Number.isInteger(id) || id <= 0 || !this.pool) return false;
+    let altra = null;
+    try {
+      altra = await this.pool.getConnection();
+      await altra.query(`KILL QUERY ${id}`);
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      if (altra) altra.release();
     }
   }
 
@@ -994,15 +1061,7 @@ class MySqlStrategy extends DbStrategy {
 
   async cancelQuery(opHandle) {
     if (!opHandle || !opHandle.connectionId || !this.pool) return { cancelled: false };
-    const conn = await this.pool.getConnection();
-    try {
-      await conn.query(`KILL QUERY ${opHandle.connectionId}`);
-      return { cancelled: true };
-    } catch (err) {
-      return { cancelled: false };
-    } finally {
-      conn.release();
-    }
+    return { cancelled: await this.uccidiSulServer(opHandle.connectionId) };
   }
 
   // Piano di esecuzione: EXPLAIN sulla SELECT costruita da filter/sort correnti
