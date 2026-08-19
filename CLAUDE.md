@@ -209,3 +209,19 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
 
 * **Extended JSON (EJSON)**: Tutti i documenti viaggiano come EJSON tra client e server (`$oid`, `$date`, `$numberLong`, `$numberDecimal`). I tipi nativi BSON o SQL vengono preservati durante la serializzazione/deserializzazione.
 * **Lingua**: Tutti i testi della UI, le descrizioni dei comandi, i commenti nel codice ed i messaggi d'errore devono essere mantenuti in **italiano**.
+
+---
+
+## Agent skills
+
+### Tracciamento delle issue
+
+Le issue vivono come file markdown sotto `.scratch/<funzionalita>/` in questo repo. Vedi `docs/agents/issue-tracker.md`.
+
+### Etichette di triage
+
+Vocabolario predefinito: i cinque ruoli canonici, con l'etichetta uguale al nome del ruolo. Vedi `docs/agents/triage-labels.md`.
+
+### Documenti di dominio
+
+Layout a contesto singolo (`CONTEXT.md` + `docs/adr/` alla radice). Vedi `docs/agents/domain.md`.
