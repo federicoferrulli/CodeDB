@@ -836,12 +836,12 @@ class PostgreSqlStrategy extends DbStrategy {
           const lastRes = res[res.length - 1];
           const rows = (lastRes.rows || []).slice(0, cap);
           const columns = lastRes.fields ? lastRes.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: cap };
+          return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: cap, resultSet: true };
         }
         if (res.rows && (res.rows.length > 0 || res.fields)) {
           const rows = res.rows.slice(0, cap);
           const columns = res.fields ? res.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: cap };
+          return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true };
         }
 
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };

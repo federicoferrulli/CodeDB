@@ -850,7 +850,7 @@ class MongoDbStrategy extends DbStrategy {
       }
     }
 
-    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks, truncated: collected.truncated || undefined };
+    return { docs: docs.map(serialize), columns, total, skip, limit, keyset: !!ks, truncated: collected.truncated || undefined, resultSet: true };
   }
 
   // Conteggio con timeout: countDocuments (con filtro) o estimatedDocumentCount
@@ -911,7 +911,7 @@ class MongoDbStrategy extends DbStrategy {
     // Come nella find: si smette di leggere al tetto delle righe o dei byte.
     const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap);
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
-    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined };
+    return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined, resultSet: true };
   }
 
   async cancelQuery(opHandle) {

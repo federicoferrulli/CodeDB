@@ -31,6 +31,7 @@ const SqlToMql = require('./db/SqlToMql');
 const MongoShell = require('./db/MongoShell');
 const { splitStatementsDetailed, stripSqlNoise } = require('./db/sqlText');
 const { createScriptRun } = require('./db/ScriptRunner');
+const ScriptResults = require('./db/ScriptResults');
 const MongoScriptRunner = require('./db/MongoScriptRunner');
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
@@ -1847,7 +1848,7 @@ async function executeQueryCode(session, payload) {
           ? esito.output.map((riga, i) => ({ '#': i + 1, output: riga }))
           : esito.docs;
         return fatto(
-          { docs, columns: docs.length ? Object.keys(docs[0]) : [], scriptOutput: esito.output, dbCalls: esito.chiamateDb },
+          { docs, columns: docs.length ? Object.keys(docs[0]) : [], scriptOutput: esito.output, dbCalls: esito.chiamateDb, resultSet: true },
           'write', op, targetDb, targetColl
         );
       } catch (err) {
@@ -2485,6 +2486,12 @@ io.on('connection', (socket) => {
     if (sess.scripts) {
       for (const run of sess.scripts.values()) run.abort();
       sess.scripts.clear();
+    }
+    // I result set su file di questa sessione: sono file di lavoro con dentro
+    // righe di database, e la chiusura è il momento in cui smettono di servire.
+    if (sess.depositi) {
+      for (const dep of sess.depositi.values()) dep.elimina().catch(() => {});
+      sess.depositi.clear();
     }
     await teardownConnection(sess);
   }
@@ -3563,6 +3570,33 @@ io.on('connection', (socket) => {
     return session.scripts;
   }
 
+  // Depositi dei result set, uno per run. Vivono ACCANTO ai run e non dentro,
+  // perché un run interrotto viene tolto subito dalla mappa mentre i suoi
+  // risultati devono restare consultabili: è proprio lo script che si è fermato
+  // a metà quello di cui si vuole rivedere l'ultima SELECT riuscita.
+  const MAX_DEPOSITI_PER_SESSIONE = 5;
+
+  function depositiOf(session) {
+    if (!session.depositi) session.depositi = new Map();
+    return session.depositi;
+  }
+
+  // Apre il deposito del run e pota i più vecchi. Il tetto non è un dettaglio:
+  // senza, una sessione che lancia script tutto il giorno lascerebbe sul disco
+  // ogni result set prodotto da quando è stata aperta.
+  function apriDeposito(session, runId, codeStr) {
+    const dep = depositiOf(session);
+    const deposito = ScriptResults.creaDeposito(codeStr);
+    dep.set(runId, deposito);
+    while (dep.size > MAX_DEPOSITI_PER_SESSIONE) {
+      const piuVecchio = dep.keys().next().value;
+      const vecchio = dep.get(piuVecchio);
+      dep.delete(piuVecchio);
+      if (vecchio) vecchio.elimina().catch(() => {});
+    }
+    return deposito;
+  }
+
   // Il progresso è informativo e ad altissima frequenza: mandarlo per ogni
   // istruzione intaserebbe il socket su uno script da decine di migliaia di
   // righe. Si spedisce a intervalli, ma ERRORI, pause e fine passano sempre.
@@ -3585,7 +3619,14 @@ io.on('connection', (socket) => {
         tabId: tab,
         ...ev,
         stato: run.state({ conResults: terminale }),
-        ...(terminale ? { ultimoRisultato: holder.last } : {}),
+        // L'ELENCO delle schede (non il loro contenuto) accompagna ogni evento
+        // terminale: il pannello deve poter disegnare le linguette senza
+        // scaricare megabyte di righe che l'utente forse non aprirà mai. Il
+        // contenuto si chiede con `script:result`, una scheda alla volta.
+        ...(terminale ? {
+          ultimoRisultato: holder.last,
+          risultati: run.deposito ? run.deposito.elenco() : null,
+        } : {}),
       });
     };
   }
@@ -3596,7 +3637,7 @@ io.on('connection', (socket) => {
   // script — e ogni istruzione attraversa il Proxy autorizzante, che decide la
   // capability guardando QUELLA istruzione.
   function makeScriptExecutor(session, ctx, holder, run) {
-    return async (stmt) => {
+    return async (stmt, index) => {
       const opHandle = { runId: run.id };
       run.setOpHandle(opHandle);
       const esito = await executeQueryCode(session, {
@@ -3612,8 +3653,48 @@ io.on('connection', (socket) => {
       // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
       // successive devono seguirlo, come farebbe un client SQL.
       if (esito.res && esito.res.activeDb) ctx.db = esito.res.activeDb;
-      if (esito.res && Array.isArray(esito.res.docs) && esito.res.docs.length) {
-        holder.last = { docs: esito.res.docs, columns: esito.res.columns || null };
+      // Ultimo RESULT SET dello script, cioè ciò che la griglia mostrerà.
+      // `resultSet` lo dichiara la strategia, che è l'unica a sapere se il
+      // driver ha restituito righe o un riepilogo di scrittura: senza quel
+      // flag l'unico indizio erano i docs, e un `SELECT` con ZERO righe —
+      // che è un risultato a tutti gli effetti — veniva scambiato per
+      // "nessun risultato". La griglia continuava allora a mostrare
+      // l'istruzione PRECEDENTE (il messaggio di una `USE`, il riepilogo di
+      // un `INSERT`), che ha tutta l'aria di essere la risposta alla query
+      // appena scritta: molto peggio di una tabella vuota.
+      const res = esito.res;
+      const eRisultato = res && (res.resultSet === true
+        // Ripiego per i percorsi che non dichiarano il flag (script MongoDB
+        // interpretato, comandi `USE`): vale la vecchia regola.
+        || (res.resultSet === undefined && Array.isArray(res.docs) && res.docs.length));
+      if (eRisultato) {
+        // `index`: quale ISTRUZIONE ha prodotto ciò che la griglia mostra. Serve
+        // al pannello per accendere la linguetta giusta — o nessuna, quando la
+        // griglia sta mostrando il riepilogo di una scrittura, che linguetta non
+        // ne ha.
+        holder.last = { docs: res.docs || [], columns: res.columns || null, index };
+        // …e finisce anche su file, come SCHEDA consultabile a parte: è ciò che
+        // permette di rivedere il risultato dell'istruzione 3 dopo che
+        // l'istruzione 40 ha prodotto il suo. Su file e non in memoria perché
+        // qui il numero non lo decide il server: lo decide il file .sql che
+        // l'utente ha aperto (vedi db/ScriptResults.js).
+        // Schede: SOLO i result set veri (`resultSet`), non i riepiloghi di
+        // scrittura. Un file .sql di cinquecento INSERT produrrebbe altrimenti
+        // cinquanta linguette «1 riga coinvolta» che, con il tetto sulle prime,
+        // toglierebbero il posto proprio alla SELECT che si voleva rivedere. Le
+        // scritture restano nel log, dove c'è già il conteggio delle righe
+        // modificate.
+        if (res.resultSet === true && run && run.deposito) {
+          try {
+            await run.deposito.aggiungi({ index, line: stmt.line, sql: stmt.sql, res });
+          } catch (err) {
+            // Il disco pieno o una cartella non scrivibile NON devono fermare
+            // uno script che sta scrivendo sul database: si perde la scheda, si
+            // continua a eseguire. La griglia mostra comunque l'ultimo
+            // risultato, che vive in memoria.
+            console.error('[script] impossibile conservare il result set:', err && err.message);
+          }
+        }
       }
       // Audit: una voce per ogni istruzione di SCRITTURA (sono quelle che
       // lasciano traccia sui dati), non per ogni lettura di uno script lungo —
@@ -3679,6 +3760,15 @@ io.on('connection', (socket) => {
       statements,
       stopOnError: !!payload.stopOnError,
     });
+    // Deposito dei result set su file. Se non si riesce ad aprirlo (cartella
+    // temporanea non scrivibile) lo script parte lo stesso: si perdono le
+    // schede, non l'esecuzione.
+    try {
+      run.deposito = apriDeposito(session, runId, codeStr);
+    } catch (err) {
+      console.error('[script] deposito dei risultati non disponibile:', err && err.message);
+      run.deposito = null;
+    }
     run.onProgress = makeProgressSender(tabId, run, holder);
     run.ctx = ctx;
     run.holder = holder;
@@ -3808,6 +3898,24 @@ io.on('connection', (socket) => {
       return cb({ ok: true, stato: run ? run.state() : null, ultimoRisultato: run ? run.holder.last : null });
     }
     cb({ ok: true, scripts: [...runs.values()].map((r) => r.state()) });
+  });
+
+  /* --- Contenuto di UNA scheda di risultato ---------------------------------
+   * Il pannello conosce le schede (riga, istruzione, quante righe) dall'elenco
+   * che arriva a fine script; le RIGHE le chiede qui, quando l'utente apre la
+   * scheda. È il motivo per cui i result set stanno su file: così questo
+   * evento legge solo quello che serve, e uno script con cinquanta SELECT non
+   * spedisce cinquanta result set a chi ne guarderà uno.
+   * ------------------------------------------------------------------------ */
+  safeOn('script:result', async (payload, cb) => {
+    const session = sessions.get(normTabId(payload.tabId));
+    if (!session) throw new Error('Nessuna connessione attiva al database per questo tab.');
+    const deposito = depositiOf(session).get(String(payload.runId || ''));
+    if (!deposito) {
+      throw new Error('I risultati di questo script non sono più disponibili: vengono conservati per gli ultimi script eseguiti e fino alla chiusura della connessione.');
+    }
+    const scheda = await deposito.leggi(payload.pos);
+    cb({ ok: true, ...scheda });
   });
 
   safeOn('script:abort', async (payload, cb) => {
@@ -4472,6 +4580,13 @@ async function startServer() {
     }
     throw err;
   });
+  // Result set di script rimasti sul disco da un arresto anomalo: nessuno
+  // eseguirà mai il loro `elimina()`, e contengono righe di database. La
+  // passata è all'avvio e non blocca l'ascolto.
+  ScriptResults.puliziaVecchi()
+    .then((n) => { if (n) console.log(`Rimossi ${n} depositi di risultati script rimasti da esecuzioni precedenti.`); })
+    .catch((err) => console.error('[script] pulizia dei depositi non riuscita:', err && err.message));
+
   server.listen(PORT, HOST, () => {
     console.log(`CodeDB in ascolto su http://${HOST}:${PORT}`);
     console.log(`Endpoint MCP (Streamable HTTP) su http://${HOST}:${PORT}/mcp`);

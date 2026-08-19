@@ -1206,6 +1206,19 @@ console.log('--- Test Unitari CodeDB ---');
   // server la accetti lo prova test/e2e-collazione-mysql.js.
   require('./unit-collazione');
 
+  // Test 24-duodecies: decisioni del pannello di esecuzione script. Uno script
+  // di due istruzioni mostrava nella griglia il risultato della PRIMA, contava
+  // le istruzioni spacciandole per record ed elencava metà log: tre errori che
+  // non lanciano, e che fanno sembrare il pannello funzionante mentre racconta
+  // un'altra esecuzione.
+  await require('./unit-script-esito');
+
+  // Test 24-terdecies: deposito su file dei result set di uno script. Decide
+  // quanto disco e quanta memoria costa "un risultato per istruzione", e
+  // soprattutto che i file NON restino: dentro ci sono righe di database, e
+  // dimenticarne uno non fa fallire nulla.
+  await require('./unit-script-results');
+
   // Test 24-ter: MARCATORI DI PROVENIENZA ancora presenti nel codice.
   // Un refactor può cancellarne uno senza che nessuno se ne accorga, e da quel
   // momento il registro (vedi docs/provenienza.md) promette qualcosa che il

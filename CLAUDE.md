@@ -73,6 +73,8 @@ node test/e2e-mcp.js       # Test end-to-end gateway MCP (MongoDB)
 node test/e2e-mcp-mysql.js # Test end-to-end gateway MCP (MySQL)
 node test/e2e-query-engine.js  # Test Query Engine & Virtual JOINs
 node test/e2e-collazione-mysql.js # Test allineamento collation su MySQL reale
+node test/e2e-script-risultati.js # Test risultato mostrato da uno script (MySQL)
+node test/e2e-script-schede-ui.js # Test schede di risultato per istruzione (Chromium + MySQL)
 node test/e2e-backup.js       # Test CLI Backup (MongoDB)
 node test/e2e-backup-mysql.js # Test CLI Backup (MySQL)
 node test/e2e-dbexport.js     # Test Export/Import intero DB via socket
@@ -92,6 +94,8 @@ node test/unit-fk-relazioni.js# Test decisioni del pannello 🔗 (chiavi esterne
 node test/unit-scorrimento.js # Test velocità dello scorrimento automatico ai bordi
 node test/unit-duplica.js     # Test pianificazione della duplicazione di una riga
 node test/unit-collazione.js  # Test scelta della collation di connessione (MySQL)
+node test/unit-script-esito.js # Test decisioni del pannello di esecuzione script
+node test/unit-script-results.js # Test deposito su file dei risultati di uno script
 node test/e2e-tocco-griglia.js# Test gesto tattile + scorrimento automatico (Chromium, eventi touch nativi)
 node test/e2e-avvio-ui.js     # Test che la UI si carichi senza errori JS (catena degli init*)
 
@@ -137,7 +141,7 @@ CodeDB è un'interfaccia stile DBeaver con supporto multi-database (**MongoDB**,
   * Transazioni `READ ONLY` applicate lato DBMS per query di sola lettura.
 
 ### 5. Engine di Esecuzione Query & Script
-* **`ScriptRunner.js`**: Esegue script SQL/Mongo istruzione per istruzione con supporto a pausa, ripresa, stop su errore e avanzamento tramite push socket (`script:progress`).
+* **`ScriptRunner.js`**: Esegue script SQL/Mongo istruzione per istruzione con supporto a pausa, ripresa, stop su errore e avanzamento tramite push socket (`script:progress`). **Risultati per istruzione**: uno script produce un result set per istruzione e l'utente vuole rivederli tutti, ma tenerli in RAM significherebbe cinquecento result set per run e spedirli tutti insieme a chi ne guarderà uno. Ogni result set finisce quindi **su file** (`db/ScriptResults.js`, cartella temporanea, permessi 0600, id `<10 caratteri di base64url del testo>-<timestamp>`); in memoria resta un indice leggero che viaggia con gli eventi terminali, e il browser chiede il contenuto di una scheda con `script:result` **quando la apre**. Tetti espliciti su numero (primi 50: le linguette non devono spostarsi sotto gli occhi) e byte, con gli scartati **dichiarati**. I file muoiono con il run, con il socket e con una passata all'avvio — un arresto anomalo non esegue nessuna pulizia e lì dentro ci sono righe di database. Sono schede **solo i result set veri** (`resultSet`, dichiarato dalle strategie): i riepiloghi di scrittura resterebbero cinquanta linguette «1 riga coinvolta» che tolgono il posto alla SELECT che si voleva rivedere. Lo stesso flag risolve il difetto per cui un `SELECT` con **zero righe** veniva scambiato per «nessun risultato» e la griglia mostrava l'istruzione precedente — il messaggio di una `USE` al posto della query appena scritta.
 * **`MongoScript.js`**: Interprete AST JS/mongosh sicuro (senza `eval`/`new Function`) con quote di passi, ricorsione e tempo.
 * **`MongoShell.js`**: Parser della sintassi shell nativa `db.<coll>.find(...)`.
 * **`SqlToMql.js`**: Traduttore da SQL `SELECT` (con `JOIN`, `GROUP BY`, `HAVING`, `UNION`, sottoquery) e DDL a pipeline e comandi MongoDB.

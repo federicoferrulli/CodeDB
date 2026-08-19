@@ -796,7 +796,7 @@ class MySqlStrategy extends DbStrategy {
             if (selectRes) {
               const rows = selectRes.slice(0, cap);
               const columns = (selectFields || []).map((f) => f.name || f);
-              return { docs: rows.map(serializeRow), columns, total: selectRes.length, skip: 0, limit: cap };
+              return { docs: rows.map(serializeRow), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true };
             }
 
             // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
@@ -807,7 +807,7 @@ class MySqlStrategy extends DbStrategy {
           // Singola SELECT
           const rows = result.slice(0, cap);
           const columns = (fields || []).map((f) => f.name);
-          return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap };
+          return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap, resultSet: true };
         }
 
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.

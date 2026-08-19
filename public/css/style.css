@@ -7497,3 +7497,64 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
   .fk-pannello { transition: none; transform: none; }
   .fk-pannello.aperto { transform: none; }
 }
+
+/* --- Risultati per istruzione (script a più istruzioni) --------------------
+   Una linguetta per ogni result set prodotto. Scorrono in orizzontale: uno
+   script può produrne decine, e mandarle a capo farebbe crescere la barra
+   rubando altezza alla griglia, che è ciò che si sta guardando. */
+.script-results-tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-alt, var(--bg));
+  flex: 0 0 auto;
+  scrollbar-width: thin;
+}
+
+.script-result-tab {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 0.82em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.script-result-tab:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
+.script-result-tab.attiva {
+  color: var(--fg);
+  border-color: var(--accent);
+  background: var(--accent-bg, transparent);
+  font-weight: 600;
+}
+
+.script-result-tab .tab-riga {
+  font-family: Consolas, Monaco, monospace;
+  opacity: 0.75;
+}
+
+.script-result-tab .tab-righe {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* Quante schede NON sono state conservate: si dice, non si tace. */
+.script-results-nota {
+  color: var(--fg-dim);
+  font-size: 0.78em;
+  padding-left: 4px;
+  white-space: nowrap;
+}

@@ -25,6 +25,10 @@ import {
 import { renderResults, updateQueryMetrics } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnalaRigaErrore } from './query-editor.js';
+import {
+  unisciLog, righeDaMostrare, haRisultato,
+  etichettaScheda, schedaAttiva, notaScartate,
+} from './script-esito.js';
 
 // Run seguiti da questo browser: runId → { tabId, collTabId, total, stato }.
 const runs = new Map();
@@ -73,7 +77,11 @@ export function runScript({ code, engine, db, coll, stopOnError = false } = {}) 
   const attesa = {};
   attesa.promise = new Promise((resolve) => { attesa.resolve = resolve; });
 
-  runs.set(runId, { runId, tabId, total: totalePrevisto, handle, log: [], stato: null, attesa });
+  runs.set(runId, {
+    runId, tabId, total: totalePrevisto, handle, log: [], stato: null, attesa,
+    // Elenco delle schede di risultato (arriva a fine script) e quale è aperta.
+    risultati: null, schedaAperta: null,
+  });
   runVisibile = runId;
 
   mostraPannello();
@@ -200,6 +208,11 @@ function onProgress(ev) {
   // l'utente riprende uno script lasciato a metà.
   updateScriptProgress(ev.runId, stato);
 
+  // Il resoconto completo degli eventi terminali rimpiazza il log raccolto
+  // per strada, che il diradamento degli eventi lascia incompleto (vedi
+  // script-esito.js).
+  r.log = unisciLog(r.log, stato, MAX_LOG);
+
   if (ev.tipo === 'statement' && ev.result) {
     r.log.push(ev.result);
     if (r.log.length > MAX_LOG) r.log.splice(0, r.log.length - MAX_LOG);
@@ -217,10 +230,22 @@ function onProgress(ev) {
 
   aggiornaPannello(stato);
 
+  // Righe MOSTRATE nella griglia: sono quelle che il contatore deve dire.
+  let righeMostrate = null;
   if (ev.tipo === 'done' || ev.tipo === 'paused') {
     // L'ultimo result set prodotto è ciò che l'utente si aspetta di vedere.
-    if (ev.ultimoRisultato && Array.isArray(ev.ultimoRisultato.docs)) {
-      renderResults(ev.ultimoRisultato.docs);
+    // Un result set VUOTO si disegna (tabella vuota); "niente da disegnare"
+    // svuota la griglia invece di lasciarci il risultato dell'esecuzione
+    // precedente, che sembrerebbe la risposta a questo script.
+    renderResults(haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.docs : []);
+    righeMostrate = righeDaMostrare(ev.ultimoRisultato);
+
+    // Risultati per istruzione: arriva l'ELENCO, non le righe. Le righe di una
+    // scheda si chiedono quando l'utente la apre (vedi apriScheda).
+    if (ev.risultati) {
+      r.risultati = ev.risultati;
+      r.schedaAperta = schedaAttiva(ev.risultati.schede, ev.ultimoRisultato);
+      disegnaSchede();
     }
   }
 
@@ -234,10 +259,15 @@ function onProgress(ev) {
     // una struttura che non esiste più.
     refreshDbTree();
     const falliti = stato.falliti || 0;
+    // Il contatore è etichettato «record»: passargli le ISTRUZIONI eseguite
+    // faceva leggere «2 record» sopra una griglia che ne mostrava una — e il
+    // numero di istruzioni è già scritto due righe sotto, nel pannello. Qui va
+    // ciò che la griglia contiene davvero; se nessuna istruzione ha prodotto un
+    // result set la griglia è vuota, e il contatore dice zero.
     updateQueryMetrics(
       falliti ? 'error' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      stato.eseguiti || 0,
+      righeMostrate != null ? righeMostrate : 0,
       falliti ? `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
     );
     toast(falliti
@@ -253,11 +283,20 @@ function mostraPannello() {
   if (p) p.classList.remove('hidden');
   const log = $('#script-run-log');
   if (log) log.innerHTML = '';
+  // Le linguette dell'esecuzione PRECEDENTE non devono sopravvivere all'avvio
+  // di una nuova: sarebbero risultati di un altro script offerti come se
+  // fossero di questo, e il server intanto ne ha già chiuso il deposito.
+  const barra = $('#script-results-tabs');
+  if (barra) { barra.classList.add('hidden'); barra.innerHTML = ''; }
 }
 
 function nascondiPannello() {
   const p = $('#script-run-panel');
   if (p) p.classList.add('hidden');
+  // Le linguette appartengono al resoconto: lasciarle senza il pannello
+  // significherebbe offrire i risultati di uno script che non si vede più.
+  const barra = $('#script-results-tabs');
+  if (barra) { barra.classList.add('hidden'); barra.innerHTML = ''; }
 }
 
 /**
@@ -364,6 +403,69 @@ function disegnaLog() {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+/* --- Risultati per istruzione ---------------------------------------------
+ * Una linguetta per ogni result set prodotto dallo script. Il contenuto NON
+ * arriva con gli eventi: sta su file sul server (db/ScriptResults.js) e si
+ * chiede una scheda alla volta. È la ragione per cui uno script con cinquanta
+ * SELECT non spedisce cinquanta result set a chi ne guarderà uno.
+ * ------------------------------------------------------------------------- */
+
+function disegnaSchede() {
+  const barra = $('#script-results-tabs');
+  if (!barra) return;
+  const r = runs.get(runVisibile);
+  const schede = (r && r.risultati && r.risultati.schede) || [];
+
+  // Una sola scheda non è una scelta: la barra sarebbe una riga di cromatura
+  // sopra la griglia che mostra già quel risultato.
+  if (schede.length < 2) {
+    barra.classList.add('hidden');
+    barra.innerHTML = '';
+    return;
+  }
+
+  barra.innerHTML = schede.map((sc) => {
+    const et = etichettaScheda(sc);
+    const attiva = r.schedaAperta === sc.pos ? ' attiva' : '';
+    return `
+      <button type="button" role="tab" class="script-result-tab${attiva}" data-pos="${sc.pos}"
+              aria-selected="${r.schedaAperta === sc.pos ? 'true' : 'false'}"
+              title="${esc(sc.sql || '')}">
+        <span class="tab-riga">${esc(et.riga)}</span>
+        <span class="tab-testo">${esc(et.testo)}</span>
+        <span class="tab-righe">${esc(et.righe)}</span>
+      </button>`;
+  }).join('') + (() => {
+    const nota = notaScartate(r.risultati);
+    return nota ? `<span class="script-results-nota">${esc(nota)}</span>` : '';
+  })();
+
+  barra.classList.remove('hidden');
+  barra.querySelectorAll('.script-result-tab').forEach((b) => {
+    b.addEventListener('click', () => apriScheda(Number(b.dataset.pos)));
+  });
+}
+
+/** Chiede al server le righe di una scheda e le disegna. */
+function apriScheda(pos) {
+  const runId = runVisibile;
+  const r = runs.get(runId);
+  if (!r) return;
+  emit('script:result', { runId, pos, tabId: r.tabId })
+    .then((res) => {
+      // Nel frattempo l'utente può aver cambiato run o scheda: la risposta di
+      // una richiesta sorpassata non deve sovrascrivere ciò che sta guardando.
+      if (runVisibile !== runId) return;
+      r.schedaAperta = pos;
+      disegnaSchede();
+      renderResults(res.docs || []);
+      updateQueryMetrics('success', null, (res.docs || []).length);
+    })
+    .catch((err) => {
+      toast(`Impossibile aprire il risultato: ${err.message}`, true);
+    });
+}
+
 function cutStr(s, n) {
   const str = String(s || '').replace(/\s+/g, ' ').trim();
   return str.length > n ? `${str.slice(0, n)}…` : str;
@@ -379,6 +481,7 @@ export function focusScriptRun(runId) {
   mostraPannello();
   const r = runs.get(runId);
   if (r.stato) aggiornaPannello(r.stato);
+  disegnaSchede();
   return true;
 }
 
