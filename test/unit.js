@@ -1271,6 +1271,12 @@ console.log('--- Test Unitari CodeDB ---');
   // query, non un bersaglio dedotto dal primo FROM (CDB-A03).
   require('./unit-sql-tables');
 
+  // Le quattro funzioni del tabellare (identificatore di riga, sua lettura,
+  // ordinamento, pezzi della SELECT) vivevano in due copie identiche dentro i
+  // due adattatori SQL, dove correggerne una lasciava l'altra intatta. Ora sono
+  // un modulo puro: nessun database.
+  require('./unit-sql-tabellare');
+
   // Test 27-bis: le SCRITTURE del frontend congelano il bersaglio invece di
   // rileggerlo dal Proxy `state`, che punta al tab attivo alla chiamata.
   require('./unit-scritture-bersaglio');

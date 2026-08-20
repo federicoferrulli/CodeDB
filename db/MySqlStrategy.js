@@ -4,6 +4,10 @@ const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
+const { tabellare } = require('./sqlTabellare');
+// Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
+// dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
+const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
@@ -45,37 +49,6 @@ function qtable(db, table) {
   return `${qid(db)}.${qid(table)}`;
 }
 
-// Converte un valore proveniente dal client (già "deserializzato" da EJSON)
-// in un parametro SQL sicuro per mysql2: i tipi primitivi, Date e Buffer
-// passano invariati, oggetti e array diventano testo JSON (utile per le
-// colonne JSON), il tipo BSON Binary torna a essere un Buffer.
-function toSqlValue(v) {
-  if (v === null || v === undefined) return null;
-  if (v instanceof Date || Buffer.isBuffer(v)) return v;
-  if (typeof v === 'object') {
-    if (v._bsontype === 'Binary') return v.buffer;
-    return JSON.stringify(v);
-  }
-  return v;
-}
-
-// Il client invia i valori in Extended JSON: relaxed = true produce tipi
-// JavaScript nativi (numeri normali, Date per $date), quelli che servono
-// come parametri SQL.
-function parseClientValue(text) {
-  return EJSON.parse(String(text), { relaxed: true });
-}
-
-function deserializeClientObject(obj) {
-  return EJSON.deserialize(obj || {}, { relaxed: true });
-}
-
-// Le righe viaggiano verso il client come Extended JSON relaxed, come per
-// MongoDB: le Date diventano { $date: ... } e il frontend le riconosce.
-function serializeRow(row) {
-  return EJSON.serialize(row, { relaxed: true });
-}
-
 // Clausola WHERE per la chiave (virtuale) _id: { col: valore, ... }.
 // <=> è l'uguaglianza NULL-safe, necessaria per le chiavi composite di
 // fallback che possono contenere NULL.
@@ -86,6 +59,10 @@ function whereFromId(id) {
   const params = cols.map((c) => toSqlValue(id[c]));
   return { sql, params };
 }
+
+// Il dialetto MySQL delle quattro funzioni comuni ai due motori SQL: tutto il
+// resto (che cosa è un _id, come si normalizza un limite) sta nel modulo.
+const TABELLARE = tabellare({ qid, qtable, whereFromId });
 
 // DEFAULT di colonna: numeri e parole chiave (NULL, CURRENT_TIMESTAMP...)
 // passano così come sono, il resto viene quotato come stringa.
@@ -536,54 +513,24 @@ class MySqlStrategy extends DbStrategy {
     return { sql: '?', param: toSqlValue(value) };
   }
 
-  // _id virtuale per il client: la chiave primaria come oggetto
-  // { colonna: valore }. Senza chiave primaria si usa l'intera riga come
-  // chiave composita di fallback.
+  // Le quattro funzioni del tabellare (identificatore di riga, sua lettura,
+  // ordinamento, pezzi della SELECT) non hanno nulla di MySQL: stanno in
+  // db/sqlTabellare.js, legate qui al solo dialetto. Vedi il commento in testa
+  // a quel modulo.
   makeId(row, pkCols, allCols) {
-    const cols = pkCols.length ? pkCols : allCols;
-    const id = {};
-    for (const c of cols) id[c] = row[c];
-    return id;
+    return TABELLARE.makeId(row, pkCols, allCols);
   }
 
-  // Risale dalla chiave inviata dal client (JSON.stringify di _id) e la
-  // trasforma in clausola WHERE.
   parseRowId(rawId) {
-    const id = parseClientValue(rawId);
-    if (!id || typeof id !== 'object' || Array.isArray(id)) {
-      throw new Error('Identificatore di riga non valido.');
-    }
-    return whereFromId(id);
+    return TABELLARE.parseRowId(rawId);
   }
 
-  // ORDER BY: accetta sia SQL libero ("name ASC") sia il JSON {"name": 1}
-  // prodotto dal click sulle intestazioni di colonna.
   buildOrderBy(text) {
-    const t = String(text || '').trim();
-    if (!t) return '';
-    if (t.startsWith('{')) {
-      let spec;
-      try {
-        spec = JSON.parse(t);
-      } catch {
-        throw new Error('Ordinamento non valido: usare SQL (es. name ASC) oppure JSON (es. {"name":1}).');
-      }
-      const parts = Object.entries(spec).map(([col, dir]) => `${qid(col)} ${Number(dir) < 0 ? 'DESC' : 'ASC'}`);
-      return parts.length ? ` ORDER BY ${parts.join(', ')}` : '';
-    }
-    return ` ORDER BY ${t}`;
+    return TABELLARE.buildOrderBy(text);
   }
 
-  // Pezzi comuni di una SELECT su filter/sort/limit/skip liberi (usati sia
-  // dalla query dati vera e propria sia dal suo EXPLAIN).
   buildSelect(db, coll, payload) {
-    const where = String(payload.filter || '').trim();
-    const whereSql = where ? ` WHERE ${where}` : '';
-    const orderSql = this.buildOrderBy(payload.sort);
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), DbStrategy.resultCap(payload));
-    const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-    const table = qtable(db, coll);
-    return { table, whereSql, orderSql, limit, skip };
+    return TABELLARE.buildSelect(db, coll, payload);
   }
 
   async collectionFind(db, coll, payload) {

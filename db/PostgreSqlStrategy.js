@@ -3,6 +3,10 @@
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
+const { tabellare } = require('./sqlTabellare');
+// Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
+// dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
+const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
 const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
 const { pgNativoAGeoJson, geoJsonAPgNativo } = require('./pg-geo-nativo');
 const sessioni = require('./sessioni');
@@ -65,30 +69,6 @@ function qtable(db, table) {
   return `${qid(schemaOf(db))}.${qid(table)}`;
 }
 
-// Converte un valore proveniente dal client (deserializzato da EJSON)
-// in un parametro SQL per pg.
-function toSqlValue(v) {
-  if (v === null || v === undefined) return null;
-  if (v instanceof Date || Buffer.isBuffer(v)) return v;
-  if (typeof v === 'object') {
-    if (v._bsontype === 'Binary') return v.buffer;
-    return JSON.stringify(v);
-  }
-  return v;
-}
-
-function parseClientValue(text) {
-  return EJSON.parse(String(text), { relaxed: true });
-}
-
-function deserializeClientObject(obj) {
-  return EJSON.deserialize(obj || {}, { relaxed: true });
-}
-
-function serializeRow(row) {
-  return EJSON.serialize(row, { relaxed: true });
-}
-
 function whereFromId(id) {
   const cols = Object.keys(id);
   if (!cols.length) throw new Error('Identificatore di riga mancante.');
@@ -106,6 +86,11 @@ function whereFromId(id) {
   }
   return { sql: sqlParts.join(' AND '), params };
 }
+
+// Il dialetto PostgreSQL delle quattro funzioni comuni ai due motori SQL:
+// tutto il resto (che cosa è un _id, come si normalizza un limite) sta nel
+// modulo.
+const TABELLARE = tabellare({ qid, qtable, whereFromId });
 
 // Tipo seriale equivalente, per colonna con default `nextval(...)`. I nomi a
 // sinistra sono quelli che restituisce `format_type`, non gli alias SQL.
@@ -399,11 +384,12 @@ class PostgreSqlStrategy extends DbStrategy {
     return res.rows.map((r) => r.name);
   }
 
+  // Le quattro funzioni del tabellare (identificatore di riga, sua lettura,
+  // ordinamento, pezzi della SELECT) non hanno nulla di PostgreSQL: stanno in
+  // db/sqlTabellare.js, legate qui al solo dialetto. Vedi il commento in testa
+  // a quel modulo.
   makeId(row, pkCols, allCols) {
-    const cols = pkCols.length ? pkCols : allCols;
-    const id = {};
-    for (const c of cols) id[c] = row[c];
-    return id;
+    return TABELLARE.makeId(row, pkCols, allCols);
   }
 
   /* -------------------------------------------------------------------------
@@ -574,37 +560,15 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   parseRowId(rawId) {
-    const id = parseClientValue(rawId);
-    if (!id || typeof id !== 'object' || Array.isArray(id)) {
-      throw new Error('Identificatore di riga non valido.');
-    }
-    return whereFromId(id);
+    return TABELLARE.parseRowId(rawId);
   }
 
   buildOrderBy(text) {
-    const t = String(text || '').trim();
-    if (!t) return '';
-    if (t.startsWith('{')) {
-      let spec;
-      try {
-        spec = JSON.parse(t);
-      } catch {
-        throw new Error('Ordinamento non valido: usare SQL (es. name ASC) oppure JSON (es. {"name":1}).');
-      }
-      const parts = Object.entries(spec).map(([col, dir]) => `${qid(col)} ${Number(dir) < 0 ? 'DESC' : 'ASC'}`);
-      return parts.length ? ` ORDER BY ${parts.join(', ')}` : '';
-    }
-    return ` ORDER BY ${t}`;
+    return TABELLARE.buildOrderBy(text);
   }
 
   buildSelect(db, coll, payload) {
-    const where = String(payload.filter || '').trim();
-    const whereSql = where ? ` WHERE ${where}` : '';
-    const orderSql = this.buildOrderBy(payload.sort);
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), DbStrategy.resultCap(payload));
-    const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-    const table = qtable(db, coll);
-    return { table, whereSql, orderSql, limit, skip };
+    return TABELLARE.buildSelect(db, coll, payload);
   }
 
   async collectionFind(db, coll, payload) {
