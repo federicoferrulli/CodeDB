@@ -33,6 +33,7 @@ const { splitStatementsDetailed, stripSqlNoise } = require('./db/sqlText');
 const { createScriptRun } = require('./db/ScriptRunner');
 const ScriptResults = require('./db/ScriptResults');
 const MongoScriptRunner = require('./db/MongoScriptRunner');
+const { payloadEsecuzione, assertPayloadEsecuzione } = require('./db/payloadEsecuzione');
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
 
@@ -1559,8 +1560,14 @@ function mongoScriptHost(session, runId, opHandle, run = null) {
   };
 
   const metodi = {
-    find: (db, coll, payload) => esegui((s) => s.collectionFind(db, coll, { ...payload, runId, opHandle })),
-    aggregate: (db, coll, payload) => esegui((s) => s.collectionAggregate(db, coll, { ...payload, runId, opHandle })),
+    // Stessa regola dichiarata del gestore `query:execute`: i campi del server
+    // si impongono per rimozione e non perché scritti dopo lo spread.
+    find: (db, coll, payload) => esegui((s) => s.collectionFind(db, coll, payloadEsecuzione(payload, { runId, opHandle }))),
+    aggregate: (db, coll, payload) => esegui((s) => s.collectionAggregate(db, coll, payloadEsecuzione(payload, { runId, opHandle }))),
+    // `count` e `write` non ricevono campi del server e non hanno quindi nulla
+    // da cui difendersi: il loro payload lo compone l'interprete (leggi/scrivi
+    // in db/MongoScriptRunner.js) con un insieme CHIUSO di chiavi, e nessuna di
+    // quelle chiavi ha un nome scelto da chi manda la richiesta.
     count: (db, coll, payload) => esegui((s) => s.collectionCount(db, coll, payload)),
     write: (db, coll, payload) => eseguiScrivendo((s) => s.shellWrite(db, coll, payload)),
     listCollections: (db) => esegui((s) => s.listCollections(db)),
@@ -1716,6 +1723,11 @@ function categoriaVirtualJoin(spec) {
 }
 
 async function executeQueryCode(session, payload) {
+  // Dentro questa funzione l'origine di una chiave non è più distinguibile:
+  // che i campi imposti dal server non vengano dal client lo garantisce la
+  // regola dichiarata in db/payloadEsecuzione.js, e qui si pretende che ci sia
+  // passata.
+  assertPayloadEsecuzione(payload);
   let { code, engine, db, coll, runId, opHandle, run } = payload;
   const codeStr = String(code || '').trim();
 
@@ -2580,13 +2592,21 @@ io.on('connection', (socket) => {
       // in corso (killOp / KILL QUERY / pg_cancel_backend — nessuna modifica ai
       // dati). La strategia vi scrive connectionId/processID/comment.
       const runId = payload.runId;
+      let opHandle;
       if (runId) {
         if (!sess.inflight) sess.inflight = new Map();
-        payload.opHandle = { runId };
-        sess.inflight.set(runId, payload.opHandle);
+        opHandle = { runId };
+        sess.inflight.set(runId, opHandle);
       }
+      // Ciò che arriva alla strategia passa dalla stessa regola dichiarata del
+      // gestore `query:execute` (db/payloadEsecuzione.js). Qui il residuo era
+      // l'altra metà dell'accidente d'ordine: senza un runId non si entrava nel
+      // ramo qui sopra, quindi un `opHandle` mandato dal client sopravviveva
+      // fino alla strategia — che su MySQL e PostgreSQL vi legge il ramo della
+      // connessione dedicata e vi scrive connectionId/processID.
+      const richiesta = payloadEsecuzione(payload, { runId, opHandle });
       try {
-        const result = await executeWithReconnect(sess, (strat) => fn(strat, payload));
+        const result = await executeWithReconnect(sess, (strat) => fn(strat, richiesta));
         cb({ ok: true, ...result });
         auditDelegate(cls, sess, event, payload, 'ok', result, null);
       } catch (err) {
@@ -3540,7 +3560,7 @@ io.on('connection', (socket) => {
     if (runId) session.inflight.set(runId, opHandle);
 
     try {
-      const esito = await executeQueryCode(session, { ...payload, runId, opHandle });
+      const esito = await executeQueryCode(session, payloadEsecuzione(payload, { runId, opHandle }));
       auditQuery(session, esito.db, esito.coll, esito.code, esito.category, esito.op, 'ok', esito.res, null);
       return cb({ ok: true, ...esito.res, data: esito.res.docs });
     } catch (err) {
@@ -3640,16 +3660,14 @@ io.on('connection', (socket) => {
     return async (stmt, index) => {
       const opHandle = { runId: run.id };
       run.setOpHandle(opHandle);
-      const esito = await executeQueryCode(session, {
-        code: stmt.sql,
-        engine: ctx.engine,
-        db: ctx.db,
-        coll: ctx.coll,
-        opHandle,
-        // Lo script in corso: le operazioni di scrittura vi lasciano un segno,
-        // usato dalla voce di audit di chiusura (CDB-69).
-        run,
-      });
+      // Il registro dell'esecuzione (`run`) e il riferimento di annullamento
+      // arrivano dal CONTESTO DEL SERVER, non dal payload: le operazioni di
+      // scrittura lasciano un segno sul registro e la voce di audit di chiusura
+      // legge quel segno per dire il vero sulla categoria (CDB-69).
+      const esito = await executeQueryCode(session, payloadEsecuzione(
+        { code: stmt.sql, engine: ctx.engine, db: ctx.db, coll: ctx.coll },
+        { opHandle, run }
+      ));
       // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
       // successive devono seguirlo, come farebbe un client SQL.
       if (esito.res && esito.res.activeDb) ctx.db = esito.res.activeDb;
@@ -4597,4 +4615,7 @@ if (require.main === module) {
   startServer();
 }
 
-module.exports = { app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer, makeConnectLocks };
+// `executeQueryCode` è esportata per i test: è il chiamante vero della regola sui
+// campi riservati del payload (db/payloadEsecuzione.js) e provarla non deve
+// richiedere un socket né un database.
+module.exports = { executeQueryCode, app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer, makeConnectLocks };

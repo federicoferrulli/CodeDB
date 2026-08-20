@@ -1253,6 +1253,10 @@ console.log('--- Test Unitari CodeDB ---');
   // su entrambi i motori SQL, e segue la configurazione.
   await require('./unit-tetto-tempo');
 
+  // Test 25-ter: i campi riservati al server nel payload di query:execute —
+  // rimozione per regola dichiarata e registro dell'esecuzione solo dal server.
+  await require('./unit-payload-esecuzione');
+
   // Test 26: Guida introduttiva (quando si apre, novità per versione, traguardi)
   require('./unit-onboarding');
 
