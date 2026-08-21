@@ -1208,16 +1208,17 @@ export function initCellSelect() {
     e.stopPropagation();
   }, true);
 
-  // Ctrl/Shift+click sull'header: selezione dell'intera colonna (il click
-  // semplice continua a ordinare, vedi renderGrid).
+  // Ctrl+click sull'header: selezione dell'intera colonna (il click semplice
+  // continua a ordinare, vedi renderGrid). Shift+clic NON seleziona: è
+  // l'ordinamento multi-colonna (aggiunge la colonna al sort, vedi renderGrid).
   $('#grid thead').addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const th = e.target.closest('th[data-c]');
     if (!th) return;
     const ctrl = e.ctrlKey || e.metaKey;
-    if (!ctrl && !e.shiftKey) return;
+    if (!ctrl) return;
     e.preventDefault();
-    selectColumn(Number(th.dataset.c), { ctrl, shift: e.shiftKey });
+    selectColumn(Number(th.dataset.c), { ctrl, shift: false });
     applyCellSelection();
   });
 

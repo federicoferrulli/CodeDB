@@ -25,7 +25,7 @@ console.log('--- Test Unitari Colonne della Tabella Risultati ---');
 
 (async () => {
   const {
-    chiaveOrdinamento, confrontaChiavi, ordinaRighe, larghezzeColonne,
+    chiaveOrdinamento, confrontaChiavi, ordinaRighe, ordinaRigheMultiple, larghezzeColonne,
     LARGH_MIN, LARGH_MAX, isVuoto,
   } = await import('../public/js/table-cols.js');
 
@@ -84,6 +84,59 @@ console.log('--- Test Unitari Colonne della Tabella Risultati ---');
   const sparse = [{ x: 2 }, { y: 1 }, { x: 1 }];
   assert.deepStrictEqual(ordinaRighe(sparse, 'x', 1).map((r) => r.x), [1, 2, undefined]);
   console.log('  ✓ ordinaRighe: vuoti in fondo, stabile, sorgente intatta');
+
+  /* -------------------------- ordinaRigheMultiple ------------------------- */
+
+  const multi = [
+    { g: 'nord', n: '10', v: 1 },
+    { g: 'sud', n: '9', v: 1 },
+    { g: 'nord', n: '9', v: 1 },
+    { g: 'nord', n: null, v: 1 },
+    { g: 'nord', n: '9', v: 0 },
+    { g: 'sud', n: '100', v: 1 },
+  ];
+
+  // La prima colonna decide; a parità, la seconda; i vuoti della seconda
+  // restano in fondo anche se la direzione è decrescente.
+  const doppio = ordinaRigheMultiple(multi, [{ col: 'g', dir: 1 }, { col: 'n', dir: -1 }]);
+  assert.deepStrictEqual(
+    doppio.map((r) => `${r.g}/${r.n}`),
+    ['nord/10', 'nord/9', 'nord/9', 'nord/null', 'sud/100', 'sud/9'],
+    'prima colonna crescente, seconda decrescente'
+  );
+  assert.ok(doppio[3].n === null, 'il vuoto della seconda colonna resta in fondo');
+
+  // Tre criteri: a parità delle prime due decide la terza.
+  const triplo = ordinaRigheMultiple(multi, [{ col: 'g', dir: 1 }, { col: 'n', dir: -1 }, { col: 'v', dir: 1 }]);
+  assert.deepStrictEqual(
+    triplo.map((r) => r.v),
+    [1, 0, 1, 1, 1, 1],
+    'a parità di g/n decide il terzo criterio'
+  );
+
+  // Criteri invalidi o assenti: nessuna modifica all'ordine.
+  assert.strictEqual(ordinaRigheMultiple(multi, []), multi, 'nessun criterio: righe intatte');
+  assert.strictEqual(ordinaRigheMultiple(multi), multi, 'criteri mancanti: righe intatte');
+  assert.strictEqual(
+    ordinaRigheMultiple(multi, [{ dir: 1 }, { col: '', dir: 1 }]),
+    multi,
+    'criteri senza colonna: righe intatte'
+  );
+
+  // La sorgente non viene toccata nemmeno qui.
+  assert.deepStrictEqual(
+    multi,
+    [
+      { g: 'nord', n: '10', v: 1 },
+      { g: 'sud', n: '9', v: 1 },
+      { g: 'nord', n: '9', v: 1 },
+      { g: 'nord', n: null, v: 1 },
+      { g: 'nord', n: '9', v: 0 },
+      { g: 'sud', n: '100', v: 1 },
+    ],
+    'sorgente intatta'
+  );
+  console.log('  ✓ ordinaRigheMultiple: priorità a cascata, vuoti in fondo, sorgente intatta');
 
   /* --------------------------- larghezzeColonne -------------------------- */
 

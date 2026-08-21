@@ -102,21 +102,48 @@ export function confrontaChiavi(a, b) {
  * restituiti dal database, e chi li usa per altro (grafici) non se ne accorge.
  */
 export function ordinaRighe(righe, colonna, direzione) {
-  const dir = direzione < 0 ? -1 : 1;
-  const piene = [];
-  const vuote = [];
+  return ordinaRigheMultiple(righe, [{ col: colonna, dir: direzione }]);
+}
 
-  for (const riga of righe) {
-    const v = riga && typeof riga === 'object' ? riga[colonna] : undefined;
-    if (isVuoto(v)) vuote.push(riga);
-    else piene.push({ riga, k: chiaveOrdinamento(v) });
-  }
+/**
+ * Ordina una copia delle righe secondo PIÙ colonne, in ordine di priorità:
+ * `criteri` è un elenco di `{col, dir}` e a parità della prima colonna decide
+ * la seconda, poi la terza. Stessa semantica di `ordinaRighe`: i vuoti restano
+ * in fondo qualunque sia la direzione, l'ordinamento è stabile e l'array di
+ * partenza non viene toccato. Con un elenco vuoto o senza criteri validi
+ * restituisce le righe così come sono.
+ */
+export function ordinaRigheMultiple(righe, criteri) {
+  const attivi = (Array.isArray(criteri) ? criteri : [])
+    .map((c) => ({ col: c && c.col, dir: c && c.dir < 0 ? -1 : 1 }))
+    .filter((c) => typeof c.col === 'string' && c.col);
+  if (!attivi.length || !Array.isArray(righe)) return righe;
 
-  // Decora-ordina-scarta: la chiave si calcola una volta per riga e non a ogni
-  // confronto (su 10.000 righe sono ~130.000 confronti).
-  piene.sort((a, b) => dir * confrontaChiavi(a.k, b.k));
+  // Decora-ordina-scarta, come sopra ma con una chiave PER criterio: calcolarle
+  // una volta sola costa N×k chiavi; ricalcolarle a ogni confronto sarebbe
+  // N·logN×k confronti pesanti.
+  const decorata = righe.map((riga) => ({
+    riga,
+    k: attivi.map((c) => {
+      const v = riga && typeof riga === 'object' ? riga[c.col] : undefined;
+      return isVuoto(v) ? null : chiaveOrdinamento(v);
+    }),
+  }));
 
-  return piene.map((x) => x.riga).concat(vuote);
+  decorata.sort((a, b) => {
+    for (let i = 0; i < attivi.length; i++) {
+      const ka = a.k[i];
+      const kb = b.k[i];
+      if (ka === null && kb === null) continue;      // vuoti su questa colonna: decide la successiva
+      if (ka === null) return 1;                     // i vuoti restano in fondo, anche al contrario
+      if (kb === null) return -1;
+      const c = confrontaChiavi(ka, kb);
+      if (c !== 0) return attivi[i].dir * c;
+    }
+    return 0;
+  });
+
+  return decorata.map((x) => x.riga);
 }
 
 export const LARGH_MIN = 80;

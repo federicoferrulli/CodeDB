@@ -26,7 +26,7 @@ import { initCharts, renderChart, resizeChart, clearChart } from './charts.js';
 import {
   initQueryMap, renderQueryMap, resizeQueryMap, clearQueryMap, aggiornaPulsanteMappa,
 } from './query-map.js';
-import { ordinaRighe, larghezzeColonne, LARGH_MIN } from './table-cols.js';
+import { ordinaRigheMultiple, larghezzeColonne, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 const escapeHtml = esc;
@@ -789,7 +789,7 @@ export function resetQueryView() {
   currentResults = [];
   queryTableRows = [];
   queryTableCols = [];
-  queryOrdine = { col: null, dir: 1 };
+  queryOrdine = [];
   queryLarghezze = new Map();
   queryLarghezzeManuali = new Set();
   queryColsSig = '';
@@ -842,7 +842,7 @@ let queryTableRows = [];   // righe NELL'ORDINE MOSTRATO (≠ currentResults se 
 let queryTableCols = [];
 let queryVScrollAttached = false;
 let queryHeaderAttached = false;
-let queryOrdine = { col: null, dir: 1 };   // dir: 1 crescente, -1 decrescente
+let queryOrdine = [];                      // elenco di {col, dir}: ordinamento su più colonne, l'ordine dell'elenco è la priorità
 let queryLarghezze = new Map();            // colonna → px
 let queryLarghezzeManuali = new Set();     // colonne allargate a mano: non si ricalcolano
 let queryColsSig = '';                     // firma del set di colonne
@@ -919,17 +919,20 @@ function costruisciIntestazione(thead) {
   queryTableCols.forEach((colName) => {
     const th = document.createElement('th');
     th.dataset.col = colName;
-    th.title = `${colName} — clic per ordinare, trascina il bordo destro per allargare (doppio clic: adatta al contenuto)`;
+    th.title = `${colName} — clic per ordinare, Shift+clic per aggiungere la colonna all'ordinamento (multi-colonna), trascina il bordo destro per allargare (doppio clic: adatta al contenuto)`;
 
     const label = document.createElement('span');
     label.textContent = colName;
     th.appendChild(label);
 
-    if (queryOrdine.col === colName) {
+    // In ordinamento multi-colonna la freccia porta il numero di priorità:
+    // ①②③ dice quale colonna decide prima a parità della precedente.
+    const pos = queryOrdine.findIndex((o) => o.col === colName);
+    if (pos >= 0) {
       th.classList.add('qt-sorted');
       const ind = document.createElement('span');
       ind.className = 'qt-sort-ind';
-      ind.textContent = queryOrdine.dir < 0 ? '▼' : '▲';
+      ind.textContent = `${queryOrdine[pos].dir < 0 ? '▼' : '▲'}${queryOrdine.length > 1 ? pos + 1 : ''}`;
       th.appendChild(ind);
     }
 
@@ -948,14 +951,27 @@ function costruisciIntestazione(thead) {
  * non è un vezzo: senza, l'ordine con cui il database ha restituito le righe
  * (che in una query con ORDER BY o in una pipeline è il risultato voluto) non
  * si potrebbe più recuperare se non rieseguendo la query.
+ *
+ * Con `accumula` (Shift/Ctrl+clic) la colonna entra NELL'ordinamento esistente
+ * invece di sostituirlo: nuova colonna in coda (priorità più bassa), secondo
+ * clic le inverte, terzo la toglie — gli altri criteri restano al loro posto.
  */
-function ordinaPer(col) {
-  if (queryOrdine.col !== col) queryOrdine = { col, dir: 1 };
-  else if (queryOrdine.dir === 1) queryOrdine = { col, dir: -1 };
-  else queryOrdine = { col: null, dir: 1 };
+function ordinaPer(col, accumula) {
+  const attuale = queryOrdine.find((o) => o.col === col);
+  if (accumula) {
+    if (!attuale) queryOrdine = [...queryOrdine, { col, dir: 1 }];
+    else if (attuale.dir === 1) queryOrdine = queryOrdine.map((o) => (o.col === col ? { col, dir: -1 } : o));
+    else queryOrdine = queryOrdine.filter((o) => o.col !== col);
+  } else if (!attuale || queryOrdine.length > 1 || attuale.dir === 1) {
+    // Clic semplice: la colonna diventa l'unica; se era già l'unica crescente,
+    // passa a decrescente (e un terzo clic ripristina l'ordine del database).
+    queryOrdine = [{ col, dir: !attuale || queryOrdine.length > 1 ? 1 : -1 }];
+  } else {
+    queryOrdine = [];
+  }
 
-  queryTableRows = queryOrdine.col
-    ? ordinaRighe(currentResults, queryOrdine.col, queryOrdine.dir)
+  queryTableRows = queryOrdine.length
+    ? ordinaRigheMultiple(currentResults, queryOrdine)
     : currentResults;
 
   const table = $('#query-result-table');
@@ -1030,7 +1046,7 @@ function attachQueryHeaderEvents() {
     if (e.target.classList.contains('qt-col-resizer')) return;
     const th = e.target.closest('th');
     if (!th || !th.dataset.col) return;
-    ordinaPer(th.dataset.col);
+    ordinaPer(th.dataset.col, e.shiftKey || e.ctrlKey || e.metaKey);
   });
 
   thead.addEventListener('mousedown', (e) => {
@@ -1162,9 +1178,11 @@ function renderResultsTable(rows) {
     // hanno più un riferimento: si riparte da zero.
     queryLarghezze = new Map();
     queryLarghezzeManuali = new Set();
-    queryOrdine = { col: null, dir: 1 };
-  } else if (queryOrdine.col && !queryTableCols.includes(queryOrdine.col)) {
-    queryOrdine = { col: null, dir: 1 };
+    queryOrdine = [];
+  } else {
+    // Colonne sparite dal result set: escono dall'ordinamento, gli altri
+    // criteri restano.
+    queryOrdine = queryOrdine.filter((o) => queryTableCols.includes(o.col));
   }
 
   // Le larghezze si misurano sui dati nuovi; a parità di dati (cambio di vista,
@@ -1173,8 +1191,8 @@ function renderResultsTable(rows) {
   if (nuoveColonne || nuoviDati) calcolaLarghezze(rows, queryTableCols, table);
 
   // L'ordinamento è una vista: `currentResults` resta nell'ordine del database.
-  queryTableRows = queryOrdine.col
-    ? ordinaRighe(rows, queryOrdine.col, queryOrdine.dir)
+  queryTableRows = queryOrdine.length
+    ? ordinaRigheMultiple(rows, queryOrdine)
     : rows;
 
   applicaColgroup(table);
@@ -1831,7 +1849,7 @@ export function exportQueryResults(format) {
 
   // Si esporta quello che si VEDE: se la tabella è ordinata per una colonna, un
   // CSV nell'ordine originale del database sarebbe una sorpresa silenziosa.
-  const rows = (queryOrdine.col && queryTableRows.length === currentResults.length)
+  const rows = (queryOrdine.length && queryTableRows.length === currentResults.length)
     ? queryTableRows
     : currentResults;
   const cols = new Set();

@@ -604,11 +604,24 @@ function buildHead(thead, canSelect) {
     th.dataset.c = colIdx; // per la selezione di colonna (cellselect.js)
     const dir = currentSort[col];
     th.textContent = col + (dir === 1 ? ' ▲' : dir === -1 ? ' ▼' : '');
-    th.title = 'Clicca per ordinare, Ctrl+clic per selezionare la colonna';
+    th.title = "Clicca per ordinare, Shift+clic per aggiungere la colonna all'ordinamento (multi-colonna), Ctrl+clic per selezionare la colonna";
     th.addEventListener('click', (e) => {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) return; // selezione colonna, non sort
-      const next = dir === 1 ? -1 : 1;
-      $('#sort-input').value = JSON.stringify({ [col]: next });
+      if (e.ctrlKey || e.metaKey) return; // selezione colonna, non sort
+      let nuovoSort;
+      if (e.shiftKey) {
+        // Multi-colonna: la colonna entra nell'ordinamento esistente invece di
+        // sostituirlo. L'ordine di inserimento dell'oggetto è la priorità della
+        // clausola ORDER BY / del documento sort, quindi le colonne già presenti
+        // conservano il loro posto e la nuova arriva in coda.
+        nuovoSort = { ...currentSort };
+        const attuale = currentSort[col];
+        if (attuale === 1) nuovoSort[col] = -1;
+        else if (attuale === -1) delete nuovoSort[col]; // terzo stato: esce dall'ordinamento
+        else nuovoSort[col] = 1;
+      } else {
+        nuovoSort = { [col]: dir === 1 ? -1 : 1 };
+      }
+      $('#sort-input').value = JSON.stringify(nuovoSort);
       state.skip = 0;
       runQuery();
     });
