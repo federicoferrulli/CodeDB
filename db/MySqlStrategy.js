@@ -656,7 +656,7 @@ class MySqlStrategy extends DbStrategy {
     // Le colonne geometriche vanno lette come GeoJSON (ST_AsGeoJSON): senza,
     // mysql2 restituisce oggetti {x, y} annidati da cui non si risale al tipo.
     const { list: selectList, geo } = sel;
-    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList, whereParams);
     const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
     // I parametri del filtro STRUTTURATO vengono prima di limite e salto:
     // `componiSelezione` li ha numerati partendo da 1, e invertirli farebbe

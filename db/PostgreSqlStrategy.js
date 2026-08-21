@@ -717,7 +717,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
     // Geometrie lette come GeoJSON: vedi selectListFor.
     const { list: selectList, geo, geoNativo } = sel;
-    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList, whereParams);
     // Su PostgreSQL il numero del segnaposto è la POSIZIONE reale del
     // parametro: se il filtro strutturato ne ha già occupati due, il limite
     // è $3 e il salto $4. Lasciarli fissi a $1 e $2 farebbe leggere il

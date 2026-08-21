@@ -87,6 +87,26 @@ assert.deepStrictEqual(ksPg.params, [7, 50]);
 assert.strictEqual(ksMy.reverse, false);
 console.log('  OK   keyset: stessa forma sui due motori, cambia solo il segnaposto');
 
+// Regressione: una ricerca parametrizzata sulla prima pagina non può perdere
+// i propri valori quando la griglia sceglie la paginazione keyset. Prima il
+// WHERE restava nella SQL ma `params` conteneva soltanto il LIMIT: MySQL
+// falliva e la UI lasciava visibili le vecchie righe, dando l'impressione che
+// una ricerca senza corrispondenze trovasse tutto; su PostgreSQL i $n si
+// sovrapponevano anche fra filtro, cursore e limite.
+const ksRicercaMy = my.buildKeyset(
+  { keyset: { first: true }, sort: '' }, '`d`.`t`', ' WHERE LOWER(`label`) LIKE LOWER(?)',
+  50, ['id'], '*', ['%nessuna-corrispondenza%']
+);
+const ksRicercaPg = pg.buildKeyset(
+  { keyset: { after: '{"id":7}' }, sort: '' }, '"d"."t"', ' WHERE LOWER("label") LIKE LOWER($1)',
+  50, ['id'], '*', ['%nessuna-corrispondenza%']
+);
+assert.deepStrictEqual(ksRicercaMy.params, ['%nessuna-corrispondenza%', 50]);
+assert.strictEqual(ksRicercaPg.sql,
+  'SELECT * FROM "d"."t" WHERE (LOWER("label") LIKE LOWER($1)) AND "id" > $2 ORDER BY "id" ASC LIMIT $3');
+assert.deepStrictEqual(ksRicercaPg.params, ['%nessuna-corrispondenza%', 7, 50]);
+console.log('  OK   keyset: conserva parametri e numerazione della ricerca globale');
+
 // Il numero del segnaposto PostgreSQL segue la POSIZIONE del parametro: senza
 // filtro utente il cursore resta $1 e il limite diventa $2 lo stesso.
 const ksPgNoWhere = pg.buildKeyset(payload, '"d"."t"', '', 25, ['id']);

@@ -52,7 +52,7 @@ const META_CACHE_MS = 15000;
 // colonna singola) e il chiamante usa OFFSET. Il filtro utente (WHERE) viene
 // combinato in AND con il vincolo sul cursore. L'unica differenza fra i due
 // motori è il segnaposto: `?` su MySQL, `$n` su PostgreSQL.
-function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList = '*') {
+function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList = '*', whereParams = []) {
   const { qid, segnaposto } = dialetto;
   const ks = payload && payload.keyset;
   if (!ks) return null;
@@ -60,7 +60,10 @@ function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList
   if (!pk || pk.length !== 1) return null;            // chiave composita/assente: OFFSET
   const col = pk[0];
   const conds = [];
-  const params = [];
+  // I parametri del WHERE precedono cursore e limite. Per PostgreSQL la loro
+  // quantità determina anche da quale $n deve proseguire la keyset; per MySQL
+  // ne preserva semplicemente l'ordine dei `?`.
+  const params = [...(whereParams || [])];
   // Il segnaposto va calcolato PRIMA di aggiungere il parametro: su PostgreSQL
   // il numero è la posizione che quel parametro sta per occupare.
   const prossimo = () => segnaposto(params.length + 1);
@@ -305,8 +308,8 @@ function metodi(dialetto) {
     }
   }
   return {
-    buildKeyset(payload, table, whereSql, limit, pk, selectList = '*') {
-      return componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList);
+    buildKeyset(payload, table, whereSql, limit, pk, selectList = '*', whereParams = []) {
+      return componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList, whereParams);
     },
     keysetValue(rawId, col) {
       return valoreKeyset(rawId, col);

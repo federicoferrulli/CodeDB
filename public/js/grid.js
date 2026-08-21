@@ -259,7 +259,20 @@ export function runQuery(opts = {}) {
     // richiesta più recente sta già gestendo la vista.
     const st = (err && err._state) || state;
     if (runId !== st.gridRunId || st.activeCollId !== originColl) return;
-    if (isForActiveTab(err)) showQueryError(err.message);
+    if (isForActiveTab(err)) {
+      // Una richiesta esplicita fallita non deve lasciare a schermo le righe
+      // della query precedente: sembrerebbero risultati del nuovo filtro.
+      // I refresh automatici conservano invece l'ultima vista valida.
+      if (!opts.auto) {
+        st.docs = [];
+        st.total = 0;
+        st.countPending = false;
+        st.selectedDocs.clear();
+        renderGrid();
+        updateFooter();
+      }
+      showQueryError(err.message);
+    }
   });
 }
 
