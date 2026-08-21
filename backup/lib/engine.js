@@ -32,6 +32,13 @@ const {
   createFileSink, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
 const { isSqlGeometryType } = require('../../db/geometry');
+// Come si scrive il nome di una tabella o di una colonna: regola unica,
+// condivisa con gli adattatori, col DDL e col frontend.
+const { quotaSempre } = require('../../db/identificatori');
+
+// Il nome quotato per MySQL. Come per PostgreSQL (`pgQid`), la regola non e'
+// del motore di backup: e' la stessa che usano gli adattatori.
+const myQid = (name) => quotaSempre(name, 'mysql');
 const { pgCreateTable, pgAuxDdl, pgSchemaObjects, pgColonneDaSalvare } = require('../../db/pg-ddl');
 
 const TOOL_VERSION = 1;
@@ -298,7 +305,7 @@ async function mysqlSinceColumn(conn, db, table, sinceField) {
  */
 async function mysqlSchemaObjects(conn, db) {
   const mysql = require('mysql2');
-  const qdb = mysql.escapeId(db, true);
+  const qdb = myQid(db);
   const out = { views: [], routines: [], triggers: [], events: [] };
 
   const [views] = await conn.query(
@@ -307,7 +314,7 @@ async function mysqlSchemaObjects(conn, db) {
     [db],
   );
   for (const v of views) {
-    const [[row]] = await conn.query(`SHOW CREATE VIEW ${qdb}.${mysql.escapeId(v.name, true)}`);
+    const [[row]] = await conn.query(`SHOW CREATE VIEW ${qdb}.${myQid(v.name)}`);
     if (row && row['Create View']) out.views.push({ name: v.name, ddl: String(row['Create View']) });
   }
 
@@ -318,7 +325,7 @@ async function mysqlSchemaObjects(conn, db) {
   );
   for (const r of routines) {
     const tipo = String(r.type).toUpperCase() === 'FUNCTION' ? 'FUNCTION' : 'PROCEDURE';
-    const [[row]] = await conn.query(`SHOW CREATE ${tipo} ${qdb}.${mysql.escapeId(r.name, true)}`);
+    const [[row]] = await conn.query(`SHOW CREATE ${tipo} ${qdb}.${myQid(r.name)}`);
     const ddl = row && (row[`Create ${tipo === 'FUNCTION' ? 'Function' : 'Procedure'}`]);
     if (ddl) out.routines.push({ name: r.name, type: tipo, ddl: String(ddl) });
   }
@@ -329,7 +336,7 @@ async function mysqlSchemaObjects(conn, db) {
     [db],
   );
   for (const t of triggers) {
-    const [[row]] = await conn.query(`SHOW CREATE TRIGGER ${qdb}.${mysql.escapeId(t.name, true)}`);
+    const [[row]] = await conn.query(`SHOW CREATE TRIGGER ${qdb}.${myQid(t.name)}`);
     if (row && row['SQL Original Statement']) {
       out.triggers.push({ name: t.name, table: t.onTable, ddl: String(row['SQL Original Statement']) });
     }
@@ -345,7 +352,7 @@ async function mysqlSchemaObjects(conn, db) {
       [db],
     );
     for (const e of events) {
-      const [[row]] = await conn.query(`SHOW CREATE EVENT ${qdb}.${mysql.escapeId(e.name, true)}`);
+      const [[row]] = await conn.query(`SHOW CREATE EVENT ${qdb}.${myQid(e.name)}`);
       if (row && row['Create Event']) out.events.push({ name: e.name, ddl: String(row['Create Event']) });
     }
   } catch { /* scheduler eventi non disponibile: nessun evento da salvare */ }
@@ -381,7 +388,7 @@ function splitMySqlForeignKeys(createTable, tableName, atteseDalCatalogo = null)
   for (const riga of righe) {
     const m = riga.match(/^\s*CONSTRAINT\s+(`(?:[^`]|``)+`)\s+FOREIGN KEY\s(.*?),?\s*$/i);
     if (m) {
-      fk.push(`ALTER TABLE ${mysql.escapeId(tableName, true)} ADD CONSTRAINT ${m[1]} FOREIGN KEY ${m[2]};`);
+      fk.push(`ALTER TABLE ${myQid(tableName)} ADD CONSTRAINT ${m[1]} FOREIGN KEY ${m[2]};`);
     } else {
       tenute.push(riga);
     }
@@ -458,7 +465,7 @@ async function mysqlColumnMeta(conn, db, table) {
   const geo = new Map();
   const pezzi = [];
   for (const r of salvabili) {
-    const id = mysql.escapeId(r.name, true);
+    const id = myQid(r.name);
     const tipo = String(r.dtype || '').toLowerCase();
     if (isSqlGeometryType(r.dtype)) {
       geo.set(r.name, { srid: r.srid == null ? null : Number(r.srid) });
@@ -501,7 +508,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     for (const table of collections) {
       // Definizione della tabella, per ricrearla al restore. Le chiavi esterne
       // vengono estratte e applicate alla fine: vedi splitMySqlForeignKeys.
-      const [[create]] = await conn.query(`SHOW CREATE TABLE ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}`);
+      const [[create]] = await conn.query(`SHOW CREATE TABLE ${myQid(db)}.${myQid(table)}`);
       // Le FK si tolgono dal testo della CREATE TABLE, ma il loro numero viene
       // confrontato con il CATALOGO: se la rimozione testuale non corrisponde a
       // ciò che il database dichiara, il backup si ferma invece di produrre uno
@@ -533,7 +540,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // FROM_UNIXTIME confronta l'istante assoluto: passare una Date
           // farebbe serializzare a mysql2 l'ora locale del client, sbagliata
           // quando il server è in un altro fuso orario.
-          where = ` WHERE ${mysql.escapeId(sinceColumn, true)} > FROM_UNIXTIME(?)`;
+          where = ` WHERE ${myQid(sinceColumn)} > FROM_UNIXTIME(?)`;
           // Millisecondi (non secondi interi): FROM_UNIXTIME accetta i decimali.
           params.push(confineIncrementale(since).getTime() / 1000);
         } else {
@@ -570,7 +577,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       // Streaming riga per riga sulla connessione non-promise: nessun
       // caricamento in memoria dell'intera tabella.
       const stream = conn.connection
-        .query({ sql: `SELECT ${selectList} FROM ${mysql.escapeId(db, true)}.${mysql.escapeId(table, true)}${where}`, values: params })
+        .query({ sql: `SELECT ${selectList} FROM ${myQid(db)}.${myQid(table)}${where}`, values: params })
         .stream();
       let digest;
       try {
@@ -626,8 +633,10 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
   }
 }
 
+// Il nome quotato per PostgreSQL. La regola non e' del motore di backup: sta
+// in db/identificatori.js insieme a quella degli altri motori.
 function pgQid(name) {
-  return '"' + String(name).replace(/"/g, '""') + '"';
+  return quotaSempre(name, 'postgresql');
 }
 
 /**

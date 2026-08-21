@@ -1731,7 +1731,67 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   box-shadow: none;
 }
 
-#filter-input { flex: 2; min-width: 140px; }
+/* ---------- Filtro: il gruppo con il selettore di modalità ---------- */
+
+/* Il pulsante e la casella sono un oggetto solo: i bordi si toccano e il
+   fuoco illumina il gruppo, non la sola casella — altrimenti il pulsante
+   sembrerebbe un comando a parte invece che la modalità di ciò che si scrive. */
+.filter-mode-switch {
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 3px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--input-bg);
+}
+
+.toolbar .filter-mode-option {
+  height: 26px;
+  padding: 0 9px;
+  gap: 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-dim);
+}
+
+.toolbar .filter-mode-option:hover {
+  border-color: transparent;
+  background: var(--bg-hover);
+  color: var(--fg);
+}
+
+.toolbar .filter-mode-option.active {
+  background: var(--ov-120);
+  color: var(--fg);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg) 65%, transparent);
+}
+
+.filter-mode-option svg { width: 14px; height: 14px; }
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+  flex: 2;
+  min-width: 180px;
+}
+
+.input-group > input,
+.input-group > .ac-wrap,
+.input-group > .ac-wrap > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.input-group > input,
+.input-group > .ac-wrap > input {
+  width: 100%;
+  border-radius: 6px;
+}
+
+#filter-input { min-width: 140px; }
 #sort-input { flex: 1; min-width: 90px; }
 
 #query-error { margin: 8px 12px; }

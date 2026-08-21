@@ -11,7 +11,13 @@ let allConns = [];
 // Prefisso unificato, con recupero del valore scritto dalle versioni
 // precedenti (CDB-64).
 const COLLAPSED_KEY = migraChiave('collapsed-folders', 'gui-db:collapsed-folders');
-const collapsed = new Set(JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'));
+// Lettura difensiva come in `migraChiave`: fuori dal browser `localStorage` non
+// esiste, e questa riga girava all'IMPORT — bastava a rendere non caricabile in
+// prova ogni modulo che risalisse fin qui, cioe' quasi tutto il frontend.
+const collapsed = new Set(leggiCartelleChiuse());
+function leggiCartelleChiuse() {
+  try { return JSON.parse(localStorage.getItem(COLLAPSED_KEY) || '[]'); } catch { return []; }
+}
 
 function persistCollapsed() {
   localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));

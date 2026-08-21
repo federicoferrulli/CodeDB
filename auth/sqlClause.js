@@ -1,4 +1,5 @@
 'use strict';
+const { normalizzaFiltro } = require('../db/filtro');
 
 /* ---------------------------------------------------------------------------
  * Clausole WHERE/ORDER BY libere: quando sono ammesse e in che forma.
@@ -146,6 +147,19 @@ function assertSimpleClause(text, what) {
  */
 function assertScopedClauses(payload) {
   if (!payload || typeof payload !== 'object') return;
+
+  // Il filtro STRUTTURATO si verifica leggendone i CAMPI, non rianalizzandone
+  // il testo — perché testo non ne ha.
+  //
+  // `normalizzaFiltro` rifiuta ciò che non è un elenco di condizioni ben
+  // formate, e ogni campo diventa poi un identificatore QUOTATO INTERO: un
+  // `campo` scritto come `altra_tabella.colonna` diventa `` `altra_tabella.colonna` ``,
+  // cioè il nome di una colonna che non esiste, non un riferimento a un'altra
+  // tabella. Uscire dallo scope attraverso un filtro strutturato non è
+  // esprimibile, ed è per questo che qui non serve alcun firewall sintattico:
+  // la difesa non è un elenco di parole vietate, è la forma del dato.
+  if (payload.filtro != null) normalizzaFiltro(payload.filtro);
+
   if (payload.filter != null) assertSimpleClause(payload.filter, 'filtro');
   // `sort` può essere anche un JSON {"col":1}: in quel caso non c'è SQL libero.
   if (payload.sort != null) {

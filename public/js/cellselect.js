@@ -14,6 +14,9 @@ import { apriGraficoSelezione } from './cellgrafico.js';
 // Lo scorrimento automatico ai bordi durante il trascinamento: il calcolo della
 // velocità sta in un modulo puro, così è verificabile senza DOM.
 import { velocitaAsse, BORDO_DEFAULT } from './scorrimento-bordo.js';
+// Come si scrive il nome di una tabella o di una colonna: regola unica,
+// condivisa col server (vedi public/js/identificatori.mjs).
+import { quotaSempre, quotaQualificato, dialettoDi } from './identificatori.mjs';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
@@ -479,12 +482,15 @@ function sqlLiteral(v) {
 function buildSqlInsert() {
   const { rows, cols } = selectionGrid();
   const has = sel().cells;
-  const postgres = state.dbType === 'postgresql' || state.dbType === 'postgres';
-  const quote = postgres ? '"' : '`';
-  const ident = (s) => quote + String(s).split(quote).join(quote + quote) + quote;
-  const table = postgres && state.db
-    ? ident(state.db) + '.' + ident(state.coll || 'tabella')
-    : ident(state.coll || 'tabella');
+  // Come si scrive un identificatore lo sa un modulo solo, condiviso col
+  // server: qui si quota SEMPRE, perche' l'INSERT finisce negli appunti e da
+  // li' in un editor qualsiasi, dove non si sa che nome incontrera'.
+  const postgres = dialettoDi(state.dbType) === 'postgresql';
+  const ident = (s) => quotaSempre(s, state.dbType || 'mysql');
+  const table = quotaQualificato(
+    [postgres ? state.db : null, state.coll || 'tabella'],
+    state.dbType || 'mysql'
+  );
   const values = rows.map((r) =>
     '(' + cols.map((c) => (has.has(key(r, c)) ? sqlLiteral(cellRaw(r, c)) : 'NULL')).join(', ') + ')'
   );

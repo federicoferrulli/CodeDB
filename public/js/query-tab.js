@@ -14,7 +14,10 @@ import {
   attachEditorAutocomplete, invalidaSchemaIntellisense, ripiegoLingua, dbmsCorrente,
 } from './autocomplete.js';
 import { motoreDalTesto } from './intellisense.js';
-import { quotaIdentificatore } from './sql-dialetti.js';
+import { quotaIdentificatore, quotaSempre } from './sql-dialetti.js';
+// Il modulo unico della griglia: la stessa aritmetica e lo stesso corpo della
+// vista Dati (vedi griglia.js).
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
 import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
@@ -848,6 +851,12 @@ let queryResizeInCorso = false;
 const QUERY_ROW_H = 36;
 const QUERY_OVERSCAN = 6;
 
+// Che cosa la griglia dei RISULTATI sa fare, dichiarato. Meno della vista Dati,
+// e non per dimenticanza: qui le righe non sono documenti reali (l'uscita di un
+// $group non ha un _id), quindi selezione di riga e modifica in linea non
+// avrebbero un bersaglio.
+const CAPACITA_RISULTATI = capacita({ virtualizzazione: true });
+
 /** Il testo che finisce in cella: identico a quello disegnato dalla griglia.
  *  Per la MISURA delle colonne bastano pochi caratteri — oltre il tetto di
  *  larghezza il resto non cambia il risultato e costerebbe una serializzazione
@@ -1036,6 +1045,37 @@ function attachQueryHeaderEvents() {
   });
 }
 
+/** Una riga del result set. Non ha identita': niente checkbox, niente `_id`. */
+function disegnaRigaRisultato(row) {
+  const tr = document.createElement('tr');
+  tr.style.height = `${QUERY_ROW_H}px`;
+  queryTableCols.forEach((col) => {
+    const td = document.createElement('td');
+    const val = row ? row[col] : undefined;
+    // Testo LIMITATO: la cella ne mostra al massimo una sessantina di
+    // caratteri, e questo codice gira per ~20 righe a ogni fotogramma di
+    // scorrimento. Il `title` usa lo stesso testo: prima era un secondo
+    // `JSON.stringify` del valore intero — su un documento da 25 MB, 60 ms
+    // per cella per costruire un fumetto illeggibile.
+    const res = displayValueBreve(val);
+    td.textContent = res.text ?? '';
+    if (res.cls) td.className = res.cls;
+    if (res.dataVal !== undefined) td.dataset.val = res.dataVal;
+    td.title = res.text ?? '';
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+/**
+ * La finestra visibile della tabella dei risultati.
+ *
+ * L'aritmetica e la scrittura del corpo non stanno piu' qui: erano una copia di
+ * quelle della vista Dati — stesse operazioni, nomi di variabile diversi — e
+ * correggerne una lasciava l'altra intatta. Ora sono in `griglia.js`, e questa
+ * vista dichiara le capacita' che ha davvero: virtualizza, ma non seleziona
+ * celle, non modifica in linea e non ha righe con identita'.
+ */
 function renderQueryVirtualWindow() {
   const container = $('#query-table-view');
   if (!container) return;
@@ -1044,59 +1084,28 @@ function renderQueryVirtualWindow() {
   const tbody = table.querySelector('tbody');
   if (!tbody) return;
 
-  const N = queryTableRows.length;
-  if (N === 0) {
+  if (queryTableRows.length === 0) {
     tbody.innerHTML = '';
     return;
   }
 
-  const viewport = container.clientHeight || 400;
-  const scrollTop = container.scrollTop || 0;
-  const start = Math.max(0, Math.floor(scrollTop / QUERY_ROW_H) - QUERY_OVERSCAN);
-  const visible = Math.ceil(viewport / QUERY_ROW_H);
-  const end = Math.min(N, start + visible + QUERY_OVERSCAN * 2);
-  const numCols = queryTableCols.length || 1;
-
-  const frag = document.createDocumentFragment();
-
-  if (start > 0) {
-    const topSpacer = document.createElement('tr');
-    topSpacer.className = 'v-spacer';
-    topSpacer.innerHTML = `<td colspan="${numCols}" style="height:${start * QUERY_ROW_H}px; padding:0; border:none; background:none;"></td>`;
-    frag.appendChild(topSpacer);
-  }
-
-  for (let i = start; i < end; i++) {
-    const row = queryTableRows[i];
-    const tr = document.createElement('tr');
-    tr.style.height = `${QUERY_ROW_H}px`;
-    queryTableCols.forEach((col) => {
-      const td = document.createElement('td');
-      const val = row ? row[col] : undefined;
-      // Testo LIMITATO: la cella ne mostra al massimo una sessantina di
-      // caratteri, e questo codice gira per ~20 righe a ogni fotogramma di
-      // scorrimento. Il `title` usa lo stesso testo: prima era un secondo
-      // `JSON.stringify` del valore intero — su un documento da 25 MB, 60 ms
-      // per cella per costruire un fumetto illeggibile.
-      const res = displayValueBreve(val);
-      td.textContent = res.text ?? '';
-      if (res.cls) td.className = res.cls;
-      if (res.dataVal !== undefined) td.dataset.val = res.dataVal;
-      td.title = res.text ?? '';
-      tr.appendChild(td);
-    });
-    frag.appendChild(tr);
-  }
-
-  if (end < N) {
-    const botSpacer = document.createElement('tr');
-    botSpacer.className = 'v-spacer';
-    botSpacer.innerHTML = `<td colspan="${numCols}" style="height:${(N - end) * QUERY_ROW_H}px; padding:0; border:none; background:none;"></td>`;
-    frag.appendChild(botSpacer);
-  }
-
-  tbody.innerHTML = '';
-  tbody.appendChild(frag);
+  disegnaCorpo({
+    tbody,
+    righe: queryTableRows,
+    disegnaRiga: disegnaRigaRisultato,
+    // Sotto la soglia si disegna tutto: gli spaziatori esisterebbero per
+    // simulare righe che ci starebbero comunque.
+    finestra: vaVirtualizzata(queryTableRows.length, CAPACITA_RISULTATI)
+      ? finestraVirtuale({
+        scrollTop: container.scrollTop || 0,
+        altezzaViewport: container.clientHeight || 400,
+        altezzaRiga: QUERY_ROW_H,
+        righeTotali: queryTableRows.length,
+        overscan: QUERY_OVERSCAN,
+      })
+      : null,
+    colonneTotali: queryTableCols.length || 1,
+  });
 }
 
 function attachQueryVScroll() {
@@ -1853,6 +1862,13 @@ export function exportQueryResults(format) {
   // diversamente); e la barra rovesciata nel valore non veniva raddoppiata,
   // quindi un valore che finisce con "\" spostava la fine della stringa e
   // concatenava il valore successivo.
+  // Il nome di una colonna si scrive con la regola unica del repo, non con i
+  // backtick di MySQL scritti a mano: quelli davano uno script non eseguibile
+  // su PostgreSQL, esattamente come faceva l'escape con la barra rovesciata
+  // corretto qui sotto. Il motore è lo stesso che sceglie il completamento.
+  const motoreExport = dbmsCorrente($('#query-target-engine')?.value || 'auto') || 'mysql';
+  const qNome = (nome) => quotaSempre(nome, motoreExport);
+
   const letteraleSql = (v) => {
     if (v === null || v === undefined) return 'NULL';
     if (typeof v === 'boolean') return v ? '1' : '0';
@@ -1882,9 +1898,9 @@ export function exportQueryResults(format) {
     filename += '.sql';
     mimeType = 'application/sql';
     content = rows.map((r) => {
-      const rowCols = Object.keys(r).map((k) => `\`${k.replace(/`/g, '``')}\``).join(', ');
+      const rowCols = Object.keys(r).map(qNome).join(', ');
       const vals = Object.values(r).map(letteraleSql).join(', ');
-      return `INSERT INTO \`query_result\` (${rowCols}) VALUES (${vals});`;
+      return `INSERT INTO ${qNome('query_result')} (${rowCols}) VALUES (${vals});`;
     }).join('\n');
   }
 

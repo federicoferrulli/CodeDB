@@ -665,12 +665,27 @@
               <!-- ------------------- Vista dati ------------------- -->
               <div id="view-data" class="view-panel">
                 <div class="toolbar">
-                  <select id="query-mode" title="Modalità query">
-                    <option value="find">find</option>
-                    <option value="aggregate">aggregate</option>
-                  </select>
-                  <input id="filter-input" type="text" spellcheck="false"
-                    placeholder='Filtro, es. { "age": { "$gt": 30 } }' />
+                  <!-- La vista Dati è sempre una lettura tabellare. Pipeline e
+                       SQL Raw vivono nella scheda Query & Aggregate, che ha
+                       l'editor adatto; qui resta un solo asse: Cerca oppure
+                       Condizione avanzata. -->
+                  <input id="query-mode" type="hidden" value="find" />
+                  <div id="filter-mode-switch" class="filter-mode-switch" role="radiogroup"
+                    aria-label="Modalità del filtro" data-modo="rapido">
+                    <button type="button" class="filter-mode-option active" data-filter-mode="rapido"
+                      role="radio" aria-checked="true" tabindex="0" title="Cerca nei valori di tutti i campi rilevati">
+                      <i data-lucide="search"></i><span>Cerca</span>
+                    </button>
+                    <button type="button" class="filter-mode-option" data-filter-mode="condizione"
+                      role="radio" aria-checked="false" tabindex="-1" title="Scrivi una condizione WHERE o MQL">
+                      <i data-lucide="filter"></i><span>Condizione</span>
+                    </button>
+                  </div>
+                  <span class="input-group" id="filter-group">
+                    <input id="filter-input" type="text" spellcheck="false"
+                      aria-label="Testo da cercare in tutti i campi"
+                      placeholder="Cerca in tutti i campi…" />
+                  </span>
                   <input id="sort-input" type="text" spellcheck="false" class="narrow"
                     placeholder='Sort, es. { "name": 1 }' />
                   <span class="query-history-wrap">

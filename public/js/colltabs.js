@@ -4,7 +4,9 @@ import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType } from './utils.js';
 import { exportImportMenuItems } from './exportimport.js';
-import { runQuery, renderGrid, applyQueryPlaceholders } from './grid.js';
+import {
+  runQuery, renderGrid, applyQueryPlaceholders, leggiStatoFiltro, applicaStatoFiltro,
+} from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
 import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
@@ -106,8 +108,12 @@ function saveActiveSnapshot() {
   if (!ct || ct.isSplitTab || ct.isDbTab) return;
   const docs = Array.isArray(state.docs) ? state.docs : [];
   const troppi = docs.length > MAX_DOCS_SNAPSHOT;
+  const filtro = leggiStatoFiltro();
   ct.snap = {
     filter: $('#filter-input')?.value || '',
+    filterMode: filtro.modo,
+    quickSearch: filtro.rapido,
+    advancedCondition: filtro.condizione,
     sort: $('#sort-input')?.value || '',
     queryMode: $('#query-mode')?.value || 'find',
     pageSize: $('#page-size')?.value || '50',
@@ -216,9 +222,16 @@ function activate(ct, { fresh }) {
   // Input da ripristinare dopo un refresh (una tantum): presenti solo finché il
   // coll-tab non ha ancora uno snapshot proprio (vedi session-restore.js).
   const r = (!s && ct.restore) ? ct.restore : null;
-  $('#filter-input').value = s ? s.filter : (r ? (r.filter || '') : '');
+  const sorgenteFiltro = s || r || {};
+  applicaStatoFiltro({
+    modo: sorgenteFiltro.filterMode || 'rapido',
+    rapido: sorgenteFiltro.quickSearch != null
+      ? sorgenteFiltro.quickSearch
+      : (sorgenteFiltro.filter || ''),
+    condizione: sorgenteFiltro.advancedCondition || '',
+  });
   $('#sort-input').value = s ? s.sort : (r ? (r.sort || '') : '');
-  $('#query-mode').value = s ? s.queryMode : (r ? (r.queryMode || 'find') : 'find');
+  $('#query-mode').value = 'find';
   if (s) $('#page-size').value = s.pageSize;
   else if (r && r.pageSize) $('#page-size').value = r.pageSize;
   state.infiniteScroll = s ? !!s.infiniteScroll : (r ? !!r.infiniteScroll : false);

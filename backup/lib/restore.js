@@ -19,6 +19,10 @@ const crypto = require('crypto');
 const { EJSON } = require('bson');
 const { readLines, readManifest, fileDelBackup, verifyBackupDir } = require('./util');
 const { isSqlGeometryType } = require('../../db/geometry');
+// Come si scrive il nome di una tabella o di una colonna: regola unica per
+// tutto il repo (vedi db/identificatori.js).
+const { quotaSempre } = require('../../db/identificatori');
+const myQid = (name) => quotaSempre(name, 'mysql');
 
 // Tipi che il dump salva in esadecimale perché il driver li consegna come
 // Buffer, che non sopravvive al giro EJSON del file NDJSON. Vedi engine.js.
@@ -316,7 +320,7 @@ function riqualificaDdl(ddl, dbOrigine, dbDestinazione) {
   const esc = String(dbOrigine).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const riscritta = String(ddl).replace(
     new RegExp('`' + esc + '`\\s*\\.', 'g'),
-    '`' + String(dbDestinazione).replace(/`/g, '``') + '`.',
+    myQid(dbDestinazione) + '.',
   );
 
   // La sostituzione copre la forma che `SHOW CREATE VIEW`/`TRIGGER` producono
@@ -557,8 +561,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
   const conn = await pool.getConnection();
   let total = 0;
   try {
-    await conn.query(`CREATE DATABASE IF NOT EXISTS ${mysql.escapeId(targetDb, true)}`);
-    await conn.query(`USE ${mysql.escapeId(targetDb, true)}`);
+    await conn.query(`CREATE DATABASE IF NOT EXISTS ${myQid(targetDb)}`);
+    await conn.query(`USE ${myQid(targetDb)}`);
     const dataFiles = layer.manifest.files.filter(
       (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
     );
@@ -573,7 +577,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
     }
 
     for (const f of dataFiles) {
-      const tableId = mysql.escapeId(f.collection, true);
+      const tableId = myQid(f.collection);
       if (isFirst) {
         if (drop) {
           await conn.query(`DROP TABLE IF EXISTS ${tableId}`);
@@ -610,7 +614,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       let applied = 0;
       const flush = async () => {
         if (!batch.length) return;
-        const listaColonne = columns.map((c) => mysql.escapeId(c, true)).join(', ');
+        const listaColonne = columns.map((c) => myQid(c)).join(', ');
         const geoNelBatch = columns.some((c) => geoTarget.has(c));
         if (!geoNelBatch) {
           // Percorso veloce, invariato: nessuna geometria, insert multiplo.

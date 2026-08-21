@@ -87,10 +87,25 @@ function fineBlocco(s, apertura) {
   return -1;
 }
 
-/** Handler registrati con `safeOn('evento', …)`: nome dell'evento e corpo. */
+/**
+ * Handler registrati su una delle giunture: nome dell'evento e corpo.
+ *
+ * Sono le tre famiglie di ADR-0001 — evento sui dati (`delegate`), evento
+ * amministrativo (`amministrativo`), operazione lunga (`operazioneLunga`) —
+ * più la via generica (`safeOn`), che resta per i pochi eventi che non
+ * appartengono a nessuna delle tre.
+ *
+ * Riconoscerne una sola lascerebbe scoperta la maggior parte degli handler
+ * senza che nulla lo dica, ed è esattamente quello che è successo mentre le
+ * famiglie prendevano la loro giuntura: il conteggio è crollato da 44 a 18. Se
+ * ne sono accorte le due asserzioni qui sotto — «troppo pochi» e la presenza di
+ * `script:execute`, che è l'handler in cui il difetto originale è vissuto.
+ * Vale la pena notarlo: sono guardie messe contro il marcire del test stesso, e
+ * hanno fatto esattamente il loro lavoro.
+ */
 function handlerSocket(s) {
   const out = [];
-  const re = /\bsafeOn\(\s*['"]([^'"]+)['"]\s*,/g;
+  const re = /\b(?:safeOn|delegate|amministrativo|operazioneLunga)\(\s*['"]([^'"]+)['"]\s*,/g;
   let m;
   while ((m = re.exec(s)) !== null) {
     const apertura = s.indexOf('{', m.index + m[0].length);

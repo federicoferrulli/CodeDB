@@ -147,7 +147,9 @@ const { ROOT_PRINCIPAL, rbacOn } = require('./auth/principal');
 const { AppStore } = require('./auth/AppStore');
 const { createEntitlementProvider } = require('./auth/EntitlementProvider');
 const { guardStrategy } = require('./auth/guardStrategy');
-const { isWriteSql, isWriteMongoPipeline, eventCapability } = require('./auth/capabilities');
+const {
+  isWriteSql, isWriteMongoPipeline, eventCapability, assertNoMongoServerJs,
+} = require('./auth/capabilities');
 const { can, allowedConnections, canUseConnection, canWholeConnection, isInstallAdmin } = require('./auth/permissions');
 const { motivoNonTerminabile, diagnosi: diagnosiSessioni } = require('./db/sessioni');
 
@@ -1356,6 +1358,243 @@ function auditActor(principal) {
 // campi aggiuntivi da registrare (op = etichetta italiana per la UI). Solo gli
 // eventi qui presenti vengono registrati; i restanti delegate restano di sola
 // lettura e non producono voci di audit.
+/* ---------------------------------------------------------------------------
+ * LE ECCEZIONI DELLA VIA GENERICA.
+ *
+ * Dopo che le tre famiglie di ADR-0001 hanno preso la loro giuntura, `safeOn`
+ * resta usato da questi eventi soltanto — e ognuno dice perché.
+ *
+ * Non è una lista di cortesia: `test/unit-registrazione-eventi.js` la confronta
+ * con ciò che `server.js` registra davvero, e un evento che compaia su `safeOn`
+ * senza essere dichiarato qui fa fallire il test. È il terzo gradino del
+ * criterio di chiusura di questo lotto: non basta che la situazione sia
+ * sistemata, dev'essere difficile riformarla.
+ *
+ * Aggiungere un evento qui è legittimo — le eccezioni esistono — ma richiede di
+ * scriverne il motivo, che è la differenza fra una decisione e una deriva.
+ * ------------------------------------------------------------------------- */
+
+const ECCEZIONI_VIA_GENERICA = {
+  // --- Ciclo di vita della sessione ----------------------------------------
+  // Le tre giunture PRESUPPONGONO una sessione: questi eventi la creano, la
+  // chiudono o la provano prima che esista. Farli passare da una giuntura che
+  // comincia cercando la sessione sarebbe circolare.
+  'mongo:connect': 'apre la sessione che le tre giunture presuppongono',
+  'mongo:disconnect': 'chiude la sessione',
+  'connections:test': 'prova una connessione senza aprirne una sessione',
+
+  // --- Capability senza bersaglio ------------------------------------------
+  // Non hanno un database o una collezione su cui verificare uno scope: la
+  // verifica è sull'INTERA connessione (assertWholeConnection), che è una
+  // domanda diversa da quella che sa fare la giuntura dei dati.
+  'health:connections': 'diagnosi di tutte le sessioni del socket, nessun bersaglio singolo',
+  'db:sessions': 'sessioni del SERVER di database, autorizzate sull\'intera connessione',
+  'db:killSession': 'termina sessioni altrui, autorizzata sull\'intera connessione',
+
+  // --- Backup ---------------------------------------------------------------
+  // Leggono e scrivono attraverso il driver NATIVO (strategy.client/pool), che
+  // il Proxy autorizzante lascia passare invariato: sono perciò autorizzati a
+  // parte, sull'intera connessione e senza scope.
+  'backup:run': 'accede al driver nativo, autorizzato sull\'intera connessione',
+  'backup:list': 'elenca i backup su disco, fuori dal perimetro di una strategia',
+  'backup:restore': 'accede al driver nativo, autorizzato sull\'intera connessione',
+  'backup:verify': 'verifica i file di un backup, fuori dal perimetro di una strategia',
+};
+
+/* ---------------------------------------------------------------------------
+ * LA FAMIGLIA DELLE OPERAZIONI LUNGHE (ADR-0001, terza delle tre).
+ *
+ * È la famiglia che giustifica l'ADR: se non esistesse, i suoi eventi
+ * potrebbero rientrare nella giuntura dei dati e le famiglie sarebbero due.
+ * Esiste perché queste operazioni hanno bisogno di OTTO cose che la giuntura
+ * dei dati non offre — e che non può offrire senza diventare un'interfaccia
+ * piena di parametri opzionali, cioè superficiale.
+ *
+ * Finora quegli otto punti erano un'AFFERMAZIONE: scritti in un ADR in prosa,
+ * da riverificare a mano ogni volta che qualcuno si chiedeva perché mai
+ * `script:execute` non passasse da `delegate`. Qui diventano nomi, e ogni
+ * evento dichiara quali usa. Un'operazione lunga che non ne usa nessuno non
+ * appartiene a questa famiglia, e `operazioneLunga()` lo rifiuta invece di
+ * lasciarla lì per inerzia.
+ * ------------------------------------------------------------------------- */
+
+const PUNTI_ESTENSIONE = {
+  /** 1. Rispondere PRIMA che l'operazione finisca, e continuare a lavorare dopo. */
+  rispostaAnticipata:
+    'risponde prima della fine e continua a lavorare dopo aver risposto',
+  /** 2. Emettere avanzamento durante l'esecuzione. */
+  avanzamento:
+    'emette avanzamento mentre esegue, non solo alla fine',
+  /** 3. Un riferimento di annullamento che CAMBIA nel tempo. */
+  annullamentoMutevole:
+    'registra un riferimento di annullamento che cambia nel tempo: uno script '
+    + 'ne ha uno per istruzione, non uno fissato all\'ingresso',
+  /** 4. Leggere le operazioni in corso SENZA registrarne una propria. */
+  letturaOperazioniInCorso:
+    'legge le operazioni in corso senza registrarne una propria: registrarla '
+    + 'sotto lo stesso runId sovrascriverebbe proprio quella da annullare',
+  /** 5. Interrompere un'esecuzione che gira DENTRO CodeDB. */
+  interruzioneInProcesso:
+    'interrompe un\'esecuzione che gira nel processo CodeDB e non sul DBMS, '
+    + 'quindi non fermabile dal server del database',
+  /** 6. La categoria dell'audit si conosce solo ALLA FINE. */
+  categoriaAuditFinale:
+    'decide la categoria dell\'audit a fine esecuzione: su uno script '
+    + 'interpretato la si conosce solo eseguendo',
+  /** 7. La capability si verifica per SINGOLA ISTRUZIONE. */
+  capabilityPerIstruzione:
+    'verifica la capability per singola istruzione, non per evento',
+  /** 8. Opera su stato di sessione che non è una strategia. */
+  statoDiSessione:
+    'opera su stato della sessione che non è una strategia (registro degli '
+    + 'script in corso, depositi dei risultati)',
+};
+
+/**
+ * Quali punti usa ciascuna operazione lunga.
+ *
+ * Non è documentazione: `operazioneLunga()` la legge, e un evento che non
+ * compare qui — o che non usa alcun punto — non si registra.
+ */
+const OPERAZIONI_LUNGHE = {
+  'query:execute': [
+    'annullamentoMutevole',
+    'categoriaAuditFinale',
+    'interruzioneInProcesso',
+    'statoDiSessione',
+  ],
+  'script:execute': [
+    'rispostaAnticipata',
+    'avanzamento',
+    'annullamentoMutevole',
+    'interruzioneInProcesso',
+    'categoriaAuditFinale',
+    'capabilityPerIstruzione',
+    'statoDiSessione',
+  ],
+  'script:pause': ['statoDiSessione', 'interruzioneInProcesso'],
+  'script:resume': ['statoDiSessione'],
+  'script:state': ['statoDiSessione', 'letturaOperazioniInCorso'],
+  'script:result': ['statoDiSessione'],
+  'script:abort': ['statoDiSessione', 'interruzioneInProcesso'],
+  'query:cancel': ['letturaOperazioniInCorso', 'interruzioneInProcesso'],
+};
+
+/* ---------------------------------------------------------------------------
+ * LA FAMIGLIA AMMINISTRATIVA (ADR-0001, seconda delle tre).
+ *
+ * Ventisei eventi che non toccano alcuna strategia: vault, utenti, permessi,
+ * chiavi API, connessioni salvate, licenza, aggiornamenti, storico azioni. Non
+ * hanno un database come bersaglio, quindi la verifica della capability per
+ * database non li riguarda — hanno invece gate d'installazione e AUDIT, e
+ * l'audit una quindicina di loro se lo componeva a mano, riga per riga, con la
+ * stessa forma ripetuta:
+ *
+ *   auditUi({ event: 'users:create', category: 'write', status: 'ok',
+ *             op: 'Creazione sottoutente', ...auditActor(principal),
+ *             target: user.email });
+ *
+ * Scritto a mano vuol dire dimenticabile: aggiungere un evento amministrativo
+ * nuovo non lascia alcuna traccia se chi lo scrive non si ricorda di quella
+ * riga, e nessuno se ne accorge finché non serve leggere lo storico.
+ *
+ * Qui l'audit diventa una DICHIARAZIONE. Ogni evento amministrativo deve avere
+ * una voce in questa tabella, e `amministrativo()` rifiuta di registrare ciò
+ * che non vi compare: un evento nuovo o è tracciato, o dichiara perché non lo è.
+ *
+ * `tracciato: false` non è una scappatoia — è la voce degli eventi di sola
+ * LETTURA. Registrare nello storico ogni apertura di un elenco lo riempirebbe
+ * di righe che non raccontano nulla, seppellendo quelle che contano. Il motivo
+ * sta scritto accanto a ciascuno.
+ *
+ * I gate restano nei corpi degli handler, dove sono sempre stati: spostarli
+ * qui avrebbe cambiato semantica di sicurezza in un punto in cui «vale come
+ * prima» è precisamente ciò che il ticket chiede.
+ * ------------------------------------------------------------------------- */
+
+const NON_TRACCIATO = (motivo) => ({ tracciato: false, motivo });
+
+const EVENTI_AMMINISTRATIVI = {
+  // --- Vault ---------------------------------------------------------------
+  'vault:status': NON_TRACCIATO('lettura di stato, senza effetti'),
+  'vault:unlock': {
+    op: 'Sblocco del vault',
+    // L'esito conta: un tentativo fallito di sblocco è la cosa più
+    // interessante che questo evento possa produrre.
+    dettagli: (payload, res) => ({ esito: res && res.ok ? 'riuscito' : 'fallito' }),
+  },
+  'vault:reset': {
+    op: 'Azzeramento del vault (connessioni eliminate, nuova passphrase)',
+    dettagli: (payload, res) => ({ spostati: (res && res.spostati) || [] }),
+  },
+  'vault:setPassphrase': {
+    // L'etichetta dipende dall'esito: una migrazione del vault e' un'altra
+    // cosa da un semplice cambio, e leggere 'Cambio passphrase' dove il vault
+    // e' stato migrato nasconde proprio l'operazione piu' delicata.
+    op: (payload, res) => (res && res.migrated
+      ? 'Cambio passphrase (con migrazione del vault)'
+      : 'Cambio passphrase del vault'),
+  },
+
+  // --- Connessioni salvate -------------------------------------------------
+  'connections:list': NON_TRACCIATO('elenco, senza effetti'),
+  'connections:get': NON_TRACCIATO('lettura di una singola connessione, senza segreti'),
+  'connections:save': {
+    op: 'Salvataggio di una connessione',
+    bersaglio: (payload) => payload && (payload.name || payload.oldName),
+  },
+  'connections:delete': {
+    op: 'Eliminazione di una connessione salvata',
+    bersaglio: (payload) => payload && payload.name,
+  },
+  'connections:export': { op: 'Esportazione delle connessioni salvate' },
+  'connections:import': { op: 'Importazione di connessioni salvate' },
+
+  // --- Applicazione --------------------------------------------------------
+  'app:info': NON_TRACCIATO('informazioni statiche sulla versione'),
+  'app:updates:check': NON_TRACCIATO('interrogazione del canale aggiornamenti'),
+  'app:license': NON_TRACCIATO('testo della licenza'),
+  'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
+
+  // --- Identità e permessi -------------------------------------------------
+  'auth:me': NON_TRACCIATO('chi sono io, senza effetti'),
+  'roles:list': NON_TRACCIATO('elenco dei ruoli, senza effetti'),
+  'users:list': NON_TRACCIATO('elenco dei sottoutenti, senza effetti'),
+  'users:create': {
+    op: 'Creazione sottoutente',
+    bersaglio: (payload, res) => (res && res.user && res.user.email) || (payload && payload.email),
+  },
+  'users:update': {
+    op: 'Modifica sottoutente',
+    bersaglio: (payload) => payload && String(payload.id),
+  },
+  'users:delete': {
+    op: 'Eliminazione sottoutente',
+    bersaglio: (payload) => payload && String(payload.id),
+  },
+  'grants:list': NON_TRACCIATO('elenco dei permessi, senza effetti'),
+  'grants:set': {
+    op: 'Assegnazione permessi',
+    bersaglio: (payload) => payload && String(payload.subjectId),
+    dettagli: (payload) => ({ connection: payload && payload.connName, role: payload && payload.role }),
+  },
+  'grants:revoke': {
+    op: 'Revoca permessi',
+    bersaglio: (payload) => payload && String(payload.subjectId),
+    dettagli: (payload) => ({ connection: payload && String(payload.connName) }),
+  },
+  'apikeys:list': NON_TRACCIATO('elenco delle chiavi, senza segreti'),
+  'apikeys:create': {
+    op: 'Creazione API key',
+    bersaglio: (payload) => payload && String(payload.subjectId),
+    dettagli: (payload) => ({ label: payload && payload.label }),
+  },
+  'apikeys:revoke': {
+    op: 'Revoca API key',
+    bersaglio: (payload) => payload && String(payload.id),
+  },
+};
+
 const AUDIT_WRITES = {
   'db:create':             (p) => ({ coll: p.coll, op: 'Creazione database' }),
   'db:rename':             (p) => ({ newName: p.newName, op: 'Rinomina database' }),
@@ -1390,7 +1629,6 @@ const AUDIT_READS = {
   // metadati: è una lettura di dati quanto una find, e come tale va tracciata.
   // (`collection:relations` invece resta fuori, come db:schema: sono i soli
   // nomi dei vincoli, chiesti a ogni apertura di tabella.)
-  'relation:rows':        (p) => ({ coll: p.coll, op: 'Lettura righe riferite (chiave esterna)', filter: cutStr(p.colonna, 80) }),
 };
 
 // `isWriteSql` e `isWriteMongoPipeline` vivono in auth/capabilities.js: audit e
@@ -1430,28 +1668,20 @@ const SCRIPT_LIMITI = {
 // mandasse il client potrebbe farsi annullare le query altrui.
 const SERVER_ONLY_PAYLOAD_FIELDS = ['maxRows', 'opHandle'];
 
-// Operatori MongoDB che eseguono JavaScript lato server: vietati nel Query
-// Engine della UI (coerente col gateway MCP) per non trasformare una query in
-// esecuzione di codice arbitrario sul server del database. Scansione ricorsiva
-// della struttura già parsata (filtro o pipeline).
-const FORBIDDEN_MONGO_OPS = new Set(['$where', '$function', '$accumulator']);
-function assertNoServerJs(node) {
-  if (Array.isArray(node)) { for (const el of node) assertNoServerJs(el); return; }
-  if (node && typeof node === 'object') {
-    for (const key of Object.keys(node)) {
-      if (FORBIDDEN_MONGO_OPS.has(key)) {
-        throw new Error(`Operatore "${key}" non consentito nel Query Engine: l'esecuzione di JavaScript lato server è disabilitata.`);
-      }
-      assertNoServerJs(node[key]);
-    }
-  }
-}
-
-// Parse permissivo (solo per la scansione di sicurezza): non deve far fallire
-// l'operazione se il testo non è JSON puro (la strategia lo ri-parsa comunque).
-function safeParseForScan(text) {
-  try { return JSON.parse(String(text)); } catch { return null; }
-}
+// Gli operatori MongoDB che eseguono JavaScript lato server sono vietati anche
+// nel Query Engine della UI. La regola NON e' scritta qui: qui ce n'era una
+// copia, con un proprio elenco di operatori e un proprio messaggio, accanto a
+// quella autorevole di `auth/capabilities.js` e a una terza versione sotto
+// forma di espressione regolare sul testo di un messaggio d'errore. Tre
+// versioni della stessa regola sono tre occasioni di divergere.
+//
+// `testoIllegibile: 'ignora'` sostituisce il vecchio parse permissivo: quando
+// il testo non e' analizzabile, la scansione lascia correre perche' quel testo
+// verra' comunque riletto dal traduttore o dalla strategia, che lo rifiutera'
+// con il messaggio giusto. E' la stessa scelta di prima, ma dichiarata dal
+// chiamante invece che dedotta dal messaggio dell'eccezione.
+const vietaJsLatoServer = (code, label) =>
+  assertNoMongoServerJs(code, label, { testoIllegibile: 'ignora' });
 
 // Classifica un evento delegato: scrittura, lettura o non tracciato. Il ramo
 // collection:aggregate è ambiguo (nella griglia "SQL Raw"/pipeline può essere
@@ -1548,16 +1778,10 @@ function mongoScriptHost(session, runId, opHandle, run = null) {
   };
   // Gli operatori che eseguono JavaScript sul SERVER MongoDB restano vietati
   // anche negli script: l'interprete gira nel processo CodeDB, `$where` no.
-  const controlla = (testo) => {
-    if (!testo) return;
-    // Il payload dell'interprete porta stringhe EJSON, ma un chiamante futuro
-    // potrebbe passare l'oggetto già analizzato: senza questo ramo la JSON.parse
-    // fallirebbe e il controllo verrebbe saltato in silenzio.
-    if (typeof testo === 'object') { assertNoServerJs(testo); return; }
-    try { assertNoServerJs(JSON.parse(testo)); } catch (err) {
-      if (err && /\$where|\$function|\$accumulator/.test(err.message)) throw err;
-    }
-  };
+  // Il payload dell'interprete porta stringhe EJSON, ma un chiamante futuro
+  // potrebbe passare l'oggetto già analizzato: la definizione unica accetta
+  // entrambi, quindi non serve più distinguere qui.
+  const controlla = (testo) => vietaJsLatoServer(testo, 'Query MongoDB dello script');
 
   const metodi = {
     // Stessa regola dichiarata del gestore `query:execute`: i campi del server
@@ -1688,7 +1912,8 @@ async function eseguiSqlScritturaMongo(session, codeStr, targetDb, { runId, opHa
  * singola e il runner di script, che la invoca per ogni istruzione. Tenerla in
  * un solo posto è ciò che garantisce che sintassi shell, SQL→MQL, `USE`,
  * pipeline e SQL Raw si comportino IDENTICAMENTE dentro e fuori da uno script —
- * comprese le regole di sicurezza (`assertNoServerJs`, bersaglio non vuoto) e
+ * comprese le regole di sicurezza (divieto del JavaScript lato server,
+ * bersaglio non vuoto) e
  * il passaggio dal Proxy autorizzante, che vede una chiamata di strategia per
  * istruzione e ne decide la capability.
  *
@@ -1894,7 +2119,7 @@ async function executeQueryCode(session, payload) {
       if (codeStr.startsWith('[')) {
         // Pipeline MQL EJSON (scrittura solo con $out/$merge)
         if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-        assertNoServerJs(safeParseForScan(codeStr));
+        vietaJsLatoServer(codeStr, 'Pipeline MongoDB');
         if (isWriteMongoPipeline(codeStr)) { cat = 'write'; op = 'Pipeline di scrittura ($out/$merge)'; }
         else { op = 'Aggregazione (pipeline)'; }
         res = await executeWithReconnect(session, (strat) => strat.collectionAggregate(targetDb, targetColl, { pipeline: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
@@ -1908,7 +2133,7 @@ async function executeQueryCode(session, payload) {
           throw new Error('Filtro JSON MongoDB non valido: ' + e.message);
         }
         if (!targetColl) throw new Error('Seleziona una collezione dallo Schema Browser o apri un tab collezione.');
-        assertNoServerJs(parsed);
+        vietaJsLatoServer(parsed, 'Filtro MongoDB');
         op = 'Query di lettura (filtro MQL)';
         res = await executeWithReconnect(session, (strat) => strat.collectionFind(targetDb, targetColl, { filter: codeStr, maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
       } else {
@@ -1941,12 +2166,12 @@ async function executeQueryCode(session, payload) {
           if (!collName) throw new Error('Collezione non specificata nel comando.');
           queryColl = collName;
           if (plan.kind === 'aggregate') {
-            assertNoServerJs(plan.pipeline);
+            vietaJsLatoServer(plan.pipeline, 'Pipeline MongoDB');
             op = `Query di lettura (${planLabel} aggregate)`;
             res = await executeWithReconnect(session, (strat) =>
               strat.collectionAggregate(targetDb, collName, { pipeline: JSON.stringify(plan.pipeline), maxRows: QUERY_ENGINE_MAX_ROWS, runId, opHandle }));
           } else {
-            assertNoServerJs(plan.filter);
+            vietaJsLatoServer(plan.filter, 'Filtro MongoDB');
             op = `Query di lettura (${planLabel})`;
             res = await executeWithReconnect(session, (strat) =>
               strat.collectionFind(targetDb, collName, {
@@ -2399,6 +2624,43 @@ function normTabId(tabId) {
   return id || 'default';
 }
 
+/* ---------------------------------------------------------------------------
+ * IL CONTESTO DELLA SESSIONE SOCKET.
+ *
+ * Tutto ciò che un socket porta con sé — chi è l'utente, quali sessioni di
+ * database ha aperte, da quale indirizzo arriva — stava dentro una chiusura
+ * anonima di duemiladuecento righe, e per questo non esisteva alcun punto in
+ * cui sostituirlo. La conseguenza si vedeva nei test, ridotti a leggere
+ * server.js come TESTO e a bilanciare le graffe con un'espressione regolare: è
+ * così che è stato scoperto uno scambio fra due variabili omonime che uccideva
+ * l'intero esecutore di script a ogni invocazione, vissuto a lungo perché quel
+ * percorso non ha test.
+ *
+ * Ora il contesto è un ARGOMENTO. `registraEventi(ctx)` si può chiamare con un
+ * socket finto, sessioni finte e un principal finto, e da lì invocare qualunque
+ * handler senza aprire né un socket vero né una connessione a un database
+ * (vedi test/contesto-finto.js).
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Il contesto di un socket appena connesso.
+ *
+ * @param {import('socket.io').Socket} socket
+ * @returns {{ socket: object, ip: string, principal: object, sessions: Map }}
+ */
+function creaContestoSocket(socket) {
+  return {
+    socket,
+    ip: socket.handshake.address,
+    // Chi è l'utente di questo socket: risolto dal gate dell'handshake
+    // (io.use). Con RBAC spento è l'owner locale e nessun controllo ha effetto.
+    // È MUTABILE: `rivalidaPrincipal` lo sostituisce quando i grant cambiano.
+    principal: principalOf(socket),
+    /** @type {Map<string, { strategy: import('./db/DbStrategy'), tunnel: { close: () => void }|null }>} */
+    sessions: new Map(),
+  };
+}
+
 io.on('connection', (socket) => {
   const ip = socket.handshake.address;
   const currentSocketsForIp = ipConnections.get(ip) || 0;
@@ -2416,9 +2678,20 @@ io.on('connection', (socket) => {
   }
   ipConnections.set(ip, currentSocketsForIp + 1);
 
-  // Chi è l'utente di questo socket: risolto dal gate dell'handshake (io.use).
-  // Con RBAC spento è l'owner locale e nessun controllo ha effetto.
-  //
+  registraEventi(creaContestoSocket(socket));
+});
+
+/**
+ * Registra tutti gli eventi socket sul contesto dato.
+ *
+ * `ctx` è l'unica via da cui entrano socket, identità e sessioni: passarne uno
+ * costruito per la prova è ciò che rende invocabile un handler senza rete.
+ *
+ * @param {{ socket: object, ip: string, principal: object, sessions: Map }} ctx
+ */
+function registraEventi(ctx) {
+  const { socket, ip, sessions } = ctx;
+
   // `let` e non `const`: il principal viene RI-VALIDATO periodicamente (vedi
   // rivalidaPrincipal). Risolverlo una volta sola nell'handshake significava
   // che sospendere un utente, cambiargli la password, cancellarlo o revocargli
@@ -2428,7 +2701,11 @@ io.on('connection', (socket) => {
   // revoca è la cancellazione di una riga ed è immediata»: per la UI non lo
   // era. Il gateway MCP non ha mai avuto il problema perché risolve la API key
   // a ogni richiesta HTTP.
-  let principal = principalOf(socket);
+  //
+  // Viene SEMINATA dal contesto invece che risolta qui: è la sola differenza
+  // che serve perché un test possa dire chi è l'utente. Le due copie restano
+  // allineate da `rivalidaPrincipal`.
+  let principal = ctx.principal;
 
   /**
    * Ri-valida il principal del socket, con una cache breve.
@@ -2468,6 +2745,10 @@ io.on('connection', (socket) => {
     // Non solo "esiste ancora": anche i GRANT vengono riletti, quindi togliere
     // o restringere un permesso ha effetto entro la stessa finestra.
     principal = fresco;
+    // Il contesto è la fonte per chi lo riceve da fuori (i test, e le giunture
+    // dei ticket 17-19): lasciarlo indietro darebbe due identità diverse per lo
+    // stesso socket.
+    ctx.principal = fresco;
     // `socket.principal` è ciò che `disconnettiSocketDi` interroga: va tenuto
     // allineato, altrimenti la chiusura attiva cercherebbe un'identità vecchia.
     socket.principal = fresco;
@@ -2480,9 +2761,6 @@ io.on('connection', (socket) => {
     }
     return true;
   }
-
-  /** @type {Map<string, { strategy: import('./db/DbStrategy'), tunnel: { close: () => void }|null }>} */
-  const sessions = new Map();
 
   async function closeSession(tabId) {
     const sess = sessions.get(tabId);
@@ -2546,7 +2824,11 @@ io.on('connection', (socket) => {
         return;
       }
       try {
-        await fn(payload || {}, cb);
+        // Il contesto arriva all'handler come TERZO argomento. Gli handler
+        // storici lo ignorano — sono chiusure che vedono già socket, sessioni e
+        // principal — ma chi ne scrive uno nuovo, o chi lo sposta in una delle
+        // giunture dei ticket 17-19, lo riceve invece di doverselo catturare.
+        await fn(payload || {}, cb, ctx);
       } catch (err) {
         // `_ctx` (letto da errMsg): contesto attaccato all'errore da chi lo
         // conosce — `establishConnection` per host e porta, `delegate` per il
@@ -2628,6 +2910,100 @@ io.on('connection', (socket) => {
         if (runId && sess.inflight) sess.inflight.delete(runId);
       }
     });
+  }
+
+
+  /**
+   * Registra un evento AMMINISTRATIVO (ADR-0001, seconda famiglia).
+   *
+   * Fa una cosa sola, ed è quella che veniva dimenticata: scrive la voce di
+   * audit. L'handler resta scritto come prima — riceve payload e cb — ma non
+   * deve più comporre a mano `auditUi({...})`, e soprattutto non può più
+   * dimenticarsene: un evento senza voce nella tabella non si registra affatto,
+   * e l'errore arriva all'AVVIO, non il giorno in cui serve leggere lo storico.
+   *
+   * I gate d'installazione e le verifiche di amministrazione restano nei corpi
+   * degli handler, dove sono sempre stati.
+   */
+  function amministrativo(event, fn) {
+    const spec = EVENTI_AMMINISTRATIVI[event];
+    if (!spec) {
+      throw new Error(
+        `Evento amministrativo "${event}" non dichiarato in EVENTI_AMMINISTRATIVI. `
+        + 'Cosa fare: aggiungi una voce con l\'etichetta da scrivere nello storico, '
+        + 'oppure dichiara NON_TRACCIATO(motivo) se è una lettura senza effetti.'
+      );
+    }
+    safeOn(event, async (payload, cb) => {
+      // L'esito serve all'audit: si intercetta la risposta invece di chiedere
+      // agli handler di restituirla, così nessun corpo va riscritto.
+      let esito = null;
+      const cbTracciata = (res) => { esito = res; cb(res); };
+      try {
+        await fn(payload, cbTracciata);
+        scriviAuditAmministrativo(event, spec, payload, esito, null);
+      } catch (err) {
+        scriviAuditAmministrativo(event, spec, payload, null, err);
+        throw err;
+      }
+    });
+  }
+
+
+  /**
+   * Registra un'OPERAZIONE LUNGA (ADR-0001, terza famiglia).
+   *
+   * Non aggiunge comportamento: DICHIARA. L'evento deve comparire in
+   * `OPERAZIONI_LUNGHE` con almeno un punto di estensione, e ogni punto deve
+   * essere uno degli otto nominati. È l'unica cosa che impedisce a questa
+   * famiglia di diventare il cassetto dove finisce ciò che non si sa dove
+   * mettere: un evento che non usa nessuno degli otto non ha motivo di stare
+   * qui, e va spostato in una delle altre due giunture.
+   *
+   * Perché non fa altro: i corpi di questi handler sono lunghi e diversissimi
+   * fra loro — avanzamento, pause, depositi, interpreti — e una giuntura che
+   * provasse a governarli tutti diventerebbe l'interfaccia piena di parametri
+   * opzionali che ADR-0001 ha deciso di non costruire. Qui il valore è nel
+   * vincolo, non nel codice condiviso.
+   */
+  function operazioneLunga(event, fn) {
+    const punti = OPERAZIONI_LUNGHE[event];
+    if (!punti || !punti.length) {
+      throw new Error(
+        `Operazione lunga "${event}" non dichiarata in OPERAZIONI_LUNGHE. `
+        + 'Cosa fare: elenca i punti di estensione che usa fra gli otto di '
+        + 'PUNTI_ESTENSIONE. Se non ne usa nessuno non appartiene a questa '
+        + 'famiglia: registrala con delegate() se tocca una strategia, con '
+        + 'amministrativo() se non la tocca.'
+      );
+    }
+    const sconosciuti = punti.filter((p) => !PUNTI_ESTENSIONE[p]);
+    if (sconosciuti.length) {
+      throw new Error(
+        `Operazione lunga "${event}": punti di estensione sconosciuti `
+        + `(${sconosciuti.join(', ')}). Quelli previsti sono: `
+        + `${Object.keys(PUNTI_ESTENSIONE).join(', ')}.`
+      );
+    }
+    safeOn(event, fn);
+  }
+
+  /** La voce di audit di un evento amministrativo, composta in un posto solo. */
+  function scriviAuditAmministrativo(event, spec, payload, esito, errore) {
+    if (!spec.tracciato && spec.tracciato !== undefined) return;
+    try {
+      auditUi({
+        event,
+        category: 'write',
+        status: errore ? 'error' : 'ok',
+        op: typeof spec.op === 'function' ? spec.op(payload, esito) : (spec.op || event),
+        ...auditActor(principal),
+        client: ip || null,
+        ...(spec.bersaglio ? { target: spec.bersaglio(payload, esito) } : {}),
+        ...(spec.dettagli ? { details: spec.dettagli(payload, esito) } : {}),
+        ...(errore ? { error: errMsg(errore) } : {}),
+      });
+    } catch { /* audit best-effort: non deve mai disturbare l'operazione */ }
   }
 
   // --- Connection -----------------------------------------------------------
@@ -2762,7 +3138,7 @@ io.on('connection', (socket) => {
    * esatta di un'installazione raggiungibile in rete è un'informazione che non
    * c'è motivo di regalare a chi non è ancora entrato.
    */
-  safeOn('app:info', (_payload, cb) => {
+  amministrativo('app:info', (_payload, cb) => {
     cb({ ok: true, version: APP_VERSION, ...capacitaDesktop() });
   });
 
@@ -2779,7 +3155,7 @@ io.on('connection', (socket) => {
    * L'evento non installa nulla: apre i dialog nativi, dove l'utente decide se
    * scaricare e se riavviare.
    */
-  safeOn('app:updates:check', (_payload, cb) => {
+  amministrativo('app:updates:check', (_payload, cb) => {
     assertManage(principal);
     const ponte = ponteDesktop();
     if (!ponte) {
@@ -2803,13 +3179,13 @@ io.on('connection', (socket) => {
    * aggiornamento e dichiarerebbe il falso proprio nella schermata che serve a
    * dire il vero. Calcolato una volta sola e tenuto in cache.
    */
-  safeOn('app:license', (_payload, cb) => {
+  amministrativo('app:license', (_payload, cb) => {
     cb({ ok: true, ...datiLicenza() });
   });
 
   // --- Vault & Password ------------------------------------------------------
 
-  safeOn('vault:status', (_payload, cb) => {
+  amministrativo('vault:status', (_payload, cb) => {
     cb({
       ok: true,
       locked: encryptionKey === null,
@@ -2833,7 +3209,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  safeOn('vault:unlock', ({ passphrase }, cb) => {
+  amministrativo('vault:unlock', ({ passphrase }, cb) => {
     // Sbloccare il vault significa provare una passphrase globale dell'istanza:
     // riservato all'amministratore dell'account.
     assertManage(principal);
@@ -2865,7 +3241,7 @@ io.on('connection', (socket) => {
    * va detto senza giri di parole, ed è per questo che il client deve
    * dichiararlo esplicitamente con `confirm: true`.
    */
-  safeOn('vault:reset', ({ passphrase, confirm } = {}, cb) => {
+  amministrativo('vault:reset', ({ passphrase, confirm } = {}, cb) => {
     // Non `manage`: resetVault sposta il connections.ini condiviso E quelli di
     // OGNI owner, poi genera una DEK nuova — i segreti degli altri tenant
     // restano cifrati con una chiave che nessuno possiede più (CDB-A02).
@@ -2880,18 +3256,6 @@ io.on('connection', (socket) => {
 
     const res = resetVault(passphrase);
     if (!res.ok) throw new Error(res.error);
-
-    try {
-      auditUi({
-        event: 'vault:reset',
-        category: 'write',
-        op: 'Azzeramento del vault (connessioni eliminate, nuova passphrase)',
-        status: 'ok',
-        details: { spostati: res.spostati },
-        ...auditActor(principal),
-        client: socket.handshake.address || null,
-      });
-    } catch { /* audit best-effort */ }
 
     cb({
       ok: true,
@@ -2911,7 +3275,7 @@ io.on('connection', (socket) => {
    * passphrase attuale anche a vault già sbloccato: chi si siede a una sessione
    * lasciata aperta non deve poter cambiare la chiave dei segreti altrui.
    */
-  safeOn('vault:setPassphrase', ({ current, next } = {}, cb) => {
+  amministrativo('vault:setPassphrase', ({ current, next } = {}, cb) => {
     assertInstallAdmin(principal, 'cambiare la passphrase del vault');
 
     if (encryptionKey === null) {
@@ -2933,17 +3297,6 @@ io.on('connection', (socket) => {
     const res = changeVaultPassphrase(next);
     if (!res.ok) throw new Error(res.error);
 
-    try {
-      auditUi({
-        event: 'vault:setPassphrase',
-        category: 'write',
-        op: res.migrated ? 'Cambio passphrase (con migrazione del vault)' : 'Cambio passphrase del vault',
-        status: 'ok',
-        ...auditActor(principal),
-        client: socket.handshake.address || null,
-      });
-    } catch { /* audit best-effort */ }
-
     cb({
       ok: true,
       migrated: !!res.migrated,
@@ -2957,7 +3310,7 @@ io.on('connection', (socket) => {
   // --- Connessioni salvate ----------------------------------------------------
   // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
-  safeOn('connections:list', (_payload, cb) => {
+  amministrativo('connections:list', (_payload, cb) => {
     const all = loadConnections(principal.ownerId);
     // Un sottoutente vede soltanto le connessioni su cui ha un grant.
     const visible = allowedConnections(principal, Object.keys(all));
@@ -2977,7 +3330,7 @@ io.on('connection', (socket) => {
   //   · root (RBAC spento o owner locale) → tutto;
   //   · owner                             → le azioni del proprio tenant;
   //   · sottoutente                       → soltanto le proprie.
-  safeOn('audit:list', (payload, cb) => {
+  amministrativo('audit:list', (payload, cb) => {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
     const offset = Math.max(parseInt(payload.offset, 10) || 0, 0);
     const visibility = principal.root
@@ -3158,7 +3511,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  safeOn('connections:delete', async ({ name }, cb) =>
+  amministrativo('connections:delete', async ({ name }, cb) =>
     withConnectionAclLock(principal.ownerId, async () => {
     assertManage(principal);
     const conns = loadConnections(principal.ownerId);
@@ -3173,7 +3526,7 @@ io.on('connection', (socket) => {
 
   // Campi di una connessione salvata per popolarne il form di modifica.
   // I segreti non vengono mai rimandati al browser: si segnala solo se esistono.
-  safeOn('connections:get', ({ name }, cb) => {
+  amministrativo('connections:get', ({ name }, cb) => {
     if (!canUseConnection(principal, String(name || ''))) {
       throw new Error(`Permesso negato: nessun accesso alla connessione "${name}".`);
     }
@@ -3194,7 +3547,7 @@ io.on('connection', (socket) => {
   // Crea o aggiorna una connessione salvata senza connettersi. oldName, se
   // diverso da name, rinomina la connessione. Password vuota nel form =
   // mantieni quella già salvata.
-  safeOn('connections:save', async ({ name, oldName, cfg }, cb) =>
+  amministrativo('connections:save', async ({ name, oldName, cfg }, cb) =>
     withConnectionAclLock(principal.ownerId, async () => {
     assertManage(principal);
     name = String(name || '').trim();
@@ -3230,7 +3583,7 @@ io.on('connection', (socket) => {
   // senza mai esporre i segreti in chiaro. Vuota = passphrase di questa
   // installazione (comportamento storico). I segreti sono comunque decifrati in
   // memoria da loadConnections e ri-cifrati qui, mai trasmessi in chiaro.
-  safeOn('connections:export', ({ passphrase } = {}, cb) => {
+  amministrativo('connections:export', ({ passphrase } = {}, cb) => {
     assertManage(principal);
     const conns = loadConnections(principal.ownerId);
     if (!Object.keys(conns).length) throw new Error('Nessuna connessione salvata da esportare.');
@@ -3267,7 +3620,7 @@ io.on('connection', (socket) => {
 
   // Importa connessioni da un file .ini: le sezioni con lo stesso nome di una
   // connessione esistente vengono sovrascritte, le altre aggiunte.
-  safeOn('connections:import', ({ ini, passphrase } = {}, cb) => {
+  amministrativo('connections:import', ({ ini, passphrase } = {}, cb) => {
     assertManage(principal);
     const incoming = parseIni(String(ini || ''));
     // Intestazione di un file esportato con una passphrase scelta: dice come
@@ -3343,18 +3696,18 @@ io.on('connection', (socket) => {
     return requireStore();
   }
 
-  safeOn('auth:me', (_payload, cb) => {
+  amministrativo('auth:me', (_payload, cb) => {
     cb({ ok: true, user: principalView(principal) });
   });
 
-  safeOn('roles:list', async (_payload, cb) => {
+  amministrativo('roles:list', async (_payload, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const roles = await store.listRoles(principal.ownerId);
     cb({ ok: true, roles: roles.map((r) => ({ name: r.name, capabilities: r.capabilities, builtIn: !!r.builtIn })) });
   });
 
-  safeOn('users:list', async (_payload, cb) => {
+  amministrativo('users:list', async (_payload, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const [users, limits] = await Promise.all([
@@ -3368,7 +3721,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  safeOn('users:create', async ({ email, password, displayName }, cb) => {
+  amministrativo('users:create', async ({ email, password, displayName }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const limits = await entitlements.getLimits(principal.ownerId);
@@ -3378,38 +3731,35 @@ io.on('connection', (socket) => {
     }
     const user = await store.createSubUser({ ownerId: principal.ownerId, email, password, displayName });
     await entitlements.reportUsage(principal.ownerId, 'subusers', current + 1).catch(() => {});
-    auditUi({ event: 'users:create', category: 'write', status: 'ok', op: 'Creazione sottoutente', ...auditActor(principal), target: user.email });
     cb({ ok: true, user: { id: user._id, email: user.email, displayName: user.displayName, status: user.status } });
   });
 
-  safeOn('users:update', async ({ id, status, displayName, password }, cb) => {
+  amministrativo('users:update', async ({ id, status, displayName, password }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const esito = await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
     // Sospensione o cambio password: le sessioni sono state cancellate, ma un
     // socket già connesso sopravviverebbe alla riga cancellata (CDB-A13).
     if (esito.revocate) disconnettiSocketDi(id, 'sospensione o cambio password');
-    auditUi({ event: 'users:update', category: 'write', status: 'ok', op: 'Modifica sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
-  safeOn('users:delete', async ({ id }, cb) => {
+  amministrativo('users:delete', async ({ id }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     await store.deleteSubUser(principal.ownerId, id);
     disconnettiSocketDi(id, 'utente eliminato');
-    auditUi({ event: 'users:delete', category: 'write', status: 'ok', op: 'Eliminazione sottoutente', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
-  safeOn('grants:list', async (_payload, cb) => {
+  amministrativo('grants:list', async (_payload, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const grants = await store.listGrants(principal.ownerId);
     cb({ ok: true, grants: grants.map((g) => ({ subjectId: g.subjectId, connName: g.connName, role: g.role, scope: g.scope || null })) });
   });
 
-  safeOn('grants:set', async ({ subjectId, connName, role, scope }, cb) => {
+  amministrativo('grants:set', async ({ subjectId, connName, role, scope }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const grant = await withConnectionAclLock(principal.ownerId, async () => {
@@ -3427,20 +3777,18 @@ io.on('connection', (socket) => {
     // Chiudere le sessioni del soggetto rende effettiva subito anche una
     // restrizione; altrimenti resterebbe una finestra fino alla rivalidazione.
     disconnettiSocketDi(subjectId, 'permessi aggiornati');
-    auditUi({ event: 'grants:set', category: 'write', status: 'ok', op: 'Assegnazione permessi', ...auditActor(principal), target: String(subjectId), connection: grant.connName, role: grant.role });
     cb({ ok: true, grant: { subjectId: grant.subjectId, connName: grant.connName, role: grant.role, scope: grant.scope } });
   });
 
-  safeOn('grants:revoke', async ({ subjectId, connName }, cb) => {
+  amministrativo('grants:revoke', async ({ subjectId, connName }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const res = await store.revokeGrant(principal.ownerId, subjectId, connName);
     disconnettiSocketDi(subjectId, 'permesso revocato');
-    auditUi({ event: 'grants:revoke', category: 'write', status: 'ok', op: 'Revoca permessi', ...auditActor(principal), target: String(subjectId), connection: String(connName) });
     cb({ ok: true, ...res });
   });
 
-  safeOn('apikeys:list', async (_payload, cb) => {
+  amministrativo('apikeys:list', async (_payload, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const keys = await store.listApiKeys(principal.ownerId);
@@ -3451,7 +3799,7 @@ io.on('connection', (socket) => {
   });
 
   // La chiave in chiaro esiste solo in questa risposta: in DB ne resta l'hash.
-  safeOn('apikeys:create', async ({ subjectId, label, connScope }, cb) => {
+  amministrativo('apikeys:create', async ({ subjectId, label, connScope }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     const created = await store.createApiKey({
@@ -3460,15 +3808,13 @@ io.on('connection', (socket) => {
       label,
       connScope,
     });
-    auditUi({ event: 'apikeys:create', category: 'write', status: 'ok', op: 'Creazione API key', ...auditActor(principal), target: created.subjectId, label: created.label });
     cb({ ok: true, key: created.key, apiKey: { id: created._id, subjectId: created.subjectId, label: created.label, prefix: created.prefix, connScope: created.connScope } });
   });
 
-  safeOn('apikeys:revoke', async ({ id }, cb) => {
+  amministrativo('apikeys:revoke', async ({ id }, cb) => {
     const store = requireRbac();
     assertManage(principal);
     await store.revokeApiKey(principal.ownerId, id);
-    auditUi({ event: 'apikeys:revoke', category: 'write', status: 'ok', op: 'Revoca API key', ...auditActor(principal), target: String(id) });
     cb({ ok: true });
   });
 
@@ -3516,11 +3862,10 @@ io.on('connection', (socket) => {
   delegate('collection:stats', (strategy, { db, coll }) => strategy.collectionStats(db, coll));
   // Chiavi esterne uscenti dalla tabella aperta e righe della tabella riferita:
   // alimentano il pannello 🔗 della griglia (doppio clic su una cella collegata).
-  // `relation:rows` riceve db/coll della tabella RIFERITA, che su MySQL e
-  // PostgreSQL può stare in un altro database/schema — ed è quindi il bersaglio
-  // giusto su cui far valere lo scope dei permessi.
+  // Le RIGHE della tabella riferita non hanno più un evento proprio: il
+  // pannello le chiede con `collection:find` e un filtro strutturato, che è la
+  // stessa via della griglia (ticket 22-24).
   delegate('collection:relations', async (strategy, { db, coll }) => ({ relazioni: await strategy.columnRelations(db, coll) }));
-  delegate('relation:rows', (strategy, p) => strategy.relatedRows(p.db, p.coll, p));
   delegate('collection:find', (strategy, p) => strategy.collectionFind(p.db, p.coll, p));
   // Conteggio totale disaccoppiato: la griglia carica prima i documenti
   // (total = null) e chiede il conteggio a parte, così non aspetta la scansione
@@ -3546,7 +3891,7 @@ io.on('connection', (socket) => {
   delegate('collection:deleteMany', (strategy, p) => strategy.collectionDeleteMany(p.db, p.coll, p));
 
   // --- Esecutore dinamico Query & Virtual JOINs -------------------------------
-  safeOn('query:execute', async (payload, cb) => {
+  operazioneLunga('query:execute', async (payload, cb) => {
     const tabId = normTabId(payload.tabId);
     const session = sessions.get(tabId);
     if (!session || !session.strategy) {
@@ -3724,7 +4069,7 @@ io.on('connection', (socket) => {
     };
   }
 
-  safeOn('script:execute', async (payload, cb) => {
+  operazioneLunga('script:execute', async (payload, cb) => {
     const tabId = normTabId(payload.tabId);
     const session = sessions.get(tabId);
     if (!session || !session.strategy) {
@@ -3859,7 +4204,7 @@ io.on('connection', (socket) => {
     );
   }
 
-  safeOn('script:pause', async (payload, cb) => {
+  operazioneLunga('script:pause', async (payload, cb) => {
     const session = sessions.get(normTabId(payload.tabId));
     const run = session && session.scripts && session.scripts.get(String(payload.runId || ''));
     if (!run) return cb({ ok: true, paused: false });
@@ -3886,7 +4231,7 @@ io.on('connection', (socket) => {
     cb({ ok: true, paused, cancelled, stato: run.state() });
   });
 
-  safeOn('script:resume', async (payload, cb) => {
+  operazioneLunga('script:resume', async (payload, cb) => {
     const tabId = normTabId(payload.tabId);
     const session = sessions.get(tabId);
     if (!session || !session.strategy) {
@@ -3905,7 +4250,7 @@ io.on('connection', (socket) => {
   });
 
   // Stato di un run (ripristino della UI dopo un F5 o un cambio di tab).
-  safeOn('script:state', async (payload, cb) => {
+  operazioneLunga('script:state', async (payload, cb) => {
     const session = sessions.get(normTabId(payload.tabId));
     const runs = session && session.scripts;
     if (!runs) return cb({ ok: true, scripts: [] });
@@ -3925,7 +4270,7 @@ io.on('connection', (socket) => {
    * evento legge solo quello che serve, e uno script con cinquanta SELECT non
    * spedisce cinquanta result set a chi ne guarderà uno.
    * ------------------------------------------------------------------------ */
-  safeOn('script:result', async (payload, cb) => {
+  operazioneLunga('script:result', async (payload, cb) => {
     const session = sessions.get(normTabId(payload.tabId));
     if (!session) throw new Error('Nessuna connessione attiva al database per questo tab.');
     const deposito = depositiOf(session).get(String(payload.runId || ''));
@@ -3936,7 +4281,7 @@ io.on('connection', (socket) => {
     cb({ ok: true, ...scheda });
   });
 
-  safeOn('script:abort', async (payload, cb) => {
+  operazioneLunga('script:abort', async (payload, cb) => {
     const session = sessions.get(normTabId(payload.tabId));
     const runs = session && session.scripts;
     const run = runs && runs.get(String(payload.runId || ''));
@@ -3952,7 +4297,7 @@ io.on('connection', (socket) => {
   });
 
 
-  safeOn('query:cancel', async (payload, cb) => {
+  operazioneLunga('query:cancel', async (payload, cb) => {
     const tabId = normTabId(payload.tabId);
     const session = sessions.get(tabId);
     if (!session || !session.strategy || !session.inflight) {
@@ -4035,46 +4380,55 @@ io.on('connection', (socket) => {
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde
   // semplicemente il badge LIVE.
 
-  safeOn('collection:watch', ({ db, coll, tabId }, cb) => {
-    const tab = normTabId(tabId);
-    const sess = sessions.get(tab);
-    if (!sess) {
-      cb({ ok: false, error: errMsg('Nessuna connessione attiva al database.') });
-      return;
-    }
+  /* -------------------------------------------------------------------------
+   * I quattro eventi di osservazione passano dalla giuntura dei dati.
+   *
+   * Sono i quattro SOLI candidati puri fra i quarantotto eventi registrati per
+   * la via generica: gli altri quarantaquattro hanno un motivo che regge, e la
+   * decisione di non ricondurli tutti dentro è registrata in ADR-0001.
+   *
+   * Rifacevano a mano la ricerca della sessione, con lo stesso messaggio
+   * d'errore copiato quattro volte. Passando da `delegate` guadagnano la
+   * RICONNESSIONE AUTOMATICA, che non avevano: mettere in osservazione una
+   * collezione su una connessione caduta non riprovava, e l'osservazione
+   * restava spenta senza che nulla lo dicesse.
+   *
+   * Due difetti chiusi qui, entrambi sui due eventi che TOLGONO l'osservazione:
+   * non avevano una capability associata (sotto la giuntura sarebbero stati
+   * negati a un sottoutente) e non rispondevano affatto al client, che restava
+   * in attesa di un ack che non arrivava mai.
+   * ---------------------------------------------------------------------- */
+
+  delegate('collection:watch', (strategy, p) => {
     // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
-    sess.strategy.watch(db, coll, {
-      onChange: (change) => socket.emit('collection:changed', { tabId: tab, db, coll, ...change }),
-      onUnavailable: () => socket.emit('watch:unavailable', { tabId: tab, db, coll }),
+    const tab = normTabId(p.tabId);
+    strategy.watch(p.db, p.coll, {
+      onChange: (change) => socket.emit('collection:changed', { tabId: tab, db: p.db, coll: p.coll, ...change }),
+      onUnavailable: () => socket.emit('watch:unavailable', { tabId: tab, db: p.db, coll: p.coll }),
     });
-    cb({ ok: true });
+    return {};
   });
 
-  safeOn('collection:unwatch', (payload) => {
-    const sess = sessions.get(normTabId(payload.tabId));
-    if (sess) sess.strategy.unwatch();
+  delegate('collection:unwatch', (strategy) => {
+    strategy.unwatch();
+    return {};
   });
 
   // Watch dello schema (database/collection creati, rinominati o eliminati):
   // dove il change stream non c'è (MySQL, Mongo standalone) arriva subito
   // schema:unavailable e il frontend ripiega sul polling della sidebar.
-  safeOn('schema:watch', (payload, cb) => {
-    const tabId = normTabId(payload.tabId);
-    const sess = sessions.get(tabId);
-    if (!sess) {
-      cb({ ok: false, error: errMsg('Nessuna connessione attiva al database.') });
-      return;
-    }
-    sess.strategy.watchSchema({
+  delegate('schema:watch', (strategy, p) => {
+    const tabId = normTabId(p.tabId);
+    strategy.watchSchema({
       onChange: (change) => socket.emit('schema:changed', { tabId, ...change }),
       onUnavailable: () => socket.emit('schema:unavailable', { tabId }),
     });
-    cb({ ok: true });
+    return {};
   });
 
-  safeOn('schema:unwatch', (payload) => {
-    const sess = sessions.get(normTabId(payload.tabId));
-    if (sess) sess.strategy.unwatchSchema();
+  delegate('schema:unwatch', (strategy) => {
+    strategy.unwatchSchema();
+    return {};
   });
 
   // --- Operazioni Backup & Restore -------------------------------------------
@@ -4278,7 +4632,7 @@ io.on('connection', (socket) => {
       ipConnections.delete(ip);
     }
   });
-});
+}
 
 /* ---------------------------------------------------------------------------
  * Lifecycle del Processo, Graceful Shutdown & Gestione Eccezioni Globali
@@ -4618,4 +4972,11 @@ if (require.main === module) {
 // `executeQueryCode` è esportata per i test: è il chiamante vero della regola sui
 // campi riservati del payload (db/payloadEsecuzione.js) e provarla non deve
 // richiedere un socket né un database.
-module.exports = { executeQueryCode, app, server, io, gracefulShutdown, registerGlobalExceptionHandlers, startServer, makeConnectLocks };
+module.exports = {
+  executeQueryCode, app, server, io, gracefulShutdown, registerGlobalExceptionHandlers,
+  startServer, makeConnectLocks,
+  // La giuntura degli eventi socket e la fabbrica del suo contesto: esportate
+  // perché un test possa registrarle su un socket finto invece di aprirne uno
+  // vero (vedi test/contesto-finto.js).
+  registraEventi, creaContestoSocket,
+};

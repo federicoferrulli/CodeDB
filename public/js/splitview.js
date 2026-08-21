@@ -4,6 +4,8 @@ import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
+// Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
 import { openInsertDocForContext } from './insert.js';
 import {
   creaAlbero, inserisci, rimuovi, trascina, pareggia as pareggiaAlbero,
@@ -975,26 +977,18 @@ export function runPaneQuery(paneId, opts = {}) {
   p.error = null;
   updatePaneUI(paneId);
 
-  // Campo vuoto in modalità aggregate/SQL Raw: non è una query, è la vista di
-  // default → `find` senza filtro (vedi `modoEffettivo` in grid.js). Prima si
-  // mandava al database il letterale `'[]'`, che su MySQL/PostgreSQL è testo
-  // SQL e tornava indietro come errore di sintassi.
   const vuoto = !(p.filter || '').trim();
-  const modo = p.queryMode === 'aggregate' && vuoto ? 'find' : p.queryMode;
-  const payload = modo === 'aggregate'
-    ? { db: p.db, coll: p.coll, pipeline: p.filter }
-    : {
-        db: p.db, coll: p.coll,
-        filter: vuoto ? '' : p.filter,
-        // In aggregate il campo ordinamento è nascosto ma conserva il testo di
-        // prima: ricadendo su find non va applicato di nascosto.
-        sort: p.queryMode === 'aggregate' ? '' : p.sort,
-        limit: p.limit, skip: p.skip,
-      };
+  p.queryMode = 'find';
+  const payload = {
+    db: p.db, coll: p.coll,
+    filter: vuoto ? '' : p.filter,
+    sort: p.sort,
+    limit: p.limit, skip: p.skip,
+  };
 
   if (opts.auto) payload._bg = true;
 
-  return emitPaneQuery(p.tabId, `collection:${modo}`, payload)
+  return emitPaneQuery(p.tabId, 'collection:find', payload)
     .then((res) => {
       p.docs = res.docs || [];
       p.columns = res.columns || [];
@@ -1300,12 +1294,8 @@ function createPaneElement(paneId) {
     </div>
 
     <div class="split-pane-toolbar">
-      <select class="pane-mode-select" aria-label="Modalità di interrogazione">
-        <option value="find">find</option>
-        <option value="aggregate">${isSql ? 'SQL Raw' : 'aggregate'}</option>
-      </select>
       <input type="text" class="pane-filter-input" placeholder="${isSql ? 'Clausola WHERE...' : 'Filtro JSON...'}" value="${esc(p.filter)}" spellcheck="false" aria-label="Filtro" />
-      <input type="text" class="pane-sort-input ${p.queryMode === 'aggregate' ? 'hidden' : ''}" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" aria-label="Ordinamento" />
+      <input type="text" class="pane-sort-input" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" aria-label="Ordinamento" />
       <button type="button" class="pane-run-btn primary">▶ Esegui</button>
       <button type="button" class="pane-insert-btn ghost" title="${isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento'}">${isSql ? '+ Riga' : '+ Documento'}</button>
       <button type="button" class="pane-bulk-delete-btn danger hidden" title="Elimina elementi selezionati">🗑 Elimina (0)</button>
@@ -1389,14 +1379,7 @@ function createPaneElement(paneId) {
 
   const filterInput = paneEl.querySelector('.pane-filter-input');
   const sortInput = paneEl.querySelector('.pane-sort-input');
-  const modeSelect = paneEl.querySelector('.pane-mode-select');
-
-  modeSelect.value = p.queryMode;
-  modeSelect.addEventListener('change', () => {
-    p.queryMode = modeSelect.value;
-    sortInput.classList.toggle('hidden', p.queryMode === 'aggregate');
-    runPaneQuery(paneId);
-  });
+  p.queryMode = 'find';
 
   filterInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -1543,6 +1526,38 @@ function fetchCollectionsForPane(paneId, dbName) {
   return pr;
 }
 
+/* ---------------------------------------------------------------------------
+ * La griglia di un riquadro.
+ *
+ * Era la TERZA copia della griglia, ed era quella che faceva MENO delle altre
+ * due: disegnava tutte le righe in una volta, quante che fossero, e chi apriva
+ * una Split-View su una tabella grande non veniva avvisato di cio' a cui stava
+ * rinunciando. Ora il corpo lo scrive il modulo comune (griglia.js) e la
+ * virtualizzazione c'e'.
+ *
+ * Le capacita' sono DICHIARATE, ed e' il punto: quelle spente qui sotto sono
+ * l'inventario di cio' che un riquadro ancora non sa fare, non un silenzio.
+ * ------------------------------------------------------------------------- */
+
+const ALTEZZA_RIGA_RIQUADRO = 34;
+const OVERSCAN_RIQUADRO = 6;
+
+const CAPACITA_RIQUADRO = capacita({
+  virtualizzazione: true,
+  selezioneRighe: true,
+  modificaInline: true,
+  // Spente, e dichiarate: selezione di celle, scorrimento automatico ai bordi,
+  // pannello delle chiavi esterne e geometrie vivono in moduli agganciati a
+  // `#grid` e allo `state` del tab attivo, mentre un riquadro ha un proprio
+  // contenitore e propri dati. Accenderle richiede di parametrizzare quei
+  // moduli sul contenitore e sulla sorgente delle righe.
+  selezioneCelle: false,
+  scorrimentoAiBordi: false,
+  chiaviEsterne: false,
+  geometrie: false,
+  paginazioneAChiave: false,
+});
+
 function updatePaneUI(paneId) {
   const paneEl = document.querySelector(`.split-pane[data-pane-id="${paneId}"]`);
   if (!paneEl) return;
@@ -1594,7 +1609,7 @@ function updatePaneUI(paneId) {
     let currentSort = {};
     try { currentSort = JSON.parse(p.sort || '{}'); } catch { /* ignore */ }
 
-    const canSelect = p.queryMode !== 'aggregate';
+    const canSelect = true;
     const hasIdDocs = p.docs.some((d) => '_id' in d);
 
     const visibleIds = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
@@ -1660,7 +1675,11 @@ function updatePaneUI(paneId) {
 
     thead.appendChild(trHead);
 
-    p.docs.forEach((doc, idx) => {
+    // Il disegno di UNA riga. La finestra visibile e gli spaziatori li mette il
+    // modulo comune (griglia.js), lo stesso della vista Dati e della tab ⚡:
+    // qui c'era la TERZA copia della griglia, ed era quella che faceva meno di
+    // tutte — disegnava tutte le righe in una volta, quante che fossero.
+    const disegnaRigaRiquadro = (doc, idx) => {
       const tr = document.createElement('tr');
 
       const numTd = document.createElement('td');
@@ -1735,8 +1754,42 @@ function updatePaneUI(paneId) {
         tr.appendChild(td);
       });
 
-      tbody.appendChild(tr);
+      return tr;
+    };
+
+    // Colonne dello spaziatore: numero di riga + eventuale casella + eventuali
+    // azioni + le colonne dei dati.
+    const colonneTotali = 1 + (canSelect && hasIdDocs ? 1 : 0) + (hasIdDocs ? 1 : 0) + cols.length;
+    const contenitore = paneEl.querySelector('.pane-grid-wrap');
+    const finestra = vaVirtualizzata(p.docs.length, CAPACITA_RIQUADRO)
+      ? finestraVirtuale({
+        scrollTop: (contenitore && contenitore.scrollTop) || 0,
+        altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
+        altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
+        righeTotali: p.docs.length,
+        overscan: OVERSCAN_RIQUADRO,
+      })
+      : null;
+
+    disegnaCorpo({
+      tbody,
+      righe: p.docs,
+      disegnaRiga: disegnaRigaRiquadro,
+      finestra,
+      colonneTotali,
     });
+
+    // Lo scorrimento ridisegna la finestra. Si aggancia una volta sola per
+    // riquadro: `updatePaneUI` viene richiamata a ogni pagina e a ogni
+    // modifica, e un secondo ascoltatore raddoppierebbe il lavoro a ogni giro.
+    if (finestra && contenitore && !contenitore.dataset.vscroll) {
+      contenitore.dataset.vscroll = '1';
+      let raf = 0;
+      contenitore.addEventListener('scroll', () => {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(() => updatePaneUI(paneId));
+      });
+    }
   }
 
   const pageInfo = paneEl.querySelector('.pane-page-info');

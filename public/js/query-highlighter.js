@@ -5,33 +5,12 @@
  * Supporta un set esaustivo di keyword SQL (DML, DDL, DCL, TCL, Tipi, Funzioni), MQL (JSON) e MongoShell.
  */
 
-// Keyword SQL (DML, DDL, TCL, DCL, Clausole, Operatori)
-const SQL_KEYWORDS = new Set([
-  // Query & Data Manipulation (DML)
-  'SELECT', 'FROM', 'WHERE', 'GROUP', 'BY', 'ORDER', 'HAVING', 'LIMIT', 'OFFSET', 'TOP',
-  'WITH', 'RECURSIVE', 'WINDOW', 'OVER', 'PARTITION', 'RANGE', 'ROWS', 'UNBOUNDED',
-  'PRECEDING', 'FOLLOWING', 'CURRENT', 'ROW', 'FOR', 'SHARE', 'FETCH', 'FIRST', 'NEXT', 'ONLY',
-  // Joins
-  'JOIN', 'INNER', 'LEFT', 'RIGHT', 'FULL', 'OUTER', 'CROSS', 'NATURAL', 'STRAIGHT_JOIN', 'ON', 'USING',
-  // Data Modification
-  'INSERT', 'INTO', 'VALUES', 'VALUE', 'UPDATE', 'SET', 'DELETE', 'REPLACE', 'UPSERT', 'MERGE', 'MATCHED',
-  // Data Definition (DDL)
-  'CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME', 'TABLE', 'DATABASE', 'SCHEMA', 'VIEW',
-  'INDEX', 'UNIQUE', 'COLUMN', 'ADD', 'MODIFY', 'CHANGE', 'CONSTRAINT', 'FOREIGN', 'REFERENCES',
-  'CASCADE', 'RESTRICT', 'CHECK', 'DEFAULT', 'AUTO_INCREMENT', 'PRIMARY', 'KEY', 'ENGINE', 'CHARSET', 'COLLATE',
-  // TCL / DCL / Security
-  'COMMIT', 'ROLLBACK', 'TRANSACTION', 'BEGIN', 'START', 'SAVEPOINT', 'LOCK', 'SHARED',
-  'EXCLUSIVE', 'GRANT', 'REVOKE', 'PRIVILEGES',
-  // Logic & Conditional
-  'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'IF', 'EXISTS',
-  // Set & Comparison Operators
-  'AND', 'OR', 'NOT', 'IN', 'LIKE', 'ILIKE', 'REGEXP', 'RLIKE', 'IS', 'NULL', 'BETWEEN',
-  'UNION', 'INTERSECT', 'EXCEPT', 'MINUS', 'ALL', 'ANY', 'SOME', 'DISTINCT', 'AS', 'ASC', 'DESC',
-  'NULLS', 'LAST',
-  // Statements & Utility
-  'USE', 'EXPLAIN', 'ANALYZE', 'DESCRIBE', 'DESC', 'SHOW', 'STATUS', 'VARIABLES', 'CALL',
-  'EXEC', 'EXECUTE', 'PREPARE', 'DEALLOCATE', 'DUPLICATE', 'IGNORE'
-]);
+// Le parole riservate SQL stanno nel modulo della quotatura: è lì che
+// sbagliarle rompe qualcosa (un nome di colonna `order` scritto nudo è un
+// errore di sintassi), qui al massimo cambierebbe un colore. Si ri-esportano in
+// fondo insieme agli altri vocabolari, perché è da qui che i chiamanti le
+// prendono da sempre.
+import { SQL_KEYWORDS } from './identificatori.mjs';
 
 // Tipi di dati SQL
 const SQL_TYPES = new Set([

@@ -3,6 +3,9 @@
 const MongoDbStrategy = require('./MongoDbStrategy');
 const MySqlStrategy = require('./MySqlStrategy');
 const PostgreSqlStrategy = require('./PostgreSqlStrategy');
+// I tetti su righe, byte e tempo non sono cosa dell'adattatore: li impone la
+// giuntura, avvolgendo l'esecuzione (vedi db/tetti.js).
+const { conTetti } = require('./tetti');
 
 const STRATEGIES = {
   mongodb: MongoDbStrategy,
@@ -25,7 +28,10 @@ function getStrategy(dbType) {
   const key = String(dbType || 'mongodb').trim().toLowerCase();
   const Strategy = STRATEGIES[key];
   if (!Strategy) throw new Error(`Tipo di database non supportato: "${dbType}"`);
-  return new Strategy();
+  // La strategia esce di qui gia' limitata: e' l'unico punto in cui tutte
+  // vengono create, quindi e' il punto in cui un motore aggiunto in futuro
+  // nasce limitato senza doversene ricordare.
+  return conTetti(new Strategy());
 }
 
 function defaultPort(dbType) {

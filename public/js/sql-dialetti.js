@@ -21,84 +21,21 @@
  * da solo.
  */
 
-import { SQL_KEYWORDS } from './query-highlighter.js';
-
 /* ==========================================================================
  * Quoting degli identificatori
+ *
+ * La regola non vive qui: vive in `identificatori.mjs`, l'unico modulo che
+ * server e browser condividono davvero. Questo file la **ri-esporta** perché
+ * era il posto da cui i chiamanti del frontend l'avevano sempre importata, e
+ * spostare la conoscenza non è un buon motivo per rompere sette import.
  * ========================================================================== */
 
-/**
- * Il carattere con cui ogni motore delimita un identificatore.
- *
- * Su MongoDB il carattere NON è il doppio apice: l'SQL passa da
- * `db/SqlToMql.js`, il cui tokenizzatore tratta `"…"` come una **stringa** e
- * riconosce come identificatori quotati solo `` `…` `` e `[…]`. Scriverci
- * `"Prova"` non darebbe una tabella, darebbe un testo.
- */
-const APICE = { mysql: '`', postgresql: '"', mongodb: '`' };
+import { dialettoDi } from './identificatori.mjs';
 
-/**
- * Un identificatore SQL: quotato in una delle tre forme (`` ` ``, `"`, `[…]`)
- * oppure nudo. Sta qui, accanto alle regole del quoting, perché è la stessa
- * conoscenza: chi sa mettere le virgolette deve sapere anche riconoscerle.
- */
-export const ID_SQL = '(?:`[^`]+`|"[^"]+"|\\[[^\\]]+\\]|[\\w$]+)';
-
-/** Toglie le virgolette da un identificatore. */
-export function smarca(nome) {
-  return String(nome || '').replace(/^[`"[]|[`"\]]$/g, '');
-}
-
-/** L'ultimo pezzo di un nome qualificato (`schema."Prova"` → `Prova`). */
-export function ultimoSegmento(qualificato) {
-  const pezzi = String(qualificato || '').match(new RegExp(ID_SQL, 'g')) || [];
-  return pezzi.length ? smarca(pezzi[pezzi.length - 1]) : '';
-}
-
-/**
- * Un identificatore ha bisogno delle virgolette?
- *
- * Il caso che conta davvero è PostgreSQL: lì un nome non quotato viene
- * **abbassato a minuscolo** dal motore, quindi una tabella creata come `Prova`
- * risponde solo a `"Prova"` — `FROM diego.Prova` cerca `diego.prova` e non la
- * trova. È l'errore che si vede scritto in tutte le lettere nel messaggio
- * "relation … does not exist".
- *
- * MySQL e MongoDB non abbassano niente, quindi lì le virgolette servono solo
- * quando il nome contiene caratteri fuori dall'alfabeto degli identificatori
- * (spazi, trattini, punti) o coincide con una parola chiave.
- */
-export function serveQuoting(nome, dbType) {
-  const d = dialettoDi(dbType);
-  if (!d) return false;
-  const s = String(nome == null ? '' : nome);
-  if (!s) return false;
-  if (SQL_KEYWORDS.has(s.toUpperCase())) return true;
-  return d === 'postgresql'
-    ? !/^[a-z_][a-z0-9_$]*$/.test(s)   // una sola maiuscola basta
-    : !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(s);
-}
-
-/**
- * Il nome pronto da scrivere in una query per quel motore: quotato se serve,
- * intatto se non serve. Con un motore sconosciuto non si tocca niente —
- * inventare virgolette sbagliate romperebbe una query che funzionava.
- */
-export function quotaIdentificatore(nome, dbType) {
-  const s = String(nome == null ? '' : nome);
-  if (!serveQuoting(s, dbType)) return s;
-  const q = APICE[dialettoDi(dbType)];
-  return q + s.split(q).join(q + q) + q;
-}
-
-/** Normalizza il nome del motore nelle tre famiglie che CodeDB conosce. */
-export function dialettoDi(dbType) {
-  const t = String(dbType || '').toLowerCase();
-  if (t === 'mysql' || t === 'mariadb') return 'mysql';
-  if (t === 'postgresql' || t === 'postgres' || t === 'pg') return 'postgresql';
-  if (t === 'mongodb' || t === 'mongo') return 'mongodb';
-  return '';
-}
+export {
+  ID_SQL, smarca, ultimoSegmento, serveQuoting, quotaIdentificatore,
+  quotaSempre, quotaQualificato, dialettoDi,
+} from './identificatori.mjs';
 
 const MYSQL = {
   nome: 'MySQL',

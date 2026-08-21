@@ -167,9 +167,33 @@ function forbiddenMongoServerJs(node, seen = new WeakSet()) {
   return null;
 }
 
-function assertNoMongoServerJs(code, label = 'Query MongoDB') {
+/**
+ * L'unica definizione del divieto: nessun operatore che faccia eseguire
+ * JavaScript al SERVER MongoDB, ovunque il testo di una query arrivi da fuori.
+ *
+ * `opzioni.testoIllegibile` esiste per i chiamanti che scandiscono un testo il
+ * quale verra' comunque **riletto piu' avanti**, dal traduttore o dalla
+ * strategia, e li' rifiutato con il messaggio giusto. Per loro anticipare qui
+ * un errore di sintassi sarebbe un peggioramento; ma la scansione non puo'
+ * nemmeno saltare in silenzio senza dirlo, e prima infatti non lo diceva:
+ * server.js distingueva l'errore del divieto da quello di sintassi con
+ * un'espressione regolare applicata al TESTO del messaggio, cioe' una terza
+ * versione della regola, la piu' fragile delle tre. Ora la distinzione la fa
+ * chi chiama, dichiarandola.
+ *
+ * @param {string|object} code   testo EJSON o struttura gia' analizzata
+ * @param {string} label         come chiamare il testo nel messaggio d'errore
+ * @param {{ testoIllegibile?: 'errore'|'ignora' }} [opzioni]
+ */
+function assertNoMongoServerJs(code, label = 'Query MongoDB', opzioni = {}) {
   if (code == null || code === '') return null;
-  const parsed = parseMongoEjson(code, label);
+  let parsed;
+  try {
+    parsed = parseMongoEjson(code, label);
+  } catch (err) {
+    if (opzioni.testoIllegibile === 'ignora') return null;
+    throw err;
+  }
   const operator = forbiddenMongoServerJs(parsed);
   if (operator) {
     throw new Error(`Operatore ${operator} non consentito: esegue JavaScript lato server MongoDB.`);
@@ -313,13 +337,18 @@ const EVENT_CAPABILITY = {
   // lo scope viene applicato sul bersaglio giusto. Chi non può leggere
   // "clienti" non ne vede le righe nel pannello di riferimento, anche se può
   // leggere "ordini" che la referenzia.
-  'relation:rows': 'read',
   'collection:find': 'read',
   'collection:count': 'read',
   'collection:explain': 'read',
   'collection:export': 'read',
   'collection:watch': 'read',
   'schema:watch': 'read',
+  // Togliere l'osservazione chiede la stessa capability che serviva a metterla:
+  // si può smettere di osservare solo ciò che si era autorizzati a osservare.
+  // Prima non ne avevano alcuna, e passando dalla giuntura dei dati sarebbero
+  // state negate a ogni sottoutente (vedi ticket 17).
+  'collection:unwatch': 'read',
+  'schema:unwatch': 'read',
   // Ambiguo: SQL Raw / pipeline $out|$merge sono scritture (vedi eventCapability)
   'collection:aggregate': 'read',
   // DDL
@@ -367,6 +396,15 @@ function eventCapability(event, payload, sess) {
 // db2/coll2: destinazione di una rename, che deve rientrare nello scope quanto
 // l'origine (altrimenti si "uscirebbe" dallo scope rinominando).
 // filter: il risultato viene filtrato per scope invece di negare la chiamata.
+/**
+ * Una voce che dichiara: «questo metodo non e' un'operazione sui dati che il
+ * Proxy debba autorizzare», e dice perche'. Non e' la stessa cosa che non
+ * avere una voce: quella e' una dimenticanza, questa e' una decisione.
+ */
+function fuoriDaiDati(motivo) {
+  return { cap: null, motivo };
+}
+
 const METHOD_CAPABILITY = {
   listDatabases:       { cap: 'read', filter: 'databases' },
   search:              { cap: 'read', filter: 'search' },
@@ -390,7 +428,6 @@ const METHOD_CAPABILITY = {
   collectionStats:     { cap: 'read', db: 0, coll: 1 },
   duplicatePlan:       { cap: 'read', db: 0, coll: 1 },
   columnRelations:     { cap: 'read', db: 0, coll: 1, filter: 'relations' },
-  relatedRows:         { cap: 'read', db: 0, coll: 1 },
   collectionFind:      { cap: 'read', db: 0, coll: 1 },
   collectionCount:     { cap: 'read', db: 0, coll: 1 },
   collectionExplain:   { cap: 'read', db: 0, coll: 1 },
@@ -414,6 +451,72 @@ const METHOD_CAPABILITY = {
   collectionImport:    { cap: 'write', db: 0, coll: 1 },
   docDelete:           { cap: 'delete', db: 0, coll: 1 },
   collectionDeleteMany:{ cap: 'delete', db: 0, coll: 1 },
+
+  /* ---------------------------------------------------------------------
+   * Voci SENZA capability.
+   *
+   * Il Proxy le lascia passare, ma la differenza fra "passa" e "passa perche'
+   * non c'e' scritto niente" e' tutta: la seconda e' una dimenticanza che
+   * nessuno vede. Ogni voce qui sotto dice PERCHE' quel metodo non e'
+   * un'operazione sui dati da autorizzare, e la maggior parte dice anche DOVE
+   * viene autorizzato invece.
+   *
+   * La tabella e' completa: un metodo di strategia che non compare qui non
+   * esiste, e `test/unit-tabella-autorizzazioni.js` lo verifica confrontando
+   * queste chiavi con i prototipi veri delle tre strategie. E' il motivo per
+   * cui il Proxy puo' permettersi di NEGARE cio' che non trova.
+   * ------------------------------------------------------------------- */
+
+  // Ciclo di vita della connessione: chi puo' aprirla lo decide
+  // `assertConnAllowed` PRIMA che la strategia esista, e chiuderla non e'
+  // un'operazione sui dati.
+  connect:             fuoriDaiDati('apertura della connessione, autorizzata da assertConnAllowed'),
+  disconnect:          fuoriDaiDati('chiusura della connessione'),
+
+  // Amministrazione del SERVER di database, non dei dati di questa
+  // connessione: server.js le autorizza con `assertWholeConnection`, che
+  // pretende l'assenza di scope. Metterle qui con una capability
+  // significherebbe due regole diverse per la stessa porta.
+  health:              fuoriDaiDati('diagnosi della connessione, autorizzata su tutta la connessione in server.js'),
+  listSessions:        fuoriDaiDati('sessioni del SERVER di database, autorizzate su tutta la connessione in server.js'),
+  killSession:         fuoriDaiDati('terminazione di sessioni altrui, autorizzata su tutta la connessione in server.js'),
+
+  // Annullare una query non legge e non modifica nulla: ferma una richiesta
+  // gia' autorizzata, e la puo' fermare solo chi l'ha aperta (il riferimento
+  // di annullamento vive nella sua sessione).
+  cancelQuery:         fuoriDaiDati('annulla una richiesta gia autorizzata, registrata nella propria sessione'),
+
+  // Mettere in osservazione passa da `watch`/`watchSchema`, che hanno la loro
+  // voce con `read`. Toglierla non legge niente.
+  unwatch:             fuoriDaiDati('smette di osservare; e watch a chiedere read'),
+  unwatchSchema:       fuoriDaiDati('smette di osservare; e watchSchema a chiedere read'),
+
+  // Dichiarazioni sul motore, non sul suo contenuto.
+  supportsNativeRename: fuoriDaiDati('dichiara una capacita del motore, non tocca dati'),
+  fuoriDalTettoDiTempo: fuoriDaiDati('dichiara se una esecuzione va fermata dal tetto di tempo'),
+
+  /* ---------------------------------------------------------------------
+   * Aiuti interni degli adattatori.
+   *
+   * Non attraversano il Proxy: le strategie li chiamano su `this`, e il Proxy
+   * vede solo le chiamate che arrivano da fuori. Compaiono qui perche' la
+   * tabella dev'essere completa, non perche' qualcuno li invochi da fuori — e
+   * se un giorno qualcuno lo facesse, questa voce e' il posto in cui decidere
+   * cosa debba succedere.
+   * ------------------------------------------------------------------- */
+  ...Object.fromEntries([
+    // Composizione della query tabellare (db/sqlTabellare.js): stringhe, non dati.
+    'buildSelect', 'buildOrderBy', 'buildKeyset', 'keysetValue', 'makeId', 'parseRowId',
+    'bersaglioRiga', 'rimuoviIdVirtuale',
+    // Metadati comuni ai due motori SQL (db/sqlMetadati.js): li leggono i
+    // metodi pubblici che hanno gia' la loro voce.
+    'primaryKey', 'tableColumnsInfo', 'tableFields', 'uniqueIndexes', 'elencoIndici',
+    'indexList', 'estimatedRowCount', 'selectListFor', 'countWithTimeout',
+    // Dettagli di connessione e di esecuzione dei singoli motori.
+    'requireClient', 'requirePool', 'usaDatabase', 'rilevaCollazione', 'conSearchPath',
+    'queryConTimeout', 'threadIdsDelPool', 'processIDsDelPool', 'uccidiSulServer',
+    'attesePerLock', 'isObjectIdField', 'promoteFilterObjectIds',
+  ].map((nome) => [nome, fuoriDaiDati('aiuto interno dell adattatore, chiamato su this')])),
 };
 
 // Etichette italiane per il messaggio di errore.
@@ -478,6 +581,7 @@ module.exports = {
   isFileIoSql,
   analyzeMongoPipeline,
   assertNoMongoServerJs,
+  FORBIDDEN_MONGO_SERVER_JS,
   isWriteMongoPipeline,
   EVENT_CAPABILITY,
   eventCapability,

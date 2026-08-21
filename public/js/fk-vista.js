@@ -43,6 +43,9 @@
 import { $, emit, esc, toast, chiaveStorage } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { onTabChange } from './tabs.js';
+// La ricerca nell'elenco dei candidati è la stessa del filtro rapido della
+// griglia: una parola cercata in tutte le colonne (vedi filtro-rapido.js).
+import { filtroRapido } from './filtro-rapido.js';
 import {
   bersaglioRelazione, notaOrigine, scegliEtichetta, etichettaRiga,
   testoValore, stessoValore, VINCOLO,
@@ -107,7 +110,10 @@ export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, onScegli 
     scelto: undefined,
     // Stato dell'elenco paginato: righe accumulate fra le pagine, testo cercato
     // a cui appartengono, e se ne restano altre da chiedere.
-    etichetta: null, righe: [], cerca: '', finito: false, caricando: false, errore: null,
+    // `colonne`: i nomi arrivati con la prima pagina. Servono a comporre la
+    // ricerca — il filtro rapido cerca in tutte le colonne che conosce, e alla
+    // prima pagina non ce n'è ancora bisogno perché il testo si digita dopo.
+    etichetta: null, righe: [], colonne: [], cerca: '', finito: false, caricando: false, errore: null,
   };
 
   $('#fk-title').textContent = bersaglioRelazione(relazione, dbCorrente);
@@ -481,11 +487,19 @@ function caricaRigaRiferita() {
     return;
   }
   const mio = ++tokenRiga;
-  emit('relation:rows', {
-    tabId, db: relazione.db, coll: relazione.tabella, colonna: relazione.colonna, valore, limit: 1,
+  // Una condizione STRUTTURATA, non tre campi che ogni strategia reinterpreta a
+  // modo suo: il pannello smette di dover sapere quale motore risponderà.
+  emit('collection:find', {
+    tabId,
+    db: relazione.db,
+    coll: relazione.tabella,
+    filtro: { condizioni: [{ campo: relazione.colonna, operatore: 'uguale', valore }] },
+    limit: 1,
+    skip: 0,
+    deferCount: true,
   }).then((res) => {
     if (!ctx || mio !== tokenRiga) return;
-    disegnaRigaRiferita(res.righe && res.righe[0]);
+    disegnaRigaRiferita(res.docs && res.docs[0]);
   }).catch((err) => {
     if (!ctx || mio !== tokenRiga) return;
     $('#fk-riga').innerHTML = `<p class="fk-vuoto avviso">${esc(err.message)}</p>`;
@@ -542,23 +556,31 @@ function caricaElenco(cerca, { append = false } = {}) {
   ctx.caricando = true;
   aggiornaNota();
 
-  emit('relation:rows', {
+  // La ricerca nell'elenco è la stessa del filtro rapido della griglia: una
+  // parola cercata in tutte le colonne che si conoscono. Alla prima pagina le
+  // colonne non si conoscono ancora — ma alla prima pagina non c'è nemmeno
+  // niente da cercare, perché il testo lo si digita dopo.
+  const condizioneRicerca = filtroRapido(cerca, ctx.colonne);
+  emit('collection:find', {
     tabId,
     db: relazione.db,
     coll: relazione.tabella,
-    cerca,
-    colonna: relazione.colonna,
+    ...(condizioneRicerca ? { filtro: condizioneRicerca } : {}),
     limit: LIMITE_ELENCO,
     skip: append ? ctx.righe.length : 0,
+    deferCount: true,
   }).then((res) => {
     if (!ctx || mio !== tokenElenco) return;
     ctx.caricando = false;
-    const righe = res.righe || [];
+    const righe = res.docs || [];
+    // Le colonne servono alla ricerca della pagina successiva: il filtro rapido
+    // si compone su quelle che si conoscono.
+    if (res.columns && res.columns.length) ctx.colonne = res.columns;
     // Pagina più corta del richiesto (o troncata dal budget di byte del
     // server): non c'è altro da chiedere. Senza questo, arrivati in fondo si
     // continuerebbe a interrogare il database a ogni scorrimento.
-    if (righe.length < LIMITE_ELENCO || res.troncato) ctx.finito = true;
-    disegnaElenco(righe, res.colonne || [], { append });
+    if (righe.length < LIMITE_ELENCO || res.truncated) ctx.finito = true;
+    disegnaElenco(righe, res.columns || [], { append });
   }).catch((err) => {
     if (!ctx || mio !== tokenElenco) return;
     ctx.caricando = false;

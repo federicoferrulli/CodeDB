@@ -8,6 +8,9 @@
 // scrittura (drop, delete, query di scrittura, backup...) su qualunque DBMS.
 
 import { $, emit, esc, iniziaCaricamento } from './utils.js';
+// Il modulo unico della griglia: stessa finestra virtuale della vista Dati e
+// della tab ⚡ (vedi griglia.js).
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
 
 // Etichette italiane degli eventi tracciati (fallback: l'evento grezzo).
 const EVENT_LABELS = {
@@ -207,6 +210,12 @@ let showUserCol = false;
 const AUDIT_ROW_H = 44;
 const AUDIT_OVERSCAN = 5;
 
+// Lo Storico Azioni e' la QUARTA griglia del frontend, e nessuno lo aveva
+// contato: rifaceva l'aritmetica della finestra virtuale come le altre tre.
+// Qui le capacita' sono poche e non per dimenticanza — e' un registro in sola
+// lettura.
+const CAPACITA_AUDIT = capacita({ virtualizzazione: true });
+
 function renderAuditVirtualWindow() {
   const container = $('#audit-log-list');
   if (!container) return;
@@ -215,30 +224,30 @@ function renderAuditVirtualWindow() {
   const tbody = table.querySelector('tbody');
   if (!tbody) return;
 
-  const N = currentEntries.length;
-  if (N === 0) {
+  if (currentEntries.length === 0) {
     tbody.innerHTML = '';
     return;
   }
-  const cols = showUserCol ? 8 : 7;
 
-  const viewport = container.clientHeight || 420;
-  const scrollTop = container.scrollTop || 0;
-  const start = Math.max(0, Math.floor(scrollTop / AUDIT_ROW_H) - AUDIT_OVERSCAN);
-  const visible = Math.ceil(viewport / AUDIT_ROW_H);
-  const end = Math.min(N, start + visible + AUDIT_OVERSCAN * 2);
+  disegnaCorpo({
+    tbody,
+    righe: currentEntries,
+    disegnaRiga: disegnaVoceAudit,
+    finestra: vaVirtualizzata(currentEntries.length, CAPACITA_AUDIT)
+      ? finestraVirtuale({
+        scrollTop: container.scrollTop || 0,
+        altezzaViewport: container.clientHeight || 420,
+        altezzaRiga: AUDIT_ROW_H,
+        righeTotali: currentEntries.length,
+        overscan: AUDIT_OVERSCAN,
+      })
+      : null,
+    colonneTotali: showUserCol ? 8 : 7,
+  });
+}
 
-  const frag = document.createDocumentFragment();
-
-  if (start > 0) {
-    const topSpacer = document.createElement('tr');
-    topSpacer.className = 'v-spacer';
-    topSpacer.innerHTML = `<td colspan="${cols}" style="height:${start * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
-    frag.appendChild(topSpacer);
-  }
-
-  for (let i = start; i < end; i++) {
-    const e = currentEntries[i];
+/** Una voce dello Storico Azioni. */
+function disegnaVoceAudit(e) {
     const label = EVENT_LABELS[e.event] || e.op || e.event || '?';
     const detail = e.op && e.op !== label ? e.op : '';
     const ok = e.status !== 'error';
@@ -272,18 +281,7 @@ function renderAuditVirtualWindow() {
       <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
       <td>${statusHtml}</td>
     `;
-    frag.appendChild(tr);
-  }
-
-  if (end < N) {
-    const botSpacer = document.createElement('tr');
-    botSpacer.className = 'v-spacer';
-    botSpacer.innerHTML = `<td colspan="${cols}" style="height:${(N - end) * AUDIT_ROW_H}px; padding:0; border:none; background:none;"></td>`;
-    frag.appendChild(botSpacer);
-  }
-
-  tbody.innerHTML = '';
-  tbody.appendChild(frag);
+  return tr;
 }
 
 function attachAuditVScroll() {

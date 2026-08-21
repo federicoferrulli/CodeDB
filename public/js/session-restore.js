@@ -47,9 +47,15 @@ function collTabInputs(t, c) {
 
   const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
   if (activeNow) {
+    const gruppoFiltro = $('#filter-mode-switch');
+    const modoFiltro = gruppoFiltro?.dataset.modo === 'condizione' ? 'condizione' : 'rapido';
+    const corrente = $('#filter-input')?.value || '';
     return {
       id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
       filter: $('#filter-input')?.value || '',
+      filterMode: modoFiltro,
+      quickSearch: modoFiltro === 'rapido' ? corrente : (gruppoFiltro?.dataset.testoRapido || ''),
+      advancedCondition: modoFiltro === 'condizione' ? corrente : (gruppoFiltro?.dataset.testoCondizione || ''),
       sort: $('#sort-input')?.value || '',
       queryMode: $('#query-mode')?.value || 'find',
       pageSize: $('#page-size')?.value || '50',
@@ -61,6 +67,9 @@ function collTabInputs(t, c) {
   return {
     id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
     filter: src.filter || '',
+    filterMode: src.filterMode || 'rapido',
+    quickSearch: src.quickSearch != null ? src.quickSearch : (src.filter || ''),
+    advancedCondition: src.advancedCondition || '',
     sort: src.sort || '',
     queryMode: src.queryMode || 'find',
     pageSize: src.pageSize || '50',
@@ -148,7 +157,17 @@ function reconnectTab(info) {
           coll: c.coll,
           snap: null,
           preview: !!c.preview,
-          restore: { filter: c.filter, sort: c.sort, queryMode: c.queryMode, pageSize: c.pageSize, infiniteScroll: c.infiniteScroll, view: c.view },
+          restore: {
+            filter: c.filter,
+            filterMode: c.filterMode,
+            quickSearch: c.quickSearch,
+            advancedCondition: c.advancedCondition,
+            sort: c.sort,
+            queryMode: 'find',
+            pageSize: c.pageSize,
+            infiniteScroll: c.infiniteScroll,
+            view: c.view,
+          },
         };
       });
       tab.state.activeCollId = info.activeCollId && tab.state.collTabs.some((c) => c.id === info.activeCollId)

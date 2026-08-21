@@ -4,7 +4,10 @@ import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, dbTypeIcon, esc, refreshLucideIcons } from './utils.js';
 import { renderDbTree, refreshDbTree } from './dbtree.js';
-import { renderGrid, runQuery, applyDbTypeToWorkspace, applyQueryPlaceholders } from './grid.js';
+import {
+  renderGrid, runQuery, applyDbTypeToWorkspace, applyQueryPlaceholders,
+  leggiStatoFiltro, applicaStatoFiltro,
+} from './grid.js';
 import {
   renderCollTabBar, applyViewTabsFor, currentCollTab, salvaSnapshotQuery, applicaSnapshotQuery,
 } from './colltabs.js';
@@ -36,7 +39,11 @@ export function saveWorkspaceInputs() {
   // conservato (`activate` non viene richiamata al cambio di tab di connessione).
   salvaSnapshotQuery(currentCollTab());
   const s = tab.state;
+  const filtro = leggiStatoFiltro();
   s.filter = $('#filter-input').value;
+  s.filterMode = filtro.modo;
+  s.quickSearch = filtro.rapido;
+  s.advancedCondition = filtro.condizione;
   s.sort = $('#sort-input').value;
   s.queryMode = $('#query-mode').value;
   s.pageSize = $('#page-size').value;
@@ -93,8 +100,12 @@ export function renderWorkspace() {
   applicaSnapshotQuery(currentCollTab());
 
   applyDbTypeToWorkspace();
-  $('#query-mode').value = state.queryMode || 'find';
-  $('#filter-input').value = state.filter || '';
+  $('#query-mode').value = 'find';
+  applicaStatoFiltro({
+    modo: state.filterMode || 'rapido',
+    rapido: state.quickSearch != null ? state.quickSearch : (state.filter || ''),
+    condizione: state.advancedCondition || '',
+  });
   $('#sort-input').value = state.sort || '';
   $('#page-size').value = state.pageSize || '50';
   $('#infinite-toggle').checked = !!state.infiniteScroll;

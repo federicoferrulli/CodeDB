@@ -25,6 +25,9 @@ const {
 } = require('./capabilities');
 const { can, scopeFor } = require('./permissions');
 const { assertScopedClauses } = require('./sqlClause');
+// La validazione strutturale del filtro: vedi db/filtro.js.
+const { normalizzaFiltro } = require('../db/filtro');
+const { normalizzaRicerca } = require('../db/ricercaGlobale');
 const { assertTabelleNelloScope } = require('./sqlTables');
 
 function denied(capability, connName, db, coll) {
@@ -60,13 +63,25 @@ function resolveAuthorization(spec, strategy, args) {
   };
 }
 
+/**
+ * I campi di ogni metodo in cui può nascondersi un operatore che fa eseguire
+ * JavaScript al server MongoDB.
+ *
+ * `filtro` — il filtro STRUTTURATO — sta accanto a `filter` e non al suo posto:
+ * i suoi *nomi di campo* sono già protetti da `normalizzaFiltro` (un segmento
+ * che comincia per `$` è rifiutato), ma i suoi VALORI no. Un
+ * `{ campo: '_id', operatore: 'uguale', valore: { $where: 'return true' } }`
+ * porterebbe l'operatore dentro il documento reso. Era la difesa che il metodo
+ * separato delle righe riferite applicava sul proprio `valore`: tolto quello,
+ * la superficie è questa.
+ */
 const MONGO_SERVER_JS_FIELDS = {
-  collectionFind: ['filter'],
-  collectionCount: ['filter'],
-  collectionAggregate: ['pipeline'],
-  collectionExplain: ['filter', 'pipeline'],
-  collectionUpdateMany: ['filter'],
-  collectionDeleteMany: ['filter'],
+  collectionFind: ['filter', 'filtro'],
+  collectionCount: ['filter', 'filtro'],
+  collectionAggregate: ['pipeline', 'filtro'],
+  collectionExplain: ['filter', 'pipeline', 'filtro'],
+  collectionUpdateMany: ['filter', 'filtro'],
+  collectionDeleteMany: ['filter', 'filtro'],
   shellWrite: ['filter', 'update'],
 };
 
@@ -80,14 +95,6 @@ function assertSafeMongoFieldPath(value, label = 'Campo MongoDB') {
 }
 
 function validateMongoOperation(method, payload, authorization) {
-  if (method === 'relatedRows') {
-    assertSafeMongoFieldPath(payload.colonna, 'Colonna di riferimento MongoDB');
-    if (Object.prototype.hasOwnProperty.call(payload, 'valore')) {
-      // Il wrapper distingue una stringa NATIVA dal testo EJSON usato negli
-      // altri payload; la scansione ricorsiva raggiunge comunque ogni oggetto.
-      assertNoMongoServerJs({ valore: payload.valore }, 'Valore della relazione MongoDB');
-    }
-  }
   const fields = MONGO_SERVER_JS_FIELDS[method] || [];
   for (const field of fields) {
     if (payload[field] != null && payload[field] !== '') {
@@ -164,11 +171,36 @@ function guardStrategy(strategy, ctx) {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       const spec = typeof prop === 'string' ? METHOD_CAPABILITY[prop] : null;
-      if (!spec || typeof value !== 'function') {
-        // Proprietà (type, currentDb, client, pool…) e metodi non classificati
-        // (connect, disconnect, health, cancelQuery, unwatch…) passano invariati,
-        // con `this` legato alla strategia reale.
-        return typeof value === 'function' ? value.bind(target) : value;
+
+      // Proprietà (type, currentDb, client, pool…): il motore di backup legge
+      // il driver nativo da qui, ed è autorizzato a parte sull'intera
+      // connessione (canWholeConnection in server.js).
+      if (typeof value !== 'function') return value;
+
+      // Metodo con una voce che DICHIARA di non essere un'operazione sui dati
+      // (connect, disconnect, health, cancelQuery, unwatch, aiuti interni…):
+      // passa invariato, con `this` legato alla strategia reale.
+      if (spec && !spec.cap) return value.bind(target);
+
+      // Metodo di cui nessuno ha detto niente: NEGATO.
+      //
+      // È il verso opposto rispetto a prima, quando ciò che non si trovava
+      // passava. La leva del Proxy — «aggiungere un handler o un tool non può
+      // aprire un buco» — era quindi vera solo per i metodi che qualcuno si era
+      // ricordato di classificare, cioè era quasi vera. L'inversione si può
+      // fare perché la tabella è completa, e un test statico
+      // (test/unit-tabella-autorizzazioni.js) la tiene completa: aggiungere un
+      // metodo a una strategia rompe quel test PRIMA di arrivare qui.
+      if (!spec) {
+        return function metodoNonClassificato() {
+          throw new Error(
+            `Operazione non consentita: il metodo "${String(prop)}" non è classificato ` +
+            'fra le operazioni che questa connessione autorizza. ' +
+            'Cosa fare: se è un\'operazione legittima, va dichiarata in ' +
+            'METHOD_CAPABILITY (auth/capabilities.js) con la capability che richiede, ' +
+            'o con il motivo per cui non ne richiede nessuna.'
+          );
+        };
       }
       return function guarded(...args) {
         // Il principal resta nel contesto MUTABILE della sessione: una
@@ -200,6 +232,14 @@ function guardStrategy(strategy, ctx) {
           if (authorization.sql && authorization.sql.multipleStatements) {
             throw new Error('Più istruzioni SQL nello stesso SQL Raw non sono consentite: usa lo ScriptRunner.');
           }
+          // Il filtro STRUTTURATO si valida sempre, per chiunque e su ogni
+          // motore: un nome di campo che comincia per `$` o un segmento vuoto
+          // non sono un permesso negato, sono un'INVARIANTE — su MongoDB quel
+          // nome diventerebbe un operatore. Vale quindi anche per root, come
+          // già valgono le altre invarianti di questo Proxy, e vale PRIMA di
+          // toccare il database invece che dentro l'adattatore.
+          if (args[2] && args[2].filtro != null) normalizzaFiltro(args[2].filtro);
+          if (args[2] && args[2].cercaOvunque != null) normalizzaRicerca(args[2].cercaOvunque);
           if (target.type === 'mongodb') {
             validateMongoOperation(String(prop), args[2] || {}, authorization);
           }

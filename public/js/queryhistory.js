@@ -9,7 +9,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, cut, toast, isSqlType } from './utils.js';
+import { $, cut, toast } from './utils.js';
 import { CHIAVE_QE } from './query-history-store.js';
 
 const MAX_ENTRIES = 50;
@@ -130,10 +130,10 @@ export function clearAllHistory() {
 // Registra una query eseguita (chiamata da runQuery in grid.js).
 // Le voci sono ordinate dalla più recente; niente dedup globale, solo
 // delle esecuzioni identiche consecutive.
-export function recordQuery({ mode, filter, sort }) {
+export function recordQuery({ mode, filter, sort, filterMode = 'rapido' }) {
   const key = historyKey();
   if (!key) return;
-  const entry = { mode, filter: filter || '', sort: sort || '', ts: Date.now() };
+  const entry = { mode: 'find', filterMode, filter: filter || '', sort: sort || '', ts: Date.now() };
   // Query completamente vuota: inutile in uno storico.
   if (!entry.filter && !entry.sort) return;
 
@@ -162,11 +162,11 @@ function hidePanel() {
 
 // Ripristina una voce nei campi query (senza eseguirla).
 function restoreEntry(entry) {
-  $('#query-mode').value = entry.mode;
-  // Il change aggiorna placeholder e visibilità del campo sort
-  // (applyQueryPlaceholders è già registrato come listener in grid.js).
-  $('#query-mode').dispatchEvent(new Event('change'));
+  const modo = entry.filterMode === 'condizione' ? 'condizione' : 'rapido';
+  document.querySelector(`#filter-mode-switch [data-filter-mode="${modo}"]`)?.click();
   $('#filter-input').value = entry.filter;
+  const gruppo = $('#filter-mode-switch');
+  if (gruppo) gruppo.dataset[modo === 'rapido' ? 'testoRapido' : 'testoCondizione'] = entry.filter || '';
   $('#sort-input').value = entry.sort;
   hidePanel();
   $('#filter-input').focus();
@@ -178,7 +178,9 @@ function renderPanel() {
   panel.innerHTML = '';
 
   const key = historyKey();
-  const entries = key ? loadHistory(key) : [];
+  // Le vecchie voci aggregate/SQL Raw restano nel loro archivio ma non vengono
+  // riproposte nella vista Dati: quelle operazioni vivono in Query & Aggregate.
+  const entries = key ? loadHistory(key).filter((entry) => entry.mode !== 'aggregate') : [];
 
   const header = document.createElement('div');
   header.className = 'query-history-header';
@@ -205,7 +207,6 @@ function renderPanel() {
     return;
   }
 
-  const isSql = isSqlType(state.dbType);
   for (const entry of entries) {
     const item = document.createElement('div');
     item.className = 'query-history-item';
@@ -215,7 +216,7 @@ function renderPanel() {
     top.className = 'query-history-item-top';
     const mode = document.createElement('span');
     mode.className = 'query-history-mode';
-    mode.textContent = entry.mode === 'aggregate' ? (isSql ? 'SQL' : 'aggregate') : 'find';
+    mode.textContent = entry.filterMode === 'condizione' ? 'Condizione' : 'Cerca';
     const ts = document.createElement('span');
     ts.className = 'query-history-ts';
     ts.textContent = fmtTs(entry.ts);

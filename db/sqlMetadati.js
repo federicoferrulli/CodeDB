@@ -145,6 +145,11 @@ async function infoColonne(dialetto, strategia, db, coll) {
       name: r.name,
       type: r.type,
       srid: r.srid == null ? null : Number(r.srid),
+      // I due cataloghi rispondono 'YES'/'NO'; qui diventa un booleano.
+      // `undefined` quando il dialetto non lo chiede: chi legge deve poter
+      // distinguere «ammette NULL» da «non lo so», perche' decidere come
+      // ordinare i nulli in base a un'ipotesi e' peggio che non decidere.
+      nullable: r.nullable == null ? undefined : /^y/i.test(String(r.nullable)),
     })),
   };
   // Le classi sono dichiarate dal dialetto e valutate NELL'ORDINE dichiarato:
@@ -273,12 +278,20 @@ async function stimaRighe(dialetto, strategia, db, coll) {
 // COUNT(*) esatto è comunque istantaneo. Con filtro resta il COUNT(*) esatto
 // con tetto di tempo, che è l'unico pezzo rimasto all'adattatore.
 async function conteggioCollezione(strategia, db, coll, payload) {
-  const { table, whereSql } = strategia.buildSelect(db, coll, payload);
+  let opzioni = {};
+  if (payload && payload.cercaOvunque != null && typeof strategia._preparaRicercaGlobale === 'function') {
+    const { columns: colonne } = await strategia.tableColumnsInfo(db, coll);
+    const ricercaGlobale = await strategia._preparaRicercaGlobale(db, coll, payload, colonne);
+    opzioni = { colonne, ricercaGlobale };
+  }
+  const { table, whereSql, whereParams } = strategia.buildSelect(db, coll, payload, opzioni);
   if (!whereSql) {
     const est = await strategia.estimatedRowCount(db, coll);
     if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
   }
-  return strategia.countWithTimeout(table, whereSql);
+  // I parametri viaggiano con la clausola: col filtro strutturato la clausola
+  // da sola contiene segnaposto senza valori.
+  return strategia.countWithTimeout(table, whereSql, whereParams);
 }
 
 /* --- Installazione sul prototipo ------------------------------------------ */

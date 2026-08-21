@@ -1,8 +1,35 @@
 'use strict';
 
 import { socket } from './socket.js';
-import { safeUUID } from './utils.js';
-import { markAbandonedByTab } from './pending-queries.js';
+import { safeUUID } from './valori.js';
+
+/* ---------------------------------------------------------------------------
+ * Chiusura di un tab: chi ha qualcosa da chiudere si annuncia.
+ *
+ * Qui c'era `import { markAbandonedByTab } from './pending-queries.js'`, e
+ * quell'unica riga tirava dentro un pannello dell'interfaccia — che a sua volta
+ * tira dentro la tab delle query, i coll-tab, l'esecutore di script, cioe'
+ * l'intera applicazione. Un modulo di base come questo, che dice soltanto quali
+ * tab esistono e quale e' attivo, non puo' dipendere da un pannello: e' il
+ * verso sbagliato, ed e' il motivo per cui nulla che passasse di qui era
+ * caricabile in prova.
+ *
+ * L'inversione e' minima: chi vuole sapere che un tab si e' chiuso lo dice.
+ * ------------------------------------------------------------------------- */
+
+const allaChiusuraDelTab = [];
+
+/** Registra qualcosa da fare quando un tab viene chiuso. */
+export function allaChiusura(fn) {
+  if (typeof fn === 'function') allaChiusuraDelTab.push(fn);
+}
+
+function avvisaDellaChiusura(id) {
+  for (const fn of allaChiusuraDelTab) {
+    try { fn(id); } catch { /* un ascoltatore rotto non impedisce di chiudere */ }
+  }
+}
+
 
 // Registro dei tab di connessione. Ogni tab ha un proprio `state` (la forma
 // storica dell'oggetto globale) e una sessione dedicata lato server, indicata
@@ -44,6 +71,9 @@ export function freshState() {
     // Snapshot degli input del workspace, salvato al cambio tab (mentre il
     // tab è attivo la verità è il DOM; vedi saveWorkspaceInputs in workspace.js).
     filter: '',
+    filterMode: 'rapido',
+    quickSearch: '',
+    advancedCondition: '',
     sort: '',
     queryMode: 'find',
     pageSize: '50',
@@ -130,7 +160,7 @@ export function switchTab(id) {
 }
 
 export function closeTab(id) {
-  markAbandonedByTab(id);
+  avvisaDellaChiusura(id);
   const i = tabs.list.findIndex((t) => t.id === id);
   if (i < 0) return;
   const [tab] = tabs.list.splice(i, 1);

@@ -10,10 +10,15 @@ const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+// Come si scrive il nome di una tabella o di una colonna: regola unica,
+// condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
+// frontend (vedi db/identificatori.js).
+const { quotaSempre, quotaQualificato } = require('./identificatori');
 const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
 const { pgNativoAGeoJson, geoJsonAPgNativo } = require('./pg-geo-nativo');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
+const { normalizzaRicerca, clausolaPostgres } = require('./ricercaGlobale');
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
 } = require('./duplica');
@@ -44,9 +49,12 @@ function assertDbName(name) {
   }
 }
 
-// Identificatore quotato ("), gestendo eventuali virgolette interne
+// Identificatore quotato ("), gestendo eventuali virgolette interne. La regola
+// non e' di questo file: sta in `db/identificatori.js` insieme a quella degli
+// altri motori, perche' e' la stessa decisione presa ovunque si scriva il nome
+// di una tabella o di una colonna.
 function qid(name) {
-  return '"' + String(name).replace(/"/g, '""') + '"';
+  return quotaSempre(name, 'postgresql');
 }
 
 // Schema usato quando il chiamante non ne indica uno (client storici, percorsi
@@ -66,7 +74,7 @@ function schemaOf(db) {
 // leggeva e si SCRIVEVA su quella sbagliata, e lo scope dei permessi (che
 // autorizza sul `db` passato) non aveva alcun effetto reale.
 function qtable(db, table) {
-  return `${qid(schemaOf(db))}.${qid(table)}`;
+  return quotaQualificato([schemaOf(db), table], 'postgresql');
 }
 
 function whereFromId(id) {
@@ -90,7 +98,30 @@ function whereFromId(id) {
 // Il dialetto PostgreSQL delle quattro funzioni comuni ai due motori SQL:
 // tutto il resto (che cosa è un _id, come si normalizza un limite) sta nel
 // modulo.
-const TABELLARE = tabellare({ qid, qtable, whereFromId });
+// Come PostgreSQL scrive la regola «il valore nullo e' il piu' piccolo»: con
+// un suffisso esplicito, perche' il suo predefinito e' l'opposto (i NULL sono i
+// piu' GRANDI). In salita vanno quindi in cima, in discesa in fondo.
+//
+// Il prezzo: l'indice btree colloca i nulli in fondo, quindi chiedere l'ordine
+// opposto lo rende inservibile per l'ordinamento — su 200.000 righe con indice,
+// una pagina di griglia passa da 0,042 ms (Index Scan) a 6,508 ms (Seq Scan +
+// Sort). Si paga perche' ogni alternativa sposta lo stesso costo su un altro
+// motore senza toglierlo, e si paga SOLO dove i nulli possono esistere: sulle
+// colonne NOT NULL il suffisso viene omesso (vedi serveSuffissoNulli).
+const nulliPrima = (discendente) => (discendente ? ' NULLS LAST' : ' NULLS FIRST');
+
+// `testoDi`: su PostgreSQL `intero LIKE testo` non esiste come operatore e la
+// query FALLISCE invece di non trovare nulla. Il cast a testo e' quindi
+// obbligatorio perche' la ricerca rapida funzioni su una colonna qualunque.
+const TABELLARE = tabellare({
+  qid, qtable, whereFromId, nulliPrima, segnaposto: (n) => `$${n}`, testoDi: (col) => `${col}::text`,
+});
+
+function preparaRicercaGlobale(_strategy, _db, _coll, payload, colonne) {
+  const valore = normalizzaRicerca(payload && payload.cercaOvunque);
+  if (!valore) return null;
+  return (da) => clausolaPostgres(valore, colonne, qid, (n) => `$${n}`, da);
+}
 
 /* ---------------------------------------------------------------------------
  * Il dialetto PostgreSQL dei metadati comuni (db/sqlMetadati.js).
@@ -127,7 +158,9 @@ const DIALETTO_METADATI = {
 
   colonne: {
     tentativi: (db, coll) => [{
-      sql: `SELECT column_name AS name, udt_name AS type
+      // `is_nullable` viaggia con le colonne che si leggevano gia': nessuna
+      // lettura di catalogo in piu' (serve a chi compone l'ORDER BY).
+      sql: `SELECT column_name AS name, udt_name AS type, is_nullable AS nullable
               FROM information_schema.columns
              WHERE table_schema = $1 AND table_name = $2
           ORDER BY ordinal_position`,
@@ -319,6 +352,8 @@ class PostgreSqlStrategy extends DbStrategy {
     // Metadati di colonna (tipo + SRID delle geometriche) per schema.tabella:
     // servono a ogni find, quindi vanno in cache breve. Vedi tableColumnsInfo.
     this._cacheColonne = new Map();
+    this._preparaRicercaGlobale = (db, coll, payload, colonne) =>
+      preparaRicercaGlobale(this, db, coll, payload, colonne);
   }
 
   get type() { return 'postgresql'; }
@@ -556,7 +591,9 @@ class PostgreSqlStrategy extends DbStrategy {
   // il driver `pg` restituirebbe il WKB esadecimale, inutilizzabile.
   async selectListFor(db, coll) {
     const info = await this.tableColumnsInfo(db, coll);
-    if (!info.geo.size && !info.geoNativo.size) return { list: '*', geo: info.geo, geoNativo: info.geoNativo };
+    if (!info.geo.size && !info.geoNativo.size) {
+      return { list: '*', geo: info.geo, geoNativo: info.geoNativo, colonne: info.columns };
+    }
     const list = info.columns
       .map((c) => {
         if (info.geo.has(c.name)) return `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}`;
@@ -567,7 +604,9 @@ class PostgreSqlStrategy extends DbStrategy {
         return qid(c.name);
       })
       .join(', ');
-    return { list, geo: info.geo, geoNativo: info.geoNativo };
+    // `colonne` viaggia con la lista: sono gli STESSI descrittori appena
+    // letti, quindi chi compone l'ORDER BY non deve rileggere il catalogo.
+    return { list, geo: info.geo, geoNativo: info.geoNativo, colonne: info.columns };
   }
 
   static geoRowsToJson(rows, geo, geoNativo) {
@@ -638,20 +677,40 @@ class PostgreSqlStrategy extends DbStrategy {
     return TABELLARE.parseRowId(rawId);
   }
 
-  buildOrderBy(text) {
-    return TABELLARE.buildOrderBy(text);
+  /**
+   * L'ORDER BY della griglia e della tab ⚡. `opzioni.colonne` sono i
+   * descrittori della tabella su cui si ordina (nome, tipo, nullabilita'):
+   * arrivano gia' letti da `collectionFind`, quindi conoscerli non costa una
+   * lettura di catalogo in piu'. Un motore che debba ordinare diversamente
+   * sovrascrive QUESTO metodo, ed e' ascoltato da tutti i percorsi.
+   */
+  buildOrderBy(text, opzioni) {
+    return TABELLARE.buildOrderBy(text, opzioni);
   }
 
-  buildSelect(db, coll, payload) {
-    return TABELLARE.buildSelect(db, coll, payload);
+  buildSelect(db, coll, payload, opzioni = {}) {
+    // `ordinamento` chiude sul metodo di QUESTA istanza: e' cio' che rende
+    // efficace una sovrascrittura di `buildOrderBy` anche per la griglia.
+    return TABELLARE.buildSelect(db, coll, payload, {
+      ...opzioni,
+      ordinamento: (testo) => this.buildOrderBy(testo, opzioni),
+    });
   }
 
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
-    const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
     // Due letture di catalogo indipendenti: in parallelo costano un round trip
     // invece di due, su ogni pagina della griglia.
+    //
+    // La SELECT si compone DOPO di loro, e non prima: fino a ieri l'ordinamento
+    // veniva composto in modo sincrono mentre la lettura dei metadati non era
+    // nemmeno partita, quindi chi lo compone non poteva sapere nulla della
+    // colonna su cui stava ordinando. I metadati si leggevano comunque, a ogni
+    // pagina: spostare la composizione dopo di essi non costa niente.
     const [pk, sel] = await Promise.all([this.primaryKey(db, coll), this.selectListFor(db, coll)]);
+    const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, sel.colonne);
+    const { table, whereSql, whereParams, orderSql, limit, skip } =
+      this.buildSelect(db, coll, payload, { colonne: sel.colonne, ricercaGlobale });
 
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
@@ -659,8 +718,14 @@ class PostgreSqlStrategy extends DbStrategy {
     // Geometrie lette come GeoJSON: vedi selectListFor.
     const { list: selectList, geo, geoNativo } = sel;
     const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
-    const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $1 OFFSET $2`;
-    const params = ks ? ks.params : [limit, skip];
+    // Su PostgreSQL il numero del segnaposto è la POSIZIONE reale del
+    // parametro: se il filtro strutturato ne ha già occupati due, il limite
+    // è $3 e il salto $4. Lasciarli fissi a $1 e $2 farebbe leggere il
+    // limite al posto del filtro — in silenzio, con un risultato plausibile.
+    const nFiltro = whereParams.length;
+    const sql = ks ? ks.sql
+      : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $${nFiltro + 1} OFFSET $${nFiltro + 2}`;
+    const params = ks ? ks.params : [...whereParams, limit, skip];
     const ms = DbStrategy.queryTimeoutMs();
     const opHandle = payload && payload.opHandle;
 
@@ -698,7 +763,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // un timeout così non può bloccarsi all'infinito.
     let total = null;
     if (!payload.deferCount) {
-      const c = await this.countWithTimeout(table, whereSql);
+      const c = await this.countWithTimeout(table, whereSql, whereParams);
       total = c.total;
     }
 
@@ -716,14 +781,22 @@ class PostgreSqlStrategy extends DbStrategy {
   // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
   // timeout si azzera da solo a fine transazione. Ritorna { total, timedOut }:
   // total è null se il conteggio è stato annullato per timeout (SQLSTATE 57014).
-  async countWithTimeout(table, whereSql) {
+  // I PARAMETRI della clausola vanno con lei.
+  //
+  // Finché il filtro era un frammento di testo grezzo la clausola bastava a se
+  // stessa, e il conteggio poteva riceverla da sola. Col filtro strutturato la
+  // clausola contiene segnaposto, e mandarla senza valori dà «no parameter $1»
+  // su PostgreSQL e un errore di sintassi su MySQL — cioè la griglia mostra le
+  // righe e poi fallisce sul totale, il che è peggio di fallire subito perché
+  // sembra un difetto del conteggio e non del filtro.
+  async countWithTimeout(table, whereSql, whereParams = []) {
     const pool = this.requirePool();
     const ms = DbStrategy.countTimeoutMs();
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
       if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
-      const r = await client.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`);
+      const r = await client.query(`SELECT COUNT(*) AS total FROM ${table}${whereSql}`, whereParams);
       await client.query('COMMIT');
       return { total: Number(r.rows[0]?.total) || 0, timedOut: false };
     } catch (err) {
@@ -965,6 +1038,7 @@ class PostgreSqlStrategy extends DbStrategy {
   async collectionExplain(db, coll, payload) {
     const pool = this.requirePool();
     let sql;
+    let parametriPiano = [];
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
@@ -972,8 +1046,17 @@ class PostgreSqlStrategy extends DbStrategy {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
     } else {
-      const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
+      // Le stesse colonne che vede `collectionFind`: un piano calcolato su un
+      // ORDER BY diverso da quello della query vera spiegherebbe un'altra
+      // query. La lettura e' in cache (la find l'ha appena fatta), quindi non
+      // aggiunge un round trip.
+      const { columns: colonne } = await this.tableColumnsInfo(db, coll);
+      const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, colonne);
+      const { table, whereSql, whereParams, orderSql, limit, skip } =
+        this.buildSelect(db, coll, payload, { colonne, ricercaGlobale });
       sql = `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
+      // Il piano si calcola sulla query VERA, parametri compresi.
+      parametriPiano = whereParams;
     }
 
     const client = await pool.connect();
@@ -983,7 +1066,7 @@ class PostgreSqlStrategy extends DbStrategy {
       transactionOpen = true;
       await client.query('SET LOCAL statement_timeout = 30000');
       await client.query(`SET LOCAL search_path TO ${qid(schemaOf(db))}`);
-      const res = await client.query(`EXPLAIN (FORMAT JSON) ${sql}`);
+      const res = await client.query(`EXPLAIN (FORMAT JSON) ${sql}`, parametriPiano);
       const plan = res.rows[0]['QUERY PLAN'] || res.rows[0][Object.keys(res.rows[0])[0]];
       return { format: 'json', plan: Array.isArray(plan) ? plan[0] : plan, query: sql };
     } finally {
@@ -1068,12 +1151,25 @@ class PostgreSqlStrategy extends DbStrategy {
     return { deleted: res.rowCount };
   }
 
+  /**
+   * Cancellazione in blocco secondo il filtro MOSTRATO.
+   *
+   * Il filtro deve essere lo STESSO che ha prodotto le righe a schermo, in
+   * qualunque forma sia arrivato: se la griglia sta filtrando in modalità
+   * rapida — dove il testo è una parola da cercare e non una clausola — e qui
+   * si usasse il solo `filter`, quella parola verrebbe interpretata come una
+   * WHERE. Nel migliore dei casi è un errore di sintassi; nel peggiore è una
+   * cancellazione che non corrisponde a ciò che l'utente vedeva.
+   *
+   * Si riusa quindi `buildSelect`, che è già il posto in cui le due forme di
+   * filtro diventano una clausola sola, parametri compresi.
+   */
   async collectionDeleteMany(db, coll, payload) {
     const pool = this.requirePool();
-    const filter = String(payload.filter || '').trim();
-    const res = await pool.query(
-      `DELETE FROM ${qtable(db, coll)}${filter ? ` WHERE ${filter}` : ''}`
-    );
+    const { columns: colonne } = await this.tableColumnsInfo(db, coll);
+    const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, colonne);
+    const { table, whereSql, whereParams } = this.buildSelect(db, coll, payload, { colonne, ricercaGlobale });
+    const res = await pool.query(`DELETE FROM ${table}${whereSql}`, whereParams);
     return { deleted: res.rowCount };
   }
 
@@ -1336,72 +1432,6 @@ class PostgreSqlStrategy extends DbStrategy {
       origine: 'vincolo',
       molti: false,
     }));
-  }
-
-  async relatedRows(db, coll, payload) {
-    const pool = this.requirePool();
-    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
-    const table = qtable(db, coll);
-    const [pk, sel, info] = await Promise.all([
-      this.primaryKey(db, coll),
-      this.selectListFor(db, coll),
-      this.tableColumnsInfo(db, coll),
-    ]);
-
-    // La colonna viene dal descrittore della FK, quindi dal catalogo — ma
-    // l'evento socket è raggiungibile anche con un payload confezionato a mano,
-    // e `qid` quoterebbe qualsiasi nome senza domande.
-    if (!info.columns.some((c) => c.name === colonna)) {
-      throw new Error(`La colonna "${colonna}" non esiste nella tabella "${coll}".`);
-    }
-
-    const conds = [];
-    const params = [];
-    const ph = () => `$${params.length}`;
-    if (haValore) {
-      // Il valore arriva in Extended JSON come tutti gli altri: una FK può
-      // essere un bigint o una data, non solo un intero piccolo.
-      const v = toSqlValue(deserializeClientObject({ v: valore }).v);
-      if (v === null) {
-        // IS NULL e non `= NULL`: quest'ultimo non è mai vero, e una cella vuota
-        // avrebbe mostrato "nessuna riga" anche dove la riga esiste.
-        conds.push(`${qid(colonna)} IS NULL`);
-      } else {
-        params.push(v);
-        conds.push(`${qid(colonna)} = ${ph()}`);
-      }
-    }
-    if (cerca) {
-      // Il confronto sulla colonna chiave passa dal testo: la chiave è spesso
-      // un intero o un uuid, e `= $n` con un parametro stringa farebbe fallire
-      // la query invece di non trovare nulla.
-      params.push(cerca);
-      const or = [`${qid(colonna)}::text = ${ph()}`];
-      params.push(`%${DbStrategy.escapeLike(cerca)}%`);
-      const like = ph();
-      for (const c of info.columns) {
-        if (!TESTUALI_PG.has(String(c.type).toLowerCase())) continue;
-        or.push(`${qid(c.name)}::text ILIKE ${like}`);
-        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
-      }
-      conds.push(`(${or.join(' OR ')})`);
-    }
-
-    const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const order = pk.length ? ` ORDER BY ${pk.map(qid).join(', ')}` : '';
-    params.push(limit);
-    const limitPh = ph();
-    params.push(skip);
-    const sql = `SELECT ${sel.list} FROM ${table}${where}${order} LIMIT ${limitPh} OFFSET ${ph()}`;
-
-    const res = await this.queryConTimeout(sql, params);
-    const rows = res.rows;
-    PostgreSqlStrategy.geoRowsToJson(rows, sel.geo, sel.geoNativo);
-
-    const columns = res.fields ? res.fields.map((f) => f.name) : [];
-    const capped = DbStrategy.truncateBySize(rows);
-    const righe = capped.rows.map((r) => serializeRow({ ...r, _id: this.makeId(r, pk, columns) }));
-    return { righe, colonne: columns, chiave: pk, troncato: !!capped.truncated };
   }
 
   async collectionExport(db, coll, payload) {

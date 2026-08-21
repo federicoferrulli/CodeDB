@@ -4,6 +4,12 @@ const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { isGeoJson } = require('./geometry');
+// Il filtro come DATO, accanto al documento MQL storico: vedi db/filtro.js.
+const { normalizzaFiltro, rendiMongo } = require('./filtro');
+const {
+  normalizzaRicerca, catalogoDaDocumenti, aggiornaCacheCatalogo,
+  catalogoValido, filtroMongo,
+} = require('./ricercaGlobale');
 const sessioni = require('./sessioni');
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice, riavvolgi,
@@ -47,6 +53,34 @@ function buildUri(cfg) {
 // Parses a user supplied filter/sort/projection string. Accepts Extended
 // JSON ({"_id": {"$oid": "..."}}) as well as plain JSON. Plain 24-hex
 // strings used as _id are promoted to ObjectId automatically.
+/**
+ * Il filtro di una lettura: il documento MQL storico e quello STRUTTURATO,
+ * conviventi.
+ *
+ * Quando ci sono entrambi valgono entrambi, uniti da $and: e' la condizione
+ * che permette di migrare un chiamante per volta senza che gli altri cambino
+ * comportamento (ticket 21).
+ */
+function filtroDiLettura(payload, fallback = {}) {
+  const documento = parseQueryObject(payload.filter, fallback);
+  const strutturato = normalizzaFiltro(payload.filtro);
+  if (!strutturato) return documento;
+  // I valori arrivano in Extended JSON: qui tornano tipi BSON nativi, e le
+  // stringhe di 24 esadecimali su _id diventano ObjectId. Senza, un riferimento
+  // a un _id verrebbe confrontato con l'oggetto { $oid: … } e non troverebbe
+  // mai la riga.
+  const reso = EJSON.deserialize(rendiMongo(strutturato), { relaxed: false });
+  promoteObjectIds(reso);
+  const haDocumento = documento && Object.keys(documento).length > 0;
+  return haDocumento ? { $and: [documento, reso] } : reso;
+}
+
+function unisciFiltri(...filtri) {
+  const presenti = filtri.filter((f) => f && typeof f === 'object' && Object.keys(f).length);
+  if (!presenti.length) return {};
+  return presenti.length === 1 ? presenti[0] : { $and: presenti };
+}
+
 function parseQueryObject(text, fallback = {}) {
   if (text == null || String(text).trim() === '') return fallback;
   const parsed = EJSON.parse(String(text), { relaxed: false });
@@ -224,7 +258,19 @@ async function sampleSchema(collection, sampleSize = 100) {
   out.sort((a, b) =>
     a.name === '_id' ? -1 : b.name === '_id' ? 1 : b.presence - a.presence || a.name.localeCompare(b.name)
   );
-  return { fields: out, sampled: docs.length };
+  return { fields: out, sampled: docs.length, catalogo: catalogoDaDocumenti(docs) };
+}
+
+async function filtroRicercaGlobale(strategy, collection, db, coll, input) {
+  const valore = normalizzaRicerca(input);
+  if (!valore) return null;
+  const chiave = `${db}\0${coll}`;
+  let catalogo = catalogoValido(strategy._cacheRicerca, chiave);
+  if (!catalogo) {
+    const schema = await sampleSchema(collection, 100);
+    catalogo = aggiornaCacheCatalogo(strategy._cacheRicerca, chiave, schema.catalogo);
+  }
+  return filtroMongo(valore, catalogo);
 }
 
 /* ---------------------------------------------------------------------------
@@ -239,6 +285,7 @@ class MongoDbStrategy extends DbStrategy {
     this.uri = '';
     // Cache dei probe "campo → è ObjectId?" (chiave db.coll.campo, con TTL).
     this.oidFieldCache = new Map();
+    this._cacheRicerca = new Map();
     this.changeStream = null;
     this.schemaStream = null;
   }
@@ -675,63 +722,6 @@ class MongoDbStrategy extends DbStrategy {
     return { doc: JSON.stringify(piano.doc), note: piano.note, azioni: piano.azioni };
   }
 
-  async relatedRows(db, coll, payload) {
-    const client = this.requireClient();
-    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
-    const collection = client.db(db).collection(coll);
-
-    const conds = [];
-    if (haValore) {
-      const v = EJSON.deserialize({ v: valore }, { relaxed: false }).v;
-      const cond = { [colonna]: v };
-      // Una stringa esadecimale di 24 caratteri su un campo che è davvero un
-      // ObjectId non troverebbe nulla: è lo stesso motivo per cui la griglia
-      // promuove gli _id nei filtri (vedi promoteFilterObjectIds).
-      await this.promoteFilterObjectIds(collection, cond);
-      conds.push(cond);
-    }
-    if (cerca) {
-      // `$or` fra l'uguaglianza sulla chiave e una ricerca testuale sugli altri
-      // campi. `$regex` con `$options: 'i'` e non un indice testuale: qui non si
-      // può contare sull'esistenza di un indice `text`, e la ricerca è su poche
-      // decine di risultati per volta.
-      const rx = { $regex: DbStrategy.escapeRegex(cerca), $options: 'i' };
-      const chiave = { [colonna]: cerca };
-      await this.promoteFilterObjectIds(collection, chiave);
-      const or = [chiave];
-      const campi = (await sampleSchema(collection, 20)).fields;
-      for (const f of campi) {
-        if (f.name === colonna || !f.types.includes('string')) continue;
-        or.push({ [f.name]: rx });
-        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
-      }
-      conds.push({ $or: or });
-    }
-    const filter = conds.length === 1 ? conds[0] : (conds.length ? { $and: conds } : {});
-
-    const findOpts = {};
-    const maxTimeMS = DbStrategy.queryTimeoutMs();
-    if (maxTimeMS > 0) findOpts.maxTimeMS = maxTimeMS;
-    const cursor = collection.find(filter, findOpts).sort({ _id: 1 }).skip(skip).limit(limit);
-    const collected = await DbStrategy.collectCapped(cursor, limit);
-
-    // Colonne = unione delle chiavi dei documenti restituiti, come in
-    // collectionFind: su MongoDB non esiste un elenco di colonne dichiarate.
-    const colonne = [];
-    const viste = new Set();
-    for (const doc of collected.docs) {
-      for (const key of Object.keys(doc)) {
-        if (!viste.has(key)) { viste.add(key); colonne.push(key); }
-      }
-    }
-    return {
-      righe: collected.docs.map(serialize),
-      colonne,
-      chiave: ['_id'],
-      troncato: !!collected.truncated,
-    };
-  }
-
   // Il campo è memorizzato come ObjectId? Probe a costo fisso pensato per
   // collection grandi ($limit prima del $match: legge al più i primi
   // OID_PROBE_SAMPLE documenti, mai una scansione completa), con cache TTL
@@ -768,7 +758,6 @@ class MongoDbStrategy extends DbStrategy {
 
   async collectionFind(db, coll, payload) {
     const client = this.requireClient();
-    const filter = parseQueryObject(payload.filter, {});
     const sort = parseQueryObject(payload.sort, {});
     const projection = parseQueryObject(payload.projection, {});
     const cap = DbStrategy.resultCap(payload);
@@ -776,6 +765,10 @@ class MongoDbStrategy extends DbStrategy {
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
 
     const collection = client.db(db).collection(coll);
+    const filter = unisciFiltri(
+      filtroDiLettura(payload, {}),
+      await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
+    );
     await this.promoteFilterObjectIds(collection, filter);
     const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
     const findOpts = { projection };
@@ -834,6 +827,7 @@ class MongoDbStrategy extends DbStrategy {
     // byte, così pochi documenti enormi non possono esaurire la memoria del
     // processo (vedi DbStrategy.collectCapped).
     const collected = await DbStrategy.collectCapped(cursor, limit);
+    aggiornaCacheCatalogo(this._cacheRicerca, `${db}\0${coll}`, catalogoDaDocumenti(collected.docs));
     let docs = collected.docs;
     // Keyset "indietro": la query gira in ordine _id DESC, qui si riordina ASC.
     if (reverse) docs.reverse();
@@ -871,8 +865,11 @@ class MongoDbStrategy extends DbStrategy {
   // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
   async collectionCount(db, coll, payload) {
     const client = this.requireClient();
-    const filter = parseQueryObject(payload.filter, {});
     const collection = client.db(db).collection(coll);
+    const filter = unisciFiltri(
+      filtroDiLettura(payload, {}),
+      await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
+    );
     const hasFilter = Object.keys(filter).length > 0;
     if (hasFilter) await this.promoteFilterObjectIds(collection, filter);
     const total = await this.countWithTimeout(collection, filter, hasFilter);
@@ -912,6 +909,26 @@ class MongoDbStrategy extends DbStrategy {
     const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap);
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
     return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined, resultSet: true };
+  }
+
+  /**
+   * L'unica esecuzione che su MongoDB non va fermata dal tetto di tempo: una
+   * pipeline che MATERIALIZZA (`$out`/`$merge`). Interromperla a metà lascia la
+   * collection di destinazione scritta per metà — lo stato incoerente che il
+   * tetto dovrebbe evitare. Là il rimedio giusto è l'annullamento esplicito
+   * dell'utente (`cancelQuery`).
+   *
+   * Prima questa esclusione viveva dentro `collectionAggregate`, dove era anche
+   * la sola cosa che teneva il `maxTimeMS` lontano dalla pipeline; ora che il
+   * tetto lo impone la giuntura (`db/tetti.js`), l'esclusione va dichiarata
+   * dove la giuntura la può leggere.
+   */
+  fuoriDalTettoDiTempo(metodo, args) {
+    if (metodo !== 'collectionAggregate') return false;
+    const pipeline = parseQueryObject((args[2] || {}).pipeline, []);
+    if (!Array.isArray(pipeline) || !pipeline.length) return false;
+    const ultimo = Object.keys(pipeline[pipeline.length - 1] || {})[0];
+    return ultimo === '$out' || ultimo === '$merge';
   }
 
   async cancelQuery(opHandle) {
@@ -1013,7 +1030,10 @@ class MongoDbStrategy extends DbStrategy {
       if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
       explanation = await collection.aggregate(pipeline).explain('executionStats');
     } else {
-      const filter = parseQueryObject(payload.filter, {});
+      const filter = unisciFiltri(
+        filtroDiLettura(payload, {}),
+        await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
+      );
       const sort = parseQueryObject(payload.sort, {});
       const projection = parseQueryObject(payload.projection, {});
       const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
@@ -1195,8 +1215,12 @@ class MongoDbStrategy extends DbStrategy {
 
   async collectionDeleteMany(db, coll, payload) {
     const client = this.requireClient();
-    const filter = parseQueryObject(payload.filter, {});
-    const res = await client.db(db).collection(coll).deleteMany(filter);
+    const collection = client.db(db).collection(coll);
+    const filter = unisciFiltri(
+      filtroDiLettura(payload, {}),
+      await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
+    );
+    const res = await collection.deleteMany(filter);
     return { deleted: res.deletedCount };
   }
 

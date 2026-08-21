@@ -305,7 +305,6 @@ function fakeStrategy() {
         { campo: 'remote_id', db: 'altro', tabella: 'orders_remote', colonna: '_id' },
       ];
     },
-    async relatedRows(db, coll) { calls.push(['relatedRows', db, coll]); return { righe: [] }; },
     async docInsert(db, coll) { calls.push(['insert', db, coll]); return { inserted: 1 }; },
     async renameCollection(db, coll, newName) { calls.push(['rename', db, coll, newName]); return {}; },
     async collectionAggregate(db, coll, payload) { calls.push(['aggregate', payload.pipeline]); return { docs: [] }; },
@@ -473,25 +472,33 @@ function fakeStrategy() {
   await assert.doesNotReject(
     () => guardedRoot.collectionFind('shop', 'orders', { filter: '{"$expr":{"$eq":["$a",1]}}' }),
   );
+  // Le stesse difese che il metodo separato delle righe riferite applicava sul
+  // suo `colonna` e sul suo `valore`. Quel metodo non esiste più (ticket 24) e
+  // il pannello 🔗 passa dal filtro STRUTTURATO: la superficie da proteggere si
+  // è spostata, le difese sono venute dietro. Toglierne una qui riaprirebbe
+  // esattamente il buco che il metodo separato teneva chiuso.
+  const conCampo = (campo, valore) => ({ condizioni: [{ campo, operatore: 'uguale', valore }] });
   await assert.rejects(
-    () => guardedRoot.relatedRows('shop', 'orders', { colonna: '$where', valore: 'return true' }),
-    /Colonna di riferimento MongoDB: percorso non valido/,
-    'relation:rows non può trasformare il nome colonna in un operatore MongoDB',
+    () => guardedRoot.collectionFind('shop', 'orders', { filtro: conCampo('$where', 'return true') }),
+    /nome di campo non valido/,
+    'un filtro non può trasformare il nome del campo in un operatore MongoDB',
   );
   await assert.rejects(
-    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'profilo.$expr', valore: 1 }),
-    /Colonna di riferimento MongoDB: percorso non valido/,
+    () => guardedRoot.collectionFind('shop', 'orders', { filtro: conCampo('profilo.$expr', 1) }),
+    /nome di campo non valido/,
   );
   await assert.rejects(
-    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'profilo\0nome', valore: 1 }),
-    /Colonna di riferimento MongoDB: percorso non valido/,
+    () => guardedRoot.collectionFind('shop', 'orders', { filtro: conCampo('profilo\0nome', 1) }),
+    /caratteri di controllo/,
   );
   await assert.rejects(
-    () => guardedRoot.relatedRows('shop', 'orders', { colonna: '_id', valore: { $where: 'return true' } }),
+    () => guardedRoot.collectionFind('shop', 'orders', { filtro: conCampo('_id', { $where: 'return true' }) }),
     /JavaScript lato server/,
+    'il VALORE di una condizione non può portare un operatore che esegue JS',
   );
   await assert.doesNotReject(
-    () => guardedRoot.relatedRows('shop', 'orders', { colonna: 'cliente._id', valore: 42 }),
+    () => guardedRoot.collectionFind('shop', 'orders', { filtro: conCampo('cliente._id', 42) }),
+    'un percorso annidato legittimo deve continuare a passare',
   );
 
   // Il contesto è mutabile: la revoca a caldo sostituisce il principal e il

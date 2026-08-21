@@ -78,7 +78,11 @@ async function runTests() {
          name VARCHAR(50) NOT NULL,
          age INT,
          city VARCHAR(50),
-         born DATETIME
+         born DATETIME,
+         f1 VARCHAR(20),
+         f2 VARCHAR(20),
+         label VARCHAR(50),
+         meta JSON
        )`);
     assert(ddl.ok, `tabella "${TABLE}" creata via SQL Raw`);
 
@@ -86,7 +90,7 @@ async function runTests() {
     const ins1 = await emit('doc:insert', { db: DB, coll: TABLE, doc: '{ "name": "Ada", "age": 36, "city": "Torino" }' });
     const ins2 = await emit('doc:insert', {
       db: DB, coll: TABLE,
-      doc: '{ "name": "Bruno", "age": 41, "city": "Bari", "born": { "$date": "1984-05-09T10:30:00.000Z" } }',
+      doc: '{ "name": "Bruno", "age": 41, "city": "Bari", "born": { "$date": "1984-05-09T10:30:00.000Z" }, "label": "Responsabile", "meta": { "gruppi": [{ "label": "Membro" }] } }',
     });
     assert(ins1.ok && ins2.ok, `due righe inserite (insertId = ${ins1.ok ? ins1.insertedId : ins1.error}, ${ins2.ok ? ins2.insertedId : ins2.error})`);
 
@@ -111,6 +115,21 @@ async function runTests() {
 
     const sorted = await emit('collection:find', { db: DB, coll: TABLE, filter: '', sort: 'name ASC' });
     assert(sorted.ok && sorted.docs[0].name === 'Ada', 'ordinamento SQL libero (name ASC)');
+
+    const globaleLabel = await emit('collection:find', {
+      db: DB, coll: TABLE,
+      cercaOvunque: { operatore: 'contieneOvunque', valore: 'RESPONSABILE' },
+      limit: 50, skip: 0,
+    });
+    assert(globaleLabel.ok && globaleLabel.docs.length === 1 && globaleLabel.docs[0].name === 'Bruno',
+      `ricerca globale oltre le prime sei colonne (${globaleLabel.ok ? globaleLabel.docs.length : globaleLabel.error})`);
+    const globaleJson = await emit('collection:find', {
+      db: DB, coll: TABLE,
+      cercaOvunque: { operatore: 'contieneOvunque', valore: 'mEmBrO' },
+      limit: 50, skip: 0,
+    });
+    assert(globaleJson.ok && globaleJson.docs.length === 1 && globaleJson.docs[0].name === 'Bruno',
+      `ricerca globale nei valori JSON annidati (${globaleJson.ok ? globaleJson.docs.length : globaleJson.error})`);
 
     console.log('6. doc:update (UPDATE via chiave primaria)');
     const id = JSON.stringify(find.docs[0]._id);
@@ -269,27 +288,39 @@ async function runTests() {
     // Riga riferita: è la domanda "chi è il cliente 42".
     const bruno = await emit('collection:find', { db: DB, coll: TABLE, filter: "name = 'Bruno'" });
     const brunoId = bruno.docs[0].id;
-    const rigaRif = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', valore: brunoId, limit: 1 });
-    assert(rigaRif.ok && rigaRif.righe.length === 1 && rigaRif.righe[0].name === 'Bruno',
-      `riga riferita risolta (${rigaRif.ok ? JSON.stringify(rigaRif.righe[0] && rigaRif.righe[0].name) : rigaRif.error})`);
+    // Il pannello 🔗 non ha più un evento proprio: chiede `collection:find` con
+    // un filtro STRUTTURATO, che è la stessa via della griglia (ticket 22-24).
+    const conFiltro = (condizioni, limit = 50) =>
+      emit('collection:find', { db: DB, coll: TABLE, filtro: { condizioni }, limit, skip: 0 });
+
+    const rigaRif = await conFiltro([{ campo: 'id', operatore: 'uguale', valore: brunoId }], 1);
+    assert(rigaRif.ok && rigaRif.docs.length === 1 && rigaRif.docs[0].name === 'Bruno',
+      `riga riferita risolta (${rigaRif.ok ? JSON.stringify(rigaRif.docs[0] && rigaRif.docs[0].name) : rigaRif.error})`);
 
     // Un valore che non corrisponde a nulla deve dare zero righe, non un errore:
     // scoprire che il riferimento è rotto è proprio uno degli usi del pannello.
-    const orfano = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', valore: 999999, limit: 1 });
-    assert(orfano.ok && orfano.righe.length === 0, 'riferimento inesistente = zero righe, non errore');
+    const orfano = await conFiltro([{ campo: 'id', operatore: 'uguale', valore: 999999 }], 1);
+    assert(orfano.ok && orfano.docs.length === 0, 'riferimento inesistente = zero righe, non errore');
 
-    // Ricerca per il selettore: filtra sulle colonne testuali.
-    const cerca = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', cerca: 'Bru', limit: 50 });
-    assert(cerca.ok && cerca.righe.length === 1 && cerca.righe[0].name === 'Bruno',
-      `ricerca testuale (${cerca.ok ? cerca.righe.length : cerca.error} righe)`);
+    // Ricerca per il selettore: la stessa del filtro rapido, su tutte le colonne.
+    const cerca = await conFiltro([{ campo: 'name', operatore: 'contiene', valore: 'Bru' }]);
+    assert(cerca.ok && cerca.docs.length === 1 && cerca.docs[0].name === 'Bruno',
+      `ricerca testuale (${cerca.ok ? cerca.docs.length : cerca.error} righe)`);
     // I metacaratteri di LIKE vanno neutralizzati: chi cerca "%" cerca il
     // carattere, non "qualsiasi cosa".
-    const jolly = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'id', cerca: '%', limit: 50 });
-    assert(jolly.ok && jolly.righe.length === 0, '"%" cercato come carattere, non come jolly');
+    const jolly = await conFiltro([{ campo: 'name', operatore: 'contiene', valore: '%' }]);
+    assert(jolly.ok && jolly.docs.length === 0, '"%" cercato come carattere, non come jolly');
 
-    // Colonna inventata: rifiutata prima di finire quotata dentro la query.
-    const finta = await emit('relation:rows', { db: DB, coll: TABLE, colonna: 'non_esiste', valore: 1 });
-    assert(!finta.ok && /non esiste/i.test(finta.error), 'colonna inesistente rifiutata');
+    // Colonna inventata: l'errore arriva dal motore, e dice che non esiste.
+    const finta = await conFiltro([{ campo: 'non_esiste', operatore: 'uguale', valore: 1 }]);
+    assert(!finta.ok && /non esist|Unknown column/i.test(finta.error),
+      `colonna inesistente rifiutata (${finta.error})`);
+
+    // E il nome di campo che su MongoDB sarebbe un OPERATORE viene rifiutato
+    // prima di toccare il database, su qualunque motore.
+    const operatore = await conFiltro([{ campo: '$where', operatore: 'uguale', valore: 1 }]);
+    assert(!operatore.ok && /nome di campo non valido/i.test(operatore.error),
+      `un campo con prefisso $ è rifiutato (${operatore.error})`);
 
     console.log('12. doc:delete');
     const del = await emit('doc:delete', { db: DB, coll: TABLE, id });

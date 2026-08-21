@@ -1277,6 +1277,44 @@ console.log('--- Test Unitari CodeDB ---');
   // un modulo puro: nessun database.
   require('./unit-sql-tabellare');
 
+  // La regola unica per scrivere il nome di una tabella o di una colonna:
+  // **se** vada quotato e come si raddoppia l'apice che contiene. Stessa
+  // decisione presa in sette punti, e uno solo sapeva rispondere alla prima
+  // domanda. Modulo puro, provato dalle due parti (browser e server).
+  await require('./unit-identificatori');
+
+  // I tetti su righe, byte e tempo non sono piu' funzioni che ogni adattatore
+  // puo' ricordarsi di chiamare: li impone la giuntura avvolgendo l'esecuzione.
+  // L'adattatore finto in memoria e' deliberatamente disobbediente, cosi' se il
+  // risultato arriva limitato il limite non puo' venire da lui.
+  await require('./unit-tetti');
+
+  // La tabella che il Proxy autorizzante consulta copre TUTTI i metodi delle
+  // tre strategie: un metodo non classificato non e' sicuro, e' invisibile.
+  // Controllo statico sui prototipi veri, perche' nessun controllo di tipo
+  // puo' confrontare un oggetto letterale con tre catene di prototipi.
+  await require('./unit-tabella-autorizzazioni');
+
+  // Gli operatori che eseguono JavaScript sul SERVER MongoDB sono vietati da
+  // UNA definizione sola: ce n'erano tre, e la terza riconosceva il divieto
+  // guardando il testo di un messaggio d'errore.
+  await require('./unit-divieto-server-js');
+
+  // Il trasporto del frontend, staccato dal sacco delle utilita': riconnessione
+  // delle sole connessioni salvate, annullamento su tab chiuso, marcatura
+  // dell'origine della risposta. Socket finto, nessun server.
+  await require('./unit-trasporto');
+
+  // Il modulo unico della griglia: aritmetica della finestra virtuale (che
+  // stava scritta due volte), capacita' dichiarate, corpo della tabella.
+  await require('./unit-griglia');
+
+  // L'ORDER BY passa dal metodo della STRATEGIA su tutti i percorsi, griglia
+  // compresa: il punto di estensione c'era ma la composizione della SELECT lo
+  // scavalcava, e chi lo compone riceve ora anche le colonne con la loro
+  // nullabilita'. Pool finto, nessun database.
+  await require('./unit-ordinamento-strategia');
+
   // Gli altri metodi che i due adattatori SQL implementano con lo stesso nome
   // (chiave primaria, colonne, campi, indici unici, keyset, conteggio): una
   // sola implementazione, con le differenze fra i motori dichiarate come dati.
@@ -1293,6 +1331,51 @@ console.log('--- Test Unitari CodeDB ---');
   // Controllo statico, come unit-scritture-bersaglio: riprodurre il difetto
   // vero richiederebbe un socket, una sessione DB viva e un database.
   require('./unit-handler-scope');
+
+  // La giuntura degli eventi socket, INVOCATA: il contesto della sessione e'
+  // un argomento, quindi un handler si puo' chiamare con socket finto, sessioni
+  // finte e principal finto — senza rete e senza database. Prima di questo i
+  // test di server.js potevano solo leggerlo come testo.
+  await require('./unit-giuntura-socket');
+
+  // I quattro eventi di osservazione rientrano nella giuntura dei dati: erano
+  // i quattro soli candidati puri fra i quarantotto registrati per la via
+  // generica (ADR-0001), e rifacevano a mano la ricerca della sessione.
+  await require('./unit-osservazione-giuntura');
+
+  // La giuntura amministrativa: ventisei eventi che non toccano alcuna
+  // strategia, e la voce di audit che non si puo' piu' dimenticare perche' un
+  // evento non dichiarato non si registra affatto.
+  await require('./unit-giuntura-amministrativa');
+
+  // Gli otto punti di estensione delle operazioni lunghe (ADR-0001, terza
+  // famiglia): nomi dichiarati invece di un'affermazione in prosa, e la
+  // famiglia rifiuta cio' che non ne usa nessuno.
+  await require('./unit-operazioni-lunghe');
+
+  // Il guardiano delle tre famiglie: ogni evento socket sta in UNA famiglia, e
+  // registrarne uno fuori dalle giunture previste — o dichiararlo in due — fa
+  // fallire questo test. Terzo gradino del criterio di chiusura del lotto.
+  require('./unit-registrazione-eventi');
+
+  // Il filtro come DATO: un elenco di condizioni che ogni motore rende nel
+  // proprio dialetto PARAMETRIZZANDO. Il valore non attraversa mai il testo
+  // della query, ed e' questa — non un elenco di caratteri vietati — la ragione
+  // per cui un valore ostile non puo' cambiarne la struttura.
+  require('./unit-filtro');
+
+  // Il filtro rapido del frontend: una parola cercata in tutte le colonne, e
+  // chi scrive non deve sapere quale motore c'e' sotto.
+  await require('./unit-filtro-rapido');
+
+  // L'intenzione `contieneOvunque` viene resa dal server sui tre motori:
+  // include JSON annidati, array, valori scalari e colonne oltre la sesta.
+  require('./unit-ricerca-globale');
+
+  // Il filtro strutturato e lo scope: uscire dal proprio perimetro non e'
+  // ESPRIMIBILE, perche' ogni campo diventa un identificatore quotato intero.
+  // E' la proprieta' che autorizza il ticket 24 a cancellare il firewall.
+  require('./unit-filtro-autorizzazione');
 
   // Test 27-sexies: il TIPO di una colonna è sintassi interpolata nel DDL, e su
   // PostgreSQL le DDL usano il simple query protocol: senza validazione,

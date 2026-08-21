@@ -109,22 +109,6 @@ class DbStrategy {
    */
   async columnRelations(_db, _coll) { throw unsupported(); }
 
-  /**
-   * Righe della tabella RIFERITA da una chiave esterna. Due usi, un metodo:
-   * `valore` (uguaglianza esatta) risolve "chi è il cliente 42", `cerca` (testo
-   * libero) alimenta l'elenco da cui scegliere un altro valore.
-   *
-   * Esiste come metodo a sé invece di appoggiarsi a `collectionFind` perché lì,
-   * sui DBMS SQL, il filtro è un frammento WHERE grezzo interpolato tal quale:
-   * comporlo altrove significherebbe incollare un valore di cella dentro una
-   * query — rotto al primo apostrofo nel migliore dei casi. Qui ogni strategia
-   * PARAMETRIZZA con i mezzi del proprio driver.
-   *
-   * payload: { colonna, valore?, cerca?, limit?, skip? }
-   * @returns {Promise<{righe, colonne, total: number|null, troncato: boolean}>}
-   */
-  async relatedRows(_db, _coll, _payload) { throw unsupported(); }
-
   /** @returns {Promise<{docs, columns, total, skip, limit}>} */
   async collectionFind(_db, _coll, _payload) { throw unsupported(); }
 
@@ -211,6 +195,26 @@ class DbStrategy {
    * @returns {Promise<{ cancelled: boolean }>}
    */
   async cancelQuery(_opHandle) { return { cancelled: false }; }
+
+  /**
+   * Questa esecuzione va lasciata finire, tetto di tempo o no?
+   *
+   * È il solo pezzo del tetto di tempo che resta all'adattatore: la giuntura
+   * (`db/tetti.js`) decide QUANDO smettere di aspettare, l'adattatore dichiara
+   * se per quella particolare chiamata smettere sia sbagliato. Il caso vero è
+   * una pipeline MongoDB che materializza (`$out`/`$merge`): fermarla a metà
+   * lascerebbe la collection di destinazione scritta a metà, cioè proprio lo
+   * stato incoerente che il tetto esiste per evitare. Sui motori SQL non
+   * succede, perché l'istruzione annullata fa rollback.
+   *
+   * La risposta predefinita è "no": un motore nuovo nasce limitato, e per
+   * uscirne deve dirlo.
+   *
+   * @param {string} _metodo nome del metodo invocato
+   * @param {any[]} _args argomenti con cui è stato invocato
+   * @returns {boolean}
+   */
+  fuoriDalTettoDiTempo(_metodo, _args) { return false; }
 
   /**
    * Sessioni e query attive sul SERVER di database — tutte, non solo quelle di

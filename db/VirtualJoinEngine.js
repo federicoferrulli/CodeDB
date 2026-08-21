@@ -1,6 +1,9 @@
 'use strict';
 
 const EJSON = require('bson').EJSON;
+// La quotatura degli identificatori è una regola sola per tutto il repo: vedi
+// db/identificatori.js.
+const { quotaSempre } = require('./identificatori');
 
 // Normalizza a stringa una chiave di join. I documenti arrivano serializzati in
 // EJSON relaxed, quindi i valori tipizzati sono oggetti wrapper ($oid, $date,
@@ -55,14 +58,10 @@ class VirtualJoinEngine {
     }
 
     const isSql = (type) => ['mysql', 'postgresql', 'postgres'].includes(String(type).toLowerCase());
-    // Quoting dell'identificatore con escape del delimitatore interno (raddoppio):
-    // PostgreSQL usa "..." (raddoppia "), MySQL usa `...` (raddoppia `).
-    const qid = (type, name) => {
-      const s = String(name);
-      return isSql(type) && String(type).toLowerCase().includes('postgres')
-        ? `"${s.replace(/"/g, '""')}"`
-        : `\`${s.replace(/`/g, '``')}\``;
-    };
+    // Quoting dell'identificatore: la regola è una sola per tutto il repo e sta
+    // in db/identificatori.js, che conosce anche il raddoppio del delimitatore
+    // interno (`"` su PostgreSQL, `` ` `` su MySQL).
+    const qid = (type, name) => quotaSempre(name, type);
 
     // Fetching dati Sorgente A (SQL o MongoDB)
     let rowsA = [];

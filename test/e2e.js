@@ -56,7 +56,10 @@ async function runTests() {
 
     console.log('2. doc:insert');
     const ins1 = await emit('doc:insert', { db: DB, coll: COLL, doc: '{ "name": "Ada", "age": 36, "city": "Torino" }' });
-    const ins2 = await emit('doc:insert', { db: DB, coll: COLL, doc: '{ "name": "Bruno", "age": 41, "city": "Bari", "tags": ["a", "b"] }' });
+    const ins2 = await emit('doc:insert', {
+      db: DB, coll: COLL,
+      doc: '{ "name": "Bruno", "age": 41, "city": "Bari", "tags": ["a", "b"], "profilo": { "gruppi": [{ "label": "Membro" }] } }',
+    });
     assert(ins1.ok && ins2.ok, 'due documenti inseriti');
 
     console.log('3. db:collections');
@@ -73,6 +76,14 @@ async function runTests() {
     assert(find.ok && find.total === 2, `total = ${find.ok ? find.total : find.error}`);
     assert(find.ok && find.docs[0].name === 'Bruno', 'sort decrescente per age');
     assert(find.ok && find.columns.includes('tags'), 'colonne = unione delle chiavi');
+
+    const globale = await emit('collection:find', {
+      db: DB, coll: COLL,
+      cercaOvunque: { operatore: 'contieneOvunque', valore: 'mEmBrO' },
+      limit: 50, skip: 0,
+    });
+    assert(globale.ok && globale.docs.length === 1 && globale.docs[0].name === 'Bruno',
+      `ricerca globale case-insensitive dentro oggetti e array (${globale.ok ? globale.docs.length : globale.error})`);
 
     console.log('5. doc:update ($set)');
     const id = JSON.stringify(find.docs[0]._id);
@@ -127,7 +138,7 @@ async function runTests() {
       'relazione orders.people_id -> people rilevata'
     );
 
-    console.log('10-bis. collection:relations + relation:rows (pannello 🔗 della griglia)');
+    console.log('10-bis. collection:relations + filtro strutturato (pannello 🔗 della griglia)');
     // MongoDB non dichiara chiavi esterne: qui il collegamento è un'IPOTESI sul
     // nome del campo, e deve arrivare al client dichiarata come tale.
     const rel = await emit('collection:relations', { db: DB, coll: 'orders' });
@@ -138,29 +149,47 @@ async function runTests() {
     assert(fkDesc && fkDesc.origine === 'euristica',
       "un'ipotesi non deve essere presentata come vincolo del database");
 
-    // Riga riferita: la chiave è un ObjectId, e il valore viaggia in EJSON.
-    const rigaRif = await emit('relation:rows', {
-      db: DB, coll: COLL, colonna: '_id', valore: { $oid: String(ins1.insertedId) }, limit: 1,
-    });
-    assert(rigaRif.ok && rigaRif.righe.length === 1,
-      `documento riferito risolto per ObjectId (${rigaRif.ok ? rigaRif.righe.length : rigaRif.error})`);
-    assert(rigaRif.ok && rigaRif.righe[0]._id && rigaRif.righe[0]._id.$oid === String(ins1.insertedId),
+    // Il pannello 🔗 non ha più un evento proprio: chiede `collection:find` con un
+    // filtro STRUTTURATO, che è la stessa via della griglia (ticket 22-24).
+    const conFiltro = (condizioni, limit = 50) =>
+      emit('collection:find', { db: DB, coll: COLL, filtro: { condizioni }, limit, skip: 0 });
+
+    // Riga riferita: la chiave è un ObjectId, e il valore viaggia in EJSON. È il
+    // caso che il filtro strutturato deve saper decodificare: confrontare
+    // l'oggetto { $oid: … } così com'è non troverebbe mai nulla.
+    const rigaRif = await conFiltro(
+      [{ campo: '_id', operatore: 'uguale', valore: { $oid: String(ins1.insertedId) } }], 1
+    );
+    assert(rigaRif.ok && rigaRif.docs.length === 1,
+      `documento riferito risolto per ObjectId (${rigaRif.ok ? rigaRif.docs.length : rigaRif.error})`);
+    assert(rigaRif.ok && rigaRif.docs[0]._id && rigaRif.docs[0]._id.$oid === String(ins1.insertedId),
       "l'_id torna in forma estesa ($oid), non come stringa");
 
     // Un _id inesistente: zero documenti, non un errore.
-    const orfano = await emit('relation:rows', {
-      db: DB, coll: COLL, colonna: '_id', valore: { $oid: '0'.repeat(24) }, limit: 1,
-    });
-    assert(orfano.ok && orfano.righe.length === 0, 'riferimento inesistente = zero righe, non errore');
+    const orfano = await conFiltro(
+      [{ campo: '_id', operatore: 'uguale', valore: { $oid: '0'.repeat(24) } }], 1
+    );
+    assert(orfano.ok && orfano.docs.length === 0, 'riferimento inesistente = zero righe, non errore');
 
-    // Ricerca testuale per il selettore, sui campi stringa del campione.
-    const cerca = await emit('relation:rows', { db: DB, coll: COLL, colonna: '_id', cerca: 'Bru', limit: 50 });
-    assert(cerca.ok && cerca.righe.some((d) => d.name === 'Bruno'),
-      `ricerca testuale (${cerca.ok ? cerca.righe.length : cerca.error} documenti)`);
-    // I metacaratteri di regex vanno neutralizzati: senza, "(" farebbe fallire
+    // Ricerca testuale per il selettore.
+    const cerca = await conFiltro([{ campo: 'name', operatore: 'contiene', valore: 'Bru' }]);
+    assert(cerca.ok && cerca.docs.some((d) => d.name === 'Bruno'),
+      `ricerca testuale (${cerca.ok ? cerca.docs.length : cerca.error} documenti)`);
+    // I metacaratteri di regex vanno neutralizzati: senza, "(" farebbe FALLIRE
     // la query invece di non trovare nulla.
-    const meta = await emit('relation:rows', { db: DB, coll: COLL, colonna: '_id', cerca: '(', limit: 50 });
-    assert(meta.ok && meta.righe.length === 0, '"(" cercato come carattere, non come regex');
+    const meta = await conFiltro([{ campo: 'name', operatore: 'contiene', valore: '(' }]);
+    assert(meta.ok && meta.docs.length === 0, '"(" cercato come carattere, non come regex');
+
+    // Un nome di campo che diventerebbe un OPERATORE è rifiutato prima di
+    // toccare il database: è la difesa che il metodo separato applicava sul suo
+    // `colonna`, e che ora vive nel filtro.
+    const operatore = await conFiltro([{ campo: '$where', operatore: 'uguale', valore: 1 }]);
+    assert(!operatore.ok && /nome di campo non valido/i.test(operatore.error || ''),
+      `un campo con prefisso $ è rifiutato (${operatore.error})`);
+    // E nemmeno il VALORE può portarne uno.
+    const valoreOstile = await conFiltro([{ campo: '_id', operatore: 'uguale', valore: { $where: 'return true' } }]);
+    assert(!valoreOstile.ok && /JavaScript lato server/i.test(valoreOstile.error || ''),
+      `un valore con $where è rifiutato (${valoreOstile.error})`);
 
     console.log('10-ter. doc:duplicate (ObjectId rifatto, indici unici rispettati)');
     // Su MongoDB "senza chiavi" non puo' cavarsela con NULL: un campo assente

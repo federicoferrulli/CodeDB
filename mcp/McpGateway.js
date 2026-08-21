@@ -695,13 +695,25 @@ function buildMcpServer(session, deps) {
     description:
       'Esegue una query di sola lettura e restituisce { docs, columns, total, skip, limit } ' +
       '(documenti/righe in Extended JSON: ObjectId = {"$oid": ...}, date = {"$date": ...}). ' +
-      'Su MongoDB usa "collection" con "filter"/"sort"/"projection" (find) oppure "pipeline" (aggregazione, senza $out/$merge). ' +
-      'Su MySQL/PostgreSQL usa solo "sql" con uno statement SELECT/SHOW/DESCRIBE/EXPLAIN/WITH, eseguito in una transazione READ ONLY. ' +
+      'PREFERISCI "filtro": è un filtro STRUTTURATO che funziona allo stesso modo su tutti e tre i motori ' +
+      '(MongoDB, MySQL, PostgreSQL) e non richiede di sapere quale motore risponde. ' +
+      'I suoi valori sono parametrizzati, quindi non possono alterare la query. ' +
+      'Su MongoDB restano disponibili "filter" (Extended JSON) e "pipeline" (aggregazione, senza $out/$merge); ' +
+      'su MySQL/PostgreSQL resta "sql" con uno statement SELECT/SHOW/DESCRIBE/EXPLAIN/WITH in transazione READ ONLY, ' +
+      'che serve per tutto ciò che un filtro non esprime (JOIN, GROUP BY, espressioni). ' +
       'Mantieni "limit" basso e usa "projection" o SELECT mirate per non sprecare contesto.',
     inputSchema: {
       connection_id: z.string(),
       db: z.string().describe('Database (MySQL/PostgreSQL: schema) su cui eseguire la query'),
       collection: z.string().optional().describe('Solo MongoDB: collection su cui eseguire find o pipeline'),
+      filtro: z.string().optional().describe(
+        'TUTTI i motori: filtro strutturato in JSON, valido su MongoDB, MySQL e PostgreSQL. '
+        + 'Forma: {"condizioni":[{"campo":"eta","operatore":"maggiore","valore":30}],"unione":"e"}. '
+        + 'Operatori: uguale, diverso, maggiore, maggioreUguale, minore, minoreUguale, '
+        + 'contiene, iniziaCon, finisceCon, dentro (valore = elenco), vuoto, nonVuoto (senza valore). '
+        + '"unione" vale "e" (default) oppure "o". I valori sono parametrizzati: nessun valore '
+        + 'finisce nel testo della query. Su MySQL/PostgreSQL richiede anche "collection".'
+      ),
       filter: z.string().optional().describe('Solo MongoDB: filtro find in Extended JSON, es. {"age":{"$gt":30}} o {"_id":{"$oid":"..."}}'),
       sort: z.string().optional().describe('Solo MongoDB: ordinamento in Extended JSON, es. {"age":-1}'),
       projection: z.string().optional().describe('Solo MongoDB: proiezione dei campi, es. {"name":1,"age":1}'),
@@ -716,9 +728,33 @@ function buildMcpServer(session, deps) {
     const db = String(args.db || '').trim();
     if (!db) throw new Error('Parametro "db" mancante.');
 
+    // Il filtro STRUTTURATO vale su tutti e tre i motori, ed è la via da
+    // preferire: non richiede di sapere quale motore risponde, e i suoi valori
+    // sono parametrizzati invece che interpolati. Viene prima del ramo per
+    // motore proprio perché non è un ramo per motore.
+    if (args.filtro && String(args.filtro).trim()) {
+      if (args.sql && String(args.sql).trim()) {
+        throw new Error('Usa "filtro" oppure "sql", non entrambi: sono due modi di dire la stessa cosa e insieme si sommerebbero.');
+      }
+      const coll = String(args.collection || '').trim();
+      if (!coll) throw new Error('Con "filtro" serve anche "collection": il filtro dice QUALI righe, non da dove.');
+      return jsonResult(await sess.strategy.collectionFind(db, coll, {
+        filtro: args.filtro,
+        sort: args.sort,
+        projection: args.projection,
+        skip: args.skip,
+        limit: args.limit == null ? 50 : args.limit,
+      }));
+    }
+
     if (DbFactory.isSqlType(sess.dbType)) {
       const sql = String(args.sql || '').trim();
-      if (!sql) throw new Error('Per MySQL/PostgreSQL usa il parametro "sql" con una query di sola lettura (gli altri parametri valgono solo per MongoDB).');
+      if (!sql) {
+        throw new Error(
+          'Per MySQL/PostgreSQL usa "filtro" (strutturato, uguale su tutti i motori) '
+          + 'oppure "sql" con una query di sola lettura.'
+        );
+      }
       assertReadOnlySql(sql);
       return jsonResult(await sess.strategy.collectionAggregate(db, null, { pipeline: sql, readOnly: true }));
     }

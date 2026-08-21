@@ -69,9 +69,11 @@ async function seed() {
     await c.query(`CREATE SCHEMA "${SCHEMA_B}"`);
     // Stessa tabella, colonne e chiavi DIVERSE: se un'operazione sbaglia schema
     // il test se ne accorge dai dati, non solo dai nomi.
-    await c.query(`CREATE TABLE "${SCHEMA_A}"."${TABLE}" (id SERIAL PRIMARY KEY, cliente TEXT, totale INT)`);
-    await c.query(`CREATE TABLE "${SCHEMA_B}"."${TABLE}" (id SERIAL PRIMARY KEY, cliente TEXT, totale INT)`);
-    await c.query(`INSERT INTO "${SCHEMA_A}"."${TABLE}" (cliente, totale) VALUES ('A-uno', 10), ('A-due', 20)`);
+    await c.query(`CREATE TABLE "${SCHEMA_A}"."${TABLE}" (id SERIAL PRIMARY KEY, cliente TEXT, totale INT, label TEXT, meta JSONB)`);
+    await c.query(`CREATE TABLE "${SCHEMA_B}"."${TABLE}" (id SERIAL PRIMARY KEY, cliente TEXT, totale INT, label TEXT, meta JSONB)`);
+    await c.query(`INSERT INTO "${SCHEMA_A}"."${TABLE}" (cliente, totale, label, meta) VALUES
+      ('A-uno', 10, 'Responsabile', '{"gruppi":[{"label":"Membro"}]}'),
+      ('A-due', 20, NULL, NULL)`);
     await c.query(`INSERT INTO "${SCHEMA_B}"."${TABLE}" (cliente, totale) VALUES ('B-uno', 100)`);
     // Tabella presente solo in B: serve a verificare che listCollections filtri.
     await c.query(`CREATE TABLE "${SCHEMA_B}".solo_b (id SERIAL PRIMARY KEY)`);
@@ -142,6 +144,21 @@ async function runTests() {
   assert(findB.ok && findB.docs.length === 1 && findB.docs[0].cliente === 'B-uno',
     `schema B: 1 riga propria (${findB.ok ? findB.docs.map((d) => d.cliente).join(', ') : findB.error})`);
 
+  const globaleLabel = await emit('collection:find', {
+    db: SCHEMA_A, coll: TABLE,
+    cercaOvunque: { operatore: 'contieneOvunque', valore: 'RESPONSABILE' },
+    limit: 50, skip: 0,
+  });
+  assert(globaleLabel.ok && globaleLabel.docs.length === 1 && globaleLabel.docs[0].cliente === 'A-uno',
+    `ricerca globale case-insensitive sulle colonne (${globaleLabel.ok ? globaleLabel.docs.length : globaleLabel.error})`);
+  const globaleJson = await emit('collection:find', {
+    db: SCHEMA_A, coll: TABLE,
+    cercaOvunque: { operatore: 'contieneOvunque', valore: 'mEmBrO' },
+    limit: 50, skip: 0,
+  });
+  assert(globaleJson.ok && globaleJson.docs.length === 1 && globaleJson.docs[0].cliente === 'A-uno',
+    `ricerca globale nei valori JSON annidati (${globaleJson.ok ? globaleJson.docs.length : globaleJson.error})`);
+
   console.log('5. conteggio per schema');
   const cntA = await emit('collection:count', { db: SCHEMA_A, coll: TABLE, filter: '' });
   const cntB = await emit('collection:count', { db: SCHEMA_B, coll: TABLE, filter: '' });
@@ -179,7 +196,7 @@ async function runTests() {
   assert(schema.ok && schemaColls.join(',') === ['solo_b', TABLE].sort().join(','),
     `db:schema limitato allo schema B (${schemaColls.join(', ')})`);
 
-  console.log('9-bis. collection:relations + relation:rows attraverso gli schemi (pannello 🔗)');
+  console.log('9-bis. collection:relations + filtro strutturato attraverso gli schemi (pannello 🔗)');
   const rel = await emit('collection:relations', { db: SCHEMA_A, coll: 'righe' });
   const fkDesc = rel.ok && rel.relazioni.find((r) => r.campo === 'ordine_b_id');
   assert(fkDesc, `FK di "righe" rilevata (${rel.ok ? JSON.stringify(rel.relazioni) : rel.error})`);
@@ -193,19 +210,32 @@ async function runTests() {
   // Riga riferita letta DALLO SCHEMA B: 'B-uno', non 'A-uno'.
   const righeA = await emit('collection:find', { db: SCHEMA_A, coll: 'righe', filter: '', limit: 50, skip: 0 });
   const valore = righeA.ok && righeA.docs[0] && righeA.docs[0].ordine_b_id;
-  const rigaRif = await emit('relation:rows', { db: fkDesc.db, coll: fkDesc.tabella, colonna: fkDesc.colonna, valore, limit: 1 });
-  assert(rigaRif.ok && rigaRif.righe.length === 1 && rigaRif.righe[0].cliente === 'B-uno',
-    `riga riferita presa dallo schema B (${rigaRif.ok ? JSON.stringify(rigaRif.righe[0] && rigaRif.righe[0].cliente) : rigaRif.error})`);
+  // Il pannello 🔗 non ha più un evento proprio: chiede `collection:find` con un
+  // filtro STRUTTURATO, che è la stessa via della griglia (ticket 22-24).
+  const conFiltro = (db, coll, condizioni, limit = 50) =>
+    emit('collection:find', { db, coll, filtro: { condizioni }, limit, skip: 0 });
+
+  const rigaRif = await conFiltro(fkDesc.db, fkDesc.tabella,
+    [{ campo: fkDesc.colonna, operatore: 'uguale', valore }], 1);
+  assert(rigaRif.ok && rigaRif.docs.length === 1 && rigaRif.docs[0].cliente === 'B-uno',
+    `riga riferita presa dallo schema B (${rigaRif.ok ? JSON.stringify(rigaRif.docs[0] && rigaRif.docs[0].cliente) : rigaRif.error})`);
 
   // La ricerca resta confinata allo schema indicato: 'A-uno' esiste, ma in A.
-  const cercaB = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'id', cerca: 'A-uno', limit: 50 });
-  assert(cercaB.ok && cercaB.righe.length === 0, 'la ricerca non sconfina nell\'altro schema');
-  const cercaOk = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'id', cerca: 'B-uno', limit: 50 });
-  assert(cercaOk.ok && cercaOk.righe.length === 1, `ricerca testuale in B (${cercaOk.ok ? cercaOk.righe.length : cercaOk.error})`);
+  const cercaB = await conFiltro(SCHEMA_B, TABLE, [{ campo: 'cliente', operatore: 'contiene', valore: 'A-uno' }]);
+  assert(cercaB.ok && cercaB.docs.length === 0, 'la ricerca non sconfina nell\'altro schema');
+  const cercaOk = await conFiltro(SCHEMA_B, TABLE, [{ campo: 'cliente', operatore: 'contiene', valore: 'B-uno' }]);
+  assert(cercaOk.ok && cercaOk.docs.length === 1, `ricerca testuale in B (${cercaOk.ok ? cercaOk.docs.length : cercaOk.error})`);
 
-  // Colonna inventata: rifiutata prima di finire quotata nella query.
-  const finta = await emit('relation:rows', { db: SCHEMA_B, coll: TABLE, colonna: 'non_esiste', valore: 1 });
-  assert(!finta.ok && /non esiste/i.test(finta.error), 'colonna inesistente rifiutata');
+  // Colonna inventata: l'errore arriva dal motore, e dice che non esiste.
+  const finta = await conFiltro(SCHEMA_B, TABLE, [{ campo: 'non_esiste', operatore: 'uguale', valore: 1 }]);
+  assert(!finta.ok && /non esist|does not exist/i.test(finta.error),
+    `colonna inesistente rifiutata (${finta.error})`);
+
+  // Un nome di campo che su MongoDB sarebbe un OPERATORE è rifiutato prima di
+  // toccare il database, su qualunque motore.
+  const operatore = await conFiltro(SCHEMA_B, TABLE, [{ campo: '$where', operatore: 'uguale', valore: 1 }]);
+  assert(!operatore.ok && /nome di campo non valido/i.test(operatore.error),
+    `un campo con prefisso $ è rifiutato (${operatore.error})`);
 
   console.log('9-ter. doc:duplicate (chiavi rifatte, schema rispettato)');
   // La tabella di prova nasce nello schema A, ma il duplicato piu' insidioso e'

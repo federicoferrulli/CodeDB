@@ -1,6 +1,6 @@
 import { $, esc, toast } from './utils.js';
 import { socket } from './socket.js';
-import { tabs, switchTab, activeTab } from './tabs.js';
+import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
 import { switchCollTab, openCollTab } from './colltabs.js';
 import { runQuery } from './query-tab.js';
 import { knowsScriptRun, focusScriptRun, resumeScript } from './script-run.js';
@@ -230,6 +230,11 @@ export function markDisconnectedAllRunning() {
     notify();
   }
 }
+
+// Chiudere un tab abbandona le sue query in corso. La registrazione sta qui e
+// non in tabs.js perche' e' questo pannello ad avere qualcosa da chiudere: un
+// modulo di base non deve conoscere i pannelli che lo osservano.
+allaChiusura((tabId) => markAbandonedByTab(tabId));
 
 export function markAbandonedByTab(tabId) {
   let changed = false;

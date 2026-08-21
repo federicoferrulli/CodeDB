@@ -3,6 +3,9 @@ import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { isGeometry, geometryLabel } from './geojson.js';
 import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve, tronca } from './valori.js';
+// L'avviso passeggero vive in un modulo foglia: il trasporto ne ha bisogno e
+// non puo' importare questo file (vedi la nota sul trasporto piu' sotto).
+import { toast } from './avvisi.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -11,6 +14,7 @@ export const $ = (sel) => document.querySelector(sel);
 // questi non è costretto a caricare l'intera applicazione (vedi la nota in
 // testa a valori.js).
 export { isPlainObject, ejsonKind, fmtBytes, safeUUID };
+export { toast };
 
 export function displayValue(v) {
   if (v === null || v === undefined) return { text: '–', cls: 'type-null' };
@@ -285,20 +289,6 @@ export function conCaricamento(btn, azione, testo) {
   return p.finally(fine);
 }
 
-let toastTimer = null;
-export function toast(msg, isError = false) {
-  const el = $('#toast');
-  el.textContent = msg;
-  el.classList.toggle('error', isError);
-  el.classList.remove('hidden');
-  clearTimeout(toastTimer);
-  // La durata segue la lunghezza: gli errori ora sono frasi con causa e rimedio
-  // (db/errors.js) e in 3 secondi fissi non si leggevano — sparivano prima della
-  // parte che dice cosa fare. ~55 ms per carattere, fra 3 e 12 secondi.
-  const durata = Math.min(Math.max(3000, String(msg).length * 55), 12000);
-  toastTimer = setTimeout(() => el.classList.add('hidden'), durata);
-}
-
 /**
  * Chiave di storage dell'applicazione (CDB-64).
  *
@@ -403,11 +393,18 @@ export function hideContextMenu() {
   $('#context-menu').classList.add('hidden');
 }
 
-document.addEventListener('click', hideContextMenu);
-window.addEventListener('blur', hideContextMenu);
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') hideContextMenu();
-});
+// Il menu contestuale si chiude da solo: un clic altrove, la finestra che perde
+// il fuoco, Esc. Gli ascoltatori si registrano solo se c'e' un documento —
+// altrimenti il solo IMPORTARE questo file fuori dal browser lanciava
+// `ReferenceError: document is not defined`, cioe' rendeva non provabile ogni
+// modulo che risalisse fin qui. La guardia non cambia nulla nella pagina.
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', hideContextMenu);
+  window.addEventListener('blur', hideContextMenu);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') hideContextMenu();
+  });
+}
 
 // Riordino via drag & drop di una barra di tab. `el` è l'elemento tab, `id` la
 // sua chiave stabile (il tabId o l'id del coll-tab) e `onReorder(fromId, toId)`
@@ -488,132 +485,22 @@ export function showError(id, msg) {
   }
 }
 
-// Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
-// momento della chiamata (non alla risposta: l'utente può cambiare tab mentre
-// la query è in volo). La risposta porta il tab di origine in `_tab` e il suo
-// stato in `_state`; se nel frattempo il tab è stato chiuso, la risposta viene
-// scartata.
-//
-// IMPORTANTE — `_state` non è un di più: `state` (state.js) è un Proxy che punta
-// SEMPRE al tab attivo, quindi un callback che scrive `state.docs = …` scrive nel
-// tab che è attivo AL MOMENTO DELLA RISPOSTA, non in quello che ha fatto la
-// richiesta. Cambiando tab mentre una find è in volo, i risultati del tab A
-// finivano nello stato del tab B (griglia, colonne e footer sbagliati, e da lì
-// scritture sul documento sbagliato). Ogni callback che modifica lo stato deve
-// quindi usare `res._state`, mai il Proxy; e deve ridipingere solo se il proprio
-// tab è ancora quello attivo (`res._tab === activeTab()`).
-export function emit(event, payload) {
-  // Il tabId del payload, quando c'è, ha la precedenza (split view, modali con
-  // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
-  // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
-  const pinned = payload && payload.tabId;
-  // NB: il tabId va scritto DOPO lo spread del payload. Diverse modali passano
-  // `tabId` esplicito ma indefinito quando non hanno un contesto (es. insert.js
-  // con `insertContext = null`): con lo spread per ultimo quell'`undefined`
-  // cancellava il tabId iniettato, il server ripiegava sulla sessione "default"
-  // e rispondeva "Nessuna connessione attiva al database.".
-  const tab = pinned ? (tabs.list.find((t) => t.id === pinned) || null) : activeTab();
-  const pinnedMancante = !!pinned && !tab;
-  const withTab = (extra) => {
-    const out = { ...(payload || {}), ...(extra || {}) };
-    out.tabId = tab ? tab.id : pinned;
-    return out;
-  };
-  // Se il chiamante porta il tabId di un tab già chiuso, un piccolo sentinella
-  // conserva l'identità dell'origine: `isForActiveTab()` deve risultare falso e
-  // non mostrare l'errore nel workspace di un'altra connessione.
-  const tabStamp = tab || (pinnedMancante ? { id: pinned, orphan: true } : null);
-  const stamp = (res) => Object.assign(res, {
-    _tab: tabStamp,
-    _state: tab ? tab.state : (pinnedMancante ? null : state),
-  });
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let onTabClosed = null;
-    const cleanup = () => {
-      if (onTabClosed && typeof window !== 'undefined') {
-        window.removeEventListener('codedb:tab-closed', onTabClosed);
-      }
-    };
-    const resolveOnce = (value) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(value);
-    };
-    const rejectOnce = (error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(error);
-    };
-    // Anche gli errori portano l'origine: i callback di errore devono poter
-    // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
-    const fail = (msg) => rejectOnce(stamp(new Error(msg)));
-    const tabChiuso = () => pinnedMancante || !!(tab && !tabs.list.includes(tab));
-    const failTabChiuso = () => {
-      const err = new Error('Operazione interrotta: il tab di origine è stato chiuso.');
-      err.name = 'AbortError';
-      err.code = 'TAB_CLOSED';
-      rejectOnce(stamp(err));
-    };
-    onTabClosed = (e) => {
-      if (tab && e.detail && e.detail.tabId === tab.id) failTabChiuso();
-    };
-    if (tab && typeof window !== 'undefined') {
-      window.addEventListener('codedb:tab-closed', onTabClosed);
-    }
-    if (tabChiuso()) {
-      failTabChiuso();
-      return;
-    }
-    socket.emit(event, withTab(), (res) => {
-      if (tabChiuso()) { failTabChiuso(); return; }
-      if (res && res.ok) {
-        resolveOnce(stamp(res));
-      } else {
-        const errMsg = String((res && res.error) || '');
-        const isNoSession = errMsg.includes('Nessuna connessione attiva');
-        // Riconnessione automatica possibile solo per le connessioni SALVATE
-        // (CDB-22): i segreti non vivono più nel browser, quindi per una
-        // connessione estemporanea non c'è nulla con cui riaprirla — e provarci
-        // produrrebbe un errore di autenticazione al posto di quello vero.
-        const riconnettibile = !!(tab && (tab.connName || (tab.connCfg && tab.connCfg.saved)));
-        if (isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
-          const cfg = { saved: tab.connName || tab.connCfg.saved };
-          socket.emit('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
-            if (tabChiuso()) { failTabChiuso(); return; }
-            if (connRes && connRes.ok) {
-              tab.state.connected = true;
-              toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
-              socket.emit(event, withTab({ _reconnected: true }), (retryRes) => {
-                if (tabChiuso()) { failTabChiuso(); return; }
-                if (retryRes && retryRes.ok) {
-                  resolveOnce(stamp(retryRes));
-                } else {
-                  fail(retryRes ? retryRes.error : 'Errore dopo la riconnessione');
-                }
-              });
-            } else {
-              toast(`Impossibile riconnettersi al database: ${connRes ? connRes.error : 'Errore sconosciuto'}`, true);
-              fail(res ? res.error : 'Connessione assente');
-            }
-          });
-        } else {
-          fail(res ? res.error : 'Errore sconosciuto');
-        }
-      }
-    });
-  });
-}
+/* ---------------------------------------------------------------------------
+ * Il trasporto se n'e' andato: vive in `trasporto.js`.
+ *
+ * `emit`, `emitFireAndForget` e `isForActiveTab` erano gli unici pezzi PROFONDI
+ * di questo file — dietro tre nomi ci stanno la riconnessione delle sole
+ * connessioni salvate, l'annullamento su tab chiuso e la marcatura dell'origine
+ * della risposta — e stavano sepolti fra una quarantina di funzioni scorrelate,
+ * dai toast alle icone alle modali. Chi aveva bisogno del solo trasporto si
+ * tirava dietro tutto il resto, ascoltatori globali sul `document` compresi.
+ *
+ * Si ri-esportano da qui perche' e' il posto da cui quarantasette moduli li
+ * importano: spostare la conoscenza non e' un buon motivo per rompere
+ * quarantasette import. E' la stessa scelta gia' fatta per `valori.js`.
+ * ------------------------------------------------------------------------- */
 
-// La risposta riguarda ancora ciò che l'utente sta guardando? Solo in questo
-// caso il workspace (DOM unico, condiviso da tutti i tab) va ridipinto: i dati
-// di un tab in background si scrivono nel suo stato e basta, verranno mostrati
-// quando l'utente ci tornerà.
-export function isForActiveTab(res) {
-  return !res || !res._tab || res._tab === activeTab();
-}
+export { emit, isForActiveTab, emitFireAndForget } from './trasporto.js';
 
 // Contesto (tab + coll-tab) al momento in cui parte un'operazione asincrona
 // lunga — import a blocchi, scritture multiple, refresh post-scrittura. `st` è
@@ -647,19 +534,6 @@ export function marcaDatiSporchi(ctx, db, coll) {
   if (st.db === db && st.coll === coll) st.dataDirty = true;
 }
 
-// Evento socket senza risposta (fire-and-forget), sempre col tabId del tab
-// attivo. Si chiamava `notify`, nome indistinguibile da una notifica all'utente:
-// in graph3d.js era stato usato per ~27 messaggi UI, che quindi non comparivano
-// mai (errori compresi) mentre il testo italiano finiva sul socket come nome di
-// evento. Per i messaggi all'utente si usa `toast()`.
-export function emitFireAndForget(event, payload) {
-  const tab = activeTab();
-  // Il tabId dopo lo spread, per lo stesso motivo di `emit()`: un `tabId`
-  // esplicito ma indefinito nel payload non deve cancellare quello iniettato.
-  const msg = { ...(payload || {}) };
-  msg.tabId = (payload && payload.tabId) || (tab ? tab.id : undefined);
-  socket.emit(event, msg);
-}
 
 // (rimossa `invalidateSchema()`: azzerava la cache dello schema attraverso il
 // Proxy `state`, quindi quella del tab ATTIVO alla risposta invece di quella del

@@ -72,6 +72,17 @@ _Avoid_: job, task
 
 ### Esecuzione
 
+**Ricerca globale**:
+Una ricerca letterale e senza distinzione fra maiuscole e minuscole nei valori scalari di
+tutti i campi rilevati, compresi quelli dentro documenti e array annidati. Su MongoDB i
+campi rilevati provengono da un catalogo campionato e arricchito durante la sessione.
+_Avoid_: filtro rapido, modalità occhio, ricerca nella pagina
+
+**Condizione**:
+Un filtro avanzato scritto nel linguaggio del motore: clausola `WHERE` sui motori SQL o
+documento MQL su MongoDB.
+_Avoid_: ricerca globale, query
+
 **Script**:
 Un testo di più istruzioni eseguite una dopo l'altra, con pausa, ripresa e arresto
 sull'errore.

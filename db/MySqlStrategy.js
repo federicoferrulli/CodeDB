@@ -11,9 +11,17 @@ const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+// Come si scrive il nome di una tabella o di una colonna: regola unica,
+// condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
+// frontend (vedi db/identificatori.js).
+const { quotaSempre, quotaQualificato } = require('./identificatori');
 const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
+const {
+  normalizzaRicerca, catalogoDaDocumenti, aggiornaCacheCatalogo, catalogoValido,
+  clausolaMySql, tipoJsonMySql, separaCataloghiJson,
+} = require('./ricercaGlobale');
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
 } = require('./duplica');
@@ -39,12 +47,15 @@ function assertDbName(name) {
 }
 
 // Identificatore quotato (` `), con eventuale punto trattato come carattere.
+// La regola non è di questo file: sta in `db/identificatori.js` insieme a
+// quella degli altri motori, perché è la stessa decisione presa ovunque si
+// scriva il nome di una tabella o di una colonna.
 function qid(name) {
-  return mysql.escapeId(String(name), true);
+  return quotaSempre(name, 'mysql');
 }
 
 function qtable(db, table) {
-  return `${qid(db)}.${qid(table)}`;
+  return quotaQualificato([db, table], 'mysql');
 }
 
 // Clausola WHERE per la chiave (virtuale) _id: { col: valore, ... }.
@@ -60,7 +71,53 @@ function whereFromId(id) {
 
 // Il dialetto MySQL delle quattro funzioni comuni ai due motori SQL: tutto il
 // resto (che cosa è un _id, come si normalizza un limite) sta nel modulo.
-const TABELLARE = tabellare({ qid, qtable, whereFromId });
+// Come MySQL scrive la regola «il valore nullo è il più piccolo»: con niente.
+// Il suo ordinamento predefinito colloca già i NULL come i più piccoli, quindi
+// un suffisso sarebbe rumore — e MySQL non ha nemmeno la sintassi NULLS
+// FIRST/LAST. Che la coincidenza regga è provato contro un MySQL vero da
+// test/e2e-nulli-ordinati.js: senza quella prova la regola qui si reggerebbe su
+// una coincidenza che nessuno sorveglia.
+const nulliPrima = () => '';
+
+// `testoDi`: come si confronta una colonna COME TESTO. Su MySQL non serve
+// nulla — la conversione e' implicita, e un CAST esplicito sposterebbe la
+// collation del confronto (vedi la nota sull'errore 1267 in testa al file).
+const TABELLARE = tabellare({
+  qid, qtable, whereFromId, nulliPrima, segnaposto: () => '?', testoDi: (col) => col,
+});
+
+async function preparaRicercaGlobale(strategy, db, coll, payload, colonne) {
+  const valore = normalizzaRicerca(payload && payload.cercaOvunque);
+  if (!valore) return null;
+  const json = (colonne || []).filter(tipoJsonMySql);
+  let catalogo = new Map();
+  if (json.length) {
+    const chiave = `${db}\0${coll}`;
+    catalogo = catalogoValido(strategy._cacheRicerca, chiave);
+    if (!catalogo) {
+      const nomi = json.map((c) => qid(c.name)).join(', ');
+      const [righe] = await strategy.requirePool().query(
+        `SELECT ${nomi} FROM ${qtable(db, coll)} LIMIT 100`
+      );
+      // mysql2 di norma decodifica JSON, ma `jsonStrings` e alcuni fork lo
+      // restituiscono come testo. Decodificarlo qui evita di catalogare l'intero
+      // documento come un solo valore (che farebbe coincidere anche le chiavi).
+      for (const riga of righe) {
+        for (const col of json) {
+          if (typeof riga[col.name] !== 'string') continue;
+          try { riga[col.name] = JSON.parse(riga[col.name]); } catch { riga[col.name] = null; }
+        }
+      }
+      catalogo = aggiornaCacheCatalogo(
+        strategy._cacheRicerca,
+        chiave,
+        catalogoDaDocumenti(righe)
+      );
+    }
+  }
+  const perColonna = separaCataloghiJson(catalogo, json.map((c) => c.name));
+  return () => clausolaMySql(valore, colonne, perColonna, qid);
+}
 
 /* ---------------------------------------------------------------------------
  * Il dialetto MySQL dei metadati comuni (db/sqlMetadati.js).
@@ -92,7 +149,11 @@ const DIALETTO_METADATI = {
     // `SRS_ID` esiste da MySQL 8: su 5.7 la query fallisce, e il secondo
     // tentativo la legge senza (là il SRID non è vincolato).
     tentativi: (db, coll) => ['SRS_ID', 'NULL'].map((srid) => ({
-      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, ${srid} AS srid, EXTRA AS extra
+      // `IS_NULLABLE` viaggia con le colonne che si leggevano già: sapere quali
+      // colonne ammettono NULL non costa una lettura di catalogo in più (serve a
+      // chi compone l'ORDER BY, vedi buildOrderBy).
+      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, ${srid} AS srid, EXTRA AS extra,
+                   IS_NULLABLE AS nullable
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
           ORDER BY ORDINAL_POSITION`,
@@ -235,6 +296,9 @@ class MySqlStrategy extends DbStrategy {
     // conoscere a OGNI find, e information_schema non è gratis. Cache breve,
     // svuotata dalle DDL sulle colonne che passano da qui.
     this._cacheColonne = new Map();
+    this._cacheRicerca = new Map();
+    this._preparaRicercaGlobale = (db, coll, payload, colonne) =>
+      preparaRicercaGlobale(this, db, coll, payload, colonne);
     // Collation a cui allineare ogni connessione del pool (null = default del
     // driver). Decisa alla connessione, vedi scegliCollazione.
     this.collazione = null;
@@ -496,11 +560,13 @@ class MySqlStrategy extends DbStrategy {
   // della pipeline (colonne, _id, griglia) non si accorge di nulla.
   async selectListFor(db, coll) {
     const info = await this.tableColumnsInfo(db, coll);
-    if (!info.geo.size) return { list: '*', geo: info.geo };
+    if (!info.geo.size) return { list: '*', geo: info.geo, colonne: info.columns };
     const list = info.columns
       .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
       .join(', ');
-    return { list, geo: info.geo };
+    // `colonne` viaggia con la lista: sono gli STESSI descrittori appena letti,
+    // quindi chi compone l'ORDER BY non deve rileggere il catalogo.
+    return { list, geo: info.geo, colonne: info.columns };
   }
 
   // Le geometrie tornano come testo GeoJSON: qui diventano oggetti, la forma
@@ -548,21 +614,41 @@ class MySqlStrategy extends DbStrategy {
     return TABELLARE.parseRowId(rawId);
   }
 
-  buildOrderBy(text) {
-    return TABELLARE.buildOrderBy(text);
+  /**
+   * L'ORDER BY della griglia e della tab ⚡. `opzioni.colonne` sono i
+   * descrittori della tabella su cui si ordina (nome, tipo, nullabilità):
+   * arrivano già letti da `collectionFind`, quindi conoscerli non costa una
+   * lettura di catalogo in più. Un motore che debba ordinare diversamente
+   * sovrascrive QUESTO metodo, ed è ascoltato da tutti i percorsi.
+   */
+  buildOrderBy(text, opzioni) {
+    return TABELLARE.buildOrderBy(text, opzioni);
   }
 
-  buildSelect(db, coll, payload) {
-    return TABELLARE.buildSelect(db, coll, payload);
+  buildSelect(db, coll, payload, opzioni = {}) {
+    // `ordinamento` chiude sul metodo di QUESTA istanza: è ciò che rende
+    // efficace una sovrascrittura di `buildOrderBy` anche per la griglia.
+    return TABELLARE.buildSelect(db, coll, payload, {
+      ...opzioni,
+      ordinamento: (testo) => this.buildOrderBy(testo, opzioni),
+    });
   }
 
   async collectionFind(db, coll, payload) {
     const pool = this.requirePool();
-    const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
     // Chiave primaria e metadati di colonna sono due letture di
     // information_schema indipendenti: in serie aggiungevano due round trip a
     // ogni pagina della griglia, in parallelo uno solo.
+    //
+    // La SELECT si compone DOPO di loro, e non prima: fino a ieri l'ordinamento
+    // veniva composto in modo sincrono mentre la lettura dei metadati non era
+    // nemmeno partita, quindi chi lo compone non poteva sapere nulla della
+    // colonna su cui stava ordinando. I metadati si leggevano comunque, a ogni
+    // pagina: spostare la composizione dopo di essi non costa niente.
     const [pk, sel] = await Promise.all([this.primaryKey(db, coll), this.selectListFor(db, coll)]);
+    const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, sel.colonne);
+    const { table, whereSql, whereParams, orderSql, limit, skip } =
+      this.buildSelect(db, coll, payload, { colonne: sel.colonne, ricercaGlobale });
 
     // Keyset (seek) pagination: se richiesta e possibile (chiave a colonna
     // singola, ordinamento di default), pagina con `pk > :after` invece di
@@ -572,7 +658,11 @@ class MySqlStrategy extends DbStrategy {
     const { list: selectList, geo } = sel;
     const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList);
     const sql = ks ? ks.sql : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
-    const params = ks ? ks.params : [limit, skip];
+    // I parametri del filtro STRUTTURATO vengono prima di limite e salto:
+    // `componiSelezione` li ha numerati partendo da 1, e invertirli farebbe
+    // leggere il limite al posto del filtro. Col filtro testuale la lista è
+    // vuota e non cambia nulla.
+    const params = ks ? ks.params : [...whereParams, limit, skip];
 
     // Timeout per-query (mysql2 interrompe la query allo scadere): una find lenta
     // degrada con errore invece di tenere occupata la connessione del pool. La
@@ -607,7 +697,7 @@ class MySqlStrategy extends DbStrategy {
     // con un timeout così non può bloccarsi all'infinito.
     let total = null;
     if (!payload.deferCount) {
-      const c = await this.countWithTimeout(table, whereSql);
+      const c = await this.countWithTimeout(table, whereSql, whereParams);
       total = c.total;
     }
 
@@ -627,13 +717,21 @@ class MySqlStrategy extends DbStrategy {
 
   // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
   // { total, timedOut }: total è null se il conteggio ha superato il timeout.
-  async countWithTimeout(table, whereSql) {
+  // I PARAMETRI della clausola vanno con lei.
+  //
+  // Finché il filtro era un frammento di testo grezzo la clausola bastava a se
+  // stessa, e il conteggio poteva riceverla da sola. Col filtro strutturato la
+  // clausola contiene segnaposto, e mandarla senza valori dà «no parameter $1»
+  // su PostgreSQL e un errore di sintassi su MySQL — cioè la griglia mostra le
+  // righe e poi fallisce sul totale, il che è peggio di fallire subito perché
+  // sembra un difetto del conteggio e non del filtro.
+  async countWithTimeout(table, whereSql, whereParams = []) {
     const pool = this.requirePool();
     const ms = DbStrategy.countTimeoutMs();
     const q = { sql: `SELECT COUNT(*) AS total FROM ${table}${whereSql}` };
     if (ms > 0) q.timeout = ms;
     try {
-      const [[{ total }]] = await pool.query(q);
+      const [[{ total }]] = await pool.query(q, whereParams);
       return { total: Number(total), timedOut: false };
     } catch (err) {
       if (err && (err.code === 'PROTOCOL_SEQUENCE_TIMEOUT' || /timeout/i.test(err.message || ''))) {
@@ -970,6 +1068,7 @@ class MySqlStrategy extends DbStrategy {
   async collectionExplain(db, coll, payload) {
     const pool = this.requirePool();
     let sql;
+    let parametriPiano = [];
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
@@ -977,20 +1076,30 @@ class MySqlStrategy extends DbStrategy {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
     } else {
-      const { table, whereSql, orderSql, limit, skip } = this.buildSelect(db, coll, payload);
+      // Le stesse colonne che vede `collectionFind`: un piano calcolato su un
+      // ORDER BY diverso da quello della query vera spiegherebbe un'altra
+      // query. La lettura è in cache (la find l'ha appena fatta), quindi non
+      // aggiunge un round trip.
+      const { columns: colonne } = await this.tableColumnsInfo(db, coll);
+      const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, colonne);
+      const { table, whereSql, whereParams, orderSql, limit, skip } =
+        this.buildSelect(db, coll, payload, { colonne, ricercaGlobale });
       sql = `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${limit} OFFSET ${skip}`;
+      // Il piano si calcola sulla query VERA, parametri compresi: un EXPLAIN
+      // con i segnaposto senza valori non è la stessa query.
+      parametriPiano = whereParams;
     }
 
     const conn = await pool.getConnection();
     try {
       await this.usaDatabase(conn, db);
       try {
-        const [rows] = await conn.query(`EXPLAIN FORMAT=JSON ${sql}`);
+        const [rows] = await conn.query(`EXPLAIN FORMAT=JSON ${sql}`, parametriPiano);
         const raw = rows && rows[0] && (rows[0].EXPLAIN || rows[0][Object.keys(rows[0])[0]]);
         return { format: 'json', plan: JSON.parse(String(raw)), query: sql };
       } catch (err) {
         // Ripiego: EXPLAIN classico in forma tabellare.
-        const [rows, fields] = await conn.query(`EXPLAIN ${sql}`);
+        const [rows, fields] = await conn.query(`EXPLAIN ${sql}`, parametriPiano);
         if (!Array.isArray(rows)) throw err;
         const columns = (fields || []).map((f) => f.name);
         return { format: 'table', rows: rows.map(serializeRow), columns, query: sql };
@@ -1066,14 +1175,27 @@ class MySqlStrategy extends DbStrategy {
     return { deleted: res.affectedRows };
   }
 
+  /**
+   * Cancellazione in blocco secondo il filtro MOSTRATO.
+   *
+   * Il filtro deve essere lo STESSO che ha prodotto le righe a schermo, in
+   * qualunque forma sia arrivato: se la griglia sta filtrando in modalità
+   * rapida — dove il testo è una parola da cercare e non una clausola — e qui
+   * si usasse il solo `filter`, quella parola verrebbe interpretata come una
+   * WHERE. Nel migliore dei casi è un errore di sintassi; nel peggiore è una
+   * cancellazione che non corrisponde a ciò che l'utente vedeva.
+   *
+   * Si riusa quindi `buildSelect`, che è già il posto in cui le due forme di
+   * filtro diventano una clausola sola, parametri compresi.
+   */
   async collectionDeleteMany(db, coll, payload) {
     const pool = this.requirePool();
-    const filter = String(payload.filter || '').trim();
     // Senza filtro svuota la tabella (come deleteMany({}) su MongoDB):
     // la conferma rafforzata è responsabilità del frontend.
-    const [res] = await pool.query(
-      `DELETE FROM ${qtable(db, coll)}${filter ? ` WHERE ${filter}` : ''}`
-    );
+    const { columns: colonne } = await this.tableColumnsInfo(db, coll);
+    const ricercaGlobale = await this._preparaRicercaGlobale(db, coll, payload, colonne);
+    const { table, whereSql, whereParams } = this.buildSelect(db, coll, payload, { colonne, ricercaGlobale });
+    const [res] = await pool.query(`DELETE FROM ${table}${whereSql}`, whereParams);
     return { deleted: res.affectedRows };
   }
 
@@ -1184,69 +1306,6 @@ class MySqlStrategy extends DbStrategy {
       origine: 'vincolo',
       molti: false,
     }));
-  }
-
-  async relatedRows(db, coll, payload) {
-    const pool = this.requirePool();
-    const { colonna, valore, haValore, cerca, limit, skip } = DbStrategy.relatedRowsParams(payload);
-    const table = qtable(db, coll);
-    const [pk, sel, info] = await Promise.all([
-      this.primaryKey(db, coll),
-      this.selectListFor(db, coll),
-      this.tableColumnsInfo(db, coll),
-    ]);
-
-    // La colonna arriva dal descrittore della FK, quindi da information_schema e
-    // non dall'utente — ma questo metodo è raggiungibile anche dal socket, e un
-    // payload confezionato a mano non deve poter nominare una colonna
-    // qualunque: `qid` la quoterebbe senza batter ciglio.
-    const noteCols = new Set(info.columns.map((c) => c.name));
-    if (!noteCols.has(colonna)) {
-      throw new Error(`La colonna "${colonna}" non esiste nella tabella "${coll}".`);
-    }
-
-    const conds = [];
-    const params = [];
-    if (haValore) {
-      // <=> e non =: con un valore NULL l'uguaglianza normale non è mai vera, e
-      // una cella vuota avrebbe mostrato "nessuna riga" anche dove la riga c'è.
-      // Il valore arriva in Extended JSON come tutti gli altri (una FK può
-      // essere un BIGINT o una data, non solo un intero piccolo).
-      conds.push(`${qid(colonna)} <=> ?`);
-      params.push(toSqlValue(deserializeClientObject({ v: valore }).v));
-    }
-    if (cerca) {
-      // CAST e non un confronto diretto. Su una chiave INT, `id = 'Bru'` non è
-      // un errore per MySQL: converte la stringa a 0 e restituisce le righe con
-      // id = 0. La ricerca sembrerebbe funzionare e mostrerebbe una riga che non
-      // c'entra nulla — il tipo di difetto che nessuno riconosce come tale.
-      const or = [`CAST(${qid(colonna)} AS CHAR) = ?`];
-      params.push(cerca);
-      // Si cerca sulle colonne testuali: un LIKE su un intero o su una data
-      // costringe MySQL a convertirle riga per riga, e il risultato non è
-      // quello che l'utente si aspetta comunque.
-      for (const c of info.columns) {
-        if (!TESTUALI_MYSQL.has(String(c.type).toLowerCase())) continue;
-        or.push(`${qid(c.name)} LIKE ?`);
-        params.push(`%${DbStrategy.escapeLike(cerca)}%`);
-        if (or.length > DbStrategy.MAX_COLONNE_CERCA) break;
-      }
-      conds.push(`(${or.join(' OR ')})`);
-    }
-
-    const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const order = pk.length ? ` ORDER BY ${pk.map(qid).join(', ')}` : '';
-    const ms = DbStrategy.queryTimeoutMs();
-    const q = { sql: `SELECT ${sel.list} FROM ${table}${where}${order} LIMIT ? OFFSET ?` };
-    if (ms > 0) q.timeout = ms;
-
-    const [rows, fields] = await pool.query(q, [...params, limit, skip]);
-    MySqlStrategy.geoRowsToJson(rows, sel.geo);
-
-    const columns = (fields || []).map((f) => f.name);
-    const capped = DbStrategy.truncateBySize(rows);
-    const righe = capped.rows.map((r) => serializeRow({ ...r, _id: this.makeId(r, pk, columns) }));
-    return { righe, colonne: columns, chiave: pk, troncato: !!capped.truncated };
   }
 
 

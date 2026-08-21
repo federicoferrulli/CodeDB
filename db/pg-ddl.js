@@ -23,9 +23,12 @@
  * ------------------------------------------------------------------------- */
 
 const { isPostgresNativeGeometryType } = require('./geometry');
+// La quotatura degli identificatori e' una regola sola per tutto il repo: vedi
+// db/identificatori.js.
+const { quotaSempre } = require('./identificatori');
 
 function qid(name) {
-  return '"' + String(name).replace(/"/g, '""') + '"';
+  return quotaSempre(name, 'postgresql');
 }
 
 // Tipo seriale equivalente per una colonna con default `nextval(...)`. I nomi a

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
@@ -7,13 +7,20 @@ import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
 import { indicizzaRelazioni, VINCOLO } from './fk-relazioni.js';
 import { activeTab } from './tabs.js';
+// Le due modalità della casella del filtro: rapida (cerca in tutte le
+// colonne) e condizione (WHERE/MQL scritti a mano). Vedi filtro-rapido.js.
+import { MODI, payloadFiltro } from './filtro-rapido.js';
+// Il modulo unico della griglia: quali righe stanno nella finestra visibile,
+// come si scrive il corpo della tabella, e che cosa questa griglia sa fare.
+// Il disegno della singola riga resta qui, perche' e' cio' che cambia fra le
+// tre viste (vedi la nota in testa a griglia.js).
+import {
+  capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga,
+  SOGLIA_VIRTUALE,
+} from './griglia.js';
 
 export function applyDbTypeToWorkspace() {
   const isSql = isSqlType(state.dbType);
-  // Fix per non usare l'indice magico
-  const aggOpt = $('#query-mode').querySelector('option[value="aggregate"]');
-  if (aggOpt) aggOpt.textContent = isSql ? 'SQL Raw' : 'aggregate';
-  
   $('#uml-hint').innerHTML = isSql
     ? 'Relazioni dalle <b>foreign key</b> dichiarate, più quelle dedotte dai nomi delle colonne (es. <code>user_id</code> → tabella <code>users</code>).'
     : 'Associazioni dedotte dai nomi dei campi (es. <code>user_id</code> → collection <code>users</code>) e dai tipi ObjectId su un campione di documenti.';
@@ -22,39 +29,27 @@ export function applyDbTypeToWorkspace() {
 
 export function applyQueryPlaceholders() {
   const isSql = isSqlType(state.dbType);
-  const aggregate = $('#query-mode').value === 'aggregate';
-  if (isSql) {
-    $('#filter-input').placeholder = aggregate
-      ? 'Query SQL, es. SELECT city, COUNT(*) AS n FROM users GROUP BY city'
-      : 'Clausola WHERE, es. age > 30';
-    $('#sort-input').placeholder = 'Ordinamento, es. name ASC oppure {"name":1}';
-  } else {
-    $('#filter-input').placeholder = aggregate
-      ? 'Pipeline, es. [ { "$group": { "_id": "$city", "n": { "$sum": 1 } } } ]'
-      : 'Filtro, es. { "age": { "$gt": 30 } }';
-    $('#sort-input').placeholder = 'Sort, es. { "name": 1 }';
-  }
-  $('#sort-input').classList.toggle('hidden', aggregate);
-  // Lo scroll infinito ha senso solo con find (l'aggregate non è paginabile
-  // con skip/limit in modo affidabile).
-  const inf = $('#infinite-toggle');
-  if (inf) {
-    inf.disabled = aggregate;
-    $('#infinite-toggle-label').classList.toggle('disabled', aggregate);
-  }
+  const rapido = modoFiltro() === 'rapido';
+  $('#filter-input').placeholder = rapido
+    ? MODI.rapido.segnaposto
+    : (isSql ? 'Condizione WHERE, es. age > 30' : 'Documento MQL, es. { "age": { "$gt": 30 } }');
+  $('#filter-input').setAttribute('aria-label', rapido
+    ? 'Testo da cercare in tutti i campi rilevati'
+    : (isSql ? 'Condizione WHERE' : 'Documento filtro MQL'));
+  $('#sort-input').placeholder = isSql
+    ? 'Ordinamento, es. name ASC oppure {"name":1}'
+    : 'Sort, es. { "name": 1 }';
+  $('#sort-input').classList.remove('hidden');
 }
 
-// Modalità realmente eseguita: `aggregate` (SQL Raw sui database SQL) con il
-// campo vuoto non è una query, è la vista di default → `find`.
+// La vista Dati esegue una sola lettura tabellare. Pipeline e SQL Raw vivono
+// nell'editor Query & Aggregate; `find` resta un dettaglio del protocollo.
 function modoEffettivo() {
-  const mode = $('#query-mode').value;
-  return mode === 'aggregate' && !$('#filter-input').value.trim() ? 'find' : mode;
+  return 'find';
 }
 
-// In modalità aggregate il campo ordinamento è solo nascosto e conserva il
-// testo scritto prima: ricadendo su `find` non va applicato di nascosto.
 function sortCorrente() {
-  return $('#query-mode').value === 'aggregate' ? '' : $('#sort-input').value;
+  return $('#sort-input').value;
 }
 
 // Apre la collection in un coll-tab (o attiva quello già aperto).
@@ -139,11 +134,6 @@ function caricaRelazioni(st, originColl, originTabId) {
 export function runQuery(opts = {}) {
   if (!state.db || !state.coll) return;
   showQueryError(null);
-  // Campo vuoto in modalità aggregate/SQL Raw: non c'è nulla da eseguire, e la
-  // cosa sensata è la vista di default (una `find` senza filtro, l'unica anche
-  // paginabile). Prima si mandava al database il letterale `'[]'`: su MongoDB
-  // era una pipeline vuota che restituiva tutto per caso, su MySQL/PostgreSQL
-  // era testo SQL e tornava indietro un errore di sintassi «near '[]'».
   const mode = modoEffettivo();
 
   // Single-flight: annulla la find/aggregate precedente ancora in volo per
@@ -165,36 +155,30 @@ export function runQuery(opts = {}) {
   // i documenti della collection precedente sotto le colonne di quella nuova.
   const originColl = state.activeCollId;
 
-  const payload = mode === 'aggregate'
-    ? {
-        db: state.db,
-        coll: state.coll,
-        pipeline: $('#filter-input').value || '[]',
-        runId,
-      }
-    : {
-        db: state.db,
-        coll: state.coll,
-        filter: $('#filter-input').value,
-        sort: sortCorrente(),
-        limit: $('#page-size').value,
-        skip: state.skip,
-        // Conteggio disaccoppiato: la find torna subito coi soli documenti (su
-        // collection enormi il conteggio esatto è una scansione che bloccherebbe
-        // la griglia); il totale arriva dopo via `collection:count`.
-        deferCount: true,
-        // Keyset (seek) pagination: con ordinamento di default paginiamo per
-        // chiave (pk/_id) invece che per OFFSET, così le pagine profonde sono
-        // veloci. Il server ricade su OFFSET (usa `skip`) quando non applicabile.
-        keyset: keysetDescriptor(opts),
-        runId,
-      };
+  const payload = {
+    db: state.db,
+    coll: state.coll,
+    ...filtroCorrente(),
+    sort: sortCorrente(),
+    limit: $('#page-size').value,
+    skip: state.skip,
+    // Conteggio disaccoppiato: la find torna subito coi soli documenti (su
+    // collection enormi il conteggio esatto è una scansione che bloccherebbe
+    // la griglia); il totale arriva dopo via `collection:count`.
+    deferCount: true,
+    // Keyset (seek) pagination: con ordinamento di default paginiamo per
+    // chiave (pk/_id) invece che per OFFSET, così le pagine profonde sono
+    // veloci. Il server ricade su OFFSET (usa `skip`) quando non applicabile.
+    keyset: keysetDescriptor(opts),
+    runId,
+  };
   if (opts.auto) payload._bg = true;
 
   // Storico query: registra ciò che l'utente sta eseguendo (best-effort,
   // anche se poi il server risponde con errore la voce resta utile).
   recordQuery({
     mode,
+    filterMode: modoFiltro(),
     filter: $('#filter-input').value.trim(),
     sort: sortCorrente().trim(),
   });
@@ -203,7 +187,7 @@ export function runQuery(opts = {}) {
     showSkeletonGrid('#grid');
   }
 
-  emit(`collection:${mode}`, payload).then((res) => {
+  emit('collection:find', payload).then((res) => {
     // `st` = stato del tab CHE HA FATTO la richiesta, non di quello attivo ora
     // (vedi emit in utils.js): scrivere sul Proxy `state` significherebbe
     // riversare i risultati di questo tab in un altro.
@@ -282,7 +266,8 @@ export function runQuery(opts = {}) {
 // Firma della combinazione che determina il totale: pagina e ordinamento non
 // la influenzano, solo database, collection/tabella e filtro.
 function countKeyFor(p) {
-  return `${p.db}\u0000${p.coll}\u0000${p.filter || ''}`;
+  return `${p.db}\u0000${p.coll}\u0000${p.filter || ''}`
+    + `\u0000${JSON.stringify(p.filtro || null)}\u0000${JSON.stringify(p.cercaOvunque || null)}`;
 }
 
 // Il totale è "esatto" solo se noto e NON stimato dai metadati: solo un totale
@@ -362,7 +347,11 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
   origin.countTimedOut = false;
   if (origin === state) updateFooter();
   emit('collection:count', {
-    tabId: originTabId, db: payload.db, coll: payload.coll, filter: payload.filter, _bg: true,
+    // Lo stesso filtro della find, qualunque forma abbia: mandare `filter`
+    // quando la find ha usato `filtro` darebbe un totale che non descrive le
+    // righe mostrate.
+    tabId: originTabId, db: payload.db, coll: payload.coll,
+    filter: payload.filter, filtro: payload.filtro, cercaOvunque: payload.cercaOvunque, _bg: true,
   })
     .then((res) => {
       // Lo stato da aggiornare è quello del tab che ha chiesto il conteggio
@@ -394,26 +383,19 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
 export function explainQuery() {
   if (!state.db || !state.coll) return;
   showQueryError(null);
-  // Come in runQuery: campo vuoto = nessuna query da spiegare, si analizza la
-  // lettura di default invece di mandare al database il letterale `'[]'`.
   const mode = modoEffettivo();
 
-  const payload = mode === 'aggregate'
-    ? {
-        db: state.db,
-        coll: state.coll,
-        mode,
-        pipeline: $('#filter-input').value || '[]',
-      }
-    : {
-        db: state.db,
-        coll: state.coll,
-        mode,
-        filter: $('#filter-input').value,
-        sort: sortCorrente(),
-        limit: $('#page-size').value,
-        skip: state.skip,
-      };
+  const payload = {
+    db: state.db,
+    coll: state.coll,
+    mode,
+    // Lo stesso filtro della query: un piano calcolato su un'altra
+    // condizione spiega un'altra query.
+    ...filtroCorrente(),
+    sort: sortCorrente(),
+    limit: $('#page-size').value,
+    skip: state.skip,
+  };
 
   $('#explain-query').textContent = `${state.db}.${state.coll}`;
   $('#explain-body').innerHTML = '<div class="loading-spinner" style="padding:20px; text-align:center; color:var(--accent);">Analisi del piano di esecuzione in corso...</div>';
@@ -484,8 +466,79 @@ function showExplainResult(res) {
 // la finestra visibile più un margine (OVERSCAN) e simulando l'altezza totale
 // con due righe "spacer". Sotto la soglia il render resta quello classico (così
 // le larghezze automatiche delle colonne non "ballano" sui piccoli dataset).
-const VIRTUAL_THRESHOLD = 200;
+const VIRTUAL_THRESHOLD = SOGLIA_VIRTUALE;
 const OVERSCAN = 8;
+
+// Che cosa la griglia della vista Dati sa fare, DICHIARATO. E' l'inventario che
+// prima non esisteva da nessuna parte: le tre copie della griglia avevano
+// capacita' diverse e per sapere quali bisognava usarle.
+/* ---------------------------------------------------------------------------
+ * La modalità del filtro.
+ *
+ * Vive nel DOM (`data-modo` sul pulsante) e non in una variabile di modulo,
+ * per la stessa ragione per cui ci vive il testo del filtro: il workspace è
+ * unico e condiviso da tutti i tab, e una variabile di modulo descriverebbe
+ * l'ultimo tab guardato invece di quello che si sta guardando.
+ * ------------------------------------------------------------------------- */
+
+function modoFiltro() {
+  const gruppo = $('#filter-mode-switch');
+  return (gruppo && gruppo.dataset.modo) === 'condizione' ? 'condizione' : 'rapido';
+}
+
+/** Il pezzo di payload che descrive il filtro, secondo la modalità corrente. */
+function filtroCorrente() {
+  return payloadFiltro(modoFiltro(), $('#filter-input').value);
+}
+
+/** Applica al DOM la modalità scelta: icona, segnaposto, testo d'aiuto. */
+function applicaModoFiltro(modo) {
+  const gruppo = $('#filter-mode-switch');
+  const input = $('#filter-input');
+  if (!gruppo || !input) return;
+  const spec = MODI[modo] || MODI.rapido;
+  gruppo.dataset.modo = modo;
+  gruppo.querySelectorAll('[data-filter-mode]').forEach((btn) => {
+    const attivo = btn.dataset.filterMode === modo;
+    btn.classList.toggle('active', attivo);
+    btn.setAttribute('aria-checked', String(attivo));
+    btn.tabIndex = attivo ? 0 : -1;
+  });
+  input.placeholder = spec.segnaposto;
+  applyQueryPlaceholders();
+}
+
+export function leggiStatoFiltro() {
+  const gruppo = $('#filter-mode-switch');
+  const modo = modoFiltro();
+  const corrente = $('#filter-input')?.value || '';
+  const rapido = modo === 'rapido' ? corrente : (gruppo?.dataset.testoRapido || '');
+  const condizione = modo === 'condizione' ? corrente : (gruppo?.dataset.testoCondizione || '');
+  return { modo, rapido, condizione };
+}
+
+export function applicaStatoFiltro(stato = {}) {
+  const gruppo = $('#filter-mode-switch');
+  if (!gruppo) return;
+  const modo = stato.modo === 'condizione' ? 'condizione' : 'rapido';
+  gruppo.dataset.testoRapido = stato.rapido || '';
+  gruppo.dataset.testoCondizione = stato.condizione || '';
+  applicaModoFiltro(modo);
+  $('#filter-input').value = modo === 'rapido'
+    ? gruppo.dataset.testoRapido
+    : gruppo.dataset.testoCondizione;
+}
+
+const CAPACITA_DATI = capacita({
+  virtualizzazione: true,
+  selezioneRighe: true,
+  selezioneCelle: true,
+  scorrimentoAiBordi: true,
+  modificaInline: true,
+  paginazioneAChiave: true,
+  chiaviEsterne: true,
+  geometrie: true,
+});
 // Contesto della virtualizzazione attiva; null quando la griglia è renderizzata
 // per intero. Contiene altezza riga, larghezze colonne congelate e finestra.
 let vctx = null;
@@ -772,19 +825,6 @@ function cellaNellaSelezione(td) {
   return !!(cells && cells.size && cells.has(`${td.dataset.r}:${td.dataset.c}`));
 }
 
-// Riga "spacer" invisibile che occupa `h` px: simula le righe non renderizzate
-// sopra/sotto la finestra visibile, così la scrollbar riflette il totale.
-function spacer(h, cols) {
-  const tr = document.createElement('tr');
-  tr.className = 'v-spacer';
-  tr.setAttribute('aria-hidden', 'true');
-  const td = document.createElement('td');
-  td.colSpan = cols;
-  td.style.height = `${h}px`;
-  tr.appendChild(td);
-  return tr;
-}
-
 function applyFrozenWidths(headRow) {
   [...headRow.children].forEach((th, i) => {
     if (vctx.widths[i] != null) th.style.width = `${vctx.widths[i]}px`;
@@ -810,14 +850,19 @@ export function renderGrid(opts = {}) {
   thead.innerHTML = '';
   buildHead(thead, canSelect);
 
-  const virtual = state.docs.length > VIRTUAL_THRESHOLD;
+  const virtual = vaVirtualizzata(state.docs.length, CAPACITA_DATI, VIRTUAL_THRESHOLD);
   if (!virtual) {
     vctx = null;
     grid.classList.remove('virtual');
     grid.style.width = '';
     clearFrozenWidths();
-    tbody.innerHTML = '';
-    state.docs.forEach((doc, i) => tbody.appendChild(buildRow(doc, i, canSelect)));
+    disegnaCorpo({
+      tbody,
+      righe: state.docs,
+      disegnaRiga: (doc, i) => buildRow(doc, i, canSelect),
+      finestra: null,
+      colonneTotali: 1 + state.columns.length,
+    });
     applyCellSelection();
     if (preserveScroll && wrap) wrap.scrollTop = savedScroll;
   } else {
@@ -871,21 +916,25 @@ function renderVirtualWindow() {
   if (!vctx) return;
   const wrap = $('.grid-wrap');
   const tbody = $('#grid tbody');
-  const { rowH } = vctx;
-  const N = state.docs.length;
-  const viewport = (wrap && wrap.clientHeight) || 400;
-  const scrollTop = wrap ? wrap.scrollTop : 0;
-  const start = Math.max(0, Math.floor(scrollTop / rowH) - OVERSCAN);
-  const visible = Math.ceil(viewport / rowH);
-  const end = Math.min(N, start + visible + OVERSCAN * 2);
-  vctx.start = start;
-  vctx.end = end;
+  // L'aritmetica della finestra sta nel modulo comune: era scritta due volte,
+  // qui e in query-tab.js, con le stesse operazioni e nomi diversi.
+  const finestra = finestraVirtuale({
+    scrollTop: wrap ? wrap.scrollTop : 0,
+    altezzaViewport: (wrap && wrap.clientHeight) || 400,
+    altezzaRiga: vctx.rowH,
+    righeTotali: state.docs.length,
+    overscan: OVERSCAN,
+  });
+  vctx.start = finestra.inizio;
+  vctx.end = finestra.fine;
 
-  tbody.innerHTML = '';
-  const totalCols = 1 + state.columns.length; // colonna dei checkbox + colonne dati
-  if (start > 0) tbody.appendChild(spacer(start * rowH, totalCols));
-  for (let i = start; i < end; i++) tbody.appendChild(buildRow(state.docs[i], i, vctx.canSelect));
-  if (end < N) tbody.appendChild(spacer((N - end) * rowH, totalCols));
+  disegnaCorpo({
+    tbody,
+    righe: state.docs,
+    disegnaRiga: (doc, i) => buildRow(doc, i, vctx.canSelect),
+    finestra,
+    colonneTotali: 1 + state.columns.length, // colonna dei checkbox + colonne dati
+  });
   applyCellSelection();
 }
 
@@ -896,13 +945,15 @@ export function ensureRowRendered(r) {
   if (!vctx) return;
   const wrap = $('.grid-wrap');
   if (!wrap) return;
-  const { rowH } = vctx;
-  const top = r * rowH;
-  const bottom = top + rowH;
-  const viewTop = wrap.scrollTop;
-  const viewBottom = viewTop + wrap.clientHeight;
-  if (top < viewTop) wrap.scrollTop = top;
-  else if (bottom > viewBottom) wrap.scrollTop = bottom - wrap.clientHeight;
+  const dove = scorrimentoPerRiga({
+    indice: r,
+    altezzaRiga: vctx.rowH,
+    scrollTop: wrap.scrollTop,
+    altezzaViewport: wrap.clientHeight,
+  });
+  // `null` = la riga e' gia' visibile: toccare lo scorrimento farebbe
+  // sobbalzare la griglia a ogni freccia.
+  if (dove !== null) wrap.scrollTop = dove;
   renderVirtualWindow();
 }
 
@@ -1021,7 +1072,9 @@ function fetchMore() {
   emit('collection:find', {
     db: state.db,
     coll: state.coll,
-    filter: $('#filter-input').value,
+    // Le pagine successive filtrano come la prima: altrimenti scorrendo
+    // comparirebbero righe che il filtro escludeva.
+    ...filtroCorrente(),
     sort: $('#sort-input').value,
     limit: chunk,
     skip: state.docs.length,
@@ -1147,7 +1200,13 @@ export function deleteSelectedDocs() {
 
 export function deleteAllWithFilter() {
   if ($('#query-mode').value === 'aggregate') return; // solo in modalità find
-  const filter = $('#filter-input').value.trim();
+  // Il filtro con cui si cancella dev'essere lo STESSO che ha prodotto le
+  // righe a schermo. Mandare il testo grezzo mentre la griglia filtra in
+  // modalità rapida — dove quel testo è una parola da cercare, non una
+  // clausola — significherebbe cancellare in base a qualcosa che l'utente non
+  // ha mai visto.
+  const condizione = filtroCorrente();
+  const filter = String($('#filter-input').value).trim();
   const total = state.total;
   const isSql = isSqlType(state.dbType);
   if (total === 0) {
@@ -1169,7 +1228,7 @@ export function deleteAllWithFilter() {
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
   conCaricamento($('#delete-all-btn'), () => emit('collection:deleteMany', {
     ...bersaglio,
-    filter,
+    ...condizione,
   }), 'Elimino…').then((res) => {
     res._state.selectedDocs.clear();
     toast(isSql ? `${res.deleted} righe eliminate` : `${res.deleted} documenti eliminati`);
@@ -1216,6 +1275,43 @@ export function updateBulkDeleteUI() {
 
 export function initGrid() {
   collegaGestiTattili();
+
+  // Due scelte visibili, due testi conservati: cambiare modalità non distrugge
+  // ciò che l'utente aveva scritto nell'altra.
+  document.querySelectorAll('#filter-mode-switch [data-filter-mode]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gruppo = $('#filter-mode-switch');
+      const chiavePrima = modoFiltro() === 'rapido' ? 'testoRapido' : 'testoCondizione';
+      gruppo.dataset[chiavePrima] = $('#filter-input').value;
+      const nuovo = btn.dataset.filterMode === 'condizione' ? 'condizione' : 'rapido';
+      applicaModoFiltro(nuovo);
+      const chiaveDopo = nuovo === 'rapido' ? 'testoRapido' : 'testoCondizione';
+      $('#filter-input').value = gruppo.dataset[chiaveDopo] || '';
+      $('#filter-input').focus();
+    });
+  });
+  $('#filter-mode-switch')?.addEventListener('keydown', (e) => {
+    const opzioni = [...document.querySelectorAll('#filter-mode-switch [data-filter-mode]')];
+    const corrente = opzioni.indexOf(document.activeElement);
+    if (corrente < 0) return;
+    let prossimo = null;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') prossimo = (corrente + 1) % opzioni.length;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prossimo = (corrente - 1 + opzioni.length) % opzioni.length;
+    if (e.key === 'Home') prossimo = 0;
+    if (e.key === 'End') prossimo = opzioni.length - 1;
+    if (prossimo == null) return;
+    e.preventDefault();
+    opzioni[prossimo].click();
+    opzioni[prossimo].focus();
+  });
+  $('#filter-input')?.addEventListener('input', () => {
+    const gruppo = $('#filter-mode-switch');
+    if (!gruppo) return;
+    const chiave = modoFiltro() === 'rapido' ? 'testoRapido' : 'testoCondizione';
+    gruppo.dataset[chiave] = $('#filter-input').value;
+  });
+  applicaModoFiltro(modoFiltro());
+
   $('#run-btn').addEventListener('click', () => { state.skip = 0; clearCellSelection(); runQuery(); });
   // Refresh manuale = lettura utente, in place: keyset `from` ricarica la pagina
   // corrente senza tornare all'inizio (niente OFFSET profondo).
