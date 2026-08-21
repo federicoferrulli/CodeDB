@@ -1277,6 +1277,12 @@ console.log('--- Test Unitari CodeDB ---');
   // un modulo puro: nessun database.
   require('./unit-sql-tabellare');
 
+  // Gli altri metodi che i due adattatori SQL implementano con lo stesso nome
+  // (chiave primaria, colonne, campi, indici unici, keyset, conteggio): una
+  // sola implementazione, con le differenze fra i motori dichiarate come dati.
+  // Il pool è finto, quindi si provano i dialetti VERI senza alcun database.
+  await require('./unit-sql-metadati');
+
   // Test 27-bis: le SCRITTURE del frontend congelano il bersaglio invece di
   // rileggerlo dal Proxy `state`, che punta al tab attivo alla chiamata.
   require('./unit-scritture-bersaglio');

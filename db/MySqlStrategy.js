@@ -5,10 +5,13 @@ const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
+// Metadati comuni ai due motori SQL (chiave primaria, colonne, campi, indici
+// unici, keyset, conteggio): la logica sta nel modulo, qui resta il dialetto.
+const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
-const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
 const {
@@ -16,11 +19,6 @@ const {
 } = require('./duplica');
 
 const SYSTEM_SCHEMAS = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
-
-// Durata della cache dei metadati di colonna (vedi tableColumnsInfo). Breve di
-// proposito: una ALTER TABLE fatta da fuori si riflette al massimo dopo questo
-// intervallo, quelle fatte da qui svuotano la cache subito.
-const GEO_CACHE_MS = 15000;
 
 // Tipi su cui ha senso cercare col LIKE nel pannello di riferimento (vedi
 // relatedRows). Fuori da qui restano numeri, date e binari: un LIKE su una
@@ -63,6 +61,90 @@ function whereFromId(id) {
 // Il dialetto MySQL delle quattro funzioni comuni ai due motori SQL: tutto il
 // resto (che cosa è un _id, come si normalizza un limite) sta nel modulo.
 const TABELLARE = tabellare({ qid, qtable, whereFromId });
+
+/* ---------------------------------------------------------------------------
+ * Il dialetto MySQL dei metadati comuni (db/sqlMetadati.js).
+ *
+ * Qui c'è solo ciò che di MySQL c'è davvero: le query al catalogo, il modo di
+ * leggerne le righe e il segnaposto dei parametri. Le decisioni — quando una
+ * stima vale, che cosa è un indice unico, come si compone la pagina a chiave —
+ * stanno nel modulo, in una copia sola.
+ * ------------------------------------------------------------------------- */
+const DIALETTO_METADATI = {
+  qid,
+  segnaposto: () => '?',
+  // Il livello "database" dell'interfaccia è un database MySQL vero.
+  schema: (db) => String(db == null ? '' : db),
+  // mysql2 restituisce [righe, campi].
+  esegui: async (strategia, sql, params) => (await strategia.requirePool().query(sql, params))[0],
+
+  chiavePrimaria: {
+    query: (db, table) => ({
+      sql: `SELECT COLUMN_NAME AS name
+              FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
+          ORDER BY ORDINAL_POSITION`,
+      params: [db, table],
+    }),
+  },
+
+  colonne: {
+    // `SRS_ID` esiste da MySQL 8: su 5.7 la query fallisce, e il secondo
+    // tentativo la legge senza (là il SRID non è vincolato).
+    tentativi: (db, coll) => ['SRS_ID', 'NULL'].map((srid) => ({
+      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, ${srid} AS srid, EXTRA AS extra
+              FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+          ORDER BY ORDINAL_POSITION`,
+      params: [db, coll],
+    })),
+    // Le colonne INVISIBLE (MySQL 8) non fanno parte di `SELECT *`: vanno
+    // escluse anche dalla lista esplicita, altrimenti la sola presenza di una
+    // colonna geometrica farebbe comparire nella griglia colonne che prima non
+    // c'erano.
+    visibile: (r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')),
+    classi: [{ nome: 'geo', riconosce: isSqlGeometryType }],
+  },
+
+  campi: {
+    query: (db, table) => ({
+      sql: `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable,
+                   COLUMN_DEFAULT AS cdefault, EXTRA AS extra, COLUMN_KEY AS ckey
+              FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+          ORDER BY ORDINAL_POSITION`,
+      params: [db, table],
+    }),
+    tipo: (c) => String(c.ctype),
+    autoIncrement: (c) => /auto_increment/i.test(String(c.extra || '')),
+    // Colonna calcolata (VIRTUAL/STORED GENERATED): il valore lo fa il
+    // database e un INSERT che la nomina viene rifiutato.
+    generato: (c) => /GENERATED/i.test(String(c.extra || '')),
+    chiave: (c) => String(c.ckey || ''),
+  },
+
+  indici: {
+    query: (db, table) => ({ sql: `SHOW INDEX FROM ${qtable(db, table)}`, params: [] }),
+    lettori: {
+      nome: (r) => r.Key_name,
+      colonna: (r) => r.Column_name,
+      ordine: (r) => r.Seq_in_index,
+      unico: (r) => !Number(r.Non_unique),
+      primario: (r) => r.Key_name === 'PRIMARY',
+    },
+    assentiSeErrore: true, // le view non hanno indici: SHOW INDEX fallisce
+  },
+
+  stima: {
+    // TABLE_ROWS è affidabile solo per le tabelle base InnoDB/MyISAM ed è NULL
+    // per le viste: in tal caso il chiamante ripiega sul COUNT(*) esatto.
+    query: (db, coll) => ({
+      sql: 'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = ?',
+      params: [db, coll, 'BASE TABLE'],
+    }),
+    attendibile: () => true,
+  },
+};
 
 // DEFAULT di colonna: numeri e parole chiave (NULL, CURRENT_TIMESTAMP...)
 // passano così come sono, il resto viene quotato come stringa.
@@ -152,7 +234,7 @@ class MySqlStrategy extends DbStrategy {
     // Colonne geometriche per tabella (vedi geoColumns): la lettura le deve
     // conoscere a OGNI find, e information_schema non è gratis. Cache breve,
     // svuotata dalle DDL sulle colonne che passano da qui.
-    this._geoCache = new Map();
+    this._cacheColonne = new Map();
     // Collation a cui allineare ogni connessione del pool (null = default del
     // driver). Decisa alla connessione, vedi scegliCollazione.
     this.collazione = null;
@@ -404,68 +486,9 @@ class MySqlStrategy extends DbStrategy {
     return Array.from(dbs.entries()).map(([name, collections]) => ({ name, collections }));
   }
 
-  // Colonne della chiave primaria, nell'ordine della definizione.
-  async primaryKey(db, table) {
-    const pool = this.requirePool();
-    const [rows] = await pool.query(
-      `SELECT COLUMN_NAME AS name
-         FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_NAME = 'PRIMARY'
-     ORDER BY ORDINAL_POSITION`,
-      [db, table]
-    );
-    return rows.map((r) => r.name);
-  }
-
   /* -------------------------------------------------------------------------
    * Geometrie (vedi db/geometry.js per il perché del formato unico GeoJSON)
    * ---------------------------------------------------------------------- */
-
-  // Elenco colonne della tabella con le sole informazioni che servono qui:
-  // nome, tipo e — per le geometriche — SRID. `SRS_ID` esiste da MySQL 8; su
-  // 5.7 la query fallisce e si ripiega senza (là il SRID non è vincolato).
-  async tableColumnsInfo(db, coll) {
-    const chiave = `${db}\u0000${coll}`;
-    const ora = Date.now();
-    const hit = this._geoCache.get(chiave);
-    if (hit && hit.scade > ora) return hit.info;
-
-    const pool = this.requirePool();
-    let rows;
-    try {
-      [rows] = await pool.query(
-        `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, SRS_ID AS srid, EXTRA AS extra
-           FROM information_schema.COLUMNS
-          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-       ORDER BY ORDINAL_POSITION`,
-        [db, coll]
-      );
-    } catch {
-      [rows] = await pool.query(
-        `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, NULL AS srid, EXTRA AS extra
-           FROM information_schema.COLUMNS
-          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-       ORDER BY ORDINAL_POSITION`,
-        [db, coll]
-      );
-    }
-    const info = {
-      // Le colonne INVISIBLE (MySQL 8) non fanno parte di `SELECT *`: vanno
-      // escluse anche dalla lista esplicita, altrimenti la sola presenza di una
-      // colonna geometrica farebbe comparire nella griglia colonne che prima
-      // non c'erano.
-      columns: rows
-        .filter((r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')))
-        .map((r) => ({ name: r.name, type: r.type, srid: r.srid == null ? null : Number(r.srid) })),
-      geo: new Map(),
-    };
-    for (const c of info.columns) {
-      if (isSqlGeometryType(c.type)) info.geo.set(c.name, c);
-    }
-    this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
-    potaCache(this._geoCache);
-    return info;
-  }
 
   // Lista di selezione: `*` quando non ci sono geometrie (nessun costo per il
   // 99% delle tabelle), altrimenti le colonne per nome con ST_AsGeoJSON su
@@ -602,44 +625,6 @@ class MySqlStrategy extends DbStrategy {
     return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
-  // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
-  // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
-  // a colonna singola) → il chiamante usa OFFSET. Il filtro utente (WHERE) viene
-  // combinato in AND con il vincolo sul cursore.
-  buildKeyset(payload, table, whereSql, limit, pk, selectList = '*') {
-    const ks = payload && payload.keyset;
-    if (!ks) return null;
-    if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
-    if (!pk || pk.length !== 1) return null;             // chiave composita/assente → OFFSET
-    const col = pk[0];
-    const conds = [];
-    const params = [];
-    if (whereSql) conds.push(`(${whereSql.replace(/^\s*WHERE\s+/i, '')})`); // filtro utente
-    let dir = 'ASC', reverse = false;
-    if (ks.after != null) {
-      conds.push(`${qid(col)} > ?`); params.push(this.keysetValue(ks.after, col));
-    } else if (ks.from != null) {
-      // Refresh in place: pagina corrente a partire (incluso) dal primo id noto.
-      conds.push(`${qid(col)} >= ?`); params.push(this.keysetValue(ks.from, col));
-    } else if (ks.before != null) {
-      conds.push(`${qid(col)} < ?`); params.push(this.keysetValue(ks.before, col));
-      dir = 'DESC'; reverse = true;
-    }
-    // ks.first (o nessun estremo): prima pagina, solo ORDER BY pk ASC.
-    const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const sql = `SELECT ${selectList} FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT ?`;
-    params.push(limit);
-    return { sql, params, reverse };
-  }
-
-  // Estrae il valore della chiave dal cursore inviato dal client: è l'_id della
-  // riga (JSON.stringify di `{ colonna: valore }`) oppure il valore scalare.
-  keysetValue(rawId, col) {
-    const parsed = parseClientValue(rawId);
-    const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed[col] : parsed;
-    return toSqlValue(v);
-  }
-
   // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
   // { total, timedOut }: total è null se il conteggio ha superato il timeout.
   async countWithTimeout(table, whereSql) {
@@ -655,39 +640,6 @@ class MySqlStrategy extends DbStrategy {
         return { total: null, timedOut: true };
       }
       throw err;
-    }
-  }
-
-  // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
-  // Senza filtro usa la stima istantanea del catalogo (information_schema)
-  // invece di un COUNT(*) che scansiona l'intera tabella: è ciò che fanno
-  // DBeaver/phpMyAdmin. Con filtro resta il COUNT(*) esatto con timeout.
-  async collectionCount(db, coll, payload) {
-    const { table, whereSql } = this.buildSelect(db, coll, payload);
-    if (!whereSql) {
-      // Stima usata solo se > 0: per tabelle vuote/piccole TABLE_ROWS è
-      // inaffidabile (InnoDB) e il COUNT(*) esatto è comunque istantaneo.
-      const est = await this.estimatedRowCount(db, coll);
-      if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
-    }
-    return this.countWithTimeout(table, whereSql);
-  }
-
-  // Stima (approssimata) del numero di righe dai metadati del catalogo, senza
-  // scansione. TABLE_ROWS è affidabile solo per tabelle base InnoDB/MyISAM ed è
-  // NULL per le viste: in tal caso torniamo null e il chiamante ripiega sul
-  // COUNT(*) esatto. Sola lettura.
-  async estimatedRowCount(db, coll) {
-    const pool = this.requirePool();
-    try {
-      const [rows] = await pool.query(
-        'SELECT TABLE_ROWS AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND TABLE_TYPE = ?',
-        [db, coll, 'BASE TABLE']
-      );
-      const n = rows && rows[0] ? rows[0].n : null;
-      return n != null ? Number(n) : null;
-    } catch (_) {
-      return null;
     }
   }
 
@@ -1465,19 +1417,19 @@ class MySqlStrategy extends DbStrategy {
     if (!to) throw new Error('Nuovo nome della tabella mancante.');
     DbStrategy.assertCreatableName(to, 'della tabella');
     await pool.query(`RENAME TABLE ${qtable(db, coll)} TO ${qtable(db, to)}`);
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async dropCollection(db, coll) {
     const pool = this.requirePool();
     await pool.query(`DROP TABLE ${qtable(db, coll)}`);
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async addColumn(db, coll, column) {
     const pool = this.requirePool();
     await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
-    this._geoCache.clear(); // i metadati di colonna in cache non valgono più
+    this._cacheColonne.clear(); // i metadati di colonna in cache non valgono più
   }
 
   // payload: { oldName, column: { name, type, nullable, default } }
@@ -1527,7 +1479,7 @@ class MySqlStrategy extends DbStrategy {
     await pool.query(
       `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${definizione}`
     );
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async dropColumn(db, coll, name) {
@@ -1564,50 +1516,6 @@ class MySqlStrategy extends DbStrategy {
       await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP PRIMARY KEY`);
     } else {
       await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP INDEX ${qid(idx)}`);
-    }
-  }
-
-  async tableFields(db, table) {
-    const pool = this.requirePool();
-    const [cols] = await pool.query(
-      `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS ctype, IS_NULLABLE AS nullable,
-              COLUMN_DEFAULT AS cdefault, EXTRA AS extra, COLUMN_KEY AS ckey
-         FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-     ORDER BY ORDINAL_POSITION`,
-      [db, table]
-    );
-    return cols.map((c) => ({
-      name: c.name,
-      types: [String(c.ctype)],
-      presence: c.nullable === 'YES' ? 0 : 100, // 100 = NOT NULL
-      nullable: c.nullable === 'YES',
-      default: c.cdefault == null ? null : String(c.cdefault),
-      autoIncrement: /auto_increment/i.test(String(c.extra || '')),
-      // Colonna calcolata (VIRTUAL/STORED GENERATED): il valore lo fa il
-      // database e un INSERT che la nomina viene rifiutato.
-      generated: /GENERATED/i.test(String(c.extra || '')),
-      key: String(c.ckey || ''),
-    }));
-  }
-
-  /**
-   * Indici unici NON primari, come liste di colonne. La chiave primaria resta
-   * fuori: ha una sua strada nella duplicazione (vedi db/duplica.js).
-   */
-  async uniqueIndexes(db, table) {
-    const pool = this.requirePool();
-    try {
-      const [idx] = await pool.query(`SHOW INDEX FROM ${qtable(db, table)}`);
-      const byName = new Map();
-      for (const i of idx) {
-        if (Number(i.Non_unique) || i.Key_name === 'PRIMARY') continue;
-        if (!byName.has(i.Key_name)) byName.set(i.Key_name, []);
-        byName.get(i.Key_name)[Number(i.Seq_in_index || 1) - 1] = i.Column_name;
-      }
-      return [...byName.values()].map((cols) => cols.filter(Boolean));
-    } catch {
-      return []; // le view non hanno indici
     }
   }
 
@@ -1696,6 +1604,12 @@ class MySqlStrategy extends DbStrategy {
     };
   }
 }
+
+// I metodi comuni ai due motori SQL (chiave primaria, informazioni sulle
+// colonne, elenco dei campi, indici unici, paginazione a chiave, conteggio)
+// arrivano dal modulo già legati al dialetto MySQL dichiarato in testa: non
+// sono più scritti qui, e non possono più divergere da quelli di PostgreSQL.
+installaMetadati(MySqlStrategy.prototype, DIALETTO_METADATI);
 
 MySqlStrategy.scegliCollazione = scegliCollazione;
 

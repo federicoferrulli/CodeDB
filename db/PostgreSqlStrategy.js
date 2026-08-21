@@ -4,19 +4,19 @@ const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
+// Metadati comuni ai due motori SQL (chiave primaria, colonne, campi, indici
+// unici, keyset, conteggio): la logica sta nel modulo, qui resta il dialetto.
+const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
-const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, potaCache } = require('./geometry');
+const { isPostgresGeometryType, isPostgresNativeGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
 const { pgNativoAGeoJson, geoJsonAPgNativo } = require('./pg-geo-nativo');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice,
 } = require('./duplica');
-
-// Durata della cache dei metadati di colonna (vedi tableColumnsInfo).
-const GEO_CACHE_MS = 15000;
 
 // Tipi (`udt_name`) su cui ha senso cercare con ILIKE nel pannello di
 // riferimento: vedi relatedRows. Fuori restano numeri, date e binari, dove la
@@ -92,6 +92,161 @@ function whereFromId(id) {
 // modulo.
 const TABELLARE = tabellare({ qid, qtable, whereFromId });
 
+/* ---------------------------------------------------------------------------
+ * Il dialetto PostgreSQL dei metadati comuni (db/sqlMetadati.js).
+ *
+ * Qui c'è solo ciò che di PostgreSQL c'è davvero: le query al catalogo, come se
+ * ne leggono le righe e il segnaposto numerato dei parametri. Le decisioni —
+ * quando una stima vale, che cosa è un indice unico, come si compone la pagina
+ * a chiave — stanno nel modulo, in una copia sola.
+ * ------------------------------------------------------------------------- */
+const DIALETTO_METADATI = {
+  qid,
+  segnaposto: (n) => `$${n}`,
+  // Il livello "database" dell'interfaccia è lo SCHEMA (vedi la nota su qtable).
+  schema: schemaOf,
+  esegui: async (strategia, sql, params) => (await strategia.requirePool().query(sql, params)).rows,
+
+  chiavePrimaria: {
+    // Filtro sullo schema: senza, una tabella OMONIMA in un altro schema poteva
+    // fornire la chiave primaria, e da lì l'`_id` virtuale sbagliato — cioè
+    // modifiche ed eliminazioni sulla riga sbagliata.
+    query: (db, table) => ({
+      sql: `SELECT kcu.column_name AS name
+              FROM information_schema.table_constraints tc
+              JOIN information_schema.key_column_usage kcu
+                ON tc.constraint_name = kcu.constraint_name
+               AND tc.table_schema = kcu.table_schema
+             WHERE tc.constraint_type = 'PRIMARY KEY'
+               AND tc.table_schema = $2
+               AND tc.table_name = $1
+          ORDER BY kcu.ordinal_position`,
+      params: [table, schemaOf(db)],
+    }),
+  },
+
+  colonne: {
+    tentativi: (db, coll) => [{
+      sql: `SELECT column_name AS name, udt_name AS type
+              FROM information_schema.columns
+             WHERE table_schema = $1 AND table_name = $2
+          ORDER BY ordinal_position`,
+      params: [schemaOf(db), coll],
+    }],
+    classi: [
+      // L'ordine conta: un tipo geometrico NATIVO (point, polygon, box...) non
+      // è una geometria PostGIS e non si legge con ST_AsGeoJSON, ma la griglia
+      // e l'editor su mappa devono poterlo leggere e scrivere lo stesso (vedi
+      // db/pg-geo-nativo.js).
+      { nome: 'geo', riconosce: isPostgresGeometryType },
+      { nome: 'geoNativo', riconosce: isPostgresNativeGeometryType },
+    ],
+    // Il SRID sta in `geometry_columns`/`geography_columns` (viste PostGIS): se
+    // PostGIS non è installato quelle viste non esistono e si prosegue senza —
+    // `udt_name` non sarà mai 'geometry', quindi non cambia nulla.
+    arricchisci: async (strategia, info, db, coll) => {
+      if (!info.geo.size) return;
+      try {
+        const srid = await strategia.requirePool().query(
+          `SELECT f_geometry_column AS name, srid, 'geometry' AS kind
+             FROM geometry_columns WHERE f_table_schema = $1 AND f_table_name = $2
+            UNION ALL
+           SELECT f_geography_column AS name, srid, 'geography' AS kind
+             FROM geography_columns WHERE f_table_schema = $1 AND f_table_name = $2`,
+          [schemaOf(db), coll]
+        );
+        for (const r of srid.rows) {
+          const c = info.geo.get(r.name);
+          if (c) { c.srid = r.srid == null ? null : Number(r.srid); c.kind = r.kind; }
+        }
+      } catch {
+        // Viste PostGIS assenti o non leggibili: si scrive senza forzare il
+        // SRID (ST_GeomFromGeoJSON produce 4326, il default di gran lunga più
+        // comune) invece di far fallire l'intera lettura.
+      }
+    },
+  },
+
+  campi: {
+    query: (db, table) => ({
+      // format_type conserva i modificatori che information_schema.data_type
+      // perde (varchar(80), numeric(12,2), timestamp(3), array). Senza, salvare
+      // soltanto la nullabilità cambiava anche il tipo della colonna.
+      sql: `SELECT c.column_name AS name,
+                   pg_catalog.format_type(a.atttypid, a.atttypmod) AS ctype,
+                   c.is_nullable AS nullable,
+                   c.column_default AS cdefault,
+                   c.is_identity AS identity,
+                   c.is_generated AS generated
+              FROM information_schema.columns c
+              JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+              JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
+              JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid
+                                            AND a.attname = c.column_name
+                                            AND a.attnum > 0
+                                            AND NOT a.attisdropped
+             WHERE c.table_schema = $2 AND c.table_name = $1
+          ORDER BY c.ordinal_position`,
+      params: [table, schemaOf(db)],
+    }),
+    tipo: (c) => String(c.ctype || 'varchar'),
+    // `serial` (nextval) e `GENERATED … AS IDENTITY` sono la stessa promessa:
+    // se la colonna non viene scritta, il database produce un valore nuovo.
+    autoIncrement: (c) => /nextval/i.test(String(c.cdefault || '')) || String(c.identity || '') === 'YES',
+    // Colonna calcolata (GENERATED ALWAYS AS … STORED): nominarla in un INSERT
+    // è un errore, il valore lo fa il database.
+    generato: (c) => String(c.generated || '') === 'ALWAYS',
+    // information_schema.columns non dice se la colonna è nella chiave
+    // primaria: serve la lettura a parte, che il modulo fa in parallelo.
+    chiaveDallaPrimaria: true,
+    chiave: (c, pkSet) => (pkSet.has(c.name) ? 'PRI' : ''),
+  },
+
+  indici: {
+    // `pg_index.indkey` elenca gli attributi nell'ordine dell'indice; gli
+    // indici su espressione hanno attnum 0 e restano senza colonna (non sono
+    // una chiave su cui si possa ragionare per la duplicazione).
+    query: (db, table) => ({
+      sql: `SELECT i.relname AS name, ix.indisunique AS unico, ix.indisprimary AS primaria,
+                   a.attname AS colonna, k.ord
+              FROM pg_catalog.pg_class t
+              JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+              JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
+              JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
+              JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
+              LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
+             WHERE n.nspname = $2 AND t.relname = $1
+          ORDER BY i.relname, k.ord`,
+      params: [table, schemaOf(db)],
+    }),
+    lettori: {
+      nome: (r) => r.name,
+      colonna: (r) => r.colonna,
+      ordine: (r) => r.ord,
+      unico: (r) => r.unico,
+      primario: (r) => r.primaria,
+    },
+  },
+
+  stima: {
+    // `reltuples` è aggiornata da ANALYZE/autovacuum; vale -1 se la tabella non
+    // è mai stata analizzata (PG >= 14). Vincolata allo SCHEMA della tabella
+    // mostrata, non al search_path: con tabelle omonime la stima poteva venire
+    // da un'altra tabella.
+    query: (db, coll) => ({
+      sql: `SELECT c.reltuples::bigint AS n
+              FROM pg_class c
+              JOIN pg_namespace nsp ON nsp.oid = c.relnamespace
+             WHERE c.relname = $1
+               AND c.relkind = 'r'
+               AND nsp.nspname = $2
+             LIMIT 1`,
+      params: [coll, schemaOf(db)],
+    }),
+    attendibile: (n) => n >= 0,
+  },
+};
+
 // Tipo seriale equivalente, per colonna con default `nextval(...)`. I nomi a
 // sinistra sono quelli che restituisce `format_type`, non gli alias SQL.
 const SERIAL_PER_TIPO = {
@@ -163,7 +318,7 @@ class PostgreSqlStrategy extends DbStrategy {
     this._config = null;
     // Metadati di colonna (tipo + SRID delle geometriche) per schema.tabella:
     // servono a ogni find, quindi vanno in cache breve. Vedi tableColumnsInfo.
-    this._geoCache = new Map();
+    this._cacheColonne = new Map();
   }
 
   get type() { return 'postgresql'; }
@@ -364,26 +519,6 @@ class PostgreSqlStrategy extends DbStrategy {
     return Array.from(dbs.entries()).map(([name, collections]) => ({ name, collections }));
   }
 
-  async primaryKey(db, table) {
-    const pool = this.requirePool();
-    // Filtro sullo schema: senza, una tabella OMONIMA in un altro schema poteva
-    // fornire la chiave primaria, e da li' l'`_id` virtuale sbagliato — cioe'
-    // modifiche ed eliminazioni sulla riga sbagliata.
-    const res = await pool.query(
-      `SELECT kcu.column_name AS name
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu
-           ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-        WHERE tc.constraint_type = 'PRIMARY KEY'
-          AND tc.table_schema = $2
-          AND tc.table_name = $1
-     ORDER BY kcu.ordinal_position`,
-      [table, schemaOf(db)]
-    );
-    return res.rows.map((r) => r.name);
-  }
-
   // Le quattro funzioni del tabellare (identificatore di riga, sua lettura,
   // ordinamento, pezzi della SELECT) non hanno nulla di PostgreSQL: stanno in
   // db/sqlTabellare.js, legate qui al solo dialetto. Vedi il commento in testa
@@ -396,10 +531,6 @@ class PostgreSqlStrategy extends DbStrategy {
    * Geometrie PostGIS (vedi db/geometry.js per il perché del formato GeoJSON)
    * ---------------------------------------------------------------------- */
 
-  // Colonne della tabella con tipo e, per le geometriche, SRID e tipo esatto.
-  // Il SRID sta in `geometry_columns`/`geography_columns` (viste PostGIS): se
-  // PostGIS non è installato quelle viste non esistono e si prosegue senza —
-  // `udt_name` non sarà mai 'geometry', quindi non cambia nulla.
   /**
    * Toglie dal documento la chiave `_id` SOLO se è quella virtuale (CDB-41).
    *
@@ -418,62 +549,6 @@ class PostgreSqlStrategy extends DbStrategy {
     } catch { /* metadati non leggibili: si ricade sul comportamento storico */ }
     delete doc._id;
     return doc;
-  }
-
-  async tableColumnsInfo(db, coll) {
-    const schema = schemaOf(db);
-    const chiave = `${schema} ${coll}`;
-    const ora = Date.now();
-    const hit = this._geoCache.get(chiave);
-    if (hit && hit.scade > ora) return hit.info;
-
-    const pool = this.requirePool();
-    const res = await pool.query(
-      `SELECT column_name AS name, udt_name AS type
-         FROM information_schema.columns
-        WHERE table_schema = $1 AND table_name = $2
-     ORDER BY ordinal_position`,
-      [schema, coll]
-    );
-    const info = {
-      columns: res.rows.map((r) => ({ name: r.name, type: r.type, srid: null })),
-      geo: new Map(),
-      geoNativo: new Map(),
-    };
-    for (const c of info.columns) {
-      // Solo PostGIS: i tipi geometrici NATIVI di PostgreSQL (point, polygon,
-      // box...) non sono geometrie per ST_AsGeoJSON. Vedi db/geometry.js.
-      if (isPostgresGeometryType(c.type)) info.geo.set(c.name, c);
-      // Tipi geometrici nativi (point, polygon, box...): non sono PostGIS, ma
-      // la griglia e l'editor su mappa devono poterli leggere e scrivere lo
-      // stesso. Si traducono da e verso GeoJSON (vedi db/pg-geo-nativo.js).
-      else if (isPostgresNativeGeometryType(c.type)) info.geoNativo.set(c.name, c);
-    }
-
-    if (info.geo.size) {
-      try {
-        const srid = await pool.query(
-          `SELECT f_geometry_column AS name, srid, 'geometry' AS kind
-             FROM geometry_columns WHERE f_table_schema = $1 AND f_table_name = $2
-            UNION ALL
-           SELECT f_geography_column AS name, srid, 'geography' AS kind
-             FROM geography_columns WHERE f_table_schema = $1 AND f_table_name = $2`,
-          [schema, coll]
-        );
-        for (const r of srid.rows) {
-          const c = info.geo.get(r.name);
-          if (c) { c.srid = r.srid == null ? null : Number(r.srid); c.kind = r.kind; }
-        }
-      } catch {
-        // Viste PostGIS assenti o non leggibili: si scrive senza forzare il
-        // SRID (ST_GeomFromGeoJSON produce 4326, il default di gran lunga più
-        // comune) invece di far fallire l'intera lettura.
-      }
-    }
-
-    this._geoCache.set(chiave, { info, scade: ora + GEO_CACHE_MS });
-    potaCache(this._geoCache);
-    return info;
   }
 
   // `*` quando non ci sono geometrie; altrimenti colonne esplicite con
@@ -638,40 +713,6 @@ class PostgreSqlStrategy extends DbStrategy {
     return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
-  // Costruisce la query keyset (seek) per la paginazione oppure ritorna null se
-  // non applicabile (nessun keyset richiesto, sort personalizzato, o chiave non
-  // a colonna singola) → il chiamante usa OFFSET. Placeholder $n per pg.
-  buildKeyset(payload, table, whereSql, limit, pk, selectList = '*') {
-    const ks = payload && payload.keyset;
-    if (!ks) return null;
-    if (String(payload.sort || '').trim()) return null; // sort personalizzato → OFFSET
-    if (!pk || pk.length !== 1) return null;             // chiave composita/assente → OFFSET
-    const col = pk[0];
-    const conds = [];
-    const params = [];
-    let idx = 1;
-    if (whereSql) conds.push(`(${whereSql.replace(/^\s*WHERE\s+/i, '')})`); // filtro utente
-    let dir = 'ASC', reverse = false;
-    if (ks.after != null) {
-      conds.push(`${qid(col)} > $${idx++}`); params.push(this.keysetValue(ks.after, col));
-    } else if (ks.from != null) {
-      conds.push(`${qid(col)} >= $${idx++}`); params.push(this.keysetValue(ks.from, col));
-    } else if (ks.before != null) {
-      conds.push(`${qid(col)} < $${idx++}`); params.push(this.keysetValue(ks.before, col));
-      dir = 'DESC'; reverse = true;
-    }
-    const whereClause = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-    const sql = `SELECT ${selectList} FROM ${table}${whereClause} ORDER BY ${qid(col)} ${dir} LIMIT $${idx}`;
-    params.push(limit);
-    return { sql, params, reverse };
-  }
-
-  keysetValue(rawId, col) {
-    const parsed = parseClientValue(rawId);
-    const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed[col] : parsed;
-    return toSqlValue(v);
-  }
-
   // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
   // timeout si azzera da solo a fine transazione. Ritorna { total, timedOut }:
   // total è null se il conteggio è stato annullato per timeout (SQLSTATE 57014).
@@ -714,45 +755,6 @@ class PostgreSqlStrategy extends DbStrategy {
       throw err;
     } finally {
       client.release();
-    }
-  }
-
-  // Conteggio disaccoppiato richiesto dalla griglia (evento collection:count).
-  // Senza filtro usa la stima istantanea del planner (pg_class.reltuples) invece
-  // di un COUNT(*) che scansiona l'intera tabella. Se la stima non è disponibile
-  // (tabella mai analizzata: reltuples < 0, oppure vuota) ripiega sul COUNT(*)
-  // esatto con timeout. Con filtro resta il COUNT(*) esatto.
-  async collectionCount(db, coll, payload) {
-    const { table, whereSql } = this.buildSelect(db, coll, payload);
-    if (!whereSql) {
-      const est = await this.estimatedRowCount(coll, db);
-      if (est != null && est > 0) return { total: est, timedOut: false, approx: true };
-    }
-    return this.countWithTimeout(table, whereSql);
-  }
-
-  // Stima (approssimata) delle righe dal catalogo del planner, senza scansione.
-  // `reltuples` è aggiornata da ANALYZE/autovacuum; vale -1 se mai analizzata
-  // (PG ≥ 14) → torniamo null e il chiamante ripiega sul COUNT(*) esatto.
-  // Vincolata allo SCHEMA della tabella mostrata, non al search_path: con
-  // tabelle omonime la stima poteva venire da un'altra tabella.
-  async estimatedRowCount(coll, db) {
-    const pool = this.requirePool();
-    try {
-      const r = await pool.query(
-        `SELECT c.reltuples::bigint AS n
-           FROM pg_class c
-           JOIN pg_namespace nsp ON nsp.oid = c.relnamespace
-          WHERE c.relname = $1
-            AND c.relkind = 'r'
-            AND nsp.nspname = $2
-          LIMIT 1`,
-        [coll, schemaOf(db)]
-      );
-      const n = r.rows && r.rows[0] ? Number(r.rows[0].n) : null;
-      return n != null && n >= 0 ? n : null;
-    } catch (_) {
-      return null;
     }
   }
 
@@ -1613,19 +1615,19 @@ class PostgreSqlStrategy extends DbStrategy {
     // Il nuovo nome resta nello STESSO schema: ALTER TABLE ... RENAME TO non
     // accetta un nome qualificato per la destinazione.
     await pool.query(`ALTER TABLE ${qtable(db, coll)} RENAME TO ${qid(to)}`);
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async dropCollection(db, coll) {
     const pool = this.requirePool();
     await pool.query(`DROP TABLE ${qtable(db, coll)}`);
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async addColumn(db, coll, column) {
     const pool = this.requirePool();
     await pool.query(`ALTER TABLE ${qtable(db, coll)} ADD COLUMN ${columnSql(column || {})}`);
-    this._geoCache.clear(); // i metadati di colonna in cache non valgono più
+    this._cacheColonne.clear(); // i metadati di colonna in cache non valgono più
   }
 
   async alterColumn(db, coll, payload) {
@@ -1700,7 +1702,7 @@ class PostgreSqlStrategy extends DbStrategy {
       }
 
       await client.query('COMMIT');
-      this._geoCache.clear();
+      this._cacheColonne.clear();
     } catch (err) {
       await client.query('ROLLBACK').catch(() => {});
       throw err;
@@ -1714,7 +1716,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const column = String(name || '').trim();
     if (!column) throw new Error('Nome della colonna da eliminare mancante.');
     await pool.query(`ALTER TABLE ${qtable(db, coll)} DROP COLUMN ${qid(column)}`);
-    this._geoCache.clear();
+    this._cacheColonne.clear();
   }
 
   async createIndex(db, coll, payload) {
@@ -1771,83 +1773,20 @@ class PostgreSqlStrategy extends DbStrategy {
     }
   }
 
-  async tableFields(db, table) {
-    const pool = this.requirePool();
-    const res = await pool.query(
-      `SELECT c.column_name AS name,
-              pg_catalog.format_type(a.atttypid, a.atttypmod) AS ctype,
-              c.is_nullable AS nullable,
-              c.column_default AS cdefault,
-              c.is_identity AS identity,
-              c.is_generated AS generated
-         FROM information_schema.columns c
-         JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
-         JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
-         JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid
-                                       AND a.attname = c.column_name
-                                       AND a.attnum > 0
-                                       AND NOT a.attisdropped
-        WHERE c.table_schema = $2 AND c.table_name = $1
-     ORDER BY c.ordinal_position`,
-      [table, schemaOf(db)]
-    );
-
-    const pk = await this.primaryKey(db, table);
-    const pkSet = new Set(pk);
-
-    return res.rows.map((c) => ({
-      name: c.name,
-      // format_type conserva i modificatori che information_schema.data_type
-      // perde (varchar(80), numeric(12,2), timestamp(3), array). Senza, salvare
-      // soltanto la nullabilità cambiava anche il tipo della colonna.
-      types: [String(c.ctype || 'varchar')],
-      presence: c.nullable === 'YES' ? 0 : 100,
-      nullable: c.nullable === 'YES',
-      default: c.cdefault == null ? null : String(c.cdefault),
-      // `serial` (nextval) e `GENERATED … AS IDENTITY` sono la stessa promessa:
-      // se la colonna non viene scritta, il database produce un valore nuovo.
-      autoIncrement: /nextval/i.test(String(c.cdefault || '')) || String(c.identity || '') === 'YES',
-      // Colonna calcolata (GENERATED ALWAYS AS … STORED): nominarla in un
-      // INSERT e' un errore, il valore lo fa il database.
-      generated: String(c.generated || '') === 'ALWAYS',
-      key: pkSet.has(c.name) ? 'PRI' : '',
-    }));
-  }
-
   /**
-   * Indici della tabella con le COLONNE vere e il flag di unicita'.
-   * `pg_index.indkey` elenca gli attributi nell'ordine dell'indice; gli indici
-   * su espressione hanno attnum 0 e restano senza colonna (non sono una chiave
-   * su cui si possa ragionare per la duplicazione).
+   * Indici della tabella nella forma attesa dalla vista Dettagli e dallo
+   * schema: `key` è l'oggetto { colonna: 1 } nell'ordine dell'indice. La
+   * lettura e il raggruppamento delle righe stanno fuori (vedi elencoIndici e
+   * db/sqlMetadati.js), perché sono gli stessi su MySQL.
    */
   async indexList(db, table) {
-    const pool = this.requirePool();
-    const res = await pool.query(
-      `SELECT i.relname AS name, ix.indisunique AS unico, ix.indisprimary AS primaria,
-              a.attname AS colonna, k.ord
-         FROM pg_catalog.pg_class t
-         JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-         JOIN pg_catalog.pg_index ix ON ix.indrelid = t.oid
-         JOIN pg_catalog.pg_class i ON i.oid = ix.indexrelid
-         JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, ord) ON true
-         LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum
-        WHERE n.nspname = $2 AND t.relname = $1
-     ORDER BY i.relname, k.ord`,
-      [table, schemaOf(db)]
-    );
-    const byName = new Map();
-    for (const r of res.rows) {
-      let entry = byName.get(r.name);
-      if (!entry) byName.set(r.name, (entry = { name: r.name, key: {}, unique: !!r.unico, primary: !!r.primaria }));
-      if (r.colonna) entry.key[r.colonna] = 1;
-    }
-    return [...byName.values()];
-  }
-
-  /** Indici unici NON primari, come liste di colonne (vedi db/duplica.js). */
-  async uniqueIndexes(db, table) {
-    const indici = await this.indexList(db, table);
-    return indici.filter((i) => i.unique && !i.primary).map((i) => Object.keys(i.key));
+    const indici = await this.elencoIndici(db, table);
+    return indici.map((i) => ({
+      name: i.name,
+      key: Object.fromEntries(i.columns.map((c) => [c, 1])),
+      unique: i.unique,
+      primary: i.primary,
+    }));
   }
 
   /**
@@ -1934,5 +1873,11 @@ class PostgreSqlStrategy extends DbStrategy {
     };
   }
 }
+
+// I metodi comuni ai due motori SQL (chiave primaria, informazioni sulle
+// colonne, elenco dei campi, indici unici, paginazione a chiave, conteggio)
+// arrivano dal modulo già legati al dialetto PostgreSQL dichiarato in testa:
+// non sono più scritti qui, e non possono più divergere da quelli di MySQL.
+installaMetadati(PostgreSqlStrategy.prototype, DIALETTO_METADATI);
 
 module.exports = PostgreSqlStrategy;
