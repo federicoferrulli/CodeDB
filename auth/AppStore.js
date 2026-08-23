@@ -84,6 +84,29 @@ class AppStore {
     await this.col('sessions').createIndex({ tokenHash: 1 }, { unique: true });
     // Pulizia automatica delle sessioni scadute a carico di MongoDB.
     await this.col('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    // Preferenze per tenant (scorciatoie da tastiera e simili): una riga per
+    // (tenant, chiave), letta e riscritta intera.
+    await this.col('prefs').createIndex({ ownerId: 1, chiave: 1 }, { unique: true });
+  }
+
+  /**
+   * Il valore di una preferenza di tenant, o null se mai salvata.
+   * `valore` viaggia come oggetto JSON: il server non lo interpreta.
+   */
+  async getPrefs(ownerId, chiave) {
+    const doc = await this.col('prefs').findOne({
+      ownerId: String(ownerId), chiave: String(chiave),
+    });
+    return doc ? doc.valore : null;
+  }
+
+  /** Scrive (o sovrascrive) una preferenza di tenant. */
+  async setPrefs(ownerId, chiave, valore) {
+    await this.col('prefs').updateOne(
+      { ownerId: String(ownerId), chiave: String(chiave) },
+      { $set: { valore, aggiornatoIl: new Date() } },
+      { upsert: true },
+    );
   }
 
   async seedRoles() {

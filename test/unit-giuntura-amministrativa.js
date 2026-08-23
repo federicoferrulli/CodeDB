@@ -53,9 +53,9 @@ module.exports = (async () => {
 
   /* --- La famiglia esiste e ha la sua giuntura -------------------------- */
 
-  await prova('i ventisei eventi amministrativi passano dalla loro giuntura', () => {
-    assert.strictEqual(amministrativi.length, 26,
-      `attesi 26 eventi amministrativi, trovati ${amministrativi.length}: ${amministrativi.join(', ')}`);
+  await prova('i ventotto eventi amministrativi passano dalla loro giuntura', () => {
+    assert.strictEqual(amministrativi.length, 28,
+      `attesi 28 eventi amministrativi, trovati ${amministrativi.length}: ${amministrativi.join(', ')}`);
     // Un campione di ciascun gruppo: vault, connessioni, applicazione, identità.
     for (const atteso of ['vault:reset', 'connections:save', 'app:info', 'users:create', 'apikeys:revoke']) {
       assert.ok(amministrativi.includes(atteso), `${atteso} deve passare dalla giuntura amministrativa`);

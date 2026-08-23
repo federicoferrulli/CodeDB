@@ -1263,6 +1263,14 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 27: Colonne della tabella dei risultati (larghezze misurate, ordinamento EJSON)
   require('./unit-table-cols');
 
+  // Scorciatoie da tastiera: catalogo, combinazioni, mappa effettiva.
+  await require('./unit-scorciatoie');
+
+  // Ricerca della palette Ctrl+P: quale voce sopravvive al termine scritto e
+  // in che ordine — con le tabelle di tutti i database in elenco, e' la
+  // funzione, non un dettaglio di disegno.
+  await require('./unit-palette-ricerca');
+
   // Test 27-quater: cronologia della tab Query & Aggregate (dedup globale,
   // tetti, filtri, storage rotto).
   require('./unit-query-history');

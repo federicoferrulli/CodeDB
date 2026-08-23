@@ -53,6 +53,10 @@ export function renderDbTree(databases) {
     const dbName = document.createElement('span');
     dbName.textContent = db.name;
     label.append(dbIcon, ' ', dbName);
+    // Il nodo del database si deve poter RITROVARE da fuori (la palette Ctrl+P
+    // porta l'utente qui): senza questo attributo l'unico `[data-db]` in pagina
+    // era quello delle collection, e cercare il database ne apriva una a caso.
+    label.dataset.db = db.name;
     li.appendChild(label);
 
     const sub = document.createElement('ul');

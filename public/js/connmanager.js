@@ -31,6 +31,11 @@ export function loadSavedConnections() {
   }).catch((err) => toast(err.message, true));
 }
 
+/** L'elenco delle connessioni salvate già in memoria (per la palette ⌘/Ctrl+P). */
+export function elencoConnessioni() {
+  return Array.isArray(allConns) ? allConns : [];
+}
+
 function openConn(conn) {
   toast(`Connessione a "${conn.name}"…`);
   connectAndOpenTab({ saved: conn.name })

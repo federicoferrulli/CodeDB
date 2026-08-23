@@ -84,6 +84,22 @@ const PASSI = [
       + 'uno script con pausa e ripresa; i risultati si vedono come tabella, albero JSON o grafico.',
   },
   {
+    sel: '#grid',
+    opzionale: true,
+    titolo: 'Ordinare con un clic',
+    testo: 'Clic sull\'intestazione: ordina per quella colonna (di nuovo per invertire, un terzo clic ripristina '
+      + 'l\'ordine del database). Shift+clic AGGIUNGE una colonna all\'ordinamento: le frecce portano la priorità '
+      + '(1, 2, …) — a parità della prima decide la seconda. Ctrl+clic seleziona l\'intera colonna invece di ordinare.',
+  },
+  {
+    sel: '#filter-input',
+    opzionale: true,
+    titolo: 'Le scorciatoie sono tue',
+    testo: 'Ctrl+B mostra/nasconde la barra connessioni, Ctrl+P apre la palette (cerca connessioni, database e '
+      + 'tabelle ed esegui comandi da tastiera), Ctrl+Shift+F formatta un documento JSON e Ctrl+Shift+M lo minifica. '
+      + 'Tutte sono rimappabili da Impostazioni → Scorciatoie da tastiera, e le tue scelte valgono per tutto il tenant.',
+  },
+  {
     sel: '#conn-settings-btn',
     titolo: 'Impostazioni',
     testo: 'Backup e ripristino, Storico Azioni, Salute delle connessioni, passphrase del vault — e questa guida, '

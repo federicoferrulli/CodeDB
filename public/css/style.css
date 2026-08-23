@@ -7618,3 +7618,178 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
   padding-left: 4px;
   white-space: nowrap;
 }
+
+/* --------------------- Scorciatoie da tastiera (pannello) ----------------- */
+
+.scorciatoie-modal h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.scorciatoie-nota {
+  color: var(--fg-dim, #9aa4b2);
+  font-size: 0.85em;
+  margin: 0 0 12px;
+}
+
+.scorciatoie-riga {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.scorciatoie-riga + .scorciatoie-riga {
+  border-top: 1px solid var(--border, rgba(128,128,128,.2));
+}
+
+.scorciatoie-riga.attiva {
+  background: var(--accent-soft, rgba(0,122,204,.15));
+}
+
+.scorciatoie-nome {
+  flex: 1;
+}
+
+.scorciatoie-nome em {
+  display: block;
+  color: var(--fg-dim, #9aa4b2);
+  font-size: 0.82em;
+}
+
+.btn-combo {
+  min-width: 130px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.scorciatoie-errori {
+  color: var(--danger, #e5534b);
+  font-size: 0.85em;
+  margin: 8px 0 0;
+}
+
+.scorciatoie-azioni {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.scorciatoie-azioni .spazio {
+  flex: 1;
+}
+
+/* ------------------------ Palette di comandi (Ctrl+P) --------------------- */
+
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  background: rgba(0,0,0,.35);
+  display: none;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.palette-overlay.aperta { display: flex; }
+
+.palette {
+  margin-top: 10vh;
+  width: min(640px, calc(100vw - 32px));
+  background: var(--panel-bg, #1b2129);
+  border: 1px solid var(--border, rgba(128,128,128,.3));
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  overflow: hidden;
+}
+
+#palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--fg, #e6e6e6);
+  font-size: 15px;
+  border-bottom: 1px solid var(--border, rgba(128,128,128,.25));
+}
+
+#palette-lista {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+/* Altezza FISSA: la lista e' virtualizzata e gli spaziatori simulano l'altezza
+   di cio' che non e' disegnato, quindi una riga piu' alta delle altre farebbe
+   sbagliare la posizione di tutte le successive. Il valore combacia con
+   ALTEZZA_RIGA in palette.js (che comunque lo rimisura al primo disegno). */
+.palette-voce {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* I due spaziatori della finestra virtuale: nessun contenuto, solo altezza. */
+.palette-spazio {
+  padding: 0;
+  margin: 0;
+  height: 0;
+}
+
+.palette-voce.attiva { background: var(--accent-soft, rgba(0,122,204,.2)); }
+
+.palette-tipo {
+  flex: 0 0 auto;
+  font-size: .72em;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--fg-dim, #9aa4b2);
+  min-width: 84px;
+}
+
+.palette-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.palette-nota {
+  flex: 0 0 auto;
+  font-size: .8em;
+  color: var(--fg-dim, #9aa4b2);
+}
+
+.palette-vuota {
+  padding: 14px 10px;
+  text-align: center;
+  color: var(--fg-dim, #9aa4b2);
+}
+
+.palette-piede {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  font-size: .75em;
+  color: var(--fg-dim, #9aa4b2);
+  border-top: 1px solid var(--border, rgba(128,128,128,.2));
+}
+
+/* La legenda dei richiami (> comandi · # database · @ tabelle): finche' non se
+   ne usa uno resta accesa, perche' una scorciatoia che nessuno sa che esiste
+   non esiste. Con un richiamo attivo lascia il posto ai tasti di navigazione. */
+.palette-legenda { white-space: nowrap; }
+.palette-legenda.palette-richiami { color: var(--fg, #e6e6e6); opacity: .8; }
+
+.palette-stato { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

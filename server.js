@@ -1555,6 +1555,10 @@ const EVENTI_AMMINISTRATIVI = {
   'app:updates:check': NON_TRACCIATO('interrogazione del canale aggiornamenti'),
   'app:license': NON_TRACCIATO('testo della licenza'),
   'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
+  // Preferenze del tenant (scorciatoie da tastiera): tracciarle riempirebbe lo
+  // storico di rumore a ogni rimappatura di un tasto.
+  'prefs:get': NON_TRACCIATO('lettura di una preferenza del tenant'),
+  'prefs:set': NON_TRACCIATO('salvataggio di una preferenza del tenant'),
 
   // --- Identità e permessi -------------------------------------------------
   'auth:me': NON_TRACCIATO('chi sono io, senza effetti'),
@@ -3182,6 +3186,37 @@ function registraEventi(ctx) {
   amministrativo('app:license', (_payload, cb) => {
     cb({ ok: true, ...datiLicenza() });
   });
+
+  /**
+   * Preferenze per tenant (chiave `{ownerId, chiave}` nel control plane).
+   *
+   * Il primo cliente è la personalizzazione delle scorciatoie da tastiera
+   * (`public/js/scorciatoie-ui.js`): il server non interpreta il valore, lo
+   * custodisce e lo restituisce a chi appartiene allo stesso tenant. Con RBAC
+   * spento non esiste un tenant — l'istanza è locale e monoutente — quindi si
+   * risponde con `ok: false` e il client usa dichiaratamente il localStorage
+   * del browser invece di fingere una persistenza che non c'è.
+   */
+  amministrativo('prefs:get', async ({ chiave }, cb) => {
+    if (!rbacOn()) {
+      cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
+      return;
+    }
+    const store = requireStore();
+    const valore = await store.getPrefs(principal.ownerId || 'locale', String(chiave));
+    cb({ ok: true, valore });
+  });
+
+  amministrativo('prefs:set', async ({ chiave, valore }, cb) => {
+    if (!rbacOn()) {
+      cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
+      return;
+    }
+    const store = requireStore();
+    await store.setPrefs(principal.ownerId || 'locale', String(chiave), valore);
+    cb({ ok: true });
+  });
+
 
   // --- Vault & Password ------------------------------------------------------
 

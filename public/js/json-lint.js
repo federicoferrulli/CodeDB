@@ -19,6 +19,7 @@
 import {
   analizzaJsonBson, sembraJsonBson, formattaJsonBson, minificaJsonBson,
 } from './json-bson.js';
+import { azioneDiEvento } from './scorciatoie.js';
 
 const ATTESA_MS = 350;
 
@@ -113,9 +114,11 @@ export function minificaCampo(campo, barra, opts = {}) {
 }
 
 /**
- * Collega i due pulsanti (e le scorciatoie Ctrl+Shift+F / Ctrl+Shift+M) a
- * un'area di testo che contiene un documento. Le scorciatoie sono le stesse
- * dell'editor ⚡: una sola combinazione da ricordare in tutta l'applicazione.
+ * Collega i due pulsanti (e le scorciatoie configurabili) a un'area di testo
+ * che contiene un documento. Le combinazioni vengono dal catalogo delle
+ * scorciatoie (`scorciatoie.js`): predefinite Ctrl+Shift+F / Ctrl+Shift+M,
+ * rimappabili da Impostazioni → Scorciatoie da tastiera. Una sola combinazione
+ * da ricordare in tutta l'applicazione, e la stessa per chi la rimappa.
  *
  * @param {HTMLTextAreaElement} campo
  * @param {HTMLElement} barra            barra di stato del linting
@@ -132,11 +135,11 @@ export function collegaStrumentiJson(campo, barra, formatta, minifica, opts = {}
   if (btnM) btnM.addEventListener('click', () => minificaCampo(campo, barra, opts));
 
   campo.addEventListener('keydown', (e) => {
-    if (!(e.ctrlKey || e.metaKey) || !e.shiftKey) return;
-    if (e.key === 'F' || e.key === 'f') {
+    const azione = azioneDiEvento(e);
+    if (azione === 'formattaJson') {
       e.preventDefault();
       formattaCampo(campo, barra, opts);
-    } else if (e.key === 'M' || e.key === 'm') {
+    } else if (azione === 'minificaJson') {
       e.preventDefault();
       minificaCampo(campo, barra, opts);
     }

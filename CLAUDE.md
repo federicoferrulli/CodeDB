@@ -123,6 +123,8 @@ node test/e2e-filtro-rapido-ui.js # Test del filtro rapido nel browser
 node test/e2e-filtro-strutturato.js # Test del filtro strutturato sui tre motori
 node test/e2e-nulli-ordinati.js # Test che i valori nulli si ordinino uguale sui tre motori
 node test/e2e-osservazione.js # Test dell'osservazione da capo a fondo (MongoDB)
+node test/unit-palette-ricerca.js # Test della ricerca della palette (punteggio e ordine)
+node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ricerca (Chromium, senza DB)
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -440,6 +442,33 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   disegno della **singola riga** resta della vista, perché è ciò che cambia
   davvero fra loro. Una capacità scritta male è un **errore**, non un'opzione
   ignorata.
+* **La palette dei comandi (`palette.js` / `palette-ricerca.js`)**: Ctrl+P cerca
+  in un elenco solo — comandi, connessioni salvate, database e **tabelle di
+  tutti i database del tab**. Le tabelle hanno due sorgenti: l'albero, che per i
+  database già espansi le tiene in cache (niente attesa per ciò che l'utente sta
+  guardando), e la rete per gli altri, con al massimo sei richieste in volo
+  insieme — `listCollections` conta i documenti di ogni collection, e centocinquanta
+  richieste simultanee sarebbero un piccolo attacco al proprio server. Le risposte
+  si fondono man mano e il piede dice a che punto è la lettura: senza, una palette
+  che non trova una tabella è indistinguibile da una che non l'ha ancora letta.
+  I **richiami** dicono che cosa si sta cercando: `>` un comando, `#` un
+  database, `@` una tabella, e la ricerca si restringe a quel tipo (il piede
+  dichiara il richiamo attivo e, finché non se ne usa uno, li insegna — una
+  scorciatoia che nessuno sa che esiste non esiste). Un carattere che NON è un
+  richiamo resta parte del termine: mangiarsi il primo carattere di una ricerca
+  legittima sarebbe peggio del richiamo mancato. Con un richiamo attivo il tipo
+  esce dal testo cercato, altrimenti `#base` corrisponderebbe a ogni database.
+  L'elenco passa così da una decina di voci a qualche migliaio, e questo cambia
+  due cose. La prima è che **quale voce sopravvive al termine scritto** smette di
+  essere un dettaglio di disegno: sta in `palette-ricerca.js`, puro e provato
+  senza browser, senza alcun tetto sui risultati (troncare a trenta nasconderebbe
+  proprio la tabella cercata). La seconda è che la lista è **virtualizzata** con
+  la stessa aritmetica della griglia (`finestraVirtuale` di `griglia.js`, non una
+  seconda copia): in DOM stanno le righe della finestra visibile fra due
+  spaziatori, e sono `<li>` **riusati** — scorrere ne riscrive il testo invece di
+  ricostruire l'elenco. Le frecce non possono quindi usare `scrollIntoView`
+  sull'elemento attivo, che può non essere disegnato: la posizione si calcola
+  dall'indice (`scorrimentoPerRiga`).
 * **Il filtro rapido (`filtro-rapido.js`)**: la casella del filtro chiedeva
   all'utente di sapere quale motore aveva davanti — un documento MQL su MongoDB,
   un frammento `WHERE` sui due motori SQL. Ora ha due modalità, alternate dal

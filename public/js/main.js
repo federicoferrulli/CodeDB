@@ -39,6 +39,8 @@ import { initPassphrase } from './passphrase.js';
 import { initOnboarding } from './onboarding.js';
 import { initAbout } from './about.js';
 import { initTheme } from './theme.js';
+import { initScorciatoie } from './scorciatoie-ui.js';
+import { initPalette } from './palette.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -248,6 +250,8 @@ initSessionPersistence();
 initSplitView();
 initSettingsMenu();
 initAbout();
+initScorciatoie();
+initPalette();
 // Presto: lo script in linea dell'`<head>` ha già dipinto la palette giusta,
 // ma il CSS di un tema PERSONALIZZATO lo conosce solo questo modulo — prima
 // che lo aggiunga si vede la sola base, e più tardi lo si vedrebbe cambiare
