@@ -42,7 +42,7 @@
 
 import { $, emit, esc, toast, chiaveStorage } from './utils.js';
 import { openCollTab } from './colltabs.js';
-import { onTabChange } from './tabs.js';
+import { onTabChange, switchTab, tabs } from './tabs.js';
 // La ricerca nell'elenco dei candidati è la stessa del filtro rapido della
 // griglia: una parola cercata in tutte le colonne (vedi filtro-rapido.js).
 import { filtroRapido } from './filtro-rapido.js';
@@ -76,10 +76,17 @@ const SOGLIA_SCROLL_PX = 80;
  */
 const ATTESA_RICERCA_MS = 250;
 
-// Stato del pannello. Uno solo può essere aperto per volta — è ancorato a una
-// cella specifica, e due pannelli su due celle diverse non avrebbero un
-// significato utile.
-let ctx = null;
+// L'APERTURA corrente: contesto d'origine, bersaglio e stato dell'elenco.
+//
+// Una sola per volta — il pannello è ancorato a UNA cella, e due pannelli su
+// due celle diverse non avrebbero un significato utile. Ma «una per volta» non
+// vuol dire «sempre la stessa griglia»: da quando il pannello si apre anche da
+// un riquadro Split-View, chi lo ha aperto cambia. Per questo le funzioni qui
+// sotto ricevono l'apertura come PRIMO argomento invece di andarsela a prendere
+// da questa variabile: una risposta arrivata in ritardo non può più disegnare
+// dentro l'apertura che le è subentrata, perché quella che tiene in mano non è
+// più quella corrente.
+let apertura = null;
 let ricercaTimer = null;
 // Un contatore PER RICHIESTA e non uno solo: il pannello lancia due letture
 // indipendenti all'apertura (la riga riferita e l'elenco dei candidati), e con
@@ -87,6 +94,9 @@ let ricercaTimer = null;
 // non verrebbe mai disegnata, restando in "Carico…" per sempre.
 let tokenRiga = 0;
 let tokenElenco = 0;
+// Distingue una dissolvenza ormai vecchia da una nuova apertura dello stesso
+// pannello: il relativo `transitionend` può arrivare dopo il riuso del DOM.
+let tokenChiusura = 0;
 
 /**
  * Apre il pannello sulla cella in modifica.
@@ -97,16 +107,26 @@ let tokenElenco = 0;
  * @param {string} opts.dbCorrente database/schema della tabella di partenza
  * @param {function(*):void} opts.onScegli chiamata col valore scelto
  */
-export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, onScegli }) {
-  if (!relazione) return;
+export function apriPannelloFk({
+  relazione, valore, dbCorrente, tabId, onScegli, sorgente, contenitore = null,
+}) {
+  if (!relazione) return null;
   const pannello = $('#fk-pannello');
-  if (!pannello) return;
+  if (!pannello) return null;
 
   // Da dove ripartire quando il pannello si chiude: chi ha aperto il pannello
   // dalla tastiera deve ritrovarsi dove aveva lasciato, non in cima alla pagina.
   const fuocoPrecedente = document.activeElement;
-  ctx = {
+  const c = {
     relazione, valore, dbCorrente, tabId, onScegli, fuocoPrecedente,
+    // Chi ha aperto: serve a `pannelloFkAperto(sorgente)`, cioè al 🔗 di una
+    // griglia per sapere se il pannello aperto è il PROPRIO. Senza, il pulsante
+    // di un riquadro chiuderebbe il pannello aperto da un altro.
+    sorgente,
+    // La griglia d'origine. Se sparisce dalla pagina — un riquadro Split-View
+    // chiuso mentre il pannello è aperto — non c'è più nessuna cella da
+    // riempire: il pannello si chiude invece di restare orfano.
+    contenitore,
     scelto: undefined,
     // Stato dell'elenco paginato: righe accumulate fra le pagine, testo cercato
     // a cui appartengono, e se ne restano altre da chiedere.
@@ -115,6 +135,8 @@ export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, onScegli 
     // prima pagina non ce n'è ancora bisogno perché il testo si digita dopo.
     etichetta: null, righe: [], colonne: [], cerca: '', finito: false, caricando: false, errore: null,
   };
+  apertura = c;
+  tokenChiusura += 1;
 
   $('#fk-title').textContent = bersaglioRelazione(relazione, dbCorrente);
   $('#fk-title').title = `Colonna "${relazione.campo}" → ${bersaglioRelazione(relazione, dbCorrente)}`;
@@ -144,8 +166,29 @@ export function apriPannelloFk({ relazione, valore, dbCorrente, tabId, onScegli 
 
   document.addEventListener('keydown', onKeydown, true);
 
-  caricaRigaRiferita();
-  caricaElenco('');
+  caricaRigaRiferita(c);
+  caricaElenco(c, '');
+  return c;
+}
+
+/**
+ * L'apertura `c` è ancora quella corrente, e la griglia da cui è partita è
+ * ancora in pagina?
+ *
+ * Due domande e non una perché i due modi di diventare obsoleti sono diversi:
+ * il pannello può essere stato riaperto altrove (e allora `c` non comanda più
+ * nulla), oppure la griglia d'origine può essere stata smontata sotto — un
+ * riquadro chiuso, un coll-tab cambiato — e allora non c'è più alcuna cella a
+ * cui il valore scelto potrebbe servire.
+ */
+function apertaEViva(c) {
+  if (!c || apertura !== c) return false;
+  const cont = typeof c.contenitore === 'function' ? c.contenitore() : c.contenitore;
+  if (cont && !document.contains(cont)) {
+    chiudiPannelloFk();
+    return false;
+  }
+  return true;
 }
 
 /* ---------------------------- Ridimensionamento ---------------------------- *
@@ -233,7 +276,7 @@ function aggiornaTastiera() {
   if (!pannello) return;
   // Solo da aperto e solo su mobile: altrove la variabile non è nemmeno letta
   // dal CSS, e scriverla a ogni assestamento sarebbe lavoro a vuoto.
-  if (!ctx || !pannelloFkMobile()) {
+  if (!apertura || !pannelloFkMobile()) {
     pannello.style.removeProperty('--fk-tastiera');
     return;
   }
@@ -410,19 +453,20 @@ function riposizionaPannello(pannello) {
 
 export function chiudiPannelloFk() {
   const pannello = $('#fk-pannello');
-  // `ctx` è l'unica verità su "il pannello è aperto": la classe `hidden` arriva
+  // `apertura` è l'unica verità su "il pannello è aperto": la classe `hidden` arriva
   // solo a dissolvenza finita, quindi due chiusure ravvicinate — "Usa questo
   // valore" chiude, e il salvataggio che ne segue richiude — trovavano il
   // pannello ancora senza `hidden` e rifacevano tutto, riagganciando un secondo
   // `transitionend`.
-  if (!pannello || !ctx) return;
+  if (!pannello || !apertura) return;
   // Il fuoco torna indietro solo se se n'era andato DENTRO il pannello. Da
   // quando il pannello si apre da solo, `fuocoPrecedente` è quasi sempre la
   // cella in modifica: rimandarcelo mentre l'utente sta già scrivendo altrove
   // gli sposterebbe il cursore sotto le dita.
-  const precedente = ctx && ctx.fuocoPrecedente;
+  const precedente = apertura.fuocoPrecedente;
   const tornaIndietro = fuocoNelPannelloFk(document.activeElement);
-  ctx = null;
+  apertura = null;
+  const miaChiusura = ++tokenChiusura;
   // Le risposte ancora in volo non devono più disegnare nulla.
   tokenRiga += 1;
   tokenElenco += 1;
@@ -431,10 +475,16 @@ export function chiudiPannelloFk() {
 
   pannello.classList.remove('aperto');
   pannello.setAttribute('aria-hidden', 'true');
-  aggiornaTastiera(); // `ctx` è già null: rimuove il sollevamento da tastiera
+  aggiornaTastiera(); // `apertura` è già null: rimuove il sollevamento da tastiera
   // `hidden` solo a dissolvenza finita: toglierlo subito farebbe sparire il
   // pannello di colpo invece di farlo uscire.
-  const finito = () => pannello.classList.add('hidden');
+  // Se un'altra griglia lo riapre durante la dissolvenza, il `transitionend`
+  // della vecchia chiusura non deve nascondere la nuova apertura.
+  const finito = () => {
+    if (miaChiusura === tokenChiusura && !pannello.classList.contains('aperto')) {
+      pannello.classList.add('hidden');
+    }
+  };
   pannello.addEventListener('transitionend', finito, { once: true });
   // Ripiego se la transizione non parte (prefers-reduced-motion, pannello già
   // invisibile): senza, resterebbe un pannello trasparente che intercetta i
@@ -446,9 +496,9 @@ export function chiudiPannelloFk() {
   }
 }
 
-/** Il pannello è aperto su questa cella? Serve all'editor inline. */
-export function pannelloFkAperto() {
-  return !!ctx;
+/** Il pannello è aperto, eventualmente proprio dalla sorgente indicata? */
+export function pannelloFkAperto(sorgente) {
+  return !!(apertura && (sorgente === undefined || apertura.sorgente === sorgente));
 }
 
 /**
@@ -467,7 +517,7 @@ export function fuocoNelPannelloFk(el) {
 }
 
 function onKeydown(e) {
-  if (e.key !== 'Escape' || !ctx) return;
+  if (e.key !== 'Escape' || !apertura) return;
   // Solo se il fuoco è dentro il pannello: altrimenti Esc appartiene a chi sta
   // scrivendo nella cella (dove annulla la modifica), e chiuderebbe il pannello
   // al posto suo.
@@ -478,8 +528,8 @@ function onKeydown(e) {
 
 /* ------------------------------ Riga riferita ------------------------------ */
 
-function caricaRigaRiferita() {
-  const { relazione, valore, tabId } = ctx;
+function caricaRigaRiferita(c) {
+  const { relazione, valore, tabId } = c;
   // Cella vuota: non c'è alcuna riga da cercare, e chiedere "tutte le righe con
   // NULL" mostrerebbe un elenco spacciandolo per il riferimento.
   if (valore === undefined || valore === null) {
@@ -491,28 +541,28 @@ function caricaRigaRiferita() {
   // modo suo: il pannello smette di dover sapere quale motore risponderà.
   emit('collection:find', {
     tabId,
-    db: relazione.db,
+    db: relazione.db || c.dbCorrente,
     coll: relazione.tabella,
     filtro: { condizioni: [{ campo: relazione.colonna, operatore: 'uguale', valore }] },
     limit: 1,
     skip: 0,
     deferCount: true,
   }).then((res) => {
-    if (!ctx || mio !== tokenRiga) return;
-    disegnaRigaRiferita(res.docs && res.docs[0]);
+    if (!apertaEViva(c) || mio !== tokenRiga) return;
+    disegnaRigaRiferita(c, res.docs && res.docs[0]);
   }).catch((err) => {
-    if (!ctx || mio !== tokenRiga) return;
+    if (!apertaEViva(c) || mio !== tokenRiga) return;
     $('#fk-riga').innerHTML = `<p class="fk-vuoto avviso">${esc(err.message)}</p>`;
   });
 }
 
-function disegnaRigaRiferita(riga) {
+function disegnaRigaRiferita(c, riga) {
   const box = $('#fk-riga');
   if (!riga) {
     // Non è un errore da nascondere: un valore che non corrisponde a nulla è
     // proprio ciò che si vuole scoprire aprendo il pannello.
-    box.innerHTML = `<p class="fk-vuoto avviso">Nessuna riga con ${esc(ctx.relazione.colonna)} = `
-      + `${esc(testoValore(ctx.valore))}.</p>`;
+    box.innerHTML = `<p class="fk-vuoto avviso">Nessuna riga con ${esc(c.relazione.colonna)} = `
+      + `${esc(testoValore(c.valore))}.</p>`;
     return;
   }
   const html = [];
@@ -539,84 +589,85 @@ function disegnaRigaRiferita(riga) {
  * colonna dell'ordinamento — e qui l'ordinamento è la chiave primaria della
  * tabella riferita, che non è detto sia la colonna del vincolo.
  */
-function caricaElenco(cerca, { append = false } = {}) {
-  const { relazione, tabId } = ctx;
+function caricaElenco(c, cerca, { append = false } = {}) {
+  if (!apertaEViva(c)) return;
+  const { relazione, tabId } = c;
   const mio = ++tokenElenco;
   const elenco = $('#fk-elenco');
 
   if (!append) {
-    ctx.righe = [];
-    ctx.etichetta = null;
-    ctx.finito = false;
-    ctx.errore = null; // un fallimento della ricerca precedente non riguarda questa
-    ctx.cerca = cerca;
+    c.righe = [];
+    c.etichetta = null;
+    c.finito = false;
+    c.errore = null; // un fallimento della ricerca precedente non riguarda questa
+    c.cerca = cerca;
     elenco.innerHTML = '<p class="fk-vuoto" style="padding:8px">Carico…</p>';
     elenco.scrollTop = 0;
   }
-  ctx.caricando = true;
-  aggiornaNota();
+  c.caricando = true;
+  aggiornaNota(c);
 
   // La ricerca nell'elenco è la stessa del filtro rapido della griglia: una
   // parola cercata in tutte le colonne che si conoscono. Alla prima pagina le
   // colonne non si conoscono ancora — ma alla prima pagina non c'è nemmeno
   // niente da cercare, perché il testo lo si digita dopo.
-  const condizioneRicerca = filtroRapido(cerca, ctx.colonne);
+  const condizioneRicerca = filtroRapido(cerca, c.colonne);
   emit('collection:find', {
     tabId,
-    db: relazione.db,
+    db: relazione.db || c.dbCorrente,
     coll: relazione.tabella,
     ...(condizioneRicerca ? { filtro: condizioneRicerca } : {}),
     limit: LIMITE_ELENCO,
-    skip: append ? ctx.righe.length : 0,
+    skip: append ? c.righe.length : 0,
     deferCount: true,
   }).then((res) => {
-    if (!ctx || mio !== tokenElenco) return;
-    ctx.caricando = false;
+    if (!apertaEViva(c) || mio !== tokenElenco) return;
+    c.caricando = false;
     const righe = res.docs || [];
     // Le colonne servono alla ricerca della pagina successiva: il filtro rapido
     // si compone su quelle che si conoscono.
-    if (res.columns && res.columns.length) ctx.colonne = res.columns;
+    if (res.columns && res.columns.length) c.colonne = res.columns;
     // Pagina più corta del richiesto (o troncata dal budget di byte del
     // server): non c'è altro da chiedere. Senza questo, arrivati in fondo si
     // continuerebbe a interrogare il database a ogni scorrimento.
-    if (righe.length < LIMITE_ELENCO || res.truncated) ctx.finito = true;
-    disegnaElenco(righe, res.columns || [], { append });
+    if (righe.length < LIMITE_ELENCO || res.truncated) c.finito = true;
+    disegnaElenco(c, righe, res.columns || [], { append });
   }).catch((err) => {
-    if (!ctx || mio !== tokenElenco) return;
-    ctx.caricando = false;
+    if (!apertaEViva(c) || mio !== tokenElenco) return;
+    c.caricando = false;
     // Una pagina successiva che fallisce non deve cancellare quelle già
     // mostrate: si ferma il caricamento e lo si dice nella nota.
     if (append) {
-      ctx.finito = true;
-      ctx.errore = err.message;
-      aggiornaNota();
+      c.finito = true;
+      c.errore = err.message;
+      aggiornaNota(c);
     } else {
       elenco.innerHTML = `<p class="fk-vuoto avviso" style="padding:8px">${esc(err.message)}</p>`;
     }
   });
 }
 
-// HTML di una voce. `data-i` è l'indice in `ctx.righe`, che è CUMULATIVO fra le
+// HTML di una voce. `data-i` è l'indice in `c.righe`, che è CUMULATIVO fra le
 // pagine: usare l'indice dentro la pagina farebbe scegliere alla seconda pagina
 // le righe della prima.
-function vocePerRiga(riga, i) {
-  const { relazione } = ctx;
-  const scelto = ctx.scelto === undefined ? ctx.valore : ctx.scelto;
+function vocePerRiga(c, riga, i) {
+  const { relazione } = c;
+  const scelto = c.scelto === undefined ? c.valore : c.scelto;
   const corrente = stessoValore(riga[relazione.colonna], scelto);
   return `<button type="button" class="fk-voce${corrente ? ' corrente scelta' : ''}" role="option"`
     + ` aria-selected="${corrente}" data-i="${i}">`
     + '<span class="fk-spunta" aria-hidden="true"></span>'
-    + `<span class="fk-testo">${esc(etichettaRiga(riga, relazione.colonna, ctx.etichetta))}</span>`
+    + `<span class="fk-testo">${esc(etichettaRiga(riga, relazione.colonna, c.etichetta))}</span>`
     + '</button>';
 }
 
-function disegnaElenco(righe, colonne, { append }) {
+function disegnaElenco(c, righe, colonne, { append }) {
   const elenco = $('#fk-elenco');
-  const { relazione } = ctx;
+  const { relazione } = c;
 
   if (!append && !righe.length) {
     elenco.innerHTML = '<p class="fk-vuoto" style="padding:8px">Nessun risultato.</p>';
-    aggiornaNota();
+    aggiornaNota(c);
     return;
   }
 
@@ -624,15 +675,15 @@ function disegnaElenco(righe, colonne, { append }) {
   // prossima ricerca. Ricalcolarla a ogni pagina la farebbe cambiare colonna a
   // metà elenco — le prime cinquanta righe con il nome, le successive con la
   // città — e sarebbe un elenco che non si può nemmeno leggere.
-  if (!append) ctx.etichetta = scegliEtichetta(righe, relazione.colonna, colonne);
+  if (!append) c.etichetta = scegliEtichetta(righe, relazione.colonna, colonne);
 
-  const base = ctx.righe.length;
-  ctx.righe = base ? ctx.righe.concat(righe) : righe.slice();
-  const html = righe.map((riga, i) => vocePerRiga(riga, base + i)).join('');
+  const base = c.righe.length;
+  c.righe = base ? c.righe.concat(righe) : righe.slice();
+  const html = righe.map((riga, i) => vocePerRiga(c, riga, base + i)).join('');
 
   if (append) elenco.insertAdjacentHTML('beforeend', html);
   else elenco.innerHTML = html;
-  aggiornaNota();
+  aggiornaNota(c);
 }
 
 /**
@@ -642,26 +693,26 @@ function disegnaElenco(righe, colonne, { append }) {
  * Quest'ultima è la parte che conta: un elenco parziale che sembra completo
  * porta a concludere "questo valore non esiste" dopo averne guardate cinquanta.
  */
-function aggiornaNota() {
+function aggiornaNota(c) {
   const nota = $('#fk-elenco-nota');
-  const n = (ctx.righe && ctx.righe.length) || 0;
+  const n = (c.righe && c.righe.length) || 0;
 
-  if (ctx.errore) {
-    nota.textContent = `${n} righe caricate. Il caricamento si è interrotto: ${ctx.errore}`;
+  if (c.errore) {
+    nota.textContent = `${n} righe caricate. Il caricamento si è interrotto: ${c.errore}`;
     nota.classList.remove('hidden');
     return;
   }
-  if (ctx.caricando) {
+  if (c.caricando) {
     nota.textContent = n ? `${n} righe · carico le successive…` : 'Carico…';
     nota.classList.remove('hidden');
     return;
   }
-  if (!ctx.finito && n >= MAX_CARICATE) {
+  if (!c.finito && n >= MAX_CARICATE) {
     nota.textContent = `${n} righe caricate, il massimo per volta: usa la ricerca per arrivare alle altre.`;
     nota.classList.remove('hidden');
     return;
   }
-  if (!ctx.finito) {
+  if (!c.finito) {
     nota.textContent = `${n} righe · scorri per caricarne altre`;
     nota.classList.remove('hidden');
     return;
@@ -680,12 +731,12 @@ function aggiornaNota() {
 // non in percentuale perché l'elenco ha un'altezza fissa: caricare quando
 // mancano due voci alla fine è ciò che rende lo scorrimento continuo invece di
 // farlo inciampare sul fondo.
-function forseCaricaAltre() {
-  if (!ctx || ctx.caricando || ctx.finito) return;
-  if ((ctx.righe || []).length >= MAX_CARICATE) return;
+function forseCaricaAltre(c) {
+  if (!apertaEViva(c) || c.caricando || c.finito) return;
+  if ((c.righe || []).length >= MAX_CARICATE) return;
   const elenco = $('#fk-elenco');
   if (elenco.scrollTop + elenco.clientHeight < elenco.scrollHeight - SOGLIA_SCROLL_PX) return;
-  caricaElenco(ctx.cerca || '', { append: true });
+  caricaElenco(c, c.cerca || '', { append: true });
 }
 
 /* --------------------------------- Eventi --------------------------------- */
@@ -711,7 +762,7 @@ export function initFkVista() {
     window.visualViewport.addEventListener('scroll', aggiornaTastiera);
   }
   mqMobile.addEventListener('change', () => {
-    if (!ctx) return;
+    if (!apertura) return;
     // Cambiata la disposizione, gli stili inline dell'altra vanno rifatti da
     // zero: un `top` da desktop su un foglio mobile lo mette fuori posto.
     applicaMisura(pannello, leggiMisura());
@@ -722,10 +773,13 @@ export function initFkVista() {
   $('#fk-close').addEventListener('click', chiudiPannelloFk);
 
   $('#fk-cerca').addEventListener('input', (e) => {
-    if (!ctx) return;
+    const c = apertura;
+    if (!c) return;
     const testo = e.target.value.trim();
     clearTimeout(ricercaTimer);
-    ricercaTimer = setTimeout(() => { if (ctx) caricaElenco(testo); }, ATTESA_RICERCA_MS);
+    ricercaTimer = setTimeout(() => {
+      if (apertaEViva(c)) caricaElenco(c, testo);
+    }, ATTESA_RICERCA_MS);
   });
 
   // Scorrimento continuo dell'elenco: arrivati vicino al fondo si chiede la
@@ -736,16 +790,17 @@ export function initFkVista() {
     if (scrollRaf) return;
     scrollRaf = requestAnimationFrame(() => {
       scrollRaf = 0;
-      forseCaricaAltre();
+      forseCaricaAltre(apertura);
     });
   });
 
   $('#fk-elenco').addEventListener('click', (e) => {
     const voce = e.target.closest('.fk-voce');
-    if (!voce || !ctx || !ctx.righe) return;
-    const riga = ctx.righe[Number(voce.dataset.i)];
+    const c = apertura;
+    if (!voce || !c || !c.righe) return;
+    const riga = c.righe[Number(voce.dataset.i)];
     if (!riga) return;
-    ctx.scelto = riga[ctx.relazione.colonna];
+    c.scelto = riga[c.relazione.colonna];
     for (const altra of $('#fk-elenco').querySelectorAll('.fk-voce')) {
       const scelta = altra === voce;
       altra.classList.toggle('scelta', scelta);
@@ -753,21 +808,30 @@ export function initFkVista() {
     }
     // Riconfermare il valore che c'è già non è un errore, ma nemmeno una
     // modifica: il pulsante resta spento perché non c'è nulla da scrivere.
-    $('#fk-usa').disabled = stessoValore(ctx.scelto, ctx.valore);
-    disegnaRigaRiferita(riga);
+    $('#fk-usa').disabled = stessoValore(c.scelto, c.valore);
+    disegnaRigaRiferita(c, riga);
   });
 
   $('#fk-usa').addEventListener('click', () => {
-    if (!ctx || ctx.scelto === undefined) return;
-    const { onScegli, scelto } = ctx;
+    const c = apertura;
+    if (!c || c.scelto === undefined) return;
+    const { onScegli, scelto } = c;
     chiudiPannelloFk();
     if (onScegli) onScegli(scelto);
   });
 
   $('#fk-apri').addEventListener('click', () => {
-    if (!ctx) return;
-    const { db, tabella } = ctx.relazione;
+    const c = apertura;
+    if (!c) return;
+    const { tabella } = c.relazione;
+    const db = c.relazione.db || c.dbCorrente;
+    const tabOrigine = c.tabId ? tabs.list.find((t) => t.id === c.tabId) : null;
     chiudiPannelloFk();
+    if (c.tabId && !tabOrigine) {
+      toast('Il tab da cui era stato aperto il pannello non è più disponibile.', true);
+      return;
+    }
+    if (tabOrigine && tabs.activeId !== tabOrigine.id) switchTab(tabOrigine.id);
     openCollTab(db, tabella);
     toast(`Apro "${tabella}"`);
   });

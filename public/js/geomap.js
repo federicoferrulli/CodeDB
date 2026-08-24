@@ -500,7 +500,7 @@ function preparaSelettoreTipo(readOnly) {
  * @param {boolean} opts.readOnly sola visualizzazione
  * @param {(geo: object) => void} opts.onSave chiamata con la geometria confermata
  */
-export async function openGeoEditor({ value, campo = '', readOnly = false, onSave = null }) {
+export async function openGeoEditor({ value, campo = '', readOnly = false, onSave = null } = {}) {
   try {
     L = await caricaLeaflet();
   } catch (err) {

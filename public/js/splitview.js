@@ -3,7 +3,10 @@
 import { state } from './state.js';
 import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto } from './utils.js';
-import { buildEditor, openEditDoc } from './inlineEdit.js';
+import { startEdit, openEditDoc } from './inlineEdit.js';
+import { relazioniPer, caricaRelazioni } from './fk-cache.js';
+import { VINCOLO } from './fk-relazioni.js';
+import { rendiCellaGeometrica } from './cella-geometria.js';
 // Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga } from './griglia.js';
 import { creaSelezioneCelle } from './cellselect.js';
@@ -999,6 +1002,7 @@ export function runPaneQuery(paneId, opts = {}) {
       p.loading = false;
       p.caricato = true;
       updatePaneUI(paneId);
+      caricaRelazioniPane(paneId, p);
     })
     .catch((err) => {
       p.loading = false;
@@ -1008,6 +1012,27 @@ export function runPaneQuery(paneId, opts = {}) {
       p.error = err.message;
       updatePaneUI(paneId);
     });
+}
+
+function contestoRelazioniPane(p) {
+  const tab = tabs.list.find((t) => t.id === p.tabId);
+  return {
+    tabId: p.tabId,
+    dbType: tab ? tab.dbType : 'mongodb',
+    db: p.db,
+    coll: p.coll,
+  };
+}
+
+// Il metadato FK arriva dopo i dati e non ne ritarda il disegno. Quando è
+// pronto si ridisegna soltanto se il riquadro esiste ancora e punta allo stesso
+// oggetto: una risposta vecchia non può decorare una tabella subentrata.
+function caricaRelazioniPane(paneId, p) {
+  const contesto = contestoRelazioniPane(p);
+  if (relazioniPer(contesto) !== null) return;
+  caricaRelazioni(contesto).then(() => {
+    if (paneById(paneId) === p) updatePaneUI(paneId);
+  });
 }
 
 function emitPaneQuery(tabId, event, payload) {
@@ -1156,58 +1181,28 @@ function aggiornaValoriResizer(el, sizes) {
 function startPaneEdit(td, paneId, doc, field) {
   const p = paneById(paneId);
   if (!p || td.classList.contains('editing')) return;
+  const connTab = tabs.list.find((t) => t.id === p.tabId);
+  const dbType = connTab ? connTab.dbType : 'mongodb';
+  const relazioni = relazioniPer({ tabId: p.tabId, dbType, db: p.db, coll: p.coll });
 
-  const { input, original, buildValue } = buildEditor(doc[field]);
-
-  td.classList.add('editing');
-  td.innerHTML = '';
-  td.appendChild(input);
-  input.focus();
-  if (input.select) input.select();
-
-  let finished = false;
-
-  const cancel = () => {
-    if (finished) return;
-    finished = true;
-    updatePaneUI(paneId);
-  };
-
-  const save = () => {
-    if (finished) return;
-    finished = true;
-    if (input.value === original) {
-      updatePaneUI(paneId);
-      return;
-    }
-    let value;
-    try {
-      value = buildValue();
-    } catch (err) {
-      toast(err.message, true);
-      updatePaneUI(paneId);
-      return;
-    }
-    emitPaneQuery(p.tabId, 'doc:update', {
+  startEdit(td, doc, field, {
+    ctx: {
+      tabId: p.tabId,
       db: p.db,
       coll: p.coll,
-      id: idOf(doc),
-      set: { [field]: value },
-    }).then(() => {
-      toast(`Campo "${field}" aggiornato`);
-      runPaneQuery(paneId, { auto: true });
-    }).catch((err) => {
-      toast(err.message, true);
-      updatePaneUI(paneId);
-    });
-  };
-
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') save();
-    if (e.key === 'Escape') cancel();
+      tab: connTab || null,
+      st: { db: p.db, coll: p.coll, dbType },
+      isStillActive: () => paneById(paneId) === p,
+      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
+      onSaveError: () => updatePaneUI(paneId),
+    },
+    relazione: relazioni && relazioni.get(field),
+    sorgente: td,
+    contenitore: () => document.querySelector(
+      `.split-pane[data-pane-id="${paneId}"] .pane-grid-wrap`,
+    ),
+    onRender: () => updatePaneUI(paneId),
   });
-  input.addEventListener('blur', save);
-  if (input.tagName === 'SELECT') input.addEventListener('change', save);
 }
 
 function deletePaneDoc(paneId, doc) {
@@ -1567,10 +1562,8 @@ const CAPACITA_RIQUADRO = capacita({
   // Accesa: il ciclo di `cellselect.js` riceve il contenitore del riquadro e il
   // ridisegno virtuale ne preserva la posizione mentre il dito resta al bordo.
   scorrimentoAiBordi: true,
-  // Il pannello delle chiavi esterne e le geometrie restano nei loro moduli,
-  // ancora agganciati a `#grid` e allo `state` del tab attivo.
-  chiaviEsterne: false,
-  geometrie: false,
+  chiaviEsterne: true,
+  geometrie: true,
   paginazioneAChiave: false,
 });
 
@@ -1664,6 +1657,7 @@ function updatePaneUI(paneId) {
   const connTab = tabs.list.find((t) => t.id === p.tabId);
   const dbType = connTab ? connTab.dbType : 'mongodb';
   const isSql = isSqlType(dbType);
+  const relazioni = relazioniPer({ tabId: p.tabId, dbType, db: p.db, coll: p.coll });
 
   const insertBtn = paneEl.querySelector('.pane-insert-btn');
   if (insertBtn) {
@@ -1852,16 +1846,26 @@ function updatePaneUI(paneId) {
         // Testo limitato, come nella griglia principale: qui si disegna, non si
         // copia (vedi displayValueBreve in utils.js).
         const disp = displayValueBreve(val);
-        const span = document.createElement('span');
-        if (disp.cls) span.className = disp.cls;
-        if (disp.dataVal !== undefined) span.dataset.val = disp.dataVal;
-        span.textContent = val === undefined ? '' : disp.text;
-        td.title = disp.text;
-        td.appendChild(span);
+        const geometrica = CAPACITA_RIQUADRO.geometrie
+          && rendiCellaGeometrica(td, val, () => startPaneEdit(td, paneId, doc, col));
+        if (!geometrica) {
+          const span = document.createElement('span');
+          if (disp.cls) span.className = disp.cls;
+          if (disp.dataVal !== undefined) span.dataset.val = disp.dataVal;
+          span.textContent = val === undefined ? '' : disp.text;
+          td.title = disp.text;
+          td.appendChild(span);
+        }
 
         if (col !== '_id' && docId && canSelect) {
           td.classList.add('editable');
-          td.addEventListener('dblclick', () => startPaneEdit(td, paneId, doc, col));
+          if (!geometrica) td.addEventListener('dblclick', () => startPaneEdit(td, paneId, doc, col));
+        }
+        const relazione = CAPACITA_RIQUADRO.chiaviEsterne && relazioni && relazioni.get(col);
+        if (relazione) {
+          td.classList.add('fk-cella');
+          if (relazione.origine !== VINCOLO) td.classList.add('fk-ipotesi');
+          td.title = `${disp.text}\n🔗 ${relazione.tabella}.${relazione.colonna}`;
         }
         tr.appendChild(td);
       });

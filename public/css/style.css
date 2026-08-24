@@ -7444,8 +7444,8 @@ body.fk-resizing * { cursor: inherit !important; }
 /* Indicatore sulle celle collegate della griglia. È uno pseudo-elemento e non
    un nodo: la griglia è virtualizzata e ricostruisce le righe visibili a ogni
    fotogramma di scorrimento, dove una `<span>` in più per cella si sente. */
-#grid td.fk-cella { position: relative; padding-right: 18px; }
-#grid td.fk-cella::after {
+td.fk-cella { position: relative; padding-right: 18px; }
+td.fk-cella::after {
   content: '🔗';
   position: absolute;
   right: 3px;
@@ -7457,8 +7457,8 @@ body.fk-resizing * { cursor: inherit !important; }
 }
 /* Il collegamento solo ipotizzato (MongoDB) si distingue da quello dichiarato:
    presentare un'ipotesi come certezza fa fidare di un riferimento inesistente. */
-#grid td.fk-cella.fk-ipotesi::after { content: '≈'; opacity: 0.5; }
-#grid td.fk-cella:hover::after { opacity: 1; }
+td.fk-cella.fk-ipotesi::after { content: '≈'; opacity: 0.5; }
+td.fk-cella:hover::after { opacity: 1; }
 
 /* Pulsante 🔗 accanto all'editor inline della cella. */
 td.editing .fk-apri-btn {
@@ -7476,7 +7476,7 @@ td.editing .fk-apri-btn {
 td.editing .fk-apri-btn:hover { color: var(--fg-bright); border-color: var(--accent-line); background: var(--accent-soft); }
 td.editing.fk-cella { display: flex; align-items: center; gap: var(--space-3xs); }
 /* Con l'editor aperto l'indicatore permanente sarebbe un doppione del pulsante. */
-#grid td.editing.fk-cella::after { content: none; }
+td.editing.fk-cella::after { content: none; }
 td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 
 @media (max-width: 900px) {

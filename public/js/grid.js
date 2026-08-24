@@ -5,7 +5,9 @@ import { startEdit } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
-import { indicizzaRelazioni, VINCOLO } from './fk-relazioni.js';
+import { VINCOLO } from './fk-relazioni.js';
+import { relazioniPer, caricaRelazioni as caricaRelazioniCache, svuotaRelazioni } from './fk-cache.js';
+import { rendiCellaGeometrica } from './cella-geometria.js';
 import { activeTab } from './tabs.js';
 // Le due modalità della casella del filtro: rapida (cerca in tutte le
 // colonne) e condizione (WHERE/MQL scritti a mano). Vedi filtro-rapido.js.
@@ -74,20 +76,13 @@ export function selectCollection(dbName, collName, opts = {}) {
  * accendere il 🔗 su una colonna che non c'entra nulla.
  * ------------------------------------------------------------------------- */
 
-const relazioniCache = new Map();
-// Richieste già partite (anche fallite): senza, ogni pagina della griglia
-// rilancerebbe la stessa `collection:relations` su una tabella senza vincoli.
-const relazioniChieste = new Set();
-
-function chiaveRelazioni(st = state, tabId = activeTab()?.id) {
-  if (!st.db || !st.coll) return null;
-  return `${tabId || ''}\0${st.dbType || ''}\0${st.db}\0${st.coll}`;
+function contestoRelazioni(st = state, tabId = activeTab()?.id) {
+  return { tabId, dbType: st.dbType, db: st.db, coll: st.coll };
 }
 
 /** Map campo → relazione per la collection mostrata ora, o null. */
 export function relazioniCorrenti() {
-  const k = chiaveRelazioni();
-  return k ? relazioniCache.get(k) || null : null;
+  return relazioniPer(contestoRelazioni());
 }
 
 /** Relazione di un singolo campo della collection corrente, o null. */
@@ -102,26 +97,22 @@ export function relazioneDiCampo(campo) {
  * l'indicatore resterebbe acceso su una colonna il cui vincolo non c'è più
  * fino al prossimo ricaricamento della pagina.
  */
-export function svuotaRelazioni() {
-  relazioniCache.clear();
-  relazioniChieste.clear();
-}
+export { svuotaRelazioni };
 
 // Chiede le relazioni della collection appena caricata, una volta sola. Il
 // fallimento è silenzioso di proposito: senza relazioni la griglia funziona
 // esattamente come prima, e un errore su una lettura di metadati non deve
 // coprire i dati che l'utente ha appena chiesto.
 function caricaRelazioni(st, originColl, originTabId) {
-  const k = chiaveRelazioni(st, originTabId);
-  if (!k || relazioniChieste.has(k)) return;
-  relazioniChieste.add(k);
-  emit('collection:relations', { tabId: originTabId, db: st.db, coll: st.coll })
-    .then((res) => {
-      const indice = indicizzaRelazioni(res.relazioni);
+  const contesto = contestoRelazioni(st, originTabId);
+  if (relazioniPer(contesto) !== null) return;
+  caricaRelazioniCache(contesto)
+    .then((indice) => {
       if (!indice.size) return; // niente da marcare: nessun ridisegno
-      relazioniCache.set(k, indice);
       // Ridisegna solo se, nel frattempo, si guarda ancora quella collection.
-      if (isForActiveTab(res) && state.activeCollId === originColl && chiaveRelazioni() === k) {
+      const ancoraCorrente = state.activeCollId === originColl
+        && relazioniPer(contestoRelazioni()) === indice;
+      if (activeTab()?.id === originTabId && ancoraCorrente) {
         renderGrid({ preserveScroll: true });
       }
     })
@@ -681,17 +672,21 @@ function buildRow(doc, rowIdx, canSelect) {
     // per intero costava ~144 ms per cella. Copia (cellselect.js) e modifica
     // al volo (inlineEdit.js) continuano a passare da `displayValue`, che è
     // esatto: lì un valore troncato sarebbe perdita di dati.
-    const { text, cls, dataVal } = displayValueBreve(doc[col]);
-    const span = document.createElement('span');
-    if (cls) span.className = cls;
-    if (dataVal !== undefined) span.dataset.val = dataVal;
-    span.textContent = doc[col] === undefined ? '' : text;
-    td.title = text;
-    td.appendChild(span);
+    const valore = doc[col];
+    const { text, cls, dataVal } = displayValueBreve(valore);
+    const geometrica = rendiCellaGeometrica(td, valore, () => startEdit(td, doc, col));
+    if (!geometrica) {
+      const span = document.createElement('span');
+      if (cls) span.className = cls;
+      if (dataVal !== undefined) span.dataset.val = dataVal;
+      span.textContent = valore === undefined ? '' : text;
+      td.title = text;
+      td.appendChild(span);
+    }
 
     if (col !== '_id' && '_id' in doc) {
       td.classList.add('editable');
-      td.addEventListener('dblclick', () => startEdit(td, doc, col));
+      if (!geometrica) td.addEventListener('dblclick', () => startEdit(td, doc, col));
     }
     // Colonna collegata a un'altra tabella: l'indicatore è uno pseudo-elemento
     // CSS su una classe, non un nodo in più. Con la griglia virtualizzata una

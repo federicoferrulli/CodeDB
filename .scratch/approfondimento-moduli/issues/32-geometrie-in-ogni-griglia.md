@@ -9,8 +9,8 @@ sia quella della vista Dati.
 
 **Bloccato da:** 13.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] La resa di una cella geometrica è una funzione che una qualunque griglia può chiamare
-- [ ] La capacità `geometrie` di un riquadro Split-View si accende, con un test
-- [ ] La vista Dati si comporta come oggi
+- [x] La resa di una cella geometrica è una funzione che una qualunque griglia può chiamare
+- [x] La capacità `geometrie` di un riquadro Split-View si accende, con un test
+- [x] La vista Dati si comporta come oggi

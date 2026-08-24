@@ -10,9 +10,9 @@ indipendente e non va toccato.
 
 **Bloccato da:** 13.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Il pannello riceve contesto (tab, db, collection) e contenitore dal chiamante
-- [ ] La vista Dati si comporta come oggi
-- [ ] La capacità `chiaviEsterne` di un riquadro Split-View si accende, con un test
-- [ ] Due riquadri su connessioni diverse mostrano ciascuno le PROPRIE relazioni
+- [x] Il pannello riceve contesto (tab, db, collection) e contenitore dal chiamante
+- [x] La vista Dati si comporta come oggi
+- [x] La capacità `chiaviEsterne` di un riquadro Split-View si accende, con un test
+- [x] Due riquadri su connessioni diverse mostrano ciascuno le PROPRIE relazioni

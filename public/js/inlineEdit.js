@@ -144,28 +144,62 @@ export function salvaCampo(doc, field, value, ctx) {
     // Il refresh rilegge dagli input del workspace, che appartengono al tab
     // mostrato: se l'utente si è spostato altrove, rileggerebbe la collection
     // sbagliata. La scrittura è comunque andata a buon fine.
-    if (isForActiveTab(res) && c.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
+    if (typeof c.onSaveSuccess === 'function') c.onSaveSuccess(res);
+    else if (isForActiveTab(res) && c.isStillActive()) runQuery({ auto: true }); // refresh post-scrittura
     else marcaDatiSporchi(c, c.db, c.coll);
   }).catch((err) => {
     toast(err.message, true);
-    if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
+    if (typeof c.onSaveError === 'function') c.onSaveError(err);
+    else if (isForActiveTab(err)) renderGrid({ preserveScroll: true });
   });
 }
 
 // Contesto di scrittura completo: tab, coll-tab e bersaglio db/collection.
-function contestoScrittura() {
+function contestoScrittura(esplicito = null) {
+  if (esplicito) {
+    // Copia congelata: un riquadro può essere ridisegnato o cambiare tabella
+    // mentre il pannello FK è ancora aperto. Il valore scelto deve continuare
+    // ad appartenere al bersaglio con cui l'editor è nato.
+    const c = { ...esplicito };
+    if (typeof c.isStillActive !== 'function') c.isStillActive = () => false;
+    return c;
+  }
   const c = captureContext();
   return Object.assign(c, { db: state.db, coll: state.coll });
 }
 
-export function startEdit(td, doc, field) {
+/** Relazione fornita dalla griglia, senza consultare lo stato di un'altra vista. */
+function relazionePerCampo(field, opts) {
+  if (Object.prototype.hasOwnProperty.call(opts, 'relazione')) return opts.relazione;
+  return relazioneDiCampo(field);
+}
+
+/**
+ * Avvia la modifica inline.
+ *
+ * La firma a tre argomenti resta quella della vista Dati. Le altre griglie
+ * passano `opts.ctx`, la propria relazione e il proprio ridisegno: nessuno dei
+ * tre viene ricostruito dal Proxy `state`, che descrive soltanto il tab attivo.
+ */
+export function startEdit(td, doc, field, opts = {}) {
   if (td.classList.contains('editing')) return;
+  const ctx = contestoScrittura(opts.ctx);
+  const ridisegna = typeof opts.onRender === 'function'
+    ? opts.onRender
+    : (renderOpts) => renderGrid(renderOpts);
+  if (typeof opts.onRender === 'function') {
+    if (typeof ctx.onSaveSuccess !== 'function') {
+      ctx.onSaveSuccess = () => ridisegna({ preserveScroll: true });
+    }
+    if (typeof ctx.onSaveError !== 'function') {
+      ctx.onSaveError = () => ridisegna({ preserveScroll: true });
+    }
+  }
 
   // Geometrie: non c'è un `input` sensato in cui scriverle a mano. Si apre
   // l'editor su mappa, che è anche l'unico modo di CAPIRE cosa si sta
   // modificando; il salvataggio è lo stesso `doc:update` degli altri campi.
   if (isGeometry(doc[field])) {
-    const ctx = contestoScrittura();
     openGeoEditor({
       value: doc[field],
       campo: field,
@@ -188,7 +222,7 @@ export function startEdit(td, doc, field) {
     if (finished) return;
     finished = true;
     chiudiPannelloFk();
-    renderGrid({ preserveScroll: true });
+    ridisegna({ preserveScroll: true });
   };
 
   const save = () => {
@@ -196,7 +230,7 @@ export function startEdit(td, doc, field) {
     finished = true;
     chiudiPannelloFk();
     if (input.value === original) {
-      renderGrid({ preserveScroll: true });
+      ridisegna({ preserveScroll: true });
       return;
     }
     let value;
@@ -204,10 +238,10 @@ export function startEdit(td, doc, field) {
       value = buildValue();
     } catch (err) {
       toast(err.message, true);
-      renderGrid({ preserveScroll: true });
+      ridisegna({ preserveScroll: true });
       return;
     }
-    salvaCampo(doc, field, value, contestoScrittura());
+    salvaCampo(doc, field, value, ctx);
   };
 
   input.addEventListener('keydown', (e) => {
@@ -228,10 +262,10 @@ export function startEdit(td, doc, field) {
   // Colonna collegata a un'altra tabella: il pannello di scelta si apre da solo
   // e accanto all'input compare 🔗 per riaprirlo se lo si è chiuso. Va tutto
   // DOPO `save`, perché il pannello scrive attraverso di lui.
-  const relazione = relazioneDiCampo(field);
+  const relazione = relazionePerCampo(field, opts);
   if (relazione) {
     const editor = { input, setValue, save };
-    aggiungiPulsanteFk(td, editor, doc, field, relazione);
+    aggiungiPulsanteFk(td, editor, doc, field, relazione, { ...opts, ctx });
     // Apertura automatica: dietro un pulsante l'aiuto lo trovava solo chi già
     // sapeva che esistesse, cioè non chi ne aveva bisogno. Non ruba il fuoco,
     // quindi chi sa già cosa scrivere continua a digitare senza accorgersene.
@@ -241,7 +275,7 @@ export function startEdit(td, doc, field) {
     // occupa la metà bassa e la tastiera virtuale il resto, quindi la cella che
     // si sta modificando sparirebbe sotto entrambi — l'aiuto coprirebbe proprio
     // ciò che deve aiutare. Lì il pannello si apre col 🔗, quando lo si vuole.
-    if (!pannelloFkMobile()) mostraPannelloFk(editor, doc, field, relazione);
+    if (!pannelloFkMobile()) mostraPannelloFk(editor, doc, field, relazione, { ...opts, ctx });
   }
 }
 
@@ -254,14 +288,18 @@ export function startEdit(td, doc, field) {
  * `salvaCampo` sullo stesso documento di partenza, non su quello che si trova
  * sotto il cursore adesso.
  */
-function mostraPannelloFk(editor, doc, field, relazione) {
+export function mostraPannelloFk(editor, doc, field, relazione, opts = {}) {
   const { input, setValue, save } = editor;
-  const ctx = contestoScrittura();
+  const ctx = contestoScrittura(opts.ctx);
+  const sorgente = opts.sorgente || tdSorgente(input);
+  const contenitore = opts.contenitore || sorgente;
   apriPannelloFk({
     relazione,
     valore: doc[field],
     dbCorrente: ctx.db,
     tabId: ctx.tabId,
+    sorgente,
+    contenitore,
     onScegli: (valore) => {
       // Editor ancora vivo (il caso normale): si riempie e si salva dallo
       // stesso percorso dell'Invio, così validazione, messaggi ed eventuale
@@ -280,6 +318,12 @@ function mostraPannelloFk(editor, doc, field, relazione) {
   });
 }
 
+// Il ripiego della vista Dati è la cella che contiene l'input; un chiamante
+// parametrico passa normalmente il contenitore stabile della propria griglia.
+function tdSorgente(input) {
+  return input && input.closest ? input.closest('td') : null;
+}
+
 /**
  * Pulsante 🔗 accanto all'input di una cella collegata: riapre il pannello dopo
  * averlo chiuso, e lo richiude se è già aperto.
@@ -288,7 +332,7 @@ function mostraPannelloFk(editor, doc, field, relazione) {
  * il fuoco all'input, che salva e ridisegna la griglia — il pulsante sparirebbe
  * *prima* del proprio `click`, e non succederebbe assolutamente nulla.
  */
-function aggiungiPulsanteFk(td, editor, doc, field, relazione) {
+function aggiungiPulsanteFk(td, editor, doc, field, relazione, opts) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'fk-apri-btn';
@@ -298,8 +342,9 @@ function aggiungiPulsanteFk(td, editor, doc, field, relazione) {
   btn.setAttribute('aria-label', `Riferimento a ${relazione.tabella}`);
   btn.addEventListener('mousedown', (e) => e.preventDefault());
   btn.addEventListener('click', () => {
-    if (pannelloFkAperto()) chiudiPannelloFk();
-    else mostraPannelloFk(editor, doc, field, relazione);
+    const sorgente = opts.sorgente || td;
+    if (pannelloFkAperto(sorgente)) chiudiPannelloFk();
+    else mostraPannelloFk(editor, doc, field, relazione, { ...opts, sorgente });
   });
   td.appendChild(btn);
 }
