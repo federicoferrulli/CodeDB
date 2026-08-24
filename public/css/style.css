@@ -1848,25 +1848,34 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 #grid td.editable { cursor: cell; }
 
 /* Selezione celle stile Excel */
-#grid tbody { user-select: none; }
+tbody.selezione-celle { user-select: none; }
 /* Su iOS il tocco prolungato apre da sé il menu di sistema "Copia/Cerca" e
    annulla il puntatore: la pressione lunga con cui si apre la modifica di una
    cella (vedi collegaToccoProlungato in grid.js) veniva interrotta prima di
    scattare, e col dito la cella restava non modificabile. `user-select: none`
    qui sopra non basta — il callout è una cosa a parte. */
-#grid tbody { -webkit-touch-callout: none; }
+/* Le regole della selezione di celle seguono la CAPACITÀ, non l'id della
+   griglia: `cellselect.js` marca con `.selezione-celle` il `tbody` di ogni
+   griglia a cui la aggancia, quindi valgono identiche nella vista Dati e in un
+   riquadro della Split-View. Scritte su `#grid`, accendere la capacità altrove
+   avrebbe dato una selezione funzionante ma invisibile. */
+tbody.selezione-celle { -webkit-touch-callout: none; }
 /* `manipulation` = niente zoom da doppio tocco, scorrimento e pizzico intatti:
    senza, il doppio tocco che apre la modifica ingrandirebbe anche la tabella. */
-#grid tbody td { touch-action: manipulation; }
+tbody.selezione-celle td { touch-action: manipulation; }
 /* Sulle celle GIÀ selezionate il dito non scorre: è da lì che parte
    l'allargamento della selezione (vedi cellselect.js). Il consenso va dato in
    CSS e non con preventDefault, perché una volta che il browser ha iniziato a
    scorrere non lo ferma più nessuno. Resta confinato alle celle selezionate
    proprio per non togliere lo scorrimento al resto della griglia. */
-#grid tbody td.cell-selected { touch-action: none; }
-#grid td.editing { user-select: text; }
-#grid td.cell-selected { background: var(--accent-glow) !important; }
-#grid td.cell-focus { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: 0 0 0 4px var(--accent-soft); }
+tbody.selezione-celle td.cell-selected { touch-action: none; }
+/* La cella IN MODIFICA riprende il testo selezionabile: `user-select: none` qui
+   sopra serve al trascinamento della selezione, ma dentro l'editor impedirebbe
+   di scegliere una parte del valore. Anche questa segue la classe e non `#grid`,
+   altrimenti in un riquadro (che ha `modificaInline`) sarebbe rimasta spenta. */
+tbody.selezione-celle td.editing { user-select: text; }
+tbody.selezione-celle td.cell-selected { background: var(--accent-glow) !important; }
+tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-offset: -2px; box-shadow: 0 0 0 4px var(--accent-soft); }
 #cell-info { color: var(--fg-dim); margin-left: 10px; font-size: 0.82rem; white-space: nowrap; }
 #cell-info:not(:empty) { cursor: pointer; }
 #cell-info:not(:empty):hover { color: var(--fg); text-decoration: underline dotted; }

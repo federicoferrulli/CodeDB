@@ -5,7 +5,8 @@ import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto } from './utils.js';
 import { buildEditor, openEditDoc } from './inlineEdit.js';
 // Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
-import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga } from './griglia.js';
+import { creaSelezioneCelle } from './cellselect.js';
 import { openInsertDocForContext } from './insert.js';
 import {
   creaAlbero, inserisci, rimuovi, trascina, pareggia as pareggiaAlbero,
@@ -1225,11 +1226,17 @@ function deletePaneDoc(paneId, doc) {
   }).catch((err) => toast(err.message, true));
 }
 
-function deletePaneSelectedDocs(paneId) {
+/**
+ * Elimina un elenco di righe del riquadro: UNA conferma e UNA rilettura.
+ *
+ * È il percorso comune del pulsante 🗑 della selezione di righe e della voce
+ * «Elimina» del menu contestuale della selezione di CELLE. Chiamare la
+ * eliminazione singola in un ciclo darebbe una conferma e una rilettura PER
+ * RIGA: su venti righe selezionate, venti finestre di dialogo.
+ */
+function eliminaRigheRiquadro(paneId, ids) {
   const p = paneById(paneId);
-  if (!p || !p.selectedDocs) return Promise.resolve();
-  const visible = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
-  const ids = [...p.selectedDocs].filter((id) => visible.has(id));
+  if (!p) return Promise.resolve();
   if (ids.length === 0) {
     toast('Nessun documento selezionato', true);
     return Promise.resolve();
@@ -1249,11 +1256,18 @@ function deletePaneSelectedDocs(paneId) {
   ).then((results) => {
     const failed = results.filter((r) => r.status === 'rejected');
     const ok = results.length - failed.length;
-    p.selectedDocs.clear();
+    if (p.selectedDocs) p.selectedDocs.clear();
     if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
     else toast(`${ok} documenti eliminati`);
     runPaneQuery(paneId, { auto: true });
   });
+}
+
+function deletePaneSelectedDocs(paneId) {
+  const p = paneById(paneId);
+  if (!p || !p.selectedDocs) return Promise.resolve();
+  const visible = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
+  return eliminaRigheRiquadro(paneId, [...p.selectedDocs].filter((id) => visible.has(id)));
 }
 
 function createPaneElement(paneId) {
@@ -1546,17 +1560,99 @@ const CAPACITA_RIQUADRO = capacita({
   virtualizzazione: true,
   selezioneRighe: true,
   modificaInline: true,
-  // Spente, e dichiarate: selezione di celle, scorrimento automatico ai bordi,
-  // pannello delle chiavi esterne e geometrie vivono in moduli agganciati a
-  // `#grid` e allo `state` del tab attivo, mentre un riquadro ha un proprio
-  // contenitore e propri dati. Accenderle richiede di parametrizzare quei
-  // moduli sul contenitore e sulla sorgente delle righe.
-  selezioneCelle: false,
+  // Accesa: `cellselect.js` non cerca più `#grid` né legge `state`, riceve un
+  // AMBITO (`aggancioRiquadro` qui sotto) con il contenitore, le righe e lo stato
+  // di QUESTO riquadro.
+  selezioneCelle: true,
+  // Ancora spente, e dichiarate. Lo scorrimento automatico ai bordi vive dentro
+  // `cellselect.js` e ora riceve già il contenitore giusto, ma nessun test
+  // dimostra il gesto dentro un riquadro: finché non c'è, la capacità resta
+  // spenta invece di essere dichiarata su una parola (vedi la issue 30).
+  // Il pannello delle chiavi esterne e le geometrie restano nei loro moduli,
+  // ancora agganciati a `#grid` e allo `state` del tab attivo.
   scorrimentoAiBordi: false,
   chiaviEsterne: false,
   geometrie: false,
   paginazioneAChiave: false,
 });
+
+/**
+ * L'aggancio della selezione di celle per un riquadro: il contenitore che scorre,
+ * le righe e lo stato sono quelli del riquadro, non del tab attivo.
+ *
+ * Si costruisce una volta per riquadro e si tiene sul riquadro stesso: `tbody` e
+ * `thead` di un riquadro sono elementi STABILI (vengono svuotati, mai
+ * sostituiti), quindi gli ascoltatori si agganciano una volta sola — come già
+ * fa l'ascoltatore dello scorrimento qui sotto.
+ */
+function aggancioRiquadro(paneId, paneEl, p) {
+  const connTab = tabs.list.find((t) => t.id === p.tabId);
+  const dbType = connTab ? connTab.dbType : 'mongodb';
+  const vivo = () => paneById(paneId) === p;
+  return {
+    nome: `riquadro ${paneId}`,
+    tbody: paneEl.querySelector('.pane-grid tbody'),
+    thead: () => paneEl.querySelector('.pane-grid thead'),
+    contenitore: () => paneEl.querySelector('.pane-grid-wrap'),
+    // Un riquadro non ha barra di stato: il riassunto della selezione non ha
+    // dove andare. Il modulo lo sa e non lo calcola nemmeno.
+    info: () => null,
+    righe: () => p.docs || [],
+    // Le colonne sono quelle che il riquadro ha DISEGNATO (`p.colonneMostrate`,
+    // scritta da `updatePaneUI`), non ricalcolate qui: `data-c` è un indice in
+    // quell'elenco, e un secondo calcolo che ne producesse uno diverso farebbe
+    // leggere alla selezione la colonna sbagliata. È anche l'unico modo di non
+    // riscansionare tutte le righe a ogni cella selezionata.
+    colonne: () => p.colonneMostrate || p.columns || [],
+    bersaglio: () => ({ db: p.db, coll: p.coll, dbType }),
+    stato: () => {
+      if (!p.cellSel) p.cellSel = { anchor: null, focus: null, cells: new Set() };
+      return p.cellSel;
+    },
+    // `offsetParent` nullo = il riquadro non è a schermo: la tastiera non deve
+    // arrivargli, altrimenti un Ctrl+A scritto altrove selezionerebbe righe che
+    // nessuno sta guardando. La misura funziona perché il workspace nasconde le
+    // viste con `display: none` (`.hidden` su `#view-data` e sul contenitore
+    // della Split-View), che è ciò che azzera `offsetParent`: con una
+    // `visibility: hidden` o un'opacità zero questa lettura direbbe «visibile».
+    visibile: () => !!(paneEl.isConnected && paneEl.offsetParent && (p.docs || []).length),
+    // Il bersaglio di una scrittura è il riquadro, non il tab attivo (CDB-A18):
+    // in una Split-View su due connessioni i due non coincidono affatto.
+    // `marcaDatiSporchi` non ha nulla da segnare qui — un riquadro chiuso non ha
+    // dati da ridipingere — quindi `st` porta solo il bersaglio.
+    contesto: () => ({
+      tab: connTab || null,
+      tabId: p.tabId,
+      st: { db: p.db, coll: p.coll, dbType },
+      isStillActive: vivo,
+    }),
+    // La riga può essere fuori dalla finestra virtuale: si porta lo scorrimento
+    // dove serve e si ridisegna, come fa `ensureRowRendered` nella vista Dati.
+    assicuraRiga: (r) => {
+      const box = paneEl.querySelector('.pane-grid-wrap');
+      if (!box) return;
+      const dove = scorrimentoPerRiga({
+        indice: r,
+        altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
+        scrollTop: box.scrollTop,
+        altezzaViewport: box.clientHeight,
+      });
+      if (dove !== null) box.scrollTop = dove;
+      updatePaneUI(paneId);
+    },
+    ricarica: () => { if (vivo()) runPaneQuery(paneId, { auto: true }); },
+    modificaRiga: (doc) => openEditDoc(doc, {
+      tabId: p.tabId,
+      db: p.db,
+      coll: p.coll,
+      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
+    }),
+    eliminaRighe: (docs) => eliminaRigheRiquadro(paneId, docs.filter((d) => d && '_id' in d).map(idOf)),
+    // Un riquadro mostra sempre una collection vera: non ha la modalità
+    // aggregate/SQL Raw che nella vista Dati rende l'incolla impossibile.
+    motivoNoScrittura: () => null,
+  };
+}
 
 function updatePaneUI(paneId) {
   const paneEl = document.querySelector(`.split-pane[data-pane-id="${paneId}"]`);
@@ -1606,6 +1702,9 @@ function updatePaneUI(paneId) {
     tbody.innerHTML = `<tr><td colspan="100" class="pane-empty">${isSql ? 'Nessuna riga trovata.' : 'Nessun documento trovato.'}</td></tr>`;
   } else {
     const cols = p.columns && p.columns.length ? p.columns : Array.from(new Set(p.docs.flatMap(Object.keys)));
+    // Le colonne davvero disegnate: la selezione di celle indicizza `data-c` su
+    // questo elenco e deve leggere lo stesso, non un secondo calcolo.
+    p.colonneMostrate = cols;
     let currentSort = {};
     try { currentSort = JSON.parse(p.sort || '{}'); } catch { /* ignore */ }
 
@@ -1655,9 +1754,10 @@ function updatePaneUI(paneId) {
       trHead.appendChild(thActions);
     }
 
-    cols.forEach((col) => {
+    cols.forEach((col, colIdx) => {
       const th = document.createElement('th');
       th.className = 'pane-col-header';
+      th.dataset.c = colIdx; // per la selezione di colonna (cellselect.js)
       const dir = currentSort[col];
       const arrow = dir === 1 ? ' ▲' : dir === -1 ? ' ▼' : '';
       th.textContent = col + arrow;
@@ -1734,8 +1834,13 @@ function updatePaneUI(paneId) {
         tr.appendChild(actionsTd);
       }
 
-      cols.forEach((col) => {
+      cols.forEach((col, colIdx) => {
         const td = document.createElement('td');
+        // Coordinate per la selezione di celle stile Excel (cellselect.js): la
+        // riga e' l'indice ASSOLUTO in `p.docs`, non quello della finestra
+        // virtuale, perche' la selezione sopravvive al ridisegno.
+        td.dataset.r = idx;
+        td.dataset.c = colIdx;
         const val = doc[col];
         // Testo limitato, come nella griglia principale: qui si disegna, non si
         // copia (vedi displayValueBreve in utils.js).
@@ -1778,6 +1883,21 @@ function updatePaneUI(paneId) {
       finestra,
       colonneTotali,
     });
+
+    // La selezione di celle si aggancia una volta sola per riquadro (`tbody` e
+    // `thead` sono stabili), ma le CLASSI vanno riapplicate a ogni disegno: la
+    // finestra virtuale ricostruisce le righe, e senza questo la selezione
+    // sparirebbe da sotto il dito mentre la griglia scorre.
+    if (CAPACITA_RIQUADRO.selezioneCelle) {
+      // Il confronto è sul `tbody` e non su «esiste già»: `renderSplitView`
+      // ricostruisce il DOM dei riquadri, e un'istanza agganciata al `tbody` di
+      // prima resterebbe viva puntando a un elemento staccato — cioè una
+      // selezione che non risponde più e che nulla segnala.
+      if (!p.selezioneCelle || p.selezioneCelle.aggancio.tbody !== tbody) {
+        p.selezioneCelle = creaSelezioneCelle(aggancioRiquadro(paneId, paneEl, p));
+      }
+      p.selezioneCelle.applica();
+    }
 
     // Lo scorrimento ridisegna la finestra. Si aggancia una volta sola per
     // riquadro: `updatePaneUI` viene richiamata a ogni pagina e a ogni

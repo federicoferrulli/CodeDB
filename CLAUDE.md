@@ -125,6 +125,7 @@ node test/e2e-nulli-ordinati.js # Test che i valori nulli si ordinino uguale sui
 node test/e2e-osservazione.js # Test dell'osservazione da capo a fondo (MongoDB)
 node test/unit-palette-ricerca.js # Test della ricerca della palette (punteggio e ordine)
 node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ricerca (Chromium, senza DB)
+node test/e2e-selezione-celle-viste.js # Test della selezione di celle in piu' griglie indipendenti (Chromium)
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -442,6 +443,37 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   disegno della **singola riga** resta della vista, perché è ciò che cambia
   davvero fra loro. Una capacità scritta male è un **errore**, non un'opzione
   ignorata.
+* **La selezione di celle riceve il contenitore e le righe (`cellselect.js`)**:
+  la selezione stile foglio di calcolo esisteva **solo** nella vista Dati, e non
+  per scelta — il modulo cercava da sé il proprio bersaglio in tre modi che
+  dicevano tutti «esiste una griglia sola»: si agganciava a `#grid tbody`,
+  trovava le celle con `document.querySelectorAll('#grid tbody td[data-c]')` e
+  leggeva i dati dal Proxy `state`, che punta al **tab attivo**. Un riquadro
+  della Split-View ha invece il proprio contenitore (`.pane-grid-wrap`) e i
+  propri dati (`p.docs`, `p.columns`), e con due riquadri su due connessioni
+  diverse «il tab attivo» non identifica nemmeno il riquadro giusto: accendere
+  la capacità senza parametrizzare avrebbe dato una selezione che funziona in
+  quello a fuoco e **scrive silenziosamente sul riquadro sbagliato** negli
+  altri. `creaSelezioneCelle(aggancio)` costruisce ora un'istanza per griglia; le
+  funzioni che dipendono dalla griglia prendono l'aggancio come **primo
+  argomento**, così lo dichiarano nella firma invece di andarselo a prendere da
+  una variabile globale, e fuori restano quelle pure (formati di copia,
+  letterali SQL, parser degli appunti). Lo stato vive dove lo dichiara l'aggancio
+  — `state.cellSel` per la vista Dati, `p.cellSel` per un riquadro — quindi due
+  griglie sono indipendenti **perché hanno due stati**, non perché qualcuno si
+  ricorda di azzerare. Appunti, tastiera e movimento del mouse arrivano però dal
+  `document` e non dicono a quale griglia si riferiscono: uno **smistamento**
+  unico li manda all'ultima griglia toccata finché resta visibile (prima che
+  qualcuna sia toccata, alla prima visibile), altrimenti un Ctrl+A le
+  selezionerebbe tutte e un Ctrl+V scriverebbe su tutte. Le regole CSS seguono
+  la stessa strada: `.selezione-celle` sul `tbody` al posto di `#grid` —
+  comprese `td.editing` e le due che dipingono la selezione, altrimenti la
+  capacità accesa altrove sarebbe funzionante ma **invisibile**. Provata da
+  `test/e2e-selezione-celle-viste.js` (Chromium), che non si ferma alle classi:
+  misura lo stile calcolato, e prova con un socket finto che l'incolla dentro un
+  riquadro scriva sulla connessione e sulla tabella del RIQUADRO mentre il Proxy
+  `state` ne dichiara altre — cioè il difetto per cui la capacità era rimasta
+  spenta.
 * **La palette dei comandi (`palette.js` / `palette-ricerca.js`)**: Ctrl+P cerca
   in un elenco solo — comandi, connessioni salvate, database e **tabelle di
   tutti i database del tab**. Le tabelle hanno due sorgenti: l'albero, che per i

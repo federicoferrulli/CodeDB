@@ -27,13 +27,62 @@ import { quotaSempre, quotaQualificato, dialettoDi } from './identificatori.mjs'
 // media, mediana, min, max… nella barra di stato e nel pannello 📊, calcolate
 // dal modulo puro `cell-stats.js`) e GRAFICO delle celle selezionate (📈, che
 // disegna con `cellgrafico.js` ciò che `cell-chart.js` deduce dalla selezione).
-// Lo stato vive per tab in `state.cellSel` (chiavi "riga:colonna" sugli indici
-// di state.docs/state.columns), così la selezione sopravvive ai re-render.
+//
+// ---------------------------------------------------------------------------
+// L'AGGANCIO: il contenitore e la sorgente delle righe si RICEVONO
+// ---------------------------------------------------------------------------
+//
+// Questo modulo cercava il proprio bersaglio da sé, in tre modi diversi che
+// dicevano tutti la stessa cosa — «esiste una griglia sola»: si agganciava a
+// `#grid tbody`, trovava le celle con
+// `document.querySelectorAll('#grid tbody td[data-c]')` e leggeva i dati dal
+// Proxy `state`, che punta al tab ATTIVO. Per questo la selezione di celle
+// esisteva soltanto nella vista Dati.
+//
+// Un riquadro della Split-View ha invece il proprio contenitore
+// (`.pane-grid-wrap`) e i propri dati (`p.docs`, `p.columns`); e in una
+// Split-View con due riquadri su due connessioni diverse «il tab attivo» non
+// identifica nemmeno il riquadro giusto. Accendere la capacità senza
+// parametrizzare avrebbe dato una selezione che funziona nel riquadro a fuoco e
+// scrive SILENZIOSAMENTE SU QUELLO SBAGLIATO negli altri: peggio di non averla.
+//
+// `creaSelezioneCelle(aggancio)` costruisce quindi un'istanza per griglia. Lo
+// stato della selezione vive nell'oggetto che l'aggancio dichiara (`stato()`) —
+// per la vista Dati è `state.cellSel`, cioè lo stato del tab, per un riquadro è
+// `p.cellSel`: due griglie nella stessa pagina hanno selezioni indipendenti
+// perché hanno due stati, non perché qualcuno si ricorda di azzerare.
+//
+// Restano fuori dalla fabbrica le funzioni che non conoscono alcuna griglia
+// (formati di copia, letterali SQL, parser degli appunti): ricostruirle per
+// istanza le farebbe sembrare parte dello stato. Le altre prendono l'aggancio
+// come PRIMO ARGOMENTO, così una funzione che dipende dalla griglia lo dichiara
+// nella propria firma invece di andarselo a prendere da una variabile globale.
 
-function sel() {
-  if (!state.cellSel) state.cellSel = { anchor: null, focus: null, cells: new Set() };
-  return state.cellSel;
-}
+/**
+ * @typedef {Object} AggancioSelezione
+ * @property {string} nome            per i messaggi d'errore
+ * @property {HTMLElement} tbody      corpo della tabella. Dev'essere STABILE:
+ *   va svuotato, mai sostituito — la cattura del puntatore col dito ci poggia
+ *   sopra (vedi il commento sul `pointerdown` più sotto).
+ * @property {() => (HTMLElement|null)} thead        intestazione (Ctrl+clic = colonna)
+ * @property {() => (HTMLElement|null)} contenitore  il box che SCORRE
+ * @property {() => (HTMLElement|null)} info         barra di stato del riassunto
+ * @property {() => Array} righe                     le righe mostrate ORA
+ * @property {() => Array} colonne                   i nomi di colonna, nell'ordine
+ * @property {() => {db?:string, coll?:string, dbType?:string}} bersaglio
+ * @property {() => {anchor:?Object, focus:?Object, cells:Set<string>}} stato
+ * @property {() => boolean} visibile   se questa griglia è a schermo e ha righe
+ * @property {() => Object} contesto    bersaglio congelato di una scrittura (CDB-A18)
+ * @property {(r:number) => void} assicuraRiga  rende in DOM una riga virtuale
+ * @property {() => void} ricarica              rilettura dopo una scrittura
+ * @property {(doc:Object) => void} modificaRiga
+ * @property {(docs:Array) => void} eliminaRighe
+ * @property {() => (string|null)} motivoNoScrittura  perché l'incolla è vietato
+ */
+
+/* ==========================================================================
+ * Parte pura: non conosce alcuna griglia
+ * ========================================================================== */
 
 const key = (r, c) => `${r}:${c}`;
 
@@ -52,8 +101,8 @@ function rectKeys(a, b) {
   return keys;
 }
 
-export function clearCellSelection() {
-  const s = sel();
+function svuotaSelezione(A) {
+  const s = A.stato();
   s.anchor = null;
   s.focus = null;
   s.cells.clear();
@@ -68,41 +117,46 @@ export function clearCellSelection() {
 // alcun tetto: lì i numeri si calcolano sempre, semplicemente altrove.
 const MAX_CELLE_RIASSUNTO = 20000;
 
-// Il riassunto è asincrono: durante un trascinamento partono molte richieste e
-// l'ultima a rispondere non è per forza l'ultima chiesta.
-const seqRiassunto = sequenziatore();
-
-// Vero mentre una selezione si sta trascinando (mouse o dito), compreso il
-// tempo in cui la griglia scorre da sola sotto il puntatore. Lo leggono le
-// chiamate di `applyCellSelection` che arrivano da fuori, per non pagare il
-// riassunto completo a ogni fotogramma.
-let trascinandoSelezione = false;
+/* ==========================================================================
+ * Parte legata a UNA griglia: l'aggancio è il primo argomento
+ * ========================================================================== */
 
 // Ri-applica le classi CSS della selezione dopo un render della griglia,
 // scartando le celle ormai fuori dai limiti della pagina corrente.
-export function applyCellSelection({ leggero = false } = {}) {
-  const s = sel();
+//
+// `A.trascinando` e `A.seq` sono per ISTANZA e non del modulo, come erano
+// prima: con due griglie a schermo un flag unico avrebbe fatto saltare il
+// riassunto della griglia ferma perché l'altra si stava trascinando, e un
+// sequenziatore unico avrebbe scartato le risposte di una come «sorpassate» da
+// quelle dell'altra.
+function applica(A, { leggero = false } = {}) {
+  const s = A.stato();
   // Chi chiama non sa sempre di essere dentro un trascinamento: mentre la
   // selezione si allarga con lo scorrimento automatico, la griglia rifà da sé
   // la finestra virtuale e ri-applica la selezione (renderVirtualWindow in
   // grid.js). Quella chiamata è "pesante" per definizione, e cadrebbe più volte
   // al secondo proprio sul telefono, dove costa di più. Finché il dito o il
   // mouse tirano, il riassunto resta leggero comunque.
-  if (trascinandoSelezione) leggero = true;
+  if (A.trascinando) leggero = true;
+  // Righe e colonne si leggono UNA volta: questo ciclo gira su ogni cella
+  // selezionata (dopo un Ctrl+A sono tutte), e `colonne()` non è per forza un
+  // campo — può essere un calcolo sulle righe.
+  const nRighe = A.righe().length;
+  const nColonne = A.colonne().length;
   for (const k of [...s.cells]) {
     const [r, c] = k.split(':').map(Number);
-    if (r >= state.docs.length || c >= state.columns.length) s.cells.delete(k);
+    if (r >= nRighe || c >= nColonne) s.cells.delete(k);
   }
-  if (s.focus && (s.focus.r >= state.docs.length || s.focus.c >= state.columns.length)) {
+  if (s.focus && (s.focus.r >= nRighe || s.focus.c >= nColonne)) {
     s.focus = null;
     s.anchor = null;
   }
-  document.querySelectorAll('#grid tbody td[data-c]').forEach((td) => {
+  A.tbody.querySelectorAll('td[data-c]').forEach((td) => {
     const { r, c } = cellFromTd(td);
     td.classList.toggle('cell-selected', s.cells.has(key(r, c)));
     td.classList.toggle('cell-focus', !!s.focus && s.focus.r === r && s.focus.c === c);
   });
-  const info = $('#cell-info');
+  const info = A.info();
   if (!info) return;
   if (s.cells.size <= 1) { info.textContent = ''; return; }
   const base = `${s.cells.size} celle selezionate`;
@@ -116,7 +170,7 @@ export function applyCellSelection({ leggero = false } = {}) {
   // calcola una volta sola.
   let codaGeo = '';
   if (s.cells.size <= MAX_CELLE_RIASSUNTO && !leggero) {
-    const breveGeo = riassuntoGeoBreve(statisticheGeo(vociSelezionate()));
+    const breveGeo = riassuntoGeoBreve(statisticheGeo(vociSelezionate(A)));
     if (breveGeo) codaGeo = ' · ' + breveGeo;
   }
   // Il conteggio si scrive SUBITO: i numeri possono arrivare da un altro
@@ -129,11 +183,11 @@ export function applyCellSelection({ leggero = false } = {}) {
   // che gira una volta sola.
   if (s.cells.size > MAX_CELLE_RIASSUNTO) return;
 
-  const token = seqRiassunto.nuovo();
-  statisticheAsync(valoriSelezionati()).then((st) => {
+  const token = A.seq.nuovo();
+  statisticheAsync(valoriSelezionati(A)).then((st) => {
     // Selezione cambiata nel frattempo: questo risultato descrive celle che non
     // sono più quelle scelte, e scriverlo sarebbe peggio del silenzio.
-    if (!seqRiassunto.attuale(token)) return;
+    if (!A.seq.attuale(token)) return;
     const breve = riassuntoBreve(st);
     info.textContent = base + (breve ? ' · ' + breve : '') + codaGeo;
   }).catch(() => {
@@ -144,21 +198,21 @@ export function applyCellSelection({ leggero = false } = {}) {
 }
 
 // Valore testuale della cella come mostrato in griglia.
-function cellText(r, c) {
-  const doc = state.docs[r];
-  const col = state.columns[c];
+function cellText(A, r, c) {
+  const doc = A.righe()[r];
+  const col = A.colonne()[c];
   if (!doc || col === undefined) return '';
   return doc[col] === undefined ? '' : displayValue(doc[col]).text;
 }
 
 // Valore grezzo (forma EJSON) della cella.
-function cellRaw(r, c) {
-  return state.docs[r]?.[state.columns[c]];
+function cellRaw(A, r, c) {
+  return A.righe()[r]?.[A.colonne()[c]];
 }
 
 // Righe e colonne (ordinate) coinvolte nella selezione.
-function selectionGrid() {
-  const cells = [...sel().cells].map((k) => k.split(':').map(Number));
+function selectionGrid(A) {
+  const cells = [...A.stato().cells].map((k) => k.split(':').map(Number));
   const rows = [...new Set(cells.map(([r]) => r))].sort((a, b) => a - b);
   const cols = [...new Set(cells.map(([, c]) => c))].sort((a, b) => a - b);
   return { rows, cols };
@@ -167,13 +221,13 @@ function selectionGrid() {
 // --- Statistiche della selezione -------------------------------------------
 
 // Valori grezzi (EJSON) delle sole celle selezionate, nell'ordine di lettura.
-function valoriSelezionati() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function valoriSelezionati(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   const out = [];
   for (const r of rows) {
     for (const c of cols) {
-      if (has.has(key(r, c))) out.push(cellRaw(r, c));
+      if (has.has(key(r, c))) out.push(cellRaw(A, r, c));
     }
   }
   return out;
@@ -183,13 +237,13 @@ function valoriSelezionati() {
 // selezione deve poter dire da dove viene ogni forma disegnata, altrimenti
 // trovare il dato sbagliato che si è appena visto in mezzo all'oceano
 // significherebbe cercarlo a mano nella griglia.
-function vociSelezionate() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function vociSelezionate(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   const out = [];
   for (const r of rows) {
     for (const c of cols) {
-      if (has.has(key(r, c))) out.push({ valore: cellRaw(r, c), colonna: state.columns[c] ?? '', riga: r });
+      if (has.has(key(r, c))) out.push({ valore: cellRaw(A, r, c), colonna: A.colonne()[c] ?? '', riga: r });
     }
   }
   return out;
@@ -198,12 +252,12 @@ function vociSelezionate() {
 // Gli stessi valori raggruppati per colonna: una selezione di più colonne va
 // analizzata colonna per colonna, perché sommare importi e quantità insieme
 // produce un totale che non significa nulla.
-function valoriPerColonna() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function valoriPerColonna(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   return cols.map((c) => ({
-    nome: state.columns[c] ?? `col ${c}`,
-    valori: rows.filter((r) => has.has(key(r, c))).map((r) => cellRaw(r, c)),
+    nome: A.colonne()[c] ?? `col ${c}`,
+    valori: rows.filter((r) => has.has(key(r, c))).map((r) => cellRaw(A, r, c)),
   }));
 }
 
@@ -256,14 +310,14 @@ function statsTsv(st, perCol) {
 
 // Pannello 📊 con il riepilogo della selezione (costruito al volo come la
 // modale di duplicazione: non esiste nel DOM finché non serve).
-async function showCellStats() {
-  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
-  const valori = valoriSelezionati();
+async function showCellStats(A) {
+  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  const valori = valoriSelezionati(A);
   // Qui non c'è nessun tetto: su una selezione enorme i due calcoli finiscono
   // sul Web Worker (vedi calcoli.js) e la finestra resta viva nel frattempo.
   const [st, perCol] = await Promise.all([
     statisticheAsync(valori),
-    statistichePerColonnaAsync(valoriPerColonna()),
+    statistichePerColonnaAsync(valoriPerColonna(A)),
   ]);
 
   let overlay = document.getElementById('cellstats-overlay');
@@ -291,7 +345,7 @@ async function showCellStats() {
     // grafico con i suoi numeri visibili ai bordi.
     document.getElementById('cellstats-chart').addEventListener('click', () => {
       overlay.classList.add('hidden');
-      mostraGraficoSelezione();
+      mostraGraficoSelezione(A);
     });
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
     // Copia del singolo valore: un gestore delegato una volta sola, perché il
@@ -372,55 +426,55 @@ async function showCellStats() {
 
 // Quante geometrie ci sono nella selezione (per decidere cosa offrire nel menu
 // e dove porta il clic sulla barra di stato).
-function contaGeometrieSelezionate() {
-  return statisticheGeo(vociSelezionate()).totale;
+function contaGeometrieSelezionate(A) {
+  return statisticheGeo(vociSelezionate(A)).totale;
 }
 
 // Titolo comune alle finestre che mostrano la selezione (mappa e grafico): da
 // dove vengono questi dati, senza scrivere venti nomi di colonna.
-function titoloSelezione() {
-  const { cols } = selectionGrid();
-  const nomi = cols.map((c) => state.columns[c]).filter(Boolean);
-  return [state.coll, nomi.length <= 3 ? nomi.join(', ') : `${nomi.length} colonne`].filter(Boolean).join(' · ');
+function titoloSelezione(A) {
+  const { cols } = selectionGrid(A);
+  const nomi = cols.map((c) => A.colonne()[c]).filter(Boolean);
+  return [A.bersaglio().coll, nomi.length <= 3 ? nomi.join(', ') : `${nomi.length} colonne`].filter(Boolean).join(' · ');
 }
 
-function mostraMappaSelezione() {
-  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
-  apriMappaSelezione({ voci: vociSelezionate(), titolo: titoloSelezione() });
+function mostraMappaSelezione(A) {
+  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  apriMappaSelezione({ voci: vociSelezionate(A), titolo: titoloSelezione(A) });
 }
 
 // --- Grafico della selezione ------------------------------------------------
 
-function mostraGraficoSelezione() {
-  if (!sel().cells.size) { toast('Seleziona prima delle celle', true); return; }
-  apriGraficoSelezione({ voci: vociSelezionate(), titolo: titoloSelezione() });
+function mostraGraficoSelezione(A) {
+  if (!A.stato().cells.size) { toast('Seleziona prima delle celle', true); return; }
+  apriGraficoSelezione({ voci: vociSelezionate(A), titolo: titoloSelezione(A) });
 }
 
 // TSV della selezione: le celle non selezionate dentro il rettangolo di
 // contorno restano vuote, come farebbe Excel con una selezione sparsa.
-function buildTsv(withHeaders) {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function buildTsv(A, withHeaders) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   const lines = rows.map((r) =>
-    cols.map((c) => (has.has(key(r, c)) ? cellText(r, c) : '')).join('\t')
+    cols.map((c) => (has.has(key(r, c)) ? cellText(A, r, c) : '')).join('\t')
   );
-  if (withHeaders) lines.unshift(cols.map((c) => state.columns[c] ?? '').join('\t'));
+  if (withHeaders) lines.unshift(cols.map((c) => A.colonne()[c] ?? '').join('\t'));
   return lines.join('\n');
 }
 
 // JSON della selezione: una cella sola → il valore; una riga → oggetto;
 // più righe → array di oggetti. I valori restano in forma EJSON.
-function buildJson() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function buildJson(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   if (rows.length === 1 && cols.length === 1) {
-    const v = state.docs[rows[0]]?.[state.columns[cols[0]]];
+    const v = A.righe()[rows[0]]?.[A.colonne()[cols[0]]];
     return typeof v === 'string' ? v : JSON.stringify(v ?? null, null, 2);
   }
   const objs = rows.map((r) => {
     const obj = Object.create(null);
     for (const c of cols) {
-      if (has.has(key(r, c))) obj[state.columns[c]] = state.docs[r]?.[state.columns[c]] ?? null;
+      if (has.has(key(r, c))) obj[A.colonne()[c]] = A.righe()[r]?.[A.colonne()[c]] ?? null;
     }
     return obj;
   });
@@ -432,25 +486,25 @@ function csvField(s) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-function buildCsv(withHeaders) {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function buildCsv(A, withHeaders) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   const lines = rows.map((r) =>
-    cols.map((c) => (has.has(key(r, c)) ? csvField(cellText(r, c)) : '')).join(',')
+    cols.map((c) => (has.has(key(r, c)) ? csvField(cellText(A, r, c)) : '')).join(',')
   );
-  if (withHeaders) lines.unshift(cols.map((c) => csvField(state.columns[c] ?? '')).join(','));
+  if (withHeaders) lines.unshift(cols.map((c) => csvField(A.colonne()[c] ?? '')).join(','));
   return lines.join('\n');
 }
 
-function buildMarkdown() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function buildMarkdown(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   const mdEsc = (s) => String(s).replace(/\|/g, '\\|').replace(/\n/g, ' ');
   const line = (vals) => '| ' + vals.join(' | ') + ' |';
   const out = [
-    line(cols.map((c) => mdEsc(state.columns[c] ?? ''))),
+    line(cols.map((c) => mdEsc(A.colonne()[c] ?? ''))),
     line(cols.map(() => '---')),
-    ...rows.map((r) => line(cols.map((c) => (has.has(key(r, c)) ? mdEsc(cellText(r, c)) : '')))),
+    ...rows.map((r) => line(cols.map((c) => (has.has(key(r, c)) ? mdEsc(cellText(A, r, c)) : '')))),
   ];
   return out.join('\n');
 }
@@ -479,22 +533,22 @@ function sqlLiteral(v) {
   return sqlString(JSON.stringify(v)); // oggetti/array → JSON come stringa
 }
 
-function buildSqlInsert() {
-  const { rows, cols } = selectionGrid();
-  const has = sel().cells;
+function buildSqlInsert(A) {
+  const { rows, cols } = selectionGrid(A);
+  const has = A.stato().cells;
   // Come si scrive un identificatore lo sa un modulo solo, condiviso col
   // server: qui si quota SEMPRE, perche' l'INSERT finisce negli appunti e da
   // li' in un editor qualsiasi, dove non si sa che nome incontrera'.
-  const postgres = dialettoDi(state.dbType) === 'postgresql';
-  const ident = (s) => quotaSempre(s, state.dbType || 'mysql');
+  const postgres = dialettoDi(A.bersaglio().dbType) === 'postgresql';
+  const ident = (s) => quotaSempre(s, A.bersaglio().dbType || 'mysql');
   const table = quotaQualificato(
-    [postgres ? state.db : null, state.coll || 'tabella'],
-    state.dbType || 'mysql'
+    [postgres ? A.bersaglio().db : null, A.bersaglio().coll || 'tabella'],
+    A.bersaglio().dbType || 'mysql'
   );
   const values = rows.map((r) =>
-    '(' + cols.map((c) => (has.has(key(r, c)) ? sqlLiteral(cellRaw(r, c)) : 'NULL')).join(', ') + ')'
+    '(' + cols.map((c) => (has.has(key(r, c)) ? sqlLiteral(cellRaw(A, r, c)) : 'NULL')).join(', ') + ')'
   );
-  return 'INSERT INTO ' + table + ' (' + cols.map((c) => ident(state.columns[c])).join(', ') + ') VALUES\n'
+  return 'INSERT INTO ' + table + ' (' + cols.map((c) => ident(A.colonne()[c])).join(', ') + ') VALUES\n'
     + values.join(',\n') + ';';
 }
 
@@ -537,9 +591,9 @@ function messaggioEsito(testa, note) {
  * Una richiesta per volta e in ordine: il valore nuovo di una chiave si calcola
  * dal MAX gia' presente, e due duplicati in parallelo lo leggerebbero uguale.
  */
-function duplicaRighe(docs, conChiavi) {
+function duplicaRighe(A, docs, conChiavi) {
   if (!docs.length) { toast('Nessuna riga selezionata', true); return; }
-  const origin = captureContext();
+  const origin = A.contesto();
   const { tabId, st } = origin;
   const bersaglio = { tabId, db: st.db, coll: st.coll };
   const isSql = isSqlType(st.dbType);
@@ -572,7 +626,7 @@ function duplicaRighe(docs, conChiavi) {
   }).then(() => {
     if (!fatte) return;
     // runQuery rilegge dagli input del workspace: solo se il tab e' ancora quello.
-    if (origin.isStillActive()) runQuery({ auto: true });
+    if (origin.isStillActive()) A.ricarica();
     else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
   });
 }
@@ -583,8 +637,8 @@ function duplicaRighe(docs, conChiavi) {
  * "mantieni le altre chiavi" ricalcola l'anteprima, perche' la differenza fra
  * le due modalita' la decide il server, non il testo nella textarea.
  */
-function duplicaConEditor(doc, conChiaviIniziale) {
-  const origin = captureContext();
+function duplicaConEditor(A, doc, conChiaviIniziale) {
+  const origin = A.contesto();
   const { tabId, st } = origin;
   const bersaglio = { tabId, db: st.db, coll: st.coll };
   const isSql = isSqlType(st.dbType);
@@ -682,7 +736,7 @@ function duplicaConEditor(doc, conChiaviIniziale) {
     }).then(() => {
       overlay.classList.add('hidden');
       toast(isSql ? 'Riga duplicata' : 'Documento duplicato');
-      if (origin.isStillActive()) runQuery({ auto: true });
+      if (origin.isStillActive()) A.ricarica();
       else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
     }).catch((err) => {
       errEl.textContent = friendlyInsertError(err.message);
@@ -706,8 +760,8 @@ function friendlyInsertError(msg) {
   return out;
 }
 
-function copyToClipboard(text) {
-  const n = sel().cells.size;
+function copyToClipboard(A, text) {
+  const n = A.stato().cells.size;
   copyText(text, n === 1 ? 'Cella copiata' : `${n} celle copiate`);
 }
 
@@ -734,13 +788,9 @@ function inputFocused() {
   return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 }
 
-function gridVisible() {
-  return !$('#view-data').classList.contains('hidden') && state.docs.length > 0;
-}
-
 // Selezione al mousedown, in base ai modificatori.
-function selectFrom(cell, { shift, ctrl }) {
-  const s = sel();
+function selectFrom(A, cell, { shift, ctrl }) {
+  const s = A.stato();
   if (shift && s.anchor) {
     s.cells = new Set(rectKeys(s.anchor, cell));
   } else if (ctrl) {
@@ -814,15 +864,19 @@ function coercePasted(current, text) {
 
 // Incolla una griglia TSV (formato appunti di Excel) a partire dall'angolo in
 // alto a sinistra della selezione, aggiornando i documenti sottostanti.
-function pasteIntoGrid(text) {
+function pasteIntoGrid(A, text) {
   const grid = parseClipboardGrid(text || '');
   if (!grid.length) return;
-  if ($('#query-mode').value === 'aggregate') {
-    toast('Incolla non disponibile in modalità aggregate/SQL Raw', true);
+  // Perché una griglia non si può scrivere lo sa la vista, non questo modulo:
+  // nella vista Dati è la modalità aggregate/SQL Raw, in un riquadro potrebbe
+  // essere un'altra ragione. Chi non ne ha, restituisce null.
+  const vietato = A.motivoNoScrittura();
+  if (vietato) {
+    toast(vietato, true);
     return;
   }
-  const s = sel();
-  const { rows: selRows, cols: selCols } = selectionGrid();
+  const s = A.stato();
+  const { rows: selRows, cols: selCols } = selectionGrid(A);
   const start = selRows.length ? { r: selRows[0], c: selCols[0] } : s.focus;
   if (!start) {
     toast('Seleziona prima la cella di partenza', true);
@@ -833,7 +887,7 @@ function pasteIntoGrid(text) {
   let cellsCount = 0;
   let skipped = 0; // celle fuori pagina, su _id o su righe senza _id
   grid.forEach((line, i) => {
-    const doc = state.docs[start.r + i];
+    const doc = A.righe()[start.r + i];
     if (!doc || !('_id' in doc)) {
       skipped += line.length;
       return;
@@ -841,7 +895,7 @@ function pasteIntoGrid(text) {
     const set = Object.create(null);
     let any = false;
     line.forEach((value, j) => {
-      const col = state.columns[start.c + j];
+      const col = A.colonne()[start.c + j];
       if (col === undefined || col === '_id') {
         skipped++;
         return;
@@ -857,7 +911,7 @@ function pasteIntoGrid(text) {
     toast('Nessuna cella aggiornabile a partire da qui', true);
     return;
   }
-  const docWord = isSqlType(state.dbType) ? 'righe' : 'documenti';
+  const docWord = isSqlType(A.bersaglio().dbType) ? 'righe' : 'documenti';
   let msg = `Incollare ${cellsCount} celle in ${updates.length} ${docWord}?`;
   if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o sulla colonna _id)`;
   if (!confirm(msg)) return;
@@ -865,7 +919,7 @@ function pasteIntoGrid(text) {
   // L'incolla può durare a lungo: il contesto (tab + coll-tab) va catturato ora,
   // non alla risposta, o la selezione e il refresh finirebbero su un'altra
   // tabella se l'utente si sposta nel frattempo.
-  const origin = captureContext();
+  const origin = A.contesto();
   // Il BERSAGLIO va congelato insieme al contesto, non riletto a ogni richiesta
   // (CDB-A18). `state` è un Proxy sul tab ATTIVO e `emit()` inietta il tab
   // attivo al momento della chiamata: siccome le ondate distribuiscono le
@@ -894,19 +948,19 @@ function pasteIntoGrid(text) {
     const width = Math.max(...grid.map((l) => l.length));
     s.anchor = { r: start.r, c: start.c };
     s.focus = {
-      r: Math.min(start.r + grid.length - 1, state.docs.length - 1),
-      c: Math.min(start.c + width - 1, state.columns.length - 1),
+      r: Math.min(start.r + grid.length - 1, A.righe().length - 1),
+      c: Math.min(start.c + width - 1, A.colonne().length - 1),
     };
     s.cells = new Set(rectKeys(s.anchor, s.focus));
-    runQuery({ auto: true }); // refresh post-scrittura (incolla celle)
+    A.ricarica(); // refresh post-scrittura (incolla celle)
   });
 }
 
 // --- Selezione di intere colonne dall'header --------------------------------
 
-function selectColumn(c, { ctrl, shift }) {
-  const s = sel();
-  const lastRow = state.docs.length - 1;
+function selectColumn(A, c, { ctrl, shift }) {
+  const s = A.stato();
+  const lastRow = A.righe().length - 1;
   if (lastRow < 0) return;
   const colKeys = rectKeys({ r: 0, c }, { r: lastRow, c });
   if (shift && s.anchor) {
@@ -926,31 +980,87 @@ function selectColumn(c, { ctrl, shift }) {
   s.focus = { r: 0, c };
 }
 
-function focusCellIntoView() {
-  const f = sel().focus;
+function focusCellIntoView(A) {
+  const f = A.stato().focus;
   if (!f) return;
   // In virtualizzazione la riga potrebbe non essere nel DOM: la renderizza.
-  ensureRowRendered(f.r);
-  const td = document.querySelector(`#grid tbody td[data-r="${f.r}"][data-c="${f.c}"]`);
+  A.assicuraRiga(f.r);
+  const td = A.tbody.querySelector(`td[data-r="${f.r}"][data-c="${f.c}"]`);
   td?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
-export function initCellSelect() {
-  const tbody = $('#grid tbody');
+/* ==========================================================================
+ * La fabbrica: un'istanza per griglia
+ * ========================================================================== */
+
+/**
+ * Aggancia la selezione di celle alla griglia descritta dall'aggancio.
+ *
+ * @param {AggancioSelezione} aggancio
+ * @returns {{ applica: (opzioni?:object) => void, svuota: () => void, aggancio: AggancioSelezione }}
+ */
+export function creaSelezioneCelle(aggancio) {
+  const nome = aggancio.nome || 'griglia senza nome';
+  // Un aggancio a metà è un ERRORE all'attacco, non una selezione che smette di
+  // funzionare quando si tocca la voce mancante. I due campi qui sotto restano
+  // fuori perché hanno una risposta neutra vera: una griglia può non avere barra
+  // di stato, e può non avere alcuna ragione per vietare la scrittura.
+  for (const richiesto of ['tbody', 'thead', 'contenitore', 'righe', 'colonne',
+    'bersaglio', 'stato', 'visibile', 'contesto', 'assicuraRiga', 'ricarica',
+    'modificaRiga', 'eliminaRighe']) {
+    // `== null` e non `=== undefined`: un `tbody: null` — il caso vero, cioè un
+    // `querySelector` che non ha trovato nulla — sarebbe passato di qui per poi
+    // esplodere due righe più in basso su `tbody.classList`, con un
+    // «Cannot read properties of null» che non dice quale campo mancava.
+    if (aggancio[richiesto] == null) {
+      throw new Error(`Aggancio della selezione di celle incompleto (${nome}): "${richiesto}" è `
+        + `${aggancio[richiesto] === undefined ? 'assente' : 'nullo'}. `
+        + 'Vedi la typedef AggancioSelezione in cellselect.js.');
+    }
+  }
+
+  // L'aggancio più lo stato di questa istanza. Le due parti stanno insieme perché
+  // ogni funzione ne riceve una sola: `A`.
+  const A = {
+    info: () => null,
+    motivoNoScrittura: () => null,
+    ...aggancio,
+    // Vero mentre una selezione si sta trascinando (mouse o dito), compreso il
+    // tempo in cui la griglia scorre da sola sotto il puntatore. Lo leggono le
+    // chiamate di `applica()` che arrivano da fuori, per non pagare il riassunto
+    // completo a ogni fotogramma.
+    trascinando: false,
+    // Il riassunto è asincrono: durante un trascinamento partono molte richieste
+    // e l'ultima a rispondere non è per forza l'ultima chiesta.
+    seq: sequenziatore(),
+  };
+
+  const tbody = A.tbody;
+  // Le regole CSS della selezione seguono la CAPACITÀ, non l'id della griglia:
+  // è questa classe, e non `#grid`, a dire dove il dito non deve scorrere.
+  tbody.classList.add('selezione-celle');
+
+  // I cinque gestori che lo smistamento invoca (`mouseMosso`, `fineMouse`,
+  // `incolla`, `tasto`, `abbandona`) si riempiono più sotto, dove nascono le
+  // chiusure che ne hanno bisogno; l'istanza si REGISTRA solo alla fine, quando
+  // è completa — registrarla qui vorrebbe dire un intervallo in cui lo
+  // smistamento può chiamare un campo ancora indefinito.
+  const istanza = { applica: (o) => applica(A, o), svuota: () => svuotaSelezione(A), aggancio: A };
+  const alComando = () => comanda(istanza);
 
   // Il riassunto nella barra di stato è anche la porta d'ingresso al pannello:
   // chi vede "Σ …" lì è esattamente chi vuole mediana, distinti e per-colonna.
-  const info = $('#cell-info');
+  const info = A.info();
   if (info) {
     info.title = 'Statistiche della selezione (mediana, distinti, per colonna…) · con le geometrie apre la mappa';
     info.addEventListener('click', () => {
-      if (!sel().cells.size) return;
+      if (!A.stato().cells.size) return;
       // Su una selezione di sole geometrie il pannello 📊 non avrebbe nulla da
       // dire (nessun numero da sommare): il seguito naturale del riassunto
       // "🗺 12 Polygon · …" è la mappa, non una tabella di trattini.
-      statisticheAsync(valoriSelezionati()).then((st) => {
-        if (!st.numerici && contaGeometrieSelezionate()) mostraMappaSelezione();
-        else showCellStats();
+      statisticheAsync(valoriSelezionati(A)).then((st) => {
+        if (!st.numerici && contaGeometrieSelezionate(A)) mostraMappaSelezione(A);
+        else showCellStats(A);
       }).catch((err) => {
         // Un calcolo fallito non deve restare una promessa rifiutata e basta:
         // l'utente ha cliccato e si aspetta una risposta, anche se è un errore.
@@ -986,7 +1096,7 @@ export function initCellSelect() {
   // (grid.js usa la stessa per la sua decisione speculare).
   const TOLLERANZA_DITO_PX = 10;
 
-  const contenitore = () => tbody.closest('.grid-wrap');
+  const contenitore = () => A.contenitore();
 
   // Estende la selezione alla cella sotto al puntatore. Le coordinate vengono
   // riportate dentro l'area utile: fuori dalla griglia `elementFromPoint` non
@@ -996,11 +1106,11 @@ export function initCellSelect() {
     if (!puntatore) return;
     const box = contenitore();
     if (!box) return;
-    const s = sel();
+    const s = A.stato();
     if (!s.anchor) return;
     const r = box.getBoundingClientRect();
     const rt = tbody.getBoundingClientRect();
-    const thead = $('#grid thead');
+    const thead = A.thead();
     const altoUtile = Math.max(r.top + 1, thead ? thead.getBoundingClientRect().bottom + 1 : r.top + 1);
     const x = Math.min(Math.max(puntatore.x, r.left + 1), r.right - 1);
     const y = Math.min(Math.max(puntatore.y, altoUtile), Math.min(r.bottom - 1, rt.bottom - 1));
@@ -1021,7 +1131,7 @@ export function initCellSelect() {
     s.focus = cella;
     const rect = rectKeys(s.anchor, cella);
     s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
-    applyCellSelection({ leggero: true }); // il riassunto geografico a fine gesto
+    applica(A, { leggero: true }); // il riassunto geografico a fine gesto
   }
 
   function passo() {
@@ -1066,22 +1176,24 @@ export function initCellSelect() {
   }
 
   // Il mouse va seguito su `document`: uscendo dalla griglia (che è proprio il
-  // caso in cui serve scorrere) `tbody` non riceve più nulla.
-  document.addEventListener('mousemove', (e) => {
-    if (dragging) aggiornaPuntatore(e);
-  });
+  // caso in cui serve scorrere) `tbody` non riceve più nulla. L'ascoltatore
+  // però è UNO per il modulo (vedi lo smistamento in fondo) e chiama qui:
+  // registrarne uno per istanza vorrebbe dire un ascoltatore in più su
+  // `document` per ogni riquadro aperto, e nessuno che li tolga alla chiusura.
+  istanza.mouseMosso = (e) => { if (dragging) aggiornaPuntatore(e); };
 
   tbody.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const td = e.target.closest('td[data-c]');
     if (!td || td.classList.contains('editing')) return;
+    prendiIlComando(istanza);
     const cell = cellFromTd(td);
     const ctrl = e.ctrlKey || e.metaKey;
-    selectFrom(cell, { shift: e.shiftKey, ctrl });
+    selectFrom(A, cell, { shift: e.shiftKey, ctrl });
     dragging = true;
-    dragBase = ctrl ? new Set(sel().cells) : null;
-    applyCellSelection();
-    trascinandoSelezione = true;
+    dragBase = ctrl ? new Set(A.stato().cells) : null;
+    applica(A);
+    A.trascinando = true;
     bordo = BORDO_DEFAULT;
     aggiornaPuntatore(e, false);
   });
@@ -1090,13 +1202,13 @@ export function initCellSelect() {
     if (!dragging) return;
     const td = e.target.closest('td[data-c]');
     if (!td) return;
-    const s = sel();
+    const s = A.stato();
     if (!s.anchor) return;
     const cell = cellFromTd(td);
     s.focus = cell;
     const rect = rectKeys(s.anchor, cell);
     s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
-    applyCellSelection({ leggero: true });
+    applica(A, { leggero: true });
   });
 
   const fineMouse = () => {
@@ -1104,12 +1216,12 @@ export function initCellSelect() {
     // caro per fotogramma): ora che la selezione è ferma si completa.
     if (!dragging) return;
     dragging = false;
-    trascinandoSelezione = !!dito;
-    applyCellSelection();
+    A.trascinando = !!dito;
+    applica(A);
     dragBase = null;
     fermaScorrimento();
   };
-  document.addEventListener('mouseup', fineMouse);
+  istanza.fineMouse = fineMouse;
 
   /* ------------------ Trascinamento col dito (mobile) ------------------- *
    * Il trascinamento sopra usa `mousedown`/`mouseover`, che col dito non
@@ -1138,9 +1250,10 @@ export function initCellSelect() {
     if (!td || td.classList.contains('editing')) return;
     // Solo da dentro la selezione: altrimenti questo tocco è uno scorrimento,
     // un tocco singolo o l'inizio di una pressione lunga.
-    if (!sel().cells.has(key(Number(td.dataset.r), Number(td.dataset.c)))) return;
+    if (!A.stato().cells.has(key(Number(td.dataset.r), Number(td.dataset.c)))) return;
+    prendiIlComando(istanza);
     dito = { id: e.pointerId, mosso: false, x0: e.clientX, y0: e.clientY };
-    sel().anchor = sel().anchor || cellFromTd(td);
+    A.stato().anchor = A.stato().anchor || cellFromTd(td);
     // CATTURA ESPLICITA SUL `tbody`, ed è ciò che rende usabile lo scorrimento
     // automatico col dito. Un tocco è già catturato implicitamente, ma DAL `td`
     // iniziale: appena la griglia scorre, la virtualizzazione rifà la finestra
@@ -1165,7 +1278,7 @@ export function initCellSelect() {
       && Math.abs(e.clientX - dito.x0) <= TOLLERANZA_DITO_PX
       && Math.abs(e.clientY - dito.y0) <= TOLLERANZA_DITO_PX) return;
     dito.mosso = true;
-    trascinandoSelezione = true;
+    A.trascinando = true;
     // `elementFromPoint` e non `e.target`: durante un trascinamento tattile il
     // bersaglio resta la cella iniziale (cattura del puntatore), quindi seguire
     // `e.target` selezionerebbe sempre e solo quella. È la stessa lettura che
@@ -1183,10 +1296,10 @@ export function initCellSelect() {
       try { tbody.releasePointerCapture(e.pointerId); } catch { /* già rilasciata */ }
     }
     dito = null;
-    trascinandoSelezione = dragging;
+    A.trascinando = dragging;
     // Dopo aver spento il flag: ora il riassunto completo (geometrie comprese)
     // si calcola davvero, che è il senso di farlo a gesto finito.
-    if (mosso) applyCellSelection();
+    if (mosso) applica(A);
     fermaScorrimento();
   };
   tbody.addEventListener('pointerup', fineDito);
@@ -1194,9 +1307,7 @@ export function initCellSelect() {
   // Rete di sicurezza: se il gesto finisce senza che ce ne accorgiamo (finestra
   // che perde il fuoco, app messa in secondo piano, cattura persa per una
   // ragione qualsiasi), il ciclo di scorrimento non deve restare acceso.
-  const abbandona = () => { fineDito(); fineMouse(); };
-  window.addEventListener('blur', abbandona);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) abbandona(); });
+  istanza.abbandona = () => { fineDito(); fineMouse(); };
 
   // Trascinando piano, la pressione supera comunque la soglia del sistema e il
   // browser emette `contextmenu` a metà gesto: il menu si aprirebbe sopra una
@@ -1211,126 +1322,133 @@ export function initCellSelect() {
   // Ctrl+click sull'header: selezione dell'intera colonna (il click semplice
   // continua a ordinare, vedi renderGrid). Shift+clic NON seleziona: è
   // l'ordinamento multi-colonna (aggiunge la colonna al sort, vedi renderGrid).
-  $('#grid thead').addEventListener('mousedown', (e) => {
+  const intestazione = A.thead();
+  if (intestazione) intestazione.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return;
     const th = e.target.closest('th[data-c]');
     if (!th) return;
     const ctrl = e.ctrlKey || e.metaKey;
     if (!ctrl) return;
     e.preventDefault();
-    selectColumn(Number(th.dataset.c), { ctrl, shift: false });
-    applyCellSelection();
+    prendiIlComando(istanza);
+    selectColumn(A, Number(th.dataset.c), { ctrl, shift: false });
+    applica(A);
   });
 
   tbody.addEventListener('contextmenu', (e) => {
     const td = e.target.closest('td[data-c]');
     if (!td) return;
     e.preventDefault();
+    prendiIlComando(istanza);
     const cell = cellFromTd(td);
     // Tasto destro fuori dalla selezione: seleziona la cella cliccata.
-    if (!sel().cells.has(key(cell.r, cell.c))) {
-      selectFrom(cell, { shift: false, ctrl: false });
-      applyCellSelection();
+    if (!A.stato().cells.has(key(cell.r, cell.c))) {
+      selectFrom(A, cell, { shift: false, ctrl: false });
+      applica(A);
     }
     const { x, y } = { x: e.clientX, y: e.clientY };
     // Sotto-menu drill-down: riapre il menu contestuale con i formati.
     // (setTimeout: il click che chiude il menu padre non deve chiudere anche questo)
     const advanced = () => setTimeout(() => showContextMenu(x, y, [
-      { label: 'JSON', action: () => copyToClipboard(buildJson()) },
-      { label: 'CSV (con intestazioni)', action: () => copyToClipboard(buildCsv(true)) },
-      { label: 'TSV con intestazioni', action: () => copyToClipboard(buildTsv(true)) },
-      { label: 'Markdown', action: () => copyToClipboard(buildMarkdown()) },
-      { label: 'SQL INSERT (MySQL)', action: () => copyToClipboard(buildSqlInsert()) },
+      { label: 'JSON', action: () => copyToClipboard(A, buildJson(A)) },
+      { label: 'CSV (con intestazioni)', action: () => copyToClipboard(A, buildCsv(A, true)) },
+      { label: 'TSV con intestazioni', action: () => copyToClipboard(A, buildTsv(A, true)) },
+      { label: 'Markdown', action: () => copyToClipboard(A, buildMarkdown(A)) },
+      { label: 'SQL INSERT (MySQL)', action: () => copyToClipboard(A, buildSqlInsert(A)) },
     ]), 0);
     // La voce della mappa compare solo se c'è davvero una geometria selezionata:
     // su una tabella senza colonne spaziali sarebbe una voce che non fa nulla.
-    const geometrie = contaGeometrieSelezionate();
+    const geometrie = contaGeometrieSelezionate(A);
     // Azioni sulla riga: erano due bottoncini in una colonna fissa della griglia,
     // ora stanno qui (la colonna rubava spazio su ogni riga per due comandi rari).
     // Bersaglio: le righe della selezione, altrimenti la riga della cella cliccata.
-    const righeSel = selectionGrid().rows;
+    const righeSel = selectionGrid(A).rows;
     const righe = (righeSel.length ? righeSel : [cell.r])
-      .map((r) => state.docs[r])
+      .map((r) => A.righe()[r])
       .filter((d) => d && '_id' in d);
     const azioniRiga = [];
     if (righe.length === 1) {
-      azioniRiga.push({ label: '✎ Modifica riga…', action: () => openEditDoc(righe[0]) });
+      azioniRiga.push({ label: '✎ Modifica riga…', action: () => A.modificaRiga(righe[0]) });
     }
     if (righe.length) {
       azioniRiga.push({
         label: righe.length === 1 ? '🗑 Elimina riga' : `🗑 Elimina le ${righe.length} righe selezionate`,
-        action: () => (righe.length === 1 ? deleteDoc(righe[0]) : deleteDocs(righe)),
+        action: () => A.eliminaRighe(righe),
       });
       azioniRiga.push('---');
     }
     showContextMenu(x, y, [
       ...azioniRiga,
-      { label: 'Copia (Ctrl+C)', action: () => copyToClipboard(buildTsv(false)) },
-      { label: 'Copia con intestazioni', action: () => copyToClipboard(buildTsv(true)) },
+      { label: 'Copia (Ctrl+C)', action: () => copyToClipboard(A, buildTsv(A, false)) },
+      { label: 'Copia con intestazioni', action: () => copyToClipboard(A, buildTsv(A, true)) },
       { label: 'Copia avanzato ▸', action: advanced },
       '---',
-      { label: '📊 Statistiche selezione…', action: showCellStats },
-      { label: '📈 Grafico della selezione…', action: mostraGraficoSelezione },
+      { label: '📊 Statistiche selezione…', action: () => showCellStats(A) },
+      { label: '📈 Grafico della selezione…', action: () => mostraGraficoSelezione(A) },
       ...(geometrie ? [{
         label: `🗺 Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
-        action: mostraMappaSelezione,
+        action: () => mostraMappaSelezione(A),
       }] : []),
       ...(righe.length ? ['---', {
         // Le due voci dirette inseriscono davvero: il documento lo calcola il
         // server dai vincoli della tabella, non c'e' nulla da compilare a mano.
         label: righe.length === 1 ? '⧉ Duplica riga ▸' : `⧉ Duplica le ${righe.length} righe ▸`,
         action: () => setTimeout(() => showContextMenu(x, y, [
-          { label: 'Senza chiavi (le genera il database)', action: () => duplicaRighe(righe, false) },
-          { label: 'Con chiavi (nuova chiave primaria)',   action: () => duplicaRighe(righe, true) },
+          { label: 'Senza chiavi (le genera il database)', action: () => duplicaRighe(A, righe, false) },
+          { label: 'Con chiavi (nuova chiave primaria)',   action: () => duplicaRighe(A, righe, true) },
           '---',
-          { label: 'Duplica e modifica…', action: () => duplicaConEditor(righe[0], true) },
+          { label: 'Duplica e modifica…', action: () => duplicaConEditor(A, righe[0], true) },
         ]), 0),
       }] : []),
       '---',
       {
         label: 'Incolla (Ctrl+V)',
         action: () => navigator.clipboard?.readText
-          ? navigator.clipboard.readText().then(pasteIntoGrid).catch(() => toast('Appunti non accessibili: usa Ctrl+V', true))
+          ? navigator.clipboard.readText().then((t) => pasteIntoGrid(A, t)).catch(() => toast('Appunti non accessibili: usa Ctrl+V', true))
           : toast('Appunti non accessibili: usa Ctrl+V', true),
       },
       '---',
-      { label: 'Esporta selezione in CSV…', action: () => downloadFile(`${state.coll || 'selezione'}.csv`, buildCsv(true), 'text/csv') },
+      { label: 'Esporta selezione in CSV…', action: () => downloadFile(`${A.bersaglio().coll || 'selezione'}.csv`, buildCsv(A, true), 'text/csv') },
     ]);
   });
 
   // Incolla da Excel: l'evento 'paste' dà accesso agli appunti senza permessi.
-  document.addEventListener('paste', (e) => {
-    if (inputFocused() || !gridVisible()) return;
+  // Appunti e tastiera arrivano dal `document`, cioè da nessuna griglia in
+  // particolare: `alComando()` decide QUALE istanza risponde (vedi la
+  // smistamento). Senza, con due griglie a schermo un Ctrl+A le selezionerebbe
+  // entrambe e un Ctrl+V finirebbe su tutt'e due.
+  istanza.incolla = (e) => {
+    if (inputFocused() || !alComando()) return;
     const text = e.clipboardData?.getData('text/plain');
     if (!text) return;
     e.preventDefault();
-    pasteIntoGrid(text);
-  });
+    pasteIntoGrid(A, text);
+  };
 
-  document.addEventListener('keydown', (e) => {
-    if (inputFocused() || !gridVisible()) return;
-    const s = sel();
+  istanza.tasto = (e) => {
+    if (inputFocused() || !alComando()) return;
+    const s = A.stato();
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
       // Una selezione di testo nativa (es. nella statusbar) ha la precedenza.
       if (s.cells.size === 0 || !document.getSelection().isCollapsed) return;
       e.preventDefault();
-      copyToClipboard(buildTsv(false));
+      copyToClipboard(A, buildTsv(A, false));
       return;
     }
 
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault();
-      s.cells = new Set(rectKeys({ r: 0, c: 0 }, { r: state.docs.length - 1, c: state.columns.length - 1 }));
+      s.cells = new Set(rectKeys({ r: 0, c: 0 }, { r: A.righe().length - 1, c: A.colonne().length - 1 }));
       s.anchor = { r: 0, c: 0 };
-      s.focus = { r: state.docs.length - 1, c: state.columns.length - 1 };
-      applyCellSelection();
+      s.focus = { r: A.righe().length - 1, c: A.colonne().length - 1 };
+      applica(A);
       return;
     }
 
     if (e.key === 'Escape' && s.cells.size > 0) {
-      clearCellSelection();
-      applyCellSelection();
+      svuotaSelezione(A);
+      applica(A);
       return;
     }
 
@@ -1339,17 +1457,146 @@ export function initCellSelect() {
       e.preventDefault();
       const [dr, dc] = deltas[e.key];
       const next = {
-        r: Math.min(Math.max(s.focus.r + dr, 0), state.docs.length - 1),
-        c: Math.min(Math.max(s.focus.c + dc, 0), state.columns.length - 1),
+        r: Math.min(Math.max(s.focus.r + dr, 0), A.righe().length - 1),
+        c: Math.min(Math.max(s.focus.c + dc, 0), A.colonne().length - 1),
       };
       if (e.shiftKey && s.anchor) {
         s.focus = next;
         s.cells = new Set(rectKeys(s.anchor, next));
       } else {
-        selectFrom(next, { shift: false, ctrl: false });
+        selectFrom(A, next, { shift: false, ctrl: false });
       }
-      applyCellSelection();
-      focusCellIntoView();
+      applica(A);
+      focusCellIntoView(A);
     }
-  });
+  };
+
+  registra(istanza);
+  return istanza;
+}
+
+/* ==========================================================================
+ * Lo smistamento: quale griglia risponde agli eventi del `document`
+ * ========================================================================== */
+
+/*
+ * Appunti, tastiera e movimento del mouse arrivano dal `document`: non portano
+ * scritto a quale griglia si riferiscono. Finché la griglia era una sola la
+ * domanda non esisteva; con due, un Ctrl+A senza arbitro le selezionerebbe
+ * entrambe e un Ctrl+V scriverebbe su tutt'e due.
+ *
+ * La regola è quella che l'utente si aspetta: comanda l'ultima griglia TOCCATA,
+ * finché resta visibile; se nessuna è ancora stata toccata (Ctrl+A appena
+ * caricata la pagina, che funzionava e deve continuare a funzionare), comanda
+ * la prima visibile in ordine di registrazione.
+ */
+
+const istanze = [];
+let chiComanda = null;
+
+// Un'istanza muore col proprio `tbody`: quando la Split-View chiude un riquadro
+// non c'è alcun momento in cui qualcuno pensi a smontare la selezione. La
+// potatura è quindi per raggiungibilità e non per lifecycle — l'unico modo che
+// non si può dimenticare di chiamare.
+function pota() {
+  for (let i = istanze.length - 1; i >= 0; i--) {
+    if (!istanze[i].aggancio.tbody.isConnected) istanze.splice(i, 1);
+  }
+  if (chiComanda && !chiComanda.aggancio.tbody.isConnected) chiComanda = null;
+}
+
+function registra(istanza) {
+  pota();
+  istanze.push(istanza);
+  if (istanze.length === 1) attivaSmistamento();
+}
+
+function prendiIlComando(istanza) {
+  chiComanda = istanza;
+}
+
+function comanda(istanza) {
+  if (!istanza.aggancio.visibile()) return false;
+  pota();
+  if (chiComanda && chiComanda.aggancio.visibile()) return chiComanda === istanza;
+  return istanze.find((i) => i.aggancio.visibile()) === istanza;
+}
+
+let smistamentoAttivo = false;
+
+function attivaSmistamento() {
+  if (smistamentoAttivo) return;
+  smistamentoAttivo = true;
+  const aTutte = (metodo, e) => { pota(); for (const i of istanze) i[metodo](e); };
+  document.addEventListener('mousemove', (e) => aTutte('mouseMosso', e));
+  document.addEventListener('mouseup', (e) => aTutte('fineMouse', e));
+  document.addEventListener('paste', (e) => aTutte('incolla', e));
+  document.addEventListener('keydown', (e) => aTutte('tasto', e));
+  // Rete di sicurezza: se un gesto finisce senza che ce ne accorgiamo (finestra
+  // che perde il fuoco, app in secondo piano, cattura persa per una ragione
+  // qualsiasi), il ciclo di scorrimento non deve restare acceso.
+  window.addEventListener('blur', () => aTutte('abbandona'));
+  document.addEventListener('visibilitychange', () => { if (document.hidden) aTutte('abbandona'); });
+}
+
+/* ==========================================================================
+ * La vista Dati: il primo chiamante
+ * ========================================================================== */
+
+let selezioneDati = null;
+
+/**
+ * L'aggancio della vista Dati. È il Proxy `state` messo per iscritto: gli stessi
+ * accessi di prima, ma DICHIARATI in un posto solo invece di sparsi in
+ * quaranta punti del modulo.
+ */
+function aggancioDati() {
+  return {
+    nome: 'vista Dati',
+    tbody: $('#grid tbody'),
+    thead: () => $('#grid thead'),
+    contenitore: () => $('#grid')?.closest('.grid-wrap') || null,
+    info: () => $('#cell-info'),
+    righe: () => state.docs,
+    colonne: () => state.columns,
+    bersaglio: () => ({ db: state.db, coll: state.coll, dbType: state.dbType }),
+    stato: () => {
+      if (!state.cellSel) state.cellSel = { anchor: null, focus: null, cells: new Set() };
+      return state.cellSel;
+    },
+    visibile: () => !$('#view-data').classList.contains('hidden') && state.docs.length > 0,
+    contesto: () => captureContext(),
+    assicuraRiga: (r) => ensureRowRendered(r),
+    ricarica: () => runQuery({ auto: true }),
+    modificaRiga: (doc) => openEditDoc(doc),
+    eliminaRighe: (docs) => (docs.length === 1 ? deleteDoc(docs[0]) : deleteDocs(docs)),
+    motivoNoScrittura: () => ($('#query-mode').value === 'aggregate'
+      ? 'Incolla non disponibile in modalità aggregate/SQL Raw'
+      : null),
+  };
+}
+
+export function initCellSelect() {
+  // Si ricrea se il `tbody` di `#grid` non è più nel documento: `pota()` toglie
+  // dal registro le istanze staccate, e un riferimento memoizzato a una di esse
+  // sarebbe una selezione morta in silenzio. Oggi quel `tbody` è statico in
+  // `index.html` e il ramo non scatta mai — ma «non scatta mai» e «non esiste»
+  // sono due cose diverse, e la prima non va scritta come la seconda.
+  if (!selezioneDati || !selezioneDati.aggancio.tbody.isConnected) {
+    selezioneDati = creaSelezioneCelle(aggancioDati());
+  }
+  return selezioneDati;
+}
+
+/**
+ * Ri-applica le classi CSS della selezione della VISTA DATI dopo un render.
+ * `grid.js` la chiama così da sempre e continua a chiamarla così: chi disegna
+ * la griglia principale non ha bisogno di sapere che esistono altri agganci.
+ */
+export function applyCellSelection(opzioni) {
+  initCellSelect().applica(opzioni);
+}
+
+export function clearCellSelection() {
+  initCellSelect().svuota();
 }
