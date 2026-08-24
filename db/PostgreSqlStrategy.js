@@ -1440,6 +1440,11 @@ class PostgreSqlStrategy extends DbStrategy {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const table = qtable(db, coll);
     const pk = await this.primaryKey(db, coll);
+    // Il formato JSON e' anche il trasporto dell'export di un intero database:
+    // le geometrie devono quindi uscire nella lingua comune GeoJSON, non nella
+    // rappresentazione privata del driver (`point` diventerebbe `{ x, y }`).
+    const selezione = format === 'json' ? await this.selectListFor(db, coll) : null;
+    const selectList = selezione ? selezione.list : '*';
 
     let rows;
     let fields;
@@ -1465,7 +1470,7 @@ class PostgreSqlStrategy extends DbStrategy {
       params.push(limit);
       const limitIdx = params.length;
       const res = await pool.query(
-        `SELECT * FROM ${table}${whereSql} ORDER BY ${pkCols} LIMIT $${limitIdx}`,
+        `SELECT ${selectList} FROM ${table}${whereSql} ORDER BY ${pkCols} LIMIT $${limitIdx}`,
         params
       );
       rows = res.rows;
@@ -1476,9 +1481,13 @@ class PostgreSqlStrategy extends DbStrategy {
       }
     } else {
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-      const res = await pool.query(`SELECT * FROM ${table} LIMIT $1 OFFSET $2`, [limit, skip]);
+      const res = await pool.query(`SELECT ${selectList} FROM ${table} LIMIT $1 OFFSET $2`, [limit, skip]);
       rows = res.rows;
       fields = res.fields;
+    }
+
+    if (selezione) {
+      PostgreSqlStrategy.geoRowsToJson(rows, selezione.geo, selezione.geoNativo);
     }
 
     const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${table}`);
@@ -1531,9 +1540,13 @@ class PostgreSqlStrategy extends DbStrategy {
     // Nomi reali delle colonne: serve a distinguere l'`_id` virtuale da una
     // colonna omonima (CDB-41), comune nelle tabelle migrate da MongoDB.
     let colonneReali = new Set();
+    let geo = new Map();
+    let geoNativo = new Map();
     try {
       const info = await this.tableColumnsInfo(db, coll);
       colonneReali = new Set(info.columns.map((c) => c.name));
+      geo = info.geo || geo;
+      geoNativo = info.geoNativo || geoNativo;
     } catch { /* metadati non leggibili: vale il comportamento storico */ }
 
     const parsed = [];
@@ -1548,7 +1561,7 @@ class PostgreSqlStrategy extends DbStrategy {
         if (!colonneReali.has('_id')) delete row._id;
         const cols = Object.keys(row);
         if (!cols.length) throw new Error('riga vuota');
-        parsed.push({ i, cols, values: cols.map((c) => toSqlValue(row[c])) });
+        parsed.push({ i, cols, values: cols.map((c) => row[c]) });
       } catch (err) {
         if (errors.length < 10) errors.push(`Riga ${i + 1}: ${(err && err.message) || err}`);
       }
@@ -1560,7 +1573,14 @@ class PostgreSqlStrategy extends DbStrategy {
     const sqlPerGruppo = (cols, righe) => {
       const valori = [];
       const tuple = righe.map((vals) => {
-        const ph = vals.map((v) => { valori.push(v); return `$${valori.length}`; });
+        const ph = vals.map((v, indice) => {
+          const placeholder = `$${valori.length + 1}`;
+          const bind = PostgreSqlStrategy.geoBinding(
+            cols[indice], v, geo, placeholder, geoNativo
+          );
+          valori.push(bind.param);
+          return bind.sql;
+        });
         return `(${ph.join(', ')})`;
       });
       let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}`;

@@ -126,6 +126,15 @@ function geoJsonAPgNativo(tipo, geo) {
   // Chi scrive già il letterale nativo (o modifica una cella come testo) deve
   // continuare a poterlo fare: non tutto passa dall'editor su mappa.
   if (typeof geo === 'string') return geo;
+  // Gli export PostgreSQL precedenti alla normalizzazione leggevano `point`
+  // con `SELECT *`: il driver `pg` lo serializza come `{ x, y }`. Accettare
+  // quella forma mantiene reimportabili gli artefatti gia' creati, senza
+  // estendere l'eccezione agli altri tipi o agli oggetti generici.
+  if (t === 'point' && geo && typeof geo === 'object'
+      && Object.prototype.hasOwnProperty.call(geo, 'x')
+      && Object.prototype.hasOwnProperty.call(geo, 'y')) {
+    return punto([geo.x, geo.y]);
+  }
   if (!geo || typeof geo !== 'object' || !geo.type) {
     throw new Error(`Valore non valido per una colonna ${t}: attesa una geometria GeoJSON o il letterale PostgreSQL.`);
   }

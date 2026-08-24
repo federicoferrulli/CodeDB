@@ -1199,6 +1199,11 @@ console.log('--- Test Unitari CodeDB ---');
   // la tabella illeggibile, e l'editor su mappa non riusciva a scriverli.
   require('./unit-pg-geo-nativo');
 
+  // Test 24-decies-bis: l'import a blocchi deve convertire le geometrie native
+  // come l'inserimento singolo, compresa la forma `{ x, y }` degli export
+  // PostgreSQL storici. Senza, `point` fallisce con "invalid input syntax".
+  await require('./unit-import-geometrie-postgres');
+
   // Test 24-undecies: scelta della collation di connessione su MySQL. Il
   // driver ne impone una COMPILATA DENTRO DI SÉ, che nessuno ha scelto, e la
   // ereditano variabili utente e CAST: bastava a far fallire in CodeDB query
