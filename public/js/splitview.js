@@ -6,7 +6,7 @@ import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, i
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { relazioniPer, caricaRelazioni } from './fk-cache.js';
 import { VINCOLO } from './fk-relazioni.js';
-import { rendiCellaGeometrica } from './cella-geometria.js';
+import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
 // Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga } from './griglia.js';
 import { creaSelezioneCelle } from './cellselect.js';
@@ -1846,8 +1846,18 @@ function updatePaneUI(paneId) {
         // Testo limitato, come nella griglia principale: qui si disegna, non si
         // copia (vedi displayValueBreve in utils.js).
         const disp = displayValueBreve(val);
+        // Un riquadro e' scrivibile alle sue condizioni: identita' della riga e
+        // permesso di selezione. Su una vista SQL non ce n'e', e la geometria
+        // si apre lo stesso — in sola lettura, invece di offrire un
+        // salvataggio che partirebbe senza bersaglio.
+        const modificabile = col !== '_id' && !!docId && canSelect;
         const geometrica = CAPACITA_RIQUADRO.geometrie
-          && rendiCellaGeometrica(td, val, () => startPaneEdit(td, paneId, doc, col));
+          && rendiCellaGeometrica(td, val, aperturaCella({
+            valore: val,
+            campo: col,
+            modificabile,
+            onModifica: () => startPaneEdit(td, paneId, doc, col),
+          }));
         if (!geometrica) {
           const span = document.createElement('span');
           if (disp.cls) span.className = disp.cls;
@@ -1857,7 +1867,7 @@ function updatePaneUI(paneId) {
           td.appendChild(span);
         }
 
-        if (col !== '_id' && docId && canSelect) {
+        if (modificabile) {
           td.classList.add('editable');
           if (!geometrica) td.addEventListener('dblclick', () => startPaneEdit(td, paneId, doc, col));
         }

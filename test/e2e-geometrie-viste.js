@@ -132,7 +132,11 @@ const ok = (cond, etichetta, dettaglio = '') => {
       if (!cella) return { assente: true };
       const resa = {
         assente: false,
-        classe: cella.classList.contains('type-geo') || !!cella.querySelector('.type-geo'),
+        // Sul `td`, non su un discendente: `displayValue` marca gia' `type-geo`
+        // sullo span di ripiego, quindi cercarla ovunque non distinguerebbe la
+        // resa condivisa dal ripiego — cioe' non proverebbe la capacita'.
+        classe: cella.classList.contains('type-geo'),
+        spanInterno: !!cella.querySelector('span'),
         testo: cella.textContent,
         title: cella.title,
       };
@@ -142,7 +146,9 @@ const ok = (cond, etichetta, dettaglio = '') => {
 
     ok(!splitPreparata.assente, 'Split-View: la cella geometrica è disegnata nel riquadro reale');
     ok(splitPreparata.classe && splitPreparata.testo.includes('Point'),
-      'Split-View: la resa geometrica condivisa applica classe ed etichetta');
+      'Split-View: la resa condivisa applica `type-geo` alla CELLA, non al ripiego');
+    ok(splitPreparata.spanInterno === false,
+      'Split-View: la cella geometrica non passa dal ripiego `displayValueBreve`');
     ok(splitPreparata.title.includes('Doppio clic per'),
       'Split-View: il title spiega come aprire la geometria');
     await page.waitForSelector('#geomap-overlay:not(.hidden)', { timeout: 10000 });
@@ -165,6 +171,70 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(scritturaSplit && scritturaSplit.tabId === 'tab-geo-split'
       && scritturaSplit.db === 'geografie_split' && scritturaSplit.coll === 'luoghi_split',
     'Split-View: il salvataggio usa tab, database e collection del proprio riquadro');
+
+    /* --- Riquadro NON scrivibile: si guarda, non si salva ------------- */
+
+    // Una vista SQL non ha `_id`: la riga non e' riscrivibile. La geometria
+    // deve restare APRIBILE (e' l'unico modo di capire cosa contiene la cella)
+    // ma in sola lettura — offrire «Applica geometria» qui significherebbe
+    // promettere un `doc:update` senza bersaglio, che torna indietro come
+    // errore dopo che l'utente ha disegnato.
+    const senzaId = await page.evaluate(async () => {
+      const { impostaSocket } = await import('/js/socket.js');
+      const sv = await import('/js/splitview.js');
+      impostaSocket({
+        emit: (evento, msg, cb) => {
+          window.__geoSplitSpediti.push({ evento, msg: structuredClone(msg) });
+          if (!cb) return;
+          if (evento === 'collection:find') {
+            cb({
+              ok: true,
+              docs: [{ citta: 'Bari', area: { type: 'Polygon', coordinates: [[[16.8, 41], [17, 41], [17, 41.2], [16.8, 41]]] } }],
+              columns: ['citta', 'area'], total: 1, skip: 0, limit: 50,
+            });
+          } else if (evento === 'collection:relations') cb({ ok: true, relazioni: [] });
+          else cb({ ok: true });
+        },
+        on: () => {},
+        off: () => {},
+      });
+      sv.addOrSplitPane(null, 'right', {
+        tabId: 'tab-geo-split', db: 'geografie_split', coll: 'vista_senza_id',
+      });
+      await new Promise((r) => setTimeout(r, 150));
+
+      const cella = [...document.querySelectorAll('.split-pane .pane-grid tbody td')]
+        .find((td) => td.textContent.includes('Polygon'));
+      if (!cella) return { assente: true };
+      const resa = {
+        assente: false,
+        classe: cella.classList.contains('type-geo'),
+        editabile: cella.classList.contains('editable'),
+        title: cella.title,
+      };
+      cella.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return resa;
+    });
+
+    ok(!senzaId.assente && senzaId.classe,
+      'riquadro senza `_id`: la geometria e’ comunque riconosciuta e disegnata');
+    ok(!senzaId.assente && senzaId.editabile === false,
+      'riquadro senza `_id`: la cella non si dichiara modificabile');
+    await page.waitForSelector('#geomap-overlay:not(.hidden)', { timeout: 10000 });
+    const soloGuardare = await page.evaluate(() => ({
+      salvaNascosto: document.querySelector('#geomap-save').classList.contains('hidden'),
+      jsonReadOnly: document.querySelector('#geomap-json').readOnly,
+      contenuto: document.querySelector('#geomap-json').value,
+    }));
+    ok(soloGuardare.salvaNascosto,
+      'riquadro senza `_id`: la mappa si apre SENZA il pulsante Applica geometria');
+    ok(soloGuardare.jsonReadOnly && soloGuardare.contenuto.includes('Polygon'),
+      'riquadro senza `_id`: il GeoJSON si legge ma non si scrive');
+    await page.click('#geomap-cancel');
+    await page.evaluate(() => {
+      const spediti = window.__geoSplitSpediti;
+      window.__geoScrittureDopoSolaLettura = spediti.filter((x) => x.evento === 'doc:update').length;
+    });
 
     /* --- Vista Dati: modifica e salvataggio restano operativi --------- */
 
@@ -235,6 +305,40 @@ const ok = (cond, etichetta, dettaglio = '') => {
       && scrittura.set.posizione.coordinates[0] === 13
       && scrittura.set.posizione.coordinates[1] === 42,
     'vista Dati: Applica geometria invia il nuovo GeoJSON con `doc:update`', JSON.stringify(scrittura));
+
+    /* --- Vista Dati su righe senza `_id`: stessa regola ---------------- */
+
+    // La regola non e' della Split-View, e' della CELLA: la vista Dati aperta
+    // su una vista SQL deve comportarsi allo stesso modo, altrimenti sarebbe
+    // di nuovo una decisione presa due volte con due esiti.
+    const datiSenzaId = await page.evaluate(async () => {
+      const { tabs } = await import('/js/tabs.js');
+      const { renderGrid } = await import('/js/grid.js');
+      const tab = tabs.list.find((t) => t.id === tabs.activeId);
+      tab.state.docs = [{ citta: 'Bari', area: { type: 'Point', coordinates: [16.8, 41.1] } }];
+      tab.state.columns = ['citta', 'area'];
+      renderGrid();
+      const cella = [...document.querySelectorAll('#grid tbody td')]
+        .find((td) => td.textContent.includes('Point'));
+      if (!cella) return { assente: true };
+      const esito = {
+        assente: false,
+        classe: cella.classList.contains('type-geo'),
+        editabile: cella.classList.contains('editable'),
+      };
+      cella.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return esito;
+    });
+    ok(!datiSenzaId.assente && datiSenzaId.classe && datiSenzaId.editabile === false,
+      'vista Dati senza `_id`: la geometria si disegna ma la cella non e’ modificabile');
+    await page.waitForSelector('#geomap-overlay:not(.hidden)', { timeout: 10000 });
+    const datiSolaLettura = await page.evaluate(() => ({
+      salvaNascosto: document.querySelector('#geomap-save').classList.contains('hidden'),
+      jsonReadOnly: document.querySelector('#geomap-json').readOnly,
+    }));
+    ok(datiSolaLettura.salvaNascosto && datiSolaLettura.jsonReadOnly,
+      'vista Dati senza `_id`: la mappa si apre in sola lettura');
+    await page.click('#geomap-cancel');
 
     ok(errori.length === 0, 'nessun errore JavaScript durante le prove', errori.join('\n         '));
   } finally {

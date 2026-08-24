@@ -7,7 +7,7 @@ import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
 import { VINCOLO } from './fk-relazioni.js';
 import { relazioniPer, caricaRelazioni as caricaRelazioniCache, svuotaRelazioni } from './fk-cache.js';
-import { rendiCellaGeometrica } from './cella-geometria.js';
+import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
 import { activeTab } from './tabs.js';
 // Le due modalità della casella del filtro: rapida (cerca in tutte le
 // colonne) e condizione (WHERE/MQL scritti a mano). Vedi filtro-rapido.js.
@@ -674,7 +674,13 @@ function buildRow(doc, rowIdx, canSelect) {
     // esatto: lì un valore troncato sarebbe perdita di dati.
     const valore = doc[col];
     const { text, cls, dataVal } = displayValueBreve(valore);
-    const geometrica = rendiCellaGeometrica(td, valore, () => startEdit(td, doc, col));
+    // Quando la cella e' scrivibile lo dice la vista, con il proprio criterio
+    // (qui: non la colonna dell'identita', e una riga che ne ha una). La
+    // conseguenza — mappa in modifica o in sola lettura — la decide il modulo.
+    const modificabile = col !== '_id' && '_id' in doc;
+    const geometrica = rendiCellaGeometrica(td, valore, aperturaCella({
+      valore, campo: col, modificabile, onModifica: () => startEdit(td, doc, col),
+    }));
     if (!geometrica) {
       const span = document.createElement('span');
       if (cls) span.className = cls;
@@ -684,7 +690,7 @@ function buildRow(doc, rowIdx, canSelect) {
       td.appendChild(span);
     }
 
-    if (col !== '_id' && '_id' in doc) {
+    if (modificabile) {
       td.classList.add('editable');
       if (!geometrica) td.addEventListener('dblclick', () => startEdit(td, doc, col));
     }

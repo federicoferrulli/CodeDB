@@ -126,6 +126,7 @@ node test/e2e-osservazione.js # Test dell'osservazione da capo a fondo (MongoDB)
 node test/unit-palette-ricerca.js # Test della ricerca della palette (punteggio e ordine)
 node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ricerca (Chromium, senza DB)
 node test/e2e-selezione-celle-viste.js # Test della selezione di celle in piu' griglie indipendenti (Chromium)
+node test/e2e-geometrie-viste.js # Test delle celle geometriche in ogni griglia (Chromium)
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -398,6 +399,7 @@ un messaggio che dice **cosa fare**, non solo che qualcosa non torna.
 * **GeoJSON Standard**: Formato unico usato per tutti i DBMS (`ST_AsGeoJSON` e `ST_GeomFromGeoJSON` su SQL).
 * Editor Leaflet 1.9.4 integrato (vendorizzato), ottimizzazione del trascinamento vertici via Canvas a doppio layer (`geomap.js`), ed analisi statistica/cartografica delle selezioni geometriche (`geo-stats.js`, `geomulti.js`).
 * **Vista mappa condivisa (`geo-vista.js`)**: motore riusabile (disegno, elenco cliccabile, riepilogo, avvisi, tetti di disegno, export GeoJSON) usato sia dalla modale della selezione di celle sia dalla scheda 🗺 Mappa dei risultati della tab ⚡. Ogni istanza è indipendente: le due viste possono coesistere nella stessa pagina.
+* **La cella geometrica in ogni griglia (`cella-geometria.js`)**: riconoscere una geometria in una cella, darle etichetta, classe `type-geo`, aiuto e doppio clic era scritto **nella sola vista Dati**: in un riquadro della Split-View la stessa colonna mostrava il JSON grezzo e non si apriva su mappa. `rendiCellaGeometrica` è ora la resa comune alle tre griglie, e la capacità `geometrie` di un riquadro è **accesa** e dichiarata. Che cosa significhi «aprire» non è però una proprietà della vista ma della **cella**: una riga senza `_id` — una vista SQL, un result set — non è riscrivibile, e aprirle l'editor con «Applica geometria» prometteva un `doc:update` senza bersaglio, cioè un errore restituito dopo che l'utente aveva finito di disegnare. `aperturaCella` tiene quella decisione in un posto solo e ogni griglia dichiara nei propri termini quando una cella è modificabile (`col !== '_id'` e identità della riga in Dati, più il permesso di selezione in un riquadro); `aperturaSolaLettura` è la via della tab ⚡, dove non c'è nulla da riscrivere. Provato da `test/e2e-geometrie-viste.js` in Chromium con un socket finto: la resa si controlla sul `td` e non su un discendente, perché `displayValue` marca già `type-geo` sullo span di **ripiego** — cercare la classe ovunque avrebbe fatto passare il test anche a capacità spenta.
 
 ### 7. Gateway MCP (`mcp/McpGateway.js`)
 * Implementa il **Model Context Protocol** per client AI (Claude Code, Cursor, ecc.) via Streamable HTTP (`/mcp`).

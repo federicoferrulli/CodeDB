@@ -28,8 +28,7 @@ import {
 } from './query-map.js';
 import { ordinaRigheMultiple, larghezzeColonne, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
-import { openGeoEditor } from './geomap.js';
-import { rendiCellaGeometrica } from './cella-geometria.js';
+import { rendiCellaGeometrica, aperturaSolaLettura } from './cella-geometria.js';
 
 const escapeHtml = esc;
 
@@ -1075,9 +1074,9 @@ function disegnaRigaRisultato(row) {
     // scorrimento. Il `title` usa lo stesso testo: prima era un secondo
     // `JSON.stringify` del valore intero — su un documento da 25 MB, 60 ms
     // per cella per costruire un fumetto illeggibile.
-    const geometrica = rendiCellaGeometrica(td, val, () => {
-      openGeoEditor({ value: val, campo: col, readOnly: true });
-    });
+    // Un result set non ha righe da riscrivere: qui la sola lettura non e' una
+    // scelta della vista, e' l'unica cosa che ha senso.
+    const geometrica = rendiCellaGeometrica(td, val, aperturaSolaLettura(val, col));
     if (!geometrica) {
       const res = displayValueBreve(val);
       td.textContent = res.text ?? '';
