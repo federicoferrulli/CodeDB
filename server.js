@@ -1553,6 +1553,7 @@ const EVENTI_AMMINISTRATIVI = {
 
   // --- Applicazione --------------------------------------------------------
   'app:info': NON_TRACCIATO('informazioni statiche sulla versione'),
+  'artifact:validate': NON_TRACCIATO('validazione di input locale non fidato, senza effetti'),
   'app:updates:check': NON_TRACCIATO('interrogazione del canale aggiornamenti'),
   'app:license': NON_TRACCIATO('testo della licenza'),
   'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
@@ -3147,6 +3148,14 @@ function registraEventi(ctx) {
     cb({ ok: true, version: APP_VERSION, ...capacitaDesktop() });
   });
 
+  // Un file `.codedb.json` attraversa lo stesso confine server-side usato dal
+  // restore. L'evento non legge ne' muta il database; il client dichiara il
+  // motore della connessione corrente, che deve coincidere con l'artefatto.
+  amministrativo('artifact:validate', (payload, cb) => cb({
+    ok: true,
+    artifact: normalizzaExportDatabase(payload.artifact, { expectedDbType: payload.expectedDbType }),
+  }));
+
   /**
    * "Controlla aggiornamenti…" richiesto dall'interfaccia web.
    *
@@ -4411,13 +4420,6 @@ function registraEventi(ctx) {
   // Indici e chiavi esterne della tabella, da applicare in coda all'import
   // quando tutte le tabelle esistono e i dati sono stati caricati.
   delegate('collection:auxddl', async (strategy, p) => await strategy.tableAuxDdl(p.db, p.coll));
-
-  // Un file `.codedb.json` attraversa lo stesso confine server-side usato dal
-  // restore. L'evento non legge ne' muta il database: la sessione fissa solo il
-  // motore atteso, impedendo che un artefatto di un DBMS passi su un altro.
-  delegate('artifact:validate', (strategy, payload) => ({
-    artifact: normalizzaExportDatabase(payload.artifact, { expectedDbType: strategy.type }),
-  }));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde

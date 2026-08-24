@@ -3,7 +3,7 @@
 /* ---------------------------------------------------------------------------
  * La giuntura amministrativa (ADR-0001, seconda delle tre famiglie).
  *
- * Ventisei eventi che non toccano alcuna strategia. Non hanno un database come
+ * Ventinove eventi che non toccano alcuna strategia. Non hanno un database come
  * bersaglio — la verifica della capability per database non li riguarda — ma
  * hanno l'AUDIT, e una quindicina di loro se lo componeva a mano, riga per
  * riga, con la stessa forma ripetuta.
@@ -53,9 +53,9 @@ module.exports = (async () => {
 
   /* --- La famiglia esiste e ha la sua giuntura -------------------------- */
 
-  await prova('i ventotto eventi amministrativi passano dalla loro giuntura', () => {
-    assert.strictEqual(amministrativi.length, 28,
-      `attesi 28 eventi amministrativi, trovati ${amministrativi.length}: ${amministrativi.join(', ')}`);
+  await prova('i ventinove eventi amministrativi passano dalla loro giuntura', () => {
+    assert.strictEqual(amministrativi.length, 29,
+      `attesi 29 eventi amministrativi, trovati ${amministrativi.length}: ${amministrativi.join(', ')}`);
     // Un campione di ciascun gruppo: vault, connessioni, applicazione, identità.
     for (const atteso of ['vault:reset', 'connections:save', 'app:info', 'users:create', 'apikeys:revoke']) {
       assert.ok(amministrativi.includes(atteso), `${atteso} deve passare dalla giuntura amministrativa`);

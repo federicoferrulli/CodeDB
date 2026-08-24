@@ -410,6 +410,7 @@ export function initExportImport() {
         const validato = await emit('artifact:validate', {
           tabId: ctx.tabId,
           artifact: daValidare,
+          expectedDbType: ctx.dbType,
         });
         if (ctx !== dbImportContext || apertura !== dbImportAperture) return;
         dbImportData = validato.artifact;

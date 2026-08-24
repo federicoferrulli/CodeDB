@@ -99,6 +99,21 @@ for (const [label, ddl, pattern] of [
     objects: { views: [{ name: 'riepilogo', ddl: 'CREATE VIEW "amministrazione"."riepilogo" AS SELECT 1' }] },
     integrity: { verifiedCount: 1, unverifiableCount: 0 },
   }), /amministrazione|database/i, 'oggetto di schema cross-database rifiutato');
+
+  assert.throws(() => normalizzaLayerBackup({
+    dbType: 'postgresql', database: 'vendite', schemas: [],
+    objects: { views: [{ name: 'riepilogo', ddl: 'CREATE VIEW riepilogo AS SELECT 1; DROP TABLE ordini' }] },
+    integrity: { verifiedCount: 1, unverifiableCount: 0 },
+  }), /piu' istruzioni|DROP/i, 'DDL multipla ostile negli oggetti rifiutata');
+
+  assert.throws(() => normalizzaLayerBackup({
+    dbType: 'postgresql', database: 'vendite',
+    schemas: [{
+      collection: 'ordini', database: 'amministrazione',
+      sql: 'CREATE TABLE amministrazione.ordini (id int)',
+    }],
+    objects: null, integrity: { verifiedCount: 1, unverifiableCount: 0 },
+  }), /amministrazione|estraneo/i, 'il manifest non puo auto-autorizzare uno schema diverso');
 }
 
 console.log('  OK   Confine di fiducia unico per export e backup passed');

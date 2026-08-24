@@ -237,8 +237,18 @@ function validaDdlCollezione(sql, { dbType, database, collection, forme = null, 
 }
 
 function validaOggetto(sql, expected, { dbType, database, kind, table = null } = {}) {
-  const target = estraiBersaglio(sql);
   const motore = tipoDb(dbType);
+  // PostgreSQL accetta piu' comandi nella stessa query: il bersaglio della
+  // prima CREATE non puo' autorizzare cio' che segue. Il suo dollar-quoting e'
+  // gia' riconosciuto dallo splitter, quindi i `;` nei corpi delle routine non
+  // producono falsi statement. Su MySQL si applica la stessa regola alle forme
+  // senza corpi procedurali; routine/trigger/eventi sono protetti anche da
+  // `multipleStatements: false` nel driver.
+  if (motore === 'postgresql' || ['view', 'sequence'].includes(kind)) {
+    const statements = splitStatementsDetailed(sql, { backslashEscape: motore === 'mysql' });
+    if (statements.length !== 1) errore(`La definizione di ${kind} contiene piu' istruzioni`, sql);
+  }
+  const target = estraiBersaglio(sql);
   const kindExpected = kind === 'routine' ? new Set(['create-function', 'create-procedure']) : new Set([`create-${kind}`]);
   if (!kindExpected.has(target.kind)) errore(`Forma ${target.kind} non ammessa per ${kind} "${expected}"`, sql);
   validaQualificatore(target.object, database, motore, sql);
@@ -347,15 +357,25 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
     }
     return out;
   }
-  if (allowUnsafeSchema) return out;
-  for (const item of elencoOggetti(out, 'views')) validaOggetto(item.ddl, item.name, { dbType, database, kind: 'view' });
-  for (const item of elencoOggetti(out, 'routines')) validaOggetto(item.ddl, item.name, { dbType, database, kind: 'routine' });
-  for (const item of elencoOggetti(out, 'triggers')) validaOggetto(item.ddl, item.name, {
-    dbType, database, kind: 'trigger', table: item.table,
-  });
-  for (const item of elencoOggetti(out, 'events')) validaOggetto(item.ddl, item.name, { dbType, database, kind: 'event' });
-  for (const item of elencoOggetti(out, 'sequences')) validaOggetto(item.ddl, item.name, { dbType, database, kind: 'sequence' });
+  const gruppi = [
+    ['views', 'view'], ['routines', 'routine'], ['triggers', 'trigger'],
+    ['events', 'event'], ['sequences', 'sequence'],
+  ];
+  for (const [field, kind] of gruppi) {
+    for (const item of elencoOggetti(out, field)) {
+      if (!item || typeof item.name !== 'string' || !item.name || typeof item.ddl !== 'string' || !item.ddl.trim()) {
+        throw new Error(`${field}: nome o DDL dell'oggetto mancante.`);
+      }
+      if (kind === 'trigger' && (typeof item.table !== 'string' || !item.table)) {
+        throw new Error('triggers: tabella bersaglio mancante.');
+      }
+      if (!allowUnsafeSchema) validaOggetto(item.ddl, item.name, {
+        dbType, database, kind, table: kind === 'trigger' ? item.table : null,
+      });
+    }
+  }
   for (const ddl of elencoOggetti(out, 'foreignKeys')) {
+    if (allowUnsafeSchema) continue;
     const target = estraiBersaglio(ddl);
     if (target.kind !== 'alter-table') errore('Una chiave esterna deve essere ALTER TABLE', ddl);
     validaQualificatore(target.table, database, tipoDb(dbType), ddl);
@@ -366,6 +386,7 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
     validaRiferimentiCrossDatabase(target, database, tipoDb(dbType), ddl);
   }
   for (const item of elencoOggetti(out, 'sequenceValues')) {
+    if (allowUnsafeSchema) continue;
     const match = /^\s*SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'((?:[^']|'')+)'\s*,\s*-?\d+\s*(?:,\s*(?:true|false)\s*)?\)\s*;?\s*$/i.exec(String(item.sql || ''));
     const actual = match && match[1].replace(/''/g, "'").split('.').pop();
     if (!match || actual !== item.name) errore(`Valore di sequenza non valido per "${item.name}"`, item.sql);
@@ -384,8 +405,14 @@ function normalizzaLayerBackup(input, { allowUnsafeSchema = false } = {}) {
     if (!schema || typeof schema.collection !== 'string' || typeof schema.sql !== 'string') {
       throw new Error('Definizione di tabella malformata nel layer di backup.');
     }
+    if (schema.database != null && String(schema.database) !== database) {
+      throw new Error(
+        `La definizione di "${schema.collection}" dichiara il database/schema estraneo "${schema.database}" `
+        + `invece di "${database}".`
+      );
+    }
     validaDdlCollezione(schema.sql, {
-      dbType: motore, database: schema.database || database, collection: schema.collection, allowUnsafeSchema,
+      dbType: motore, database, collection: schema.collection, allowUnsafeSchema,
     });
     return { ...schema };
   });

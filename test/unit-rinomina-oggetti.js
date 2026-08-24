@@ -161,14 +161,14 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
 
   // `restoreSchemaObjects` è il solo punto d'ingresso: si prova attraverso di
   // esso, con una strategia finta, invece di esporre la regex.
-  const provaOggetti = async (oggetti) => {
+  const provaOggetti = async (oggetti, { allowUnsafeSchema = false } = {}) => {
     const eseguite = [];
     const problems = [];
     const strategy = { collectionAggregate: async (_db, _c, p) => { eseguite.push(p.pipeline); } };
     try {
       await restoreSchemaObjects({
         strategy, targetDb: 'dst', dbType: 'mysql', dbOrigine: 'src',
-        oggetti, problems, log: null,
+        oggetti, problems, log: null, allowUnsafeSchema,
       });
       return { eseguite, problems, error: null };
     } catch (error) {
@@ -186,6 +186,13 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
       assert.strictEqual(eseguite.length, 0, `NON doveva essere eseguita: ${sql}`);
       assert.ok(error, `doveva essere rifiutata: ${sql}`);
     }
+    const bypass = await provaOggetti(
+      { routines: [{ name: 'x', ddl: 'DROP DATABASE `altro`' }] },
+      { allowUnsafeSchema: true }
+    );
+    assert.ifError(bypass.error);
+    assert.strictEqual(bypass.eseguite.length, 1,
+      'il bypass esplicito deve raggiungere anche la validazione tardiva degli oggetti');
     console.log('  OK   DDL degli oggetti validate prima di eseguirle (CDB-A80, CDB-A85)');
     console.log('\nTutti i test degli oggetti di schema superati!');
   })().catch((err) => {

@@ -345,7 +345,9 @@ function senzaDefiner(ddl) {
  * problema viene registrato in `problems`, che il chiamante trasforma in un
  * ripristino dichiarato incompleto.
  */
-async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOrigine, problems, log }) {
+async function restoreSchemaObjects({
+  strategy, targetDb, dbType, oggetti, dbOrigine, problems, log, allowUnsafeSchema = false,
+}) {
   if (!oggetti || typeof oggetti !== 'object') return;
 
   // `runRestore` ha gia' controllato tutta la catena nel preflight. Questo
@@ -357,7 +359,7 @@ async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOri
     schemas: [],
     objects: oggetti,
     integrity: { verifiedCount: 0, unverifiableCount: 0 },
-  }).objects;
+  }, { allowUnsafeSchema }).objects;
 
   if (dbType === 'mongodb') {
     const client = strategy.client;
@@ -733,7 +735,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       const mustCreate = schemaFile && (!existingTables || !existingTables.has(f.collection));
       if (mustCreate) {
         const sql = readSchemaFile(layer.dir, schemaFile, f.collection, {
-          ...opts, dbType: 'postgresql', database: schemaFile.schema || layer.manifest.db,
+          ...opts, dbType: 'postgresql', database: layer.manifest.db,
         });
         try {
           await strategy.collectionAggregate(targetDb, f.collection, { pipeline: sql });
@@ -859,7 +861,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
         strategy, targetDb: db, dbType, oggetti: EJSON.parse(testo),
         // Il database in cui il backup è stato PRESO: serve a riqualificare le
         // DDL che nominano lo schema di origine (view e trigger di MySQL).
-        dbOrigine: layer.manifest.db, problems, log,
+        dbOrigine: layer.manifest.db, problems, log, allowUnsafeSchema,
       });
     } catch (err) {
       problems.push(`oggetti di schema del layer ${layer.manifest.id}: ${err.message}`);
