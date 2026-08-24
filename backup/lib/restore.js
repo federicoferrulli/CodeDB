@@ -22,6 +22,7 @@ const { isSqlGeometryType } = require('../../db/geometry');
 // Come si scrive il nome di una tabella o di una colonna: regola unica per
 // tutto il repo (vedi db/identificatori.js).
 const { quotaSempre } = require('../../db/identificatori');
+const { normalizzaLayerBackup, validaDdlCollezione } = require('../../db/artefatti');
 const myQid = (name) => quotaSempre(name, 'mysql');
 
 // Tipi che il dump salva in esadecimale perché il driver li consegna come
@@ -118,7 +119,7 @@ function resolveChain(backupDir) {
  * vengono invece validati. Basta un solo problema in qualunque layer per
  * interrompere tutto prima di DROP/CREATE/INSERT.
  */
-async function preflightChain(chain, log) {
+async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
   let verifiedCount = 0;
   let unverifiableCount = 0;
 
@@ -152,9 +153,38 @@ async function preflightChain(chain, log) {
         + 'ma l\'integrità del contenuto non è dimostrabile.'
       );
     }
+
+    // La verifica dei checksum prova l'integrita' rispetto al manifest, non
+    // rende sicuro l'SQL. Si normalizza l'INTERO layer qui, prima che qualunque
+    // layer della catena possa modificare la destinazione.
+    const schemas = layer.manifest.files.filter((f) => f.kind === 'schema').map((file) => ({
+      collection: file.collection,
+      database: file.schema || layer.manifest.db,
+      sql: fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di schema'), 'utf8'),
+    }));
+    const objectsFile = layer.manifest.files.find((f) => f.kind === 'objects');
+    const objects = objectsFile
+      ? EJSON.parse(fs.readFileSync(fileDelBackup(layer.dir, objectsFile.path, 'file di oggetti'), 'utf8'))
+      : null;
+    normalizzaLayerBackup({
+      dbType: layer.manifest.dbType,
+      database: layer.manifest.db,
+      schemas,
+      collections: layer.manifest.files.filter((f) => f.kind === 'data').map((f) => f.collection),
+      objects,
+      integrity: { verifiedCount: report.okCount, unverifiableCount: report.unverifiableCount },
+    }, { allowUnsafeSchema });
   }
 
-  return { verifiedCount, unverifiableCount };
+  return {
+    verifiedCount,
+    unverifiableCount,
+    integrita: { verificata: unverifiableCount === 0, metodo: 'SHA-256' },
+    autenticita: {
+      verificata: false,
+      motivo: 'I checksum provano integrita rispetto ai manifest, non autenticita.',
+    },
+  };
 }
 
 /* ---------------------------------------------------------------------------
@@ -179,45 +209,31 @@ async function preflightChain(chain, log) {
 // identificatori quotati vanno CONSERVATI, perche' la validazione deve poter
 // riconoscere il nome della tabella attesa anche quando e' scritto `ordini` o
 // "ordini".
-const { stripSqlNoise, splitStatements: splitSql } = require('../../db/sqlText');
+const { splitStatements: splitSql } = require('../../db/sqlText');
 
 function splitStatements(sql) {
   return splitSql(sql, { keepIdentifiers: true });
 }
 
-const SAFE_DDL = /^(CREATE\s+(OR\s+REPLACE\s+)?(TEMP(ORARY)?\s+)?TABLE|CREATE\s+(UNIQUE\s+)?INDEX|ALTER\s+TABLE)\b/i;
-
 /**
  * @throws se il DDL non è una definizione della tabella attesa.
  * @returns il DDL originale, da eseguire.
  */
-function assertSafeSchemaSql(sql, expectedTable, { allowUnsafeSchema = false } = {}) {
-  const statements = splitStatements(sql);
-  if (!statements.length) throw new Error(`Il file di schema di "${expectedTable}" è vuoto.`);
-
-  const table = String(expectedTable);
-  // Il nome può comparire quotato in tre modi diversi a seconda del DBMS: dopo
-  // stripSqlNoise le virgolette sono sparite, quindi si cerca l'identificatore.
-  const mentionsTable = (st) => new RegExp(`(^|[^\\w])${table.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^\\w]|$)`, 'i').test(st);
-
-  const problems = [];
-  for (const st of statements) {
-    if (!SAFE_DDL.test(st)) {
-      problems.push(`comando non ammesso: "${st.slice(0, 80)}"`);
-    } else if (!mentionsTable(st)) {
-      problems.push(`riguarda un'altra tabella: "${st.slice(0, 80)}"`);
-    }
-  }
-
-  if (problems.length) {
-    if (allowUnsafeSchema) return sql; // scelta esplicita dell'operatore
+function assertSafeSchemaSql(sql, expectedTable, opts = {}) {
+  try {
+    return validaDdlCollezione(sql, {
+      dbType: opts.dbType || 'mysql',
+      database: opts.database || '',
+      collection: expectedTable,
+      allowUnsafeSchema: opts.allowUnsafeSchema,
+    });
+  } catch (err) {
     throw new Error(
-      `Lo schema di "${expectedTable}" contenuto nel backup non è una definizione di tabella valida e non verrà eseguito.\n` +
-      problems.map((p) => `  · ${p}`).join('\n') +
-      '\nSe il backup è di provenienza certa, ripeti il ripristino con --allow-unsafe-schema.'
+      `Lo schema di "${expectedTable}" contenuto nel backup non è una definizione di tabella valida e non verrà eseguito.\n`
+      + `  · ${err.message}\n`
+      + 'Se il backup è di provenienza certa, ripeti il ripristino con --allow-unsafe-schema.'
     );
   }
-  return sql;
 }
 
 // Legge il file di schema verificandone, quando il manifest lo dichiara, il
@@ -267,41 +283,6 @@ async function mysqlGeoTargetColumns(conn, targetDb, table) {
 }
 
 /* --- Oggetti di schema (terza fase del ripristino) ------------------------- */
-
-// Comandi ammessi nel file degli oggetti. Vale lo stesso principio di
-// `assertSafeSchemaSql`: il contenuto arriva dal DISCO, non da CodeDB, e un
-// backup può essere stato ricevuto da terzi. Qui però NON si può spezzare il
-// testo in istruzioni — il corpo di una routine o di un trigger contiene punti
-// e virgola legittimi — quindi si valida il comando iniziale e si conta sul
-// fatto che le connessioni non ammettono istruzioni multiple
-// (`multipleStatements: false` in MySqlStrategy).
-const SAFE_OBJECT_DDL = new RegExp(
-  '^(?:'
-  + 'ALTER\\s+TABLE\\b[\\s\\S]*\\bADD\\s+CONSTRAINT\\b'
-  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:ALGORITHM\\s*=\\s*\\w+\\s+)?(?:DEFINER\\s*=\\s*\\S+\\s+)?'
-  + '(?:SQL\\s+SECURITY\\s+(?:DEFINER|INVOKER)\\s+)?VIEW\\b'
-  + '|CREATE\\s+(?:DEFINER\\s*=\\s*\\S+\\s+)?(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\\b'
-  // Forme PostgreSQL: view materializzate, OR REPLACE FUNCTION, sequenze e
-  // indici (che su PG sono istruzioni a sé, non parte della CREATE TABLE).
-  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:MATERIALIZED\\s+)?VIEW\\b'
-  + '|CREATE\\s+(?:OR\\s+REPLACE\\s+)?(?:FUNCTION|PROCEDURE)\\b'
-  + '|CREATE\\s+(?:CONSTRAINT\\s+)?TRIGGER\\b'
-  + '|CREATE\\s+SEQUENCE\\b(?:\\s+IF\\s+NOT\\s+EXISTS\\b)?'
-  + '|CREATE\\s+(?:UNIQUE\\s+)?INDEX\\b(?:\\s+CONCURRENTLY\\b)?(?:\\s+IF\\s+NOT\\s+EXISTS\\b)?'
-  + ')', 'i',
-);
-
-function assertSafeObjectSql(sql, cosa) {
-  const testo = String(sql == null ? '' : sql).trim();
-  if (!testo) throw new Error(`Definizione vuota per ${cosa}.`);
-  if (!SAFE_OBJECT_DDL.test(testo)) {
-    throw new Error(
-      `La definizione di ${cosa} contenuta nel backup non è un oggetto di schema ammesso `
-      + `e non verrà eseguita: "${testo.slice(0, 80)}".`
-    );
-  }
-  return testo;
-}
 
 /**
  * Un'istruzione DDL del backup può nominare il database di ORIGINE.
@@ -367,6 +348,17 @@ function senzaDefiner(ddl) {
 async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOrigine, problems, log }) {
   if (!oggetti || typeof oggetti !== 'object') return;
 
+  // `runRestore` ha gia' controllato tutta la catena nel preflight. Questo
+  // secondo passaggio mantiene sicuro anche il seam pubblico usato dalla
+  // rinomina e dai test con strategia finta.
+  oggetti = normalizzaLayerBackup({
+    dbType,
+    database: dbOrigine || targetDb,
+    schemas: [],
+    objects: oggetti,
+    integrity: { verifiedCount: 0, unverifiableCount: 0 },
+  }).objects;
+
   if (dbType === 'mongodb') {
     const client = strategy.client;
     for (const opt of oggetti.collectionOptions || []) {
@@ -401,7 +393,7 @@ async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOri
 
   // --- SQL -----------------------------------------------------------------
   const esegui = async (sql, cosa) => {
-    const pulito = riqualificaDdl(senzaDefiner(assertSafeObjectSql(sql, cosa)), dbOrigine, targetDb);
+    const pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb);
     await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
     if (log) log.info(`  ${cosa} applicato/a`);
   };
@@ -465,14 +457,7 @@ async function restoreSchemaObjects({ strategy, targetDb, dbType, oggetti, dbOri
   for (const seq of oggetti.sequenceValues || []) {
     const cosa = `valore della sequenza "${seq.name}"`;
     try {
-      // Validazione dedicata: qui NON passa da `assertSafeObjectSql`, che
-      // ammette solo CREATE/ALTER. `setval` è una SELECT, e allargare quella
-      // barriera a "le SELECT" aprirebbe il file degli oggetti a qualunque
-      // lettura. La forma ammessa è quindi una sola, ed è questa.
       const sql = String(seq.sql || '').trim();
-      if (!/^SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'(?:[^']|'')*'\s*,\s*-?\d+\s*(?:,\s*(?:true|false)\s*)?\)$/i.test(sql)) {
-        throw new Error(`istruzione non ammessa: "${sql.slice(0, 80)}"`);
-      }
       await strategy.collectionAggregate(targetDb, null, { pipeline: sql });
       if (log) log.info(`  ${cosa} ripristinato`);
     } catch (err) {
@@ -589,7 +574,9 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
           if (!schemaFile) throw new Error(`Schema di "${f.collection}" assente dal backup: impossibile ricreare la tabella.`);
           // Checksum + validazione della forma prima di eseguire: il contenuto
           // del file arriva dal disco, non da CodeDB.
-          const ddl = readSchemaFile(layer.dir, schemaFile, f.collection, opts);
+          const ddl = readSchemaFile(layer.dir, schemaFile, f.collection, {
+            ...opts, dbType: 'mysql', database: layer.manifest.db,
+          });
           await conn.query(ddl.replace(/;\s*$/, ''));
           existingTables.add(f.collection);
         }
@@ -745,7 +732,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       // qui va tollerato.
       const mustCreate = schemaFile && (!existingTables || !existingTables.has(f.collection));
       if (mustCreate) {
-        const sql = readSchemaFile(layer.dir, schemaFile, f.collection, opts);
+        const sql = readSchemaFile(layer.dir, schemaFile, f.collection, {
+          ...opts, dbType: 'postgresql', database: schemaFile.schema || layer.manifest.db,
+        });
         try {
           await strategy.collectionAggregate(targetDb, f.collection, { pipeline: sql });
           if (existingTables) existingTables.add(f.collection);
@@ -828,7 +817,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
 
   // Deve precedere anche un eventuale --drop: un backup alterato o incompleto
   // non può provocare alcuna mutazione prima che TUTTA la catena sia valida.
-  await preflightChain(chain, log);
+  await preflightChain(chain, log, { allowUnsafeSchema });
 
   if (onlyCollections) {
     const available = new Set(chain.flatMap((l) => l.manifest.files.filter((f) => f.kind === 'data').map((f) => f.collection)));

@@ -137,15 +137,19 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
 // --- 4. Il file degli oggetti arriva dal disco: si valida ------------------
 {
   const { restoreSchemaObjects } = require('../backup/lib/restore');
-  const ammesse = [
-    'ALTER TABLE `a` ADD CONSTRAINT `f` FOREIGN KEY (`x`) REFERENCES `b` (`id`)',
-    'CREATE ALGORITHM=UNDEFINED DEFINER=`r`@`l` SQL SECURITY DEFINER VIEW `v` AS SELECT 1',
-    'CREATE VIEW `v` AS SELECT 1',
-    'CREATE DEFINER=`r`@`l` PROCEDURE `p`() SELECT 1',
-    'CREATE FUNCTION `f`(x INT) RETURNS INT DETERMINISTIC RETURN x',
-    'CREATE TRIGGER `t` BEFORE INSERT ON `x` FOR EACH ROW SET NEW.a = 1',
-    'CREATE EVENT `e` ON SCHEDULE EVERY 1 DAY DO SELECT 1',
-  ];
+  const ammesse = {
+    foreignKeys: ['ALTER TABLE `a` ADD CONSTRAINT `f` FOREIGN KEY (`x`) REFERENCES `b` (`id`)'],
+    views: [
+      { name: 'v', ddl: 'CREATE ALGORITHM=UNDEFINED DEFINER=`r`@`l` SQL SECURITY DEFINER VIEW `v` AS SELECT 1' },
+      { name: 'v2', ddl: 'CREATE VIEW `v2` AS SELECT 1' },
+    ],
+    routines: [
+      { name: 'p', ddl: 'CREATE DEFINER=`r`@`l` PROCEDURE `p`() SELECT 1' },
+      { name: 'f', ddl: 'CREATE FUNCTION `f`(x INT) RETURNS INT DETERMINISTIC RETURN x' },
+    ],
+    triggers: [{ name: 't', table: 'x', ddl: 'CREATE TRIGGER `t` BEFORE INSERT ON `x` FOR EACH ROW SET NEW.a = 1' }],
+    events: [{ name: 'e', ddl: 'CREATE EVENT `e` ON SCHEDULE EVERY 1 DAY DO SELECT 1' }],
+  };
   const negate = [
     'DROP DATABASE `altro`',
     'GRANT ALL PRIVILEGES ON *.* TO `chiunque`@`%`',
@@ -157,27 +161,30 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
 
   // `restoreSchemaObjects` è il solo punto d'ingresso: si prova attraverso di
   // esso, con una strategia finta, invece di esporre la regex.
-  const provaSql = async (sql) => {
+  const provaOggetti = async (oggetti) => {
     const eseguite = [];
     const problems = [];
     const strategy = { collectionAggregate: async (_db, _c, p) => { eseguite.push(p.pipeline); } };
-    await restoreSchemaObjects({
-      strategy, targetDb: 'dst', dbType: 'mysql', dbOrigine: 'src',
-      oggetti: { routines: [{ name: 'x', ddl: sql }] }, problems, log: null,
-    });
-    return { eseguite, problems };
+    try {
+      await restoreSchemaObjects({
+        strategy, targetDb: 'dst', dbType: 'mysql', dbOrigine: 'src',
+        oggetti, problems, log: null,
+      });
+      return { eseguite, problems, error: null };
+    } catch (error) {
+      return { eseguite, problems, error };
+    }
   };
 
   return (async () => {
-    for (const sql of ammesse) {
-      const { eseguite, problems } = await provaSql(sql);
-      assert.strictEqual(problems.length, 0, `doveva essere ammessa: ${sql}\n${problems.join('; ')}`);
-      assert.strictEqual(eseguite.length, 1, `doveva essere eseguita: ${sql}`);
-    }
+    const ok = await provaOggetti(ammesse);
+    assert.ifError(ok.error);
+    assert.strictEqual(ok.problems.length, 0, ok.problems.join('; '));
+    assert.strictEqual(ok.eseguite.length, 7, 'tutti gli oggetti legittimi devono essere eseguiti');
     for (const sql of negate) {
-      const { eseguite, problems } = await provaSql(sql);
+      const { eseguite, error } = await provaOggetti({ routines: [{ name: 'x', ddl: sql }] });
       assert.strictEqual(eseguite.length, 0, `NON doveva essere eseguita: ${sql}`);
-      assert.strictEqual(problems.length, 1, `doveva essere segnalata: ${sql}`);
+      assert.ok(error, `doveva essere rifiutata: ${sql}`);
     }
     console.log('  OK   DDL degli oggetti validate prima di eseguirle (CDB-A80, CDB-A85)');
     console.log('\nTutti i test degli oggetti di schema superati!');

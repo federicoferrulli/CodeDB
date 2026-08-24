@@ -36,6 +36,7 @@ const MongoScriptRunner = require('./db/MongoScriptRunner');
 const { payloadEsecuzione, assertPayloadEsecuzione } = require('./db/payloadEsecuzione');
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
+const { normalizzaExportDatabase } = require('./db/artefatti');
 
 /* ---------------------------------------------------------------------------
  * Nome della tabella dedotto dal FROM di una query SQL.
@@ -4410,6 +4411,13 @@ function registraEventi(ctx) {
   // Indici e chiavi esterne della tabella, da applicare in coda all'import
   // quando tutte le tabelle esistono e i dati sono stati caricati.
   delegate('collection:auxddl', async (strategy, p) => await strategy.tableAuxDdl(p.db, p.coll));
+
+  // Un file `.codedb.json` attraversa lo stesso confine server-side usato dal
+  // restore. L'evento non legge ne' muta il database: la sessione fissa solo il
+  // motore atteso, impedendo che un artefatto di un DBMS passi su un altro.
+  delegate('artifact:validate', (strategy, payload) => ({
+    artifact: normalizzaExportDatabase(payload.artifact, { expectedDbType: strategy.type }),
+  }));
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde

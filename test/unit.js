@@ -1441,7 +1441,11 @@ console.log('--- Test Unitari CodeDB ---');
   // sembra corretto anche quando ha perso o conservato la chiave sbagliata.
   require('./unit-duplica');
 
-  // Test 28: Barriere all'avvio quando l'istanza esce dal loopback — proxy
+  // Test 28: export di database e backup attraversano lo stesso confine di
+  // fiducia prima di esporre un artefatto applicabile.
+  require('./unit-artefatti');
+
+  // Test 29: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una
   // funzione. Nessun database richiesto.

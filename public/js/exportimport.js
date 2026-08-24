@@ -389,10 +389,33 @@ export function initExportImport() {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       if (!ctx || ctx !== dbImportContext || apertura !== dbImportAperture) return;
       try {
-        dbImportData = validateDbExport(String(reader.result || ''), ctx.dbType);
+        // I database possono superare di molto il tetto di 5 MB del socket.
+        // Al server viaggiano struttura e DDL, mai i documenti: il valore
+        // applicabile usa DDL e metadati NORMALIZZATI restituiti dal server e
+        // riaggancia soltanto gli array di dati, che non contengono SQL.
+        const letto = JSON.parse(String(reader.result || ''));
+        const daValidare = {
+          ...letto,
+          collections: Array.isArray(letto && letto.collections)
+            ? letto.collections.map((c) => (
+              c && typeof c === 'object' && !Array.isArray(c)
+                ? { ...c, docs: Array.isArray(c.docs) ? [] : c.docs }
+                : c
+            ))
+            : letto && letto.collections,
+        };
+        const validato = await emit('artifact:validate', {
+          tabId: ctx.tabId,
+          artifact: daValidare,
+        });
+        if (ctx !== dbImportContext || apertura !== dbImportAperture) return;
+        dbImportData = validato.artifact;
+        for (let i = 0; i < dbImportData.collections.length; i++) {
+          dbImportData.collections[i].docs = letto.collections[i].docs;
+        }
         if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
         const docs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0);
         const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
@@ -548,35 +571,6 @@ function setDbImportProgress(pct, label) {
   $('#dbimport-progress').classList.remove('hidden');
   $('#dbimport-progress-bar').style.width = `${Math.min(100, Math.round(pct))}%`;
   $('#dbimport-progress-label').textContent = label || '';
-}
-
-function validateDbExport(text, dbType = state.dbType) {
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`JSON non valido: ${err.message}`);
-  }
-  if (!parsed || parsed.formato !== DB_EXPORT_FORMAT || !Array.isArray(parsed.collections)) {
-    throw new Error('Il file non è un export di database di CodeDB (atteso "formato": "codedb-database").');
-  }
-  if (parsed.dbType !== dbType) {
-    throw new Error(`Il file è un export ${parsed.dbType}, ma questa connessione è ${dbType}.`);
-  }
-  for (const c of parsed.collections) {
-    if (!c || typeof c.name !== 'string' || !Array.isArray(c.docs)) {
-      throw new Error('File malformato: ogni collection deve avere "name" e l\'array "docs".');
-    }
-    // `postDdl` viene eseguito come SQL: se c'è, dev'essere un elenco di
-    // stringhe. Senza questo controllo una voce non testuale finirebbe nella
-    // query come "undefined" e l'errore arriverebbe dal database, a import già
-    // iniziato e con metà dei dati caricati.
-    if (c.postDdl != null
-        && (!Array.isArray(c.postDdl) || c.postDdl.some((s) => typeof s !== 'string' || !s.trim()))) {
-      throw new Error(`File malformato: "postDdl" di "${c.name}" deve essere un elenco di istruzioni SQL.`);
-    }
-  }
-  return parsed;
 }
 
 export function openDbImportModal() {
