@@ -10,9 +10,9 @@ con `elementsFromPoint` vivono dentro `cellselect.js`, agganciati alla `.grid-wr
 
 **Bloccato da:** 29 (il gesto parte dalla selezione di celle).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Il ciclo di scorrimento riceve il contenitore invece di cercarlo
-- [ ] Le coordinate sotto l'intestazione `sticky` si calcolano dal contenitore ricevuto
-- [ ] `test/e2e-tocco-griglia.js` passa invariato sulla vista Dati
-- [ ] Un test in Chromium dimostra lo stesso gesto dentro un riquadro Split-View
+- [x] Il ciclo di scorrimento riceve il contenitore invece di cercarlo
+- [x] Le coordinate sotto l'intestazione `sticky` si calcolano dal contenitore ricevuto
+- [x] `test/e2e-tocco-griglia.js` passa invariato sulla vista Dati
+- [x] Un test in Chromium dimostra lo stesso gesto dentro un riquadro Split-View

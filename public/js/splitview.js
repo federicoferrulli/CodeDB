@@ -1564,13 +1564,11 @@ const CAPACITA_RIQUADRO = capacita({
   // AMBITO (`aggancioRiquadro` qui sotto) con il contenitore, le righe e lo stato
   // di QUESTO riquadro.
   selezioneCelle: true,
-  // Ancora spente, e dichiarate. Lo scorrimento automatico ai bordi vive dentro
-  // `cellselect.js` e ora riceve già il contenitore giusto, ma nessun test
-  // dimostra il gesto dentro un riquadro: finché non c'è, la capacità resta
-  // spenta invece di essere dichiarata su una parola (vedi la issue 30).
+  // Accesa: il ciclo di `cellselect.js` riceve il contenitore del riquadro e il
+  // ridisegno virtuale ne preserva la posizione mentre il dito resta al bordo.
+  scorrimentoAiBordi: true,
   // Il pannello delle chiavi esterne e le geometrie restano nei loro moduli,
   // ancora agganciati a `#grid` e allo `state` del tab attivo.
-  scorrimentoAiBordi: false,
   chiaviEsterne: false,
   geometrie: false,
   paginazioneAChiave: false,
@@ -1687,6 +1685,15 @@ function updatePaneUI(paneId) {
 
   const thead = paneEl.querySelector('.pane-grid thead');
   const tbody = paneEl.querySelector('.pane-grid tbody');
+  const contenitore = paneEl.querySelector('.pane-grid-wrap');
+  // Svuotare il `tbody` accorcia per un istante la tabella e Chromium riporta
+  // lo scroll a zero. La finestra virtuale va quindi calcolata dalla posizione
+  // letta PRIMA del ridisegno e la stessa posizione va ripristinata dopo: vale
+  // per lo scroll normale e, soprattutto, per ogni fotogramma del gesto ai
+  // bordi, che altrimenti avanzerebbe di pochi pixel e rimbalzerebbe a zero.
+  const posizioneScroll = contenitore
+    ? { top: contenitore.scrollTop, left: contenitore.scrollLeft }
+    : { top: 0, left: 0 };
 
   thead.innerHTML = '';
   tbody.innerHTML = '';
@@ -1865,10 +1872,9 @@ function updatePaneUI(paneId) {
     // Colonne dello spaziatore: numero di riga + eventuale casella + eventuali
     // azioni + le colonne dei dati.
     const colonneTotali = 1 + (canSelect && hasIdDocs ? 1 : 0) + (hasIdDocs ? 1 : 0) + cols.length;
-    const contenitore = paneEl.querySelector('.pane-grid-wrap');
     const finestra = vaVirtualizzata(p.docs.length, CAPACITA_RIQUADRO)
       ? finestraVirtuale({
-        scrollTop: (contenitore && contenitore.scrollTop) || 0,
+        scrollTop: posizioneScroll.top,
         altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
         altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
         righeTotali: p.docs.length,
@@ -1883,6 +1889,11 @@ function updatePaneUI(paneId) {
       finestra,
       colonneTotali,
     });
+
+    if (contenitore) {
+      contenitore.scrollTop = posizioneScroll.top;
+      contenitore.scrollLeft = posizioneScroll.left;
+    }
 
     // La selezione di celle si aggancia una volta sola per riquadro (`tbody` e
     // `thead` sono stabili), ma le CLASSI vanno riapplicate a ogni disegno: la
