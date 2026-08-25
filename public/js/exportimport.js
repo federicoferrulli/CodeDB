@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
+import { socket } from './socket.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -381,10 +382,30 @@ export function initExportImport() {
     }
   });
   $('#dbimport-run').addEventListener('click', runDbImport);
+  socket.on('database:import:progress', (operation) => {
+    if (!dbImportOperationId || operation.operationId !== dbImportOperationId) return;
+    renderDbImportState(operation);
+  });
+  $('#dbimport-report').addEventListener('click', async (event) => {
+    const button = event.target.closest('[data-dbimport-cleanup]');
+    if (!button || !dbImportOperationId) return;
+    if (!window.confirm('Eliminare definitivamente la copia di recupero e lo staging conservato?')) return;
+    const fine = iniziaCaricamento(button, 'Elimino…');
+    try {
+      const response = await emit('database:import:cleanup', {
+        tabId: tabs.activeId || (dbImportContext && dbImportContext.tabId),
+        operationId: dbImportOperationId,
+      });
+      renderDbImportState(response.operation);
+    } catch (err) {
+      showError('#dbimport-error', err.message);
+    } finally { fine(); }
+  });
   $('#dbimport-file').addEventListener('change', (e) => {
     const ctx = dbImportContext;
     const apertura = dbImportAperture;
     dbImportData = null;
+    dbImportUploadId = null;
     showError('#dbimport-error', '');
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -392,33 +413,32 @@ export function initExportImport() {
     reader.onload = async () => {
       if (!ctx || ctx !== dbImportContext || apertura !== dbImportAperture) return;
       try {
-        // I database possono superare di molto il tetto di 5 MB del socket.
-        // Al server viaggiano struttura e DDL, mai i documenti: il valore
-        // applicabile usa DDL e metadati NORMALIZZATI restituiti dal server e
-        // riaggancia soltanto gli array di dati, che non contengono SQL.
-        const letto = JSON.parse(String(reader.result || ''));
-        const daValidare = {
-          ...letto,
-          collections: Array.isArray(letto && letto.collections)
-            ? letto.collections.map((c) => (
-              c && typeof c === 'object' && !Array.isArray(c)
-                ? { ...c, docs: Array.isArray(c.docs) ? [] : c.docs }
-                : c
-            ))
-            : letto && letto.collections,
-        };
-        const validato = await emit('artifact:validate', {
-          tabId: ctx.tabId,
-          artifact: daValidare,
-          expectedDbType: ctx.dbType,
+        // Il file attraversa il limite Socket.IO in blocchi privi di effetti.
+        // Soltanto dopo l'ultimo blocco il server lo ricompone e lo valida; le
+        // mutazioni restano nell'unica operazione lunga avviata piu sotto.
+        const raw = String(reader.result || '');
+        const opened = await emit('database:import:upload:start', { tabId: ctx.tabId });
+        dbImportUploadId = opened.uploadId;
+        const chunkChars = 400000; // <= 1,6 MB anche con caratteri UTF-8 a quattro byte
+        let index = 0;
+        for (let offset = 0; offset < raw.length; offset += chunkChars) {
+          await emit('database:import:upload:chunk', {
+            tabId: ctx.tabId, uploadId: dbImportUploadId, index,
+            chunk: raw.slice(offset, offset + chunkChars),
+          });
+          index++;
+          setDbImportProgress(
+            (offset / Math.max(1, raw.length)) * 100,
+            'Caricamento e validazione del file...',
+          );
+        }
+        const validato = await emit('database:import:upload:finish', {
+          tabId: ctx.tabId, uploadId: dbImportUploadId,
         });
         if (ctx !== dbImportContext || apertura !== dbImportAperture) return;
         dbImportData = validato.artifact;
-        for (let i = 0; i < dbImportData.collections.length; i++) {
-          dbImportData.collections[i].docs = letto.collections[i].docs;
-        }
         if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
-        const docs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0);
+        const docs = dbImportData.collections.reduce((s, c) => s + c.rows, 0);
         const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
         $('#dbimport-subtitle').textContent =
           `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
@@ -503,8 +523,10 @@ export async function exportDatabase(db) {
       let ddl = null;
       let indexes = null;
       let postDdl = null;
+      let identity = dbType === 'mongodb' ? { kind: 'mongodb-id', columns: ['_id'] } : null;
       if (isSql) {
         ddl = (await emit('collection:ddl', { tabId, db, coll: c.name })).ddl;
+        identity = (await emit('collection:identity', { tabId, db, coll: c.name })).identity;
         // Indici e FK viaggiano a parte e vengono applicati in coda all'import:
         // una FK verso una tabella non ancora creata fallirebbe. I DBMS che non
         // li espongono (e i server più vecchi) semplicemente non ne mandano.
@@ -531,7 +553,8 @@ export async function exportDatabase(db) {
       exported += lines.length;
       parts.push(
         `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
-        `"indexes": ${JSON.stringify(indexes)}, "postDdl": ${JSON.stringify(postDdl)}, "docs": [\n    ` +
+        `"identity": ${JSON.stringify(identity)}, "indexes": ${JSON.stringify(indexes)}, ` +
+        `"postDdl": ${JSON.stringify(postDdl)}, "docs": [\n    ` +
         lines.join(',\n    ') + '\n  ] }'
       );
     }
@@ -564,9 +587,11 @@ export async function exportDatabase(db) {
 /* --- Import di un intero database ----------------------------------------- */
 
 let dbImportData = null; // contenuto validato del file selezionato
+let dbImportUploadId = null; // artefatto completo conservato sul server
 let dbImporting = false;
 let dbImportContext = null;
 let dbImportAperture = 0;
+let dbImportOperationId = null;
 
 function setDbImportProgress(pct, label) {
   $('#dbimport-progress').classList.remove('hidden');
@@ -584,6 +609,7 @@ export function openDbImportModal() {
   dbImportContext = { ...origin, dbType };
   dbImportAperture++;
   dbImportData = null;
+  dbImportUploadId = null;
   dbImporting = false;
   $('#dbimport-subtitle').textContent = isSqlType(dbImportContext.dbType)
     ? 'Ricrea tabelle, righe, indici e chiavi esterne in uno schema di destinazione.'
@@ -624,149 +650,91 @@ async function runDbImport() {
     return;
   }
   const drop = $('#dbimport-drop').checked;
-  const isSql = isSqlType(ctx.dbType);
-  const totalDocs = dbImportData.collections.reduce((s, c) => s + c.docs.length, 0) || 1;
-
-  // Import di un intero database: è l'operazione più lunga dell'app (schema +
-  // dati + indici, collection per collection). Si riusa il contesto congelato
-  // all'apertura della modale: un cambio di connessione non deve spostare le
-  // collection rimanenti su un altro database.
-  const tabId = ctx.tabId;
-  const stillConnected = () => !tabId || tabs.list.some((t) => t.id === tabId);
-
   dbImporting = true;
   const fineCaricamento = iniziaCaricamento($('#dbimport-run'), 'Import…');
-  let inserted = 0;
-  let failed = 0;
-  let done = 0;
-  const errors = [];
-  const pushErr = (msg) => { if (errors.length < 20) errors.push(msg); };
   try {
-    // SQL: lo schema di destinazione deve esistere (MongoDB lo crea da solo
-    // al primo insert). "esiste già" non è un errore.
-    if (isSql) {
-      try {
-        await emit('db:create', { tabId, db: target });
-      } catch (err) {
-        if (!/esiste già/i.test(err.message)) throw err;
-      }
-    }
-
-    for (const c of dbImportData.collections) {
-      // Connessione di destinazione chiusa a metà import: fermarsi subito.
-      if (!stillConnected()) {
-        pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
-        break;
-      }
-      setDbImportProgress((done / totalDocs) * 100, `${c.name}…`);
-      try {
-        if (drop) {
-          await emit('collection:drop', { tabId, db: target, coll: c.name }).catch(() => { /* non esisteva */ });
-        }
-        if (isSql && c.ddl) {
-          // CREATE TABLE dal file; se la tabella esiste già (senza drop) si
-          // prosegue con il solo inserimento delle righe.
-          await emit('collection:aggregate', { tabId, db: target, coll: c.name, pipeline: c.ddl })
-            .catch((err) => {
-              if (!/already exists/i.test(err.message)) throw err;
-            });
-        }
-      } catch (err) {
-        failed += c.docs.length;
-        done += c.docs.length;
-        pushErr(`${c.name}: ${err.message}`);
-        continue;
-      }
-
-      // Stessi blocchi dell'import singolo: limitati anche per BYTE (CDB-34),
-      // altrimenti poche righe grandi superano il tetto del messaggio Socket.IO
-      // e la connessione cade a metà import.
-      let i = 0;
-      for (const batch of blocchiDiImport(c.docs)) {
-        if (!stillConnected()) {
-          const rimaste = c.docs.length - i;
-          failed += rimaste;
-          done += rimaste;
-          pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
-          break;
-        }
-        setDbImportProgress((done / totalDocs) * 100, `${c.name}: ${i}/${c.docs.length}…`);
-        i += batch.length;
-        try {
-          const res = await emit('collection:import', { tabId, db: target, coll: c.name, docs: batch });
-          inserted += res.inserted;
-          failed += res.failed;
-          for (const e of res.errors || []) pushErr(`${c.name}: ${e}`);
-        } catch (err) {
-          failed += batch.length;
-          pushErr(`${c.name}: ${err.message}`);
-        }
-        done += batch.length;
-      }
-
-      // MongoDB: ricrea gli indici della collection (dopo i dati).
-      await Promise.all((c.indexes || []).map(async (idx) => {
-        try {
-          await emit('index:create', {
-            tabId, db: target, coll: c.name,
-            fields: JSON.stringify(idx.key), unique: !!idx.unique, name: idx.name,
-          });
-        } catch (err) {
-          pushErr(`${c.name}, indice "${idx.name}": ${err.message}`);
-        }
-      }));
-    }
-
-    // SQL, seconda fase: indici e chiavi esterne, quando TUTTE le tabelle
-    // esistono e tutte le righe sono state caricate. Prima di qui una FK verso
-    // una tabella ancora da creare fallirebbe, e una FK già attiva imporrebbe
-    // alle righe un ordine di inserimento che il file non descrive.
-    if (isSql) {
-      const coda = dbImportData.collections
-        .flatMap((c) => (c.postDdl || []).map((sql) => ({ coll: c.name, sql })));
-      for (let i = 0; i < coda.length; i++) {
-        if (!stillConnected()) {
-          pushErr('Import interrotto: la connessione di destinazione è stata chiusa.');
-          break;
-        }
-        setDbImportProgress(100, `indici e vincoli… ${i + 1}/${coda.length}`);
-        try {
-          await emit('collection:aggregate', {
-            tabId, db: target, coll: coda[i].coll, pipeline: coda[i].sql,
-          });
-        } catch (err) {
-          // Un indice o una FK che non si ricrea non invalida i dati già
-          // importati: si segnala e si prosegue con i restanti.
-          if (!/already exists|esiste già/i.test(err.message)) {
-            pushErr(`${coda[i].coll}, indici/vincoli: ${err.message}`);
-          }
-        }
-      }
-    }
+    // Anteprima ed esecuzione attraversano lo stesso evento. L'impronta
+    // confermata impedisce che il secondo passaggio esegua un piano diverso.
+    const preview = await emit('database:import:start', {
+      tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target, drop, previewOnly: true,
+    });
+    const plan = preview.plan;
+    const identities = plan.collections.map((c) =>
+      `${c.name}: ${c.identity ? c.identity.columns.join(', ') : 'nessuna identità stabile'}`
+    ).join('\n');
+    const strategy = plan.promotion.atomic
+      ? 'swap atomico dello schema PostgreSQL'
+      : 'staging con copia full di recupero (promozione non atomica)';
+    if (!window.confirm(
+      `Import database\n\nConnessione: ${plan.connection}\nDestinazione: ${plan.targetDb}`
+      + `\nCollection/tabelle: ${plan.collections.length}\nIdentità:\n${identities}`
+      + `\nStrategia: ${strategy}\n\nProcedere?`
+    )) return;
+    const started = await emit('database:import:start', {
+      tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target, drop,
+      expectedFingerprint: plan.fingerprint,
+    });
+    dbImportOperationId = started.accepted.operationId;
+    renderDbImportState(started.accepted);
+    fineCaricamento();
+    await monitorDbImport(dbImportOperationId);
   } catch (err) {
-    pushErr(err.message);
+    showError('#dbimport-error', err.message);
   } finally {
     dbImporting = false;
     fineCaricamento();
   }
-  setDbImportProgress(100, 'completato');
+}
 
-  const report = $('#dbimport-report');
-  const word = isSql ? 'righe' : 'documenti';
-  let html = `<strong>${inserted}</strong> ${word} importati in "${esc(target)}"` +
-    (failed ? `, <strong class="import-failed">${failed}</strong> con errori.` : '.');
-  if (errors.length) {
-    html += '<ul>' + errors.map((e) => `<li>${esc(e)}</li>`).join('') + '</ul>';
+async function monitorDbImport(operationId) {
+  for (;;) {
+    const response = await emit('database:import:state', { operationId });
+    const operation = response.operation;
+    renderDbImportState(operation);
+    if (operation.status !== 'in_corso') return operation;
+    await new Promise((resolve) => setTimeout(resolve, 600));
   }
+}
+
+function renderDbImportState(operation) {
+  const report = $('#dbimport-report');
+  if (!report) return;
+  const labels = {
+    in_corso: 'Import in corso',
+    completato: 'Import completato e verificato',
+    ripristinato_dopo_errore: 'Errore: destinazione originale ripristinata',
+    intervento_richiesto: 'Errore: intervento manuale richiesto',
+  };
+  const terminal = operation.status !== 'in_corso';
+  setDbImportProgress(
+    terminal ? 100 : Math.min(95, (operation.progress || []).length * 8),
+    operation.phase || labels[operation.status]
+  );
+  let html = `<strong>${esc(labels[operation.status] || operation.status)}</strong>`;
+  if (operation.error) html += `<p>${esc(operation.error)}</p>`;
+  if (operation.recovery) {
+    html += `<p>Copia di recupero conservata: <code>${esc(operation.recovery.id || 'disponibile')}</code>.</p>`;
+  }
+  if (operation.staging && operation.staging.retained) {
+    html += `<p>Staging conservato: <code>${esc(operation.staging.db)}</code>.</p>`;
+  }
+  if ((operation.recovery || (operation.staging && operation.staging.retained)) && !operation.cleanupAt && terminal) {
+    html += '<button type="button" class="ghost" data-dbimport-cleanup>Elimina staging e recupero…</button>';
+  } else if (operation.cleanupAt) {
+    html += `<p>Staging e recupero eliminati il ${esc(operation.cleanupAt)}.</p>`;
+  }
+  report.className = `dbimport-report esito-${operation.status}`;
   report.innerHTML = html;
   report.classList.remove('hidden');
-  toast(failed || errors.length ? 'Import del database completato con errori' : `Database "${target}" importato`, !!(failed || errors.length));
-  // La sidebar mostra i database del tab attivo: aggiornarla da un altro tab
-  // sostituirebbe il suo albero con quello della connessione di destinazione.
-  ctx.st.schemaDirty = true;
-  if (!ctx.tabId || tabs.activeId === ctx.tabId) {
-    ctx.st.schemaDirty = false;
-    refreshDbTree();
+  if (!terminal) return;
+  const ok = operation.status === 'completato';
+  toast(labels[operation.status], !ok);
+  if (ok && dbImportContext) {
+    dbImportContext.st.schemaDirty = true;
+    if (!dbImportContext.tabId || tabs.activeId === dbImportContext.tabId) {
+      dbImportContext.st.schemaDirty = false;
+      refreshDbTree();
+    }
   }
 }
 

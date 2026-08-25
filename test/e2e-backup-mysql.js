@@ -21,9 +21,11 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const mysql = require('mysql2/promise');
+const { createE2eTargetRegistry } = require('./e2e-harness');
 
-const DB = 'gui_mysql_e2e_backup';
-const DB_RESTORE = 'gui_mysql_e2e_backup_restore';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mysql_backup' });
+const DB = targets.target('source');
+const DB_RESTORE = targets.target('restore');
 const PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const PASSWORD = process.env.MYSQL_PASSWORD || '';
 const CLI = path.join(__dirname, '..', 'backup', 'cli.js');
@@ -49,7 +51,9 @@ async function main() {
     host: 'localhost', port: PORT, user: 'root', password: PASSWORD, multipleStatements: true,
   });
   try {
-    await conn.query(`DROP DATABASE IF EXISTS ${DB}; DROP DATABASE IF EXISTS ${DB_RESTORE}; CREATE DATABASE ${DB}`);
+    await targets.drop(DB, (name) => conn.query(`DROP DATABASE IF EXISTS \`${name}\``));
+    await targets.drop(DB_RESTORE, (name) => conn.query(`DROP DATABASE IF EXISTS \`${name}\``));
+    await conn.query(`CREATE DATABASE \`${DB}\``);
     await conn.query(
       `CREATE TABLE ${DB}.clienti (
          id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -98,7 +102,7 @@ async function main() {
 
     console.log('e2e-backup-mysql: tutti i test superati.');
   } finally {
-    await conn.query(`DROP DATABASE IF EXISTS ${DB}; DROP DATABASE IF EXISTS ${DB_RESTORE}`).catch(() => { });
+    await targets.cleanup((name) => conn.query(`DROP DATABASE IF EXISTS \`${name}\``).catch(() => {}));
     await conn.end().catch(() => { });
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }

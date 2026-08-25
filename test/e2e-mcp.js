@@ -8,7 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const { io } = require('socket.io-client');
-const { startTestServer } = require('./e2e-harness');
+const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 const { MongoClient } = require('mongodb');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
@@ -18,8 +18,9 @@ const { assertReadOnlySql, assertReadOnlyPipeline } = require('../mcp/McpGateway
 // temporaneo (test/e2e-harness.js): salva ed elimina connessioni salvate,
 // quindi non deve mai toccare il vault reale dell'utente.
 let BASE = null; // valorizzato dopo l'avvio dell'istanza di test
-const DB = 'gui_mongodb_e2e_mcp';
-const DROP_DB = 'gui_mongodb_e2e_mcp_drop';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mongodb_mcp' });
+const DB = targets.target('data');
+const DROP_DB = targets.target('drop');
 const CONN_NAME = 'e2e-mcp';
 const RW_NAME = 'e2e-mcp-rw';
 
@@ -96,7 +97,7 @@ let testServer = null;
     console.log('1. seed dei dati di test (driver MongoDB)');
     mongo = new MongoClient('mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 5000 });
     await mongo.connect();
-    await mongo.db(DB).dropDatabase().catch(() => {});
+    await targets.drop(DB, (name) => mongo.db(name).dropDatabase()).catch(() => {});
     // `email` è un dato personale, `descrizione` e `tipo` NO: con l'euristica a
     // sottostringa (`ip` dentro `descrizione`) risultavano sensibili tutti e
     // tre, e un'asserzione sulla sola forma del risultato non lo rivelava.
@@ -368,8 +369,7 @@ let testServer = null;
     }
     if (socket) socket.close();
     if (mongo) {
-      await mongo.db(DB).dropDatabase().catch(() => {});
-      await mongo.db(DROP_DB).dropDatabase().catch(() => {});
+      await targets.cleanup((name) => mongo.db(name).dropDatabase().catch(() => {}));
       await mongo.close().catch(() => {});
     }
     // L'istanza di test (e il suo connections.ini temporaneo) sparisce con lei.

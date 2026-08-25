@@ -16,14 +16,15 @@
  * ------------------------------------------------------------------------- */
 
 const { chromium } = require('playwright');
-const { startTestServer } = require('./e2e-harness');
+const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 const mysql = require('mysql2/promise');
 
 const MYSQL_HOST = process.env.MYSQL_HOST || 'localhost';
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_USER = process.env.MYSQL_USER || 'root';
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
-const DB = 'codedb_e2e_schede';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'codedb_schede' });
+const DB = targets.target('db');
 
 let falliti = 0;
 const ok = (cond, etichetta, dettaglio = '') => {
@@ -36,8 +37,8 @@ async function preparaSchema() {
   const c = await mysql.createConnection({
     host: MYSQL_HOST, port: MYSQL_PORT, user: MYSQL_USER, password: MYSQL_PASSWORD, connectTimeout: 4000,
   });
-  await c.query(`DROP DATABASE IF EXISTS ${DB}`);
-  await c.query(`CREATE DATABASE ${DB}`);
+  await targets.drop(DB, (name) => c.query(`DROP DATABASE IF EXISTS \`${name}\``));
+  await c.query(`CREATE DATABASE \`${DB}\``);
   await c.query(`USE ${DB}`);
   await c.query('CREATE TABLE alfa (id INT PRIMARY KEY, nome VARCHAR(20))');
   await c.query("INSERT INTO alfa VALUES (1,'uno'),(2,'due'),(3,'tre')");
@@ -52,7 +53,7 @@ async function pulisciSchema() {
     const c = await mysql.createConnection({
       host: MYSQL_HOST, port: MYSQL_PORT, user: MYSQL_USER, password: MYSQL_PASSWORD, connectTimeout: 4000,
     });
-    await c.query(`DROP DATABASE IF EXISTS ${DB}`);
+    await targets.cleanup((name) => c.query(`DROP DATABASE IF EXISTS \`${name}\``));
     await c.end();
   } catch (_) { /* il database di prova resta: non è un fallimento del test */ }
 }
@@ -100,6 +101,9 @@ async function eseguiScript(page, sql) {
     const erroriJs = [];
     page.on('pageerror', (e) => erroriJs.push(String(e && e.message)));
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(1000); // onboarding automatico: attende la risposta app:info
+    if (await page.locator('#onboarding-overlay').isVisible()) await page.click('#onboarding-close');
+    await page.click('#tab-add-btn');
     await page.waitForSelector('#connect-btn');
 
     // Connessione a MySQL dal modulo vero.
@@ -114,6 +118,12 @@ async function eseguiScript(page, sql) {
       const t = document.querySelector('#db-tree');
       return !!t && t.children.length > 0;
     }, { timeout: 20000 });
+
+    // Il workspace resta vuoto finche non si apre una tabella: la sola
+    // connessione non rende ancora visibili le viste Dati/Query.
+    await page.click(`#db-tree li.db > .node-label[data-db="${DB}"]`);
+    await page.waitForSelector(`#db-tree .node-label[data-db="${DB}"][data-coll="alfa"]`);
+    await page.click(`#db-tree .node-label[data-db="${DB}"][data-coll="alfa"]`);
 
     // Tab ⚡ Query & Aggregate.
     await page.click('.view-tab[data-view="query"]');

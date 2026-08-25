@@ -1456,6 +1456,31 @@ console.log('--- Test Unitari CodeDB ---');
   // full e incrementale: la cardinalita finale non e' la somma delle scritture.
   require('./unit-identita-backup');
 
+  // I layer SQL applicano l'identita dichiarata con veri upsert: mai REPLACE
+  // su MySQL e mai fallback INSERT su PostgreSQL. Il drop preparatorio ignora
+  // soltanto il codice specifico di risorsa assente.
+  await require('./unit-upsert-identitario');
+  await require('./unit-drop-fail-closed');
+
+  // Il seam principale dell'import costruisce un piano immutabile, prepara
+  // staging e recupero, verifica prima/dopo la promozione e non confonde mai
+  // un recupero o un guasto parziale con un successo.
+  await require('./unit-piano-import');
+  await require('./unit-import-adapter');
+  await require('./unit-import-uploads');
+
+  // L'import risponde subito con un id, vive oltre il tab, espone progresso e
+  // stato recuperabile e usa un AbortSignal per l'annullamento cooperativo.
+  await require('./unit-operazione-import');
+
+  // Socket e contesto finti invocano l'evento reale: ack anticipato, lease
+  // oltre la chiusura del tab e stato recuperato da un nuovo contesto.
+  await require('./unit-evento-import');
+
+  // Ogni database/schema distruttivo E2E porta il marcatore casuale della
+  // fixture, richiede un flag esplicito e viene eliminato solo dal suo registro.
+  await require('./unit-e2e-targets');
+
   // Test 29: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

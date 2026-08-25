@@ -904,7 +904,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH);
         const res = await client.query(
-          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT ${params.length}`,
+          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
           params
         );
         if (!res.rows.length) break;
@@ -932,7 +932,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
         params.push(BATCH, offset);
         const res = await client.query(
-          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ctid LIMIT ${params.length - 1} OFFSET ${params.length}`,
+          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
           params
         );
         if (!res.rows.length) break;

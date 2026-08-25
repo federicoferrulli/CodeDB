@@ -8,7 +8,7 @@
 
 const mysql = require('mysql2/promise');
 const { io } = require('socket.io-client');
-const { startTestServer } = require('./e2e-harness');
+const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
@@ -18,7 +18,8 @@ const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/cli
 let BASE = null; // valorizzato dopo l'avvio dell'istanza di test
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
-const DB = 'gui_mysql_e2e_mcp';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mysql_mcp' });
+const DB = targets.target('data');
 const CONN_NAME = 'e2e-mcp-mysql';
 const RW_NAME = 'e2e-mcp-mysql-rw';
 
@@ -52,8 +53,8 @@ let testServer = null;
   try {
     console.log('1. seed dei dati di test (driver MySQL)');
     admin = await mysql.createConnection({ host: '127.0.0.1', port: MYSQL_PORT, user: 'root', password: MYSQL_PASSWORD });
-    await admin.query(`DROP DATABASE IF EXISTS ${DB}`);
-    await admin.query(`CREATE DATABASE ${DB}`);
+    await targets.drop(DB, (name) => admin.query(`DROP DATABASE IF EXISTS \`${name}\``));
+    await admin.query(`CREATE DATABASE \`${DB}\``);
     await admin.query(`CREATE TABLE ${DB}.people (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, born DATETIME)`);
     await admin.query(`INSERT INTO ${DB}.people (name, age, born) VALUES ('Ada', 36, '1990-01-15 10:00:00'), ('Bruno', 41, '1985-06-02 08:30:00')`);
 
@@ -97,7 +98,10 @@ let testServer = null;
     const upd = await call(client, 'execute_query', { connection_id: cid, db: DB, sql: 'UPDATE people SET age = 1' });
     assert(!upd.ok, 'UPDATE bloccato dalla whitelist');
     const cte = await call(client, 'execute_query', { connection_id: cid, db: DB, sql: 'WITH x AS (SELECT 1) DELETE FROM people WHERE age IN (SELECT * FROM x)' });
-    assert(!cte.ok && /READ ONLY/i.test(cte.text), 'DML annidato in CTE bloccato dal motore (READ ONLY)');
+    assert(
+      !cte.ok && /READ ONLY|solo query di lettura/i.test(cte.text),
+      'DML annidato in CTE bloccato dall analisi strutturata o dal motore READ ONLY',
+    );
     const outfile = await call(client, 'execute_query', { connection_id: cid, db: DB, sql: "SELECT * FROM people INTO OUTFILE '/tmp/x'" });
     assert(!outfile.ok, 'INTO OUTFILE bloccato');
     const filt = await call(client, 'execute_query', { connection_id: cid, db: DB, collection: 'people', filter: 'age > 30' });
@@ -160,7 +164,7 @@ let testServer = null;
     }
     if (socket) socket.close();
     if (admin) {
-      await admin.query(`DROP DATABASE IF EXISTS ${DB}`).catch(() => {});
+      await targets.cleanup((name) => admin.query(`DROP DATABASE IF EXISTS \`${name}\``).catch(() => {}));
       await admin.end().catch(() => {});
     }
     // L'istanza di test (e il suo connections.ini temporaneo) sparisce con lei.

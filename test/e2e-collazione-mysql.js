@@ -19,12 +19,14 @@
 
 const assert = require('assert');
 const MySqlStrategy = require('../db/MySqlStrategy');
+const { createE2eTargetRegistry } = require('./e2e-harness');
 
 const HOST = process.env.MYSQL_HOST || 'localhost';
 const PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const USER = process.env.MYSQL_USER || 'root';
 const PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
-const DB = 'codedb_e2e_collazione';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'codedb_collazione' });
+const DB = targets.target('db');
 
 (async () => {
   console.log('--- E2E: collation di connessione (MySQL) ---');
@@ -50,7 +52,7 @@ const DB = 'codedb_e2e_collazione';
     // Uno schema come quelli che il difetto colpiva: database e tabelle in
     // utf8mb4_general_ci (l'eredità di MySQL 5.7), su un server la cui
     // predefinita è un'altra.
-    await esegui(null, `DROP DATABASE IF EXISTS ${DB}`);
+    await targets.drop(DB, (name) => esegui(null, `DROP DATABASE IF EXISTS \`${name}\``));
     await esegui(null, `CREATE DATABASE ${DB} CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci`);
     await esegui(DB, 'CREATE TABLE t (id INT PRIMARY KEY, nome VARCHAR(50))');
     await esegui(DB, "INSERT INTO t VALUES (1,'alfa'),(2,'beta')");
@@ -111,7 +113,7 @@ const DB = 'codedb_e2e_collazione';
 
     console.log('Tutti i test E2E sulla collation superati!');
   } finally {
-    await strategy.collectionAggregate(null, null, { pipeline: `DROP DATABASE IF EXISTS ${DB}` }).catch(() => {});
+    await targets.cleanup((name) => strategy.collectionAggregate(null, null, { pipeline: `DROP DATABASE IF EXISTS \`${name}\`` }).catch(() => {}));
     await strategy.disconnect();
   }
 })().catch((err) => {

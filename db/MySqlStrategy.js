@@ -1397,6 +1397,12 @@ class MySqlStrategy extends DbStrategy {
     const table = qtable(db, coll);
     let inserted = 0;
     const errors = [];
+    const conflictColumns = Array.isArray(payload.conflictColumns)
+      ? payload.conflictColumns.filter((c) => typeof c === 'string' && c)
+      : [];
+    if (payload.upsert && !conflictColumns.length) {
+      throw new Error(`Upsert rifiutato per "${coll}": il piano non dichiara un'identita stabile.`);
+    }
 
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
@@ -1413,6 +1419,28 @@ class MySqlStrategy extends DbStrategy {
       }
     }
 
+    if (payload.upsert) {
+      const incompleta = parsed.find((p) => conflictColumns.some((c) => !p.cols.includes(c)));
+      if (incompleta) {
+        throw new Error(
+          `Upsert rifiutato per "${coll}": la riga ${incompleta.i + 1} non contiene tutta l'identita stabile `
+          + `(${conflictColumns.join(', ')}).`
+        );
+      }
+    }
+
+    const sqlInserimento = (cols, valori) => {
+      let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) ${valori}`;
+      if (payload.upsert) {
+        const aggiornabili = cols.filter((c) => !conflictColumns.includes(c));
+        const assegnazioni = aggiornabili.length
+          ? aggiornabili.map((c) => `${qid(c)} = VALUES(${qid(c)})`)
+          : [`${qid(conflictColumns[0])} = ${qid(conflictColumns[0])}`];
+        sql += ` ON DUPLICATE KEY UPDATE ${assegnazioni.join(', ')}`;
+      }
+      return sql;
+    };
+
     const BATCH_SIZE = 500;
     const groups = [];
     let cur = null;
@@ -1428,18 +1456,20 @@ class MySqlStrategy extends DbStrategy {
 
     for (const g of groups) {
       try {
-        const [res] = await pool.query(
-          `INSERT INTO ${table} (${g.cols.map(qid).join(', ')}) VALUES ?`,
+        await pool.query(
+          sqlInserimento(g.cols, 'VALUES ?'),
           [g.rows.map((r) => r.values)]
         );
-        inserted += res.affectedRows;
+        // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
+        // il conteggio applicato misura righe sorgente, non effetti interni.
+        inserted += g.rows.length;
       } catch {
         // Un vincolo violato da una sola riga fa fallire tutto il batch:
         // si ripete riga per riga per isolare quale e non perdere le altre.
         for (const r of g.rows) {
           try {
             await pool.query(
-              `INSERT INTO ${table} (${g.cols.map(qid).join(', ')}) VALUES (${g.cols.map(() => '?').join(', ')})`,
+              sqlInserimento(g.cols, `VALUES (${g.cols.map(() => '?').join(', ')})`),
               r.values
             );
             inserted += 1;

@@ -37,6 +37,11 @@ const { payloadEsecuzione, assertPayloadEsecuzione } = require('./db/payloadEsec
 const Vault = require('./db/vault');
 const { spiegaErrore } = require('./db/errors');
 const { normalizzaExportDatabase } = require('./db/artefatti');
+const { creaPianoImport } = require('./db/importPlan');
+const { createImportArtifactAdapter } = require('./db/importArtifactAdapter');
+const { createImportOperationRegistry } = require('./db/importOperations');
+const { createImportUploadRegistry } = require('./db/importUploads');
+const { scegliIdentitaSql } = require('./backup/lib/identity');
 
 /* ---------------------------------------------------------------------------
  * Nome della tabella dedotto dal FROM di una query SQL.
@@ -155,6 +160,8 @@ const { can, allowedConnections, canUseConnection, canWholeConnection, isInstall
 const { motivoNonTerminabile, diagnosi: diagnosiSessioni } = require('./db/sessioni');
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
+const importOperations = createImportOperationRegistry();
+const importUploads = createImportUploadRegistry();
 
 // Politiche sulle destinazioni di backup richieste da un client (percorso
 // locale, storage cloud, webhook): vedi backup/lib/policy.js. La CLI non le usa.
@@ -1479,6 +1486,13 @@ const OPERAZIONI_LUNGHE = {
   'script:result': ['statoDiSessione'],
   'script:abort': ['statoDiSessione', 'interruzioneInProcesso'],
   'query:cancel': ['letturaOperazioniInCorso', 'interruzioneInProcesso'],
+  'database:import:start': [
+    'rispostaAnticipata', 'avanzamento', 'interruzioneInProcesso',
+    'statoDiSessione', 'categoriaAuditFinale',
+  ],
+  'database:import:state': ['statoDiSessione', 'letturaOperazioniInCorso'],
+  'database:import:cancel': ['statoDiSessione', 'interruzioneInProcesso'],
+  'database:import:cleanup': ['statoDiSessione', 'interruzioneInProcesso'],
 };
 
 /* ---------------------------------------------------------------------------
@@ -1631,6 +1645,7 @@ const AUDIT_READS = {
   'collection:aggregate': (p) => ({ coll: p.coll, op: 'Aggregazione', pipeline: cutStr(p.pipeline, 300) }),
   'collection:explain':   (p) => ({ coll: p.coll, op: 'Piano di esecuzione (explain)' }),
   'collection:export':    (p) => ({ coll: p.coll, op: 'Export collection/tabella' }),
+  'collection:identity':  (p) => ({ coll: p.coll, op: 'Lettura identità stabile' }),
   // Il pannello delle chiavi esterne legge righe VERE di un'altra tabella, non
   // metadati: è una lettura di dati quanto una find, e come tale va tracciata.
   // (`collection:relations` invece resta fuori, come db:schema: sono i soli
@@ -2774,6 +2789,12 @@ function registraEventi(ctx) {
     // Rimuovi prima di await: evita doppie chiusure su chiamate concorrenti.
     sessions.delete(tabId);
     activeGlobalSessions--;
+    // Un import gia' accettato possiede una lease della sessione: chiudere il
+    // tab stacca la UI ma non spegne il driver sotto un'operazione viva.
+    if (sess.importLeases > 0) {
+      sess.detachedForImport = true;
+      return;
+    }
     sess.closed = true;
     if (typeof sess.cancelReconnectWait === 'function') sess.cancelReconnectWait();
     // Script ancora in corso su questa sessione: senza `abort` il ciclo
@@ -3155,6 +3176,31 @@ function registraEventi(ctx) {
     ok: true,
     artifact: normalizzaExportDatabase(payload.artifact, { expectedDbType: payload.expectedDbType }),
   }));
+
+  delegate('database:import:upload:start', async () => {
+    const registry = ctx.importUploads || importUploads;
+    return registry.start(principal.ownerId);
+  });
+
+  delegate('database:import:upload:chunk', async (_strategy, payload) => {
+    const registry = ctx.importUploads || importUploads;
+    return registry.append(payload.uploadId, principal.ownerId, payload.index, payload.chunk);
+  });
+
+  delegate('database:import:upload:finish', async (strategy, payload) => {
+    const registry = ctx.importUploads || importUploads;
+    const artifact = registry.finish(payload.uploadId, principal.ownerId, (raw) => (
+      normalizzaExportDatabase(raw, { expectedDbType: strategy.type })
+    ));
+    return {
+      artifact: {
+        db: artifact.db, dbType: artifact.dbType,
+        collections: artifact.collections.map((collection) => ({
+          name: collection.name, rows: collection.docs.length, identity: collection.identity || null,
+        })),
+      },
+    };
+  });
 
   /**
    * "Controlla aggiornamenti…" richiesto dall'interfaccia web.
@@ -4413,6 +4459,19 @@ function registraEventi(ctx) {
   // file; import: il client invia batch di documenti/righe in Extended JSON.
 
   delegate('collection:export', (strategy, p) => strategy.collectionExport(p.db, p.coll, p));
+  delegate('collection:identity', async (strategy, p) => {
+    const type = strategy.type === 'postgres' ? 'postgresql' : strategy.type;
+    if (type === 'mongodb') return { identity: { kind: 'mongodb-id', columns: ['_id'] } };
+    const info = await strategy.tableColumnsInfo(p.db, p.coll);
+    const primary = await strategy.primaryKey(p.db, p.coll);
+    const uniques = await strategy.uniqueIndexes(p.db, p.coll);
+    const constraints = [];
+    if (primary.length) constraints.push({ kind: 'primary-key', name: 'PRIMARY', columns: primary });
+    for (let i = 0; i < uniques.length; i++) {
+      constraints.push({ kind: 'unique', name: `unique_${i + 1}`, columns: uniques[i] });
+    }
+    return { identity: scegliIdentitaSql(info.columns, constraints) };
+  });
   delegate('collection:import', (strategy, p) => strategy.collectionImport(p.db, p.coll, p));
   // DDL della tabella (CREATE TABLE, solo SQL; null per MongoDB): usato
   // dall'export di interi database per rendere il file auto-contenuto.
@@ -4420,6 +4479,101 @@ function registraEventi(ctx) {
   // Indici e chiavi esterne della tabella, da applicare in coda all'import
   // quando tutte le tabelle esistono e i dati sono stati caricati.
   delegate('collection:auxddl', async (strategy, p) => await strategy.tableAuxDdl(p.db, p.coll));
+
+  // --- Import database come operazione lunga ---------------------------------
+
+  operazioneLunga('database:import:start', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+    assertWholeConnection(principal, sess.connName, 'manage', 'importare un database');
+    const uploadRegistry = ctx.importUploads || importUploads;
+    const artifact = payload.uploadId
+      ? uploadRegistry.get(payload.uploadId, principal.ownerId)
+      : payload.artifact;
+    const plan = creaPianoImport({
+      artifact,
+      expectedDbType: sess.dbType || sess.strategy.type,
+      connection: sess.connName || sess.label || 'ui-session',
+      targetDb: payload.targetDb,
+      drop: !!payload.drop,
+    });
+    const publicPlan = {
+      fingerprint: plan.fingerprint, connection: plan.connection, targetDb: plan.targetDb,
+      collections: plan.collections, promotion: plan.promotion, drop: plan.drop,
+    };
+    if (payload.previewOnly) {
+      cb({ ok: true, preview: true, plan: publicPlan });
+      return;
+    }
+    if (payload.expectedFingerprint !== plan.fingerprint) {
+      throw new Error('Il piano e cambiato dopo la conferma: rileggi l’anteprima prima di eseguire.');
+    }
+    const registry = ctx.importRegistry || importOperations;
+    const adapterFactory = ctx.createImportAdapter || createImportArtifactAdapter;
+    const adapter = adapterFactory({
+      strategy: sess.strategy,
+      dbType: sess.dbType || sess.strategy.type,
+      connName: plan.connection,
+      recoveryRoot: path.join(backupRootOf(principal), 'import-recovery'),
+      signal: null,
+    });
+    sess.importLeases = (sess.importLeases || 0) + 1;
+    const accepted = registry.start({
+      plan, adapter, ownerId: principal.ownerId, tabId,
+      onProgress: (state) => socket.emit('database:import:progress', state),
+      onSettled: async (state) => {
+        sess.importLeases = Math.max(0, (sess.importLeases || 1) - 1);
+        auditWrite(
+          sess, 'database:import:start', { db: plan.targetDb },
+          { op: 'Import database', operationId: state.operationId, fingerprint: plan.fingerprint },
+          state.status === 'completato' ? 'ok' : 'error', state,
+          state.error ? Object.assign(new Error(state.error), {
+            code: state.originalError && state.originalError.code,
+            codeName: state.originalError && state.originalError.codeName,
+            target: state.originalError && state.originalError.target || plan.targetDb,
+          }) : null,
+        );
+        if (sess.detachedForImport && sess.importLeases === 0 && !sess.closed) {
+          sess.closed = true;
+          await teardownConnection(sess);
+        }
+        if (payload.uploadId && typeof uploadRegistry.remove === 'function') {
+          try { uploadRegistry.remove(payload.uploadId, principal.ownerId); } catch (_) { /* gia scaduto */ }
+        }
+      },
+    });
+    cb({ ok: true, accepted, plan: publicPlan });
+  });
+
+  operazioneLunga('database:import:state', async (payload, cb) => {
+    const registry = ctx.importRegistry || importOperations;
+    cb({ ok: true, operation: registry.get(payload.operationId, principal.ownerId) });
+  });
+
+  operazioneLunga('database:import:cancel', async (payload, cb) => {
+    const registry = ctx.importRegistry || importOperations;
+    cb({ ok: true, cancelled: registry.cancel(payload.operationId, principal.ownerId) });
+  });
+
+  operazioneLunga('database:import:cleanup', async (payload, cb) => {
+    const tabId = normTabId(payload.tabId);
+    const sess = sessions.get(tabId);
+    if (!sess) throw new Error('Apri la connessione usata dall’import prima di eliminare staging e recupero.');
+    assertWholeConnection(principal, sess.connName, 'manage', 'eliminare staging e recupero di un import');
+    const registry = ctx.importRegistry || importOperations;
+    const operation = registry.get(payload.operationId, principal.ownerId);
+    if (operation.connection !== (sess.connName || sess.label)) {
+      throw new Error(`L’operazione appartiene alla connessione "${operation.connection}".`);
+    }
+    const adapterFactory = ctx.createImportAdapter || createImportArtifactAdapter;
+    const adapter = adapterFactory({
+      strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type,
+      connName: operation.connection,
+      recoveryRoot: path.join(backupRootOf(principal), 'import-recovery'),
+    });
+    cb({ ok: true, operation: await registry.cleanup(payload.operationId, principal.ownerId, adapter) });
+  });
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
   // I DBMS senza change stream (MySQL) falliscono qui: il frontend nasconde

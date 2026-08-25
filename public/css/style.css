@@ -2797,6 +2797,10 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   color: var(--fg-dim);
 }
 .import-failed { color: var(--danger); }
+.dbimport-report { border-left: 3px solid var(--border); padding-left: 10px; }
+.dbimport-report.esito-completato { border-left-color: var(--status-ok); }
+.dbimport-report.esito-ripristinato_dopo_errore { border-left-color: var(--status-warn); }
+.dbimport-report.esito-intervento_richiesto { border-left-color: var(--status-err); }
 /* ===================== Piano di esecuzione (EXPLAIN) ===================== */
 .explain-body {
   max-height: 60vh;

@@ -1417,7 +1417,8 @@ class PostgreSqlStrategy extends DbStrategy {
          JOIN information_schema.key_column_usage kcu
            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
          JOIN information_schema.constraint_column_usage ccu
-           ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+            ON ccu.constraint_name = tc.constraint_name
+           AND ccu.constraint_schema = tc.constraint_schema
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema = $1
           AND tc.table_name = $2
@@ -1547,6 +1548,9 @@ class PostgreSqlStrategy extends DbStrategy {
     const pk = payload.upsert
       ? (conflictColumns.length ? conflictColumns : await this.primaryKey(db, coll))
       : [];
+    if (payload.upsert && !pk.length) {
+      throw new Error(`Upsert rifiutato per "${coll}": il piano non dichiara un'identita stabile.`);
+    }
     // Nomi reali delle colonne: serve a distinguere l'`_id` virtuale da una
     // colonna omonima (CDB-41), comune nelle tabelle migrate da MongoDB.
     let colonneReali = new Set();
@@ -1574,6 +1578,16 @@ class PostgreSqlStrategy extends DbStrategy {
         parsed.push({ i, cols, values: cols.map((c) => row[c]) });
       } catch (err) {
         if (errors.length < 10) errors.push(`Riga ${i + 1}: ${(err && err.message) || err}`);
+      }
+    }
+
+    if (payload.upsert) {
+      const incompleta = parsed.find((p) => pk.some((c) => !p.cols.includes(c)));
+      if (incompleta) {
+        throw new Error(
+          `Upsert rifiutato per "${coll}": la riga ${incompleta.i + 1} non contiene tutta l'identita stabile `
+          + `(${pk.join(', ')}).`
+        );
       }
     }
 

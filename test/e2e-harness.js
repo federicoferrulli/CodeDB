@@ -30,8 +30,49 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 
 const DEFAULT_PORT = parseInt(process.env.E2E_PORT, 10) || 3141;
+
+/**
+ * Registro di proprieta dei bersagli distruttivi della singola fixture.
+ * `destructive: true` e' il flag esplicito: senza, il primo drop e' rifiutato.
+ */
+function createE2eTargetRegistry({ destructive = false, prefix = 'codedb_e2e' } = {}) {
+  const marker = crypto.randomBytes(6).toString('hex');
+  const owned = new Set();
+  const safePrefix = String(prefix).replace(/[^A-Za-z0-9_]/g, '_').slice(0, 24) || 'codedb_e2e';
+  return {
+    marker,
+    target(label) {
+      const safeLabel = String(label).replace(/[^A-Za-z0-9_]/g, '_').slice(0, 20) || 'target';
+      const name = `${safePrefix}_${safeLabel}_${marker}`;
+      owned.add(name);
+      return name;
+    },
+    assertOwned(name) {
+      if (!destructive) {
+        throw new Error('Comando distruttivo E2E rifiutato: manca il flag esplicito destructive: true.');
+      }
+      if (!owned.has(String(name)) || !String(name).endsWith(`_${marker}`)) {
+        throw new Error(`Bersaglio distruttivo E2E non posseduto dalla fixture corrente: "${name}".`);
+      }
+      return true;
+    },
+    async drop(name, action) {
+      this.assertOwned(name);
+      return action(name);
+    },
+    targets() { return [...owned]; },
+    async cleanup(action) {
+      for (const name of [...owned].reverse()) {
+        this.assertOwned(name);
+        await action(name);
+      }
+      owned.clear();
+    },
+  };
+}
 
 function ping(port) {
   return new Promise((resolve) => {
@@ -120,4 +161,4 @@ async function startTestServer({ port = DEFAULT_PORT, verbose = false, env = {} 
   };
 }
 
-module.exports = { startTestServer, DEFAULT_PORT };
+module.exports = { startTestServer, DEFAULT_PORT, createE2eTargetRegistry };

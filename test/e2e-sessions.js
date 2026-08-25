@@ -23,7 +23,7 @@
  * ------------------------------------------------------------------------- */
 
 const { io } = require('socket.io-client');
-const { startTestServer } = require('./e2e-harness');
+const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || process.env.MYSQL_ROOT_PASSWORD || '';
@@ -168,7 +168,8 @@ async function testMysql() {
    * Verifica il ramo `performance_schema.data_lock_waits`, che altrimenti
    * resterebbe non provato — e che è l'unica cosa che rende il pannello capace
    * di indicare la riga giusta invece della vittima. */
-  const DB = 'gui_mysql_e2e_sessioni';
+  const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mysql_sessioni' });
+  const DB = targets.target('lock');
   const A = await mysql.createConnection({ host: 'localhost', port: MYSQL_PORT, user: 'root', password: MYSQL_PASSWORD });
   const B = await mysql.createConnection({ host: 'localhost', port: MYSQL_PORT, user: 'root', password: MYSQL_PASSWORD });
   try {
@@ -197,7 +198,7 @@ async function testMysql() {
     }
   } finally {
     try { await A.query('ROLLBACK'); } catch {}
-    try { await B.query(`DROP DATABASE IF EXISTS \`${DB}\``); } catch {}
+    try { await targets.cleanup((name) => B.query(`DROP DATABASE IF EXISTS \`${name}\``)); } catch {}
     await A.end().catch(() => {});
     await B.end().catch(() => {});
   }

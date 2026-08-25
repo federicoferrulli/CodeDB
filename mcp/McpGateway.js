@@ -47,6 +47,8 @@ const {
   analyzeMongoPipeline, assertNoMongoServerJs,
 } = require('../auth/capabilities');
 const { spiegaErrore } = require('../db/errors');
+const { creaPianoImport, eseguiPianoImport } = require('../db/importPlan');
+const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
 // Stessa mappatura di auth/capabilities.js (write/delete/ddl): così il gate del
@@ -1388,6 +1390,66 @@ function buildMcpServer(session, deps) {
         drop: !!args.drop,
       },
     });
+  });
+
+  tool('import_database_artifact', {
+    title: 'Importa un export CodeDB (con conferma)',
+    description:
+      'Importa un file .codedb.json attraverso lo stesso motore di piano, staging, verifica e recupero usato dalla UI e dalla CLI. ' +
+      'Primo passo senza confirm_token: restituisce piano, identita, strategia e token. Mostrali all’utente umano. ' +
+      'Richiama con confirm_token soltanto dopo approvazione esplicita; non confermare autonomamente.',
+    inputSchema: {
+      connection_id: z.string(),
+      artifact_json: z.string().describe('Contenuto integrale del file .codedb.json'),
+      target_db: z.string(),
+      drop: z.boolean().optional(),
+      confirm_token: z.string().optional(),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  }, async (args) => {
+    const sess = requireDbSession(args.connection_id);
+    if (!refreshWritesAllowed(session, sess, deps)) {
+      throw new Error(`La connessione "${sess.name}" è in sola lettura: l'import richiede readOnly=false.`);
+    }
+    if (!canWholeConnection(sessionPrincipal(session), sess.name, 'manage')) {
+      throw new Error(`Permesso negato: la API key non può importare database sulla connessione "${sess.name}".`);
+    }
+    const plan = creaPianoImport({
+      artifact: args.artifact_json, expectedDbType: sess.dbType,
+      connection: sess.name, targetDb: args.target_db, drop: !!args.drop,
+    });
+    const token = String(args.confirm_token || '').trim();
+    if (!token) {
+      audit({ sessionId: session.id, connection: sess.name, operation: 'import', event: 'requested', targetDb: plan.targetDb });
+      return confirmFlow.issue('import', {
+        connectionId: String(args.connection_id), plan,
+      }, {
+        toolName: 'import_database_artifact',
+        preview: {
+          fingerprint: plan.fingerprint,
+          connection: plan.connection,
+          target_db: plan.targetDb,
+          collections: plan.collections,
+          promotion: plan.promotion,
+          drop: plan.drop,
+        },
+      });
+    }
+    const pending = confirmFlow.consume(
+      token, 'import', (p) => p.connectionId === String(args.connection_id)
+        && p.plan.fingerprint === plan.fingerprint, 'piano/connessione',
+    );
+    const log = createLogger(path.join(backupRootOf(session), 'backup.log'), { quiet: true });
+    const adapter = createImportArtifactAdapter({
+      strategy: sess.strategy, dbType: sess.dbType, connName: sess.name,
+      recoveryRoot: path.join(backupRootOf(session), 'import-recovery'), log,
+    });
+    const result = await eseguiPianoImport(pending.plan, { adapter });
+    audit({
+      sessionId: session.id, connection: sess.name, operation: 'import',
+      event: result.status, targetDb: pending.plan.targetDb, error: result.error,
+    });
+    return jsonResult({ executed: true, ...result });
   });
 
   // --- Resources (Fase 2): schema come risorsa markdown -----------------------

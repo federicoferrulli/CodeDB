@@ -5,7 +5,7 @@
  * codedb-backup — CLI di backup e ripristino per i database di CodeDB.
  *
  * Riusa le connessioni salvate in connections.ini (in SOLA lettura: questo
- * processo non riscrive mai il file) e le strategie MongoDB/MySQL di db/,
+ * processo non riscrive mai il file) e le strategie MongoDB/MySQL/PostgreSQL di db/,
  * tunnel SSH compreso. `node backup/cli.js help` per la guida completa.
  * ------------------------------------------------------------------------- */
 
@@ -19,13 +19,15 @@ const { runRestore } = require('./lib/restore');
 const { parseStorage, uploadBackupDir } = require('./lib/storage');
 const { notifySlack } = require('./lib/notify');
 const { readCatalog, verifyBackupDir, formatBytes } = require('./lib/util');
+const { creaPianoImport, eseguiPianoImport } = require('../db/importPlan');
+const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
 
 // CODEDB_BACKUPS_DIR: stesso override rispettato dal gateway MCP (mcp/McpGateway.js),
 // così CLI e MCP condividono la cartella di default anche nell'app Electron pacchettizzata.
 const DEFAULT_DEST = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups');
 
 const HELP = `
-codedb-backup — backup e ripristino dei database CodeDB (MongoDB e MySQL)
+codedb-backup — backup, ripristino e import dei database CodeDB
 
 USO
   node backup/cli.js <comando> [opzioni]        (oppure: npm run backup -- <comando> [opzioni])
@@ -33,6 +35,7 @@ USO
 COMANDI
   backup     Esegue il backup di un database su cartella locale (ed eventuale cloud).
   restore    Ripristina un database da una cartella di backup (catena incrementale risolta da sola).
+  import     Importa un file .codedb.json attraverso piano, staging e recupero.
   list       Elenca i backup presenti nella cartella di destinazione.
   verify     Verifica i checksum SHA-256 dei file di un backup.
   help       Mostra questa guida.
@@ -67,12 +70,19 @@ RESTORE
   --allow-unsafe-schema    Esegue il DDL del backup anche se non è una semplice definizione
                            della tabella attesa (usare solo su backup di provenienza certa).
 
+IMPORT
+  --from <file>            File .codedb.json da importare.
+  --target-db <nome>       Database/schema di destinazione (obbligatorio).
+  --drop                   Sostituisce il contenuto invece di richiedere un merge identitario.
+  --confirm-plan <sha256>  Impronta mostrata dal primo avvio; obbligatoria per eseguire.
+
 ESEMPI
   node backup/cli.js backup  --conn mongo-locale --db shop --type full
   node backup/cli.js backup  --conn mongo-locale --db shop --type incremental --since-field updatedAt
   node backup/cli.js backup  --conn mysql-locale --db negozio --storage s3://miei-backup/codedb
   node backup/cli.js restore --conn mongo-locale --from backups/mongo-locale_shop/20260714-100000_full --target-db shop_copia
   node backup/cli.js restore --conn mysql-locale --from backups/mysql-locale_negozio/20260714-110000_incremental --drop
+  node backup/cli.js import  --conn pg-locale --from export.codedb.json --target-db copia
   node backup/cli.js list    --dest backups
   node backup/cli.js verify  --from backups/mongo-locale_shop/20260714-100000_full
 
@@ -102,6 +112,7 @@ const OPZIONI = new Set([
   'conn', 'owner', 'dest', 'slack-webhook',
   'db', 'type', 'collections', 'since-field', 'compress-level', 'storage',
   'from', 'target-db',
+  'confirm-plan',
 ]);
 
 /** Distanza di edit, per suggerire l'opzione che l'utente intendeva scrivere. */
@@ -261,6 +272,42 @@ async function cmdRestore(args) {
   }
 }
 
+async function cmdImport(args) {
+  const connName = requireOpt(args, 'conn', 'connessione di destinazione');
+  const from = path.resolve(requireOpt(args, 'from', 'file .codedb.json'));
+  const targetDb = requireOpt(args, 'target-db', 'database/schema di destinazione');
+  const artifact = JSON.parse(fs.readFileSync(from, 'utf8'));
+  const cfg = await resolveSavedConnection(connName, args.owner);
+  const session = await establishConnection(cfg);
+  const log = createLogger(path.join(path.resolve(args.dest || DEFAULT_DEST), 'backup.log'), { quiet: !!args.quiet });
+  try {
+    const plan = creaPianoImport({
+      artifact, expectedDbType: session.dbType, connection: connName,
+      targetDb, drop: !!args.drop,
+    });
+    console.log(`Piano import: ${plan.fingerprint}`);
+    console.log(`  ${connName} → ${targetDb}; ${plan.collections.length} collection/tabelle; ${plan.promotion.kind}`);
+    if (args['confirm-plan'] !== plan.fingerprint) {
+      throw new Error(
+        `Conferma mancante o diversa. Rileggi il piano e riesegui con --confirm-plan ${plan.fingerprint}`
+      );
+    }
+    const adapter = createImportArtifactAdapter({
+      strategy: session.strategy, dbType: session.dbType, connName,
+      recoveryRoot: path.join(path.resolve(args.dest || DEFAULT_DEST), 'import-recovery'), log,
+    });
+    const result = await eseguiPianoImport(plan, {
+      adapter, onProgress: (event) => log.info(`Import: ${event.phase} ${event.status}`),
+    });
+    console.log(`Esito import: ${result.status}`);
+    if (result.status !== 'completato') {
+      throw new Error(`${result.status}: ${result.error || 'operazione non completata'}`);
+    }
+  } finally {
+    await teardownConnection(session);
+  }
+}
+
 function cmdList(args) {
   const destRoot = path.resolve(args.dest || DEFAULT_DEST);
   if (!fs.existsSync(destRoot)) {
@@ -336,10 +383,11 @@ async function main() {
   try {
     if (cmd === 'backup') await cmdBackup(args);
     else if (cmd === 'restore') await cmdRestore(args);
+    else if (cmd === 'import') await cmdImport(args);
     else if (cmd === 'list') cmdList(args);
     else if (cmd === 'verify') await cmdVerify(args);
     else {
-      console.error(`Comando sconosciuto: "${cmd}". Comandi: backup, restore, list, verify, help.`);
+      console.error(`Comando sconosciuto: "${cmd}". Comandi: backup, restore, import, list, verify, help.`);
       process.exitCode = 2;
     }
   } catch (err) {

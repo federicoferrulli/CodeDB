@@ -17,7 +17,7 @@
  * ------------------------------------------------------------------------- */
 
 const { io } = require('socket.io-client');
-const { startTestServer } = require('./e2e-harness');
+const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
 
 const PG_HOST = process.env.PG_HOST || '127.0.0.1';
 const PG_PORT = parseInt(process.env.PG_PORT, 10) || 5432;
@@ -27,8 +27,11 @@ const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
 
 // Due schemi con la STESSA tabella: è la configurazione che faceva sbagliare
 // bersaglio a ogni operazione.
-const SCHEMA_A = 'codedb_e2e_a';
-const SCHEMA_B = 'codedb_e2e_b';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'codedb_pg' });
+const SCHEMA_A = targets.target('a');
+const SCHEMA_B = targets.target('b');
+const SCHEMA_NEW = targets.target('nuovo');
+const SCHEMA_RENAMED = targets.target('rinominato');
 const TABLE = 'ordini';
 
 let socket = null;
@@ -63,8 +66,8 @@ async function withAdmin(fn) {
 
 async function seed() {
   await withAdmin(async (c) => {
-    await c.query(`DROP SCHEMA IF EXISTS ${JSON.stringify(SCHEMA_A).replace(/"/g, '"')} CASCADE`);
-    await c.query(`DROP SCHEMA IF EXISTS "${SCHEMA_B}" CASCADE`);
+    await targets.drop(SCHEMA_A, (name) => c.query(`DROP SCHEMA IF EXISTS "${name}" CASCADE`));
+    await targets.drop(SCHEMA_B, (name) => c.query(`DROP SCHEMA IF EXISTS "${name}" CASCADE`));
     await c.query(`CREATE SCHEMA "${SCHEMA_A}"`);
     await c.query(`CREATE SCHEMA "${SCHEMA_B}"`);
     // Stessa tabella, colonne e chiavi DIVERSE: se un'operazione sbaglia schema
@@ -94,10 +97,7 @@ async function seed() {
 
 async function cleanup() {
   await withAdmin(async (c) => {
-    await c.query(`DROP SCHEMA IF EXISTS "${SCHEMA_A}" CASCADE`);
-    await c.query(`DROP SCHEMA IF EXISTS "${SCHEMA_B}" CASCADE`);
-    await c.query('DROP SCHEMA IF EXISTS codedb_e2e_nuovo CASCADE');
-    await c.query('DROP SCHEMA IF EXISTS codedb_e2e_rinominato CASCADE');
+    await targets.cleanup((name) => c.query(`DROP SCHEMA IF EXISTS "${name}" CASCADE`));
   }).catch(() => {});
 }
 
@@ -312,16 +312,16 @@ async function runTests() {
     `SELECT non qualificata risolta in B (${raw.ok ? raw.docs.map((d) => d.cliente).join(', ') : raw.error})`);
 
   console.log('11. DDL sul livello "database" = schema');
-  const created = await emit('db:create', { db: 'codedb_e2e_nuovo', coll: 'prima_tabella' });
+  const created = await emit('db:create', { db: SCHEMA_NEW, coll: 'prima_tabella' });
   assert(created.ok, `creazione schema riuscita (${created.ok ? 'ok' : created.error})`);
   const listAfter = await emit('db:list', {});
-  assert(listAfter.ok && listAfter.databases.some((d) => d.name === 'codedb_e2e_nuovo'), 'il nuovo schema compare nell\'elenco');
-  const collNew = await emit('db:collections', { db: 'codedb_e2e_nuovo' });
+  assert(listAfter.ok && listAfter.databases.some((d) => d.name === SCHEMA_NEW), 'il nuovo schema compare nell\'elenco');
+  const collNew = await emit('db:collections', { db: SCHEMA_NEW });
   assert(collNew.ok && collNew.collections.some((c) => c.name === 'prima_tabella'),
     'la prima tabella è stata creata NELLO schema nuovo (prima finiva in un database irraggiungibile)');
-  const renamed = await emit('db:rename', { db: 'codedb_e2e_nuovo', newName: 'codedb_e2e_rinominato' });
+  const renamed = await emit('db:rename', { db: SCHEMA_NEW, newName: SCHEMA_RENAMED });
   assert(renamed.ok, `rinomina schema riuscita (${renamed.ok ? 'ok' : renamed.error})`);
-  const dropped = await emit('db:drop', { db: 'codedb_e2e_rinominato' });
+  const dropped = await emit('db:drop', { db: SCHEMA_RENAMED });
   assert(dropped.ok, `eliminazione schema riuscita (${dropped.ok ? 'ok' : dropped.error})`);
   const sysDrop = await emit('db:drop', { db: 'information_schema' });
   assert(!sysDrop.ok, 'eliminazione di uno schema di sistema rifiutata');

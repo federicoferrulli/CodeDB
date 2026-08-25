@@ -73,7 +73,7 @@ module.exports = (async () => {
   await prova('ogni operazione lunga dichiara quali punti usa', () => {
     const tabella = bloccoSorgente(src, 'const OPERAZIONI_LUNGHE = {', '\n/* ---');
     const eventi = [...src.matchAll(/\boperazioneLunga\(\s*'([^']+)'/g)].map((m) => m[1]);
-    assert.strictEqual(eventi.length, 8, `attesi 8 eventi, trovati ${eventi.length}: ${eventi.join(', ')}`);
+    assert.strictEqual(eventi.length, 12, `attesi 12 eventi, trovati ${eventi.length}: ${eventi.join(', ')}`);
     for (const evento of eventi) {
       assert.ok(tabella.includes(`'${evento}':`), `${evento} non dichiara i suoi punti di estensione`);
     }
@@ -258,7 +258,7 @@ module.exports = (async () => {
 
   /* --- La famiglia non è il cassetto ------------------------------------ */
 
-  await prova('gli otto eventi non sono rimasti anche sulla via generica', () => {
+  await prova('i dodici eventi non sono rimasti anche sulla via generica', () => {
     const generici = [...src.matchAll(/\bsafeOn\(\s*'([^']+)'/g)].map((m) => m[1]);
     const lunghi = [...src.matchAll(/\boperazioneLunga\(\s*'([^']+)'/g)].map((m) => m[1]);
     const doppi = lunghi.filter((e) => generici.includes(e));

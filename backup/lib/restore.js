@@ -38,6 +38,25 @@ const TIPI_BINARI_MYSQL = new Set([
 
 const BATCH_SIZE = 500;
 
+/**
+ * Esegue una cancellazione preparatoria ignorando esclusivamente l'errore che
+ * dimostra l'assenza del bersaglio. Autorizzazione, rete e timeout conservano
+ * l'errore originale: chi orchestra puo cosi auditarne codice e messaggio.
+ */
+async function eliminaSePresente(elimina, { dbType, target } = {}) {
+  try {
+    return await elimina();
+  } catch (err) {
+    const mongoAssente = ['mongodb', 'mongo'].includes(String(dbType))
+      && (err && (err.code === 26 || err.codeName === 'NamespaceNotFound'));
+    const postgresAssente = ['postgresql', 'postgres'].includes(String(dbType))
+      && err && err.code === '42P01';
+    if (mongoAssente || postgresAssente) return false;
+    if (err && target && !err.target) err.target = target;
+    throw err;
+  }
+}
+
 function trackerPer(tracker, collection, identity) {
   if (!tracker.has(collection)) tracker.set(collection, {
     identity, writes: 0, expectedCardinality: null, expectedDistinctIdentities: null,
@@ -623,7 +642,11 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
   for (const f of dataFiles) {
     registraFileAtteso(tracker, f);
     const collection = client.db(targetDb).collection(f.collection);
-    if (isFirst && drop) await collection.drop().catch(() => {});
+    if (isFirst && drop) {
+      await eliminaSePresente(() => collection.drop(), {
+        dbType: 'mongodb', target: `${targetDb}.${f.collection}`,
+      });
+    }
     if (!f.identity) {
       const empty = (await collection.countDocuments({})) === 0;
       assertColumnsAndIdentity(f, [], null, { empty });
@@ -779,17 +802,29 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
 
       // I layer successivi al primo (e le tabelle senza colonna data incluse
       // per intero in un incrementale) vanno applicati come upsert.
-      const verb = isFirst ? 'INSERT' : 'REPLACE';
+      const verb = isFirst ? 'INSERT' : 'UPSERT';
       let batch = [];
       let columns = null;
       let applied = 0;
       const flush = async () => {
         if (!batch.length) return;
         const listaColonne = columns.map((c) => myQid(c)).join(', ');
+        const conflictColumns = f.identity ? f.identity.columns : [];
+        if (!isFirst && !conflictColumns.length) {
+          throw new Error(`Upsert rifiutato per "${f.collection}": il manifest non dichiara un'identita stabile.`);
+        }
+        const aggiornabili = columns.filter((c) => !conflictColumns.includes(c));
+        const upsertSql = !isFirst
+          ? ` ON DUPLICATE KEY UPDATE ${(
+            aggiornabili.length
+              ? aggiornabili.map((c) => `${myQid(c)} = VALUES(${myQid(c)})`)
+              : [`${myQid(conflictColumns[0])} = ${myQid(conflictColumns[0])}`]
+          ).join(', ')}`
+          : '';
         const geoNelBatch = columns.some((c) => geoTarget.has(c));
         if (!geoNelBatch) {
           // Percorso veloce, invariato: nessuna geometria, insert multiplo.
-          await conn.query(`${verb} INTO ${tableId} (${listaColonne}) VALUES ?`, [batch]);
+          await conn.query(`INSERT INTO ${tableId} (${listaColonne}) VALUES ?${upsertSql}`, [batch]);
         } else {
           // Con le geometrie ogni riga ha bisogno delle proprie espressioni,
           // quindi la clausola VALUES si costruisce esplicitamente.
@@ -818,7 +853,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
             return `(${segnaposti.join(', ')})`;
           });
           await conn.query(
-            `${verb} INTO ${tableId} (${listaColonne}) VALUES ${tuple.join(', ')}`, params,
+            `INSERT INTO ${tableId} (${listaColonne}) VALUES ${tuple.join(', ')}${upsertSql}`, params,
           );
         }
         applied += batch.length;
@@ -937,7 +972,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     registraFileAtteso(tracker, f);
     if (isFirst) {
       if (drop) {
-        await strategy.dropCollection(targetDb, f.collection).catch(() => {});
+        await eliminaSePresente(() => strategy.dropCollection(targetDb, f.collection), {
+          dbType: 'postgresql', target: `${targetDb}.${f.collection}`,
+        });
         if (existingTables) existingTables.delete(f.collection);
       }
       const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
@@ -1228,4 +1265,6 @@ module.exports = {
   checkApplied,
   assertSafeSchemaSql,
   splitStatements,
+  eliminaSePresente,
+  cardinalitaDestinazione,
 };

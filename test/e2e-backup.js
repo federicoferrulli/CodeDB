@@ -24,9 +24,11 @@ const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { MongoClient } = require('mongodb');
+const { createE2eTargetRegistry } = require('./e2e-harness');
 
-const DB = 'gui_mongodb_e2e_backup';
-const DB_RESTORE = 'gui_mongodb_e2e_backup_restore';
+const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mongodb_backup' });
+const DB = targets.target('source');
+const DB_RESTORE = targets.target('restore');
 const CLI = path.join(__dirname, '..', 'backup', 'cli.js');
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-backup-e2e-'));
@@ -45,8 +47,8 @@ async function main() {
   const client = new MongoClient('mongodb://localhost:27017', { serverSelectionTimeoutMS: 4000 });
   await client.connect();
   try {
-    await client.db(DB).dropDatabase().catch(() => {});
-    await client.db(DB_RESTORE).dropDatabase().catch(() => {});
+    await targets.drop(DB, (name) => client.db(name).dropDatabase()).catch(() => {});
+    await targets.drop(DB_RESTORE, (name) => client.db(name).dropDatabase()).catch(() => {});
 
     // Seed: due collection, un indice, tipi EJSON significativi (Date).
     const utenti = client.db(DB).collection('utenti');
@@ -125,8 +127,7 @@ async function main() {
 
     console.log('e2e-backup: tutti i test superati.');
   } finally {
-    await client.db(DB).dropDatabase().catch(() => {});
-    await client.db(DB_RESTORE).dropDatabase().catch(() => {});
+    await targets.cleanup((name) => client.db(name).dropDatabase().catch(() => {}));
     await client.close();
     fs.rmSync(tmpRoot, { recursive: true, force: true });
   }

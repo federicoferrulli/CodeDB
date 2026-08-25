@@ -332,6 +332,10 @@ const EVENT_CAPABILITY = {
   'db:schema': 'read',
   'collection:stats': 'read',
   'collection:ddl': 'read',
+  'collection:identity': 'read',
+  'database:import:upload:start': 'manage',
+  'database:import:upload:chunk': 'manage',
+  'database:import:upload:finish': 'manage',
   'collection:relations': 'read',
   // Legge righe della tabella RIFERITA: il payload porta il suo db/coll, quindi
   // lo scope viene applicato sul bersaglio giusto. Chi non può leggere
