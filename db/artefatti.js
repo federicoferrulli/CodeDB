@@ -12,6 +12,7 @@
  * ------------------------------------------------------------------------- */
 
 const { splitStatementsDetailed } = require('./sqlText');
+const { validaIdentity, chiaveIdentita } = require('../backup/lib/identity');
 
 const FORMATO_EXPORT = 'codedb-database';
 const TIPI_SQL = new Set(['mysql', 'postgresql']);
@@ -310,6 +311,26 @@ function normalizzaExportDatabase(input, { expectedDbType = null } = {}) {
     }
     if (names.has(collection.name)) throw new Error(`File malformato: la collection "${collection.name}" e' dichiarata piu' volte.`);
     names.add(collection.name);
+    const identity = collection.identity || (motore === 'mongodb'
+      ? { kind: 'mongodb-id', columns: ['_id'] } : null);
+    if (motore === 'mongodb' && collection.identity
+        && (collection.identity.kind !== 'mongodb-id'
+          || !Array.isArray(collection.identity.columns)
+          || collection.identity.columns.length !== 1 || collection.identity.columns[0] !== '_id')) {
+      throw new Error(`File MongoDB malformato: l'identita di "${collection.name}" deve essere _id.`);
+    }
+    if (identity) {
+      validaIdentity(identity, { collection: collection.name });
+      const seen = new Set();
+      collection.docs.forEach((row, index) => {
+        let key;
+        try { key = chiaveIdentita(row, identity); }
+        catch (err) { throw new Error(`Riga ${index + 1} di "${collection.name}": ${err.message}`); }
+        if (seen.has(key)) throw new Error(`Identita duplicata in "${collection.name}" alla riga ${index + 1}.`);
+        seen.add(key);
+      });
+      collection.identity = identity;
+    }
     if (TIPI_SQL.has(motore)) {
       if (collection.ddl != null && typeof collection.ddl !== 'string') {
         throw new Error(`File malformato: "ddl" di "${collection.name}" deve essere testo.`);
@@ -335,6 +356,9 @@ function normalizzaExportDatabase(input, { expectedDbType = null } = {}) {
     }
   }
   parsed.dbType = motore;
+  parsed.objects = normalizzaOggetti(parsed.objects, {
+    dbType: motore, database: parsed.db, collections: names, allowUnsafeSchema: false,
+  });
   parsed.fiducia = fiduciaExport(parsed);
   return parsed;
 }

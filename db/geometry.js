@@ -183,6 +183,51 @@ function potaCache(cache, max = 200) {
   if (cache.size > max) cache.clear();
 }
 
+/**
+ * Geometria nella forma GREZZA del driver MySQL → GeoJSON.
+ *
+ * Perche' esiste. Fino alla correzione, l'export dell'intero database leggeva le
+ * colonne geometriche con `SELECT *`: mysql2 le decodifica in una forma sua —
+ * un punto diventa `{ x, y }`, una linea un elenco di punti, un poligono un
+ * elenco di anelli — e quella forma, riscritta, MySQL la rifiuta («Cannot get
+ * geometry object»), quindi OGNI riga falliva. I file gia' prodotti da quella
+ * versione hanno pero' i dati veri dentro: chiedere all'utente di rifare
+ * l'export sarebbe scaricare su di lui un difetto nostro.
+ *
+ * Il tipo GeoJSON si ricava dalla PROFONDITA' dell'annidamento, che nella forma
+ * del driver e' univoca. Cio' che non corrisponde a nessuna di queste forme non
+ * viene indovinato: torna `null`, e chi chiama lo tratta come valore normale —
+ * l'errore del motore e' preferibile a una geometria inventata.
+ */
+function daFormaDriverMysql(value) {
+  const punto = (v) => (isPlainObject(v)
+    && typeof v.x === 'number' && typeof v.y === 'number'
+    && Object.keys(v).length === 2);
+  const coppia = (v) => [v.x, v.y];
+  const elenco = (v, foglia) => Array.isArray(v) && v.length > 0 && v.every(foglia);
+
+  if (punto(value)) return { type: 'Point', coordinates: coppia(value) };
+  if (elenco(value, punto)) {
+    return { type: 'LineString', coordinates: value.map(coppia) };
+  }
+  if (elenco(value, (r) => elenco(r, punto))) {
+    // Un elenco di anelli e' un poligono. Un MultiLineString ha la stessa
+    // forma: senza il tipo della colonna sono indistinguibili, e il poligono
+    // e' il solo dei due che il driver produce chiudendo l'anello — quindi lo
+    // si riconosce dalla chiusura invece di tirare a indovinare.
+    const anelli = value.map((r) => r.map(coppia));
+    const chiusi = anelli.every((r) => r.length >= 4
+      && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]);
+    return chiusi
+      ? { type: 'Polygon', coordinates: anelli }
+      : { type: 'MultiLineString', coordinates: anelli };
+  }
+  if (elenco(value, (p) => elenco(p, (r) => elenco(r, punto)))) {
+    return { type: 'MultiPolygon', coordinates: value.map((p) => p.map((r) => r.map(coppia))) };
+  }
+  return null;
+}
+
 module.exports = {
   isPostgresGeometryType,
   isPostgresNativeGeometryType,
@@ -194,4 +239,5 @@ module.exports = {
   isGeoJson,
   assertGeoJson,
   parseGeoJsonText,
+  daFormaDriverMysql,
 };

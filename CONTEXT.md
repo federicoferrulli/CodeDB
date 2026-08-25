@@ -66,8 +66,8 @@ _Avoid_: evento di sistema
 
 **Operazione lunga**:
 Un evento la cui esecuzione dura oltre la risposta: esecuzione di query e di script,
-annullamento, backup. Emette avanzamento, si può fermare, e la sua natura si conosce solo
-mentre gira.
+annullamento, backup, applicazione di un artefatto. Emette avanzamento, si può fermare, e
+la sua natura si conosce solo mentre gira.
 _Avoid_: job, task
 
 ### Esecuzione
@@ -97,6 +97,57 @@ _Avoid_: esecuzione (ambiguo), istanza
 L'insieme di righe prodotto da una singola istruzione. Un run produce un risultato per
 istruzione, e solo i risultati veri diventano schede: un riepilogo di scrittura non lo è.
 _Avoid_: output, result set (in italiano: risultato)
+
+### Artefatti e applicazione
+
+**Artefatto**:
+Un file che descrive il contenuto di un database e da cui lo si può ricostruire: un export
+dell'intero database o una catena di backup. Un artefatto non è mai fidato, nemmeno quando
+il suo checksum torna.
+_Avoid_: dump, backup (è solo una delle due forme), sorgente
+
+**Bersaglio**:
+La risorsa che una singola istruzione DDL modifica davvero, ricavata dall'istruzione e non
+dal nome dichiarato attorno. È la cosa che si confronta con ciò che il piano ammette.
+_Avoid_: destinazione (è il database, non la risorsa), oggetto
+
+**Piano**:
+Il contratto immutabile e firmato che descrive per intero ciò che verrà applicato, prima
+di qualsiasi mutazione. Anteprima ed esecuzione condividono lo stesso piano.
+_Avoid_: operazione, richiesta, configurazione
+
+**Impronta**:
+Il riassunto del contenuto del piano con cui si dimostra che l'anteprima mostrata e
+l'esecuzione richiesta sono lo stesso piano.
+_Avoid_: hash, firma (non è crittografia a chiave), checksum (riservato all'artefatto)
+
+**Identità stabile**:
+La regola con cui si riconosce la stessa riga nel tempo: `_id` su MongoDB, una chiave
+primaria o un vincolo univoco interamente non nullo sui motori SQL. È una proprietà
+dichiarata, non dedotta al momento della scrittura.
+_Avoid_: chiave (ambiguo), primary key, indice
+
+**Staging**:
+La copia su cui l'artefatto viene applicato e verificato mentre la destinazione è ancora
+intatta.
+_Avoid_: temporaneo, area di lavoro
+
+**Copia di recupero**:
+La copia full verificata della destinazione preesistente, da cui la si riporta com'era. È
+conservata finché non la si elimina esplicitamente.
+_Avoid_: rollback (è l'azione), snapshot, backup
+
+**Promozione**:
+Il passaggio dallo staging alla destinazione. La sua garanzia dipende dal motore e va
+dichiarata: su PostgreSQL è uno scambio di schemi atomico, altrove no.
+_Avoid_: commit, pubblicazione, swap
+
+**Esito**:
+Come un'operazione su artefatto finisce, in tre soli valori: `completato`,
+`ripristinato_dopo_errore`, `intervento_richiesto`. Un risultato parziale non è un
+successo.
+_Avoid_: stato (è ciò che l'operazione attraversa), risultato (riservato alle righe di
+un'istruzione)
 
 ### Autorizzazione
 

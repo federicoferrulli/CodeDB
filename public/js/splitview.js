@@ -1,6 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
+import { colonneRisultato } from './table-cols.js';
 import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto } from './utils.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
@@ -1702,7 +1703,11 @@ function updatePaneUI(paneId) {
     // scriverli entrambi fa sembrare che il programma non sappia dove sta.
     tbody.innerHTML = `<tr><td colspan="100" class="pane-empty">${isSql ? 'Nessuna riga trovata.' : 'Nessun documento trovato.'}</td></tr>`;
   } else {
-    const cols = p.columns && p.columns.length ? p.columns : Array.from(new Set(p.docs.flatMap(Object.keys)));
+    // Stessa regola della tabella ⚡: le dichiarate prima e nel loro ordine,
+    // poi i campi che compaiono solo nei documenti. Su MongoDB `p.columns` è un
+    // catalogo CAMPIONATO: un documento con un campo in più aveva quel valore
+    // invisibile, perché le dichiarate vincevano da sole.
+    const cols = colonneRisultato(p.columns, p.docs);
     // Le colonne davvero disegnate: la selezione di celle indicizza `data-c` su
     // questo elenco e deve leggere lo stesso, non un secondo calcolo.
     p.colonneMostrate = cols;
@@ -2107,8 +2112,8 @@ function comparePaneSchemas() {
   const p1 = panes[0];
   const p2 = panes[1];
 
-  const cols1 = p1.columns && p1.columns.length ? p1.columns : Array.from(new Set(p1.docs.flatMap(Object.keys)));
-  const cols2 = p2.columns && p2.columns.length ? p2.columns : Array.from(new Set(p2.docs.flatMap(Object.keys)));
+  const cols1 = colonneRisultato(p1.columns, p1.docs);
+  const cols2 = colonneRisultato(p2.columns, p2.docs);
 
   const set1 = new Set(cols1);
   const set2 = new Set(cols2);

@@ -48,6 +48,17 @@ function exportBase(dbType, collection) {
     normalizzaExportDatabase(mongo, { expectedDbType: 'mongodb' }).collections[0].indexes[0].key,
     { cliente: 1 },
   );
+
+  const duplicateMongo = exportBase('mongodb', 'clienti');
+  duplicateMongo.collections[0].docs = [{ _id: 1 }, { _id: 1 }];
+  assert.throws(() => normalizzaExportDatabase(duplicateMongo), /duplicata/i);
+  const nullIdentity = exportBase('mysql', 'clienti');
+  nullIdentity.collections[0].identity = { kind: 'primary-key', columns: ['id'] };
+  nullIdentity.collections[0].docs = [{ id: null }];
+  assert.throws(() => normalizzaExportDatabase(nullIdentity), /NULL/i);
+  const invalidMongoIdentity = exportBase('mongodb', 'clienti');
+  invalidMongoIdentity.collections[0].identity = { kind: 'unique', columns: ['email'] };
+  assert.throws(() => normalizzaExportDatabase(invalidMongoIdentity), /_id/i);
 }
 
 for (const [label, ddl, pattern] of [

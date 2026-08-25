@@ -237,7 +237,12 @@ function onProgress(ev) {
     // Un result set VUOTO si disegna (tabella vuota); "niente da disegnare"
     // svuota la griglia invece di lasciarci il risultato dell'esecuzione
     // precedente, che sembrerebbe la risposta a questo script.
-    renderResults(haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.docs : []);
+    // Le colonne viaggiano accanto alle righe: un result set vuoto le ha
+    // comunque, ed e' l'unica cosa che lo distingue da «nessuna query».
+    renderResults(
+      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.docs : [],
+      haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato.columns : [],
+    );
     righeMostrate = righeDaMostrare(ev.ultimoRisultato);
 
     // Risultati per istruzione: arriva l'ELENCO, non le righe. Le righe di una
@@ -458,7 +463,7 @@ function apriScheda(pos) {
       if (runVisibile !== runId) return;
       r.schedaAperta = pos;
       disegnaSchede();
-      renderResults(res.docs || []);
+      renderResults(res.docs || [], res.columns || []);
       updateQueryMetrics('success', null, (res.docs || []).length);
     })
     .catch((err) => {

@@ -555,6 +555,21 @@ class MongoDbStrategy extends DbStrategy {
     if (payload.unique) options.unique = true;
     const name = String(payload.name || '').trim();
     if (name) options.name = name;
+    // Le altre opzioni dell'indice, quando il chiamante le dichiara. L'elenco
+    // e' chiuso di proposito: `createIndex` e' anche un evento del browser, e
+    // inoltrare al driver un oggetto arbitrario sarebbe una superficie in piu'.
+    // Senza queste, l'import ricreava ogni indice come indice semplice e
+    // perdeva TTL, indici parziali, sparsi e la collation — divergenze che la
+    // verifica poi segnalava, ma soprattutto vincoli che non esistevano piu'.
+    if (payload.sparse) options.sparse = true;
+    if (Number.isFinite(payload.expireAfterSeconds)) options.expireAfterSeconds = payload.expireAfterSeconds;
+    if (payload.partialFilterExpression && typeof payload.partialFilterExpression === 'object') {
+      options.partialFilterExpression = payload.partialFilterExpression;
+    }
+    if (payload.collation && typeof payload.collation === 'object') options.collation = payload.collation;
+    if (payload.wildcardProjection && typeof payload.wildcardProjection === 'object') {
+      options.wildcardProjection = payload.wildcardProjection;
+    }
     const created = await client.db(db).collection(coll).createIndex(spec, options);
     return { name: created };
   }
@@ -587,11 +602,46 @@ class MongoDbStrategy extends DbStrategy {
 
     let indexes = [];
     try {
-      indexes = (await collection.indexes()).map((i) => ({ name: i.name, key: i.key, unique: !!i.unique }));
+      // Descrittori COMPLETI, non ridotti a `{name, key, unique}`: da qui passa
+      // anche l'export dell'intero database, e un indice TTL esportato senza
+      // `expireAfterSeconds` veniva ricreato come indice normale — cioe' una
+      // scadenza che non scade piu'. La vista Dettagli legge `unique` come
+      // valore di verita', quindi la sua assenza le va bene.
+      indexes = await this.indexList(db, coll);
     } catch { /* le view non hanno indici */ }
 
     const schema = await sampleSchema(collection);
     return { stats, indexes, fields: schema.fields, sampled: schema.sampled };
+  }
+
+  /**
+   * Gli indici di una collection COSI' COME LI DICHIARA IL SERVER.
+   *
+   * Perche' i descrittori restano grezzi. Questo metodo esiste per la verifica
+   * di import e ripristino, che confronta l'indice ricreato con quello salvato
+   * nel backup: quel confronto normalizza entrambi i lati con lo stesso
+   * insieme di campi semantici (`name`, `key`, `unique`, `sparse`,
+   * `expireAfterSeconds`, `partialFilterExpression`, `collation`,
+   * `wildcardProjection`) e considera DIVERSO un campo presente da una parte e
+   * assente dall'altra. Normalizzare qui — per esempio `unique: !!i.unique`,
+   * come fa `collectionInfo` per la vista Dettagli — farebbe risultare
+   * `unique: false` su ogni indice non univoco letto dal vivo, contro
+   * l'assenza del campo nel file di backup: una divergenza inventata su
+   * ciascun indice. Si tolgono solo `v` e `ns`, che descrivono il formato
+   * interno e il namespace, non l'indice.
+   *
+   * Una collection inesistente non ha indici e non e' un errore: lo dice il
+   * confronto, che trovera' mancante cio' che era atteso.
+   */
+  async indexList(db, coll) {
+    const client = this.requireClient();
+    try {
+      const indexes = await client.db(db).collection(coll).indexes();
+      return indexes.map(({ v, ns, ...index }) => index);
+    } catch (err) {
+      if (/NamespaceNotFound/i.test(err.message) || err.code === 26) return [];
+      throw err;
+    }
   }
 
   async dbSchema(db) {
@@ -1274,8 +1324,21 @@ class MongoDbStrategy extends DbStrategy {
     let inserted = 0;
     if (docs.length) {
       try {
-        const res = await client.db(db).collection(coll).insertMany(docs, { ordered: false });
-        inserted = res.insertedCount;
+        if (payload.upsert) {
+          const invalid = docs.findIndex((doc) => doc._id == null);
+          if (invalid >= 0) throw new Error(`Documento ${invalid + 1}: _id mancante o null.`);
+          const res = await client.db(db).collection(coll).bulkWrite(
+            docs.map((doc) => ({ replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } })),
+            { ordered: false },
+          );
+          inserted = (res.upsertedCount || 0) + (res.modifiedCount || 0) + (res.matchedCount || 0);
+          // matchedCount include anche replacement identici: dal punto di vista
+          // dell'import sono documenti applicati con successo.
+          if (inserted > docs.length) inserted = docs.length;
+        } else {
+          const res = await client.db(db).collection(coll).insertMany(docs, { ordered: false });
+          inserted = res.insertedCount;
+        }
       } catch (err) {
         // BulkWriteError: alcuni documenti possono comunque essere entrati.
         inserted = (err.result && (err.result.insertedCount ?? err.result.nInserted)) || 0;

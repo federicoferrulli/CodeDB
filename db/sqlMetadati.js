@@ -153,6 +153,11 @@ async function infoColonne(dialetto, strategia, db, coll) {
       // distinguere «ammette NULL» da «non lo so», perche' decidere come
       // ordinare i nulli in base a un'ipotesi e' peggio che non decidere.
       nullable: r.nullable == null ? undefined : /^y/i.test(String(r.nullable)),
+      // Colonna calcolata dal motore: nominarla in un INSERT e' un errore.
+      // Viaggia con le colonne che si leggevano gia', come `nullable`: sapere
+      // quali colonne si possono SCRIVERE non costa una lettura di catalogo in
+      // piu' — e questa lettura e' in cache, mentre l'elenco dei campi no.
+      generated: d.generato ? !!d.generato(r) : false,
     })),
   };
   // Le classi sono dichiarate dal dialetto e valutate NELL'ORDINE dichiarato:
@@ -199,6 +204,30 @@ async function elencoCampi(dialetto, strategia, db, table) {
     generated: d.generato(c),
     key: d.chiave(c, pkSet),
   }));
+}
+
+/**
+ * I nomi delle colonne che si possono SCRIVERE.
+ *
+ * Una colonna generata (`GENERATED ALWAYS AS` su MySQL, `GENERATED ALWAYS AS
+ * ... STORED` su PostgreSQL) è calcolata dal motore: nominarla in un `INSERT`
+ * non è un valore in più, è un errore — MySQL risponde «The value specified for
+ * generated column ... is not allowed» e PostgreSQL «cannot insert into column».
+ * L'export di un intero database la leggeva con `SELECT *` e l'import la
+ * riscriveva, quindi OGNI riga veniva rifiutata e l'import falliva su qualunque
+ * tabella con una colonna calcolata. Il motore di backup la escludeva già: qui
+ * la stessa regola diventa una sola, dichiarata dal dialetto, che export e
+ * import condividono.
+ *
+ * Non si perde nulla: il valore di una colonna generata lo ricalcola il
+ * database dalla definizione, che viaggia nel DDL.
+ */
+async function colonneScrivibili(_dialetto, strategia, db, coll) {
+  // Passa dal METODO, non dalla funzione: `tableColumnsInfo` e' il punto in cui
+  // un test mette il proprio catalogo, e scavalcarlo significherebbe leggere il
+  // database vero da sotto a chi credeva di averlo sostituito.
+  const info = await strategia.tableColumnsInfo(db, coll);
+  return new Set(info.columns.filter((c) => !c.generated).map((c) => c.name));
 }
 
 /* --- Indici --------------------------------------------------------------- */
@@ -322,6 +351,9 @@ function metodi(dialetto) {
     },
     tableFields(db, table) {
       return elencoCampi(dialetto, this, db, table);
+    },
+    colonneScrivibili(db, coll) {
+      return colonneScrivibili(dialetto, this, db, coll);
     },
     elencoIndici(db, table) {
       return elencoIndici(dialetto, this, db, table);

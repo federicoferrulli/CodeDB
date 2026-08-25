@@ -31,15 +31,11 @@ function strategy({ primary = ['id'] } = {}) {
 }
 
 module.exports = (async () => {
-  const missingRowIdentity = creaPianoImport({
+  const first = strategy();
+  assert.throws(() => creaPianoImport({
     artifact: artifact([{ nome: 'Ada' }]), expectedDbType: 'mysql', connection: 'locale',
     targetDb: 'destinazione', drop: false,
-  });
-  const first = strategy();
-  const firstAdapter = createImportArtifactAdapter({
-    strategy: first, dbType: 'mysql', connName: 'locale', recoveryRoot: os.tmpdir(),
-  });
-  await assert.rejects(firstAdapter.validatePlan(missingRowIdentity), /riga 1.*identita stabile/i);
+  }), /riga 1.*colonna di identita/i);
   assert.deepStrictEqual(first.mutations, [], 'tutte le righe sono validate prima della prima mutazione');
 
   const divergentIdentity = creaPianoImport({
@@ -52,6 +48,35 @@ module.exports = (async () => {
   });
   await assert.rejects(secondAdapter.validatePlan(divergentIdentity), /diverge dal piano/i);
   assert.deepStrictEqual(second.mutations, [], 'la divergenza del vincolo precede staging e righe');
+
+  const pgQueries = [];
+  const pgStrategy = {
+    async listDatabases() { return [{ name: 'destinazione' }]; },
+    pool: {
+      async connect() {
+        return {
+          async query(sql) {
+            pgQueries.push(sql);
+            if (sql === 'COMMIT') throw new Error('connessione persa durante COMMIT');
+            return { rows: [] };
+          },
+          release() {},
+        };
+      },
+    },
+  };
+  const pgAdapter = createImportArtifactAdapter({
+    strategy: pgStrategy, dbType: 'postgresql', connName: 'locale', recoveryRoot: os.tmpdir(),
+  });
+  const recovery = { verified: true };
+  let commitError;
+  try {
+    await pgAdapter.promote({ targetDb: 'destinazione' }, { db: 'staging' }, recovery);
+  } catch (err) { commitError = err; }
+  assert(commitError, 'un COMMIT incerto deve essere propagato');
+  assert.strictEqual(commitError.targetUnchanged, undefined, 'un COMMIT incerto non promette che il bersaglio sia intatto');
+  assert.strictEqual(recovery.physicalDb, undefined, 'lo schema fisico di recupero si pubblica soltanto dopo COMMIT riuscito');
+  assert(pgQueries.includes('ROLLBACK'));
 
   console.log('  OK   Adapter import valida identita e righe prima delle mutazioni passed');
 })().catch((err) => {

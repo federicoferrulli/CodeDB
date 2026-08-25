@@ -3,8 +3,28 @@
 const assert = require('assert');
 const MySqlStrategy = require('../db/MySqlStrategy');
 const PostgreSqlStrategy = require('../db/PostgreSqlStrategy');
+const MongoDbStrategy = require('../db/MongoDbStrategy');
 
 module.exports = (async () => {
+  const mongo = new MongoDbStrategy();
+  let mongoOperations = null;
+  mongo.client = {
+    db() {
+      return { collection() { return {
+        async bulkWrite(operations) {
+          mongoOperations = operations;
+          return { upsertedCount: 1, matchedCount: 1, modifiedCount: 1 };
+        },
+      }; } };
+    },
+  };
+  const mongoResult = await mongo.collectionImport('negozio', 'clienti', {
+    docs: [{ _id: 1, nome: 'Ada' }, { _id: 2, nome: 'Lin' }], upsert: true,
+  });
+  assert.strictEqual(mongoResult.inserted, 2);
+  assert.strictEqual(Number(mongoOperations[0].replaceOne.filter._id.value), 1);
+  assert.strictEqual(mongoOperations[0].replaceOne.upsert, true);
+
   const mysql = new MySqlStrategy();
   const mysqlQuery = [];
   mysql.pool = {
@@ -31,10 +51,16 @@ module.exports = (async () => {
     conflictColumns: ['id'],
   });
   assert.strictEqual(mysqlResult.inserted, 2, 'il conteggio applicato conta righe, non affectedRows MySQL');
-  assert.strictEqual(mysqlQuery.length, 2, 'forme diverse conservano tutte le colonne in gruppi distinti');
-  assert(mysqlQuery.every((q) => /ON DUPLICATE KEY UPDATE/i.test(q.sql)), 'ogni gruppo usa un vero upsert');
+  // Si contano le INSERT, non tutte le query: `collectionImport` legge anche il
+  // catalogo della tabella di destinazione (colonne geometriche e colonne
+  // generate), e contare ogni query faceva dipendere questa affermazione — che
+  // riguarda il RAGGRUPPAMENTO delle righe — da quante letture di metadati
+  // servono. Sono due cose diverse.
+  const mysqlInsert = mysqlQuery.filter((q) => /^INSERT\s/i.test(q.sql));
+  assert.strictEqual(mysqlInsert.length, 2, 'forme diverse conservano tutte le colonne in gruppi distinti');
+  assert(mysqlInsert.every((q) => /ON DUPLICATE KEY UPDATE/i.test(q.sql)), 'ogni gruppo usa un vero upsert');
   assert(mysqlQuery.every((q) => !/\bREPLACE\b/i.test(q.sql)), 'l\'upsert non deve eseguire REPLACE');
-  assert(mysqlQuery[1].sql.includes('`nota`'), 'la seconda forma conserva la colonna aggiuntiva');
+  assert(mysqlInsert[1].sql.includes('`nota`'), 'la seconda forma conserva la colonna aggiuntiva');
 
   const pg = new PostgreSqlStrategy();
   const pgQuery = [];
@@ -69,4 +95,3 @@ module.exports = (async () => {
   console.error('  FAIL Upsert SQL identitario:', err.stack || err);
   process.exitCode = 1;
 });
-

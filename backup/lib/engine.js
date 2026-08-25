@@ -803,7 +803,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       (table) => [table, `${pgQid(schema)}.${pgQid(table)}`]
     ));
     const lockTargets = [...qualificati.values()].sort((a, b) => a.localeCompare(b));
-    await client.query(`LOCK TABLE ${lockTargets.join(', ')} IN ACCESS SHARE MODE`);
+    if (lockTargets.length) {
+      await client.query(`LOCK TABLE ${lockTargets.join(', ')} IN ACCESS SHARE MODE`);
+    }
 
     // Solo dopo i lock si apre la snapshot e si leggono i metadati. Da questo
     // punto schema, PK e pagine dati passano tutti dallo stesso client.
@@ -1006,7 +1008,13 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
 
 /* --- Backup completo di un database --------------------------------------- */
 
-async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress, level, log }) {
+// `compress` ha un valore predefinito ESPLICITO, e deve coincidere con quello
+// di `createFileSink`. Erano due decisioni prese in due posti: il nome del file
+// si sceglieva con `compress ? '.gz' : ''` mentre il sink compattava comunque,
+// perche' li' il predefinito e' `true`. Un chiamante che ometteva il parametro
+// otteneva percio' contenuto gzip sotto un nome `.ndjson`, e il ripristino
+// falliva con un errore di JSON illeggibile invece che con «backup corrotto».
+async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress = true, level, log }) {
   const { strategy, dbType } = session;
   const groupDir = backupGroupDir(destRoot, connName, db, dbType);
   const base = resolveBase(groupDir, type, { connName, db, dbType });
@@ -1041,7 +1049,9 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       if (!all.includes(c)) throw new Error(`Collection/tabella "${c}" non trovata nel database "${db}".`);
     }
   }
-  if (!collections.length) throw new Error(`Il database "${db}" non contiene collection/tabelle da salvare.`);
+  if (!collections.length && type !== 'full') {
+    throw new Error(`Il database "${db}" non contiene collection/tabelle da salvare.`);
+  }
 
   fs.mkdirSync(backupDir, { recursive: true });
   let result;

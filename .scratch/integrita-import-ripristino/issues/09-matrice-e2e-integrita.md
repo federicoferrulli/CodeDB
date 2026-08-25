@@ -18,6 +18,16 @@ non può dimostrare. Le prove devono usare l'harness isolato del ticket 08.
 - [x] Ogni scenario critico ha una prova di sensibilità documentata
 - [x] Le suite unitarie e gli E2E esistenti non presentano nuove regressioni
 
+## Aggiornamento della revisione finale
+
+La matrice reale forza ora un errore successivo alla promozione su MongoDB, MySQL e
+PostgreSQL e verifica sui database veri che la copia full ripristini la destinazione
+originale. Tutti e tre rifiutano identita duplicate prima della mutazione. PostgreSQL
+esegue inoltre un backup/restore attraverso il piano comune, conserva una view e
+dimostra con alterazioni reali che view mancante e cardinalita divergente non possono
+produrre `completato`. L'esecuzione finale usa MongoDB 7 autenticato, MySQL 8 e
+PostgreSQL 16 in container loopback usa-e-getta.
+
 ## Commenti
 
 Questo ticket non deve duplicare le invarianti già provate al seam principale: conferma
@@ -33,9 +43,19 @@ fase, recupero, conteggi, duplicati, oggetti mancanti, DDL estranea e piano iden
 canali) restano nei test deterministici del seam principale.
 
 La suite unitaria completa passa. La matrice è stata eseguita su container usa-e-getta
-loopback: MongoDB 6 autenticato, MySQL 8 e PostgreSQL 16; tutti e tre gli scenari sono
+loopback: MongoDB 7 autenticato, MySQL 8 e PostgreSQL 16; tutti e tre gli scenari sono
 verdi. Passano anche gli E2E esistenti di backup MongoDB/MySQL, MCP MongoDB/MySQL,
 collation MySQL, PostgreSQL e sessioni MongoDB/MySQL. L'E2E browser
 `e2e-script-schede-ui` raggiunge ora il workspace ma segnala un difetto preesistente e
 separato: una SELECT vuota non conserva le intestazioni. Non riguarda i percorsi di
 import/ripristino né è una regressione introdotta da queste modifiche.
+
+**Aggiornamento**: quel difetto è stato poi corretto a parte. Le colonne di un result set
+sono dichiarate dal motore e non più dedotte dalle righe (`colonneRisultato` in
+`public/js/table-cols.js`): a zero righe la tabella ⚡ conserva le intestazioni. La
+controprova è stata eseguita su MySQL 8 reale reintroducendo la deduzione dalle sole
+righe, e i due casi di `e2e-script-schede-ui` sono tornati rossi. L'intera suite
+`e2e-script-schede-ui` passa ora verde.
+
+La matrice PostgreSQL copre inoltre il backup full e la promozione di uno schema vuoto
+e di uno schema con sole view, oltre al confronto reale delle definizioni degli oggetti.

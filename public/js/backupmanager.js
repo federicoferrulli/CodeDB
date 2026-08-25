@@ -671,6 +671,14 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
       connName: tab.label || tab.savedName || 'UI Session',
     });
 
+    if (res.summary.status !== 'completato') {
+      const retained = [
+        res.summary.recovery && `recupero ${res.summary.recovery.id || 'disponibile'}`,
+        res.summary.staging && `staging ${res.summary.staging.db || 'disponibile'}`,
+      ].filter(Boolean).join(', ');
+      throw new Error(`${res.summary.status}: ${res.summary.error || 'restore non completato'}${retained ? ` (${retained})` : ''}`);
+    }
+
     const msg = `✅ Ripristino completato su "${res.summary.targetDb}": ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer!`;
     toast(msg);
     chiudiProgresso(msg, true);

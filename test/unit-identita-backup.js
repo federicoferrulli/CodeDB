@@ -249,7 +249,20 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
       async createIndex() {},
       async drop() { documents.clear(); },
     };
-    const strategy = { client: { db() { return { collection() { return collection; } }; } } };
+    // Il doppio deve avere i metodi del driver che il restore usa davvero:
+    // `createCollection` materializza le collection VUOTE, che altrimenti non
+    // nascerebbero mai (una collection nasce alla prima scrittura).
+    const create = [];
+    const strategy = {
+      client: {
+        db() {
+          return {
+            collection() { return collection; },
+            async createCollection(name) { create.push(name); },
+          };
+        },
+      },
+    };
     const summary = await require('../backup/lib/restore').runRestore({
       session: { strategy, dbType: 'mongodb' }, backupDir: inc, targetDb: 'destinazione',
       drop: true, log: { info() {} },

@@ -160,12 +160,15 @@ const DIALETTO_METADATI = {
     tentativi: (db, coll) => [{
       // `is_nullable` viaggia con le colonne che si leggevano gia': nessuna
       // lettura di catalogo in piu' (serve a chi compone l'ORDER BY).
-      sql: `SELECT column_name AS name, udt_name AS type, is_nullable AS nullable
+      sql: `SELECT column_name AS name, udt_name AS type, is_nullable AS nullable,
+                   is_generated AS generated
               FROM information_schema.columns
              WHERE table_schema = $1 AND table_name = $2
           ORDER BY ordinal_position`,
       params: [schemaOf(db), coll],
     }],
+    // Come `is_nullable`: viaggia con le colonne, nessuna lettura in piu'.
+    generato: (r) => String(r.generated || '') === 'ALWAYS',
     classi: [
       // L'ordine conta: un tipo geometrico NATIVO (point, polygon, box...) non
       // è una geometria PostGIS e non si legge con ST_AsGeoJSON, ma la griglia
@@ -1493,7 +1496,18 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${table}`);
     const total = Number(countRes.rows[0]?.total) || 0;
-    const columns = fields ? fields.map((f) => f.name) : [];
+    let columns = fields ? fields.map((f) => f.name) : [];
+    if (format === 'json') {
+      // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
+      // rendeva il file non reimportabile. Il valore lo ricalcola il database
+      // dalla definizione, che viaggia nel DDL.
+      const scrivibili = await this.colonneScrivibili(db, coll);
+      const generate = columns.filter((c) => !scrivibili.has(c));
+      if (generate.length) {
+        for (const row of rows) for (const c of generate) delete row[c];
+        columns = columns.filter((c) => scrivibili.has(c));
+      }
+    }
 
     let lines;
     if (format === 'sql') {
@@ -1556,11 +1570,13 @@ class PostgreSqlStrategy extends DbStrategy {
     let colonneReali = new Set();
     let geo = new Map();
     let geoNativo = new Map();
+    let scrivibili = new Set();
     try {
       const info = await this.tableColumnsInfo(db, coll);
       colonneReali = new Set(info.columns.map((c) => c.name));
       geo = info.geo || geo;
       geoNativo = info.geoNativo || geoNativo;
+      scrivibili = await this.colonneScrivibili(db, coll);
     } catch { /* metadati non leggibili: vale il comportamento storico */ }
 
     const parsed = [];
@@ -1573,6 +1589,13 @@ class PostgreSqlStrategy extends DbStrategy {
         // Come in docInsert (CDB-41): si scarta l'`_id` VIRTUALE, non una
         // colonna che si chiama davvero così.
         if (!colonneReali.has('_id')) delete row._id;
+        // Una colonna GENERATA arriva dai file esportati dalle versioni che la
+        // scrivevano: nominarla in un INSERT e' un errore, e farebbe fallire
+        // OGNI riga. Si scarta qui, cosi' i file gia' prodotti restano
+        // importabili invece di richiedere un nuovo export.
+        for (const nome of Object.keys(row)) {
+          if (scrivibili && scrivibili.size && !scrivibili.has(nome)) delete row[nome];
+        }
         const cols = Object.keys(row);
         if (!cols.length) throw new Error('riga vuota');
         parsed.push({ i, cols, values: cols.map((c) => row[c]) });

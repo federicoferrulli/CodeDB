@@ -33,3 +33,14 @@ nomi, cardinalità, identità distinte, indici MongoDB e oggetti SQL differiti. 
 registranti coprono errori pre-mutazione, staging, applicazione, entrambe le verifiche,
 promozione e recupero. Disabilitando l'impronta, il test dell'alterazione è diventato
 rosso.
+
+La revisione finale ha esteso lo stesso contratto anche al restore dei backup: CLI, UI e
+MCP costruiscono ora un `restore-backup` immutabile e passano dallo stesso staging. Gli
+export includono view, routine, trigger, eventi, sequenze, validatori e opzioni; la
+verifica confronta l'inventario reale. Un errore prima della promozione non ricostruisce
+piu il bersaglio intatto, mentre rollback e relativo esito sono una fase osservabile.
+
+La verifica dello staging deriva ora le attese dalla catena/artefatto sorgente e
+confronta definizioni canoniche di tabelle, view, routine, trigger, indici, chiavi
+esterne, opzioni MongoDB e valori delle sequenze. La copia di recupero copre anche
+schemi senza tabelle e schemi composti soltanto da oggetti.

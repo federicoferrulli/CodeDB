@@ -15,12 +15,12 @@ const { loadConnections, hasEncryptedSecrets, promptPassphrase } = require('./li
 const { establishConnection, teardownConnection } = require('./lib/connect');
 const { createLogger, formatDuration } = require('./lib/logger');
 const { runBackup } = require('./lib/engine');
-const { runRestore } = require('./lib/restore');
 const { parseStorage, uploadBackupDir } = require('./lib/storage');
 const { notifySlack } = require('./lib/notify');
 const { readCatalog, verifyBackupDir, formatBytes } = require('./lib/util');
-const { creaPianoImport, eseguiPianoImport } = require('../db/importPlan');
+const { creaPianoImport, creaPianoRestore, eseguiPianoImport } = require('../db/importPlan');
 const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
+const { descriviBackup, createBackupRestoreAdapter } = require('../db/backupRestoreAdapter');
 
 // CODEDB_BACKUPS_DIR: stesso override rispettato dal gateway MCP (mcp/McpGateway.js),
 // così CLI e MCP condividono la cartella di default anche nell'app Electron pacchettizzata.
@@ -248,16 +248,35 @@ async function cmdRestore(args) {
     const summary = await log.run(label, async () => {
       const session = await establishConnection(cfg);
       try {
-        return await runRestore({
-          session, backupDir,
-          targetDb: args['target-db'] || null,
-          onlyCollections, drop: !!args.drop, log,
+        const source = descriviBackup(backupDir, onlyCollections);
+        const plan = creaPianoRestore({
+          source, expectedDbType: session.dbType, connection: connName,
+          targetDb: args['target-db'] || source.sourceDb, drop: !!args.drop,
           allowUnsafeSchema: !!args['allow-unsafe-schema'],
         });
+        log.info(`Piano restore: ${plan.fingerprint}`);
+        const adapter = createBackupRestoreAdapter({
+          strategy: session.strategy, dbType: session.dbType, connName,
+          recoveryRoot: path.join(destRoot, 'import-recovery'), log,
+        });
+        const result = await eseguiPianoImport(plan, {
+          adapter, onProgress: (event) => log.info(`Restore: ${event.phase} ${event.status}`),
+        });
+        const verifiedRows = (result.verification && result.verification.snapshot
+          && result.verification.snapshot.counts || []).reduce((sum, item) => sum + item.cardinality, 0);
+        return { ...result, targetDb: plan.targetDb, totalDocs: verifiedRows, layers: source.layers.length };
       } finally {
         await teardownConnection(session);
       }
     });
+    if (summary.status !== 'completato') {
+      log.error(`Restore ${summary.status} su "${summary.targetDb}": ${summary.error || 'esito non completato'}.`);
+      if (summary.recovery) log.error(`Copia di recupero conservata: ${summary.recovery.id || 'disponibile'}.`);
+      if (summary.staging) log.error(`Staging conservato: ${summary.staging.db || 'disponibile'}.`);
+      const err = new Error(`${summary.status}: ${summary.error || 'restore non completato'}`);
+      err.result = summary;
+      throw err;
+    }
     log.info(`Restore completato su "${summary.targetDb}": ${summary.totalDocs} documenti/righe da ${summary.layers} layer.`);
     await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
   } catch (err) {

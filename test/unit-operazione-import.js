@@ -17,19 +17,21 @@ module.exports = (async () => {
   });
   const accepted = registry.start({
     plan: { fingerprint: 'abc', connection: 'locale', targetDb: 'dest' }, adapter: {},
-    ownerId: 'owner-1', tabId: 'tab-vecchio', onProgress: (state) => emitted.push(state),
+    ownerId: 'owner-1', actorId: 'actor-1', tabId: 'tab-vecchio', onProgress: (state) => emitted.push(state),
   });
   assert.strictEqual(accepted.operationId, 'op-1');
   assert.strictEqual(accepted.status, 'in_corso', 'l’ack precede la fine');
-  assert.strictEqual(registry.get('op-1', 'owner-1').status, 'in_corso');
-  assert.strictEqual(registry.get('op-1', 'owner-1').tabId, 'tab-vecchio');
+  assert.strictEqual(registry.get('op-1', 'owner-1', 'actor-1').status, 'in_corso');
+  assert.strictEqual(registry.get('op-1', 'owner-1', 'actor-1').tabId, 'tab-vecchio');
+  assert.throws(() => registry.get('op-1', 'owner-1', 'actor-2'), /non trovata/i);
   assert.throws(() => registry.get('op-1', 'altro-owner'), /non trovata/i);
 
   release();
   await registry.wait('op-1');
-  const completed = registry.get('op-1', 'owner-1');
+  const completed = registry.get('op-1', 'owner-1', 'actor-1');
   assert.strictEqual(completed.status, 'completato');
   assert.strictEqual(completed.recovery.id, 'rec-1');
+  assert.strictEqual(completed.recovery.backupDir, undefined, 'i percorsi interni non sono pubblicati');
   assert(emitted.some((state) => state.phase === 'applicazione'));
   let cleaned = false;
   const cleanedState = await registry.cleanup('op-1', 'owner-1', {
@@ -37,6 +39,20 @@ module.exports = (async () => {
   });
   assert.strictEqual(cleaned, true);
   assert(cleanedState.cleanupAt, 'la rimozione esplicita resta visibile nello stato');
+
+  const expirationCallbacks = [];
+  const expiring = createImportOperationRegistry({
+    id: () => 'op-expiring', maxTerminal: 1,
+    schedule(fn) { expirationCallbacks.push(fn); return { unref() {} }; },
+    execute: async () => ({ status: 'completato' }),
+  });
+  expiring.start({
+    plan: { fingerprint: 'ttl', connection: 'locale' }, adapter: {},
+    ownerId: 'owner-1', actorId: 'actor-1', tabId: 'tab-1',
+  });
+  await expiring.wait('op-expiring');
+  expirationCallbacks[0]();
+  assert.throws(() => expiring.get('op-expiring', 'owner-1', 'actor-1'), /non trovata/i);
 
   const cancelling = createImportOperationRegistry({
     id: () => 'op-2',

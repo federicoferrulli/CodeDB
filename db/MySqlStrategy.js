@@ -15,7 +15,9 @@ const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = 
 // condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
 // frontend (vedi db/identificatori.js).
 const { quotaSempre, quotaQualificato } = require('./identificatori');
-const { isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText } = require('./geometry');
+const {
+  isSqlGeometryType, isGeoJson, assertGeoJson, parseGeoJsonText, daFormaDriverMysql,
+} = require('./geometry');
 const sessioni = require('./sessioni');
 const { randomUUID } = require('crypto');
 const {
@@ -164,6 +166,8 @@ const DIALETTO_METADATI = {
     // colonna geometrica farebbe comparire nella griglia colonne che prima non
     // c'erano.
     visibile: (r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')),
+    // `EXTRA` porta gia' anche questo: una colonna VIRTUAL/STORED GENERATED.
+    generato: (r) => /GENERATED/i.test(String(r.extra || '')),
     classi: [{ nome: 'geo', riconosce: isSqlGeometryType }],
   },
 
@@ -581,23 +585,36 @@ class MySqlStrategy extends DbStrategy {
     return rows;
   }
 
-  // Frammento SQL + parametro per scrivere una geometria. Il SRID della colonna
-  // va imposto: ST_GeomFromGeoJSON produce SRID 4326 e MySQL rifiuta la
-  // scrittura se non coincide con quello dichiarato dalla colonna (compreso 0,
-  // il default di una colonna GEOMETRY senza SRID).
+  // Frammento SQL + parametro per scrivere una geometria. Il SRID va SEMPRE
+  // imposto, anche quando la colonna non ne dichiara uno.
+  //
+  // `ST_GeomFromGeoJSON` produce SRID 4326, e in 4326 MySQL usa l'ordine degli
+  // assi latitudine-longitudine: lasciato cosi', un poligono `(0 0, 1 0, 1 1)`
+  // veniva riletto come `(0 0, 0 1, 1 1)` — le coordinate SCAMBIATE, cioe' una
+  // geometria diversa scritta senza che nulla lo segnalasse. Su una colonna che
+  // dichiara un SRID il valore veniva gia' riportato a quello giusto; su una
+  // colonna che non lo dichiara — il caso predefinito, `SRS_ID` NULL — si
+  // saltava `ST_SRID` e restava il 4326 con i suoi assi invertiti. Una colonna
+  // senza SRS dichiarato contiene geometrie cartesiane, il cui SRID e' 0: e'
+  // quello che va imposto, non il 4326 che il parser sceglie per conto suo.
   static geoPlaceholder(colInfo) {
-    return colInfo && colInfo.srid != null
-      ? `ST_SRID(ST_GeomFromGeoJSON(?), ${Number(colInfo.srid)})`
-      : 'ST_GeomFromGeoJSON(?)';
+    const srid = colInfo && colInfo.srid != null ? Number(colInfo.srid) : 0;
+    return `ST_SRID(ST_GeomFromGeoJSON(?), ${srid})`;
   }
 
   // Valore di scrittura per una colonna: le geometriche prendono il frammento
   // ST_GeomFromGeoJSON, tutte le altre un normale segnaposto.
   static geoBinding(col, value, geo) {
     const colInfo = geo && geo.get(col);
-    if (colInfo && isGeoJson(value)) {
-      assertGeoJson(value, `Colonna "${col}"`);
-      return { sql: MySqlStrategy.geoPlaceholder(colInfo), param: JSON.stringify(value) };
+    if (colInfo) {
+      // I file esportati prima della correzione portano la forma grezza del
+      // driver (`{ x, y }` per un punto) invece del GeoJSON: si recupera,
+      // invece di chiedere all'utente di rifare l'export.
+      const geoJson = isGeoJson(value) ? value : daFormaDriverMysql(value);
+      if (geoJson) {
+        assertGeoJson(geoJson, `Colonna "${col}"`);
+        return { sql: MySqlStrategy.geoPlaceholder(colInfo), param: JSON.stringify(geoJson) };
+      }
     }
     return { sql: '?', param: toSqlValue(value) };
   }
@@ -1324,6 +1341,13 @@ class MySqlStrategy extends DbStrategy {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const table = qtable(db, coll);
     const pk = await this.primaryKey(db, coll);
+    // Il formato JSON e' anche il trasporto dell'export di un intero database:
+    // le geometrie devono uscire nella lingua comune GeoJSON, non nella
+    // rappresentazione privata del driver (un POINT diventerebbe `{ x, y }`,
+    // che all'import MySQL rifiuta con «Cannot get geometry object»). E' la
+    // stessa scelta gia' fatta su PostgreSQL: qui mancava e basta.
+    const selezione = format === 'json' ? await this.selectListFor(db, coll) : null;
+    const selectList = selezione ? selezione.list : '*';
 
     let rows;
     let fields;
@@ -1346,7 +1370,7 @@ class MySqlStrategy extends DbStrategy {
         params = afterVals.map(toSqlValue);
       }
       [rows, fields] = await pool.query(
-        `SELECT * FROM ${table}${whereSql} ORDER BY ${pkCols} LIMIT ?`,
+        `SELECT ${selectList} FROM ${table}${whereSql} ORDER BY ${pkCols} LIMIT ?`,
         [...params, limit]
       );
       if (rows.length) {
@@ -1355,10 +1379,26 @@ class MySqlStrategy extends DbStrategy {
       }
     } else {
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-      [rows, fields] = await pool.query(`SELECT * FROM ${table} LIMIT ? OFFSET ?`, [limit, skip]);
+      [rows, fields] = await pool.query(
+        `SELECT ${selectList} FROM ${table} LIMIT ? OFFSET ?`, [limit, skip]);
     }
     const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM ${table}`);
-    const columns = (fields || []).map((f) => f.name);
+    let columns = (fields || []).map((f) => f.name);
+
+    if (format === 'json') {
+      // Le geometriche tornano come TESTO GeoJSON: qui diventano oggetti, la
+      // stessa forma che la griglia riceve e che l'import sa riscrivere.
+      MySqlStrategy.geoRowsToJson(rows, selezione ? selezione.geo : null);
+      // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
+      // rendeva il file non reimportabile riga per riga. Il suo valore lo
+      // ricalcola il database dalla definizione, che viaggia nel DDL.
+      const scrivibili = await this.colonneScrivibili(db, coll);
+      const generate = columns.filter((c) => !scrivibili.has(c));
+      if (generate.length) {
+        for (const row of rows) for (const c of generate) delete row[c];
+        columns = columns.filter((c) => scrivibili.has(c));
+      }
+    }
 
     let lines;
     if (format === 'sql') {
@@ -1404,6 +1444,16 @@ class MySqlStrategy extends DbStrategy {
       throw new Error(`Upsert rifiutato per "${coll}": il piano non dichiara un'identita stabile.`);
     }
 
+    // Geometrie e colonne scrivibili si leggono dal catalogo della tabella di
+    // DESTINAZIONE: e' lei a dire come va scritto un valore, non il file.
+    let geo = new Map();
+    let scrivibili = new Set();
+    try {
+      const info = await this.tableColumnsInfo(db, coll);
+      geo = info.geo || geo;
+      scrivibili = await this.colonneScrivibili(db, coll);
+    } catch { /* metadati non leggibili: vale il comportamento storico */ }
+
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
       try {
@@ -1411,9 +1461,19 @@ class MySqlStrategy extends DbStrategy {
         if (!row || typeof row !== 'object' || Array.isArray(row)) {
           throw new Error('la riga deve essere un oggetto { "colonna": valore }');
         }
+        // Una colonna GENERATA arriva dai file esportati dalle versioni che la
+        // scrivevano: nominarla in un INSERT e' un errore, e farebbe fallire
+        // OGNI riga. Si scarta qui, cosi' i file gia' prodotti restano
+        // importabili invece di richiedere un nuovo export.
+        for (const nome of Object.keys(row)) {
+          if (scrivibili.size && !scrivibili.has(nome)) delete row[nome];
+        }
         const cols = Object.keys(row);
         if (!cols.length) throw new Error('riga vuota');
-        parsed.push({ i, cols, values: cols.map((c) => toSqlValue(row[c])) });
+        // I valori NON vengono piu' convertiti qui: `geoBinding` decide per
+        // ciascuna colonna se serve un segnaposto normale o
+        // ST_GeomFromGeoJSON, ed e' lui a chiamare `toSqlValue`.
+        parsed.push({ i, cols, values: cols.map((c) => row[c]) });
       } catch (err) {
         if (errors.length < 10) errors.push(`Riga ${i + 1}: ${(err && err.message) || err}`);
       }
@@ -1429,16 +1489,34 @@ class MySqlStrategy extends DbStrategy {
       }
     }
 
-    const sqlInserimento = (cols, valori) => {
-      let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) ${valori}`;
-      if (payload.upsert) {
-        const aggiornabili = cols.filter((c) => !conflictColumns.includes(c));
-        const assegnazioni = aggiornabili.length
-          ? aggiornabili.map((c) => `${qid(c)} = VALUES(${qid(c)})`)
-          : [`${qid(conflictColumns[0])} = ${qid(conflictColumns[0])}`];
-        sql += ` ON DUPLICATE KEY UPDATE ${assegnazioni.join(', ')}`;
-      }
-      return sql;
+    const coda = (cols) => {
+      if (!payload.upsert) return '';
+      const aggiornabili = cols.filter((c) => !conflictColumns.includes(c));
+      const assegnazioni = aggiornabili.length
+        ? aggiornabili.map((c) => `${qid(c)} = VALUES(${qid(c)})`)
+        : [`${qid(conflictColumns[0])} = ${qid(conflictColumns[0])}`];
+      return ` ON DUPLICATE KEY UPDATE ${assegnazioni.join(', ')}`;
+    };
+
+    // Una tupla per riga con i suoi parametri: le colonne geometriche prendono
+    // ST_GeomFromGeoJSON col SRID della colonna (la stessa via di docInsert),
+    // le altre un segnaposto. Prima si usava `VALUES ?` con la lista dei
+    // valori, che per una geometria manda al server l'oggetto GeoJSON grezzo:
+    // MySQL risponde «Cannot get geometry object» su OGNI riga.
+    const inserimento = (cols, righe) => {
+      const params = [];
+      const tuple = righe.map((r) => {
+        const ph = r.values.map((valore, indice) => {
+          const bind = MySqlStrategy.geoBinding(cols[indice], valore, geo);
+          params.push(bind.param);
+          return bind.sql;
+        });
+        return `(${ph.join(', ')})`;
+      });
+      return {
+        sql: `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}${coda(cols)}`,
+        params,
+      };
     };
 
     const BATCH_SIZE = 500;
@@ -1456,10 +1534,8 @@ class MySqlStrategy extends DbStrategy {
 
     for (const g of groups) {
       try {
-        await pool.query(
-          sqlInserimento(g.cols, 'VALUES ?'),
-          [g.rows.map((r) => r.values)]
-        );
+        const q = inserimento(g.cols, g.rows);
+        await pool.query(q.sql, q.params);
         // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
         // il conteggio applicato misura righe sorgente, non effetti interni.
         inserted += g.rows.length;
@@ -1468,10 +1544,8 @@ class MySqlStrategy extends DbStrategy {
         // si ripete riga per riga per isolare quale e non perdere le altre.
         for (const r of g.rows) {
           try {
-            await pool.query(
-              sqlInserimento(g.cols, `VALUES (${g.cols.map(() => '?').join(', ')})`),
-              r.values
-            );
+            const q = inserimento(g.cols, [r]);
+            await pool.query(q.sql, q.params);
             inserted += 1;
           } catch (err) {
             if (errors.length < 10) errors.push(`Riga ${r.i + 1}: ${(err && err.message) || err}`);

@@ -516,6 +516,7 @@ const METHOD_CAPABILITY = {
     // metodi pubblici che hanno gia' la loro voce.
     'primaryKey', 'tableColumnsInfo', 'tableFields', 'uniqueIndexes', 'elencoIndici',
     'indexList', 'estimatedRowCount', 'selectListFor', 'countWithTimeout',
+    'colonneScrivibili',
     // Dettagli di connessione e di esecuzione dei singoli motori.
     'requireClient', 'requirePool', 'usaDatabase', 'rilevaCollazione', 'conSearchPath',
     'queryConTimeout', 'threadIdsDelPool', 'processIDsDelPool', 'uccidiSulServer',

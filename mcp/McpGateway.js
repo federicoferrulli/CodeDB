@@ -29,7 +29,7 @@ const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 const DbFactory = require('../db/DbFactory');
 const { makeAuditor } = require('../db/AuditLog');
 const { runBackup } = require('../backup/lib/engine');
-const { runRestore, resolveChain } = require('../backup/lib/restore');
+const { resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
 // Stesse politiche del percorso socket: la destinazione cloud e il webhook non
 // possono arrivare dal client (qui: dal client MCP, cioè dall'AI e da chi
@@ -47,8 +47,10 @@ const {
   analyzeMongoPipeline, assertNoMongoServerJs,
 } = require('../auth/capabilities');
 const { spiegaErrore } = require('../db/errors');
-const { creaPianoImport, eseguiPianoImport } = require('../db/importPlan');
+const { creaPianoImport, creaPianoRestore, eseguiPianoImport } = require('../db/importPlan');
 const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
+const { sanitizeImportResult } = require('../db/importOperations');
+const { descriviBackup, createBackupRestoreAdapter } = require('../db/backupRestoreAdapter');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
 // Stessa mappatura di auth/capabilities.js (write/delete/ddl): così il gate del
@@ -1347,20 +1349,32 @@ function buildMcpServer(session, deps) {
     // Secondo passo: esecuzione del restore registrato col token.
     const token = String(args.confirm_token || '').trim();
     if (token) {
-      const pending = confirmFlow.consume(token, 'restore', (p) => p.connectionId === String(args.connection_id), 'connessione');
+      const requestedCollections = args.collections
+        ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean) : null;
+      const pending = confirmFlow.consume(token, 'restore', (p) => p.connectionId === String(args.connection_id)
+        && p.group === group && p.backupId === backupId
+        && p.plan.targetDb === (String(args.target_db || '').trim() || p.sourceDb)
+        && p.plan.drop === !!args.drop
+        && JSON.stringify(p.onlyCollections) === JSON.stringify(requestedCollections), 'piano/backup/connessione');
       const log = createLogger(path.join(backupRootOf(session), 'backup.log'), { quiet: true });
       try {
-        const summary = await log.run(`restore conn=${sess.name} da=${group}/${backupId} (via MCP)`, () => runRestore({
-          session: sess,
-          backupDir: pending.backupDir,
-          targetDb: pending.targetDb,
-          onlyCollections: pending.onlyCollections,
-          drop: pending.drop,
-          log,
-        }));
-        audit({ ...auditBase, event: 'executed', targetDb: summary.targetDb, docs: summary.totalDocs });
-        await notifySlack(process.env.SLACK_WEBHOOK_URL, `✅ CodeDB restore di \`${summary.targetDb}\` (${sess.name}, via MCP) riuscito: ${summary.totalDocs} documenti/righe da ${summary.layers} layer.`, log);
-        return jsonResult({ executed: true, target_db: summary.targetDb, layers: summary.layers, docs: summary.totalDocs });
+        const adapter = createBackupRestoreAdapter({
+          strategy: sess.strategy, dbType: sess.dbType, connName: sess.name,
+          recoveryRoot: path.join(backupRootOf(session), 'import-recovery'), log,
+        });
+        const result = await log.run(`restore conn=${sess.name} da=${group}/${backupId} (via MCP)`, () => (
+          eseguiPianoImport(pending.plan, { adapter })
+        ));
+        const docs = (result.verification && result.verification.snapshot
+          && result.verification.snapshot.counts || []).reduce((sum, item) => sum + item.cardinality, 0);
+        const summary = { targetDb: pending.plan.targetDb, totalDocs: docs, layers: pending.plan.source.layers.length };
+        const publicResult = sanitizeImportResult(result);
+        audit({ ...auditBase, group: pending.group, backupId: pending.backupId,
+          event: result.status, targetDb: summary.targetDb, docs: summary.totalDocs });
+        await notifySlack(process.env.SLACK_WEBHOOK_URL,
+          `${result.status === 'completato' ? '✅' : '❌'} CodeDB restore ${result.status} di \`${summary.targetDb}\` (${sess.name}, via MCP): ${summary.totalDocs} documenti/righe.`, log);
+        return jsonResult({ executed: result.status === 'completato', target_db: summary.targetDb,
+          layers: summary.layers, docs: summary.totalDocs, ...publicResult });
       } catch (err) {
         audit({ ...auditBase, event: 'failed', error: errMsg(err) });
         await notifySlack(process.env.SLACK_WEBHOOK_URL, `❌ CodeDB restore da \`${group}/${backupId}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
@@ -1378,9 +1392,15 @@ function buildMcpServer(session, deps) {
       ? String(args.collections).split(',').map((s) => s.trim()).filter(Boolean)
       : null;
     const targetDb = String(args.target_db || '').trim() || first.db;
+    const source = descriviBackup(backupDir, onlyCollections);
+    const plan = creaPianoRestore({
+      source, expectedDbType: sess.dbType, connection: sess.name,
+      targetDb, drop: !!args.drop,
+    });
     audit({ ...auditBase, event: 'requested', targetDb });
     return confirmFlow.issue('restore', {
-      connectionId: String(args.connection_id), backupDir, targetDb, onlyCollections, drop: !!args.drop,
+      connectionId: String(args.connection_id), plan, group, backupId,
+      sourceDb: first.db, onlyCollections,
     }, {
       toolName: 'restore_backup',
       preview: {
@@ -1388,6 +1408,7 @@ function buildMcpServer(session, deps) {
         target_db: targetDb,
         collections: onlyCollections || 'tutte',
         drop: !!args.drop,
+        fingerprint: plan.fingerprint,
       },
     });
   });
@@ -1449,7 +1470,7 @@ function buildMcpServer(session, deps) {
       sessionId: session.id, connection: sess.name, operation: 'import',
       event: result.status, targetDb: pending.plan.targetDb, error: result.error,
     });
-    return jsonResult({ executed: true, ...result });
+    return jsonResult({ executed: true, ...sanitizeImportResult(result) });
   });
 
   // --- Resources (Fase 2): schema come risorsa markdown -----------------------

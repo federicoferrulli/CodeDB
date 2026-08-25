@@ -23,6 +23,23 @@ module.exports = (async () => {
   limited.start('owner-1');
   assert.throws(() => limited.append('upload-2', 'owner-1', 0, 'quattro'), /troppo grande/i);
 
+  const timers = [];
+  let next = 0;
+  const bounded = createImportUploadRegistry({
+    id: () => `bounded-${++next}`, maxActive: 2, maxPerOwner: 1, maxTotalBytes: 5,
+    schedule(fn) { const timer = { fn, cancelled: false }; timers.push(timer); return timer; },
+    unschedule(timer) { timer.cancelled = true; },
+  });
+  const first = bounded.start('owner-a', 'actor-a');
+  assert.throws(() => bounded.start('owner-a', 'actor-b'), /account/i);
+  const second = bounded.start('owner-b', 'actor-b');
+  assert.throws(() => bounded.start('owner-c', 'actor-c'), /troppi/i);
+  bounded.append(first.uploadId, 'owner-a', 0, '123', 'actor-a');
+  assert.throws(() => bounded.append(first.uploadId, 'owner-a', 1, 'x', 'actor-b'), /non trovato/i);
+  assert.throws(() => bounded.append(second.uploadId, 'owner-b', 0, '123', 'actor-b'), /complessiva/i);
+  for (const timer of timers.filter((item) => !item.cancelled)) timer.fn();
+  assert.throws(() => bounded.get(first.uploadId, 'owner-a', 'actor-a'), /non trovato/i);
+
   console.log('  OK   Upload artefatto a blocchi, limiti e isolamento owner passed');
 })().catch((err) => {
   console.error('  FAIL Upload artefatto:', err.stack || err);

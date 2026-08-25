@@ -105,8 +105,16 @@ assert.strictEqual(b.param, JSON.stringify(punto), 'MySQL: parametro = GeoJSON t
 b = MySqlStrategy.geoBinding('zona', poligono, geoMy);
 assert.strictEqual(b.sql, 'ST_SRID(ST_GeomFromGeoJSON(?), 0)', 'MySQL: anche SRID 0 va imposto');
 
+// Senza SRID dichiarato dalla colonna il SRID va imposto UGUALMENTE, e vale 0.
+// Questo test affermava il contrario, cioe' il difetto: lasciato a se stesso,
+// `ST_GeomFromGeoJSON` produce SRID 4326, dove MySQL usa l'ordine degli assi
+// latitudine-longitudine. Misurato su MySQL 8: un `POLYGON((0 0,3 0,3 1,0 0))`
+// scritto cosi' tornava `POLYGON((0 0,0 3,1 3,0 0))` — le coordinate
+// SCAMBIATE, senza alcun errore. Una colonna senza SRS dichiarato contiene
+// geometrie cartesiane, il cui SRID e' 0.
 b = MySqlStrategy.geoBinding('ignoto', punto, geoMy);
-assert.strictEqual(b.sql, 'ST_GeomFromGeoJSON(?)', 'MySQL: senza SRID noto nessun ST_SRID');
+assert.strictEqual(b.sql, 'ST_SRID(ST_GeomFromGeoJSON(?), 0)',
+  'MySQL: senza SRID dichiarato si impone comunque lo 0 cartesiano');
 
 // Colonna NON geometrica: nessuna conversione, altrimenti un documento JSON con
 // un campo `type` finirebbe in ST_GeomFromGeoJSON.

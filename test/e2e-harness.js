@@ -39,6 +39,7 @@ const DEFAULT_PORT = parseInt(process.env.E2E_PORT, 10) || 3141;
  * `destructive: true` e' il flag esplicito: senza, il primo drop e' rifiutato.
  */
 function createE2eTargetRegistry({ destructive = false, prefix = 'codedb_e2e' } = {}) {
+  const environmentAllowsDestruction = process.env.CODEDB_E2E_DESTRUCTIVE === '1';
   const marker = crypto.randomBytes(6).toString('hex');
   const owned = new Set();
   const safePrefix = String(prefix).replace(/[^A-Za-z0-9_]/g, '_').slice(0, 24) || 'codedb_e2e';
@@ -51,8 +52,10 @@ function createE2eTargetRegistry({ destructive = false, prefix = 'codedb_e2e' } 
       return name;
     },
     assertOwned(name) {
-      if (!destructive) {
-        throw new Error('Comando distruttivo E2E rifiutato: manca il flag esplicito destructive: true.');
+      if (!destructive || !environmentAllowsDestruction) {
+        throw new Error(
+          'Comando distruttivo E2E rifiutato: servono destructive: true e CODEDB_E2E_DESTRUCTIVE=1.'
+        );
       }
       if (!owned.has(String(name)) || !String(name).endsWith(`_${marker}`)) {
         throw new Error(`Bersaglio distruttivo E2E non posseduto dalla fixture corrente: "${name}".`);

@@ -1467,6 +1467,7 @@ console.log('--- Test Unitari CodeDB ---');
   // un recupero o un guasto parziale con un successo.
   await require('./unit-piano-import');
   await require('./unit-import-adapter');
+  require('./unit-schema-objects');
   await require('./unit-import-uploads');
 
   // L'import risponde subito con un id, vive oltre il tab, espone progresso e
@@ -1476,6 +1477,7 @@ console.log('--- Test Unitari CodeDB ---');
   // Socket e contesto finti invocano l'evento reale: ack anticipato, lease
   // oltre la chiusura del tab e stato recuperato da un nuovo contesto.
   await require('./unit-evento-import');
+  await require('./unit-import-status');
 
   // Ogni database/schema distruttivo E2E porta il marcatore casuale della
   // fixture, richiede un flag esplicito e viene eliminato solo dal suo registro.

@@ -26,7 +26,7 @@ console.log('--- Test Unitari Colonne della Tabella Risultati ---');
 (async () => {
   const {
     chiaveOrdinamento, confrontaChiavi, ordinaRighe, ordinaRigheMultiple, larghezzeColonne,
-    LARGH_MIN, LARGH_MAX, isVuoto,
+    colonneRisultato, LARGH_MIN, LARGH_MAX, isVuoto,
   } = await import('../public/js/table-cols.js');
 
   const cmp = (a, b) => confrontaChiavi(chiaveOrdinamento(a), chiaveOrdinamento(b));
@@ -203,6 +203,59 @@ console.log('--- Test Unitari Colonne della Tabella Risultati ---');
   assert.ok(conBudget < Math.max(50, intero * 5),
     `50 troncate (${conBudget}ms) devono costare quanto poche serializzazioni intere (1 = ${intero}ms)`);
   console.log(`  ✓ jsonBreve: fedele, budget rispettato, costo indipendente dalla dimensione (50×=${conBudget}ms vs 1 intera=${intero}ms)`);
+
+  /* --- Colonne di un result set --------------------------------------------
+   * Il difetto: le colonne venivano DEDOTTE dalle righe, quindi un result set
+   * con zero righe non ne aveva nessuna e la tabella perdeva l'intestazione.
+   * ---------------------------------------------------------------------- */
+
+  // IL CASO CHE HA APERTO IL TICKET: `SELECT id, addsa FROM vuota` su una
+  // tabella senza righe. Le colonne ci sono, le righe no.
+  assert.deepStrictEqual(
+    colonneRisultato(['id', 'addsa'], []),
+    ['id', 'addsa'],
+    'un result set vuoto conserva le colonne DICHIARATE dal motore',
+  );
+  console.log('  ✓ zero righe: le colonne dichiarate sopravvivono (era il difetto)');
+
+  // L'ordine e' quello della SELECT, non quello di comparsa nelle righe: le
+  // chiavi di un oggetto arrivano nell'ordine del driver, che per una `SELECT
+  // b, a` coincide, ma per un documento MongoDB no.
+  assert.deepStrictEqual(
+    colonneRisultato(['b', 'a'], [{ a: 1, b: 2 }]),
+    ['b', 'a'],
+    'le colonne dichiarate vengono prima e nel loro ordine',
+  );
+  console.log("  ✓ l'ordine è quello dichiarato, non quello delle chiavi della prima riga");
+
+  // Una colonna che compare SOLO nei dati non deve sparire: su MongoDB il
+  // catalogo dei campi e' campionato, quindi puo' non aver visto tutto. Una
+  // colonna nei dati ma non nell'intestazione sarebbe un valore invisibile.
+  assert.deepStrictEqual(
+    colonneRisultato(['a'], [{ a: 1 }, { a: 2, extra: 3 }]),
+    ['a', 'extra'],
+    'un campo presente solo nelle righe si accoda invece di sparire',
+  );
+  console.log('  ✓ i campi non dichiarati si accodano, non spariscono');
+
+  // Nessun duplicato quando dichiarazione e righe dicono la stessa cosa.
+  assert.deepStrictEqual(
+    colonneRisultato(['a', 'b'], [{ a: 1, b: 2 }, { b: 3, a: 4 }]),
+    ['a', 'b'],
+    'una colonna dichiarata e presente compare una volta sola',
+  );
+
+  // Senza dichiarazione si torna al comportamento di prima: unione delle
+  // chiavi. E' la via di chi non dichiara nulla, non un caso d'errore.
+  assert.deepStrictEqual(
+    colonneRisultato(null, [{ a: 1 }, { b: 2 }]),
+    ['a', 'b'],
+    "senza colonne dichiarate vale l'unione delle chiavi delle righe",
+  );
+  assert.deepStrictEqual(colonneRisultato(null, []), [], 'niente righe e niente dichiarazione: niente colonne');
+  assert.deepStrictEqual(colonneRisultato(undefined, [null, 3, 'x', [1, 2]]), [],
+    'righe non oggetto non inventano colonne');
+  console.log("  ✓ senza dichiarazione resta l'unione delle chiavi; i valori non-oggetto non inventano colonne");
 
   console.log('--- Colonne della Tabella Risultati: tutti i test superati ---');
 })().catch((err) => {

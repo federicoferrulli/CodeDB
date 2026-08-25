@@ -128,6 +128,18 @@ node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ri
 node test/e2e-selezione-celle-viste.js # Test della selezione di celle in piu' griglie indipendenti (Chromium)
 node test/e2e-fk-viste.js     # Test del pannello 🔗 aperto da piu' griglie (Chromium)
 node test/e2e-geometrie-viste.js # Test delle celle geometriche in ogni griglia (Chromium)
+node test/unit-artefatti.js    # Test del confine di fiducia: bersaglio effettivo delle DDL
+node test/unit-piano-import.js # Test del piano immutabile e delle fasi dell'orchestratore
+node test/unit-import-adapter.js # Test dell'adapter reale (identita' e righe prima delle mutazioni)
+node test/unit-schema-objects.js # Test dell'inventario canonico degli oggetti di schema
+node test/unit-upsert-identitario.js # Test dell'upsert SQL sull'identita' dichiarata
+node test/unit-drop-fail-closed.js # Test che un drop ignori solo l'assenza della risorsa
+node test/unit-import-uploads.js # Test di TTL, quote e isolamento dei caricamenti
+node test/unit-operazione-import.js # Test del registro dell'operazione lunga di import
+node test/unit-evento-import.js # Test dell'evento reale di import (socket e contesto finti)
+node test/unit-import-status.js # Test della presentazione dei tre esiti terminali
+node test/unit-e2e-targets.js  # Test delle barriere sui bersagli distruttivi dell'harness
+node test/e2e-integrita-import.js # Matrice reale di integrita' su MongoDB, MySQL e PostgreSQL
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -257,6 +269,166 @@ un messaggio che dice **cosa fare**, non solo che qualcosa non torna.
 * Supporto storage cloud opzionale (S3, GCS, Azure) via `backup/lib/storage.js`.
 * Isolamento multi-tenant dei backup (`BACKUP_ROOT/tenants/<ownerId>`).
 * Validazione di sicurezza delle DDL in ripristino (`assertSafeSchemaSql`).
+* **Manifest v2: l'identità stabile è dichiarata**: un timestamp seleziona le righe
+  cambiate ma non dice *quale* riga è. Senza una regola scritta, un layer incrementale
+  riapplicato duplicava righe e la verifica numerica — che sommava le scritture — non se
+  ne accorgeva. Il manifest v2 dichiara identità, schema delle colonne e cardinalità della
+  sorgente: MongoDB usa `_id`, i motori SQL una chiave primaria o un vincolo univoco
+  interamente `NOT NULL`. Una tabella senza identità stabile è ammessa in un full verso una
+  destinazione **vuota** e rifiutata come base o layer di una catena incrementale — i
+  manifest storici restano quindi ripristinabili come full ma non vengono **promossi** a
+  incrementali sicuri. La verifica finale confronta cardinalità e identità **distinte**
+  realmente presenti, non la somma delle scritture applicate.
+
+### 8-bis. Il motore unico di applicazione degli artefatti (`db/importPlan.js`)
+
+Import dell'intero database e ripristino di un backup erano due orchestrazioni con regole
+diverse, e l'import viveva nel **browser**: una sequenza di drop, create, insert e DDL
+mandata una alla volta. Entrambe cominciavano a mutare la destinazione prima di aver
+dimostrato che input, piano e strategia fossero sicuri, quindi un errore a metà lasciava
+una destinazione parziale e un esito formalmente riuscito. Ora c'è una giuntura sola: chi
+entra da UI, CLI o MCP costruisce lo stesso **piano** e passa dallo stesso motore.
+
+* **Il confine di fiducia (`db/artefatti.js`)**: un file `.codedb.json` e i layer di un
+  backup contengono DDL libero, e validarne la **forma** JSON non dice nulla sul suo
+  **bersaglio**. La presenza testuale del nome atteso non è una prova: un
+  `ALTER TABLE clienti` che nomina `ordini` in una colonna passava il controllo. Il modulo
+  normalizza l'artefatto, estrae il bersaglio **effettivo** di ogni istruzione e rifiuta
+  qualificatori estranei o cross-database prima di ogni mutazione. Integrità (checksum) e
+  autenticità sono esposte come proprietà **distinte**: un artefatto con checksum valido
+  resta non fidato. Nessuna regex parallela sopravvive negli altri percorsi.
+* **Il piano è immutabile e firmato (`creaPianoImport`, `creaPianoRestore`)**: il piano
+  è congelato e porta un'impronta SHA-256 del proprio contenuto canonico. Anteprima ed
+  esecuzione devono presentare la **stessa** impronta, altrimenti l'esecuzione è rifiutata:
+  è ciò che impedisce alla conferma mostrata all'utente di descrivere un'operazione diversa
+  da quella che verrà eseguita.
+* **L'orchestratore è indipendente dal DBMS (`eseguiPianoImport`)**: dieci fasi osservabili
+  in ordine fisso — validazione, destinazione, recupero, staging, applicazione, verifica
+  dello staging, promozione, verifica finale, ed eventuale rollback. Fino alla promozione
+  ogni scrittura riguarda **soltanto** lo staging, quindi un errore prima di quel punto non
+  ricostruisce nulla: il bersaglio è ancora intatto. L'adapter è intenzionalmente piccolo,
+  così l'**ordine delle barriere** è provabile con una strategia finta registrante e senza
+  alcun database.
+* **La promozione dichiara la garanzia reale**: PostgreSQL rinomina gli schemi nella stessa
+  transazione (`swap-schema-atomico`), quindi un lettore concorrente vede o il vecchio o il
+  nuovo. MongoDB e MySQL non hanno un equivalente e non fingono di averlo
+  (`staging-con-recupero`): promuovono da una copia **verificata** e conservano recupero e
+  staging fino a un'eliminazione esplicita. Promettere atomicità dove il DBMS non la offre
+  sarebbe la falsa riuscita che questa giuntura esiste per togliere.
+* **Tre esiti canonici, e nessun falso successo**: `completato`,
+  `ripristinato_dopo_errore`, `intervento_richiesto`. Soltanto il primo usa la
+  presentazione del successo (`public/js/import-status.js`, seam puro). Un risultato
+  parziale non usa mai messaggi o stile di riuscita, e la copia di recupero resta visibile
+  con un'azione successiva esplicita per eliminarla.
+* **Fail-closed sui drop**: `eliminaSePresente` ignora **esclusivamente** l'errore che
+  dimostra l'assenza della risorsa (`NamespaceNotFound`/26 su MongoDB, `42P01` su
+  PostgreSQL). Autorizzazione, rete e timeout conservano istanza, codice e bersaglio fino
+  all'audit, e un drop fallito impedisce create e insert successivi: un `catch` generico
+  mescolava dati vecchi e nuovi dichiarando successo.
+* **L'upsert passa dall'identità dichiarata**: MySQL usa
+  `INSERT … ON DUPLICATE KEY UPDATE` e non più `REPLACE`, che implementa l'upsert come
+  delete più insert e attiva quindi foreign key `ON DELETE CASCADE` e trigger già presenti
+  sul database dell'utente. PostgreSQL usa `ON CONFLICT` sull'identità dichiarata e non
+  ripiega più su un `INSERT` normale quando la PK manca. L'assenza o la divergenza
+  dell'identità ferma il piano **prima della prima riga**.
+* **L'inventario degli oggetti di schema (`db/schemaObjects.js`)**: la verifica non
+  confronta stringhe di DDL ma definizioni **canoniche** di tabelle, view, routine,
+  trigger, indici, chiavi esterne, opzioni MongoDB e valori delle sequenze — altrimenti una
+  view mancante o una sequenza arretrata passavano inosservate.
+* **L'import è una operazione lunga** (`db/importOperations.js`, `db/importUploads.js`),
+  nella terza famiglia di ADR-0001: ack immediato, id stabile, avanzamento, annullamento
+  cooperativo, audit e stato interrogabile. La sessione ha un **lease** che sopravvive alla
+  chiusura del tab, quindi chiudere la vista non classifica come fallita un'operazione
+  ancora viva e non produce retry; `database:import:list` permette alla UI riaperta di
+  ritrovare l'operazione invece di rilanciarla. I file oltre i 5 MB salgono a **blocchi e
+  senza effetti**: i caricamenti hanno TTL, quota globale, quota per owner e limite di
+  concorrenza, sono legati al soggetto autenticato e non al solo tenant, e lo stato
+  pubblico non espone i percorsi assoluti delle copie di recupero.
+* **Una collection VUOTA sopravvive al ripristino**: su MongoDB una collection nasce alla
+  prima scrittura, quindi una collection vuota nel backup non ne produceva nessuna nella
+  destinazione — spariva, e il conteggio tornava lo stesso (zero attese contro zero
+  presenti in una collection inesistente), cioè un `completato` che aveva perso una
+  collection. Il manifest la dichiara: il ripristino la **materializza**, come il motore
+  del piano fa già per l'import. La barriera che avrebbe dovuto accorgersene mancava:
+  per lo staging le due liste di conteggi sono **lo stesso oggetto**, quindi non potevano
+  divergere su una collection assente da entrambe. La verifica confronta ora le collection
+  **attese dal piano** con quelle presenti.
+* **Gli indici si verificano leggendoli dal server (`MongoDbStrategy.indexList`)**: la
+  verifica confronta l'indice ricreato con quello salvato nel backup, ma la strategia
+  MongoDB **non implementava il metodo** con cui leggerlo. Le due chiamate erano protette
+  da un `typeof … === 'function'` che nascondeva l'assenza in due modi opposti: sul
+  ripristino il lato reale restava vuoto e ogni indice atteso risultava mancante — quindi
+  **ogni** ripristino di un database con almeno un indice falliva la verifica dello
+  staging; sull'import il controllo veniva **saltato in silenzio** e dichiarato fatto.
+  Entrambe le vie ora falliscono dichiarando che gli indici non sono verificabili, e i
+  descrittori restano **grezzi**: normalizzarli (`unique: !!i.unique`) inventerebbe un
+  `unique: false` su ogni indice non univoco contro la sua assenza nel file di backup,
+  cioè una divergenza per ciascun indice.
+* **Una verifica fallita dice che cosa non torna**: l'esito riduceva a «la verifica non è
+  riuscita» un risultato che conosce già collection mancanti, conteggi divergenti e
+  definizioni di schema diverse. Chi lo riceveva non aveva modo di agire; ora le
+  divergenze sono nel messaggio.
+* **Il predefinito della compressione è dichiarato in un posto solo**: il nome del file di
+  dati si sceglieva con `compress ? '.gz' : ''` mentre `createFileSink` comprimeva
+  comunque, perché lì il predefinito è `true`. Un chiamante che ometteva il parametro
+  otteneva contenuto gzip sotto un nome `.ndjson`, e il ripristino falliva con un errore
+  di JSON illeggibile invece che con «backup corrotto».
+* **La forma canonica dev'essere davvero canonica**: la verifica confrontava la
+  **presentazione** invece della semantica, e rifiutava l'import del proprio stesso
+  staging. Due facce. Su MySQL `SHOW CREATE VIEW` qualifica il nome del database soltanto
+  quando NON è quello corrente della connessione: `canonicalSqlForDb` toglieva la
+  qualificazione nella forma nuda e in quella fra virgolette doppie di PostgreSQL, ma non
+  fra **apici inversi** — l'unica che MySQL usa — quindi la stessa view risultava mancante
+  da sé stessa. Il meccanismo non è di MySQL: su PostgreSQL `pg_get_viewdef` qualifica i
+  nomi in base al `search_path`, quindi la stessa view torna nuda o qualificata a seconda
+  della connessione. Lì le due forme erano già coperte, ed è la ragione per cui PostgreSQL
+  non mostrava il difetto; il test lo **misura** invece di darlo per scontato. Su MongoDB il server omette le opzioni lasciate al predefinito, mentre
+  l'artefatto esportato scriveva `unique: false`: confrontando la **presenza** del campo,
+  ogni indice non univoco divergeva, e l'import falliva su qualunque database con almeno
+  un indice. `canonicalMongoIndex` omette ora i predefiniti da entrambe le parti e vive in
+  `db/schemaObjects.js` in copia unica — i due adapter ne tenevano due identiche. Ciò che
+  ha un **valore** resta confrontato: un TTL o un filtro parziale diverso è una differenza
+  vera.
+* **Gli indici MongoDB viaggiano interi**: `collectionStats` riduceva ogni indice a
+  `{name, key, unique}` e l'import lo ricreava con quei soli tre campi, quindi
+  `expireAfterSeconds`, `sparse`, `partialFilterExpression`, `collation` e
+  `wildcardProjection` sparivano. Non era un falso allarme della verifica ma una perdita:
+  un TTL importato è una scadenza che non scade più. L'export porta ora i descrittori
+  completi e `createIndex` li applica, da un elenco **chiuso** di opzioni — è anche un
+  evento del browser, e inoltrare al driver un oggetto arbitrario sarebbe una superficie
+  in più.
+* **L'export scrive solo le colonne che un `INSERT` può scrivere**: l'export dell'intero
+  database leggeva le righe con `SELECT *` — cioè leggeva anche ciò che il motore di backup
+  già sapeva di non poter riscrivere — e l'import le riscriveva. Due forme rendevano il file
+  **non reimportabile**, entrambe con «applicate 0 di N righe»: una colonna **generata**,
+  che nominata in un `INSERT` è un errore e non un valore in più; e una **geometria**, che
+  `SELECT *` restituisce nella forma privata del driver (`{ x, y }`) invece che in GeoJSON.
+  Le colonne scrivibili sono ora una regola sola (`colonneScrivibili`, dichiarata dal
+  dialetto e servita dalla lettura di colonne già in cache), e l'export MySQL usa la stessa
+  `selectListFor` geometrica della griglia — che su PostgreSQL era già stata applicata, e su
+  MySQL no. L'import scarta comunque le colonne generate e riconosce la forma grezza del
+  driver, così i file **già esportati** restano importabili: a produrli così è stato un
+  difetto nostro.
+* **Il SRID di una geometria MySQL va imposto anche quando la colonna non lo dichiara**:
+  `ST_GeomFromGeoJSON` produce SRID 4326, dove MySQL usa l'ordine degli assi
+  latitudine-longitudine. Su una colonna che dichiara un SRID il valore veniva riportato a
+  quello giusto; su una colonna che non lo dichiara — il caso predefinito — si saltava
+  `ST_SRID` e restava il 4326: misurato su MySQL 8, un `POLYGON((0 0,3 0,3 1,0 0))` tornava
+  `POLYGON((0 0,0 3,1 3,0 0))`, cioè con le coordinate **scambiate** e senza alcun errore.
+  Una colonna senza SRS dichiarato contiene geometrie cartesiane, il cui SRID è 0. Valeva
+  per ogni scrittura, non solo per l'import: anche disegnare sulla mappa e salvare. Il test
+  che affermava il contrario codificava il difetto ed è stato corretto; il poligono di prova
+  è **asimmetrico**, perché su una figura simmetrica uno scambio di assi è invisibile.
+* **Un'applicazione incompleta dice quale riga e perché**: `collectionImport` ripete il
+  batch riga per riga proprio per isolare l'errore, e il motore riduceva tutto a «applicate
+  0 di 6», buttando via l'unica informazione con cui si può fare qualcosa.
+* **I test distruttivi possiedono i propri bersagli (`test/e2e-harness.js`)**: un E2E si
+  collegava al DBMS locale come amministratore e cancellava database dal nome fisso — un
+  nome da test, ma nessuna prova che quella destinazione fosse usa-e-getta. Ogni target
+  riceve ora un marcatore casuale, viene registrato dalla fixture che lo crea, e un drop
+  richiede sia `destructive: true` sia `CODEDB_E2E_DESTRUCTIVE=1` **nell'ambiente**:
+  scriverlo nel sorgente non basta più. Un nome storico omonimo ma non registrato viene
+  rifiutato.
 
 ### 9. Audit Log & Errori Parlanti
 * **Audit (`db/AuditLog.js`)**: Tracciamento operazioni in `ui-audit.log` e `mcp-audit.log`, isolati per tenant.
@@ -364,6 +536,26 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   1. **Dati (`grid.js`)**: Griglia dati paginata con editing inline (`inlineEdit.js`), inserimento (`insert.js`) e toolbar compattabile.
   2. **Dettagli (`details.js`)**: Vista indici, colonne e statistiche.
   3. **⚡ Query & Aggregate (`query-tab.js`)**: Runner SQL/MQL con numeri di riga (`query-editor.js`), formattatore (`query-formatter.js`), cronologia dedicata (`qe-history.js`) e visualizzazione risultati (Tabella, JSON Tree, Grafici, **Mappa**). La scheda 🗺 Mappa (`query-map.js`) compare solo se nei risultati ci sono geometrie: `geo-risultati.js` (puro) le riconosce nelle righe — primo livello, sottodocumenti fino a 2 livelli e dentro gli array — e `geo-vista.js` le disegna.
+  **Le colonne di un result set sono DICHIARATE, non dedotte
+  (`colonneRisultato` in `table-cols.js`)**: la tabella ⚡ ricavava le proprie
+  intestazioni dall'unione delle chiavi delle righe, cioè da un insieme vuoto
+  quando le righe erano zero. `SELECT id, addsa FROM vuota` perdeva così le
+  intestazioni e mostrava «Nessun risultato da mostrare», che è la stessa cosa
+  che il pannello dice quando **non è stata eseguita alcuna query**: due stati
+  diversi resi indistinguibili proprio nel caso in cui l'utente ha bisogno di
+  sapere quale dei due sta guardando. Le tre strategie dichiarano già `columns`
+  (dai `fields` del driver sui due motori SQL) e `ScriptResults` le conserva su
+  file accanto alle righe: era il frontend a buttarle via. Ora viaggiano fino al
+  disegno come **argomento** — dall'esecuzione della query, dall'evento
+  terminale dello script e da `script:result` — e la regola sta in un posto
+  solo: le dichiarate prima e nel loro ordine (quello della `SELECT`, non quello
+  di comparsa nella prima riga), poi i campi che compaiono **solo** nei dati,
+  che si accodano invece di sparire — su MongoDB il catalogo dei campi è
+  campionato, e una colonna presente nei dati ma assente dall'intestazione
+  sarebbe un valore invisibile. La stessa regola vale ora per i riquadri della
+  Split-View e per l'export, che rifacevano il calcolo per conto proprio.
+  Un'aggregazione MongoDB senza documenti resta l'unico caso senza colonne, ed è
+  corretto: lì la forma del risultato non è dichiarata da nessuno.
   4. **UML (`uml.js`)**: Diagramma E-R generato in SVG.
   5. **Grafo 3D (`graph3d.js`)**: Vista interattiva 3D Force-Graph (Three.js) con percorsi BFS e diagnosi schema.
 * **Split-View (`split-layout.js` / `splitview.js`)**: Struttura ad albero immutabile per affiancare più tabelle/collezioni nello stesso workspace con supporto al trascinamento, il cui ridimensionamento usa Pointer Events senza scatti.

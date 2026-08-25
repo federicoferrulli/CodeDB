@@ -39,8 +39,10 @@ const { spiegaErrore } = require('./db/errors');
 const { normalizzaExportDatabase } = require('./db/artefatti');
 const { creaPianoImport } = require('./db/importPlan');
 const { createImportArtifactAdapter } = require('./db/importArtifactAdapter');
-const { createImportOperationRegistry } = require('./db/importOperations');
+const { runRestoreViaPlan } = require('./db/backupRestoreAdapter');
+const { createImportOperationRegistry, sanitizeImportResult } = require('./db/importOperations');
 const { createImportUploadRegistry } = require('./db/importUploads');
+const { readSchemaObjects } = require('./db/schemaObjects');
 const { scegliIdentitaSql } = require('./backup/lib/identity');
 
 /* ---------------------------------------------------------------------------
@@ -1491,6 +1493,7 @@ const OPERAZIONI_LUNGHE = {
     'statoDiSessione', 'categoriaAuditFinale',
   ],
   'database:import:state': ['statoDiSessione', 'letturaOperazioniInCorso'],
+  'database:import:list': ['statoDiSessione', 'letturaOperazioniInCorso'],
   'database:import:cancel': ['statoDiSessione', 'interruzioneInProcesso'],
   'database:import:cleanup': ['statoDiSessione', 'interruzioneInProcesso'],
 };
@@ -3179,19 +3182,19 @@ function registraEventi(ctx) {
 
   delegate('database:import:upload:start', async () => {
     const registry = ctx.importUploads || importUploads;
-    return registry.start(principal.ownerId);
+    return registry.start(principal.ownerId, principal.id);
   });
 
   delegate('database:import:upload:chunk', async (_strategy, payload) => {
     const registry = ctx.importUploads || importUploads;
-    return registry.append(payload.uploadId, principal.ownerId, payload.index, payload.chunk);
+    return registry.append(payload.uploadId, principal.ownerId, payload.index, payload.chunk, principal.id);
   });
 
   delegate('database:import:upload:finish', async (strategy, payload) => {
     const registry = ctx.importUploads || importUploads;
     const artifact = registry.finish(payload.uploadId, principal.ownerId, (raw) => (
       normalizzaExportDatabase(raw, { expectedDbType: strategy.type })
-    ));
+    ), principal.id);
     return {
       artifact: {
         db: artifact.db, dbType: artifact.dbType,
@@ -4480,6 +4483,14 @@ function registraEventi(ctx) {
   // quando tutte le tabelle esistono e i dati sono stati caricati.
   delegate('collection:auxddl', async (strategy, p) => await strategy.tableAuxDdl(p.db, p.coll));
 
+  delegate('database:schema-objects', async (strategy, p) => ({
+    objects: await (async () => {
+      const sess = sessions.get(normTabId(p.tabId));
+      assertWholeConnection(principal, sess.connName, 'read', 'esportare gli oggetti di schema del database');
+      return readSchemaObjects(strategy, strategy.type, p.db);
+    })(),
+  }));
+
   // --- Import database come operazione lunga ---------------------------------
 
   operazioneLunga('database:import:start', async (payload, cb) => {
@@ -4489,7 +4500,7 @@ function registraEventi(ctx) {
     assertWholeConnection(principal, sess.connName, 'manage', 'importare un database');
     const uploadRegistry = ctx.importUploads || importUploads;
     const artifact = payload.uploadId
-      ? uploadRegistry.get(payload.uploadId, principal.ownerId)
+      ? uploadRegistry.get(payload.uploadId, principal.ownerId, principal.id)
       : payload.artifact;
     const plan = creaPianoImport({
       artifact,
@@ -4520,7 +4531,7 @@ function registraEventi(ctx) {
     });
     sess.importLeases = (sess.importLeases || 0) + 1;
     const accepted = registry.start({
-      plan, adapter, ownerId: principal.ownerId, tabId,
+      plan, adapter, ownerId: principal.ownerId, actorId: principal.id, tabId,
       onProgress: (state) => socket.emit('database:import:progress', state),
       onSettled: async (state) => {
         sess.importLeases = Math.max(0, (sess.importLeases || 1) - 1);
@@ -4539,7 +4550,7 @@ function registraEventi(ctx) {
           await teardownConnection(sess);
         }
         if (payload.uploadId && typeof uploadRegistry.remove === 'function') {
-          try { uploadRegistry.remove(payload.uploadId, principal.ownerId); } catch (_) { /* gia scaduto */ }
+          try { uploadRegistry.remove(payload.uploadId, principal.ownerId, principal.id); } catch (_) { /* gia scaduto */ }
         }
       },
     });
@@ -4548,12 +4559,27 @@ function registraEventi(ctx) {
 
   operazioneLunga('database:import:state', async (payload, cb) => {
     const registry = ctx.importRegistry || importOperations;
-    cb({ ok: true, operation: registry.get(payload.operationId, principal.ownerId) });
+    const operation = registry.get(payload.operationId, principal.ownerId, principal.id);
+    assertWholeConnection(principal, operation.connection, 'manage', 'vedere lo stato di un import');
+    cb({ ok: true, operation });
+  });
+
+  operazioneLunga('database:import:list', async (_payload, cb) => {
+    const registry = ctx.importRegistry || importOperations;
+    const visible = registry.list(principal.ownerId, principal.id).filter((operation) => {
+      try {
+        assertWholeConnection(principal, operation.connection, 'manage', 'vedere gli import recuperabili');
+        return true;
+      } catch (_) { return false; }
+    });
+    cb({ ok: true, operations: visible });
   });
 
   operazioneLunga('database:import:cancel', async (payload, cb) => {
     const registry = ctx.importRegistry || importOperations;
-    cb({ ok: true, cancelled: registry.cancel(payload.operationId, principal.ownerId) });
+    const operation = registry.get(payload.operationId, principal.ownerId, principal.id);
+    assertWholeConnection(principal, operation.connection, 'manage', 'annullare un import');
+    cb({ ok: true, cancelled: registry.cancel(payload.operationId, principal.ownerId, principal.id) });
   });
 
   operazioneLunga('database:import:cleanup', async (payload, cb) => {
@@ -4562,7 +4588,7 @@ function registraEventi(ctx) {
     if (!sess) throw new Error('Apri la connessione usata dall’import prima di eliminare staging e recupero.');
     assertWholeConnection(principal, sess.connName, 'manage', 'eliminare staging e recupero di un import');
     const registry = ctx.importRegistry || importOperations;
-    const operation = registry.get(payload.operationId, principal.ownerId);
+    const operation = registry.get(payload.operationId, principal.ownerId, principal.id);
     if (operation.connection !== (sess.connName || sess.label)) {
       throw new Error(`L’operazione appartiene alla connessione "${operation.connection}".`);
     }
@@ -4572,7 +4598,7 @@ function registraEventi(ctx) {
       connName: operation.connection,
       recoveryRoot: path.join(backupRootOf(principal), 'import-recovery'),
     });
-    cb({ ok: true, operation: await registry.cleanup(payload.operationId, principal.ownerId, adapter) });
+    cb({ ok: true, operation: await registry.cleanup(payload.operationId, principal.ownerId, adapter, principal.id) });
   });
 
   // --- Aggiornamenti in tempo reale -------------------------------------------
@@ -4765,17 +4791,28 @@ function registraEventi(ctx) {
 
     try {
       const summary = await log.run(`restore conn=${connName} da=${path.basename(backupDir)} (via UI)`, async () => {
-        return await runRestore({
+        return await runRestoreViaPlan({
           session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, backupDir,
           targetDb: payload.targetDb || null,
           // Il DDL del backup viene eseguito sul database: dall'interfaccia non
           // si può scavalcare la validazione, la deroga resta solo nella CLI.
-          onlyCollections, drop: !!payload.drop, log: logUi, allowUnsafeSchema: false,
+          onlyCollections, drop: !!payload.drop, log: logUi, connName,
+          recoveryRoot: path.join(backupRootOf(principal), 'import-recovery'),
+          onProgress: (event) => inviaProgresso(`${event.phase} ${event.status}`, false),
         });
       });
-      await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
-      auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'ok', summary, null);
-      cb({ ok: true, summary });
+      const publicResult = {
+        ...sanitizeImportResult(summary), targetDb: summary.targetDb,
+        totalDocs: summary.totalDocs, layers: summary.layers,
+      };
+      if (summary.status === 'completato') {
+        await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
+        auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'ok', publicResult, null);
+      } else {
+        await notifySlack(webhook, `❌ CodeDB restore ${summary.status} di \`${summary.targetDb}\` (${connName}, via UI): ${summary.error || 'esito non completato'}`, log);
+        auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', publicResult, summary.originalError);
+      }
+      cb({ ok: true, summary: publicResult });
     } catch (err) {
       await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errMsg(err)}`, log);
       // Un ripristino incompleto porta con sé il riepilogo parziale (quante righe

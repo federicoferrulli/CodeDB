@@ -459,13 +459,23 @@ async function mysqlGeoTargetColumns(conn, targetDb, table) {
  * La sostituzione è deliberatamente conservativa: agisce solo sulla forma
  * `` `db`. `` esattamente uguale al nome di origine, non su testo libero.
  */
-function riqualificaDdl(ddl, dbOrigine, dbDestinazione) {
+function riqualificaDdl(ddl, dbOrigine, dbDestinazione, dbType = null) {
   if (!dbOrigine || dbOrigine === dbDestinazione) return String(ddl);
   const esc = String(dbOrigine).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const riscritta = String(ddl).replace(
-    new RegExp('`' + esc + '`\\s*\\.', 'g'),
-    myQid(dbDestinazione) + '.',
-  );
+  const escapedPg = String(dbOrigine).replace(/"/g, '""');
+  const escapedPgRegex = escapedPg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  let riscritta = String(ddl)
+    .replace(new RegExp('`' + esc + '`\\s*\\.', 'g'), myQid(dbDestinazione) + '.')
+    .replace(
+      new RegExp('"' + escapedPgRegex + '"\\s*\\.', 'g'),
+      `"${String(dbDestinazione).replace(/"/g, '""')}".`,
+    );
+  if (dbType === 'postgresql' || dbType === 'postgres') {
+    riscritta = riscritta.replace(
+      new RegExp('(^|[^\\w"\'])' + esc + '\\s*\\.', 'gi'),
+      (_match, prefix) => `${prefix}"${String(dbDestinazione).replace(/"/g, '""')}".`,
+    );
+  }
 
   // La sostituzione copre la forma che `SHOW CREATE VIEW`/`TRIGGER` producono
   // davvero (nome fra backtick seguito da un punto). Se DOPO la riscrittura il
@@ -475,7 +485,10 @@ function riqualificaDdl(ddl, dbOrigine, dbDestinazione) {
   // Meglio fermarsi e dirlo: era il fallimento silenzioso che questa funzione
   // deve impedire, non uno che può permettersi di produrre.
   const residuo = new RegExp('(^|[^\\w`])' + esc + '(?![\\w])', 'i');
-  if (residuo.test(riscritta.replace(new RegExp('`' + esc + '`(?!\\s*\\.)', 'g'), ''))) {
+  const senzaNomiQuotati = riscritta
+    .replace(new RegExp('`' + esc + '`(?!\\s*\\.)', 'g'), '')
+    .replace(new RegExp('"' + escapedPgRegex + '"(?!\\s*\\.)', 'g'), '');
+  if (residuo.test(senzaNomiQuotati)) {
     throw new Error(
       `La definizione nomina ancora il database di origine "${dbOrigine}" in una forma non riscrivibile: `
       + 'ripristinandola punterebbe alle tabelle originali invece che a quelle appena create.'
@@ -558,7 +571,7 @@ async function restoreSchemaObjects({
 
   // --- SQL -----------------------------------------------------------------
   const esegui = async (sql, cosa) => {
-    const pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb);
+    const pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb, dbType);
     await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
     if (log) log.info(`  ${cosa} applicato/a`);
   };
@@ -645,6 +658,19 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     if (isFirst && drop) {
       await eliminaSePresente(() => collection.drop(), {
         dbType: 'mongodb', target: `${targetDb}.${f.collection}`,
+      });
+    }
+    // Su MongoDB una collection nasce alla prima scrittura: una collection
+    // VUOTA nel backup non ne produce nessuna, quindi spariva dal ripristino
+    // senza che nulla lo dicesse — e il conteggio tornava, perche' zero righe
+    // attese contro una collection inesistente fa comunque zero. Il backup la
+    // dichiara nel manifest: va materializzata, come fa gia' il motore del
+    // piano per l'import.
+    if (isFirst) {
+      await client.db(targetDb).createCollection(f.collection).catch((err) => {
+        // L'unico errore ignorabile e' quello che dimostra che c'e' gia'.
+        if (err.codeName === 'NamespaceExists' || err.code === 48) return;
+        throw err;
       });
     }
     if (!f.identity) {
@@ -784,8 +810,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       const targetMeta = await mysqlTargetIdentity(conn, targetDb, f.collection, f.identity);
       let empty = false;
       if (!f.identity) {
-        const [[row]] = await conn.query(`SELECT NOT EXISTS(SELECT 1 FROM ${tableId} LIMIT 1) AS empty`);
-        empty = !!Number(row.empty);
+        const [[row]] = await conn.query(`SELECT NOT EXISTS(SELECT 1 FROM ${tableId} LIMIT 1) AS \`is_empty\``);
+        empty = !!Number(row.is_empty);
       }
       assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
 
@@ -983,9 +1009,9 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       // qui va tollerato.
       const mustCreate = schemaFile && (!existingTables || !existingTables.has(f.collection));
       if (mustCreate) {
-        const sql = readSchemaFile(layer.dir, schemaFile, f.collection, {
+        const sql = riqualificaDdl(readSchemaFile(layer.dir, schemaFile, f.collection, {
           ...opts, dbType: 'postgresql', database: layer.manifest.db,
-        });
+        }), layer.manifest.db, targetDb, 'postgresql');
         try {
           await strategy.collectionAggregate(targetDb, f.collection, { pipeline: sql });
           if (existingTables) existingTables.add(f.collection);

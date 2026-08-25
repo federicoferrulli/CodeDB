@@ -5,11 +5,17 @@ const path = require('path');
 const fs = require('fs');
 const { runBackup } = require('../backup/lib/engine');
 const {
-  runRestore, preflightChain, resolveChain, riqualificaDdl, cardinalitaDestinazione,
+  runRestore, preflightChain, resolveChain, riqualificaDdl, cardinalitaDestinazione, restoreSchemaObjects,
 } = require('../backup/lib/restore');
 const { verifyBackupDir } = require('../backup/lib/util');
 const { quotaSempre } = require('./identificatori');
-const { scegliIdentitaSql, identityCompatibile } = require('../backup/lib/identity');
+const {
+  scegliIdentitaSql, identityCompatibile, validaIdentity, chiaveIdentita,
+} = require('../backup/lib/identity');
+const {
+  readSchemaObjects, objectInventory, canonicalSqlForDb, canonicalSchemaInventory,
+  canonicalMongoIndex, inventoryDifferences,
+} = require('./schemaObjects');
 
 const BATCH = 500;
 const quietLog = { info() {}, error() {} };
@@ -25,6 +31,23 @@ function abortIf(signal) {
     err.code = 'IMPORT_ABORTED';
     throw err;
   }
+}
+
+
+function retargetSchemaObjects(objects, sourceDb, targetDb, dbType) {
+  if (!objects) return objects;
+  const copy = JSON.parse(JSON.stringify(objects));
+  for (const values of Object.values(copy)) {
+    if (!Array.isArray(values)) continue;
+    for (let i = 0; i < values.length; i++) {
+      if (typeof values[i] === 'string') values[i] = riqualificaDdl(values[i], sourceDb, targetDb, dbType);
+      else if (values[i] && typeof values[i] === 'object') {
+        if (values[i].ddl) values[i].ddl = riqualificaDdl(values[i].ddl, sourceDb, targetDb, dbType);
+        if (values[i].sql) values[i].sql = riqualificaDdl(values[i].sql, sourceDb, targetDb, dbType);
+      }
+    }
+  }
+  return copy;
 }
 
 function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot, log = quietLog, signal = null }) {
@@ -47,16 +70,17 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       if (!expected || !Array.isArray(expected.columns) || !expected.columns.length) {
         throw new Error(`La tabella "${collection.name}" non dichiara un'identita stabile.`);
       }
-      const incomplete = collection.docs.findIndex((row) => (
-        !row || typeof row !== 'object'
-        || expected.columns.some((column) => !Object.prototype.hasOwnProperty.call(row, column))
-      ));
-      if (incomplete >= 0) {
-        throw new Error(
-          `La riga ${incomplete + 1} di "${collection.name}" non contiene tutta l'identita stabile `
-          + `(${expected.columns.join(', ')}).`
-        );
-      }
+      validaIdentity(expected, { collection: collection.name });
+      const identities = new Set();
+      collection.docs.forEach((row, index) => {
+        let key;
+        try { key = chiaveIdentita(row, expected); }
+        catch (err) { throw new Error(`Riga ${index + 1} di "${collection.name}": ${err.message}`); }
+        if (identities.has(key)) {
+          throw new Error(`La collection/tabella "${collection.name}" contiene un'identita duplicata alla riga ${index + 1}.`);
+        }
+        identities.add(key);
+      });
       if (type === 'mongodb') continue;
       const info = await strategy.tableColumnsInfo(plan.targetDb, collection.name);
       const primary = await strategy.primaryKey(plan.targetDb, collection.name);
@@ -77,7 +101,9 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     abortIf(activeSignal);
     const artifact = plan.artifact;
     const first = artifact.collections[0];
-    if (!(await exists(db))) await strategy.createDatabase(db, type === 'mongodb' && first ? first.name : undefined);
+    if (!(await exists(db)) && (type !== 'mongodb' || artifact.collections.length)) {
+      await strategy.createDatabase(db, type === 'mongodb' && first ? first.name : undefined);
+    }
 
     // Prima si materializza TUTTO lo schema nello staging. Solo dopo che ogni
     // tabella e ogni identita sono compatibili puo partire la prima riga.
@@ -88,7 +114,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       else {
         if (!collection.ddl) throw new Error(`DDL di "${collection.name}" assente: impossibile creare la tabella.`);
         await strategy.collectionAggregate(db, collection.name, {
-          pipeline: riqualificaDdl(collection.ddl, artifact.db, db),
+          pipeline: riqualificaDdl(collection.ddl, artifact.db, db, type),
         });
       }
     }
@@ -108,17 +134,32 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
           docs, upsert, conflictColumns: identity ? identity.columns : undefined,
         });
         if (!result || result.failed || result.inserted !== docs.length) {
+          // `collectionImport` sa gia' PERCHE' ogni riga e' stata rifiutata:
+          // ripete il batch riga per riga proprio per isolarlo. Riportare solo
+          // «applicate 0 di 6» buttava via l'unica informazione con cui si puo'
+          // fare qualcosa — quale colonna, quale vincolo, quale valore.
+          const motivi = (result && Array.isArray(result.errors) ? result.errors : []).slice(0, 3);
           throw new Error(
             `Import incompleto di "${collection.name}": applicate ${result && result.inserted || 0} `
             + `di ${docs.length} righe/documenti.`
+            + (motivi.length ? ` Motivo: ${motivi.join('; ')}.` : '')
           );
         }
       }
       if (type === 'mongodb') {
         for (const index of collection.indexes || []) {
           if (index.name === '_id_') continue;
+          // L'indice si ricrea con TUTTE le opzioni che l'artefatto dichiara:
+          // ricrearlo come indice semplice perdeva TTL, indici parziali,
+          // sparsi e collation, cioe' vincoli che la destinazione non aveva
+          // piu' anche quando l'import si dichiarava riuscito.
           await strategy.createIndex(db, collection.name, {
             fields: JSON.stringify(index.key), unique: !!index.unique, name: index.name,
+            sparse: !!index.sparse,
+            expireAfterSeconds: index.expireAfterSeconds,
+            partialFilterExpression: index.partialFilterExpression,
+            collation: index.collation,
+            wildcardProjection: index.wildcardProjection,
           });
         }
       }
@@ -128,10 +169,18 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         for (const sql of collection.postDdl || []) {
           abortIf(activeSignal);
           await strategy.collectionAggregate(db, collection.name, {
-            pipeline: riqualificaDdl(sql, artifact.db, db),
+            pipeline: riqualificaDdl(sql, artifact.db, db, type),
           });
         }
       }
+    }
+    if (artifact.objects) {
+      const problems = [];
+      await restoreSchemaObjects({
+        strategy, targetDb: db, dbType: type, oggetti: artifact.objects,
+        dbOrigine: artifact.db, problems, log, allowUnsafeSchema: false,
+      });
+      if (problems.length) throw new Error(`Oggetti di schema incompleti: ${problems.join('; ')}`);
     }
   }
 
@@ -157,25 +206,46 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       }
     }
     let schemaObjects = true;
+    const objectMismatches = [];
     if (type === 'mongodb') {
       for (const collection of plan.artifact.collections) {
-        if (!collection.indexes || !collection.indexes.length || typeof strategy.indexList !== 'function') continue;
+        if (!collection.indexes || !collection.indexes.length) continue;
+        // `continue` su un metodo assente significava saltare la verifica
+        // dichiarandola fatta: l'altra faccia dello stesso difetto che sul
+        // ripristino inventava divergenze. Se non si puo' verificare, si dice.
+        if (typeof strategy.indexList !== 'function') {
+          throw new Error(`La strategia ${type} non espone indexList: gli indici non sono verificabili.`);
+        }
         const indexes = await strategy.indexList(db, collection.name);
-        const names = new Set(indexes.map((idx) => idx.name));
-        if (collection.indexes.some((idx) => idx.name !== '_id_' && !names.has(idx.name))) schemaObjects = false;
+        const expected = collection.indexes.filter((idx) => idx.name !== '_id_').map(canonicalMongoIndex).sort();
+        const actualIndexes = indexes.filter((idx) => idx.name !== '_id_').map(canonicalMongoIndex).sort();
+        const differences = inventoryDifferences({ indexes: expected }, { indexes: actualIndexes }, { exact: plan.drop });
+        if (differences.length) objectMismatches.push(`${collection.name}: indici divergenti`);
       }
     } else if (typeof strategy.tableAuxDdl === 'function') {
       for (const collection of plan.artifact.collections) {
-        const expected = (collection.postDdl || []).length;
-        if (!expected) continue;
-        const actual = await strategy.tableAuxDdl(db, collection.name);
-        const count = [...(actual.indexes || []), ...(actual.foreignKeys || [])].length;
-        if (count < expected) schemaObjects = false;
+        const expected = (collection.postDdl || [])
+          .map((sql) => canonicalSqlForDb(riqualificaDdl(sql, plan.sourceDb, db, type), db)).sort();
+        const aux = await strategy.tableAuxDdl(db, collection.name);
+        const actualDdl = [...(aux.indexes || []), ...(aux.foreignKeys || [])]
+          .map((sql) => canonicalSqlForDb(sql, db)).sort();
+        const differences = inventoryDifferences({ ddl: expected }, { ddl: actualDdl }, { exact: plan.drop });
+        if (differences.length) objectMismatches.push(`${collection.name}: indici/vincoli divergenti`);
       }
     }
+    if (plan.artifact.objects) {
+      const expectedObjects = canonicalSchemaInventory(
+        retargetSchemaObjects(plan.artifact.objects, plan.sourceDb, db, type), { db }
+      );
+      const actualObjects = canonicalSchemaInventory(await readSchemaObjects(strategy, type, db), { db });
+      for (const difference of inventoryDifferences(expectedObjects, actualObjects, { exact: plan.drop })) {
+        objectMismatches.push(`${difference.field}: definizioni mancanti ${difference.missing.length}, inattese ${difference.extras.length}`);
+      }
+    }
+    if (objectMismatches.length) schemaObjects = false;
     return {
       ok: !missing.length && (plan.drop ? !extras.length : true) && !mismatches.length && schemaObjects,
-      collections: actual.length, rows, missing, extras, mismatches, schemaObjects,
+      collections: actual.length, rows, missing, extras, mismatches, objectMismatches, schemaObjects,
     };
   }
 
@@ -184,6 +254,25 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     async validatePlan(plan) {
       if (plan.dbType !== type) throw new Error(`Piano ${plan.dbType} incompatibile con la strategia ${type}.`);
       if (!recoveryRoot) throw new Error('Radice delle copie di recupero mancante.');
+      for (const collection of plan.artifact.collections) {
+        const identity = collection.identity || (type === 'mongodb'
+          ? { kind: 'mongodb-id', columns: ['_id'] } : null);
+        if (type === 'mongodb' && (!identity || identity.kind !== 'mongodb-id'
+            || identity.columns.length !== 1 || identity.columns[0] !== '_id')) {
+          throw new Error(`La collection MongoDB "${collection.name}" deve usare l'identita stabile _id.`);
+        }
+        if (identity) {
+          validaIdentity(identity, { collection: collection.name });
+          const seen = new Set();
+          collection.docs.forEach((row, index) => {
+            let key;
+            try { key = chiaveIdentita(row, identity); }
+            catch (err) { throw new Error(`Riga ${index + 1} di "${collection.name}": ${err.message}`); }
+            if (seen.has(key)) throw new Error(`Identita duplicata in "${collection.name}" alla riga ${index + 1}.`);
+            seen.add(key);
+          });
+        }
+      }
       const targetExists = await exists(plan.targetDb);
       if (targetExists && !plan.drop) {
         await validaIdentitaMerge(plan);
@@ -193,8 +282,10 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     destinationExists: (plan) => exists(plan.targetDb),
 
     async createRecovery(plan) {
-      const current = (await strategy.listCollections(plan.targetDb)).filter((c) => c.type !== 'view');
-      if (!current.length) {
+      const physical = (await strategy.listCollections(plan.targetDb)).filter((item) => item.type !== 'view');
+      const inventory = objectInventory(await readSchemaObjects(strategy, type, plan.targetDb));
+      const objectCount = Object.values(inventory).reduce((sum, names) => sum + names.length, 0);
+      if (!physical.length && objectCount === 0) {
         return { id: `empty-${plan.fingerprint.slice(0, 12)}`, empty: true, verified: true, physicalDb: null };
       }
       const result = await runBackup({
@@ -215,7 +306,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
           session, backupDir: recovery.backupDir, targetDb: db,
           onlyCollections: null, drop: false, log, allowUnsafeSchema: false,
         });
-      } else {
+      } else if (type !== 'mongodb' || plan.collections.length) {
         await strategy.createDatabase(db, type === 'mongodb' && plan.collections[0]
           ? plan.collections[0].name : undefined);
       }
@@ -235,38 +326,52 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         const client = await strategy.pool.connect();
         const q = (name) => quotaSempre(name, 'postgresql');
         const old = nomeTecnico(plan.targetDb, 'recupero', 63);
+        let renamedOld = false;
+        let commitAttempted = false;
         try {
           await client.query('BEGIN');
           if (await exists(plan.targetDb)) {
             await client.query(`ALTER SCHEMA ${q(plan.targetDb)} RENAME TO ${q(old)}`);
-            if (recovery) recovery.physicalDb = old;
+            renamedOld = true;
           }
           await client.query(`ALTER SCHEMA ${q(staging.db)} RENAME TO ${q(plan.targetDb)}`);
+          commitAttempted = true;
           await client.query('COMMIT');
+          if (renamedOld && recovery) recovery.physicalDb = old;
         } catch (err) {
-          await client.query('ROLLBACK').catch(() => {});
+          let rolledBack = false;
+          await client.query('ROLLBACK').then(() => { rolledBack = true; }).catch(() => {});
+          if (rolledBack && !commitAttempted) err.targetUnchanged = true;
           throw err;
         } finally {
           client.release();
         }
         return;
       }
-      const stagedBackup = await runBackup({
-        session, connName: `${connName}__staging`, db: staging.db, type: 'full',
-        onlyCollections: null, sinceField: null, destRoot: recoveryRoot,
-        compress: true, level: 6, log,
-      });
-      const verified = await verifyBackupDir(stagedBackup.backupDir);
-      if (!verified.valid) throw new Error('Lo staging non produce una copia promuovibile verificata.');
-      staging.backupDir = stagedBackup.backupDir;
-      if (await exists(plan.targetDb)) {
-        try { await strategy.dropDatabase(plan.targetDb); }
-        catch (err) { if (err && !err.target) err.target = plan.targetDb; throw err; }
+      let targetMutationStarted = false;
+      try {
+        const stagedBackup = await runBackup({
+          session, connName: `${connName}__staging`, db: staging.db, type: 'full',
+          onlyCollections: null, sinceField: null, destRoot: recoveryRoot,
+          compress: true, level: 6, log,
+        });
+        const verified = await verifyBackupDir(stagedBackup.backupDir);
+        if (!verified.valid) throw new Error('Lo staging non produce una copia promuovibile verificata.');
+        staging.backupDir = stagedBackup.backupDir;
+        if (await exists(plan.targetDb)) {
+          targetMutationStarted = true;
+          try { await strategy.dropDatabase(plan.targetDb); }
+          catch (err) { if (err && !err.target) err.target = plan.targetDb; throw err; }
+        }
+        targetMutationStarted = true;
+        await runRestore({
+          session, backupDir: stagedBackup.backupDir, targetDb: plan.targetDb,
+          onlyCollections: null, drop: false, log, allowUnsafeSchema: false,
+        });
+      } catch (err) {
+        if (!targetMutationStarted) err.targetUnchanged = true;
+        throw err;
       }
-      await runRestore({
-        session, backupDir: stagedBackup.backupDir, targetDb: plan.targetDb,
-        onlyCollections: null, drop: false, log, allowUnsafeSchema: false,
-      });
     },
 
     async restore(plan, recovery) {

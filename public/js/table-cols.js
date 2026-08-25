@@ -146,6 +146,48 @@ export function ordinaRigheMultiple(righe, criteri) {
   return decorata.map((x) => x.riga);
 }
 
+/**
+ * Le colonne di un result set: quelle DICHIARATE dal motore, poi quelle che
+ * compaiono soltanto nelle righe.
+ *
+ * Perché non basta l'unione delle chiavi delle righe. Un result set con ZERO
+ * righe ha comunque delle colonne — `SELECT id, addsa FROM vuota` è una
+ * risposta con due colonne e nessuna riga — ma dedurle dalle righe significa
+ * dedurle da un insieme vuoto: la tabella restava senza intestazioni e il
+ * pannello diceva «Nessun risultato da mostrare», cioè la stessa cosa che dice
+ * quando non è stata eseguita alcuna query. Le tre strategie dichiarano già
+ * `columns` (da `fields` su SQL, dal catalogo dei campi su MongoDB) e
+ * `ScriptResults` le conserva su file: era il frontend a buttarle via e a
+ * ricalcolarle dalle righe.
+ *
+ * Le dichiarate vengono PRIMA e nel loro ordine, che è quello della `SELECT`:
+ * l'unione delle chiavi darebbe l'ordine di comparsa nella prima riga. Ciò che
+ * appare solo nelle righe si accoda invece di sparire — su MongoDB un documento
+ * può avere campi che il catalogo campionato non ha visto, e una colonna
+ * presente nei dati ma assente dall'intestazione sarebbe un valore invisibile.
+ *
+ * @param {string[]|null|undefined} dichiarate
+ * @param {Array} righe
+ * @returns {string[]}
+ */
+export function colonneRisultato(dichiarate, righe) {
+  const viste = new Set();
+  const out = [];
+  const aggiungi = (nome) => {
+    if (typeof nome !== 'string' || nome === '' || viste.has(nome)) return;
+    viste.add(nome);
+    out.push(nome);
+  };
+
+  if (Array.isArray(dichiarate)) dichiarate.forEach(aggiungi);
+  if (Array.isArray(righe)) {
+    righe.forEach((r) => {
+      if (r && typeof r === 'object' && !Array.isArray(r)) Object.keys(r).forEach(aggiungi);
+    });
+  }
+  return out;
+}
+
 export const LARGH_MIN = 80;
 export const LARGH_MAX = 420;
 export const CAMPIONE_RIGHE = 200;

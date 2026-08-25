@@ -22,3 +22,7 @@ rifiuta drop/cleanup senza `destructive: true`, senza appartenenza al registro o
 marcatore diverso. Tutti gli E2E che eliminano database o schemi usano il registro. La
 controprova senza controllo di proprietà ha accettato il nome storico e reso rosso il
 test dedicato.
+
+La barriera richiede ora anche `CODEDB_E2E_DESTRUCTIVE=1` nell'ambiente del processo:
+scrivere soltanto `destructive: true` nel sorgente del test non abilita piu alcun drop.
+Il test dedicato prova esplicitamente entrambe le barriere.

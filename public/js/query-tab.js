@@ -26,7 +26,7 @@ import { initCharts, renderChart, resizeChart, clearChart } from './charts.js';
 import {
   initQueryMap, renderQueryMap, resizeQueryMap, clearQueryMap, aggiornaPulsanteMappa,
 } from './query-map.js';
-import { ordinaRigheMultiple, larghezzeColonne, LARGH_MIN } from './table-cols.js';
+import { ordinaRigheMultiple, larghezzeColonne, colonneRisultato, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 import { rendiCellaGeometrica, aperturaSolaLettura } from './cella-geometria.js';
 
@@ -34,6 +34,11 @@ const escapeHtml = esc;
 
 let activeViewMode = 'table'; // 'table' | 'json' | 'chart' | 'map'
 let currentResults = [];
+// Colonne DICHIARATE dall'ultimo result set mostrato. Vivono accanto alle
+// righe perche' descrivono lo stesso result set: dedurle di nuovo dalle righe,
+// a valle, e' proprio il difetto che le faceva sparire quando le righe erano
+// zero.
+let currentColumns = [];
 
 // Stato per il Chunking File SQL
 let activeSqlChunker = null;
@@ -639,7 +644,7 @@ export function setResultsViewMode(mode) {
   // Grafico e mappa hanno lo stesso problema della tabella: in un pannello alto
   // 230px non ci stanno.
   if (mode === 'chart' || mode === 'map') allargaRisultatiPerDisegno();
-  renderResults(currentResults);
+  renderResults(currentResults, currentColumns);
   // Il canvas era nascosto (larghezza 0) mentre si guardava un'altra vista:
   // ECharts e Leaflet hanno bisogno di rimisurarlo, altrimenti restano
   // disegnati sulla dimensione precedente o non compaiono affatto.
@@ -729,8 +734,9 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
 }
 
 // Renderizza i risultati nella vista attiva
-export function renderResults(data) {
+export function renderResults(data, colonneDichiarate) {
   currentResults = Array.isArray(data) ? data : (data ? [data] : []);
+  currentColumns = Array.isArray(colonneDichiarate) ? colonneDichiarate : [];
 
   // La scheda 🗺 Mappa esiste solo se in questi risultati ci sono geometrie. Se
   // la si stava guardando e i nuovi risultati non ne hanno, si torna alla
@@ -743,7 +749,7 @@ export function renderResults(data) {
   }
 
   if (activeViewMode === 'table') {
-    renderResultsTable(currentResults);
+    renderResultsTable(currentResults, currentColumns);
   } else if (activeViewMode === 'map') {
     // Asincrona solo al primo uso (carica Leaflet da public/vendor): un errore
     // di caricamento non deve restare una promessa rifiutata in silenzio.
@@ -788,6 +794,7 @@ export function renderResults(data) {
  */
 export function resetQueryView() {
   currentResults = [];
+  currentColumns = [];
   queryTableRows = [];
   queryTableCols = [];
   queryOrdine = [];
@@ -796,7 +803,7 @@ export function resetQueryView() {
   queryColsSig = '';
   queryRigheRef = null;
 
-  renderResultsTable([]);
+  renderResultsTable([], []);
   renderResultsJsonTree([]);
   clearChart();
   clearQueryMap();
@@ -1107,6 +1114,11 @@ function renderQueryVirtualWindow() {
   if (!tbody) return;
 
   if (queryTableRows.length === 0) {
+    // Zero righe non vuol dire zero colonne: se il result set ne dichiara,
+    // l'intestazione resta disegnata e il corpo resta VUOTO — nessuna riga
+    // finta di avviso, che gli altri consumatori del `tbody` (selezione di
+    // celle, export, virtualizzazione) leggerebbero come una riga di dati.
+    // Che le righe siano zero lo dice il contatore «record».
     tbody.innerHTML = '';
     return;
   }
@@ -1141,8 +1153,17 @@ function attachQueryVScroll() {
   });
 }
 
-// Render Tabella
-function renderResultsTable(rows) {
+/**
+ * Render Tabella.
+ *
+ * `colonneDichiarate` sono le colonne che il motore ha dichiarato per QUESTO
+ * result set (`columns` nella risposta, conservato anche dai risultati per
+ * istruzione depositati su file). Sono un ARGOMENTO e non una deduzione dalle
+ * righe, perche' un result set vuoto non ha righe da cui dedurle: senza,
+ * `SELECT id, addsa FROM vuota` perdeva le intestazioni e diventava
+ * indistinguibile da «nessuna query eseguita».
+ */
+function renderResultsTable(rows, colonneDichiarate) {
   const container = $('#query-table-view');
   if (container) {
     container.querySelectorAll('.skeleton-grid-table').forEach((t) => t.remove());
@@ -1154,7 +1175,12 @@ function renderResultsTable(rows) {
   thead.innerHTML = '';
   tbody.innerHTML = '';
 
-  if (!rows || rows.length === 0) {
+  const righe = Array.isArray(rows) ? rows : [];
+  const cols = colonneRisultato(colonneDichiarate, righe);
+
+  // Nessuna colonna, nemmeno dichiarata: qui davvero non c'e' nulla da
+  // disegnare (vista azzerata, errore, risultato non tabellare).
+  if (!cols.length) {
     const cg = table.querySelector('colgroup');
     if (cg) cg.remove();
     queryTableRows = [];
@@ -1165,14 +1191,7 @@ function renderResultsTable(rows) {
     return;
   }
 
-  const cols = new Set();
-  rows.forEach((r) => {
-    if (r && typeof r === 'object') {
-      Object.keys(r).forEach((k) => cols.add(k));
-    }
-  });
-
-  queryTableCols = Array.from(cols);
+  queryTableCols = cols;
   const sig = queryTableCols.join('\u0000');
   const nuoveColonne = sig !== queryColsSig;
   const nuoviDati = rows !== queryRigheRef;
@@ -1194,12 +1213,12 @@ function renderResultsTable(rows) {
   // Le larghezze si misurano sui dati nuovi; a parità di dati (cambio di vista,
   // ordinamento) si riusano quelle già calcolate, altrimenti le colonne
   // cambierebbero larghezza sotto gli occhi senza motivo.
-  if (nuoveColonne || nuoviDati) calcolaLarghezze(rows, queryTableCols, table);
+  if (nuoveColonne || nuoviDati) calcolaLarghezze(righe, queryTableCols, table);
 
   // L'ordinamento è una vista: `currentResults` resta nell'ordine del database.
   queryTableRows = queryOrdine.length
-    ? ordinaRigheMultiple(rows, queryOrdine)
-    : rows;
+    ? ordinaRigheMultiple(righe, queryOrdine)
+    : righe;
 
   applicaColgroup(table);
   costruisciIntestazione(thead);
@@ -1791,6 +1810,9 @@ export function runQuery(opzioni = {}) {
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
       const rows = res.data || res.docs || res.rows || [];
+      // `columns` e' la dichiarazione del motore su QUESTO result set: e'
+      // l'unica cosa che descrive una SELECT senza righe.
+      const colonne = Array.isArray(res.columns) ? res.columns : [];
       aggiornaEsecuzione(idStorico, { esito: 'ok', ms: elapsed, righe: rows.length });
 
       // Se il server segnala un cambio di database (es. via USE <dbname>).
@@ -1821,7 +1843,7 @@ export function runQuery(opzioni = {}) {
       }
       if (stessoContesto && isForActiveTab(res)) {
         updateQueryMetrics('success', elapsed, rows.length);
-        renderResults(rows);
+        renderResults(rows, colonne);
       }
       return res;
     })
@@ -1837,7 +1859,7 @@ export function runQuery(opzioni = {}) {
       if (latest && isForActiveTab(err) && stopBtn) stopBtn.classList.add('hidden');
       if (stessoContesto && isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
-        renderResults([]);
+        renderResults([], []);
         // "… (riga 12)" nel messaggio: la riga viene evidenziata nel gutter e
         // portata in vista, invece di lasciarla cercare a mano.
         if (!opzioni.code) segnalaRigaErrore(rigaDaMessaggio(err.message));
@@ -1858,13 +1880,7 @@ export function exportQueryResults(format) {
   const rows = (queryOrdine.length && queryTableRows.length === currentResults.length)
     ? queryTableRows
     : currentResults;
-  const cols = new Set();
-  rows.forEach((r) => {
-    if (r && typeof r === 'object') {
-      Object.keys(r).forEach((k) => cols.add(k));
-    }
-  });
-  const headers = Array.from(cols);
+  const headers = colonneRisultato(currentColumns, rows);
 
   let content = '';
   let filename = `query_result_${Date.now()}`;

@@ -26,3 +26,13 @@ tab. Il browser carica anche file oltre 5 MB in blocchi senza effetti e avvia un
 mutazione server-side. Anteprima ed esecuzione richiedono la stessa impronta. UI, comando
 CLI `import` e tool MCP `import_database_artifact` usano `creaPianoImport` ed
 `eseguiPianoImport`. I test reali della giuntura e della registrazione passano.
+
+Upload e operazioni sono inoltre legati al soggetto autenticato, non al solo tenant. Lo
+stato riverifica `manage` sulla connessione; i caricamenti hanno TTL temporizzato, quota
+globale, quota per owner e limite di concorrenza, e lo stato pubblico non espone percorsi
+assoluti delle copie di recupero.
+
+Il registro conserva al massimo 100 esiti terminali per 24 ore, annulla i timer degli
+esiti potati e rilascia adapter/sessione a operazione conclusa. L'evento
+`database:import:list`, filtrato per owner, soggetto e capability, permette alla UI di
+scoprire e riprendere automaticamente l'ultimo import della connessione.

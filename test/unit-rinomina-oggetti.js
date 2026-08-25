@@ -112,6 +112,12 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
     /non riscrivibile/,
     'una qualificazione non fra backtick non deve passare in silenzio');
 
+  const pg = 'CREATE TABLE "vecchio"."articoli" ("id" integer); '
+    + 'CREATE VIEW "vecchio"."vista" AS SELECT * FROM "vecchio"."articoli"';
+  const pgOut = riqualificaDdl(pg, 'vecchio', 'nuovo');
+  assert(!pgOut.includes('"vecchio".'), 'anche le DDL PostgreSQL qualificate vengono retargettizzate');
+  assert.strictEqual((pgOut.match(/"nuovo"\./g) || []).length, 3);
+
   console.log('  OK   DDL riqualificate, e fallimento dichiarato se non è possibile (CDB-A85)');
 }
 

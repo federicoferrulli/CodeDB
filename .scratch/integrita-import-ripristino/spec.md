@@ -1,6 +1,6 @@
 # Integrità di import e ripristino
 
-Status: ready-for-agent
+Status: resolved
 Type: spec
 
 Origine: audit statico del 23 agosto 2026 sui percorsi capaci di eliminare o
@@ -331,3 +331,28 @@ semantica degli adattatori, quindi orchestrazione, canali, UX e prove reali. La 
 non è il posto in cui scoprire le invarianti comuni: serve soltanto a confermare le
 garanzie specifiche dei DBMS.
 
+---
+
+## Chiusura
+
+Tutti e nove i ticket sono `resolved`. Il programma ha consegnato: il confine di fiducia
+unico sugli artefatti (`db/artefatti.js`), il manifest v2 con identità stabile, gli upsert
+SQL senza ramo delete, i drop fail-closed, il motore di piano/staging/recupero
+(`db/importPlan.js`) condiviso da import e restore, l'import come operazione lunga
+server-side, i tre esiti canonici veritieri, l'harness distruttivo che possiede i propri
+bersagli e la matrice E2E sui tre DBMS.
+
+La documentazione è stata allineata alla chiusura: `CLAUDE.md` descrive il motore unico di
+applicazione degli artefatti (§8-bis) e il manifest v2, ed elenca i nuovi comandi di test;
+`CONTEXT.md` nomina i termini di dominio introdotti — artefatto, bersaglio, piano,
+impronta, identità stabile, staging, copia di recupero, promozione, esito.
+
+Prove eseguite in questa sessione di chiusura: `npm test` (suite unitaria completa, verde)
+e `npm run impronte` (62/62). Gli E2E che richiedono un DBMS non sono stati rieseguiti qui:
+la loro esecuzione è quella documentata nei ticket 03 e 09, su container usa-e-getta con
+MongoDB 7 autenticato, MySQL 8 e PostgreSQL 16.
+
+Il difetto preesistente segnalato dal ticket 09 — in `e2e-script-schede-ui` una `SELECT`
+senza righe non conservava le intestazioni — è stato corretto a parte, fuori dal perimetro
+di questa spec: le colonne di un result set sono ora dichiarate dal motore e non dedotte
+dalle righe. `e2e-script-schede-ui` passa verde su MySQL 8 reale.

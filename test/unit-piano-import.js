@@ -1,7 +1,7 @@
 'use strict';
 
 const assert = require('assert');
-const { creaPianoImport, eseguiPianoImport } = require('../db/importPlan');
+const { creaPianoImport, creaPianoRestore, eseguiPianoImport } = require('../db/importPlan');
 
 const artifact = {
   formato: 'codedb-database', versione: 1, dbType: 'mongodb', db: 'origine',
@@ -32,6 +32,18 @@ function adapterRegistrante({ failAt = null, recoveryFails = false } = {}) {
 }
 
 module.exports = (async () => {
+  const restoreSource = {
+    kind: 'backup-chain', dbType: 'mysql', sourceDb: 'origine', layers: [{ id: 'full' }], collections: [],
+  };
+  const safeRestore = creaPianoRestore({
+    source: restoreSource, expectedDbType: 'mysql', connection: 'locale', targetDb: 'dest',
+  });
+  const unsafeRestore = creaPianoRestore({
+    source: restoreSource, expectedDbType: 'mysql', connection: 'locale', targetDb: 'dest', allowUnsafeSchema: true,
+  });
+  assert.strictEqual(unsafeRestore.allowUnsafeSchema, true);
+  assert.notStrictEqual(unsafeRestore.fingerprint, safeRestore.fingerprint,
+    'la deroga DDL e parte auditabile dell\'impronta confermata');
   const plan = creaPianoImport({
     artifact, expectedDbType: 'mongodb', connection: 'locale', targetDb: 'destinazione', drop: true,
   });
@@ -58,7 +70,7 @@ module.exports = (async () => {
   const broken = adapterRegistrante({ failAt: 'apply' });
   const recovered = await eseguiPianoImport(plan, { adapter: broken });
   assert.strictEqual(recovered.status, 'ripristinato_dopo_errore');
-  assert(broken.calls.includes('restore'));
+  assert(!broken.calls.includes('restore'), 'un errore nello staging non deve toccare il bersaglio originale');
 
   for (const failAt of ['prepareStaging', 'verify:staging', 'verify:destinazione']) {
     const phaseAdapter = adapterRegistrante({ failAt });
@@ -67,7 +79,10 @@ module.exports = (async () => {
       phaseResult.status, 'ripristinato_dopo_errore',
       `un errore in ${failAt} non deve diventare completato`,
     );
-    assert(phaseAdapter.calls.includes('restore'), `un errore in ${failAt} attiva il recupero`);
+    assert.strictEqual(
+      phaseAdapter.calls.includes('restore'), failAt === 'verify:destinazione',
+      `il recupero del bersaglio in ${failAt} dipende dall'avvio della promozione`,
+    );
   }
 
   for (const failAt of ['validatePlan', 'destinationExists', 'createRecovery']) {
@@ -90,6 +105,12 @@ module.exports = (async () => {
   assert.strictEqual(intervention.status, 'intervento_richiesto');
   assert.match(intervention.error, /guasto promote/);
   assert.match(intervention.recoveryError, /recupero fallito/);
+
+  const progress = [];
+  const afterPromotion = adapterRegistrante({ failAt: 'verify:destinazione' });
+  await eseguiPianoImport(plan, { adapter: afterPromotion, onProgress: (event) => progress.push(event) });
+  assert(progress.some((event) => event.phase === 'rollback' && event.status === 'in_corso'));
+  assert(progress.some((event) => event.phase === 'rollback' && event.status === 'completata'));
 
   const tampered = { ...plan, targetDb: 'altro' };
   await assert.rejects(eseguiPianoImport(tampered, { adapter: adapterRegistrante() }), /impronta/i);

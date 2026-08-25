@@ -23,3 +23,11 @@ hanno etichette e stili distinti; soltanto `completato` usa il successo. Recuper
 staging restano nel report con eliminazione esplicita, e lo stato è ricostruito dal
 registro senza retry. La controprova che trasformava un rollback in `completato` ha reso
 rosso il test del motore.
+
+La descrizione visuale dei tre esiti terminali e ora un seam puro provato direttamente;
+il rollback emette avanzamento `in_corso`/`completata`, quindi UI e audit possono
+ricostruire anche il tentativo di recupero senza inferirlo dal solo stato finale.
+
+Anche i restore UI, CLI e MCP conservano l'esito canonico completo. Il token MCP è
+legato all'intera selezione confermata; la deroga CLI `--allow-unsafe-schema` resta
+esplicita e fa parte dell'impronta auditabile.

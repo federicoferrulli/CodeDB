@@ -67,6 +67,9 @@ module.exports = (async () => {
   registraEventi(reopened);
   const running = await reopened.socket.chiama('database:import:state', { operationId: 'import-op-finta' });
   assert.strictEqual(running.operation.status, 'in_corso', 'un tab riaperto recupera lo stato senza retry');
+  const discovered = await reopened.socket.chiama('database:import:list', {});
+  assert.deepStrictEqual(discovered.operations.map((op) => op.operationId), ['import-op-finta'],
+    'la UI puo scoprire l\u2019operazione senza conservarne in memoria l\u2019ID');
 
   release();
   await registry.wait('import-op-finta');

@@ -5,6 +5,7 @@ import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captu
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 import { socket } from './socket.js';
+import { descriviEsitoImport } from './import-status.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -510,15 +511,19 @@ export async function exportDatabase(db) {
     toast(`Esportazione fallita: ${err.message}`, true);
     return;
   }
-  if (!collections.length) {
-    toast(`Il database "${db}" non contiene ${entita} da esportare.`, true);
-    return;
-  }
-
   // Il file viene assemblato come testo per non ri-parsare i blocchi EJSON.
   const parts = [];
   let exported = 0;
+  let objects = null;
   try {
+    objects = (await emit('database:schema-objects', { tabId, db })).objects || null;
+    const objectCount = Object.values(objects || {}).reduce(
+      (sum, value) => sum + (Array.isArray(value) ? value.length : 0), 0,
+    );
+    if (!collections.length && !objectCount) {
+      toast(`Il database "${db}" non contiene ${entita} o oggetti di schema da esportare.`, true);
+      return;
+    }
     for (const c of collections) {
       let ddl = null;
       let indexes = null;
@@ -578,8 +583,8 @@ export async function exportDatabase(db) {
   const text =
     `{ "formato": ${JSON.stringify(DB_EXPORT_FORMAT)}, "versione": 1, ` +
     `"generatore": ${JSON.stringify(generatore)}, "creato": ${JSON.stringify(new Date().toISOString())}, ` +
-    `"dbType": ${JSON.stringify(dbType)}, "db": ${JSON.stringify(db)},\n"collections": [\n` +
-    parts.join(',\n') + '\n] }\n';
+    `"dbType": ${JSON.stringify(dbType)}, "db": ${JSON.stringify(db)},\n` +
+    `"objects": ${JSON.stringify(objects)},\n"collections": [\n` + parts.join(',\n') + '\n] }\n';
   downloadBlob(text, `${db}.codedb.json`, 'application/json;charset=utf-8');
   toast(`Esportato il database "${db}": ${collections.length} ${entita}, ${exported} ${isSql ? 'righe' : 'documenti'}`);
 }
@@ -625,6 +630,28 @@ export function openDbImportModal() {
   showError('#dbimport-error', '');
   $('#dbimport-run').disabled = false;
   openModal('#dbimport-overlay');
+  recuperaDbImport().catch((err) => showError('#dbimport-error', err.message));
+}
+
+async function recuperaDbImport() {
+  const ctx = dbImportContext;
+  const apertura = dbImportAperture;
+  if (!ctx) return;
+  const response = await emit('database:import:list', { tabId: ctx.tabId });
+  if (ctx !== dbImportContext || apertura !== dbImportAperture || dbImporting || dbImportUploadId) return;
+  const tab = tabs.list.find((item) => item.id === ctx.tabId);
+  const connection = tab && tab.connName;
+  const candidates = (response.operations || []).filter((operation) =>
+    !connection || operation.connection === connection
+  ).sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  if (!candidates.length) return;
+  dbImportOperationId = candidates[0].operationId;
+  renderDbImportState(candidates[0]);
+  if (candidates[0].status === 'in_corso') {
+    dbImporting = true;
+    try { await monitorDbImport(dbImportOperationId); }
+    finally { dbImporting = false; }
+  }
 }
 
 async function runDbImport() {
@@ -699,18 +726,13 @@ async function monitorDbImport(operationId) {
 function renderDbImportState(operation) {
   const report = $('#dbimport-report');
   if (!report) return;
-  const labels = {
-    in_corso: 'Import in corso',
-    completato: 'Import completato e verificato',
-    ripristinato_dopo_errore: 'Errore: destinazione originale ripristinata',
-    intervento_richiesto: 'Errore: intervento manuale richiesto',
-  };
-  const terminal = operation.status !== 'in_corso';
+  const description = descriviEsitoImport(operation.status);
+  const terminal = description.terminal;
   setDbImportProgress(
     terminal ? 100 : Math.min(95, (operation.progress || []).length * 8),
-    operation.phase || labels[operation.status]
+    operation.phase || description.label
   );
-  let html = `<strong>${esc(labels[operation.status] || operation.status)}</strong>`;
+  let html = `<strong>${esc(description.label)}</strong>`;
   if (operation.error) html += `<p>${esc(operation.error)}</p>`;
   if (operation.recovery) {
     html += `<p>Copia di recupero conservata: <code>${esc(operation.recovery.id || 'disponibile')}</code>.</p>`;
@@ -723,12 +745,12 @@ function renderDbImportState(operation) {
   } else if (operation.cleanupAt) {
     html += `<p>Staging e recupero eliminati il ${esc(operation.cleanupAt)}.</p>`;
   }
-  report.className = `dbimport-report esito-${operation.status}`;
+  report.className = description.className;
   report.innerHTML = html;
   report.classList.remove('hidden');
   if (!terminal) return;
-  const ok = operation.status === 'completato';
-  toast(labels[operation.status], !ok);
+  const ok = description.ok;
+  toast(description.label, !ok);
   if (ok && dbImportContext) {
     dbImportContext.st.schemaDirty = true;
     if (!dbImportContext.tabId || tabs.activeId === dbImportContext.tabId) {
