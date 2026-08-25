@@ -92,7 +92,7 @@ async function pgColonne(q, schema, table) {
  * Le colonne generate si escludono: sono derivate, PostgreSQL rifiuta un INSERT
  * che le valorizzi, e la destinazione le ricalcola dalla CREATE TABLE.
  *
- * @returns {Promise<{nomi: string[], binarie: Set<string>, select: string}>}
+ * @returns {Promise<{nomi: string[], columnSchema: object[], binarie: Set<string>, select: string}>}
  */
 async function pgColonneDaSalvare(q, schema, table) {
   const colonne = await pgColonne(q, schema, table);
@@ -118,7 +118,16 @@ async function pgColonneDaSalvare(q, schema, table) {
       pezzi.push(id);
     }
   }
-  return { nomi: salvabili.map((c) => c.name), binarie, select: pezzi.join(', ') };
+  return {
+    nomi: salvabili.map((c) => c.name),
+    columnSchema: salvabili.map((c) => ({
+      name: c.name,
+      type: String(c.ctype).toLowerCase(),
+      nullable: !c.notnull,
+    })),
+    binarie,
+    select: pezzi.join(', '),
+  };
 }
 
 /**

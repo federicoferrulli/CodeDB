@@ -1450,6 +1450,12 @@ console.log('--- Test Unitari CodeDB ---');
   // fiducia prima di esporre un artefatto applicabile.
   require('./unit-artefatti');
 
+  // Test 28-bis: identita stabile dei layer di backup. Un timestamp seleziona
+  // le modifiche, ma solo PK/UNIQUE NOT NULL (o _id MongoDB) identifica la
+  // stessa riga nel tempo. Include il controesempio con una riga ripetuta fra
+  // full e incrementale: la cardinalita finale non e' la somma delle scritture.
+  require('./unit-identita-backup');
+
   // Test 29: Barriere all'avvio quando l'istanza esce dal loopback — proxy
   // HTTPS e autenticazione sono due dichiarazioni distinte (CDB-A06).
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una

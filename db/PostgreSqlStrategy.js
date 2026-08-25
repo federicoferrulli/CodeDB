@@ -1536,7 +1536,17 @@ class PostgreSqlStrategy extends DbStrategy {
     let inserted = 0;
     const errors = [];
 
-    const pk = payload.upsert ? await this.primaryKey(db, coll) : [];
+    // Il restore dichiara nel manifest la chiave stabile del layer: puo essere
+    // una PK oppure un vincolo UNIQUE interamente NOT NULL. In quel percorso
+    // il conflitto deve seguire quella promessa, non una PK che potrebbe non
+    // esistere. Il DBMS riverifica comunque che le colonne nominino davvero un
+    // vincolo univoco; i nomi passano sempre da qid.
+    const conflictColumns = Array.isArray(payload.conflictColumns)
+      ? payload.conflictColumns.filter((c) => typeof c === 'string' && c)
+      : [];
+    const pk = payload.upsert
+      ? (conflictColumns.length ? conflictColumns : await this.primaryKey(db, coll))
+      : [];
     // Nomi reali delle colonne: serve a distinguere l'`_id` virtuale da una
     // colonna omonima (CDB-41), comune nelle tabelle migrate da MongoDB.
     let colonneReali = new Set();

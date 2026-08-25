@@ -40,8 +40,11 @@ const { quotaSempre } = require('../../db/identificatori');
 // del motore di backup: e' la stessa che usano gli adattatori.
 const myQid = (name) => quotaSempre(name, 'mysql');
 const { pgCreateTable, pgAuxDdl, pgSchemaObjects, pgColonneDaSalvare } = require('../../db/pg-ddl');
+const {
+  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita,
+} = require('./identity');
 
-const TOOL_VERSION = 1;
+const TOOL_VERSION = MANIFEST_VERSION;
 
 // Dimensione e SHA-256 di un file appena scritto. Dati, schema e indici devono
 // essere tutti verificabili prima di un ripristino.
@@ -68,6 +71,13 @@ function resolveBase(groupDir, type, expected) {
     throw new Error('Il catalogo contiene un id di backup di base non valido.');
   }
   const manifest = readManifest(path.join(groupDir, id));
+  const identityInfo = validaManifestIdentita(manifest);
+  if (identityInfo.historical) {
+    throw new Error(
+      `Il backup di base ${id} usa un manifest storico senza identita dichiarata: `
+      + 'esegui un nuovo backup full prima di creare incrementali o differenziali.'
+    );
+  }
   const normType = (v) => String(v === 'postgres' ? 'postgresql' : v);
   if (manifest.id !== id
       || manifest.connection !== String(expected.connName)
@@ -205,10 +215,12 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const rel = `data/${safeName(coll)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
+    const columns = new Set(['_id']);
     const cursor = collection.find(filter).batchSize(1000);
     let digest;
     try {
       for await (const doc of cursor) {
+        for (const column of Object.keys(doc)) columns.add(column);
         await sink.writeLine(EJSON.stringify(doc, { relaxed: true }));
         count += 1;
       }
@@ -219,7 +231,12 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       throw err;
     }
     const { bytes, sha256 } = digest;
-    files.push({ path: rel, collection: coll, kind: 'data', mode, sinceColumn, count, bytes, sha256 });
+    const sourceCardinality = await collection.countDocuments({});
+    files.push({
+      path: rel, collection: coll, kind: 'data', mode, sinceColumn, count, bytes, sha256,
+      columns: [...columns], identity: { kind: 'mongodb-id', columns: ['_id'] },
+      sourceCardinality, sourceDistinctIdentities: sourceCardinality,
+    });
     log.info(`  ${coll}: ${count} documenti → ${rel} (${formatBytes(bytes)})`);
 
     // Gli indici servono solo al restore del layer full.
@@ -456,7 +473,8 @@ const TIPI_TEMPORALI_MYSQL = new Set(['date', 'datetime', 'timestamp', 'time']);
 async function mysqlColumnMeta(conn, db, table) {
   const mysql = require('mysql2');
   const [rows] = await conn.query(
-    `SELECT COLUMN_NAME AS name, DATA_TYPE AS dtype, EXTRA AS extra, SRS_ID AS srid
+    `SELECT COLUMN_NAME AS name, DATA_TYPE AS dtype, COLUMN_TYPE AS ctype, EXTRA AS extra, SRS_ID AS srid,
+            IS_NULLABLE AS nullable
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
     [db, table],
@@ -485,7 +503,21 @@ async function mysqlColumnMeta(conn, db, table) {
       pezzi.push(id);
     }
   }
-  return { nomi: salvabili.map((r) => r.name), geo, select: pezzi.join(', ') };
+  return {
+    nomi: salvabili.map((r) => r.name),
+    columns: salvabili.map((r) => ({ name: r.name, nullable: String(r.nullable).toUpperCase() === 'YES' })),
+    columnSchema: salvabili.map((r) => ({
+      name: r.name,
+      type: String(r.ctype || r.dtype).toLowerCase(),
+      nullable: String(r.nullable).toUpperCase() === 'YES',
+    })),
+    geo,
+    select: pezzi.join(', '),
+  };
+}
+
+async function mysqlStableIdentity(conn, db, table, columns) {
+  return (await leggiIdentitaMySql((sql, params) => conn.query(sql, params), db, table, columns))[0] || null;
 }
 
 async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
@@ -568,8 +600,16 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       // La lista si costruisce sempre per nome, mai `SELECT *`: è ciò che
       // permette di escludere le generate e di leggere geometrie e BIGINT in
       // una forma che si può reinserire. Vedi mysqlColumnMeta.
-      const { geo: geoCols, select: selectList } = await mysqlColumnMeta(conn, db, table);
+      const meta = await mysqlColumnMeta(conn, db, table);
+      const { geo: geoCols, select: selectList } = meta;
       if (!selectList) throw new Error(`La tabella "${table}" non ha colonne salvabili.`);
+      const identity = await mysqlStableIdentity(conn, db, table, meta.columns);
+      if (since && !identity) {
+        throw new Error(
+          `La tabella "${table}" non ha un'identita stabile (PRIMARY KEY o UNIQUE interamente NOT NULL): `
+          + 'backup incrementale/differenziale rifiutato.'
+        );
+      }
       if (geoCols.size) {
         notes.push(`"${table}": ${geoCols.size} colonne geometriche salvate come WKB esadecimale.`);
       }
@@ -601,7 +641,20 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const geoSrid = geoCols.size
         ? Object.fromEntries([...geoCols].map(([c, i]) => [c, i.srid == null ? 0 : i.srid]))
         : undefined;
-      files.push({ path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256, geoSrid });
+      const distinctExpr = identity
+        ? `COUNT(DISTINCT ${identity.columns.map(myQid).join(', ')})`
+        : 'NULL';
+      const [[sourceCounts]] = await conn.query(
+        `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS distinctIdentities `
+        + `FROM ${myQid(db)}.${myQid(table)}`,
+      );
+      const sourceCardinality = Number(sourceCounts.cardinality);
+      const sourceDistinctIdentities = identity ? Number(sourceCounts.distinctIdentities) : null;
+      files.push({
+        path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256, geoSrid,
+        columns: meta.nomi, columnSchema: meta.columnSchema, identity,
+        sourceCardinality, sourceDistinctIdentities,
+      });
       log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
     }
     // Oggetti di schema e chiavi esterne: un solo file per backup, applicato
@@ -701,20 +754,10 @@ async function pgSinceColumn(pool, table, sinceField, schema = null) {
 // Metadati PostgreSQL letti dallo STESSO client della snapshot. Delegare alla
 // strategy userebbe pool.query(), cioè un'altra connessione: un DDL concorrente
 // potrebbe allora far descrivere uno schema diverso da quello dei dati.
-async function pgPrimaryKey(client, table, schema) {
-  const res = await client.query(
-    `SELECT kcu.column_name AS name
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON tc.constraint_name = kcu.constraint_name
-        AND tc.table_schema = kcu.table_schema
-      WHERE tc.constraint_type = 'PRIMARY KEY'
-        AND tc.table_schema = $2
-        AND tc.table_name = $1
-   ORDER BY kcu.ordinal_position`,
-    [table, schema]
-  );
-  return res.rows.map((r) => r.name);
+async function pgStableIdentity(client, table, schema, columnSchema) {
+  return (await leggiIdentitaPostgres(
+    (sql, params) => client.query(sql, params), schema, table, columnSchema,
+  ))[0] || null;
 }
 
 /**
@@ -808,7 +851,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     // rifiuta un INSERT che le valorizzi) e legge `bytea` in esadecimale e i
     // temporali come testo, perché il driver li consegna come Buffer e come
     // Date — forme che perdono byte e microsecondi (CDB-A87).
-    const { select: listaSelect, binarie: colonneBinarie } = await pgColonneDaSalvare(
+    const {
+      select: listaSelect, binarie: colonneBinarie, nomi: savedColumns, columnSchema,
+    } = await pgColonneDaSalvare(
       (sql, p) => client.query(sql, p), resolved.schema || schema, table,
     );
     if (!listaSelect) throw new Error(`La tabella PostgreSQL "${table}" non ha colonne salvabili.`);
@@ -826,15 +871,24 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       }
     }
 
-    const pk = await pgPrimaryKey(client, table, resolved.schema || schema);
+    const identity = await pgStableIdentity(
+      client, table, resolved.schema || schema, columnSchema,
+    );
+    if (since && !identity) {
+      throw new Error(
+        `La tabella "${table}" non ha un'identita stabile (PRIMARY KEY o UNIQUE interamente NOT NULL): `
+        + 'backup incrementale/differenziale rifiutato.'
+      );
+    }
+    const orderIdentity = identity ? identity.columns : [];
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
 
     let digest;
     try {
-    if (pk.length) {
-      const pkCols = pk.map(pgQid).join(', ');
+    if (orderIdentity.length) {
+      const pkCols = orderIdentity.map(pgQid).join(', ');
       let after = null;
       for (;;) {
         const conds = [];
@@ -844,7 +898,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
           params.push(sinceParam);
         }
         if (after) {
-          conds.push(`(${pkCols}) > (${pk.map((_, i) => `$${params.length + i + 1}`).join(', ')})`);
+          conds.push(`(${pkCols}) > (${orderIdentity.map((_, i) => `$${params.length + i + 1}`).join(', ')})`);
           params.push(...after);
         }
         const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
@@ -858,7 +912,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
           await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
           count += 1;
         }
-        after = pk.map((c) => res.rows[res.rows.length - 1][c]);
+        after = orderIdentity.map((c) => res.rows[res.rows.length - 1][c]);
         if (res.rows.length < BATCH) break;
       }
     } else {
@@ -899,9 +953,20 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     const { bytes, sha256 } = digest;
     // `schema` nel manifest: documenta da dove vengono i dati, così un restore
     // futuro (o un operatore) non deve indovinarlo.
+    const distinctExpr = !identity ? 'NULL'
+      : identity.columns.length === 1
+        ? `COUNT(DISTINCT ${pgQid(identity.columns[0])})`
+        : `COUNT(DISTINCT (${identity.columns.map(pgQid).join(', ')}))`;
+    const sourceCounts = await client.query(
+      `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS "distinctIdentities" FROM ${qualified}`,
+    );
+    const sourceCardinality = Number(sourceCounts.rows[0].cardinality);
+    const sourceDistinctIdentities = identity ? Number(sourceCounts.rows[0].distinctIdentities) : null;
     files.push({
       path: rel, collection: table, kind: 'data', schema: resolved.schema || undefined,
       mode, sinceColumn, count, bytes, sha256,
+      columns: savedColumns, columnSchema, identity,
+      sourceCardinality, sourceDistinctIdentities,
       // Colonne salvate in esadecimale: il restore deve sapere quali
       // riconvertire con decode(?, 'hex').
       binarie: colonneBinarie.size ? [...colonneBinarie] : undefined,
@@ -1004,6 +1069,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       notes: result.notes,
       files: result.files,
     };
+    validaManifestIdentita(manifest);
     fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
     await appendToCatalog(groupDir, {
       id, type, baseId: manifest.baseId, db, dbType, startedAt, endedAt: manifest.endedAt, status: 'ok',

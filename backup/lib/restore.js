@@ -23,7 +23,12 @@ const { isSqlGeometryType } = require('../../db/geometry');
 // tutto il repo (vedi db/identificatori.js).
 const { quotaSempre } = require('../../db/identificatori');
 const { normalizzaLayerBackup, validaDdlCollezione } = require('../../db/artefatti');
+const {
+  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres,
+  validaManifestIdentita, chiaveIdentita, identityCompatibile,
+} = require('./identity');
 const myQid = (name) => quotaSempre(name, 'mysql');
+const pgQid = (name) => quotaSempre(name, 'postgresql');
 
 // Tipi che il dump salva in esadecimale perché il driver li consegna come
 // Buffer, che non sopravvive al giro EJSON del file NDJSON. Vedi engine.js.
@@ -32,6 +37,71 @@ const TIPI_BINARI_MYSQL = new Set([
 ]);
 
 const BATCH_SIZE = 500;
+
+function trackerPer(tracker, collection, identity) {
+  if (!tracker.has(collection)) tracker.set(collection, {
+    identity, writes: 0, expectedCardinality: null, expectedDistinctIdentities: null,
+  });
+  const entry = tracker.get(collection);
+  if (identity && entry.identity && !identityCompatibile(entry.identity, identity)) {
+    throw new Error(`L'identita dichiarata per "${collection}" cambia fra i layer della catena.`);
+  }
+  if (identity && !entry.identity) entry.identity = identity;
+  return entry;
+}
+
+function registraFileAtteso(tracker, file) {
+  const entry = trackerPer(tracker, file.collection, file.identity || null);
+  entry.expectedCardinality = file.sourceCardinality == null ? (file.count == null ? 0 : file.count) : file.sourceCardinality;
+  entry.expectedDistinctIdentities = file.identity
+    ? (file.sourceDistinctIdentities == null ? file.count : file.sourceDistinctIdentities)
+    : null;
+  return entry;
+}
+
+function registraAttesa(tracker, file) {
+  const entry = trackerPer(tracker, file.collection, file.identity || null);
+  entry.writes += 1;
+  if (file.sourceCardinality == null && file.count == null) entry.expectedCardinality += 1;
+}
+
+function assertColumnsAndIdentity(file, columnSchema, actualIdentity, { empty = false } = {}) {
+  const columns = columnSchema.map((c) => c.name);
+  if (Array.isArray(file.columns)) {
+    const actual = new Set(columns);
+    const missing = file.columns.filter((c) => !actual.has(c));
+    if (missing.length) {
+      throw new Error(
+        `La destinazione "${file.collection}" non contiene le colonne del manifest: ${missing.join(', ')}.`
+      );
+    }
+  }
+  if (Array.isArray(file.columnSchema)) {
+    const byName = new Map(columnSchema.map((c) => [c.name, c]));
+    for (const expected of file.columnSchema) {
+      const actual = byName.get(expected.name);
+      const norm = (value) => String(value).trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!actual || norm(actual.type) !== norm(expected.type)
+          || actual.nullable !== expected.nullable) {
+        throw new Error(
+          `La colonna "${file.collection}.${expected.name}" non e compatibile col manifest `
+          + `(tipo ${expected.type}, ${expected.nullable ? 'NULL ammesso' : 'NOT NULL'}).`
+        );
+      }
+    }
+  }
+  if (file.identity && !identityCompatibile(file.identity, actualIdentity)) {
+    const attesa = file.identity.columns.join(', ');
+    throw new Error(
+      `L'identita della destinazione "${file.collection}" non e compatibile col manifest (${attesa}).`
+    );
+  }
+  if (!file.identity && !empty) {
+    throw new Error(
+      `La tabella "${file.collection}" non ha identita stabile: il full e ammesso solo verso una destinazione vuota.`
+    );
+  }
+}
 
 /* ---------------------------------------------------------------------------
  * Verifica di completezza del ripristino.
@@ -64,6 +134,7 @@ function resolveChain(backupDir) {
     if (seen.has(dir)) throw new Error(`Catena di backup circolare in ${parent}: controlla i baseId dei manifest.`);
     seen.add(dir);
     const manifest = readManifest(dir);
+    validaManifestIdentita(manifest);
     chain.unshift({ dir, manifest });
     if (manifest.type === 'full') {
       const expected = chain[0].manifest;
@@ -86,6 +157,41 @@ function resolveChain(backupDir) {
           throw new Error(`Il differenziale ${m.id} non è basato direttamente su un full.`);
         }
         previousTime = time;
+      }
+      if (chain.length > 1 && chain.some((layer) => Number(layer.manifest.version || 1) < MANIFEST_VERSION)) {
+        throw new Error(
+          'La catena contiene un manifest storico senza identita dichiarata: non puo essere promossa implicitamente a ripristino incrementale sicuro.'
+        );
+      }
+      const declarations = new Map();
+      for (const layer of chain) {
+        for (const file of layer.manifest.files.filter((f) => f && f.kind === 'data')) {
+          if (Number(layer.manifest.version || 1) < MANIFEST_VERSION) continue;
+          const current = {
+            identity: file.identity || null,
+            columns: file.columns,
+            columnSchema: file.columnSchema || null,
+          };
+          const previous = declarations.get(file.collection);
+          if (previous) {
+            const mongo = ['mongodb', 'mongo'].includes(String(layer.manifest.dbType));
+            const sameColumns = mongo || (previous.columns.length === current.columns.length
+              && previous.columns.every((c, index) => c === current.columns[index]));
+            const sameSchema = mongo || previous.columnSchema.every((column, index) => {
+              const other = current.columnSchema[index];
+              return other && column.name === other.name && column.type === other.type
+                && column.nullable === other.nullable;
+            });
+            if (!sameColumns || !sameSchema || !identityCompatibile(previous.identity, current.identity)) {
+              throw new Error(
+                `Colonne o identita di "${file.collection}" cambiano fra i layer della catena: `
+                + 'serve un nuovo backup full.'
+              );
+            }
+          } else {
+            declarations.set(file.collection, current);
+          }
+        }
       }
       return chain;
     }
@@ -174,6 +280,44 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
       objects,
       integrity: { verifiedCount: report.okCount, unverifiableCount: report.unverifiableCount },
     }, { allowUnsafeSchema });
+
+    // Il checksum protegge i byte, non la coerenza semantica fra quei byte e
+    // le colonne/identita dichiarate nel manifest. Per i manifest v2 si legge
+    // ogni riga prima della prima mutazione: una colonna non dichiarata o una
+    // chiave assente non puo arrivare fino all'INSERT/UPSERT.
+    if (Number(layer.manifest.version) >= MANIFEST_VERSION) {
+      for (const file of layer.manifest.files.filter((f) => f.kind === 'data')) {
+        const declared = new Set(file.columns);
+        let rows = 0;
+        for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'file di dati'))) {
+          const row = EJSON.parse(line, { relaxed: false });
+          if (!row || typeof row !== 'object' || Array.isArray(row)) {
+            throw new Error(`Il file dati di "${file.collection}" contiene una riga non strutturata.`);
+          }
+          const rowColumns = Object.keys(row);
+          for (const column of rowColumns) {
+            if (!declared.has(column)) {
+              throw new Error(`Il file dati di "${file.collection}" contiene la colonna non dichiarata "${column}".`);
+            }
+          }
+          const mongo = ['mongodb', 'mongo'].includes(String(layer.manifest.dbType));
+          if (!mongo) {
+            for (const column of file.columns) {
+              if (!Object.prototype.hasOwnProperty.call(row, column)) {
+                throw new Error(`Il file dati di "${file.collection}" non contiene la colonna dichiarata "${column}".`);
+              }
+            }
+          }
+          if (file.identity) chiaveIdentita(row, file.identity);
+          rows += 1;
+        }
+        if (file.count != null && rows !== file.count) {
+          throw new Error(
+            `Cardinalita incoerente per "${file.collection}": il manifest dichiara ${file.count}, il file contiene ${rows} righe.`
+          );
+        }
+      }
+    }
   }
 
   return {
@@ -470,15 +614,20 @@ async function restoreSchemaObjects({
 
 /* --- Restore MongoDB ------------------------------------------------------ */
 
-async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems }) {
+async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, tracker }) {
   const client = strategy.client;
   const dataFiles = layer.manifest.files.filter(
     (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
   );
   let total = 0;
   for (const f of dataFiles) {
+    registraFileAtteso(tracker, f);
     const collection = client.db(targetDb).collection(f.collection);
     if (isFirst && drop) await collection.drop().catch(() => {});
+    if (!f.identity) {
+      const empty = (await collection.countDocuments({})) === 0;
+      assertColumnsAndIdentity(f, [], null, { empty });
+    }
 
     let batch = [];
     let applied = 0;
@@ -495,7 +644,9 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
       batch = [];
     };
     for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
-      batch.push(EJSON.parse(line, { relaxed: false }));
+      const row = EJSON.parse(line, { relaxed: false });
+      registraAttesa(tracker, f);
+      batch.push(row);
       applied += 1;
       if (batch.length >= BATCH_SIZE) await flush();
     }
@@ -542,7 +693,29 @@ function toSqlValue(v) {
   return v;
 }
 
-async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, opts }) {
+async function mysqlTargetIdentity(conn, db, table, expectedIdentity = null) {
+  const [columnsRows] = await conn.query(
+    `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
+    [db, table],
+  );
+  const columns = columnsRows.map((c) => ({
+    name: c.name,
+    type: String(c.type).toLowerCase(),
+    nullable: String(c.nullable).toUpperCase() === 'YES',
+  }));
+  const identities = await leggiIdentitaMySql(
+    (sql, params) => conn.query(sql, params), db, table, columns,
+  );
+  return {
+    columnSchema: columns,
+    identity: identities.find((candidate) => identityCompatibile(expectedIdentity, candidate))
+      || identities[0] || null,
+  };
+}
+
+async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, opts, tracker }) {
   const mysql = require('mysql2');
   const pool = strategy.pool;
   const conn = await pool.getConnection();
@@ -564,6 +737,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
     }
 
     for (const f of dataFiles) {
+      registraFileAtteso(tracker, f);
       const tableId = myQid(f.collection);
       if (isFirst) {
         if (drop) {
@@ -583,6 +757,14 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
           existingTables.add(f.collection);
         }
       }
+
+      const targetMeta = await mysqlTargetIdentity(conn, targetDb, f.collection, f.identity);
+      let empty = false;
+      if (!f.identity) {
+        const [[row]] = await conn.query(`SELECT NOT EXISTS(SELECT 1 FROM ${tableId} LIMIT 1) AS empty`);
+        empty = !!Number(row.empty);
+      }
+      assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
 
       // Colonne geometriche della tabella di DESTINAZIONE, lette dopo la
       // CREATE TABLE. Il backup le contiene come GeoJSON (vedi il dump): un
@@ -644,6 +826,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       };
       for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
         const row = EJSON.parse(line, { relaxed: true });
+        registraAttesa(tracker, f);
         const colsRiga = Object.keys(row);
         if (!columns) columns = colsRiga;
         // Le colonne erano dedotte UNA VOLTA dalla prima riga (CDB-30): una riga
@@ -688,6 +871,34 @@ async function pgExistingTables(strategy, targetSchema) {
   return new Set(rows.map((r) => r.tablename).filter(Boolean));
 }
 
+async function pgTargetIdentity(strategy, schema, table, expectedIdentity = null) {
+  const pool = strategy.pool;
+  const columnsRes = await pool.query(
+    `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
+            NOT a.attnotnull AS nullable
+       FROM pg_catalog.pg_attribute a
+       JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $2 AND c.relname = $1
+        AND a.attnum > 0 AND NOT a.attisdropped
+   ORDER BY a.attnum`,
+    [table, schema],
+  );
+  const columns = columnsRes.rows.map((c) => ({
+    name: c.name,
+    type: String(c.type).toLowerCase(),
+    nullable: c.nullable === true || String(c.nullable).toLowerCase() === 'true',
+  }));
+  const identities = await leggiIdentitaPostgres(
+    (sql, params) => pool.query(sql, params), schema, table, columns,
+  );
+  return {
+    columnSchema: columns,
+    identity: identities.find((candidate) => identityCompatibile(expectedIdentity, candidate))
+      || identities[0] || null,
+  };
+}
+
 /**
  * Schema PostgreSQL di destinazione per un layer.
  *
@@ -705,7 +916,7 @@ function pgTargetSchema(targetDb, layer, explicitTarget) {
   return 'public';
 }
 
-async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, opts, explicitTarget }) {
+async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, opts, explicitTarget, tracker }) {
   const dataFiles = layer.manifest.files.filter(
     (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
   );
@@ -723,6 +934,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     });
   }
   for (const f of dataFiles) {
+    registraFileAtteso(tracker, f);
     if (isFirst) {
       if (drop) {
         await strategy.dropCollection(targetDb, f.collection).catch(() => {});
@@ -749,6 +961,15 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
         }
       }
     }
+    const targetMeta = await pgTargetIdentity(strategy, targetDb, f.collection, f.identity);
+    let empty = false;
+    if (!f.identity) {
+      const res = await strategy.pool.query(
+        `SELECT NOT EXISTS(SELECT 1 FROM ${pgQid(targetDb)}.${pgQid(f.collection)} LIMIT 1) AS empty`,
+      );
+      empty = !!res.rows[0].empty;
+    }
+    assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
     // Applica a batch (come i restore Mongo/MySQL): senza, l'intero file
     // verrebbe caricato in memoria — OOM su tabelle grandi.
     let batch = [];
@@ -757,7 +978,11 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     const firstErrors = [];
     const flush = async () => {
       if (!batch.length) return;
-      const imp = await strategy.collectionImport(targetDb, f.collection, { docs: batch, upsert: !isFirst });
+      const imp = await strategy.collectionImport(targetDb, f.collection, {
+        docs: batch,
+        upsert: !isFirst,
+        conflictColumns: f.identity ? f.identity.columns : undefined,
+      });
       applied += imp.inserted;
       // `collectionImport` non lancia sui singoli errori di riga: li restituisce.
       // Ignorarli significava dichiarare riuscito un ripristino di zero righe.
@@ -788,6 +1013,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
         // dei byte che rappresentano.
         if (typeof riga[col] === 'string') riga[col] = Buffer.from(riga[col], 'hex');
       }
+      registraAttesa(tracker, f);
       batch.push(riga);
       if (batch.length >= BATCH_SIZE) await flush();
     }
@@ -798,6 +1024,87 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     checkApplied(problems, layer, f, applied, failed ? `${failed} righe rifiutate (${firstErrors.join(' | ')})` : null);
   }
   return total;
+}
+
+async function cardinalitaDestinazione({ strategy, dbType, targetDb, collection, identity }) {
+  if (dbType === 'mysql') {
+    const conn = await strategy.pool.getConnection();
+    try {
+      const distinct = identity
+        ? `COUNT(DISTINCT ${identity.columns.map(myQid).join(', ')})`
+        : 'NULL';
+      const [[row]] = await conn.query(
+        `SELECT COUNT(*) AS cardinality, ${distinct} AS distinctIdentities FROM ${myQid(targetDb)}.${myQid(collection)}`,
+      );
+      return {
+        cardinality: Number(row.cardinality),
+        distinctIdentities: identity ? Number(row.distinctIdentities) : null,
+      };
+    } finally {
+      conn.release();
+    }
+  }
+  if (dbType === 'postgresql' || dbType === 'postgres') {
+    const cols = identity && identity.columns.map(pgQid);
+    const distinct = !cols ? 'NULL'
+      : cols.length === 1 ? `COUNT(DISTINCT ${cols[0]})` : `COUNT(DISTINCT (${cols.join(', ')}))`;
+    const res = await strategy.pool.query(
+      `SELECT COUNT(*) AS cardinality, ${distinct} AS "distinctIdentities" FROM ${pgQid(targetDb)}.${pgQid(collection)}`,
+    );
+    return {
+      cardinality: Number(res.rows[0].cardinality),
+      distinctIdentities: identity ? Number(res.rows[0].distinctIdentities) : null,
+    };
+  }
+  const collectionRef = strategy.client.db(targetDb).collection(collection);
+  const cardinality = await collectionRef.countDocuments({});
+  let distinctIdentities = null;
+  if (identity) {
+    const result = await collectionRef.aggregate([
+      { $group: { _id: Object.fromEntries(identity.columns.map((c) => [c, `$${c}`])) } },
+      { $count: 'n' },
+    ]).toArray();
+    distinctIdentities = result.length ? Number(result[0].n) : 0;
+  }
+  return { cardinality, distinctIdentities };
+}
+
+async function verificaRisultatoFinale({ strategy, dbType, targetDb, tracker, problems, log }) {
+  let total = 0;
+  let expectedTotal = 0;
+  const collections = [];
+  for (const [collection, expected] of tracker) {
+    const target = await cardinalitaDestinazione({
+      strategy, dbType, targetDb, collection, identity: expected.identity,
+    });
+    // Il valore atteso arriva dall'ULTIMO layer della catena ed e' stato
+    // calcolato dal DBMS sorgente dentro la snapshot del backup. In questo modo
+    // il confronto rispetta collation e tipi senza materializzare tutte le
+    // chiavi in memoria e senza confondere le scritture ripetute con righe
+    // finali distinte.
+    const expectedCardinality = expected.expectedCardinality;
+    total += target.cardinality;
+    expectedTotal += expectedCardinality;
+    collections.push({ collection, expected: expectedCardinality, ...target });
+    if (target.cardinality !== expectedCardinality) {
+      problems.push(
+        `${collection}: cardinalita finale ${target.cardinality}, attese ${expectedCardinality} righe/documenti distinti`
+      );
+    }
+    if (expected.identity && (target.distinctIdentities !== expected.expectedDistinctIdentities
+        || target.cardinality !== target.distinctIdentities)) {
+      problems.push(
+        `${collection}: ${target.cardinality} righe/documenti ma ${target.distinctIdentities} identita distinte `
+        + `(attese ${expected.expectedDistinctIdentities})`
+      );
+    }
+    log.info(
+      `  Verifica finale ${collection}: cardinalita ${target.cardinality}`
+      + (expected.identity ? `, identita distinte ${target.distinctIdentities}` : '')
+      + `, attese ${expectedCardinality}.`
+    );
+  }
+  return { total, expectedTotal, collections };
 }
 
 /* --- Restore completo ----------------------------------------------------- */
@@ -830,15 +1137,12 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
 
   // Righe/documenti che la catena dichiara di contenere per le collection
   // effettivamente incluse nel ripristino: è il metro di paragone del risultato.
-  const expected = chain.reduce((sum, l) => sum + l.manifest.files
-    .filter((f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection)))
-    .reduce((s, f) => s + (f.count || 0), 0), 0);
-
-  let total = 0;
+  let totalWrites = 0;
   const problems = [];
+  const tracker = new Map();
   for (let i = 0; i < chain.length; i++) {
-    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema }, explicitTarget };
-    total += dbType === 'mysql'
+    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema }, explicitTarget, tracker };
+    totalWrites += dbType === 'mysql'
       ? await restoreLayerMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await restoreLayerPostgreSql(args)
@@ -868,14 +1172,30 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     }
   }
 
-  const summary = { targetDb: db, layers: chain.length, totalDocs: total, expectedDocs: expected, problems };
+  const verifyDb = (dbType === 'postgresql' || dbType === 'postgres')
+    ? pgTargetSchema(db, chain[0], explicitTarget)
+    : db;
+  const verified = await verificaRisultatoFinale({
+    strategy, dbType, targetDb: verifyDb, tracker, problems, log,
+  });
+
+  const summary = {
+    targetDb: db,
+    layers: chain.length,
+    totalDocs: verified.total,
+    expectedDocs: verified.expectedTotal,
+    totalWrites,
+    collections: verified.collections,
+    problems,
+  };
 
   // Un ripristino incompleto non deve mai risultare "riuscito": né in UI, né
   // nell'audit, né nella notifica Slack. L'errore porta con sé il riepilogo, così
   // il chiamante può comunque dire quanto è stato applicato prima di fermarsi.
   if (problems.length) {
     const err = new Error(
-      `Ripristino incompleto: applicati ${total} di ${expected} documenti/righe attesi. ` +
+      `Ripristino incompleto: cardinalita finale ${verified.total} di ${verified.expectedTotal} documenti/righe attesi `
+      + `(${totalWrites} scritture applicate). ` +
       problems.slice(0, 5).join('; ') + (problems.length > 5 ? ` (e altri ${problems.length - 5})` : '')
     );
     err.summary = summary;
@@ -888,7 +1208,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   const hasUnknownCounts = chain.some((l) => l.manifest.files.some(
     (f) => f.kind === 'data' && f.count == null && (!onlyCollections || onlyCollections.includes(f.collection))
   ));
-  if (total === 0 && hasUnknownCounts) {
+  if (verified.total === 0 && hasUnknownCounts) {
     const err = new Error(
       'Ripristino terminato senza applicare alcun documento/riga: verifica i permessi sul database di destinazione e il contenuto del backup.'
     );
