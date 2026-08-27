@@ -2714,12 +2714,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .graph3d-bar .grafo-cerca input {
     width: 150px;
   }
-  /* Nome e valore rimpiccioliscono INSIEME: due misure diverse dentro lo
-     stesso bordo si leggono come due controlli. */
-  .graph3d-bar .grafo-campo,
-  .graph3d-bar .grafo-campo select {
-    font-size: 0.78rem;
-  }
+  .graph3d-bar .grafo-campo { font-size: 0.78rem; }
 }
 
 /* --- Telefoni stretti --------------------------------------------------- */
@@ -2747,11 +2742,8 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .graph3d-bar .grafo-cerca input {
     width: 130px;
   }
-  .graph3d-bar .grafo-campo,
-  .graph3d-bar .grafo-campo select {
-    font-size: 0.76rem;
-  }
-  .graph3d-bar .grafo-campo { min-width: 104px; }
+  .graph3d-bar .grafo-campo { font-size: 0.76rem; }
+  .graph3d-bar .grafo-campo-valore { min-width: 48px; }
   .graph3d-side-panel {
     width: 100% !important;
     max-width: 100%;
@@ -2996,7 +2988,19 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   padding: 8px calc(12px + var(--sar)) 8px calc(12px + var(--sal));
   background: var(--bg-2, #1b1e23);
   border-bottom: 1px solid var(--border, #2a2e35);
-  z-index: 10;
+  /*
+   * La barra è un FLEX ITEM, e su un flex item `z-index` fa contesto di
+   * impilamento anche senza `position`. I suoi menu a tendina hanno `z-index:
+   * 300`, ma quel 300 vale DENTRO questo contesto: dall'esterno il menu conta
+   * quanto la barra. A 10 finiva quindi sotto al pannello laterale (20) e
+   * sotto agli strumenti flottanti (16) — che stanno nel contenitore sotto,
+   * il quale non fa contesto proprio e li lascia competere qui. Il menu
+   * risultava tagliato a metà dal pannello proprio quando serve, cioè dopo
+   * aver scelto una tabella. Alzare il numero del MENU non sarebbe servito:
+   * il tetto è questo. Barra e pannello non si sovrappongono mai fra loro —
+   * l'una sta sopra all'altro — quindi alzarla non copre nulla.
+   */
+  z-index: 30;
 }
 .graph3d-bar input,
 .graph3d-bar select,
@@ -3102,28 +3106,17 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 /* --- Campo con etichetta VISIBILE ---------------------------------------- */
 /* Il nome del controllo stava dentro le sue opzioni («🔍 Mostra: Tutti»),
    quindi la tendina chiusa mostrava un valore senza dire di che cosa. Tirarlo
-   fuori però lasciava due elementi che galleggiavano vicini — un'etichetta e
-   una `<select>` di sistema — accanto a pillole e segmentato che sono un'altra
-   cosa: il controllo sembrava caduto lì da un'altra interfaccia.
-   Etichetta e valore stanno ora DENTRO un unico bordo, con la stessa altezza,
-   lo stesso raggio e lo stesso comportamento al passaggio del mouse delle
-   pillole. È un `<label for>`, quindi premere ovunque — nome compreso — apre la
-   tendina, ed è per questo che il cursore è una mano su tutto il controllo. */
+   fuori lasciava però un'etichetta e una `<select>` DI SISTEMA in mezzo a
+   pillole e segmentato: l'unico comando della barra la cui tendina la
+   disegnava il sistema operativo — fondo, carattere, spaziatura e freccia
+   venivano da fuori, e nessuna regola poteva allinearla al resto.
+   Ora è un bottone con lo stesso menu di «Analisi» e «Schema», e la forma è
+   quella delle pillole: stessa altezza, stesso raggio, stesso hover. */
 .grafo-campo {
-  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   height: 32px;
-  /* Misurato: una `<select>` con `width: auto` si dimensiona sull'opzione PIÙ
-     LARGA, non sul valore scelto, quindi il controllo non cambia larghezza
-     passando da «Tutti» a «2 salti» e i comandi alla sua destra non si spostano
-     sotto le dita. La `min-width` è quindi solo un fondo (la larghezza
-     naturale misurata è ~111px), non il rimedio a un riflusso che non c'è.
-     `space-between` tiene comunque il valore contro la freccia se un altro
-     sistema dovesse renderlo più stretto. */
-  min-width: 112px;
-  justify-content: space-between;
   padding: 0 10px 0 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
@@ -3133,60 +3126,34 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   cursor: pointer;
   transition: background 160ms ease, border-color 160ms ease;
 }
-.grafo-campo:hover:not(.disabilitato) { background: var(--hover); border-color: var(--border-2); }
+.graph3d-bar .grafo-campo:hover:not(:disabled) { background: var(--hover); border-color: var(--border-2); }
 /* Il nome resta secondario, il valore è il dato: senza questa differenza si
    leggono come due parole di pari peso e non si capisce quale sia scelta. */
 .grafo-campo-nome { white-space: nowrap; }
-.graph3d-bar .grafo-campo select {
-  /* La freccia nativa non si può né colorare né distanziare. La regola globale
-     `select` (in cima a questo file) la toglie già e ne dipinge una propria
-     come `background-image`, ma con il colore SCRITTO A MANO (`#8892a4`): non
-     segue il tema, ed è per questo che qui si usa quella dello sprite, che
-     eredita `currentColor`. Le due si sovrapponevano quasi esattamente — stessa
-     misura, stesso bordo destro — e il risultato era un chevron ispessito che
-     schiacciava il valore. Quella globale è `!important`, quindi si spegne
-     dichiarando `none` con la stessa forza. */
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: none !important;
-  height: 100%;
-  /* La `<select>` si dimensiona sul suo contenuto, così la freccia — che sta
-     dentro questo `padding-right` — resta attaccata al valore. Dare invece una
-     larghezza fissa alla select lasciava un vuoto fra un valore corto («Tutti»)
-     e la freccia, e i due pezzi dello stesso controllo sembravano scollegati.
-     `text-align: right` non è una via d'uscita: Chromium lo ignora sul valore
-     chiuso di una select, e sarebbe una regola che funziona su un browser solo.
-     La larghezza totale la tiene ferma il contenitore (vedi `min-width` lì). */
-  width: auto;
-  padding: 0 20px 0 0;
-  border: none;
-  background: transparent;
+.grafo-campo-valore {
+  /* Larghezza della voce più lunga («2 salti») e testo a DESTRA, contro la
+     freccia. È la cosa che una `<select>` non permetteva: Chromium ignora
+     `text-align` sul suo valore chiuso, quindi «Tutti» restava a sinistra e
+     lasciava un vuoto fino alla freccia. Su uno `<span>` funziona, e la
+     larghezza fissa tiene fermi i comandi alla destra a ogni scelta. */
+  min-width: 52px;
+  text-align: right;
   color: var(--fg-bright);
-  font-size: 0.8rem;
   font-weight: 500;
-  line-height: 1;
-  cursor: inherit;
-  outline: none;
+  white-space: nowrap;
 }
-/* La tendina APERTA la disegna il sistema operativo: senza questi due colori,
-   sul tema scuro di Windows le voci restano scritte in nero su bianco. Lì
-   l'allineamento torna a sinistra: un elenco di voci si legge dal margine
-   sinistro, ed è solo il valore CHIUSO che deve stare contro la freccia. */
-.grafo-campo option { background: var(--bg-surface); color: var(--fg); text-align: left; }
-.grafo-campo-freccia {
-  position: absolute;
-  right: 10px;
-  color: var(--fg-dim);
-  /* La freccia sta SOPRA la `<select>`: senza questo, il clic proprio sulla
-     freccia — il punto in cui tutti premono — non aprirebbe la tendina. */
-  pointer-events: none;
-}
-.grafo-campo:focus-within {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 2px var(--accent-soft);
-}
-.grafo-campo select:disabled { cursor: not-allowed; }
+.grafo-campo .ico-chevron { color: var(--fg-dim); }
+.grafo-campo:disabled { opacity: 0.5; cursor: not-allowed; }
+/* `.disabilitato` resta per il caso in cui il contenitore vada spento senza
+   disabilitare il bottone; il bottone disabilitato è già coperto sopra. */
 .grafo-campo.disabilitato { opacity: 0.5; cursor: not-allowed; }
+
+/* La spunta dice quale voce è in vigore SENZA affidarsi al solo colore: uno
+   sfondo d'accento da solo non è leggibile a chi non lo distingue. Occupa
+   spazio anche quando è invisibile, così le voci restano incolonnate. */
+.ico-spunta { width: 15px; height: 15px; }
+.toolbar-dropdown-menu .dropdown-item.attivabile .ico-spunta { visibility: hidden; }
+.toolbar-dropdown-menu .dropdown-item.attivabile.active .ico-spunta { visibility: visible; }
 
 /* --- Pillola: comando o interruttore, lo stato sta in aria-pressed ------- */
 .graph3d-bar .grafo-pill {
@@ -3267,9 +3234,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .grafo-tool:focus-visible,
 .graph3d-bar .grafo-pill:focus-visible,
 .graph3d-bar .grafo-seg:focus-visible,
-/* La `<select>` non compare qui: il suo anello lo disegna il contenitore
-   (`.grafo-campo:focus-within`), e due anelli concentrici si vedono come un
-   bordo sfocato invece che come un fuoco. */
+.graph3d-bar .grafo-campo:focus-visible,
 .grafo-cerca-azzera:focus-visible {
   outline: 2px solid var(--border-focus);
   outline-offset: 2px;
@@ -3279,7 +3244,9 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .grafo-tool { width: 44px; height: 44px; }
   .graph3d-bar .grafo-pill,
   .graph3d-bar .grafo-seg { min-height: 44px; }
-  .grafo-campo { height: 44px; }
+  .graph3d-bar .grafo-campo { height: 44px; }
+  /* Nel menu una voce deve poter essere presa col polpastrello. */
+  .toolbar-dropdown-menu .dropdown-item { min-height: 44px; }
   .grafo-cerca-azzera { width: 32px; height: 32px; }
 }
 @media (prefers-reduced-motion: reduce) {

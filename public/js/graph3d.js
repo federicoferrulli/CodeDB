@@ -76,6 +76,11 @@ let activeShortestPath = null; // Set di nodi del cammino minimo
 // dentro le opzioni («Colore: Prefisso»): a tendina chiusa si leggeva un valore
 // senza sapere di che cosa. Ora è un controllo segmentato, e lo stato vive qui.
 let colorMode = 'prefix';
+// Il filtro dei vicini era il `value` di una <select>, cioè uno stato che
+// viveva nel DOM: leggerlo voleva dire interrogare l'elemento, e la sua tendina
+// la disegnava il sistema operativo. Ora è un menu come gli altri, quindi lo
+// stato sta qui accanto a quello del colore.
+let hopFilter = 'all';
 // L'ultima politica di degrado applicata.
 let ultimaPolicy = { reducedEffects: false, etichette: true };
 
@@ -92,19 +97,15 @@ function aggiornaComandi() {
     autoRotazione: autoRotateActive,
   });
 
-  const hop = $('#graph3d-hop-filter');
-  const campoHop = hop && hop.closest('.grafo-campo');
-  if (hop) {
-    hop.disabled = !stato.vicini.abilitato;
-    hop.title = stato.vicini.motivo;
-    // Un filtro rimasto su «2 salti» mentre nessun nodo è scelto mostrerebbe
-    // un criterio che non è in vigore: senza selezione il valore torna a Tutti.
-    if (!stato.vicini.abilitato) hop.value = 'all';
+  // Un filtro rimasto su «2 salti» mentre nessun nodo è scelto mostrerebbe un
+  // criterio che non è in vigore: senza selezione il valore torna a Tutti.
+  if (!stato.vicini.abilitato) hopFilter = 'all';
+  const hopBtn = $('#graph3d-hop-btn');
+  if (hopBtn) {
+    hopBtn.disabled = !stato.vicini.abilitato;
+    hopBtn.title = stato.vicini.motivo;
   }
-  if (campoHop) {
-    campoHop.classList.toggle('disabilitato', !stato.vicini.abilitato);
-    campoHop.title = stato.vicini.motivo;
-  }
+  dipingiVicini();
 
   const rot = $('#graph3d-auto-rotate');
   if (rot) {
@@ -124,6 +125,24 @@ function aggiornaComandi() {
 
   for (const b of document.querySelectorAll('.graph3d-bar .grafo-seg[data-colore]')) {
     b.setAttribute('aria-pressed', String(b.dataset.colore === colorMode));
+  }
+}
+
+/*
+ * Il valore scelto va scritto in DUE posti — sul bottone, che è ciò che si
+ * legge a menu chiuso, e sulla voce del menu, che è ciò che si legge a menu
+ * aperto. Scriverli in due punti diversi del codice significa poterne
+ * dimenticare uno, e uno stato che si contraddice fra chiuso e aperto è
+ * peggio di uno stato assente.
+ */
+function dipingiVicini() {
+  const valore = $('#graph3d-hop-valore');
+  const voci = document.querySelectorAll('#graph3d-hop-menu [data-salti]');
+  for (const voce of voci) {
+    const scelta = voce.dataset.salti === hopFilter;
+    voce.classList.toggle('active', scelta);
+    voce.setAttribute('aria-checked', String(scelta));
+    if (scelta && valore) valore.textContent = voce.textContent.trim();
   }
 }
 
@@ -306,7 +325,7 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     canvas.querySelector('.graph3d-budget-badge')?.remove();
   }
 
-  const hopFilter = ($('#graph3d-hop-filter') && $('#graph3d-hop-filter').value) || 'all';
+  // `hopFilter` è lo stato del modulo: qui si legge e basta.
 
   const neighborsMap = new Map();
   const degreeMap = new Map();
@@ -1164,8 +1183,16 @@ export function initGraph3d() {
     });
   }
 
-  const hopSelect = $('#graph3d-hop-filter');
-  if (hopSelect) hopSelect.addEventListener('change', () => renderGraph3d());
+  const hopMenu = $('#graph3d-hop-menu');
+  if (hopMenu) {
+    hopMenu.addEventListener('click', (e) => {
+      const voce = e.target.closest('[data-salti]');
+      if (!voce || voce.dataset.salti === hopFilter) return;
+      hopFilter = voce.dataset.salti;
+      dipingiVicini();
+      renderGraph3d();
+    });
+  }
 
   // Inizializzazione dropdown della toolbar del Grafo 3D
   const setupToolbarDropdown = (btnId, menuId) => {
@@ -1193,10 +1220,65 @@ export function initGraph3d() {
         btn.setAttribute('aria-expanded', 'false');
       }
     });
+
+    /*
+     * Da tastiera questi menu si aprivano e poi non si potevano percorrere: il
+     * fuoco restava sul bottone e le frecce non facevano nulla. Non era un
+     * difetto del solo filtro dei vicini — valeva per «Analisi» e «Schema»
+     * dallo stesso giorno in cui sono nati — quindi la correzione sta qui,
+     * dove i tre menu si registrano, e non nel gestore di uno solo.
+     * La <select> che il filtro aveva prima queste cose le faceva gratis:
+     * sostituirla senza rimetterle sarebbe stato un peggioramento travestito
+     * da miglioramento estetico.
+     */
+    const voci = () => [...menu.querySelectorAll('.dropdown-item')]
+      .filter((v) => !v.disabled && !v.classList.contains('hidden'));
+
+    const muovi = (da, passo) => {
+      const elenco = voci();
+      if (!elenco.length) return;
+      const i = elenco.indexOf(da);
+      // Da fuori (`i < 0`) si entra dal capo giusto: dal primo scendendo,
+      // dall'ultimo salendo.
+      const prossimo = i < 0
+        ? (passo > 0 ? 0 : elenco.length - 1)
+        : (i + passo + elenco.length) % elenco.length;
+      elenco[prossimo].focus();
+    };
+
+    btn.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      if (menu.classList.contains('hidden')) btn.click();
+      // Il menu viene posizionato al clic: si aspetta il fotogramma dopo,
+      // altrimenti si darebbe il fuoco a un elemento ancora nascosto.
+      requestAnimationFrame(() => muovi(null, e.key === 'ArrowDown' ? 1 : -1));
+    });
+
+    menu.addEventListener('keydown', (e) => {
+      const corrente = e.target.closest('.dropdown-item');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        muovi(corrente, e.key === 'ArrowDown' ? 1 : -1);
+      } else if (e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        muovi(null, e.key === 'Home' ? 1 : -1);
+      } else if (e.key === 'Escape' || e.key === 'Tab') {
+        // Chiudendo, il fuoco torna DA DOVE era partito: lasciarlo su una voce
+        // ormai nascosta lo perde, e il tasto seguente non si sa dove va.
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+        if (e.key === 'Escape') { e.preventDefault(); btn.focus(); }
+      }
+    });
   };
 
   setupToolbarDropdown('#graph3d-analysis-menu-btn', '#graph3d-analysis-menu');
   setupToolbarDropdown('#graph3d-export-menu-btn', '#graph3d-export-menu');
+  // Il filtro dei vicini passa dalla stessa registrazione degli altri due: è
+  // ciò che gli dà l'apertura, il posizionamento, la chiusura al clic fuori e
+  // la navigazione da tastiera senza riscriverli.
+  setupToolbarDropdown('#graph3d-hop-btn', '#graph3d-hop-menu');
 
   const chiudiMenu = () => {
     document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
@@ -1462,8 +1544,7 @@ export function initGraph3d() {
       selectedNodeId = null;
       // Senza selezione il filtro dei vicini non è più esprimibile: se restava
       // su «2 salti» il grafo mostrava un criterio che non era più in vigore.
-      const hop = $('#graph3d-hop-filter');
-      const filtroAttivo = hop && hop.value !== 'all';
+      const filtroAttivo = hopFilter !== 'all';
       aggiornaComandi();
       if (filtroAttivo) {
         renderGraph3d();

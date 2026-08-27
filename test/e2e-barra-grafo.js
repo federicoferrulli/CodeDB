@@ -131,7 +131,7 @@ const ultimaChiamata = (nome) =>
 
     // --- 2. Un comando inutilizzabile è disattivato e dice perché ----------
     const hop = await page.evaluate(() => {
-      const s = document.getElementById('graph3d-hop-filter');
+      const s = document.getElementById('graph3d-hop-btn');
       return { disabled: s.disabled, title: s.title };
     });
     ok(hop.disabled === true, 'senza una tabella scelta il filtro dei vicini è disattivato');
@@ -363,93 +363,217 @@ const ultimaChiamata = (nome) =>
       'col pannello aperto gli strumenti si spostano a sinistra, invece di finirgli sotto',
       JSON.stringify(rail));
 
-    // --- 10-bis. «Vicini» è UN controllo, alto come i suoi vicini ----------
-    // Era un'etichetta e una `<select>` di sistema che galleggiavano accanto a
-    // pillole e segmentato: la freccia nativa schiacciava il valore contro il
-    // bordo e il controllo sembrava caduto lì da un'altra interfaccia.
+    // --- 10-bis. «Vicini» apre il MENU della barra, non quello di sistema --
+    // Era una `<select>`: l'unico comando della barra la cui tendina la
+    // disegnava il sistema operativo — fondo, carattere, spaziatura e freccia
+    // venivano da fuori, e nessuna regola CSS poteva allinearla al resto.
+    // Che sia diventato un menu come «Analisi» e «Schema» si prova su ciò che
+    // il menu FA, non sulle sue classi.
     const campo = await page.evaluate(() => {
-      const label = document.querySelector('.grafo-campo');
-      const select = document.getElementById('graph3d-hop-filter');
+      const btn = document.getElementById('graph3d-hop-btn');
+      const menu = document.getElementById('graph3d-hop-menu');
       const pill = document.getElementById('graph3d-toggle-empty');
-      const freccia = document.querySelector('.grafo-campo-freccia');
-      const cs = getComputedStyle(select);
-      const rCampo = label.getBoundingClientRect();
+      const rCampo = btn.getBoundingClientRect();
       const rPill = pill.getBoundingClientRect();
-      const rFreccia = freccia.getBoundingClientRect();
-      const rSelect = select.getBoundingClientRect();
       return {
-        // Un bordo solo, sul contenitore: la select dentro non ne ha uno suo.
-        bordoContenitore: getComputedStyle(label).borderTopWidth,
-        bordoSelect: cs.borderTopWidth,
-        // Una freccia SOLA. `appearance` da solo non proverebbe nulla: la
-        // regola globale `select` la mette già a `none` per tutta l'app, e in
-        // più ne dipinge una propria come `background-image` con `!important`
-        // e un colore scritto a mano. Quella si sovrapponeva alla nostra —
-        // stessa misura, stesso bordo destro — ispessendo il chevron e
-        // schiacciando il valore. Si controlla quindi che qui non ne resti
-        // dipinta nessuna oltre a quella dello sprite.
-        aspetto: cs.appearance,
-        frecceDipinte: cs.backgroundImage,
-        frecceSprite: label.querySelectorAll('svg').length,
+        // Nessuna `<select>` è sopravvissuta: se ne restasse una, la tendina di
+        // sistema tornerebbe da qualche parte.
+        selectRimaste: document.querySelectorAll('.graph3d-bar select').length,
+        // Il menu è lo stesso componente degli altri due comandi della barra.
+        classeMenu: menu.className.includes('toolbar-dropdown-menu'),
+        stessaClasseDegliAltri: document.querySelectorAll(
+          '.graph3d-bar .toolbar-dropdown-menu',
+        ).length,
+        // Scegliere fra alternative che si escludono non è eseguire un comando:
+        // il ruolo giusto è `menuitemradio`, e `aria-checked` dice quale vale.
+        ruoli: [...menu.querySelectorAll('[data-salti]')].map((v) => v.getAttribute('role')),
         // Stessa altezza delle pillole accanto, altrimenti la riga balla.
         dislivello: Math.abs(rCampo.height - rPill.height),
-        // La nostra freccia sta dentro il controllo e non lo sfonda.
-        frecciaDentro: rFreccia.right <= rCampo.right && rFreccia.left > rCampo.left,
-        // Il clic sulla freccia deve raggiungere la select, non fermarsi su un
-        // <svg> sovrapposto.
-        sottoLaFreccia: document.elementFromPoint(
-          (rFreccia.left + rFreccia.right) / 2,
-          (rFreccia.top + rFreccia.bottom) / 2,
-        ).id,
-        // La larghezza non deve cambiare al cambio di scelta, altrimenti i
-        // comandi alla destra si spostano sotto le dita. Si MISURA invece di
-        // fidarsi: una `<select>` con `width: auto` si dimensiona sull'opzione
-        // più larga e non sul valore scelto, ed è quella proprietà a rendere
-        // superflua una larghezza fissa (che lasciava un vuoto fra il valore e
-        // la freccia).
-        larghezze: ['all', '1', '2'].map((v) => {
-          select.value = v;
-          return Math.round(label.getBoundingClientRect().width);
-        }),
-        // Il riquadro del valore finisce contro la freccia: con una larghezza
-        // fissa più ampia del contenuto restava un vuoto in mezzo, e i due
-        // pezzi dello stesso controllo sembravano scollegati.
-        // Si misura dove finisce il TESTO, non dove finisce il riquadro: con
-        // una larghezza fissa più ampia del contenuto il riquadro tocca
-        // comunque la freccia, mentre il vuoto si apre dentro, fra la parola e
-        // il bordo — che è esattamente il difetto da cogliere. La larghezza
-        // della parola si misura su un canvas con lo stesso font.
-        vuotoPrimaDellaFreccia: (() => {
-          const ctx = document.createElement('canvas').getContext('2d');
-          ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-          const testo = select.options[select.selectedIndex].textContent;
-          return rFreccia.left - (rSelect.left + ctx.measureText(testo).width);
-        })(),
+        // Una freccia sola, dallo sprite: quella di sistema non si può colorare
+        // e non seguiva il tema.
+        frecce: btn.querySelectorAll('svg').length,
+        larghezzaValore: getComputedStyle(
+          document.getElementById('graph3d-hop-valore'),
+        ).textAlign,
       };
     });
-    ok(parseFloat(campo.bordoContenitore) > 0 && parseFloat(campo.bordoSelect) === 0,
-      'nome e valore stanno dentro UN solo bordo, non due', JSON.stringify(campo));
-    ok(campo.aspetto === 'none' && campo.frecceDipinte === 'none' && campo.frecceSprite === 1,
-      'una freccia sola: quella dello sprite, che segue il tema',
-      JSON.stringify({ a: campo.aspetto, dipinte: campo.frecceDipinte, sprite: campo.frecceSprite }));
+    ok(campo.selectRimaste === 0,
+      'nella barra non resta nessuna <select>: nessuna tendina di sistema',
+      String(campo.selectRimaste));
+    ok(campo.classeMenu === true && campo.stessaClasseDegliAltri === 3,
+      'il filtro usa lo stesso menu di «Analisi» e «Schema»',
+      JSON.stringify(campo));
+    ok(campo.ruoli.length === 3 && campo.ruoli.every((r) => r === 'menuitemradio'),
+      'le voci sono alternative che si escludono, non comandi', JSON.stringify(campo.ruoli));
     ok(campo.dislivello < 3,
       'il controllo è alto come le pillole che gli stanno accanto', `Δ=${campo.dislivello}px`);
-    ok(campo.frecciaDentro === true, 'la freccia sta dentro il bordo del controllo');
-    ok(campo.sottoLaFreccia === 'graph3d-hop-filter',
-      'premere sulla freccia apre la tendina invece di fermarsi sull\'icona',
-      campo.sottoLaFreccia);
-    ok(new Set(campo.larghezze).size === 1,
-      'il controllo non cambia larghezza al cambio di scelta: i comandi alla sua destra restano fermi',
-      JSON.stringify(campo.larghezze));
-    // La soglia non è un numero tondo scelto a occhio. Chromium dimensiona una
-    // `<select>` sull'opzione PIÙ LARGA, quindi un valore corto («Tutti»)
-    // lascia qualche pixel di scarto che nessuna regola CSS può togliere:
-    // misurato, ~8px. Il difetto da cogliere è di un altro ordine — una
-    // larghezza fissa più ampia del contenuto apriva un vuoto di oltre 80px —
-    // e 14px sta comodamente fra i due.
-    ok(campo.vuotoPrimaDellaFreccia < 14 && campo.vuotoPrimaDellaFreccia > -2,
-      'il valore finisce contro la freccia, senza un vuoto in mezzo',
-      `${campo.vuotoPrimaDellaFreccia}px`);
+    ok(campo.frecce === 1, 'una freccia sola, quella dello sprite', String(campo.frecce));
+    ok(campo.larghezzaValore === 'right',
+      'il valore è allineato contro la freccia — la cosa che una <select> non permetteva');
+
+    // Il controllo funziona: si sceglie una voce e il grafo ridisegna col nuovo
+    // criterio. Serve un nodo scelto, altrimenti il filtro è disattivato.
+    // Il registrante non fa girare alcuna simulazione, quindi i nodi non hanno
+    // coordinate e la ricerca non può portarci la telecamera — cioè non
+    // sceglie nulla, e senza una tabella scelta il filtro resta giustamente
+    // disattivato. Le coordinate si mettono a mano: qui è in prova il filtro,
+    // non la disposizione delle forze.
+    await page.evaluate(() => {
+      window.__dati.nodes.forEach((n, i) => { n.x = i * 10; n.y = 0; n.z = 0; });
+    });
+    await page.fill('#graph3d-search', 'clienti');
+    await page.waitForTimeout(600);
+    await page.click('#graph3d-hop-btn');
+    await page.waitForTimeout(300);
+    await page.click('#graph3d-hop-menu [data-salti="1"]');
+    await page.waitForTimeout(600);
+    const dopoScelta = await page.evaluate(() => ({
+      valore: document.getElementById('graph3d-hop-valore').textContent.trim(),
+      spuntato: [...document.querySelectorAll('#graph3d-hop-menu [data-salti]')]
+        .filter((v) => v.getAttribute('aria-checked') === 'true').map((v) => v.dataset.salti),
+      menuChiuso: document.getElementById('graph3d-hop-menu').classList.contains('hidden'),
+      espanso: document.getElementById('graph3d-hop-btn').getAttribute('aria-expanded'),
+      // La prova che la scelta è ARRIVATA al grafo: con un salto solo restano
+      // il nodo scelto e i suoi vicini diretti, non tutte e sedici le tabelle.
+      nodi: window.__dati.nodes.length,
+    }));
+    ok(dopoScelta.valore === '1 salto',
+      'il valore scelto si legge sul bottone a menu chiuso', dopoScelta.valore);
+    ok(dopoScelta.spuntato.length === 1 && dopoScelta.spuntato[0] === '1',
+      'una sola voce risulta scelta, e nel menu è quella spuntata',
+      JSON.stringify(dopoScelta.spuntato));
+    ok(dopoScelta.menuChiuso === true && dopoScelta.espanso === 'false',
+      'scegliendo, il menu si chiude e il bottone lo dichiara', JSON.stringify(dopoScelta));
+    ok(dopoScelta.nodi > 0 && dopoScelta.nodi < 16,
+      'la scelta arriva al grafo: il filtro riduce davvero i nodi disegnati',
+      `${dopoScelta.nodi} nodi`);
+
+    // --- 10-ter. Il menu si percorre da TASTIERA --------------------------
+    // La `<select>` di prima queste cose le faceva gratis: sostituirla senza
+    // rimetterle sarebbe stato un peggioramento travestito da miglioramento
+    // estetico. Vale per tutti e tre i menu della barra, non solo per questo.
+    await page.focus('#graph3d-hop-btn');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(300);
+    const primaVoce = await page.evaluate(() => ({
+      fuoco: document.activeElement.dataset ? document.activeElement.dataset.salti : null,
+      aperto: !document.getElementById('graph3d-hop-menu').classList.contains('hidden'),
+    }));
+    ok(primaVoce.aperto === true && primaVoce.fuoco === 'all',
+      'freccia giù apre il menu e porta il fuoco sulla prima voce',
+      JSON.stringify(primaVoce));
+
+    await page.keyboard.press('ArrowDown');
+    const secondaVoce = await page.evaluate(() => document.activeElement.dataset.salti);
+    ok(secondaVoce === '1', 'le frecce percorrono le voci', secondaVoce);
+
+    await page.keyboard.press('End');
+    const ultimaVoce = await page.evaluate(() => document.activeElement.dataset.salti);
+    ok(ultimaVoce === '2', 'Fine salta all\'ultima voce', ultimaVoce);
+
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    const dopoEsc = await page.evaluate(() => ({
+      chiuso: document.getElementById('graph3d-hop-menu').classList.contains('hidden'),
+      fuoco: document.activeElement.id,
+    }));
+    ok(dopoEsc.chiuso === true && dopoEsc.fuoco === 'graph3d-hop-btn',
+      'Esc chiude e riporta il fuoco sul bottone: lasciarlo su una voce nascosta lo perderebbe',
+      JSON.stringify(dopoEsc));
+
+    // Lo stesso vale per gli altri menu della barra: la correzione sta nella
+    // registrazione comune, non nel gestore di un menu solo.
+    await page.focus('#graph3d-analysis-menu-btn');
+    await page.keyboard.press('ArrowDown');
+    await page.waitForTimeout(300);
+    const menuAnalisi = await page.evaluate(() => ({
+      aperto: !document.getElementById('graph3d-analysis-menu').classList.contains('hidden'),
+      fuocoDentro: !!document.activeElement.closest('#graph3d-analysis-menu'),
+    }));
+    ok(menuAnalisi.aperto === true && menuAnalisi.fuocoDentro === true,
+      'anche «Analisi» si apre e si percorre da tastiera', JSON.stringify(menuAnalisi));
+
+    // --- 10-quater. Un menu aperto sta SOPRA pannello e strumenti ----------
+    // La barra è un flex item, e su un flex item `z-index` fa contesto di
+    // impilamento anche senza `position`: il `z-index: 300` del menu valeva
+    // solo dentro quel contesto, e dall'esterno il menu contava quanto la
+    // barra. A 10 finiva sotto al pannello laterale (20) e sotto agli
+    // strumenti flottanti (16), cioè veniva tagliato a metà proprio dopo aver
+    // scelto una tabella. Si misura CHI VIENE DIPINTO SOPRA nel punto in cui i
+    // due si sovrappongono, non il numero dichiarato: un confronto fra
+    // z-index non avrebbe visto il difetto, perché 300 > 20 era già vero.
+    const copertura = await page.evaluate(() => {
+      const bar = document.querySelector('.graph3d-bar');
+      const pannello = document.getElementById('graph3d-side-panel');
+      const rail = document.getElementById('graph3d-rail');
+      // Il pannello si apre a mano: qui è in prova l'impilamento, non la via
+      // che lo apre, e con il pannello chiuso non ci sarebbe sovrapposizione
+      // e il controllo passerebbe a vuoto.
+      const eraChiuso = pannello.classList.contains('hidden');
+      pannello.classList.remove('hidden');
+      document.querySelector('.graph3d-container').classList.add('pannello-aperto');
+
+      // Il menu più a destra è quello che finisce davvero sopra al pannello.
+      const btn = document.getElementById('graph3d-export-menu-btn');
+      const menu = document.getElementById('graph3d-export-menu');
+      btn.click();
+      const rMenu = menu.getBoundingClientRect();
+      const rPan = pannello.getBoundingClientRect();
+      const x = Math.max(rMenu.left, rPan.left) + 4;
+      const y = Math.max(rMenu.top, rPan.top) + 4;
+      const sovrapposti = x < Math.min(rMenu.right, rPan.right) && y < Math.min(rMenu.bottom, rPan.bottom);
+      const sopra = sovrapposti
+        ? !!(document.elementFromPoint(x, y) || {}).closest
+          && !!document.elementFromPoint(x, y).closest('.toolbar-dropdown-menu')
+        : null;
+
+      const numero = (el) => Number(getComputedStyle(el).zIndex) || 0;
+      const esito = {
+        sovrapposti,
+        sopra,
+        zBarra: numero(bar),
+        zPannello: numero(pannello),
+        zRail: numero(rail),
+      };
+
+      menu.classList.add('hidden');
+      btn.setAttribute('aria-expanded', 'false');
+      if (eraChiuso) {
+        pannello.classList.add('hidden');
+        document.querySelector('.graph3d-container').classList.remove('pannello-aperto');
+      }
+      return esito;
+    });
+    ok(copertura.sovrapposti === true,
+      'il menu e il pannello si sovrappongono davvero: il controllo qui sotto non è a vuoto',
+      JSON.stringify(copertura));
+    ok(copertura.sopra === true,
+      'il menu aperto viene dipinto SOPRA il pannello laterale',
+      JSON.stringify(copertura));
+    // La barra è il contesto di impilamento: il `z-index: 300` del menu conta
+    // solo al suo interno, quindi è il numero della BARRA a decidere contro
+    // pannello e strumenti. Confrontare 300 con 20 non avrebbe visto nulla:
+    // era già vero mentre il difetto c'era.
+    ok(copertura.zBarra > copertura.zPannello && copertura.zBarra > copertura.zRail,
+      'la barra, che è il contesto di impilamento dei suoi menu, sta sopra pannello e strumenti',
+      JSON.stringify(copertura));
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+
+    // Si riporta il filtro a «Tutti» per non lasciare il grafo filtrato ai
+    // controlli che seguono.
+    await page.evaluate(() => {
+      document.getElementById('graph3d-search').value = '';
+      document.getElementById('graph3d-search').dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // Si chiude solo se è rimasto aperto: Esc, poco sopra, può averlo già
+    // chiuso, e un clic su un bottone fuori schermo non fallisce «bene» — resta
+    // appeso trenta secondi e poi accusa il test sbagliato.
+    await page.evaluate(() => {
+      const pannello = document.getElementById('graph3d-side-panel');
+      if (!pannello.classList.contains('hidden')) document.getElementById('graph3d-panel-close').click();
+    });
+    await page.waitForTimeout(400);
 
     // --- 11. Gli strumenti icona hanno un nome accessibile ----------------
     const nomi = await page.evaluate(() => [...document.querySelectorAll('.grafo-rail .grafo-tool')]

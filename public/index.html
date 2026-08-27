@@ -843,6 +843,7 @@
                   <symbol id="gico-analisi" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-3"/><path d="M12 16V8"/><path d="M17 16v-6"/></symbol>
                   <symbol id="gico-schema" viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m13 4 4 4-4 4"/><path d="M20 16H7"/><path d="m11 12-4 4 4 4"/></symbol>
                   <symbol id="gico-giu" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+                  <symbol id="gico-spunta" viewBox="0 0 24 24"><path d="m5 12.5 5 5 9-11"/></symbol>
                   <symbol id="gico-2d" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M8.2 10.1a1.8 1.8 0 1 1 3.5.6c0 1.3-3.5 2.6-3.5 4.2h3.6"/><path d="M14.4 8.9h1.6a3.1 3.1 0 0 1 0 6.2h-1.6Z"/></symbol>
                   <symbol id="gico-rotazione" viewBox="0 0 24 24"><path d="M16.5 7.5C15.6 4.2 13.9 2 12 2 9.2 2 7 6.5 7 12s2.2 10 5 10c.3 0 .7-.1 1-.2"/><path d="m15.2 13.7 3.8 1.9-1.9 3.8"/><path d="M19 15.6c-1.8.9-4.3 1.4-7 1.4-5.5 0-10-2.2-10-5s4.5-5 10-5c4.8 0 8.9 1.7 9.8 4"/></symbol>
                   <symbol id="gico-inquadra" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></symbol>
@@ -887,20 +888,36 @@
                       title="Colore e dimensione in base al numero di relazioni">Centralità</button>
                   </div>
 
-                  <!-- La freccia è la NOSTRA, dallo stesso sprite dei bottoni:
-                       quella nativa non si può né colorare né distanziare, e
-                       schiacciata contro il valore era la ragione per cui il
-                       controllo sembrava di un'altra famiglia rispetto alle
-                       pillole e al segmentato che gli stanno accanto. -->
-                  <label class="grafo-campo" for="graph3d-hop-filter">
-                    <span class="grafo-campo-nome">Vicini</span>
-                    <select id="graph3d-hop-filter">
-                      <option value="all">Tutti</option>
-                      <option value="1">1 salto</option>
-                      <option value="2">2 salti</option>
-                    </select>
-                    <svg class="ico ico-chevron grafo-campo-freccia" aria-hidden="true"><use href="#gico-giu"/></svg>
-                  </label>
+                  <!-- Era una <select>, cioè l'unico comando della barra che
+                       apriva una tendina disegnata dal SISTEMA OPERATIVO: fondo,
+                       carattere, spaziatura e freccia venivano da fuori, e
+                       nessuna regola CSS poteva allinearla al resto. Ora è lo
+                       stesso trigger e lo stesso menu di «Analisi» e «Schema».
+                       `menuitemradio` e non `menuitem`: qui non si esegue un
+                       comando, si sceglie fra alternative che si escludono, e
+                       `aria-checked` dice quale è in vigore. -->
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="graph3d-hop-btn" class="grafo-campo dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false">
+                      <span class="grafo-campo-nome">Vicini</span>
+                      <span class="grafo-campo-valore" id="graph3d-hop-valore">Tutti</span>
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-hop-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button class="dropdown-item attivabile active" type="button" role="menuitemradio"
+                        aria-checked="true" data-salti="all">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>Tutti
+                      </button>
+                      <button class="dropdown-item attivabile" type="button" role="menuitemradio"
+                        aria-checked="false" data-salti="1">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>1 salto
+                      </button>
+                      <button class="dropdown-item attivabile" type="button" role="menuitemradio"
+                        aria-checked="false" data-salti="2">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>2 salti
+                      </button>
+                    </div>
+                  </div>
 
                   <span class="grafo-divisore" aria-hidden="true"></span>
 
