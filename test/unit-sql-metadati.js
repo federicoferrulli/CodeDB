@@ -128,7 +128,7 @@ assert.strictEqual(prima.sql, 'SELECT * FROM "t" ORDER BY "id" ASC LIMIT $1');
 console.log('  OK   keyset: casi non applicabili e prima/ultima pagina');
 
 // Il cursore è EJSON: un $numberLong non deve arrivare al driver come oggetto.
-assert.strictEqual(my.keysetValue('{"id":{"$numberLong":"42"}}', 'id'), 42);
+assert.strictEqual(my.keysetValue('{"id":{"$numberLong":"42"}}', 'id'), '42');
 assert.strictEqual(my.keysetValue('7', 'id'), 7);
 assert.deepStrictEqual(pg.keysetValue('{"id":{"$date":"2020-01-02T00:00:00Z"}}', 'id'), new Date('2020-01-02T00:00:00Z'));
 console.log('  OK   keyset: il valore del cursore passa da EJSON a parametro SQL');

@@ -133,7 +133,8 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
         sourceCardinality: 0, sourceDistinctIdentities: 0,
       }],
     });
-    assert.throws(() => resolveChain(oldInc), /storico/i);
+    assert.doesNotThrow(() => resolveChain(oldInc),
+      'le catene storiche restano leggibili, ma il restore le classifica come equivalenza incompleta');
 
     write('full-new', {
       version: 2, type: 'full', baseId: null, startedAt: '2026-02-01T00:00:00Z',
@@ -195,10 +196,13 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
     });
     const manifest = JSON.parse(fs.readFileSync(path.join(summary.backupDir, 'manifest.json'), 'utf8'));
     const data = manifest.files.find((f) => f.kind === 'data');
-    assert.strictEqual(manifest.version, 2);
+    assert.strictEqual(manifest.version, 3);
+    assert.deepStrictEqual(manifest.deletions, {
+      version: 1, representation: 'identity-tombstones', order: 'delete-before-upsert',
+    });
     assert.deepStrictEqual(data.identity, { kind: 'mongodb-id', columns: ['_id'] });
     assert.deepStrictEqual(new Set(data.columns), new Set(['_id', 'nome', 'email']));
-    console.log('  OK   Il dump MongoDB scrive davvero manifest v2, colonne e identita _id');
+    console.log('  OK   Il dump MongoDB scrive manifest v3, semantica cancellazioni e identita _id');
   } catch (err) {
     console.error('  FAIL Manifest v2 prodotto dal motore:', err);
     process.exitCode = 1;
@@ -270,6 +274,7 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
     assert.strictEqual(summary.totalWrites, 4);
     assert.strictEqual(summary.totalDocs, 3);
     assert.strictEqual(summary.expectedDocs, 3);
+    assert.strictEqual(summary.equivalenza.completa, false, 'una catena v2 resta esplicitamente incompleta sulle cancellazioni');
     assert.strictEqual(documents.get('2').nome, 'Bruno aggiornato');
     console.log('  OK   Restore reale della catena: 4 scritture, cardinalita finale e identita distinte 3');
 

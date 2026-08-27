@@ -28,6 +28,7 @@ const { isInitializeRequest } = require('@modelcontextprotocol/sdk/types.js');
 
 const DbFactory = require('../db/DbFactory');
 const { makeAuditor } = require('../db/AuditLog');
+const { ConfirmQuota } = require('./ConfirmQuota');
 const { runBackup } = require('../backup/lib/engine');
 const { resolveChain } = require('../backup/lib/restore');
 const { parseStorage, uploadBackupDir } = require('../backup/lib/storage');
@@ -325,7 +326,8 @@ const AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..
 // Formato e rotazione sono condivisi con l'audit della Web UI (db/AuditLog.js):
 // qui l'auditor scrive sul file MCP, mentre server.js ne crea uno gemello su
 // ui-audit.log.
-const { audit } = makeAuditor(AUDIT_FILE);
+const auditStore = makeAuditor(AUDIT_FILE);
+const { audit } = auditStore;
 
 /* ---------------------------------------------------------------------------
  * Resource "schema": diagramma UML (Mermaid) + dizionario dati in markdown,
@@ -912,7 +914,11 @@ function buildMcpServer(session, deps) {
   const sweepPendingWrites = () => {
     const now = Date.now();
     for (const [token, p] of session.pendingWrites) {
-      if (p.expiresAt <= now) session.pendingWrites.delete(token);
+      if (p.expiresAt <= now) {
+        session.pendingWrites.delete(token);
+        if (p.expiryTimer) clearTimeout(p.expiryTimer);
+        deps.confirmQuota.release(p.reservation);
+      }
     }
   };
 
@@ -931,13 +937,29 @@ function buildMcpServer(session, deps) {
         throw new Error(`confirm_token sconosciuto, scaduto o di un'altra ${mismatchNoun}: ripeti la richiesta senza token.`);
       }
       session.pendingWrites.delete(token); // monouso
+      if (pending.expiryTimer) clearTimeout(pending.expiryTimer);
+      deps.confirmQuota.release(pending.reservation);
       return pending;
     },
     // Primo passo: registra l'operazione in sospeso e restituisce anteprima +
     // token di conferma, con le istruzioni per l'AI (mai auto-confermare).
     issue(kind, data, { toolName, preview, extra }) {
+      const principal = sessionPrincipal(session);
+      const reservation = deps.confirmQuota.reserve(
+        `${principal.ownerId}:${principal.id}`,
+        { kind, data, preview },
+      );
       const confirmToken = crypto.randomUUID();
-      session.pendingWrites.set(confirmToken, { kind, ...data, expiresAt: Date.now() + CONFIRM_TTL_MS });
+      const pending = {
+        kind, ...data, reservation, expiresAt: Date.now() + CONFIRM_TTL_MS,
+      };
+      pending.expiryTimer = setTimeout(() => {
+        if (session.pendingWrites.get(confirmToken) !== pending) return;
+        session.pendingWrites.delete(confirmToken);
+        deps.confirmQuota.release(reservation);
+      }, CONFIRM_TTL_MS);
+      pending.expiryTimer.unref?.();
+      session.pendingWrites.set(confirmToken, pending);
       return jsonResult({
         requires_confirmation: true,
         confirm_token: confirmToken,
@@ -1193,7 +1215,7 @@ function buildMcpServer(session, deps) {
       'manifest e catalogo. "type": full (tutto), incremental (modifiche dall\'ultimo backup), differential ' +
       '(modifiche dall\'ultimo full); incremental/differential richiedono un backup full precedente e individuano le ' +
       'modifiche col campo data "since_field" (senza: MongoDB usa il timestamp degli ObjectId — solo nuovi inserimenti; ' +
-      'MySQL cerca colonne come updated_at, altrimenti includono la tabella per intero). Le cancellazioni non vengono catturate. ' +
+      'MySQL cerca colonne come updated_at, altrimenti includono la tabella per intero). I manifest v3 registrano le cancellazioni come tombstone di identità. ' +
       'L\'operazione legge soltanto dal database; l\'attività è registrata in backups/backup.log.',
     inputSchema: {
       connection_id: z.string(),
@@ -1654,11 +1676,20 @@ function buildMcpServer(session, deps) {
 function attachMcp(app, deps) {
   /** @type {Map<string, {id: string|null, transport: any, dbSessions: Map<string, any>, lastActivity: number, destroyed: boolean}>} */
   const mcpSessions = new Map();
+  const confirmQuota = deps.confirmQuota || new ConfirmQuota();
+  const runtimeDeps = { ...deps, confirmQuota };
 
   async function destroyMcpSession(session, { closeTransport = true } = {}) {
     if (session.destroyed) return;
     session.destroyed = true;
     if (session.id) mcpSessions.delete(session.id);
+    if (session.pendingWrites) {
+      for (const pending of session.pendingWrites.values()) {
+        if (pending.expiryTimer) clearTimeout(pending.expiryTimer);
+        confirmQuota.release(pending.reservation);
+      }
+      session.pendingWrites.clear();
+    }
     for (const [connId, dbSess] of [...session.dbSessions]) {
       session.dbSessions.delete(connId);
       deps.releaseGlobalSession();
@@ -1682,6 +1713,7 @@ function attachMcp(app, deps) {
     for (const session of [...mcpSessions.values()]) {
       await destroyMcpSession(session);
     }
+    await auditStore.flush();
   }
 
   // Anti DNS-rebinding: quando il server è in ascolto solo su loopback, una
@@ -1778,7 +1810,7 @@ function attachMcp(app, deps) {
       });
       session.transport = transport;
       transport.onclose = () => { destroyMcpSession(session, { closeTransport: false }); };
-      await buildMcpServer(session, deps).connect(transport);
+      await buildMcpServer(session, runtimeDeps).connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (err) {
       if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
@@ -1813,7 +1845,10 @@ function attachMcp(app, deps) {
   app.get(MCP_PATH, handleSessionRequest);
   app.delete(MCP_PATH, handleSessionRequest);
 
-  return { shutdownMcp, mcpSessions };
+  return {
+    shutdownMcp, mcpSessions, auditHealth: auditStore.statoSalute,
+    confirmQuota: () => confirmQuota.snapshot(),
+  };
 }
 
 module.exports = {

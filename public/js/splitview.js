@@ -12,6 +12,7 @@ import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga } from './griglia.js';
 import { creaSelezioneCelle } from './cellselect.js';
 import { openInsertDocForContext } from './insert.js';
+import { congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 import {
   creaAlbero, inserisci, rimuovi, trascina, pareggia as pareggiaAlbero,
   scambia, ruotaOrientamento as ruotaAlbero, elencoPane, contaPane, valida,
@@ -978,6 +979,12 @@ export function runPaneQuery(paneId, opts = {}) {
   const p = paneById(paneId);
   if (!p || !p.db || !p.coll) return Promise.resolve();
 
+  const generazione = (p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1);
+  const richiesta = congelaContesto({
+    paneId, tabId: p.tabId, db: p.db, coll: p.coll,
+    filter: p.filter, sort: p.sort, limit: p.limit, skip: p.skip, generazione,
+  });
+
   p.loading = true;
   p.error = null;
   updatePaneUI(paneId);
@@ -985,18 +992,21 @@ export function runPaneQuery(paneId, opts = {}) {
   const vuoto = !(p.filter || '').trim();
   p.queryMode = 'find';
   const payload = {
-    db: p.db, coll: p.coll,
-    filter: vuoto ? '' : p.filter,
-    sort: p.sort,
-    limit: p.limit, skip: p.skip,
+    db: richiesta.db, coll: richiesta.coll,
+    filter: vuoto ? '' : richiesta.filter,
+    sort: richiesta.sort,
+    limit: richiesta.limit, skip: richiesta.skip,
   };
 
   if (opts.auto) payload._bg = true;
 
-  return emitPaneQuery(p.tabId, 'collection:find', payload)
+  return emitPaneQuery(richiesta.tabId, 'collection:find', payload)
     .then((res) => {
+      if (paneById(paneId) !== p || p.generazioneRichiesta !== richiesta.generazione
+          || p.db !== richiesta.db || p.coll !== richiesta.coll) return;
       p.docs = res.docs || [];
       p.columns = res.columns || [];
+      p.columnMeta = res.columnMeta || {};
       p.total = res.total || 0;
       p.skip = res.skip || 0;
       p.limit = res.limit || 50;
@@ -1006,6 +1016,8 @@ export function runPaneQuery(paneId, opts = {}) {
       caricaRelazioniPane(paneId, p);
     })
     .catch((err) => {
+      if (paneById(paneId) !== p || p.generazioneRichiesta !== richiesta.generazione
+          || p.db !== richiesta.db || p.coll !== richiesta.coll) return;
       p.loading = false;
       // Caricato = "ci ho provato": senza questo, un pannello in errore
       // rilancerebbe la stessa query fallita a ogni rimontaggio del layout.
@@ -1030,9 +1042,11 @@ function contestoRelazioniPane(p) {
 // oggetto: una risposta vecchia non può decorare una tabella subentrata.
 function caricaRelazioniPane(paneId, p) {
   const contesto = contestoRelazioniPane(p);
+  const generazione = p.generazioneRichiesta;
   if (relazioniPer(contesto) !== null) return;
   caricaRelazioni(contesto).then(() => {
-    if (paneById(paneId) === p) updatePaneUI(paneId);
+    if (paneById(paneId) === p && p.generazioneRichiesta === generazione
+        && p.db === contesto.db && p.coll === contesto.coll) updatePaneUI(paneId);
   });
 }
 
@@ -1187,6 +1201,7 @@ function startPaneEdit(td, paneId, doc, field) {
   const relazioni = relazioniPer({ tabId: p.tabId, dbType, db: p.db, coll: p.coll });
 
   startEdit(td, doc, field, {
+    metadato: p.columnMeta && p.columnMeta[field],
     ctx: {
       tabId: p.tabId,
       db: p.db,
@@ -1209,16 +1224,19 @@ function startPaneEdit(td, paneId, doc, field) {
 function deletePaneDoc(paneId, doc) {
   const p = paneById(paneId);
   if (!p) return;
+  const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
   const { text } = displayValue(doc._id);
   if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
 
-  emitPaneQuery(p.tabId, 'doc:delete', {
-    db: p.db,
-    coll: p.coll,
+  emitPaneQuery(bersaglio.tabId, 'doc:delete', {
+    db: bersaglio.db,
+    coll: bersaglio.coll,
     id: idOf(doc),
   }).then(() => {
     toast('Documento eliminato');
-    runPaneQuery(paneId, { auto: true });
+    if (paneById(paneId) === p && p.db === bersaglio.db && p.coll === bersaglio.coll) {
+      runPaneQuery(paneId, { auto: true });
+    }
   }).catch((err) => toast(err.message, true));
 }
 
@@ -1233,6 +1251,7 @@ function deletePaneDoc(paneId, doc) {
 function eliminaRigheRiquadro(paneId, ids) {
   const p = paneById(paneId);
   if (!p) return Promise.resolve();
+  const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
   if (ids.length === 0) {
     toast('Nessun documento selezionato', true);
     return Promise.resolve();
@@ -1244,9 +1263,9 @@ function eliminaRigheRiquadro(paneId, ids) {
   // in un colpo riempie la coda del socket e mette in attesa dietro di sé ogni
   // altra operazione, compreso l'altro pannello della Split-View.
   return eseguiAOndate(ids, 8, (id) =>
-    emitPaneQuery(p.tabId, 'doc:delete', {
-      db: p.db,
-      coll: p.coll,
+    emitPaneQuery(bersaglio.tabId, 'doc:delete', {
+      db: bersaglio.db,
+      coll: bersaglio.coll,
       id,
     })
   ).then((results) => {
@@ -1255,7 +1274,9 @@ function eliminaRigheRiquadro(paneId, ids) {
     if (p.selectedDocs) p.selectedDocs.clear();
     if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
     else toast(`${ok} documenti eliminati`);
-    runPaneQuery(paneId, { auto: true });
+    if (paneById(paneId) === p && p.db === bersaglio.db && p.coll === bersaglio.coll) {
+      runPaneQuery(paneId, { auto: true });
+    }
   });
 }
 
@@ -1346,10 +1367,19 @@ function createPaneElement(paneId) {
   }
 
   dbSelect.addEventListener('change', () => {
-    p.db = dbSelect.value;
+    const generazione = (p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1);
+    const dbRichiesto = dbSelect.value;
+    p.db = dbRichiesto;
     p.skip = 0;
+    p.docs = [];
+    p.columns = [];
+    p.total = 0;
+    p.caricato = false;
     cacheCollections.delete(`${p.tabId}|${p.db}`);
-    fetchCollectionsForPane(paneId, p.db).then((colls) => {
+    fetchCollectionsForPane(paneId, dbRichiesto).then((colls) => {
+      if (paneById(paneId) !== p || !contestoCorrente(p, {
+        generazioneRichiesta: generazione, db: dbRichiesto,
+      })) return;
       popolaSelectColl(collSelect, colls, null);
       if (colls.length > 0) {
         p.coll = colls[0];
@@ -1359,11 +1389,24 @@ function createPaneElement(paneId) {
     });
   });
 
-  fetchCollectionsForPane(paneId, p.db).then((colls) => popolaSelectColl(collSelect, colls, p.coll));
+  const dbIniziale = p.db;
+  const collIniziale = p.coll;
+  const generazioneIniziale = p.generazioneRichiesta || 0;
+  fetchCollectionsForPane(paneId, dbIniziale).then((colls) => {
+    if (paneById(paneId) !== p || !contestoCorrente(p, {
+      generazioneRichiesta: generazioneIniziale, db: dbIniziale, coll: collIniziale,
+    })) return;
+    popolaSelectColl(collSelect, colls, collIniziale);
+  });
 
   collSelect.addEventListener('change', () => {
+    p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1;
     p.coll = collSelect.value;
     p.skip = 0;
+    p.docs = [];
+    p.columns = [];
+    p.total = 0;
+    p.caricato = false;
     aggiornaEtichettaPane(paneEl, p);
     runPaneQuery(paneId);
   });
@@ -1596,6 +1639,7 @@ function aggancioRiquadro(paneId, paneEl, p) {
     // leggere alla selezione la colonna sbagliata. È anche l'unico modo di non
     // riscansionare tutte le righe a ogni cella selezionata.
     colonne: () => p.colonneMostrate || p.columns || [],
+    metadati: () => p.columnMeta || {},
     bersaglio: () => ({ db: p.db, coll: p.coll, dbType }),
     stato: () => {
       if (!p.cellSel) p.cellSel = { anchor: null, focus: null, cells: new Set() };

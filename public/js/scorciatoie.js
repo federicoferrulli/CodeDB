@@ -7,13 +7,14 @@
  * corrispondenza con un evento tastiera stanno qui, senza DOM nÃ© socket, cosÃ¬
  * sono provabili in Node (`test/unit-scorciatoie.js`). La mappa ATTIVA vive
  * anch'essa qui (seminata con i predefiniti, aggiornata da `scorciatoie-ui.js`
- * quando le preferenze del tenant arrivano): i consumatori come `json-lint.js`
+ * quando le preferenze personali arrivano): i consumatori come `json-lint.js`
  * devono leggere la combinazione in modo SINCRONO dentro il keydown, e non
  * possono aspettare il socket.
  *
  * Persistenza: con RBAC attivo le preferenze stanno sul server, nella
- * collezione `prefs` del control plane, chiave `{ownerId, chiave}` â€” cioÃ¨
- * SOTTO AL TENANT: chi entra da un altro browser ritrova le sue combinazioni.
+ * collezione `prefs` del control plane, chiave
+ * `{ownerId, subjectId, ambito, chiave}`: utenti dello stesso tenant non si
+ * sovrascrivono, mentre lo stesso account ritrova le combinazioni su altri browser.
  * Senza RBAC non esiste un tenant (l'istanza Ã¨ locale) e il ripiego dichiarato
  * Ã¨ il `localStorage` del browser (`codedb:scorciatoie`).
  * ------------------------------------------------------------------------- */

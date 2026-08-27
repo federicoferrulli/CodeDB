@@ -2,6 +2,22 @@ import { state } from './state.js';
 import { $, emit, esc, cut, isForActiveTab } from './utils.js';
 
 const UML = { W: 230, ROW: 17, HEAD: 26, PAD: 10, GAP: 30, COLGAP: 140, MAXF: 11 };
+const UML_SCHEMA_BUDGET = { collectionLimit: 60, fieldLimit: 24, relationLimit: 160 };
+
+function unisciSchema(base, pagina) {
+  const collections = new Map((base && base.collections || []).map((collection) => [collection.name, collection]));
+  for (const collection of pagina.collections || []) collections.set(collection.name, collection);
+  const relations = new Map((base && base.relations || []).map((relation) => [JSON.stringify(relation), relation]));
+  for (const relation of pagina.relations || []) relations.set(JSON.stringify(relation), relation);
+  return { ...pagina, collections: [...collections.values()], relations: [...relations.values()] };
+}
+
+function richiestaSchema(cursor = 0, fieldLimit = UML_SCHEMA_BUDGET.fieldLimit) {
+  return emit('db:schema', {
+    db: state.db, progressive: true, focus: state.coll, cursor,
+    ...UML_SCHEMA_BUDGET, fieldLimit,
+  });
+}
 
 export function loadUml(force) {
   if (!state.db || !state.coll) return;
@@ -10,7 +26,7 @@ export function loadUml(force) {
     return;
   }
   $('#uml-canvas').innerHTML = '<div class="uml-msg">Analisi dello schema del database…</div>';
-  emit('db:schema', { db: state.db }).then((res) => {
+  richiestaSchema().then((res) => {
     if (res._tab && res._tab.state) {
       res._tab.state.dbSchema = res;
       res._tab.state.dbSchemaFor = res._tab.state.db;
@@ -103,13 +119,29 @@ export function renderUml() {
   const note = edges.length
     ? ''
     : '<div class="uml-msg">Nessuna associazione rilevata: il diagramma mostra solo la collection corrente.</div>';
-  canvas.innerHTML = `${note}<svg width="${width}" height="${totalH}" viewBox="0 0 ${width} ${totalH}" xmlns="http://www.w3.org/2000/svg">
+  const page = schema.schemaPage;
+  const incomplete = page && !page.complete
+    ? `<div class="uml-msg">Riepilogo progressivo: ${schema.collections.length} di ${page.totals.collections} tabelle caricate.
+        <button type="button" id="uml-load-more">Carica altri dettagli</button></div>` : '';
+  canvas.innerHTML = `${incomplete}${note}<svg width="${width}" height="${totalH}" viewBox="0 0 ${width} ${totalH}" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <marker id="uml-arrow" markerWidth="9" markerHeight="9" refX="8" refY="4" orient="auto">
         <path d="M0,0 L8,4 L0,8 z"></path>
       </marker>
     </defs>
     ${svgEdges}${svgBoxes}</svg>`;
+  const more = $('#uml-load-more');
+  if (more) more.onclick = async () => {
+    more.disabled = true;
+    try {
+      const next = await richiestaSchema(page.nextCursor || 0, page.nextCursor == null ? 200 : UML_SCHEMA_BUDGET.fieldLimit);
+      state.dbSchema = unisciSchema(state.dbSchema, next);
+      renderUml();
+    } catch (err) {
+      more.disabled = false;
+      more.textContent = err.message;
+    }
+  };
 }
 
 function umlBoxHeight(c) {

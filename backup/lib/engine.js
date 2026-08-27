@@ -20,8 +20,8 @@
  * updatedAt); senza campo: MongoDB usa il timestamp degli ObjectId (cattura
  * solo i nuovi inserimenti), MySQL e PostgreSQL cercano colonne canoniche
  * (updated_at, ...) e in mancanza eseguono il dump completo della tabella.
- * Le cancellazioni non vengono mai catturate dai backup incrementali/
- * differenziali.
+ * Dalla versione 3 le cancellazioni sono tombstone d'identità calcolati
+ * confrontando lo stato risolto della base con la snapshot corrente.
  * ------------------------------------------------------------------------- */
 
 const fs = require('fs');
@@ -29,7 +29,7 @@ const path = require('path');
 const { EJSON } = require('bson');
 const { ObjectId } = require('mongodb');
 const {
-  createFileSink, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
+  createFileSink, readLines, fileDelBackup, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
 const { isSqlGeometryType } = require('../../db/geometry');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
@@ -41,8 +41,11 @@ const { quotaSempre } = require('../../db/identificatori');
 const myQid = (name) => quotaSempre(name, 'mysql');
 const { pgCreateTable, pgAuxDdl, pgSchemaObjects, pgColonneDaSalvare } = require('../../db/pg-ddl');
 const {
-  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita,
+  MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita, chiaveIdentita,
 } = require('./identity');
+const {
+  dichiarazioneCancellazioni, identitaDellaRiga, applicaTombstone, calcolaTombstone,
+} = require('./tombstones');
 
 const TOOL_VERSION = MANIFEST_VERSION;
 
@@ -72,9 +75,9 @@ function resolveBase(groupDir, type, expected) {
   }
   const manifest = readManifest(path.join(groupDir, id));
   const identityInfo = validaManifestIdentita(manifest);
-  if (identityInfo.historical) {
+  if (identityInfo.historical || identityInfo.deletionSemantics !== 'complete') {
     throw new Error(
-      `Il backup di base ${id} usa un manifest storico senza identita dichiarata: `
+      `Il backup di base ${id} usa una semantica storica senza cancellazioni complete: `
       + 'esegui un nuovo backup full prima di creare incrementali o differenziali.'
     );
   }
@@ -155,6 +158,73 @@ function assertUniqueFilePaths(files) {
       );
     }
     seen.set(key, f);
+  }
+}
+
+async function statoIdentitaDellaCatena(backupDir) {
+  const chain = require('./restore').resolveChain(backupDir);
+  const stati = new Map();
+  for (const layer of chain) {
+    for (const file of layer.manifest.files.filter((f) => f.kind === 'data' || f.kind === 'tombstones')) {
+      if (!file.identity) continue;
+      if (!stati.has(file.collection)) stati.set(file.collection, new Map());
+      const stato = stati.get(file.collection);
+      const righe = [];
+      for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'layer identità'))) {
+        righe.push(EJSON.parse(line, { relaxed: false }));
+      }
+      if (file.kind === 'tombstones') applicaTombstone(stato, righe, file.identity);
+      else for (const riga of righe) stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
+    }
+  }
+  return stati;
+}
+
+async function identitaCorrenti(strategy, db, file) {
+  const stato = new Map();
+  let skip = 0;
+  let after = null;
+  const limit = 1000;
+  for (;;) {
+    const pagina = await strategy.collectionExport(db, file.collection, { format: 'json', skip, after, limit });
+    for (const line of pagina.lines || []) {
+      const riga = EJSON.parse(line, { relaxed: false });
+      stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
+    }
+    skip += Number(pagina.count) || 0;
+    if (pagina.nextAfter != null) after = pagina.nextAfter;
+    if (!pagina.count || pagina.count < limit || skip >= Number(pagina.total)) break;
+  }
+  return stato;
+}
+
+async function aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level }) {
+  if (!base) return;
+  const precedenti = await statoIdentitaDellaCatena(path.join(groupDir, base.id));
+  for (const file of result.files.filter((f) => f.kind === 'data')) {
+    if (!file.identity) throw new Error(`Impossibile rappresentare le cancellazioni di "${file.collection}": identità stabile assente.`);
+    const correnti = await identitaCorrenti(strategy, db, file);
+    if (correnti.size !== file.sourceCardinality) {
+      throw new Error(
+        `La sorgente "${file.collection}" è cambiata durante il backup: `
+        + `${file.sourceCardinality} identità nella snapshot, ${correnti.size} alla verifica. Riprova.`
+      );
+    }
+    const rimossi = calcolaTombstone(precedenti.get(file.collection) || new Map(), correnti);
+    const rel = `deletions/${safeName(file.collection)}.ndjson${compress ? '.gz' : ''}`;
+    const sink = createFileSink(path.join(backupDir, rel), { compress, level });
+    let digest;
+    try {
+      for (const identita of rimossi) await sink.writeLine(EJSON.stringify(identita, { relaxed: false }));
+      digest = await sink.close();
+    } catch (err) {
+      await sink.abort(err);
+      throw err;
+    }
+    result.files.push({
+      path: rel, collection: file.collection, kind: 'tombstones', identity: file.identity,
+      count: rimossi.length, bytes: digest.bytes, sha256: digest.sha256,
+    });
   }
 }
 
@@ -1062,6 +1132,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await dumpPostgreSql(args)
         : await dumpMongo(args);
+    await aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level });
     assertUniqueFilePaths(result.files);
 
     const manifest = {
@@ -1077,6 +1148,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       startedAt,
       endedAt: new Date().toISOString(),
       notes: result.notes,
+      deletions: dichiarazioneCancellazioni(),
       files: result.files,
     };
     validaManifestIdentita(manifest);

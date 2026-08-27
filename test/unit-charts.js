@@ -339,6 +339,23 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.deepStrictEqual(opt.series[0].data, [12.5, 7.25], '"Primo valore" deve arrivare a ECharts come numero, non come EJSON');
   console.log('  OK   "Primo valore" convertito in numero (CDB-A26)');
 
+  azzeraAvvisi();
+  const esatti = costruisciOption([
+    { gruppo: 'A', valore: { $numberLong: '9007199254740993' } },
+    { gruppo: 'A', valore: { $numberLong: '2' } },
+  ], cfgBase({ campoX: 'gruppo', serie: [{ ...cfgBase().serie[0], campoY: 'valore', agg: 'somma' }] }));
+  assert.strictEqual(esatti.series[0].codedbExactValues[0], '9007199254740995');
+  assert.ok(prendiAvvisi().some((a) => /approssim/i.test(a)), 'La conversione per ECharts va dichiarata');
+
+  azzeraAvvisi();
+  const decimaliEsatti = costruisciOption([
+    { gruppo: 'A', valore: { $numberDecimal: '0.1' } },
+    { gruppo: 'A', valore: { $numberDecimal: '0.2' } },
+  ], cfgBase({ campoX: 'gruppo', serie: [{ ...cfgBase().serie[0], campoY: 'valore', agg: 'somma' }] }));
+  assert.strictEqual(decimaliEsatti.series[0].codedbExactValues[0], '0.3');
+  assert.strictEqual(decimaliEsatti.series[0].data[0], 0.3);
+  console.log('  OK   aggregazioni esatte conservate accanto ai valori approssimati del renderer');
+
   // CDB-A36 — l'avviso prometteva l'etichetta sul solo massimo e non ne mostrava
   // nessuna: o si attua o non si annuncia.
   const moltiPunti = [];

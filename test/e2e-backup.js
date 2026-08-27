@@ -53,8 +53,8 @@ async function main() {
     // Seed: due collection, un indice, tipi EJSON significativi (Date).
     const utenti = client.db(DB).collection('utenti');
     await utenti.insertMany([
-      { nome: 'Anna', punti: 10, creato: new Date('2026-01-01T00:00:00Z') },
-      { nome: 'Bruno', punti: 20, creato: new Date('2026-02-01T00:00:00Z') },
+      { nome: 'Anna', punti: 10, creato: new Date('2026-01-01T00:00:00Z'), updatedAt: new Date('2026-01-01T00:00:00Z') },
+      { nome: 'Bruno', punti: 20, creato: new Date('2026-02-01T00:00:00Z'), updatedAt: new Date('2026-02-01T00:00:00Z') },
     ]);
     await utenti.createIndex({ nome: 1 }, { unique: true, name: 'nome_unico' });
     await client.db(DB).collection('ordini').insertMany([{ totale: 99.5 }, { totale: 12 }]);
@@ -70,8 +70,12 @@ async function main() {
     // 2. Nuove scritture, poi backup incrementale (heuristica ObjectId:
     // granularità 1 secondo, serve superare il secondo del backup full).
     await new Promise((r) => setTimeout(r, 1100));
-    await utenti.insertOne({ nome: 'Carla', punti: 30, creato: new Date() });
-    const outInc = cli('backup', '--conn', 'e2e-backup', '--db', DB, '--type', 'incremental', '--dest', destRoot);
+    const cambiatoAlle = new Date();
+    await utenti.insertOne({ nome: 'Carla', punti: 30, creato: cambiatoAlle, updatedAt: cambiatoAlle });
+    await utenti.updateOne({ nome: 'Anna' }, { $set: { punti: 11, updatedAt: cambiatoAlle } });
+    await utenti.deleteOne({ nome: 'Bruno' });
+    const outInc = cli('backup', '--conn', 'e2e-backup', '--db', DB, '--type', 'incremental',
+      '--since-field', 'updatedAt', '--dest', destRoot);
     assert.match(outInc, /stato=SUCCESSO/, 'il backup incrementale deve riuscire');
 
     // 3. Catalogo e manifest.
@@ -89,7 +93,9 @@ async function main() {
     // può includere qualche riga già presente nel full: è voluto (CDB-32), perché
     // le righe scritte nello stesso secondo del backup precedente altrimenti
     // cadono nel buco fra i due, e i layer successivi si applicano in upsert.
-    assert.strictEqual(incUtenti.count, 1, 'l\'incrementale deve contenere solo il nuovo documento');
+    assert.strictEqual(incUtenti.count, 2, 'l\'incrementale deve contenere inserimento e aggiornamento');
+    const incDelete = incManifest.files.find((f) => f.kind === 'tombstones' && f.collection === 'utenti');
+    assert.strictEqual(incDelete.count, 1, 'l\'incrementale deve contenere la cancellazione di Bruno');
 
     // 4. Verifica checksum.
     const outVerify = cli('verify', '--from', path.join(groupDir, inc.id));
@@ -108,9 +114,11 @@ async function main() {
     assert.match(outRestore, /stato=SUCCESSO/, 'il restore deve riuscire');
 
     const restored = client.db(DB_RESTORE).collection('utenti');
-    assert.strictEqual(await restored.countDocuments(), 3, 'devono esserci 3 utenti dopo il restore');
+    assert.strictEqual(await restored.countDocuments(), 2, 'devono esserci 2 utenti dopo il restore');
     const anna = await restored.findOne({ nome: 'Anna' });
     assert.ok(anna.creato instanceof Date, 'le date devono restare Date dopo il roundtrip EJSON');
+    assert.strictEqual(anna.punti, 11, 'l\'aggiornamento deve sopravvivere al restore');
+    assert.strictEqual(await restored.countDocuments({ nome: 'Bruno' }), 0, 'la cancellazione deve sopravvivere al restore');
     const indexes = await restored.indexes();
     assert.ok(indexes.some((i) => i.name === 'nome_unico' && i.unique), 'l\'indice unico deve essere ricreato');
     assert.strictEqual(await client.db(DB_RESTORE).collection('ordini').countDocuments(), 2);

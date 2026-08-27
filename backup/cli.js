@@ -88,7 +88,8 @@ ESEMPI
 
 NOTE
   - I log delle operazioni sono in <dest>/backup.log (inizio/fine, stato, durata, errori).
-  - I backup incrementali/differenziali non catturano le cancellazioni.
+  - I nuovi backup incrementali/differenziali v3 catturano le cancellazioni tramite tombstone d'identità.
+    Le catene storiche v1/v2 restano leggibili, ma il restore le classifica come equivalenza incompleta.
   - Se connections.ini ha segreti cifrati serve la passphrase: env GUI_MONGO_PASSPHRASE o prompt.
 `;
 

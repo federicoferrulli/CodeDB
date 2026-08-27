@@ -4,6 +4,7 @@ import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCa
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { runQuery } from './grid.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
+import { decodificaNumeroEsatto } from './valori-esatti.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
@@ -111,6 +112,7 @@ export function addInsertRow(opts) {
     fixedName: opts.name || null,
     auto: !!opts.auto,
     required: !!opts.required,
+    numericMeta: opts.numericMeta || {},
   };
 
   const nameTd = document.createElement('td');
@@ -202,12 +204,10 @@ export function insertRowValue(row, dbType = insertContext ? insertContext.dbTyp
   if (t === '') return undefined;
   switch (row.kind) {
     case 'number': {
-      const n = Number(t);
-      if (Number.isNaN(n)) throw new Error('numero non valido');
-      return n;
+      return decodificaNumeroEsatto(t, row.numericMeta);
     }
     case 'decimal':
-      return isSqlType(dbType) ? t : { $numberDecimal: t };
+      return decodificaNumeroEsatto(t, { ...row.numericMeta, wrapper: '$numberDecimal' });
     case 'bool':
       return t === 'true';
     case 'datetime': {
@@ -323,6 +323,7 @@ export function openInsertDocForContext(ctx = null) {
         name: f.name,
         typeLabel: (f.types || []).join(', '),
         kind: insertKindOf(mainType, dbType),
+        numericMeta: { type: mainType },
         auto: !!f.autoIncrement,
         required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
       });

@@ -275,6 +275,7 @@ module.exports = (async () => {
   // aggiunta qui.
   const CSV_NOTI = [
     "/[\",\\r\\n]/.test(s) ? `\"${s.replace(/\"/g, '\"\"')}\"` : s",
+    "/[\",\\r\\n]/.test(testo) ? `\"${testo.replace(/\"/g, '\"\"')}\"` : testo",
     "/[\",\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s",
     "return `\"${strVal.replace(/\"/g, '\"\"')}\"`;",
   ];

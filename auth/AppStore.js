@@ -84,26 +84,38 @@ class AppStore {
     await this.col('sessions').createIndex({ tokenHash: 1 }, { unique: true });
     // Pulizia automatica delle sessioni scadute a carico di MongoDB.
     await this.col('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    // Preferenze per tenant (scorciatoie da tastiera e simili): una riga per
-    // (tenant, chiave), letta e riscritta intera.
-    await this.col('prefs').createIndex({ ownerId: 1, chiave: 1 }, { unique: true });
+    // Il vecchio indice rendeva le preferenze implicitamente condivise fra
+    // tutti i principal. La migrazione lo rimuove prima del nuovo confine.
+    try { await this.col('prefs').dropIndex('ownerId_1_chiave_1'); } catch (err) {
+      if (err.codeName !== 'IndexNotFound' && err.code !== 27) throw err;
+    }
+    await this.col('prefs').createIndex(
+      { ownerId: 1, ambito: 1, subjectId: 1, chiave: 1 }, { unique: true },
+    );
   }
 
   /**
    * Il valore di una preferenza di tenant, o null se mai salvata.
    * `valore` viaggia come oggetto JSON: il server non lo interpreta.
    */
-  async getPrefs(ownerId, chiave) {
+  async getPrefs(ownerId, subjectId, ambito, chiave) {
     const doc = await this.col('prefs').findOne({
-      ownerId: String(ownerId), chiave: String(chiave),
+      ownerId: String(ownerId), ambito: String(ambito),
+      subjectId: ambito === 'personale' ? String(subjectId) : null,
+      chiave: String(chiave),
     });
     return doc ? doc.valore : null;
   }
 
   /** Scrive (o sovrascrive) una preferenza di tenant. */
-  async setPrefs(ownerId, chiave, valore) {
+  async setPrefs(ownerId, subjectId, ambito, chiave, valore) {
+    const filter = {
+      ownerId: String(ownerId), ambito: String(ambito),
+      subjectId: ambito === 'personale' ? String(subjectId) : null,
+      chiave: String(chiave),
+    };
     await this.col('prefs').updateOne(
-      { ownerId: String(ownerId), chiave: String(chiave) },
+      filter,
       { $set: { valore, aggiornatoIl: new Date() } },
       { upsert: true },
     );
@@ -193,6 +205,7 @@ class AppStore {
       passwordHash: hashPassword(password),
       externalId: null,
       plan: null,
+      tenantCapabilities: [],
       status: 'active',
       createdAt: new Date(),
     };
@@ -201,7 +214,7 @@ class AppStore {
     return safe;
   }
 
-  async updateSubUser(ownerId, subjectId, { status, displayName, password }) {
+  async updateSubUser(ownerId, subjectId, { status, displayName, password, tenantAdmin }) {
     const patch = {};
     if (status) {
       if (!['active', 'suspended'].includes(status)) throw new Error('Stato non valido: usa "active" o "suspended".');
@@ -212,6 +225,7 @@ class AppStore {
       if (String(password).length < 8) throw new Error('La password deve essere di almeno 8 caratteri.');
       patch.passwordHash = hashPassword(password);
     }
+    if (tenantAdmin != null) patch.tenantCapabilities = tenantAdmin === true ? ['admin'] : [];
     if (!Object.keys(patch).length) return { updated: 0 };
     const res = await this.col('users').updateOne(
       { _id: String(subjectId), ownerId: String(ownerId), type: 'subuser' }, { $set: patch },
@@ -220,7 +234,7 @@ class AppStore {
     // Sospensione: le sessioni e le API key attive vanno chiuse subito.
     // `revocate` lo dice a chi chiama: cancellare la riga della sessione non
     // tocca un socket GIÀ connesso, che va chiuso a parte (server.js).
-    const revocate = !!(patch.status === 'suspended' || patch.passwordHash);
+    const revocate = !!(patch.status === 'suspended' || patch.passwordHash || patch.tenantCapabilities);
     if (revocate) {
       // Le API key rappresentano lo stesso utente: lasciarle attive dopo un
       // cambio password o una sospensione vanificherebbe la revoca delle

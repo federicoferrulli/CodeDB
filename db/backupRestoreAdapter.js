@@ -6,6 +6,7 @@ const { EJSON } = require('bson');
 const { resolveChain, preflightChain, runRestore, cardinalitaDestinazione } = require('../backup/lib/restore');
 const { createImportArtifactAdapter } = require('./importArtifactAdapter');
 const { riqualificaDdl } = require('../backup/lib/restore');
+const { equivalenzaCatena } = require('../backup/lib/tombstones');
 const {
   readSchemaObjects, canonicalSql, canonicalSqlForDb, canonicalSchemaInventory,
   canonicalMongoIndex, inventoryDifferences,
@@ -28,6 +29,7 @@ function descriviBackup(backupDir, onlyCollections = null) {
   return {
     kind: 'backup-chain', backupDir: resolved, dbType: first.dbType,
     sourceDb: first.db, onlyCollections: onlyCollections || null,
+    equivalenza: equivalenzaCatena(chain),
     layers: chain.map(({ manifest }) => ({
       id: manifest.id, type: manifest.type,
       manifestSha256: manifest.files.map((file) => file.sha256 || null),

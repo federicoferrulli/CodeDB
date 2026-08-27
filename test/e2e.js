@@ -301,15 +301,19 @@ async function runTests() {
     const dup = await emit('db:create', { db: TMP_DB, coll: 'c1' });
     assert(!dup.ok, 'creazione di un db già esistente rifiutata');
     const ren = await emit('db:rename', { db: TMP_DB, newName: TMP_DB2 });
-    assert(!ren.ok && /non supporta una rinomina atomica/i.test(ren.error || ''),
-      'rinomina database non atomica rifiutata senza copiare o eliminare dati');
+    assert(ren.ok && ren.modo === 'dump-restore' && ren.origineEliminata === false,
+      'rinomina non atomica completata come copia verificata con origine conservata');
     const renCheck = await emit('collection:find', { db: TMP_DB, coll: 'c1', filter: '' });
-    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la rinomina rifiutata');
+    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la copia');
+    const copyCheck = await emit('collection:find', { db: TMP_DB2, coll: 'c1', filter: '' });
+    assert(copyCheck.ok && copyCheck.total === 1, 'destinazione verificata dopo la copia');
     const list2 = await emit('db:list', {});
     assert(list2.ok && list2.databases.some((d) => d.name === TMP_DB)
-      && !list2.databases.some((d) => d.name === TMP_DB2), 'nessun database parziale creato dalla rinomina');
+      && list2.databases.some((d) => d.name === TMP_DB2), 'origine e destinazione sono entrambe conservate');
     const drop1 = await emit('db:drop', { db: TMP_DB });
     assert(drop1.ok, `database "${TMP_DB}" eliminato`);
+    const dropCopy = await emit('db:drop', { db: TMP_DB2 });
+    assert(dropCopy.ok, `database "${TMP_DB2}" eliminato`);
     const sysDrop = await emit('db:drop', { db: 'admin' });
     assert(!sysDrop.ok, 'eliminazione di un db di sistema rifiutata');
 

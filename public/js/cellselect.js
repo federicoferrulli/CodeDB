@@ -17,6 +17,9 @@ import { velocitaAsse, BORDO_DEFAULT } from './scorrimento-bordo.js';
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
 // condivisa col server (vedi public/js/identificatori.mjs).
 import { quotaSempre, quotaQualificato, dialettoDi } from './identificatori.mjs';
+import {
+  decodificaNumeroEsatto, decodificaTemporale, metadatoNumerico, richiedePrecisioneEsatta,
+} from './valori-esatti.js';
 
 // Selezione di celle stile Excel sulla griglia dati: click, trascinamento
 // rettangolare, Shift+click (estende dall'ancora), Ctrl+click (aggiunge/toglie),
@@ -69,6 +72,7 @@ import { quotaSempre, quotaQualificato, dialettoDi } from './identificatori.mjs'
  * @property {() => (HTMLElement|null)} info         barra di stato del riassunto
  * @property {() => Array} righe                     le righe mostrate ORA
  * @property {() => Array} colonne                   i nomi di colonna, nell'ordine
+ * @property {() => Object} [metadati]               metadata indicizzati per colonna
  * @property {() => {db?:string, coll?:string, dbType?:string}} bersaglio
  * @property {() => {anchor:?Object, focus:?Object, cells:Set<string>}} stato
  * @property {() => boolean} visibile   se questa griglia è a schermo e ha righe
@@ -845,19 +849,24 @@ function parseClipboardGrid(text) {
 // Converte il testo incollato provando a rispettare il tipo del valore
 // attuale della cella (numero, data, bool, ObjectId...); altrimenti la
 // semantica è quella dell'editor inline generico (parseEdited).
-function coercePasted(current, text) {
+export function coercePasted(current, text, metadata = {}) {
   const type = valueType(current);
   const t = text.trim();
-  if (type === 'number' && t !== '' && !Number.isNaN(Number(t))) return Number(t);
-  if (type === 'decimal' && t !== '' && !Number.isNaN(Number(t))) return { $numberDecimal: t };
+  const metaNumero = metadatoNumerico(current, metadata);
+  if ((type === 'number' || type === 'decimal' || richiedePrecisioneEsatta(metaNumero)) && t !== '') {
+    return decodificaNumeroEsatto(t, metaNumero);
+  }
   if (type === 'bool') {
     if (['true', '1', 'sì', 'si', 'vero'].includes(t.toLowerCase())) return true;
     if (['false', '0', 'no', 'falso'].includes(t.toLowerCase())) return false;
   }
   if (type === 'date') {
-    const d = new Date(t);
-    if (t !== '' && !Number.isNaN(d.getTime())) return { $date: d.toISOString() };
+    return decodificaTemporale(t, 'istante');
   }
+  const tipoColonna = String(metadata.type || metadata.dataType || '').toLowerCase();
+  if (/timestamp with time zone|timestamptz/.test(tipoColonna)) return decodificaTemporale(t, 'istante');
+  if (/datetime|timestamp/.test(tipoColonna)) return decodificaTemporale(t, 'locale');
+  if (/^date$/.test(tipoColonna)) return decodificaTemporale(t, 'data');
   if (type === 'oid' && /^[0-9a-fA-F]{24}$/.test(t)) return { $oid: t };
   return parseEdited(text);
 }
@@ -886,7 +895,8 @@ function pasteIntoGrid(A, text) {
   const updates = [];
   let cellsCount = 0;
   let skipped = 0; // celle fuori pagina, su _id o su righe senza _id
-  grid.forEach((line, i) => {
+  try {
+    grid.forEach((line, i) => {
     const doc = A.righe()[start.r + i];
     if (!doc || !('_id' in doc)) {
       skipped += line.length;
@@ -900,12 +910,21 @@ function pasteIntoGrid(A, text) {
         skipped++;
         return;
       }
-      set[col] = coercePasted(doc[col], value);
+      try {
+        const metadati = typeof A.metadati === 'function' ? A.metadati() : {};
+        set[col] = coercePasted(doc[col], value, metadati[col] || {});
+      } catch (err) {
+        throw new Error(`Riga ${i + 1}, colonna "${col}": ${err.message}`);
+      }
       any = true;
       cellsCount++;
     });
     if (any) updates.push({ id: idOf(doc), set });
-  });
+    });
+  } catch (err) {
+    toast(`Incolla annullato prima di ogni scrittura. ${err.message}`, true);
+    return;
+  }
 
   if (!updates.length) {
     toast('Nessuna cella aggiornabile a partire da qui', true);
@@ -1559,6 +1578,7 @@ function aggancioDati() {
     info: () => $('#cell-info'),
     righe: () => state.docs,
     colonne: () => state.columns,
+    metadati: () => state.columnMeta || {},
     bersaglio: () => ({ db: state.db, coll: state.coll, dbType: state.dbType }),
     stato: () => {
       if (!state.cellSel) state.cellSel = { anchor: null, focus: null, cells: new Set() };

@@ -79,6 +79,9 @@ function ritagliaQuery(v) {
 function sessione(campi) {
   return {
     id: String(campi.id),
+    // Token opaco dell'istanza osservata, oltre allo slot numerico che il
+    // DBMS può riutilizzare per una sessione successiva.
+    identita: campi.identita == null ? null : String(campi.identita),
     utente: campi.utente || null,
     host: campi.host || null,
     db: campi.db || null,
@@ -195,6 +198,8 @@ function normalizzaMongo(ops, opts = {}) {
     const attesa = !!op.waitingForLock;
     out.push(sessione({
       id: typeof op.opid === 'object' ? JSON.stringify(op.opid) : op.opid,
+      identita: op.operationKey != null ? JSON.stringify(op.operationKey)
+        : (op.lsid && op.txnNumber != null ? JSON.stringify({ lsid: op.lsid, txnNumber: op.txnNumber }) : null),
       utente,
       host: testo(op.client) || testo(op.client_s),
       db,
@@ -261,6 +266,7 @@ function normalizzaMysql(rows, opts = {}) {
 
     out.push(sessione({
       id: r.ID,
+      identita: r.STABLE_ID == null ? null : `mysql-thread:${r.STABLE_ID}`,
       utente,
       host: testo(r.HOST),
       db: testo(r.DB),
@@ -318,6 +324,7 @@ function normalizzaPostgres(rows, opts = {}) {
 
     out.push(sessione({
       id: r.pid,
+      identita: r.backend_start == null ? null : `postgres-backend:${new Date(r.backend_start).toISOString()}`,
       utente: testo(r.usename),
       host,
       db: testo(r.datname),
@@ -537,6 +544,16 @@ function motivoNonTerminabile(sess, modo, capacita = {}) {
   return `Modo di terminazione sconosciuto: "${modo}".`;
 }
 
+function assertIdentitaSessione(osservata, corrente) {
+  if (!osservata) {
+    throw new Error('Identità stabile della sessione mancante: aggiorna il monitor e ripeti la conferma.');
+  }
+  if (!corrente || String(osservata) !== String(corrente)) {
+    throw new Error('La sessione è cambiata dopo la conferma: l’identificatore è stato riutilizzato e non è stato terminato alcun processo.');
+  }
+  return true;
+}
+
 module.exports = {
   APP_NAME,
   MAX_SESSIONI,
@@ -555,4 +572,5 @@ module.exports = {
   formattaDurata,
   ordina,
   motivoNonTerminabile,
+  assertIdentitaSessione,
 };

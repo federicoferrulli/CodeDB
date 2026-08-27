@@ -50,6 +50,7 @@ function prova(nome, fn) {
     '{ creato: ISODate("2026-01-01T00:00:00Z") }',
     '{ quando: new Date("2026-01-01") }',
     '{ n: NumberLong("9007199254740993") }',
+    '{ i: NumberInt("42"), d: NumberDecimal("1.25"), u: UUID("01234567-89ab-cdef-0123-456789abcdef") }',
     '{ nome: /^an/i }',                                 // espressione regolare
     '{ "a": 1, }',                                      // virgola finale (shell)
     '{ /* nota */ "a": 1 } // fine',                    // commenti
@@ -108,6 +109,22 @@ function prova(nome, fn) {
     const r = analizzaJsonBson('   ');
     assert.strictEqual(r.ok, false);
   });
+
+  prova('Un costruttore sconosciuto è rifiutato alla sua posizione', () => {
+    const r = analizzaJsonBson('{\n  x: Sconosciuto(1)\n}');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.messaggio, /costruttore non supportato.*Sconosciuto/i);
+    assert.strictEqual(r.riga, 2);
+    assert.strictEqual(r.colonna, 6);
+  });
+
+  for (const testo of ['{ a: 1, "a": 2 }', '{ a: 1, "\\u0061": 2 }']) {
+    prova(`Chiavi equivalenti duplicate: ${testo}`, () => {
+      const r = analizzaJsonBson(testo);
+      assert.strictEqual(r.ok, false);
+      assert.match(r.messaggio, /campo duplicato/i);
+    });
+  }
 
   prova('Il testo del frammento sbagliato compare nel messaggio', () => {
     const r = analizzaJsonBson('{ "a": 1 "b": 2 }');
@@ -207,9 +224,9 @@ function prova(nome, fn) {
   });
 
   prova('Il tokenizzatore tiene insieme una chiamata con parentesi annidate', () => {
-    const toks = tokenizzaJsonBson('{ a: Foo(Bar("x, y")) }');
+    const toks = tokenizzaJsonBson('{ a: ObjectId(Bar("x, y")) }');
     const valore = toks.find((t) => t.t === 'valore');
-    assert.strictEqual(valore.v, 'Foo(Bar("x, y"))');
+    assert.strictEqual(valore.v, 'ObjectId(Bar("x, y"))');
   });
 
   prova('Nessun crash su un documento profondissimo (limite di ricorsione)', () => {

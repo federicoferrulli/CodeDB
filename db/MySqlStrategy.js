@@ -11,6 +11,8 @@ const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+const { raggruppaVincoli } = require('./relazioni');
+const { cellaCsv, rigaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
 // condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
 // frontend (vedi db/identificatori.js).
@@ -154,7 +156,8 @@ const DIALETTO_METADATI = {
       // `IS_NULLABLE` viaggia con le colonne che si leggevano già: sapere quali
       // colonne ammettono NULL non costa una lettura di catalogo in più (serve a
       // chi compone l'ORDER BY, vedi buildOrderBy).
-      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, ${srid} AS srid, EXTRA AS extra,
+      sql: `SELECT COLUMN_NAME AS name, DATA_TYPE AS type, COLUMN_TYPE AS declaredType,
+                   ${srid} AS srid, EXTRA AS extra,
                    IS_NULLABLE AS nullable
               FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
@@ -598,7 +601,10 @@ class MySqlStrategy extends DbStrategy {
   // senza SRS dichiarato contiene geometrie cartesiane, il cui SRID e' 0: e'
   // quello che va imposto, non il 4326 che il parser sceglie per conto suo.
   static geoPlaceholder(colInfo) {
-    const srid = colInfo && colInfo.srid != null ? Number(colInfo.srid) : 0;
+    if (!colInfo || colInfo.srid == null) {
+      throw new Error('SRID non noto: CodeDB non può modificare la geometria senza reinterpretare le coordinate. Dichiara lo SRID della colonna oppure consenti la lettura dei metadata di information_schema.');
+    }
+    const srid = Number(colInfo.srid);
     return `ST_SRID(ST_GeomFromGeoJSON(?), ${srid})`;
   }
 
@@ -727,9 +733,12 @@ class MySqlStrategy extends DbStrategy {
     const capped = DbStrategy.truncateBySize(rows);
     const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
-      return serializeRow(doc);
+      return serializeRow(doc, sel.colonne);
     });
-    return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
+    const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
+      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid,
+    }]));
+    return { docs, columns, columnMeta, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
@@ -929,9 +938,11 @@ class MySqlStrategy extends DbStrategy {
       // facendo qualcosa vengono quindi prima, e solo dentro quei due gruppi
       // conta la durata.
       const [rows] = await conn.query(
-        `SELECT ID, USER, HOST, DB, COMMAND, TIME, STATE, INFO
-           FROM information_schema.PROCESSLIST
-          ORDER BY (COMMAND <> 'Sleep') DESC, TIME DESC
+        `SELECT p.ID, p.USER, p.HOST, p.DB, p.COMMAND, p.TIME, p.STATE, p.INFO,
+                t.THREAD_ID AS STABLE_ID
+           FROM information_schema.PROCESSLIST p
+           LEFT JOIN performance_schema.threads t ON t.PROCESSLIST_ID = p.ID
+          ORDER BY (p.COMMAND <> 'Sleep') DESC, p.TIME DESC
           LIMIT ${sessioni.MAX_SESSIONI + 1}`
       );
 
@@ -1057,7 +1068,7 @@ class MySqlStrategy extends DbStrategy {
     return ids;
   }
 
-  async killSession(id, modo) {
+  async killSession(id, modo, identitaOsservata) {
     const pool = this.requirePool();
     // L'id arriva dal client: va usato come NUMERO in un comando che non
     // ammette parametri preparati (`KILL` non li accetta), quindi se non è un
@@ -1066,6 +1077,12 @@ class MySqlStrategy extends DbStrategy {
     if (!Number.isInteger(num) || num <= 0) throw new Error(`Id di sessione non valido: "${id}".`);
     const conn = await pool.getConnection();
     try {
+      const [correnti] = await conn.query(
+        'SELECT THREAD_ID AS STABLE_ID FROM performance_schema.threads WHERE PROCESSLIST_ID = ?',
+        [num]
+      );
+      const corrente = correnti[0] && `mysql-thread:${correnti[0].STABLE_ID}`;
+      sessioni.assertIdentitaSessione(identitaOsservata, corrente);
       await conn.query(modo === 'connessione' ? `KILL CONNECTION ${num}` : `KILL QUERY ${num}`);
       return { terminata: true, modo: modo === 'connessione' ? 'connessione' : 'query' };
     } finally {
@@ -1219,13 +1236,7 @@ class MySqlStrategy extends DbStrategy {
   // Valore di cella per l'export CSV: date in ISO, BLOB in base64,
   // oggetti/array come JSON; quoting RFC 4180 dove serve.
   static csvCell(v) {
-    if (v === null || v === undefined) return '';
-    let s;
-    if (v instanceof Date) s = isNaN(v.getTime()) ? '' : v.toISOString();
-    else if (Buffer.isBuffer(v)) s = v.toString('base64');
-    else if (typeof v === 'object') s = JSON.stringify(v);
-    else s = String(v);
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return cellaCsv(v);
   }
 
   // CREATE TABLE della tabella: usato dall'export di interi database per
@@ -1272,7 +1283,8 @@ class MySqlStrategy extends DbStrategy {
     }));
 
     const [fkRows] = await pool.query(
-      `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+      `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA,
+              REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
        FROM information_schema.KEY_COLUMN_USAGE
        WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
       [db]
@@ -1285,6 +1297,8 @@ class MySqlStrategy extends DbStrategy {
         from: fk.TABLE_NAME,
         field: fk.COLUMN_NAME,
         to: fk.REFERENCED_TABLE_NAME,
+        toDb: fk.REFERENCED_TABLE_SCHEMA || db,
+        external: !!fk.REFERENCED_TABLE_SCHEMA && fk.REFERENCED_TABLE_SCHEMA !== db,
         many: true,
       });
       fkSet.add(`${fk.TABLE_NAME}.${fk.COLUMN_NAME}->${fk.REFERENCED_TABLE_NAME}`);
@@ -1309,20 +1323,21 @@ class MySqlStrategy extends DbStrategy {
   async columnRelations(db, coll) {
     const pool = this.requirePool();
     const [rows] = await pool.query(
-      `SELECT COLUMN_NAME, REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+      `SELECT CONSTRAINT_NAME, ORDINAL_POSITION, COLUMN_NAME,
+              REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
          FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-     ORDER BY ORDINAL_POSITION`,
+     ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
       [db, coll]
     );
-    return rows.map((r) => ({
+    return raggruppaVincoli(rows.map((r) => ({
+      nome: r.CONSTRAINT_NAME,
+      ordine: r.ORDINAL_POSITION,
       campo: r.COLUMN_NAME,
       db: r.REFERENCED_TABLE_SCHEMA || db,
       tabella: r.REFERENCED_TABLE_NAME,
       colonna: r.REFERENCED_COLUMN_NAME,
-      origine: 'vincolo',
-      molti: false,
-    }));
+    })));
   }
 
 
@@ -1411,14 +1426,14 @@ class MySqlStrategy extends DbStrategy {
       // export → import preserva i tipi (vedi collectionImport).
       lines = rows.map((r) => EJSON.stringify(r, { relaxed: true }));
     } else {
-      lines = rows.map((r) => columns.map((c) => MySqlStrategy.csvCell(r[c])).join(','));
+      lines = rows.map((r) => rigaCsv(columns.map((c) => r[c]), { modalita: payload.csvMode }));
     }
     return {
       lines,
       count: rows.length,
       total: Number(total),
       format,
-      header: format === 'csv' ? columns.map(MySqlStrategy.csvCell).join(',') : null,
+      header: format === 'csv' ? rigaCsv(columns, { modalita: payload.csvMode }) : null,
       nextAfter,
     };
   }

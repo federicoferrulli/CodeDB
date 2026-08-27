@@ -418,6 +418,16 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
     assert.ok(String(r.output.join(' ')).includes('true'), 'Una regex innocua deve funzionare');
   });
 
+  await prova('BUDGET: una regex costosa sfuggita all’euristica viene terminata nel worker', async () => {
+    const testo = `${'a'.repeat(42)}!`;
+    await deveFallire(
+      `/^(a|aa)+$/.test("${testo}");`,
+      /run-script-regex.*tempo massimo|tempo massimo.*run-script-regex/i,
+      hostFinto(),
+      { runId: 'run-script-regex', limiti: { regexTempoMs: 20 } }
+    );
+  });
+
   await prova('BUDGET: una regex non si applica a un testo smisurato', async () => {
     await deveFallire(
       'var s = ""; for (var i = 0; i < 6000; i++) s = s + "a"; /a+b/.test(s);',

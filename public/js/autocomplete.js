@@ -53,6 +53,18 @@ function chiaveSchema(tabId, db) {
   return `${tabId || ''}::${db || ''}`;
 }
 
+const generazioniSchema = new Map();
+
+function generazioneSchema(chiave) {
+  return generazioniSchema.get(chiave) || 0;
+}
+
+function invalidaChiaveSchema(chiave) {
+  generazioniSchema.set(chiave, generazioneSchema(chiave) + 1);
+  cacheSchema.delete(chiave);
+  inCorso.delete(chiave);
+}
+
 /** Normalizza la risposta di `db:schema` nella forma attesa da intellisense.js. */
 export function schemaDaCollections(collections) {
   const tabelle = (collections || []).map((item) => {
@@ -83,19 +95,24 @@ export function schemaCorrente() {
   if (cacheSchema.has(chiave)) return cacheSchema.get(chiave);
   if (inCorso.has(chiave)) return null;
 
-  inCorso.set(chiave, true);
+  const generazione = generazioneSchema(chiave);
+  inCorso.set(chiave, generazione);
   emit('db:schema', { tabId, db })
     .then((res) => {
+      if (generazione !== generazioneSchema(chiave)) return;
       cacheSchema.set(chiave, schemaDaCollections(res && res.collections));
       inAscolto.forEach((fn) => { try { fn(); } catch { /* un ascoltatore rotto non ferma gli altri */ } });
     })
     .catch(() => {
+      if (generazione !== generazioneSchema(chiave)) return;
       // Niente schema (permessi, connessione caduta, database enorme): il
       // completamento resta quello di prima, senza rumore. Si segna comunque
       // un risultato vuoto per non ritentare a ogni tasto.
       cacheSchema.set(chiave, { tabelle: [] });
     })
-    .finally(() => inCorso.delete(chiave));
+    .finally(() => {
+      if (inCorso.get(chiave) === generazione) inCorso.delete(chiave);
+    });
 
   return null;
 }
@@ -107,9 +124,9 @@ export function schemaCorrente() {
  * @param {string} [db] solo quel database; senza argomento, tutto.
  */
 export function invalidaSchemaIntellisense(db) {
-  if (!db) { cacheSchema.clear(); return; }
-  for (const chiave of [...cacheSchema.keys()]) {
-    if (chiave.endsWith(`::${db}`)) cacheSchema.delete(chiave);
+  const chiavi = new Set([...cacheSchema.keys(), ...inCorso.keys(), ...generazioniSchema.keys()]);
+  for (const chiave of chiavi) {
+    if (!db || chiave.endsWith(`::${db}`)) invalidaChiaveSchema(chiave);
   }
 }
 

@@ -4,6 +4,10 @@ import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, fuocoNelPannelloFk, pannelloFkMobile } from './fk-vista.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
+import {
+  decodificaNumeroEsatto, metadatoNumerico, richiedePrecisioneEsatta, testoNumeroEsatto,
+} from './valori-esatti.js';
+import { setDaRelazione } from './fk-relazioni.js';
 
 /**
  * Costruisce l'input adatto al tipo del valore.
@@ -17,8 +21,13 @@ import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js
  * che forma vuole il proprio input: qui gliela si fa dire, invece di
  * indovinarla da fuori.
  */
-export function buildEditor(current) {
-  const type = valueType(current);
+export function buildEditor(current, metadata = {}) {
+  const numericMeta = metadatoNumerico(current, metadata);
+  let type = valueType(current);
+  if (typeof current === 'string' && richiedePrecisioneEsatta(numericMeta)) {
+    type = numericMeta.wrapper === '$numberDecimal' || /decimal|numeric|dec|fixed/i.test(String(numericMeta.type || ''))
+      ? 'decimal' : 'number';
+  }
 
   if (type === 'date') {
     const input = document.createElement('input');
@@ -68,19 +77,16 @@ export function buildEditor(current) {
 
   if (type === 'number') {
     const input = document.createElement('input');
-    input.type = 'number';
+    const metadato = numericMeta;
+    input.type = richiedePrecisioneEsatta(metadato) ? 'text' : 'number';
     input.step = 'any';
-    const setValue = (v) => { input.value = displayValue(v).text; };
+    const setValue = (v) => { input.value = testoNumeroEsatto(v); };
     setValue(current);
     return {
       input,
       setValue,
       original: input.value,
-      buildValue: () => {
-        const n = Number(input.value);
-        if (input.value.trim() === '' || Number.isNaN(n)) throw new Error('Numero non valido');
-        return n;
-      },
+      buildValue: () => decodificaNumeroEsatto(input.value, metadato),
     };
   }
 
@@ -92,7 +98,7 @@ export function buildEditor(current) {
       input,
       setValue,
       original: input.value,
-      buildValue: () => ({ $numberDecimal: input.value.trim() }),
+      buildValue: () => decodificaNumeroEsatto(input.value, numericMeta),
     };
   }
 
@@ -128,6 +134,10 @@ export function buildEditor(current) {
  * confermata dopo un cambio di tab finirebbe nella tabella sbagliata.
  */
 export function salvaCampo(doc, field, value, ctx) {
+  return salvaCampi(doc, { [field]: value }, ctx);
+}
+
+export function salvaCampi(doc, set, ctx) {
   // `contestoScrittura()` e non `captureContext()`: quest'ultima non porta
   // db/coll, quindi il ripiego avrebbe scritto con un bersaglio indefinito.
   // Oggi entrambi i chiamanti passano `ctx`, ma il ripiego non deve essere
@@ -138,9 +148,10 @@ export function salvaCampo(doc, field, value, ctx) {
     db: c.db,
     coll: c.coll,
     id: idOf(doc),
-    set: { [field]: value },
+    set,
   }).then((res) => {
-    toast(`Campo "${field}" aggiornato`);
+    const campi = Object.keys(set);
+    toast(campi.length === 1 ? `Campo "${campi[0]}" aggiornato` : `${campi.length} campi aggiornati atomicamente`);
     // Il refresh rilegge dagli input del workspace, che appartengono al tab
     // mostrato: se l'utente si è spostato altrove, rileggerebbe la collection
     // sbagliata. La scrittura è comunque andata a buon fine.
@@ -208,7 +219,7 @@ export function startEdit(td, doc, field, opts = {}) {
     return;
   }
 
-  const { input, original, buildValue, setValue } = buildEditor(doc[field]);
+  const { input, original, buildValue, setValue } = buildEditor(doc[field], opts.metadato);
 
   td.classList.add('editing');
   td.innerHTML = '';
@@ -244,6 +255,13 @@ export function startEdit(td, doc, field, opts = {}) {
     salvaCampo(doc, field, value, ctx);
   };
 
+  const saveSet = (set) => {
+    if (finished) return;
+    finished = true;
+    chiudiPannelloFk();
+    salvaCampi(doc, set, ctx);
+  };
+
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') save();
     if (e.key === 'Escape') cancel();
@@ -264,7 +282,7 @@ export function startEdit(td, doc, field, opts = {}) {
   // DOPO `save`, perché il pannello scrive attraverso di lui.
   const relazione = relazionePerCampo(field, opts);
   if (relazione) {
-    const editor = { input, setValue, save };
+    const editor = { input, setValue, save, saveSet };
     aggiungiPulsanteFk(td, editor, doc, field, relazione, { ...opts, ctx });
     // Apertura automatica: dietro un pulsante l'aiuto lo trovava solo chi già
     // sapeva che esistesse, cioè non chi ne aveva bisogno. Non ruba il fuoco,
@@ -289,18 +307,29 @@ export function startEdit(td, doc, field, opts = {}) {
  * sotto il cursore adesso.
  */
 export function mostraPannelloFk(editor, doc, field, relazione, opts = {}) {
-  const { input, setValue, save } = editor;
+  const { input, setValue, save, saveSet } = editor;
   const ctx = contestoScrittura(opts.ctx);
   const sorgente = opts.sorgente || tdSorgente(input);
   const contenitore = opts.contenitore || sorgente;
   apriPannelloFk({
     relazione,
     valore: doc[field],
+    valoriRelazione: doc,
     dbCorrente: ctx.db,
     tabId: ctx.tabId,
     sorgente,
     contenitore,
-    onScegli: (valore) => {
+    onScegli: (valore, riga) => {
+      if (relazione.coppie && relazione.coppie.length > 1) {
+        try {
+          const set = setDaRelazione(relazione, riga);
+          saveSet(set);
+        } catch (err) {
+          toast(err.message, true);
+          ridisegnaDopoErrore(ctx);
+        }
+        return;
+      }
       // Editor ancora vivo (il caso normale): si riempie e si salva dallo
       // stesso percorso dell'Invio, così validazione, messaggi ed eventuale
       // rifiuto sono quelli di sempre. Se invece è già stato smontato — un
@@ -316,6 +345,11 @@ export function mostraPannelloFk(editor, doc, field, relazione, opts = {}) {
       }
     },
   });
+}
+
+function ridisegnaDopoErrore(ctx) {
+  if (ctx && typeof ctx.onSaveError === 'function') ctx.onSaveError(new Error('Relazione incompleta'));
+  else renderGrid({ preserveScroll: true });
 }
 
 // Il ripiego della vista Dati è la cella che contiene l'input; un chiamante

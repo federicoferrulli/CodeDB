@@ -24,6 +24,8 @@ const {
   parse, getMember, aEjson, aEjsonStr, semplifica, testo, verita,
   costruisciGlobali, errore, assertRegexSicura, tokenize, NOMI_VIETATI,
 } = require('./MongoScript');
+const VOCABOLARIO_COSTRUTTORI = require('../public/js/costruttori-bson');
+const COSTRUTTORI_CON_NEW = new Set(VOCABOLARIO_COSTRUTTORI.conNew);
 
 /**
  * Errore di superamento di un BUDGET. È marcato perché `try/catch` dello script
@@ -53,6 +55,9 @@ const LIMITI_DEFAULT = {
   // esso cadono le sessioni di TUTTI gli utenti: uno script non deve poter
   // fermare il server, esattamente come non deve poterlo fare un `while(true)`.
   memoriaBytes: 50 * 1024 * 1024,
+  regexTempoMs: 250,
+  regexTesto: 5000,
+  regexPattern: 1000,
 };
 
 // Env CODEDB_SCRIPT_MAX_BYTES: <= 0 disabilita il controllo (installazione
@@ -311,6 +316,12 @@ class Interprete {
       // Budget di memoria: lo applica anche la sandbox dei valori
       // (MongoScript.legaNativo), che è dove i metodi nativi allocano.
       contaMemoria: (byte, cosa) => this.contaMemoria(byte, cosa),
+      limitiRegex: {
+        tempoMs: this.limiti.regexTempoMs,
+        maxTesto: this.limiti.regexTesto,
+        maxPattern: this.limiti.regexPattern,
+        runId: opzioni.runId || null,
+      },
     };
 
     this.globali = costruisciGlobali(this.ctx);
@@ -760,7 +771,7 @@ class Interprete {
         const args = [];
         for (const a of nodo.args) args.push(await this.valuta(a, scope));
         if (nome === 'Date') return args.length ? new Date(args[0]) : new Date();
-        if (nome && Object.prototype.hasOwnProperty.call(this.globali, nome)) {
+        if (nome && COSTRUTTORI_CON_NEW.has(nome) && Object.prototype.hasOwnProperty.call(this.globali, nome)) {
           return this.chiamaFunzione(this.globali[nome], args);
         }
         throw errore(`"new ${nome || '?'}" non è supportato negli script`, nodo.line);

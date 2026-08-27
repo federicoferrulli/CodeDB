@@ -6,6 +6,7 @@ import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { descriviEsitoImport } from './import-status.js';
+import { preparaImportCsv } from './csv.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -107,7 +108,7 @@ function downloadBlob(text, filename, mime) {
 }
 
 // format: 'json' (MongoDB), 'csv' o 'sql' (MySQL).
-export async function exportCollection(db, coll, format) {
+export async function exportCollection(db, coll, format, { csvMode = 'sicura' } = {}) {
   const lines = [];
   let skip = 0; // ripiego per tabelle MySQL senza chiave primaria
   let after = null; // cursore keyset (Mongo sempre, MySQL con PK)
@@ -121,7 +122,9 @@ export async function exportCollection(db, coll, format) {
   const dbType = origin.st.dbType;
   try {
     for (;;) {
-      const res = await emit('collection:export', { tabId, db, coll, skip, after, limit: CHUNK, format });
+      const res = await emit('collection:export', {
+        tabId, db, coll, skip, after, limit: CHUNK, format, csvMode,
+      });
       total = res.total;
       if (header == null && res.header != null) header = res.header;
       lines.push(...res.lines);
@@ -163,54 +166,12 @@ export async function exportCollection(db, coll, format) {
 let importTarget = null; // { db, coll, ctx } — ctx congela il tab di destinazione (vedi openImportModal)
 let importing = false;
 
-// Parser CSV minimale (RFC 4180): gestisce virgolette, virgolette raddoppiate
-// e a capo dentro i campi.
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = '';
-  let inQuotes = false;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
-    if (inQuotes) {
-      if (c === '"') {
-        if (text[i + 1] === '"') { field += '"'; i++; } else inQuotes = false;
-      } else field += c;
-    } else if (c === '"') {
-      inQuotes = true;
-    } else if (c === ',') {
-      row.push(field);
-      field = '';
-    } else if (c === '\n' || c === '\r') {
-      if (c === '\r' && text[i + 1] === '\n') i++;
-      row.push(field);
-      rows.push(row);
-      row = [];
-      field = '';
-    } else {
-      field += c;
-    }
-  }
-  if (field !== '' || row.length) { row.push(field); rows.push(row); }
-  // Ignora le righe completamente vuote.
-  return rows.filter((r) => r.some((v) => v !== ''));
-}
-
 // Prepara i batch a partire dal testo incollato/caricato, secondo il dbType.
 function buildDocs(text, dbType = state.dbType) {
   if (isSqlType(dbType)) {
-    const rows = parseCsv(text);
-    if (rows.length < 2) throw new Error('CSV vuoto o senza righe di dati: serve una riga di intestazione più almeno una riga.');
-    const header = rows[0].map((h) => h.trim());
-    if (header.some((h) => !h)) throw new Error('La riga di intestazione del CSV contiene colonne senza nome.');
-    return rows.slice(1).map((r) => {
-      const obj = Object.create(null);
-      header.forEach((col, i) => {
-        const v = r[i];
-        obj[col] = v === '' || v === undefined ? null : v; // MySQL converte i tipi dalle stringhe
-      });
-      return obj;
-    });
+    // Il preflight analizza e valida l'intero file prima che possa partire il
+    // primo batch: anteprima ed esecuzione consumano la stessa rappresentazione.
+    return preparaImportCsv(text).documenti;
   }
   // MongoDB: array JSON (o singolo oggetto) in Extended JSON.
   let parsed;
@@ -765,7 +726,8 @@ function renderDbImportState(operation) {
 export function exportImportMenuItems(db, coll) {
   const items = isSqlType(state.dbType)
     ? [
-        { label: '⤓ Esporta CSV', action: () => exportCollection(db, coll, 'csv') },
+        { label: '⤓ Esporta CSV (sicuro per fogli di calcolo)', action: () => exportCollection(db, coll, 'csv') },
+        { label: '⤓ Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
         { label: '⤓ Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
       ]
     : [{ label: '⤓ Esporta JSON', action: () => exportCollection(db, coll, 'json') }];

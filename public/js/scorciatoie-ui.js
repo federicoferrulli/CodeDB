@@ -5,9 +5,9 @@
  * preferenze. La logica delle combinazioni sta in `scorciatoie.js` (puro);
  * qui c'Ã¨ solo interfaccia e trasporto.
  *
- * Persistenza SOTTO AL TENANT: con RBAC attivo le preferenze vivono nella
+ * Persistenza SOTTO AL PRINCIPAL: con RBAC attivo le preferenze vivono nella
  * collezione `prefs` del control plane (`prefs:get`/`prefs:set`, chiave
- * `{ownerId, chiave}`), quindi un utente del tenant le ritrova da qualunque
+ * `{ownerId, subjectId, ambito, chiave}`), quindi ogni utente ritrova le proprie da qualunque
  * browser. Con RBAC spento il server risponde che non c'Ã¨ un tenant: il
  * ripiego dichiarato Ã¨ il `localStorage` di quel browser.
  * ------------------------------------------------------------------------- */
@@ -29,7 +29,7 @@ function salvaLocali(p) {
   try { localStorage.setItem(CHIAVE_LOCALE, JSON.stringify(p)); } catch { /* quota piena */ }
 }
 
-/** Carica le preferenze del tenant (server) e semina la mappa attiva. */
+/** Carica le preferenze personali (server) e semina la mappa attiva. */
 export async function caricaScorciatoie() {
   let personalizzazioni = null;
   let origine = 'predefinite';
@@ -37,7 +37,7 @@ export async function caricaScorciatoie() {
     const res = await emit('prefs:get', { chiave: CHIAVE_PREFS });
     if (res && res.ok && res.valore && typeof res.valore === 'object') {
       personalizzazioni = res.valore;
-      origine = 'tenant';
+      origine = 'account';
     }
   } catch {
     // RBAC spento o server muto: si parte dal browser.
@@ -52,7 +52,7 @@ export async function caricaScorciatoie() {
   document.dispatchEvent(new CustomEvent('codedb:scorciatoie', { detail: { origine } }));
 }
 
-/** Salva le personalizzazioni: server (tenant) se disponibile, browser altrimenti. */
+/** Salva le personalizzazioni: account sul server se disponibile, browser altrimenti. */
 async function salvaScorciatoie(p) {
   personali = { ...p };
   const { mappa, errori } = mappaEffettiva(personali);
@@ -60,7 +60,7 @@ async function salvaScorciatoie(p) {
   salvaLocali(personali); // mirror locale: copre RBAC spento e fa da cache istantanea
   try {
     await emit('prefs:set', { chiave: CHIAVE_PREFS, valore: personali });
-    return { dove: 'tenant', errori };
+    return { dove: 'account', errori };
   } catch {
     return { dove: 'browser', errori };
   }
@@ -82,7 +82,7 @@ export function apriPannelloScorciatoie() {
     <div class="modal scorciatoie-modal" style="max-width:560px">
       <h2 id="scorciatoie-title"><i data-lucide="keyboard"></i> Scorciatoie da tastiera</h2>
       <p class="scorciatoie-nota">Clicca una combinazione per cambiarla: quando il pulsante lampeggia,
-         premi la combinazione che vuoi. Esc annulla. Le scelte valgono per tutto il tenant.</p>
+         premi la combinazione che vuoi. Esc annulla. Le scelte appartengono solo al tuo account.</p>
       <div id="scorciatoie-lista"></div>
       <p id="scorciatoie-errori" class="scorciatoie-errori hidden"></p>
       <div class="scorciatoie-azioni">
@@ -181,7 +181,7 @@ export function apriPannelloScorciatoie() {
   disegna();
 }
 
-/** Aggancia la voce di menu e carica le preferenze del tenant all'avvio. */
+/** Aggancia la voce di menu e carica le preferenze personali all'avvio. */
 export function initScorciatoie() {
   const btn = $('#btn-scorciatoie');
   if (btn) btn.addEventListener('click', () => apriPannelloScorciatoie());

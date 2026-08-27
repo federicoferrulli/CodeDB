@@ -43,7 +43,8 @@ function componiIdRiga(row, pkCols, allCols) {
 // trasforma in clausola WHERE. `whereFromId` è la parte di dialetto.
 function leggiIdRiga(rawId, whereFromId) {
   const id = parseClientValue(rawId);
-  if (!id || typeof id !== 'object' || Array.isArray(id)) {
+  const proto = id && typeof id === 'object' ? Object.getPrototypeOf(id) : null;
+  if (!id || typeof id !== 'object' || Array.isArray(id) || (proto !== Object.prototype && proto !== null)) {
     throw new Error('Identificatore di riga non valido.');
   }
   return whereFromId(id);

@@ -12,6 +12,7 @@
  * ------------------------------------------------------------------------- */
 
 const ALL_CAPABILITIES = ['read', 'write', 'ddl', 'delete', 'manage'];
+const ALL_TENANT_CAPABILITIES = ['admin'];
 
 // Letto a ogni chiamata (non congelato in una costante) così i test possono
 // impostare l'env prima di far partire il server nello stesso processo.
@@ -28,6 +29,7 @@ const ROOT_PRINCIPAL = Object.freeze({
   displayName: 'Owner locale',
   root: true,
   capabilities: ALL_CAPABILITIES.slice(),
+  tenantCapabilities: ALL_TENANT_CAPABILITIES.slice(),
   grants: null,
   connScope: null,
 });
@@ -51,9 +53,14 @@ function makePrincipal(user, grants = [], connScope = null) {
     root: false,
     owner: isOwner,
     capabilities: isOwner ? ALL_CAPABILITIES.slice() : [],
+    tenantCapabilities: isOwner
+      ? ALL_TENANT_CAPABILITIES.slice()
+      : (Array.isArray(user.tenantCapabilities)
+        ? user.tenantCapabilities.filter((capability) => ALL_TENANT_CAPABILITIES.includes(capability))
+        : []),
     grants: Array.isArray(grants) ? grants : [],
     connScope: Array.isArray(connScope) && connScope.length ? connScope.map(String) : null,
   };
 }
 
-module.exports = { ALL_CAPABILITIES, ROOT_PRINCIPAL, rbacOn, makePrincipal };
+module.exports = { ALL_CAPABILITIES, ALL_TENANT_CAPABILITIES, ROOT_PRINCIPAL, rbacOn, makePrincipal };

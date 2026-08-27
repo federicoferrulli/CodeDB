@@ -20,9 +20,9 @@ const { Client } = require('ssh2');
  *
  *  · connessione con `sshHostKey` già noto  → l'impronta DEVE corrispondere,
  *    altrimenti si rifiuta con un messaggio esplicito di possibile MITM;
- *  · connessione senza impronta nota        → la si registra (il chiamante la
- *    salva in connections.ini, campo NON segreto `sshHostKey`) e da quel momento
- *    ogni cambiamento diventa un errore;
+ *  · connessione senza impronta nota        → la si accetta soltanto se il
+ *    chiamante la persiste SINCRONAMENTE in connections.ini prima di inviare
+ *    le credenziali; se non può farlo, espone l'impronta da approvare;
  *  · CODEDB_SSH_STRICT_HOST_KEY=on          → niente fiducia al primo uso:
  *    l'impronta va configurata prima, altrimenti la connessione è rifiutata.
  *
@@ -55,7 +55,47 @@ function sameFingerprint(a, b) {
 // ssh = { sshHost, sshPort, sshUser, sshPassword, sshKeyFile, sshPassphrase }
 // target = { host, port } endpoint del DB raggiungibile dal server SSH.
 // Ritorna { host, port, close } dove host:port è il capo locale del tunnel.
-function openSshTunnel(ssh, target) {
+function creaVerificaHostKey(ssh, { persistNewHostKey } = {}) {
+  const knownFingerprint = String(ssh.sshHostKey || '').trim();
+  let seenFingerprint = null;
+  let hostKeyError = null;
+  let persisted = false;
+  return {
+    verify(key, host) {
+      seenFingerprint = hostKeyFingerprint(key);
+      if (knownFingerprint) {
+        if (sameFingerprint(knownFingerprint, seenFingerprint)) return true;
+        hostKeyError = new Error(
+          `La chiave del server SSH "${host}" NON corrisponde a quella registrata.\n`
+          + `  attesa:    ${knownFingerprint}\n  presentata: ${seenFingerprint}\n`
+          + 'Connessione interrotta prima dell’autenticazione: possibile attacco man-in-the-middle.',
+        );
+        return false;
+      }
+      if (strictHostKey() || typeof persistNewHostKey !== 'function') {
+        hostKeyError = new Error(
+          `Chiave del server SSH "${host}" non ancora approvata. Impronta presentata: ${seenFingerprint}. `
+          + 'Registrala nella connessione e riprova; nessuna credenziale è stata inviata.',
+        );
+        return false;
+      }
+      try {
+        persistNewHostKey(seenFingerprint);
+        persisted = true;
+        return true;
+      } catch (err) {
+        hostKeyError = new Error(`Impossibile persistere il pin SSH ${seenFingerprint}: ${errText(err)}. Connessione interrotta.`);
+        return false;
+      }
+    },
+    get seenFingerprint() { return seenFingerprint; },
+    get known() { return !!knownFingerprint || persisted; },
+    get newlyPersisted() { return persisted; },
+    get error() { return hostKeyError; },
+  };
+}
+
+function openSshTunnel(ssh, target, options = {}) {
   return new Promise((resolve, reject) => {
     const conn = new Client();
     let server = null;
@@ -85,7 +125,7 @@ function openSshTunnel(ssh, target) {
       }
       // Se l'handshake è stato interrotto da hostVerifier, ssh2 riporta un
       // errore generico di protocollo: si sostituisce con il motivo vero.
-      fail(hostKeyError || err);
+      fail(hostKeyCheck.error || err);
     });
     conn.on('close', () => {
       tunnelState.alive = false;
@@ -116,8 +156,9 @@ function openSshTunnel(ssh, target) {
           port,
           // Impronta della host key vista in questa connessione e se era già
           // registrata: il chiamante la salva al primo uso (vedi server.js).
-          hostKey: seenFingerprint,
-          hostKeyKnown: !!knownFingerprint,
+          hostKey: hostKeyCheck.seenFingerprint,
+          hostKeyKnown: hostKeyCheck.known,
+          hostKeyNew: hostKeyCheck.newlyPersisted,
           get alive() { return tunnelState.alive; },
           get lastError() { return tunnelState.lastError; },
           close() {
@@ -131,9 +172,7 @@ function openSshTunnel(ssh, target) {
     // Impronta attesa (se già nota) e impronta effettivamente presentata dal
     // server: la seconda viene restituita al chiamante, che la registra alla
     // prima connessione.
-    const knownFingerprint = String(ssh.sshHostKey || '').trim();
-    let seenFingerprint = null;
-    let hostKeyError = null;
+    const hostKeyCheck = creaVerificaHostKey(ssh, options);
 
     const params = {
       host: String(ssh.sshHost || '').trim(),
@@ -144,27 +183,7 @@ function openSshTunnel(ssh, target) {
       // quello atteso. Restituire false interrompe l'handshake, quindi nessuna
       // credenziale viene inviata a un server non riconosciuto.
       hostVerifier: (key) => {
-        seenFingerprint = hostKeyFingerprint(key);
-        if (knownFingerprint) {
-          if (sameFingerprint(knownFingerprint, seenFingerprint)) return true;
-          hostKeyError = new Error(
-            `La chiave del server SSH "${params.host}" NON corrisponde a quella registrata.\n` +
-            `  attesa:    ${knownFingerprint}\n` +
-            `  presentata: ${seenFingerprint}\n` +
-            'Connessione interrotta: potrebbe trattarsi di un attacco man-in-the-middle. ' +
-            'Se il server è stato reinstallato o la chiave è cambiata legittimamente, aggiorna il campo "Impronta host SSH" della connessione.'
-          );
-          return false;
-        }
-        if (strictHostKey()) {
-          hostKeyError = new Error(
-            `Chiave del server SSH "${params.host}" non registrata e CODEDB_SSH_STRICT_HOST_KEY=on: ` +
-            `configura l'impronta attesa nella connessione prima di collegarti.\n  impronta presentata: ${seenFingerprint}`
-          );
-          return false;
-        }
-        // Fiducia al primo uso: si accetta e si registra (il chiamante la salva).
-        return true;
+        return hostKeyCheck.verify(key, params.host);
       },
     };
     if (!params.host) return fail(new Error('Host SSH mancante.'));
@@ -188,4 +207,4 @@ function openSshTunnel(ssh, target) {
   });
 }
 
-module.exports = { openSshTunnel, hostKeyFingerprint, sameFingerprint };
+module.exports = { openSshTunnel, hostKeyFingerprint, sameFingerprint, creaVerificaHostKey };

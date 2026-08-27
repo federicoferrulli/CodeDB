@@ -112,9 +112,8 @@ assert.strictEqual(b.sql, 'ST_SRID(ST_GeomFromGeoJSON(?), 0)', 'MySQL: anche SRI
 // scritto cosi' tornava `POLYGON((0 0,0 3,1 3,0 0))` — le coordinate
 // SCAMBIATE, senza alcun errore. Una colonna senza SRS dichiarato contiene
 // geometrie cartesiane, il cui SRID e' 0.
-b = MySqlStrategy.geoBinding('ignoto', punto, geoMy);
-assert.strictEqual(b.sql, 'ST_SRID(ST_GeomFromGeoJSON(?), 0)',
-  'MySQL: senza SRID dichiarato si impone comunque lo 0 cartesiano');
+assert.throws(() => MySqlStrategy.geoBinding('ignoto', punto, geoMy), /SRID.*non.*noto|metadata/i,
+  'MySQL: senza SRID la scrittura si ferma');
 
 // Colonna NON geometrica: nessuna conversione, altrimenti un documento JSON con
 // un campo `type` finirebbe in ST_GeomFromGeoJSON.
@@ -150,8 +149,8 @@ assert.strictEqual(b.sql, 'ST_SetSRID(ST_GeomFromGeoJSON($2), 3003)', 'PG: SRID 
 b = PostgreSqlStrategy.geoBinding('area', punto, geoPg, '$3');
 assert.strictEqual(b.sql, 'ST_SetSRID(ST_GeomFromGeoJSON($3), 4326)::geography', 'PG: cast per geography');
 
-b = PostgreSqlStrategy.geoBinding('senzasrid', punto, geoPg, '$4');
-assert.strictEqual(b.sql, 'ST_GeomFromGeoJSON($4)');
+assert.throws(() => PostgreSqlStrategy.geoBinding('senzasrid', punto, geoPg, '$4'), /SRID.*non.*noto|metadata/i,
+  'PostgreSQL: senza SRID la scrittura si ferma');
 
 b = PostgreSqlStrategy.geoBinding('titolo', punto, geoPg, '$5');
 assert.strictEqual(b.sql, '$5', 'PG: colonna non geometrica invariata');

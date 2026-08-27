@@ -26,6 +26,7 @@
 
 const assert = require('assert');
 const { tabellare } = require('../db/sqlTabellare');
+const { toSqlValue } = require('../db/sqlValori');
 
 // Dialetti finti, gli stessi dei due adattatori ridotti all'osso: qui interessa
 // che il tabellare CHIAMI il dialetto, non come il dialetto sia fatto.
@@ -35,7 +36,7 @@ const MYSQL = {
   whereFromId: (id) => {
     const cols = Object.keys(id);
     if (!cols.length) throw new Error('Identificatore di riga mancante.');
-    return { sql: cols.map((c) => `${MYSQL.qid(c)} <=> ?`).join(' AND '), params: cols.map((c) => id[c]) };
+    return { sql: cols.map((c) => `${MYSQL.qid(c)} <=> ?`).join(' AND '), params: cols.map((c) => toSqlValue(id[c])) };
   },
 };
 const PG = {
@@ -45,7 +46,7 @@ const PG = {
     const cols = Object.keys(id);
     if (!cols.length) throw new Error('Identificatore di riga mancante.');
     let i = 1;
-    return { sql: cols.map((c) => `${PG.qid(c)} = $${i++}`).join(' AND '), params: cols.map((c) => id[c]) };
+    return { sql: cols.map((c) => `${PG.qid(c)} = $${i++}`).join(' AND '), params: cols.map((c) => toSqlValue(id[c])) };
   },
 };
 

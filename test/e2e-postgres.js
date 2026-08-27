@@ -92,6 +92,26 @@ async function seed() {
     )`);
     await c.query(`INSERT INTO "${SCHEMA_A}".righe (ordine_b_id, nota)
                    SELECT id, 'riga uno' FROM "${SCHEMA_B}"."${TABLE}" WHERE cliente = 'B-uno'`);
+    // FK composita: l'ordine del vincolo non coincide con l'ordine fisico
+    // delle colonne, e i nomi locali sono diversi da quelli referenziati.
+    await c.query(`CREATE TABLE "${SCHEMA_B}".destinazioni_composte (
+      codice TEXT,
+      versione INT,
+      descrizione TEXT,
+      PRIMARY KEY (versione, codice)
+    )`);
+    await c.query(`INSERT INTO "${SCHEMA_B}".destinazioni_composte VALUES
+      ('X', 1, 'prima'), ('Y', 2, 'seconda')`);
+    await c.query(`CREATE TABLE "${SCHEMA_A}".righe_composite (
+      id SERIAL PRIMARY KEY,
+      codice_esterno TEXT,
+      versione_esterna INT,
+      CONSTRAINT fk_destinazione_composta
+        FOREIGN KEY (versione_esterna, codice_esterno)
+        REFERENCES "${SCHEMA_B}".destinazioni_composte (versione, codice)
+    )`);
+    await c.query(`INSERT INTO "${SCHEMA_A}".righe_composite (codice_esterno, versione_esterna)
+                   VALUES ('X', 1)`);
   });
 }
 
@@ -128,9 +148,9 @@ async function runTests() {
   const collB = await emit('db:collections', { db: SCHEMA_B });
   const nA = collA.ok ? collA.collections.map((c) => c.name) : [];
   const nB = collB.ok ? collB.collections.map((c) => c.name) : [];
-  assert(collA.ok && nA.slice().sort().join(',') === [TABLE, 'righe'].sort().join(','),
+  assert(collA.ok && nA.slice().sort().join(',') === [TABLE, 'righe', 'righe_composite'].sort().join(','),
     `schema A mostra esattamente le sue tabelle (${nA.join(', ')})`);
-  assert(collB.ok && nB.slice().sort().join(',') === [TABLE, 'solo_b'].sort().join(','),
+  assert(collB.ok && nB.slice().sort().join(',') === [TABLE, 'solo_b', 'destinazioni_composte'].sort().join(','),
     `schema B mostra esattamente le sue tabelle (${nB.join(', ')})`);
   // Le tabelle omonime in schemi diversi non devono comparire più volte: il
   // join su pg_class deve passare per pg_namespace, non solo per il nome.
@@ -236,6 +256,37 @@ async function runTests() {
   const operatore = await conFiltro(SCHEMA_B, TABLE, [{ campo: '$where', operatore: 'uguale', valore: 1 }]);
   assert(!operatore.ok && /nome di campo non valido/i.test(operatore.error),
     `un campo con prefisso $ è rifiutato (${operatore.error})`);
+
+  console.log('9-bis-b. FK composita: ordinali, nomi differenti e modifica unica');
+  const composite = await emit('collection:relations', { db: SCHEMA_A, coll: 'righe_composite' });
+  const vincoloComposito = composite.ok && composite.relazioni.find((r) => r.nome === 'fk_destinazione_composta');
+  assert(vincoloComposito && vincoloComposito.db === SCHEMA_B
+      && vincoloComposito.tabella === 'destinazioni_composte',
+  `FK composita qualificata (${composite.ok ? JSON.stringify(vincoloComposito) : composite.error})`);
+  assert(vincoloComposito && JSON.stringify(vincoloComposito.coppie) === JSON.stringify([
+    { campo: 'versione_esterna', colonna: 'versione', ordine: 1 },
+    { campo: 'codice_esterno', colonna: 'codice', ordine: 2 },
+  ]), `coppie conservate nello stesso vincolo e nello stesso ordinale (${JSON.stringify(vincoloComposito && vincoloComposito.coppie)})`);
+  const candidate = await conFiltro(SCHEMA_B, 'destinazioni_composte', [
+    { campo: 'versione', operatore: 'uguale', valore: 2 },
+    { campo: 'codice', operatore: 'uguale', valore: 'Y' },
+  ], 1);
+  assert(candidate.ok && candidate.docs.length === 1 && candidate.docs[0].descrizione === 'seconda',
+    'la selezione composita usa tutte le componenti');
+  const localComposite = await emit('collection:find', {
+    db: SCHEMA_A, coll: 'righe_composite', filter: '', limit: 10, skip: 0,
+  });
+  const updateComposite = await emit('doc:update', {
+    db: SCHEMA_A, coll: 'righe_composite', id: JSON.stringify(localComposite.docs[0]._id),
+    set: { versione_esterna: 2, codice_esterno: 'Y' },
+  });
+  assert(updateComposite.ok, `aggiornamento delle due componenti in una sola mutazione (${updateComposite.ok ? 'ok' : updateComposite.error})`);
+  const changedComposite = await emit('collection:find', {
+    db: SCHEMA_A, coll: 'righe_composite', filter: '', limit: 10, skip: 0,
+  });
+  assert(changedComposite.ok && changedComposite.docs[0].versione_esterna === 2
+      && changedComposite.docs[0].codice_esterno === 'Y',
+  'la FK composita non resta in uno stato aggiornato a metà');
 
   console.log('9-ter. doc:duplicate (chiavi rifatte, schema rispettato)');
   // La tabella di prova nasce nello schema A, ma il duplicato piu' insidioso e'

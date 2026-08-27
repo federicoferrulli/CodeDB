@@ -206,12 +206,13 @@ console.log('--- Test Unitari CodeDB ---');
     const { makeAuditor } = require('../db/AuditLog');
     const tmp = path.join(os.tmpdir(), `codedb-audit-unit-${process.pid}.log`);
     for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
-    const auditor = makeAuditor(tmp, 1024); // soglia file bassa: forza la rotazione
-    for (let i = 0; i < 60000; i++) auditor.audit({ event: 'unit', n: i });
+    const auditor = makeAuditor(tmp, 1024, { maxCacheEntries: 50 });
+    for (let i = 0; i < 70; i++) auditor.audit({ event: 'unit', n: i });
+    await auditor.flush();
     const recent = auditor.readRecent({ limit: 2 });
-    assert(recent.total <= 51000, `cache limitata: total=${recent.total} deve essere <= 51000 (no leak)`);
-    assert(recent.total >= 50000, `cache non troppo aggressiva: total=${recent.total} deve essere >= 50000`);
-    assert.strictEqual(recent.entries[0].n, 59999, 'la voce più recente deve essere preservata');
+    assert(recent.total <= 55, `cache limitata: total=${recent.total} deve essere <= 55 (no leak)`);
+    assert(recent.total >= 50, `cache non troppo aggressiva: total=${recent.total} deve essere >= 50`);
+    assert.strictEqual(recent.entries[0].n, 69, 'la voce più recente deve essere preservata');
     assert.strictEqual(auditor.readRecent({ event: 'unit', limit: 3 }).entries.length, 3, 'i filtri devono continuare a funzionare');
     for (const f of [tmp, tmp + '.1']) { try { fs.unlinkSync(f); } catch { /* ignora */ } }
     console.log('  OK   AuditLog cache limitata (no memory leak) passed');
@@ -230,6 +231,7 @@ console.log('--- Test Unitari CodeDB ---');
     auditor.audit({ event: 'doc:insert', ownerId: 'A', userId: 'a2' });
     auditor.audit({ event: 'doc:insert', ownerId: 'B', userId: 'b1' });
     auditor.audit({ event: 'doc:insert' }); // voce storica, senza attore
+    await auditor.flush();
 
     assert.strictEqual(auditor.readRecent({ limit: 100 }).total, 4, 'il root deve vedere tutte le voci');
     assert.strictEqual(auditor.readRecent({ ownerId: 'A', limit: 100 }).total, 2, 'l\'owner deve vedere solo il proprio tenant');
@@ -1321,6 +1323,23 @@ console.log('--- Test Unitari CodeDB ---');
   // Il modulo unico della griglia: aritmetica della finestra virtuale (che
   // stava scritta due volte), capacita' dichiarate, corpo della tabella.
   await require('./unit-griglia');
+  await require('./unit-coerenza-richieste');
+  await require('./unit-csv-sicuro');
+  await require('./unit-regex-isolata');
+  await require('./unit-sessioni-identita');
+  await require('./unit-audit-serializzato');
+  require('./unit-mcp-conferme-quota');
+  await require('./unit-preferenze-principal');
+  require('./unit-schema-progressivo');
+  await require('./unit-grafo-budget');
+  require('./unit-ssh-pinning');
+  await require('./unit-electron-server-auth');
+  require('./unit-tombstone-backup');
+  await require('./unit-backup-cancellazioni');
+  await require('./unit-rinomina-sicura');
+  await require('./unit-valori-esatti');
+  require('./unit-sql-valori-esatti');
+  require('./unit-relazioni-sql');
 
   // L'ORDER BY passa dal metodo della STRATEGIA su tutti i percorsi, griglia
   // compresa: il punto di estensione c'era ma la composizione della SELECT lo
@@ -1488,6 +1507,10 @@ console.log('--- Test Unitari CodeDB ---');
   // Avvia processi veri: la decisione sta nel percorso di avvio, non in una
   // funzione. Nessun database richiesto.
   require('./unit-avvio-rete');
+
+  // Ultimo perché usa processi veri: in sandbox che vietano `spawn` fallisce
+  // con EPERM, ma non deve impedire l'esecuzione delle sotto-suite pure.
+  await require('./unit-electron-server-auth-process');
 
   // La riga finale NON si stampa qui.
   //

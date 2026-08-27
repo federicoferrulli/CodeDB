@@ -1,5 +1,8 @@
 'use strict';
 
+const VOCABOLARIO_COSTRUTTORI = require('../public/js/costruttori-bson');
+const { eseguiRegexIsolata } = require('./regexIsolata');
+
 /**
  * CodeDB — Interprete di script MongoDB (dialetto mongosh)
  *
@@ -949,6 +952,9 @@ function legaNativo(target, nome, ctx) {
       // Una regex è una chiamata nativa non interrompibile: nessun budget del
       // runner può fermarla una volta partita (vedi la nota su MAX_TESTO_REGEX).
       assertTestoRegex(target, nome, args);
+      const usaRegex = (target instanceof RegExp && (nome === 'test' || nome === 'exec'))
+        || (typeof target === 'string' && args.some((arg) => arg instanceof RegExp));
+      if (usaRegex) return eseguiRegexIsolata(target, nome, args, ctx && ctx.limitiRegex);
       return target[nome](...args);
     },
   };
@@ -1046,7 +1052,7 @@ function costruisciGlobali(ctx) {
     },
   });
 
-  return {
+  const globali = {
     // Uscita dello script: `print` è il modo mongosh di riportare qualcosa.
     print: fn('print', (...args) => { ctx.stampa(args); }),
     printjson: fn('printjson', (v) => { ctx.stampa([v], true); }),
@@ -1095,6 +1101,12 @@ function costruisciGlobali(ctx) {
       from: fn('from', (v) => (Array.isArray(v) ? [...v] : [])),
     }),
   };
+  for (const nome of VOCABOLARIO_COSTRUTTORI.chiamate) {
+    if (!Object.prototype.hasOwnProperty.call(globali, nome)) {
+      throw new Error(`Costruttore BSON dichiarato ma non implementato: ${nome}`);
+    }
+  }
+  return globali;
 }
 
 function bson(tipo, valore) {

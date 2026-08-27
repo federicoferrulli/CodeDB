@@ -113,65 +113,119 @@ export function computeShortestPath(schema, startNode, endNode, includeImplicit 
 
 export function analyzeDependencies(schema, includeImplicit = false) {
   if (!schema || !schema.collections || !schema.collections.length) {
-    return { root_tables: [], leaf_tables: [], seeding_order: [], cyclic_tables: [], total_tables: 0 };
+    return {
+      root_tables: [], leaf_tables: [], seeding_order: [], cyclic_tables: [],
+      strongly_connected_components: [], blocked_by_cycles: [], external_dependencies: [], total_tables: 0,
+    };
   }
-
-  const inDegree = new Map();
-  const outDegree = new Map();
-  const rev = new Map();
-
-  for (const c of schema.collections) {
-    inDegree.set(c.name, 0);
-    outDegree.set(c.name, 0);
-    rev.set(c.name, []);
-  }
-
+  const names = new Set(schema.collections.map((c) => c.name));
   const rels = [...(schema.relations || [])];
   if (includeImplicit) rels.push(...detectImplicitRelations(schema.collections, rels));
-
-  // Un'auto-referenza non ordina nulla fra tabelle diverse e, contata,
-  // produrrebbe un ciclo permanente; gli archi duplicati (due FK verso la
-  // stessa tabella) gonfierebbero il contatore.
+  const external = [];
+  const internal = [];
   const viste = new Set();
   for (const r of rels) {
-    if (!r || r.from === r.to) continue;
+    if (!r) continue;
+    if (!names.has(r.from) || !names.has(r.to) || r.external === true) {
+      external.push(r);
+      continue;
+    }
     const chiave = `${r.from}>${r.to}`;
     if (viste.has(chiave)) continue;
     viste.add(chiave);
-    outDegree.set(r.from, (outDegree.get(r.from) || 0) + 1);
-    inDegree.set(r.to, (inDegree.get(r.to) || 0) + 1);
-    if (rev.has(r.to)) rev.get(r.to).push(r.from);
+    internal.push(r);
   }
-
+  const outDegree = new Map([...names].map((name) => [name, 0]));
+  const inDegree = new Map([...names].map((name) => [name, 0]));
+  const dependencies = new Map([...names].map((name) => [name, []]));
+  for (const r of internal) {
+    outDegree.set(r.from, outDegree.get(r.from) + 1);
+    inDegree.set(r.to, inDegree.get(r.to) + 1);
+    dependencies.get(r.from).push(r.to);
+  }
   const rootTables = schema.collections.filter((c) => (outDegree.get(c.name) || 0) === 0).map((c) => c.name);
   const leafTables = schema.collections.filter((c) => (inDegree.get(c.name) || 0) === 0).map((c) => c.name);
 
-  const restanti = new Map(outDegree);
-  const queue = schema.collections.filter((c) => restanti.get(c.name) === 0).map((c) => c.name);
-  const emesse = new Set(queue);
-  const seedingOrder = [];
+  // Tarjan: soltanto una componente fortemente connessa è un ciclo. Kahn da
+  // solo confondeva con il ciclo anche ogni tabella che dipendeva da esso.
+  let index = 0;
+  const indexes = new Map();
+  const low = new Map();
+  const stack = [];
+  const onStack = new Set();
+  const components = [];
+  const visit = (node) => {
+    indexes.set(node, index);
+    low.set(node, index++);
+    stack.push(node);
+    onStack.add(node);
+    for (const next of dependencies.get(node)) {
+      if (!indexes.has(next)) {
+        visit(next);
+        low.set(node, Math.min(low.get(node), low.get(next)));
+      } else if (onStack.has(next)) {
+        low.set(node, Math.min(low.get(node), indexes.get(next)));
+      }
+    }
+    if (low.get(node) === indexes.get(node)) {
+      const component = [];
+      let current;
+      do {
+        current = stack.pop();
+        onStack.delete(current);
+        component.push(current);
+      } while (current !== node);
+      components.push(component.sort());
+    }
+  };
+  for (const name of names) if (!indexes.has(name)) visit(name);
+  const selfLoops = new Set(internal.filter((r) => r.from === r.to).map((r) => r.from));
+  const cyclicComponents = components.filter((component) => component.length > 1 || selfLoops.has(component[0]));
+  const cyclic = cyclicComponents.flat();
 
-  while (queue.length > 0) {
-    const node = queue.shift();
-    seedingOrder.push(node);
-    for (const dipendente of rev.get(node) || []) {
-      restanti.set(dipendente, (restanti.get(dipendente) || 1) - 1);
-      if (restanti.get(dipendente) === 0 && !emesse.has(dipendente)) {
-        emesse.add(dipendente);
-        queue.push(dipendente);
+  // Ordine topologico delle sole tabelle non cicliche; le dipendenze esterne
+  // non entrano mai nel grado e quindi non bloccano una tabella osservata.
+  const cyclicSet = new Set(cyclic);
+  const blocked = new Set();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [name, deps] of dependencies) {
+      if (!cyclicSet.has(name) && !blocked.has(name)
+          && deps.some((dep) => cyclicSet.has(dep) || blocked.has(dep))) {
+        blocked.add(name);
+        changed = true;
       }
     }
   }
-
-  // Quello che resta non è ordinabile: sono FK che formano un ciclo. Accodarle
-  // in silenzio darebbe un elenco plausibile e sbagliato.
-  const cyclic = schema.collections.map((c) => c.name).filter((n) => !emesse.has(n));
+  const restanti = new Map([...names].filter((name) => !cyclicSet.has(name) && !blocked.has(name)).map((name) => [
+    name, dependencies.get(name).filter((dep) => !cyclicSet.has(dep)).length,
+  ]));
+  const reverse = new Map([...restanti.keys()].map((name) => [name, []]));
+  for (const [from, deps] of dependencies) {
+    if (!reverse.has(from)) continue;
+    for (const dep of deps) if (reverse.has(dep)) reverse.get(dep).push(from);
+  }
+  const queue = [...restanti].filter(([, degree]) => degree === 0).map(([name]) => name).sort();
+  const seedingOrder = [];
+  while (queue.length) {
+    const node = queue.shift();
+    seedingOrder.push(node);
+    for (const dependent of reverse.get(node)) {
+      restanti.set(dependent, restanti.get(dependent) - 1);
+      if (restanti.get(dependent) === 0) queue.push(dependent);
+    }
+    queue.sort();
+  }
 
   return {
     root_tables: rootTables,
     leaf_tables: leafTables,
     seeding_order: seedingOrder,
     cyclic_tables: cyclic,
+    strongly_connected_components: cyclicComponents,
+    blocked_by_cycles: [...blocked].sort(),
+    external_dependencies: external,
     total_tables: schema.collections.length,
   };
 }

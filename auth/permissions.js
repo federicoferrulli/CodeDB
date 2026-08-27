@@ -89,6 +89,12 @@ function canWholeConnection(principal, connName, capability) {
   return unrestricted(scope.databases) && unrestricted(scope.collections);
 }
 
+/** Capability amministrativa del tenant, indipendente da connessioni e scope. */
+function canAdminTenant(principal) {
+  return !!principal && (principal.root || principal.owner
+    || (Array.isArray(principal.tenantCapabilities) && principal.tenantCapabilities.includes('admin')));
+}
+
 /**
  * Amministratore dell'INSTALLAZIONE, che non è l'amministratore di un tenant.
  *
@@ -126,5 +132,6 @@ function isInstallAdmin(principal, env = process.env) {
 
 module.exports = {
   can, grantFor, scopeFor, allowedConnections, canUseConnection, canWholeConnection,
+  canAdminTenant,
   installAdminEmails, isInstallAdmin,
 };

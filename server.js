@@ -24,6 +24,14 @@ const crypto = require('crypto');
 const readline = require('readline');
 const DbFactory = require('./db/DbFactory');
 const { makeAuditor } = require('./db/AuditLog');
+const { provaClient, provaServer, stessaProva } = require('./electron-server-auth');
+const { validaPreferenza } = require('./auth/preferenze');
+const { limitaSchema } = require('./db/schemaProgressivo');
+
+const ELECTRON_INSTANCE_SECRET = process.env.CODEDB_ELECTRON_INSTANCE_SECRET
+  || (globalThis.__codedbDesktop && globalThis.__codedbDesktop.instanceSecret)
+  || null;
+delete process.env.CODEDB_ELECTRON_INSTANCE_SECRET;
 const { openSshTunnel } = require('./db/SshTunnel');
 const { attachMcp } = require('./mcp/McpGateway');
 const VirtualJoinEngine = require('./db/VirtualJoinEngine');
@@ -150,6 +158,7 @@ const { parseStorage, uploadBackupDir } = require('./backup/lib/storage');
 const { createLogger, formatDuration } = require('./backup/lib/logger');
 const { readCatalog, verifyBackupDir, formatBytes } = require('./backup/lib/util');
 const { notifySlack } = require('./backup/lib/notify');
+const { pianoRinomina, improntaDatabase, confrontaStatoCorrente } = require('./db/rinominaSicura');
 
 const { ROOT_PRINCIPAL, rbacOn } = require('./auth/principal');
 const { AppStore } = require('./auth/AppStore');
@@ -158,7 +167,9 @@ const { guardStrategy } = require('./auth/guardStrategy');
 const {
   isWriteSql, isWriteMongoPipeline, eventCapability, assertNoMongoServerJs,
 } = require('./auth/capabilities');
-const { can, allowedConnections, canUseConnection, canWholeConnection, isInstallAdmin } = require('./auth/permissions');
+const {
+  can, allowedConnections, canUseConnection, canWholeConnection, canAdminTenant, isInstallAdmin,
+} = require('./auth/permissions');
 const { motivoNonTerminabile, diagnosi: diagnosiSessioni } = require('./db/sessioni');
 
 const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, 'backups');
@@ -202,6 +213,7 @@ async function rinominaViaDump(sess, dbOrigine, nuovoNome, { eliminaOrigine = fa
   if (db === nuovo) throw new Error('Il nuovo nome coincide con quello attuale.');
 
   const dbType = sess.dbType || sess.strategy.type;
+  const piano = pianoRinomina(dbType, false);
   // La rinomina legge l'INTERO database dal driver nativo (fuori dal Proxy) e
   // ne crea un altro: è un'operazione amministrativa sulla connessione, non una
   // scrittura su una collection. Vedi la stessa scelta in backup:run.
@@ -274,17 +286,27 @@ async function rinominaViaDump(sess, dbOrigine, nuovoNome, { eliminaOrigine = fa
       );
     }
 
-    let origineEliminata = false;
-    if (eliminaOrigine) {
-      await sess.strategy.dropDatabase(db);
-      origineEliminata = true;
-    }
+    const verificaCorrente = confrontaStatoCorrente(
+      await improntaDatabase(sess.strategy, db),
+      await improntaDatabase(sess.strategy, nuovo)
+    );
+    // MongoDB e MySQL non offrono un lock di scrittura limitato al database
+    // che chiuda la finestra dopo il confronto: l'origine resta sempre sana.
+    const completata = verificaCorrente.ok && !eliminaOrigine;
     return {
       modo: 'dump-restore',
+      piano,
       origine: db,
       destinazione: nuovo,
       documenti: esito.totalDocs,
-      origineEliminata,
+      origineEliminata: false,
+      completata,
+      verificaCorrente,
+      intervento: !verificaCorrente.ok
+        ? `La sorgente è cambiata durante la copia. "${db}" e "${nuovo}" sono stati conservati: ripeti in una finestra senza scritture.`
+        : (eliminaOrigine
+          ? `Il motore ${dbType} non offre una rinomina atomica o un lock sicuro limitato al database. La copia è verificata, ma "${db}" è stato conservato e va rimosso in una finestra di manutenzione.`
+          : null),
     };
   } finally {
     // I file temporanei se ne vanno sempre: riuscita o fallita, non sono un
@@ -298,7 +320,12 @@ async function rinominaViaDump(sess, dbOrigine, nuovoNome, { eliminaOrigine = fa
 // formato/rotazione (db/AuditLog.js). CODEDB_UI_AUDIT_FILE lo sposta nella
 // cartella dati utente per l'app Electron pacchettizzata e isola i test.
 const UI_AUDIT_FILE = process.env.CODEDB_UI_AUDIT_FILE || path.join(__dirname, 'ui-audit.log');
-const { audit: auditUi, readRecent: readUiAudit } = makeAuditor(UI_AUDIT_FILE);
+const {
+  audit: auditUi,
+  readRecent: readUiAudit,
+  flush: flushAuditUi,
+  statoSalute: statoSaluteAuditUi,
+} = makeAuditor(UI_AUDIT_FILE);
 
 const PORT = process.env.PORT || 3030;
 
@@ -455,8 +482,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 // solo fatto che qualcosa risponda (CDB-38).
 app.get('/handshake-check', (req, res) => {
   const verdict = checkOrigin(req);
-  if (verdict.ok) return res.json({ ok: true, app: 'codedb' });
-  res.status(403).json({ ok: false, app: 'codedb', reason: verdict.publicReason || verdict.reason });
+  const challenge = req.get('x-codedb-instance-challenge');
+  const clientProof = req.get('x-codedb-instance-client-proof');
+  const contestoIstanza = `porta:${Number(req.socket.localPort)}`;
+  const richiestaIstanza = stessaProva(
+    provaClient(ELECTRON_INSTANCE_SECRET, challenge, contestoIstanza), clientProof,
+  );
+  const instanceProof = richiestaIstanza
+    ? provaServer(ELECTRON_INSTANCE_SECRET, challenge, contestoIstanza)
+    : null;
+  if (verdict.ok) return res.json({ ok: true, app: 'codedb', ...(instanceProof ? { instanceProof } : {}) });
+  res.status(403).json({
+    ok: false, app: 'codedb', reason: verdict.publicReason || verdict.reason,
+  });
 });
 
 /* ---------------------------------------------------------------------------
@@ -1155,7 +1193,21 @@ async function establishConnection(cfg, guardCtx = null) {
         host: (effective.host || 'localhost').trim(),
         port: parseInt(effective.port, 10) || DbFactory.defaultPort(dbType),
       };
-      tunnel = await openSshTunnel(effective, target);
+      const savedName = String(cfg.saved || '').trim();
+      tunnel = await openSshTunnel(effective, target, {
+        // ssh2 chiama questa funzione dentro hostVerifier, prima di inviare le
+        // credenziali. Il test e la connessione reale passano entrambi da qui.
+        persistNewHostKey: savedName ? (fingerprint) => {
+          const conns = loadConnections(guardCtx && guardCtx.principal && guardCtx.principal.ownerId);
+          const saved = conns[savedName];
+          if (!saved) throw new Error(`Connessione salvata "${savedName}" non trovata.`);
+          const existing = String(saved.sshHostKey || '').trim();
+          if (existing && existing !== fingerprint) throw new Error('Il pin SSH è cambiato durante la verifica.');
+          saved.sshHostKey = fingerprint;
+          saveConnections(conns, guardCtx && guardCtx.principal && guardCtx.principal.ownerId);
+          effective.sshHostKey = fingerprint;
+        } : undefined,
+      });
       connectCfg = { ...effective, host: tunnel.host, port: String(tunnel.port) };
       // Per MongoDB dietro tunnel: evita la topology discovery verso host del
       // replica set non raggiungibili attraverso il tunnel.
@@ -1496,6 +1548,7 @@ const OPERAZIONI_LUNGHE = {
   'database:import:list': ['statoDiSessione', 'letturaOperazioniInCorso'],
   'database:import:cancel': ['statoDiSessione', 'interruzioneInProcesso'],
   'database:import:cleanup': ['statoDiSessione', 'interruzioneInProcesso'],
+  'db:rename': ['statoDiSessione'],
 };
 
 /* ---------------------------------------------------------------------------
@@ -1576,8 +1629,13 @@ const EVENTI_AMMINISTRATIVI = {
   'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
   // Preferenze del tenant (scorciatoie da tastiera): tracciarle riempirebbe lo
   // storico di rumore a ogni rimappatura di un tasto.
-  'prefs:get': NON_TRACCIATO('lettura di una preferenza del tenant'),
-  'prefs:set': NON_TRACCIATO('salvataggio di una preferenza del tenant'),
+  'prefs:get': NON_TRACCIATO('lettura di una preferenza personale'),
+  'prefs:set': NON_TRACCIATO('salvataggio di una preferenza personale'),
+  'prefs:shared:get': NON_TRACCIATO('lettura di una preferenza condivisa del tenant'),
+  'prefs:shared:set': {
+    op: 'Salvataggio preferenza condivisa',
+    bersaglio: (payload) => payload && payload.chiave,
+  },
 
   // --- Identità e permessi -------------------------------------------------
   'auth:me': NON_TRACCIATO('chi sono io, senza effetti'),
@@ -2099,6 +2157,7 @@ async function executeQueryCode(session, payload) {
           mongoScriptHost(session, runId, opHandle, run),
           {
             db: targetDb,
+            runId,
             interrotto: () => !!(opHandle && opHandle.interrotto),
             limiti: SCRIPT_LIMITI,
           }
@@ -2398,16 +2457,23 @@ function principalView(principal) {
     owner: !!(principal.owner || principal.root),
     rbac: rbacOn(),
     capabilities: principal.capabilities || [],
+    tenantCapabilities: principal.tenantCapabilities || [],
     grants: (principal.grants || []).map((g) => ({ connName: g.connName, role: g.role, capabilities: g.capabilities, scope: g.scope })),
   };
 }
 
-// Solo owner/admin possono gestire utenti, grant e API key del proprio tenant.
+// Gate storico delle operazioni riservate all'owner del tenant (connessioni,
+// backup, aggiornamenti). La delega amministrativa NON amplia questo perimetro.
 function assertManage(principal) {
   if (principal.root || principal.owner) return;
-  if (!can(principal, { capability: 'manage' })) {
-    throw new Error('Permesso negato: operazione riservata all\'amministratore dell\'account.');
-  }
+  throw new Error('Permesso negato: operazione riservata all\'owner del tenant.');
+}
+
+// Gate delegabile soltanto per utenti, ruoli, grant, API key e preferenze
+// condivise: è indipendente dalle capability assegnate sulle connessioni.
+function assertTenantAdmin(principal) {
+  if (canAdminTenant(principal)) return;
+  throw new Error('Permesso negato: operazione riservata all\'amministratore del tenant.');
 }
 
 /**
@@ -2422,29 +2488,6 @@ function assertInstallAdmin(principal, cosa) {
     'quindi è riservata a chi la amministra. Cosa fare: eseguila dall\'account indicato in CODEDB_OWNER_EMAIL, ' +
     'oppure elenca gli amministratori abilitati in CODEDB_VAULT_ADMINS e riavvia il server.',
   );
-}
-
-/**
- * Registra l'impronta della host key SSH sulla connessione salvata, se non era
- * ancora nota (fiducia al primo uso, come `StrictHostKeyChecking=accept-new`).
- * Da lì in poi `openSshTunnel` rifiuta qualunque chiave diversa, che è ciò che
- * rende rilevabile un man-in-the-middle sul bastion.
- *
- * Best-effort: un problema nel salvataggio non deve far fallire una connessione
- * già stabilita — al massimo l'impronta verrà registrata al tentativo successivo.
- */
-function rememberSshHostKey(principal, connName, tunnel) {
-  if (!connName || !tunnel || !tunnel.hostKey || tunnel.hostKeyKnown) return;
-  try {
-    const conns = loadConnections(principal.ownerId);
-    const sec = conns[connName];
-    if (!sec || String(sec.sshHostKey || '').trim()) return;
-    sec.sshHostKey = tunnel.hostKey;
-    saveConnections(conns, principal.ownerId);
-    console.log(`[SSH] Impronta della host key registrata per "${connName}": ${tunnel.hostKey}`);
-  } catch (err) {
-    console.warn(`[SSH] Impossibile registrare l'impronta della host key per "${connName}": ${errMsg(err)}`);
-  }
 }
 
 /**
@@ -2786,16 +2829,28 @@ function registraEventi(ctx) {
     return true;
   }
 
+  function acquisisciLeaseOperazione(sess) {
+    sess.operationLeases = (sess.operationLeases || 0) + 1;
+  }
+
+  async function rilasciaLeaseOperazione(sess) {
+    sess.operationLeases = Math.max(0, (sess.operationLeases || 1) - 1);
+    if (sess.detachedForOperation && sess.operationLeases === 0 && !sess.closed) {
+      sess.closed = true;
+      await teardownConnection(sess);
+    }
+  }
+
   async function closeSession(tabId) {
     const sess = sessions.get(tabId);
     if (!sess) return;
     // Rimuovi prima di await: evita doppie chiusure su chiamate concorrenti.
     sessions.delete(tabId);
     activeGlobalSessions--;
-    // Un import gia' accettato possiede una lease della sessione: chiudere il
-    // tab stacca la UI ma non spegne il driver sotto un'operazione viva.
-    if (sess.importLeases > 0) {
-      sess.detachedForImport = true;
+    // Un'operazione lunga già accettata possiede una lease della sessione:
+    // chiudere il tab stacca la UI ma non spegne il driver sotto un lavoro vivo.
+    if (sess.operationLeases > 0) {
+      sess.detachedForOperation = true;
       return;
     }
     sess.closed = true;
@@ -3107,10 +3162,6 @@ function registraEventi(ctx) {
           conns[saveAs] = sanitizeConnCfg(conn.effective);
           saveConnections(conns, principal.ownerId);
         }
-        // Fiducia al primo uso sulla host key del bastion: registrata sulla
-        // connessione salvata, così dal collegamento successivo un cambio di
-        // chiave (possibile MITM) viene rilevato e rifiutato.
-        rememberSshHostKey(principal, saveAs || connName, conn.tunnel);
         cb({
           ok: true,
           tabId,
@@ -3118,7 +3169,7 @@ function registraEventi(ctx) {
           dbType: conn.dbType,
           databases: await conn.strategy.listDatabases(),
           sshHostKey: conn.tunnel ? conn.tunnel.hostKey : undefined,
-          sshHostKeyNew: conn.tunnel ? !conn.tunnel.hostKeyKnown : undefined,
+          sshHostKeyNew: conn.tunnel ? !!conn.tunnel.hostKeyNew : undefined,
         });
       } catch (err) {
         await closeSession(tabId);
@@ -3247,11 +3298,12 @@ function registraEventi(ctx) {
   });
 
   /**
-   * Preferenze per tenant (chiave `{ownerId, chiave}` nel control plane).
+   * Preferenze personali (chiave `{ownerId, subjectId, ambito, chiave}`).
    *
    * Il primo cliente è la personalizzazione delle scorciatoie da tastiera
    * (`public/js/scorciatoie-ui.js`): il server non interpreta il valore, lo
-   * custodisce e lo restituisce a chi appartiene allo stesso tenant. Con RBAC
+   * custodisce e lo restituisce soltanto allo stesso principal. Le preferenze
+   * condivise hanno eventi separati e scrittura riservata all'admin. Con RBAC
    * spento non esiste un tenant — l'istanza è locale e monoutente — quindi si
    * risponde con `ok: false` e il client usa dichiaratamente il localStorage
    * del browser invece di fingere una persistenza che non c'è.
@@ -3261,8 +3313,9 @@ function registraEventi(ctx) {
       cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
       return;
     }
+    const richiesta = validaPreferenza({ ambito: 'personale', chiave, solaLettura: true });
     const store = requireStore();
-    const valore = await store.getPrefs(principal.ownerId || 'locale', String(chiave));
+    const valore = await store.getPrefs(principal.ownerId || 'locale', principal.id, richiesta.ambito, richiesta.chiave);
     cb({ ok: true, valore });
   });
 
@@ -3271,8 +3324,29 @@ function registraEventi(ctx) {
       cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
       return;
     }
+    const richiesta = validaPreferenza({ ambito: 'personale', chiave, valore });
     const store = requireStore();
-    await store.setPrefs(principal.ownerId || 'locale', String(chiave), valore);
+    await store.setPrefs(principal.ownerId || 'locale', principal.id, richiesta.ambito, richiesta.chiave, richiesta.valore);
+    cb({ ok: true });
+  });
+
+  amministrativo('prefs:shared:get', async ({ chiave }, cb) => {
+    if (!rbacOn()) return cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
+    assertTenantAdmin(principal);
+    const richiesta = validaPreferenza({ ambito: 'condiviso', chiave, solaLettura: true });
+    const valore = await requireStore().getPrefs(
+      principal.ownerId || 'locale', principal.id, richiesta.ambito, richiesta.chiave,
+    );
+    cb({ ok: true, valore });
+  });
+
+  amministrativo('prefs:shared:set', async ({ chiave, valore }, cb) => {
+    if (!rbacOn()) return cb({ ok: false, error: 'RBAC spento: preferenze conservate nel browser.' });
+    assertTenantAdmin(principal);
+    const richiesta = validaPreferenza({ ambito: 'condiviso', chiave, valore });
+    await requireStore().setPrefs(
+      principal.ownerId || 'locale', principal.id, richiesta.ambito, richiesta.chiave, richiesta.valore,
+    );
     cb({ ok: true });
   });
 
@@ -3424,7 +3498,8 @@ function registraEventi(ctx) {
   //   · root (RBAC spento o owner locale) → tutto;
   //   · owner                             → le azioni del proprio tenant;
   //   · sottoutente                       → soltanto le proprie.
-  amministrativo('audit:list', (payload, cb) => {
+  amministrativo('audit:list', async (payload, cb) => {
+    await flushAuditUi();
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
     const offset = Math.max(parseInt(payload.offset, 10) || 0, 0);
     const visibility = principal.root
@@ -3505,7 +3580,7 @@ function registraEventi(ctx) {
       }
       return entry;
     }));
-    cb({ ok: true, connections: entries });
+    cb({ ok: true, connections: entries, audit: statoSaluteAuditUi() });
   });
 
   /* --- Monitor delle sessioni del SERVER di database ------------------------
@@ -3571,6 +3646,10 @@ function registraEventi(ctx) {
     const id = String(payload.id == null ? '' : payload.id).trim();
     if (!id) throw new Error('Id della sessione da terminare mancante.');
     const modo = payload.modo === 'connessione' ? 'connessione' : 'query';
+    const identitaOsservata = payload.identita == null ? null : String(payload.identita);
+    if (!identitaOsservata) {
+      throw new Error('Identità stabile della sessione mancante: aggiorna il monitor e ripeti la conferma.');
+    }
 
     // Le regole su cosa NON si può terminare (connessioni di CodeDB, processi
     // di servizio del DBMS) vengono riapplicate QUI sullo stato corrente del
@@ -3586,9 +3665,12 @@ function registraEventi(ctx) {
     const bersaglio = (stato.sessioni || []).find((s) => String(s.id) === id);
     const motivo = motivoNonTerminabile(bersaglio, modo, stato.capacita || {});
     if (motivo) throw new Error(motivo);
+    if (bersaglio.identita !== identitaOsservata) {
+      throw new Error('La sessione è cambiata dopo la conferma: aggiorna il monitor prima di riprovare.');
+    }
 
     try {
-      const res = await sess.strategy.killSession(id, modo);
+      const res = await sess.strategy.killSession(id, modo, identitaOsservata);
       auditWrite(sess, 'db:killSession', { db: bersaglio.db }, {
         op: modo === 'connessione' ? 'Terminazione connessione DB' : 'Annullamento query altrui',
         sessionId: id,
@@ -3796,28 +3878,32 @@ function registraEventi(ctx) {
 
   amministrativo('roles:list', async (_payload, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const roles = await store.listRoles(principal.ownerId);
     cb({ ok: true, roles: roles.map((r) => ({ name: r.name, capabilities: r.capabilities, builtIn: !!r.builtIn })) });
   });
 
   amministrativo('users:list', async (_payload, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const [users, limits] = await Promise.all([
       store.listSubUsers(principal.ownerId),
       entitlements.getLimits(principal.ownerId),
     ]);
     cb({
       ok: true,
-      users: users.map((u) => ({ id: u._id, email: u.email, displayName: u.displayName, status: u.status, createdAt: u.createdAt })),
+      users: users.map((u) => ({
+        id: u._id, email: u.email, displayName: u.displayName, status: u.status,
+        tenantAdmin: Array.isArray(u.tenantCapabilities) && u.tenantCapabilities.includes('admin'),
+        createdAt: u.createdAt,
+      })),
       limits: { maxSubUsers: limits.maxSubUsers === Infinity ? null : limits.maxSubUsers, plan: limits.plan },
     });
   });
 
   amministrativo('users:create', async ({ email, password, displayName }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const limits = await entitlements.getLimits(principal.ownerId);
     const current = await store.countSubUsers(principal.ownerId);
     if (current >= limits.maxSubUsers) {
@@ -3828,10 +3914,15 @@ function registraEventi(ctx) {
     cb({ ok: true, user: { id: user._id, email: user.email, displayName: user.displayName, status: user.status } });
   });
 
-  amministrativo('users:update', async ({ id, status, displayName, password }, cb) => {
+  amministrativo('users:update', async ({ id, status, displayName, password, tenantAdmin }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
-    const esito = await store.updateSubUser(principal.ownerId, id, { status, displayName, password });
+    assertTenantAdmin(principal);
+    if (tenantAdmin != null && !principal.root && !principal.owner) {
+      throw new Error('Solo l’owner può delegare o revocare l’amministrazione del tenant.');
+    }
+    const esito = await store.updateSubUser(principal.ownerId, id, {
+      status, displayName, password, tenantAdmin,
+    });
     // Sospensione o cambio password: le sessioni sono state cancellate, ma un
     // socket già connesso sopravviverebbe alla riga cancellata (CDB-A13).
     if (esito.revocate) disconnettiSocketDi(id, 'sospensione o cambio password');
@@ -3840,7 +3931,7 @@ function registraEventi(ctx) {
 
   amministrativo('users:delete', async ({ id }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     await store.deleteSubUser(principal.ownerId, id);
     disconnettiSocketDi(id, 'utente eliminato');
     cb({ ok: true });
@@ -3848,14 +3939,14 @@ function registraEventi(ctx) {
 
   amministrativo('grants:list', async (_payload, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const grants = await store.listGrants(principal.ownerId);
     cb({ ok: true, grants: grants.map((g) => ({ subjectId: g.subjectId, connName: g.connName, role: g.role, scope: g.scope || null })) });
   });
 
   amministrativo('grants:set', async ({ subjectId, connName, role, scope }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const grant = await withConnectionAclLock(principal.ownerId, async () => {
       // Il controllo di esistenza e la scrittura del grant condividono lo
       // stesso lock di delete/rename: non si può reinserire un permesso sul
@@ -3876,7 +3967,7 @@ function registraEventi(ctx) {
 
   amministrativo('grants:revoke', async ({ subjectId, connName }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const res = await store.revokeGrant(principal.ownerId, subjectId, connName);
     disconnettiSocketDi(subjectId, 'permesso revocato');
     cb({ ok: true, ...res });
@@ -3884,7 +3975,7 @@ function registraEventi(ctx) {
 
   amministrativo('apikeys:list', async (_payload, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const keys = await store.listApiKeys(principal.ownerId);
     cb({
       ok: true,
@@ -3895,7 +3986,7 @@ function registraEventi(ctx) {
   // La chiave in chiaro esiste solo in questa risposta: in DB ne resta l'hash.
   amministrativo('apikeys:create', async ({ subjectId, label, connScope }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     const created = await store.createApiKey({
       ownerId: principal.ownerId,
       subjectId: subjectId || principal.id,
@@ -3907,7 +3998,7 @@ function registraEventi(ctx) {
 
   amministrativo('apikeys:revoke', async ({ id }, cb) => {
     const store = requireRbac();
-    assertManage(principal);
+    assertTenantAdmin(principal);
     await store.revokeApiKey(principal.ownerId, id);
     cb({ ok: true });
   });
@@ -3920,25 +4011,53 @@ function registraEventi(ctx) {
   delegate('db:create', async (strategy, { db, coll }) => { await strategy.createDatabase(db, coll); return {}; });
   // Rinomina di un database. PostgreSQL la esegue nativamente (ALTER SCHEMA,
   // atomico); MongoDB e MySQL non hanno un comando equivalente e passano da
-  // dump → verifica → restore, orchestrato in `rinominaViaDump` fuori dal
-  // delegate perché ha bisogno del motore di backup e non della sola strategia.
-  delegate('db:rename', async (strategy, payload) => {
+  // dump → verifica → restore. In entrambi i casi il lease mantiene viva la
+  // sessione fino al completamento e alla registrazione dell'esito.
+  operazioneLunga('db:rename', async (payload, cb) => {
+    for (const serverOnly of SERVER_ONLY_PAYLOAD_FIELDS) delete payload[serverOnly];
+    const sess = sessions.get(normTabId(payload.tabId));
+    if (!sess) throw new Error('Nessuna connessione attiva al database.');
     const { db, newName } = payload;
-    if (strategy.supportsNativeRename && strategy.supportsNativeRename()) {
-      await strategy.renameDatabase(db, newName);
-      return { modo: 'nativo' };
+    assertWholeConnection(principal, sess.connName, 'manage', 'rinominare un database');
+    acquisisciLeaseOperazione(sess);
+    let result;
+    try {
+      const strategy = sess.strategy;
+      if (strategy.supportsNativeRename && strategy.supportsNativeRename()) {
+        await strategy.renameDatabase(db, newName);
+        result = {
+          modo: 'nativo',
+          piano: pianoRinomina(sess.dbType || strategy.type, true),
+          origine: db,
+          destinazione: newName,
+          origineEliminata: true,
+          completata: true,
+        };
+      } else {
+        result = await rinominaViaDump(sess, db, newName, {
+          eliminaOrigine: payload.eliminaOrigine === true,
+          principal,
+        });
+      }
+      auditWrite(sess, 'db:rename', payload, {
+        op: 'Rinomina database', target: newName,
+        garanzia: result.piano && result.piano.garanzia,
+      }, 'ok', result, null);
+    } catch (err) {
+      auditWrite(sess, 'db:rename', payload, {
+        op: 'Rinomina database', target: newName,
+      }, 'error', null, err);
+      throw err;
+    } finally {
+      await rilasciaLeaseOperazione(sess);
     }
-    // `eliminaOrigine` è una scelta esplicita di chi rinomina, e il valore
-    // predefinito è NON eliminare: dump e restore non sono atomici, quindi le
-    // scritture arrivate nell'originale durante l'operazione non sono nella
-    // copia. Chi non decide si tiene entrambi i database.
-    return rinominaViaDump(sessions.get(normTabId(payload.tabId)), db, newName, {
-      eliminaOrigine: payload.eliminaOrigine === true,
-      principal,
-    });
+    cb({ ok: true, ...result });
   });
   delegate('db:drop', async (strategy, { db }) => { await strategy.dropDatabase(db); return {}; });
-  delegate('db:schema', (strategy, { db }) => strategy.dbSchema(db));
+  delegate('db:schema', async (strategy, payload) => {
+    const schema = await strategy.dbSchema(payload.db);
+    return payload.progressive === true ? limitaSchema(schema, payload) : schema;
+  });
 
   // --- Gestione collection/tabelle, colonne e indici ---------------------------
 
@@ -4529,12 +4648,12 @@ function registraEventi(ctx) {
       recoveryRoot: path.join(backupRootOf(principal), 'import-recovery'),
       signal: null,
     });
-    sess.importLeases = (sess.importLeases || 0) + 1;
+    acquisisciLeaseOperazione(sess);
     const accepted = registry.start({
       plan, adapter, ownerId: principal.ownerId, actorId: principal.id, tabId,
       onProgress: (state) => socket.emit('database:import:progress', state),
       onSettled: async (state) => {
-        sess.importLeases = Math.max(0, (sess.importLeases || 1) - 1);
+        await rilasciaLeaseOperazione(sess);
         auditWrite(
           sess, 'database:import:start', { db: plan.targetDb },
           { op: 'Import database', operationId: state.operationId, fingerprint: plan.fingerprint },
@@ -4545,10 +4664,6 @@ function registraEventi(ctx) {
             target: state.originalError && state.originalError.target || plan.targetDb,
           }) : null,
         );
-        if (sess.detachedForImport && sess.importLeases === 0 && !sess.closed) {
-          sess.closed = true;
-          await teardownConnection(sess);
-        }
         if (payload.uploadId && typeof uploadRegistry.remove === 'function') {
           try { uploadRegistry.remove(payload.uploadId, principal.ownerId, principal.id); } catch (_) { /* gia scaduto */ }
         }

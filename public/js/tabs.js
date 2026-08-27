@@ -54,6 +54,7 @@ export function freshState() {
     countTimedOut: false, // conteggio andato in timeout lato server (footer mostra '?')
     docs: [],
     columns: [],
+    columnMeta: {},
     infiniteScroll: false,  // scroll infinito attivo (carica a blocchi allo scroll)
     loading: false,         // fetch di un blocco in corso (scroll infinito)
     exhausted: false,       // tutti i documenti caricati: niente altri blocchi

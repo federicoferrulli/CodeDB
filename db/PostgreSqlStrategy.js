@@ -10,6 +10,8 @@ const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
 const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+const { raggruppaVincoli } = require('./relazioni');
+const { cellaCsv, rigaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
 // condivisa con l'altro adattatore SQL, con il DDL, con il backup e col
 // frontend (vedi db/identificatori.js).
@@ -634,9 +636,10 @@ class PostgreSqlStrategy extends DbStrategy {
   // (ST_GeomFromGeoJSON produce sempre 4326) e le colonne `geography` vogliono
   // il cast esplicito, altrimenti PostgreSQL rifiuta l'assegnazione.
   static geoExpression(colInfo, placeholder) {
-    const base = colInfo && colInfo.srid != null
-      ? `ST_SetSRID(ST_GeomFromGeoJSON(${placeholder}), ${Number(colInfo.srid)})`
-      : `ST_GeomFromGeoJSON(${placeholder})`;
+    if (!colInfo || colInfo.srid == null) {
+      throw new Error('SRID non noto: CodeDB non può modificare la geometria senza reinterpretare le coordinate. Dichiara lo SRID della colonna oppure consenti la lettura dei metadata PostGIS.');
+    }
+    const base = `ST_SetSRID(ST_GeomFromGeoJSON(${placeholder}), ${Number(colInfo.srid)})`;
     return (colInfo && colInfo.kind === 'geography') ? `${base}::geography` : base;
   }
 
@@ -775,10 +778,13 @@ class PostgreSqlStrategy extends DbStrategy {
     const capped = DbStrategy.truncateBySize(rows);
     const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
-      return serializeRow(doc);
+      return serializeRow(doc, sel.colonne);
     });
 
-    return { docs, columns, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
+    const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
+      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid,
+    }]));
+    return { docs, columns, columnMeta, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
@@ -943,6 +949,7 @@ class PostgreSqlStrategy extends DbStrategy {
               wait_event,
               backend_type,
               application_name,
+              backend_start,
               -- Il dato che rende il pannello una risposta invece di un
               -- elenco: chi tiene il lock che questa sessione sta aspettando.
               -- Senza, si termina la vittima e non cambia niente.
@@ -1011,7 +1018,7 @@ class PostgreSqlStrategy extends DbStrategy {
     return ids;
   }
 
-  async killSession(id, modo) {
+  async killSession(id, modo, identitaOsservata) {
     const pool = this.requirePool();
     const pid = Number(String(id).trim());
     if (!Number.isInteger(pid) || pid <= 0) throw new Error(`Id di sessione non valido: "${id}".`);
@@ -1019,7 +1026,18 @@ class PostgreSqlStrategy extends DbStrategy {
     // viene annullata dal server); `pg_cancel_backend` ferma la sola query e
     // lascia in piedi sessione e transazione.
     const fn = modo === 'connessione' ? 'pg_terminate_backend' : 'pg_cancel_backend';
-    const res = await pool.query(`SELECT ${fn}($1) AS esito`, [pid]);
+    const prefisso = 'postgres-backend:';
+    if (!String(identitaOsservata || '').startsWith(prefisso)) {
+      sessioni.assertIdentitaSessione(identitaOsservata, null);
+    }
+    const backendStart = String(identitaOsservata).slice(prefisso.length);
+    const res = await pool.query(
+      `SELECT ${fn}(pid) AS esito
+         FROM pg_stat_activity
+        WHERE pid = $1 AND backend_start = $2::timestamptz`,
+      [pid, backendStart]
+    );
+    if (!res.rows || !res.rows.length) sessioni.assertIdentitaSessione(identitaOsservata, null);
     const esito = !!(res.rows && res.rows[0] && res.rows[0].esito);
     return { terminata: esito, modo: modo === 'connessione' ? 'connessione' : 'query' };
   }
@@ -1177,13 +1195,7 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   static csvCell(v) {
-    if (v === null || v === undefined) return '';
-    let s;
-    if (v instanceof Date) s = isNaN(v.getTime()) ? '' : v.toISOString();
-    else if (Buffer.isBuffer(v)) s = v.toString('base64');
-    else if (typeof v === 'object') s = JSON.stringify(v);
-    else s = String(v);
-    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    return cellaCsv(v);
   }
 
   /**
@@ -1374,10 +1386,18 @@ class PostgreSqlStrategy extends DbStrategy {
     }));
 
     const fkRes = await pool.query(
-      `SELECT kcu.table_name, kcu.column_name, ccu.table_name AS referenced_table_name, ccu.column_name AS referenced_column_name
+      `SELECT kcu.table_name, kcu.column_name,
+              rcu.table_schema AS referenced_table_schema,
+              rcu.table_name AS referenced_table_name,
+              rcu.column_name AS referenced_column_name
          FROM information_schema.table_constraints tc
          JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+         JOIN information_schema.referential_constraints rc
+           ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
+         JOIN information_schema.key_column_usage rcu
+           ON rcu.constraint_name = rc.unique_constraint_name
+          AND rcu.constraint_schema = rc.unique_constraint_schema
+          AND rcu.ordinal_position = kcu.position_in_unique_constraint
         WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1`,
       [schema]
     );
@@ -1389,6 +1409,8 @@ class PostgreSqlStrategy extends DbStrategy {
         from: fk.table_name,
         field: fk.column_name,
         to: fk.referenced_table_name,
+        toDb: fk.referenced_table_schema || schema,
+        external: !!fk.referenced_table_schema && fk.referenced_table_schema !== schema,
         many: true,
       });
       fkSet.add(`${fk.table_name}.${fk.column_name}->${fk.referenced_table_name}`);
@@ -1412,30 +1434,33 @@ class PostgreSqlStrategy extends DbStrategy {
     const pool = this.requirePool();
     const schema = schemaOf(db);
     const res = await pool.query(
-      `SELECT kcu.column_name,
-              ccu.table_schema AS referenced_table_schema,
-              ccu.table_name   AS referenced_table_name,
-              ccu.column_name  AS referenced_column_name
+      `SELECT tc.constraint_name, kcu.ordinal_position, kcu.column_name,
+              rcu.table_schema AS referenced_table_schema,
+              rcu.table_name   AS referenced_table_name,
+              rcu.column_name  AS referenced_column_name
          FROM information_schema.table_constraints tc
          JOIN information_schema.key_column_usage kcu
            ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage ccu
-            ON ccu.constraint_name = tc.constraint_name
-           AND ccu.constraint_schema = tc.constraint_schema
+         JOIN information_schema.referential_constraints rc
+           ON rc.constraint_name = tc.constraint_name AND rc.constraint_schema = tc.constraint_schema
+         JOIN information_schema.key_column_usage rcu
+           ON rcu.constraint_name = rc.unique_constraint_name
+          AND rcu.constraint_schema = rc.unique_constraint_schema
+          AND rcu.ordinal_position = kcu.position_in_unique_constraint
         WHERE tc.constraint_type = 'FOREIGN KEY'
           AND tc.table_schema = $1
           AND tc.table_name = $2
-     ORDER BY kcu.ordinal_position`,
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
       [schema, coll]
     );
-    return res.rows.map((r) => ({
+    return raggruppaVincoli(res.rows.map((r) => ({
+      nome: r.constraint_name,
+      ordine: r.ordinal_position,
       campo: r.column_name,
       db: r.referenced_table_schema || schema,
       tabella: r.referenced_table_name,
       colonna: r.referenced_column_name,
-      origine: 'vincolo',
-      molti: false,
-    }));
+    })));
   }
 
   async collectionExport(db, coll, payload) {
@@ -1527,7 +1552,7 @@ class PostgreSqlStrategy extends DbStrategy {
     } else if (format === 'json') {
       lines = rows.map((r) => EJSON.stringify(r, { relaxed: true }));
     } else {
-      lines = rows.map((r) => columns.map((c) => PostgreSqlStrategy.csvCell(r[c])).join(','));
+      lines = rows.map((r) => rigaCsv(columns.map((c) => r[c]), { modalita: payload.csvMode }));
     }
 
     return {
@@ -1535,7 +1560,7 @@ class PostgreSqlStrategy extends DbStrategy {
       count: rows.length,
       total,
       format,
-      header: format === 'csv' ? columns.map(PostgreSqlStrategy.csvCell).join(',') : null,
+      header: format === 'csv' ? rigaCsv(columns, { modalita: payload.csvMode }) : null,
       nextAfter,
     };
   }

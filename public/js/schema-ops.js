@@ -75,14 +75,11 @@ export async function renameDb(name) {
     etichetta: `Nuovo nome per "${name}"`,
     valore: name,
     ok: 'Rinomina',
-    spunta: nativa ? null : {
-      etichetta: `Elimina "${name}" al termine (solo se la copia risulta completa)`,
-      valore: false,
-    },
+    spunta: null,
   });
   if (input == null) return;
   const testo = nativa ? input : input.testo;
-  const eliminaOrigine = nativa ? false : !!input.spunta;
+  const eliminaOrigine = false;
   const newName = String(testo || '').trim();
   if (!newName || newName === name) return;
   emit('db:rename', { tabId: origin.tabId, db: name, newName, eliminaOrigine }).then((res) => {
@@ -94,10 +91,10 @@ export async function renameDb(name) {
     // coll-tab sul nuovo nome sarebbe una bugia: l'utente stava guardando
     // l'originale, che è ancora lì.
     const origineSparita = res.modo !== 'dump-restore' || res.origineEliminata === true;
-    toast(origineSparita
+    toast(res.intervento || (origineSparita
       ? `${origin.wordCap} rinominato in "${newName}"`
       : `${origin.wordCap} copiato in "${newName}" (${res.documenti} documenti/righe verificati). `
-        + `"${name}" è ancora presente: eliminalo tu quando hai controllato.`);
+        + `"${name}" è ancora presente: eliminalo in una finestra senza scritture.`), !!res.intervento);
     if (origineSparita) {
       st.expandedDbs.delete(name);
       // I coll-tab aperti sul vecchio nome seguono la rinomina.

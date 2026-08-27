@@ -34,21 +34,33 @@ const CACHE_TRIM_MARGIN = 1000;
 // Crea un auditor legato a un file. `audit(entry)` è fire-and-forget: non deve
 // mai bloccare né far fallire l'operazione tracciata. `readRecent(filtri)`
 // rilegge il log (file ruotato + principale) per la vista storica della UI.
-function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
+function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES, options = {}) {
+  const maxGenerations = Number.isSafeInteger(options.maxGenerations) ? options.maxGenerations : 5;
+  const maxCacheEntries = Number.isSafeInteger(options.maxCacheEntries)
+    ? options.maxCacheEntries : MAX_CACHE_ENTRIES;
   let cache = null;
+  let queue = Promise.resolve();
+  let pending = 0;
+  const health = { ok: true, pending: 0, lastError: null, lastFailureAt: null };
 
   // Mantiene la cache entro MAX_CACHE_ENTRIES scartando le voci più vecchie.
   // Interviene solo oltre un margine, così l'ammortamento evita uno shift a
   // ogni chiamata (le voci più vecchie restano comunque nel file su disco).
   function trimCache() {
-    if (cache.length > MAX_CACHE_ENTRIES + CACHE_TRIM_MARGIN) {
-      cache.splice(0, cache.length - MAX_CACHE_ENTRIES);
+    const margin = Math.min(CACHE_TRIM_MARGIN, Math.max(1, Math.ceil(maxCacheEntries / 10)));
+    if (cache.length > maxCacheEntries + margin) {
+      cache.splice(0, cache.length - maxCacheEntries);
     }
   }
 
   function loadCache() {
     cache = [];
-    for (const f of [`${filePath}.1`, filePath]) {
+    const files = [];
+    for (let generation = maxGenerations; generation >= 1; generation--) {
+      files.push(`${filePath}.${generation}`);
+    }
+    files.push(filePath);
+    for (const f of files) {
       let text;
       try { text = fs.readFileSync(f, 'utf8'); } catch { continue; }
       for (const line of text.split(/\r?\n/)) {
@@ -59,21 +71,55 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
     trimCache();
   }
 
-  function audit(entry) {
-    const fullEntry = { ts: new Date().toISOString(), ...entry };
+  async function ruota() {
+    if (maxGenerations < 1) return;
+    try { await fs.promises.unlink(`${filePath}.${maxGenerations}`); } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    for (let generation = maxGenerations - 1; generation >= 1; generation--) {
+      try {
+        await fs.promises.rename(`${filePath}.${generation}`, `${filePath}.${generation + 1}`);
+      } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
+      }
+    }
+    try { await fs.promises.rename(filePath, `${filePath}.1`); } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+  }
+
+  async function persisti(fullEntry) {
     if (cache === null) loadCache();
+    const line = JSON.stringify(fullEntry) + '\n';
+    let size = 0;
+    try { size = (await fs.promises.stat(filePath)).size; } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    if (size > 0 && size + Buffer.byteLength(line) > maxBytes) await ruota();
+    await fs.promises.appendFile(filePath, line, { encoding: 'utf8', flush: true });
     cache.push(fullEntry);
     trimCache();
+  }
 
-    const line = JSON.stringify(fullEntry);
-    const append = () => fs.appendFile(filePath, line + '\n', () => { /* l'audit non deve mai bloccare */ });
-    fs.stat(filePath, (err, stats) => {
-      if (!err && stats.size > maxBytes) {
-        fs.rename(filePath, `${filePath}.1`, append);
-      } else {
-        append();
-      }
+  function audit(entry) {
+    const fullEntry = { ts: new Date().toISOString(), ...entry };
+    pending += 1;
+    health.pending = pending;
+    const operation = queue.then(() => persisti(fullEntry));
+    queue = operation.then(() => {
+      health.ok = true;
+      health.lastError = null;
+      return { persisted: true };
+    }, (err) => {
+      health.ok = false;
+      health.lastError = err.message;
+      health.lastFailureAt = new Date().toISOString();
+      return { persisted: false, error: err.message };
+    }).finally(() => {
+      pending -= 1;
+      health.pending = pending;
     });
+    return queue;
   }
 
   function readRecent(filters = {}) {
@@ -109,7 +155,11 @@ function makeAuditor(filePath, maxBytes = DEFAULT_MAX_BYTES) {
     return { entries: sliced, total };
   }
 
-  return { audit, readRecent, filePath };
+  async function flush() { await queue; return statoSalute(); }
+
+  function statoSalute() { return { ...health }; }
+
+  return { audit, readRecent, flush, statoSalute, filePath };
 }
 
 module.exports = { makeAuditor, DEFAULT_MAX_BYTES };

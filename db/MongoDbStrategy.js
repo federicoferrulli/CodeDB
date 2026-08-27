@@ -1054,7 +1054,7 @@ class MongoDbStrategy extends DbStrategy {
     };
   }
 
-  async killSession(id, modo) {
+  async killSession(id, modo, identitaOsservata) {
     const client = this.requireClient();
     if (modo === 'connessione') {
       throw new Error('MongoDB non permette di chiudere la connessione di un altro client: si può solo annullare l\'operazione in corso.');
@@ -1064,6 +1064,12 @@ class MongoDbStrategy extends DbStrategy {
     // posto del numero 123 — da qui la riconversione.
     const raw = String(id);
     const op = /^\d+$/.test(raw) ? Number(raw) : raw;
+    const correnti = await client.db('admin').aggregate([
+      { $currentOp: { allUsers: true, idleConnections: false, idleSessions: false } },
+      { $match: { opid: op } },
+    ]).toArray();
+    const corrente = sessioni.normalizzaMongo(correnti)[0];
+    sessioni.assertIdentitaSessione(identitaOsservata, corrente && corrente.identita);
     const res = await client.db('admin').command({ killOp: 1, op });
     return { terminata: !!(res && res.ok), modo: 'query' };
   }

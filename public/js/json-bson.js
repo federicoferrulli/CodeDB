@@ -30,7 +30,12 @@
  * mangerebbe tutto il resto del documento, quindi lì vengono tolti.
  */
 
+import './costruttori-bson.js';
+
 const INDENT_DEFAULT = '  ';
+const VOCABOLARIO_COSTRUTTORI = globalThis.CODEDB_COSTRUTTORI_BSON;
+const COSTRUTTORI_DIRETTI = new Set(VOCABOLARIO_COSTRUTTORI.chiamate);
+const COSTRUTTORI_CON_NEW = new Set(VOCABOLARIO_COSTRUTTORI.conNew);
 // Un documento annidato oltre questa soglia è quasi certamente generato male:
 // il limite protegge la ricorsione del parser (che gira a ogni tasto premuto).
 const MAX_PROFONDITA = 200;
@@ -170,6 +175,10 @@ export function tokenizzaJsonBson(testo) {
       // `new Date(…)`: il `new` fa parte del valore, non è un identificatore a sé.
       const conNew = /^new\s+[A-Za-z_$][\w$]*\s*\(/.exec(s.slice(i));
       if (conNew) {
+        const nome = /^new\s+([A-Za-z_$][\w$]*)/.exec(conNew[0])[1];
+        if (!COSTRUTTORI_CON_NEW.has(nome)) {
+          throw new ErroreJsonBson(`Costruttore non supportato: "new ${nome}".`, inizio);
+        }
         i += conNew[0].length - 1; // fermi sulla parentesi aperta
         i = fineChiamata(s, i, inizio);
         toks.push({ t: 'valore', v: s.slice(inizio, i), i: inizio });
@@ -180,6 +189,10 @@ export function tokenizzaJsonBson(testo) {
       let j = i;
       while (j < n && /\s/.test(s[j])) j++;
       if (s[j] === '(') {
+        const nome = s.slice(inizio, i);
+        if (!COSTRUTTORI_DIRETTI.has(nome)) {
+          throw new ErroreJsonBson(`Costruttore non supportato: "${nome}".`, inizio);
+        }
         i = fineChiamata(s, j, inizio);
         toks.push({ t: 'valore', v: s.slice(inizio, i), i: inizio });
         continue;
@@ -223,6 +236,17 @@ function fineChiamata(s, apertura, inizioToken) {
     i++;
   }
   throw new ErroreJsonBson('Parentesi tonda aperta e mai chiusa.', inizioToken);
+}
+
+function chiaveNormalizzata(tok) {
+  if (tok.t !== 'stringa') return tok.v;
+  const corpo = tok.v.slice(1, -1);
+  return corpo.replace(/\\(?:u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([\s\S]))/g, (_tutto, unicode, esadecimale, breve) => {
+    if (unicode) return String.fromCharCode(parseInt(unicode, 16));
+    if (esadecimale) return String.fromCharCode(parseInt(esadecimale, 16));
+    const escape = { n: '\n', r: '\r', t: '\t', b: '\b', f: '\f', v: '\v', '0': '\0' };
+    return Object.prototype.hasOwnProperty.call(escape, breve) ? escape[breve] : breve;
+  });
 }
 
 /* ==========================================================================
@@ -290,6 +314,7 @@ function analizza(toks, testo) {
     const apre = corrente();
     p++; // {
     const voci = [];
+    const chiaviViste = new Map();
     let commentiFinali = raccogliCommenti();
 
     if (corrente() && corrente().t === 'punt' && corrente().v === '}') {
@@ -305,6 +330,12 @@ function analizza(toks, testo) {
         throw atteso('il nome di un campo');
       }
       p++;
+
+      const nomeNormalizzato = chiaveNormalizzata(chiaveTok);
+      if (chiaviViste.has(nomeNormalizzato)) {
+        throw new ErroreJsonBson(`Campo duplicato dopo la normalizzazione: "${nomeNormalizzato}".`, chiaveTok.i);
+      }
+      chiaviViste.set(nomeNormalizzato, chiaveTok.i);
 
       // Anche i commenti fra il nome del campo e i due punti restano legati
       // alla voce: buttarli via sarebbe una perdita silenziosa di testo.

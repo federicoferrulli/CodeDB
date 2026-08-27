@@ -23,6 +23,10 @@ const S = require('../db/sessioni');
 
 console.log('--- Test Unitari Monitor Sessioni ---');
 
+assert.strictEqual(S.assertIdentitaSessione('token-1', 'token-1'), true);
+assert.throws(() => S.assertIdentitaSessione('token-1', 'token-2'), /sessione è cambiata|riutilizzato/i);
+assert.throws(() => S.assertIdentitaSessione(null, 'token-2'), /identità stabile.*mancante/i);
+
 /* --------------------------------- MongoDB -------------------------------- */
 
 const opsMongo = [

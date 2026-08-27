@@ -9,8 +9,8 @@
  * CONFLICT DO UPDATE su PostgreSQL).
  *
  * Restore selettivo: --collections limita il ripristino alle collection o
- * tabelle indicate. Le cancellazioni avvenute tra un layer e l'altro non sono
- * nei backup e quindi non vengono riprodotte.
+ * tabelle indicate. Nei manifest v3 i tombstone vengono applicati prima degli
+ * upsert del layer; le catene storiche dichiarano equivalenza incompleta.
  * ------------------------------------------------------------------------- */
 
 const fs = require('fs');
@@ -27,6 +27,7 @@ const {
   MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres,
   validaManifestIdentita, chiaveIdentita, identityCompatibile,
 } = require('./identity');
+const { equivalenzaCatena } = require('./tombstones');
 const myQid = (name) => quotaSempre(name, 'mysql');
 const pgQid = (name) => quotaSempre(name, 'postgresql');
 
@@ -177,15 +178,10 @@ function resolveChain(backupDir) {
         }
         previousTime = time;
       }
-      if (chain.length > 1 && chain.some((layer) => Number(layer.manifest.version || 1) < MANIFEST_VERSION)) {
-        throw new Error(
-          'La catena contiene un manifest storico senza identita dichiarata: non puo essere promossa implicitamente a ripristino incrementale sicuro.'
-        );
-      }
       const declarations = new Map();
       for (const layer of chain) {
         for (const file of layer.manifest.files.filter((f) => f && f.kind === 'data')) {
-          if (Number(layer.manifest.version || 1) < MANIFEST_VERSION) continue;
+          if (Number(layer.manifest.version || 1) < 2) continue;
           const current = {
             identity: file.identity || null,
             columns: file.columns,
@@ -304,7 +300,7 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
     // le colonne/identita dichiarate nel manifest. Per i manifest v2 si legge
     // ogni riga prima della prima mutazione: una colonna non dichiarata o una
     // chiave assente non puo arrivare fino all'INSERT/UPSERT.
-    if (Number(layer.manifest.version) >= MANIFEST_VERSION) {
+    if (Number(layer.manifest.version) >= 2) {
       for (const file of layer.manifest.files.filter((f) => f.kind === 'data')) {
         const declared = new Set(file.columns);
         let rows = 0;
@@ -335,6 +331,23 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
             `Cardinalita incoerente per "${file.collection}": il manifest dichiara ${file.count}, il file contiene ${rows} righe.`
           );
         }
+      }
+      for (const file of layer.manifest.files.filter((f) => f.kind === 'tombstones')) {
+        let rows = 0;
+        for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'file di cancellazioni'))) {
+          const row = EJSON.parse(line, { relaxed: false });
+          if (!row || typeof row !== 'object' || Array.isArray(row)) {
+            throw new Error(`Il file di cancellazioni di "${file.collection}" contiene una riga non strutturata.`);
+          }
+          const attese = new Set(file.identity.columns);
+          const ricevute = Object.keys(row);
+          if (ricevute.length !== attese.size || ricevute.some((c) => !attese.has(c))) {
+            throw new Error(`Tombstone non valido per "${file.collection}": deve contenere soltanto l'identità dichiarata.`);
+          }
+          chiaveIdentita(row, file.identity);
+          rows += 1;
+        }
+        if (rows !== file.count) throw new Error(`Cardinalità tombstone incoerente per "${file.collection}".`);
       }
     }
   }
@@ -678,6 +691,24 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
       assertColumnsAndIdentity(f, [], null, { empty });
     }
 
+    const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
+    if (!isFirst && eliminazioni) {
+      let batchDelete = [];
+      const flushDelete = async () => {
+        if (!batchDelete.length) return;
+        await collection.bulkWrite(
+          batchDelete.map((id) => ({ deleteOne: { filter: id } })),
+          { ordered: true }
+        );
+        batchDelete = [];
+      };
+      for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
+        batchDelete.push(EJSON.parse(line, { relaxed: false }));
+        if (batchDelete.length >= BATCH_SIZE) await flushDelete();
+      }
+      await flushDelete();
+    }
+
     let batch = [];
     let applied = 0;
     const flush = async () => {
@@ -737,6 +768,8 @@ function toSqlValue(v) {
   if (v instanceof Date || Buffer.isBuffer(v)) return v;
   if (typeof v === 'object') {
     if (v._bsontype === 'Binary') return v.buffer;
+    if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
+    if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
     return JSON.stringify(v);
   }
   return v;
@@ -814,6 +847,18 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
         empty = !!Number(row.is_empty);
       }
       assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
+
+      const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
+      if (!isFirst && eliminazioni) {
+        const whereDelete = f.identity.columns.map((c) => `${myQid(c)} = ?`).join(' AND ');
+        for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
+          const id = EJSON.parse(line, { relaxed: false });
+          await conn.query(
+            `DELETE FROM ${tableId} WHERE ${whereDelete}`,
+            f.identity.columns.map((c) => toSqlValue(id[c]))
+          );
+        }
+      }
 
       // Colonne geometriche della tabella di DESTINAZIONE, lette dopo la
       // CREATE TABLE. Il backup le contiene come GeoJSON (vedi il dump): un
@@ -1033,6 +1078,17 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       empty = !!res.rows[0].empty;
     }
     assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
+    const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
+    if (!isFirst && eliminazioni) {
+      const whereDelete = f.identity.columns.map((c, i) => `${pgQid(c)} = $${i + 1}`).join(' AND ');
+      for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
+        const id = EJSON.parse(line, { relaxed: false });
+        await strategy.pool.query(
+          `DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)} WHERE ${whereDelete}`,
+          f.identity.columns.map((c) => toSqlValue(id[c]))
+        );
+      }
+    }
     // Applica a batch (come i restore Mongo/MySQL): senza, l'intero file
     // verrebbe caricato in memoria — OOM su tabelle grandi.
     let batch = [];
@@ -1250,6 +1306,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     totalWrites,
     collections: verified.collections,
     problems,
+    equivalenza: equivalenzaCatena(chain),
   };
 
   // Un ripristino incompleto non deve mai risultare "riuscito": né in UI, né

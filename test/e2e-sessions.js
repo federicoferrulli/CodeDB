@@ -151,7 +151,7 @@ async function testMysql() {
 
   if (bersaglio) {
     assert(bersaglio.blocchi.query === null, 'ed è annullabile: non è nostra, non è di servizio');
-    const kill = await emit('db:killSession', { tabId, id: bersaglio.id, modo: 'query' });
+    const kill = await emit('db:killSession', { tabId, id: bersaglio.id, modo: 'query', identita: bersaglio.identita });
     assert(kill.ok && kill.terminata, 'db:killSession riporta la query annullata');
     // La prova dell'interruzione è il TEMPO, non l'errore: `KILL QUERY` su una
     // SLEEP la fa tornare subito con successo (SLEEP restituisce 1 quando
@@ -191,7 +191,9 @@ async function testMysql() {
       assert(!!bloccante, 'il bloccante è individuato');
       assert(conBlocco.diagnosi && String(conBlocco.diagnosi.azione && conBlocco.diagnosi.azione.id) === String(bloccante && bloccante.id),
         'e il verdetto propone di agire su di lui');
-      const kill = await emit('db:killSession', { tabId, id: bloccante.id, modo: 'connessione' });
+      const kill = await emit('db:killSession', {
+        tabId, id: bloccante.id, modo: 'connessione', identita: bloccante.identita,
+      });
       assert(kill.ok, 'terminarlo riesce');
       const esitoB = await Promise.race([bloccata, attendi(8000).then(() => 'in corso')]);
       assert(esitoB !== 'in corso', 'e la sessione che aspettava riparte');
@@ -247,7 +249,7 @@ async function testPostgres() {
 
   if (bersaglio) {
     assert(bersaglio.stato === 'attiva', 'ed è vista come attiva');
-    const kill = await emit('db:killSession', { tabId, id: bersaglio.id, modo: 'query' });
+    const kill = await emit('db:killSession', { tabId, id: bersaglio.id, modo: 'query', identita: bersaglio.identita });
     assert(kill.ok && kill.terminata, 'pg_cancel_backend riporta l\'annullamento');
     const esito = await Promise.race([lenta, attendi(8000).then(() => 'in corso')]);
     assert(esito === 'errore' && Date.now() - t0 < 15000,
@@ -291,7 +293,9 @@ async function testPostgres() {
       'con il modo giusto: su una sessione ferma annullare la query non farebbe nulla');
 
     // E l'azione proposta funziona davvero.
-    const kill = await emit('db:killSession', { tabId, id: d.azione.id, modo: d.azione.modo });
+    const kill = await emit('db:killSession', {
+      tabId, id: d.azione.id, modo: d.azione.modo, identita: bloccante.identita,
+    });
     assert(kill.ok && kill.terminata, 'terminare il bloccante riesce');
     const esitoB = await Promise.race([bloccata, attendi(8000).then(() => 'in corso')]);
     assert(esitoB !== 'in corso', 'e la sessione che aspettava riparte');

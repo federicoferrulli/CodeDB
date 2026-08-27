@@ -124,6 +124,7 @@ function saveActiveSnapshot() {
     docs: troppi ? docs.slice(0, MAX_DOCS_SNAPSHOT) : docs,
     docsParziali: troppi,
     columns: state.columns,
+    columnMeta: state.columnMeta,
     view: state.view,
   };
 }
@@ -247,6 +248,7 @@ function activate(ct, { fresh }) {
     state.skip = 0;
     state.docs = [];
     state.columns = [];
+    state.columnMeta = {};
     state.total = 0;
     setView(r && r.view ? r.view : 'data');
     // La riesecuzione della query in fase di ripristino (r) è automatica, non
@@ -264,6 +266,7 @@ function activate(ct, { fresh }) {
     state.total = s.total;
     state.docs = [];
     state.columns = s.columns;
+    state.columnMeta = s.columnMeta || {};
     setView(s.view || 'data');
     runQuery({ auto: true });
   } else {
@@ -272,6 +275,7 @@ function activate(ct, { fresh }) {
     state.total = s.total;
     state.docs = s.docs;
     state.columns = s.columns;
+    state.columnMeta = s.columnMeta || {};
     renderGrid(); // risultati dalla cache: nessuna nuova query
     setView(s.view || 'data');
   }

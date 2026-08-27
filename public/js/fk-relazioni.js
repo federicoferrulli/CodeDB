@@ -56,17 +56,26 @@ export const MAX_TESTO = 120;
  */
 export function descrittoreRelazione(grezzo) {
   if (!grezzo || typeof grezzo !== 'object') return null;
-  const campo = testoSemplice(grezzo.campo);
   const tabella = testoSemplice(grezzo.tabella);
-  if (!campo || !tabella) return null;
+  const coppieGrezze = Array.isArray(grezzo.coppie) && grezzo.coppie.length
+    ? grezzo.coppie : [{ campo: grezzo.campo, colonna: grezzo.colonna || '_id', ordine: 1 }];
+  const coppie = coppieGrezze.map((p, indice) => ({
+    campo: testoSemplice(p && p.campo),
+    colonna: testoSemplice(p && p.colonna),
+    ordine: Number(p && p.ordine) || indice + 1,
+  })).filter((p) => p.campo && p.colonna).sort((a, b) => a.ordine - b.ordine);
+  if (!coppie.length || coppie.length !== coppieGrezze.length || !tabella) return null;
+  const prima = coppie[0];
   return {
-    campo,
+    nome: testoSemplice(grezzo.nome),
+    campo: prima.campo,
     db: testoSemplice(grezzo.db),
     tabella,
     // Su MongoDB la colonna riferita è per costruzione `_id`; su SQL è quella
     // dichiarata dal vincolo. Il ripiego serve ai descrittori di provenienza
     // ignota, non ai nostri.
-    colonna: testoSemplice(grezzo.colonna) || '_id',
+    colonna: prima.colonna,
+    coppie,
     origine: grezzo.origine === VINCOLO ? VINCOLO : EURISTICA,
     molti: !!grezzo.molti,
   };
@@ -87,11 +96,26 @@ export function indicizzaRelazioni(relazioni) {
   for (const grezzo of Array.isArray(relazioni) ? relazioni : []) {
     const rel = descrittoreRelazione(grezzo);
     if (!rel) continue;
-    const esistente = indice.get(rel.campo);
-    if (esistente && !(esistente.origine === EURISTICA && rel.origine === VINCOLO)) continue;
-    indice.set(rel.campo, rel);
+    for (const coppia of rel.coppie) {
+      const esistente = indice.get(coppia.campo);
+      if (esistente && !(esistente.origine === EURISTICA && rel.origine === VINCOLO)) continue;
+      indice.set(coppia.campo, rel);
+    }
   }
   return indice;
+}
+
+export function setDaRelazione(relazione, riga) {
+  const rel = descrittoreRelazione(relazione);
+  if (!rel) throw new Error('Relazione non valida.');
+  const set = {};
+  for (const coppia of rel.coppie) {
+    if (!riga || !Object.prototype.hasOwnProperty.call(riga, coppia.colonna)) {
+      throw new Error(`Valore riferito "${coppia.colonna}" mancante: nessuna colonna è stata modificata.`);
+    }
+    set[coppia.campo] = riga[coppia.colonna];
+  }
+  return set;
 }
 
 /** Etichetta del bersaglio, con lo schema/database solo se è un ALTRO. */
@@ -99,7 +123,10 @@ export function bersaglioRelazione(relazione, dbCorrente) {
   if (!relazione) return '';
   const altrove = relazione.db && dbCorrente && relazione.db !== dbCorrente;
   const tabella = altrove ? `${relazione.db}.${relazione.tabella}` : relazione.tabella;
-  return `${tabella}.${relazione.colonna}`;
+  const colonne = relazione.coppie && relazione.coppie.length > 1
+    ? `(${relazione.coppie.map((p) => p.colonna).join(', ')})`
+    : relazione.colonna;
+  return `${tabella}.${colonne}`;
 }
 
 /**
@@ -111,7 +138,7 @@ export function bersaglioRelazione(relazione, dbCorrente) {
 export function notaOrigine(relazione) {
   if (!relazione) return '';
   return relazione.origine === VINCOLO
-    ? 'Chiave esterna dichiarata dal database.'
+    ? `Chiave esterna${relazione.coppie && relazione.coppie.length > 1 ? ' composita' : ''} dichiarata dal database.`
     : 'Collegamento ipotizzato dal nome del campo: il database non lo garantisce.';
 }
 

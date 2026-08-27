@@ -31,26 +31,46 @@ function toSqlValue(v) {
   if (v instanceof Date || Buffer.isBuffer(v)) return v;
   if (typeof v === 'object') {
     if (v._bsontype === 'Binary') return v.buffer;
+    if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
+    if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
     return JSON.stringify(v);
   }
   return v;
 }
 
-// Il client invia i valori in Extended JSON: relaxed = true produce tipi
-// JavaScript nativi (numeri normali, Date per $date), quelli che servono come
-// parametri SQL.
+// Il client invia i valori in Extended JSON. `relaxed: false` conserva Long,
+// Decimal128 e gli altri numeri tipizzati fino a `toSqlValue`, evitando che un
+// intero oltre 2^53 venga prima arrotondato dal runtime JavaScript.
 function parseClientValue(text) {
-  return EJSON.parse(String(text), { relaxed: true });
+  return EJSON.parse(String(text), { relaxed: false });
 }
 
 function deserializeClientObject(obj) {
-  return EJSON.deserialize(obj || {}, { relaxed: true });
+  return EJSON.deserialize(obj || {}, { relaxed: false });
 }
 
 // Le righe viaggiano verso il client come Extended JSON relaxed, come per
 // MongoDB: le Date diventano { $date: ... } e il frontend le riconosce.
-function serializeRow(row) {
-  return EJSON.serialize(row, { relaxed: true });
+function serializeRow(row, columns = []) {
+  const exact = new Map((columns || []).map((c) => [c.name, String(c.declaredType || c.type || '').toLowerCase()]));
+  if (!exact.size) return EJSON.serialize(row, { relaxed: true });
+  const out = { ...row };
+  for (const [name, type] of exact) {
+    const value = out[name];
+    if (value === null || value === undefined || typeof value === 'object') continue;
+    if (/(^|\W)(decimal|numeric|dec|fixed)(\W|$)/.test(type)) {
+      out[name] = { $numberDecimal: String(value) };
+    } else if (/(^|\W)(bigint|int8|bigserial)(\W|$)/.test(type)) {
+      const testo = String(value);
+      try {
+        const n = BigInt(testo);
+        out[name] = n >= -9223372036854775808n && n <= 9223372036854775807n
+          ? { $numberLong: n.toString() }
+          : { $numberDecimal: n.toString() };
+      } catch { /* il driver ha restituito un valore non canonico: non inventare un tipo */ }
+    }
+  }
+  return EJSON.serialize(out, { relaxed: true });
 }
 
 module.exports = {

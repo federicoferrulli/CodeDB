@@ -83,13 +83,35 @@ console.log('--- Test Unitari Analisi dello Schema ---');
     assert.deepStrictEqual(d.seeding_order, [], 'Nessun ordine valido esiste per un ciclo');
   });
 
-  prova('Un\'auto-referenza non è un ciclo', () => {
+  prova('Un autoanello è una componente ciclica esplicita', () => {
     const d = A.analyzeDependencies({
       collections: [tab('categorie', ['id', 'parent_id'])],
       relations: [{ from: 'categorie', field: 'parent_id', to: 'categorie' }],
     });
-    assert.deepStrictEqual(d.cyclic_tables, [], 'categorie.parent_id → categorie non blocca il popolamento');
-    assert.deepStrictEqual(d.seeding_order, ['categorie']);
+    assert.deepStrictEqual(d.cyclic_tables, ['categorie']);
+    assert.deepStrictEqual(d.strongly_connected_components, [['categorie']]);
+    assert.deepStrictEqual(d.seeding_order, []);
+  });
+
+  prova('Diamante, dipendenza esterna e nodo a valle di un ciclo restano distinti', () => {
+    const d = A.analyzeDependencies({
+      collections: [tab('root'), tab('sinistra'), tab('destra'), tab('foglia'), tab('a'), tab('b'), tab('valle')],
+      relations: [
+        { from: 'sinistra', to: 'root' }, { from: 'destra', to: 'root' },
+        { from: 'foglia', to: 'sinistra' }, { from: 'foglia', to: 'destra' },
+        { from: 'a', to: 'b' }, { from: 'b', to: 'a' }, { from: 'valle', to: 'a' },
+        { from: 'root', to: 'tabella_fuori', toDb: 'altro', external: true },
+        { from: 'root', to: 'sinistra', toDb: 'altro', external: true },
+      ],
+    });
+    assert.deepStrictEqual(d.cyclic_tables.sort(), ['a', 'b']);
+    assert(!d.cyclic_tables.includes('valle'), 'dipendere da un ciclo non rende il nodo ciclico');
+    assert.deepStrictEqual(d.blocked_by_cycles, ['valle']);
+    assert(!d.seeding_order.includes('valle'));
+    assert.strictEqual(d.external_dependencies.length, 2);
+    assert(d.seeding_order.includes('root'), 'una dipendenza esterna non blocca il nodo interno');
+    assert(d.seeding_order.indexOf('root') < d.seeding_order.indexOf('sinistra'));
+    assert(d.seeding_order.indexOf('root') < d.seeding_order.indexOf('destra'));
   });
 
   /* -------------------------------- PII ---------------------------------- */

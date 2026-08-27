@@ -20,6 +20,7 @@ import {
 } from './schema-export.js';
 import { setView } from './main.js';
 import { tokenTema } from './theme.js';
+import { GRAFO_BUDGET, degradaSchemaGrafo, unisciPagineSchema } from './grafo-budget.js';
 
 let graphInstance = null;
 let graphResizeObserver = null;
@@ -142,7 +143,12 @@ export function loadGraph3d(force) {
     canvas.innerHTML = '<div class="uml-msg" style="color:var(--fg-dim); padding:20px;">Caricamento schema database…</div>';
   }
 
-  emit('db:schema', { db: state.db })
+  emit('db:schema', {
+    db: state.db, progressive: true,
+    collectionLimit: GRAFO_BUDGET.nodes,
+    fieldLimit: GRAFO_BUDGET.fields,
+    relationLimit: GRAFO_BUDGET.links,
+  })
     .then((res) => {
       if (res._tab && res._tab.state) {
         res._tab.state.dbSchema = res;
@@ -172,9 +178,10 @@ export function loadGraph3d(force) {
     });
 }
 
-export function renderGraph3d() {
+export function renderGraph3d({ preserveInstance = false } = {}) {
   const canvas = $('#graph3d-canvas');
-  const schema = state.dbSchema || currentSchemaData;
+  const sourceSchema = state.dbSchema || currentSchemaData;
+  const { schema, policy } = degradaSchemaGrafo(sourceSchema);
   if (!schema || !schema.collections || !schema.collections.length) {
     if (canvas) {
       distruggiGrafo();
@@ -183,10 +190,15 @@ export function renderGraph3d() {
     return;
   }
 
-  currentSchemaData = schema;
+  currentSchemaData = sourceSchema;
   updatePathUI();
-  distruggiGrafo();
-  canvas.innerHTML = '';
+  const aggiornaInPosto = preserveInstance && !!graphInstance;
+  if (!aggiornaInPosto) {
+    distruggiGrafo();
+    canvas.innerHTML = '';
+  } else {
+    canvas.querySelector('.graph3d-budget-badge')?.remove();
+  }
 
   const colorMode = ($('#graph3d-color-mode') && $('#graph3d-color-mode').value) || 'prefix';
   const hopFilter = ($('#graph3d-hop-filter') && $('#graph3d-hop-filter').value) || 'all';
@@ -289,8 +301,9 @@ export function renderGraph3d() {
   const pathNodeSet = activeShortestPath ? new Set(activeShortestPath.nodes) : null;
   const pathEdgeSet = activeShortestPath ? new Set(activeShortestPath.edges) : null;
 
-  graphInstance = ForceGraph3D({ preserveDrawingBuffer: true })(canvas)
-    .graphData(graphData)
+  graphInstance = (aggiornaInPosto
+    ? graphInstance.graphData(graphData)
+    : ForceGraph3D({ preserveDrawingBuffer: true })(canvas).graphData(graphData))
     .nodeId('id')
     .nodeLabel((node) => `<div style="background:var(--bg-elevated); padding:8px 12px; border-radius:6px; border:1px solid var(--accent); font-family:sans-serif; color:var(--fg); font-size:12px;"><b>${esc(node.name)}</b><br/><small style="color:var(--fg-dim);">${node.fieldCount} campi • ${node.degree} relazioni</small></div>`)
     .nodeColor((node) => {
@@ -309,6 +322,7 @@ export function renderGraph3d() {
     .nodeRelSize(4)
     .linkDirectionalParticles((link) => {
       const edgeKey = `${typeof link.source === 'object' ? link.source.id : link.source}->${typeof link.target === 'object' ? link.target.id : link.target}`;
+      if (policy.reducedEffects) return 0;
       if (pathEdgeSet && pathEdgeSet.has(edgeKey)) return 6;
       return link.implicit ? 4 : 2;
     })
@@ -361,7 +375,7 @@ export function renderGraph3d() {
     graphInstance.cameraPosition({ x: 0, y: 0, z: 350 }, { x: 0, y: 0, z: 0 }, 500);
   }
 
-  if (typeof THREE !== 'undefined') {
+  if (typeof THREE !== 'undefined' && !policy.reducedEffects) {
     graphInstance.nodeThreeObject((node) => {
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -374,11 +388,39 @@ export function renderGraph3d() {
       return sprite;
     });
     graphInstance.nodeThreeObjectExtend(true);
+  } else if (graphInstance.nodeThreeObject) {
+    graphInstance.nodeThreeObject(null);
+    graphInstance.nodeThreeObjectExtend(false);
   }
 
-  if (autoRotateActive && graphInstance.controls()) {
-    graphInstance.controls().autoRotate = true;
+  if (graphInstance.controls()) {
+    graphInstance.controls().autoRotate = !!(autoRotateActive && !policy.reducedEffects);
+  }
+  if (autoRotateActive && graphInstance.controls() && !policy.reducedEffects) {
     graphInstance.controls().autoRotateSpeed = 1.5;
+  }
+
+  if (policy.incomplete) {
+    const badge = document.createElement('div');
+    badge.className = 'uml-msg graph3d-budget-badge';
+    badge.style.cssText = 'position:absolute;z-index:3;left:12px;top:12px;padding:8px 10px;';
+    const page = sourceSchema.schemaPage || {};
+    badge.innerHTML = `Vista ridotta entro budget (${schema.collections.length} nodi, ${schema.relations.length} relazioni). `
+      + (page.nextCursor != null ? '<button type="button">Carica la porzione successiva</button>' : 'Seleziona un nodo per caricarne i dettagli.');
+    const button = badge.querySelector('button');
+    if (button) button.onclick = async () => {
+      button.disabled = true;
+      try {
+        const next = await emit('db:schema', {
+          db: state.db, progressive: true, cursor: page.nextCursor,
+          collectionLimit: GRAFO_BUDGET.nodes, fieldLimit: GRAFO_BUDGET.fields,
+          relationLimit: GRAFO_BUDGET.links,
+        });
+        state.dbSchema = unisciPagineSchema(state.dbSchema, next);
+        renderGraph3d({ preserveInstance: true });
+      } catch (err) { button.textContent = err.message; }
+    };
+    canvas.appendChild(badge);
   }
 
   // Un solo osservatore per tutta la vita della pagina: crearne uno per
@@ -473,7 +515,11 @@ function showTableDetailsPanel(tableName, highlightQuery) {
       </span>
     </li>`;
   }
-  html += `</ul></div>`;
+  html += `</ul>`;
+  if (collection.fieldsPage && !collection.fieldsPage.complete) {
+    html += `<button type="button" id="graph3d-load-node-fields">Carica gli altri ${collection.fieldsPage.omitted} campi</button>`;
+  }
+  html += `</div>`;
 
   const rels = (schema.relations || []).filter((r) => r.from === tableName || r.to === tableName);
   if (rels.length) {
@@ -499,6 +545,30 @@ function showTableDetailsPanel(tableName, highlightQuery) {
 
   content.innerHTML = html;
   panel.classList.remove('hidden');
+  const loadFields = $('#graph3d-load-node-fields');
+  if (loadFields) loadFields.onclick = async () => {
+    loadFields.disabled = true;
+    try {
+      const page = await emit('db:schema', {
+        db: state.db, progressive: true, focus: tableName,
+        collectionLimit: 1, fieldLimit: 200, relationLimit: GRAFO_BUDGET.links,
+      });
+      state.dbSchema = unisciPagineSchema(state.dbSchema, page, { preservePagination: true });
+      currentSchemaData = state.dbSchema;
+      const data = graphInstance && graphInstance.graphData();
+      const node = data && data.nodes.find((item) => item.id === tableName);
+      const updated = state.dbSchema.collections.find((item) => item.name === tableName);
+      if (node && updated) {
+        node.fields = updated.fields;
+        node.fieldCount = updated.fields.length;
+        graphInstance.graphData(data);
+      }
+      showTableDetailsPanel(tableName, highlightQuery);
+    } catch (err) {
+      loadFields.disabled = false;
+      loadFields.textContent = err.message;
+    }
+  };
 
   content.querySelectorAll('[data-jump-node]').forEach((el) => {
     el.addEventListener('click', () => {
@@ -633,6 +703,31 @@ function analyzeDependencies() {
         ${inCiclo.map((n) => `<b>${esc(n)}</b>`).join(', ')}.<br/>
         Vanno inserite in più passaggi (prima le righe con la FK a NULL, poi l'aggiornamento) oppure
         con i vincoli temporaneamente disattivati.
+      </div>
+    </div>`;
+  }
+
+  if (dip.blocked_by_cycles.length) {
+    html += `<div class="audit-issue-item" style="border-left-color:var(--status-warn); margin-top:12px;">
+      <div class="audit-issue-title" style="color:var(--status-warn);">Tabelle bloccate da un ciclo (${dip.blocked_by_cycles.length})</div>
+      <div class="audit-issue-desc">
+        Non appartengono al ciclo, ma dipendono da una tabella ciclica e quindi non entrano nella sequenza di popolamento:
+        ${dip.blocked_by_cycles.map((n) => `<b>${esc(n)}</b>`).join(', ')}.
+      </div>
+    </div>`;
+  }
+
+  if (dip.external_dependencies.length) {
+    const etichettaRelazione = (r) => {
+      const origine = [r.fromDb, r.from].filter(Boolean).map(esc).join('.');
+      const destinazione = [r.toDb, r.to].filter(Boolean).map(esc).join('.');
+      return `<li><b>${origine || 'origine esterna'}</b> → <b>${destinazione || 'destinazione esterna'}</b></li>`;
+    };
+    html += `<div class="audit-issue-item" style="border-left-color:var(--status-info); margin-top:12px;">
+      <div class="audit-issue-title" style="color:var(--status-info);">Dipendenze esterne allo schema (${dip.external_dependencies.length})</div>
+      <div class="audit-issue-desc">
+        Sono mostrate separatamente e non alterano root, leaf o ordine di popolamento dello schema corrente.
+        <ul style="margin:6px 0 0 18px; padding:0;">${dip.external_dependencies.map(etichettaRelazione).join('')}</ul>
       </div>
     </div>`;
   }

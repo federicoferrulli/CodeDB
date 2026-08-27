@@ -23,6 +23,7 @@
  * ------------------------------------------------------------------------- */
 
 import { ejsonKind, fmtBytes, safeUUID } from './valori.js';
+import { aggregaNumeriEsatti } from './valori-esatti.js';
 
 /*
  * Note maturate durante l'ultima costruzione. Il chiamante fa
@@ -490,6 +491,14 @@ export function suggerimenti(campi) {
 }
 
 function applicaAgg(agg, acc) {
+  if (acc.haEsatti && ['somma', 'media', 'min', 'max'].includes(agg)) {
+    const esito = aggregaNumeriEsatti(acc.originali, agg);
+    acc.valoreEsatto = esito.testo;
+    if (esito.approssimato) {
+      avvisi.push('Uno o più Long/Decimal sono aggregati esattamente; il renderer mostra un’approssimazione. Il valore esatto resta conservato nei dati del grafico.');
+    }
+    return esito.numero;
+  }
   switch (agg) {
     case 'conteggio': return acc.righe;
     case 'distinti': return acc.distinti.size;
@@ -528,13 +537,18 @@ function fondiAcc(lista) {
     if (a.max !== null) out.max = out.max === null ? a.max : Math.max(out.max, a.max);
     for (const v of a.valori) out.valori.push(v);
     for (const d of a.distinti) out.distinti.add(d);
+    out.originali.push(...a.originali);
+    out.haEsatti ||= a.haEsatti;
     if (out.primo === null) out.primo = a.primo;
   }
   return out;
 }
 
 function nuovoAcc() {
-  return { somma: 0, n: 0, righe: 0, min: null, max: null, valori: [], distinti: new Set(), primo: null };
+  return {
+    somma: 0, n: 0, righe: 0, min: null, max: null, valori: [], distinti: new Set(),
+    primo: null, originali: [], haEsatti: false, valoreEsatto: null,
+  };
 }
 
 function accumula(acc, val) {
@@ -543,6 +557,10 @@ function accumula(acc, val) {
   acc.distinti.add(val === null || val === undefined ? '\u0000' : String(val));
   const n = numero(val);
   if (n === null) return;
+  acc.originali.push(val);
+  const kind = ejsonKind(val);
+  if (val && typeof val === 'object' && (kind === 'decimal'
+      || Object.prototype.hasOwnProperty.call(val, '$numberLong'))) acc.haEsatti = true;
   acc.somma += n;
   acc.n++;
   acc.valori.push(n);
@@ -620,9 +638,10 @@ function calcolaDati(righe, c) {
 
   notaSenzaData(senzaData, c);
   const dati = serieAttive.map((s, i) => accs[i].map((acc) => applicaAgg(s.agg, acc)));
+  const esatti = accs.map((serie) => serie.map((acc) => acc.valoreEsatto));
   // Gli accumulatori seguono i valori fino in fondo: servono a ricalcolare
   // "Altro" sull'insieme dei residui invece di sommare aggregazioni.
-  return ordinaERiduci(chiavi, serieAttive, dati, c, false, accs);
+  return ordinaERiduci(chiavi, serieAttive, dati, c, false, accs, esatti);
 }
 
 function notaSenzaData(quante, c) {
@@ -656,7 +675,7 @@ function notaTroppiPunti(n) {
  *   somma delle medie (o dei minimi, o dei conteggi di distinti) è un numero che
  *   nei dati non esiste, ed è tipicamente la barra più alta del grafico.
  */
-function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = null) {
+function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = null, esatti = null) {
   let ordine = categorie.map((_, i) => i);
 
   const totali = ordine.map((i) => dati.reduce((acc, d) => acc + (numero(d[i]) || 0), 0));
@@ -678,6 +697,7 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = n
 
   let cats = ordine.map((i) => categorie[i]);
   let vals = dati.map((d) => ordine.map((i) => d[i]));
+  let exactVals = esatti ? esatti.map((d) => ordine.map((i) => d[i])) : null;
 
   const max = Number(c.maxCategorie) || 0;
   if (max > 0 && cats.length > max && grezzo) {
@@ -686,17 +706,21 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = n
     const scartati = cats.length - max;
     cats = cats.slice(0, max);
     vals = vals.map((d) => d.slice(0, max));
+    if (exactVals) exactVals = exactVals.map((d) => d.slice(0, max));
     avvisi.push(`Mostrati i primi ${max} punti su ${max + scartati}: senza raggruppamento la coda non si può sommare senza inventare un valore.`);
   } else if (max > 0 && cats.length > max) {
     const scartate = cats.length - max;
     const indiciCoda = ordine.slice(max);
+    const codaEsatta = [];
     const coda = serieAttive.map((s, i) => {
       const accSerie = accs && accs[i];
       if (accSerie) {
         // Ricalcolo esatto: si fondono gli accumulatori delle categorie residue
         // e si riapplica LA STESSA aggregazione della serie.
         const fuso = fondiAcc(indiciCoda.map((k) => accSerie[k]));
-        return applicaAgg(s.agg, fuso);
+        const valore = applicaAgg(s.agg, fuso);
+        codaEsatta[i] = fuso.valoreEsatto;
+        return valore;
       }
       // Senza accumulatori si può sommare solo ciò che è additivo.
       if (!AGG_ADDITIVE.has(s.agg)) return null;
@@ -704,6 +728,7 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = n
     });
     cats = cats.slice(0, max).concat([`Altro (${scartate})`]);
     vals = vals.map((d, i) => d.slice(0, max).concat([coda[i]]));
+    if (exactVals) exactVals = exactVals.map((d, i) => d.slice(0, max).concat([codaEsatta[i] || null]));
     const nonAdditive = serieAttive.some((s) => !AGG_ADDITIVE.has(s.agg));
     avvisi.push(
       nonAdditive && accs
@@ -714,7 +739,7 @@ function ordinaERiduci(categorie, serieAttive, dati, c, grezzo = false, accs = n
     avvisi.push(`${cats.length} fette: oltre l'ottava i colori verificati finiscono. Imposta "Max categorie" per ripiegare la coda in "Altro".`);
   }
 
-  return { categorie: cats, valori: vals, serieAttive };
+  return { categorie: cats, valori: vals, valoriEsatti: exactVals, serieAttive };
 }
 
 // Tetto proprio della mappa di calore, applicato quando l'utente non ha
@@ -1269,7 +1294,9 @@ export function costruisciOption(righe, c, box = {}, pre = null) {
     if (c.assex.tipo === 'time' || (s.tipo === 'scatter' && c.assex.tipo === 'value')) {
       valori = d.categorie.map((cat, j) => [c.assex.tipo === 'time' ? cat : numero(cat), d.valori[i][j]]);
     }
-    return serieCartesiana(s, i, c, valori, fmtY);
+    const pronta = serieCartesiana(s, i, c, valori, fmtY);
+    if (d.valoriEsatti && d.valoriEsatti[i]) pronta.codedbExactValues = d.valoriEsatti[i];
+    return pronta;
   });
 
   // Lo slider si disegna solo se c'è davvero spazio: in un riquadro basso

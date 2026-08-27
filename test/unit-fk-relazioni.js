@@ -28,6 +28,7 @@ console.log('--- Test Unitari Relazioni (Chiavi Esterne) ---');
   const {
     descrittoreRelazione, indicizzaRelazioni, bersaglioRelazione, notaOrigine,
     testoValore, chiaveValore, stessoValore, scegliEtichetta, etichettaRiga,
+    setDaRelazione,
     VINCOLO, EURISTICA,
   } = await import('../public/js/fk-relazioni.js');
 
@@ -89,6 +90,26 @@ console.log('--- Test Unitari Relazioni (Chiavi Esterne) ---');
     assert.strictEqual(misto.get('cliente_id').origine, VINCOLO);
   }
   console.log('  OK   Indice campo → relazione, vincolo prevalente sull\'ipotesi');
+
+  {
+    const indice = indicizzaRelazioni([{
+      nome: 'fk_ordine_cliente', db: 'crm', tabella: 'clienti', origine: 'vincolo',
+      coppie: [
+        { campo: 'tenant_id', colonna: 'tenant', ordine: 1 },
+        { campo: 'cliente_id', colonna: 'codice', ordine: 2 },
+      ],
+    }]);
+    const relazione = indice.get('tenant_id');
+    assert.strictEqual(relazione, indice.get('cliente_id'), 'le colonne indicano lo stesso vincolo');
+    assert.deepStrictEqual(relazione.coppie.map((p) => [p.campo, p.colonna]), [
+      ['tenant_id', 'tenant'], ['cliente_id', 'codice'],
+    ]);
+    assert.deepStrictEqual(setDaRelazione(relazione, { tenant: 7, codice: 42 }), {
+      tenant_id: 7, cliente_id: 42,
+    });
+    assert.throws(() => setDaRelazione(relazione, { tenant: 7 }), /codice.*mancante/i);
+  }
+  console.log('  OK   FK composita: coppie ordinate e aggiornamento completo');
 
   /* --- 3. Bersaglio: lo schema si nomina solo se è un altro --------------- */
   {

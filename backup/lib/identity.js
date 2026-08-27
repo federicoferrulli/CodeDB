@@ -2,7 +2,8 @@
 
 const { EJSON } = require('bson');
 
-const MANIFEST_VERSION = 2;
+const MANIFEST_VERSION = 3;
+const IDENTITY_VERSION = 2;
 const SQL_IDENTITY_KINDS = new Set(['primary-key', 'unique']);
 const IDENTITY_KINDS = new Set(['mongodb-id', ...SQL_IDENTITY_KINDS]);
 
@@ -119,14 +120,21 @@ function validaManifestIdentita(manifest) {
   const version = Number(manifest && manifest.version || 1);
   const type = String(manifest && manifest.type || '');
   const files = Array.isArray(manifest && manifest.files) ? manifest.files : [];
-  if (version < MANIFEST_VERSION) {
+  if (version < IDENTITY_VERSION) {
     if (type !== 'full') {
       throw new Error('Un manifest storico senza identita dichiarata non e un incrementale sicuro. Esegui un nuovo backup full.');
     }
     return { historical: true };
   }
-  if (version !== MANIFEST_VERSION) {
+  if (version > MANIFEST_VERSION) {
     throw new Error(`Versione manifest non supportata: ${version}.`);
+  }
+  if (version >= 3) {
+    const d = manifest && manifest.deletions;
+    if (!d || d.version !== 1 || d.representation !== 'identity-tombstones'
+        || d.order !== 'delete-before-upsert') {
+      throw new Error('Il manifest v3 non dichiara una semantica di cancellazione supportata.');
+    }
   }
   for (const file of files.filter((f) => f && f.kind === 'data')) {
     if (!Array.isArray(file.columns) || file.columns.some((c) => typeof c !== 'string' || !c)) {
@@ -169,7 +177,13 @@ function validaManifestIdentita(manifest) {
       throw new Error(`La tabella/collection "${file.collection || '?'}" non ha un'identita stabile: backup ${type} rifiutato.`);
     }
   }
-  return { historical: false };
+  for (const file of files.filter((f) => f && f.kind === 'tombstones')) {
+    validaIdentity(file.identity, file);
+    if (!file.identity || !Number.isSafeInteger(file.count) || file.count < 0) {
+      throw new Error(`File di cancellazione non valido per "${file.collection || '?'}".`);
+    }
+  }
+  return { historical: false, deletionSemantics: version >= 3 ? 'complete' : 'historical-incomplete' };
 }
 
 function ordinaOggetto(value) {

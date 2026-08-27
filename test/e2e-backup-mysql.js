@@ -73,6 +73,7 @@ async function main() {
     await new Promise((r) => setTimeout(r, 1100)); // granularità 1s di TIMESTAMP
     await conn.query(`INSERT INTO ${DB}.clienti (nome, saldo) VALUES ('Carla', 30.00)`);
     await conn.query(`UPDATE ${DB}.clienti SET saldo = 11.00 WHERE nome = 'Anna'`);
+    await conn.query(`DELETE FROM ${DB}.clienti WHERE nome = 'Bruno'`);
     const outInc = cli('backup', '--conn', 'e2e-backup-mysql', '--db', DB, '--type', 'incremental', '--dest', destRoot);
     assert.match(outInc, /stato=SUCCESSO/, 'il backup incrementale deve riuscire');
 
@@ -84,6 +85,8 @@ async function main() {
     const incData = incManifest.files.find((f) => f.kind === 'data' && f.collection === 'clienti');
     assert.strictEqual(incData.sinceColumn, 'updated_at', 'deve usare la colonna updated_at');
     assert.strictEqual(incData.count, 2, 'l\'incrementale deve contenere insert + update');
+    const incDelete = incManifest.files.find((f) => f.kind === 'tombstones' && f.collection === 'clienti');
+    assert.strictEqual(incDelete.count, 1, 'l\'incrementale deve contenere il delete');
 
     // 3. Restore della catena su un altro schema (i layer upsert via REPLACE).
     const outRestore = cli(
@@ -93,8 +96,9 @@ async function main() {
     assert.match(outRestore, /stato=SUCCESSO/, 'il restore deve riuscire');
 
     const [rows] = await conn.query(`SELECT nome, saldo FROM ${DB_RESTORE}.clienti ORDER BY nome`);
-    assert.strictEqual(rows.length, 3, 'devono esserci 3 clienti dopo il restore');
+    assert.strictEqual(rows.length, 2, 'devono esserci 2 clienti dopo il restore');
     assert.strictEqual(Number(rows.find((r) => r.nome === 'Anna').saldo), 11, 'l\'update deve essere applicato dal layer incrementale');
+    assert.strictEqual(rows.some((r) => r.nome === 'Bruno'), false, 'la cancellazione deve essere applicata dal layer incrementale');
 
     // 4. Verifica checksum del full.
     const outVerify = cli('verify', '--from', path.join(groupDir, full.id));

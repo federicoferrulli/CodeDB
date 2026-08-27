@@ -108,7 +108,7 @@ let tokenChiusura = 0;
  * @param {function(*):void} opts.onScegli chiamata col valore scelto
  */
 export function apriPannelloFk({
-  relazione, valore, dbCorrente, tabId, onScegli, sorgente, contenitore = null,
+  relazione, valore, valoriRelazione = null, dbCorrente, tabId, onScegli, sorgente, contenitore = null,
 }) {
   if (!relazione) return null;
   const pannello = $('#fk-pannello');
@@ -118,7 +118,7 @@ export function apriPannelloFk({
   // dalla tastiera deve ritrovarsi dove aveva lasciato, non in cima alla pagina.
   const fuocoPrecedente = document.activeElement;
   const c = {
-    relazione, valore, dbCorrente, tabId, onScegli, fuocoPrecedente,
+    relazione, valore, valoriRelazione, dbCorrente, tabId, onScegli, fuocoPrecedente,
     // Chi ha aperto: serve a `pannelloFkAperto(sorgente)`, cioè al 🔗 di una
     // griglia per sapere se il pannello aperto è il PROPRIO. Senza, il pulsante
     // di un riquadro chiuderebbe il pannello aperto da un altro.
@@ -532,7 +532,13 @@ function caricaRigaRiferita(c) {
   const { relazione, valore, tabId } = c;
   // Cella vuota: non c'è alcuna riga da cercare, e chiedere "tutte le righe con
   // NULL" mostrerebbe un elenco spacciandolo per il riferimento.
-  if (valore === undefined || valore === null) {
+  const coppie = relazione.coppie || [{ campo: relazione.campo, colonna: relazione.colonna }];
+  const condizioni = coppie.map((p) => ({
+    campo: p.colonna,
+    operatore: 'uguale',
+    valore: c.valoriRelazione ? c.valoriRelazione[p.campo] : valore,
+  }));
+  if (condizioni.some((x) => x.valore === undefined || x.valore === null)) {
     $('#fk-riga').innerHTML = '<p class="fk-vuoto">La cella è vuota: nessun riferimento.</p>';
     return;
   }
@@ -543,7 +549,7 @@ function caricaRigaRiferita(c) {
     tabId,
     db: relazione.db || c.dbCorrente,
     coll: relazione.tabella,
-    filtro: { condizioni: [{ campo: relazione.colonna, operatore: 'uguale', valore }] },
+    filtro: { condizioni },
     limit: 1,
     skip: 0,
     deferCount: true,
@@ -653,7 +659,12 @@ function caricaElenco(c, cerca, { append = false } = {}) {
 function vocePerRiga(c, riga, i) {
   const { relazione } = c;
   const scelto = c.scelto === undefined ? c.valore : c.scelto;
-  const corrente = stessoValore(riga[relazione.colonna], scelto);
+  const coppie = relazione.coppie || [{ campo: relazione.campo, colonna: relazione.colonna }];
+  const corrente = c.scelto !== undefined
+    ? stessoValore(riga[relazione.colonna], scelto)
+    : coppie.every((p) => stessoValore(
+      riga[p.colonna], c.valoriRelazione ? c.valoriRelazione[p.campo] : scelto,
+    ));
   return `<button type="button" class="fk-voce${corrente ? ' corrente scelta' : ''}" role="option"`
     + ` aria-selected="${corrente}" data-i="${i}">`
     + '<span class="fk-spunta" aria-hidden="true"></span>'
@@ -801,6 +812,7 @@ export function initFkVista() {
     const riga = c.righe[Number(voce.dataset.i)];
     if (!riga) return;
     c.scelto = riga[c.relazione.colonna];
+    c.rigaScelta = riga;
     for (const altra of $('#fk-elenco').querySelectorAll('.fk-voce')) {
       const scelta = altra === voce;
       altra.classList.toggle('scelta', scelta);
@@ -815,9 +827,9 @@ export function initFkVista() {
   $('#fk-usa').addEventListener('click', () => {
     const c = apertura;
     if (!c || c.scelto === undefined) return;
-    const { onScegli, scelto } = c;
+    const { onScegli, scelto, rigaScelta } = c;
     chiudiPannelloFk();
-    if (onScegli) onScegli(scelto);
+    if (onScegli) onScegli(scelto, rigaScelta);
   });
 
   $('#fk-apri').addEventListener('click', () => {

@@ -2,9 +2,9 @@
 
 const { app, BrowserWindow, Menu, dialog, shell } = require('electron');
 const path = require('path');
-const http = require('http');
 const net = require('net');
 const { creaGestoreAggiornamenti } = require('./electron-aggiornamenti');
+const { nuovoSegretoIstanza, probeServer } = require('./electron-server-auth');
 
 const APP_NAME = 'CodeDB';
 const HOST = '127.0.0.1';
@@ -16,6 +16,12 @@ let PORT = PORTA_RICHIESTA || 3030;
 const ICON_PATH = path.join(__dirname, 'public', 'codedb.ico');
 
 let mainWindow = null;
+// Un orchestratore può fornire lo stesso segreto sia a un server CodeDB già
+// avviato sia a Electron: è il solo caso in cui il riuso fra processi è valido.
+// Senza valore ricevuto, ogni avvio genera un'identità nuova e non riusa server
+// esterni soltanto perché espongono il marker pubblico.
+const INSTANCE_SECRET = process.env.CODEDB_ELECTRON_INSTANCE_SECRET || nuovoSegretoIstanza();
+delete process.env.CODEDB_ELECTRON_INSTANCE_SECRET;
 
 // Gestore degli aggiornamenti (electron-updater): la finestra gli viene passata
 // come funzione perché a questo punto non esiste ancora, e cambia a ogni
@@ -40,6 +46,7 @@ const aggiornamenti = creaGestoreAggiornamenti({ getWindow: () => mainWindow });
  * ------------------------------------------------------------------------- */
 globalThis.__codedbDesktop = {
   controllaAggiornamenti: () => { aggiornamenti.controlla(true); },
+  instanceSecret: INSTANCE_SECRET,
 };
 
 // Il nome nel package.json ("mongo-web-gui", storico) determinerebbe altrimenti
@@ -130,22 +137,7 @@ if (!gotLock) {
  * arriva dal server, che sa spiegarlo.
  */
 function pingServer(timeout) {
-  return new Promise((resolve) => {
-    const req = http.get({ host: HOST, port: PORT, path: '/handshake-check', timeout }, (res) => {
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', (c) => { if (body.length < 4096) body += c; });
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(body).app === 'codedb');
-        } catch {
-          resolve(false); // risponde qualcos'altro: non è CodeDB
-        }
-      });
-    });
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => { req.destroy(); resolve(false); });
-  });
+  return probeServer({ host: HOST, port: PORT, secret: INSTANCE_SECRET, timeout });
 }
 
 function waitForServer(retries, delay) {
@@ -200,9 +192,9 @@ async function main() {
   // finestre di dialogo.
   Menu.setApplicationMenu(buildMenu());
 
-  // Se il server è già in ascolto (avviato a parte con CodeDB.cmd/codedb.sh, o
-  // da un'altra istanza), riusalo: evita il crash di server.js su EADDRINUSE
-  // (process.exit(1)), che qui ucciderebbe l'intero processo Electron.
+  // Se un server già in ascolto dimostra di possedere LA STESSA identità
+  // ricevuta dall'orchestratore, lo si può riusare. Un CodeDB avviato a parte
+  // senza quel segreto è intenzionalmente estraneo quanto qualunque altra app.
   const alreadyRunning = await pingServer(500);
   if (!alreadyRunning) {
     // La porta risponde ma non è CodeDB (pingServer controlla `app: codedb`),

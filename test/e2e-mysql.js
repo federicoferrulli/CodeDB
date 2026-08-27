@@ -376,17 +376,21 @@ async function runTests() {
 
     console.log('14. db:rename / db:drop');
     const ren = await emit('db:rename', { db: DB, newName: DB2 });
-    assert(!ren.ok && /non supporta una rinomina atomica/i.test(ren.error || ''),
-      'rinomina database non atomica rifiutata senza spostare o eliminare tabelle');
+    assert(ren.ok && ren.modo === 'dump-restore' && ren.origineEliminata === false,
+      'rinomina non atomica completata come copia verificata con origine conservata');
     const renCheck = await emit('collection:find', { db: DB, coll: TABLE, filter: '' });
-    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la rinomina rifiutata');
+    assert(renCheck.ok && renCheck.total === 1, 'database originale intatto dopo la copia');
+    const copyCheck = await emit('collection:find', { db: DB2, coll: TABLE, filter: '' });
+    assert(copyCheck.ok && copyCheck.total === 1, 'destinazione verificata dopo la copia');
     const dbs = await emit('db:list', {});
     assert(dbs.ok && dbs.databases.some((d) => d.name === DB)
-      && !dbs.databases.some((d) => d.name === DB2), 'nessun database parziale creato dalla rinomina');
+      && dbs.databases.some((d) => d.name === DB2), 'origine e destinazione sono entrambe conservate');
     const sysDrop = await emit('db:drop', { db: 'mysql' });
     assert(!sysDrop.ok, 'eliminazione di uno schema di sistema rifiutata');
     const drop = await emit('db:drop', { db: DB });
-    assert(drop.ok, `database "${DB2}" eliminato`);
+    assert(drop.ok, `database "${DB}" eliminato`);
+    const dropCopy = await emit('db:drop', { db: DB2 });
+    assert(dropCopy.ok, `database "${DB2}" eliminato`);
 
     console.log('15. mongo:disconnect');
     const disc = await emit('mongo:disconnect', {});

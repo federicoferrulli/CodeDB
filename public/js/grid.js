@@ -20,6 +20,7 @@ import {
   capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga,
   SOGLIA_VIRTUALE,
 } from './griglia.js';
+import { chiudiCaricamento, congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 
 export function applyDbTypeToWorkspace() {
   const isSql = isSqlType(state.dbType);
@@ -163,6 +164,12 @@ export function runQuery(opts = {}) {
     keyset: keysetDescriptor(opts),
     runId,
   };
+  const richiesta = congelaContesto({
+    tabId: activeTab()?.id, collTabId: originColl,
+    db: payload.db, coll: payload.coll, filter: payload.filter,
+    filtro: payload.filtro, cercaOvunque: payload.cercaOvunque,
+    sort: payload.sort, skip: payload.skip, limit: payload.limit, runId,
+  });
   if (opts.auto) payload._bg = true;
 
   // Storico query: registra ciò che l'utente sta eseguendo (best-effort,
@@ -185,7 +192,7 @@ export function runQuery(opts = {}) {
     const st = res._state;
     // Risposta di una find superata da una più recente (o annullata): scartala,
     // così un cambio pagina veloce non fa "tornare indietro" la griglia.
-    if (runId !== st.gridRunId) return;
+    if (richiesta.runId !== st.gridRunId) return;
     // Risposta che appartiene a un coll-tab non più mostrato: lo stato piatto
     // ora descrive un'altra collection, applicarla la corromperebbe.
     if (st.activeCollId !== originColl) return;
@@ -197,6 +204,7 @@ export function runQuery(opts = {}) {
     if (originCt) originCt.dataDirty = false;
     st.docs = res.docs;
     st.columns = res.columns;
+    st.columnMeta = res.columnMeta || {};
     st.skip = res.skip;
     st.limit = res.limit;
     // Il server ha interrotto la lettura per non esaurire la memoria (poche
@@ -679,7 +687,8 @@ function buildRow(doc, rowIdx, canSelect) {
     // conseguenza — mappa in modifica o in sola lettura — la decide il modulo.
     const modificabile = col !== '_id' && '_id' in doc;
     const geometrica = rendiCellaGeometrica(td, valore, aperturaCella({
-      valore, campo: col, modificabile, onModifica: () => startEdit(td, doc, col),
+      valore, campo: col, modificabile,
+      onModifica: () => startEdit(td, doc, col, { metadato: state.columnMeta?.[col] }),
     }));
     if (!geometrica) {
       const span = document.createElement('span');
@@ -692,7 +701,8 @@ function buildRow(doc, rowIdx, canSelect) {
 
     if (modificabile) {
       td.classList.add('editable');
-      if (!geometrica) td.addEventListener('dblclick', () => startEdit(td, doc, col));
+      if (!geometrica) td.addEventListener('dblclick', () =>
+        startEdit(td, doc, col, { metadato: state.columnMeta?.[col] }));
     }
     // Colonna collegata a un'altra tabella: l'indicatore è uno pseudo-elemento
     // CSS su una classe, non un nodo in più. Con la griglia virtualizzata una
@@ -781,7 +791,7 @@ function collegaGestiTattili() {
     const doc = state.docs[Number(td.dataset.r)];
     const col = state.columns[Number(td.dataset.c)];
     if (!doc || col === '_id' || !('_id' in doc)) return false;
-    startEdit(td, doc, col);
+    startEdit(td, doc, col, { metadato: state.columnMeta?.[col] });
     return true;
   };
 
@@ -1092,22 +1102,36 @@ function maybeLoadMore() {
 // Carica e accoda il blocco successivo (solo modalità find).
 function fetchMore() {
   const origin = captureContext();
-  state.loading = true;
-  updateInfiniteUI();
-  const chunk = $('#page-size').value;
-  const originColl = origin.collId;
-  emit('collection:find', {
-    db: state.db,
-    coll: state.coll,
-    // Le pagine successive filtrano come la prima: altrimenti scorrendo
-    // comparirebbero righe che il filtro escludeva.
+  const richiesta = congelaContesto({
+    tabId: origin.tabId,
+    collTabId: origin.collId,
+    db: origin.st.db,
+    coll: origin.st.coll,
     ...filtroCorrente(),
     sort: $('#sort-input').value,
-    limit: chunk,
-    skip: state.docs.length,
+    limit: $('#page-size').value,
+    skip: origin.st.docs.length,
+    keyset: keysetDescriptor({ pageDir: 'next' }),
+    runId: origin.st.gridRunId,
+  });
+  origin.st.loading = true;
+  origin.st.gridLoadingRunId = richiesta.runId;
+  updateInfiniteUI();
+  const originColl = origin.collId;
+  emit('collection:find', {
+    db: richiesta.db,
+    coll: richiesta.coll,
+    // Le pagine successive filtrano come la prima: altrimenti scorrendo
+    // comparirebbero righe che il filtro escludeva.
+    filter: richiesta.filter,
+    filtro: richiesta.filtro,
+    cercaOvunque: richiesta.cercaOvunque,
+    sort: richiesta.sort,
+    limit: richiesta.limit,
+    skip: richiesta.skip,
     // Keyset: continua dall'ultimo _id caricato (con sort di default), così anche
     // lo scroll infinito profondo resta O(blocco) invece di OFFSET crescente.
-    keyset: keysetDescriptor({ pageDir: 'next' }),
+    keyset: richiesta.keyset,
     deferCount: true, // il totale è già noto (o in arrivo): non riscansionare qui
     _bg: true, // continuazione dello scroll infinito: non una nuova lettura utente
   }).then((res) => {
@@ -1115,7 +1139,13 @@ function fetchMore() {
     // accodare le righe al Proxy significherebbe appenderle alla collection di
     // un altro tab, con colonne e _id di un'altra tabella.
     const st = res._state;
-    if (st.activeCollId !== originColl) { st.loading = false; return; }
+    if (!contestoCorrente(st, {
+      activeCollId: originColl, gridRunId: richiesta.runId,
+      db: richiesta.db, coll: richiesta.coll,
+    })) {
+      chiudiCaricamento(st, richiesta.runId);
+      return;
+    }
     // Unione colonne (blocchi successivi possono avere campi nuovi) e append.
     for (const c of res.columns) if (!st.columns.includes(c)) st.columns.push(c);
     st.docs = st.docs.concat(res.docs);
@@ -1126,14 +1156,18 @@ function fetchMore() {
         || (hasExactTotal(st) && st.docs.length >= st.total)) {
       st.exhausted = true;
     }
-    st.loading = false;
+    chiudiCaricamento(st, richiesta.runId);
     if (isForActiveTab(res)) renderGrid({ preserveScroll: true });
   }).catch((err) => {
     // TAB_CLOSED porta intenzionalmente _state: null: il fallback al Proxy
     // globale toccherebbe il nuovo tab attivo. Lo stato catturato appartiene
     // sempre alla richiesta, anche dopo la chiusura del tab.
     const st = (err && err._state) || origin.st;
-    st.loading = false;
+    chiudiCaricamento(st, richiesta.runId);
+    if (!contestoCorrente(st, {
+      activeCollId: originColl, gridRunId: richiesta.runId,
+      db: richiesta.db, coll: richiesta.coll,
+    })) return;
     if (!isForActiveTab(err)) return;
     updateInfiniteUI();
     showQueryError(err.message);

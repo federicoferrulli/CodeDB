@@ -90,7 +90,8 @@ function componiKeyset(dialetto, payload, table, whereSql, limit, pk, selectList
 // Nessun dialetto: è il protocollo del client (vedi db/sqlValori.js).
 function valoreKeyset(rawId, col) {
   const parsed = parseClientValue(rawId);
-  const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed[col] : parsed;
+  const v = (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && !parsed._bsontype)
+    ? parsed[col] : parsed;
   return toSqlValue(v);
 }
 
@@ -147,6 +148,7 @@ async function infoColonne(dialetto, strategia, db, coll) {
     columns: rows.filter(visibile).map((r) => ({
       name: r.name,
       type: r.type,
+      declaredType: r.declaredType || r.type,
       srid: r.srid == null ? null : Number(r.srid),
       // I due cataloghi rispondono 'YES'/'NO'; qui diventa un booleano.
       // `undefined` quando il dialetto non lo chiede: chi legge deve poter

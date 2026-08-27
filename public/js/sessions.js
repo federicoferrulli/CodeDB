@@ -463,7 +463,9 @@ async function onClickLista(e) {
 
   await conCaricamento(btn, async () => {
     try {
-      const res = await emit('db:killSession', { tabId: tabIdCorrente, id, modo });
+      const res = await emit('db:killSession', {
+        tabId: tabIdCorrente, id, modo, identita: s.identita,
+      });
       if (res.terminata) {
         toast(modo === 'connessione' ? `Connessione ${id} terminata.` : `Query della sessione ${id} annullata.`);
       } else {
