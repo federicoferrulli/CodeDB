@@ -142,6 +142,8 @@ node test/unit-operazione-import.js # Test del registro dell'operazione lunga di
 node test/unit-evento-import.js # Test dell'evento reale di import (socket e contesto finti)
 node test/unit-import-status.js # Test della presentazione dei tre esiti terminali
 node test/unit-e2e-targets.js  # Test delle barriere sui bersagli distruttivi dell'harness
+node test/unit-grafo-comandi.js # Test delle regole della barra del Grafo 3D (tabella vuota, comandi abilitati, esito ricerca)
+node test/e2e-barra-grafo.js   # Test del cablaggio della barra del Grafo 3D (Chromium, senza DB)
 node test/e2e-integrita-import.js # Matrice reale di integrita' su MongoDB, MySQL e PostgreSQL
 
 # Backup CLI & Marcatori
@@ -671,6 +673,109 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   corretto: lì la forma del risultato non è dichiarata da nessuno.
   4. **UML (`uml.js`)**: Diagramma E-R generato in SVG.
   5. **Grafo 3D (`graph3d.js`)**: Vista interattiva 3D Force-Graph (Three.js) con percorsi BFS e diagnosi schema.
+  **Il grafo è il documento, gli strumenti gli stanno sopra**: la barra teneva
+  nove comandi allo stesso peso visivo, tutti etichettati con un'emoji, su
+  un'unica riga che scorreva in orizzontale — i comandi oltre il bordo
+  sparivano senza alcun segno, e nulla distingueva ciò che decide *cosa si
+  guarda* (ricerca, colore, filtri) da ciò che muove la **telecamera**. I tre
+  comandi d'inquadratura (2D, rotazione automatica, inquadra tutto) stanno ora
+  in un gruppo flottante in alto a destra sul canvas, come nell'editor
+  cartografico e per la stessa ragione; il fondo di quel gruppo è **pieno**,
+  perché sul tema chiaro un velo sopra il canvas rende i comandi
+  indistinguibili dallo sfondo. La barra resta a una riga sola e **va a capo**
+  invece di scorrere: una seconda riga si vede, una porzione fuori schermo no.
+  Le icone sono un **unico sprite SVG** (`<symbol>` + `<use>`, prefisso `gico-`
+  perché gli id di un `<symbol>` sono globali al documento e la modale
+  geografica ne ha già uno) e non emoji, che cambiano forma e larghezza da un
+  sistema all'altro. La modalità di colorazione era il `value` di una `<select>`
+  il cui nome stava dentro le opzioni («🎨 Colore: Prefisso»): a tendina chiusa
+  si leggeva un valore senza sapere di che cosa, ed è ora un controllo
+  **segmentato** con i due stati visibili insieme.
+  **Il filtro «Vicini» era una `<select>` di sistema accanto a un'etichetta**:
+  due elementi che galleggiavano vicini in mezzo a pillole e a un segmentato,
+  cioè un controllo che sembra caduto lì da un'altra interfaccia. Nome e valore
+  stanno ora dentro **un solo bordo**, con l'altezza, il raggio e l'hover delle
+  pillole; è un `<label for>`, quindi premere ovunque apre la tendina. La
+  freccia è quella dello sprite, che eredita `currentColor` e quindi segue il
+  tema: la regola **globale** `select` ne dipinge già una come `background-image`
+  con il colore scritto a mano (`#8892a4`) e `!important`, e le due si
+  sovrapponevano quasi esattamente — stessa misura, stesso bordo destro —
+  ispessendo il chevron e schiacciando il valore; qui si spegne con
+  `background-image: none !important`. La `<select>` si dimensiona sul
+  **contenuto** e non su una larghezza fissa: una larghezza fissa più ampia
+  apriva un vuoto di oltre 80 px fra la parola e la freccia (misurato). Non
+  serve compensarlo, perché Chromium dimensiona comunque una select
+  sull'opzione **più larga**: la larghezza non cambia al cambio di scelta, e i
+  comandi alla sua destra non si spostano sotto le dita. `text-align: right`
+  non è una via d'uscita — Chromium lo ignora sul valore chiuso.
+  **Lo stato di un comando sta in `aria-pressed`, non in una classe CSS**: viveva
+  in `.active` assegnata da otto gestori diversi, e quello **iniziale** non lo
+  dipingeva nessuno — `showImplicitRelations` parte a `true` e il suo bottone
+  nasceva spento, cioè dichiarava il contrario di ciò che il grafo stava
+  facendo. Due interruttori («Solo popolate», «Relazioni implicite») erano
+  inoltre voci dentro un menu chiuso: uno stato acceso che non si vede è uno
+  stato che non esiste. `aggiornaComandi()` è l'unico punto che dipinge, e le
+  **decisioni** sono dati puri in `grafo-comandi.js`: un comando inutilizzabile
+  è disattivato e il `title` dice *perché* prima del clic — il filtro dei
+  vicini conta i salti a partire da una tabella scelta, e senza selezione non
+  faceva nulla né lo diceva; la rotazione automatica viene spenta d'ufficio
+  quando il grafo è in modalità ridotta (`policy.reducedEffects`), e il bottone
+  restava acceso sopra una scena ferma. La ricerca ha ora l'esito **assente**:
+  prima una ricerca senza corrispondenze si comportava esattamente come una
+  ricerca non ancora scritta.
+  **«Vista 2D» non appiattiva nulla**: fissava `fz = 0` su ogni nodo e spostava
+  la telecamera, ma le forze restavano a tre dimensioni — la disposizione
+  continuava a essere calcolata nello spazio e l'unico effetto visibile era un
+  ridisegno. Il piano è una proprietà della **simulazione**: `numDimensions(2)`.
+  In piano la rotazione dell'orbita si blocca, altrimenti «2D» sarebbe solo una
+  disposizione piana guardata di sbieco dopo il primo trascinamento — ma
+  toglierla e basta lascia **fermi**, perché negli OrbitControls il trascinamento
+  col tasto sinistro *è* la rotazione. `applicaNavigazione` rimappa quindi i
+  gesti: in 2D il trascinamento (e un dito) **sposta** sul piano X-Y, la
+  rotellina ingrandisce, il tasto destro sposta come in 3D; tornando in 3D il
+  trascinamento torna a ruotare. Lo spostamento segue lo **schermo**
+  (`screenSpacePanning`): in una vista dall'alto l'altra modalità sposterebbe
+  lungo un asse che non si vede.
+  **Il fondo della scena non seguiva il tema**: col tema chiaro il grafo
+  restava scuro, ed era l'unico elemento della UI che il tema non raggiungeva.
+  Il fondo lo dipinge il **renderer WebGL**, non il CSS: la regola
+  `.graph3d-canvas { background: var(--bg-1) }` sta dietro a un canvas opaco e
+  non si vede mai, quindi valeva il predefinito di 3d-force-graph (un blu quasi
+  nero). Ora `backgroundColor` riceve il token `--bg-1`, e il cambio tema
+  ricostruisce già l'istanza del grafo, quindi si applica da sé.
+  **«Rotazione automatica» non ha mai fatto nulla**: assegnava
+  `controls().autoRotate`, ma i controlli **predefiniti** di 3d-force-graph sono
+  i TrackballControls, che quella proprietà non ce l'hanno affatto — si scriveva
+  un campo che nessuno legge. Il grafo nasce ora con `controlType: 'orbit'`, che
+  la implementa e che è anche il modello di navigazione giusto per un grafo (si
+  gira intorno a un centro, non si fa rotolare la scena); `tick()` chiama
+  `controls.update()` a ogni fotogramma, che è ciò che la rotazione richiede per
+  avanzare. La rotazione viene **riapplicata a ogni ridisegno**, perché
+  l'istanza viene ricreata e senza quello cambiare colore la spegneva in
+  silenzio. Chiedere la rotazione mentre si è in 2D è chiedere lo spazio: si
+  esce dal piano e lo si dice, invece di disabilitare uno dei due comandi.
+  **Il degrado spegneva tutto su sedici tabelle**: `reducedEffects` valeva
+  `incomplete || troppi nodi`, e `incomplete` è vero anche solo perché **una**
+  tabella ha più di dodici colonne — `limitaSchema` marca allora
+  `schemaPage.complete = false`. Bastava questo a togliere le **etichette dei
+  nodi** su uno schema minuscolo, cioè i nomi delle tabelle: un grafo di tabelle
+  senza i nomi delle tabelle non è alleggerito, è illeggibile. Il troncamento
+  dei **campi** non ha alcun rapporto col costo del disegno: gli effetti si
+  riducono ora in base a quanti nodi si disegnano, e le etichette hanno un tetto
+  **proprio** (`labelThreshold`, sopra al tetto dei nodi) perché sono
+  l'informazione e non un ornamento — le texture sono memoizzate per nome,
+  quindi il costo è una volta per tabella e non per fotogramma.
+  **«Solo popolate» filtrava le tabelle senza COLONNE**: il criterio era
+  `fields.length === 0`, che su MySQL e PostgreSQL non è mai vero — il comando
+  non nascondeva nulla su due motori su tre, e funzionava solo su MongoDB
+  perché lì una collection vuota non produce campi campionati. Lo schema non
+  portava alcun conteggio, quindi la decisione non era **esprimibile**:
+  `dbSchema` dichiara ora `rowsApprox` su tutti e tre i motori (`TABLE_ROWS`,
+  `reltuples`, `estimatedDocumentCount`). È una **stima**, e vale `null` quando
+  il motore non la conosce (`reltuples = -1` prima di un ANALYZE): quel «non
+  so» non autorizza a nascondere, perché far sparire una tabella piena è molto
+  peggio che mostrarne una vuota. Il messaggio dichiara quante tabelle sono
+  sparite e che il conteggio è stimato.
 * **Split-View (`split-layout.js` / `splitview.js`)**: Struttura ad albero immutabile per affiancare più tabelle/collezioni nello stesso workspace con supporto al trascinamento, il cui ridimensionamento usa Pointer Events senza scatti.
 * **Calcoli pesanti su Web Worker (`calcoli.js` / `calcoli-protocollo.js` / `calcoli-worker.js`)**: le statistiche della selezione, la scansione dei campi e il **precalcolo** dei grafici (`precalcola` in `chart-option.js`: raggruppamento, aggregazione, ordinamento) scorrono tutte le righe. Oltre **50.000 celle** finiscono su un module worker, sotto restano sul posto — spostare un lavoro da due millisecondi costerebbe più del lavoro. Le due vie chiamano lo stesso `eseguiCompito`, quindi non possono divergere; senza `Worker`, o se il worker muore, si ricade sul calcolo locale. Il **disegno** resta sul thread principale: l'option di ECharts contiene funzioni (`formatter`) e non attraversa il confine fra thread. Chi ricalcola in continuazione (la barra di stato durante il trascinamento) usa `sequenziatore()` per scartare le risposte sorpassate.
 * **Custom Charts (`charts.js` / `chart-option.js`)**: Generatore di grafici ECharts 6.1.0 (vendorizzato) con aggregazione lato client, suggerimenti automatici e palette accessibili WCAG. Il caricamento della libreria e la cromatura del tema stanno in `chart-runtime.js`, condivisi con il grafico della selezione.

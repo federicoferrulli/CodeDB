@@ -827,83 +827,197 @@
 
               <!-- ------------------- Vista Grafo 3D ------------------- -->
               <div id="view-graph3d" class="view-panel hidden">
-                <div class="graph3d-bar">
-                  <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo..." autocomplete="off"
-                    spellcheck="false" title="Cerca nome tabella o nome colonna" />
-                  <select id="graph3d-color-mode" title="Modalità di colorazione e dimensione nodi">
-                    <option value="prefix">🎨 Colore: Prefisso</option>
-                    <option value="degree">🔥 Colore: Centralità</option>
-                  </select>
-                  <select id="graph3d-hop-filter" title="Filtra vicini per livello di distanza dal nodo selezionato">
-                    <option value="all">🔍 Mostra: Tutti</option>
-                    <option value="1">1° Livello</option>
-                    <option value="2">2° Livello</option>
-                  </select>
-                  <button id="graph3d-toggle-2d" class="ghost" title="Alterna tra vista 3D e vista 2D piatta">📐 Vista
-                    2D</button>
-                  <button id="graph3d-auto-rotate" class="ghost" title="Attiva/Disattiva rotazione automatica 3D">🔄
-                    Auto-Rotate</button>
-                  <button id="graph3d-reset-cam" class="ghost" title="Reset Vista 3D">🎥 Reset Camera</button>
+                <!-- Icone: un solo sprite per tutta la vista. I simboli sono
+                     tracciati, non caratteri tipografici - un'emoji cambia
+                     forma (e larghezza) da un sistema all'altro, ed era il
+                     motivo per cui la barra sembrava composta da elementi di
+                     famiglie diverse. Il prefisso `gico-` tiene questi id
+                     distinti da quelli della modale geografica: gli id di un
+                     <symbol> sono globali al documento. -->
+                <svg class="grafo-sprite" aria-hidden="true" focusable="false">
+                  <symbol id="gico-cerca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+                  <symbol id="gico-chiudi" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+                  <symbol id="gico-filtro" viewBox="0 0 24 24"><path d="M3 4h18l-7 8.2V19l-4 2v-8.8Z"/></symbol>
+                  <symbol id="gico-implicite" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><path d="M8 12h1.5"/><path d="M14.5 12H16"/></symbol>
+                  <symbol id="gico-rigenera" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+                  <symbol id="gico-analisi" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-3"/><path d="M12 16V8"/><path d="M17 16v-6"/></symbol>
+                  <symbol id="gico-schema" viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m13 4 4 4-4 4"/><path d="M20 16H7"/><path d="m11 12-4 4 4 4"/></symbol>
+                  <symbol id="gico-giu" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+                  <symbol id="gico-2d" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M8.2 10.1a1.8 1.8 0 1 1 3.5.6c0 1.3-3.5 2.6-3.5 4.2h3.6"/><path d="M14.4 8.9h1.6a3.1 3.1 0 0 1 0 6.2h-1.6Z"/></symbol>
+                  <symbol id="gico-rotazione" viewBox="0 0 24 24"><path d="M16.5 7.5C15.6 4.2 13.9 2 12 2 9.2 2 7 6.5 7 12s2.2 10 5 10c.3 0 .7-.1 1-.2"/><path d="m15.2 13.7 3.8 1.9-1.9 3.8"/><path d="M19 15.6c-1.8.9-4.3 1.4-7 1.4-5.5 0-10-2.2-10-5s4.5-5 10-5c4.8 0 8.9 1.7 9.8 4"/></symbol>
+                  <symbol id="gico-inquadra" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></symbol>
+                  <symbol id="gico-cammino" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+                  <symbol id="gico-matrice" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+                  <symbol id="gico-salute" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+                  <symbol id="gico-diff" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6a3 3 0 0 0 3 3h4"/><path d="M18 15V9a3 3 0 0 0-3-3h-4"/></symbol>
+                  <symbol id="gico-salva" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></symbol>
+                  <symbol id="gico-importa" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+                  <symbol id="gico-immagine" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-4.5-4.5L6 21"/></symbol>
+                  <symbol id="gico-codice" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+                  <symbol id="gico-file-codice" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="m10 13-2 2 2 2"/><path d="m14 13 2 2-2 2"/></symbol>
+                  <symbol id="gico-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></symbol>
+                </svg>
 
-                  <!-- Dropdown Analisi & Strumenti -->
+                <!-- La barra tiene ciò che decide COSA si guarda (ricerca,
+                     colore, filtri) e gli strumenti che aprono una finestra.
+                     Ciò che muove la TELECAMERA sta invece sopra al canvas, in
+                     alto a destra: è il documento che si sta manipolando, e
+                     tenere quei tre comandi qui costringeva a fare avanti e
+                     indietro fra il bordo della finestra e il grafo. -->
+                <div class="graph3d-bar" role="toolbar" aria-label="Strumenti del grafo dello schema">
+                  <div class="grafo-cerca">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-cerca"/></svg>
+                    <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo…" autocomplete="off"
+                      spellcheck="false" aria-label="Cerca una tabella o un campo nello schema" />
+                    <button type="button" id="graph3d-search-clear" class="grafo-cerca-azzera hidden"
+                      aria-label="Azzera la ricerca" title="Azzera la ricerca">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-chiudi"/></svg>
+                    </button>
+                  </div>
+                  <span id="graph3d-search-esito" class="grafo-esito" role="status" aria-live="polite"></span>
+
+                  <span class="grafo-divisore" aria-hidden="true"></span>
+
+                  <!-- Due stati visibili insieme invece di una tendina in cui
+                       il nome del controllo sta dentro il valore scelto. -->
+                  <div class="grafo-segmentato" role="group" aria-label="Come colorare i nodi">
+                    <button type="button" class="grafo-seg" data-colore="prefix" aria-pressed="true"
+                      title="Un colore per prefisso del nome della tabella">Prefisso</button>
+                    <button type="button" class="grafo-seg" data-colore="degree" aria-pressed="false"
+                      title="Colore e dimensione in base al numero di relazioni">Centralità</button>
+                  </div>
+
+                  <!-- La freccia è la NOSTRA, dallo stesso sprite dei bottoni:
+                       quella nativa non si può né colorare né distanziare, e
+                       schiacciata contro il valore era la ragione per cui il
+                       controllo sembrava di un'altra famiglia rispetto alle
+                       pillole e al segmentato che gli stanno accanto. -->
+                  <label class="grafo-campo" for="graph3d-hop-filter">
+                    <span class="grafo-campo-nome">Vicini</span>
+                    <select id="graph3d-hop-filter">
+                      <option value="all">Tutti</option>
+                      <option value="1">1 salto</option>
+                      <option value="2">2 salti</option>
+                    </select>
+                    <svg class="ico ico-chevron grafo-campo-freccia" aria-hidden="true"><use href="#gico-giu"/></svg>
+                  </label>
+
+                  <span class="grafo-divisore" aria-hidden="true"></span>
+
+                  <!-- Erano due voci dentro un menu chiuso: uno stato acceso
+                       che non si vede è uno stato che non esiste. -->
+                  <button type="button" id="graph3d-toggle-empty" class="grafo-pill" aria-pressed="false">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-filtro"/></svg>Solo popolate
+                  </button>
+                  <button type="button" id="graph3d-toggle-implicit" class="grafo-pill" aria-pressed="true">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-implicite"/></svg>Relazioni implicite
+                  </button>
+
+                  <span class="grafo-spazio"></span>
+
+                  <!-- Dropdown Analisi -->
                   <div class="toolbar-dropdown-wrap">
-                    <button type="button" id="graph3d-analysis-menu-btn" class="ghost dropdown-trigger-btn"
-                      title="Strumenti di analisi dello schema">📊 Analisi ▾</button>
-                    <div id="graph3d-analysis-menu" class="toolbar-dropdown-menu hidden">
-                      <button id="graph3d-find-path" class="dropdown-item" type="button"
-                        title="Trova il cammino minimo tra 2 tabelle">🔗 Cammino Minimo</button>
-                      <button id="graph3d-clear-path" class="dropdown-item btn-danger-text hidden" type="button"
-                        title="Rimuovi evidenziazione del cammino minimo">❌ Azzera Cammino</button>
-
-                      <button id="graph3d-deps" class="dropdown-item" type="button"
-                        title="Analizza la matrice delle dipendenze e l'ordine di popolamento">📊 Dipendenze
-                        Schema</button>
-                      <button id="graph3d-audit" class="dropdown-item" type="button"
-                        title="Esegui diagnostica dello schema (Health Check)">🩺 Audit Schema</button>
-                      <button id="graph3d-diff" class="dropdown-item" type="button"
-                        title="Confronta lo schema attivo con lo snapshot salvato">⚖️ Diff Schema</button>
+                    <button type="button" id="graph3d-analysis-menu-btn" class="grafo-pill dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false" title="Strumenti di analisi dello schema">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-analisi"/></svg>Analisi
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-analysis-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button id="graph3d-find-path" class="dropdown-item" type="button" role="menuitem"
+                        title="Trova il cammino minimo tra 2 tabelle">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-cammino"/></svg>Cammino minimo…
+                      </button>
+                      <button id="graph3d-clear-path" class="dropdown-item btn-danger-text hidden" type="button" role="menuitem"
+                        title="Rimuovi evidenziazione del cammino minimo">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-chiudi"/></svg>Azzera cammino
+                      </button>
                       <div class="dropdown-divider"></div>
-                      <button id="graph3d-toggle-empty" class="dropdown-item" type="button"
-                        title="Mostra/Nascondi tabelle vuote senza record">🎯 Solo Popolate</button>
-                      <button id="graph3d-toggle-implicit" class="dropdown-item" type="button"
-                        title="Mostra/Nascondi relazioni implicite euristiche">💡 Relazioni Implicite</button>
+                      <button id="graph3d-deps" class="dropdown-item" type="button" role="menuitem"
+                        title="Analizza la matrice delle dipendenze e l'ordine di popolamento">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-matrice"/></svg>Dipendenze dello schema…
+                      </button>
+                      <button id="graph3d-audit" class="dropdown-item" type="button" role="menuitem"
+                        title="Esegui diagnostica dello schema (Health Check)">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-salute"/></svg>Audit dello schema…
+                      </button>
+                      <button id="graph3d-diff" class="dropdown-item" type="button" role="menuitem"
+                        title="Confronta lo schema attivo con lo snapshot salvato">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-diff"/></svg>Confronta con uno snapshot…
+                      </button>
                     </div>
                   </div>
 
-                  <!-- Dropdown Import & Export -->
+                  <!-- Dropdown Schema (snapshot, importazione, esportazioni) -->
                   <div class="toolbar-dropdown-wrap">
-                    <button type="button" id="graph3d-export-menu-btn" class="ghost dropdown-trigger-btn"
-                      title="Importa ed Esporta schema">📥 Import & Export ▾</button>
-                    <div id="graph3d-export-menu" class="toolbar-dropdown-menu hidden">
-                      <button id="graph3d-save-snapshot" class="dropdown-item" type="button"
-                        title="Salva uno snapshot dello schema corrente">💾 Salva Snapshot</button>
-                      <button id="graph3d-import-schema" class="dropdown-item" type="button"
-                        title="Importa ed esplora uno schema da SQL o DBML">📥 Importa (SQL/DBML)</button>
+                    <button type="button" id="graph3d-export-menu-btn" class="grafo-pill dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false" title="Salva, importa ed esporta lo schema">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-schema"/></svg>Schema
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-export-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button id="graph3d-save-snapshot" class="dropdown-item" type="button" role="menuitem"
+                        title="Salva uno snapshot dello schema corrente">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-salva"/></svg>Salva snapshot
+                      </button>
+                      <button id="graph3d-import-schema" class="dropdown-item" type="button" role="menuitem"
+                        title="Importa ed esplora uno schema da SQL o DBML">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-importa"/></svg>Importa (SQL/DBML)…
+                      </button>
                       <div class="dropdown-divider"></div>
-                      <button id="graph3d-export-png" class="dropdown-item" type="button" title="Esporta PNG">📷 Esporta
-                        PNG</button>
-                      <button id="graph3d-export-mermaid" class="dropdown-item" type="button"
-                        title="Copia diagramma Mermaid">📝 Diagramma Mermaid</button>
-                      <button id="graph3d-export-dbml" class="dropdown-item" type="button"
-                        title="Esporta in formato DBML">💎 Formato DBML</button>
-                      <button id="graph3d-export-sql" class="dropdown-item" type="button"
-                        title="Esporta DDL SQL CREATE TABLE">🗄️ DDL SQL</button>
+                      <button id="graph3d-export-png" class="dropdown-item" type="button" role="menuitem" title="Esporta PNG">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-immagine"/></svg>Esporta PNG
+                      </button>
+                      <button id="graph3d-export-mermaid" class="dropdown-item" type="button" role="menuitem"
+                        title="Copia diagramma Mermaid">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-codice"/></svg>Diagramma Mermaid
+                      </button>
+                      <button id="graph3d-export-dbml" class="dropdown-item" type="button" role="menuitem"
+                        title="Esporta in formato DBML">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-file-codice"/></svg>Formato DBML
+                      </button>
+                      <button id="graph3d-export-sql" class="dropdown-item" type="button" role="menuitem"
+                        title="Esporta DDL SQL CREATE TABLE">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-db"/></svg>DDL SQL
+                      </button>
                     </div>
                   </div>
 
-                  <button id="graph3d-refresh" class="ghost" title="Rigenera Grafo">⟳ Rigenera</button>
+                  <button type="button" id="graph3d-refresh" class="grafo-pill" title="Rilegge lo schema dal database">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-rigenera"/></svg>Rigenera
+                  </button>
                 </div>
+
                 <div class="graph3d-container">
                   <div id="graph3d-path-badge" class="graph3d-path-badge hidden">
-                    <span id="graph3d-path-badge-text">🔗 Cammino attivo</span>
-                    <button id="graph3d-path-badge-clear" class="badge-clear-btn" title="Rimuovi cammino">✕
-                      Rimuovi</button>
+                    <span id="graph3d-path-badge-text">Cammino attivo</span>
+                    <button id="graph3d-path-badge-clear" class="badge-clear-btn" title="Rimuovi cammino">Rimuovi</button>
                   </div>
                   <div id="graph3d-canvas" class="graph3d-canvas"></div>
+
+                  <!-- L'inquadratura sta sopra al grafo, dove l'occhio è già:
+                       fondo PIENO e non translucido, perché sul tema chiaro un
+                       velo sul canvas rende i comandi indistinguibili dallo
+                       sfondo. -->
+                  <div id="graph3d-rail" class="grafo-rail" role="group" aria-label="Inquadratura del grafo">
+                    <button type="button" id="graph3d-toggle-2d" class="grafo-tool" aria-pressed="false"
+                      aria-label="Vista 2D piatta" title="Vista 2D piatta: appiattisce il grafo su un piano">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-2d"/></svg>
+                    </button>
+                    <button type="button" id="graph3d-auto-rotate" class="grafo-tool" aria-pressed="false"
+                      aria-label="Rotazione automatica" title="Rotazione automatica della scena">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-rotazione"/></svg>
+                    </button>
+                    <span class="grafo-rail-sep" aria-hidden="true"></span>
+                    <button type="button" id="graph3d-reset-cam" class="grafo-tool"
+                      aria-label="Inquadra tutto il grafo" title="Inquadra tutto il grafo e azzera la selezione">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-inquadra"/></svg>
+                    </button>
+                  </div>
+
                   <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                     <div class="side-panel-header">
                       <h3 id="graph3d-panel-title">Nome Tabella</h3>
-                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">✕</button>
+                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">&#10005;</button>
                     </div>
                     <div id="graph3d-panel-content" class="side-panel-content"></div>
                   </aside>

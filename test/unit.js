@@ -1142,6 +1142,10 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 22-ter: operazioni dei bottoni azione dell'editor su mappa
   require('./unit-geo-modifica');
 
+  // Test 22-quater: regole della barra del Grafo 3D (tabella vuota, comandi
+  // abilitati e loro motivo, esito della ricerca)
+  require('./unit-grafo-comandi');
+
   // Test 23: Custom Charts (aggregazioni, valori EJSON, regole di leggibilità)
   require('./unit-charts');
 

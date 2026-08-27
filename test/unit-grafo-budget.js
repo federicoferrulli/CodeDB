@@ -21,8 +21,33 @@ module.exports = (async () => {
   assert(result.schema.collections.every((node) => node.fields.length <= 12));
   assert(result.schema.relations.length <= 240);
   assert.strictEqual(result.policy.reducedEffects, true);
+  assert.strictEqual(result.policy.etichette, true,
+    'centoventi nodi restano etichettati: i nomi delle tabelle SONO l informazione del grafo');
   const small = degradaSchemaGrafo({ collections: [{ name: 'a', fields: [{ name: 'id' }] }], relations: [] });
   assert.strictEqual(small.policy.reducedEffects, false);
+
+  /*
+   * Regressione misurata su un caso reale: sedici tabelle, una con piu' campi
+   * del budget. `limitaSchema` marca allora `schemaPage.complete = false` per
+   * il solo troncamento dei CAMPI, e la politica lo prendeva per «grafo troppo
+   * grande»: si spegnevano etichette, particelle e rotazione automatica su uno
+   * schema minuscolo. Il troncamento dei campi non ha alcun rapporto con il
+   * costo del disegno.
+   */
+  const sedici = degradaSchemaGrafo({
+    collections: Array.from({ length: 16 }, (_, i) => ({
+      name: `t${i}`,
+      fields: Array.from({ length: i === 0 ? 40 : 3 }, (_, j) => ({ name: `f${j}` })),
+    })),
+    relations: [{ from: 't0', to: 't1' }],
+    schemaPage: { complete: false, cursor: 0, nextCursor: null },
+  });
+  assert.strictEqual(sedici.policy.incomplete, true,
+    'lo schema resta dichiaratamente troncato: quel badge e giusto');
+  assert.strictEqual(sedici.policy.reducedEffects, false,
+    'sedici tabelle non sono un grafo grande: gli effetti non si riducono per un campo troncato');
+  assert.strictEqual(sedici.policy.etichette, true,
+    'e soprattutto i nomi delle tabelle restano visibili');
   const merged = unisciPagineSchema(
     { collections: [{ name: 'a', fields: [] }], relations: [] },
     { collections: [{ name: 'a', fields: [{ name: 'id' }] }], relations: [], schemaPage: { complete: true } },

@@ -1371,8 +1371,18 @@ class PostgreSqlStrategy extends DbStrategy {
     // tutti gli schemi, quindi il diagramma mostrava relazioni fra tabelle che
     // nella vista corrente non esistono.
     const schema = schemaOf(db);
+    // Il conteggio stimato viaggia con lo schema: senza, il grafo non puo'
+    // nascondere le tabelle vuote (vedi la nota gemella in MySqlStrategy).
+    // `reltuples` vale -1 finche' nessun ANALYZE e' passato: quello e' «non
+    // so», e diventa `null` invece di un falso zero che nasconderebbe una
+    // tabella piena.
     const tablesRes = await pool.query(
-      `SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name`,
+      `SELECT t.table_name, c.reltuples::bigint AS approx_rows
+         FROM information_schema.tables t
+         LEFT JOIN pg_class c ON c.relname = t.table_name
+          AND c.relnamespace = to_regnamespace(t.table_schema)::oid
+        WHERE t.table_schema = $1 AND t.table_type = 'BASE TABLE'
+     ORDER BY t.table_name`,
       [schema]
     );
 
@@ -1399,6 +1409,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const collections = tablesRes.rows.map((t) => ({
       name: t.table_name,
       fields: colsByTable.get(t.table_name) || [],
+      rowsApprox: t.approx_rows == null || Number(t.approx_rows) < 0 ? null : Number(t.approx_rows),
     }));
 
     const fkRes = await pool.query(

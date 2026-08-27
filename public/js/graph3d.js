@@ -21,6 +21,8 @@ import {
 import { setView } from './main.js';
 import { tokenTema } from './theme.js';
 import { GRAFO_BUDGET, degradaSchemaGrafo, unisciPagineSchema } from './grafo-budget.js';
+// Le regole della barra sono dati puri: chi le usa dipinge, non decide.
+import { tabellaVuota, contaVuote, statoComandi, cercaNodo, messaggioRicerca } from './grafo-comandi.js';
 
 let graphInstance = null;
 let graphResizeObserver = null;
@@ -70,6 +72,108 @@ let showImplicitRelations = true;
 let hideEmptyTables = false;
 let currentSearchQuery = '';
 let activeShortestPath = null; // Set di nodi del cammino minimo
+// La modalità di colorazione era il `value` di una <select> il cui nome stava
+// dentro le opzioni («Colore: Prefisso»): a tendina chiusa si leggeva un valore
+// senza sapere di che cosa. Ora è un controllo segmentato, e lo stato vive qui.
+let colorMode = 'prefix';
+// L'ultima politica di degrado applicata.
+let ultimaPolicy = { reducedEffects: false, etichette: true };
+
+/*
+ * Dipinge i comandi che dipendono dal contesto. È l'unico punto che tocca
+ * `aria-pressed` e `disabled`: prima lo stato viveva in una classe `.active`
+ * assegnata da otto gestori diversi, e `showImplicitRelations` partiva a `true`
+ * senza che nessuno lo dipingesse — la funzione era accesa e il bottone diceva
+ * di no.
+ */
+function aggiornaComandi() {
+  const stato = statoComandi({
+    selezione: selectedNodeId,
+    autoRotazione: autoRotateActive,
+  });
+
+  const hop = $('#graph3d-hop-filter');
+  const campoHop = hop && hop.closest('.grafo-campo');
+  if (hop) {
+    hop.disabled = !stato.vicini.abilitato;
+    hop.title = stato.vicini.motivo;
+    // Un filtro rimasto su «2 salti» mentre nessun nodo è scelto mostrerebbe
+    // un criterio che non è in vigore: senza selezione il valore torna a Tutti.
+    if (!stato.vicini.abilitato) hop.value = 'all';
+  }
+  if (campoHop) {
+    campoHop.classList.toggle('disabilitato', !stato.vicini.abilitato);
+    campoHop.title = stato.vicini.motivo;
+  }
+
+  const rot = $('#graph3d-auto-rotate');
+  if (rot) {
+    rot.disabled = !stato.autoRotazione.abilitato;
+    rot.setAttribute('aria-pressed', String(stato.autoRotazione.premuto));
+    rot.title = stato.autoRotazione.motivo;
+  }
+
+  const piatto = $('#graph3d-toggle-2d');
+  if (piatto) piatto.setAttribute('aria-pressed', String(is2DMode));
+
+  const vuote = $('#graph3d-toggle-empty');
+  if (vuote) vuote.setAttribute('aria-pressed', String(hideEmptyTables));
+
+  const implicite = $('#graph3d-toggle-implicit');
+  if (implicite) implicite.setAttribute('aria-pressed', String(showImplicitRelations));
+
+  for (const b of document.querySelectorAll('.graph3d-bar .grafo-seg[data-colore]')) {
+    b.setAttribute('aria-pressed', String(b.dataset.colore === colorMode));
+  }
+}
+
+/*
+ * Come si NAVIGA, in piano e nello spazio.
+ *
+ * In 2D la rotazione va tolta — altrimenti «piatto» sarebbe solo una
+ * disposizione piana guardata di sbieco dopo il primo trascinamento — ma
+ * toglierla e basta lascia l'utente FERMO: negli OrbitControls il trascinamento
+ * col tasto sinistro È la rotazione, quindi disattivarla senza rimappare
+ * significa che il gesto principale non fa più niente. In piano il trascinamento
+ * diventa quindi uno SPOSTAMENTO sul piano X-Y, che è il gesto giusto quando
+ * l'asse Z non esiste; la rotellina continua a ingrandire, e il tasto destro a
+ * spostare come in 3D.
+ *
+ * Le costanti stanno in THREE (`MOUSE`, `TOUCH`); i numeri sono il ripiego se
+ * la libreria non è stata caricata, e sono quelli che THREE stessa usa.
+ */
+function applicaNavigazione(controlli) {
+  if (!controlli) return;
+  const M = (typeof THREE !== 'undefined' && THREE.MOUSE) || { ROTATE: 0, DOLLY: 1, PAN: 2 };
+  const T = (typeof THREE !== 'undefined' && THREE.TOUCH) || { ROTATE: 0, PAN: 1, DOLLY_PAN: 2 };
+  controlli.enableRotate = !is2DMode;
+  controlli.enablePan = true;
+  controlli.enableZoom = true;
+  // Lo spostamento segue lo schermo e non il piano dell'orizzonte: in una vista
+  // dall'alto l'altra modalità sposterebbe lungo un asse che non si vede.
+  controlli.screenSpacePanning = true;
+  controlli.mouseButtons = {
+    LEFT: is2DMode ? M.PAN : M.ROTATE,
+    MIDDLE: M.DOLLY,
+    RIGHT: M.PAN,
+  };
+  controlli.touches = {
+    ONE: is2DMode ? T.PAN : T.ROTATE,
+    TWO: T.DOLLY_PAN,
+  };
+}
+
+/*
+ * Il pannello laterale copre 340px sulla destra. Gli strumenti d'inquadratura
+ * stanno sopra al canvas, in alto a destra: senza spostarsi finirebbero SOTTO
+ * al pannello appena si sceglie una tabella, cioè proprio quando servono.
+ */
+function mostraPannelloLaterale(aperto) {
+  const panel = $('#graph3d-side-panel');
+  const container = panel && panel.closest('.graph3d-container');
+  if (panel) panel.classList.toggle('hidden', !aperto);
+  if (container) container.classList.toggle('pannello-aperto', !!aperto);
+}
 
 function updatePathUI() {
   const clearBtn = $('#graph3d-clear-path');
@@ -191,7 +295,9 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
   }
 
   currentSchemaData = sourceSchema;
+  ultimaPolicy = policy;
   updatePathUI();
+  aggiornaComandi();
   const aggiornaInPosto = preserveInstance && !!graphInstance;
   if (!aggiornaInPosto) {
     distruggiGrafo();
@@ -200,7 +306,6 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     canvas.querySelector('.graph3d-budget-badge')?.remove();
   }
 
-  const colorMode = ($('#graph3d-color-mode') && $('#graph3d-color-mode').value) || 'prefix';
   const hopFilter = ($('#graph3d-hop-filter') && $('#graph3d-hop-filter').value) || 'all';
 
   const neighborsMap = new Map();
@@ -232,7 +337,7 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
 
   const nodes = schema.collections
     .filter((c) => {
-      if (hideEmptyTables && (!c.fields || c.fields.length === 0)) return false;
+      if (hideEmptyTables && tabellaVuota(c)) return false;
       if (activeNodesSet && !activeNodesSet.has(c.name)) return false;
       return true;
     })
@@ -252,9 +357,6 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
         fields: c.fields || [],
         val,
       };
-      if (is2DMode) {
-        nodeObj.fz = 0;
-      }
       return nodeObj;
     });
 
@@ -297,14 +399,44 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
   const spentoArco = tokenTema('--graph-dim-link', 'rgba(40, 45, 55, 0.15)');
   const spentoArcoDebole = tokenTema('--graph-dim-link-weak', 'rgba(30, 35, 45, 0.12)');
   const coloreArco = tokenTema('--graph-link-active', '#4a9eff');
+  /*
+   * Il fondo della scena lo dipinge il RENDERER WebGL, non il CSS: la regola
+   * `.graph3d-canvas { background: var(--bg-1) }` sta dietro a un canvas che è
+   * opaco, quindi non si vede mai. Il predefinito di 3d-force-graph è un blu
+   * quasi nero, ed è la ragione per cui col tema chiaro il grafo restava scuro:
+   * l'unico elemento della UI che il tema non raggiungeva. `backgroundColor`
+   * vuole un colore che THREE sappia leggere — i token del tema sono `#rrggbb`,
+   * e `Color` li accetta.
+   */
+  const sfondo = tokenTema('--bg-1', '#0b0f14');
 
   const pathNodeSet = activeShortestPath ? new Set(activeShortestPath.nodes) : null;
   const pathEdgeSet = activeShortestPath ? new Set(activeShortestPath.edges) : null;
 
+  /*
+   * `controlType: 'orbit'`. Il predefinito di 3d-force-graph è «trackball», e
+   * i TrackballControls **non hanno `autoRotate`**: assegnare
+   * `controls().autoRotate = true` scriveva una proprietà che nessuno legge,
+   * quindi il comando «Rotazione automatica» non ha mai fatto assolutamente
+   * nulla — non era una questione di grafi troppo grandi. Gli OrbitControls
+   * quella proprietà la implementano, e `tick()` chiama `controls.update()` a
+   * ogni fotogramma, che è ciò che la rotazione richiede per avanzare.
+   * In più l'orbita è il modello di navigazione giusto per un grafo: si gira
+   * intorno a un centro, non si fa rotolare la scena.
+   */
   graphInstance = (aggiornaInPosto
     ? graphInstance.graphData(graphData)
-    : ForceGraph3D({ preserveDrawingBuffer: true })(canvas).graphData(graphData))
+    : ForceGraph3D({ preserveDrawingBuffer: true, controlType: 'orbit' })(canvas).graphData(graphData))
     .nodeId('id')
+    .backgroundColor(sfondo)
+    /*
+     * La vista 2D è una proprietà della SIMULAZIONE, non della telecamera.
+     * Prima si fissava `fz = 0` su ogni nodo e si spostava la telecamera: le
+     * forze restavano a tre dimensioni, quindi il grafo continuava a essere
+     * disposto nello spazio e l'unico effetto visibile era un ridisegno.
+     * `numDimensions(2)` fa girare la disposizione sul piano.
+     */
+    .numDimensions(is2DMode ? 2 : 3)
     .nodeLabel((node) => `<div style="background:var(--bg-elevated); padding:8px 12px; border-radius:6px; border:1px solid var(--accent); font-family:sans-serif; color:var(--fg); font-size:12px;"><b>${esc(node.name)}</b><br/><small style="color:var(--fg-dim);">${node.fieldCount} campi • ${node.degree} relazioni</small></div>`)
     .nodeColor((node) => {
       if (pathNodeSet) {
@@ -368,14 +500,29 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
       );
 
       showTableDetailsPanel(node.name, currentSearchQuery);
+      // Con una tabella scelta il filtro dei vicini diventa esprimibile.
+      aggiornaComandi();
       graphInstance.nodeColor(graphInstance.nodeColor()).linkWidth(graphInstance.linkWidth());
     });
 
+  const controlli = graphInstance.controls && graphInstance.controls();
   if (is2DMode) {
     graphInstance.cameraPosition({ x: 0, y: 0, z: 350 }, { x: 0, y: 0, z: 0 }, 500);
   }
+  applicaNavigazione(controlli);
+  // Quando la disposizione si ferma si inquadra tutto: passando a 2D il grafo
+  // si distende sul piano e occupa un'area diversa da quella di prima.
+  if (typeof graphInstance.onEngineStop === 'function') {
+    const mia = graphInstance;
+    graphInstance.onEngineStop(() => {
+      if (graphInstance === mia && typeof mia.zoomToFit === 'function') mia.zoomToFit(600, 60);
+    });
+  }
 
-  if (typeof THREE !== 'undefined' && !policy.reducedEffects) {
+  // Le etichette sono l'informazione del grafo: un grafo di tabelle senza i
+  // nomi delle tabelle non è alleggerito, è illeggibile. Restano accese fino
+  // a un tetto proprio, molto più alto di quello degli effetti.
+  if (typeof THREE !== 'undefined' && policy.etichette !== false) {
     graphInstance.nodeThreeObject((node) => {
       const sprite = new THREE.Sprite(
         new THREE.SpriteMaterial({
@@ -393,11 +540,12 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     graphInstance.nodeThreeObjectExtend(false);
   }
 
-  if (graphInstance.controls()) {
-    graphInstance.controls().autoRotate = !!(autoRotateActive && !policy.reducedEffects);
-  }
-  if (autoRotateActive && graphInstance.controls() && !policy.reducedEffects) {
-    graphInstance.controls().autoRotateSpeed = 1.5;
+  // La rotazione automatica non dipende dalla dimensione del grafo. Sopravvive
+  // al ridisegno perché l'istanza viene ricreata a ogni render: senza questa
+  // riapplicazione, cambiare colore o filtro la spegneva in silenzio.
+  if (controlli) {
+    controlli.autoRotate = !!autoRotateActive;
+    controlli.autoRotateSpeed = 1.5;
   }
 
   if (policy.incomplete) {
@@ -439,7 +587,7 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
 // L'euristica vive nel modulo condiviso: qui basta sapere SE il campo e'
 // sensibile. La ricerca per sottostringa marcava "author", "passenger" e
 // "authorized_at" come dati personali (`pass`, `auth`), e la stessa regola
-// esisteva in una seconda versione, piu' ampia, nel gateway MCP.
+// esisteva in una seconda versione, più ampia, nel gateway MCP.
 function isPIIField(fieldName) {
   return terminePii(fieldName) !== null;
 }
@@ -544,7 +692,7 @@ function showTableDetailsPanel(tableName, highlightQuery) {
   </div>`;
 
   content.innerHTML = html;
-  panel.classList.remove('hidden');
+  mostraPannelloLaterale(true);
   const loadFields = $('#graph3d-load-node-fields');
   if (loadFields) loadFields.onclick = async () => {
     loadFields.disabled = true;
@@ -949,35 +1097,72 @@ export function initGraph3d() {
   });
 
   const searchInput = $('#graph3d-search');
+  const searchClear = $('#graph3d-search-clear');
+  const searchEsito = $('#graph3d-search-esito');
+
+  const eseguiRicerca = () => {
+    if (!searchInput) return;
+    currentSearchQuery = searchInput.value.trim().toLowerCase();
+    if (searchClear) searchClear.classList.toggle('hidden', !searchInput.value);
+
+    const schema = state.dbSchema || currentSchemaData;
+    if (!graphInstance || !schema) {
+      if (searchEsito) { searchEsito.textContent = ''; searchEsito.classList.remove('assente'); }
+      return;
+    }
+
+    const risultato = cercaNodo(graphInstance.graphData().nodes, currentSearchQuery);
+    if (searchEsito) {
+      searchEsito.textContent = messaggioRicerca(risultato);
+      // «Nessuna corrispondenza» è un esito, non un errore: si dichiara, non
+      // si urla. Prima non veniva detto affatto, e una ricerca a vuoto era
+      // indistinguibile da una non ancora scritta.
+      searchEsito.classList.toggle('assente', risultato.esito === 'assente');
+    }
+
+    const targetNode = risultato.nodo;
+    if (targetNode && targetNode.x != null) {
+      selectedNodeId = targetNode.id;
+      const distance = 100;
+      const distRatio = 1 + distance / Math.hypot(targetNode.x, targetNode.y, targetNode.z || 1);
+      graphInstance.cameraPosition(
+        { x: targetNode.x * distRatio, y: targetNode.y * distRatio, z: (targetNode.z || 0) * distRatio },
+        { x: targetNode.x, y: targetNode.y, z: targetNode.z || 0 },
+        1200
+      );
+      showTableDetailsPanel(targetNode.name, currentSearchQuery);
+      aggiornaComandi();
+    }
+  };
+
+  if (searchInput) searchInput.addEventListener('input', eseguiRicerca);
+  if (searchClear) {
+    searchClear.addEventListener('click', () => {
+      if (!searchInput) return;
+      searchInput.value = '';
+      searchInput.focus();
+      eseguiRicerca();
+    });
+  }
   if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      currentSearchQuery = e.target.value.trim().toLowerCase();
-      const schema = state.dbSchema || currentSchemaData;
-      if (!currentSearchQuery || !graphInstance || !schema) return;
-
-      let targetNode = graphInstance.graphData().nodes.find((n) => n.name.toLowerCase().includes(currentSearchQuery));
-      if (!targetNode) {
-        targetNode = graphInstance.graphData().nodes.find((n) =>
-          (n.fields || []).some((f) => f.name.toLowerCase().includes(currentSearchQuery))
-        );
-      }
-
-      if (targetNode && targetNode.x != null) {
-        selectedNodeId = targetNode.id;
-        const distance = 100;
-        const distRatio = 1 + distance / Math.hypot(targetNode.x, targetNode.y, targetNode.z || 1);
-        graphInstance.cameraPosition(
-          { x: targetNode.x * distRatio, y: targetNode.y * distRatio, z: (targetNode.z || 0) * distRatio },
-          { x: targetNode.x, y: targetNode.y, z: targetNode.z || 0 },
-          1200
-        );
-        showTableDetailsPanel(targetNode.name, currentSearchQuery);
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && searchInput.value) {
+        e.stopPropagation();
+        searchInput.value = '';
+        eseguiRicerca();
       }
     });
   }
 
-  const colorSelect = $('#graph3d-color-mode');
-  if (colorSelect) colorSelect.addEventListener('change', () => renderGraph3d());
+  // Colorazione: due bottoni che dichiarano insieme quale dei due è in vigore.
+  for (const btn of document.querySelectorAll('.graph3d-bar .grafo-seg[data-colore]')) {
+    btn.addEventListener('click', () => {
+      if (colorMode === btn.dataset.colore) return;
+      colorMode = btn.dataset.colore;
+      aggiornaComandi();
+      renderGraph3d();
+    });
+  }
 
   const hopSelect = $('#graph3d-hop-filter');
   if (hopSelect) hopSelect.addEventListener('change', () => renderGraph3d());
@@ -992,15 +1177,20 @@ export function initGraph3d() {
       e.stopPropagation();
       const isHidden = menu.classList.contains('hidden');
       document.querySelectorAll('.toolbar-dropdown-menu, .app-menu').forEach((m) => m.classList.add('hidden'));
+      // `aria-expanded` va riportato su TUTTI i trigger, non solo su questo:
+      // la riga sopra ha appena chiuso anche il menu dell'altro.
+      document.querySelectorAll('.dropdown-trigger-btn[aria-expanded]').forEach((t) => t.setAttribute('aria-expanded', 'false'));
 
       if (isHidden) {
         positionFixedDropdown(btn, menu);
+        btn.setAttribute('aria-expanded', 'true');
       }
     });
 
     menu.addEventListener('click', (e) => {
       if (e.target.closest('.dropdown-item')) {
         menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
       }
     });
   };
@@ -1008,18 +1198,24 @@ export function initGraph3d() {
   setupToolbarDropdown('#graph3d-analysis-menu-btn', '#graph3d-analysis-menu');
   setupToolbarDropdown('#graph3d-export-menu-btn', '#graph3d-export-menu');
 
+  const chiudiMenu = () => {
+    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    document.querySelectorAll('.dropdown-trigger-btn[aria-expanded]').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+  };
+
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.toolbar-dropdown-wrap') && !e.target.closest('.toolbar-dropdown-menu')) {
-      document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+      chiudiMenu();
     }
   });
-
-  window.addEventListener('resize', () => {
-    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+  // Un menu aperto si chiude con Esc: era raggiungibile da tastiera e non
+  // abbandonabile da tastiera.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') chiudiMenu();
   });
-  window.addEventListener('scroll', () => {
-    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
-  }, true);
+
+  window.addEventListener('resize', chiudiMenu);
+  window.addEventListener('scroll', chiudiMenu, true);
 
   // 1. Shortest Path Modal Trigger & Handler
   const pathBtn = $('#graph3d-find-path');
@@ -1120,9 +1316,24 @@ export function initGraph3d() {
   if (toggleEmptyBtn) {
     toggleEmptyBtn.addEventListener('click', () => {
       hideEmptyTables = !hideEmptyTables;
-      toggleEmptyBtn.classList.toggle('active', hideEmptyTables);
       renderGraph3d();
-      toast(hideEmptyTables ? 'Tabelle vuote nascoste' : 'Tutte le tabelle visibili');
+      aggiornaComandi();
+      if (!hideEmptyTables) {
+        toast('Tutte le tabelle visibili');
+        return;
+      }
+      // Il conteggio è una STIMA del motore: dichiararlo è ciò che permette a
+      // chi guarda di capire perché una tabella che sa piena è sparita — o
+      // perché una che sa vuota è rimasta.
+      const schema = state.dbSchema || currentSchemaData;
+      const { vuote, ignote } = contaVuote((schema && schema.collections) || []);
+      if (vuote === 0) {
+        toast(ignote > 0
+          ? 'Nessuna tabella risulta vuota (il motore non stima le righe di ' + ignote + ' tabelle)'
+          : 'Nessuna tabella vuota da nascondere');
+      } else {
+        toast(vuote + (vuote === 1 ? ' tabella nascosta' : ' tabelle nascoste') + ' secondo la stima delle righe del motore');
+      }
     });
   }
 
@@ -1130,8 +1341,8 @@ export function initGraph3d() {
   if (implicitBtn) {
     implicitBtn.addEventListener('click', () => {
       showImplicitRelations = !showImplicitRelations;
-      implicitBtn.classList.toggle('active', showImplicitRelations);
       renderGraph3d();
+      aggiornaComandi();
       toast(showImplicitRelations ? 'Relazioni implicite visibili' : 'Relazioni implicite nascoste');
     });
   }
@@ -1140,9 +1351,9 @@ export function initGraph3d() {
   if (toggle2dBtn) {
     toggle2dBtn.addEventListener('click', () => {
       is2DMode = !is2DMode;
-      toggle2dBtn.classList.toggle('active', is2DMode);
       renderGraph3d();
-      toast(is2DMode ? 'Modalità 2D Piatta attivata' : 'Modalità 3D attivata');
+      aggiornaComandi();
+      toast(is2DMode ? 'Vista 2D piatta attivata' : 'Vista 3D attivata');
     });
   }
 
@@ -1150,12 +1361,27 @@ export function initGraph3d() {
   if (autoRotateBtn) {
     autoRotateBtn.addEventListener('click', () => {
       autoRotateActive = !autoRotateActive;
-      autoRotateBtn.classList.toggle('active', autoRotateActive);
-      if (graphInstance && graphInstance.controls()) {
-        graphInstance.controls().autoRotate = autoRotateActive;
-        graphInstance.controls().autoRotateSpeed = 1.5;
+      /*
+       * Far girare la telecamera attorno a una vista dichiarata PIATTA la
+       * porterebbe fuori dal piano: i due comandi si contraddicono. Non si
+       * disabilita nessuno dei due — chiedere la rotazione è chiedere lo
+       * spazio, quindi si esce dal 2D e lo si dice.
+       */
+      if (autoRotateActive && is2DMode) {
+        is2DMode = false;
+        renderGraph3d();
+        aggiornaComandi();
+        toast('Rotazione automatica attivata: la vista torna in 3D');
+        return;
       }
-      toast(autoRotateActive ? 'Modalità Auto-Rotate 3D attivata' : 'Auto-Rotate disattivata');
+      const c = graphInstance && graphInstance.controls && graphInstance.controls();
+      if (c) {
+        c.autoRotate = autoRotateActive;
+        c.autoRotateSpeed = 1.5;
+      }
+      applicaNavigazione(c);
+      aggiornaComandi();
+      toast(autoRotateActive ? 'Rotazione automatica attivata' : 'Rotazione automatica disattivata');
     });
   }
 
@@ -1232,10 +1458,16 @@ export function initGraph3d() {
   const closePanelBtn = $('#graph3d-panel-close');
   if (closePanelBtn) {
     closePanelBtn.addEventListener('click', () => {
-      const panel = $('#graph3d-side-panel');
-      if (panel) panel.classList.add('hidden');
+      mostraPannelloLaterale(false);
       selectedNodeId = null;
-      if (graphInstance) {
+      // Senza selezione il filtro dei vicini non è più esprimibile: se restava
+      // su «2 salti» il grafo mostrava un criterio che non era più in vigore.
+      const hop = $('#graph3d-hop-filter');
+      const filtroAttivo = hop && hop.value !== 'all';
+      aggiornaComandi();
+      if (filtroAttivo) {
+        renderGraph3d();
+      } else if (graphInstance) {
         graphInstance.nodeColor(graphInstance.nodeColor()).linkWidth(graphInstance.linkWidth());
       }
     });
@@ -1245,7 +1477,11 @@ export function initGraph3d() {
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       selectedNodeId = null;
+      mostraPannelloLaterale(false);
+      // `clearShortestPath` ridisegna: da lì in poi `graphInstance` è la nuova
+      // istanza, ed è quella che va inquadrata.
       clearShortestPath(true);
+      aggiornaComandi();
       if (graphInstance) {
         graphInstance.zoomToFit(1000, 50);
         graphInstance.nodeColor(graphInstance.nodeColor()).linkWidth(graphInstance.linkWidth());
@@ -1392,4 +1628,9 @@ export function initGraph3d() {
       });
     });
   }
+
+  // Lo stato iniziale va DIPINTO, non presupposto: `showImplicitRelations`
+  // parte a `true` e il suo bottone nasceva spento, cioè dichiarava il
+  // contrario di ciò che il grafo stava facendo.
+  aggiornaComandi();
 }

@@ -1257,8 +1257,16 @@ class MySqlStrategy extends DbStrategy {
 
   async dbSchema(db) {
     const pool = this.requirePool();
+    // `TABLE_ROWS` viaggia con lo schema perche' il grafo deve poter nascondere
+    // le tabelle VUOTE, e senza un conteggio quella decisione non e'
+    // esprimibile: il filtro cadeva su `fields.length === 0`, cioe' sulle
+    // tabelle senza COLONNE, che in SQL non esistono. E' una stima InnoDB —
+    // ricavata dai campionamenti dell'indice, non un `COUNT(*)`, che su un
+    // centinaio di tabelle sarebbe una scansione ciascuna — quindi il
+    // chiamante la tratta come tale: si nasconde solo cio' che la stima
+    // dichiara a zero, mai cio' che non sa (`null`).
     const [tables] = await pool.query(
-      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
+      `SELECT TABLE_NAME, TABLE_ROWS FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME`,
       [db]
     );
 
@@ -1285,6 +1293,7 @@ class MySqlStrategy extends DbStrategy {
     const collections = tables.map((t) => ({
       name: t.TABLE_NAME,
       fields: colsByTable.get(t.TABLE_NAME) || [],
+      rowsApprox: t.TABLE_ROWS == null ? null : Number(t.TABLE_ROWS),
     }));
 
     const [fkRows] = await pool.query(

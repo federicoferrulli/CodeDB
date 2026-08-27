@@ -651,8 +651,20 @@ class MongoDbStrategy extends DbStrategy {
       .filter((c) => c.type !== 'view');
     const collections = [];
     for (const c of infos) {
-      const schema = await sampleSchema(database.collection(c.name), 50);
-      collections.push({ name: c.name, fields: schema.fields });
+      const collection = database.collection(c.name);
+      const schema = await sampleSchema(collection, 50);
+      // Il conteggio viaggia con lo schema perche' il grafo deve poter
+      // nascondere le collection vuote (vedi la nota gemella in
+      // MySqlStrategy). `estimatedDocumentCount` legge i metadati e non
+      // scansiona; se il driver non risponde resta `null`, cioe' «non so»,
+      // e il chiamante non nasconde nulla.
+      let rowsApprox = null;
+      try {
+        rowsApprox = await collection.estimatedDocumentCount();
+      } catch (err) {
+        console.warn(`Conteggio stimato non disponibile per ${c.name}:`, err.message);
+      }
+      collections.push({ name: c.name, fields: schema.fields, rowsApprox });
     }
     collections.sort((a, b) => a.name.localeCompare(b.name));
     return { collections, relations: DbStrategy.detectRelations(collections) };
