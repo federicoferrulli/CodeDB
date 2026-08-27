@@ -1136,6 +1136,12 @@ console.log('--- Test Unitari CodeDB ---');
   // Test 22: Geometrie (validazione GeoJSON, binding ST_GeomFromGeoJSON, lettura)
   require('./unit-geometry');
 
+  // Test 22-bis: sottotipo geometrico dell'editor e forme iniziali multipart
+  require('./unit-geo-editor');
+
+  // Test 22-ter: operazioni dei bottoni azione dell'editor su mappa
+  require('./unit-geo-modifica');
+
   // Test 23: Custom Charts (aggregazioni, valori EJSON, regole di leggibilità)
   require('./unit-charts');
 

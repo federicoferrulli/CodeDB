@@ -347,8 +347,11 @@
   --graph-label-bg: rgba(15, 20, 28, 0.85);
   --graph-label-bd: #4a9eff;
   --graph-label-fg: #ffffff;
-  /* Contorno delle maniglie di trascinamento sulla mappa. */
+  /* Contorno delle maniglie di trascinamento sulla mappa. Il vertice SCELTO ha
+     un contorno proprio: il suo riempimento è già diverso, ma su una tile scura
+     due colori pieni vicini si distinguono male. */
   --geo-handle-outline: #ffffff;
+  --geo-handle-selected-outline: #ffffff;
 
   /* Aloni atmosferici del fondo pagina (base.css). */
   --glow-1: rgba(99, 102, 241, 0.045);
@@ -564,6 +567,7 @@
   --graph-label-bd: #0b62d0;
   --graph-label-fg: #1f2937;
   --geo-handle-outline: #1f2937;
+  --geo-handle-selected-outline: #1f2937;
 
   --glow-1: rgba(79, 70, 229, 0.05);
   --glow-2: rgba(139, 92, 246, 0.04);

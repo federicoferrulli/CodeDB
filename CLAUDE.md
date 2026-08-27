@@ -128,6 +128,9 @@ node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ri
 node test/e2e-selezione-celle-viste.js # Test della selezione di celle in piu' griglie indipendenti (Chromium)
 node test/e2e-fk-viste.js     # Test del pannello 🔗 aperto da piu' griglie (Chromium)
 node test/e2e-geometrie-viste.js # Test delle celle geometriche in ogni griglia (Chromium)
+node test/unit-geo-editor.js   # Test del sottotipo geometrico dichiarato dalla colonna
+node test/unit-geo-modifica.js # Test delle operazioni dei bottoni azione sulla mappa
+node test/e2e-editor-geometrico.js # Test dell'editor su mappa: tipo dichiarato e multipart (Chromium)
 node test/unit-artefatti.js    # Test del confine di fiducia: bersaglio effettivo delle DDL
 node test/unit-piano-import.js # Test del piano immutabile e delle fasi dell'orchestratore
 node test/unit-import-adapter.js # Test dell'adapter reale (identita' e righe prima delle mutazioni)
@@ -257,6 +260,62 @@ un messaggio che dice **cosa fare**, non solo che qualcosa non torna.
 * **GeoJSON Standard**: Formato unico usato per tutti i DBMS (`ST_AsGeoJSON` e `ST_GeomFromGeoJSON` su SQL).
 * Editor Leaflet 1.9.4 integrato (vendorizzato), ottimizzazione del trascinamento vertici via Canvas a doppio layer (`geomap.js`), ed analisi statistica/cartografica delle selezioni geometriche (`geo-stats.js`, `geomulti.js`).
 * **Vista mappa condivisa (`geo-vista.js`)**: motore riusabile (disegno, elenco cliccabile, riepilogo, avvisi, tetti di disegno, export GeoJSON) usato sia dalla modale della selezione di celle sia dalla scheda 🗺 Mappa dei risultati della tab ⚡. Ogni istanza è indipendente: le due viste possono coesistere nella stessa pagina.
+* **I gesti dell'editor su mappa sono BOTTONI (`geo-modifica.js`)**: modificare una
+  geometria esistente si faceva con tre gesti che non si vedevano da nessuna parte — clic
+  per aggiungere, trascinamento per spostare, **tasto destro** per eliminare — e con due
+  operazioni che semplicemente non c'erano: infilare un vertice in mezzo a un lato e tornare
+  indietro. Il clic aggiungeva sempre in coda all'anello, quindi correggere il lato fra il
+  terzo e il quarto vertice di un poligono voleva dire rifare la forma o riscrivere il JSON;
+  e il tasto destro non esiste su un touch. Ora la barra sotto al tipo ha `↶ Annulla` /
+  `↷ Rifai`, `＋ Vertice dopo` (a metà del lato successivo, o **prolungando** il tratto se il
+  vertice scelto è l'ultimo di una linea aperta), `🗑 Vertice`, `🗑 Parte`, e un bottone di
+  **modalità** che dichiara che cosa farà il prossimo clic sulla mappa. Un bottone
+  disattivato dice *prima* del clic che quel gesto qui non ha senso, e il `title` dice
+  perché. Premere una maniglia la SELEZIONA e insieme comincia il trascinamento: i bottoni
+  agiscono sul vertice scelto, che è dipinto diverso — un comando che agisce su qualcosa di
+  invisibile non è un comando.
+  La modalità del clic **dipende da cosa si sta facendo**: una geometria nuova si disegna
+  (il clic aggiunge), una che esiste già si corregge (il clic sceglie soltanto), perché
+  aprire in «aggiungi» una geometria esistente significava che il primo clic sulla mappa —
+  spesso solo per portare a fuoco la finestra — le attaccava un vertice in coda.
+  L'annullamento copre ogni modifica, **trascinamento e JSON scritto a mano compresi**: è la
+  sola ragione per cui un gesto sbagliato non costa più il disegno.
+  Le REGOLE stanno in `geo-modifica.js`, pure: dove entra un vertice nuovo, quando un anello
+  va richiuso, quale operazione va **rifiutata** e con quale motivo (una parte al minimo dei
+  vertici si elimina intera, l'ultima parte non si elimina affatto). Non mutano la geometria
+  ricevuta — è ciò che rende possibile l'annullamento — e restituiscono l'errore come
+  **dato**, già scritto in italiano, invece di lanciarlo. `test/unit-geo-modifica.js` le
+  prova senza browser; `test/e2e-editor-geometrico.js` prova in Chromium che i bottoni siano
+  davvero collegati a quelle regole, e la sensibilità di entrambi è stata verificata
+  rompendo di proposito la chiusura dell'anello, la registrazione della storia, il
+  collegamento del bottone «Vertice dopo» e la modalità iniziale del clic.
+* **L'editor su mappa apre sul tipo che la colonna DICHIARA**: la forma di partenza era
+  sempre un `Point`, e le geometrie multipart (`MultiPoint` a parte) non si potevano nemmeno
+  disegnare — `MODIFICABILI` le escludeva, quindi su una colonna `MULTIPOLYGON` l'unica via
+  era scrivere il GeoJSON a mano nella casella accanto alla mappa. Il sottotipo però è già
+  scritto nel catalogo, e i due motori SQL lo tengono in **due posti diversi**: MySQL dentro
+  il tipo stesso (`COLUMN_TYPE` = `multipolygon`), PostGIS nelle viste
+  `geometry_columns`/`geography_columns`, perché `udt_name` lì dice soltanto `geometry` —
+  la lettura del SRID passava già da quelle viste e ora porta con sé anche il tipo
+  (`geoType` nel `columnMeta`). `tipoGeoJsonDaTipoColonna` e `tipoGeoJsonDaMetadato`
+  (`geojson.js`, puri) sono la regola unica che riconosce entrambe le forme più i typmod
+  (`geometry(MultiPolygon,4326)`): il form di inserimento, la modifica in griglia e la
+  Split-View passano di lì, e `insert.js` non tiene più un elenco parallelo di nomi che i
+  tipi con modificatore non conteneva. Un tipo **generico** (`geometry`, `geography`,
+  `geojson`) non autorizza a indovinare una forma e resta su `Point`.
+  Tutti i tipi basati su `coordinates` sono ora modificabili con le maniglie: la parte
+  attiva di una geometria multipart è quella toccata per ultima o l'ultima creata,
+  «＋ Nuovo poligono/linea» ne apre un'altra e «↺ Ridisegna» svuota la forma conservando il
+  tipo. `GeometryCollection` resta volutamente fuori (componenti eterogenei: servirebbe un
+  secondo editor gerarchico) e si vede sulla mappa modificandosi dal JSON. Il salvataggio è
+  **fail-closed**: una parte con troppi pochi vertici o un anello non chiuso fermano
+  «Applica geometria» con il motivo, invece di mandare al database una geometria che il
+  motore rifiuterà. Una cella **vuota** di una colonna geometrica apre la mappa come una
+  piena: prima la decisione dipendeva dal solo valore, quindi la PRIMA geometria di una riga
+  era l'unica che si dovesse scrivere a mano in GeoJSON — cioè proprio quando la mappa serve
+  di più. `test/unit-geo-editor.js` prova la regola pura, `test/e2e-editor-geometrico.js` la
+  prova in Chromium disegnando con clic veri sulla mappa: entrambe le prove sono state
+  verificate rompendo di proposito l'autoselezione e la scelta della parte attiva.
 * **La cella geometrica in ogni griglia (`cella-geometria.js`)**: riconoscere una geometria in una cella, darle etichetta, classe `type-geo`, aiuto e doppio clic era scritto **nella sola vista Dati**: in un riquadro della Split-View la stessa colonna mostrava il JSON grezzo e non si apriva su mappa. `rendiCellaGeometrica` è ora la resa comune alle tre griglie, e la capacità `geometrie` di un riquadro è **accesa** e dichiarata. Che cosa significhi «aprire» non è però una proprietà della vista ma della **cella**: una riga senza `_id` — una vista SQL, un result set — non è riscrivibile, e aprirle l'editor con «Applica geometria» prometteva un `doc:update` senza bersaglio, cioè un errore restituito dopo che l'utente aveva finito di disegnare. `aperturaCella` tiene quella decisione in un posto solo e ogni griglia dichiara nei propri termini quando una cella è modificabile (`col !== '_id'` e identità della riga in Dati, più il permesso di selezione in un riquadro); `aperturaSolaLettura` è la via della tab ⚡, dove non c'è nulla da riscrivere. Provato da `test/e2e-geometrie-viste.js` in Chromium con un socket finto: la resa si controlla sul `td` e non su un discendente, perché `displayValue` marca già `type-geo` sullo span di **ripiego** — cercare la classe ovunque avrebbe fatto passare il test anche a capacità spenta.
 
 ### 7. Gateway MCP (`mcp/McpGateway.js`)

@@ -186,16 +186,24 @@ const DIALETTO_METADATI = {
       if (!info.geo.size) return;
       try {
         const srid = await strategia.requirePool().query(
-          `SELECT f_geometry_column AS name, srid, 'geometry' AS kind
+          `SELECT f_geometry_column AS name, srid, type AS geotipo, 'geometry' AS kind
              FROM geometry_columns WHERE f_table_schema = $1 AND f_table_name = $2
             UNION ALL
-           SELECT f_geography_column AS name, srid, 'geography' AS kind
+           SELECT f_geography_column AS name, srid, type AS geotipo, 'geography' AS kind
              FROM geography_columns WHERE f_table_schema = $1 AND f_table_name = $2`,
           [schemaOf(db), coll]
         );
         for (const r of srid.rows) {
           const c = info.geo.get(r.name);
-          if (c) { c.srid = r.srid == null ? null : Number(r.srid); c.kind = r.kind; }
+          if (!c) continue;
+          c.srid = r.srid == null ? null : Number(r.srid);
+          c.kind = r.kind;
+          // Il SOTTOTIPO (`MULTIPOLYGON`) sta solo qui: `udt_name` dice
+          // 'geometry' e basta, quindi senza questa colonna l'editor su mappa
+          // non saprebbe su quale forma aprirsi. 'GEOMETRY' significa «una
+          // qualunque» e non dichiara nulla: viaggia comunque, e' chi legge a
+          // non ricavarne un sottotipo.
+          c.geoTipo = r.geotipo == null ? null : String(r.geotipo);
         }
       } catch {
         // Viste PostGIS assenti o non leggibili: si scrive senza forzare il
@@ -783,6 +791,10 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
       type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid,
+      // Sottotipo PostGIS: `type` qui e' 'geometry' per ogni colonna
+      // geometrica, e la griglia non avrebbe altro modo di sapere che quella
+      // colonna vuole un MultiPolygon.
+      geoType: c.geoTipo || undefined,
     }]));
     return { docs, columns, columnMeta, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }

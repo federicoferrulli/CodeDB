@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento } from './utils.js';
 import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
+import { colonnaGeometrica, tipoGeoJsonDaMetadato } from './geojson.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, fuocoNelPannelloFk, pannelloFkMobile } from './fk-vista.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
 import {
@@ -210,10 +211,18 @@ export function startEdit(td, doc, field, opts = {}) {
   // Geometrie: non c'è un `input` sensato in cui scriverle a mano. Si apre
   // l'editor su mappa, che è anche l'unico modo di CAPIRE cosa si sta
   // modificando; il salvataggio è lo stesso `doc:update` degli altri campi.
-  if (isGeometry(doc[field])) {
+  //
+  // Vale anche per una cella VUOTA di una colonna geometrica: prima la
+  // decisione dipendeva dal solo valore, quindi la PRIMA geometria di una riga
+  // si poteva scrivere unicamente a mano in una casella di testo, in GeoJSON —
+  // cioè proprio quando la mappa serve di più. Il tipo della colonna dice sia
+  // che lì va una geometria sia, sui due motori SQL, quale forma.
+  const vuoto = doc[field] == null || doc[field] === '';
+  if (isGeometry(doc[field]) || (vuoto && colonnaGeometrica(opts.metadato))) {
     openGeoEditor({
-      value: doc[field],
+      value: isGeometry(doc[field]) ? doc[field] : null,
       campo: field,
+      tipoSuggerito: tipoGeoJsonDaMetadato(opts.metadato),
       onSave: (geo) => salvaCampo(doc, field, geo, ctx),
     });
     return;

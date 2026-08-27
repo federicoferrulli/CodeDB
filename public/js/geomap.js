@@ -25,19 +25,23 @@
 import { $, toast, openModal, closeModal } from './utils.js';
 import {
   isGeometry, geometryLabel, fmtCoord, posizioni, scriviPosizione, chiuso, fuoriDaLonLat,
+  creaGeometriaIniziale,
 } from './geojson.js';
 import { caricaLeaflet, tileAttive, impostaTile, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
+import {
+  MODIFICABILI, multipart, numeroParti, parteDiPercorso, sequenzaDi,
+  aggiungiVertice, eliminaVertice, inserisciVerticeDopo, nuovaParte, eliminaParte,
+  geometriaVuota, problemaGeometria, creaStoria,
+} from './geo-modifica.js';
 import { tokenTema } from './theme.js';
 
 // Ri-esportati per comodita' di chi apre l'editor: chi importa geomap.js ha
 // gia' quello che serve per riconoscere ed etichettare una geometria.
 export { isGeometry, geometryLabel };
 
-// Tipi disegnabili/modificabili con le maniglie. Gli altri (Multi*,
-// GeometryCollection) si vedono sulla mappa ma si modificano dal JSON: dare
-// maniglie a geometrie annidate richiederebbe un'interfaccia a parte, e un
-// editor a metà su dati altrui è peggio di un editor che dichiara il limite.
-const MODIFICABILI = new Set(['Point', 'MultiPoint', 'LineString', 'Polygon']);
+// Le REGOLE di modifica (quali tipi, quanti vertici servono, dove finisce un
+// vertice nuovo) stanno in `geo-modifica.js`, pure e provate senza browser: qui
+// resta la mappa, cioè il gesto e il disegno.
 
 let L = null;              // Leaflet (caricato su richiesta da geo-leaflet.js)
 let mappa = null;          // istanza L.map
@@ -161,25 +165,62 @@ function disegnaManiglie() {
 
   for (const { percorso, pos } of visibili) {
     const m = L.circleMarker(latlng(pos), {
-      // Il contorno della maniglia è l'unico colore che segue il tema: con le
-      // tile spente il fondo della mappa è quello della modale, e un anello
-      // bianco su fondo chiaro non si vede. Il riempimento invece resta fisso,
-      // come i colori delle geometrie: deve staccare dalle tile di
-      // OpenStreetMap, che non cambiano con il tema dell'applicazione.
-      radius: 6, color: tokenTema('--geo-handle-outline', '#fff'), weight: 2,
-      fillColor: '#e0a800', fillOpacity: 1,
+      ...stileManiglia(percorso),
       renderer: rendererManiglie,
     }).addTo(gruppoManiglie);
     manigliePerPercorso.set(percorso.join('/'), m);
     if (conTooltip) m.bindTooltip(fmtCoord(pos), { direction: 'top' });
     if (!modificabile) continue;
 
-    m.on('mousedown', (ev) => trascina(ev, percorso, pos.length > 2 ? pos[2] : null));
-    // Tasto destro su un vertice = eliminalo (dove ha senso).
+    // Premere una maniglia la SELEZIONA e insieme comincia il trascinamento: i
+    // bottoni azione (elimina, inserisci) agiscono sulla selezione, e chiedere
+    // un gesto in più per sceglierla sarebbe un passaggio a vuoto.
+    m.on('mousedown', (ev) => {
+      seleziona(percorso);
+      trascina(ev, percorso, pos.length > 2 ? pos[2] : null);
+    });
+    // Tasto destro su un vertice = eliminalo. Resta la scorciatoia di chi la
+    // conosce; il bottone è la via che si vede — e l'unica su un touch, dove il
+    // tasto destro non esiste.
     m.on('contextmenu', (ev) => {
       ev.originalEvent.preventDefault();
-      eliminaVertice(percorso);
+      seleziona(percorso);
+      applicaModifica((g) => eliminaVertice(g, percorso));
     });
+  }
+}
+
+/**
+ * Lo stile di una maniglia, selezionata o no.
+ *
+ * Il contorno è l'unico colore che segue il tema: con le tile spente il fondo
+ * della mappa è quello della modale, e un anello bianco su fondo chiaro non si
+ * vede. Il riempimento resta fisso, come i colori delle geometrie: deve
+ * staccare dalle tile di OpenStreetMap, che non cambiano con il tema
+ * dell'applicazione. Il vertice selezionato è più grande e di un altro colore,
+ * perché è il bersaglio dei bottoni azione: senza, «elimina vertice» sarebbe un
+ * bottone che agisce su qualcosa che non si sa quale sia.
+ */
+function stileManiglia(percorso) {
+  const scelto = !!stato && Array.isArray(stato.selezione)
+    && stato.selezione.join('/') === percorso.join('/');
+  return {
+    radius: scelto ? 9 : 6,
+    color: scelto ? tokenTema('--geo-handle-selected-outline', '#fff') : tokenTema('--geo-handle-outline', '#fff'),
+    weight: scelto ? 3 : 2,
+    fillColor: scelto ? '#d6336c' : '#e0a800',
+    fillOpacity: 1,
+  };
+}
+
+/**
+ * Ridipinge le sole maniglie, senza ricostruire la scena: cambiare selezione è
+ * un cambio di STILE, e rifare forma, tooltip e gestori a ogni clic su un
+ * vertice si sentirebbe su una geometria con centinaia di punti.
+ */
+function aggiornaStileManiglie() {
+  for (const [chiave, m] of manigliePerPercorso) {
+    if (m && m.setStyle) m.setStyle(stileManiglia(chiave.split('/')));
   }
 }
 
@@ -199,6 +240,10 @@ function disegnaManiglie() {
  */
 function trascina(ev, percorso, quota) {
   ev.originalEvent.preventDefault();
+  // Anche spostare un vertice è una modifica da poter annullare: si registra
+  // qui, PRIMA del primo fotogramma, perché durante il trascinamento la
+  // geometria viene mutata in posto per non ricostruire la scena a ogni evento.
+  stato.storia.registra(stato.geo);
   mappa.dragging.disable();
   trascinando = true;
   let ultimo = null;
@@ -311,32 +356,90 @@ function aggiornaAvvisoManiglie(totali, troppiInVista) {
   el.classList.toggle('hidden', !troppiInVista);
 }
 
-function eliminaVertice(percorso) {
-  const geo = stato.geo;
-  if (!MODIFICABILI.has(geo.type) || geo.type === 'Point') {
-    toast('Un Point ha una sola posizione: cambia il tipo per eliminarla.', true);
-    return;
+/**
+ * Applica una modifica DICHIARATA dal modulo puro.
+ *
+ * Un solo punto in cui: si registra lo stato precedente per l'annullamento, si
+ * riporta all'utente il rifiuto con la sua ragione, si aggiornano selezione e
+ * parte attiva, e si ridisegnano testo e mappa. I bottoni azione qui sopra non
+ * fanno altro che passare l'operazione.
+ */
+function applicaModifica(operazione, { silenzioso = false } = {}) {
+  if (!stato || stato.readOnly) return false;
+  const prima = stato.geo;
+  const r = operazione(prima);
+  if (r.errore) {
+    if (!silenzioso) toast(r.errore, true);
+    return false;
   }
-  const minimi = geo.type === 'Polygon' ? 4 : (geo.type === 'LineString' ? 2 : 1);
-  const anello = geo.type === 'Polygon' ? geo.coordinates[percorso[0]] : geo.coordinates;
-  if (anello.length <= minimi) {
-    toast(`Servono almeno ${minimi} posizioni per un ${geo.type}.`, true);
-    return;
-  }
-  const idx = percorso[percorso.length - 1];
-  anello.splice(idx, 1);
-  if (geo.type === 'Polygon') chiudiAnello(anello, idx === 0);
+  stato.storia.registra(prima);
+  stato.geo = r.geo;
+  if (r.selezione !== null) stato.selezione = r.selezione;
+  if (r.parteAttiva !== null) stato.parteAttiva = r.parteAttiva;
   aggiornaTesto();
   disegna();
+  return true;
 }
 
-// Un anello di poligono deve avere la prima posizione ripetuta in fondo: se si
-// tocca il primo vertice va riallineato l'ultimo (e viceversa), altrimenti il
-// database rifiuta la geometria e l'utente non capirebbe perché.
-function chiudiAnello(anello, primoModificato) {
-  if (anello.length < 2) return;
-  if (primoModificato) anello[anello.length - 1] = [...anello[0]];
-  else anello[0] = [...anello[anello.length - 1]];
+/** Il vertice selezionato esiste ancora? La selezione sopravvive a ogni gesto. */
+function selezioneValida() {
+  if (!stato || !Array.isArray(stato.selezione)) return false;
+  if (!isGeometry(stato.geo) || !MODIFICABILI.has(stato.geo.type)) return false;
+  if (stato.geo.type === 'Point') return stato.selezione.length === 0;
+  const sequenza = sequenzaDi(stato.geo, stato.selezione);
+  return !!sequenza && stato.selezione[stato.selezione.length - 1] < sequenza.length;
+}
+
+function seleziona(percorso) {
+  if (!stato) return;
+  stato.selezione = percorso ? [...percorso] : null;
+  if (percorso && multipart(stato.geo.type)) stato.parteAttiva = parteDiPercorso(stato.geo, percorso);
+  aggiornaStileManiglie();
+  aggiornaControlliDisegno();
+}
+
+/* ------------------------- I bottoni azione ------------------------------- */
+
+function annulla() {
+  if (!stato || stato.readOnly) return;
+  const precedente = stato.storia.annulla(stato.geo);
+  if (!precedente) { toast('Non c’è nulla da annullare.', true); return; }
+  stato.geo = precedente;
+  stato.selezione = null;
+  stato.parteAttiva = Math.min(stato.parteAttiva || 0, Math.max(0, numeroParti(stato.geo) - 1));
+  aggiornaTesto();
+  disegna();
+  preparaSelettoreTipo(stato.readOnly); // l'annullamento può riportare a un altro tipo
+}
+
+function ripeti() {
+  if (!stato || stato.readOnly) return;
+  const successivo = stato.storia.ripeti(stato.geo);
+  if (!successivo) { toast('Non c’è nulla da rifare.', true); return; }
+  stato.geo = successivo;
+  stato.selezione = null;
+  stato.parteAttiva = Math.min(stato.parteAttiva || 0, Math.max(0, numeroParti(stato.geo) - 1));
+  aggiornaTesto();
+  disegna();
+  preparaSelettoreTipo(stato.readOnly);
+}
+
+function eliminaVerticeSelezionato() {
+  if (!selezioneValida()) { toast('Seleziona prima un vertice sulla mappa.', true); return; }
+  applicaModifica((g) => eliminaVertice(g, stato.selezione));
+}
+
+function inserisciDopoSelezionato() {
+  if (!selezioneValida()) { toast('Seleziona il vertice dopo il quale inserirne uno nuovo.', true); return; }
+  applicaModifica((g) => inserisciVerticeDopo(g, stato.selezione));
+}
+
+function eliminaParteAttiva() {
+  if (!stato || !multipart(stato.geo.type)) return;
+  if (applicaModifica((g) => eliminaParte(g, stato.parteAttiva || 0))) {
+    stato.selezione = null;
+    aggiornaControlliDisegno();
+  }
 }
 
 function aggiungiPunto(latlngClick) {
@@ -347,20 +450,12 @@ function aggiungiPunto(latlngClick) {
   // questa guardia ogni trascinamento lasciava dietro di sé un vertice in più,
   // comparso dal nulla proprio dove l'utente aveva appena finito di lavorare.
   if (trascinando || Date.now() - fineTrascinamento < 300) return;
+  // In modalità selezione il clic sullo sfondo NON aggiunge: è la modalità con
+  // cui si apre una geometria che esiste già, dove un vertice comparso per
+  // sbaglio è un danno da cercare e disfare.
+  if (stato.modo !== 'aggiungi') { seleziona(null); return; }
   const nuova = [Number(latlngClick.lng.toFixed(7)), Number(latlngClick.lat.toFixed(7))];
-  if (geo.type === 'Point') {
-    geo.coordinates = nuova; // un Point si sposta, non si moltiplica
-  } else if (geo.type === 'Polygon') {
-    const anello = geo.coordinates[0] || (geo.coordinates[0] = []);
-    // Il nuovo vertice entra PRIMA della ripetizione di chiusura.
-    if (anello.length >= 2) anello.splice(anello.length - 1, 0, nuova);
-    else anello.push(nuova);
-    if (anello.length >= 3 && !chiuso(anello)) anello.push([...anello[0]]);
-  } else {
-    geo.coordinates.push(nuova);
-  }
-  aggiornaTesto();
-  disegna();
+  applicaModifica((g) => aggiungiVertice(g, nuova, stato.parteAttiva));
 }
 
 function inquadra() {
@@ -397,9 +492,12 @@ function aggiornaIntestazione() {
   if (nota) {
     nota.textContent = nonModificabile
       ? `Le geometrie ${stato.geo.type} si visualizzano sulla mappa ma si modificano dal JSON qui accanto.`
-      : (stato.readOnly ? '' : 'Clic sulla mappa = aggiungi un punto · trascina un vertice = spostalo · tasto destro su un vertice = eliminalo.');
+      : (stato.readOnly ? '' : (stato.modo === 'aggiungi'
+        ? 'Clic sulla mappa = aggiungi un vertice · trascina = sposta · premi un vertice per sceglierlo e usare i bottoni qui sopra (Canc elimina, Ins inserisce a metà lato, Ctrl+Z annulla).'
+        : 'Premi un vertice per sceglierlo, trascinalo per spostarlo, poi usa i bottoni qui sopra (Canc elimina, Ins inserisce a metà lato, Ctrl+Z annulla). Il clic sullo sfondo non aggiunge nulla: premi «Clic: seleziona soltanto» per tornare a disegnare.'));
     nota.classList.toggle('hidden', !nota.textContent);
   }
+  aggiornaControlliDisegno();
 }
 
 function leggiTesto() {
@@ -420,7 +518,12 @@ function leggiTesto() {
     return;
   }
   err.classList.add('hidden');
+  if (JSON.stringify(parsed) !== JSON.stringify(stato.geo)) stato.storia.registra(stato.geo);
   stato.geo = parsed;
+  // I percorsi dei vertici valgono per la geometria di prima: tenere la
+  // selezione dopo una riscrittura del JSON significherebbe puntare a un
+  // vertice che può non esistere più.
+  stato.selezione = null;
   aggiornaIntestazione();
   // Il selettore del tipo deve seguire il JSON: restando indietro mostrava il
   // tipo PRECEDENTE, e il primo cambiamento successivo — o anche solo un clic
@@ -467,12 +570,12 @@ function creaMappa() {
 }
 
 /**
- * Il selettore elenca i quattro tipi convertibili con le maniglie. Se la
- * geometria aperta è di un ALTRO tipo (MultiPolygon, GeometryCollection) va
+ * Il selettore elenca tutti i tipi basati su coordinate. Se la geometria
+ * aperta è una GeometryCollection va
  * comunque mostrata: prima il `select` non trovava l'opzione e si presentava
  * vuoto, facendo credere che la geometria non avesse un tipo. La si aggiunge
  * come voce disabilitata — visibile, non selezionabile, perché convertire un
- * MultiPolygon in Polygon butterebbe via dei dati.
+ * GeometryCollection in un singolo tipo butterebbe via dei dati.
  */
 function preparaSelettoreTipo(readOnly) {
   const sel = $('#geomap-type');
@@ -492,15 +595,102 @@ function preparaSelettoreTipo(readOnly) {
 }
 
 /**
+ * Lo stato dei bottoni azione.
+ *
+ * Un bottone disattivato dice, prima del clic, che quel gesto qui non ha senso:
+ * «elimina vertice» senza un vertice selezionato, «elimina parte» su un tipo che
+ * di parti ne ha una sola. Il `title` dice sempre PERCHÉ, perché un bottone
+ * grigio e muto è solo un'occasione persa di spiegare.
+ */
+function aggiornaControlliDisegno() {
+  if (!stato) return;
+  const tipo = isGeometry(stato.geo) ? stato.geo.type : '';
+  const modificabile = !stato.readOnly && MODIFICABILI.has(tipo);
+  const piuParti = multipart(tipo);
+  const selezione = selezioneValida() ? stato.selezione : null;
+  const parti = numeroParti(stato.geo);
+
+  const mostra = (sel, visibile) => {
+    const el = $(sel);
+    if (el) el.classList.toggle('hidden', !visibile);
+    return el;
+  };
+  const abilita = (sel, attivo, motivo) => {
+    const el = $(sel);
+    if (!el) return null;
+    el.disabled = !attivo;
+    if (motivo) el.title = motivo;
+    return el;
+  };
+
+  const nuova = mostra('#geomap-new-part', modificabile && piuParti);
+  if (nuova) {
+    nuova.textContent = tipo === 'MultiPolygon' ? '＋ Nuovo poligono' : '＋ Nuova linea';
+    nuova.title = tipo === 'MultiPolygon'
+      ? 'Conclude il poligono corrente e inizia una nuova parte del MultiPolygon'
+      : 'Conclude la linea corrente e inizia una nuova parte del MultiLineString';
+  }
+  mostra('#geomap-redraw', modificabile);
+  mostra('#geomap-azioni', modificabile);
+  mostra('#geomap-del-part', modificabile && piuParti);
+
+  abilita('#geomap-undo', modificabile && stato.storia.puoAnnullare(),
+    stato.storia.puoAnnullare() ? 'Annulla l’ultima modifica (Ctrl+Z)' : 'Nessuna modifica da annullare');
+  abilita('#geomap-redo', modificabile && stato.storia.puoRipetere(),
+    stato.storia.puoRipetere() ? 'Rifà la modifica annullata (Ctrl+Shift+Z)' : 'Nessuna modifica da rifare');
+
+  const vertice = selezione ? selezione[selezione.length - 1] : -1;
+  const sequenza = selezione ? sequenzaDi(stato.geo, selezione) : null;
+  abilita('#geomap-del-vertex', modificabile && !!selezione && tipo !== 'Point',
+    !selezione ? 'Seleziona un vertice sulla mappa per eliminarlo'
+      : (tipo === 'Point' ? 'Un Point ha una sola posizione: cambia il tipo' : 'Elimina il vertice selezionato (Canc)'));
+  abilita('#geomap-insert-vertex', modificabile && !!selezione && tipo !== 'Point' && tipo !== 'MultiPoint',
+    !selezione ? 'Seleziona il vertice dopo il quale inserirne uno nuovo'
+      : 'Inserisce un vertice a metà del lato successivo (Ins)');
+  abilita('#geomap-del-part', modificabile && piuParti && parti > 1,
+    parti > 1 ? 'Elimina la parte attiva' : 'È l’ultima parte: usa «Ridisegna» per ricominciare');
+
+  const modo = $('#geomap-mode');
+  if (modo) {
+    const aggiunge = stato.modo === 'aggiungi';
+    modo.classList.toggle('attivo', aggiunge);
+    modo.setAttribute('aria-pressed', aggiunge ? 'true' : 'false');
+    modo.textContent = aggiunge ? '🖉 Clic: aggiunge vertici' : '✥ Clic: seleziona soltanto';
+    modo.title = aggiunge
+      ? 'Il clic sulla mappa aggiunge un vertice alla parte attiva. Premi per passare alla sola selezione.'
+      : 'Il clic sulla mappa non modifica nulla: si trascinano e si scelgono i vertici. Premi per tornare ad aggiungere.';
+  }
+
+  const info = $('#geomap-selezione');
+  if (info) {
+    const parte = selezione ? parteDiPercorso(stato.geo, selezione) : 0;
+    info.textContent = !modificabile ? ''
+      : (selezione
+        ? `vertice ${vertice + 1} di ${sequenza ? sequenza.length : '?'}${piuParti ? ` · parte ${parte + 1} di ${parti}` : ''}`
+        : (piuParti ? `nessun vertice scelto · parte ${(stato.parteAttiva || 0) + 1} di ${parti}` : 'nessun vertice scelto'));
+  }
+}
+
+function ridisegnaDaZero() {
+  if (!stato || stato.readOnly || !MODIFICABILI.has(stato.geo.type)) return;
+  applicaModifica((g) => ({ geo: geometriaVuota(g.type), selezione: [], parteAttiva: 0, errore: '' }));
+  stato.selezione = null;
+  aggiornaControlliDisegno();
+}
+
+/**
  * Apre l'editor su una geometria.
  *
  * @param {object} opts
  * @param {object} opts.value    geometria GeoJSON di partenza (o null: si parte da un Point)
  * @param {string} opts.campo    nome del campo/colonna, per il titolo
  * @param {boolean} opts.readOnly sola visualizzazione
+ * @param {string|null} opts.tipoSuggerito sottotipo dichiarato dalla colonna
  * @param {(geo: object) => void} opts.onSave chiamata con la geometria confermata
  */
-export async function openGeoEditor({ value, campo = '', readOnly = false, onSave = null } = {}) {
+export async function openGeoEditor({
+  value, campo = '', readOnly = false, tipoSuggerito = null, onSave = null,
+} = {}) {
   try {
     L = await caricaLeaflet();
   } catch (err) {
@@ -508,14 +698,30 @@ export async function openGeoEditor({ value, campo = '', readOnly = false, onSav
     return;
   }
 
+  const esistente = isGeometry(value);
   stato = {
     // Copia profonda: finché non si conferma, il valore nella griglia non deve
     // cambiare (annullare significa annullare davvero).
-    geo: isGeometry(value) ? JSON.parse(JSON.stringify(value)) : { type: 'Point', coordinates: [12.4964, 41.9028] },
+    geo: esistente
+      ? JSON.parse(JSON.stringify(value))
+      : creaGeometriaIniziale(MODIFICABILI.has(tipoSuggerito) ? tipoSuggerito : 'Point'),
     readOnly,
     onSave,
     campo,
+    parteAttiva: 0,
+    selezione: null,
+    storia: creaStoria(),
+    // Che cosa fa il clic sulla mappa dipende da che cosa si sta facendo: una
+    // geometria NUOVA si disegna (il clic aggiunge vertici), una che ESISTE già
+    // si corregge (il clic sceglie soltanto, e i vertici si aggiungono da un
+    // bottone). Aprire in «aggiungi» una geometria esistente significava che il
+    // primo clic sulla mappa — spesso solo per portare a fuoco la finestra —
+    // le attaccava un vertice in coda.
+    modo: esistente ? 'seleziona' : 'aggiungi',
   };
+  if (multipart(stato.geo.type)) {
+    stato.parteAttiva = Math.max(0, stato.geo.coordinates.length - 1);
+  }
 
   $('#geomap-title').textContent = campo ? `Geometria — ${campo}` : 'Geometria';
   $('#geomap-error').classList.add('hidden');
@@ -541,6 +747,10 @@ export async function openGeoEditor({ value, campo = '', readOnly = false, onSav
 // presenti: cambiare tipo senza ridisegnare da capo è il caso normale (un
 // Point tracciato per sbaglio al posto di un LineString).
 function cambiaTipo(nuovo) {
+  // Il cambio di tipo è una modifica come le altre: annullabile, e con la
+  // selezione azzerata perché i percorsi dei vertici cambiano forma.
+  stato.storia.registra(stato.geo);
+  stato.selezione = null;
   const punti = posizioni(stato.geo).map(({ pos }) => pos).filter((p) => Array.isArray(p) && p.length >= 2);
   const primo = punti[0] || [12.4964, 41.9028];
   if (nuovo === 'Point') {
@@ -548,13 +758,19 @@ function cambiaTipo(nuovo) {
   } else if (nuovo === 'MultiPoint' || nuovo === 'LineString') {
     const lista = punti.length >= 2 ? punti : [primo, [primo[0] + 0.01, primo[1] + 0.01]];
     stato.geo = { type: nuovo, coordinates: lista };
-  } else if (nuovo === 'Polygon') {
+  } else if (nuovo === 'MultiLineString') {
+    const lista = punti.length >= 2 ? punti : [primo, [primo[0] + 0.01, primo[1] + 0.01]];
+    stato.geo = { type: nuovo, coordinates: [lista] };
+  } else if (nuovo === 'Polygon' || nuovo === 'MultiPolygon') {
     let anello = punti.length >= 3 ? [...punti] : [
       primo, [primo[0] + 0.01, primo[1]], [primo[0] + 0.01, primo[1] + 0.01],
     ];
     if (!chiuso(anello)) anello.push([...anello[0]]);
-    stato.geo = { type: 'Polygon', coordinates: [anello] };
+    stato.geo = nuovo === 'Polygon'
+      ? { type: nuovo, coordinates: [anello] }
+      : { type: nuovo, coordinates: [[anello]] };
   }
+  stato.parteAttiva = 0;
   aggiornaTesto();
   disegna();
   inquadra();
@@ -574,6 +790,12 @@ export function initGeoMap() {
       toast('Geometria non valida.', true);
       return;
     }
+    const problema = problemaGeometria(stato.geo);
+    if (problema) {
+      $('#geomap-error').textContent = problema;
+      $('#geomap-error').classList.remove('hidden');
+      return;
+    }
     const salva = stato.onSave;
     const geo = stato.geo;
     closeModal('#geomap-overlay');
@@ -589,6 +811,42 @@ export function initGeoMap() {
     timerTesto = setTimeout(leggiTesto, 200);
   });
   $('#geomap-fit').addEventListener('click', () => inquadra());
+  $('#geomap-redraw').addEventListener('click', ridisegnaDaZero);
+  $('#geomap-new-part').addEventListener('click', () => {
+    if (applicaModifica((g) => nuovaParte(g))) {
+      // Una parte nuova è vuota: il clic torna ad aggiungere, altrimenti il
+      // bottone aprirebbe qualcosa che poi non si può riempire.
+      stato.modo = 'aggiungi';
+      stato.selezione = null;
+      aggiornaControlliDisegno();
+      toast(stato.geo.type === 'MultiPolygon'
+        ? 'Nuovo poligono attivo: aggiungi i vertici sulla mappa.'
+        : 'Nuova linea attiva: aggiungi i vertici sulla mappa.');
+    }
+  });
+  $('#geomap-undo').addEventListener('click', annulla);
+  $('#geomap-redo').addEventListener('click', ripeti);
+  $('#geomap-del-vertex').addEventListener('click', eliminaVerticeSelezionato);
+  $('#geomap-insert-vertex').addEventListener('click', inserisciDopoSelezionato);
+  $('#geomap-del-part').addEventListener('click', eliminaParteAttiva);
+  $('#geomap-mode').addEventListener('click', () => {
+    if (!stato || stato.readOnly) return;
+    stato.modo = stato.modo === 'aggiungi' ? 'seleziona' : 'aggiungi';
+    aggiornaControlliDisegno();
+  });
+  // Scorciatoie: valgono solo con l'editor aperto e mai mentre si scrive nel
+  // JSON accanto alla mappa, dove Canc e Ctrl+Z appartengono al testo.
+  document.addEventListener('keydown', (e) => {
+    if (!stato || stato.readOnly) return;
+    if ($('#geomap-overlay').classList.contains('hidden')) return;
+    const dentroTesto = e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT');
+    if (dentroTesto) return;
+    const k = e.key.toLowerCase();
+    if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); (e.shiftKey ? ripeti : annulla)(); return; }
+    if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); ripeti(); return; }
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); eliminaVerticeSelezionato(); return; }
+    if (e.key === 'Insert') { e.preventDefault(); inserisciDopoSelezionato(); }
+  });
   $('#geomap-type').addEventListener('change', (e) => cambiaTipo(e.target.value));
   $('#geomap-tiles').addEventListener('change', (e) => {
     impostaTile(e.target.checked);

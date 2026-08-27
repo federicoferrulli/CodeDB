@@ -14,6 +14,72 @@ export const PROFONDITA = {
   Point: 0, MultiPoint: 1, LineString: 1, MultiLineString: 2, Polygon: 2, MultiPolygon: 3,
 };
 
+const TIPI_DA_COLONNA = {
+  point: 'Point', multipoint: 'MultiPoint',
+  linestring: 'LineString', multilinestring: 'MultiLineString',
+  polygon: 'Polygon', multipolygon: 'MultiPolygon',
+  geometrycollection: 'GeometryCollection', geomcollection: 'GeometryCollection',
+};
+
+/**
+ * Sottotipo GeoJSON dichiarato da un tipo SQL/Mongo, se c'è.
+ *
+ * Accetta sia i nomi diretti di MySQL (`multipolygon`) sia i typmod PostGIS
+ * (`geometry(MultiPolygon,4326)`). `geometry`, `geography` e `geojson` restano
+ * volutamente generici: da soli non autorizzano a indovinare una forma.
+ */
+export function tipoGeoJsonDaTipoColonna(typeName) {
+  const compatto = String(typeName || '').trim().toLowerCase().replace(/\s+/g, '');
+  if (TIPI_DA_COLONNA[compatto]) return TIPI_DA_COLONNA[compatto];
+  const typmod = compatto.match(/^(?:geometry|geography)\(([^,()]+)(?:,\d+)?\)$/);
+  return typmod ? (TIPI_DA_COLONNA[typmod[1]] || null) : null;
+}
+
+/**
+ * Sottotipo dichiarato dal metadato di colonna della griglia, se c'e'.
+ *
+ * I due motori SQL non dichiarano il sottotipo nello stesso posto: MySQL lo
+ * tiene dentro il tipo stesso (`COLUMN_TYPE` = `multipolygon`), PostGIS lo
+ * tiene nelle viste `geometry_columns`/`geography_columns` — `udt_name` li'
+ * dice soltanto `geometry`. La strategia PostgreSQL lo porta quindi in
+ * `geoType`, e qui le due sorgenti diventano una regola sola.
+ */
+export function tipoGeoJsonDaMetadato(metadato) {
+  if (!metadato || typeof metadato !== 'object') return null;
+  return tipoGeoJsonDaTipoColonna(metadato.geoType)
+    || tipoGeoJsonDaTipoColonna(metadato.type)
+    || tipoGeoJsonDaTipoColonna(Array.isArray(metadato.types) ? metadato.types[0] : '');
+}
+
+/**
+ * La colonna contiene geometrie? Serve a decidere se una cella VUOTA si apre
+ * sulla mappa o in una casella di testo: senza il tipo della colonna, l'unico
+ * indizio sarebbe il valore, che li' non c'e'.
+ */
+export function colonnaGeometrica(metadato) {
+  if (!metadato || typeof metadato !== 'object') return false;
+  if (tipoGeoJsonDaMetadato(metadato)) return true;
+  const tipi = [metadato.geoType, metadato.type, Array.isArray(metadato.types) ? metadato.types[0] : '']
+    .map((t) => String(t || '').trim().toLowerCase());
+  return tipi.some((t) => /^(?:geometry|geography|geojson)(?![a-z0-9_])/.test(t));
+}
+
+/** Geometria valida e piccola con cui iniziare un nuovo disegno sulla mappa. */
+export function creaGeometriaIniziale(tipo = 'Point', centro = [12.4964, 41.9028]) {
+  const p = [Number(centro[0]), Number(centro[1])];
+  const p2 = [p[0] + 0.01, p[1]];
+  const p3 = [p[0] + 0.01, p[1] + 0.01];
+  switch (tipo) {
+    case 'MultiPoint': return { type: tipo, coordinates: [p, p2] };
+    case 'LineString': return { type: tipo, coordinates: [p, p3] };
+    case 'MultiLineString': return { type: tipo, coordinates: [[p, p3]] };
+    case 'Polygon': return { type: tipo, coordinates: [[p, p2, p3, [...p]]] };
+    case 'MultiPolygon': return { type: tipo, coordinates: [[[p, p2, p3, [...p]]]] };
+    case 'GeometryCollection': return { type: tipo, geometries: [{ type: 'Point', coordinates: p }] };
+    default: return { type: 'Point', coordinates: p };
+  }
+}
+
 export function isGeometry(v) {
   if (!v || typeof v !== 'object' || Array.isArray(v) || typeof v.type !== 'string') return false;
   if (v.type === 'GeometryCollection') return Array.isArray(v.geometries);

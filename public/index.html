@@ -1277,14 +1277,34 @@
             <option value="Point">Point</option>
             <option value="MultiPoint">MultiPoint</option>
             <option value="LineString">LineString</option>
+            <option value="MultiLineString">MultiLineString</option>
             <option value="Polygon">Polygon</option>
+            <option value="MultiPolygon">MultiPolygon</option>
           </select>
         </label>
+        <button type="button" id="geomap-mode" class="ghost geomap-modo" aria-pressed="true">🖉 Clic: aggiunge vertici</button>
+        <button type="button" id="geomap-redraw" class="ghost" title="Svuota la geometria corrente e ridisegnala sulla mappa">↺ Ridisegna</button>
+        <button type="button" id="geomap-new-part" class="ghost hidden">＋ Nuova parte</button>
         <button type="button" id="geomap-fit" class="ghost">⤢ Inquadra</button>
         <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
           <input type="checkbox" id="geomap-tiles" /> Sfondo mappa (OpenStreetMap)
         </label>
         <span id="geomap-info" class="dim"></span>
+      </div>
+
+      <!-- Bottoni AZIONE: agiscono sul vertice scelto sulla mappa (o sulla parte
+           attiva). Sono la via visibile ai gesti che prima esistevano solo
+           nascosti — il tasto destro per eliminare — e a quelli che non
+           esistevano affatto: inserire un vertice in mezzo a un lato, togliere
+           una parte, annullare. -->
+      <div class="geomap-toolbar geomap-azioni" id="geomap-azioni">
+        <button type="button" id="geomap-undo" class="ghost" title="Annulla l’ultima modifica (Ctrl+Z)">↶ Annulla</button>
+        <button type="button" id="geomap-redo" class="ghost" title="Rifà la modifica annullata (Ctrl+Shift+Z)">↷ Rifai</button>
+        <span class="geomap-sep" aria-hidden="true"></span>
+        <button type="button" id="geomap-insert-vertex" class="ghost" title="Inserisce un vertice a metà del lato successivo (Ins)">＋ Vertice dopo</button>
+        <button type="button" id="geomap-del-vertex" class="ghost" title="Elimina il vertice selezionato (Canc)">🗑 Vertice</button>
+        <button type="button" id="geomap-del-part" class="ghost hidden" title="Elimina la parte attiva">🗑 Parte</button>
+        <span id="geomap-selezione" class="dim"></span>
       </div>
 
       <div id="geomap-warning" class="warning hidden"></div>

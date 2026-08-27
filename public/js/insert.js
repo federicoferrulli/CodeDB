@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { socket } from './socket.js';
 import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
+import { tipoGeoJsonDaTipoColonna, colonnaGeometrica } from './geojson.js';
 import { runQuery } from './grid.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
 import { decodificaNumeroEsatto } from './valori-esatti.js';
@@ -9,18 +10,15 @@ import { decodificaNumeroEsatto } from './valori-esatti.js';
 let insertRows = [];
 let insertJsonTouched = false;
 
-// Tipi di colonna geometrici, negli stessi nomi in cui arrivano da
-// `collection:stats`: MySQL manda COLUMN_TYPE ("point", "geometry"),
-// PostgreSQL l'udt ("geometry", "geography"), MongoDB il tipo dedotto dal
-// campione ("geojson", vedi bsonTypeOf in MongoDbStrategy).
-const TIPI_GEO = new Set([
-  'geojson', 'geometry', 'geography', 'point', 'linestring', 'polygon',
-  'multipoint', 'multilinestring', 'multipolygon', 'geometrycollection', 'geomcollection',
-]);
-
+// I tipi arrivano da `collection:stats` nei nomi di ciascun motore: MySQL manda
+// COLUMN_TYPE ("point", "geometry"), PostgreSQL il tipo con i modificatori
+// ("geometry(MultiPolygon,4326)"), MongoDB il tipo dedotto dal campione
+// ("geojson", vedi bsonTypeOf in MongoDbStrategy). Riconoscerli e' una regola
+// sola (`colonnaGeometrica`), condivisa con la modifica in griglia: qui c'era
+// un elenco parallelo di nomi, che i tipi con modificatore non contiene.
 export function insertKindOf(typeName, dbType = state.dbType) {
   const t = String(typeName || '').toLowerCase();
-  if (TIPI_GEO.has(t)) return 'geo';
+  if (colonnaGeometrica({ type: t })) return 'geo';
   if (isSqlType(dbType)) {
     if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
     if (/^decimal|^numeric/.test(t)) return 'decimal';
@@ -46,7 +44,7 @@ function etichettaGeo(btn) {
   btn.textContent = isGeometry(geo) ? `🗺 ${geometryLabel(geo).replace(/^▦ /, '')}` : '🗺 Disegna sulla mappa…';
 }
 
-export function insertInputFor(kind) {
+export function insertInputFor(kind, { typeName = '' } = {}) {
   // Geometria: il "campo" è un pulsante che apre la mappa e custodisce il
   // GeoJSON in `value` — così il resto del form (lettura, cambio tipo,
   // rimozione riga) continua a trattarlo come un input qualsiasi.
@@ -55,6 +53,7 @@ export function insertInputFor(kind) {
     btn.type = 'button';
     btn.className = 'ghost geo-pick';
     btn.value = '';
+    btn.dataset.geoType = tipoGeoJsonDaTipoColonna(typeName) || '';
     etichettaGeo(btn);
     btn.addEventListener('click', () => {
       let corrente = null;
@@ -62,6 +61,7 @@ export function insertInputFor(kind) {
       openGeoEditor({
         value: corrente,
         campo: insertNomeCampo(btn),
+        tipoSuggerito: btn.dataset.geoType || null,
         onSave: (geo) => {
           btn.value = JSON.stringify(geo);
           etichettaGeo(btn);
@@ -164,7 +164,7 @@ export function addInsertRow(opts) {
     i.placeholder = '(auto)';
     row.input = i;
   } else {
-    row.input = insertInputFor(row.kind);
+    row.input = insertInputFor(row.kind, { typeName: opts.typeName });
   }
   valTd.appendChild(row.input);
   tr.appendChild(valTd);
@@ -323,6 +323,7 @@ export function openInsertDocForContext(ctx = null) {
         name: f.name,
         typeLabel: (f.types || []).join(', '),
         kind: insertKindOf(mainType, dbType),
+        typeName: mainType,
         numericMeta: { type: mainType },
         auto: !!f.autoIncrement,
         required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
