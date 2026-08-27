@@ -1267,12 +1267,41 @@
   </div>
 
   <!-- ===================== Modale editor geografico (GEOMETRY / GeoJSON) ===================== -->
+  <!-- Impianto: la MAPPA è il documento, gli strumenti le stanno sopra.
+       Prima ogni comando viveva in due barre di testo sopra la mappa, che
+       occupavano due righe intere e allontanavano il comando dal punto in cui
+       si guarda — mentre la mappa, che è ciò che si sta modificando, aveva
+       poco più di metà finestra. Ora: una barra sola con le scelte che
+       riguardano l'intera geometria (tipo, modalità del clic, pannelli), e
+       sulla mappa due gruppi FLUTTUANTI, come negli editor cartografici: la
+       colonna a destra per la forma (annulla, inquadra, parti) e la barra in
+       basso per il vertice scelto, che è dove l'occhio sta già guardando. -->
   <div id="geomap-overlay" class="overlay hidden">
     <div class="modal wide geomap-modal">
-      <h2 id="geomap-title">Geometria</h2>
+      <!-- Icone: un solo sprite SVG per tutta la modale. Un simbolo si riusa con
+           <use>, quindi l'icona è definita una volta e non è un carattere
+           tipografico che cambia forma da un sistema all'altro. -->
+      <svg class="geomap-sprite" aria-hidden="true" focusable="false">
+        <symbol id="ico-disegna" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+        <symbol id="ico-modifica" viewBox="0 0 24 24"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51Z"/></symbol>
+        <symbol id="ico-annulla" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.36 2.64L3 13"/></symbol>
+        <symbol id="ico-rifai" viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 13"/></symbol>
+        <symbol id="ico-inquadra" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></symbol>
+        <symbol id="ico-ridisegna" viewBox="0 0 24 24"><path d="M3 2v6h6"/><path d="M3.51 9a9 9 0 1 0 2.13-3.36L3 8"/></symbol>
+        <symbol id="ico-nuova-parte" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+        <symbol id="ico-elimina" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></symbol>
+        <symbol id="ico-vertice" viewBox="0 0 24 24"><path d="M4 18 20 6"/><circle cx="12" cy="12" r="3"/><path d="M18 15v6"/><path d="M15 18h6"/></symbol>
+        <symbol id="ico-json" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></symbol>
+        <symbol id="ico-sfondo" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
+      </svg>
+
+      <div class="geomap-intestazione">
+        <h2 id="geomap-title">Geometria</h2>
+        <span id="geomap-info" class="geomap-chip"></span>
+      </div>
 
       <div class="geomap-toolbar">
-        <label>Tipo
+        <label class="geomap-campo">Tipo
           <select id="geomap-type">
             <option value="Point">Point</option>
             <option value="MultiPoint">MultiPoint</option>
@@ -1282,39 +1311,86 @@
             <option value="MultiPolygon">MultiPolygon</option>
           </select>
         </label>
-        <button type="button" id="geomap-mode" class="ghost geomap-modo" aria-pressed="true">🖉 Clic: aggiunge vertici</button>
-        <button type="button" id="geomap-redraw" class="ghost" title="Svuota la geometria corrente e ridisegnala sulla mappa">↺ Ridisegna</button>
-        <button type="button" id="geomap-new-part" class="ghost hidden">＋ Nuova parte</button>
-        <button type="button" id="geomap-fit" class="ghost">⤢ Inquadra</button>
-        <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
-          <input type="checkbox" id="geomap-tiles" /> Sfondo mappa (OpenStreetMap)
-        </label>
-        <span id="geomap-info" class="dim"></span>
-      </div>
 
-      <!-- Bottoni AZIONE: agiscono sul vertice scelto sulla mappa (o sulla parte
-           attiva). Sono la via visibile ai gesti che prima esistevano solo
-           nascosti — il tasto destro per eliminare — e a quelli che non
-           esistevano affatto: inserire un vertice in mezzo a un lato, togliere
-           una parte, annullare. -->
-      <div class="geomap-toolbar geomap-azioni" id="geomap-azioni">
-        <button type="button" id="geomap-undo" class="ghost" title="Annulla l’ultima modifica (Ctrl+Z)">↶ Annulla</button>
-        <button type="button" id="geomap-redo" class="ghost" title="Rifà la modifica annullata (Ctrl+Shift+Z)">↷ Rifai</button>
-        <span class="geomap-sep" aria-hidden="true"></span>
-        <button type="button" id="geomap-insert-vertex" class="ghost" title="Inserisce un vertice a metà del lato successivo (Ins)">＋ Vertice dopo</button>
-        <button type="button" id="geomap-del-vertex" class="ghost" title="Elimina il vertice selezionato (Canc)">🗑 Vertice</button>
-        <button type="button" id="geomap-del-part" class="ghost hidden" title="Elimina la parte attiva">🗑 Parte</button>
-        <span id="geomap-selezione" class="dim"></span>
+        <!-- Che cosa fa il prossimo clic sulla mappa è uno STATO fra due, e un
+             controllo segmentato lo mostra tutto: un unico bottone che cambia
+             etichetta costringe a chiedersi se l'etichetta descriva lo stato di
+             adesso o quello che si otterrebbe premendolo. -->
+        <div class="geomap-segmentato" id="geomap-mode" role="group" aria-label="Cosa fa il clic sulla mappa">
+          <button type="button" id="geomap-mode-draw" aria-pressed="true"
+                  title="Il clic sulla mappa aggiunge un vertice alla parte attiva">
+            <svg class="ico" aria-hidden="true"><use href="#ico-disegna"/></svg>Disegna
+          </button>
+          <button type="button" id="geomap-mode-select" aria-pressed="false"
+                  title="Il clic sceglie e trascina i vertici, senza aggiungerne">
+            <svg class="ico" aria-hidden="true"><use href="#ico-modifica"/></svg>Modifica
+          </button>
+        </div>
+
+        <span class="geomap-spazio"></span>
+
+        <button type="button" id="geomap-tiles-btn" class="geomap-interruttore" aria-pressed="false"
+                title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
+          <svg class="ico" aria-hidden="true"><use href="#ico-sfondo"/></svg>Sfondo mappa
+        </button>
+        <input type="checkbox" id="geomap-tiles" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+        <button type="button" id="geomap-json-btn" class="geomap-interruttore" aria-pressed="true"
+                aria-controls="geomap-json" title="Mostra o nasconde il GeoJSON accanto alla mappa">
+          <svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg>GeoJSON
+        </button>
       </div>
 
       <div id="geomap-warning" class="warning hidden"></div>
 
       <div class="geomap-body">
-        <div id="geomap-canvas" class="geomap-canvas"></div>
-        <textarea id="geomap-json" class="geomap-json" spellcheck="false"></textarea>
+        <div class="geomap-scena">
+          <div id="geomap-canvas" class="geomap-canvas"></div>
+
+          <!-- Strumenti della FORMA: stanno sulla mappa, come in un editor
+               cartografico, perché è lì che si guarda mentre si lavora. -->
+          <div class="geomap-rail" id="geomap-azioni-forma">
+            <button type="button" id="geomap-undo" class="geomap-tool" title="Annulla l’ultima modifica (Ctrl+Z)" aria-label="Annulla l’ultima modifica">
+              <svg class="ico" aria-hidden="true"><use href="#ico-annulla"/></svg>
+            </button>
+            <button type="button" id="geomap-redo" class="geomap-tool" title="Rifà la modifica annullata (Ctrl+Shift+Z)" aria-label="Rifà la modifica annullata">
+              <svg class="ico" aria-hidden="true"><use href="#ico-rifai"/></svg>
+            </button>
+            <span class="geomap-rail-sep" aria-hidden="true"></span>
+            <button type="button" id="geomap-new-part" class="geomap-tool hidden" aria-label="Nuova parte">
+              <svg class="ico" aria-hidden="true"><use href="#ico-nuova-parte"/></svg>
+            </button>
+            <button type="button" id="geomap-del-part" class="geomap-tool hidden" title="Elimina la parte attiva" aria-label="Elimina la parte attiva">
+              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg>
+            </button>
+            <button type="button" id="geomap-redraw" class="geomap-tool" title="Svuota la geometria conservando il tipo e ridisegnala da capo" aria-label="Ridisegna da capo">
+              <svg class="ico" aria-hidden="true"><use href="#ico-ridisegna"/></svg>
+            </button>
+            <span class="geomap-rail-sep" aria-hidden="true"></span>
+            <button type="button" id="geomap-fit" class="geomap-tool" title="Inquadra l’intera geometria" aria-label="Inquadra l’intera geometria">
+              <svg class="ico" aria-hidden="true"><use href="#ico-inquadra"/></svg>
+            </button>
+          </div>
+
+          <!-- Strumenti del VERTICE scelto: in basso, larghi, con l'etichetta
+               che dice su cosa stanno per agire. Restano visibili e disattivati
+               finché non c'è una scelta: un comando che appare solo quando è
+               possibile è un comando che nessuno scopre. -->
+          <div class="geomap-azioni-vertice" id="geomap-azioni">
+            <span id="geomap-selezione" class="geomap-selezione">nessun vertice scelto</span>
+            <button type="button" id="geomap-insert-vertex" class="geomap-pill" title="Inserisce un vertice a metà del lato successivo (Ins)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-vertice"/></svg>Inserisci vertice
+            </button>
+            <button type="button" id="geomap-del-vertex" class="geomap-pill pericolo" title="Elimina il vertice selezionato (Canc)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg>Elimina vertice
+            </button>
+          </div>
+
+          <div id="geomap-handles-note" class="geomap-avviso-mappa hidden"></div>
+        </div>
+
+        <textarea id="geomap-json" class="geomap-json" spellcheck="false" aria-label="GeoJSON della geometria"></textarea>
       </div>
 
-      <div id="geomap-handles-note" class="warning hidden"></div>
       <div id="geomap-note" class="dim geomap-note hidden"></div>
       <div id="geomap-error" class="error hidden"></div>
       <div class="modal-actions">

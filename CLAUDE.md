@@ -260,6 +260,60 @@ un messaggio che dice **cosa fare**, non solo che qualcosa non torna.
 * **GeoJSON Standard**: Formato unico usato per tutti i DBMS (`ST_AsGeoJSON` e `ST_GeomFromGeoJSON` su SQL).
 * Editor Leaflet 1.9.4 integrato (vendorizzato), ottimizzazione del trascinamento vertici via Canvas a doppio layer (`geomap.js`), ed analisi statistica/cartografica delle selezioni geometriche (`geo-stats.js`, `geomulti.js`).
 * **Vista mappa condivisa (`geo-vista.js`)**: motore riusabile (disegno, elenco cliccabile, riepilogo, avvisi, tetti di disegno, export GeoJSON) usato sia dalla modale della selezione di celle sia dalla scheda 🗺 Mappa dei risultati della tab ⚡. Ogni istanza è indipendente: le due viste possono coesistere nella stessa pagina.
+* **Una coordinata è un numero JSON, non un oggetto BSON**: salvare una geometria
+  disegnata sulla mappa falliva su **entrambi** i motori SQL con «Colonna "x": le coordinate
+  devono essere numeri finiti», e il messaggio era esatto — le coordinate davvero non erano
+  numeri. I valori in scrittura passano da `deserializeClientObject`, cioè
+  `EJSON.deserialize(…, { relaxed: false })`, che trasforma OGNI numero in un oggetto BSON
+  (`Double`, `Int32`, `Long`, `Decimal128`). Per le colonne esatte quella cura è il motivo
+  per cui esiste — è ciò che tiene un DECIMAL o un BIGINT senza farlo passare da un double —
+  ma una geometria non è un documento BSON: viene consegnata al DBMS come **testo**
+  (`ST_GeomFromGeoJSON`), e `typeof coordinata === 'number'` era falso per tutte.
+  `assertGeoJson` **normalizza e restituisce** ora la forma canonica (`normalizzaGeoJson` in
+  `db/geometry.js`), e i due adattatori serializzano ciò che hanno **validato** invece
+  dell'originale: serializzare l'originale avrebbe rimesso `{"low":…,"high":…}` dentro il
+  GeoJSON per un `Long`. Non è una tolleranza sul formato — una coordinata testuale o `NaN`
+  resta rifiutata con lo stesso messaggio. La normalizzazione sta dentro la validazione, e
+  non nei chiamanti, perché ogni via di scrittura (inserimento, aggiornamento, import, e la
+  forma grezza del driver MySQL recuperata da `daFormaDriverMysql`) passa comunque di lì.
+* **Prendere un vertice non richiede la mira**: una maniglia è un cerchio di sette pixel, e
+  Leaflet la considera premuta solo entro il raggio più metà del contorno — **misurato: una
+  decina di pixel**. Peggio, un clic appena fuori non faceva NULLA: nessuna selezione,
+  nessun messaggio, cioè il vertice sembrava non rispondere. Tre cose insieme: il renderer
+  delle maniglie ha una `tolerance` (10 px, 20 col dito) che allarga il bersaglio senza
+  ingrandire il cerchietto; il clic sulla mappa in modalità **Modifica** si **aggancia** al
+  vertice più vicino entro 22 px (34 col dito) invece di azzerare la scelta; e il cursore
+  diventa una mano sopra una maniglia, perché senza quel segnale una maniglia è
+  indistinguibile da un disegno. Misurato di nuovo dopo: si prende un vertice fino a **22 px**
+  dal centro, e oltre il raggio la scelta si azzera — l'aggancio ha un limite, non è «il più
+  vicino comunque». Quale vertice vinca è una regola pura (`verticePiuVicino` in
+  `geo-modifica.js`, con la parità risolta sul primo perché il capo e la chiusura di un
+  anello stanno nello stesso punto); le posizioni sullo schermo le sa solo la mappa.
+* **La mappa è il documento, gli strumenti le stanno sopra**: i comandi vivevano in due
+  barre di testo sopra la mappa — due righe intere di finestra — mentre la mappa, che è ciò
+  che si sta modificando, ne aveva poco più di metà. Ora c'è **una** barra con le scelte che
+  riguardano l'intera geometria (tipo, modalità del clic, pannelli) e due gruppi
+  **flottanti** sulla mappa, come in ogni editor cartografico: la colonna a destra per la
+  forma (annulla, rifai, parti, ridisegna, inquadra) e la barra in basso per il **vertice
+  scelto**, che è dove l'occhio sta già guardando. Il fondo di quei gruppi è **pieno** e non
+  translucido: sopra le tile chiare di OpenStreetMap un velo all'86% di bianco è
+  indistinguibile dalla mappa, cioè i comandi sparivano proprio nel tema in cui la mappa è
+  più luminosa. Il pannello **GeoJSON resta accanto alla mappa** — le due viste sono la
+  stessa geometria e tenerle affiancate è il senso dell'editor — ma non più a metà finestra,
+  e un interruttore lo chiude quando serve tutta la mappa (Leaflet deve rileggere le
+  dimensioni con `invalidateSize`, altrimenti resta disegnato sulla larghezza di prima).
+  La **modalità del clic** è un controllo segmentato «Disegna | Modifica» invece di un
+  bottone che cambia etichetta: con un bottone solo non si capisce se l'etichetta descriva
+  lo stato di adesso o quello che si otterrebbe premendolo, e lo stato vive in
+  `aria-pressed`, cioè nella proprietà che lo dichiara anche a chi non vede il colore. Le
+  icone sono un **unico sprite SVG** (`<symbol>` + `<use>`): tracciate, non caratteri
+  tipografici che cambiano forma da un sistema all'altro. I bersagli crescono a 44 px sotto
+  `pointer: coarse`, il fuoco da tastiera si vede anche sopra la mappa, e le transizioni
+  spariscono con `prefers-reduced-motion`.
+  Scegliere un vertice **non** è una modifica: l'istantanea per l'annullamento si prende
+  alla pressione ma si registra al primo movimento vero, altrimenti premere un vertice per
+  sceglierlo lasciava un passo nella storia e «Annulla» andava premuto quattro volte per
+  disfarne una sola.
 * **I gesti dell'editor su mappa sono BOTTONI (`geo-modifica.js`)**: modificare una
   geometria esistente si faceva con tre gesti che non si vedevano da nessuna parte — clic
   per aggiungere, trascinamento per spostare, **tasto destro** per eliminare — e con due

@@ -156,6 +156,59 @@ b = PostgreSqlStrategy.geoBinding('titolo', punto, geoPg, '$5');
 assert.strictEqual(b.sql, '$5', 'PG: colonna non geometrica invariata');
 console.log('  OK   PostgreSQL: ST_SetSRID + cast geography');
 
+/* ------- La geometria COM'ARRIVA dal client (Extended JSON stretto) ------- */
+
+// Non è un caso di laboratorio: è esattamente ciò che `deserializeClientObject`
+// consegna a `docUpdate` e a `collectionInsert`. In modalità `relaxed: false`
+// il decodificatore trasforma OGNI numero in un oggetto BSON (Double, Int32),
+// quindi `typeof coordinata === 'number'` era falso e la validazione rifiutava
+// con «le coordinate devono essere numeri finiti» OGNI geometria salvata dalla
+// griglia — cioè disegnare un poligono sulla mappa e applicarlo era impossibile
+// su entrambi i motori SQL.
+const { EJSON } = require('bson');
+const { normalizzaGeoJson } = require('../db/geometry');
+const dalClient = (geo) => EJSON.deserialize({ v: geo }, { relaxed: false }).v;
+
+const poligonoClient = dalClient({
+  type: 'Polygon',
+  coordinates: [[[13.05, 42.21], [14.08, 42.36], [13.94, 41.77], [13.05, 42.21]]],
+});
+assert.notStrictEqual(typeof poligonoClient.coordinates[0][0][0], 'number',
+  'il caso di prova è quello vero: le coordinate NON sono numeri JS');
+
+b = MySqlStrategy.geoBinding('geom', poligonoClient, geoMy);
+assert.strictEqual(
+  b.param,
+  '{"type":"Polygon","coordinates":[[[13.05,42.21],[14.08,42.36],[13.94,41.77],[13.05,42.21]]]}',
+  'MySQL: a ST_GeomFromGeoJSON arriva GeoJSON con numeri, non oggetti BSON'
+);
+
+b = PostgreSqlStrategy.geoBinding('geom', poligonoClient, geoPg, '$1');
+assert.strictEqual(
+  b.param,
+  '{"type":"Polygon","coordinates":[[[13.05,42.21],[14.08,42.36],[13.94,41.77],[13.05,42.21]]]}',
+  'PostgreSQL: idem, e il frammento SQL resta quello con il SRID'
+);
+assert.strictEqual(b.sql, 'ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)');
+
+// Un intero resta un intero, e i tipi esatti non diventano notazione BSON
+// dentro il testo GeoJSON.
+const conInteri = dalClient({ type: 'Point', coordinates: [12, 41] });
+b = MySqlStrategy.geoBinding('geom', conInteri, geoMy);
+assert.strictEqual(b.param, '{"type":"Point","coordinates":[12,41]}', 'MySQL: interi srotolati');
+
+// La normalizzazione NON è una tolleranza sul formato: ciò che non è un numero
+// resta com'è e viene rifiutato con il messaggio di prima.
+assert.throws(() => MySqlStrategy.geoBinding('geom', { type: 'Point', coordinates: ['12', 41] }, geoMy),
+  /numeri finiti/i, 'una coordinata testuale resta un errore');
+assert.throws(() => MySqlStrategy.geoBinding('geom', { type: 'Point', coordinates: [NaN, 41] }, geoMy),
+  /numeri finiti/i, 'e NaN pure');
+
+// La forma canonica non tocca ciò che geometria non è.
+assert.deepStrictEqual(normalizzaGeoJson({ a: 1 }), { a: 1 }, 'un oggetto qualunque torna com’è');
+assert.strictEqual(normalizzaGeoJson(null), null);
+console.log('  OK   Le coordinate arrivate come oggetti BSON diventano numeri prima di ogni scrittura');
+
 /* --------------------- Lettura: testo GeoJSON → oggetto ------------------ */
 
 const righe = [

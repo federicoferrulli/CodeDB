@@ -192,47 +192,151 @@
   transition: none;
 }
 .modal.geomap-modal {
-  width: min(1040px, calc(100vw - 24px));
+  width: min(1180px, calc(100vw - 24px));
   /* Fondo PIENO (il `--glass-bg` delle altre modali è translucido): sopra un
      fondo trasparente il browser deve comporre ciò che sta sotto a ogni
      ridisegno della mappa, ed è lavoro inutile per una finestra che copre
      comunque l'area. */
   background: var(--bg-surface, #161b22);
 }
-.geomap-toolbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
-.geomap-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
-.geomap-check { cursor: pointer; }
-/* Seconda barra: i bottoni azione. Gap più stretto della prima (sono comandi
-   affini, non sezioni diverse) e nessun margine sotto, perché la mappa comincia
-   subito. */
-.geomap-azioni { gap: 6px; margin-bottom: 6px; }
-.geomap-azioni button.ghost { border-color: var(--border); }
-/* Un bottone azione disattivato dichiara che quel gesto ORA non ha senso —
-   niente vertice scelto, un'unica parte — e il suo `title` dice perché. Deve
-   restare leggibile: sparire farebbe ballare la barra a ogni selezione. */
-.geomap-azioni button.ghost:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  background: transparent;
-  border-color: transparent;
-}
-.geomap-sep {
-  width: 1px;
-  align-self: stretch;
-  min-height: 20px;
-  background: var(--border);
-  margin: 0 4px;
-}
-/* La modalità del clic è uno stato, non un comando: quando è attiva si vede che
-   lo è, altrimenti l'unico modo di sapere che cosa farà il prossimo clic sulla
-   mappa sarebbe provarlo. */
-.geomap-modo.attivo {
+/* --- Barra unica delle scelte che riguardano l'intera geometria ---------- */
+.geomap-intestazione { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.geomap-intestazione h2 { margin: 0; }
+/* Il riepilogo («MultiPolygon · 14 punti») è un dato, non un titolo: sta
+   accanto al nome del campo come una targhetta, invece di prendersi una riga
+   propria sopra alla mappa. */
+.geomap-chip {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
   background: var(--accent-soft);
-  border-color: var(--accent);
+  border: 1px solid var(--accent-line);
   color: var(--fg);
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
-#geomap-selezione { font-size: 0.8rem; margin-left: 4px; }
+.geomap-chip:empty { display: none; }
+.geomap-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0 8px; }
+.geomap-toolbar label { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; }
+.geomap-spazio { flex: 1 1 auto; }
+.geomap-sprite { display: none; }
+/* Le icone sono tracciate, non riempite: una sola regola qui evita di ripetere
+   sei attributi di presentazione su ogni <symbol>. */
+.ico {
+  width: 18px; height: 18px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* Controllo segmentato: due stati visibili insieme, quello attivo premuto. */
+.geomap-segmentato { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-alt); }
+.geomap-segmentato button {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 4px 12px;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg-dim);
+  font-size: 0.82rem; cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.geomap-segmentato button:hover { background: var(--hover); color: var(--fg); }
+.geomap-segmentato button[aria-pressed="true"] {
+  background: var(--accent-soft); border-color: var(--accent-line); color: var(--fg-bright);
+}
+/* Interruttore (sfondo mappa, pannello JSON): stessa forma dei bottoni della
+   barra, ma con lo stato scritto in `aria-pressed` invece che in un'etichetta
+   che cambia — così lo legge anche uno screen reader. */
+.geomap-interruttore {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 34px; padding: 5px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: transparent; color: var(--fg-dim); font-size: 0.82rem; cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+.geomap-interruttore:hover { background: var(--hover); color: var(--fg); }
+.geomap-interruttore[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--fg-bright); }
+
+/* --- Strumenti FLUTTUANTI sulla mappa ------------------------------------ */
+/* La mappa è il documento: gli strumenti le stanno sopra, vicino al punto in
+   cui si guarda, invece che in due righe di barra sopra di essa. */
+.geomap-scena { position: relative; flex: 3 1 0; min-width: 0; display: flex; }
+.geomap-rail {
+  position: absolute; top: 10px; right: 10px; z-index: 500;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-md);
+  /* Fondo PIENO, non translucido: sopra le tile chiare di OpenStreetMap un velo
+     all'86% di bianco è indistinguibile dalla mappa, e i comandi sparivano
+     proprio nel tema in cui la mappa è più luminosa. È anche il motivo per cui
+     i controlli di ogni editor cartografico sono opachi. */
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow-md);
+}
+.geomap-rail-sep { height: 1px; background: var(--border-2); margin: 2px 4px; }
+.geomap-tool {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; padding: 0;
+  border: 1px solid transparent; border-radius: var(--radius-sm);
+  background: transparent; color: var(--fg); cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+.geomap-tool:hover:not(:disabled) { background: var(--hover); color: var(--fg-bright); }
+.geomap-azioni-vertice {
+  position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); z-index: 500;
+  display: flex; align-items: center; gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-2);
+  box-shadow: var(--shadow-md);
+}
+.geomap-selezione { font-size: 0.78rem; color: var(--fg-dim); white-space: nowrap; }
+.geomap-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 32px; padding: 4px 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-full);
+  background: transparent; color: var(--fg); font-size: 0.8rem; cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+.geomap-pill:hover:not(:disabled) { background: var(--hover); border-color: var(--border-2); }
+.geomap-pill.pericolo:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger); }
+/* Un comando disattivato dichiara PRIMA del clic che quel gesto ora non ha
+   senso — niente vertice scelto, un'unica parte — e il suo `title` dice perché.
+   Nasconderlo lo renderebbe una funzione che nessuno scopre, e farebbe ballare
+   la barra a ogni selezione. */
+.geomap-tool:disabled, .geomap-pill:disabled { opacity: 0.4; cursor: not-allowed; }
+/* Avviso «troppi vertici»: sta sulla mappa, dove sta il problema. */
+.geomap-avviso-mappa {
+  position: absolute; left: 12px; bottom: 12px; right: 60px; z-index: 500;
+  padding: 6px 10px; border-radius: var(--radius-md);
+  background: var(--warning-bg); border: 1px solid var(--warning-line);
+  color: var(--warning); font-size: 0.78rem;
+}
+/* Il fuoco da tastiera deve vedersi anche sopra la mappa. */
+.geomap-tool:focus-visible, .geomap-pill:focus-visible,
+.geomap-segmentato button:focus-visible, .geomap-interruttore:focus-visible {
+  outline: 2px solid var(--border-focus); outline-offset: 2px;
+}
+/* Col dito i bersagli crescono: 34px basta a un puntatore fine, non a un
+   polpastrello. */
+@media (pointer: coarse) {
+  .geomap-tool { width: 44px; height: 44px; }
+  .geomap-pill, .geomap-segmentato button, .geomap-interruttore { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .geomap-tool, .geomap-pill, .geomap-segmentato button, .geomap-interruttore { transition: none; }
+}
 .geomap-body { display: flex; gap: 10px; align-items: stretch; }
+/* Dentro la scena la mappa non compete più con il pannello JSON: il riparto
+   fra i due lo fa la scena, e la mappa la riempie. */
+.geomap-scena > .geomap-canvas { flex: 1 1 auto; width: 100%; height: 480px; }
+/* Il GeoJSON resta accanto alla mappa — le due viste SONO la stessa geometria e
+   tenerle affiancate è il punto dell'editor — ma non più a metà finestra: la
+   parte con cui si LAVORA è la mappa. Il bottone «GeoJSON» lo chiude quando
+   serve tutto lo spazio, e allora la mappa si prende la larghezza intera. */
+.geomap-json { height: 480px; }
+.geomap-json.hidden { display: none; }
 .geomap-canvas {
   flex: 2 1 0;
   min-width: 0;
@@ -301,7 +405,12 @@
 @media (max-width: 860px) {
   .geomap-body { flex-direction: column; }
   .geomap-canvas { height: 300px; }
-  .geomap-json { height: 160px; }
+  .geomap-scena > .geomap-canvas { height: 340px; }
+  .geomap-json, .geomap-scena > .geomap-canvas { height: 300px; }
+  /* La barra del vertice diventa larga quanto la mappa: in fondo allo schermo
+     stretto è anche la posizione più comoda per il pollice. */
+  .geomap-azioni-vertice { left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; flex-wrap: wrap; }
+  .geomap-avviso-mappa { bottom: 64px; right: 60px; }
   .geomulti-side { height: auto; max-height: 320px; }
 }
 

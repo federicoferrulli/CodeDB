@@ -114,13 +114,63 @@ function checkCoords(coords, depth, dove) {
 }
 
 /**
+ * Un numero JSON da un valore che ARRIVA dal client.
+ *
+ * I valori in scrittura passano dal decodificatore Extended JSON in modalità
+ * stretta (`relaxed: false`), che trasforma OGNI numero in un oggetto BSON —
+ * `Double`, `Int32`, `Long`, `Decimal128`. Per le colonne esatte quella cura
+ * serve (è ciò che tiene un DECIMAL o un BIGINT senza passare da un double),
+ * ma per una geometria è fuori posto: una coordinata è un numero JSON, e il
+ * documento viene consegnato al DBMS come TESTO (`ST_GeomFromGeoJSON`).
+ *
+ * Senza questo srotolamento `typeof n === 'number'` era falso per ogni
+ * coordinata e la validazione rifiutava OGNI geometria scritta dalla griglia
+ * con «le coordinate devono essere numeri finiti»: salvare un poligono
+ * disegnato sulla mappa era impossibile su entrambi i motori SQL. Non è una
+ * tolleranza sul formato — un valore che non sia un numero, stringhe comprese,
+ * resta com'è e viene rifiutato dalla validazione con il suo messaggio.
+ */
+function numeroPiano(v) {
+  if (typeof v === 'number') return v;
+  if (!v || typeof v !== 'object') return v;
+  switch (v._bsontype) {
+    case 'Double':
+    case 'Int32': return Number(v.value);
+    // Una coordinata oltre i 2^53 non esiste: `toNumber` è la forma giusta.
+    case 'Long': return typeof v.toNumber === 'function' ? v.toNumber() : v;
+    case 'Decimal128': return Number(v.toString());
+    default: return v;
+  }
+}
+
+function coordinatePiane(x) {
+  return Array.isArray(x) ? x.map(coordinatePiane) : numeroPiano(x);
+}
+
+/**
+ * La stessa geometria con le coordinate in numeri JSON: la forma canonica con
+ * cui una geometria attraversa il confine verso il database. Ciò che non è una
+ * geometria torna com'è.
+ */
+function normalizzaGeoJson(v) {
+  if (!isGeoJson(v)) return v;
+  if (v.type === 'GeometryCollection') {
+    return { ...v, geometries: (v.geometries || []).map(normalizzaGeoJson) };
+  }
+  return { ...v, coordinates: coordinatePiane(v.coordinates) };
+}
+
+/**
  * Valida una geometria prima di mandarla al database. Il messaggio è pensato
  * per finire davanti all'utente: senza questo controllo un GeoJSON malformato
  * diventerebbe un errore grezzo del DBMS ("Invalid GeoJSON data provided to
  * function st_geomfromgeojson"), identico per qualunque causa.
  */
-function assertGeoJson(v, dove = 'Geometria') {
-  if (!isPlainObject(v)) throw new Error(`${dove}: la geometria deve essere un oggetto GeoJSON.`);
+function assertGeoJson(valore, dove = 'Geometria') {
+  if (!isPlainObject(valore)) throw new Error(`${dove}: la geometria deve essere un oggetto GeoJSON.`);
+  // Si valida la forma CANONICA, ed è quella che si restituisce: chi scrive nel
+  // database deve serializzare ciò che è stato validato, non l'originale.
+  const v = normalizzaGeoJson(valore);
   if (!GEOJSON_TYPES.has(v.type)) {
     throw new Error(`${dove}: tipo GeoJSON non riconosciuto ("${v.type}"). Ammessi: ${[...GEOJSON_TYPES].join(', ')}.`);
   }
@@ -128,8 +178,7 @@ function assertGeoJson(v, dove = 'Geometria') {
     if (!Array.isArray(v.geometries) || !v.geometries.length) {
       throw new Error(`${dove}: una GeometryCollection deve avere almeno una geometria in "geometries".`);
     }
-    v.geometries.forEach((g, i) => assertGeoJson(g, `${dove} → geometries[${i}]`));
-    return v;
+    return { ...v, geometries: v.geometries.map((g, i) => assertGeoJson(g, `${dove} → geometries[${i}]`)) };
   }
   checkCoords(v.coordinates, COORD_DEPTH[v.type], dove);
   // Gli anelli di un poligono vanno chiusi (primo punto = ultimo): PostGIS e
@@ -238,6 +287,7 @@ module.exports = {
   isSqlGeometryType,
   isGeoJson,
   assertGeoJson,
+  normalizzaGeoJson,
   parseGeoJsonText,
   daFormaDriverMysql,
 };

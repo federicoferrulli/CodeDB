@@ -139,6 +139,29 @@ const quadrato = () => ({
   assert.strictEqual(m.geometriaVuota('GeometryCollection'), null, 'i tipi non disegnabili non hanno forma vuota');
   console.log('  OK   «Ridisegna» svuota il disegno conservando il tipo della colonna');
 
+  /* --- Quale vertice si stava cercando di prendere ------------------------ */
+
+  const maniglie = [
+    { percorso: [0, 0], x: 100, y: 100 },
+    { percorso: [0, 1], x: 118, y: 100 },
+    { percorso: [0, 5], x: 400, y: 400 },
+  ];
+  assert.deepStrictEqual(m.verticePiuVicino(maniglie, { x: 100, y: 100 }, 22), [0, 0], 'in centro');
+  assert.deepStrictEqual(m.verticePiuVicino(maniglie, { x: 112, y: 108 }, 22), [0, 1],
+    'vince il più vicino, non il primo dell’elenco');
+  assert.deepStrictEqual(m.verticePiuVicino(maniglie, { x: 100, y: 121 }, 22), [0, 0],
+    'entro il raggio si aggancia lo stesso: mancare di venti pixel non è premere sul vuoto');
+  assert.strictEqual(m.verticePiuVicino(maniglie, { x: 100, y: 130 }, 22), null,
+    'oltre il raggio non si inventa una selezione');
+  assert.strictEqual(m.verticePiuVicino([], { x: 0, y: 0 }, 22), null, 'senza maniglie non c’è nulla da scegliere');
+  assert.strictEqual(m.verticePiuVicino(null, { x: 0, y: 0 }, 22), null, 'e un elenco assente non è un errore');
+  // Il capo e la chiusura di un anello stanno nello STESSO punto: la stessa
+  // pressione deve dare sempre lo stesso vertice, non ora l'uno ora l'altro.
+  const sovrapposti = [{ percorso: [0, 0], x: 50, y: 50 }, { percorso: [0, 4], x: 50, y: 50 }];
+  assert.deepStrictEqual(m.verticePiuVicino(sovrapposti, { x: 52, y: 51 }, 22), [0, 0],
+    'a parità di distanza vince sempre il primo');
+  console.log('  OK   Il vertice scelto è quello che si stava cercando di prendere, non solo quello centrato');
+
   /* --- Annulla / rifai ---------------------------------------------------- */
 
   const storia = m.creaStoria(3);

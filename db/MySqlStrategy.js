@@ -618,8 +618,13 @@ class MySqlStrategy extends DbStrategy {
       // invece di chiedere all'utente di rifare l'export.
       const geoJson = isGeoJson(value) ? value : daFormaDriverMysql(value);
       if (geoJson) {
-        assertGeoJson(geoJson, `Colonna "${col}"`);
-        return { sql: MySqlStrategy.geoPlaceholder(colInfo), param: JSON.stringify(geoJson) };
+        // Si serializza ciò che è stato VALIDATO: `assertGeoJson` restituisce la
+        // forma canonica, con le coordinate in numeri JSON invece che negli
+        // oggetti BSON in cui il decodificatore Extended JSON stretto le
+        // trasforma. Serializzare l'originale rimetterebbe quegli oggetti nel
+        // testo passato a ST_GeomFromGeoJSON.
+        const canonica = assertGeoJson(geoJson, `Colonna "${col}"`);
+        return { sql: MySqlStrategy.geoPlaceholder(colInfo), param: JSON.stringify(canonica) };
       }
     }
     return { sql: '?', param: toSqlValue(value) };

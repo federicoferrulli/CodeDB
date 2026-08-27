@@ -284,6 +284,38 @@ export function problemaGeometria(geo) {
 }
 
 /**
+ * Il vertice più vicino a un punto dello schermo, entro un raggio.
+ *
+ * Una maniglia è un cerchio di pochi pixel, e prenderla richiedeva una mira
+ * che nessuno ha: un clic appena fuori non selezionava nulla e non diceva
+ * nulla, cioè il vertice sembrava non rispondere. Qui la decisione è una sola e
+ * pura — quale vertice l'utente stava CERCANDO di prendere — e chi chiama le
+ * passa le posizioni già convertite in pixel dalla mappa.
+ *
+ * @param {{percorso: number[], x: number, y: number}[]} maniglie posizioni sullo schermo
+ * @param {{x: number, y: number}} punto punto premuto
+ * @param {number} raggio distanza massima in pixel
+ * @returns {number[]|null} il percorso del vertice più vicino, o null
+ */
+export function verticePiuVicino(maniglie, punto, raggio) {
+  if (!Array.isArray(maniglie) || !punto) return null;
+  const r2 = Number(raggio) * Number(raggio);
+  let miglior = null;
+  let distanza = Infinity;
+  for (const m of maniglie) {
+    if (!m || !Array.isArray(m.percorso)) continue;
+    const dx = Number(m.x) - Number(punto.x);
+    const dy = Number(m.y) - Number(punto.y);
+    const d = dx * dx + dy * dy;
+    // A parità di distanza vince il PRIMO: due vertici sovrapposti (il capo e
+    // la chiusura di un anello) devono dare sempre lo stesso, altrimenti la
+    // stessa pressione selezionerebbe ora l'uno ora l'altro.
+    if (d <= r2 && d < distanza) { distanza = d; miglior = m.percorso; }
+  }
+  return miglior;
+}
+
+/**
  * Annulla/ripeti.
  *
  * Ogni gesto sulla mappa è distruttivo — un clic di troppo aggiunge un vertice

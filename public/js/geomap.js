@@ -29,7 +29,7 @@ import {
 } from './geojson.js';
 import { caricaLeaflet, tileAttive, impostaTile, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
 import {
-  MODIFICABILI, multipart, numeroParti, parteDiPercorso, sequenzaDi,
+  MODIFICABILI, multipart, numeroParti, parteDiPercorso, sequenzaDi, verticePiuVicino,
   aggiungiVertice, eliminaVertice, inserisciVerticeDopo, nuovaParte, eliminaParte,
   geometriaVuota, problemaGeometria, creaStoria,
 } from './geo-modifica.js';
@@ -65,6 +65,14 @@ let fineTrascinamento = 0; // istante dell'ultimo rilascio (vedi aggiungiPunto)
 /* --------------------------------- Mappa --------------------------------- */
 
 const latlng = (pos) => [Number(pos[1]), Number(pos[0])]; // GeoJSON [lon,lat] → Leaflet [lat,lng]
+
+// Un dito non è un puntatore: bersagli e distanze di aggancio raddoppiano.
+const puntatoreGrosso = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
+// Quanto lontano da un vertice si può premere e intendere ANCORA quel vertice.
+// Più larga della tolleranza del renderer perché qui non si sta trascinando: si
+// sta solo scegliendo, e sbagliare bersaglio costa un altro clic, non un danno.
+const RAGGIO_AGGANCIO = () => (puntatoreGrosso() ? 34 : 22);
 
 // Oltre questa soglia le maniglie non si disegnano: un confine amministrativo
 // reale ha decine di migliaia di vertici e altrettanti cerchietti trascinabili
@@ -179,6 +187,10 @@ function disegnaManiglie() {
       seleziona(percorso);
       trascina(ev, percorso, pos.length > 2 ? pos[2] : null);
     });
+    // Il cursore dice che lì si può prendere: senza, una maniglia è
+    // indistinguibile da un disegno, e chi la manca crede che non risponda.
+    m.on('mouseover', () => { if (!trascinando) impostaCursore('grab'); });
+    m.on('mouseout', () => { if (!trascinando) impostaCursore(''); });
     // Tasto destro su un vertice = eliminalo. Resta la scorciatoia di chi la
     // conosce; il bottone è la via che si vede — e l'unica su un touch, dove il
     // tasto destro non esiste.
@@ -205,7 +217,7 @@ function stileManiglia(percorso) {
   const scelto = !!stato && Array.isArray(stato.selezione)
     && stato.selezione.join('/') === percorso.join('/');
   return {
-    radius: scelto ? 9 : 6,
+    radius: scelto ? 10 : 7,
     color: scelto ? tokenTema('--geo-handle-selected-outline', '#fff') : tokenTema('--geo-handle-outline', '#fff'),
     weight: scelto ? 3 : 2,
     fillColor: scelto ? '#d6336c' : '#e0a800',
@@ -240,10 +252,15 @@ function aggiornaStileManiglie() {
  */
 function trascina(ev, percorso, quota) {
   ev.originalEvent.preventDefault();
-  // Anche spostare un vertice è una modifica da poter annullare: si registra
-  // qui, PRIMA del primo fotogramma, perché durante il trascinamento la
-  // geometria viene mutata in posto per non ricostruire la scena a ogni evento.
-  stato.storia.registra(stato.geo);
+  // Anche spostare un vertice è una modifica da poter annullare. L'istantanea
+  // si prende qui — dopo, la geometria viene mutata IN POSTO per non
+  // ricostruire la scena a ogni fotogramma — ma si registra solo al primo
+  // movimento vero: premere un vertice per SCEGLIERLO non cambia nulla, e
+  // registrarlo lo stesso riempirebbe la storia di passi che non hanno
+  // modificato niente, costringendo a premere «Annulla» più volte per disfare
+  // una modifica sola.
+  const primaDelTrascinamento = JSON.parse(JSON.stringify(stato.geo));
+  let registrato = false;
   mappa.dragging.disable();
   trascinando = true;
   let ultimo = null;
@@ -252,6 +269,7 @@ function trascina(ev, percorso, quota) {
   const applica = () => {
     raf = 0;
     if (!ultimo) return;
+    if (!registrato) { registrato = true; stato.storia.registra(primaDelTrascinamento); }
     const nuova = [Number(ultimo.lng.toFixed(7)), Number(ultimo.lat.toFixed(7))];
     if (quota != null) nuova.push(quota);
     const gemello = scriviPosizioneChiudendo(stato.geo, percorso, nuova);
@@ -286,6 +304,7 @@ function trascina(ev, percorso, quota) {
     aggiornaTesto();
     trascinando = false;
     fineTrascinamento = Date.now();
+    impostaCursore('');
     mappa.dragging.enable();
     mappa.off('mousemove', muovi);
     mappa.off('mouseup', rilascia);
@@ -390,6 +409,32 @@ function selezioneValida() {
   return !!sequenza && stato.selezione[stato.selezione.length - 1] < sequenza.length;
 }
 
+function impostaCursore(valore) {
+  const el = $('#geomap-canvas');
+  if (el) el.style.cursor = valore;
+}
+
+/**
+ * Il vertice che una pressione sulla mappa intendeva prendere.
+ *
+ * Le posizioni sullo schermo le sa solo la mappa; QUALE vertice vinca è invece
+ * una regola pura (`verticePiuVicino`). Si guardano le sole maniglie disegnate,
+ * che sono già quelle visibili: un vertice fuori dal riquadro non è ciò che si
+ * stava cercando di premere.
+ */
+function verticeVicinoA(latlngClick) {
+  if (!mappa || !manigliePerPercorso.size) return null;
+  const punto = mappa.latLngToContainerPoint(latlngClick);
+  const maniglie = [];
+  for (const [chiave, m] of manigliePerPercorso) {
+    const p = mappa.latLngToContainerPoint(m.getLatLng());
+    // Chiave vuota = percorso vuoto: è il caso del Point, la cui unica
+    // posizione non ha indici.
+    maniglie.push({ percorso: chiave ? chiave.split('/').map(Number) : [], x: p.x, y: p.y });
+  }
+  return verticePiuVicino(maniglie, punto, RAGGIO_AGGANCIO());
+}
+
 function seleziona(percorso) {
   if (!stato) return;
   stato.selezione = percorso ? [...percorso] : null;
@@ -450,10 +495,14 @@ function aggiungiPunto(latlngClick) {
   // questa guardia ogni trascinamento lasciava dietro di sé un vertice in più,
   // comparso dal nulla proprio dove l'utente aveva appena finito di lavorare.
   if (trascinando || Date.now() - fineTrascinamento < 300) return;
-  // In modalità selezione il clic sullo sfondo NON aggiunge: è la modalità con
-  // cui si apre una geometria che esiste già, dove un vertice comparso per
-  // sbaglio è un danno da cercare e disfare.
-  if (stato.modo !== 'aggiungi') { seleziona(null); return; }
+  // In modalità Modifica il clic non aggiunge: sceglie. E sceglie il vertice
+  // che l'utente stava CERCANDO di prendere, non solo quello centrato al pixel:
+  // mancare la maniglia di dieci pixel non deve essere indistinguibile dal
+  // premere sul vuoto.
+  if (stato.modo !== 'aggiungi') {
+    seleziona(verticeVicinoA(latlngClick));
+    return;
+  }
   const nuova = [Number(latlngClick.lng.toFixed(7)), Number(latlngClick.lat.toFixed(7))];
   applicaModifica((g) => aggiungiVertice(g, nuova, stato.parteAttiva));
 }
@@ -493,8 +542,8 @@ function aggiornaIntestazione() {
     nota.textContent = nonModificabile
       ? `Le geometrie ${stato.geo.type} si visualizzano sulla mappa ma si modificano dal JSON qui accanto.`
       : (stato.readOnly ? '' : (stato.modo === 'aggiungi'
-        ? 'Clic sulla mappa = aggiungi un vertice · trascina = sposta · premi un vertice per sceglierlo e usare i bottoni qui sopra (Canc elimina, Ins inserisce a metà lato, Ctrl+Z annulla).'
-        : 'Premi un vertice per sceglierlo, trascinalo per spostarlo, poi usa i bottoni qui sopra (Canc elimina, Ins inserisce a metà lato, Ctrl+Z annulla). Il clic sullo sfondo non aggiunge nulla: premi «Clic: seleziona soltanto» per tornare a disegnare.'));
+        ? 'Disegna: il clic aggiunge un vertice alla parte attiva · trascina un vertice per spostarlo · Ctrl+Z annulla.'
+        : 'Modifica: il clic sceglie un vertice (il clic sullo sfondo non aggiunge nulla) · Canc elimina · Ins inserisce a metà lato · Ctrl+Z annulla.'));
     nota.classList.toggle('hidden', !nota.textContent);
   }
   aggiornaControlliDisegno();
@@ -558,7 +607,12 @@ function creaMappa() {
   // fluidità è netta e il DOM resta leggero.
   mappa = L.map('geomap-canvas', { center: [41.9, 12.5], zoom: 5, zoomControl: true, preferCanvas: true });
   rendererForma = L.canvas({ padding: 0.2 });
-  rendererManiglie = L.canvas({ padding: 0.2 });
+  // `tolerance` allarga il bersaglio delle maniglie SENZA ingrandire il
+  // cerchietto: preso il raggio (7) più metà del contorno, prendere un vertice
+  // richiedeva una mira di una decina di pixel — misurata, non stimata — e un
+  // clic appena fuori non faceva nulla. Col dito serve molto di più: il
+  // polpastrello copre un'area che il puntatore non ha.
+  rendererManiglie = L.canvas({ padding: 0.2, tolerance: puntatoreGrosso() ? 20 : 10 });
   gruppoForma = L.layerGroup().addTo(mappa);
   gruppoManiglie = L.layerGroup().addTo(mappa);
   applicaTile();
@@ -625,13 +679,18 @@ function aggiornaControlliDisegno() {
 
   const nuova = mostra('#geomap-new-part', modificabile && piuParti);
   if (nuova) {
-    nuova.textContent = tipo === 'MultiPolygon' ? '＋ Nuovo poligono' : '＋ Nuova linea';
-    nuova.title = tipo === 'MultiPolygon'
-      ? 'Conclude il poligono corrente e inizia una nuova parte del MultiPolygon'
-      : 'Conclude la linea corrente e inizia una nuova parte del MultiLineString';
+    // È un bottone a sola icona: l'etichetta vive nel `title` e in
+    // `aria-label`, che devono dire la stessa cosa — e dire QUALE parte, perché
+    // «nuova parte» non si capisce se non si sa di che forma è fatta.
+    const testo = tipo === 'MultiPolygon'
+      ? 'Nuovo poligono: conclude quello corrente e ne inizia un altro'
+      : 'Nuova linea: conclude quella corrente e ne inizia un’altra';
+    nuova.title = testo;
+    nuova.setAttribute('aria-label', testo);
   }
   mostra('#geomap-redraw', modificabile);
   mostra('#geomap-azioni', modificabile);
+  mostra('#geomap-azioni-forma', modificabile);
   mostra('#geomap-del-part', modificabile && piuParti);
 
   abilita('#geomap-undo', modificabile && stato.storia.puoAnnullare(),
@@ -650,15 +709,18 @@ function aggiornaControlliDisegno() {
   abilita('#geomap-del-part', modificabile && piuParti && parti > 1,
     parti > 1 ? 'Elimina la parte attiva' : 'È l’ultima parte: usa «Ridisegna» per ricominciare');
 
-  const modo = $('#geomap-mode');
-  if (modo) {
+  // Il controllo segmentato mostra ENTRAMBI gli stati, e quello attivo è
+  // premuto: `aria-pressed` è anche ciò che lo dichiara a chi non vede il
+  // colore. Le due modalità restano disponibili anche quando la geometria non
+  // si modifica? No: lì il gruppo sparisce, perché non c'è nulla da disegnare.
+  const gruppoModo = $('#geomap-mode');
+  if (gruppoModo) gruppoModo.classList.toggle('hidden', !modificabile);
+  const disegna_ = $('#geomap-mode-draw');
+  const scegli = $('#geomap-mode-select');
+  if (disegna_ && scegli) {
     const aggiunge = stato.modo === 'aggiungi';
-    modo.classList.toggle('attivo', aggiunge);
-    modo.setAttribute('aria-pressed', aggiunge ? 'true' : 'false');
-    modo.textContent = aggiunge ? '🖉 Clic: aggiunge vertici' : '✥ Clic: seleziona soltanto';
-    modo.title = aggiunge
-      ? 'Il clic sulla mappa aggiunge un vertice alla parte attiva. Premi per passare alla sola selezione.'
-      : 'Il clic sulla mappa non modifica nulla: si trascinano e si scelgono i vertici. Premi per tornare ad aggiungere.';
+    disegna_.setAttribute('aria-pressed', aggiunge ? 'true' : 'false');
+    scegli.setAttribute('aria-pressed', aggiunge ? 'false' : 'true');
   }
 
   const info = $('#geomap-selezione');
@@ -667,7 +729,10 @@ function aggiornaControlliDisegno() {
     info.textContent = !modificabile ? ''
       : (selezione
         ? `vertice ${vertice + 1} di ${sequenza ? sequenza.length : '?'}${piuParti ? ` · parte ${parte + 1} di ${parti}` : ''}`
-        : (piuParti ? `nessun vertice scelto · parte ${(stato.parteAttiva || 0) + 1} di ${parti}` : 'nessun vertice scelto'));
+        // Senza selezione la barra non descrive un vuoto: dice il gesto con cui
+        // si esce dal vuoto, che è l'unica cosa utile in quel momento.
+        : `premi un vertice per sceglierlo${piuParti ? ` · parte ${(stato.parteAttiva || 0) + 1} di ${parti}` : ''}`);
+    info.classList.toggle('dim', !selezione);
   }
 }
 
@@ -729,6 +794,7 @@ export async function openGeoEditor({
   $('#geomap-save').classList.toggle('hidden', !!readOnly);
   preparaSelettoreTipo(readOnly);
   $('#geomap-tiles').checked = tileAttive();
+  $('#geomap-tiles-btn').setAttribute('aria-pressed', tileAttive() ? 'true' : 'false');
   aggiornaTesto();
 
   openModal('#geomap-overlay');
@@ -829,11 +895,15 @@ export function initGeoMap() {
   $('#geomap-del-vertex').addEventListener('click', eliminaVerticeSelezionato);
   $('#geomap-insert-vertex').addEventListener('click', inserisciDopoSelezionato);
   $('#geomap-del-part').addEventListener('click', eliminaParteAttiva);
-  $('#geomap-mode').addEventListener('click', () => {
-    if (!stato || stato.readOnly) return;
-    stato.modo = stato.modo === 'aggiungi' ? 'seleziona' : 'aggiungi';
-    aggiornaControlliDisegno();
-  });
+  const cambiaModo = (modo) => {
+    if (!stato || stato.readOnly || stato.modo === modo) return;
+    stato.modo = modo;
+    // La nota sotto la mappa cambia con la modalità: dice che cosa farà il
+    // prossimo clic, che è l'unica cosa che l'utente non può dedurre guardando.
+    aggiornaIntestazione();
+  };
+  $('#geomap-mode-draw').addEventListener('click', () => cambiaModo('aggiungi'));
+  $('#geomap-mode-select').addEventListener('click', () => cambiaModo('seleziona'));
   // Scorciatoie: valgono solo con l'editor aperto e mai mentre si scrive nel
   // JSON accanto alla mappa, dove Canc e Ctrl+Z appartengono al testo.
   document.addEventListener('keydown', (e) => {
@@ -850,6 +920,23 @@ export function initGeoMap() {
   $('#geomap-type').addEventListener('change', (e) => cambiaTipo(e.target.value));
   $('#geomap-tiles').addEventListener('change', (e) => {
     impostaTile(e.target.checked);
+    $('#geomap-tiles-btn').setAttribute('aria-pressed', e.target.checked ? 'true' : 'false');
     applicaTile();
+  });
+  // L'interruttore visibile pilota la casella, che resta la sola sorgente dello
+  // stato: due controlli con due verità sarebbero due stati da tenere allineati.
+  $('#geomap-tiles-btn').addEventListener('click', () => {
+    const box = $('#geomap-tiles');
+    box.checked = !box.checked;
+    box.dispatchEvent(new Event('change'));
+  });
+  // Il pannello GeoJSON si chiude quando serve tutta la mappa. Leaflet deve
+  // rileggere le dimensioni del contenitore: senza `invalidateSize` la mappa
+  // resta disegnata sulla larghezza di prima, con metà riquadro grigio.
+  $('#geomap-json-btn').addEventListener('click', () => {
+    const ta = $('#geomap-json');
+    const chiuso_ = ta.classList.toggle('hidden');
+    $('#geomap-json-btn').setAttribute('aria-pressed', chiuso_ ? 'false' : 'true');
+    if (mappa) setTimeout(() => mappa.invalidateSize(), 0);
   });
 }

@@ -655,8 +655,12 @@ class PostgreSqlStrategy extends DbStrategy {
   static geoBinding(col, value, geo, placeholder, geoNativo) {
     const colInfo = geo && geo.get(col);
     if (colInfo && isGeoJson(value)) {
-      assertGeoJson(value, `Colonna "${col}"`);
-      return { sql: PostgreSqlStrategy.geoExpression(colInfo, placeholder), param: JSON.stringify(value) };
+      // Si serializza la forma CANONICA restituita dalla validazione: le
+      // coordinate arrivano dal client come oggetti BSON (Double/Int32), e
+      // serializzare l'originale li rimetterebbe dentro il testo consegnato a
+      // ST_GeomFromGeoJSON.
+      const canonica = assertGeoJson(value, `Colonna "${col}"`);
+      return { sql: PostgreSqlStrategy.geoExpression(colInfo, placeholder), param: JSON.stringify(canonica) };
     }
     // Tipo nativo: l'editor manda GeoJSON, PostgreSQL vuole il proprio
     // letterale — "(12.5,41.9)" e non {"type":"Point",...}. Senza questa
@@ -664,8 +668,8 @@ class PostgreSqlStrategy extends DbStrategy {
     // point" (CDB-A88).
     const nativo = geoNativo && geoNativo.get(col);
     if (nativo && value != null) {
-      if (isGeoJson(value)) assertGeoJson(value, `Colonna "${col}"`);
-      return { sql: placeholder, param: geoJsonAPgNativo(nativo.type, value) };
+      const canonica = isGeoJson(value) ? assertGeoJson(value, `Colonna "${col}"`) : value;
+      return { sql: placeholder, param: geoJsonAPgNativo(nativo.type, canonica) };
     }
     return { sql: placeholder, param: toSqlValue(value) };
   }
