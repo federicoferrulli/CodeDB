@@ -1220,6 +1220,11 @@ console.log('--- Test Unitari CodeDB ---');
   // catalogo a ogni pagina per riconoscere geometrie e colonne generate.
   await require('./unit-export-metadati');
 
+  // Test 24-decies-quater: l'export a blocchi (su tutti e tre i motori) non
+  // deve ricalcolare il totale (COUNT(*)/countDocuments) a ogni pagina — solo
+  // alla prima, che poi chi pagina riusa invece di aspettarselo su ognuna.
+  await require('./unit-export-conteggio');
+
   // Test 24-undecies: scelta della collation di connessione su MySQL. Il
   // driver ne impone una COMPILATA DENTRO DI SÉ, che nessuno ha scelto, e la
   // ereditano variabili utente e CAST: bastava a far fallire in CodeDB query

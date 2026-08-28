@@ -263,6 +263,23 @@ async function metadatiEsportazione(dialetto, strategia, db, coll, nuovaEsportaz
   return metadati;
 }
 
+/**
+ * Totale righe usato dall'export a blocchi: costa una scansione dell'intera
+ * tabella, quindi si calcola SOLO alla prima pagina (`primaPagina`, decisa
+ * dal chiamante come per `metadatiEsportazione` qui sopra) — le pagine
+ * successive lo OMETTONO (`undefined`, mai 0 né null) e chi pagina riusa il
+ * valore letto la prima volta invece di aspettarselo su ognuna.
+ *
+ * Nessun dialetto qui dentro: `SELECT COUNT(*)` su una tabella già qualificata
+ * dal chiamante (`table`) non ha nulla di specifico a MySQL o PostgreSQL — è
+ * solo `esegui` a cambiare come legge la riga di risposta.
+ */
+async function totaleEsportazione(dialetto, strategia, table, primaPagina) {
+  if (!primaPagina) return undefined;
+  const righe = await dialetto.esegui(strategia, `SELECT COUNT(*) AS total FROM ${table}`, []);
+  return Number(righe[0].total);
+}
+
 /* --- Indici --------------------------------------------------------------- */
 
 /**
@@ -390,6 +407,9 @@ function metodi(dialetto) {
     },
     metadatiEsportazione(db, coll, nuovaEsportazione) {
       return metadatiEsportazione(dialetto, this, db, coll, nuovaEsportazione);
+    },
+    totaleEsportazione(table, primaPagina) {
+      return totaleEsportazione(dialetto, this, table, primaPagina);
     },
     elencoIndici(db, table) {
       return elencoIndici(dialetto, this, db, table);

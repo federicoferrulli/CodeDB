@@ -1363,7 +1363,9 @@ class MySqlStrategy extends DbStrategy {
   // tabelle grandi): payload.after = EJSON dei valori PK dell'ultima riga
   // ricevuta. Senza chiave primaria non esiste un ordinamento stabile su cui
   // costruire un cursore, quindi si ripiega su skip/offset (comportamento
-  // precedente, invariato per questo caso).
+  // precedente, invariato per questo caso). `total` (COUNT(*) sull'intera
+  // tabella) viaggia solo nella risposta della PRIMA pagina: chi pagina lo
+  // riusa da lì invece di aspettarselo — e pagarlo — su ogni blocco.
   async collectionExport(db, coll, payload) {
     const pool = this.requirePool();
     const format = ['sql', 'json'].includes(payload.format) ? payload.format : 'csv';
@@ -1415,7 +1417,9 @@ class MySqlStrategy extends DbStrategy {
       [rows, fields] = await pool.query(
         `SELECT ${selectList} FROM ${table} LIMIT ? OFFSET ?`, [limit, skip]);
     }
-    const [[{ total }]] = await pool.query(`SELECT COUNT(*) AS total FROM ${table}`);
+    // Il conteggio (COUNT(*), una scansione dell'intera tabella) si calcola
+    // solo alla PRIMA pagina — vedi db/sqlMetadati.js: totaleEsportazione.
+    const total = await this.totaleEsportazione(table, primaPagina);
     let columns = (fields || []).map((f) => f.name);
 
     if (format === 'json') {
@@ -1449,7 +1453,7 @@ class MySqlStrategy extends DbStrategy {
     return {
       lines,
       count: rows.length,
-      total: Number(total),
+      total,
       format,
       header: format === 'csv' ? rigaCsv(columns, { modalita: payload.csvMode }) : null,
       nextAfter,

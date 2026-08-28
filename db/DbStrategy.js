@@ -152,6 +152,11 @@ class DbStrategy {
    * Esporta un blocco di documenti/righe come righe di testo già formattate
    * (paginazione keyset con payload.after/limit, skip come ripiego se non
    * esiste un ordinamento stabile): { lines, count, total, header?, nextAfter }.
+   * `total` (il conteggio dell'intera tabella/collection) è presente SOLO
+   * nella risposta della prima pagina — vale a dire payload.skip assente/0 e
+   * payload.after assente — perché costa una scansione che non serve ripetere
+   * a ogni blocco: chi pagina deve conservarlo dalla prima risposta e riusarlo
+   * per quelle successive, che lo restituiscono `undefined`.
    */
   async collectionExport(_db, _coll, _payload) { throw unsupported(); }
 

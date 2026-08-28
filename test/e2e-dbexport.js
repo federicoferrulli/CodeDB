@@ -34,6 +34,23 @@ function assert(cond, label) {
   }
 }
 
+// Il totale (COUNT/countDocuments sull'intera tabella/collection) viaggia
+// solo nella risposta del PRIMO blocco: costa una scansione, e i blocchi
+// successivi lo OMETTONO invece di ripeterlo o azzerarlo — chi pagina lo
+// riusa da lì (01-optimize-count). `base` deve già indicare 5 righe/documenti
+// e una collection/tabella con un ordinamento stabile (keyset via `after`).
+async function verificaTotaleSoloPrimoBlocco(base, etichetta) {
+  const pag1 = await emit('collection:export', { ...base, format: 'json', limit: 2 });
+  assert(pag1.ok && pag1.total === 5 && pag1.count === 2,
+    `${etichetta}: primo blocco totale=5 count=2 (${pag1.ok ? `totale=${pag1.total} count=${pag1.count}` : pag1.error})`);
+  const pag2 = await emit('collection:export', { ...base, format: 'json', limit: 2, after: pag1.nextAfter });
+  assert(pag2.ok && pag2.total === undefined && pag2.count === 2,
+    `${etichetta}: secondo blocco senza totale, count=2 (${pag2.ok ? `totale=${JSON.stringify(pag2.total)} count=${pag2.count}` : pag2.error})`);
+  const pag3 = await emit('collection:export', { ...base, format: 'json', limit: 2, after: pag2.nextAfter });
+  assert(pag3.ok && pag3.total === undefined && pag3.count === 1,
+    `${etichetta}: terzo blocco senza totale, count=1 (${pag3.ok ? `totale=${JSON.stringify(pag3.total)} count=${pag3.count}` : pag3.error})`);
+}
+
 async function testMongo() {
   console.log('MongoDB (tab "m")');
   const conn = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'm' });
@@ -62,6 +79,12 @@ async function testMongo() {
     assert(idx.ok, 'indice ricreato nella destinazione');
     const chk = await emit('collection:find', t({ db: DB2, coll: 'c1', filter: '{"n": 1}' }));
     assert(chk.ok && chk.docs[0].quando && chk.docs[0].quando.$date, 'tipi EJSON preservati dopo il roundtrip');
+
+    // Tre righe in più (5 in totale) per forzare tre blocchi con limit: 2.
+    await emit('doc:insert', t({ db: DB, coll: 'c1', doc: '{"n": 3}' }));
+    await emit('doc:insert', t({ db: DB, coll: 'c1', doc: '{"n": 4}' }));
+    await emit('doc:insert', t({ db: DB, coll: 'c1', doc: '{"n": 5}' }));
+    await verificaTotaleSoloPrimoBlocco(t({ db: DB, coll: 'c1' }), 'MongoDB');
   } finally {
     await emit('db:drop', t({ db: DB }));
     await emit('db:drop', t({ db: DB2 }));
@@ -97,6 +120,11 @@ async function testMySql() {
     assert(mkTable.ok, `DDL eseguito nella destinazione (${mkTable.ok ? 'ok' : mkTable.error})`);
     const imp = await emit('collection:import', t({ db: DB2, coll: 't1', docs: exp.lines.map((l) => JSON.parse(l)) }));
     assert(imp.ok && imp.inserted === 2, `import (${imp.ok ? imp.inserted : imp.error} righe)`);
+
+    // Tre righe in più (5 in totale) per forzare tre blocchi con limit: 2,
+    // sul ramo con chiave primaria (paginazione keyset via `after`).
+    await emit('collection:aggregate', t({ db: DB, coll: 'x', pipeline: `INSERT INTO ${DB}.t1 VALUES (3,'c'),(4,'d'),(5,'e')` }));
+    await verificaTotaleSoloPrimoBlocco(t({ db: DB, coll: 't1' }), 'MySQL');
   } finally {
     await emit('db:drop', t({ db: DB }));
     await emit('db:drop', t({ db: DB2 }));

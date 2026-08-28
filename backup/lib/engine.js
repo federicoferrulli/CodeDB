@@ -184,6 +184,10 @@ async function identitaCorrenti(strategy, db, file) {
   const stato = new Map();
   let skip = 0;
   let after = null;
+  // collectionExport calcola il totale solo sul primo blocco (costa una
+  // scansione dell'intera tabella/collection): va conservato da lì, non
+  // riletto da ogni pagina.
+  let total = null;
   const limit = 1000;
   for (;;) {
     const pagina = await strategy.collectionExport(db, file.collection, { format: 'json', skip, after, limit });
@@ -193,7 +197,8 @@ async function identitaCorrenti(strategy, db, file) {
     }
     skip += Number(pagina.count) || 0;
     if (pagina.nextAfter != null) after = pagina.nextAfter;
-    if (!pagina.count || pagina.count < limit || skip >= Number(pagina.total)) break;
+    if (pagina.total != null) total = Number(pagina.total);
+    if (!pagina.count || pagina.count < limit || (total != null && skip >= total)) break;
   }
   return stato;
 }

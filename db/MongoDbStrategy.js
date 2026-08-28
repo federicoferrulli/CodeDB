@@ -1297,12 +1297,17 @@ class MongoDbStrategy extends DbStrategy {
   // Paginazione keyset su _id (sempre presente e indicizzato): evita la
   // scansione O(n²) di skip su collection grandi. payload.after = EJSON
   // (relaxed:false) dell'ultimo _id ricevuto; omesso per la prima pagina.
+  // `countDocuments()` costa una scansione (COLLSCAN se non ci sono filtri
+  // indicizzabili, altrimenti l'indice comunque attraversato per intero): si
+  // chiede solo alla prima pagina, e `total` viaggia SOLO in quella risposta —
+  // chi pagina lo riusa da lì invece di aspettarselo su ogni blocco.
   async collectionExport(db, coll, payload) {
     const client = this.requireClient();
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const collection = client.db(db).collection(coll);
+    const primaPagina = payload.after == null || payload.after === '';
     const filter = {};
-    if (payload.after != null && payload.after !== '') {
+    if (!primaPagina) {
       let afterId;
       try {
         afterId = EJSON.parse(String(payload.after), { relaxed: false });
@@ -1315,7 +1320,7 @@ class MongoDbStrategy extends DbStrategy {
     // relaxed: i numeri restano numeri, ObjectId/Date restano $oid/$date,
     // così il file riesportato si può reimportare senza perdita di tipi.
     const lines = docs.map((d) => EJSON.stringify(d, { relaxed: true }));
-    const total = await collection.countDocuments();
+    const total = primaPagina ? await collection.countDocuments() : undefined;
     const nextAfter = docs.length ? EJSON.stringify(docs[docs.length - 1]._id, { relaxed: false }) : null;
     return { lines, count: docs.length, total, format: 'json', nextAfter };
   }

@@ -125,7 +125,12 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
       const res = await emit('collection:export', {
         tabId, db, coll, skip, after, limit: CHUNK, format, csvMode,
       });
-      total = res.total;
+      // Il totale (COUNT/countDocuments sull'intera tabella) viaggia solo
+      // nella risposta del primo blocco: i successivi lo omettono per non
+      // ripetere una scansione costosa che darebbe comunque lo stesso numero.
+      // Sovrascriverlo con `undefined` avrebbe rotto sia il messaggio di
+      // avanzamento sia la condizione di uscita del ciclo.
+      if (res.total != null) total = res.total;
       if (header == null && res.header != null) header = res.header;
       lines.push(...res.lines);
       skip += res.count;
@@ -508,13 +513,17 @@ export async function exportDatabase(db) {
       const lines = [];
       let skip = 0;
       let after = null;
+      let total = 0;
       for (;;) {
         const res = await emit('collection:export', { tabId, db, coll: c.name, skip, after, limit: CHUNK, format: 'json' });
+        // Vedi la nota in exportCollection: il totale arriva solo sul primo
+        // blocco e va conservato, non riletto da ogni risposta.
+        if (res.total != null) total = res.total;
         lines.push(...res.lines);
         skip += res.count;
         after = res.nextAfter != null ? res.nextAfter : after;
-        toast(`Esportazione di "${db}"… ${c.name}: ${Math.min(skip, res.total)}/${res.total}`);
-        if (res.count < CHUNK || skip >= res.total) break;
+        toast(`Esportazione di "${db}"… ${c.name}: ${Math.min(skip, total)}/${total}`);
+        if (res.count < CHUNK || skip >= total) break;
       }
       exported += lines.length;
       parts.push(

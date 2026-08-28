@@ -23,13 +23,17 @@ async function improntaDatabase(strategy, db) {
     hash.update(`\0collection\0${coll}\0`);
     let skip = 0;
     let after = null;
+    // collectionExport calcola il totale solo sul primo blocco: va conservato
+    // da lì, non riletto da ogni pagina (vedi backup/lib/engine.js).
+    let total = null;
     const limit = 1000;
     for (;;) {
       const pagina = await strategy.collectionExport(db, coll, { format: 'json', skip, after, limit });
       for (const line of pagina.lines || []) { hash.update(String(line)); hash.update('\n'); righe += 1; }
       skip += Number(pagina.count) || 0;
       if (pagina.nextAfter != null) after = pagina.nextAfter;
-      if (!pagina.count || pagina.count < limit || skip >= Number(pagina.total)) break;
+      if (pagina.total != null) total = Number(pagina.total);
+      if (!pagina.count || pagina.count < limit || (total != null && skip >= total)) break;
     }
   }
   return { sha256: hash.digest('hex'), collezioni, righe };

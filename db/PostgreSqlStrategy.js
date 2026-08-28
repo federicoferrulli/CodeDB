@@ -1550,8 +1550,9 @@ class PostgreSqlStrategy extends DbStrategy {
       PostgreSqlStrategy.geoRowsToJson(rows, selezione.geo, selezione.geoNativo);
     }
 
-    const countRes = await pool.query(`SELECT COUNT(*) AS total FROM ${table}`);
-    const total = Number(countRes.rows[0]?.total) || 0;
+    // Il conteggio (COUNT(*), una scansione dell'intera tabella) si calcola
+    // solo alla PRIMA pagina — vedi db/sqlMetadati.js: totaleEsportazione.
+    const total = await this.totaleEsportazione(table, primaPagina);
     let columns = fields ? fields.map((f) => f.name) : [];
     if (format === 'json') {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
