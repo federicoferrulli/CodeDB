@@ -1465,7 +1465,7 @@ function buildMcpServer(session, deps) {
     if (!token) {
       audit({ sessionId: session.id, connection: sess.name, operation: 'import', event: 'requested', targetDb: plan.targetDb });
       return confirmFlow.issue('import', {
-        connectionId: String(args.connection_id), plan,
+        connectionId: String(args.connection_id), fingerprint: plan.fingerprint,
       }, {
         toolName: 'import_database_artifact',
         preview: {
@@ -1478,19 +1478,19 @@ function buildMcpServer(session, deps) {
         },
       });
     }
-    const pending = confirmFlow.consume(
+    confirmFlow.consume(
       token, 'import', (p) => p.connectionId === String(args.connection_id)
-        && p.plan.fingerprint === plan.fingerprint, 'piano/connessione',
+        && p.fingerprint === plan.fingerprint, 'piano/connessione',
     );
     const log = createLogger(path.join(backupRootOf(session), 'backup.log'), { quiet: true });
     const adapter = createImportArtifactAdapter({
       strategy: sess.strategy, dbType: sess.dbType, connName: sess.name,
       recoveryRoot: path.join(backupRootOf(session), 'import-recovery'), log,
     });
-    const result = await eseguiPianoImport(pending.plan, { adapter });
+    const result = await eseguiPianoImport(plan, { adapter });
     audit({
       sessionId: session.id, connection: sess.name, operation: 'import',
-      event: result.status, targetDb: pending.plan.targetDb, error: result.error,
+      event: result.status, targetDb: plan.targetDb, error: result.error,
     });
     return jsonResult({ executed: true, ...sanitizeImportResult(result) });
   });
@@ -1759,7 +1759,7 @@ function attachMcp(app, deps) {
     return { principal, credentialFingerprint: credentialFingerprint(rawKey) };
   }
 
-  app.post(MCP_PATH, express.json({ limit: '5mb' }), async (req, res) => {
+  app.post(MCP_PATH, express.json({ limit: '50mb' }), async (req, res) => {
     if (!guardHost(req, res)) return;
     const auth = await authenticate(req, res);
     if (!auth) return;
