@@ -602,8 +602,8 @@ class PostgreSqlStrategy extends DbStrategy {
   // `*` quando non ci sono geometrie; altrimenti colonne esplicite con
   // ST_AsGeoJSON su quelle geometriche (l'alias conserva il nome). Senza,
   // il driver `pg` restituirebbe il WKB esadecimale, inutilizzabile.
-  async selectListFor(db, coll) {
-    const info = await this.tableColumnsInfo(db, coll);
+  async selectListFor(db, coll, infoPrecaricate = null) {
+    const info = infoPrecaricate || await this.tableColumnsInfo(db, coll);
     if (!info.geo.size && !info.geoNativo.size) {
       return { list: '*', geo: info.geo, geoNativo: info.geoNativo, colonne: info.columns };
     }
@@ -1499,7 +1499,11 @@ class PostgreSqlStrategy extends DbStrategy {
     // Il formato JSON e' anche il trasporto dell'export di un intero database:
     // le geometrie devono quindi uscire nella lingua comune GeoJSON, non nella
     // rappresentazione privata del driver (`point` diventerebbe `{ x, y }`).
-    const selezione = format === 'json' ? await this.selectListFor(db, coll) : null;
+    const primaPagina = !payload.after && !(Number(payload.skip) > 0);
+    const metadati = format === 'json'
+      ? await this.metadatiEsportazione(db, coll, primaPagina)
+      : null;
+    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info) : null;
     const selectList = selezione ? selezione.list : '*';
 
     let rows;
@@ -1553,7 +1557,7 @@ class PostgreSqlStrategy extends DbStrategy {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
       // rendeva il file non reimportabile. Il valore lo ricalcola il database
       // dalla definizione, che viaggia nel DDL.
-      const scrivibili = await this.colonneScrivibili(db, coll);
+      const scrivibili = metadati.scrivibili;
       const generate = columns.filter((c) => !scrivibili.has(c));
       if (generate.length) {
         for (const row of rows) for (const c of generate) delete row[c];

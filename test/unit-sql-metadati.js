@@ -377,6 +377,7 @@ for (const file of ['MySqlStrategy.js', 'PostgreSqlStrategy.js']) {
   for (const metodo of [
     'primaryKey', 'tableColumnsInfo', 'tableFields', 'uniqueIndexes', 'elencoIndici',
     'estimatedRowCount', 'buildKeyset', 'keysetValue', 'collectionCount',
+    'colonneScrivibili', 'metadatiEsportazione',
   ]) {
     assert.ok(
       !new RegExp(`\\n\\s+(async\\s+)?${metodo}\\s*\\(`).test(src),
@@ -391,7 +392,8 @@ console.log('  OK   gli adattatori non ridichiarano i metodi riconciliati');
 for (const S of [MySqlStrategy, PostgreSqlStrategy]) {
   const s = new S();
   const installati = ['primaryKey', 'tableColumnsInfo', 'tableFields', 'uniqueIndexes',
-    'elencoIndici', 'estimatedRowCount', 'buildKeyset', 'keysetValue', 'collectionCount'];
+    'elencoIndici', 'estimatedRowCount', 'buildKeyset', 'keysetValue', 'collectionCount',
+    'colonneScrivibili', 'metadatiEsportazione'];
   for (const metodo of installati) {
     assert.strictEqual(typeof s[metodo], 'function', `${S.name}.${metodo} deve restare invocabile`);
   }

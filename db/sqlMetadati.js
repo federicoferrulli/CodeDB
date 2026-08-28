@@ -45,6 +45,12 @@ const { potaCache } = require('./geometry');
 // fatte da qui svuotano la cache subito.
 const META_CACHE_MS = 15000;
 
+function chiaveColonne(dialetto, db, coll) {
+  // Separatore NUL: un carattere che in un nome di schema o di tabella non può
+  // comparire, quindi due coppie diverse non possono collidere nella cache.
+  return `${dialetto.schema(db)}\u0000${coll}`;
+}
+
 /* --- Paginazione a chiave (seek) ------------------------------------------ */
 
 // Costruisce la query keyset per la paginazione oppure ritorna null se non
@@ -131,10 +137,7 @@ async function chiavePrimaria(dialetto, strategia, db, table) {
 // arricchimento sono del dialetto; la cache, la forma del risultato e la
 // classificazione per tipo sono qui.
 async function infoColonne(dialetto, strategia, db, coll) {
-  // Separatore NUL: un carattere che in un nome di schema o di tabella non può
-  // comparire, quindi due coppie diverse non possono collidere sulla stessa
-  // chiave di cache.
-  const chiave = `${dialetto.schema(db)}\u0000${coll}`;
+  const chiave = chiaveColonne(dialetto, db, coll);
   const ora = Date.now();
   const cache = strategia._cacheColonne;
   const hit = cache.get(chiave);
@@ -230,6 +233,34 @@ async function colonneScrivibili(_dialetto, strategia, db, coll) {
   // database vero da sotto a chi credeva di averlo sostituito.
   const info = await strategia.tableColumnsInfo(db, coll);
   return new Set(info.columns.filter((c) => !c.generated).map((c) => c.name));
+}
+
+/**
+ * Snapshot dei metadati usati dall'export JSON a blocchi.
+ *
+ * La cache generale delle colonne scade dopo pochi secondi, correttamente per
+ * la griglia: una ALTER TABLE eseguita fuori da CodeDB deve diventare visibile.
+ * Un export, invece, può impiegare più di quella finestra per leggere una sola
+ * pagina. La prima pagina rinnova quindi lo snapshot; le continuazioni della
+ * stessa tabella lo riusano senza tornare su information_schema. Le DDL delle
+ * strategie svuotano già `_cacheColonne`, e `potaCache` ne limita la crescita.
+ */
+async function metadatiEsportazione(dialetto, strategia, db, coll, nuovaEsportazione) {
+  const chiave = `export\u0000${chiaveColonne(dialetto, db, coll)}`;
+  const cache = strategia._cacheColonne;
+  const hit = cache.get(chiave);
+  if (!nuovaEsportazione && hit && hit.metadatiEsportazione) {
+    return hit.metadatiEsportazione;
+  }
+
+  const info = await strategia.tableColumnsInfo(db, coll);
+  const metadati = {
+    info,
+    scrivibili: new Set(info.columns.filter((c) => !c.generated).map((c) => c.name)),
+  };
+  cache.set(chiave, { metadatiEsportazione: metadati, scade: Infinity });
+  potaCache(cache);
+  return metadati;
 }
 
 /* --- Indici --------------------------------------------------------------- */
@@ -356,6 +387,9 @@ function metodi(dialetto) {
     },
     colonneScrivibili(db, coll) {
       return colonneScrivibili(dialetto, this, db, coll);
+    },
+    metadatiEsportazione(db, coll, nuovaEsportazione) {
+      return metadatiEsportazione(dialetto, this, db, coll, nuovaEsportazione);
     },
     elencoIndici(db, table) {
       return elencoIndici(dialetto, this, db, table);

@@ -565,8 +565,8 @@ class MySqlStrategy extends DbStrategy {
   // 99% delle tabelle), altrimenti le colonne per nome con ST_AsGeoJSON su
   // quelle geometriche — l'alias conserva il nome originale, quindi il resto
   // della pipeline (colonne, _id, griglia) non si accorge di nulla.
-  async selectListFor(db, coll) {
-    const info = await this.tableColumnsInfo(db, coll);
+  async selectListFor(db, coll, infoPrecaricate = null) {
+    const info = infoPrecaricate || await this.tableColumnsInfo(db, coll);
     if (!info.geo.size) return { list: '*', geo: info.geo, colonne: info.columns };
     const list = info.columns
       .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
@@ -1375,7 +1375,11 @@ class MySqlStrategy extends DbStrategy {
     // rappresentazione privata del driver (un POINT diventerebbe `{ x, y }`,
     // che all'import MySQL rifiuta con «Cannot get geometry object»). E' la
     // stessa scelta gia' fatta su PostgreSQL: qui mancava e basta.
-    const selezione = format === 'json' ? await this.selectListFor(db, coll) : null;
+    const primaPagina = !payload.after && !(Number(payload.skip) > 0);
+    const metadati = format === 'json'
+      ? await this.metadatiEsportazione(db, coll, primaPagina)
+      : null;
+    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info) : null;
     const selectList = selezione ? selezione.list : '*';
 
     let rows;
@@ -1421,7 +1425,7 @@ class MySqlStrategy extends DbStrategy {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
       // rendeva il file non reimportabile riga per riga. Il suo valore lo
       // ricalcola il database dalla definizione, che viaggia nel DDL.
-      const scrivibili = await this.colonneScrivibili(db, coll);
+      const scrivibili = metadati.scrivibili;
       const generate = columns.filter((c) => !scrivibili.has(c));
       if (generate.length) {
         for (const row of rows) for (const c of generate) delete row[c];

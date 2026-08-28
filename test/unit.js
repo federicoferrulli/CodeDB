@@ -1216,6 +1216,10 @@ console.log('--- Test Unitari CodeDB ---');
   // PostgreSQL storici. Senza, `point` fallisce con "invalid input syntax".
   await require('./unit-import-geometrie-postgres');
 
+  // Test 24-decies-ter: l'export JSON a blocchi non deve interrogare il
+  // catalogo a ogni pagina per riconoscere geometrie e colonne generate.
+  await require('./unit-export-metadati');
+
   // Test 24-undecies: scelta della collation di connessione su MySQL. Il
   // driver ne impone una COMPILATA DENTRO DI SÉ, che nessuno ha scelto, e la
   // ereditano variabili utente e CAST: bastava a far fallire in CodeDB query
