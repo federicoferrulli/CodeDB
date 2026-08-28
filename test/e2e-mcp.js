@@ -284,6 +284,50 @@ let testServer = null;
     const fake = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: 'token-inventato' });
     assert(!fake.ok, 'confirm_token inventato rifiutato');
 
+    console.log('14a. execute_write: insert multiplo MongoDB in Extended JSON');
+    const bulkCount = 2200;
+    const bulkDoc = Array.from({ length: bulkCount }, (_, index) => ({
+      lotto: 'mcp-bulk', posizione: index + 1, contenuto: 'x'.repeat(1000),
+    }));
+    bulkDoc[0].quando = { $date: '2026-08-29T00:00:00.000Z' };
+    bulkDoc[1].totale = { $numberLong: '9007199254740993' };
+    const bulk1 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, collection: 'people', operation: 'insert', doc: bulkDoc,
+    });
+    assert(
+      bulk1.ok && bulk1.data.requires_confirmation && bulk1.data.preview.documentCount === bulkCount,
+      `anteprima bulk con ${bulkCount} documenti = ${bulk1.ok ? JSON.stringify(bulk1.data.preview) : bulk1.text}`,
+    );
+    const bulk2 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, confirm_token: bulk1.ok ? bulk1.data.confirm_token : '',
+    });
+    assert(
+      bulk2.ok && bulk2.data.result.insertedCount === bulkCount && bulk2.data.result.insertedIds.length === bulkCount,
+      `una conferma inserisce l'intero array = ${bulk2.ok
+        ? `${bulk2.data.result.insertedCount} documenti / ${bulk2.data.result.insertedIds.length} id`
+        : bulk2.text}`,
+    );
+    const bulkRows = await mongo.db(DB).collection('people').find({ lotto: 'mcp-bulk' }).sort({ posizione: 1 }).toArray();
+    assert(bulkRows.length === bulkCount, 'tutti i documenti bulk sono rileggibili');
+    assert(bulkRows[0].quando instanceof Date, 'la data Extended JSON resta un tipo Date BSON');
+    assert(bulkRows[1].totale && bulkRows[1].totale.toString() === '9007199254740993', 'il Long Extended JSON non perde precisione');
+
+    const partialId = '64b64c0f0000000000000099';
+    const partial1 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, collection: 'people', operation: 'insert',
+      doc: [
+        { _id: { $oid: '64b64c0f0000000000000098' }, lotto: 'mcp-bulk-partial' },
+        { _id: { $oid: partialId }, lotto: 'mcp-bulk-partial' },
+        { _id: { $oid: partialId }, lotto: 'mcp-bulk-partial' },
+      ],
+    });
+    const partial2 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, confirm_token: partial1.ok ? partial1.data.confirm_token : '',
+    });
+    assert(partial1.ok && !partial2.ok, 'un errore a metà insertMany viene riportato come fallimento');
+    const partialInserted = await mongo.db(DB).collection('people').countDocuments({ lotto: 'mcp-bulk-partial' });
+    assert(partialInserted === 2, 'i documenti inseriti prima del duplicate key restano osservabili');
+
     const upd1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'update', filter: '{ "name": "Carla" }', set: '{ "age": 30 }' });
     assert(upd1.ok && upd1.data.affected_estimate === 1, `stima documenti interessati = ${upd1.ok ? upd1.data.affected_estimate : upd1.text}`);
     const upd2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: upd1.data.confirm_token });
@@ -328,6 +372,17 @@ let testServer = null;
     const auditPath = path.join(testServer.dir, 'mcp-audit.log');
     const auditText = fs.existsSync(auditPath) ? fs.readFileSync(auditPath, 'utf8') : '';
     assert(auditText.includes(`"connection":"${RW_NAME}"`) && auditText.includes('"event":"executed"'), 'audit log con eventi requested/executed');
+    const auditEntries = auditText.split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+    const bulkRequested = auditEntries.find((entry) => entry.event === 'requested'
+      && entry.collection === 'people' && entry.operation === 'insert' && entry.documentCount === bulkCount);
+    const bulkExecuted = auditEntries.find((entry) => entry.event === 'executed'
+      && entry.collection === 'people' && entry.operation === 'insert'
+      && entry.documentCount === bulkCount && entry.result && entry.result.insertedCount === bulkCount);
+    assert(!!bulkRequested && !!bulkExecuted, 'audit bulk con conteggio richiesto e inserito');
+    const bulkFailed = auditEntries.find((entry) => entry.event === 'failed'
+      && entry.collection === 'people' && entry.operation === 'insert'
+      && entry.documentCount === 3 && entry.result && entry.result.insertedCount === 2);
+    assert(!!bulkFailed, 'audit del bulk parziale con numero di documenti realmente inseriti');
 
     await call(mcp1.client, 'disconnect_database', { connection_id: cid2 });
 

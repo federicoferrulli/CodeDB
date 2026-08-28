@@ -2,9 +2,12 @@
 
 const DEFAULTS = Object.freeze({
   principalCount: 20,
-  principalBytes: 2 * 1024 * 1024,
+  // Il trasporto MCP accetta richieste fino a 50 MiB: un singolo insert bulk
+  // deve poter restare pendente durante la conferma, senza rendere illimitata
+  // la memoria. Il tetto globale consente circa cinque payload pieni.
+  principalBytes: 64 * 1024 * 1024,
   globalCount: 500,
-  globalBytes: 32 * 1024 * 1024,
+  globalBytes: 256 * 1024 * 1024,
 });
 
 function costoValore(value, seen = new Set()) {

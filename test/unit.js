@@ -1354,6 +1354,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-audit-serializzato');
   require('./unit-mcp-conferme-quota');
   await require('./unit-mcp-payload');
+  await require('./unit-mongodb-bulk-insert');
   await require('./unit-preferenze-principal');
   require('./unit-schema-progressivo');
   await require('./unit-grafo-budget');

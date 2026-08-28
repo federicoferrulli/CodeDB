@@ -11,6 +11,7 @@ const {
   catalogoValido, filtroMongo,
 } = require('./ricercaGlobale');
 const sessioni = require('./sessioni');
+const { normalizzaDocumentiInsert, risultatoInsertMany } = require('./mongoInsert');
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice, riavvolgi,
 } = require('./duplica');
@@ -1120,13 +1121,18 @@ class MongoDbStrategy extends DbStrategy {
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
     const doc = parseQueryObject(payload.doc, null);
-    // `typeof [] === 'object'` (CDB-24): un array passava il controllo e finiva
-    // in `insertOne`, che lo scriveva come documento con chiavi "0", "1", "2"…
-    // — un documento inutilizzabile, creato senza un solo messaggio d'errore.
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-      throw new Error('Documento JSON non valido: attesa una coppia { "campo": valore }.');
+    const { documenti, multiplo } = normalizzaDocumentiInsert(doc);
+    if (multiplo) {
+      try {
+        const res = await client.db(db).collection(coll).insertMany(documenti);
+        return risultatoInsertMany(res);
+      } catch (err) {
+        const auditResult = risultatoInsertMany(err && err.result, err && err.insertedDocs);
+        if (auditResult) err.auditResult = auditResult;
+        throw err;
+      }
     }
-    const res = await client.db(db).collection(coll).insertOne(doc);
+    const res = await client.db(db).collection(coll).insertOne(documenti[0]);
     return { insertedId: EJSON.stringify(res.insertedId) };
   }
 

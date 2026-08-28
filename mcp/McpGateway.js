@@ -52,6 +52,7 @@ const { creaPianoImport, creaPianoRestore, eseguiPianoImport } = require('../db/
 const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
 const { sanitizeImportResult } = require('../db/importOperations');
 const { descriviBackup, createBackupRestoreAdapter } = require('../db/backupRestoreAdapter');
+const { normalizzaDocumentiInsert } = require('../db/mongoInsert');
 
 // Capability richiesta dalla scrittura MCP, in base all'operazione richiesta.
 // Stessa mappatura di auth/capabilities.js (write/delete/ddl): così il gate del
@@ -943,11 +944,11 @@ function buildMcpServer(session, deps) {
     },
     // Primo passo: registra l'operazione in sospeso e restituisce anteprima +
     // token di conferma, con le istruzioni per l'AI (mai auto-confermare).
-    issue(kind, data, { toolName, preview, extra }) {
+    issue(kind, data, { toolName, preview, extra, quotaPayload }) {
       const principal = sessionPrincipal(session);
       const reservation = deps.confirmQuota.reserve(
         `${principal.ownerId}:${principal.id}`,
-        { kind, data, preview },
+        { kind, data, preview, quotaPayload },
       );
       const confirmToken = crypto.randomUUID();
       const pending = {
@@ -1007,10 +1008,22 @@ function buildMcpServer(session, deps) {
     if (!coll) throw new Error('Parametro "collection" mancante.');
     const operation = String(args.operation || '').trim().toLowerCase();
     if (operation === 'insert') {
-      if (!String(args.doc || '').trim()) throw new Error('Parametro "doc" mancante per l\'insert.');
+      const docText = typeof args.doc === 'string' ? args.doc : JSON.stringify(args.doc);
+      if (!docText || !docText.trim()) throw new Error('Parametro "doc" mancante per l\'insert.');
+      let valore;
+      try {
+        valore = EJSON.parse(docText, { relaxed: false });
+      } catch (err) {
+        throw new Error(`Documento o array EJSON non valido: ${errMsg(err)}`);
+      }
+      const { documenti, multiplo } = normalizzaDocumentiInsert(valore);
       return {
-        summary: { dbType: 'mongodb', db, collection: coll, operation, doc: args.doc },
-        exec: () => sess.strategy.docInsert(db, coll, { doc: args.doc }),
+        summary: {
+          dbType: 'mongodb', db, collection: coll, operation,
+          ...(!multiplo ? { doc: docText } : {}), documentCount: documenti.length,
+        },
+        quotaPayload: docText,
+        exec: () => sess.strategy.docInsert(db, coll, { doc: docText }),
       };
     }
     if (operation === 'update') {
@@ -1039,7 +1052,8 @@ function buildMcpServer(session, deps) {
       'Primo passo: chiama SENZA confirm_token per ottenere l\'anteprima dell\'operazione e un token di conferma. ' +
       'Mostra l\'anteprima all\'utente umano e chiedi la sua approvazione esplicita: solo dopo richiama con confirm_token. ' +
       'NON confermare mai di tua iniziativa. Il token scade dopo 5 minuti ed è monouso. ' +
-      'MongoDB: "operation" (insert|update|delete) con "doc" (insert) o "filter"+"set" (update) o "filter" (delete), in Extended JSON; ' +
+      'MongoDB: "operation" (insert|update|delete) con "doc" (insert: documento o array non vuoto di documenti) ' +
+      'o "filter"+"set" (update) o "filter" (delete), in Extended JSON; ' +
       'filtri vuoti rifiutati. MySQL/PostgreSQL: "sql" con INSERT/UPDATE/DELETE (MySQL anche REPLACE); UPDATE/DELETE richiedono WHERE. ' +
       'Su tutti i dbType "operation" ammette anche "drop_collection" (elimina la collection/tabella indicata) e ' +
       '"drop_database" (elimina l\'intero database "db"); i db di sistema sono protetti. Nessun altro DDL è ammesso. ' +
@@ -1049,7 +1063,10 @@ function buildMcpServer(session, deps) {
       db: z.string().describe('Database (MySQL/PostgreSQL: schema) su cui operare'),
       collection: z.string().optional().describe('Collection/tabella su cui operare (per MongoDB e per drop_collection)'),
       operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']).optional().describe('Tipo di scrittura: insert/update/delete solo MongoDB; drop_collection e drop_database per tutti i dbType'),
-      doc: z.string().optional().describe('Solo MongoDB insert: documento in Extended JSON'),
+      doc: z.union([
+        z.string(),
+        z.array(z.record(z.unknown())).min(1),
+      ]).optional().describe('Solo MongoDB insert: documento EJSON serializzato oppure array non vuoto di documenti Extended JSON'),
       filter: z.string().optional().describe('Solo MongoDB update/delete: filtro esplicito in Extended JSON (mai vuoto)'),
       set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
       sql: z.string().optional().describe('Solo MySQL/PostgreSQL: statement INSERT/UPDATE/DELETE (REPLACE solo MySQL); UPDATE/DELETE con WHERE'),
@@ -1097,7 +1114,10 @@ function buildMcpServer(session, deps) {
         audit({ ...auditBase, event: 'executed', ...pending.summary, result });
         return jsonResult({ executed: true, ...pending.summary, result });
       } catch (err) {
-        audit({ ...auditBase, event: 'failed', ...pending.summary, error: errMsg(err) });
+        audit({
+          ...auditBase, event: 'failed', ...pending.summary, error: errMsg(err),
+          ...(err && err.auditResult ? { result: err.auditResult } : {}),
+        });
         throw err;
       }
     }
@@ -1129,6 +1149,7 @@ function buildMcpServer(session, deps) {
       toolName: 'execute_write',
       preview: op.summary,
       extra: affectedEstimate != null ? { affected_estimate: affectedEstimate } : undefined,
+      quotaPayload: op.quotaPayload,
     });
   });
 

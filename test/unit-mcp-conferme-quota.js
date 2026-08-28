@@ -21,6 +21,12 @@ assert.deepStrictEqual(quota.snapshot(), { global: { count: 0, bytes: 0 }, princ
 const reused = quota.reserve('a', piano);
 assert.strictEqual(quota.snapshot().global.count, 1, 'la quota deve essere riutilizzabile dopo cleanup');
 quota.release(reused);
+const quotaBulk = new ConfirmQuota();
+const bulkRealistico = { doc: 'x'.repeat(3 * 1024 * 1024) };
+const bulkReservation = quotaBulk.reserve('bulk', bulkRealistico);
+assert(quotaBulk.snapshot().principals.bulk.bytes > 3 * 1024 * 1024,
+  'la quota predefinita deve ammettere e contabilizzare un bulk MCP oltre 2 MiB');
+quotaBulk.release(bulkReservation);
 const quotaByte = new ConfirmQuota({ principalCount: 10, principalBytes: costoValore(piano) - 1, globalCount: 10, globalBytes: 10000 });
 assert.throws(() => quotaByte.reserve('grande', piano), (err) => err.code === 'MCP_CONFIRM_QUOTA_EXCEEDED',
   'il limite in byte deve valere anche sotto il limite numerico');
