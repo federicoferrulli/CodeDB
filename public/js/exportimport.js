@@ -7,6 +7,7 @@ import { tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { descriviEsitoImport } from './import-status.js';
 import { preparaImportCsv } from './csv.js';
+import { eseguiInParalleloOrdinato } from './export-pool.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -441,6 +442,7 @@ export function dbExportImportMenuItems(db) {
  * ------------------------------------------------------------------------- */
 
 const DB_EXPORT_FORMAT = 'codedb-database';
+const DB_EXPORT_CONCURRENCY = 3;
 
 // Database di sistema: metadati generati dal server, non dati dell'utente.
 // Esportarli produce viste non ricreabili, importarci sopra è distruttivo.
@@ -478,7 +480,7 @@ export async function exportDatabase(db) {
     return;
   }
   // Il file viene assemblato come testo per non ri-parsare i blocchi EJSON.
-  const parts = [];
+  let parts = [];
   let exported = 0;
   let objects = null;
   try {
@@ -490,7 +492,11 @@ export async function exportDatabase(db) {
       toast(`Il database "${db}" non contiene ${entita} o oggetti di schema da esportare.`, true);
       return;
     }
-    for (const c of collections) {
+    // Ogni worker assembla una stringa JSON autonoma. Il pool ne conserva la
+    // posizione originale, quindi le risposte possono arrivare fuori ordine
+    // senza cambiare l'artefatto finale. Dentro una singola collezione i blocchi
+    // restano sequenziali: `after`/`skip` del successivo dipendono dal precedente.
+    const risultati = await eseguiInParalleloOrdinato(collections, async (c) => {
       let ddl = null;
       let indexes = null;
       let postDdl = null;
@@ -525,14 +531,16 @@ export async function exportDatabase(db) {
         toast(`Esportazione di "${db}"… ${c.name}: ${Math.min(skip, total)}/${total}`);
         if (res.count < CHUNK || skip >= total) break;
       }
-      exported += lines.length;
-      parts.push(
-        `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
+      return {
+        count: lines.length,
+        part: `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
         `"identity": ${JSON.stringify(identity)}, "indexes": ${JSON.stringify(indexes)}, ` +
         `"postDdl": ${JSON.stringify(postDdl)}, "docs": [\n    ` +
-        lines.join(',\n    ') + '\n  ] }'
-      );
-    }
+        lines.join(',\n    ') + '\n  ] }',
+      };
+    }, DB_EXPORT_CONCURRENCY);
+    parts = risultati.map((risultato) => risultato.part);
+    exported = risultati.reduce((totale, risultato) => totale + risultato.count, 0);
   } catch (err) {
     toast(`Esportazione fallita: ${err.message}`, true);
     return;

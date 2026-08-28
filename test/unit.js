@@ -1225,6 +1225,11 @@ console.log('--- Test Unitari CodeDB ---');
   // alla prima, che poi chi pagina riusa invece di aspettarselo su ognuna.
   await require('./unit-export-conteggio');
 
+  // Test 24-decies-quinquies: l'export di un intero database elabora fino a
+  // tre collezioni in parallelo, conserva l'ordine dell'artefatto e, in caso
+  // di errore, attende le richieste gia' partite senza avviarne altre.
+  await require('./unit-export-parallelo');
+
   // Test 24-undecies: scelta della collation di connessione su MySQL. Il
   // driver ne impone una COMPILATA DENTRO DI SÉ, che nessuno ha scelto, e la
   // ereditano variabili utente e CAST: bastava a far fallire in CodeDB query
