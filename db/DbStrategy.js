@@ -138,7 +138,7 @@ class DbStrategy {
   async duplicatePlan(_db, _coll, _payload) { throw unsupported(); }
 
   /**
-   * Aggiornamento di massa: payload = { filter, set } (per il gateway MCP).
+   * Aggiornamento di massa: payload = { filter, set, upsert? } (gateway MCP).
    * Il filtro vuoto va rifiutato: mai aggiornare tutto per sbaglio.
    */
   async collectionUpdateMany(_db, _coll, _payload) { throw unsupported(); }

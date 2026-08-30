@@ -1029,9 +1029,15 @@ function buildMcpServer(session, deps) {
     if (operation === 'update') {
       parseNonEmptyObject(args.filter, 'Filtro');
       parseNonEmptyObject(args.set, 'Oggetto "set"');
+      const upsert = args.upsert === true;
       return {
-        summary: { dbType: 'mongodb', db, collection: coll, operation, filter: args.filter, set: args.set },
-        exec: () => sess.strategy.collectionUpdateMany(db, coll, { filter: args.filter, set: args.set }),
+        summary: {
+          dbType: 'mongodb', db, collection: coll, operation,
+          filter: args.filter, set: args.set, upsert,
+        },
+        exec: () => sess.strategy.collectionUpdateMany(db, coll, {
+          filter: args.filter, set: args.set, upsert,
+        }),
       };
     }
     if (operation === 'delete') {
@@ -1053,7 +1059,7 @@ function buildMcpServer(session, deps) {
       'Mostra l\'anteprima all\'utente umano e chiedi la sua approvazione esplicita: solo dopo richiama con confirm_token. ' +
       'NON confermare mai di tua iniziativa. Il token scade dopo 5 minuti ed è monouso. ' +
       'MongoDB: "operation" (insert|update|delete) con "doc" (insert: documento o array non vuoto di documenti) ' +
-      'o "filter"+"set" (update) o "filter" (delete), in Extended JSON; ' +
+      'o "filter"+"set" (update, con "upsert=true" opzionale) o "filter" (delete), in Extended JSON; ' +
       'filtri vuoti rifiutati. MySQL/PostgreSQL: "sql" con INSERT/UPDATE/DELETE (MySQL anche REPLACE); UPDATE/DELETE richiedono WHERE. ' +
       'Su tutti i dbType "operation" ammette anche "drop_collection" (elimina la collection/tabella indicata) e ' +
       '"drop_database" (elimina l\'intero database "db"); i db di sistema sono protetti. Nessun altro DDL è ammesso. ' +
@@ -1069,6 +1075,7 @@ function buildMcpServer(session, deps) {
       ]).optional().describe('Solo MongoDB insert: documento EJSON serializzato oppure array non vuoto di documenti Extended JSON'),
       filter: z.string().optional().describe('Solo MongoDB update/delete: filtro esplicito in Extended JSON (mai vuoto)'),
       set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
+      upsert: z.boolean().optional().describe('Solo MongoDB update: true per inserire un documento se il filtro non trova corrispondenze (default: false)'),
       sql: z.string().optional().describe('Solo MySQL/PostgreSQL: statement INSERT/UPDATE/DELETE (REPLACE solo MySQL); UPDATE/DELETE con WHERE'),
       confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
     },

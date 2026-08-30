@@ -1137,7 +1137,8 @@ class MongoDbStrategy extends DbStrategy {
   }
 
   // Aggiornamento di massa per il gateway MCP: $set su tutti i documenti che
-  // corrispondono al filtro, che deve essere esplicito e non vuoto.
+  // corrispondono al filtro, che deve essere esplicito e non vuoto. L'upsert è
+  // esplicito e resta disattivato quando il chiamante non lo richiede.
   async collectionUpdateMany(db, coll, payload) {
     const client = this.requireClient();
     const filter = parseQueryObject(payload.filter, null);
@@ -1148,8 +1149,17 @@ class MongoDbStrategy extends DbStrategy {
     if (!set || typeof set !== 'object' || Array.isArray(set) || !Object.keys(set).length) {
       throw new Error('Oggetto "set" mancante o vuoto: indica i campi da aggiornare.');
     }
-    const res = await client.db(db).collection(coll).updateMany(filter, { $set: set });
-    return { matched: res.matchedCount, modified: res.modifiedCount };
+    const res = await client.db(db).collection(coll).updateMany(
+      filter,
+      { $set: set },
+      { upsert: payload.upsert === true },
+    );
+    return {
+      matched: res.matchedCount,
+      modified: res.modifiedCount,
+      upserted: res.upsertedCount,
+      ...(res.upsertedId != null ? { upsertedId: EJSON.stringify(res.upsertedId) } : {}),
+    };
   }
 
   async docUpdate(db, coll, payload) {

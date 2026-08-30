@@ -333,13 +333,41 @@ let testServer = null;
     const upd2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: upd1.data.confirm_token });
     assert(upd2.ok && upd2.data.result.modified === 1, 'update confermato ed eseguito');
 
+    console.log('14b. execute_write: upsert MongoDB esplicito e default disattivato');
+    const noUpsert1 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, collection: 'people', operation: 'update',
+      filter: '{ "name": "Assente senza upsert" }', set: '{ "age": 31 }',
+    });
+    const noUpsert2 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, confirm_token: noUpsert1.ok ? noUpsert1.data.confirm_token : '',
+    });
+    const afterNoUpsert = await mongo.db(DB).collection('people').countDocuments({ name: 'Assente senza upsert' });
+    assert(noUpsert1.ok && noUpsert2.ok && afterNoUpsert === 0, 'senza upsert un update senza corrispondenze non inserisce');
+
+    const upsert1 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, collection: 'people', operation: 'update', upsert: true,
+      filter: '{ "name": "Creato con upsert" }', set: '{ "age": 32 }',
+    });
+    assert(
+      upsert1.ok && upsert1.data.preview.upsert === true,
+      `l'anteprima dichiara chiaramente upsert=true = ${upsert1.ok ? JSON.stringify(upsert1.data.preview) : upsert1.text}`,
+    );
+    const upsert2 = await call(mcp1.client, 'execute_write', {
+      connection_id: cid2, db: DB, confirm_token: upsert1.ok ? upsert1.data.confirm_token : '',
+    });
+    const afterUpsert = await mongo.db(DB).collection('people').findOne({ name: 'Creato con upsert' });
+    assert(
+      upsert2.ok && upsert2.data.result.upserted === 1 && afterUpsert && afterUpsert.age === 32,
+      'upsert confermato inserisce il documento quando il filtro non trova corrispondenze',
+    );
+
     const delEmpty = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'delete', filter: '{}' });
     assert(!delEmpty.ok, 'delete con filtro vuoto rifiutata subito');
     const del1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'people', operation: 'delete', filter: '{ "name": "Carla" }' });
     const del2 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, confirm_token: del1.ok ? del1.data.confirm_token : '' });
     assert(del1.ok && del2.ok && del2.data.result.deleted === 1, 'delete confermata ed eseguita');
 
-    console.log('14b. Fase 3: drop_collection e drop_database con conferma');
+    console.log('14c. Fase 3: drop_collection e drop_database con conferma');
     await mongo.db(DB).collection('scratch').insertOne({ tmp: 1 });
     const dc1 = await call(mcp1.client, 'execute_write', { connection_id: cid2, db: DB, collection: 'scratch', operation: 'drop_collection' });
     assert(dc1.ok && dc1.data.requires_confirmation && dc1.data.affected_estimate === 1, `drop_collection: anteprima con stima = ${dc1.ok ? dc1.data.affected_estimate : dc1.text}`);
