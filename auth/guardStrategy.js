@@ -52,7 +52,19 @@ function resolveAuthorization(spec, strategy, args) {
   const isSql = strategy.type && strategy.type !== 'mongodb';
   if (isSql) {
     const sql = analyzeSql(payload.pipeline);
-    return { capabilities: sql.capabilities, sql };
+    // Il DDL puro puo' essere autorizzato sia dalla capability specifica `ddl`
+    // sia da quella amministrativa di connessione `manage`. Le altre
+    // capability restano cumulative: una query mista continua a richiedere
+    // write/delete e non puo' usare manage come scorciatoia.
+    const pureDdl = sql.capabilities.includes('ddl')
+      && sql.capabilities.every((capability) => capability === 'read' || capability === 'ddl');
+    return {
+      capabilities: pureDdl
+        ? sql.capabilities.filter((capability) => capability !== 'ddl')
+        : sql.capabilities,
+      ...(pureDdl ? { anyCapabilities: ['ddl', 'manage'] } : {}),
+      sql,
+    };
   }
   const mongoPipeline = analyzeMongoPipeline(payload.pipeline);
   return {
@@ -248,8 +260,13 @@ function guardStrategy(strategy, ctx) {
         }
 
         const capabilities = authorization.capabilities;
-        const missing = capabilities.find((capability) =>
+        let missing = capabilities.find((capability) =>
           !can(principal, { connName, capability, db, coll }));
+        if (!missing && authorization.anyCapabilities
+            && !authorization.anyCapabilities.some((capability) =>
+              can(principal, { connName, capability, db, coll }))) {
+          missing = authorization.anyCapabilities[0];
+        }
         if (missing) return refuse(missing, db, coll);
         // Rename: anche la destinazione deve rientrare nello scope, altrimenti
         // si potrebbe spostare un oggetto fuori dal proprio perimetro.

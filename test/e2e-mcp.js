@@ -125,7 +125,7 @@ let testServer = null;
     mcp1 = await newMcpClient();
     const tools = await mcp1.client.listTools();
     const names = tools.tools.map((t) => t.name);
-    for (const t of ['list_saved_connections', 'connect_database', 'disconnect_database', 'get_databases_and_collections', 'get_schema', 'execute_query', 'execute_write', 'set_connection_read_only', 'get_shortest_path', 'analyze_dependencies', 'analyze_pii', 'audit_schema', 'filter_empty_tables', 'get_graph']) {
+    for (const t of ['list_saved_connections', 'connect_database', 'disconnect_database', 'get_databases_and_collections', 'get_schema', 'execute_query', 'execute_write', 'execute_ddl', 'set_connection_read_only', 'get_shortest_path', 'analyze_dependencies', 'analyze_pii', 'audit_schema', 'filter_empty_tables', 'get_graph']) {
       assert(names.includes(t), `tool "${t}" esposto`);
     }
 

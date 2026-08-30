@@ -291,6 +291,38 @@ function assertWriteSql(sql) {
   return sqlCapability(statement);
 }
 
+// Il tool DDL accetta un solo comando di definizione esplicito. La
+// classificazione generale di SQL Raw e' volutamente conservativa e tratta
+// anche comandi amministrativi/ignoti come `ddl`; qui serve una whitelist piu'
+// stretta, perche' CALL, COPY, GRANT o SET non sono operazioni di schema.
+const SQL_DDL_TOOL_START = /^\s*(create|alter|drop|truncate|rename|comment)\b/i;
+
+function assertDdlSql(sql) {
+  const text = String(sql || '');
+  const analysis = analyzeSql(text);
+  if (analysis.multipleStatements) {
+    throw new Error('execute_ddl ammette un solo statement SQL per chiamata.');
+  }
+  if (analysis.executableComment) {
+    throw new Error('execute_ddl non ammette commenti SQL eseguibili /*! ... */ o /*M! ... */.');
+  }
+  if (analysis.fileIo) {
+    throw new Error("execute_ddl non ammette l'I/O su file dell'host del database.");
+  }
+  const statement = analysis.statements[0] || '';
+  const onlyDdl = analysis.capabilities.includes('ddl')
+    && analysis.capabilities.every((capability) => capability === 'read' || capability === 'ddl');
+  if (!SQL_DDL_TOOL_START.test(statement) || !onlyDdl) {
+    throw new Error(
+      'execute_ddl ammette solo un comando DDL CREATE, ALTER, DROP, TRUNCATE, RENAME o COMMENT.'
+    );
+  }
+  // `analysis.statements` contiene il testo normalizzato per la decisione
+  // (literal e identificatori sono segnaposto): anteprima ed esecuzione devono
+  // invece condividere l'SQL originale, senza alcuna riscrittura silenziosa.
+  return text.trim();
+}
+
 // Parse di un oggetto EJSON che deve esistere e non essere vuoto (filtri e
 // $set delle scritture: mai operare "su tutto" per omissione).
 function parseNonEmptyObject(text, label) {
@@ -328,7 +360,7 @@ const AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..
 // qui l'auditor scrive sul file MCP, mentre server.js ne crea uno gemello su
 // ui-audit.log.
 const auditStore = makeAuditor(AUDIT_FILE);
-const { audit } = auditStore;
+const { audit: defaultAudit } = auditStore;
 
 /* ---------------------------------------------------------------------------
  * Resource "schema": diagramma UML (Mermaid) + dizionario dati in markdown,
@@ -537,6 +569,9 @@ function errorResult(err) {
 }
 
 function buildMcpServer(session, deps) {
+  // In produzione usa il log append-only condiviso. L'iniezione mantiene il
+  // seam pubblico verificabile senza scrivere nel log reale durante i test.
+  const audit = deps.audit || defaultAudit;
   const server = new McpServer(
     { name: 'CodeDB-mcp', version: require('../package.json').version },
     {
@@ -1157,6 +1192,92 @@ function buildMcpServer(session, deps) {
       preview: op.summary,
       extra: affectedEstimate != null ? { affected_estimate: affectedEstimate } : undefined,
       quotaPayload: op.quotaPayload,
+    });
+  });
+
+  // --- DDL relazionale con conferma esplicita -------------------------------
+  // Separare il DDL dal DML rende visibili al client sia il rischio sia la
+  // capability richiesta, mantenendo lo stesso token human-in-the-loop.
+  tool('execute_ddl', {
+    title: 'Esegui DDL (con conferma)',
+    description:
+      'Esegue un singolo comando DDL su MySQL o PostgreSQL in due passaggi. Funziona solo su connessioni ' +
+      'salvate con readOnly=false. Primo passo: chiama SENZA confirm_token e passa "sql" per ottenere ' +
+      'anteprima e token; mostra l\'anteprima all\'utente umano e chiedi conferma esplicita. Solo dopo ' +
+      'richiama con lo stesso connection_id e db e con confirm_token (senza bisogno di ripetere sql). ' +
+      'NON confermare autonomamente. Sono ammessi CREATE, ALTER, DROP, TRUNCATE, RENAME e COMMENT; ' +
+      'DML, statement multipli, comandi amministrativi e I/O su file sono rifiutati. Richiede la capability ' +
+      'ddl o manage. Ogni richiesta, esecuzione e fallimento viene registrato come evento distruttivo.',
+    inputSchema: {
+      connection_id: z.string(),
+      db: z.string().describe('Database (MySQL) o schema (PostgreSQL) nel cui contesto eseguire il DDL'),
+      sql: z.string().optional().describe('Singolo statement DDL; obbligatorio nel primo passo, omesso alla conferma'),
+      confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+  }, async (args) => {
+    const sess = requireDbSession(args.connection_id);
+    if (!refreshWritesAllowed(session, sess, deps)) {
+      throw new Error(`La connessione "${sess.name}" e' in sola lettura: per eseguire DDL imposta readOnly=false oppure usa set_connection_read_only con conferma esplicita.`);
+    }
+    if (!DbFactory.isSqlType(sess.dbType)) {
+      throw new Error('execute_ddl e\' disponibile solo per database relazionali MySQL e PostgreSQL.');
+    }
+    const db = String(args.db || '').trim();
+    if (!db) throw new Error('Parametro "db" mancante.');
+
+    const principal = sessionPrincipal(session);
+    const ddlAllowed = ['ddl', 'manage'].some((capability) =>
+      can(principal, { connName: sess.name, capability, db }));
+    if (!ddlAllowed) {
+      throw new Error(
+        'Permesso negato: la API key usata non ha la capability ddl o manage sulla connessione "'
+        + sess.name + '".'
+      );
+    }
+
+    sweepPendingWrites();
+    const auditBase = {
+      sessionId: session.id,
+      ownerId: principal.ownerId,
+      userId: principal.id,
+      connection: sess.name,
+      dbType: sess.dbType,
+      db,
+      operation: 'ddl',
+      tool: 'execute_ddl',
+      category: 'write',
+      destructive: true,
+    };
+
+    const token = String(args.confirm_token || '').trim();
+    if (token) {
+      const pending = confirmFlow.consume(
+        token,
+        'ddl',
+        (entry) => entry.connectionId === String(args.connection_id) && entry.summary.db === db,
+        'operazione DDL',
+      );
+      try {
+        const result = await pending.exec();
+        audit({ ...auditBase, event: 'executed', sql: pending.summary.sql, result });
+        return jsonResult({ executed: true, ...pending.summary, result });
+      } catch (err) {
+        audit({ ...auditBase, event: 'failed', sql: pending.summary.sql, error: errMsg(err) });
+        throw err;
+      }
+    }
+
+    const sql = assertDdlSql(args.sql);
+    const summary = { dbType: sess.dbType, db, operation: 'ddl', sql };
+    const exec = () => sess.strategy.collectionAggregate(db, null, { pipeline: sql });
+    audit({ ...auditBase, event: 'requested', sql });
+    return confirmFlow.issue('ddl', {
+      connectionId: String(args.connection_id), summary, exec,
+    }, {
+      toolName: 'execute_ddl',
+      preview: summary,
+      quotaPayload: sql,
     });
   });
 
@@ -1883,6 +2004,7 @@ module.exports = {
   attachMcp,
   assertReadOnlySql,
   assertWriteSql,
+  assertDdlSql,
   assertReadOnlyPipeline,
   refreshSessionPrincipal,
   refreshWritesAllowed,

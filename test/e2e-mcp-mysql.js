@@ -145,6 +145,52 @@ let testServer = null;
     const qGuard = await call(client, 'execute_query', { connection_id: cid2, db: DB, sql: 'DELETE FROM people WHERE age > 0' });
     assert(!qGuard.ok, 'execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)');
 
+    console.log('7c. execute_ddl con conferma sul motore reale');
+    const ddlReadOnly = await call(client, 'execute_ddl', {
+      connection_id: cid, db: DB, sql: 'CREATE TABLE ddl_probe (id INT PRIMARY KEY)',
+    });
+    assert(!ddlReadOnly.ok && /sola lettura/i.test(ddlReadOnly.text),
+      'DDL rifiutata sulla connessione read-only');
+    const ddlDml = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, sql: 'INSERT INTO people (name, age) VALUES (\'No\', 1)',
+    });
+    assert(!ddlDml.ok && /DDL/i.test(ddlDml.text), 'DML rifiutato da execute_ddl');
+
+    const create1 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, sql: 'CREATE TABLE ddl_probe (id INT PRIMARY KEY)',
+    });
+    assert(create1.ok && create1.data.requires_confirmation, 'CREATE TABLE: anteprima con conferma');
+    const beforeCreate = await call(client, 'execute_query', {
+      connection_id: cid2, db: DB,
+      sql: "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'ddl_probe'",
+    });
+    assert(beforeCreate.ok && Number(beforeCreate.data.docs[0].n) === 0, 'la preview non crea la tabella');
+    const create2 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, confirm_token: create1.data.confirm_token,
+    });
+    assert(create2.ok && create2.data.executed, 'CREATE TABLE confermata ed eseguita');
+
+    const alter1 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, sql: 'ALTER TABLE ddl_probe ADD nome VARCHAR(50)',
+    });
+    const alter2 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, confirm_token: alter1.data.confirm_token,
+    });
+    assert(alter2.ok && alter2.data.executed, 'ALTER TABLE confermata ed eseguita');
+    const column = await call(client, 'execute_query', {
+      connection_id: cid2, db: DB,
+      sql: "SELECT COUNT(*) AS n FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'ddl_probe' AND column_name = 'nome'",
+    });
+    assert(column.ok && Number(column.data.docs[0].n) === 1, 'ALTER TABLE persistita nel catalogo');
+
+    const drop1 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, sql: 'DROP TABLE ddl_probe',
+    });
+    const drop2 = await call(client, 'execute_ddl', {
+      connection_id: cid2, db: DB, confirm_token: drop1.data.confirm_token,
+    });
+    assert(drop2.ok && drop2.data.executed, 'DROP TABLE confermata ed eseguita');
+
     await call(client, 'disconnect_database', { connection_id: cid2 });
 
     console.log('8. disconnect_database');
