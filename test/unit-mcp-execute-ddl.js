@@ -34,12 +34,12 @@ const mongoStrategy = {
   async listDatabases() { return ['app']; },
 };
 
-function principal(id, capabilities) {
+function principal(id, capabilities, { read = true } = {}) {
   return {
     id, type: 'subuser', ownerId: 'tenant-test', root: false, owner: false,
     grants: [
-      { connName: 'sql', capabilities: ['read', ...capabilities], scope: null },
-      { connName: 'mongo', capabilities: ['read', ...capabilities], scope: null },
+      { connName: 'sql', capabilities: [...(read ? ['read'] : []), ...capabilities], scope: null },
+      { connName: 'mongo', capabilities: [...(read ? ['read'] : []), ...capabilities], scope: null },
     ],
     connScope: null,
   };
@@ -116,6 +116,18 @@ module.exports = (async () => {
     });
     assert(!multipla.ok && /un solo statement/i.test(multipla.text), `la DDL multipla deve essere rifiutata (${multipla.text})`);
 
+    for (const amministrativo of [
+      'CREATE USER agente IDENTIFIED BY \'segreto\'',
+      'ALTER SYSTEM SET max_connections = 500',
+      'DROP ROLE agente',
+    ]) {
+      const refused = await call(ddlClient, 'execute_ddl', {
+        connection_id: connectionId, db: 'app', sql: amministrativo,
+      });
+      assert(!refused.ok && /DDL|schema|struttur/i.test(refused.text),
+        `il comando amministrativo non e' DDL di schema: ${amministrativo}`);
+    }
+
     const preview = await call(ddlClient, 'execute_ddl', {
       connection_id: connectionId, db: 'app', sql: 'CREATE TABLE persone (id INT PRIMARY KEY)',
     });
@@ -132,9 +144,14 @@ module.exports = (async () => {
     });
     assert(!crossTool.ok && /confirm_token/i.test(crossTool.text), 'il token DDL non deve valere per execute_write');
 
+    // La connessione e' stata aperta con read, ma una revoca a caldo lascia
+    // solo ddl prima della conferma: l'esecuzione strutturale deve restare
+    // autorizzata dalla capability dichiarata dal tool.
+    principals.cdb_ddl = principal('ddl', ['ddl'], { read: false });
     const executed = await call(ddlClient, 'execute_ddl', {
       connection_id: connectionId, db: 'app', confirm_token: preview.data.confirm_token,
     });
+    principals.cdb_ddl = principal('ddl', ['ddl']);
     assert(executed.ok && executed.data.executed, `la conferma deve eseguire la DDL (${executed.text})`);
     assert.deepStrictEqual(sqlEseguiti[0], {
       db: 'app', sql: 'CREATE TABLE persone (id INT PRIMARY KEY)',
@@ -156,6 +173,30 @@ module.exports = (async () => {
     assert.strictEqual(sqlEseguiti[1].sql, ddlConLiteral,
       'la strategia deve ricevere esattamente il SQL mostrato in anteprima');
 
+    const ddlTrigger = [
+      'CREATE TRIGGER aggiorna_totale BEFORE UPDATE ON persone',
+      'FOR EACH ROW SET NEW.nome = NEW.nome',
+    ].join(' ');
+    const triggerPreview = await call(ddlClient, 'execute_ddl', {
+      connection_id: connectionId, db: 'app', sql: ddlTrigger,
+    });
+    assert(triggerPreview.ok, `CREATE TRIGGER resta un DDL anche se contiene UPDATE (${triggerPreview.text})`);
+    const triggerExecution = await call(ddlClient, 'execute_ddl', {
+      connection_id: connectionId, db: 'app', confirm_token: triggerPreview.data.confirm_token,
+    });
+    assert(triggerExecution.ok, `CREATE TRIGGER deve raggiungere la strategia (${triggerExecution.text})`);
+    assert.strictEqual(sqlEseguiti[2].sql, ddlTrigger, 'il corpo del trigger deve restare intatto');
+
+    const databasePreview = await call(ddlClient, 'execute_ddl', {
+      connection_id: connectionId, db: 'app', sql: 'CREATE DATABASE archivio',
+    });
+    assert(databasePreview.ok, `CREATE DATABASE deve essere ammesso (${databasePreview.text})`);
+    const databaseExecution = await call(ddlClient, 'execute_ddl', {
+      connection_id: connectionId, db: 'app', confirm_token: databasePreview.data.confirm_token,
+    });
+    assert(databaseExecution.ok, `CREATE DATABASE deve raggiungere la strategia (${databaseExecution.text})`);
+    assert.strictEqual(sqlEseguiti[3].sql, 'CREATE DATABASE archivio');
+
     const failedPreview = await call(ddlClient, 'execute_ddl', {
       connection_id: connectionId, db: 'app', sql: 'DROP TABLE fallisce',
     });
@@ -168,7 +209,13 @@ module.exports = (async () => {
     const ddlAudit = auditEntries.filter((entry) => entry.tool === 'execute_ddl');
     assert.deepStrictEqual(
       ddlAudit.map((entry) => entry.event),
-      ['requested', 'executed', 'requested', 'executed', 'requested', 'failed'],
+      [
+        'requested', 'executed',
+        'requested', 'executed',
+        'requested', 'executed',
+        'requested', 'executed',
+        'requested', 'failed',
+      ],
     );
     assert(ddlAudit.every((entry) => entry.category === 'write' && entry.destructive === true),
       'preview ed esecuzione DDL devono essere marcate come eventi distruttivi');

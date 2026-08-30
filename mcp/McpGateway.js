@@ -44,7 +44,7 @@ const { can, canUseConnection, canWholeConnection } = require('../auth/permissio
 // Stessa funzione usata dal Proxy autorizzante sul percorso socket: il divieto
 // di I/O su file non deve esistere in due versioni (vedi assertReadOnlySql).
 const {
-  analyzeSql, sqlCapability,
+  analyzeSql, sqlCapability, DDL_AUTH_CAPABILITIES, SQL_DDL_AUTHORIZED,
   analyzeMongoPipeline, assertNoMongoServerJs,
 } = require('../auth/capabilities');
 const { spiegaErrore } = require('../db/errors');
@@ -295,7 +295,27 @@ function assertWriteSql(sql) {
 // classificazione generale di SQL Raw e' volutamente conservativa e tratta
 // anche comandi amministrativi/ignoti come `ddl`; qui serve una whitelist piu'
 // stretta, perche' CALL, COPY, GRANT o SET non sono operazioni di schema.
-const SQL_DDL_TOOL_START = /^\s*(create|alter|drop|truncate|rename|comment)\b/i;
+const SQL_SCHEMA_OBJECT = [
+  'materialized\\s+view',
+  'foreign\\s+table',
+  'text\\s+search\\s+(?:configuration|dictionary|parser|template)',
+  'table', 'database', 'schema', 'index', 'view', 'sequence', 'trigger',
+  'function', 'procedure', 'type', 'domain', 'aggregate', 'operator',
+  'collation', 'conversion', 'policy', 'rule', 'cast', 'statistics',
+  'column', 'constraint',
+].join('|');
+const SQL_DDL_TOOL_START = new RegExp(
+  '^\\s*(?:' +
+    'create\\s+(?:(?:or\\s+replace|temporary|temp|unlogged|unique|fulltext|spatial)\\s+)*' +
+      `(?:${SQL_SCHEMA_OBJECT})\\b` +
+    `|alter\\s+(?:${SQL_SCHEMA_OBJECT})\\b` +
+    `|drop\\s+(?:temporary\\s+)?(?:${SQL_SCHEMA_OBJECT})\\b` +
+    '|truncate(?:\\s+table)?\\b' +
+    '|rename\\s+table\\b' +
+    `|comment\\s+on\\s+(?:${SQL_SCHEMA_OBJECT})\\b` +
+  ')',
+  'i',
+);
 
 function assertDdlSql(sql) {
   const text = String(sql || '');
@@ -310,11 +330,10 @@ function assertDdlSql(sql) {
     throw new Error("execute_ddl non ammette l'I/O su file dell'host del database.");
   }
   const statement = analysis.statements[0] || '';
-  const onlyDdl = analysis.capabilities.includes('ddl')
-    && analysis.capabilities.every((capability) => capability === 'read' || capability === 'ddl');
-  if (!SQL_DDL_TOOL_START.test(statement) || !onlyDdl) {
+  if (!SQL_DDL_TOOL_START.test(statement)) {
     throw new Error(
-      'execute_ddl ammette solo un comando DDL CREATE, ALTER, DROP, TRUNCATE, RENAME o COMMENT.'
+      'execute_ddl ammette solo DDL di schema su oggetti del database; ' +
+      'comandi amministrativi come USER, ROLE, SYSTEM, GRANT o REVOKE non sono consentiti.'
     );
   }
   // `analysis.statements` contiene il testo normalizzato per la decisione
@@ -1227,7 +1246,7 @@ function buildMcpServer(session, deps) {
     if (!db) throw new Error('Parametro "db" mancante.');
 
     const principal = sessionPrincipal(session);
-    const ddlAllowed = ['ddl', 'manage'].some((capability) =>
+    const ddlAllowed = DDL_AUTH_CAPABILITIES.some((capability) =>
       can(principal, { connName: sess.name, capability, db }));
     if (!ddlAllowed) {
       throw new Error(
@@ -1270,7 +1289,10 @@ function buildMcpServer(session, deps) {
 
     const sql = assertDdlSql(args.sql);
     const summary = { dbType: sess.dbType, db, operation: 'ddl', sql };
-    const exec = () => sess.strategy.collectionAggregate(db, null, { pipeline: sql });
+    const exec = () => sess.strategy.collectionAggregate(db, null, {
+      pipeline: sql,
+      [SQL_DDL_AUTHORIZED]: true,
+    });
     audit({ ...auditBase, event: 'requested', sql });
     return confirmFlow.issue('ddl', {
       connectionId: String(args.connection_id), summary, exec,

@@ -20,7 +20,8 @@
  * ------------------------------------------------------------------------- */
 
 const {
-  METHOD_CAPABILITY, CAPABILITY_LABEL, analyzeSql, isFileIoSql,
+  METHOD_CAPABILITY, CAPABILITY_LABEL, DDL_AUTH_CAPABILITIES, SQL_DDL_AUTHORIZED,
+  analyzeSql, isFileIoSql,
   analyzeMongoPipeline, assertNoMongoServerJs, matchesAny, shellWriteCapabilities,
 } = require('./capabilities');
 const { can, scopeFor } = require('./permissions');
@@ -52,17 +53,14 @@ function resolveAuthorization(spec, strategy, args) {
   const isSql = strategy.type && strategy.type !== 'mongodb';
   if (isSql) {
     const sql = analyzeSql(payload.pipeline);
-    // Il DDL puro puo' essere autorizzato sia dalla capability specifica `ddl`
-    // sia da quella amministrativa di connessione `manage`. Le altre
-    // capability restano cumulative: una query mista continua a richiedere
-    // write/delete e non puo' usare manage come scorciatoia.
-    const pureDdl = sql.capabilities.includes('ddl')
-      && sql.capabilities.every((capability) => capability === 'read' || capability === 'ddl');
+    // Solo execute_ddl puo' applicare questo Symbol, dopo aver validato un
+    // singolo comando di schema. SQL Raw ordinario mantiene invece tutte le
+    // capability dedotte (read compresa) e non eredita la deroga del tool.
+    if (payload[SQL_DDL_AUTHORIZED] === true) {
+      return { capabilities: [], anyCapabilities: DDL_AUTH_CAPABILITIES, sql };
+    }
     return {
-      capabilities: pureDdl
-        ? sql.capabilities.filter((capability) => capability !== 'ddl')
-        : sql.capabilities,
-      ...(pureDdl ? { anyCapabilities: ['ddl', 'manage'] } : {}),
+      capabilities: sql.capabilities,
       sql,
     };
   }

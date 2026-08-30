@@ -47,6 +47,15 @@ const SQL_WRITE_KEYWORDS = /\b(INSERT|UPDATE|REPLACE|MERGE)\b/i;
 const SQL_DELETE_KEYWORDS = /\bDELETE\b/i;
 const SQL_DDL_START = /^[\s(]*(CREATE|DROP|ALTER|TRUNCATE|GRANT|REVOKE|RENAME|CALL|COPY|VACUUM|REINDEX|CLUSTER|LOCK|SET|DO|EXECUTE|PREPARE|COMMENT|ANALYZE|REFRESH|DISCARD|RESET|LISTEN|UNLISTEN|NOTIFY)\b/i;
 const SQL_CAPABILITY_PRIORITY = ['ddl', 'delete', 'write', 'read'];
+// Un'operazione di schema e' concessa dalla capability specifica oppure dalla
+// gestione completa della connessione. Gateway MCP e Proxy autorizzante usano
+// questa stessa policy, cosi' preview ed esecuzione non possono divergere.
+const DDL_AUTH_CAPABILITIES = Object.freeze(['ddl', 'manage']);
+// Marcatore solo-processo: un payload proveniente da JSON/MCP non puo' creare
+// una chiave Symbol. Il gateway lo applica soltanto dopo la validazione
+// execute_ddl, permettendo al Proxy di usare la policy specifica del tool
+// senza fidarsi di un flag controllabile dal client.
+const SQL_DDL_AUTHORIZED = Symbol('codedb.sql-ddl-authorized');
 // MySQL/MariaDB eseguono il contenuto di questi commenti; il lexer condiviso
 // li vede invece come commenti ordinari. SQL Raw li rifiuta esplicitamente.
 const SQL_EXECUTABLE_COMMENT = /\/\*(?:!\d*|M!)\s*/i;
@@ -580,6 +589,8 @@ function matchesAny(patterns, value) {
 
 module.exports = {
   analyzeSql,
+  DDL_AUTH_CAPABILITIES,
+  SQL_DDL_AUTHORIZED,
   sqlCapability,
   sqlRequiredCapabilities,
   isWriteSql,
