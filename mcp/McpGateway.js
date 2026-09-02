@@ -1104,6 +1104,190 @@ function buildMcpServer(session, deps) {
     throw new Error('Parametro "operation" mancante o non valido: usa "insert", "update", "delete", "drop_collection" o "drop_database" (per il DML su MySQL usa "sql").');
   };
 
+  const CAMPI_SCRITTURA_SINGOLA = [
+    'collection', 'operation', 'doc', 'filter', 'set', 'upsert', 'sql',
+  ];
+
+  // Un batch e' un'unica operazione confermabile: ogni descrittore viene
+  // normalizzato dalle stesse guardie della scrittura singola, poi il token
+  // conserva il piano completo. Sui motori SQL l'esecuzione profonda appartiene
+  // alla Strategia, che puo' tenere tutte le istruzioni sulla stessa connessione
+  // e nella stessa transazione; MongoDB applica le mutazioni in ordine.
+  //
+  // L'omogeneita' del blocco e' verificata QUI ed esplicitamente. Prima il
+  // rifiuto di un batch misto arrivava per caso, da `buildWriteOp` che ramifica
+  // sul dbType della sessione: un messaggio pensato per un'altra domanda, e
+  // nessuna garanzia che il caso restasse coperto. Un batch su un motore SQL
+  // ammette SOLO statement `sql`: un `drop_collection` e' DDL, non entra nella
+  // transazione degli altri, e lasciarlo passare significava mostrarlo
+  // nell'anteprima e poi buttarne via l'esecuzione.
+  // Un descrittore appartiene a una di tre classi. I drop stanno a parte
+  // perche' su un motore SQL sono l'unico caso che NON e' ne' uno statement da
+  // mettere in transazione ne' un descrittore MongoDB fuori posto: la
+  // diagnosi giusta e' la loro, non «batch misto».
+  const classeDelDescrittore = (descrittore) => {
+    if (descrittore && descrittore.sql !== undefined) return 'sql';
+    const operazione = String((descrittore && descrittore.operation) || '').trim();
+    return (operazione === 'drop_collection' || operazione === 'drop_database') ? 'drop' : 'mongo';
+  };
+
+  const assertBatchOmogeneo = (sess, descrittori) => {
+    const classi = descrittori.map(classeDelDescrittore);
+    const quante = (classe) => classi.filter((c) => c === classe).length;
+    const suSql = DbFactory.isSqlType(sess.dbType);
+
+    if (suSql && quante('drop')) {
+      const drop = descrittori[classi.indexOf('drop')];
+      throw new Error(
+        `Su ${sess.dbType} un batch ammette solo statement "sql": `
+        + `"${String(drop.operation).trim()}" e' un'operazione di schema e non puo' far parte di un `
+        + 'blocco transazionale. Eseguila come scrittura singola, oppure usa execute_ddl.'
+      );
+    }
+    if (quante('sql') && (quante('mongo') || quante('drop'))) {
+      throw new Error(
+        'Batch misto: "operations" deve contenere o soli statement "sql" (MySQL/PostgreSQL) '
+        + 'o soli descrittori MongoDB ("operation" con "doc"/"filter"/"set"), mai i due insieme.'
+      );
+    }
+    if (suSql && quante('mongo')) {
+      throw new Error(`Su ${sess.dbType} ogni descrittore del batch deve avere il campo "sql".`);
+    }
+    if (!suSql && quante('sql')) {
+      throw new Error('Il parametro "sql" vale solo per MySQL/PostgreSQL: su MongoDB usa "operation" con "doc"/"filter"/"set".');
+    }
+  };
+
+  // Stima best-effort delle righe/documenti toccati da UNA operazione. Vive
+  // qui, e non nel corpo del gestore, perche' un batch deve poterla chiedere
+  // per ciascuno dei propri descrittori.
+  const stimaImpatto = async (sess, db, summary) => {
+    try {
+      if (summary.operation === 'update' || summary.operation === 'delete') {
+        return (await sess.strategy.collectionFind(db, summary.collection, { filter: summary.filter, limit: 1 })).total;
+      }
+      if (summary.operation === 'drop_collection') {
+        return (await sess.strategy.collectionFind(db, summary.collection, { limit: 1 })).total;
+      }
+      if (summary.operation === 'drop_database') {
+        return (await sess.strategy.listCollections(db)).length;
+      }
+    } catch { /* la stima è facoltativa */ }
+    return undefined;
+  };
+
+  // La stima di un blocco e' la somma di quelle note. Se nessun descrittore e'
+  // stimabile (per esempio un batch di soli statement SQL) resta indefinita,
+  // invece di dichiarare uno zero che sarebbe falso.
+  const stimaImpattoBatch = async (sess, db, sommari) => {
+    let totale;
+    for (const sommario of sommari || []) {
+      const stima = await stimaImpatto(sess, db, sommario);
+      if (Number.isFinite(stima)) totale = (totale || 0) + stima;
+    }
+    return totale;
+  };
+
+  const buildWriteRequest = (sess, args, db) => {
+    if (!Array.isArray(args.operations)) return buildWriteOp(sess, args, db);
+    if (CAMPI_SCRITTURA_SINGOLA.some((field) => args[field] !== undefined)) {
+      throw new Error('Non mescolare "operations" con i parametri di una scrittura singola.');
+    }
+    assertBatchOmogeneo(sess, args.operations);
+    const operations = args.operations.map((descriptor) => buildWriteOp(sess, descriptor, db));
+    const quotaPayload = operations.map((operation) => operation.quotaPayload).filter(Boolean).join('\n');
+
+    if (DbFactory.isSqlType(sess.dbType)) {
+      const summary = {
+        dbType: sess.dbType,
+        db,
+        operation: 'batch',
+        transactional: true,
+        operationCount: operations.length,
+        operations: operations.map((operation) => operation.summary),
+      };
+      const sql = operations.map((operation) => operation.summary.sql);
+      return {
+        summary,
+        ...(quotaPayload ? { quotaPayload } : {}),
+        exec: () => sess.strategy.executeWriteBatch(db, sql),
+      };
+    }
+
+    // MongoDB non ha una transazione che copra questo blocco, e l'anteprima lo
+    // DICHIARA: chi firma il `confirm_token` deve sapere PRIMA che un errore a
+    // meta' lascia applicate le mutazioni gia' eseguite. Dirlo solo nel
+    // risultato sarebbe dirlo quando non serve piu'.
+    const summary = {
+      dbType: sess.dbType,
+      db,
+      operation: 'batch',
+      transactional: false,
+      atomicita: 'assente: le mutazioni sono applicate in ordine e un errore non annulla le precedenti',
+      operationCount: operations.length,
+      operations: operations.map((operation) => operation.summary),
+    };
+    return {
+      summary,
+      ...(quotaPayload ? { quotaPayload } : {}),
+      exec: async () => {
+        const results = [];
+        for (let index = 0; index < operations.length; index++) {
+          try {
+            results.push(await operations[index].exec());
+          } catch (err) {
+            err.auditResult = {
+              transactional: false,
+              operationCount: operations.length,
+              completed: results.length,
+              failedIndex: index,
+              results,
+            };
+            throw err;
+          }
+        }
+        return {
+          transactional: false,
+          operationCount: operations.length,
+          completed: results.length,
+          results,
+        };
+      },
+    };
+  };
+
+  // Che cosa resta applicato dopo un batch fallito. Il motore lo sa gia' (lo
+  // scrive in `auditResult` per l'audit), ma finiva SOLO nell'audit: al client
+  // risaliva il solo messaggio del driver, quindi chi aveva confermato cinque
+  // insert e ne vedeva fallire il terzo non sapeva che due erano gia' scritte
+  // — e ripetere il batch le duplicava.
+  const descriviEsitoParziale = (esito) => {
+    if (!esito || typeof esito !== 'object') return null;
+    const totale = esito.operationCount;
+    if (esito.rolledBack) {
+      return `Nessuna mutazione e' rimasta applicata: la transazione e' stata annullata per intero (${esito.rolledBackBy === 'disconnessione' ? 'la connessione e stata chiusa e il server ha annullato la transazione' : 'rollback'}).`;
+    }
+    const applicate = esito.completed;
+    if (!Number.isFinite(applicate) || applicate <= 0) {
+      return 'Nessuna mutazione risulta applicata.';
+    }
+    return `ATTENZIONE: ${applicate} operazioni su ${totale} sono gia' state applicate e NON sono state annullate`
+      + (esito.transactional === false ? ' (su MongoDB questo blocco non e transazionale)' : '')
+      + `. Non ripetere il batch intero: riprendilo dall'operazione in posizione ${(esito.failedIndex ?? applicate) + 1}.`;
+  };
+
+  const writeDescriptorSchema = z.union([
+    z.object({ sql: z.string() }).strict(),
+    z.object({
+      collection: z.string().optional(),
+      operation: z.enum(['insert', 'update', 'delete', 'drop_collection', 'drop_database']),
+      doc: z.union([z.string(), z.array(z.record(z.unknown())).min(1)]).optional(),
+      filter: z.string().optional(),
+      set: z.string().optional(),
+      upsert: z.boolean().optional(),
+    }).strict(),
+  ]);
+
   tool('execute_write', {
     title: 'Esegui scrittura (con conferma)',
     description:
@@ -1117,6 +1301,8 @@ function buildMcpServer(session, deps) {
       'filtri vuoti rifiutati. MySQL/PostgreSQL: "sql" con INSERT/UPDATE/DELETE (MySQL anche REPLACE); UPDATE/DELETE richiedono WHERE. ' +
       'Su tutti i dbType "operation" ammette anche "drop_collection" (elimina la collection/tabella indicata) e ' +
       '"drop_database" (elimina l\'intero database "db"); i db di sistema sono protetti. Nessun altro DDL è ammesso. ' +
+      'Per piu mutazioni usa "operations": un array non vuoto di descrittori tutti SQL o tutti MongoDB; ' +
+      'l\'anteprima e il confirm_token coprono l\'intero blocco, eseguito in ordine (in una transazione unica su MySQL/PostgreSQL). ' +
       'Ogni richiesta ed esecuzione viene registrata in un audit log sul server.',
     inputSchema: {
       connection_id: z.string(),
@@ -1131,6 +1317,7 @@ function buildMcpServer(session, deps) {
       set: z.string().optional().describe('Solo MongoDB update: campi da aggiornare ($set) in Extended JSON'),
       upsert: z.boolean().optional().describe('Solo MongoDB update: true per inserire un documento se il filtro non trova corrispondenze (default: false)'),
       sql: z.string().optional().describe('Solo MySQL/PostgreSQL: statement INSERT/UPDATE/DELETE (REPLACE solo MySQL); UPDATE/DELETE con WHERE'),
+      operations: z.array(writeDescriptorSchema).min(1).optional().describe('Batch non vuoto di descrittori tutti SQL oppure tutti MongoDB, alternativo ai parametri di scrittura singola'),
       confirm_token: z.string().optional().describe('Token restituito dal primo passo, da inviare solo dopo la conferma esplicita dell\'utente umano'),
     },
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
@@ -1148,14 +1335,22 @@ function buildMcpServer(session, deps) {
     // a un utente in sola lettura è di per sé sbagliato). Per il DML su SQL
     // (args.sql, nessun args.operation) DELETE richiede `delete`, mentre
     // INSERT/UPDATE/REPLACE richiedono `write`.
-    const operationCap = WRITE_OP_CAPABILITY[String(args.operation || '').trim()];
-    const requiredCaps = operationCap
-      ? [operationCap]
-      : (args.sql ? ['read', assertWriteSql(args.sql)] : []);
-    const missingCap = requiredCaps.find((capability) => !can(sessionPrincipal(session), {
-      connName: sess.name, capability, db, coll: args.collection || null,
-    }));
-    if (missingCap) {
+    const descriptors = Array.isArray(args.operations) ? args.operations : [args];
+    let deniedCapability = null;
+    for (const descriptor of descriptors) {
+      const operationCap = WRITE_OP_CAPABILITY[String(descriptor.operation || '').trim()];
+      const requiredCaps = operationCap
+        ? [operationCap]
+        : (descriptor.sql ? ['read', assertWriteSql(descriptor.sql)] : []);
+      const missingCap = requiredCaps.find((capability) => !can(sessionPrincipal(session), {
+        connName: sess.name, capability, db, coll: descriptor.collection || null,
+      }));
+      if (missingCap) {
+        deniedCapability = missingCap;
+        break;
+      }
+    }
+    if (deniedCapability) {
       throw new Error(
         'Permesso negato: la API key usata non ha i privilegi di scrittura sulla connessione "'
         + sess.name + '".'
@@ -1179,31 +1374,25 @@ function buildMcpServer(session, deps) {
           ...auditBase, event: 'failed', ...pending.summary, error: errMsg(err),
           ...(err && err.auditResult ? { result: err.auditResult } : {}),
         });
+        // Che cosa resta applicato non e' un dettaglio per l'audit: e' la sola
+        // informazione con cui il chiamante puo' decidere se ritentare. Va
+        // quindi anche nel messaggio che risale al client.
+        const parziale = descriviEsitoParziale(err && err.auditResult);
+        if (parziale) err.message = `${errMsg(err)} — ${parziale}`;
         throw err;
       }
     }
 
     // Primo passo: validazione, anteprima e token di conferma.
-    const op = buildWriteOp(sess, args, db);
+    const op = buildWriteRequest(sess, args, db);
 
     // Stima best-effort dell'impatto: documenti interessati per update/delete
     // (solo MongoDB) e drop_collection, numero di collection per drop_database.
-    let affectedEstimate;
-    if (op.summary.operation === 'update' || op.summary.operation === 'delete') {
-      try {
-        const probe = await sess.strategy.collectionFind(db, op.summary.collection, { filter: op.summary.filter, limit: 1 });
-        affectedEstimate = probe.total;
-      } catch { /* la stima è facoltativa */ }
-    } else if (op.summary.operation === 'drop_collection') {
-      try {
-        const probe = await sess.strategy.collectionFind(db, op.summary.collection, { limit: 1 });
-        affectedEstimate = probe.total;
-      } catch { /* la stima è facoltativa */ }
-    } else if (op.summary.operation === 'drop_database') {
-      try {
-        affectedEstimate = (await sess.strategy.listCollections(db)).length;
-      } catch { /* la stima è facoltativa */ }
-    }
+    // Un batch e' la somma delle stime dei suoi descrittori: senza questo ramo
+    // l'anteprima di un blocco perdeva del tutto la stima che il singolo aveva.
+    const affectedEstimate = op.summary.operation === 'batch'
+      ? await stimaImpattoBatch(sess, db, op.summary.operations)
+      : await stimaImpatto(sess, db, op.summary);
 
     audit({ ...auditBase, event: 'requested', ...op.summary, affectedEstimate });
     return confirmFlow.issue('write', { connectionId: String(args.connection_id), exec: op.exec, summary: op.summary }, {

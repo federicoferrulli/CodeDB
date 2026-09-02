@@ -1356,6 +1356,8 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-mcp-payload');
   await require('./unit-mcp-mongodb-upsert');
   await require('./unit-mcp-execute-ddl');
+  await require('./unit-mcp-execute-write-batch');
+  await require('./unit-sql-write-batch');
   await require('./unit-mongodb-bulk-insert');
   await require('./unit-preferenze-principal');
   require('./unit-schema-progressivo');

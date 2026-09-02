@@ -30,6 +30,8 @@ const { assertScopedClauses } = require('./sqlClause');
 const { normalizzaFiltro } = require('../db/filtro');
 const { normalizzaRicerca } = require('../db/ricercaGlobale');
 const { assertTabelleNelloScope } = require('./sqlTables');
+// Il messaggio del batch vuoto è uno solo: era scritto in tre punti diversi.
+const { MESSAGGIO_BATCH_VUOTO } = require('../db/sqlWriteBatch');
 
 function denied(capability, connName, db, coll) {
   const label = CAPABILITY_LABEL[capability] || capability;
@@ -47,6 +49,22 @@ function resolveAuthorization(spec, strategy, args) {
   // anche il documento e richiedono read oltre alla capability mutativa.
   if (spec.kind === 'shellWrite') {
     return { capabilities: shellWriteCapabilities(payload.op) };
+  }
+  if (spec.kind === 'sqlWriteBatch') {
+    if (!strategy.type || strategy.type === 'mongodb') {
+      throw new Error('Il batch SQL transazionale è disponibile solo su MySQL e PostgreSQL.');
+    }
+    const statements = args[1];
+    if (!Array.isArray(statements) || statements.length === 0) {
+      throw new Error(MESSAGGIO_BATCH_VUOTO);
+    }
+    const sqlBatch = statements.map((statement) => ({
+      statement: String(statement || ''),
+      analysis: analyzeSql(statement),
+    }));
+    const capabilities = ['read', 'write', 'delete', 'ddl'].filter((capability) =>
+      sqlBatch.some(({ analysis }) => analysis.capabilities.includes(capability)));
+    return { capabilities, sqlBatch };
   }
   // collection:aggregate = SQL Raw su MySQL/PostgreSQL, pipeline su MongoDB:
   // stessa logica di classifyAudit, così audit e permessi non divergono mai.
@@ -242,6 +260,22 @@ function guardStrategy(strategy, ctx) {
           if (authorization.sql && authorization.sql.multipleStatements) {
             throw new Error('Più istruzioni SQL nello stesso SQL Raw non sono consentite: usa lo ScriptRunner.');
           }
+          if (authorization.sqlBatch) {
+            for (const { analysis } of authorization.sqlBatch) {
+              if (analysis.executableComment) {
+                throw new Error('I commenti SQL eseguibili non sono consentiti nel batch SQL.');
+              }
+              if (analysis.multipleStatements) {
+                throw new Error('Ogni elemento del batch SQL deve contenere un solo statement.');
+              }
+              const mutativa = analysis.capabilities.some((capability) =>
+                capability === 'write' || capability === 'delete');
+              if (!mutativa || analysis.capabilities.some((capability) =>
+                !['read', 'write', 'delete'].includes(capability))) {
+                throw new Error('Il batch SQL ammette solo INSERT, UPDATE, DELETE o REPLACE (niente DDL).');
+              }
+            }
+          }
           // Il filtro STRUTTURATO si valida sempre, per chiunque e su ogni
           // motore: un nome di campo che comincia per `$` o un segmento vuoto
           // non sono un permesso negato, sono un'INVARIANTE — su MongoDB quel
@@ -336,6 +370,21 @@ function guardStrategy(strategy, ctx) {
           : null;
         if (scopeEffettivamenteLimitato(activeScope)) {
           try {
+            // Un batch e' SEMPRE negato a chi ha un ambito limitato, come lo
+            // e' gia' l'SQL Raw singolo e per la stessa ragione: view,
+            // funzioni e dipendenze indirette non sono verificabili in modo
+            // completo, e qui gli statement sono molti. Il rifiuto e'
+            // incondizionato, quindi NON si passa dal parser delle tabelle:
+            // chiamarlo prima di un throw che ignora il suo esito faceva
+            // sembrare che il permesso dipendesse da lui.
+            if (authorization.sqlBatch) {
+              throw new Error(
+                'Batch SQL non consentito con un ambito limitato: view, funzioni e dipendenze ' +
+                'indirette non sono verificabili in modo completo su un blocco di istruzioni. ' +
+                'Esegui le mutazioni una alla volta con i comandi strutturati, oppure chiedi ' +
+                'un grant senza limiti di ambito.'
+              );
+            }
             // Il parser delle tabelle copre DML e letture, ma non può provare
             // in modo affidabile tutti i bersagli del DDL libero (DATABASE,
             // SCHEMA, VIEW, ROLE/USER, FUNCTION, EXTENSION, GRANT/REVOKE,
@@ -403,6 +452,13 @@ function guardStrategy(strategy, ctx) {
         // che invoca una funzione con effetti collaterali, una tabella
         // temporanea o un SET di sessione sono casi rari ma legittimi, e
         // continuano a funzionare come oggi.
+        if (!principal.root && !principal.owner && authorization.sqlBatch
+            && authorization.sqlBatch.some(({ statement }) => isFileIoSql(statement))) {
+          return reject(new Error(
+            'Permesso negato: il batch contiene I/O su file del server del database, non sui dati della connessione.'
+          ));
+        }
+
         if (authorization.sql && capabilities.length === 1 && capabilities[0] === 'read'
             && !principal.root && !principal.owner && args[2] && typeof args[2] === 'object') {
           args[2].expectRead = true;

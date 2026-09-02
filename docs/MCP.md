@@ -77,7 +77,7 @@ Flusso tipico dei tools esposti:
 10. `audit_schema` — diagnostica e stato di salute dello schema (punteggio 0-100, tabelle orfane/oversize/senza PK).
 11. `filter_empty_tables` — identificazione ed elenco delle tabelle vuote vs popolate.
 12. `get_graph` — struttura a nodi ed archi (Graph 3D/2D JSON) per il rendering visivo e l'analisi di rete.
-13. `execute_write` — scritture DML e drop di database/collection, solo su connessioni scrivibili e con doppia conferma (vedi sotto).
+13. `execute_write` — scritture DML e drop di database/collection, una alla volta o **in blocco** (`operations`), solo su connessioni scrivibili e con doppia conferma (vedi sotto).
 14. `set_connection_read_only` — cambia il flag `readOnly` di una connessione salvata, con doppia conferma (vedi sotto).
 15. `backup_database` / `list_backups` / `restore_backup` — backup e ripristino dei database (vedi sotto).
 
@@ -88,6 +88,15 @@ In più:
 ### Scritture (opzionali, con conferma)
 
 Di default ogni connessione è in **sola lettura**. Per abilitare le scritture su una connessione, aggiungi `readOnly=false` alla sua sezione in `connections.ini` (consigliato: usa un utente DB con privilegi minimi), oppure lascia che sia l'AI a chiedertelo tramite `set_connection_read_only` (vedi sotto). Il tool `execute_write` lavora in due passaggi: la prima chiamata restituisce un'anteprima (con stima dei documenti/righe interessati) e un `confirm_token` (monouso, 5 minuti); l'esecuzione avviene solo richiamandolo col token, che l'AI deve usare **solo dopo la tua conferma esplicita**. Per MongoDB, un'operazione `update` può impostare `upsert=true`: il flag compare nell'anteprima e inserisce un documento quando il filtro non trova corrispondenze; se omesso resta `false`. UPDATE/DELETE senza WHERE (MySQL) e filtri vuoti (MongoDB) sono rifiutati. Oltre al DML, `execute_write` ammette le `operation` `drop_collection` e `drop_database` (per entrambi i tipi di database, stessa doppia conferma; i database di sistema sono protetti); nessun altro DDL è consentito. Ogni operazione è tracciata in `mcp-audit.log`.
+
+Per applicare **più mutazioni con una sola conferma**, passa `operations`: un array non vuoto di descrittori, al posto dei parametri della scrittura singola (mescolare le due forme è rifiutato). L'anteprima riassume l'intero blocco e il `confirm_token` lo copre per intero. Un batch deve essere **omogeneo**: o soli statement `sql` (MySQL/PostgreSQL) o soli descrittori MongoDB. Su un motore SQL un batch ammette **solo** DML: `drop_collection` e `drop_database` sono operazioni di schema, non entrano nella transazione degli altri statement e vanno eseguite come scrittura singola (o con `execute_ddl`).
+
+L'**atomicità dipende dal motore, e l'anteprima la dichiara**:
+
+- su **MySQL e PostgreSQL** il blocco gira sulla stessa connessione dentro **una sola transazione**: al primo errore nulla resta applicato (`transactional: true`);
+- su **MongoDB** non c'è una transazione che copra il blocco: le mutazioni sono applicate **in ordine** e un errore a metà **non annulla** le precedenti (`transactional: false`). L'anteprima lo dice prima della conferma, e in caso di errore il messaggio restituito dichiara quante operazioni sono già state applicate e da quale posizione riprendere — ripetere il blocco intero le duplicherebbe.
+
+Le righe eventualmente restituite da uno statement (`RETURNING` su PostgreSQL) passano dagli stessi tetti di righe e byte delle letture, e il troncamento è dichiarato. L'audit registra il blocco come una sola operazione (`batch`), con il numero di operazioni e, in caso di fallimento, quante ne risultano applicate e se la transazione è stata annullata.
 
 ### Flag readOnly modificabile dall'AI (solo con doppia conferma)
 

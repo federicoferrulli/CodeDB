@@ -126,6 +126,17 @@ class DbStrategy {
   async collectionAggregate(_db, _coll, _payload) { throw unsupported(); }
 
   /**
+   * Esegue più statement DML SQL in ordine sulla stessa connessione e dentro
+   * una sola transazione. Gli adapter non SQL lasciano l'implementazione
+   * predefinita non supportata.
+   * `transactional` dichiara se il blocco è coperto da una transazione: è
+   * `true` sui due motori SQL e `false` sulla via sequenziale di MongoDB, che
+   * non annulla le mutazioni gia' applicate.
+   * @returns {Promise<{transactional: boolean, operationCount: number, completed: number, results: object[]}>}
+   */
+  async executeWriteBatch(_db, _statements) { throw unsupported(); }
+
+  /**
    * Piano di esecuzione (EXPLAIN) della query corrente. Accetta gli stessi
    * parametri di collectionFind/collectionAggregate più `mode`
    * ('find' | 'aggregate'); un filtro vuoto è valido (explain del find pieno).

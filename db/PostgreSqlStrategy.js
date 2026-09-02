@@ -4,6 +4,7 @@ const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
+const { eseguiBatchScritture, conRighe } = require('./sqlWriteBatch');
 // Metadati comuni ai due motori SQL (chiave primaria, colonne, campi, indici
 // unici, keyset, conteggio): la logica sta nel modulo, qui resta il dialetto.
 const { installaMetadati } = require('./sqlMetadati');
@@ -941,6 +942,39 @@ class PostgreSqlStrategy extends DbStrategy {
       if (readTxOpen) await client.query('ROLLBACK').catch(() => {});
       client.release();
     }
+  }
+
+  /**
+   * Batch di scritture in una sola transazione. La logica sta in
+   * `db/sqlWriteBatch.js`, comune ai due motori SQL; qui resta il dialetto:
+   * il tetto di tempo e il `search_path` si impongono con `SET LOCAL`, che
+   * esiste solo DENTRO la transazione (un `SET` non riazzerato lo
+   * erediterebbe chi prende quel client dal pool), e le righe di un
+   * `RETURNING` passano dai tetti dichiarati dal modulo comune.
+   */
+  async executeWriteBatch(db, statements) {
+    const pool = this.requirePool();
+    const ms = DbStrategy.aggregateTimeoutMs();
+    return eseguiBatchScritture(statements, {
+      apri: () => pool.connect(),
+      begin: (client) => client.query('BEGIN'),
+      dentroLaTransazione: async (client) => {
+        if (ms > 0) await client.query(`SET LOCAL statement_timeout = ${ms}`);
+        await client.query(`SET LOCAL search_path TO ${qid(schemaOf(db))}`);
+      },
+      commit: (client) => client.query('COMMIT'),
+      rollback: (client) => client.query('ROLLBACK'),
+      esegui: async (client, sql) => {
+        const res = await client.query(sql);
+        const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
+        return conRighe(
+          summary,
+          Array.isArray(res.rows) ? res.rows.map(serializeRow) : [],
+          Array.isArray(res.fields) ? res.fields.map((field) => field.name) : [],
+        );
+      },
+      chiudi: (client) => client.release(),
+    });
   }
 
   /* --- Monitor delle sessioni ---------------------------------------------

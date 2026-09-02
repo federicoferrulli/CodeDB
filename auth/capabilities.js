@@ -446,6 +446,7 @@ const METHOD_CAPABILITY = {
   collectionExplain:   { cap: 'read', db: 0, coll: 1 },
   collectionExport:    { cap: 'read', db: 0, coll: 1 },
   collectionAggregate: { cap: 'dynamic', db: 0, coll: 1 },
+  executeWriteBatch:   { cap: 'dynamic', kind: 'sqlWriteBatch', db: 0 },
   // `sync: true` = metodo non asincrono: il rifiuto va lanciato, non restituito
   // come promise rigettata (vedi guardStrategy).
   watch:               { cap: 'read', db: 0, coll: 1, sync: true },

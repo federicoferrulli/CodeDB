@@ -5,6 +5,7 @@ const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
+const { eseguiBatchScritture } = require('./sqlWriteBatch');
 // Metadati comuni ai due motori SQL (chiave primaria, colonne, campi, indici
 // unici, keyset, conteggio): la logica sta nel modulo, qui resta il dialetto.
 const { installaMetadati } = require('./sqlMetadati');
@@ -881,6 +882,52 @@ class MySqlStrategy extends DbStrategy {
       if (avvelenata) { try { conn.destroy(); } catch (_) {} }
       else conn.release();
     }
+  }
+
+  /**
+   * Batch di scritture in una sola transazione. La logica sta in
+   * `db/sqlWriteBatch.js`, comune ai due motori SQL; qui resta il dialetto:
+   * il `USE <db>` prima della transazione, il tetto di tempo per-query di
+   * mysql2 (lato CLIENT: allo scadere il driver smette di aspettare ma il
+   * server continua, quindi si manda `KILL QUERY` da un'altra connessione e
+   * questa si distrugge invece di restituirla al pool con un result set
+   * arretrato in arrivo) e la forma del riepilogo di uno statement.
+   */
+  async executeWriteBatch(db, statements) {
+    const pool = this.requirePool();
+    const tetto = DbStrategy.aggregateTimeoutMs();
+    return eseguiBatchScritture(statements, {
+      apri: () => pool.getConnection(),
+      primaDellaTransazione: (conn) => this.usaDatabase(conn, db),
+      begin: (conn) => conn.beginTransaction(),
+      commit: (conn) => conn.commit(),
+      rollback: (conn) => conn.rollback(),
+      esegui: async (conn, sql) => {
+        const richiesta = { sql };
+        if (tetto > 0) richiesta.timeout = tetto;
+        let result;
+        try {
+          [result] = await conn.query(richiesta);
+        } catch (err) {
+          if (MySqlStrategy.isDriverTimeout(err)) {
+            // La connessione non e' piu' utilizzabile: lo dichiara al motore
+            // comune, che salta il ROLLBACK esplicito e registra che ad
+            // annullare la transazione e' stata la disconnessione.
+            err.connessioneAvvelenata = true;
+            await this.uccidiSulServer(conn.threadId);
+          }
+          throw err;
+        }
+        const summary = { righeCoinvolte: result ? (result.affectedRows || 0) : 0 };
+        if (result && result.insertId) summary.insertId = result.insertId;
+        if (result && result.info) summary.info = result.info;
+        return summary;
+      },
+      chiudi: (conn, { avvelenata }) => {
+        if (avvelenata) { try { conn.destroy(); } catch (_) {} }
+        else conn.release();
+      },
+    });
   }
 
   // Riconosce lo scadere del timeout per-query di mysql2: il driver lancia un
