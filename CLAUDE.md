@@ -585,7 +585,10 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   risponda per prima non lo decide l'utente. Ognuna congela alla **chiamata** il
   proprio contesto (`congelaContesto`: tab, coll-tab, db, collection, filtro,
   ordinamento, pagina, `runId`) e la risposta produce effetti solo se quel
-  contesto è ancora quello mostrato (`contestoCorrente`); una nuova `runQuery`
+  contesto è ancora quello mostrato (`contestoCorrente`) — una sola regola al
+  posto dei sei confronti a mano che `runQuery` e il conteggio scrivevano
+  ciascuno per conto proprio, e che nel primo caso ignoravano il contesto pur
+  congelandolo; una nuova `runQuery`
   rinnova `gridRunId` e — quando non è una paginazione — `countToken`, cioè
   invalida tutto ciò che è ancora in volo. L'indicatore di caricamento si spegne
   con `chiudiCaricamento`, che agisce **solo** sul proprio blocco: chiuderlo

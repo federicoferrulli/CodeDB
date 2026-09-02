@@ -6,19 +6,22 @@
  * Il difetto che questa prova esiste per impedire non si vede leggendo il
  * codice: dipende dall'ORDINE con cui il server risponde. Due letture in volo,
  * l'acknowledgment della prima consegnato DOPO quello della seconda, e la
- * griglia mostra le righe della query che l'utente ha gia' sostituito — con il
+ * griglia mostra le righe della query che l'utente ha già sostituito — con il
  * conteggio, la paginazione e l'indicatore di caricamento di quella vecchia.
  *
- * Il socket e' finto (`impostaSocket`) e mette gli acknowledgment in coda
- * invece di consegnarli: e' l'unico modo di decidere l'ordine di consegna, cosa
- * che un database vero non concede. Il server resta l'istanza usa-e-getta
- * dell'harness, cosi' moduli, DOM e catena di init sono quelli dell'app reale.
+ * Il socket è finto (`impostaSocket`) e mette gli acknowledgment in coda invece
+ * di consegnarli: è l'unico modo di decidere l'ordine di consegna, cosa che un
+ * database vero non concede. Il server resta l'istanza usa-e-getta
+ * dell'harness, così moduli, DOM e catena di init sono quelli dell'app reale.
  *
- * Sensibilita' verificata rompendo di proposito, una alla volta:
- *   - il confronto `richiesta.runId !== st.gridRunId` in `runQuery`;
- *   - il confronto `token !== st.countToken` in `requestTotalCount`;
- *   - il `contestoCorrente(...)` di `fetchMore`.
- * Ognuna delle tre rende rosso almeno un asserto qui sotto.
+ * Le risposte obsolete portano di proposito `total: null`: un totale già noto
+ * impedirebbe al chiamante di chiedere il conteggio, e l'asserto sul secondo
+ * conteggio non potrebbe fallire nemmeno a guardia rimossa.
+ *
+ * Sensibilità verificata rompendo di proposito, una alla volta, le tre guardie:
+ *   - il `contestoCorrente(...)` di `runQuery`   → 7 asserti rossi;
+ *   - il `contestoCorrente(...)` di `requestTotalCount` → 1 asserto rosso;
+ *   - il `contestoCorrente(...)` di `fetchMore`  → 1 asserto rosso.
  *
  * Uso: node test/e2e-pagine-obsolete.js
  * ------------------------------------------------------------------------- */
@@ -45,16 +48,25 @@ const ok = (cond, etichetta, dettaglio = '') => {
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
-    await page.waitForTimeout(1200);
+    // La catena degli init* del frontend è asincrona: senza questa attesa il
+    // socket finto verrebbe installato prima che l'app abbia finito di montarsi.
+    await page.waitForTimeout(1500);
 
     const esito = await page.evaluate(async () => {
       const { tabs, createTab } = await import('/js/tabs.js');
       const { impostaSocket } = await import('/js/socket.js');
       const { runQuery } = await import('/js/grid.js');
 
+      // Le uniche attese del test. Il socket è finto, quindi non si sta
+      // aspettando la rete ma solo che la catena dei `.then()` già risolti
+      // scorra (microtask + il `setTimeout(0)` del trasporto); lo scroll passa
+      // in più dal gestore dell'evento e dal ridisegno della griglia.
+      const ATTESA_ACK_MS = 40;
+      const ATTESA_SCROLL_MS = 80;
+
       // Coda degli acknowledgment: il test decide QUANDO e in che ordine
-      // consegnarli. `inviati` conserva anche cio' che e' partito, perche' una
-      // richiesta MAI spedita e' un esito diverso da una spedita e scartata.
+      // consegnarli. `inviati` conserva anche ciò che è partito, perché una
+      // richiesta MAI spedita è un esito diverso da una spedita e scartata.
       const inviati = [];
       const coda = [];
       impostaSocket({
@@ -65,13 +77,13 @@ const ok = (cond, etichetta, dettaglio = '') => {
         on: () => {}, off: () => {},
       });
       // Consegna l'acknowledgment della n-esima richiesta ancora in coda per
-      // quell'evento (0 = la piu' vecchia) e aspetta che i `.then` scorrano.
+      // quell'evento (0 = la più vecchia) e aspetta che i `.then` scorrano.
       const consegna = async (evento, indice, risposta) => {
         const scelta = coda.filter((c) => c.evento === evento)[indice];
         if (!scelta) throw new Error(`Nessun "${evento}" in coda all'indice ${indice}`);
         coda.splice(coda.indexOf(scelta), 1);
         scelta.cb(risposta);
-        await new Promise((r) => setTimeout(r, 40));
+        await new Promise((r) => setTimeout(r, ATTESA_ACK_MS));
       };
       const contaEventi = (evento) => inviati.filter((i) => i.evento === evento).length;
       const righe = (n, etichetta) => Array.from({ length: n }, (_, i) => ({
@@ -100,29 +112,29 @@ const ok = (cond, etichetta, dettaglio = '') => {
       runQuery();
 
       const spedite = inviati.filter((i) => i.evento === 'collection:find');
-      // La seconda risponde per prima: e' la pagina che l'utente sta guardando.
+      // La seconda risponde per prima: è la pagina che l'utente sta guardando.
       await consegna('collection:find', 1, {
         ok: true, docs: righe(3, 'nuovo'), columns: ['_id', 'nome'],
         skip: 100, limit: 50, total: null,
       });
-      const countDopoNuova = contaEventi('collection:count');
-      // …e solo ora arriva quella vecchia, con altre righe, altra pagina e un
-      // totale gia' pronto: tutto cio' che non deve toccare nulla.
+      const contiDopoNuova = contaEventi('collection:count');
+      // …e solo ora arriva quella vecchia, con altre righe, un'altra pagina e
+      // un totale ignoto — quindi, se venisse accettata, lancerebbe un secondo
+      // conteggio. Tutto ciò che non deve accadere.
       await consegna('collection:find', 0, {
         ok: true, docs: righe(7, 'vecchio'), columns: ['_id', 'vecchio_campo'],
-        skip: 0, limit: 50, total: 999,
+        skip: 0, limit: 50, total: null,
       });
 
-      const dopoInverso = {
+      const inverso = {
         filtriSpediti: spedite.map((i) => JSON.stringify(
           i.msg.cercaOvunque || i.msg.filtro || i.msg.filter || null
         )),
         righe: st.docs.map((d) => d.nome),
         colonne: [...st.columns],
         skip: st.skip,
-        total: st.total,
-        countSpediti: contaEventi('collection:count'),
-        countDopoNuova,
+        contiDopoNuova,
+        contiDopoVecchia: contaEventi('collection:count'),
       };
 
       /* --- Il conteggio obsoleto non risale al footer ------------------- */
@@ -138,7 +150,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
       const contiInVolo = coda.filter((c) => c.evento === 'collection:count').length;
       await consegna('collection:count', 1, { ok: true, total: 2 });
       await consegna('collection:count', 0, { ok: true, total: 999 });
-      const dopoConteggio = { contiInVolo, total: st.total, countPending: st.countPending };
+      const conteggio = { contiInVolo, total: st.total, countPending: st.countPending };
 
       /* --- Il caricamento incrementale obsoleto non accoda -------------- */
 
@@ -154,17 +166,17 @@ const ok = (cond, etichetta, dettaglio = '') => {
       const wrap = document.querySelector('.grid-wrap');
       wrap.scrollTop = wrap.scrollHeight;
       wrap.dispatchEvent(new Event('scroll'));
-      await new Promise((r) => setTimeout(r, 80));
+      await new Promise((r) => setTimeout(r, ATTESA_SCROLL_MS));
       const partito = contaEventi('collection:find') > findPrima;
       const caricamentoAcceso = st.loading === true;
-      // Una nuova query mentre il blocco e' in volo: da qui in poi il blocco
+      // Una nuova query mentre il blocco è in volo: da qui in poi il blocco
       // appartiene a una generazione superata.
       runQuery();
       await consegna('collection:find', 0, {
         ok: true, docs: righe(4, 'blocco2'), columns: ['_id', 'nome'],
         skip: 50, limit: 50, total: null,
       });
-      const dopoBloccoObsoleto = {
+      const blocco = {
         partito,
         caricamentoAcceso,
         righe: st.docs.length,
@@ -173,40 +185,43 @@ const ok = (cond, etichetta, dettaglio = '') => {
       };
 
       impostaSocket(null);
-      return { dopoInverso, dopoConteggio, dopoBloccoObsoleto };
+      return { inverso, conteggio, blocco };
     });
 
-    const a = esito.dopoInverso;
-    ok(a.filtriSpediti.length === 2 && a.filtriSpediti[0] !== a.filtriSpediti[1],
-      'le due letture partono davvero con filtri diversi', JSON.stringify(a.filtriSpediti));
-    ok(a.righe.length === 3 && a.righe.every((n) => n.startsWith('nuovo')),
-      'le righe mostrate sono quelle della lettura piu\' recente', JSON.stringify(a.righe));
-    ok(!a.colonne.includes('vecchio_campo'),
-      'le colonne della pagina obsoleta non tornano in griglia', JSON.stringify(a.colonne));
-    ok(a.skip === 100, `la paginazione resta quella recente (skip = ${a.skip})`);
-    ok(a.total !== 999, `il totale della pagina obsoleta non viene adottato (total = ${a.total})`);
-    ok(a.countSpediti === a.countDopoNuova,
+    const { inverso, conteggio, blocco } = esito;
+
+    ok(inverso.filtriSpediti.length === 2 && inverso.filtriSpediti[0] !== inverso.filtriSpediti[1],
+      'le due letture partono davvero con filtri diversi', JSON.stringify(inverso.filtriSpediti));
+    ok(inverso.righe.length === 3 && inverso.righe.every((n) => n.startsWith('nuovo')),
+      'le righe mostrate sono quelle della lettura più recente', JSON.stringify(inverso.righe));
+    ok(!inverso.colonne.includes('vecchio_campo'),
+      'le colonne della pagina obsoleta non tornano in griglia', JSON.stringify(inverso.colonne));
+    ok(inverso.skip === 100, `la paginazione resta quella recente (skip = ${inverso.skip})`);
+    ok(inverso.contiDopoVecchia === inverso.contiDopoNuova,
       'la pagina obsoleta non lancia un secondo conteggio',
-      `${a.countDopoNuova} → ${a.countSpediti}`);
+      `${inverso.contiDopoNuova} → ${inverso.contiDopoVecchia}`);
 
-    const b = esito.dopoConteggio;
-    ok(b.contiInVolo === 2, `due conteggi in volo da consegnare al contrario (${b.contiInVolo})`);
-    ok(b.total === 2, `il conteggio obsoleto non sovrascrive il totale corrente (total = ${b.total})`);
-    ok(b.countPending === false, 'il conteggio corrente risulta concluso');
+    ok(conteggio.contiInVolo === 2,
+      `due conteggi in volo da consegnare al contrario (${conteggio.contiInVolo})`);
+    ok(conteggio.total === 2,
+      `il conteggio obsoleto non sovrascrive il totale corrente (total = ${conteggio.total})`);
+    ok(conteggio.countPending === false, 'il conteggio corrente risulta concluso');
 
-    const c = esito.dopoBloccoObsoleto;
-    ok(c.partito, 'lo scroll infinito ha davvero chiesto il blocco successivo');
-    ok(c.caricamentoAcceso, 'il blocco in volo accende l\'indicatore di caricamento');
-    ok(c.righe === 50 && c.etichette.length === 1 && c.etichette[0] === 'blocco1',
+    ok(blocco.partito, 'lo scroll infinito ha davvero chiesto il blocco successivo');
+    ok(blocco.caricamentoAcceso, 'il blocco in volo accende l\'indicatore di caricamento');
+    ok(blocco.righe === 50 && blocco.etichette.length === 1 && blocco.etichette[0] === 'blocco1',
       'il blocco obsoleto non viene accodato alle righe',
-      `${c.righe} righe, etichette ${JSON.stringify(c.etichette)}`);
-    ok(c.loading === false, 'il blocco obsoleto spegne il proprio indicatore di caricamento');
+      `${blocco.righe} righe, etichette ${JSON.stringify(blocco.etichette)}`);
+    ok(blocco.loading === false, 'il blocco obsoleto spegne il proprio indicatore di caricamento');
 
     ok(errori.length === 0, 'nessun errore JS nella pagina', errori.join(' | '));
   } finally {
     await browser.close();
     await server.stop();
   }
-  if (falliti) { console.error(`\n${falliti} verifiche fallite.`); process.exit(1); }
-  console.log('\nTutte le verifiche superate.');
+  if (falliti) {
+    console.error(`\n--- Pagine obsolete: ${falliti} test falliti ---`);
+    process.exit(1);
+  }
+  console.log('\n--- Pagine obsolete: tutti i test superati ---');
 })();

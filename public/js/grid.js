@@ -190,12 +190,16 @@ export function runQuery(opts = {}) {
     // (vedi emit in utils.js): scrivere sul Proxy `state` significherebbe
     // riversare i risultati di questo tab in un altro.
     const st = res._state;
-    // Risposta di una find superata da una più recente (o annullata): scartala,
-    // così un cambio pagina veloce non fa "tornare indietro" la griglia.
-    if (richiesta.runId !== st.gridRunId) return;
-    // Risposta che appartiene a un coll-tab non più mostrato: lo stato piatto
-    // ora descrive un'altra collection, applicarla la corromperebbe.
-    if (st.activeCollId !== originColl) return;
+    // Risposta di una find superata da una più recente (o annullata), oppure
+    // appartenente a un coll-tab non più mostrato: scartala. Il `runId` copre il
+    // primo caso (così un cambio pagina veloce non fa "tornare indietro" la
+    // griglia), db/coll/coll-tab il secondo — lo stato piatto ora descrive
+    // un'altra collection e applicarla la corromperebbe. La regola è quella di
+    // `fetchMore` e del conteggio, letta dal contesto congelato alla chiamata.
+    if (!contestoCorrente(st, {
+      gridRunId: richiesta.runId, activeCollId: originColl,
+      db: richiesta.db, coll: richiesta.coll,
+    })) return;
     // Una lettura valida è il solo momento in cui il marker può essere
     // consumato: azzerarlo prima della richiesta farebbe perdere il retry se il
     // database risponde con errore o timeout.
@@ -351,7 +355,12 @@ function computeExhausted(res, st = state) {
 // collection. Best-effort: un errore non deve rompere la griglia già mostrata.
 function requestTotalCount(payload, origin = state, originColl = state.activeCollId, originTabId) {
   const token = (origin.countToken = (origin.countToken || 0) + 1);
-  const db = origin.db, coll = origin.coll;
+  // Contesto congelato alla CHIAMATA: db e collection possono cambiare mentre
+  // il conteggio gira, e confrontarli alla risposta con lo stato di allora e'
+  // l'unico modo di sapere se quel totale descrive ancora cio' che si vede.
+  const richiesta = congelaContesto({
+    countToken: token, activeCollId: originColl, db: origin.db, coll: origin.coll,
+  });
   // Registra la firma conteggiata: le pagine successive (keepCount) la
   // riconoscono e riusano il risultato invece di rilanciare la scansione.
   origin.countKey = countKeyFor(payload);
@@ -370,7 +379,7 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
       // (`origin`), non quello attivo alla risposta.
       const st = res._state;
       if (st !== origin) return; // il tab è cambiato sotto: conteggio non pertinente
-      if (token !== st.countToken || st.db !== db || st.coll !== coll || st.activeCollId !== originColl) return;
+      if (!contestoCorrente(st, richiesta)) return;
       st.countPending = false;
       if (res.total == null) {
         st.countTimedOut = true; // timeout lato server: totale non calcolabile
