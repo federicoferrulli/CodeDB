@@ -1,6 +1,6 @@
 # 01: Scartare le pagine obsolete della griglia
 
-Status: ready-for-agent
+Status: done
 Type: task
 Blocked by: None (can start immediately)
 
@@ -8,9 +8,9 @@ Blocked by: None (can start immediately)
 appartengono ancora alla stessa generazione di database, collezione, condizione e
 ordinamento mostrata all'utente.
 
-- [ ] Query iniziale, caricamento incrementale e conteggio conservano un contesto immutabile
-- [ ] Una nuova query invalida tutte le risposte pendenti della generazione precedente
-- [ ] Una risposta obsoleta non modifica righe, paginazione, conteggio o stato di caricamento
-- [ ] Un test con acknowledgment consegnati in ordine inverso osserva solo i dati più recenti
-- [ ] La controprova senza controllo di generazione rende rosso il test di regressione
+- [x] Query iniziale, caricamento incrementale e conteggio conservano un contesto immutabile
+- [x] Una nuova query invalida tutte le risposte pendenti della generazione precedente
+- [x] Una risposta obsoleta non modifica righe, paginazione, conteggio o stato di caricamento
+- [x] Un test con acknowledgment consegnati in ordine inverso osserva solo i dati più recenti
+- [x] La controprova senza controllo di generazione rende rosso il test di regressione
 

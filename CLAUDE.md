@@ -119,6 +119,7 @@ node test/unit-filtro.js      # Test del filtro strutturato nei tre dialetti
 node test/unit-filtro-rapido.js # Test del filtro rapido della griglia
 node test/unit-filtro-autorizzazione.js # Test che uscire dallo scope non sia esprimibile
 node test/e2e-griglia-viste.js # Test della griglia nelle viste reali (Chromium)
+node test/e2e-pagine-obsolete.js # Test che una risposta obsoleta non tocchi righe, pagina, conteggio o caricamento (Chromium)
 node test/e2e-filtro-rapido-ui.js # Test del filtro rapido nel browser
 node test/e2e-filtro-strutturato.js # Test del filtro strutturato sui tre motori
 node test/e2e-nulli-ordinati.js # Test che i valori nulli si ordinino uguale sui tre motori
@@ -578,6 +579,22 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   disegno della **singola riga** resta della vista, perché è ciò che cambia
   davvero fra loro. Una capacità scritta male è un **errore**, non un'opzione
   ignorata.
+* **Le pagine obsolete non arrivano alla griglia (`coerenza-richieste.js`)**: la
+  query iniziale, il caricamento incrementale e il conteggio disaccoppiato sono
+  tre richieste asincrone sullo stesso stato, e quale delle due letture in volo
+  risponda per prima non lo decide l'utente. Ognuna congela alla **chiamata** il
+  proprio contesto (`congelaContesto`: tab, coll-tab, db, collection, filtro,
+  ordinamento, pagina, `runId`) e la risposta produce effetti solo se quel
+  contesto è ancora quello mostrato (`contestoCorrente`); una nuova `runQuery`
+  rinnova `gridRunId` e — quando non è una paginazione — `countToken`, cioè
+  invalida tutto ciò che è ancora in volo. L'indicatore di caricamento si spegne
+  con `chiudiCaricamento`, che agisce **solo** sul proprio blocco: chiuderlo
+  comunque farebbe sparire la rotellina di un caricamento ancora vivo. Il difetto
+  non è visibile leggendo il codice perché dipende dall'ordine di consegna:
+  `test/e2e-pagine-obsolete.js` mette gli acknowledgment in coda con un socket
+  finto e li consegna **al contrario**, e la sua sensibilità è stata verificata
+  rompendo di proposito, una alla volta, le tre guardie (find, conteggio, blocco
+  successivo).
 * **La selezione di celle riceve il contenitore e le righe (`cellselect.js`)**:
   la selezione stile foglio di calcolo esisteva **solo** nella vista Dati, e non
   per scelta — il modulo cercava da sé il proprio bersaglio in tre modi che
