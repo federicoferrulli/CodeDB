@@ -860,13 +860,21 @@ export function coercePasted(current, text, metadata = {}) {
     if (['true', '1', 'sì', 'si', 'vero'].includes(t.toLowerCase())) return true;
     if (['false', '0', 'no', 'falso'].includes(t.toLowerCase())) return false;
   }
-  if (type === 'date') {
-    return decodificaTemporale(t, 'istante');
-  }
+  // Il tipo DICHIARATO dalla colonna (DATE, DATETIME/TIMESTAMP naive,
+  // TIMESTAMPTZ) decide la convenzione temporale PRIMA del tipo generico
+  // desunto dal valore attuale: su ogni motore SQL una colonna già valorizzata
+  // arriva come `{$date}` in EJSON qualunque sia il suo tipo dichiarato (vedi
+  // MySqlStrategy/PostgreSqlStrategy), quindi `type === 'date'` da solo non
+  // distingue affatto una DATE da una DATETIME naive da una TIMESTAMPTZ — la
+  // cella già valorizzata finiva sempre nel ramo "istante", che pretende un
+  // fuso esplicito anche su colonne che un fuso non lo hanno mai avuto.
   const tipoColonna = String(metadata.type || metadata.dataType || '').toLowerCase();
   if (/timestamp with time zone|timestamptz/.test(tipoColonna)) return decodificaTemporale(t, 'istante');
   if (/datetime|timestamp/.test(tipoColonna)) return decodificaTemporale(t, 'locale');
   if (/^date$/.test(tipoColonna)) return decodificaTemporale(t, 'data');
+  if (type === 'date') {
+    return decodificaTemporale(t, 'istante');
+  }
   if (type === 'oid' && /^[0-9a-fA-F]{24}$/.test(t)) return { $oid: t };
   return parseEdited(text);
 }
