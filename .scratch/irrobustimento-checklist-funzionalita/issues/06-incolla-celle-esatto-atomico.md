@@ -31,5 +31,9 @@ i controlli sul tipo dichiarato dalla colonna vengono ora PRIMA del controllo ge
 Test: `test/e2e-incolla-esatto-atomico.js` (Chromium). Sensibilità verificata rompendo di
 proposito sia l'ordine dei controlli in `coercePasted` sia l'atomicità di `pasteIntoGrid`
 (scrittura anticipata dentro il ciclo di validazione): in entrambi i casi il test è diventato
-rosso, poi il codice è stato ripristinato.
+rosso, poi il codice è stato ripristinato. La prima versione del test portava anche una
+"controprova" che riproduceva l'ordine difettoso con una funzione locale — tolta dopo la
+revisione perché non esercitava affatto il modulo vero (`coercePasted`): non poteva quindi mai
+rilevare una regressione, e la registrazione di sensibilità che conta è quella qui sopra, contro
+il codice reale.
 

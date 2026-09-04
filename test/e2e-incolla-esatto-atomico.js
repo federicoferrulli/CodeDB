@@ -19,9 +19,12 @@
  *    `{$date}` qualunque sia il suo tipo dichiarato, quindi quel controllo
  *    catturava SEMPRE una cella non vuota — la colonna DATE veniva trattata
  *    come istante (pretendendo un fuso su un valore che non lo ha mai avuto),
- *    e una DATETIME naive allo stesso modo. La sezione "controprova" qui
- *    sotto dimostra il difetto rieseguendo l'ordine sbagliato in locale e
- *    mostrando che avrebbe fatto fallire l'asserzione.
+ *    e una DATETIME naive allo stesso modo. Le asserzioni sul tipo DATE/
+ *    DATETIME/TIMESTAMPTZ qui sotto sono quelle che sarebbero fallite con
+ *    l'ordine sbagliato: la sensibilità è stata verificata rompendo di
+ *    proposito l'ordine in `coercePasted` (vedi la nota di completamento nel
+ *    ticket .scratch/…/06-incolla-celle-esatto-atomico.md), non ricostruendo
+ *    qui una copia del difetto.
  *
  * 2. ATOMICO: `pasteIntoGrid` valida OGNI cella del blocco incollato prima di
  *    mandare la prima `doc:update` (vedi il `try { grid.forEach(...) } catch`
@@ -30,7 +33,8 @@
  *    errore che nomina riga e colonna. Si prova mandando un blocco di due
  *    righe dove la seconda riga contiene un valore non valido: se una
  *    versione futura applicasse la prima riga prima di validare la seconda,
- *    questo test vedrebbe una doc:update e diventerebbe rosso.
+ *    questo test vedrebbe una doc:update e diventerebbe rosso (verificato
+ *    rompendo di proposito anche questo, vedi lo stesso ticket).
  *
  * Uso: node test/e2e-incolla-esatto-atomico.js
  * ------------------------------------------------------------------------- */
@@ -207,29 +211,6 @@ const FABBRICA = `
         catch (e) { return e.message; }
       })();
 
-      // --- Controprova: l'ordine SBAGLIATO (quello del difetto) ------------
-      // Riproduce qui, in locale, la versione difettosa che controllava
-      // valueType(current) === 'date' PRIMA del tipo dichiarato dalla
-      // colonna — esattamente come faceva coercePasted prima della issue 06.
-      // Su una cella DATE già valorizzata (current è {$date}) l'ordine
-      // sbagliato la tratta come istante e PRETENDE un fuso: un valore di
-      // calendario legittimo come "2024-06-15" viene rifiutato.
-      function coercePastedDifettoso(current, testo) {
-        const tipo = (current && typeof current === 'object' && current.$date !== undefined) ? 'date' : 'altro';
-        if (tipo === 'date') {
-          if (!/[zZ]$|[+-]\d{2}:?\d{2}$/.test(testo)) throw new Error('Istante ambiguo: manca il fuso.');
-          return { $date: new Date(testo).toISOString() };
-        }
-        return testo;
-      }
-      out.controprova = { erroreRilevato: false };
-      try {
-        coercePastedDifettoso({ $date: '2024-01-01T00:00:00.000Z' }, '2024-06-15');
-      } catch (e) {
-        out.controprova.erroreRilevato = true;
-        out.controprova.messaggio = e.message;
-      }
-
       return out;
     });
 
@@ -256,10 +237,6 @@ const FABBRICA = `
       `MongoDB: $date resta istante senza tipo di colonna dichiarato (${JSON.stringify(puro.mongoData)})`);
     ok(/fuso|z|offset/i.test(puro.mongoAmbiguoRifiutato || ''),
       `MongoDB: istante ambiguo rifiutato anche senza colonna SQL (${puro.mongoAmbiguoRifiutato})`);
-
-    ok(puro.controprova.erroreRilevato,
-      `Controprova: l'ordine dei controlli del difetto rifiuta una DATE legittima ("${puro.controprova.messaggio}") — `
-      + 'dimostra perché il tipo dichiarato deve vincere sul tipo generico del valore attuale');
 
     /* === Parte 2: pasteIntoGrid, atomicità del blocco ===================== */
 
