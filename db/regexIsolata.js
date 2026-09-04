@@ -52,21 +52,26 @@ function eseguiRegexIsolata(bersaglio, metodo, args, opzioni = {}) {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'regex-worker.js'), { workerData: lavoro });
     let concluso = false;
+    let timer = null;
     const chiudi = (fn, valore) => {
       if (concluso) return;
       concluso = true;
       clearTimeout(timer);
       fn(valore);
     };
-    const timer = setTimeout(() => {
-      if (concluso) return;
-      concluso = true;
-      worker.terminate();
-      const run = limiti.runId ? ` del run ${limiti.runId}` : '';
-      reject(erroreBudget(`Regex${run} interrotta: superato il tempo massimo di ${limiti.tempoMs} ms.`));
-    }, limiti.tempoMs);
 
-    worker.once('message', (msg) => {
+    worker.on('message', (msg) => {
+      if (msg.pronto) {
+        timer = setTimeout(() => {
+          if (concluso) return;
+          concluso = true;
+          worker.terminate();
+          const run = limiti.runId ? ` del run ${limiti.runId}` : '';
+          reject(erroreBudget(`Regex${run} interrotta: superato il tempo massimo di ${limiti.tempoMs} ms.`));
+        }, limiti.tempoMs);
+        worker.postMessage('esegui');
+        return;
+      }
       if (!msg.ok) return chiudi(reject, new Error(`Errore durante la regex isolata: ${msg.errore}`));
       if (bersaglio instanceof RegExp && msg.lastIndex != null) bersaglio.lastIndex = msg.lastIndex;
       chiudi(resolve, msg.risultato);

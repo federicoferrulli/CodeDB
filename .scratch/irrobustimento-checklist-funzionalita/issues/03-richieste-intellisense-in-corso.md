@@ -32,5 +32,7 @@ Controprova eseguita rimuovendo temporaneamente il confronto di generazione nel
 ramo di successo: il test è diventato rosso mostrando `tabella_obsoleta`; la
 guardia è stata poi ripristinata. Il test dedicato passa. La suite unitaria
 completa passa; per renderne attendibile l'esito, la prova funzionale delle regex
-innocue usa un margine esplicito per l'avvio del worker, distinto dalla prova di
-budget che continua a imporre e verificare un timeout di 20 ms.
+innocue usa il limite reale di produzione. Il timer del worker parte ora dal
+segnale di disponibilità, così i 250 ms misurano l'esecuzione della regex e non
+il bootstrap del thread; la prova di budget continua a imporre e verificare un
+timeout di 20 ms.
