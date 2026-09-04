@@ -5,7 +5,7 @@ import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { tipoGeoJsonDaTipoColonna, colonnaGeometrica } from './geojson.js';
 import { runQuery } from './grid.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
-import { decodificaNumeroEsatto } from './valori-esatti.js';
+import { decodificaNumeroEsatto, richiedePrecisioneEsatta } from './valori-esatti.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
@@ -44,7 +44,7 @@ function etichettaGeo(btn) {
   btn.textContent = isGeometry(geo) ? `🗺 ${geometryLabel(geo).replace(/^▦ /, '')}` : '🗺 Disegna sulla mappa…';
 }
 
-export function insertInputFor(kind, { typeName = '' } = {}) {
+export function insertInputFor(kind, { typeName = '', numericMeta = null } = {}) {
   // Geometria: il "campo" è un pulsante che apre la mappa e custodisce il
   // GeoJSON in `value` — così il resto del form (lettura, cambio tipo,
   // rimozione riga) continua a trattarlo come un input qualsiasi.
@@ -82,7 +82,16 @@ export function insertInputFor(kind, { typeName = '' } = {}) {
     return s;
   }
   const i = document.createElement('input');
-  if (kind === 'number') { i.type = 'number'; i.step = 'any'; }
+  if (kind === 'number') {
+    // BIGINT e BSON Long non stanno in un double senza perdere cifre: come
+    // l'editing inline (buildEditor in inlineEdit.js), qui la casella diventa
+    // testo, altrimenti le frecce del controllo nativo — che calcolano su
+    // `valueAsNumber`, un double — arrotonderebbero un valore oltre 2^53 al
+    // primo clic, prima ancora di inviarlo.
+    const esatto = richiedePrecisioneEsatta(numericMeta || { type: typeName });
+    i.type = esatto ? 'text' : 'number';
+    if (!esatto) i.step = 'any';
+  }
   else if (kind === 'datetime') {
     i.type = 'datetime-local';
     i.step = '0.001';
@@ -164,7 +173,7 @@ export function addInsertRow(opts) {
     i.placeholder = '(auto)';
     row.input = i;
   } else {
-    row.input = insertInputFor(row.kind, { typeName: opts.typeName });
+    row.input = insertInputFor(row.kind, { typeName: opts.typeName, numericMeta: row.numericMeta });
   }
   valTd.appendChild(row.input);
   tr.appendChild(valTd);

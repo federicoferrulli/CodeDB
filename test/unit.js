@@ -1368,7 +1368,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-backup-cancellazioni');
   await require('./unit-rinomina-sicura');
   await require('./unit-valori-esatti');
-  require('./unit-sql-valori-esatti');
+  await require('./unit-sql-valori-esatti');
   require('./unit-relazioni-sql');
 
   // L'ORDER BY passa dal metodo della STRATEGIA su tutti i percorsi, griglia
