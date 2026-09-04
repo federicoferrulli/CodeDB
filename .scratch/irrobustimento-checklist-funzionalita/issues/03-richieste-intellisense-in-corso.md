@@ -31,5 +31,6 @@ dopo quello obsoleto: la cache conserva esclusivamente `tabella_nuova`.
 Controprova eseguita rimuovendo temporaneamente il confronto di generazione nel
 ramo di successo: il test è diventato rosso mostrando `tabella_obsoleta`; la
 guardia è stata poi ripristinata. Il test dedicato passa. La suite unitaria
-completa arriva alla fine ma resta rossa per il preesistente e fuori perimetro
-`FAIL Le regex normali continuano a funzionare`.
+completa passa; per renderne attendibile l'esito, la prova funzionale delle regex
+innocue usa un margine esplicito per l'avvio del worker, distinto dalla prova di
+budget che continua a imporre e verificare un timeout di 20 ms.

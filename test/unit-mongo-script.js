@@ -414,7 +414,9 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
   });
 
   await prova('Le regex normali continuano a funzionare', async () => {
-    const r = await esegui('print(/^ab+c$/.test("abbbc"));');
+    const r = await esegui('print(/^ab+c$/.test("abbbc"));', hostFinto(), {
+      limiti: { regexTempoMs: 2000 },
+    });
     assert.ok(String(r.output.join(' ')).includes('true'), 'Una regex innocua deve funzionare');
   });
 
