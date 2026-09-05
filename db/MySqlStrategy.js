@@ -1,5 +1,7 @@
 'use strict';
 
+const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
+
 const mysql = require('mysql2');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
@@ -589,24 +591,13 @@ class MySqlStrategy extends DbStrategy {
     return rows;
   }
 
-  // Frammento SQL + parametro per scrivere una geometria. Il SRID va SEMPRE
-  // imposto, anche quando la colonna non ne dichiara uno.
-  //
-  // `ST_GeomFromGeoJSON` produce SRID 4326, e in 4326 MySQL usa l'ordine degli
-  // assi latitudine-longitudine: lasciato cosi', un poligono `(0 0, 1 0, 1 1)`
-  // veniva riletto come `(0 0, 0 1, 1 1)` — le coordinate SCAMBIATE, cioe' una
-  // geometria diversa scritta senza che nulla lo segnalasse. Su una colonna che
-  // dichiara un SRID il valore veniva gia' riportato a quello giusto; su una
-  // colonna che non lo dichiara — il caso predefinito, `SRS_ID` NULL — si
-  // saltava `ST_SRID` e restava il 4326 con i suoi assi invertiti. Una colonna
-  // senza SRS dichiarato contiene geometrie cartesiane, il cui SRID e' 0: e'
-  // quello che va imposto, non il 4326 che il parser sceglie per conto suo.
+  // Lo SRID deve essere noto già al parser, prima di interpretare gli assi.
   static geoPlaceholder(colInfo) {
     if (!colInfo || colInfo.srid == null) {
       throw new Error('SRID non noto: CodeDB non può modificare la geometria senza reinterpretare le coordinate. Dichiara lo SRID della colonna oppure consenti la lettura dei metadata di information_schema.');
     }
     const srid = Number(colInfo.srid);
-    return `ST_SRID(ST_GeomFromGeoJSON(?), ${srid})`;
+    return `ST_GeomFromGeoJSON(?, 1, ${srid})`;
   }
 
   // Valore di scrittura per una colonna: le geometriche prendono il frammento
@@ -1223,21 +1214,26 @@ class MySqlStrategy extends DbStrategy {
     const set = deserializeClientObject(payload.set);
     const assignments = [];
     const params = [];
-    const { geo } = await this.tableColumnsInfo(db, coll);
-    for (const [col, val] of Object.entries(set)) {
-      const b = MySqlStrategy.geoBinding(col, val, geo);
-      assignments.push(`${qid(col)} = ${b.sql}`);
-      params.push(b.param);
-    }
-    for (const col of payload.unset || []) {
-      assignments.push(`${qid(col)} = NULL`);
-    }
-    if (!assignments.length) throw new Error('Nessuna modifica da applicare.');
-    const [res] = await pool.query(
-      `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${where.sql} LIMIT 1`,
-      [...params, ...where.params]
-    );
-    return { matched: res.affectedRows, modified: res.changedRows != null ? res.changedRows : res.affectedRows };
+    let info;
+    try { info = await this.tableColumnsInfo(db, coll); }
+    catch (err) { throw new Error(ERRORE_SRID, { cause: err }); }
+    return modificaConSrid({ pool, mysql: true, info, set, table: qtable(db, coll), where, qid }, async (conn, geo) => {
+
+      for (const [col, val] of Object.entries(set)) {
+        const b = MySqlStrategy.geoBinding(col, val, geo);
+        assignments.push(`${qid(col)} = ${b.sql}`);
+        params.push(b.param);
+      }
+      for (const col of payload.unset || []) {
+        assignments.push(`${qid(col)} = NULL`);
+      }
+      if (!assignments.length) throw new Error('Nessuna modifica da applicare.');
+      const [res] = await conn.query(
+        `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${where.sql} LIMIT 1`,
+        [...params, ...where.params]
+      );
+      return { matched: res.affectedRows, modified: res.changedRows != null ? res.changedRows : res.affectedRows };
+    });
   }
 
   async docReplace(db, coll, payload) {

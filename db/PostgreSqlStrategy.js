@@ -1,5 +1,7 @@
 'use strict';
 
+const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
+
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
@@ -185,6 +187,7 @@ const DIALETTO_METADATI = {
     // `udt_name` non sarà mai 'geometry', quindi non cambia nulla.
     arricchisci: async (strategia, info, db, coll) => {
       if (!info.geo.size) return;
+      for (const c of info.geo.values()) c.erroreSrid = true;
       try {
         const srid = await strategia.requirePool().query(
           `SELECT f_geometry_column AS name, srid, type AS geotipo, 'geometry' AS kind
@@ -198,6 +201,7 @@ const DIALETTO_METADATI = {
           const c = info.geo.get(r.name);
           if (!c) continue;
           c.srid = r.srid == null ? null : Number(r.srid);
+          c.erroreSrid = false;
           c.kind = r.kind;
           // Il SOTTOTIPO (`MULTIPOLYGON`) sta solo qui: `udt_name` dice
           // 'geometry' e basta, quindi senza questa colonna l'editor su mappa
@@ -207,9 +211,8 @@ const DIALETTO_METADATI = {
           c.geoTipo = r.geotipo == null ? null : String(r.geotipo);
         }
       } catch {
-        // Viste PostGIS assenti o non leggibili: si scrive senza forzare il
-        // SRID (ST_GeomFromGeoJSON produce 4326, il default di gran lunga più
-        // comune) invece di far fallire l'intera lettura.
+        // La lettura resta disponibile, ma nessuna modifica può indovinare lo SRID.
+        for (const c of info.geo.values()) c.erroreSrid = true;
       }
     },
   },
@@ -1180,27 +1183,34 @@ class PostgreSqlStrategy extends DbStrategy {
     const params = [];
     let idx = 1;
 
-    const { geo, geoNativo } = await this.tableColumnsInfo(db, coll);
-    for (const [col, val] of Object.entries(set)) {
-      if (col === '_id') continue;
-      const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo);
-      assignments.push(`${qid(col)} = ${b.sql}`);
-      params.push(b.param);
-    }
-    for (const col of payload.unset || []) {
-      if (col === '_id') continue;
-      assignments.push(`${qid(col)} = NULL`);
-    }
-    if (!assignments.length) throw new Error('Nessuna modifica da applicare.');
+    let info;
+    try { info = await this.tableColumnsInfo(db, coll); }
+    catch (err) { throw new Error(ERRORE_SRID, { cause: err }); }
+    const bersaglio = await this.bersaglioRiga(db, coll, where.sql);
+    return modificaConSrid({ pool, mysql: false, info, set, table: qtable(db, coll), where, qid }, async (conn, geo) => {
+      const { geoNativo } = info;
 
-    const whereSql = where.sql.replace(/\$(\d+)/g, () => `$${idx++}`);
-    params.push(...where.params);
+      for (const [col, val] of Object.entries(set)) {
+        if (col === '_id') continue;
+        const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo);
+        assignments.push(`${qid(col)} = ${b.sql}`);
+        params.push(b.param);
+      }
+      for (const col of payload.unset || []) {
+        if (col === '_id') continue;
+        assignments.push(`${qid(col)} = NULL`);
+      }
+      if (!assignments.length) throw new Error('Nessuna modifica da applicare.');
 
-    const res = await pool.query(
-      `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${await this.bersaglioRiga(db, coll, whereSql)}`,
-      params
-    );
-    return { matched: res.rowCount, modified: res.rowCount };
+      const whereSql = bersaglio.replace(/\$(\d+)/g, () => `$${idx++}`);
+      params.push(...where.params);
+
+      const res = await conn.query(
+        `UPDATE ${qtable(db, coll)} SET ${assignments.join(', ')} WHERE ${whereSql}`,
+        params
+      );
+      return { matched: res.rowCount, modified: res.rowCount };
+    });
   }
 
   async docReplace(db, coll, payload) {
