@@ -52,15 +52,18 @@ function deserializeClientObject(obj) {
 // Le righe viaggiano verso il client come Extended JSON relaxed, come per
 // MongoDB: le Date diventano { $date: ... } e il frontend le riconosce.
 function serializeRow(row, columns = []) {
-  const exact = new Map((columns || []).map((c) => [c.name, String(c.declaredType || c.type || '').toLowerCase()]));
+  const cols = Array.isArray(columns) ? columns : [];
+  const exact = new Map(cols.map((c) => [c && c.name, String((c && (c.declaredType || c.type || c.columnType || c.dataType)) || '').toLowerCase()]));
   if (!exact.size) return EJSON.serialize(row, { relaxed: true });
   const out = { ...row };
   for (const [name, type] of exact) {
+    if (!name) continue;
     const value = out[name];
-    if (value === null || value === undefined || typeof value === 'object') continue;
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'object' && !value._bsontype) continue;
     if (/(^|\W)(decimal|numeric|dec|fixed)(\W|$)/.test(type)) {
       out[name] = { $numberDecimal: String(value) };
-    } else if (/(^|\W)(bigint|int8|bigserial)(\W|$)/.test(type)) {
+    } else if (/(^|\W)(bigint|int8|bigserial|serial8|int64|long)(\W|$)/.test(type)) {
       const testo = String(value);
       try {
         const n = BigInt(testo);

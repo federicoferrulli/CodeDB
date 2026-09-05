@@ -33,3 +33,9 @@ landing
 # sua impronta SHA-256, che la cronologia di git data. Tenerne una copia FUORI
 # dal repository: perso il file, resta l'impegno ma non si sa piu' cosa verifica.
 provenienza/
+
+# Import per testing 
+import_*
+6acc8abe-5719-4bf5-9fb6-760e2d76a10c.json
+
+.scratch/codedb-cloud-sicuro

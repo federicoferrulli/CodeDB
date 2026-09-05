@@ -41,6 +41,7 @@ import { initAbout } from './about.js';
 import { initTheme } from './theme.js';
 import { initScorciatoie } from './scorciatoie-ui.js';
 import { initPalette } from './palette.js';
+import { scaldaEcharts } from './chart-runtime.js';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -261,6 +262,11 @@ initTheme();
 // deve trovare il resto dell'interfaccia già montato, perché il tour indica
 // elementi reali e salta quelli che non ci sono.
 initOnboarding();
+
+// A interfaccia montata e a macchina ferma: la libreria dei grafici pesa 1,1 MB
+// e compilarla costa ~250 ms, che senza questo si pagano fra il clic su 📈 e la
+// comparsa della finestra (286 ms contro 34 a libreria già calda).
+scaldaEcharts();
 
 // Stato iniziale: nessun tab aperto, schermata di benvenuto.
 renderTabBar();

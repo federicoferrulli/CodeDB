@@ -166,6 +166,26 @@ function withIdBound(filter, op, val) {
 
 // Relaxed: i numeri restano numeri JSON, ObjectId e Date restano in forma
 // estesa ($oid / $date) così il client li riconosce e li preserva.
+// BSON Long oltre i 53 bit non deve attraversare Number in relaxed mode (CDB-04):
+// fuori da [-2^53+1, 2^53-1] deve essere serializzato come {$numberLong: "..."}.
+const { Long } = require('bson');
+if (Long && Long.prototype && Long.prototype.toExtendedJSON && !Long.prototype.__codedbLongPatched) {
+  const origLongToExtendedJSON = Long.prototype.toExtendedJSON;
+  Long.prototype.toExtendedJSON = function (options) {
+    if (options && options.relaxed) {
+      const s = this.toString();
+      try {
+        const b = BigInt(s);
+        if (b > 9007199254740991n || b < -9007199254740991n) {
+          return { $numberLong: s };
+        }
+      } catch { /* ignora e ricadi su default */ }
+    }
+    return origLongToExtendedJSON.call(this, options);
+  };
+  Long.prototype.__codedbLongPatched = true;
+}
+
 function serialize(value) {
   return EJSON.serialize(value, { relaxed: true });
 }
@@ -1456,5 +1476,7 @@ class MongoDbStrategy extends DbStrategy {
     }
   }
 }
+
+MongoDbStrategy.serialize = serialize;
 
 module.exports = MongoDbStrategy;

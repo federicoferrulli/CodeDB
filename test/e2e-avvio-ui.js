@@ -107,6 +107,34 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(esito.singola, 'un mousedown su una cella la seleziona: initCellSelect è agganciato');
     ok(esito.quante === 4, 'il trascinamento estende il rettangolo di selezione',
       `celle selezionate: ${esito.quante} (attese 4)`);
+
+    /*
+     * La libreria dei grafici si scalda da sola, a macchina ferma.
+     *
+     * ECharts sono 1,1 MB: compilarli e fare la prima `init` costava ~250 ms
+     * pagati fra il clic su 📈 e la comparsa della finestra — misurato, 286 ms
+     * la prima apertura contro 34 le successive. `scaldaEcharts()` li anticipa
+     * in un `requestIdleCallback`, quindi qui si aspetta e si verifica che sia
+     * successo davvero. È anche l'unica prova che quel grafico di riscaldamento
+     * non resti attaccato al documento: un canvas fuori schermo dimenticato lì
+     * è memoria e un ResizeObserver per un grafico che nessuno vedrà mai.
+     */
+    const scaldata = await page.evaluate(async () => {
+      const scaduto = Date.now() + 12000;
+      while (!window.echarts && Date.now() < scaduto) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      return {
+        caricata: !!window.echarts,
+        // Il div di riscaldamento è fuori schermo a sinistra: nessun elemento
+        // dell'applicazione sta lì.
+        residui: [...document.querySelectorAll('body > div')]
+          .filter((d) => d.style.left === '-9999px').length,
+      };
+    });
+    ok(scaldata.caricata, 'ECharts si scalda da sé a interfaccia ferma (apertura del grafico senza attesa)');
+    ok(scaldata.residui === 0,
+      'il grafico di riscaldamento non resta nel documento', `residui: ${scaldata.residui}`);
   } finally {
     await browser.close();
     await server.stop();

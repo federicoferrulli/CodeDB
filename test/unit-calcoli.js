@@ -67,14 +67,6 @@ const modulo = (nome) => pathToFileURL(path.join(__dirname, '..', 'public', 'js'
     assert.strictEqual(proto.conviene(0), false);
   });
 
-  prova('Il peso di un grafico conta le righe per i campi letti', () => {
-    const cfg = { serie: [{ visibile: true }, { visibile: true }, { visibile: false }] };
-    // 1000 righe × (asse X + 2 serie visibili) = 3000
-    assert.strictEqual(proto.celleGrafico(new Array(1000), cfg), 3000);
-    // Senza configurazione si conta almeno una lettura per riga.
-    assert.strictEqual(proto.celleGrafico(new Array(10), null), 10);
-  });
-
   /* --- 2. Il dispatcher condiviso --------------------------------------- */
 
   const valori = [1, 2, 3, '4', { $numberDecimal: '5.5' }, null, 'testo'];
@@ -257,6 +249,67 @@ const modulo = (nome) => pathToFileURL(path.join(__dirname, '..', 'public', 'js'
     opt.costruisciOption(tante, c, {}, JSON.parse(JSON.stringify(pre)));
     const note = opt.prendiAvvisi();
     for (const n of pre.avvisi) assert.ok(note.includes(n), `manca la nota: ${n}`);
+  });
+
+  /* --- 4. Che cosa attraversa davvero il confine ------------------------- */
+
+  /*
+   * La prova che il lag dei grafici non torni.
+   *
+   * `postMessage` copia i dati, e la copia la paga il thread CHIAMANTE: su un
+   * result set di 50.000 righe sono ~126 ms su quello che disegna, contro i
+   * ~16 ms di precalcolo che si volevano togliere di mezzo. Un compito che
+   * porta di là le RIGHE è quindi sempre in perdita, e le due vie del grafico
+   * lo facevano due volte per disegno.
+   *
+   * Il difetto non è visibile dal risultato — è identico — e in Node non c'è
+   * un Worker vero che lo mostri: si installa quindi un Worker FINTO che
+   * registra ogni `postMessage`, e si importa una copia fresca del modulo
+   * (`?nuovo`), perché i tentativi precedenti hanno già marcato il Worker come
+   * non disponibile per il resto del processo.
+   */
+  await provaAsync('Le RIGHE non attraversano mai il confine; i valori sì', async () => {
+    const spediti = [];
+    class WorkerFinto {
+      constructor() { this.onmessage = null; this.onerror = null; }
+      postMessage(msg) {
+        spediti.push(msg.tipo);
+        // Risponde come il vero: stesso codice, quindi stesso risultato.
+        const risultato = proto.eseguiCompito(msg);
+        queueMicrotask(() => this.onmessage && this.onmessage({ data: { id: msg.id, ok: true, risultato } }));
+      }
+    }
+    const precedente = globalThis.Worker;
+    globalThis.Worker = WorkerFinto;
+    try {
+      const fresco = await import(`${modulo('calcoli.js')}?nuovo`);
+
+      // Un elenco piatto di valori sopra soglia: qui il Worker conviene e ci va.
+      await fresco.statisticheAsync(new Array(60000).fill(3));
+      assert.deepStrictEqual(spediti, ['statistiche'],
+        'un elenco di valori sopra soglia deve andare sul Worker');
+
+      // Un result set grande: né la scansione dei campi né il precalcolo
+      // devono spedire alcunché, quante che siano le righe.
+      // Sopra la soglia con la vecchia stima del peso (righe × campi letti),
+      // altrimenti il difetto rimesso a mano non si vedrebbe: il test
+      // passerebbe perché il dataset era piccolo, non perché la regola è giusta.
+      const tante = [];
+      for (let i = 0; i < 30000; i++) tante.push({ x: `c${i % 7}`, y: i, z: `t${i}` });
+      const c = cfgProva('x', 'y');
+      const campi = await fresco.campiAsync(tante);
+      const pre = await fresco.precalcolaGraficoAsync(tante, c);
+
+      assert.deepStrictEqual(spediti, ['statistiche'],
+        `le righe non devono passare da postMessage, spediti: ${spediti.join(', ')}`);
+      // E il risultato dev'esserci davvero: un calcolo saltato non spedisce
+      // nulla nemmeno lui, e passerebbe l'asserzione qui sopra.
+      assert.ok(campi.some((f) => f.nome === 'y'), 'i campi devono essere stati calcolati');
+      assert.ok(pre && pre.dati, 'il precalcolo deve essere stato calcolato');
+    } finally {
+      if (precedente === undefined) delete globalThis.Worker;
+      else globalThis.Worker = precedente;
+    }
   });
 
   function serieDati(option) {

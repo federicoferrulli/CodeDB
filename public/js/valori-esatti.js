@@ -8,7 +8,7 @@ const RE_DECIMALE = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 function tipoDaMetadato(metadato = {}) {
   if (typeof metadato === 'string') return metadato.toLowerCase();
   const tipi = Array.isArray(metadato.types) ? metadato.types.join(' ') : '';
-  return String(metadato.type || metadato.dataType || metadato.kind || tipi).toLowerCase();
+  return String(metadato.declaredType || metadato.type || metadato.dataType || metadato.columnType || metadato.kind || tipi).toLowerCase();
 }
 
 export function metadatoNumerico(valore, metadato = {}) {
@@ -30,9 +30,10 @@ export function testoNumeroEsatto(valore) {
 }
 
 export function richiedePrecisioneEsatta(metadato = {}) {
+  if (!metadato) return false;
   if (metadato.wrapper === '$numberLong' || metadato.wrapper === '$numberDecimal') return true;
   const tipo = tipoDaMetadato(metadato);
-  return /(^|\W)(bigint|int8|bigserial|decimal|numeric|dec|fixed)(\W|$)/.test(tipo);
+  return /(^|\W)(bigint|int8|bigserial|serial8|int64|long|decimal|numeric|dec|fixed)(\W|$)/.test(tipo);
 }
 
 function intero(testo, minimo, massimo, etichetta) {
@@ -46,12 +47,13 @@ function intero(testo, minimo, massimo, etichetta) {
 }
 
 export function decodificaNumeroEsatto(testo, metadato = {}) {
-  const t = String(testo ?? '').trim();
+  const raw = (testo && typeof testo === 'object') ? testoNumeroEsatto(testo) : testo;
+  const t = String(raw ?? '').trim();
   if (!t) throw new Error('Numero non valido: il valore è vuoto.');
   const tipo = tipoDaMetadato(metadato);
   const wrapper = metadato && metadato.wrapper;
 
-  if (wrapper === '$numberLong' || /(^|\W)(bigint|int8|bigserial)(\W|$)/.test(tipo)) {
+  if (wrapper === '$numberLong' || /(^|\W)(bigint|int8|bigserial|serial8|int64|long)(\W|$)/.test(tipo)) {
     const senzaSegno = /unsigned/.test(tipo);
     const canonico = intero(t, senzaSegno ? 0n : MIN_I64, senzaSegno ? MAX_U64 : MAX_I64, 'BIGINT');
     // BSON Long è signed: il tratto unsigned superiore usa Decimal128 come
@@ -175,3 +177,11 @@ export function aggregaNumeriEsatti(valori, operazione) {
   }
   return risultatoEsatto(testoDecimale(coeff / divisore, scalaMedia), resto === 0n);
 }
+
+export const codecNumeroEsatto = {
+  aTesto: testoNumeroEsatto,
+  aEjson: decodificaNumeroEsatto,
+  richiedePrecisioneEsatta,
+  metadatoNumerico,
+};
+

@@ -247,12 +247,13 @@ const apriPalette = (page) => page.evaluate(() => document.dispatchEvent(
         presente: true,
         indice: Number(attiva.dataset.i),
         inVista: r.top >= c.top - 1 && r.bottom <= c.bottom + 1,
+        DIAG: { r, c, scrollTop: lista.scrollTop, scrollHeight: lista.scrollHeight, clientHeight: lista.clientHeight },
       };
     });
     ok(selezione.presente && selezione.indice === 40,
       'le frecce muovono la selezione anche su righe non disegnate',
       JSON.stringify(selezione));
-    ok(selezione.inVista, 'la riga selezionata viene portata in vista');
+    ok(selezione.inVista, 'la riga selezionata viene portata in vista', JSON.stringify(selezione.DIAG));
 
     /* --- Scegliere un database ------------------------------------------- */
 

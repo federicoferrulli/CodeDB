@@ -25,8 +25,9 @@ import { setDaRelazione } from './fk-relazioni.js';
 export function buildEditor(current, metadata = {}) {
   const numericMeta = metadatoNumerico(current, metadata);
   let type = valueType(current);
-  if (typeof current === 'string' && richiedePrecisioneEsatta(numericMeta)) {
-    type = numericMeta.wrapper === '$numberDecimal' || /decimal|numeric|dec|fixed/i.test(String(numericMeta.type || ''))
+  if (richiedePrecisioneEsatta(numericMeta)) {
+    const tipo = String(numericMeta.declaredType || numericMeta.type || numericMeta.dataType || numericMeta.columnType || numericMeta.kind || '').toLowerCase();
+    type = numericMeta.wrapper === '$numberDecimal' || /(^|\W)(decimal|numeric|dec|fixed)(\W|$)/.test(tipo)
       ? 'decimal' : 'number';
   }
 
@@ -93,7 +94,8 @@ export function buildEditor(current, metadata = {}) {
 
   if (type === 'decimal') {
     const input = document.createElement('input');
-    const setValue = (v) => { input.value = (v && v.$numberDecimal !== undefined) ? v.$numberDecimal : String(v ?? ''); };
+    input.type = 'text';
+    const setValue = (v) => { input.value = testoNumeroEsatto(v); };
     setValue(current);
     return {
       input,

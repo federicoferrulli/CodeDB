@@ -846,6 +846,7 @@ class MySqlStrategy extends DbStrategy {
               const rows = selectRes.slice(0, cap);
               const columns = (selectFields || []).map((f) => f.name || f);
               return { docs: rows.map(serializeRow), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true };
+              return { docs: rows.map((r) => serializeRow(r, selectFields || [])), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true };
             }
 
             // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
@@ -857,6 +858,7 @@ class MySqlStrategy extends DbStrategy {
           const rows = result.slice(0, cap);
           const columns = (fields || []).map((f) => f.name);
           return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, fields || [])), columns, total: result.length, skip: 0, limit: cap, resultSet: true };
         }
 
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
@@ -1180,6 +1182,7 @@ class MySqlStrategy extends DbStrategy {
         if (!Array.isArray(rows)) throw err;
         const columns = (fields || []).map((f) => f.name);
         return { format: 'table', rows: rows.map(serializeRow), columns, query: sql };
+        return { format: 'table', rows: rows.map((r) => serializeRow(r, fields || [])), columns, query: sql };
       }
     } finally {
       conn.release();

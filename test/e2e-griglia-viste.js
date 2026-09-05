@@ -217,6 +217,70 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(riquadro.spaziatori >= 1 && riquadro.altezzaSpaziatori > 0,
       'Split-View: gli spaziatori dichiarano le righe non disegnate');
 
+    /*
+     * Scorrere ridisegna la FINESTRA, non il riquadro.
+     *
+     * Lo scorrimento passava da `updatePaneUI`, che a ogni fotogramma
+     * ricostruiva l'intestazione con i suoi ascoltatori e riscorreva tutti i
+     * documenti quattro volte (colonne dichiarate, righe con `_id`, id
+     * selezionati, e di nuovo le righe con `_id`) per riscrivere le venti
+     * righe visibili: lavoro proporzionale ai DATI dentro un ciclo che dipende
+     * dai PIXEL scorsi.
+     *
+     * Il risultato a schermo era però identico, quindi il difetto non si vede
+     * dalle righe disegnate: si misura sull'IDENTITÀ dei nodi `<th>`. Se sono
+     * gli stessi oggetti di prima, l'intestazione non è stata rifatta — cioè
+     * `updatePaneUI` non è girata.
+     */
+    const dopoScorrimento = await page.evaluate(async () => {
+      // Il corpo del tab è nascosto (nessun tab è stato reso attivo dalla UI):
+      // un elemento in `display: none` non ha altezza, quindi non scorre. Lo si
+      // mostra e si ridisegna, altrimenti si misurerebbe uno scorrimento che
+      // non è mai avvenuto.
+      const corpo = document.getElementById('tab-body');
+      if (corpo) corpo.classList.remove('hidden');
+      const sv = await import('/js/splitview.js');
+      sv.renderSplitView();
+      await new Promise((r) => requestAnimationFrame(r));
+
+      const contenitore = document.querySelector('.split-pane .pane-grid-wrap');
+      const tbody = document.querySelector('.split-pane .pane-grid tbody');
+      const thead = document.querySelector('.split-pane .pane-grid thead');
+      if (!contenitore || !tbody || !thead) return { assente: true };
+      if (!contenitore.clientHeight) return { nonScorre: true };
+
+      const primaRiga = () => {
+        const tr = [...tbody.querySelectorAll('tr')].find((r) => !r.classList.contains('v-spacer'));
+        const td = tr && tr.querySelector('td[data-r]');
+        return td ? Number(td.dataset.r) : -1;
+      };
+      const thPrima = [...thead.querySelectorAll('th')];
+      const inizioPrima = primaRiga();
+
+      contenitore.scrollTop = 4000;
+      contenitore.dispatchEvent(new Event('scroll'));
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      const thDopo = [...thead.querySelectorAll('th')];
+      return {
+        inizioPrima,
+        inizioDopo: primaRiga(),
+        altezza: contenitore.clientHeight,
+        stessiTh: thPrima.length > 0 && thPrima.length === thDopo.length
+          && thPrima.every((th, i) => th === thDopo[i]),
+        scrollTop: contenitore.scrollTop,
+      };
+    });
+
+    ok(!dopoScorrimento.assente && !dopoScorrimento.nonScorre,
+      'Split-View: il riquadro ha un’altezza da cui scorrere', JSON.stringify(dopoScorrimento));
+    ok(dopoScorrimento.inizioDopo > dopoScorrimento.inizioPrima,
+      `Split-View: lo scorrimento sposta la finestra (${dopoScorrimento.inizioPrima} → ${dopoScorrimento.inizioDopo})`);
+    ok(dopoScorrimento.scrollTop === 4000,
+      `Split-View: lo scorrimento non rimbalza a zero dopo il ridisegno (${dopoScorrimento.scrollTop})`);
+    ok(dopoScorrimento.stessiTh === true,
+      'Split-View: scorrere NON ricostruisce l’intestazione (nodi <th> identici)');
+
     ok(errori.length === 0, 'nessun errore JavaScript durante le prove', errori.join('\n         '));
   } finally {
     await browser.close();

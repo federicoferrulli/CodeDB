@@ -140,12 +140,25 @@
 }
 
 
+/* NIENTE backdrop-filter QUI: era la sorgente di uno scatto misurato, non solo
+   ipotizzato. Su una macchina che compone in GPU la sfocatura costa quasi
+   zero — è per questo che era rimasta sulla regola di base, la classe che
+   ogni modale dell'app eredita. Ma con la composizione software (misurato
+   avviando Chromium con `--disable-gpu`, che è la condizione reale di una VM,
+   di un desktop remoto, o di una GPU/driver in blocklist) aprire UNA modale
+   qualsiasi sopra uno sfondo applicativo vero costava un fotogramma da
+   ~200 ms — non durante un ridisegno continuo, alla sola APERTURA. Prima
+   questa classe di difetto era stata corretta solo per le quattro modali che
+   si ridipingono di continuo (mappa, tema, grafico): quelle erano il sintomo
+   più vistoso, non tutto il difetto — ogni altra modale, compresa
+   "Statistiche selezione" che non anima né disegna nulla, pagava lo stesso
+   costo al solo aprirsi. Lo sfondo scuro resta, un po' più opaco
+   (`--scrim-strong` invece di `--scrim`) per compensare la sfocatura che non
+   c'è più. */
 .overlay {
   position: fixed;
   inset: 0;
-  background: var(--scrim);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: var(--scrim-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -175,20 +188,15 @@
    Mappa e GeoJSON affiancati: sono la stessa geometria vista in due modi, e
    tenerli uno accanto all'altro è il punto dell'editor — chi corregge una
    coordinata a mano deve vedere subito dove finisce. */
-/* NIENTE backdrop-filter su QUESTA modale.
-   `.overlay` sfoca l'intero viewport dietro di sé (blur 12px). Per una modale
-   statica è un costo che si paga una volta; la mappa invece ridipinge in
-   continuazione — trascinamento, pan, zoom, arrivo di ogni tile — e a ogni
-   fotogramma il compositor era costretto a rifare una sfocatura gaussiana a
-   schermo intero avendo come sorgente tutta l'applicazione (griglia, sidebar,
-   albero). È questo, non il disegno della geometria, il grosso dello scatto:
-   l'editor geografico è semplicemente la prima modale che si ridisegna di
-   continuo, quindi la prima in cui il problema si vede. Lo sfondo scuro resta,
-   solo un po' più opaco per compensare la sfocatura che non c'è più. */
-#geomap-overlay {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: var(--scrim-strong);
+/* Le quattro modali che si ridipingono di continuo (i due editor su mappa,
+   l'anteprima del tema, il grafico della selezione) non hanno più bisogno di
+   una regola propria: `.overlay` non ha più sfocatura da togliere. Resta solo
+   `transition: none`, perché quei ridisegni continui non devono innescare la
+   `transition: all` della base a ogni cambiamento di stile inline. */
+#geomap-overlay,
+#geomulti-overlay,
+#modal-theme,
+#cellchart-overlay {
   transition: none;
 }
 .modal.geomap-modal {
@@ -356,7 +364,6 @@
 /* Colonna destra della mappa di selezione (geomulti.js): riepilogo sopra,
    elenco scorrevole sotto. L'altezza è quella della mappa accanto, così le due
    viste restano allineate come nell'editor. */
-#geomulti-overlay { backdrop-filter: none; -webkit-backdrop-filter: none; background: var(--scrim-strong); transition: none; }
 /* Un po' più larga della colonna JSON dell'editor: qui accanto alla mappa non
    c'è un testo che va a capo ma una tabella di sei colonne. */
 .geomulti-side { flex: 1.4 1 0; min-width: 0; height: 420px; display: flex; flex-direction: column; gap: 8px; }
@@ -7399,23 +7406,6 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
    `--ov-*` per le velature, `--status-*` per gli stati, `--sh-*` per le ombre.
    ========================================================================== */
 
-/* NIENTE backdrop-filter su QUESTA modale, e fondo PIENO — stessa scelta di
-   `#geomap-overlay` e `#geomulti-overlay`, e per lo stesso criterio: è un
-   pannello che si RIDIPINGE di continuo (l'anteprima riscrive i token del tema
-   mentre si trascina il colore), e `.overlay` impone una sfocatura gaussiana a
-   schermo intero con l'intera applicazione come sorgente.
-   Onestà sulla misura: con l'accelerazione GPU attiva la sfocatura è di fatto
-   gratis (60 fps con e senza), quindi NON era questa la causa dello scatto
-   segnalato — quella è il ricalcolo di stile dell'intero documento, gestito
-   con la limitazione in `theme.js`. Toglierla resta giusto perché su una
-   macchina senza accelerazione (VM, desktop remoto) la stessa prova dà 15 fps
-   contro 30, ma non va spacciata per la correzione del problema. */
-#modal-theme {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: var(--scrim-strong);
-  transition: none;
-}
 /* Il `--glass-bg` delle altre modali è translucido: sopra un fondo trasparente
    il browser deve ricomporre ciò che sta sotto a ogni ridisegno, ed è lavoro
    inutile per una finestra che copre comunque quell'area. */
@@ -8123,12 +8113,31 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
   border-bottom: 1px solid var(--border, rgba(128,128,128,.25));
 }
 
+/* Due correzioni alla stessa aritmetica, entrambe misurate.
+   `overflow-anchor: none`: senza, lo SCROLL ANCHORING del browser combatte con
+   lo scorrimento programmato delle frecce. `muoviSelezione` scrive `scrollTop`
+   e SUBITO DOPO ridisegna la finestra virtuale, il che ridimensiona lo
+   spaziatore sopra nella STESSA reazione — e il browser, per non far
+   "saltare" il contenuto sotto l'occhio, aggiusta lo scroll da solo per
+   compensare quel ridimensionamento: misurato, uno scroll indesiderato di
+   un'intera riga (34px) in più rispetto a quello scritto da
+   `scorrimentoPerRiga`. Qui l'ancoraggio non serve a nulla: la posizione di
+   ogni riga è calcolata, non dedotta da "cosa c'era prima", quindi va spento.
+   Niente `padding` VERTICALE sul contenitore che scorre: `scorrimentoPerRiga`
+   (condiviso con la griglia dei risultati, dove il contenitore scorrevole non
+   ha mai avuto padding) assume che la riga 0 cominci esattamente a
+   `scrollTop: 0`. Un padding-top di 4px sposta ogni riga 4px più in basso
+   sullo schermo di quanto la matematica preveda, e l'errore si vede solo al
+   bordo: allineare l'ULTIMA riga al fondo lasciava 4px della sua altezza
+   FUORI dalla vista — misurato, non un'ipotesi. Lo spazio orizzontale resta,
+   perché tocca solo la larghezza e non l'altezza usata dal calcolo. */
 #palette-lista {
   list-style: none;
   margin: 0;
-  padding: 4px;
+  padding: 0 4px;
   max-height: 46vh;
   overflow-y: auto;
+  overflow-anchor: none;
 }
 
 /* Altezza FISSA: la lista e' virtualizzata e gli spaziatori simulano l'altezza

@@ -2,14 +2,31 @@
  * CodeDB — Calcoli pesanti fuori dal thread dell'interfaccia
  *
  * Facciata unica per statistiche, campi e precalcolo dei grafici. Decide da sé
- * **dove** eseguire:
+ * **dove** eseguire, e la decisione dipende da DUE costi, non da uno solo:
+ * quanto costa il calcolo e quanto costa portare i dati dall'altra parte.
  *
- *  - sotto le 50.000 celle → subito, su questo thread. Spostare un lavoro da
- *    due millisecondi costerebbe più del lavoro stesso, e il risultato
- *    arriverebbe un fotogramma dopo: la barra di stato che segue il
- *    trascinamento diventerebbe *meno* reattiva, non più;
- *  - sopra → su un Web Worker, così la finestra continua a rispondere mentre
- *    si sommano centomila celle.
+ * `postMessage` non condivide la memoria: la copia strutturata dei dati la paga
+ * il thread CHIAMANTE, cioè proprio quello che si voleva liberare. Misurato su
+ * un result set di 50.000 righe per 12 colonne, e ripetuto su 200.000:
+ *
+ *              calcolo    copia delle righe
+ *   precalcolo  16 ms          126 ms        (50.000 righe)
+ *   precalcolo  50 ms          628 ms       (200.000 righe)
+ *
+ * Il trasporto costa da otto a dodici volte il lavoro che evita, e cresce con
+ * lui: non esiste una soglia oltre la quale il Worker cominci a convenire. Il
+ * grafico lo pagava DUE volte per disegno (scansione dei campi e precalcolo), a
+ * ogni modifica del pannello — è questo che faceva scattare l'interfaccia
+ * mentre si costruiva un grafico.
+ *
+ * La regola è quindi sulla FORMA di ciò che attraversa il confine:
+ *
+ *  - un elenco piatto di VALORI (le statistiche della selezione) si copia in
+ *    meno di un millisecondo per 50.000 celle: lì il Worker conviene, e sopra
+ *    le 50.000 celle ci va;
+ *  - un elenco di RIGHE (campi e precalcolo del grafico) no: si calcola qui.
+ *    Sedici millisecondi su questo thread sono un fotogramma; centoventisei di
+ *    copia sono otto, e sarebbero comunque su questo thread.
  *
  * Tre proprietà tenute per costruzione:
  *
@@ -27,9 +44,9 @@
  *     token con cui il chiamante verifica di essere ancora quello attuale.
  */
 
-import { eseguiCompito, conviene, celleGrafico, SOGLIA_CELLE } from './calcoli-protocollo.js';
+import { eseguiCompito, conviene, SOGLIA_CELLE } from './calcoli-protocollo.js';
 
-export { SOGLIA_CELLE, conviene, celleGrafico };
+export { SOGLIA_CELLE, conviene };
 
 /* ==========================================================================
  * Il Worker
@@ -142,13 +159,18 @@ export function statistichePerColonnaAsync(colonne) {
   return esegui({ tipo: 'statistichePerColonna', colonne: cols }, celle);
 }
 
-/** Campi (nome e tipo) presenti nelle righe: è una scansione EJSON completa. */
+/**
+ * Campi (nome e tipo) presenti nelle righe.
+ *
+ * `campiDisponibili` si ferma alle prime 300 righe: due millisecondi e mezzo,
+ * quante che siano le righe. Il peso veniva invece stimato sull'INTERO result
+ * set (righe × chiavi), quindi da 4.200 righe in su il compito partiva per il
+ * Worker — e per due millisecondi e mezzo di lavoro si copiavano tutte le
+ * righe, centoventisei millisecondi su questo thread. Si calcola qui.
+ */
 export function campiAsync(righe) {
-  const r = righe || [];
-  // `campiDisponibili` guarda un campione di righe ma tutte le loro chiavi:
-  // il peso si stima con il numero di righe per le chiavi della prima.
-  const chiavi = r.length && r[0] && typeof r[0] === 'object' ? Object.keys(r[0]).length : 1;
-  return esegui({ tipo: 'campiDisponibili', righe: r }, r.length * Math.max(chiavi, 1));
+  contatori.locali++;
+  return Promise.resolve(eseguiCompito({ tipo: 'campiDisponibili', righe: righe || [] }));
 }
 
 /*
@@ -179,11 +201,14 @@ export function precalcolaGraficoAsync(righe, cfg) {
     contatori.riusati++;
     return Promise.resolve(memoPre.risultato);
   }
-  return esegui({ tipo: 'precalcolaGrafico', righe: r, cfg }, celleGrafico(r, cfg))
-    .then((risultato) => {
-      if (firma !== null) memoPre = { righe: r, firma, risultato };
-      return risultato;
-    });
+  // Qui, non sul Worker: vedi la tabella in testa al file — copiare le righe
+  // costa più del precalcolo di un ordine di grandezza, e la copia la paga
+  // comunque questo thread. Il memo sotto è ciò che toglie il lavoro vero:
+  // ridimensionare il riquadro ridisegna il grafico ma non cambia i dati.
+  contatori.locali++;
+  const risultato = eseguiCompito({ tipo: 'precalcolaGrafico', righe: r, cfg });
+  if (firma !== null) memoPre = { righe: r, firma, risultato };
+  return Promise.resolve(risultato);
 }
 
 /* ==========================================================================

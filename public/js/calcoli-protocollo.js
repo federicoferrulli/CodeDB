@@ -28,23 +28,21 @@ import { campiDisponibili, precalcola } from './chart-option.js';
  *
  * Sotto, il costo della copia dei dati e del giro di messaggi supera il calcolo
  * stesso: il risultato arriverebbe DOPO, e per giunta un fotogramma più tardi.
- * Il numero è in "celle", cioè valori esaminati — righe × colonne coinvolte —
- * perché è quello il lavoro vero, non il numero di righe.
+ * Il numero è in "celle", cioè valori esaminati.
+ *
+ * Vale per i compiti che portano di là un elenco piatto di VALORI — le
+ * statistiche della selezione — dove la copia costa meno di un millisecondo
+ * ogni 50.000 celle. I compiti che porterebbero le RIGHE (campi e precalcolo
+ * del grafico) non hanno soglia: si calcolano sempre sul thread chiamante,
+ * perché copiare un result set costa un ordine di grandezza più del calcolo
+ * che eviterebbe, e quella copia la paga comunque quel thread. La misura e il
+ * ragionamento stanno in testa a `calcoli.js`.
  */
 export const SOGLIA_CELLE = 50000;
 
 /** Conviene spostare su un altro thread un lavoro di `celle` valori? */
 export function conviene(celle) {
   return Number(celle) >= SOGLIA_CELLE;
-}
-
-/** Celle esaminate da un precalcolo di grafico: una per riga per campo letto. */
-export function celleGrafico(righe, cfg) {
-  const n = Array.isArray(righe) ? righe.length : 0;
-  if (!cfg || !Array.isArray(cfg.serie)) return n;
-  const serie = cfg.serie.filter((s) => s && s.visibile !== false).length;
-  // L'asse X si legge sempre; ogni serie legge la sua misura.
-  return n * (1 + Math.max(serie, 1));
 }
 
 /**

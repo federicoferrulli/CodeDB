@@ -921,11 +921,13 @@ class PostgreSqlStrategy extends DbStrategy {
           const rows = (lastRes.rows || []).slice(0, cap);
           const columns = lastRes.fields ? lastRes.fields.map((f) => f.name) : [];
           return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, lastRes.fields || [])), columns, total: rows.length, skip: 0, limit: cap, resultSet: true };
         }
         if (res.rows && (res.rows.length > 0 || res.fields)) {
           const rows = res.rows.slice(0, cap);
           const columns = res.fields ? res.fields.map((f) => f.name) : [];
           return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, res.fields || [])), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true };
         }
 
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
@@ -973,6 +975,7 @@ class PostgreSqlStrategy extends DbStrategy {
         return conRighe(
           summary,
           Array.isArray(res.rows) ? res.rows.map(serializeRow) : [],
+          Array.isArray(res.rows) ? res.rows.map((r) => serializeRow(r, res.fields || [])) : [],
           Array.isArray(res.fields) ? res.fields.map((field) => field.name) : [],
         );
       },

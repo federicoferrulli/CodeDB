@@ -1000,10 +1000,14 @@ export function runPaneQuery(paneId, opts = {}) {
 
   if (opts.auto) payload._bg = true;
 
+  // Stessa guardia di `runQuery` (grid.js): identità del riquadro (un pannello
+  // può essere SOSTITUITO allo stesso id, vedi il ramo `dir === 'center'` di
+  // `addOrSplitPane`) più il contesto congelato alla chiamata, letto da
+  // `contestoCorrente` invece di confronti a mano ripetuti in ogni guardia.
+  const attesa = { generazioneRichiesta: richiesta.generazione, db: richiesta.db, coll: richiesta.coll };
   return emitPaneQuery(richiesta.tabId, 'collection:find', payload)
     .then((res) => {
-      if (paneById(paneId) !== p || p.generazioneRichiesta !== richiesta.generazione
-          || p.db !== richiesta.db || p.coll !== richiesta.coll) return;
+      if (paneById(paneId) !== p || !contestoCorrente(p, attesa)) return;
       p.docs = res.docs || [];
       p.columns = res.columns || [];
       p.columnMeta = res.columnMeta || {};
@@ -1016,8 +1020,7 @@ export function runPaneQuery(paneId, opts = {}) {
       caricaRelazioniPane(paneId, p);
     })
     .catch((err) => {
-      if (paneById(paneId) !== p || p.generazioneRichiesta !== richiesta.generazione
-          || p.db !== richiesta.db || p.coll !== richiesta.coll) return;
+      if (paneById(paneId) !== p || !contestoCorrente(p, attesa)) return;
       p.loading = false;
       // Caricato = "ci ho provato": senza questo, un pannello in errore
       // rilancerebbe la stessa query fallita a ogni rimontaggio del layout.
@@ -1042,11 +1045,10 @@ function contestoRelazioniPane(p) {
 // oggetto: una risposta vecchia non può decorare una tabella subentrata.
 function caricaRelazioniPane(paneId, p) {
   const contesto = contestoRelazioniPane(p);
-  const generazione = p.generazioneRichiesta;
+  const attesa = { generazioneRichiesta: p.generazioneRichiesta, db: contesto.db, coll: contesto.coll };
   if (relazioniPer(contesto) !== null) return;
   caricaRelazioni(contesto).then(() => {
-    if (paneById(paneId) === p && p.generazioneRichiesta === generazione
-        && p.db === contesto.db && p.coll === contesto.coll) updatePaneUI(paneId);
+    if (paneById(paneId) === p && contestoCorrente(p, attesa)) updatePaneUI(paneId);
   });
 }
 
@@ -1234,7 +1236,7 @@ function deletePaneDoc(paneId, doc) {
     id: idOf(doc),
   }).then(() => {
     toast('Documento eliminato');
-    if (paneById(paneId) === p && p.db === bersaglio.db && p.coll === bersaglio.coll) {
+    if (paneById(paneId) === p && contestoCorrente(p, bersaglio)) {
       runPaneQuery(paneId, { auto: true });
     }
   }).catch((err) => toast(err.message, true));
@@ -1274,7 +1276,7 @@ function eliminaRigheRiquadro(paneId, ids) {
     if (p.selectedDocs) p.selectedDocs.clear();
     if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
     else toast(`${ok} documenti eliminati`);
-    if (paneById(paneId) === p && p.db === bersaglio.db && p.coll === bersaglio.coll) {
+    if (paneById(paneId) === p && contestoCorrente(p, bersaglio)) {
       runPaneQuery(paneId, { auto: true });
     }
   });
@@ -1736,6 +1738,11 @@ function updatePaneUI(paneId) {
 
   thead.innerHTML = '';
   tbody.innerHTML = '';
+  // La chiusura di ridisegno appartiene alle righe che stavano qui. Con il
+  // riquadro in caricamento o vuoto non ce ne sono, e lasciarla lì
+  // significherebbe che uno scorrimento cancella «Nessuna riga trovata» per
+  // ridisegnare una pagina che non c'è più. Viene rimessa in fondo.
+  p.ridisegnaFinestra = null;
 
   if (p.loading) {
     tbody.innerHTML = '<tr><td colspan="100" class="pane-loading">Caricamento in corso...</td></tr>';
@@ -1935,53 +1942,97 @@ function updatePaneUI(paneId) {
     // Colonne dello spaziatore: numero di riga + eventuale casella + eventuali
     // azioni + le colonne dei dati.
     const colonneTotali = 1 + (canSelect && hasIdDocs ? 1 : 0) + (hasIdDocs ? 1 : 0) + cols.length;
-    const finestra = vaVirtualizzata(p.docs.length, CAPACITA_RIQUADRO)
-      ? finestraVirtuale({
-        scrollTop: posizioneScroll.top,
-        altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
-        altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
-        righeTotali: p.docs.length,
-        overscan: OVERSCAN_RIQUADRO,
-      })
-      : null;
+    const virtualizza = vaVirtualizzata(p.docs.length, CAPACITA_RIQUADRO);
 
-    disegnaCorpo({
-      tbody,
-      righe: p.docs,
-      disegnaRiga: disegnaRigaRiquadro,
-      finestra,
-      colonneTotali,
-    });
+    /*
+     * Il ridisegno della SOLA finestra visibile.
+     *
+     * Lo scorrimento passava da `updatePaneUI`, cioè rifaceva tutto il riquadro
+     * a ogni fotogramma: intestazione ricostruita con i suoi ascoltatori, e
+     * `p.docs` riscorso quattro volte — le colonne dichiarate
+     * (`colonneRisultato`), quali righe hanno un `_id`, l'insieme degli id
+     * visibili, e di nuovo quelle con `_id` per la casella «seleziona tutti» —
+     * per riscrivere le venti righe che si vedono. Su una pagina di mille righe
+     * è lavoro proporzionale ai DATI dentro un ciclo che dipende dai PIXEL
+     * scorsi: è la ragione per cui scorrere una tabella scattava.
+     *
+     * Niente di tutto questo cambia scorrendo: le colonne, l'intestazione e la
+     * selezione sono gli stessi. Cambia solo quali righe stanno in DOM, che è
+     * appunto ciò che fa `disegnaCorpo`.
+     */
+    let ultimoInizio = -1;
+    const ridisegnaFinestra = (pos) => {
+      // Svuotare il `tbody` accorcia per un istante la tabella e Chromium
+      // riporta lo scroll a zero: la posizione si legge prima e si rimette
+      // dopo. Alla prima chiamata arriva da fuori, perché `updatePaneUI` ha
+      // già svuotato `thead` e `tbody` più sopra.
+      const top = pos ? pos.top : (contenitore ? contenitore.scrollTop : 0);
+      const left = pos ? pos.left : (contenitore ? contenitore.scrollLeft : 0);
+      const finestra = virtualizza
+        ? finestraVirtuale({
+          scrollTop: top,
+          altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
+          altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
+          righeTotali: p.docs.length,
+          overscan: OVERSCAN_RIQUADRO,
+        })
+        : null;
+      // Scorrere dentro l'overscan non cambia le righe da disegnare: rifarle
+      // sarebbe ricostruire lo stesso DOM. `pos` è la chiamata di
+      // `updatePaneUI`, che ridisegna sempre perché lì i dati possono essere
+      // cambiati.
+      if (!pos && finestra && finestra.inizio === ultimoInizio) return;
+      ultimoInizio = finestra ? finestra.inizio : -1;
 
-    if (contenitore) {
-      contenitore.scrollTop = posizioneScroll.top;
-      contenitore.scrollLeft = posizioneScroll.left;
-    }
+      disegnaCorpo({
+        tbody,
+        righe: p.docs,
+        disegnaRiga: disegnaRigaRiquadro,
+        finestra,
+        colonneTotali,
+      });
 
-    // La selezione di celle si aggancia una volta sola per riquadro (`tbody` e
-    // `thead` sono stabili), ma le CLASSI vanno riapplicate a ogni disegno: la
-    // finestra virtuale ricostruisce le righe, e senza questo la selezione
-    // sparirebbe da sotto il dito mentre la griglia scorre.
-    if (CAPACITA_RIQUADRO.selezioneCelle) {
-      // Il confronto è sul `tbody` e non su «esiste già»: `renderSplitView`
-      // ricostruisce il DOM dei riquadri, e un'istanza agganciata al `tbody` di
-      // prima resterebbe viva puntando a un elemento staccato — cioè una
-      // selezione che non risponde più e che nulla segnala.
-      if (!p.selezioneCelle || p.selezioneCelle.aggancio.tbody !== tbody) {
-        p.selezioneCelle = creaSelezioneCelle(aggancioRiquadro(paneId, paneEl, p));
+      if (contenitore) {
+        contenitore.scrollTop = top;
+        contenitore.scrollLeft = left;
       }
-      p.selezioneCelle.applica();
-    }
+
+      // La selezione di celle si aggancia una volta sola per riquadro (`tbody`
+      // e `thead` sono stabili), ma le CLASSI vanno riapplicate a ogni disegno:
+      // la finestra virtuale ricostruisce le righe, e senza questo la selezione
+      // sparirebbe da sotto il dito mentre la griglia scorre.
+      if (CAPACITA_RIQUADRO.selezioneCelle) {
+        // Il confronto è sul `tbody` e non su «esiste già»: `renderSplitView`
+        // ricostruisce il DOM dei riquadri, e un'istanza agganciata al `tbody`
+        // di prima resterebbe viva puntando a un elemento staccato — cioè una
+        // selezione che non risponde più e che nulla segnala.
+        if (!p.selezioneCelle || p.selezioneCelle.aggancio.tbody !== tbody) {
+          p.selezioneCelle = creaSelezioneCelle(aggancioRiquadro(paneId, paneEl, p));
+        }
+        p.selezioneCelle.applica();
+      }
+    };
+
+    // La chiusura è nuova a ogni `updatePaneUI` e chiude sopra le righe, le
+    // colonne e le relazioni di ADESSO: viene riposta sul riquadro, che è
+    // stabile, così l'ascoltatore dello scorrimento — agganciato una volta
+    // sola — trova sempre l'ultima.
+    p.ridisegnaFinestra = ridisegnaFinestra;
+    ridisegnaFinestra(posizioneScroll);
 
     // Lo scorrimento ridisegna la finestra. Si aggancia una volta sola per
     // riquadro: `updatePaneUI` viene richiamata a ogni pagina e a ogni
     // modifica, e un secondo ascoltatore raddoppierebbe il lavoro a ogni giro.
-    if (finestra && contenitore && !contenitore.dataset.vscroll) {
+    if (virtualizza && contenitore && !contenitore.dataset.vscroll) {
       contenitore.dataset.vscroll = '1';
       let raf = 0;
       contenitore.addEventListener('scroll', () => {
         cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => updatePaneUI(paneId));
+        raf = requestAnimationFrame(() => {
+          const attuale = paneById(paneId);
+          if (attuale && attuale.ridisegnaFinestra) attuale.ridisegnaFinestra();
+          else updatePaneUI(paneId);
+        });
       });
     }
   }
