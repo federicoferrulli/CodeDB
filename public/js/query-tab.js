@@ -1335,6 +1335,7 @@ function fetchCollectionsForSchemaBrowser(dbName, container) {
 }
 
 function renderSchemaTreeForDb(dbName, container, collections) {
+  const tabId = activeTab()?.id;
   container.innerHTML = '';
   if (!collections || !collections.length) {
     container.innerHTML = '<div style="color: var(--fg-dim); font-size: 0.85em; padding-left: 6px;">(Nessuna collezione/tabella)</div>';
@@ -1403,10 +1404,29 @@ function renderSchemaTreeForDb(dbName, container, collections) {
       fieldsContainer.innerHTML = '<div style="color: var(--fg-dim); font-size: 0.85em; padding-left: 6px;">(Nessun campo rilevato)</div>';
     }
 
+    let relazioniCaricate = false;
     collLabel.addEventListener('click', (e) => {
       if (e.target.closest('.mini-btn')) return;
       setQueryTarget(dbName, collName);
       fieldsContainer.classList.toggle('hidden');
+      if (fieldsContainer.classList.contains('hidden') || relazioniCaricate || !isSqlType(state.dbType)) return;
+      relazioniCaricate = true;
+      emit('collection:relations', { tabId, db: dbName, coll: collName }).then((res) => {
+        if (!fieldsContainer.isConnected || !isForActiveTab(res)) return;
+        for (const rel of res.relazioni || []) {
+          const coppie = rel.coppie || [{ campo: rel.campo, colonna: rel.colonna }];
+          const nodo = document.createElement('div');
+          nodo.className = 'schema-node schema-relazione';
+          nodo.dataset.tipo = 'campo';
+          nodo.dataset.nome = `${rel.nome || ''} ${coppie.map((p) => p.campo).join(' ')}`;
+          nodo.textContent = `🔗 ${rel.nome || 'Chiave esterna'}: (${coppie.map((p) => p.campo).join(', ')}) → ${rel.db || dbName}.${rel.tabella} (${coppie.map((p) => p.colonna).join(', ')})`;
+          fieldsContainer.appendChild(nodo);
+        }
+        riapplicaFiltroSchema();
+      }).catch((err) => {
+        relazioniCaricate = false;
+        if (fieldsContainer.isConnected && isForActiveTab(err)) toast(err.message, true);
+      });
     });
 
     collNode.appendChild(collLabel);

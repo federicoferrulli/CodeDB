@@ -139,7 +139,7 @@ export function apriPannelloFk({
   tokenChiusura += 1;
 
   $('#fk-title').textContent = bersaglioRelazione(relazione, dbCorrente);
-  $('#fk-title').title = `Colonna "${relazione.campo}" → ${bersaglioRelazione(relazione, dbCorrente)}`;
+  $('#fk-title').title = `Vincolo ${relazione.nome || ''}: ${(relazione.coppie || [{ campo: relazione.campo }]).map((p) => p.campo).join(', ')} → ${bersaglioRelazione(relazione, dbCorrente)}`;
   const origine = $('#fk-origine');
   origine.textContent = notaOrigine(relazione);
   origine.classList.toggle('ipotesi', relazione.origine !== VINCOLO);
@@ -653,22 +653,26 @@ function caricaElenco(c, cerca, { append = false } = {}) {
   });
 }
 
+function stessaRiga(c, riga, scelta) {
+  const coppie = c.relazione.coppie || [{ campo: c.relazione.campo, colonna: c.relazione.colonna }];
+  return coppie.every((p) => stessoValore(riga[p.colonna],
+    scelta ? scelta[p.colonna] : c.valoriRelazione ? c.valoriRelazione[p.campo] : c.valore));
+}
+
 // HTML di una voce. `data-i` è l'indice in `c.righe`, che è CUMULATIVO fra le
 // pagine: usare l'indice dentro la pagina farebbe scegliere alla seconda pagina
 // le righe della prima.
 function vocePerRiga(c, riga, i) {
   const { relazione } = c;
-  const scelto = c.scelto === undefined ? c.valore : c.scelto;
   const coppie = relazione.coppie || [{ campo: relazione.campo, colonna: relazione.colonna }];
-  const corrente = c.scelto !== undefined
-    ? stessoValore(riga[relazione.colonna], scelto)
-    : coppie.every((p) => stessoValore(
-      riga[p.colonna], c.valoriRelazione ? c.valoriRelazione[p.campo] : scelto,
-    ));
+  const corrente = stessaRiga(c, riga, c.rigaScelta);
+  const testo = coppie.length > 1
+    ? `(${coppie.map((p) => testoValore(riga[p.colonna])).join(', ')})${c.etichetta ? ` — ${testoValore(riga[c.etichetta])}` : ''}`
+    : etichettaRiga(riga, relazione.colonna, c.etichetta);
   return `<button type="button" class="fk-voce${corrente ? ' corrente scelta' : ''}" role="option"`
     + ` aria-selected="${corrente}" data-i="${i}">`
     + '<span class="fk-spunta" aria-hidden="true"></span>'
-    + `<span class="fk-testo">${esc(etichettaRiga(riga, relazione.colonna, c.etichetta))}</span>`
+    + `<span class="fk-testo">${esc(testo)}</span>`
     + '</button>';
 }
 
@@ -686,7 +690,9 @@ function disegnaElenco(c, righe, colonne, { append }) {
   // prossima ricerca. Ricalcolarla a ogni pagina la farebbe cambiare colonna a
   // metà elenco — le prime cinquanta righe con il nome, le successive con la
   // città — e sarebbe un elenco che non si può nemmeno leggere.
-  if (!append) c.etichetta = scegliEtichetta(righe, relazione.colonna, colonne);
+  if (!append) c.etichetta = scegliEtichetta(righe, relazione.colonna,
+    colonne.filter((nome) => !(relazione.coppie || []).some((p) => p.colonna === nome)));
+  if ((relazione.coppie || []).some((p) => p.colonna === c.etichetta)) c.etichetta = null;
 
   const base = c.righe.length;
   c.righe = base ? c.righe.concat(righe) : righe.slice();
@@ -820,7 +826,7 @@ export function initFkVista() {
     }
     // Riconfermare il valore che c'è già non è un errore, ma nemmeno una
     // modifica: il pulsante resta spento perché non c'è nulla da scrivere.
-    $('#fk-usa').disabled = stessoValore(c.scelto, c.valore);
+    $('#fk-usa').disabled = stessaRiga(c, riga);
     disegnaRigaRiferita(c, riga);
   });
 

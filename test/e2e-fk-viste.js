@@ -221,6 +221,61 @@ const ok = (cond, etichetta, dettaglio = '') => {
     '«Apri tabella» rispetta il tabId della griglia di provenienza');
     ok(esito.datiFunziona, 'la vista Dati continua ad aprire la modifica inline senza opzioni');
 
+    const composta = await page.evaluate(async () => {
+      const { impostaSocket } = await import('/js/socket.js');
+      const { startEdit } = await import('/js/inlineEdit.js');
+      const { descrittoreRelazione } = await import('/js/fk-relazioni.js');
+      const relazione = descrittoreRelazione({
+        nome: 'fk_composta', db: 'crm', tabella: 'clienti', origine: 'vincolo',
+        coppie: [{ campo: 'azienda', colonna: 'tenant', ordine: 1 },
+          { campo: 'cliente', colonna: 'codice', ordine: 2 }],
+      });
+      const scritture = [];
+      impostaSocket({ emit(evento, msg, cb) {
+        if (evento === 'doc:update') scritture.push(msg);
+        if (evento === 'db:schema') { cb({ ok: true, collections: [{ name: 'ordini', fields: ['azienda', 'cliente'] }] }); return; }
+        if (evento === 'collection:relations') { cb({ ok: true, relazioni: [relazione] }); return; }
+        cb?.(evento === 'collection:find'
+          ? { ok: true, docs: [{ tenant: 'T', codice: 'A' }, { tenant: 'T', codice: 'B' }],
+            columns: ['tenant', 'codice'], total: 2 }
+          : { ok: true });
+      }, on() {}, off() {} });
+      const td = document.createElement('td');
+      document.body.append(td);
+      startEdit(td, { _id: 1, azienda: 'T', cliente: 'A' }, 'azienda', {
+        relazione, ctx: { tabId: 'tab-fk-a', db: 'vendite', coll: 'ordini' }, onRender() {},
+      });
+      await new Promise((r) => setTimeout(r, 30));
+      const voci = [...document.querySelectorAll('#fk-elenco .fk-voce')];
+      const testi = voci.map((v) => v.textContent);
+      voci[1].click();
+      const abilitato = !document.querySelector('#fk-usa').disabled;
+      document.querySelector('#fk-usa').click();
+      await new Promise((r) => setTimeout(r, 30));
+      td.remove();
+      const { state } = await import('/js/state.js');
+      const { renderQuerySchemaBrowser } = await import('/js/query-tab.js');
+      state.databases = ['vendite'];
+      state.db = 'vendite';
+      state.dbType = 'postgresql';
+      renderQuerySchemaBrowser();
+      await new Promise((r) => setTimeout(r, 30));
+      document.querySelector('#query-schema-tree [data-tipo="coll"] > .schema-node-label').click();
+      await new Promise((r) => setTimeout(r, 30));
+      const vincoli = [...document.querySelectorAll('#query-schema-tree .schema-relazione')].map((n) => n.textContent);
+      impostaSocket(null);
+      return { testi, abilitato, scritture, vincoli };
+    });
+    ok(composta.testi[0] === '(T, A)' && composta.testi[1] === '(T, B)',
+      'il selettore mostra tutte le componenti ordinate');
+    ok(composta.vincoli.length === 1 && composta.vincoli[0].startsWith('🔗 fk_composta: (azienda, cliente) → ')
+      && composta.vincoli[0].includes('crm.clienti (tenant, codice)'),
+      'Schema Browser: un solo vincolo con nome e coppie ordinate');
+    ok(composta.abilitato, 'una seconda componente diversa abilita la scelta');
+    ok(composta.scritture.length === 1
+      && JSON.stringify(composta.scritture[0].set) === JSON.stringify({ azienda: 'T', cliente: 'B' }),
+      'la scelta invia entrambe le colonne in un solo aggiornamento');
+
     /* --- Due riquadri Split-View reali su connessioni diverse ---------- */
 
     const paginaSplit = await browser.newPage();

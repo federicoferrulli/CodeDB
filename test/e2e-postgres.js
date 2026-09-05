@@ -98,7 +98,7 @@ async function seed() {
       codice TEXT,
       versione INT,
       descrizione TEXT,
-      PRIMARY KEY (versione, codice)
+      PRIMARY KEY (codice, versione)
     )`);
     await c.query(`INSERT INTO "${SCHEMA_B}".destinazioni_composte VALUES
       ('X', 1, 'prima'), ('Y', 2, 'seconda')`);
@@ -213,7 +213,7 @@ async function runTests() {
   assert(stats.ok && stats.fields.some((f) => f.name === 'cliente'), 'colonne lette dallo schema giusto');
   const schema = await emit('db:schema', { db: SCHEMA_B });
   const schemaColls = schema.ok ? schema.collections.map((c) => c.name).sort() : [];
-  assert(schema.ok && schemaColls.join(',') === ['solo_b', TABLE].sort().join(','),
+  assert(schema.ok && schemaColls.join(',') === ['solo_b', TABLE, 'destinazioni_composte'].sort().join(','),
     `db:schema limitato allo schema B (${schemaColls.join(', ')})`);
 
   console.log('9-bis. collection:relations + filtro strutturato attraverso gli schemi (pannello 🔗)');
@@ -287,6 +287,18 @@ async function runTests() {
   assert(changedComposite.ok && changedComposite.docs[0].versione_esterna === 2
       && changedComposite.docs[0].codice_esterno === 'Y',
   'la FK composita non resta in uno stato aggiornato a metà');
+
+  const rejectedComposite = await emit('doc:update', {
+    db: SCHEMA_A, coll: 'righe_composite', id: JSON.stringify(changedComposite.docs[0]._id),
+    set: { versione_esterna: 1, codice_esterno: 'inesistente' },
+  });
+  assert(!rejectedComposite.ok, 'una coppia inesistente viene rifiutata');
+  const unchangedComposite = await emit('collection:find', {
+    db: SCHEMA_A, coll: 'righe_composite', filter: '', limit: 10, skip: 0,
+  });
+  assert(unchangedComposite.ok && unchangedComposite.docs[0].versione_esterna === 2
+      && unchangedComposite.docs[0].codice_esterno === 'Y',
+    'il rifiuto non modifica nessuna componente');
 
   console.log('9-ter. doc:duplicate (chiavi rifatte, schema rispettato)');
   // La tabella di prova nasce nello schema A, ma il duplicato piu' insidioso e'
