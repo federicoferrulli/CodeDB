@@ -356,6 +356,88 @@ console.log('--- Test Unitari Custom Charts (ECharts) ---');
   assert.strictEqual(decimaliEsatti.series[0].data[0], 0.3);
   console.log('  OK   aggregazioni esatte conservate accanto ai valori approssimati del renderer');
 
+  // Issue 07 — somma, media, minimo e massimo devono conservare l'esattezza,
+  // non solo la somma. La controprova sta nei numeri scelti: 2^53+1 e 0.1/0.2
+  // non sopravvivono a un accumulo in Number, quindi un ritorno all'aritmetica
+  // a virgola mobile rende rosse queste asserzioni invece di scivolare via.
+  const oltreDueAllaCinquantatre = [
+    { gruppo: 'A', valore: { $numberLong: '9007199254740993' } },
+    { gruppo: 'A', valore: { $numberLong: '9007199254740995' } },
+  ];
+  const conAgg = (agg, righeAgg) => {
+    azzeraAvvisi();
+    return costruisciOption(righeAgg, cfgBase({
+      campoX: 'gruppo', serie: [{ ...cfgBase().serie[0], campoY: 'valore', agg }],
+    })).series[0].codedbExactValues[0];
+  };
+  assert.strictEqual(conAgg('somma', oltreDueAllaCinquantatre), '18014398509481988', 'Somma oltre 2^53');
+  assert.strictEqual(conAgg('media', oltreDueAllaCinquantatre), '9007199254740994', 'Media oltre 2^53');
+  assert.strictEqual(conAgg('min', oltreDueAllaCinquantatre), '9007199254740993', 'Minimo oltre 2^53');
+  assert.strictEqual(conAgg('max', oltreDueAllaCinquantatre), '9007199254740995', 'Massimo oltre 2^53');
+
+  const nonBinari = [
+    { gruppo: 'A', valore: { $numberDecimal: '0.1' } },
+    { gruppo: 'A', valore: { $numberDecimal: '0.2' } },
+    { gruppo: 'A', valore: { $numberDecimal: '0.3' } },
+  ];
+  assert.strictEqual(conAgg('somma', nonBinari), '0.6', 'Somma di decimali non rappresentabili in binario');
+  assert.strictEqual(conAgg('media', nonBinari), '0.2', 'Media di decimali non rappresentabili in binario');
+  console.log('  OK   Somma, media, minimo e massimo esatti oltre 2^53 e sui decimali (issue 07)');
+
+  // Un menu che dice "Totale importo" su una colonna i cui valori non
+  // attraversano Number prometterebbe una precisione che il renderer non ha:
+  // la proposta deve DICHIARARSI approssimata.
+  const campiApprossimati = campiDisponibili([
+    { citta: 'Roma', importo: { $numberLong: '9007199254740993' } },
+    { citta: 'Milano', importo: { $numberLong: '2' } },
+  ]);
+  assert.strictEqual(campiApprossimati.find((f) => f.nome === 'importo').approssimato, true,
+    'Un Long oltre 2^53 va classificato come approssimato');
+  assert.strictEqual(campiApprossimati.find((f) => f.nome === 'citta').approssimato, false,
+    'Una stringa non e un numero approssimato');
+  const propostaSomma = suggerimenti(campiApprossimati).find((x) => x.id === 'cat-somma');
+  assert.strictEqual(propostaSomma.approssimato, true, 'Una proposta su quei valori non e "sicura"');
+  const propostaConteggio = suggerimenti(campiApprossimati).find((x) => x.id === 'cat-conteggio');
+  assert.ok(!propostaConteggio.approssimato, 'Un conteggio non tocca i valori: resta sicuro');
+
+  // Il giudizio e sul VALORE, non sul tipo: una colonna BIGINT di identificativi
+  // piccoli passa da Number intatta. Marcarla approssimata sarebbe un avviso
+  // sempre acceso, cioe un avviso che si impara a ignorare.
+  const bigintPiccoli = campiDisponibili([
+    { citta: 'Roma', importo: { $numberLong: '12' } },
+    { citta: 'Milano', importo: { $numberLong: '340' } },
+  ]);
+  assert.strictEqual(bigintPiccoli.find((f) => f.nome === 'importo').approssimato, false,
+    'Un BIGINT che passa da Number intatto non va marcato approssimato');
+  assert.ok(!suggerimenti(bigintPiccoli).find((x) => x.id === 'cat-somma').approssimato,
+    'E la proposta su quella colonna resta sicura');
+  console.log('  OK   I suggerimenti non classificano come sicura una serie approssimata (issue 07)');
+
+  // L'avviso promette che "il valore esatto resta conservato nei dati del
+  // grafico": il tooltip e l'unico punto in cui l'utente puo riscuoterlo.
+  // O si attua o non si annuncia.
+  azzeraAvvisi();
+  const conTooltip = costruisciOption([
+    { gruppo: 'A', valore: { $numberLong: '9007199254740993' } },
+    { gruppo: 'A', valore: { $numberLong: '2' } },
+  ], cfgBase({ campoX: 'gruppo', serie: [{ ...cfgBase().serie[0], campoY: 'valore', agg: 'somma' }] }));
+  assert.strictEqual(typeof conTooltip.tooltip.formatter, 'function',
+    'Dove ce un valore esatto il tooltip deve poterlo raggiungere');
+  const testoTooltip = conTooltip.tooltip.formatter([
+    { seriesIndex: 0, dataIndex: 0, seriesName: 'v', marker: '', value: 9007199254740995 },
+  ]);
+  assert.ok(testoTooltip.includes('9007199254740995'), 'Il tooltip deve mostrare il valore esatto');
+
+  // Senza differenza da mostrare, nessun formattatore per punto: ripetere lo
+  // stesso numero fra parentesi e rumore, non informazione.
+  azzeraAvvisi();
+  const senzaScarto = costruisciOption([
+    { gruppo: 'A', valore: { $numberLong: '12' } },
+    { gruppo: 'A', valore: { $numberLong: '30' } },
+  ], cfgBase({ campoX: 'gruppo', serie: [{ ...cfgBase().serie[0], campoY: 'valore', agg: 'somma' }] }));
+  assert.ok(!senzaScarto.tooltip.formatter, 'Senza scarto il tooltip resta quello normale');
+  console.log('  OK   Il tooltip consegna il valore esatto che lavviso promette (issue 07)');
+
   // CDB-A36 — l'avviso prometteva l'etichetta sul solo massimo e non ne mostrava
   // nessuna: o si attua o non si annuncia.
   const moltiPunti = [];

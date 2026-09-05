@@ -174,6 +174,17 @@ export function configurazioneSelezione({ righe, colonne, tagliate = 0 }) {
     return { cfg, note: notaTaglio(note, tagliate), misure: [], candidatiX: candidati(colonne, haOrdine) };
   }
 
+  // Stessa regola del pannello Grafici: una misura i cui valori non
+  // attraversano Number va DICHIARATA, altrimenti la selezione mostra un
+  // totale plausibile e falso senza che nulla lo lasci sospettare. Il giudizio
+  // viene da `campiDisponibili`, cioè dallo stesso predicato — non da una
+  // seconda regola scritta qui.
+  const approssimate = misure.filter((c) => tipi.get(c)?.approssimato);
+  if (approssimate.length) {
+    note.push(`I valori di ${approssimate.join(', ')} non attraversano Number senza perdere cifre:`
+      + " il grafico ne mostra un'approssimazione. Il valore esatto compare nel tooltip.");
+  }
+
   const tipoBase = cfg.assex.tipo === 'time' ? 'line' : 'bar';
   cfg.serie = misure.map((nome, i) => {
     const s = serieDefault(i);

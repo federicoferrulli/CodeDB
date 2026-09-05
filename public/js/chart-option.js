@@ -23,7 +23,7 @@
  * ------------------------------------------------------------------------- */
 
 import { ejsonKind, fmtBytes, safeUUID } from './valori.js';
-import { aggregaNumeriEsatti } from './valori-esatti.js';
+import { aggregaNumeriEsatti, metadatoNumerico, richiedePrecisioneEsatta } from './valori-esatti.js';
 
 /*
  * Note maturate durante l'ultima costruzione. Il chiamante fa
@@ -324,8 +324,18 @@ export function campiDisponibili(righe) {
       // sottodocumento da esplorare: scenderci dentro produrrebbe campi
       // fantasma tipo `creato.$date`.
       if (kind === 'object' && profondita < 2) { visita(v, nome, profondita + 1); continue; }
-      const c = campioni.get(nome) || { num: 0, data: 0, tot: 0, valori: new Set() };
+      const c = campioni.get(nome) || { num: 0, data: 0, tot: 0, approssimati: 0, valori: new Set() };
       c.tot++;
+      // Il campo si porta dietro se i suoi valori sopravvivono a Number, perché
+      // è ciò che decide se un'aggregazione possa essere PROPOSTA come se il
+      // grafico ne mostrasse il valore vero. La domanda è sul VALORE, non sul
+      // tipo: una colonna BIGINT di identificativi piccoli passa da Number
+      // intatta, e marcarla approssimata sarebbe un avviso sempre acceso —
+      // cioè un avviso che si impara a ignorare. Il predicato è lo STESSO di
+      // `applicaAgg` (`aggregaNumeriEsatti(...).approssimato`), non un secondo
+      // giudizio che col tempo divergerebbe da quello.
+      if (richiedePrecisioneEsatta(metadatoNumerico(v))
+          && aggregaNumeriEsatti([v], 'somma').approssimato) c.approssimati++;
       if (numero(v) !== null && kind !== 'date' && typeof v !== 'string') c.num++;
       else if (typeof v === 'string' && Number.isFinite(Number(v.trim())) && v.trim() !== '') c.num++;
       if (kind === 'date') c.data++;
@@ -345,6 +355,7 @@ export function campiDisponibili(righe) {
     tipo: c.data > c.tot / 2 ? 'data' : (c.num > c.tot / 2 ? 'numero' : 'testo'),
     distinti: c.valori.size,      // fermo a 61 = "molti"
     righe: c.tot,
+    approssimato: c.approssimati > 0,
   }));
 }
 
@@ -485,6 +496,18 @@ export function suggerimenti(campi) {
         })],
       },
     });
+  }
+
+  // Una proposta su valori che non attraversano Number si DICHIARA
+  // approssimata: un menu che dice solo "Totale importo" prometterebbe una
+  // precisione che il renderer non ha. Qui sta il fatto; la parola con cui
+  // mostrarlo la mette chi disegna il menu (`charts.js`), altrimenti lo stesso
+  // fatto vivrebbe in due forme che possono divergere.
+  const approssimati = new Set(campi.filter((f) => f.approssimato).map((f) => f.nome));
+  for (const s of out) {
+    // Vale per QUALUNQUE aggregazione, "primo" compreso: un punto grezzo passa
+    // comunque da `numero()`, e lì non c'è nemmeno un valore esatto conservato.
+    if (s.patch.serie.some((x) => approssimati.has(x.campoY))) s.approssimato = true;
   }
 
   return out.slice(0, 7);
@@ -896,14 +919,55 @@ function bloccoLegenda(c, nSerie) {
   return l;
 }
 
-function bloccoTooltip(c, famiglia, fmt) {
+/*
+ * Il tooltip è il posto dove si chiede "ma questo numero quant'è davvero", ed è
+ * l'unico punto in cui il valore esatto conservato accanto alla serie può
+ * arrivare all'utente. L'avviso dice che il valore esatto "resta conservato nei
+ * dati del grafico": senza questo, era una promessa che nessuno poteva
+ * riscuotere — o si attua o non si annuncia (vedi CDB-A36 sulle etichette).
+ *
+ * Solo dove c'è una differenza VERA da mostrare: il valore esatto compare in
+ * coda se il testo non coincide con quanto il formattatore ha già scritto,
+ * altrimenti sarebbe lo stesso numero due volte.
+ */
+/** C'è qualcosa da aggiungere solo se il numero disegnato NON è quello esatto. */
+function scarto(testo, numeroDisegnato) {
+  return testo !== null && testo !== undefined && String(testo) !== String(numeroDisegnato);
+}
+
+function formattatoreTooltip(fmt, esatti) {
+  const riga = (p) => {
+    const grezzo = Array.isArray(p.value) ? p.value[p.value.length - 1] : p.value;
+    const serie = esatti[p.seriesIndex];
+    const testo = serie && serie[p.dataIndex];
+    // Il confronto è col numero GREZZO, non col testo formattato: quello porta
+    // già separatori e arrotondamenti di presentazione, quindi differirebbe
+    // sempre e il "(esatto: …)" comparirebbe anche dove non c'è nulla da dire.
+    return `${p.marker || ''}${p.seriesName || ''} ${fmt(grezzo)}`
+      + (scarto(testo, grezzo) ? ` (esatto: ${testo})` : '');
+  };
+  return (params) => {
+    const lista = Array.isArray(params) ? params : [params];
+    const capo = lista[0] && lista[0].axisValueLabel;
+    return (capo ? `${capo}<br/>` : '') + lista.map(riga).join('<br/>');
+  };
+}
+
+function bloccoTooltip(c, famiglia, fmt, esatti = null) {
   if (!c.tooltip.mostra) return { show: false };
   const trigger = c.tooltip.trigger === 'auto'
     ? (famiglia === 'cartesiano' ? 'axis' : 'item')
     : c.tooltip.trigger;
+  // `valueFormatter` non sa a quale punto si riferisce, quindi non può
+  // raggiungere il valore esatto: dove ce n'è uno serve il formattatore intero.
+  // Solo dove il valore esatto DIVERGE da quello che il renderer disegnerà:
+  // altrove il formattatore predefinito di ECharts è migliore del nostro, e
+  // sostituirlo per non aggiungere nulla è una perdita netta.
+  const conEsatti = esatti && esatti.some((serie) => serie && serie.some((v) => scarto(v, Number(v))));
   return {
     show: true,
     trigger,
+    ...(conEsatti ? { formatter: formattatoreTooltip(fmt, esatti) } : {}),
     // Il mirino verticale su una serie temporale è quello che rende leggibile
     // un grafico a linee: senza, si legge a occhio la posizione sull'asse.
     axisPointer: { type: famiglia === 'cartesiano' ? 'line' : 'none', lineStyle: { color: INK.asse, width: 1 } },
@@ -1259,6 +1323,7 @@ export function costruisciOption(righe, c, box = {}, pre = null) {
 
     return {
       ...comune,
+      tooltip: bloccoTooltip(c, famiglia, fmtY, d.valoriEsatti),
       legend: bloccoLegenda(c, dati.length),
       series: [{
         type: 'pie',
@@ -1311,6 +1376,9 @@ export function costruisciOption(righe, c, box = {}, pre = null) {
 
   const option = {
     ...comune,
+    // Il tooltip si rifà QUI e non in `comune`: solo a questo punto si sa se
+    // c'è un valore esatto da consegnare accanto a quello disegnato.
+    tooltip: bloccoTooltip(c, famiglia, fmtY, d.valoriEsatti),
     legend: bloccoLegenda(c, serie.length),
     grid: grigliaAdattata(c, box, conSlider),
     xAxis: c.orizzontale ? asseValori : asseCategorie,

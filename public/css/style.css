@@ -6766,6 +6766,13 @@ button.linklike:hover {
 }
 .chart-note::before { content: '⚠ '; }
 
+/* La coda di una proposta che dichiara valori approssimati: si legge come una
+   precisazione, non come un secondo nome del comando. */
+.chart-approx {
+  font-size: 0.72rem;
+  color: var(--warning);
+}
+
 /* ------------------------------ Pannello --------------------------------- */
 
 .chart-builder-panel {

@@ -640,8 +640,13 @@ function costruisciSuggeriti() {
   if (!menu || !btn) return;
   const lista = suggerimenti(campiCache);
   btn.classList.toggle('hidden', !lista.length);
+  // `approssimato` e' il FATTO dichiarato da `suggerimenti()`; la parola con cui
+  // mostrarlo sta qui, dove c'e' il DOM. Un menu che dicesse solo "Totale
+  // importo" prometterebbe una precisione che il renderer non ha.
   menu.innerHTML = lista.map((sug) => (
-    `<button type="button" class="dropdown-item" data-suggerimento="${esc(sug.id)}">${esc(sug.etichetta)}</button>`
+    `<button type="button" class="dropdown-item" data-suggerimento="${esc(sug.id)}">${esc(sug.etichetta)}`
+    + (sug.approssimato ? ' <span class="chart-approx">— valori approssimati</span>' : '')
+    + '</button>'
   )).join('') || '<div class="dropdown-empty">Nessuna proposta per questi dati.</div>';
 }
 
