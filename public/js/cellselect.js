@@ -1,6 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
+import { campoScrivibile } from './righe.js';
 import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons } from './utils.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
@@ -915,12 +916,12 @@ function pasteIntoGrid(A, text) {
     let any = false;
     line.forEach((value, j) => {
       const col = A.colonne()[start.c + j];
-      if (col === undefined || col === '_id') {
+      const metadati = typeof A.metadati === 'function' ? A.metadati() : {};
+      if (!campoScrivibile(doc, col, metadati[col])) {
         skipped++;
         return;
       }
       try {
-        const metadati = typeof A.metadati === 'function' ? A.metadati() : {};
         set[col] = coercePasted(doc[col], value, metadati[col] || {});
       } catch (err) {
         throw new Error(`Riga ${i + 1}, colonna "${col}": ${err.message}`);
@@ -941,7 +942,7 @@ function pasteIntoGrid(A, text) {
   }
   const docWord = isSqlType(A.bersaglio().dbType) ? 'righe' : 'documenti';
   let msg = `Incollare ${cellsCount} celle in ${updates.length} ${docWord}?`;
-  if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o sulla colonna _id)`;
+  if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o non modificabili)`;
   if (!confirm(msg)) return;
 
   // L'incolla può durare a lungo: il contesto (tab + coll-tab) va catturato ora,

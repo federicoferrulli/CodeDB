@@ -5,6 +5,7 @@ const { assertImportOutcomeKnown } = require('./importFailure');
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const mysql = require('mysql2');
+const { colonnaGenerata } = require('./mysqlColonne');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
@@ -15,7 +16,7 @@ const { eseguiBatchScritture } = require('./sqlWriteBatch');
 const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
-const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow, documentoScrivibile } = require('./sqlValori');
 const { raggruppaVincoli } = require('./relazioni');
 const { cellaCsv, rigaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
@@ -175,7 +176,7 @@ const DIALETTO_METADATI = {
     // c'erano.
     visibile: (r) => !/\bINVISIBLE\b/i.test(String(r.extra || '')),
     // `EXTRA` porta gia' anche questo: una colonna VIRTUAL/STORED GENERATED.
-    generato: (r) => /GENERATED/i.test(String(r.extra || '')),
+    generato: (r) => colonnaGenerata(r.extra),
     classi: [{ nome: 'geo', riconosce: isSqlGeometryType }],
   },
 
@@ -192,7 +193,7 @@ const DIALETTO_METADATI = {
     autoIncrement: (c) => /auto_increment/i.test(String(c.extra || '')),
     // Colonna calcolata (VIRTUAL/STORED GENERATED): il valore lo fa il
     // database e un INSERT che la nomina viene rifiutato.
-    generato: (c) => /GENERATED/i.test(String(c.extra || '')),
+    generato: (c) => colonnaGenerata(c.extra),
     chiave: (c) => String(c.ckey || ''),
   },
 
@@ -334,6 +335,13 @@ class MySqlStrategy extends DbStrategy {
       waitForConnections: true,
       connectionLimit: 8,
       multipleStatements: false,
+      // Un BIGINT oltre 2^53 lo consegna come STRINGA, non come Number
+      // arrotondato: senza, mysql2 fa `Number(s)` sul testo del campo e
+      // 9007199254740993 diventava ...992 PRIMA di qualunque giro EJSON —
+      // quindi nella griglia, nell'export e nel backup, che usa questo pool.
+      // I valori dentro l'intervallo sicuro restano Number: la stringa compare
+      // solo dove il numero non era rappresentabile.
+      supportBigNumbers: true,
     }).promise();
 
     // Ogni connessione NUOVA riparte dal default del driver: il pool ne apre
@@ -749,14 +757,16 @@ class MySqlStrategy extends DbStrategy {
     // (BLOB, testi lunghi, campi JSON). Il driver ha già materializzato il
     // result set, ma qui si evita almeno di serializzarlo e spedirlo per intero.
     const capped = DbStrategy.truncateBySize(rows, DbStrategy.maxResultBytes(this.env));
+    const idReale = columns.includes('_id');
+    const rowIds = idReale ? capped.rows.map(r => serializeRow(this.makeId(r, pk, columns), sel.colonne)) : undefined;
     const docs = capped.rows.map((r) => {
-      const doc = { ...r, _id: this.makeId(r, pk, columns) };
+      const doc = idReale ? r : { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc, sel.colonne);
     });
     const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
-      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid,
+      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid, generated: c.generated,
     }]));
-    return { docs, columns, columnMeta, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
+    return { docs, columns, columnMeta, ...(rowIds ? { rowIds } : {}), total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // COUNT(*) con timeout per-query (mysql2 uccide la query allo scadere). Ritorna
@@ -1202,7 +1212,6 @@ class MySqlStrategy extends DbStrategy {
         const [rows, fields] = await conn.query(`EXPLAIN ${sql}`, parametriPiano);
         if (!Array.isArray(rows)) throw err;
         const columns = (fields || []).map((f) => f.name);
-        return { format: 'table', rows: rows.map(serializeRow), columns, query: sql };
         return { format: 'table', rows: rows.map((r) => serializeRow(r, fields || [])), columns, query: sql };
       }
     } finally {
@@ -1266,9 +1275,9 @@ class MySqlStrategy extends DbStrategy {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
       throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
     }
-    delete doc._id; // chiave virtuale, non è una colonna
+    documentoScrivibile(doc, (await this.tableColumnsInfo(db, coll)).columns);
     // In SQL "sostituire" la riga equivale ad aggiornare tutte le colonne note.
-    return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: true }) });
+    return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: false }) });
   }
 
   async docDelete(db, coll, payload) {
@@ -1445,10 +1454,10 @@ class MySqlStrategy extends DbStrategy {
     // che all'import MySQL rifiuta con «Cannot get geometry object»). E' la
     // stessa scelta gia' fatta su PostgreSQL: qui mancava e basta.
     const primaPagina = !payload.after && !(Number(payload.skip) > 0);
-    const metadati = format === 'json'
+    const metadati = format !== 'csv'
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
-    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info, { preservaSrid: true }) : null;
+    const selezione = format === 'json' ? await this.selectListFor(db, coll, metadati.info, { preservaSrid: true }) : null;
     const selectList = selezione ? selezione.list : '*';
 
     let rows;
@@ -1493,6 +1502,8 @@ class MySqlStrategy extends DbStrategy {
       // Le geometriche tornano come TESTO GeoJSON: qui diventano oggetti, la
       // stessa forma che la griglia riceve e che l'import sa riscrivere.
       MySqlStrategy.geoRowsToJson(rows, selezione ? selezione.geo : null);
+    }
+    if (metadati) {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
       // rendeva il file non reimportabile riga per riga. Il suo valore lo
       // ricalcola il database dalla definizione, che viaggia nel DDL.
@@ -1561,7 +1572,7 @@ class MySqlStrategy extends DbStrategy {
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
       try {
-        const row = EJSON.deserialize(raw[i], { relaxed: true });
+        const row = deserializeClientObject(raw[i]);
         if (!row || typeof row !== 'object' || Array.isArray(row)) {
           throw new Error('la riga deve essere un oggetto { "colonna": valore }');
         }

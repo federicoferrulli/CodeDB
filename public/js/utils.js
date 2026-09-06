@@ -189,9 +189,7 @@ export function parseEdited(text) {
   }
 }
 
-export function idOf(doc) {
-  return JSON.stringify(doc._id);
-}
+export { idOf } from './righe.js';
 
 export function esc(s) {
   return String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));

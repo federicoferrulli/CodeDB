@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { documentoModificabile, identitaRiga } from './righe.js';
 import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
@@ -414,11 +415,8 @@ export function openEditDoc(doc, context = null) {
     editDocContext = Object.assign(origin, { db: state.db, coll: state.coll });
   }
   // I campi sono dati, non proprietà di controllo del prototipo.
-  const copy = Object.create(null);
-  for (const [k, v] of Object.entries(doc)) {
-    if (k !== '_id') copy[k] = v;
-  }
-  $('#editdoc-id').textContent = `_id: ${displayValue(doc._id).text} (non modificabile)`;
+  const copy = documentoModificabile(doc);
+  $('#editdoc-id').textContent = `Identificatore originale: ${displayValue(identitaRiga(doc)).text}`;
   $('#editdoc-json').value = JSON.stringify(copy, null, 2);
   $('#editdoc-error').classList.add('hidden');
   const lintEl = $('#editdoc-lint');

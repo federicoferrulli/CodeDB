@@ -30,6 +30,11 @@ const {
   validaManifestIdentita, chiaveIdentita, identityCompatibile,
 } = require('./identity');
 const { equivalenzaCatena } = require('./tombstones');
+// Come si legge una riga del dump e come diventa un parametro SQL: e' il
+// protocollo del file, non il dialetto del server, e vive gia' in un modulo
+// solo (vedi db/sqlValori.js). Qui ce n'era una seconda copia, rimasta indietro
+// sul Long annidato in un documento JSON.
+const { parseClientValue, toSqlValue } = require('../../db/sqlValori');
 const myQid = (name) => quotaSempre(name, 'mysql');
 const pgQid = (name) => quotaSempre(name, 'postgresql');
 
@@ -752,20 +757,6 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
 
 /* --- Restore MySQL -------------------------------------------------------- */
 
-// Converte un valore EJSON (relaxed: Date, Binary, oggetti JSON) in un
-// parametro SQL sicuro, come toSqlValue in MySqlStrategy.
-function toSqlValue(v) {
-  if (v === null || v === undefined) return null;
-  if (v instanceof Date || Buffer.isBuffer(v)) return v;
-  if (typeof v === 'object') {
-    if (v._bsontype === 'Binary') return v.buffer;
-    if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
-    if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
-    return JSON.stringify(v);
-  }
-  return v;
-}
-
 async function mysqlTargetIdentity(conn, db, table, expectedIdentity = null) {
   const [columnsRows] = await conn.query(
     `SELECT COLUMN_NAME AS name, COLUMN_TYPE AS type, IS_NULLABLE AS nullable
@@ -922,7 +913,11 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
         batch = [];
       };
       for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
-        const row = EJSON.parse(line, { relaxed: true });
+        // relaxed:true faceva di un `$numberLong` del file un Number gia'
+        // arrotondato: la perdita avveniva PRIMA di toSqlValue, che non aveva
+        // piu' niente da salvare. `parseClientValue` legge canonico e riporta a
+        // Number solo cio' che vi rientra.
+        const row = parseClientValue(line);
         registraAttesa(tracker, f);
         const colsRiga = Object.keys(row);
         if (!columns) columns = colsRiga;
@@ -1111,7 +1106,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
       let riga;
       try {
-        riga = EJSON.parse(line, { relaxed: true });
+        riga = parseClientValue(line); // vedi la nota sul ramo MySQL
       } catch (err) {
         failed += 1;
         if (firstErrors.length < 3) firstErrors.push(`riga non leggibile: ${err.message}`);

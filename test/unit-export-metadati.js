@@ -51,6 +51,9 @@ function preparaStrategia(Strategy) {
 
 module.exports = (async () => {
   for (const Strategy of [MySqlStrategy, PostgreSqlStrategy]) {
+    const { strategy: exportSql } = preparaStrategia(Strategy);
+    const sql = await exportSql.collectionExport('vendite', 'righe', { format: 'sql', limit: 1 });
+    assert.ok(!sql.lines[0].includes('totale'), 'gli INSERT esportati non devono assegnare colonne calcolate');
     const { strategy, lettureMetadati } = preparaStrategia(Strategy);
     const prima = await strategy.collectionExport('vendite', 'righe', {
       format: 'json', limit: 1, skip: 0,

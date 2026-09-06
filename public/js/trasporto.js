@@ -30,6 +30,7 @@ import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
 import { toast } from './avvisi.js';
+import { preparaRighe } from './righe.js';
 
 // Richiesta con acknowledgment: inietta il tabId del tab attivo, catturato al
 // momento della chiamata (non alla risposta: l'utente può cambiare tab mentre
@@ -66,7 +67,7 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
   // conserva l'identità dell'origine: `isForActiveTab()` deve risultare falso e
   // non mostrare l'errore nel workspace di un'altra connessione.
   const tabStamp = tab || (pinnedMancante ? { id: pinned, orphan: true } : null);
-  const stamp = (res) => Object.assign(res, {
+  const stamp = (res) => Object.assign(preparaRighe(res), {
     _tab: tabStamp,
     _state: tab ? tab.state : (pinnedMancante ? null : state),
   });

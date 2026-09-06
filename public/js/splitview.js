@@ -1,6 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
+import { campoScrivibile, identitaRiga } from './righe.js';
 import { colonneRisultato } from './table-cols.js';
 import { activeTab, tabs } from './tabs.js';
 import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
@@ -1227,7 +1228,7 @@ function deletePaneDoc(paneId, doc) {
   const p = paneById(paneId);
   if (!p) return;
   const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
-  const { text } = displayValue(doc._id);
+  const { text } = displayValue(identitaRiga(doc));
   if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
 
   emitPaneQuery(bersaglio.tabId, 'doc:delete', {
@@ -1909,7 +1910,7 @@ function updatePaneUI(paneId) {
         // permesso di selezione. Su una vista SQL non ce n'e', e la geometria
         // si apre lo stesso — in sola lettura, invece di offrire un
         // salvataggio che partirebbe senza bersaglio.
-        const modificabile = col !== '_id' && !!docId && canSelect;
+        const modificabile = campoScrivibile(doc, col, p.columnMeta?.[col]) && !!docId && canSelect;
         const geometrica = CAPACITA_RIQUADRO.geometrie
           && rendiCellaGeometrica(td, val, aperturaCella({
             valore: val,

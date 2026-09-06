@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { campoScrivibile, identitaRiga } from './righe.js';
 import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
 import { openCollTab, pinActiveCollTab } from './colltabs.js';
 import { startEdit } from './inlineEdit.js';
@@ -694,7 +695,7 @@ function buildRow(doc, rowIdx, canSelect) {
     // Quando la cella e' scrivibile lo dice la vista, con il proprio criterio
     // (qui: non la colonna dell'identita', e una riga che ne ha una). La
     // conseguenza — mappa in modifica o in sola lettura — la decide il modulo.
-    const modificabile = col !== '_id' && '_id' in doc;
+    const modificabile = campoScrivibile(doc, col, state.columnMeta?.[col]);
     const geometrica = rendiCellaGeometrica(td, valore, aperturaCella({
       valore, campo: col, modificabile,
       onModifica: () => startEdit(td, doc, col, { metadato: state.columnMeta?.[col] }),
@@ -799,7 +800,7 @@ function collegaGestiTattili() {
   const modifica = (td) => {
     const doc = state.docs[Number(td.dataset.r)];
     const col = state.columns[Number(td.dataset.c)];
-    if (!doc || col === '_id' || !('_id' in doc)) return false;
+    if (!campoScrivibile(doc, col, state.columnMeta?.[col])) return false;
     startEdit(td, doc, col, { metadato: state.columnMeta?.[col] });
     return true;
   };
@@ -1188,7 +1189,7 @@ function fetchMore() {
 }
 
 export function deleteDoc(doc) {
-  const { text } = displayValue(doc._id);
+  const { text } = displayValue(identitaRiga(doc));
   if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
   const origin = captureContext();
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };

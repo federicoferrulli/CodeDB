@@ -13,6 +13,7 @@ console.log('--- Test Unitari CodeDB ---');
 
 (async () => {
   await require('./unit-query-senza-limite');
+  await require('./unit-sql-integrita-righe');
   await require('./unit-server-modulare');
   await require('./unit-mcp-auth');
   // Test 1: DbFactory instanziamento e helper

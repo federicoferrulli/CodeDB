@@ -151,6 +151,8 @@ node test/unit-e2e-targets.js  # Test delle barriere sui bersagli distruttivi de
 node test/unit-grafo-comandi.js # Test delle regole della barra del Grafo 3D (tabella vuota, comandi abilitati, esito ricerca)
 node test/e2e-barra-grafo.js   # Test del cablaggio della barra del Grafo 3D (Chromium, senza DB)
 node test/e2e-integrita-import.js # Matrice reale di integrita' su MongoDB, MySQL e PostgreSQL
+node test/unit-sql-integrita-righe.js # Test dell'integrita' di una riga SQL (colonne generate, BIGINT, _id reale)
+node test/e2e-sql-integrita-ui.js # Test nel browser della riga SQL: _id reale, chiave di scrittura, colonne calcolate
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)

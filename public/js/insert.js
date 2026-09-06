@@ -337,8 +337,8 @@ export function openInsertDocForContext(ctx = null) {
         kind: insertKindOf(mainType, dbType),
         typeName: mainType,
         numericMeta: { type: mainType },
-        auto: !!f.autoIncrement,
-        required: isSql && !f.nullable && f.default == null && !f.autoIncrement,
+        auto: !!f.autoIncrement || !!f.generated,
+        required: isSql && !f.nullable && f.default == null && !f.autoIncrement && !f.generated,
       });
     }
     if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');

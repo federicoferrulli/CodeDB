@@ -14,7 +14,7 @@ const { eseguiBatchScritture, conRighe } = require('./sqlWriteBatch');
 const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
-const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow } = require('./sqlValori');
+const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow, documentoScrivibile } = require('./sqlValori');
 const { raggruppaVincoli } = require('./relazioni');
 const { cellaCsv, rigaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
@@ -794,19 +794,21 @@ class PostgreSqlStrategy extends DbStrategy {
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
     // Budget di byte: vedi la nota corrispondente in MySqlStrategy.
     const capped = DbStrategy.truncateBySize(rows, DbStrategy.maxResultBytes(this.env));
+    const idReale = columns.includes('_id');
+    const rowIds = idReale ? capped.rows.map(r => serializeRow(this.makeId(r, pk, columns), sel.colonne)) : undefined;
     const docs = capped.rows.map((r) => {
-      const doc = { ...r, _id: this.makeId(r, pk, columns) };
+      const doc = idReale ? r : { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc, sel.colonne);
     });
 
     const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
-      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid,
+      type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid, generated: c.generated,
       // Sottotipo PostGIS: `type` qui e' 'geometry' per ogni colonna
       // geometrica, e la griglia non avrebbe altro modo di sapere che quella
       // colonna vuole un MultiPolygon.
       geoType: c.geoTipo || undefined,
     }]));
-    return { docs, columns, columnMeta, total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
+    return { docs, columns, columnMeta, ...(rowIds ? { rowIds } : {}), total, skip, limit, keyset: !!ks, truncated: capped.truncated || undefined };
   }
 
   // COUNT(*) con statement_timeout: dentro una transazione con SET LOCAL così il
@@ -1198,13 +1200,13 @@ class PostgreSqlStrategy extends DbStrategy {
       const { geoNativo } = info;
 
       for (const [col, val] of Object.entries(set)) {
-        if (col === '_id') continue;
+        if (col === '_id' && !info.columns.some(c => c.name === '_id')) continue;
         const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo);
         assignments.push(`${qid(col)} = ${b.sql}`);
         params.push(b.param);
       }
       for (const col of payload.unset || []) {
-        if (col === '_id') continue;
+        if (col === '_id' && !info.columns.some(c => c.name === '_id')) continue;
         assignments.push(`${qid(col)} = NULL`);
       }
       if (!assignments.length) throw new Error('Nessuna modifica da applicare.');
@@ -1225,8 +1227,8 @@ class PostgreSqlStrategy extends DbStrategy {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
       throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
     }
-    await this.rimuoviIdVirtuale(db, coll, doc);
-    return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: true }) });
+    documentoScrivibile(doc, (await this.tableColumnsInfo(db, coll)).columns);
+    return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: false }) });
   }
 
   async docDelete(db, coll, payload) {
@@ -1551,10 +1553,10 @@ class PostgreSqlStrategy extends DbStrategy {
     // le geometrie devono quindi uscire nella lingua comune GeoJSON, non nella
     // rappresentazione privata del driver (`point` diventerebbe `{ x, y }`).
     const primaPagina = !payload.after && !(Number(payload.skip) > 0);
-    const metadati = format === 'json'
+    const metadati = format !== 'csv'
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
-    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info) : null;
+    const selezione = format === 'json' ? await this.selectListFor(db, coll, metadati.info) : null;
     const selectList = selezione ? selezione.list : '*';
 
     let rows;
@@ -1605,7 +1607,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // solo alla PRIMA pagina — vedi db/sqlMetadati.js: totaleEsportazione.
     const total = await this.totaleEsportazione(table, primaPagina);
     let columns = fields ? fields.map((f) => f.name) : [];
-    if (format === 'json') {
+    if (metadati) {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
       // rendeva il file non reimportabile. Il valore lo ricalcola il database
       // dalla definizione, che viaggia nel DDL.
@@ -1620,6 +1622,7 @@ class PostgreSqlStrategy extends DbStrategy {
     let lines;
     if (format === 'sql') {
       lines = rows.map((r) => {
+        if (!columns.length) return `INSERT INTO ${table} DEFAULT VALUES;`;
         const vals = columns.map((c) => {
           const v = r[c];
           if (v === null || v === undefined) return 'NULL';
@@ -1690,7 +1693,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
       try {
-        const row = EJSON.deserialize(raw[i], { relaxed: true });
+        const row = deserializeClientObject(raw[i]);
         if (!row || typeof row !== 'object' || Array.isArray(row)) {
           throw new Error('la riga deve essere un oggetto { "colonna": valore }');
         }

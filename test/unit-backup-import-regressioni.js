@@ -126,9 +126,11 @@ const cases = [
     }
   }],
   ['trasporto: timeout e risposta tardiva non ripetono richieste', async () => {
+    const { preparaRighe } = await import('../public/js/righe.js');
     const sent = [];
     let timer;
     const ctx = vm.createContext({
+      preparaRighe,
       socket: { emit(event, payload, ack) { sent.push({ event, payload, ack }); } },
       tabs: { list: [] }, activeTab: () => null, state: {}, toast() {},
       setTimeout(fn) { timer = fn; return 1; }, clearTimeout() {},

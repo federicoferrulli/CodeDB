@@ -33,7 +33,10 @@ function toSqlValue(v) {
     if (v._bsontype === 'Binary') return v.buffer;
     if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
     if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
-    return JSON.stringify(v);
+    // Nei documenti JSON un Long annidato deve conservare il wrapper EJSON:
+    // JSON.stringify da solo ne esporrebbe i campi interni low/high/unsigned.
+    return JSON.stringify(v, (_key, value) => value && value._bsontype === 'Long'
+      ? { $numberLong: value.toString() } : value);
   }
   return v;
 }
@@ -42,11 +45,35 @@ function toSqlValue(v) {
 // Decimal128 e gli altri numeri tipizzati fino a `toSqlValue`, evitando che un
 // intero oltre 2^53 venga prima arrotondato dal runtime JavaScript.
 function parseClientValue(text) {
-  return EJSON.parse(String(text), { relaxed: false });
+  const originale = JSON.parse(String(text));
+  return numeriNativi(EJSON.deserialize(originale, { relaxed: false }), originale);
 }
 
 function deserializeClientObject(obj) {
-  return EJSON.deserialize(obj || {}, { relaxed: false });
+  return numeriNativi(EJSON.deserialize(obj ?? {}, { relaxed: false }), obj);
+}
+
+// La lettura canonica protegge Long, ma incapsula anche le coordinate e i
+// numeri JSON ordinari. Int32 e Double sono già rappresentabili come Number;
+// Long e Decimal128 restano tipizzati fino alla conversione del parametro SQL.
+function numeriNativi(value, originale) {
+  // EJSON canonico converte anche 2147483648 in Long: un numero JSON
+  // ordinario conserva la propria forma, un $numberLong esplicito no.
+  if (typeof originale === 'number') return originale;
+  if (!value || typeof value !== 'object') return value;
+  if (value._bsontype === 'Int32' || value._bsontype === 'Double') return value.value;
+  if (value._bsontype || value instanceof Date || Buffer.isBuffer(value)) return value;
+  for (const key of Object.keys(value)) value[key] = numeriNativi(value[key], originale?.[key]);
+  return value;
+}
+
+// Una riga letta include le colonne calcolate e, negli schemi storici, l'id
+// virtuale. La scrittura conserva invece ogni colonna reale, anche `_id`.
+function documentoScrivibile(doc, columns) {
+  const generate = new Set(columns.filter(c => c.generated).map(c => c.name));
+  if (!columns.some(c => c.name === '_id')) generate.add('_id');
+  for (const key of generate) delete doc[key];
+  return doc;
 }
 
 // Le righe viaggiano verso il client come Extended JSON relaxed, come per
@@ -81,4 +108,5 @@ module.exports = {
   parseClientValue,
   deserializeClientObject,
   serializeRow,
+  documentoScrivibile,
 };

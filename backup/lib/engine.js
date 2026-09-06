@@ -1,4 +1,5 @@
 'use strict';
+const { colonnaGenerata } = require('../../db/mysqlColonne');
 
 /* ---------------------------------------------------------------------------
  * Motore di backup: dump in streaming di un database (MongoDB o MySQL) in una
@@ -556,7 +557,7 @@ async function mysqlColumnMeta(conn, db, table) {
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
     [db, table],
   );
-  const salvabili = rows.filter((r) => !/GENERATED/i.test(String(r.extra || '')));
+  const salvabili = rows.filter((r) => !colonnaGenerata(r.extra));
   const geo = new Map();
   const pezzi = [];
   for (const r of salvabili) {
