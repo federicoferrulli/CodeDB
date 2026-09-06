@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento } from './utils.js';
+import { $, emit, isPlainObject, valueType, displayValue, editValue, parseEdited, idOf, toast, openModal, closeModal, isForActiveTab, captureContext, marcaDatiSporchi, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { runQuery, renderGrid, relazioneDiCampo } from './grid.js';
 import { isGeometry, openGeoEditor } from './geomap.js';
 import { colonnaGeometrica, tipoGeoJsonDaMetadato } from './geojson.js';
@@ -381,7 +381,8 @@ function aggiungiPulsanteFk(td, editor, doc, field, relazione, opts) {
   const btn = document.createElement('button');
   btn.type = 'button';
   btn.className = 'fk-apri-btn';
-  btn.textContent = '🔗';
+  btn.innerHTML = ICO('link');
+  refreshLucideIcons(btn);
   btn.tabIndex = -1; // il Tab dell'editor resta quello di sempre
   btn.title = `Mostra la riga di ${relazione.tabella} riferita da questo valore`;
   btn.setAttribute('aria-label', `Riferimento a ${relazione.tabella}`);

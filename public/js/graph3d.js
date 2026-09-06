@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab } from './utils.js';
+import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { activeTab } from './tabs.js';
 // Le euristiche di analisi dello schema stanno in un modulo condiviso col
@@ -711,6 +711,7 @@ function showTableDetailsPanel(tableName, highlightQuery) {
   </div>`;
 
   content.innerHTML = html;
+  refreshLucideIcons(content);
   mostraPannelloLaterale(true);
   const loadFields = $('#graph3d-load-node-fields');
   if (loadFields) loadFields.onclick = async () => {
@@ -864,7 +865,7 @@ function analyzeDependencies() {
 
   if (inCiclo.length) {
     html += `<div class="audit-issue-item" style="border-left-color:var(--danger); margin-top:12px;">
-      <div class="audit-issue-title" style="color:var(--danger);">⚠ Ciclo di chiavi esterne (${inCiclo.length} tabelle)</div>
+      <div class="audit-issue-title" style="color:var(--danger);">${ICO('triangle-alert')} Ciclo di chiavi esterne (${inCiclo.length} tabelle)</div>
       <div class="audit-issue-desc">
         Queste tabelle dipendono l'una dall'altra e <b>non hanno un ordine di popolamento valido</b>:
         ${inCiclo.map((n) => `<b>${esc(n)}</b>`).join(', ')}.<br/>

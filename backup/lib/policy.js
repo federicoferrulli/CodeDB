@@ -108,8 +108,8 @@ function backupRootFor(root, ownerId, { rbac = true } = {}) {
  * Senza la variabile lo storage cloud dai client è disattivato: resta
  * disponibile via CLI, dove la destinazione la sceglie l'amministratore.
  */
-function storageAliases() {
-  const raw = String(process.env.CODEDB_BACKUP_STORAGE || '').trim();
+function storageAliases(env = process.env) {
+  const raw = String(env.CODEDB_BACKUP_STORAGE || '').trim();
   const out = new Map();
   if (!raw) return out;
   for (const entry of raw.split(',')) {
@@ -123,10 +123,10 @@ function storageAliases() {
 }
 
 /** Traduce l'alias richiesto dal client nell'URI cloud, o rifiuta. */
-function resolveStorageAlias(raw) {
+function resolveStorageAlias(raw, env = process.env) {
   const wanted = String(raw || '').trim();
   if (!wanted) return null;
-  const aliases = storageAliases();
+  const aliases = storageAliases(env);
   if (!aliases.size) {
     throw new Error(
       'Storage cloud non configurato per i client: definisci gli alias consentiti in CODEDB_BACKUP_STORAGE ' +
@@ -143,9 +143,9 @@ function resolveStorageAlias(raw) {
  * Webhook di notifica: in assenza di indicazione si usa quello configurato sul
  * server; se il client ne indica uno, deve essere un webhook Slack autentico.
  */
-function resolveSlackWebhook(raw) {
+function resolveSlackWebhook(raw, env = process.env) {
   const wanted = String(raw || '').trim();
-  if (!wanted) return process.env.SLACK_WEBHOOK_URL || null;
+  if (!wanted) return env.SLACK_WEBHOOK_URL || null;
   if (!/^https:\/\/hooks\.slack\.com\//.test(wanted)) {
     throw new Error('Webhook di notifica non consentito: sono ammessi solo gli URL https://hooks.slack.com/ o quello configurato sul server.');
   }

@@ -31,7 +31,7 @@
  *     da file, cioè è un dato che arriva da fuori.
  */
 
-import { $, esc, toast, chiaveStorage, conCaricamento } from './utils.js';
+import { $, esc, toast, chiaveStorage, conCaricamento, refreshLucideIcons } from './utils.js';
 import {
   CAMPI, TEMI_BASE, eBase, scelteIniziali, derivaTokens, diagnostica,
   validaTema, cssDelTema, nomeFile, leggiHex, scriviHex, SOGLIA_TESTO,
@@ -267,12 +267,13 @@ function disegnaElenco() {
     anteprimaTema(t),
     `<button type="button" class="btn-icona" data-azione="modifica" data-id="${esc(t.id)}" title="Modifica">✎</button>
      <button type="button" class="btn-icona" data-azione="duplica" data-id="${esc(t.id)}" title="Duplica">⧉</button>
-     <button type="button" class="btn-icona" data-azione="esporta" data-id="${esc(t.id)}" title="Esporta in un file">⭳</button>
-     <button type="button" class="btn-icona pericolo" data-azione="elimina" data-id="${esc(t.id)}" title="Elimina">🗑</button>`,
+     <button type="button" class="btn-icona" data-azione="esporta" data-id="${esc(t.id)}" title="Esporta in un file"><i data-lucide="download"></i></button>
+     <button type="button" class="btn-icona pericolo" data-azione="elimina" data-id="${esc(t.id)}" title="Elimina"><i data-lucide="trash-2"></i></button>`,
   )).join('');
 
   el.innerHTML = base
     + (miei ? `<div class="tema-sezione">I tuoi temi</div>${miei}` : '');
+  refreshLucideIcons(el);
 }
 
 function suClicElenco(e) {

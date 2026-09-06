@@ -1,4 +1,4 @@
-import { $, esc, toast } from './utils.js';
+import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
 import { switchCollTab, openCollTab } from './colltabs.js';
@@ -316,15 +316,15 @@ export function updateBadge() {
 function getStatusBadgeHtml(status) {
   switch (status) {
     case 'running':
-      return `<span class="badge-status status-running">⏳ In esecuzione</span>`;
+      return `<span class="badge-status status-running">${ICO('hourglass')} In esecuzione</span>`;
     case 'error':
-      return `<span class="badge-status status-error">❌ Errore</span>`;
+      return `<span class="badge-status status-error">${ICO('circle-x')} Errore</span>`;
     case 'paused':
-      return `<span class="badge-status status-paused">🛑 In pausa / Annullata</span>`;
+      return `<span class="badge-status status-paused">${ICO('pause')} In pausa / Annullata</span>`;
     case 'disconnected':
-      return `<span class="badge-status status-disconnected">🔌 Disconnessa</span>`;
+      return `<span class="badge-status status-disconnected">${ICO('unplug')} Disconnessa</span>`;
     case 'abbandonata':
-      return `<span class="badge-status status-abandoned">🚪 Abbandonata</span>`;
+      return `<span class="badge-status status-abandoned">${ICO('log-out')} Abbandonata</span>`;
     default:
       return `<span class="badge-status">${esc(status)}</span>`;
   }
@@ -418,7 +418,7 @@ function buildScriptProgressHtml(item) {
   return `
       <div class="pending-script-progress">
         <div class="pending-progress-track"><div class="pending-progress-fill" style="width:${pct}%"></div></div>
-        <span class="pending-progress-text">📜 ${eseguiti}/${total} istruzioni${item.falliti ? ` · ${item.falliti} errori` : ''}${daDove}</span>
+        <span class="pending-progress-text">${ICO('scroll-text')} ${eseguiti}/${total} istruzioni${item.falliti ? ` · ${item.falliti} errori` : ''}${daDove}</span>
       </div>`;
 }
 
@@ -446,17 +446,17 @@ function buildPendingCard(item, index) {
   card.innerHTML = `
       <div class="pending-item-header">
         <div class="pending-item-title">
-          ${isStopPoint ? '<span class="badge-stop-point" title="Punto in cui l\'esecuzione si è fermata">📍 DA QUI CI SI È FERMATI</span>' : ''}
+          ${isStopPoint ? `<span class="badge-stop-point" title="Punto in cui l'esecuzione si è fermata">${ICO('map-pin')} DA QUI CI SI È FERMATI</span>` : ''}
           <span class="pending-engine">${esc((item.engine || 'auto').toUpperCase())}</span>
           <span class="pending-target">${esc(item.connName || 'Connessione')} → ${esc(item.db || '-')}${item.coll ? '.' + esc(item.coll) : ''}</span>
         </div>
         <div class="pending-item-meta">
           ${getStatusBadgeHtml(item.status)}
-          <span class="pending-time">⏱ ${dateStr} (${durationStr})</span>
+          <span class="pending-time">${ICO('clock')} ${dateStr} (${durationStr})</span>
         </div>
       </div>
 
-      ${item.error ? `<div class="pending-error" title="${esc(item.error)}">⚠️ ${esc(item.error)}</div>` : ''}
+      ${item.error ? `<div class="pending-error" title="${esc(item.error)}">${ICO('triangle-alert')} ${esc(item.error)}</div>` : ''}
 
       ${item.kind === 'script' ? buildScriptProgressHtml(item) : ''}
 
@@ -465,10 +465,10 @@ function buildPendingCard(item, index) {
       </div>
 
       <div class="pending-actions">
-        <button type="button" class="btn btn-sm btn-primary btn-resume-pending" data-id="${esc(item.id)}">${item.kind === 'script' && item.status === 'paused' ? '▶ Riprendi da dov\'era' : '▶ Riprendi'}</button>
-        <button type="button" class="btn btn-sm btn-secondary btn-copy-pending" data-id="${esc(item.id)}">📋 Copia</button>
-        <button type="button" class="btn btn-sm btn-secondary btn-resolve-pending" data-id="${esc(item.id)}">✔ Segna risolta</button>
-        <button type="button" class="btn btn-sm btn-danger btn-remove-pending" data-id="${esc(item.id)}">🗑 Rimuovi</button>
+        <button type="button" class="btn btn-sm btn-primary btn-resume-pending" data-id="${esc(item.id)}">${ICO('play')} ${item.kind === 'script' && item.status === 'paused' ? 'Riprendi da dov\'era' : 'Riprendi'}</button>
+        <button type="button" class="btn btn-sm btn-secondary btn-copy-pending" data-id="${esc(item.id)}">${ICO('copy')} Copia</button>
+        <button type="button" class="btn btn-sm btn-secondary btn-resolve-pending" data-id="${esc(item.id)}">${ICO('check')} Segna risolta</button>
+        <button type="button" class="btn btn-sm btn-danger btn-remove-pending" data-id="${esc(item.id)}">${ICO('trash-2')} Rimuovi</button>
       </div>
     `;
 
@@ -539,6 +539,7 @@ export function renderPendingVirtualWindow() {
     const card = buildPendingCard(items[index], index);
     renderedCards.set(index, card);
     vContentEl.appendChild(card);
+    refreshLucideIcons(card);
   }
 }
 

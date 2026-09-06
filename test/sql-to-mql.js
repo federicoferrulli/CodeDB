@@ -30,7 +30,7 @@ check('SELECT * FROM users', () => {
   eq(p.coll, 'users');
   eq(p.filter, {});
   eq(p.projection, {});
-  eq(p.limit, 50);
+  eq(p.limit, null);
 });
 
 check('proiezione colonne esclude _id', () => {

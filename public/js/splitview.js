@@ -3,13 +3,13 @@
 import { state } from './state.js';
 import { colonneRisultato } from './table-cols.js';
 import { activeTab, tabs } from './tabs.js';
-import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
 import { startEdit, openEditDoc } from './inlineEdit.js';
 import { relazioniPer, caricaRelazioni } from './fk-cache.js';
 import { VINCOLO } from './fk-relazioni.js';
 import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
 // Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
-import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga } from './griglia.js';
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga, altezzaRigaGriglia } from './griglia.js';
 import { creaSelezioneCelle } from './cellselect.js';
 import { openInsertDocForContext } from './insert.js';
 import { congelaContesto, contestoCorrente } from './coerenza-richieste.js';
@@ -132,10 +132,10 @@ export function contestoPaneAFuoco() {
 function etichettaArea(a) {
   if (a && a.nome) return a.nome;
   const colls = elencoPane(a && a.layout).map((id) => a.panes.get(id)).filter(Boolean).map((p) => p.coll);
-  if (!colls.length) return '🔲 Affiancati';
+  if (!colls.length) return 'Affiancati';
   const testa = colls.slice(0, 2).join(' + ');
   const resto = colls.length - 2;
-  return `🔲 ${testa}${resto > 0 ? ` +${resto}` : ''}`;
+  return `${testa}${resto > 0 ? ` +${resto}` : ''}`;
 }
 
 /** Riallinea l'etichetta del coll-tab a ciò che l'area contiene davvero. */
@@ -404,7 +404,7 @@ function ensureSplitCollTab(forzaNuova = false) {
       id: 'splitview_' + safeUUID(),
       isSplitTab: true,
       db: 'Split-View',
-      coll: '🔲 Affiancati',
+      coll: 'Affiancati',
       snap: null,
     };
     t.state.collTabs.push(splitCt);
@@ -522,10 +522,10 @@ function showDropPreview(targetEl, dir) {
   } else if (dir === 'bottom') {
     top = rect.top + rect.height * 0.5;
     height = rect.height * 0.5;
-    if (label) label.textContent = 'Affianca sotto ⬇';
+    if (label) label.textContent = 'Affianca sotto';
   } else if (dir === 'top') {
     height = rect.height * 0.5;
-    if (label) label.textContent = '⬆ Affianca sopra';
+    if (label) label.textContent = 'Affianca sopra';
   } else {
     if (label) label.textContent = 'Apri in questo pannello';
   }
@@ -1329,9 +1329,9 @@ function createPaneElement(paneId) {
     <div class="split-pane-toolbar">
       <input type="text" class="pane-filter-input" placeholder="${isSql ? 'Clausola WHERE...' : 'Filtro JSON...'}" value="${esc(p.filter)}" spellcheck="false" aria-label="Filtro" />
       <input type="text" class="pane-sort-input" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" aria-label="Ordinamento" />
-      <button type="button" class="pane-run-btn primary">▶ Esegui</button>
+      <button type="button" class="pane-run-btn primary"><i data-lucide="play"></i> Esegui</button>
       <button type="button" class="pane-insert-btn ghost" title="${isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento'}">${isSql ? '+ Riga' : '+ Documento'}</button>
-      <button type="button" class="pane-bulk-delete-btn danger hidden" title="Elimina elementi selezionati">🗑 Elimina (0)</button>
+      <button type="button" class="pane-bulk-delete-btn danger hidden" title="Elimina elementi selezionati"><i data-lucide="trash-2"></i> Elimina (0)</button>
     </div>
 
     <div class="pane-error-banner hidden" role="alert" aria-live="polite">
@@ -1512,27 +1512,27 @@ function apriMenuPane(paneId, x, y) {
   const massimizzato = a.maximizedPaneId === paneId;
 
   const voci = [
-    { label: massimizzato ? '🗗 Ripristina il layout' : '🗖 Massimizza questo pannello (doppio clic sul titolo)', action: () => massimizzaPane(paneId) },
+    { icona: massimizzato ? 'minimize-2' : 'maximize-2', label: massimizzato ? 'Ripristina il layout' : 'Massimizza questo pannello (doppio clic sul titolo)', action: () => massimizzaPane(paneId) },
     { label: '⌗ Pareggia questo gruppo', action: () => pareggiaPannelli(paneId) },
-    { label: '↔ Scambia con il precedente', action: () => scambiaConVicino(paneId, 'prev') },
-    { label: '↔ Scambia con il successivo', action: () => scambiaConVicino(paneId, 'next') },
+    { icona: 'arrow-left-right', label: 'Scambia con il precedente', action: () => scambiaConVicino(paneId, 'prev') },
+    { icona: 'arrow-left-right', label: 'Scambia con il successivo', action: () => scambiaConVicino(paneId, 'next') },
     { label: impilato ? '▤ Disponi affiancati' : '▥ Disponi impilati', action: () => ruotaOrientamento(paneId) },
   ];
   if (altri > 0) {
-    voci.push({ label: `✕ Chiudi gli altri ${altri} ${altri === 1 ? 'pannello' : 'pannelli'}`, action: () => chiudiAltriPane(paneId), danger: true });
+    voci.push({ icona: 'x', label: `Chiudi gli altri ${altri} ${altri === 1 ? 'pannello' : 'pannelli'}`, action: () => chiudiAltriPane(paneId), danger: true });
   }
-  voci.push({ label: '✕ Chiudi questo pannello', action: () => closePane(paneId), danger: true });
+  voci.push({ icona: 'x', label: 'Chiudi questo pannello', action: () => closePane(paneId), danger: true });
 
   // Comandi dell'AREA, non del pannello: stanno qui in fondo perché è il punto
   // che si raggiunge da dove si sta guardando, e perché tenerli in una barra
   // sempre presente costava una riga di schermo per un uso occasionale.
   voci.push('---');
-  voci.push({ label: `✏️ Rinomina l'area…`, action: () => chiediNomeAreaSplit(a.collTabId) });
+  voci.push({ icona: 'pencil', label: `Rinomina l'area…`, action: () => chiediNomeAreaSplit(a.collTabId) });
   voci.push({ label: '⌗ Pareggia tutta l\'area', action: () => pareggiaPannelli(null, a.collTabId) });
   if (altri > 0) {
-    voci.push({ label: '🔍 Confronta gli schemi dei primi due', action: () => comparePaneSchemas() });
+    voci.push({ icona: 'git-compare', label: 'Confronta gli schemi dei primi due', action: () => comparePaneSchemas() });
   }
-  voci.push({ label: '✕ Chiudi l\'area affiancata', action: () => closeSplitView({ riapri: true, collTabId: a.collTabId }), danger: true });
+  voci.push({ icona: 'x', label: 'Chiudi l\'area affiancata', action: () => closeSplitView({ riapri: true, collTabId: a.collTabId }), danger: true });
 
   showContextMenu(x, y, voci);
 }
@@ -1594,7 +1594,10 @@ function fetchCollectionsForPane(paneId, dbName) {
  * l'inventario di cio' che un riquadro ancora non sa fare, non un silenzio.
  * ------------------------------------------------------------------------- */
 
-const ALTEZZA_RIGA_RIQUADRO = 34;
+/* L'altezza di riga di un riquadro non e' piu' una costante scritta qui: era 34
+   mentre il CSS ne produceva un'altra, e la finestra virtuale calcolava gli
+   spaziatori sul numero sbagliato. La fonte unica e' il token `--grid-row-h`
+   (vedi `altezzaRigaGriglia` in griglia.js), lo stesso che il CSS impone. */
 const OVERSCAN_RIQUADRO = 6;
 
 const CAPACITA_RIQUADRO = capacita({
@@ -1671,7 +1674,7 @@ function aggancioRiquadro(paneId, paneEl, p) {
       if (!box) return;
       const dove = scorrimentoPerRiga({
         indice: r,
-        altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
+        altezzaRiga: altezzaRigaGriglia(box),
         scrollTop: box.scrollTop,
         altezzaViewport: box.clientHeight,
       });
@@ -1931,7 +1934,7 @@ function updatePaneUI(paneId) {
         if (relazione) {
           td.classList.add('fk-cella');
           if (relazione.origine !== VINCOLO) td.classList.add('fk-ipotesi');
-          td.title = `${disp.text}\n🔗 ${relazione.tabella}.${relazione.colonna}`;
+          td.title = `${disp.text}\nCollegata a ${relazione.tabella}.${relazione.colonna}`;
         }
         tr.appendChild(td);
       });
@@ -1972,7 +1975,7 @@ function updatePaneUI(paneId) {
         ? finestraVirtuale({
           scrollTop: top,
           altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
-          altezzaRiga: ALTEZZA_RIGA_RIQUADRO,
+          altezzaRiga: altezzaRigaGriglia(contenitore),
           righeTotali: p.docs.length,
           overscan: OVERSCAN_RIQUADRO,
         })
@@ -2046,7 +2049,8 @@ function updatePaneUI(paneId) {
   if (bulkDelBtn) {
     const selCount = p.selectedDocs ? p.selectedDocs.size : 0;
     bulkDelBtn.classList.toggle('hidden', selCount === 0);
-    bulkDelBtn.textContent = `🗑 Elimina (${selCount})`;
+    bulkDelBtn.innerHTML = `${ICO('trash-2')} Elimina (${selCount})`;
+    refreshLucideIcons(bulkDelBtn);
   }
 
   const currPage = Math.floor(p.skip / p.limit) + 1;
@@ -2227,7 +2231,7 @@ function comparePaneSchemas() {
 
   modal.innerHTML = `
     <div class="modal compare-dialog">
-      <h2>🔍 Confronto Schema Tabelle</h2>
+      <h2><i data-lucide="git-compare"></i> Confronto Schema Tabelle</h2>
       <p class="subtitle">Confronto dei campi tra <b>${esc(p1.db)} ▸ ${esc(p1.coll)}</b> e <b>${esc(p2.db)} ▸ ${esc(p2.coll)}</b></p>
       
       <div class="compare-stats">

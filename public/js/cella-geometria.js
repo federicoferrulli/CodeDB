@@ -30,7 +30,7 @@ export function rendiCellaGeometrica(cella, valore, onApri) {
   const testo = geometryLabel(valore);
   cella.textContent = testo;
   cella.classList.add('type-geo');
-  cella.title = `${testo}\n🗺 Doppio clic per visualizzare sulla mappa`;
+  cella.title = `${testo}\nDoppio clic per visualizzare sulla mappa`;
   if (typeof onApri === 'function') {
     cella.addEventListener('dblclick', (evento) => {
       evento.preventDefault();

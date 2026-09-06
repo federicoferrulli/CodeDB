@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -17,7 +17,8 @@ import { motoreDalTesto } from './intellisense.js';
 import { quotaIdentificatore, quotaSempre } from './sql-dialetti.js';
 // Il modulo unico della griglia: la stessa aritmetica e lo stesso corpo della
 // vista Dati (vedi griglia.js).
-import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
+import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, altezzaRigaGriglia } from './griglia.js';
+import { rendiTrascinabile } from './maniglia.js';
 import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
@@ -531,7 +532,7 @@ function initSqlChunking() {
               // dell'utente di fermarsi.
               if (stato.status === 'aborted' || stato.status === 'paused') {
                 stopChunkRunRequested = true;
-                if (progressText) progressText.textContent = `⏸ Sequenza fermata al Chunk ${i + 1}/${totalChunks}`;
+                if (progressText) progressText.textContent = `Sequenza fermata al Chunk ${i + 1}/${totalChunks}`;
                 break;
               }
             }
@@ -545,7 +546,7 @@ function initSqlChunking() {
         } catch (err) {
           toast(`Errore durante l'esecuzione del Chunk ${i + 1}: ${err.message}`, 'error');
           if (progressText) {
-            progressText.textContent = `✖ Interrotto per errore al Chunk ${i + 1}/${totalChunks}`;
+            progressText.textContent = `Interrotto per errore al Chunk ${i + 1}/${totalChunks}`;
           }
           break;
         }
@@ -588,31 +589,33 @@ function initVerticalResizer() {
   const bottomPanel = $('#query-results-container');
   if (!resizer || !topPanel || !bottomPanel) return;
 
-  resizer.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startTopH = topPanel.getBoundingClientRect().height;
-    const startBottomH = bottomPanel.getBoundingClientRect().height;
-    resizer.classList.add('dragging');
+  // Si scrive l'altezza di UN pannello solo, e l'altro resta `flex: 1`.
+  // Scriverle entrambe era un difetto vero, non una ridondanza: i due pannelli
+  // hanno un `min-height` in CSS (240px l'editor, 120px i risultati), quindi
+  // sotto quella soglia l'altezza scritta non veniva applicata mentre l'altra
+  // continuava a crescere della stessa quantita' — la somma superava il
+  // contenitore e il pannello dei risultati finiva tagliato fuori dal fondo.
+  // Con un valore solo la somma non puo' sbagliare: quel che avanza e' l'altro
+  // pannello, per costruzione.
+  const massimo = () => {
+    const disponibile = topPanel.parentElement.getBoundingClientRect().height
+      - resizer.getBoundingClientRect().height;
+    const minBasso = parseFloat(getComputedStyle(bottomPanel).minHeight) || 0;
+    return Math.max(0, disponibile - minBasso);
+  };
+  const minimo = () => parseFloat(getComputedStyle(topPanel).minHeight) || 0;
 
-    const onMouseMove = (ev) => {
-      const dy = ev.clientY - startY;
-      const newTopH = Math.max(80, startTopH + dy);
-      const newBottomH = Math.max(80, startBottomH - dy);
+  // Il gesto sta in `maniglia.js`: prima era `mousedown`, cioe' un evento che
+  // il dito e la penna non producono.
+  rendiTrascinabile(resizer, {
+    asse: 'y',
+    inizio: () => topPanel.getBoundingClientRect().height,
+    sposta: (dy, altezzaIniziale) => {
       topPanel.style.flex = 'none';
-      topPanel.style.height = `${newTopH}px`;
-      bottomPanel.style.flex = 'none';
-      bottomPanel.style.height = `${newBottomH}px`;
-    };
-
-    const onMouseUp = () => {
-      resizer.classList.remove('dragging');
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+      topPanel.style.height = `${Math.min(Math.max(minimo(), altezzaIniziale + dy), massimo())}px`;
+      bottomPanel.style.flex = '1';
+      bottomPanel.style.height = '';
+    },
   });
 }
 
@@ -695,12 +698,12 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
     statusBadge.className = `badge badge-${status}`;
     if (status === 'idle') statusBadge.textContent = '● In attesa';
     else if (status === 'running') {
-      statusBadge.textContent = '⏳ Esecuzione...';
+      statusBadge.textContent = 'Esecuzione...';
       const tableView = $('#query-table-view');
       if (tableView) showSkeletonGrid(tableView, 8, 5);
     }
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
-    else if (status === 'error') statusBadge.textContent = '✖ Errore';
+    else if (status === 'error') statusBadge.textContent = 'Errore';
   }
 
   // `idle` significa "non c'è nessun risultato": le due metriche vanno
@@ -849,6 +852,7 @@ export function resetQueryView() {
 let queryTableRows = [];   // righe NELL'ORDINE MOSTRATO (≠ currentResults se ordinate)
 let queryTableCols = [];
 let queryVScrollAttached = false;
+let queryVirtualWindow = null;
 let queryHeaderAttached = false;
 let queryOrdine = [];                      // elenco di {col, dir}: ordinamento su più colonne, l'ordine dell'elenco è la priorità
 let queryLarghezze = new Map();            // colonna → px
@@ -856,7 +860,10 @@ let queryLarghezzeManuali = new Set();     // colonne allargate a mano: non si r
 let queryColsSig = '';                     // firma del set di colonne
 let queryRigheRef = null;                  // riferimento all'ultimo result set reso
 let queryResizeInCorso = false;
-const QUERY_ROW_H = 36;
+/* L'altezza di riga non e' piu' una costante scritta qui: era 36 mentre il CSS
+   ne produceva un'altra, e la finestra virtuale calcolava gli spaziatori sul
+   numero sbagliato. Si legge dal token `--grid-row-h` (vedi
+   `altezzaRigaGriglia` in griglia.js), che e' lo stesso che il CSS impone. */
 const QUERY_OVERSCAN = 6;
 
 // Che cosa la griglia dei RISULTATI sa fare, dichiarato. Meno della vista Dati,
@@ -1072,7 +1079,10 @@ function attachQueryHeaderEvents() {
 /** Una riga del result set. Non ha identita': niente checkbox, niente `_id`. */
 function disegnaRigaRisultato(row) {
   const tr = document.createElement('tr');
-  tr.style.height = `${QUERY_ROW_H}px`;
+  // Niente altezza in linea: la impone il CSS con `--grid-row-h`, che e' anche
+  // il numero su cui la finestra virtuale calcola gli spaziatori. Scriverla qui
+  // significava tenerne una seconda copia, e questa girava per ogni riga a ogni
+  // fotogramma di scorrimento.
   queryTableCols.forEach((col) => {
     const td = document.createElement('td');
     const val = row ? row[col] : undefined;
@@ -1086,10 +1096,20 @@ function disegnaRigaRisultato(row) {
     const geometrica = rendiCellaGeometrica(td, val, aperturaSolaLettura(val, col));
     if (!geometrica) {
       const res = displayValueBreve(val);
-      td.textContent = res.text ?? '';
-      if (res.cls) td.className = res.cls;
-      if (res.dataVal !== undefined) td.dataset.val = res.dataVal;
+      // La classe del TIPO va su uno `<span>` dentro la cella, come nella vista
+      // Dati, e non sul `td`. Non e' una preferenza di forma: `.type-bool` e'
+      // una pillola `inline-flex`, e `display: inline-flex` su un `td` toglie
+      // la cella dalla tabella. Finche' la classe stava sul `td`, le regole
+      // scritte per `td .type-*` non la raggiungevano affatto — e' la ragione
+      // per cui gli stessi valori erano colorati nella vista Dati e testo nudo
+      // qui, pur venendo dallo stesso database. Il nodo in piu' e' esattamente
+      // quello che la vista Dati paga gia' a ogni fotogramma di scorrimento.
+      const span = document.createElement('span');
+      if (res.cls) span.className = res.cls;
+      if (res.dataVal !== undefined) span.dataset.val = res.dataVal;
+      span.textContent = res.text ?? '';
       td.title = res.text ?? '';
+      td.appendChild(span);
     }
     tr.appendChild(td);
   });
@@ -1107,7 +1127,7 @@ function disegnaRigaRisultato(row) {
  */
 function renderQueryVirtualWindow() {
   const container = $('#query-table-view');
-  if (!container) return;
+  if (!container || !container.clientHeight) return;
   const table = $('#query-result-table');
   if (!table) return;
   const tbody = table.querySelector('tbody');
@@ -1123,23 +1143,35 @@ function renderQueryVirtualWindow() {
     return;
   }
 
+  const altezzaRiga = altezzaRigaGriglia(container);
+  const intestazione = table.querySelector('thead').getBoundingClientRect().height;
+  const finestra = vaVirtualizzata(queryTableRows.length, CAPACITA_RISULTATI)
+    ? finestraVirtuale({
+      scrollTop: Math.max(0, container.scrollTop - intestazione),
+      altezzaViewport: Math.max(0, container.clientHeight - intestazione),
+      altezzaRiga,
+      righeTotali: queryTableRows.length,
+      overscan: QUERY_OVERSCAN,
+    })
+    : null;
+  const inizio = finestra?.inizio ?? 0;
+  const fine = finestra?.fine ?? queryTableRows.length;
+  // Lo scorrimento orizzontale e i pixel dentro la stessa finestra non
+  // cambiano le righe: conservarne i nodi evita lavoro e perdita di selezione.
+  if (queryVirtualWindow?.righe === queryTableRows
+      && queryVirtualWindow.inizio === inizio && queryVirtualWindow.fine === fine
+      && queryVirtualWindow.altezzaRiga === altezzaRiga) return;
+
   disegnaCorpo({
     tbody,
     righe: queryTableRows,
     disegnaRiga: disegnaRigaRisultato,
     // Sotto la soglia si disegna tutto: gli spaziatori esisterebbero per
     // simulare righe che ci starebbero comunque.
-    finestra: vaVirtualizzata(queryTableRows.length, CAPACITA_RISULTATI)
-      ? finestraVirtuale({
-        scrollTop: container.scrollTop || 0,
-        altezzaViewport: container.clientHeight || 400,
-        altezzaRiga: QUERY_ROW_H,
-        righeTotali: queryTableRows.length,
-        overscan: QUERY_OVERSCAN,
-      })
-      : null,
+    finestra,
     colonneTotali: queryTableCols.length || 1,
   });
+  queryVirtualWindow = { righe: queryTableRows, inizio, fine, altezzaRiga };
 }
 
 function attachQueryVScroll() {
@@ -1147,10 +1179,16 @@ function attachQueryVScroll() {
   if (!container || queryVScrollAttached) return;
   queryVScrollAttached = true;
   let raf = 0;
-  container.addEventListener('scroll', () => {
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(renderQueryVirtualWindow);
-  });
+  const aggiorna = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      renderQueryVirtualWindow();
+    });
+  };
+  container.addEventListener('scroll', aggiorna, { passive: true });
+  // Il pannello cambia altezza anche trascinando il divisorio, senza scroll.
+  new ResizeObserver(aggiorna).observe(container);
 }
 
 /**
@@ -1172,11 +1210,15 @@ function renderResultsTable(rows, colonneDichiarate) {
   if (!table || !container) return;
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
-  thead.innerHTML = '';
-  tbody.innerHTML = '';
-
   const righe = Array.isArray(rows) ? rows : [];
   const cols = colonneRisultato(colonneDichiarate, righe);
+  if (rows === queryRigheRef && cols.join('\u0000') === queryColsSig) {
+    renderQueryVirtualWindow();
+    return;
+  }
+  queryVirtualWindow = null;
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
 
   // Nessuna colonna, nemmeno dichiarata: qui davvero non c'e' nulla da
   // disegnare (vista azzerata, errore, risultato non tabellare).
@@ -1270,7 +1312,8 @@ export function renderQuerySchemaBrowser() {
 
     const dbLabel = document.createElement('div');
     dbLabel.className = 'schema-node-label';
-    dbLabel.innerHTML = `<span>🗄 <strong>${escapeHtml(dbName)}</strong></span>`;
+    dbLabel.innerHTML = `<span>${ICO('database')} <strong>${escapeHtml(dbName)}</strong></span>`;
+    refreshLucideIcons(dbLabel);
 
     const childrenContainer = document.createElement('div');
     childrenContainer.className = 'schema-node-children hidden';
@@ -1354,8 +1397,9 @@ function renderSchemaTreeForDb(dbName, container, collections) {
     const collLabel = document.createElement('div');
     collLabel.className = 'schema-node-label';
     collLabel.draggable = true;
-    const icon = isSqlType(state.dbType) ? '📋' : '📁';
+    const icon = ICO(isSqlType(state.dbType) ? 'table-2' : 'folder');
     collLabel.innerHTML = `<span>${icon} <strong>${escapeHtml(collName)}</strong></span>`;
+    refreshLucideIcons(collLabel);
 
     // Drag & Drop e doppio clic inseriscono il nome nell'editor: va scritto
     // come lo scriverebbe chi conosce il motore, cioè QUOTATO quando serve.
@@ -1387,7 +1431,8 @@ function renderSchemaTreeForDb(dbName, container, collections) {
         fieldLabel.className = 'schema-node-label';
         fieldLabel.draggable = true;
         fieldLabel.style.fontSize = '0.85em';
-        fieldLabel.innerHTML = `<span>🔹 ${escapeHtml(fieldName)}</span> ${fieldType ? `<span class="schema-node-type">${escapeHtml(fieldType)}</span>` : ''}`;
+        fieldLabel.innerHTML = `<span>${ICO('dot')} ${escapeHtml(fieldName)}</span> ${fieldType ? `<span class="schema-node-type">${escapeHtml(fieldType)}</span>` : ''}`;
+        refreshLucideIcons(fieldLabel);
 
         fieldLabel.addEventListener('dragstart', (e) => {
           e.dataTransfer.setData('text/plain', nomePerEditor(fieldName));
@@ -1419,7 +1464,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
           nodo.className = 'schema-node schema-relazione';
           nodo.dataset.tipo = 'campo';
           nodo.dataset.nome = `${rel.nome || ''} ${coppie.map((p) => p.campo).join(' ')}`;
-          nodo.textContent = `🔗 ${rel.nome || 'Chiave esterna'}: (${coppie.map((p) => p.campo).join(', ')}) → ${rel.db || dbName}.${rel.tabella} (${coppie.map((p) => p.colonna).join(', ')})`;
+          nodo.textContent = `${rel.nome || 'Chiave esterna'}: (${coppie.map((p) => p.campo).join(', ')}) → ${rel.db || dbName}.${rel.tabella} (${coppie.map((p) => p.colonna).join(', ')})`;
           fieldsContainer.appendChild(nodo);
         }
         riapplicaFiltroSchema();

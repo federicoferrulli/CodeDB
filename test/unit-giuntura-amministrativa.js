@@ -1,160 +1,30 @@
 'use strict';
-
-/* ---------------------------------------------------------------------------
- * La giuntura amministrativa (ADR-0001, seconda delle tre famiglie).
- *
- * Ventinove eventi che non toccano alcuna strategia. Non hanno un database come
- * bersaglio — la verifica della capability per database non li riguarda — ma
- * hanno l'AUDIT, e una quindicina di loro se lo componeva a mano, riga per
- * riga, con la stessa forma ripetuta.
- *
- * Scritto a mano vuol dire dimenticabile, e il difetto che ne segue non si vede
- * mai al momento giusto: si vede il giorno in cui serve leggere lo storico e la
- * riga non c'è. Il modo di renderlo impossibile non è ricordarselo meglio, è
- * far sì che un evento non dichiarato **non si registri affatto**.
- *
- * Nessun socket vero, nessun database: contesto finto del ticket 16.
- * ------------------------------------------------------------------------- */
-
 const assert = require('assert');
-const fs = require('fs');
-const path = require('path');
 const { contestoFinto } = require('./contesto-finto');
-
-const RADICE = path.join(__dirname, '..');
-
+const { catalogoEventi, politiche, giuntura } = require('./server-fixture');
 let falliti = 0;
 async function prova(nome, fn) {
-  try {
-    await fn();
-    console.log(`  OK   ${nome}`);
-  } catch (err) {
-    falliti++;
-    console.error(`  FAIL ${nome}\n       ${err.message}`);
-  }
+  try { await fn(); console.log('  OK   ' + nome); }
+  catch (err) { falliti++; console.error('  FAIL ' + nome + ': ' + err.message); }
 }
-
-/** Gli eventi registrati con una certa giuntura, letti dal sorgente. */
-function eventiCon(giuntura, src) {
-  const re = new RegExp(`\\b${giuntura}\\(\\s*['"]([^'"]+)['"]\\s*,`, 'g');
-  const out = [];
-  let m;
-  while ((m = re.exec(src)) !== null) out.push(m[1]);
-  return out;
-}
-
 module.exports = (async () => {
   const { registraEventi } = require('../server');
-  const src = fs.readFileSync(path.join(RADICE, 'server.js'), 'utf8');
-
-  console.log('  --- La giuntura amministrativa (server.js) ---');
-
-  const amministrativi = eventiCon('amministrativo', src);
-
-  /* --- La famiglia esiste e ha la sua giuntura -------------------------- */
-
-  await prova('i trentuno eventi amministrativi passano dalla loro giuntura', () => {
-    assert.strictEqual(amministrativi.length, 31,
-      `attesi 31 eventi amministrativi, trovati ${amministrativi.length}: ${amministrativi.join(', ')}`);
-    // Un campione di ciascun gruppo: vault, connessioni, applicazione, identità.
-    for (const atteso of ['vault:reset', 'connections:save', 'app:info', 'users:create', 'apikeys:revoke']) {
-      assert.ok(amministrativi.includes(atteso), `${atteso} deve passare dalla giuntura amministrativa`);
+  const amministrativi = catalogoEventi().filter(e => e.famiglia === 'amministrativo');
+  const policy = politiche();
+  await prova('tutti i 31 eventi amministrativi dichiarano audit o motivo', () => {
+    assert.strictEqual(amministrativi.length, 31);
+    for (const { evento, handler } of amministrativi) {
+      const voce = policy.EVENTI_AMMINISTRATIVI[evento];
+      assert(voce && (voce.op || voce.tracciato === false && voce.motivo), evento);
+      assert(!/auditUi\(\{/.test(handler.toString()), evento + ': nessun audit duplicato');
     }
   });
-
-  await prova('nessuno di loro è rimasto sulla via generica', () => {
-    const generici = eventiCon('safeOn', src);
-    const doppi = amministrativi.filter((e) => generici.includes(e));
-    assert.deepStrictEqual(doppi, [], `registrati due volte: ${doppi.join(', ')}`);
+  await prova('un evento amministrativo non dichiarato viene rifiutato', () => {
+    const modulo = giuntura([(_ctx, lifecycle) => lifecycle.amministrativo('evento:nuovo:non:dichiarato', () => {})]);
+    assert.throws(() => modulo.registraEventi(contestoFinto()), err =>
+      /Evento amministrativo "evento:nuovo:non:dichiarato" non dichiarato/.test(err.message)
+      && /NON_TRACCIATO/.test(err.message));
   });
-
-  /* --- L'audit è scritto da un posto solo ------------------------------- */
-
-  await prova("nessuna composizione a mano dell'audit sopravvive fra gli amministrativi", () => {
-    // Si guarda dentro il corpo di ciascun handler amministrativo: se ricompare
-    // un `auditUi({` lì dentro, la voce è tornata a essere copiata a mano — e
-    // con essa la possibilità di dimenticarla.
-    const colpevoli = [];
-    for (const evento of amministrativi) {
-      const inizio = src.indexOf(`amministrativo('${evento}'`);
-      const fine = src.indexOf('\n  amministrativo(', inizio + 10);
-      const corpo = src.slice(inizio, fine > 0 ? fine : inizio + 4000);
-      if (/auditUi\(\{/.test(corpo)) colpevoli.push(evento);
-    }
-    assert.deepStrictEqual(colpevoli, [],
-      `questi handler compongono ancora l'audit a mano: ${colpevoli.join(', ')}`);
-  });
-
-  await prova('la voce di audit si compone in una funzione sola', () => {
-    assert.ok(/function scriviAuditAmministrativo\(/.test(src),
-      'deve esistere un solo posto in cui la voce viene composta');
-  });
-
-  /* --- Un evento nuovo non può dimenticarsi l'audit --------------------- */
-
-  await prova('registrare un evento non dichiarato è un errore, subito', () => {
-    // È il cuore del ticket: chi aggiunge un evento amministrativo nuovo non
-    // deve *ricordarsi* dell'audit — deve non poter procedere senza dichiararlo.
-    //
-    // La dimostrazione è **comportamentale**, non una lettura del sorgente: si
-    // registra la giuntura su una copia di server.js in cui è stato aggiunto un
-    // evento amministrativo che nessuno ha dichiarato, e si controlla che
-    // `registraEventi` rifiuti. L'errore arriva così all'AVVIO, non il giorno
-    // in cui serve leggere lo storico e la riga non c'è.
-    const os = require('os');
-    const copia = path.join(
-      fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-amm-')), 'server-con-evento-nuovo.js'
-    );
-    const conEventoNuovo = src.replace(
-      "amministrativo('app:info'",
-      "amministrativo('evento:nuovo:non:dichiarato', (_p, cb) => cb({ ok: true }));\n"
-      + "  amministrativo('app:info'"
-    );
-    assert.notStrictEqual(conEventoNuovo, src, 'la copia deve contenere l\'evento nuovo');
-    fs.writeFileSync(copia, conEventoNuovo);
-
-    // La copia va caricata dalla stessa cartella, altrimenti i suoi `require`
-    // relativi non risolverebbero.
-    const accanto = path.join(RADICE, '.server-prova-evento-nuovo.js');
-    fs.copyFileSync(copia, accanto);
-    try {
-      delete require.cache[require.resolve(accanto)];
-      const modulo = require(accanto);
-      assert.throws(
-        () => modulo.registraEventi(contestoFinto()),
-        /Evento amministrativo "evento:nuovo:non:dichiarato" non dichiarato/,
-        'un evento amministrativo non dichiarato non deve potersi registrare'
-      );
-    } finally {
-      fs.rmSync(accanto, { force: true });
-      fs.rmSync(path.dirname(copia), { recursive: true, force: true });
-    }
-  });
-
-  await prova('il messaggio dice come rimediare, non solo che qualcosa non va', () => {
-    assert.ok(
-      /oppure dichiara NON_TRACCIATO\(motivo\)/.test(src),
-      'il messaggio deve dire anche come dichiarare una lettura senza effetti'
-    );
-  });
-
-  await prova('ogni evento dichiarato o ha un\'etichetta o dice perché non è tracciato', () => {
-    // Una voce a metà — né etichetta né motivo — sarebbe un modo di dimenticare
-    // l'audit passando dal controllo.
-    const tabella = src.slice(src.indexOf('const EVENTI_AMMINISTRATIVI = {'),
-      src.indexOf('const AUDIT_WRITES = {'));
-    const malformate = [];
-    for (const evento of amministrativi) {
-      const i = tabella.indexOf(`'${evento}':`);
-      assert.ok(i >= 0, `${evento} non ha una voce nella tabella`);
-      const voce = tabella.slice(i, i + 400);
-      const tracciato = /op:/.test(voce.slice(0, voce.indexOf('\n  \'', 5) > 0 ? voce.indexOf('\n  \'', 5) : 400));
-      const nonTracciato = voce.startsWith(`'${evento}': NON_TRACCIATO(`);
-      if (!tracciato && !nonTracciato) malformate.push(evento);
-    }
-    assert.deepStrictEqual(malformate, [], `voci senza etichetta né motivo: ${malformate.join(', ')}`);
-  });
-
   /* --- Gli eventi rispondono ancora ------------------------------------- */
 
   await prova('gli eventi amministrativi di lettura rispondono come prima', async () => {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { assertImportOutcomeKnown } = require('./importFailure');
+
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const mysql = require('mysql2');
@@ -299,8 +301,8 @@ function scegliCollazione({ database, server, utf8mb4 } = {}) {
  * ------------------------------------------------------------------------- */
 
 class MySqlStrategy extends DbStrategy {
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
     this.pool = null; // pool promise-based di mysql2
     // Colonne geometriche per tabella (vedi geoColumns): la lettura le deve
     // conoscere a OGNI find, e information_schema non è gratis. Cache breve,
@@ -568,11 +570,11 @@ class MySqlStrategy extends DbStrategy {
   // 99% delle tabelle), altrimenti le colonne per nome con ST_AsGeoJSON su
   // quelle geometriche — l'alias conserva il nome originale, quindi il resto
   // della pipeline (colonne, _id, griglia) non si accorge di nulla.
-  async selectListFor(db, coll, infoPrecaricate = null) {
+  async selectListFor(db, coll, infoPrecaricate = null, { preservaSrid = false } = {}) {
     const info = infoPrecaricate || await this.tableColumnsInfo(db, coll);
     if (!info.geo.size) return { list: '*', geo: info.geo, colonne: info.columns };
     const list = info.columns
-      .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}` : qid(c.name)))
+      .map((c) => (info.geo.has(c.name) ? `ST_AsGeoJSON(${qid(c.name)}${preservaSrid ? ', 17, 2' : ''}) AS ${qid(c.name)}` : qid(c.name)))
       .join(', ');
     // `colonne` viaggia con la lista: sono gli STESSI descrittori appena letti,
     // quindi chi compone l'ORDER BY non deve rileggere il catalogo.
@@ -602,14 +604,33 @@ class MySqlStrategy extends DbStrategy {
 
   // Valore di scrittura per una colonna: le geometriche prendono il frammento
   // ST_GeomFromGeoJSON, tutte le altre un normale segnaposto.
-  static geoBinding(col, value, geo) {
-    const colInfo = geo && geo.get(col);
+  static geoBinding(col, value, geo, { importazione = false } = {}) {
+    let colInfo = geo && geo.get(col);
     if (colInfo) {
       // I file esportati prima della correzione portano la forma grezza del
       // driver (`{ x, y }` per un punto) invece del GeoJSON: si recupera,
       // invece di chiedere all'utente di rifare l'export.
       const geoJson = isGeoJson(value) ? value : daFormaDriverMysql(value);
       if (geoJson) {
+        if (importazione) {
+          // L'export conserva il CRS di ogni geometria, anche nelle colonne
+          // senza vincolo SRID o con riferimenti diversi fra righe. I file
+          // storici senza CRS usano il vincolo di colonna; senza vincolo hanno
+          // coordinate cartesiane (SRID 0). Le modifiche inline continuano a
+          // leggere lo SRID originale sotto lock tramite modificaConSrid.
+          let srid = colInfo.srid ?? 0;
+          if (geoJson.crs != null) {
+            const name = geoJson.crs.type === 'name' && geoJson.crs.properties && geoJson.crs.properties.name;
+            const match = typeof name === 'string' && name.match(/^(?:EPSG:|urn:ogc:def:crs:EPSG::)(\d+)$/i);
+            if (!match) throw new Error(`Colonna "${col}": CRS della geometria non riconosciuto.`);
+            srid = Number(match[1]);
+          }
+          if (!Number.isInteger(Number(srid)) || Number(srid) < 0 || Number(srid) > 4294967295) {
+            throw new Error(`Colonna "${col}": SRID della geometria non valido.`);
+          }
+          if (colInfo.erroreSrid) throw new Error(ERRORE_SRID);
+          colInfo = { ...colInfo, srid: Number(srid) };
+        }
         // Si serializza ciò che è stato VALIDATO: `assertGeoJson` restituisce la
         // forma canonica, con le coordinate in numeri JSON invece che negli
         // oggetti BSON in cui il decodificatore Extended JSON stretto le
@@ -687,7 +708,7 @@ class MySqlStrategy extends DbStrategy {
     // Timeout per-query (mysql2 interrompe la query allo scadere): una find lenta
     // degrada con errore invece di tenere occupata la connessione del pool. La
     // query object include `timeout` solo se > 0.
-    const ms = DbStrategy.queryTimeoutMs();
+    const ms = DbStrategy.queryTimeoutMs(this.env);
     const q = ms > 0 ? { sql, timeout: ms } : { sql };
     // Se la richiesta ha un opHandle (griglia con runId), la eseguiamo su una
     // connessione dedicata di cui catturiamo il CONNECTION_ID, così è
@@ -727,7 +748,7 @@ class MySqlStrategy extends DbStrategy {
     // Budget di byte: il tetto sulle righe non protegge da poche righe enormi
     // (BLOB, testi lunghi, campi JSON). Il driver ha già materializzato il
     // result set, ma qui si evita almeno di serializzarlo e spedirlo per intero.
-    const capped = DbStrategy.truncateBySize(rows);
+    const capped = DbStrategy.truncateBySize(rows, DbStrategy.maxResultBytes(this.env));
     const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc, sel.colonne);
@@ -750,7 +771,7 @@ class MySqlStrategy extends DbStrategy {
   // sembra un difetto del conteggio e non del filtro.
   async countWithTimeout(table, whereSql, whereParams = []) {
     const pool = this.requirePool();
-    const ms = DbStrategy.countTimeoutMs();
+    const ms = DbStrategy.countTimeoutMs(this.env);
     const q = { sql: `SELECT COUNT(*) AS total FROM ${table}${whereSql}` };
     if (ms > 0) q.timeout = ms;
     try {
@@ -779,7 +800,7 @@ class MySqlStrategy extends DbStrategy {
   // scritta qui dentro: una scrittura sbagliata (un UPDATE che tocca l'intera
   // tabella, un ALTER su milioni di righe) teneva una connessione del pool
   // senza alcun limite, e cambiare la configurazione non cambiava nulla.
-  // Il valore viene ora da `DbStrategy.aggregateTimeoutMs()`, la stessa fonte
+  // Il valore viene ora da `DbStrategy.aggregateTimeoutMs(this.env)`, la stessa fonte
   // (env CODEDB_AGGREGATE_TIMEOUT_MS) che governa il tetto delle aggregazioni
   // su MongoDB; <= 0 disattiva il limite.
   async collectionAggregate(db, _coll, payload) {
@@ -787,7 +808,7 @@ class MySqlStrategy extends DbStrategy {
     const sql = String(payload.pipeline || '').trim();
     if (!sql) throw new Error('Inserisci una query SQL da eseguire.');
     const readOnly = !!payload.readOnly || !!payload.expectRead;
-    const tetto = DbStrategy.aggregateTimeoutMs();
+    const tetto = DbStrategy.aggregateTimeoutMs(this.env);
     const richiesta = { sql };
     if (tetto > 0) richiesta.timeout = tetto;
     const conn = await pool.getConnection();
@@ -888,7 +909,7 @@ class MySqlStrategy extends DbStrategy {
    */
   async executeWriteBatch(db, statements) {
     const pool = this.requirePool();
-    const tetto = DbStrategy.aggregateTimeoutMs();
+    const tetto = DbStrategy.aggregateTimeoutMs(this.env);
     return eseguiBatchScritture(statements, {
       apri: () => pool.getConnection(),
       primaDellaTransazione: (conn) => this.usaDatabase(conn, db),
@@ -1427,7 +1448,7 @@ class MySqlStrategy extends DbStrategy {
     const metadati = format === 'json'
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
-    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info) : null;
+    const selezione = metadati ? await this.selectListFor(db, coll, metadati.info, { preservaSrid: true }) : null;
     const selectList = selezione ? selezione.list : '*';
 
     let rows;
@@ -1590,7 +1611,7 @@ class MySqlStrategy extends DbStrategy {
       const params = [];
       const tuple = righe.map((r) => {
         const ph = r.values.map((valore, indice) => {
-          const bind = MySqlStrategy.geoBinding(cols[indice], valore, geo);
+          const bind = MySqlStrategy.geoBinding(cols[indice], valore, geo, { importazione: true });
           params.push(bind.param);
           return bind.sql;
         });
@@ -1622,7 +1643,8 @@ class MySqlStrategy extends DbStrategy {
         // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
         // il conteggio applicato misura righe sorgente, non effetti interni.
         inserted += g.rows.length;
-      } catch {
+      } catch (err) {
+        assertImportOutcomeKnown(err);
         // Un vincolo violato da una sola riga fa fallire tutto il batch:
         // si ripete riga per riga per isolare quale e non perdere le altre.
         for (const r of g.rows) {
@@ -1631,6 +1653,7 @@ class MySqlStrategy extends DbStrategy {
             await pool.query(q.sql, q.params);
             inserted += 1;
           } catch (err) {
+            assertImportOutcomeKnown(err);
             if (errors.length < 10) errors.push(`Riga ${r.i + 1}: ${(err && err.message) || err}`);
           }
         }

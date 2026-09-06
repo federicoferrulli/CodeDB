@@ -28,7 +28,7 @@
  * senza toccare questo file.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto } from './utils.js';
+import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { state } from './state.js';
 import {
   CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
@@ -382,9 +382,9 @@ function pannelloSerie(s, i, c) {
       <strong>${esc(s.nome || s.campoY || `Serie ${i + 1}`)}</strong>
       <span class="chart-serie-tipo">${esc((TIPI.find((t) => t.v === s.tipo) || {}).et || s.tipo)}</span>
       <span class="chart-serie-actions">
-        <button type="button" class="mini-btn ghost" data-azione="serie-visibile" ${d} title="${s.visibile === false ? 'Mostra' : 'Nascondi'} la serie">${s.visibile === false ? '👁' : '🚫'}</button>
-        <button type="button" class="mini-btn ghost" data-azione="serie-duplica" ${d} title="Duplica la serie">⧉</button>
-        <button type="button" class="mini-btn ghost danger" data-azione="serie-rimuovi" ${d} title="Rimuovi la serie">✕</button>
+        <button type="button" class="mini-btn ghost" data-azione="serie-visibile" ${d} title="${s.visibile === false ? 'Mostra' : 'Nascondi'} la serie">${ICO(s.visibile === false ? 'eye' : 'eye-off')}</button>
+        <button type="button" class="mini-btn ghost" data-azione="serie-duplica" ${d} title="Duplica la serie">${ICO('copy-plus')}</button>
+        <button type="button" class="mini-btn ghost danger" data-azione="serie-rimuovi" ${d} title="Rimuovi la serie">${ICO('x')}</button>
       </span>
     </div>
     <div class="chart-serie-body">
@@ -567,6 +567,9 @@ function costruisciPannello() {
         </div>
       </div>
     </details>`;
+  // Il pannello si ricostruisce a modale gia' aperta: il disegno fatto da
+  // `openModal` in apertura e' gia' passato.
+  refreshLucideIcons(host);
 }
 
 /* ---------------------------- Barra rapida ------------------------------- */
@@ -963,7 +966,7 @@ export function initCharts() {
   if (btnPannello && pannello) {
     const aggiornaEtichetta = () => {
       const chiuso = pannello.classList.contains('collassato');
-      btnPannello.textContent = chiuso ? '⚙ Personalizza' : '⚙ Chiudi pannello';
+      btnPannello.textContent = chiuso ? 'Personalizza' : 'Chiudi pannello';
       btnPannello.classList.toggle('attivo', !chiuso);
     };
     // Il pannello parte CHIUSO: la barra rapida copre il caso comune e il

@@ -330,10 +330,10 @@ export function formattaPunto(pos) {
  */
 export function riassuntoGeoBreve(st) {
   if (!st || !st.totale) return '';
-  const parti = [`🗺 ${st.totale} geometrie`];
-  if (st.perTipo.length === 1) parti[0] = `🗺 ${st.totale} ${st.perTipo[0][0]}`;
+  const parti = [`${st.totale} geometrie`];
+  if (st.perTipo.length === 1) parti[0] = `${st.totale} ${st.perTipo[0][0]}`;
   parti.push(`${num(st.vertici)} vertici`);
-  if (st.lunghezzaM !== null) parti.push(`↔ ${formattaDistanza(st.lunghezzaM)}`);
+  if (st.lunghezzaM !== null) parti.push(`lunghezza ${formattaDistanza(st.lunghezzaM)}`);
   if (st.areaM2 !== null) parti.push(`▦ ${formattaArea(st.areaM2)}`);
   if (st.proiettate) parti.push(`${st.proiettate} non misurabili`);
   return parti.join(' · ');

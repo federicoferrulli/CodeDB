@@ -1,0 +1,2608 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>CodeDB</title>
+  <meta name="theme-color" content="#1e1e2e" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="codedb.ico" />
+  <link rel="icon" type="image/png" href="codedb.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="js/lucide.min.js"></script>
+
+  <!-- ===================== Tema: applicazione PRIMA del primo paint =====================
+       Deve stare qui, in linea e sincrono. `public/js/theme.js` è un modulo
+       ESM, quindi differito: quando viene eseguito la pagina è già stata
+       dipinta almeno una volta e chi usa il tema chiaro vedrebbe un lampo nero
+       a ogni avvio (e chi usa quello scuro un lampo bianco, peggio ancora).
+       Qui si scrive solo l'attributo che sceglie la palette; il CSS di un
+       eventuale tema personalizzato lo aggiunge `theme.js` subito dopo — è uno
+       scarto sulla base, quindi nel frattempo si vede la base giusta e non
+       un'interfaccia scomposta.
+       Le due chiavi sono le stesse di `theme.js` (`chiaveStorage`): se
+       divergono, il tema salvato non viene più ritrovato. -->
+  <script>
+    (function () {
+      try {
+        var scelto = localStorage.getItem('codedb:tema') || 'auto';
+        var base;
+        if (scelto === 'light' || scelto === 'dark') {
+          base = scelto;
+        } else if (scelto === 'auto') {
+          base = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches
+            ? 'light' : 'dark';
+        } else {
+          // Tema personalizzato: la sua base sta nell'elenco dei temi salvati.
+          var temi = JSON.parse(localStorage.getItem('codedb:temi') || '{}');
+          base = temi[scelto] && temi[scelto].base === 'light' ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', base);
+      } catch (e) {
+        // Storage non disponibile o illeggibile: resta il tema scuro storico,
+        // che è anche il default del CSS. Mai lasciare la pagina senza tema.
+        document.documentElement.setAttribute('data-theme', 'dark');
+      }
+    })();
+  </script>
+</head>
+
+<body>
+  <!-- ===================== Handshake rifiutato / server irraggiungibile =====================
+       Il server rifiuta l'handshake Socket.IO con un motivo esplicito (gate
+       sull'Origin, header Host su istanza in loopback), ma il browser non
+       aveva dove mostrarlo: la pagina restava aperta e muta, e l'unico indizio
+       era nella console. Non è un toast: finché la causa non è risolta non c'è
+       niente da fare nell'applicazione, quindi l'avviso resta. -->
+  <div id="conn-error-overlay" class="overlay hidden" role="alertdialog" aria-modal="true"
+    aria-labelledby="conn-error-title">
+    <div class="modal">
+      <h2 id="conn-error-title"><i data-lucide="plug-zap"></i> Collegamento al server CodeDB non riuscito</h2>
+      <p class="subtitle" id="conn-error-msg"></p>
+      <div id="conn-error-hint" class="subtitle hidden"></div>
+      <div class="modal-actions">
+        <button type="button" class="primary" id="conn-error-retry"><i data-lucide="refresh-cw"></i> Riprova</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Accesso utente (solo con RBAC attivo) ===================== -->
+  <div id="login-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="login-modal-title">
+    <div class="modal">
+      <h2 id="login-modal-title"><i data-lucide="shield-check"></i> Accedi a CodeDB</h2>
+      <p class="subtitle">Inserisci le credenziali del tuo account per accedere alle connessioni assegnate.</p>
+
+      <form id="login-form">
+        <div class="form-row">
+          <label>Email
+            <input type="email" id="login-email" placeholder="nome@esempio.it" required autocomplete="username" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Password
+            <input type="password" id="login-password" placeholder="Password..." required
+              autocomplete="current-password" />
+          </label>
+        </div>
+        <div id="login-error" class="error hidden"></div>
+        <div class="modal-actions">
+          <button type="submit" class="primary" id="login-submit"><i data-lucide="log-in"></i> Accedi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Sblocco Vault / Master Password ===================== -->
+  <div id="vault-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="vault-modal-title">
+    <div class="modal">
+      <!-- Due schermate alternative nella stessa modale: sblocco e ripartenza
+           da zero. Non convivono — chi ha perso la password non ha più niente
+           da fare nel form di sblocco, e vedere entrambi i titoli confonde. -->
+      <div id="vault-unlock">
+        <h2 id="vault-modal-title"><i data-lucide="lock"></i> Sblocco Vault</h2>
+        <p class="subtitle">Inserisci la Master Password per accedere alle connessioni salvate e ai segreti cifrati.</p>
+
+        <form id="vault-form">
+          <div class="form-row">
+            <label>Master Password
+              <input type="password" id="vault-passphrase" placeholder="Inserisci passphrase..." required
+                autocomplete="current-password" autofocus />
+            </label>
+          </div>
+          <div id="vault-error" class="error hidden"></div>
+          <div class="modal-actions vault-actions">
+            <!-- Via d'uscita da una passphrase dimenticata: senza, la modale
+                 chiede l'unica cosa che l'utente non ha e l'app non si apre. -->
+            <button type="button" id="vault-forgot" class="linklike">Password dimenticata?</button>
+            <button type="submit" class="primary"><i data-lucide="key-round"></i> Sblocca</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Ripartenza da zero: connessioni salvate messe da parte e vault nuovo. -->
+      <div id="vault-reset" class="hidden">
+        <h2 class="vault-reset-title"><i data-lucide="triangle-alert"></i> Riparti da zero</h2>
+        <div class="warn-box">
+          <i data-lucide="triangle-alert"></i>
+          <span>Senza la password attuale i segreti salvati <strong>non sono recuperabili</strong>:
+            non esiste alcun recupero, è il punto della cifratura. Puoi però ripartire con un
+            vault nuovo — <strong>tutte le connessioni salvate verranno rimosse</strong> e dovrai
+            reinserirle. I file non vengono cancellati: restano accanto a
+            <code>connections.ini</code> con suffisso <code>.pre-reset-…</code>, illeggibili senza
+            la vecchia password, nel caso ti torni in mente.</span>
+        </div>
+
+        <form id="vault-reset-form">
+          <div class="form-row">
+            <label>Nuova Master Password
+              <input type="password" id="vault-reset-next" placeholder="Almeno 8 caratteri"
+                autocomplete="new-password" />
+            </label>
+          </div>
+          <div class="form-row">
+            <label>Conferma nuova password
+              <input type="password" id="vault-reset-confirm" placeholder="Ripeti la nuova password"
+                autocomplete="new-password" />
+            </label>
+          </div>
+          <label class="checkbox-row">
+            <input type="checkbox" id="vault-reset-ack" />
+            <span>Ho capito che le connessioni salvate verranno eliminate.</span>
+          </label>
+          <div id="vault-reset-error" class="error hidden"></div>
+          <div id="vault-reset-success" class="success-box hidden"></div>
+          <!-- Stessa disposizione della schermata di sblocco: la via di ritorno
+               a sinistra, l'azione a destra. -->
+          <div class="modal-actions vault-actions">
+            <button type="button" id="vault-reset-back" class="linklike vault-back">
+              <i data-lucide="arrow-left"></i> Torna allo sblocco
+            </button>
+            <button type="submit" class="danger"><i data-lucide="trash-2"></i>
+              Elimina connessioni e imposta nuova password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= Cambio della passphrase del vault (menu Impostazioni) ========== -->
+  <div id="passphrase-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-labelledby="passphrase-modal-title">
+    <div class="modal">
+      <h2 id="passphrase-modal-title"><i data-lucide="key-round"></i> Cambia passphrase</h2>
+      <p class="subtitle">
+        La passphrase protegge le password dei database e le credenziali SSH salvate.
+        Vale per <strong>tutta l'installazione</strong>.
+      </p>
+
+      <!-- Mostrato solo su un vault ancora nel formato storico: il primo cambio
+           ri-cifra i segreti, e l'utente deve saperlo prima di premere. -->
+      <div id="passphrase-migration-note" class="info-box hidden">
+        <i data-lucide="info"></i>
+        <span>Primo cambio su questo vault: i segreti verranno ri-cifrati e protetti
+          con salt e derivazione lenta (scrypt). Viene creata una copia di sicurezza
+          <code>*.pre-vault2</code> prima di procedere.</span>
+      </div>
+
+      <form id="passphrase-form">
+        <div class="form-row">
+          <label>Passphrase attuale
+            <input type="password" id="passphrase-current" autocomplete="current-password"
+              placeholder="Vuota se non ne hai mai impostata una" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Nuova passphrase
+            <input type="password" id="passphrase-next" autocomplete="new-password" required
+              placeholder="Almeno 8 caratteri" />
+          </label>
+        </div>
+        <div class="form-row">
+          <label>Ripeti la nuova passphrase
+            <input type="password" id="passphrase-confirm" autocomplete="new-password" required />
+          </label>
+        </div>
+
+        <div class="warn-box">
+          <i data-lucide="alert-triangle"></i>
+          <span>Non esiste un recupero: <strong>se la dimentichi, i segreti salvati
+            non sono più leggibili</strong> e le connessioni vanno reinserite.
+            Dal prossimo avvio servirà la nuova passphrase.</span>
+        </div>
+
+        <!-- Nessun riquadro di successo: a operazione riuscita la modale si
+             chiude subito e l'esito (con l'avviso sul prossimo avvio) sta nel
+             toast, che sopravvive alla chiusura. -->
+        <div id="passphrase-error" class="error hidden"></div>
+
+        <div class="modal-actions">
+          <button type="button" id="passphrase-cancel" class="ghost">Annulla</button>
+          <button type="submit" class="primary"><i data-lucide="key-round"></i> Cambia passphrase</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== Informazioni & Licenza (Impostazioni → Informazioni & Licenza) =====
+       Corpo riempito da `about.js` con i dati dell'evento `app:license`: la
+       manleva e le licenze delle dipendenze NON sono scritte nel markup, si
+       leggono da MANLEVA.md e dai package.json, così non possono divergere da
+       ciò che l'installer mostra e da ciò che è davvero installato. -->
+  <div id="about-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-label="Informazioni e licenza di CodeDB">
+    <div class="modal about-modal">
+      <button type="button" class="onb-chiudi onb-chiudi-modale" id="about-close"
+        aria-label="Chiudi">✕</button>
+      <div id="about-body"></div>
+    </div>
+  </div>
+
+  <!-- ============ Guida introduttiva (Impostazioni → Guida) ==================
+       Contenitore unico per benvenuto, hub della guida e novità di versione: il
+       corpo è riscritto da `onboarding.js` perché i tre contenuti hanno struttura
+       diversa e quello delle novità dipende dalla versione installata. Il tour
+       guidato e la checklist NON stanno qui: sono elementi flottanti generati
+       da codice, posizionati sugli elementi reali dell'interfaccia. -->
+  <div id="onboarding-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-label="Guida introduttiva a CodeDB">
+    <div class="modal onboarding-modal">
+      <button type="button" class="onb-chiudi onb-chiudi-modale" id="onboarding-close"
+        aria-label="Chiudi la guida">✕</button>
+      <div id="onboarding-body"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale di connessione (Wizard) ===================== -->
+  <div id="connect-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+    aria-labelledby="connect-modal-title">
+
+    <div class="modal wizard-modal">
+      <h2 id="connect-modal-title"><i data-lucide="plug-zap"></i> Connessione Database</h2>
+      <p class="subtitle" id="wizard-subtitle">Passo 1: Parametri di connessione</p>
+
+      <!-- Indicatore Passaggi (Wizard Bar) -->
+      <div class="wizard-steps-bar">
+        <button type="button" class="wizard-step-badge active" data-step="1">
+          <span class="step-num">1</span>
+          <span class="step-title">Parametri</span>
+        </button>
+        <div class="wizard-step-line"></div>
+        <button type="button" class="wizard-step-badge" data-step="2" id="wizard-badge-ssh">
+          <span class="step-num">2</span>
+          <span class="step-title">Tunnel SSH</span>
+        </button>
+        <div class="wizard-step-line"></div>
+        <button type="button" class="wizard-step-badge" data-step="3">
+          <span class="step-num">3</span>
+          <span class="step-title">Salva & Connetti</span>
+        </button>
+      </div>
+
+      <form id="connect-form">
+        <div id="conn-edit-banner" class="conn-edit-banner hidden">
+          Modifica di <strong id="conn-edit-name"></strong>
+          <button type="button" id="conn-edit-cancel" title="Annulla la modifica"
+            aria-label="Annulla la modifica"><i data-lucide="x"></i></button>
+        </div>
+
+        <!-- ================= PASSO 1: Parametri ================= -->
+        <div class="wizard-panel" data-step="1">
+          <div class="form-row">
+            <label>Tipo di database
+              <select name="dbType" id="conn-dbtype">
+                <option value="mongodb">MongoDB</option>
+                <option value="mysql">MySQL</option>
+                <option value="postgresql">PostgreSQL</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="tabs">
+            <button type="button" class="tab active" data-tab="fields">Parametri</button>
+            <button type="button" class="tab" data-tab="uri" id="tab-uri-btn">URI completa</button>
+          </div>
+
+          <div id="tab-fields" class="tab-panel">
+            <div class="form-row">
+              <label>Host
+                <input type="text" name="host" value="localhost" autocomplete="off" />
+              </label>
+              <label class="small">Porta
+                <input type="number" name="port" value="27017" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Username
+                <input type="text" name="username" placeholder="(vuoto se senza auth)" autocomplete="username" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Password
+                <input type="password" name="password" autocomplete="current-password" />
+              </label>
+            </div>
+            <div class="form-row" id="row-authsource">
+              <label>Auth source
+                <input type="text" name="authSource" value="admin" />
+              </label>
+            </div>
+            <div class="form-row hidden" id="row-database">
+              <label>Database
+                <input type="text" name="database" placeholder="(opzionale: database/schema iniziale)"
+                  autocomplete="off" />
+              </label>
+            </div>
+          </div>
+
+          <div id="tab-uri" class="tab-panel hidden">
+            <div class="form-row">
+              <label>Connection string
+                <input type="text" name="uri" placeholder="mongodb://user:pass@host:27017/?authSource=admin"
+                  autocomplete="off" />
+              </label>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="checkbox-label">
+              <input type="checkbox" name="ssh" id="conn-ssh-toggle" />
+              Abilita Tunnel SSH (Passo 2)
+            </label>
+          </div>
+        </div>
+
+        <!-- ================= PASSO 2: Tunnel SSH ================= -->
+        <div class="wizard-panel hidden" data-step="2">
+          <p class="wizard-panel-hint">Configura i parametri del Bastion Host per la connessione sicura via SSH.</p>
+          <div class="ssh-fields-wrap">
+            <div class="form-row">
+              <label>Host SSH
+                <input type="text" name="sshHost" placeholder="es. bastion.example.com" autocomplete="off" />
+              </label>
+              <label class="small">Porta SSH
+                <input type="number" name="sshPort" value="22" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Utente SSH
+                <input type="text" name="sshUser" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Password SSH
+                <input type="password" name="sshPassword" placeholder="(vuoto se usi una chiave)" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Chiave privata (percorso file)
+                <input type="text" name="sshKeyFile" placeholder="es. C:\Users\Keus\.ssh\id_rsa" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Passphrase chiave
+                <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)"
+                  autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Impronta host SSH
+                <input type="text" name="sshHostKey" placeholder="(registrata automaticamente al primo collegamento)"
+                  autocomplete="off" spellcheck="false"
+                  title="Impronta SHA-256 della chiave del server SSH, nel formato di OpenSSH. Viene registrata al primo collegamento riuscito; dopo, una chiave diversa fa fallire la connessione (possibile man-in-the-middle). Puoi confrontarla con: ssh-keyscan -t rsa HOST | ssh-keygen -lf -" />
+              </label>
+            </div>
+            <p class="wizard-panel-hint">L'impronta della chiave del server viene registrata al primo collegamento riuscito. Se in seguito cambia, la connessione viene rifiutata: è la protezione contro un server SSH che si sostituisce al tuo (man-in-the-middle). Svuota il campo solo se sai che la chiave è cambiata legittimamente.</p>
+          </div>
+        </div>
+
+        <!-- ================= PASSO 3: Salvataggio & Connessione ================= -->
+        <div class="wizard-panel hidden" data-step="3">
+          <p class="wizard-panel-hint">Assegna un nome per salvare questa connessione o procedi direttamente.</p>
+          <div class="form-row">
+            <label>Salva come
+              <input type="text" name="saveAs" placeholder="(opzionale: es. DB Produzione)" autocomplete="off"
+                spellcheck="false" />
+            </label>
+            <label>Cartella
+              <input type="text" name="folder" list="conn-folders" placeholder="(opzionale, es. Produzione)"
+                autocomplete="off" spellcheck="false" />
+            </label>
+          </div>
+          <datalist id="conn-folders"></datalist>
+
+          <div id="wizard-summary-box" class="wizard-summary-box"></div>
+        </div>
+
+        <div id="connect-error" class="error hidden"></div>
+        <div id="connect-test-msg" class="success-msg hidden"></div>
+
+        <div class="connect-actions">
+          <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
+          <button type="button" id="conn-test-btn" class="secondary btn-sm"
+            title="Tenta la connessione lato server senza aprire un tab">Testa Connessione</button>
+          <div class="wizard-nav-btns">
+            <button type="button" id="wizard-prev-btn" class="ghost hidden">← Indietro</button>
+            <button type="button" id="wizard-next-btn" class="secondary">Avanti →</button>
+            <button type="button" id="conn-save-btn" class="secondary hidden"
+              title="Salva la connessione senza connetterti">Salva</button>
+            <button type="submit" id="connect-btn" class="primary">Connetti</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== Layout principale ===================== -->
+  <div id="app">
+    <header>
+      <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate"
+        aria-label="Connessioni salvate"><i data-lucide="panel-left"></i></button>
+      <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo"
+        aria-label="Database del tab attivo"><i data-lucide="database"></i></button>
+      <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
+      <span id="conn-info" class="conn-info hidden"></span>
+      <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
+
+      <!-- Nell'header resta la sola coda delle query in sospeso: gli strumenti
+           stanno tutti nel menu "Impostazioni" in fondo alla barra connessioni
+           (prima erano un menu ⋮ qui e cinque bottoncini là, in parte doppi).
+           Niente "Disconnetti": il tab della connessione ha già la sua ✕. -->
+      <div class="header-tools-wrap">
+        <button id="btn-pending-queries" class="ghost btn-icon header-pending-btn" title="Query in sospeso"
+          aria-label="Query in sospeso"><i data-lucide="hourglass"></i><span id="pending-queries-badge" class="badge-count hidden">0</span></button>
+      </div>
+    </header>
+
+    <!-- Avviso "segreti non protetti": compare solo se ci sono davvero segreti
+         salvati e il vault non ha mai avuto una passphrase (chiave vuota).
+         Non è modale di proposito — non c'è nulla di rotto da sbloccare, c'è
+         una precauzione da prendere. Vedi passphrase.js → valutaAvvisoVault. -->
+    <div id="vault-hint" class="vault-hint hidden" role="status">
+      <i data-lucide="shield-alert"></i>
+      <div class="vault-hint-testo">
+        <strong>I segreti salvati non sono protetti da una passphrase.</strong>
+        Password dei database e chiavi SSH sono cifrate con una chiave vuota:
+        chi riesce a leggere il file delle connessioni può decifrarle.
+      </div>
+      <button type="button" id="vault-hint-set" class="mini-btn primary">Imposta una passphrase</button>
+      <button type="button" id="vault-hint-later" class="mini-btn">Più tardi</button>
+    </div>
+
+    <div class="body">
+      <!-- ------------------- Connection manager ------------------- -->
+      <aside id="conn-sidebar">
+        <div class="sidebar-title">
+          <span>Connessioni</span>
+          <span class="saved-conns-tools">
+            <button type="button" id="conn-export-btn" title="Scarica connections.ini (segreti cifrati)"
+              aria-label="Scarica connections.ini (segreti cifrati)"><i data-lucide="download"></i></button>
+            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini"
+              aria-label="Importa connessioni da un file .ini"><i data-lucide="upload"></i></button>
+            <button type="button" id="conn-sidebar-toggle-btn" class="sidebar-toggle-btn"
+              title="Comprimi barra connessioni" aria-label="Comprimi barra connessioni">
+              <i data-lucide="panel-left-close"></i>
+            </button>
+          </span>
+        </div>
+        <div class="sidebar-search">
+          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
+            spellcheck="false" />
+        </div>
+        <ul id="conn-tree"></ul>
+        <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
+
+        <div class="sidebar-footer-wrap">
+          <button type="button" id="conn-add-btn" class="conn-add-btn-primary">
+            <i data-lucide="plus"></i> <span>Aggiungi connessione</span>
+          </button>
+
+          <!-- Un solo ingresso a tutti gli strumenti. Il menu vero è fuori da
+               questa aside (vedi #settings-menu): la barra connessioni si può
+               comprimere, e un menu figlio di un elemento nascosto sarebbe
+               invisibile anche da aperto. -->
+          <button type="button" id="conn-settings-btn" class="settings-btn"
+            title="Backup, storico, salute, utenti, passphrase, informazioni" aria-haspopup="true"
+            aria-expanded="false">
+            <i data-lucide="settings"></i>
+            <span>Impostazioni</span>
+            <i data-lucide="chevron-up" class="settings-btn-caret"></i>
+          </button>
+        </div>
+
+        <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
+      </aside>
+      <div class="resizer" data-resize="conn-sidebar"></div>
+
+      <!-- Menu "Impostazioni": aperto da #conn-settings-btn e posizionato a
+           runtime (position: fixed) da positionFixedDropdown, che lo ribalta
+           verso l'alto quando sotto non c'è spazio — qui è sempre il caso, il
+           bottone sta in fondo alla finestra. -->
+      <div id="settings-menu" class="app-menu hidden" role="menu">
+        <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
+          <i data-lucide="archive"></i> Backup &amp; Restore
+        </button>
+        <button id="btn-audit-log" class="menu-item" type="button"
+          title="Storico delle azioni critiche/di scrittura">
+          <i data-lucide="history"></i> Storico Azioni
+        </button>
+        <button id="btn-health" class="menu-item" type="button"
+          title="Stato di salute delle connessioni attive">
+          <i data-lucide="activity"></i> Salute Connessioni
+        </button>
+        <!-- Vicino a "Salute Connessioni" ma è un'altra cosa: là si guardano le
+             connessioni di CodeDB, qui TUTTE quelle del server di database. -->
+        <button id="btn-sessions" class="menu-item" type="button"
+          title="Sessioni e query in corso sul server di database">
+          <i data-lucide="gauge"></i> Sessioni &amp; Query
+        </button>
+        <div class="menu-divider"></div>
+        <button id="btn-admin-rbac" class="menu-item hidden" type="button"
+          title="Gestione sottoutenti, permessi e API key">
+          <i data-lucide="shield-check"></i> Utenti &amp; Permessi
+        </button>
+        <button id="btn-change-passphrase" class="menu-item" type="button"
+          title="Cambia la passphrase che protegge i segreti salvati">
+          <i data-lucide="key-round"></i> Cambia Passphrase
+        </button>
+        <button id="btn-scorciatoie" class="menu-item" type="button"
+          title="Vedi e rimappa le scorciatoie da tastiera (valgono per tutto il tenant)">
+          <i data-lucide="keyboard"></i> Scorciatoie da tastiera
+        </button>
+        <div class="menu-divider"></div>
+        <button id="btn-onboarding" class="menu-item" type="button"
+          title="Guida introduttiva: giro guidato e primi passi">
+          <i data-lucide="life-buoy"></i> Guida Introduttiva
+        </button>
+        <!-- Solo nell'app desktop: `about.js` la mostra se il server risponde
+             che c'è un'installazione Electron da aggiornare. -->
+        <button id="btn-updates" class="menu-item hidden" type="button"
+          title="Verifica se è disponibile una nuova versione di CodeDB">
+          <i data-lucide="download-cloud"></i> Controlla Aggiornamenti
+        </button>
+        <button id="btn-theme" class="menu-item" type="button"
+          title="Tema chiaro, scuro o personalizzato">
+          <i data-lucide="palette"></i> Tema
+        </button>
+        <button id="btn-about" class="menu-item" type="button"
+          title="Versione, licenza AGPL-3.0 e manleva">
+          <i data-lucide="scale"></i> Informazioni &amp; Licenza
+        </button>
+        <button id="btn-logout" class="menu-item hidden" type="button"
+          title="Chiude la sessione dell'utente corrente">
+          <i data-lucide="log-out"></i> Esci
+        </button>
+      </div>
+
+      <div class="main-area">
+        <div class="tab-bar-wrap">
+          <button type="button" id="conn-sidebar-expand-btn" class="conn-sidebar-expand-btn hidden"
+            title="Espandi barra connessioni" aria-label="Espandi barra connessioni">
+            <i data-lucide="panel-left-open"></i>
+            <span class="btn-label">Connessioni</span>
+          </button>
+          <div id="tab-bar"></div>
+        </div>
+
+        <div id="welcome" class="placeholder">
+          <div class="empty-state-card">
+            <div class="empty-state-icon">
+              <i data-lucide="database" style="width: 48px; height: 48px; stroke-width: 1.5px;"></i>
+            </div>
+            <h3>Nessuna connessione aperta</h3>
+            <p class="placeholder-hint">Seleziona una connessione salvata dal menu a sinistra oppure clicca su <strong>＋
+                Aggiungi connessione</strong> per iniziare.</p>
+          </div>
+        </div>
+
+        <div id="tab-body" class="tab-body hidden">
+          <aside id="sidebar">
+            <div class="sidebar-title">
+              <span>Database</span>
+              <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
+            </div>
+            <div class="sidebar-search">
+              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+                spellcheck="false" />
+            </div>
+            <ul id="db-tree"></ul>
+          </aside>
+          <div class="resizer" data-resize="sidebar"></div>
+
+          <main>
+            <div id="placeholder" class="placeholder">
+              <div class="empty-state-card">
+                <div class="empty-state-icon">
+                  <i data-lucide="layout-grid" style="width: 48px; height: 48px; stroke-width: 1.5px;"></i>
+                </div>
+                <h3>Esplora i dati</h3>
+                <p class="placeholder-hint">Seleziona una collection o tabella dalla barra laterale per visualizzare le
+                  righe o eseguire query avanzate.</p>
+              </div>
+            </div>
+
+            <!-- Le tab della collection e le tab della vista stanno sulla STESSA
+                 riga: dicono due cose complementari — quale tabella si guarda e
+                 come la si guarda — e da barre separate costavano due bande
+                 piene alte 51px l'una. La seconda era per di piu' vuota nei suoi
+                 primi 641px (misurati a 1600px): `.view-tabs` aveva ancora il
+                 `margin-left: auto` che le spingeva a destra della breadcrumb
+                 rimossa, e nessuno aveva ripreso quello spazio.
+                 La riga si nasconde con `#coll-tab-bar.hidden`, che e' gia' la
+                 condizione esatta "nessun coll-tab aperto": tenerne una seconda
+                 in JavaScript vorrebbe dire poterle far divergere. -->
+            <div class="tabs-row">
+              <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
+              <div class="workspace-head">
+                <div class="view-tabs">
+                  <!-- Visibile solo con la Split-View aperta (applyViewTabsFor):
+                       è il modo di tornare ai pannelli dopo essere passati a
+                       Dettagli o Query, che agiscono sul pannello a fuoco. -->
+                  <button class="view-tab hidden" data-view="split"><i data-lucide="columns-2"></i> <span class="tab-label-full">Affiancati</span><span
+                      class="tab-label-short">Split</span></button>
+                  <button class="view-tab active" data-view="data"><i data-lucide="table"></i> <span class="tab-label-full">Dati</span><span
+                      class="tab-label-short">Dati</span></button>
+                  <button class="view-tab" data-view="details"><i data-lucide="info"></i> <span class="tab-label-full">Dettagli</span><span
+                      class="tab-label-short">Info</span></button>
+                  <button class="view-tab" data-view="query"><i data-lucide="zap"></i> <span class="tab-label-full">Query &amp;
+                      Aggregate</span><span class="tab-label-short">Query</span></button>
+                  <!-- UML e Grafo 3D descrivono lo SCHEMA, non i dati: si guardano
+                       una volta per capire com'è fatto il database, non a ogni
+                       query. Da tab sempre presenti rubavano metà della barra alle
+                       tre viste che si usano davvero. -->
+                  <div class="toolbar-dropdown-wrap view-menu-wrap">
+                    <button type="button" id="view-menu-btn" class="view-tab" aria-haspopup="true"
+                      aria-expanded="false" title="Altre viste dello schema: UML e Grafo 3D">
+                      <i data-lucide="eye"></i>
+                      <span id="view-menu-label" class="tab-label-full">Visualizza</span><span
+                        class="tab-label-short">Vista</span>
+                      <i data-lucide="chevron-down" class="view-menu-caret"></i>
+                    </button>
+                    <div id="view-menu" class="toolbar-dropdown-menu hidden">
+                      <button type="button" class="dropdown-item view-menu-item" data-view="uml" data-short="UML"
+                        data-label="Diagramma UML"><i data-lucide="network"></i> Diagramma UML</button>
+                      <button type="button" class="dropdown-item view-menu-item" data-view="graph3d"
+                        data-short="Grafo" data-label="Grafo 3D"><i data-lucide="boxes"></i> Grafo 3D</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="workspace" class="hidden">
+              <!-- Nessuna breadcrumb: il contesto (database ▸ collection) e' gia'
+                   nel coll-tab attivo qui sopra e nell'albero a sinistra. -->
+
+              <!-- ------------------- Vista dati ------------------- -->
+              <div id="view-data" class="view-panel">
+                <div class="toolbar">
+                  <!-- La vista Dati è sempre una lettura tabellare. Pipeline e
+                       SQL Raw vivono nella scheda Query & Aggregate, che ha
+                       l'editor adatto; qui resta un solo asse: Cerca oppure
+                       Condizione avanzata. -->
+                  <input id="query-mode" type="hidden" value="find" />
+                  <div id="filter-mode-switch" class="filter-mode-switch" role="radiogroup"
+                    aria-label="Modalità del filtro" data-modo="rapido">
+                    <button type="button" class="filter-mode-option active" data-filter-mode="rapido"
+                      role="radio" aria-checked="true" tabindex="0" title="Cerca nei valori di tutti i campi rilevati">
+                      <i data-lucide="search"></i><span>Cerca</span>
+                    </button>
+                    <button type="button" class="filter-mode-option" data-filter-mode="condizione"
+                      role="radio" aria-checked="false" tabindex="-1" title="Scrivi una condizione WHERE o MQL">
+                      <i data-lucide="filter"></i><span>Condizione</span>
+                    </button>
+                  </div>
+                  <span class="input-group" id="filter-group">
+                    <input id="filter-input" type="text" spellcheck="false"
+                      aria-label="Testo da cercare in tutti i campi"
+                      placeholder="Cerca in tutti i campi…" />
+                  </span>
+                  <input id="sort-input" type="text" spellcheck="false" class="narrow"
+                    placeholder='Sort, es. { "name": 1 }' />
+                  <span class="query-history-wrap">
+                    <button id="query-history-btn" title="Query recenti di questa collection"
+                      aria-label="Query recenti di questa collection"><i data-lucide="clock"></i></button>
+                    <div id="query-history-panel" class="hidden"></div>
+                  </span>
+                  <!-- Una sola azione porta un'etichetta: è quella che si preme.
+                       Il resto è icona sola (inserimento, ricarica) o sta nel menu
+                       ⋯, perché con cinque pulsanti dello stesso peso "Esegui"
+                       smetteva di essere il pulsante ovvio. -->
+                  <button id="run-btn" class="primary" title="Esegui (Invio)"><i data-lucide="play"></i> Esegui</button>
+                  <button id="insert-btn" class="icon-only" title="Inserisci un nuovo documento"
+                    aria-label="Inserisci un nuovo documento"><i data-lucide="plus"></i></button>
+                  <button id="refresh-btn" class="icon-only" title="Ricarica" aria-label="Ricarica"><i
+                      data-lucide="rotate-cw"></i></button>
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="data-more-btn" class="icon-only" aria-haspopup="true"
+                      aria-expanded="false" title="Altre azioni" aria-label="Altre azioni"><i
+                        data-lucide="more-horizontal"></i></button>
+                    <div id="data-more-menu" class="toolbar-dropdown-menu hidden">
+                      <button type="button" id="explain-btn" class="dropdown-item"
+                        title="Piano di esecuzione della query corrente"><i data-lucide="compass"></i> Piano di
+                        esecuzione</button>
+                      <label id="polling-toggle" class="dropdown-item checkbox-item hidden"
+                        title="Aggiorna automaticamente ogni 5 secondi">
+                        <input type="checkbox" id="polling-checkbox">
+                        <i data-lucide="timer"></i>
+                        <span>Aggiornamento automatico (5s)</span>
+                      </label>
+                      <div class="dropdown-divider"></div>
+                      <!-- Distruttiva e senza bersaglio visibile: sta qui, non a un
+                           clic di distanza accanto ai dati. -->
+                      <button type="button" id="delete-all-btn" class="dropdown-item danger" disabled
+                        title="Elimina tutti i documenti che soddisfano il filtro corrente"><i
+                          data-lucide="trash-2"></i> Elimina tutto…</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div id="query-error" class="error hidden"></div>
+
+                <!-- Barra contestuale: compare SOLO con una selezione attiva.
+                     Prima "Elimina (0)" stava sempre in mezzo ai dati, disabilitata
+                     nel 99% del tempo. -->
+                <div class="bulk-delete-toolbar hidden" role="toolbar" aria-label="Azioni sulla selezione">
+                  <span id="bulk-count" class="bulk-count"></span>
+                  <button id="delete-selected-btn" class="danger" title="Elimina i documenti selezionati"><i
+                      data-lucide="trash-2"></i> Elimina</button>
+                  <button id="bulk-clear-btn" class="ghost" title="Annulla la selezione">Deseleziona</button>
+                </div>
+
+                <div class="grid-wrap">
+                  <table id="grid">
+                    <thead></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+
+                <div class="statusbar">
+                  <span id="result-info"></span>
+                  <span id="cell-info"></span>
+                  <span id="loading-info"></span>
+                  <span class="spacer"></span>
+                  <!-- Quando tutte le righe stanno in una pagina non c'è nulla da
+                       impaginare: i cinque controlli si riducono a "1–1 di 1", che
+                       li riapre con un clic. -->
+                  <!-- Il testo sta in uno span suo: l'icona è statica e non deve
+                       essere spazzata via dal testo riscritto a ogni query. -->
+                  <button type="button" id="pager-compact" class="pager-compact hidden"
+                    title="Mostra i controlli di impaginazione"><span id="pager-compact-text"></span><i
+                      data-lucide="unfold-horizontal"></i></button>
+                  <span id="pager" class="pager">
+                    <label id="infinite-toggle-label"
+                      title="Scroll infinito: carica altri dati man mano che scorri (solo find)">
+                      <input type="checkbox" id="infinite-toggle"> ∞ Scroll
+                    </label>
+                    <button id="prev-btn" class="ghost">‹ Prec</button>
+                    <span id="page-info"></span>
+                    <button id="next-btn" class="ghost">Succ ›</button>
+                    <select id="page-size" title="Righe per pagina (o per blocco con scroll infinito)">
+                      <option>25</option>
+                      <option selected>50</option>
+                      <option>100</option>
+                      <option>200</option>
+                      <option>500</option>
+                      <option>1000</option>
+                      <option>5000</option>
+                    </select>
+                  </span>
+                </div>
+              </div>
+
+              <!-- ------------------- Vista dettagli ------------------- -->
+              <div id="view-details" class="view-panel hidden">
+                <div class="details-wrap">
+                  <section>
+                    <h3>Statistiche</h3>
+                    <table class="info-table kv-table" id="stats-table">
+                      <tbody></tbody>
+                    </table>
+                  </section>
+                  <section>
+                    <h3>Indici <button type="button" id="index-add-btn" class="mini-btn" title="Nuovo indice"
+                        aria-label="Nuovo indice">＋</button></h3>
+                    <table class="info-table" id="index-table">
+                      <thead></thead>
+                      <tbody></tbody>
+                    </table>
+                  </section>
+                  <section class="full">
+                    <h3><span id="schema-title">Schema rilevato</span> <span id="schema-note" class="hint"></span>
+                      <button type="button" id="column-add-btn" class="mini-btn hidden" title="Aggiungi colonna"
+                        aria-label="Aggiungi colonna">＋</button>
+                    </h3>
+                    <table class="info-table" id="schema-table">
+                      <thead></thead>
+                      <tbody></tbody>
+                    </table>
+                  </section>
+                </div>
+              </div>
+
+              <!-- ------------------- Vista UML ------------------- -->
+              <div id="view-uml" class="view-panel hidden">
+                <div class="uml-bar">
+                  <span class="hint" id="uml-hint">
+                    Associazioni dedotte dai nomi dei campi (es. <code>user_id</code> → collection
+                    <code>users</code>) e dai tipi ObjectId su un campione di documenti.
+                  </span>
+                  <button id="uml-refresh" class="ghost">⟳ Rigenera</button>
+                </div>
+                <div id="uml-canvas" class="uml-canvas"></div>
+              </div>
+
+              <!-- ------------------- Vista Grafo 3D ------------------- -->
+              <div id="view-graph3d" class="view-panel hidden">
+                <!-- Icone: un solo sprite per tutta la vista. I simboli sono
+                     tracciati, non caratteri tipografici - un'emoji cambia
+                     forma (e larghezza) da un sistema all'altro, ed era il
+                     motivo per cui la barra sembrava composta da elementi di
+                     famiglie diverse. Il prefisso `gico-` tiene questi id
+                     distinti da quelli della modale geografica: gli id di un
+                     <symbol> sono globali al documento. -->
+                <svg class="grafo-sprite" aria-hidden="true" focusable="false">
+                  <symbol id="gico-cerca" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+                  <symbol id="gico-chiudi" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+                  <symbol id="gico-filtro" viewBox="0 0 24 24"><path d="M3 4h18l-7 8.2V19l-4 2v-8.8Z"/></symbol>
+                  <symbol id="gico-implicite" viewBox="0 0 24 24"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><path d="M8 12h1.5"/><path d="M14.5 12H16"/></symbol>
+                  <symbol id="gico-rigenera" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+                  <symbol id="gico-analisi" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 16v-3"/><path d="M12 16V8"/><path d="M17 16v-6"/></symbol>
+                  <symbol id="gico-schema" viewBox="0 0 24 24"><path d="M4 8h13"/><path d="m13 4 4 4-4 4"/><path d="M20 16H7"/><path d="m11 12-4 4 4 4"/></symbol>
+                  <symbol id="gico-giu" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+                  <symbol id="gico-spunta" viewBox="0 0 24 24"><path d="m5 12.5 5 5 9-11"/></symbol>
+                  <symbol id="gico-2d" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/><path d="M8.2 10.1a1.8 1.8 0 1 1 3.5.6c0 1.3-3.5 2.6-3.5 4.2h3.6"/><path d="M14.4 8.9h1.6a3.1 3.1 0 0 1 0 6.2h-1.6Z"/></symbol>
+                  <symbol id="gico-rotazione" viewBox="0 0 24 24"><path d="M16.5 7.5C15.6 4.2 13.9 2 12 2 9.2 2 7 6.5 7 12s2.2 10 5 10c.3 0 .7-.1 1-.2"/><path d="m15.2 13.7 3.8 1.9-1.9 3.8"/><path d="M19 15.6c-1.8.9-4.3 1.4-7 1.4-5.5 0-10-2.2-10-5s4.5-5 10-5c4.8 0 8.9 1.7 9.8 4"/></symbol>
+                  <symbol id="gico-inquadra" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="m21 3-7 7"/><path d="m3 21 7-7"/></symbol>
+                  <symbol id="gico-cammino" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></symbol>
+                  <symbol id="gico-matrice" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></symbol>
+                  <symbol id="gico-salute" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+                  <symbol id="gico-diff" viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M6 9v6a3 3 0 0 0 3 3h4"/><path d="M18 15V9a3 3 0 0 0-3-3h-4"/></symbol>
+                  <symbol id="gico-salva" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></symbol>
+                  <symbol id="gico-importa" viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></symbol>
+                  <symbol id="gico-immagine" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="m21 15-4.5-4.5L6 21"/></symbol>
+                  <symbol id="gico-codice" viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></symbol>
+                  <symbol id="gico-file-codice" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="m10 13-2 2 2 2"/><path d="m14 13 2 2-2 2"/></symbol>
+                  <symbol id="gico-db" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></symbol>
+                </svg>
+
+                <!-- La barra tiene ciò che decide COSA si guarda (ricerca,
+                     colore, filtri) e gli strumenti che aprono una finestra.
+                     Ciò che muove la TELECAMERA sta invece sopra al canvas, in
+                     alto a destra: è il documento che si sta manipolando, e
+                     tenere quei tre comandi qui costringeva a fare avanti e
+                     indietro fra il bordo della finestra e il grafo. -->
+                <div class="graph3d-bar" role="toolbar" aria-label="Strumenti del grafo dello schema">
+                  <div class="grafo-cerca">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-cerca"/></svg>
+                    <input type="text" id="graph3d-search" placeholder="Cerca tabella o campo…" autocomplete="off"
+                      spellcheck="false" aria-label="Cerca una tabella o un campo nello schema" />
+                    <button type="button" id="graph3d-search-clear" class="grafo-cerca-azzera hidden"
+                      aria-label="Azzera la ricerca" title="Azzera la ricerca">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-chiudi"/></svg>
+                    </button>
+                  </div>
+                  <span id="graph3d-search-esito" class="grafo-esito" role="status" aria-live="polite"></span>
+
+                  <span class="grafo-divisore" aria-hidden="true"></span>
+
+                  <!-- Due stati visibili insieme invece di una tendina in cui
+                       il nome del controllo sta dentro il valore scelto. -->
+                  <div class="grafo-segmentato" role="group" aria-label="Come colorare i nodi">
+                    <button type="button" class="grafo-seg" data-colore="prefix" aria-pressed="true"
+                      title="Un colore per prefisso del nome della tabella">Prefisso</button>
+                    <button type="button" class="grafo-seg" data-colore="degree" aria-pressed="false"
+                      title="Colore e dimensione in base al numero di relazioni">Centralità</button>
+                  </div>
+
+                  <!-- Era una <select>, cioè l'unico comando della barra che
+                       apriva una tendina disegnata dal SISTEMA OPERATIVO: fondo,
+                       carattere, spaziatura e freccia venivano da fuori, e
+                       nessuna regola CSS poteva allinearla al resto. Ora è lo
+                       stesso trigger e lo stesso menu di «Analisi» e «Schema».
+                       `menuitemradio` e non `menuitem`: qui non si esegue un
+                       comando, si sceglie fra alternative che si escludono, e
+                       `aria-checked` dice quale è in vigore. -->
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="graph3d-hop-btn" class="grafo-campo dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false">
+                      <span class="grafo-campo-nome">Vicini</span>
+                      <span class="grafo-campo-valore" id="graph3d-hop-valore">Tutti</span>
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-hop-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button class="dropdown-item attivabile active" type="button" role="menuitemradio"
+                        aria-checked="true" data-salti="all">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>Tutti
+                      </button>
+                      <button class="dropdown-item attivabile" type="button" role="menuitemradio"
+                        aria-checked="false" data-salti="1">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>1 salto
+                      </button>
+                      <button class="dropdown-item attivabile" type="button" role="menuitemradio"
+                        aria-checked="false" data-salti="2">
+                        <svg class="ico ico-spunta" aria-hidden="true"><use href="#gico-spunta"/></svg>2 salti
+                      </button>
+                    </div>
+                  </div>
+
+                  <span class="grafo-divisore" aria-hidden="true"></span>
+
+                  <!-- Erano due voci dentro un menu chiuso: uno stato acceso
+                       che non si vede è uno stato che non esiste. -->
+                  <button type="button" id="graph3d-toggle-empty" class="grafo-pill" aria-pressed="false">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-filtro"/></svg>Solo popolate
+                  </button>
+                  <button type="button" id="graph3d-toggle-implicit" class="grafo-pill" aria-pressed="true">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-implicite"/></svg>Relazioni implicite
+                  </button>
+
+                  <span class="grafo-spazio"></span>
+
+                  <!-- Dropdown Analisi -->
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="graph3d-analysis-menu-btn" class="grafo-pill dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false" title="Strumenti di analisi dello schema">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-analisi"/></svg>Analisi
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-analysis-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button id="graph3d-find-path" class="dropdown-item" type="button" role="menuitem"
+                        title="Trova il cammino minimo tra 2 tabelle">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-cammino"/></svg>Cammino minimo…
+                      </button>
+                      <button id="graph3d-clear-path" class="dropdown-item btn-danger-text hidden" type="button" role="menuitem"
+                        title="Rimuovi evidenziazione del cammino minimo">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-chiudi"/></svg>Azzera cammino
+                      </button>
+                      <div class="dropdown-divider"></div>
+                      <button id="graph3d-deps" class="dropdown-item" type="button" role="menuitem"
+                        title="Analizza la matrice delle dipendenze e l'ordine di popolamento">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-matrice"/></svg>Dipendenze dello schema…
+                      </button>
+                      <button id="graph3d-audit" class="dropdown-item" type="button" role="menuitem"
+                        title="Esegui diagnostica dello schema (Health Check)">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-salute"/></svg>Audit dello schema…
+                      </button>
+                      <button id="graph3d-diff" class="dropdown-item" type="button" role="menuitem"
+                        title="Confronta lo schema attivo con lo snapshot salvato">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-diff"/></svg>Confronta con uno snapshot…
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Dropdown Schema (snapshot, importazione, esportazioni) -->
+                  <div class="toolbar-dropdown-wrap">
+                    <button type="button" id="graph3d-export-menu-btn" class="grafo-pill dropdown-trigger-btn"
+                      aria-haspopup="menu" aria-expanded="false" title="Salva, importa ed esporta lo schema">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-schema"/></svg>Schema
+                      <svg class="ico ico-chevron" aria-hidden="true"><use href="#gico-giu"/></svg>
+                    </button>
+                    <div id="graph3d-export-menu" class="toolbar-dropdown-menu hidden" role="menu">
+                      <button id="graph3d-save-snapshot" class="dropdown-item" type="button" role="menuitem"
+                        title="Salva uno snapshot dello schema corrente">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-salva"/></svg>Salva snapshot
+                      </button>
+                      <button id="graph3d-import-schema" class="dropdown-item" type="button" role="menuitem"
+                        title="Importa ed esplora uno schema da SQL o DBML">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-importa"/></svg>Importa (SQL/DBML)…
+                      </button>
+                      <div class="dropdown-divider"></div>
+                      <button id="graph3d-export-png" class="dropdown-item" type="button" role="menuitem" title="Esporta PNG">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-immagine"/></svg>Esporta PNG
+                      </button>
+                      <button id="graph3d-export-mermaid" class="dropdown-item" type="button" role="menuitem"
+                        title="Copia diagramma Mermaid">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-codice"/></svg>Diagramma Mermaid
+                      </button>
+                      <button id="graph3d-export-dbml" class="dropdown-item" type="button" role="menuitem"
+                        title="Esporta in formato DBML">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-file-codice"/></svg>Formato DBML
+                      </button>
+                      <button id="graph3d-export-sql" class="dropdown-item" type="button" role="menuitem"
+                        title="Esporta DDL SQL CREATE TABLE">
+                        <svg class="ico" aria-hidden="true"><use href="#gico-db"/></svg>DDL SQL
+                      </button>
+                    </div>
+                  </div>
+
+                  <button type="button" id="graph3d-refresh" class="grafo-pill" title="Rilegge lo schema dal database">
+                    <svg class="ico" aria-hidden="true"><use href="#gico-rigenera"/></svg>Rigenera
+                  </button>
+                </div>
+
+                <div class="graph3d-container">
+                  <div id="graph3d-path-badge" class="graph3d-path-badge hidden">
+                    <span id="graph3d-path-badge-text">Cammino attivo</span>
+                    <button id="graph3d-path-badge-clear" class="badge-clear-btn" title="Rimuovi cammino">Rimuovi</button>
+                  </div>
+                  <div id="graph3d-canvas" class="graph3d-canvas"></div>
+
+                  <!-- L'inquadratura sta sopra al grafo, dove l'occhio è già:
+                       fondo PIENO e non translucido, perché sul tema chiaro un
+                       velo sul canvas rende i comandi indistinguibili dallo
+                       sfondo. -->
+                  <div id="graph3d-rail" class="grafo-rail" role="group" aria-label="Inquadratura del grafo">
+                    <button type="button" id="graph3d-toggle-2d" class="grafo-tool" aria-pressed="false"
+                      aria-label="Vista 2D piatta" title="Vista 2D piatta: appiattisce il grafo su un piano">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-2d"/></svg>
+                    </button>
+                    <button type="button" id="graph3d-auto-rotate" class="grafo-tool" aria-pressed="false"
+                      aria-label="Rotazione automatica" title="Rotazione automatica della scena">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-rotazione"/></svg>
+                    </button>
+                    <span class="grafo-rail-sep" aria-hidden="true"></span>
+                    <button type="button" id="graph3d-reset-cam" class="grafo-tool"
+                      aria-label="Inquadra tutto il grafo" title="Inquadra tutto il grafo e azzera la selezione">
+                      <svg class="ico" aria-hidden="true"><use href="#gico-inquadra"/></svg>
+                    </button>
+                  </div>
+
+                  <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
+                    <div class="side-panel-header">
+                      <h3 id="graph3d-panel-title">Nome Tabella</h3>
+                      <button id="graph3d-panel-close" class="close-btn" title="Chiudi">&#10005;</button>
+                    </div>
+                    <div id="graph3d-panel-content" class="side-panel-content"></div>
+                  </aside>
+                </div>
+              </div>
+              <!-- ------------------- Vista Query & Aggregate ------------------- -->
+              <div id="view-query" class="view-panel hidden">
+                <div class="query-topbar">
+                  <!-- Dove e COME gira la query: una domanda sola, quindi un
+                       controllo solo. Prima erano due gruppi affiancati — la
+                       select "Target Engine" (larga, cinque voci, quasi sempre
+                       su Auto) e l'indicatore "Esegui su:" — che occupavano
+                       stabilmente metà barra per un'informazione che si legge
+                       in un colpo d'occhio e si cambia di rado. -->
+                  <div class="query-target-selector toolbar-dropdown-wrap">
+                    <button type="button" id="query-target-btn" class="query-target-btn dropdown-trigger-btn"
+                      aria-haspopup="true" aria-expanded="false"
+                      title="Motore e database su cui girerà la query">
+                      <span id="query-target-engine-label" class="query-target-engine-label">⚡ Auto</span>
+                      <span class="query-target-sep">·</span>
+                      <span id="query-target-label" class="query-target-label">—</span>
+                      <span class="dropdown-caret">▾</span>
+                    </button>
+                    <div id="query-target-menu" class="toolbar-dropdown-menu hidden">
+                      <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
+                      <select id="query-target-engine" class="styled-select">
+                        <option value="auto">⚡ Auto-detect (DB corrente)</option>
+                        <option value="mysql">🗄 MySQL (SQL Runner)</option>
+                        <option value="postgresql">🗄 PostgreSQL (SQL Runner)</option>
+                        <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
+                        <option value="crossdb">🔀 Cross-DB (Virtual JOIN)</option>
+                      </select>
+                      <button id="query-target-reset" class="dropdown-item hidden" type="button"
+                        title="Torna al contesto della collection aperta">↩ Torna alla collection aperta</button>
+                    </div>
+                  </div>
+
+                  <div class="query-actions">
+                    <button id="query-toggle-schema-btn" class="ghost btn-sm mobile-only-btn" type="button"
+                      title="Mostra/Nascondi Schema Browser"><i data-lucide="folder-tree"></i> <span class="btn-label-mobile">Schema</span></button>
+                    <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> <span id="query-run-label">Esegui Query</span></button>
+                    <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query"><i data-lucide="square"></i>
+                      Annulla</button>
+                    <!-- Visibile solo quando l'editor contiene più istruzioni: per una
+                         query singola la scelta non avrebbe senso. -->
+                    <label id="query-stop-on-error-wrap" class="query-inline-check hidden"
+                      title="Se attivo lo script si ferma alla prima istruzione fallita (resta riprendibile); altrimenti prosegue e riporta gli errori alla fine">
+                      <input type="checkbox" id="query-stop-on-error" /> ferma al primo errore
+                    </label>
+                  </div>
+
+                  <div id="query-metrics" class="query-metrics">
+                    <span id="query-status-badge" class="badge badge-idle">● In attesa</span>
+                    <span id="query-time-metric" class="metric-item hidden"><i data-lucide="clock"></i> <strong id="query-time-val">0</strong>
+                      ms</span>
+                    <span id="query-count-metric" class="metric-item hidden"><i data-lucide="bar-chart"></i> <strong id="query-count-val">0</strong>
+                      record</span>
+                  </div>
+                </div>
+
+                <div class="query-layout-body">
+                  <!-- Pannello Sinistro: Schema Browser -->
+                  <aside id="query-schema-sidebar" class="query-sidebar">
+                    <div class="sidebar-title">
+                      <span>Schema Browser</span>
+                      <div class="sidebar-title-actions">
+                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                        <button id="query-schema-close" class="mini-btn mobile-only-btn"
+                          title="Chiudi Schema Browser">✕</button>
+                      </div>
+                    </div>
+                    <div class="sidebar-search">
+
+                      <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
+                        autocomplete="off" spellcheck="false" />
+                    </div>
+                    <div id="query-schema-tree" class="query-schema-tree"></div>
+                  </aside>
+
+                  <div class="resizer" data-resize="query-sidebar"></div>
+
+                  <!-- Pannello Centrale/Destro: Editor + Risultati -->
+                  <div class="query-main-panel">
+                    <!-- Sezione Superiore: Editor -->
+                    <div id="query-editor-container" class="query-editor-container">
+                      <div class="editor-header">
+                        <span id="query-editor-title">Editor Query (SQL / MQL JSON)</span>
+                        <!-- Una sola azione porta un'etichetta, ed è Formatta:
+                             è l'unica che si usa MENTRE si scrive. Aprire un
+                             file, ripescare una query, incollare uno snippet e
+                             svuotare l'editor sono azioni di inizio o fine
+                             lavoro, e stanno nel menu ⋯. -->
+                        <div class="editor-tools">
+                          <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
+                          <button id="query-format-btn" class="mini-btn" title="Formatta il codice (Ctrl+Shift+F)"><i data-lucide="sparkles"></i> Formatta</button>
+                          <button id="query-minify-btn" class="mini-btn" title="Minifica: tutto su una riga (Ctrl+Shift+M)"><i data-lucide="minimize-2"></i></button>
+                          <span class="query-history-wrap toolbar-dropdown-wrap">
+                            <button type="button" id="query-editor-more-btn" class="mini-btn dropdown-trigger-btn"
+                              aria-haspopup="true" aria-expanded="false" title="Altre azioni sull'editor">⋯</button>
+                            <div id="query-editor-more-menu" class="toolbar-dropdown-menu hidden">
+                              <button id="qe-history-btn" class="dropdown-item" type="button"
+                                title="Cronologia delle query eseguite in questa tab">🕘 Cronologia query</button>
+                              <button id="query-open-sql-btn" class="dropdown-item" type="button"
+                                title="Apri ed esegui file SQL">📂 Apri file SQL…</button>
+                              <button id="query-snippet-btn" class="dropdown-item" type="button"
+                                title="Snippet &amp; Template">📖 Snippet &amp; Template</button>
+                              <button id="query-clear-btn" class="dropdown-item" type="button"
+                                title="Pulisci editor">🧹 Pulisci editor</button>
+                            </div>
+                            <div id="qe-history-panel" class="hidden"></div>
+                          </span>
+                        </div>
+                      </div>
+                      <!-- Pannello Gestione Chunk File SQL Grandi -->
+                      <div id="query-sql-chunk-panel" class="query-chunk-panel hidden">
+                        <div class="chunk-panel-top">
+                          <div class="chunk-file-info">
+                            <span class="chunk-file-icon">📄</span>
+                            <strong id="chunk-file-name" class="chunk-file-name">file.sql</strong>
+                            <span id="chunk-file-size" class="chunk-file-badge">0 MB</span>
+                            <span id="chunk-count-badge" class="chunk-file-badge">0 chunk</span>
+                          </div>
+                          <div class="chunk-panel-actions">
+                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequenzialmente">▶ Esegui Tutti i Chunk</button>
+                            <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecuzione sequenziale">🛑 Stop Esecuzione</button>
+                            <button id="chunk-close-btn" class="ghost mini-btn" type="button" title="Chiudi pannello file grandi">✕ Chiudi File</button>
+                          </div>
+                        </div>
+                        <div class="chunk-panel-nav">
+                          <div class="chunk-nav-controls">
+                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente">◀ Prev</button>
+                            <select id="chunk-select" class="styled-select chunk-select" title="Seleziona chunk"></select>
+                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next ▶</button>
+                            <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'editor per ispezione/modifica">✏️ Carica in Editor</button>
+                          </div>
+                          <span id="chunk-byte-info" class="chunk-byte-info">0 KB - 0 KB</span>
+                        </div>
+                        <div id="chunk-progress-container" class="chunk-progress-container hidden">
+                          <div class="chunk-progress-track">
+                            <div id="chunk-progress-fill" class="chunk-progress-fill" style="width: 0%;"></div>
+                          </div>
+                          <span id="chunk-progress-text" class="chunk-progress-text">Pronto per l'esecuzione</span>
+                        </div>
+                      </div>
+                      <div class="editor-body">
+                        <div class="query-editor-wrapper">
+                          <!-- Numeri di riga: servono da quando gli errori del
+                               runner e dell'interprete dicono "riga N". -->
+                          <div id="query-editor-gutter" class="query-editor-gutter" aria-hidden="true"></div>
+                          <pre id="query-editor-highlight" class="query-editor-highlight" aria-hidden="true"><code id="query-editor-code"></code></pre>
+                          <textarea id="query-editor-input" spellcheck="false"
+                            placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                        </div>
+                      </div>
+                      <!-- Linting in linea: compare solo quando nell'editor c'è
+                           un documento JSON/BSON. Su SQL tace, perché lì
+                           l'errore lo dice il DBMS con più precisione. Sta
+                           FUORI da .editor-body, che è un flex in riga: lì
+                           dentro finirebbe di fianco al testo, non sotto. -->
+                      <div id="query-lint" class="lint-bar hidden" aria-live="polite"></div>
+                    </div>
+
+                    <div class="resizer-v" id="query-editor-resizer"></div>
+
+                    <!-- Sezione Inferiore: Risultati -->
+                    <div id="query-results-container" class="query-results-container">
+                      <div class="results-header">
+                        <div class="results-view-mode">
+                          <button id="res-mode-table" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
+                          <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
+                          <button id="res-mode-chart" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
+                          <!-- Compare SOLO se nei risultati ci sono davvero
+                               geometrie (query-map.js): su una query di conteggi
+                               sarebbe una scheda che si apre su un riquadro
+                               vuoto, cioè una funzione che sembra rotta. -->
+                          <button id="res-mode-map" class="mode-btn hidden" title="Nessuna geometria nei risultati"><i data-lucide="map"></i> Mappa</button>
+                        </div>
+                        <!-- Un solo ingresso all'esportazione. Prima erano sei
+                             pulsanti per tre azioni: tre nella barra su desktop
+                             e un menu identico per il mobile, cioè due strade
+                             per la stessa cosa da tenere allineate a mano. -->
+                        <div class="results-actions">
+                          <div class="toolbar-dropdown-wrap">
+                            <button type="button" id="query-export-menu-btn" class="mini-btn dropdown-trigger-btn"
+                              aria-haspopup="true" aria-expanded="false" title="Esporta i risultati">📥 Esporta ▾</button>
+                            <div id="query-export-menu" class="toolbar-dropdown-menu hidden">
+                              <button id="query-export-csv" class="dropdown-item" type="button">📥 Esporta CSV</button>
+                              <button id="query-export-json" class="dropdown-item" type="button">📥 Esporta JSON</button>
+                              <button id="query-export-sql" class="dropdown-item" type="button">📥 Esporta SQL (INSERT)</button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div id="query-error-box" class="error hidden"></div>
+
+                      <!-- Resoconto dell'esecuzione di uno SCRIPT (più istruzioni):
+                           avanzamento, controlli di pausa/ripresa e righe fallite.
+                           La griglia sotto continua a mostrare l'ultimo result set. -->
+                      <div id="script-run-panel" class="script-run-panel hidden">
+                        <div class="script-run-top">
+                          <div class="script-run-info">
+                            <span id="script-run-status" class="badge-status status-running">⏳ In esecuzione</span>
+                            <span id="script-run-counts" class="script-run-counts">0 / 0</span>
+                            <span id="script-run-errors" class="script-run-errors hidden">0 errori</span>
+                          </div>
+                          <div class="script-run-actions">
+                            <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione in corso">⏸ Pausa</button>
+                            <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'istruzione in corso sul database">⏸! Pausa forzata</button>
+                            <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cui si era fermato">▶ Riprendi</button>
+                            <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivamente">🛑 Interrompi</button>
+                            <button id="script-close-btn" class="mini-btn ghost hidden" type="button" title="Chiudi il resoconto">✕ Chiudi</button>
+                          </div>
+                        </div>
+                        <div class="script-run-progress-track">
+                          <div id="script-run-progress-fill" class="script-run-progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <div id="script-run-log" class="script-run-log"></div>
+                      </div>
+
+                      <!-- Risultati per istruzione: una linguetta per ogni
+                           result set prodotto dallo script. Il contenuto NON è
+                           qui: si chiede al server quando si apre la scheda. -->
+                      <div id="script-results-tabs" class="script-results-tabs hidden" role="tablist" aria-label="Risultati per istruzione"></div>
+
+                      <div id="query-results-body" class="query-results-body">
+                        <!-- Vista Tabella -->
+                        <div id="query-table-view" class="results-panel-view">
+                          <table id="query-result-table" class="query-table">
+                            <thead></thead>
+                            <tbody></tbody>
+                          </table>
+                        </div>
+                        <!-- Vista JSON Tree -->
+                        <div id="query-json-view" class="results-panel-view hidden">
+                          <div id="query-json-tree" class="json-tree-container"></div>
+                        </div>
+                        <!-- Vista Grafici personalizzati (ECharts, caricato su
+                             richiesta da public/vendor/echarts). Il pannello a
+                             destra si genera da charts.js: i controlli dipendono
+                             dal tipo di grafico e dalle colonne del result set,
+                             che non si conoscono a priori. -->
+                        <div id="query-chart-view" class="results-panel-view hidden">
+                          <div class="chart-layout">
+                            <div class="chart-main">
+                              <!-- Barra rapida: le quattro decisioni che fanno
+                                   un grafico (tipo, categoria, misura, calcolo)
+                                   sempre in vista. I controlli li genera
+                                   charts.js, che è l'unico a conoscere le
+                                   colonne del result set corrente. -->
+                              <div class="chart-toolbar">
+                                <div id="chart-quickbar" class="chart-quickbar"></div>
+                                <div class="toolbar-dropdown-wrap">
+                                  <button type="button" id="chart-suggest-btn" class="mini-btn dropdown-trigger-btn"
+                                    title="Grafici già pronti, dedotti dalla forma dei risultati">💡 Suggeriti ▾</button>
+                                  <div id="chart-suggest-menu" class="toolbar-dropdown-menu hidden"></div>
+                                </div>
+                                <!-- Stesso trattamento dell'export dei risultati:
+                                     due esportazioni = un solo menu. Quickbar,
+                                     Suggeriti e Personalizza restano com'erano. -->
+                                <div class="toolbar-dropdown-wrap">
+                                  <button type="button" id="chart-export-menu-btn" class="mini-btn dropdown-trigger-btn"
+                                    aria-haspopup="true" aria-expanded="false" title="Esporta il grafico">⤓ Esporta ▾</button>
+                                  <div id="chart-export-menu" class="toolbar-dropdown-menu hidden">
+                                    <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come immagine PNG">🖼 Immagine PNG</button>
+                                    <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts generata">⤓ Option ECharts (JSON)</button>
+                                  </div>
+                                </div>
+                                <button type="button" id="chart-toggle-builder" class="mini-btn"
+                                  title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON">⚙ Personalizza</button>
+                              </div>
+                              <div id="query-chart-canvas" class="chart-canvas"></div>
+                              <div id="chart-empty" class="chart-empty">Esegui una query: i risultati compaiono qui come grafico.</div>
+                              <div id="chart-notes" class="chart-notes hidden"></div>
+                            </div>
+                            <div id="chart-builder-panel" class="chart-builder-panel">
+                              <div class="chart-builder-head">Personalizzazione</div>
+                              <div id="chart-builder" class="chart-builder"></div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Vista MAPPA dei risultati: stessa mappa della
+                             selezione di celle (geo-vista.js), con i dati presi
+                             dalle righe invece che dalle celle evidenziate.
+                             Leaflet è vendorizzato e caricato su richiesta. -->
+                        <div id="query-map-view" class="results-panel-view hidden">
+                          <div class="qmap-toolbar">
+                            <button type="button" id="qmap-fit" class="mini-btn" title="Inquadra tutte le geometrie">⤢ Inquadra tutto</button>
+                            <label class="qmap-check" title="Le tile arrivano da OpenStreetMap: richiede rete">
+                              <input type="checkbox" id="qmap-tiles" /> Sfondo mappa
+                            </label>
+                            <span id="qmap-conta" class="qmap-conta"></span>
+                            <button type="button" id="qmap-copy" class="mini-btn" title="Copia il riepilogo in TSV">Copia riepilogo</button>
+                            <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come FeatureCollection">⤓ GeoJSON</button>
+                          </div>
+                          <div id="qmap-nota" class="qmap-nota hidden"></div>
+                          <div id="qmap-warning" class="warning hidden"></div>
+                          <div id="qmap-body" class="qmap-body">
+                            <div id="qmap-canvas" class="geomap-canvas"></div>
+                            <div class="qmap-side">
+                              <div id="qmap-summary"></div>
+                              <div id="qmap-list" class="geomulti-list"></div>
+                              <div id="qmap-list-note" class="dim geomap-note hidden"></div>
+                            </div>
+                          </div>
+                          <div id="qmap-empty" class="chart-empty">Esegui una query: le geometrie contenute nei risultati compaiono qui sulla mappa.</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div><!-- /#tab-body -->
+      </div><!-- /.main-area -->
+    </div><!-- /.body -->
+  </div><!-- /#app -->
+
+  <!-- ===================== Modale inserimento documento ===================== -->
+  <div id="insert-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="insert-title">Nuovo documento</h2>
+
+      <div class="tabs">
+        <button type="button" class="tab active" data-instab="form">Modulo</button>
+        <button type="button" class="tab" data-instab="json">JSON</button>
+      </div>
+
+      <div id="insert-tab-form" class="tab-panel">
+        <div class="insert-form-wrap">
+          <table class="info-table insert-form" id="insert-form">
+            <tbody></tbody>
+          </table>
+          <div id="insert-form-empty" class="dim hidden">Nessun campo noto: aggiungi un campo oppure usa il tab JSON.
+          </div>
+        </div>
+        <button type="button" id="insert-addfield" class="ghost hidden">＋ Aggiungi campo</button>
+      </div>
+
+      <div id="insert-tab-json" class="tab-panel hidden">
+        <div class="json-tools">
+          <button type="button" id="insert-json-format" class="mini-btn"
+            title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+          <button type="button" id="insert-json-minify" class="mini-btn"
+            title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+        </div>
+        <textarea id="insert-json" rows="14" spellcheck="false">{
+
+}</textarea>
+        <div id="insert-json-lint" class="lint-bar hidden" aria-live="polite"></div>
+      </div>
+
+      <div id="insert-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="insert-cancel" class="ghost">Annulla</button>
+        <button id="insert-save" class="primary">Inserisci</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale editor geografico (GEOMETRY / GeoJSON) ===================== -->
+  <!-- Impianto: la MAPPA è il documento, gli strumenti le stanno sopra.
+       Prima ogni comando viveva in due barre di testo sopra la mappa, che
+       occupavano due righe intere e allontanavano il comando dal punto in cui
+       si guarda — mentre la mappa, che è ciò che si sta modificando, aveva
+       poco più di metà finestra. Ora: una barra sola con le scelte che
+       riguardano l'intera geometria (tipo, modalità del clic, pannelli), e
+       sulla mappa due gruppi FLUTTUANTI, come negli editor cartografici: la
+       colonna a destra per la forma (annulla, inquadra, parti) e la barra in
+       basso per il vertice scelto, che è dove l'occhio sta già guardando. -->
+  <div id="geomap-overlay" class="overlay hidden">
+    <div class="modal wide geomap-modal">
+      <!-- Icone: un solo sprite SVG per tutta la modale. Un simbolo si riusa con
+           <use>, quindi l'icona è definita una volta e non è un carattere
+           tipografico che cambia forma da un sistema all'altro. -->
+      <svg class="geomap-sprite" aria-hidden="true" focusable="false">
+        <symbol id="ico-disegna" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+        <symbol id="ico-modifica" viewBox="0 0 24 24"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51Z"/></symbol>
+        <symbol id="ico-annulla" viewBox="0 0 24 24"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6.36 2.64L3 13"/></symbol>
+        <symbol id="ico-rifai" viewBox="0 0 24 24"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6.36 2.64L21 13"/></symbol>
+        <symbol id="ico-inquadra" viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></symbol>
+        <symbol id="ico-ridisegna" viewBox="0 0 24 24"><path d="M3 2v6h6"/><path d="M3.51 9a9 9 0 1 0 2.13-3.36L3 8"/></symbol>
+        <symbol id="ico-nuova-parte" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+        <symbol id="ico-elimina" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></symbol>
+        <symbol id="ico-vertice" viewBox="0 0 24 24"><path d="M4 18 20 6"/><circle cx="12" cy="12" r="3"/><path d="M18 15v6"/><path d="M15 18h6"/></symbol>
+        <symbol id="ico-json" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></symbol>
+        <symbol id="ico-sfondo" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
+      </svg>
+
+      <div class="geomap-intestazione">
+        <h2 id="geomap-title">Geometria</h2>
+        <span id="geomap-info" class="geomap-chip"></span>
+      </div>
+
+      <div class="geomap-toolbar">
+        <label class="geomap-campo">Tipo
+          <select id="geomap-type">
+            <option value="Point">Point</option>
+            <option value="MultiPoint">MultiPoint</option>
+            <option value="LineString">LineString</option>
+            <option value="MultiLineString">MultiLineString</option>
+            <option value="Polygon">Polygon</option>
+            <option value="MultiPolygon">MultiPolygon</option>
+          </select>
+        </label>
+
+        <!-- Che cosa fa il prossimo clic sulla mappa è uno STATO fra due, e un
+             controllo segmentato lo mostra tutto: un unico bottone che cambia
+             etichetta costringe a chiedersi se l'etichetta descriva lo stato di
+             adesso o quello che si otterrebbe premendolo. -->
+        <div class="geomap-segmentato" id="geomap-mode" role="group" aria-label="Cosa fa il clic sulla mappa">
+          <button type="button" id="geomap-mode-draw" aria-pressed="true"
+                  title="Il clic sulla mappa aggiunge un vertice alla parte attiva">
+            <svg class="ico" aria-hidden="true"><use href="#ico-disegna"/></svg>Disegna
+          </button>
+          <button type="button" id="geomap-mode-select" aria-pressed="false"
+                  title="Il clic sceglie e trascina i vertici, senza aggiungerne">
+            <svg class="ico" aria-hidden="true"><use href="#ico-modifica"/></svg>Modifica
+          </button>
+        </div>
+
+        <span class="geomap-spazio"></span>
+
+        <button type="button" id="geomap-tiles-btn" class="geomap-interruttore" aria-pressed="false"
+                title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
+          <svg class="ico" aria-hidden="true"><use href="#ico-sfondo"/></svg>Sfondo mappa
+        </button>
+        <input type="checkbox" id="geomap-tiles" class="visually-hidden" tabindex="-1" aria-hidden="true" />
+        <button type="button" id="geomap-json-btn" class="geomap-interruttore" aria-pressed="true"
+                aria-controls="geomap-json" title="Mostra o nasconde il GeoJSON accanto alla mappa">
+          <svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg>GeoJSON
+        </button>
+      </div>
+
+      <div id="geomap-warning" class="warning hidden"></div>
+
+      <div class="geomap-body">
+        <div class="geomap-scena">
+          <div id="geomap-canvas" class="geomap-canvas"></div>
+
+          <!-- Strumenti della FORMA: stanno sulla mappa, come in un editor
+               cartografico, perché è lì che si guarda mentre si lavora. -->
+          <div class="geomap-rail" id="geomap-azioni-forma">
+            <button type="button" id="geomap-undo" class="geomap-tool" title="Annulla l’ultima modifica (Ctrl+Z)" aria-label="Annulla l’ultima modifica">
+              <svg class="ico" aria-hidden="true"><use href="#ico-annulla"/></svg>
+            </button>
+            <button type="button" id="geomap-redo" class="geomap-tool" title="Rifà la modifica annullata (Ctrl+Shift+Z)" aria-label="Rifà la modifica annullata">
+              <svg class="ico" aria-hidden="true"><use href="#ico-rifai"/></svg>
+            </button>
+            <span class="geomap-rail-sep" aria-hidden="true"></span>
+            <button type="button" id="geomap-new-part" class="geomap-tool hidden" aria-label="Nuova parte">
+              <svg class="ico" aria-hidden="true"><use href="#ico-nuova-parte"/></svg>
+            </button>
+            <button type="button" id="geomap-del-part" class="geomap-tool hidden" title="Elimina la parte attiva" aria-label="Elimina la parte attiva">
+              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg>
+            </button>
+            <button type="button" id="geomap-redraw" class="geomap-tool" title="Svuota la geometria conservando il tipo e ridisegnala da capo" aria-label="Ridisegna da capo">
+              <svg class="ico" aria-hidden="true"><use href="#ico-ridisegna"/></svg>
+            </button>
+            <span class="geomap-rail-sep" aria-hidden="true"></span>
+            <button type="button" id="geomap-fit" class="geomap-tool" title="Inquadra l’intera geometria" aria-label="Inquadra l’intera geometria">
+              <svg class="ico" aria-hidden="true"><use href="#ico-inquadra"/></svg>
+            </button>
+          </div>
+
+          <!-- Strumenti del VERTICE scelto: in basso, larghi, con l'etichetta
+               che dice su cosa stanno per agire. Restano visibili e disattivati
+               finché non c'è una scelta: un comando che appare solo quando è
+               possibile è un comando che nessuno scopre. -->
+          <div class="geomap-azioni-vertice" id="geomap-azioni">
+            <span id="geomap-selezione" class="geomap-selezione">nessun vertice scelto</span>
+            <button type="button" id="geomap-insert-vertex" class="geomap-pill" title="Inserisce un vertice a metà del lato successivo (Ins)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-vertice"/></svg>Inserisci vertice
+            </button>
+            <button type="button" id="geomap-del-vertex" class="geomap-pill pericolo" title="Elimina il vertice selezionato (Canc)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg>Elimina vertice
+            </button>
+          </div>
+
+          <div id="geomap-handles-note" class="geomap-avviso-mappa hidden"></div>
+        </div>
+
+        <textarea id="geomap-json" class="geomap-json" spellcheck="false" aria-label="GeoJSON della geometria"></textarea>
+      </div>
+
+      <div id="geomap-note" class="dim geomap-note hidden"></div>
+      <div id="geomap-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="geomap-cancel" class="ghost">Annulla</button>
+        <button id="geomap-save" class="primary">Applica geometria</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Modale mappa di una selezione di celle geometriche ============ -->
+  <div id="geomulti-overlay" class="overlay hidden">
+    <div class="modal wide geomap-modal">
+      <h2 id="geomulti-title">Geometrie sulla mappa</h2>
+
+      <div class="geomap-toolbar">
+        <button type="button" id="geomulti-fit" class="ghost">⤢ Inquadra tutto</button>
+        <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, la mappa funziona su sfondo neutro">
+          <input type="checkbox" id="geomulti-tiles" /> Sfondo mappa (OpenStreetMap)
+        </label>
+        <span class="dim">Clic su una riga dell'elenco per inquadrarla · clic su una forma per trovarla nell'elenco</span>
+      </div>
+
+      <div id="geomulti-warning" class="warning hidden"></div>
+
+      <div class="geomap-body">
+        <div id="geomulti-canvas" class="geomap-canvas"></div>
+        <div class="geomulti-side">
+          <div id="geomulti-summary"></div>
+          <div id="geomulti-list" class="geomulti-list"></div>
+          <div id="geomulti-list-note" class="dim geomap-note hidden"></div>
+        </div>
+      </div>
+
+      <p class="hint" style="margin:8px 0 0">Lunghezze e aree sono calcolate sulla sfera (raggio medio WGS84):
+        l'approssimazione rispetto all'ellissoide è sotto lo 0,5%. Per un calcolo esatto usa le funzioni
+        spaziali del database (<span class="mono">ST_Length</span>, <span class="mono">ST_Area</span>).</p>
+
+      <div class="modal-actions">
+        <button id="geomulti-copy" class="ghost">Copia riepilogo</button>
+        <button id="geomulti-export" class="ghost">Esporta GeoJSON</button>
+        <button id="geomulti-close" class="primary">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Pannello di scelta delle chiavi esterne (🔗) ============
+       Compare accanto alla riga quando si modifica una cella collegata.
+       Deliberatamente NON è una barra laterale: staccato dai bordi, alto quanto
+       il suo contenuto e allineato alla cella, perché è un aiuto momentaneo a
+       QUELLA cella e non una parte stabile dell'applicazione. Non è nemmeno una
+       modale: la cella deve restare visibile e scrivibile mentre si sceglie. -->
+  <aside id="fk-pannello" class="fk-pannello hidden" aria-hidden="true" aria-label="Scegli un riferimento">
+    <!-- Maniglie di ridimensionamento. Sono `separator` con tabindex perché il
+         trascinamento non è l'unico modo di ridimensionare: chi non può
+         trascinare le usa con le frecce. -->
+    <div id="fk-res-x" class="fk-res fk-res-x" role="separator" tabindex="0"
+         aria-orientation="vertical" aria-label="Larghezza del pannello (frecce sinistra/destra)"></div>
+    <div id="fk-res-y" class="fk-res fk-res-y" role="separator" tabindex="0"
+         aria-orientation="horizontal" aria-label="Altezza del pannello (frecce su/giù)"></div>
+    <!-- Maniglia del drawer: visibile solo su mobile. È l'affordance che dice
+         "questo si trascina giù per chiudersi", e il bersaglio dello swipe. -->
+    <div id="fk-grab" class="fk-grab" aria-hidden="true"><span></span></div>
+    <div class="fk-header">
+      <div class="fk-header-testo">
+        <span class="fk-occhiello">Riferimento</span>
+        <h3 id="fk-title">Riferimento</h3>
+      </div>
+      <button type="button" id="fk-close" class="close-btn" title="Chiudi (Esc)" aria-label="Chiudi">✕</button>
+    </div>
+    <p id="fk-origine" class="fk-origine dim"></p>
+
+    <div class="fk-body">
+      <section class="fk-sezione">
+        <h4>Riga riferita</h4>
+        <div id="fk-riga" class="fk-riga"></div>
+      </section>
+
+      <section class="fk-sezione fk-sezione-elenco">
+        <h4 id="fk-elenco-titolo">Scegli un'altra riga</h4>
+        <input type="search" id="fk-cerca" class="fk-cerca" placeholder="Cerca nella tabella…"
+               autocomplete="off" spellcheck="false" aria-label="Cerca nella tabella di riferimento" />
+        <div id="fk-elenco" class="fk-elenco" role="listbox" aria-labelledby="fk-elenco-titolo"></div>
+        <div id="fk-elenco-nota" class="dim fk-nota hidden"></div>
+      </section>
+    </div>
+
+    <div class="fk-actions">
+      <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova scheda">Apri tabella ↗</button>
+      <button type="button" id="fk-usa" class="primary" disabled>Usa questo valore</button>
+    </div>
+  </aside>
+
+  <!-- ===================== Modale modifica documento (riga) ===================== -->
+  <div id="editdoc-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Modifica documento</h2>
+      <p id="editdoc-id" class="doc-id-line"></p>
+      <div class="json-tools">
+        <button type="button" id="editdoc-format" class="mini-btn"
+          title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+        <button type="button" id="editdoc-minify" class="mini-btn"
+          title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+      </div>
+      <textarea id="editdoc-json" rows="16" spellcheck="false"></textarea>
+      <div id="editdoc-lint" class="lint-bar hidden" aria-live="polite"></div>
+      <div id="editdoc-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="editdoc-cancel" class="ghost">Annulla</button>
+        <button id="editdoc-save" class="primary">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale nuovo database ===================== -->
+  <!-- ===================== Modale generica "chiedi un testo" =====================
+       Sostituisce window.prompt(), che nell'app desktop Electron NON esiste: la
+       chiamata non apre nulla e il flusso muore in silenzio (nessuna finestra,
+       nessun toast, perché l'errore avviene prima di qualsiasi emit). Vedi
+       chiediTesto() in js/utils.js. -->
+  <div id="askinput-overlay" class="overlay hidden" role="dialog" aria-modal="true"
+       aria-labelledby="askinput-title">
+    <div class="modal">
+      <h2 id="askinput-title">Inserisci un valore</h2>
+      <p class="subtitle hidden" id="askinput-subtitle"></p>
+      <div class="form-row">
+        <label><span id="askinput-label">Valore</span>
+          <input type="text" id="askinput-value" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row hidden" id="askinput-check-row">
+        <label class="inline">
+          <input type="checkbox" id="askinput-check" />
+          <span id="askinput-check-label"></span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="askinput-cancel" class="ghost">Annulla</button>
+        <button id="askinput-ok" class="primary">Conferma</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dbcreate-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Nuovo database</h2>
+      <p class="subtitle" id="dbcreate-subtitle">In MongoDB un database esiste solo se contiene almeno una collection.
+      </p>
+      <div class="form-row">
+        <label>Nome database
+          <input type="text" id="dbcreate-name" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label><span id="dbcreate-coll-label">Prima collection</span>
+          <input type="text" id="dbcreate-coll" placeholder="collection1" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div id="dbcreate-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="dbcreate-cancel" class="ghost">Annulla</button>
+        <button id="dbcreate-save" class="primary">Crea</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale nuova collection / tabella ===================== -->
+  <div id="collcreate-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="collcreate-title">Nuova collection</h2>
+      <p class="subtitle" id="collcreate-subtitle"></p>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="collcreate-name" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div id="collcreate-schema" class="hidden">
+        <table class="info-table cols-editor" id="collcreate-cols">
+          <thead>
+            <tr>
+              <th>Colonna</th>
+              <th>Tipo</th>
+              <th title="Ammetti NULL">NULL</th>
+              <th>Default</th>
+              <th title="AUTO_INCREMENT">AI</th>
+              <th title="Chiave primaria">PK</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button type="button" id="collcreate-addcol" class="ghost">＋ Aggiungi colonna</button>
+      </div>
+      <div id="collcreate-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="collcreate-cancel" class="ghost">Annulla</button>
+        <button id="collcreate-save" class="primary">Crea</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale aggiungi / modifica colonna (MySQL) ===================== -->
+  <div id="coledit-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="coledit-title">Aggiungi colonna</h2>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="coledit-name" spellcheck="false" autocomplete="off" />
+        </label>
+        <label id="coledit-type-row">Tipo
+          <input type="text" id="coledit-type" list="mysql-types" placeholder="es. VARCHAR(255)" spellcheck="false"
+            autocomplete="off" />
+        </label>
+        <label id="coledit-bsontype-row" class="hidden">Converti in
+          <select id="coledit-bsontype">
+            <option value="">(non convertire)</option>
+            <option value="string">string</option>
+            <option value="int">int</option>
+            <option value="long">long</option>
+            <option value="double">double</option>
+            <option value="decimal">decimal</option>
+            <option value="bool">bool</option>
+            <option value="date">date</option>
+            <option value="objectId">objectId</option>
+            <option value="array">array</option>
+            <option value="object">object</option>
+            <option value="binData">binData</option>
+            <option value="timestamp">timestamp</option>
+            <option value="regex">regex</option>
+            <option value="javascript">javascript</option>
+            <option value="null">null</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label id="coledit-default-row"><span id="coledit-default-label">Default</span>
+          <input type="text" id="coledit-default" placeholder="(nessuno; testo, numero o CURRENT_TIMESTAMP)"
+            spellcheck="false" autocomplete="off" />
+        </label>
+        <label class="small checkbox-label" id="coledit-null-row">
+          <span>Ammetti NULL</span>
+          <input type="checkbox" id="coledit-null" checked />
+        </label>
+      </div>
+      <div id="coledit-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="coledit-cancel" class="ghost">Annulla</button>
+        <button id="coledit-save" class="primary">Salva</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale export connessioni ===================== -->
+  <div id="connexport-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Esporta connessioni</h2>
+      <p class="subtitle">I segreti restano cifrati nel file. Per riusarli su un'altra installazione, questa deve girare con la stessa passphrase con cui li cifri qui.</p>
+      <div class="form-row">
+        <label>Passphrase di cifratura (opzionale)
+          <input type="password" id="connexport-pass" autocomplete="new-password"
+            placeholder="vuoto = passphrase di questa installazione" />
+        </label>
+      </div>
+      <p class="hint">Indica la passphrase dell'installazione di <strong>destinazione</strong> per poter importare lì i segreti. Vuota: usa la passphrase di questa installazione.</p>
+      <div id="connexport-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="connexport-cancel" class="ghost">Annulla</button>
+        <button id="connexport-run" class="primary">Esporta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale import collection / tabella ===================== -->
+  <div id="import-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2 id="import-title">Importa</h2>
+      <p class="subtitle" id="import-subtitle"></p>
+      <div class="form-row">
+        <label>File da importare
+          <input type="file" id="import-file" />
+        </label>
+      </div>
+      <textarea id="import-text" rows="12" spellcheck="false" placeholder="…oppure incolla qui il contenuto"></textarea>
+      <div id="import-progress" class="import-progress hidden">
+        <div class="import-progress-track">
+          <div id="import-progress-bar" class="import-progress-bar"></div>
+        </div>
+        <span id="import-progress-label" class="hint"></span>
+      </div>
+      <div id="import-report" class="import-report hidden"></div>
+      <div id="import-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="import-cancel" class="ghost">Chiudi</button>
+        <button id="import-run" class="primary">Importa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale import database intero ===================== -->
+  <div id="dbimport-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Importa database</h2>
+      <p class="subtitle" id="dbimport-subtitle"></p>
+      <div class="form-row">
+        <label>File esportato (.codedb.json)
+          <input type="file" id="dbimport-file" accept=".json,application/json" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Database di destinazione
+          <input type="text" id="dbimport-target" placeholder="nome del database" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="checkbox-label">
+          <input type="checkbox" id="dbimport-drop" />
+          Elimina e ricrea le collection/tabelle già esistenti nella destinazione
+        </label>
+      </div>
+      <div id="dbimport-progress" class="import-progress hidden">
+        <div class="import-progress-track">
+          <div id="dbimport-progress-bar" class="import-progress-bar"></div>
+        </div>
+        <span id="dbimport-progress-label" class="hint"></span>
+      </div>
+      <div id="dbimport-report" class="import-report hidden"></div>
+      <div id="dbimport-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="dbimport-cancel" class="ghost">Chiudi</button>
+        <button id="dbimport-run" class="primary">Importa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale piano di esecuzione ===================== -->
+  <div id="explain-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Piano di esecuzione</h2>
+      <p id="explain-query" class="subtitle"></p>
+      <div id="explain-body" class="explain-body"></div>
+      <div class="modal-actions">
+        <button id="explain-close" class="ghost">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale nuovo indice ===================== -->
+  <div id="idxcreate-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Nuovo indice</h2>
+      <div class="form-row">
+        <label>Nome
+          <input type="text" id="idxcreate-name" placeholder="(opzionale)" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label>Campi (JSON, 1 = crescente, -1 = decrescente)
+          <input type="text" id="idxcreate-fields" placeholder='{"email": 1}' spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+      <div class="form-row">
+        <label class="small checkbox-label">
+          <span>Unico</span>
+          <input type="checkbox" id="idxcreate-unique" />
+        </label>
+      </div>
+      <div id="idxcreate-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="idxcreate-cancel" class="ghost">Annulla</button>
+        <button id="idxcreate-save" class="primary">Crea</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Export Mermaid ===================== -->
+  <div id="mermaid-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Diagramma ER (Mermaid)</h2>
+      <div class="form-row">
+        <textarea id="mermaid-textarea" class="code-export-textarea" rows="12" spellcheck="false" readonly></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="mermaid-modal-close" class="ghost">Chiudi</button>
+        <button id="mermaid-modal-copy" class="primary">📋 Copia negli appunti</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Export DBML ===================== -->
+  <div id="dbml-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Schema DBML (dbdiagram.io)</h2>
+      <div class="form-row">
+        <textarea id="dbml-textarea" class="code-export-textarea" rows="12" spellcheck="false" readonly></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="dbml-modal-close" class="ghost">Chiudi</button>
+        <button id="dbml-modal-copy" class="primary">📋 Copia negli appunti</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Export SQL DDL ===================== -->
+  <div id="sql-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Schema SQL DDL (CREATE TABLE)</h2>
+      <div class="form-row">
+        <textarea id="sql-textarea" class="code-export-textarea" rows="12" spellcheck="false" readonly></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="sql-modal-close" class="ghost">Chiudi</button>
+        <button id="sql-modal-copy" class="primary">📋 Copia negli appunti</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Audit Schema (Health Check) ===================== -->
+  <div id="audit-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>🩺 Diagnostica dello Schema (Health Check)</h2>
+      <div id="audit-content" class="modal-scroll-pane"></div>
+      <div class="modal-actions">
+        <button id="audit-modal-close" class="primary">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Schema Diff ===================== -->
+  <div id="diff-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>⚖️ Schema Diff (Confronto con File Locale JSON)</h2>
+      <div class="form-row">
+        <label>Seleziona File Snapshot JSON locale:
+          <input type="file" id="diff-file-input" class="file-input-compact" accept=".json" />
+        </label>
+      </div>
+      <div id="diff-content" class="modal-scroll-pane"></div>
+      <div class="modal-actions">
+        <button id="diff-modal-close" class="primary">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Importazione Schema Standalone ===================== -->
+  <div id="import-schema-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>📥 Importa ed Esplora Schema (SQL DDL / DBML)</h2>
+      <div class="form-row">
+        <label>Format
+          <select id="import-schema-format">
+            <option value="sql">SQL DDL (CREATE TABLE ...)</option>
+            <option value="dbml">DBML (Table name { ... })</option>
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <textarea id="import-schema-textarea" class="code-export-textarea" rows="10"
+          placeholder="Incolla qui lo script SQL o DBML per generare il Grafo 3D..." spellcheck="false"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button id="import-schema-close" class="ghost">Annulla</button>
+        <button id="import-schema-render" class="primary">🌐 Genera Grafo 3D</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Cammino Minimo (Shortest Path) ===================== -->
+  <div id="path-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>🔗 Ricerca Cammino Minimo tra Tabelle</h2>
+      <div class="form-row">
+        <label>Tabella di Partenza (Sorgente)
+          <select id="path-from-select"></select>
+        </label>
+        <label>Tabella di Arrivo (Destinazione)
+          <select id="path-to-select"></select>
+        </label>
+      </div>
+      <div id="path-result" class="path-result-pane"></div>
+      <div class="modal-actions">
+        <button id="path-modal-clear" class="ghost btn-danger-text hidden">❌ Azzera Cammino</button>
+        <button id="path-modal-close" class="ghost">Chiudi</button>
+        <button id="path-modal-calc" class="primary">🔍 Trova Cammino & Evidenzia 3D</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Modale Matrice Dipendenze & Seeding ===================== -->
+  <div id="deps-modal" class="overlay hidden">
+    <div class="modal wide">
+      <h2>📊 Matrice Dipendenze & Ordine di Popolamento</h2>
+      <div id="deps-content" class="modal-scroll-pane"></div>
+      <div class="modal-actions">
+        <button id="deps-modal-close" class="primary">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+
+  <datalist id="mysql-types">
+    <option value="INT"></option>
+    <option value="INT UNSIGNED"></option>
+    <option value="TINYINT"></option>
+    <option value="TINYINT UNSIGNED"></option>
+    <option value="SMALLINT"></option>
+    <option value="SMALLINT UNSIGNED"></option>
+    <option value="MEDIUMINT"></option>
+    <option value="MEDIUMINT UNSIGNED"></option>
+    <option value="BIGINT"></option>
+    <option value="BIGINT UNSIGNED"></option>
+    <option value="DECIMAL(10,2)"></option>
+    <option value="FLOAT"></option>
+    <option value="DOUBLE"></option>
+    <option value="VARCHAR(255)"></option>
+    <option value="CHAR(36)"></option>
+    <option value="TEXT"></option>
+    <option value="TINYTEXT"></option>
+    <option value="MEDIUMTEXT"></option>
+    <option value="LONGTEXT"></option>
+    <option value="DATE"></option>
+    <option value="DATETIME"></option>
+    <option value="TIMESTAMP"></option>
+    <option value="TIME"></option>
+    <option value="YEAR"></option>
+    <option value="BOOLEAN"></option>
+    <option value="JSON"></option>
+    <option value="BLOB"></option>
+    <option value="TINYBLOB"></option>
+    <option value="MEDIUMBLOB"></option>
+    <option value="LONGBLOB"></option>
+    <option value="BINARY(16)"></option>
+    <option value="VARBINARY(255)"></option>
+    <option value="ENUM('a','b')"></option>
+    <option value="SET('a','b')"></option>
+    <option value="BIT"></option>
+    <option value="GEOMETRY"></option>
+    <option value="POINT"></option>
+    <option value="LINESTRING"></option>
+    <option value="POLYGON"></option>
+    <option value="MULTIPOINT"></option>
+    <option value="MULTILINESTRING"></option>
+    <option value="MULTIPOLYGON"></option>
+    <option value="GEOMETRYCOLLECTION"></option>
+  </datalist>
+
+  <datalist id="postgres-types">
+    <option value="INTEGER"></option>
+    <option value="BIGINT"></option>
+    <option value="SMALLINT"></option>
+    <option value="SERIAL"></option>
+    <option value="BIGSERIAL"></option>
+    <option value="SMALLSERIAL"></option>
+    <option value="VARCHAR(255)"></option>
+    <option value="TEXT"></option>
+    <option value="CHAR(36)"></option>
+    <option value="BOOLEAN"></option>
+    <option value="NUMERIC(10,2)"></option>
+    <option value="DECIMAL"></option>
+    <option value="REAL"></option>
+    <option value="DOUBLE PRECISION"></option>
+    <option value="MONEY"></option>
+    <option value="DATE"></option>
+    <option value="TIME"></option>
+    <option value="TIMETZ"></option>
+    <option value="TIMESTAMP"></option>
+    <option value="TIMESTAMPTZ"></option>
+    <option value="INTERVAL"></option>
+    <option value="UUID"></option>
+    <option value="JSONB"></option>
+    <option value="JSON"></option>
+    <option value="BYTEA"></option>
+    <option value="INET"></option>
+    <option value="CIDR"></option>
+    <option value="MACADDR"></option>
+    <option value="MACADDR8"></option>
+    <option value="BIT(8)"></option>
+    <option value="BIT VARYING"></option>
+    <option value="TSVECTOR"></option>
+    <option value="TSQUERY"></option>
+    <option value="INT4RANGE"></option>
+    <option value="INT8RANGE"></option>
+    <option value="NUMRANGE"></option>
+    <option value="TSRANGE"></option>
+    <option value="TSTZRANGE"></option>
+    <option value="DATERANGE"></option>
+    <option value="GEOMETRY"></option>
+    <option value="GEOGRAPHY"></option>
+    <option value="POINT"></option>
+    <option value="LINESTRING"></option>
+    <option value="POLYGON"></option>
+    <option value="TEXT[]"></option>
+    <option value="INTEGER[]"></option>
+    <option value="BIGINT[]"></option>
+    <option value="UUID[]"></option>
+    <option value="BOOLEAN[]"></option>
+    <option value="JSONB[]"></option>
+  </datalist>
+
+  <!-- Sfondo scuro dietro le sidebar-drawer su mobile/tablet -->
+  <div id="drawer-backdrop" class="drawer-backdrop hidden"></div>
+
+  <!-- ===================== Menu contestuale ===================== -->
+  <ul id="context-menu" class="context-menu hidden"></ul>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- ===================== Modale Backup & Restore ===================== -->
+  <div id="modal-backup-manager" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>💾 Gestione Backup & Ripristino</h2>
+        <button type="button" id="btn-close-backup-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <div class="modal-tabs">
+        <button type="button" id="tab-btn-backup-new" class="tab-btn active">＋ Nuovo Backup</button>
+        <button type="button" id="tab-btn-backup-catalog" class="tab-btn">📂 Catalogo & Ripristino</button>
+      </div>
+
+      <!-- Scheda 1: Nuovo Backup -->
+      <div id="section-backup-new" class="modal-tab-content">
+        <form id="form-run-backup">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-db">Database originario *</label>
+              <select id="backup-db" required></select>
+            </div>
+            <div class="form-group">
+              <label for="backup-type">Tipo di Backup *</label>
+              <select id="backup-type">
+                <option value="full">FULL (Dump completo del database)</option>
+                <option value="incremental">INCREMENTALE (Solo modifiche dall'ultimo backup)</option>
+                <option value="differential">DIFFERENZIALE (Solo modifiche dall'ultimo FULL)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-collections">Collection / Tabelle selettive (opzionale)</label>
+              <input type="text" id="backup-collections" placeholder="es. utenti, ordini (separate da virgola)" />
+            </div>
+            <div class="form-group">
+              <label for="backup-since">Campo data per modifiche (opzionale)</label>
+              <input type="text" id="backup-since" placeholder="es. updatedAt, created_at" />
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="backup-storage">Destinazione cloud (opzionale)</label>
+              <input type="text" id="backup-storage" placeholder="alias configurato sul server (CODEDB_BACKUP_STORAGE)" title="Nome di una destinazione cloud pre-approvata dall'amministratore. Gli URI arbitrari non sono accettati dall'interfaccia: usa la CLI." />
+            </div>
+            <div class="form-group">
+              <label for="backup-slack">Slack Webhook URL (opzionale)</label>
+              <input type="url" id="backup-slack" placeholder="https://hooks.slack.com/services/..." />
+            </div>
+          </div>
+
+          <div class="form-row checkbox-row">
+            <label class="cursor-pointer">
+              <input type="checkbox" id="backup-no-compress" /> Disabilita compressione gzip
+            </label>
+            <label>Livello gzip (1-9):
+              <input type="number" id="backup-compress-level" class="number-input-narrow" min="1" max="9" value="1"
+                title="Livello 1 = velocità massima (consigliato)" />
+            </label>
+          </div>
+
+
+          <div id="backup-status-msg" class="status-box hidden"></div>
+
+          <div class="modal-actions">
+            <button type="submit" id="btn-submit-backup" class="primary">🚀 Avvia Backup</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Scheda 2: Catalogo & Ripristino -->
+      <div id="section-backup-catalog" class="modal-tab-content hidden">
+        <div class="catalog-toolbar">
+          <input type="search" id="backup-catalog-filter" class="hidden"
+                 placeholder="Filtra per gruppo o database…" spellcheck="false" autocomplete="off" />
+          <span id="backup-catalog-hint">Cataloghi dei backup presenti nel server:</span>
+          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</button>
+        </div>
+        <!-- Avanzamento del ripristino: alimentato dai push `backup:progress`. -->
+        <div id="restore-progress" class="restore-progress hidden">
+          <div class="restore-progress-head"><span id="restore-progress-title"></span></div>
+          <div id="restore-progress-log" class="restore-progress-log"></div>
+        </div>
+        <div id="backup-catalog-list" class="catalog-list-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Conferma di ripristino =====================
+       Una sola domanda al posto di tre dialoghi in fila (destinazione +
+       conferma + drop): le due risposte dell'80% dei casi — il database
+       d'origine e "senza DROP" — sono già impostate, e restano modificabili
+       nello stesso posto in cui si legge la connessione su cui si scriverà. -->
+  <div id="restore-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="restore-title">
+    <div class="modal">
+      <h2 id="restore-title">⚡ Ripristino del backup</h2>
+      <p class="subtitle" id="restore-subtitle"></p>
+
+      <div class="restore-target">
+        <div class="restore-target-row"><span>Backup</span><strong id="restore-backup-id"></strong></div>
+        <div class="restore-target-row"><span>Connessione di destinazione</span><strong id="restore-conn"></strong></div>
+        <div class="restore-target-row hidden" id="restore-chain-row"><span>Backup applicati in catena</span><strong
+            id="restore-chain"></strong></div>
+      </div>
+
+      <!-- Il backup viene da un'altra connessione: qui si scrive comunque su
+           quella aperta, ed è l'unico modo di sbagliare ambiente in un clic. -->
+      <div id="restore-warning" class="restore-warning hidden"></div>
+
+      <div class="form-row">
+        <label>Database di destinazione
+          <input type="text" id="restore-target-db" spellcheck="false" autocomplete="off" />
+        </label>
+      </div>
+
+      <label class="cursor-pointer restore-drop-row">
+        <input type="checkbox" id="restore-drop" />
+        Elimina (DROP) le collection/tabelle di destinazione prima di ripristinare
+      </label>
+      <p class="modal-hint">Senza l'eliminazione i dati del backup vengono sovrascritti per chiave (upsert) e ciò
+        che nel backup non c'è resta al suo posto.</p>
+
+      <div class="modal-actions">
+        <button type="button" id="restore-cancel" class="ghost">Annulla</button>
+        <button type="button" id="restore-ok" class="primary">⚡ Ripristina</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Storico Azioni (Audit Log) ===================== -->
+  <div id="modal-audit-log" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>📜 Storico delle Azioni</h2>
+        <button type="button" id="btn-close-audit-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Registro delle operazioni critiche e di scrittura eseguite dalla Web UI su tutte le
+        connessioni (MongoDB, MySQL, PostgreSQL).</p>
+
+      <div class="catalog-toolbar audit-toolbar">
+        <label>Categoria:
+          <select id="audit-filter-category">
+            <option value="">Tutte</option>
+            <option value="write">✏️ Scritture</option>
+            <option value="read">👁 Letture</option>
+          </select>
+        </label>
+        <label>Tipo:
+          <select id="audit-filter-event">
+            <option value="">Tutti</option>
+            <optgroup label="Scritture">
+              <option value="db:create">Creazione database</option>
+              <option value="db:rename">Rinomina database</option>
+              <option value="db:drop">Eliminazione database</option>
+              <option value="collection:create">Creazione collection/tabella</option>
+              <option value="collection:rename">Rinomina collection/tabella</option>
+              <option value="collection:drop">Eliminazione collection/tabella</option>
+              <option value="column:add">Aggiunta colonna</option>
+              <option value="column:alter">Modifica colonna</option>
+              <option value="column:drop">Eliminazione colonna</option>
+              <option value="index:create">Creazione indice</option>
+              <option value="index:drop">Eliminazione indice</option>
+              <option value="doc:insert">Inserimento</option>
+              <option value="doc:update">Aggiornamento</option>
+              <option value="doc:replace">Sostituzione</option>
+              <option value="doc:delete">Eliminazione documento/riga</option>
+              <option value="collection:deleteMany">Eliminazione massiva</option>
+              <option value="collection:import">Import batch</option>
+              <option value="backup:run">Backup</option>
+              <option value="backup:restore">Ripristino backup</option>
+            </optgroup>
+            <optgroup label="Letture">
+              <option value="collection:find">Lettura (find)</option>
+              <option value="collection:aggregate">Aggregazione</option>
+              <option value="collection:explain">Piano di esecuzione (explain)</option>
+              <option value="collection:export">Export</option>
+              <option value="query:execute">Query Engine (lettura/scrittura)</option>
+            </optgroup>
+          </select>
+        </label>
+        <label>Esito:
+          <select id="audit-filter-status">
+            <option value="">Tutti</option>
+            <option value="ok">Successo</option>
+            <option value="error">Errore</option>
+          </select>
+        </label>
+        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
+          spellcheck="false" />
+        <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+      <div id="audit-log-list" class="catalog-list-container"></div>
+
+      <div class="audit-pager">
+        <button type="button" id="audit-prev" class="btn btn-sm btn-secondary">‹ Precedenti</button>
+        <span id="audit-page-info" class="sub-text"></span>
+        <button type="button" id="audit-next" class="btn btn-sm btn-secondary">Successivi ›</button>
+        <label class="audit-page-size">Righe per pagina:
+          <select id="audit-page-size">
+            <option value="25">25</option>
+            <option value="50" selected>50</option>
+            <option value="100">100</option>
+            <option value="200">200</option>
+          </select>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Salute delle connessioni ===================== -->
+  <div id="modal-health" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>💓 Salute delle Connessioni</h2>
+        <button type="button" id="btn-close-health-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Stato in tempo reale delle connessioni attive (una per tab aperto): latenza del ping, stato
+        del tunnel SSH e pool di connessioni.</p>
+
+      <div class="catalog-toolbar health-toolbar">
+        <label class="health-auto">
+          <input type="checkbox" id="health-auto-refresh" checked> Auto-refresh (4s)
+        </label>
+        <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+      <div id="health-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ============= Sessioni & Query del server di database =============
+       Il gemello "verso l'esterno" del pannello Salute: là le connessioni di
+       CodeDB, qui tutte quelle del server — comprese quelle di altre
+       applicazioni e i processi di servizio del DBMS.
+
+       La connessione da interrogare si sceglie dall'elenco dei tab aperti: il
+       monitor descrive un SERVER, non una collection, quindi legarlo al tab
+       attivo costringerebbe a cambiare scheda per guardare l'altro database.
+
+       Nessun `backdrop-filter` da disattivare qui: il pannello si ridisegna
+       ogni 5 s, non a ogni fotogramma come la mappa. -->
+  <div id="modal-sessions" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>🩺 Sessioni &amp; Query attive</h2>
+        <button type="button" id="btn-close-sessions-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Cosa sta girando adesso sul server di database, di chiunque sia. Le connessioni
+        aperte da CodeDB e i processi di servizio del server non sono terminabili.</p>
+
+      <div class="catalog-toolbar sessions-toolbar">
+        <label class="sessions-conn">
+          Connessione
+          <select id="sessions-conn-select"></select>
+        </label>
+        <label class="health-auto">
+          <input type="checkbox" id="sessions-only-active" checked> Solo attive
+        </label>
+        <label class="health-auto">
+          <input type="checkbox" id="sessions-auto-refresh" checked> Auto-refresh (5s)
+        </label>
+        <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+      </div>
+
+      <!-- Il verdetto: la riga che risponde alla domanda per cui si è aperto
+           il pannello, con il pulsante che agisce sulla sessione giusta. Sta
+           SOPRA la tabella perché nel caso che conta — qualcuno è bloccato —
+           la riga da colpire non è quella che salta all'occhio: la vittima è
+           ferma e visibile, chi tiene il lock spesso non sta eseguendo nulla. -->
+      <div id="sessions-verdict" class="sessions-verdict"></div>
+
+      <div id="sessions-note" class="sessions-note hidden"></div>
+      <div id="sessions-list" class="catalog-list-container"></div>
+      <!-- Ciò su cui non si può agire (connessioni di CodeDB, processi di
+           servizio) non sta nella tabella ma qui, contato in una riga: sono
+           righe che l'utente non può usare e che, moltiplicate per gli otto
+           slot del pool, sono quasi sempre la maggioranza dell'elenco. -->
+      <div id="sessions-hidden" class="sessions-hidden hidden"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Tema =====================
+       L'elenco e l'editor stanno nella stessa finestra: scegliere un tema e
+       ritoccarlo sono la stessa attività, e separarli costringerebbe a
+       chiudere e riaprire per vedere l'effetto di una modifica. L'editor parte
+       nascosto e l'anteprima è dal vivo sull'applicazione VERA dietro la
+       modale — un riquadro di anteprima mostrerebbe quattro colori su un
+       fondo finto, cioè la cosa che non serve sapere. -->
+  <div id="modal-theme" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>🎨 Tema</h2>
+        <button type="button" id="btn-close-theme-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Scegli un tema o creane uno tuo. Le modifiche si vedono subito
+        sull'applicazione dietro questa finestra; chiudendo senza salvare torna quello in uso.</p>
+
+      <div class="catalog-toolbar">
+        <button type="button" id="btn-tema-nuovo" class="btn btn-sm btn-secondary">＋ Nuovo tema</button>
+        <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary">⭱ Importa da file</button>
+      </div>
+
+      <div id="theme-list" class="theme-list"></div>
+      <div id="theme-editor" class="theme-editor hidden"></div>
+
+      <input type="file" id="tema-import-file" accept=".json,application/json" class="hidden" />
+    </div>
+  </div>
+
+  <!-- ===================== Utenti & Permessi (RBAC) ===================== -->
+  <div id="modal-admin-rbac" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>👥 Utenti &amp; Permessi</h2>
+        <button type="button" id="btn-close-admin-rbac" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Gestisci i sottoutenti del tuo account, i loro permessi per connessione (ruolo + scope su
+        database/collezioni) e le API key per l'accesso via MCP.</p>
+
+      <div class="admin-tabs">
+        <button type="button" class="admin-tab active" data-pane="subusers">Sottoutenti</button>
+        <button type="button" class="admin-tab" data-pane="grants">Permessi</button>
+        <button type="button" class="admin-tab" data-pane="apikeys">API key</button>
+      </div>
+
+      <!-- Sottoutenti -->
+      <div class="admin-pane" data-pane="subusers">
+        <form id="subuser-form" class="admin-form">
+          <input type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required>
+          <input type="text" id="subuser-name" class="form-control form-control-sm" placeholder="Nome (opzionale)">
+          <input type="password" id="subuser-password" class="form-control form-control-sm" placeholder="Password" autocomplete="new-password" required>
+          <button type="submit" class="btn btn-sm btn-primary">+ Crea</button>
+        </form>
+        <div id="subuser-limit" class="sub-text admin-limit"></div>
+        <div id="subuser-list" class="catalog-list-container"></div>
+      </div>
+
+      <!-- Permessi (grant per connessione) -->
+      <div class="admin-pane hidden" data-pane="grants">
+        <form id="grant-form" class="admin-form-stacked">
+          <div class="admin-form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Sottoutente</label>
+              <select id="grant-subject" class="form-control form-control-sm" title="Sottoutente"></select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Connessione</label>
+              <select id="grant-conn" class="form-control form-control-sm" title="Connessione salvata"></select>
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Ruolo</label>
+              <select id="grant-role" class="form-control form-control-sm" title="Ruolo"></select>
+            </div>
+          </div>
+
+          <div class="admin-form-row multiselect-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Database consentiti (clicca per selezionare):</label>
+              <div id="grant-dbs-pills" class="pill-multiselect-container">
+                <button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>
+              </div>
+              <input type="hidden" id="grant-dbs" value="">
+            </div>
+            <div class="form-group flex-1">
+              <label class="form-label">Collezioni / Tabelle (opzionale):</label>
+              <input type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Es: orders*, users (vuoto = tutte)">
+            </div>
+          </div>
+
+          <div class="admin-form-actions">
+            <button type="submit" class="btn btn-sm btn-primary">+ Assegna Permesso</button>
+          </div>
+        </form>
+        <div id="grant-list" class="catalog-list-container"></div>
+      </div>
+
+      <!-- API key -->
+      <div class="admin-pane hidden" data-pane="apikeys">
+        <form id="apikey-form" class="admin-form-stacked">
+          <div class="admin-form-row">
+            <div class="form-group flex-1">
+              <label class="form-label">Soggetto API Key</label>
+              <select id="apikey-subject" class="form-control form-control-sm" title="Soggetto della chiave"></select>
+            </div>
+            <div class="form-group flex-2">
+              <label class="form-label">Etichetta client</label>
+              <input type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Es. Claude Desktop / MCP Cursor" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Connessioni consentite per l'API key (clicca sulle pill per selezionare):</label>
+            <div id="apikey-scope-pills" class="pill-multiselect-container">
+              <button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</button>
+            </div>
+            <input type="hidden" id="apikey-scope" value="">
+          </div>
+
+          <div class="admin-form-actions">
+            <button type="submit" class="btn btn-sm btn-primary">🔑 Genera API Key</button>
+          </div>
+        </form>
+        <div id="apikey-new" class="apikey-new hidden"></div>
+        <div id="apikey-list" class="catalog-list-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Query in Sospeso ===================== -->
+  <div id="modal-pending" class="overlay hidden">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h2>⏳ Query in Sospeso</h2>
+        <button type="button" id="btn-close-pending-modal" class="btn-close" aria-label="Chiudi">✕</button>
+      </div>
+
+      <p class="modal-hint">Registro delle query avviate dalla tab Query & Aggregate non completate o nello storico recente. La prima voce non completata indica il punto in cui ci si è fermati.</p>
+
+      <div class="catalog-toolbar pending-toolbar">
+        <div class="pending-search-wrap">
+          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
+        </div>
+        <div class="pending-toolbar-btns">
+          <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>
+          <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger">🗑 Pulisci TUTTE</button>
+        </div>
+      </div>
+      <div id="pending-queries-list" class="catalog-list-container"></div>
+    </div>
+  </div>
+
+  <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
+      <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
+        <button type="button" id="mobile-nav-conns" class="mobile-nav-item">
+          <span class="nav-icon">🌐</span>
+          <span class="nav-label">Connessioni</span>
+        </button>
+        <button type="button" id="mobile-nav-dbs" class="mobile-nav-item">
+          <span class="nav-icon">🗄️</span>
+          <span class="nav-label">Database</span>
+        </button>
+        <button type="button" id="mobile-nav-query" class="mobile-nav-item">
+          <span class="nav-icon">⚡</span>
+          <span class="nav-label">Query Engine</span>
+        </button>
+        <button type="button" id="mobile-nav-health" class="mobile-nav-item">
+          <span class="nav-icon">💓</span>
+          <span class="nav-label">Salute</span>
+        </button>
+      </nav>
+
+      <!-- Container Notifiche Toast -->
+      <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+      <script src="/socket.io/socket.io.js"></script>
+      <script src="js/lib/three.min.js"></script>
+      <script src="js/lib/3d-force-graph.min.js"></script>
+      <script type="module" src="js/main.js"></script>
+</body>
+
+</html>

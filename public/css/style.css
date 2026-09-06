@@ -65,7 +65,7 @@
 }
 
 .wizard-step-badge.completed {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .wizard-step-badge.disabled {
@@ -529,7 +529,22 @@
 }
 
 .modal h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 700; color: var(--fg-bright); letter-spacing: -0.015em; }
+.modal h1, .modal h2 { display: flex; align-items: center; gap: 10px; }
 .modal h2 { margin: 0 0 10px; font-size: 1.15rem; font-weight: 600; color: var(--fg-bright); letter-spacing: -0.015em; }
+
+/* L'icona di un titolo cresce col titolo e si allinea al testo, invece di
+   restare l'icona da 16px di un bottone appoggiata sulla linea di base. E'
+   decorazione di un'etichetta che c'e' gia': `aria-hidden` la toglie ai
+   lettori di schermo, che altrimenti annuncerebbero due volte lo stesso
+   concetto. Prima era un'emoji dentro il testo, quindi il nome accessibile
+   del titolo cominciava col nome del pittogramma. */
+.modal h1 > .lucide,
+.modal h2 > .lucide {
+  width: 1.15em;
+  height: 1.15em;
+  color: var(--accent-fg);
+  flex: 0 0 auto;
+}
 .modal .subtitle { margin: 0 0 18px; color: var(--fg-dim); font-size: 0.88rem; line-height: 1.45; }
 
 /* Tab in stile underline moderno */
@@ -551,7 +566,7 @@
 }
 
 .tab:hover { color: var(--fg); border-color: transparent; background: var(--ov-30); }
-.tab.active { background: transparent; color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tab.active { background: transparent; color: var(--accent-fg); border-bottom-color: var(--accent); font-weight: 600; }
 
 .form-row { display: flex; gap: 12px; margin-bottom: 14px; min-width: 0; }
 .form-row label { flex: 1; display: flex; flex-direction: column; gap: 5px; color: var(--fg-dim); font-size: 0.85rem; font-weight: 500; min-width: 0; }
@@ -761,7 +776,7 @@ button.ghost:hover, .btn-ghost:hover {
 .mini-btn {
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
-  color: var(--accent);
+  color: var(--accent-fg);
   margin-left: 6px;
   vertical-align: middle;
 }
@@ -845,7 +860,7 @@ button.ghost:hover, .btn-ghost:hover {
 }
 .edit-btn:hover {
   background: var(--info-bg);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-color: var(--info-line);
 }
 
@@ -890,8 +905,16 @@ button.ghost:hover, .btn-ghost:hover {
   letter-spacing: normal;
 }
 
-.saved-conns-tools button:hover:not(:disabled) { color: var(--accent); }
+.saved-conns-tools button:hover:not(:disabled) { color: var(--accent-fg); }
 .saved-conns-tools button:disabled { opacity: 0.4; cursor: default; }
+
+/* L'avviso «nessuna connessione salvata» sta DOVE STAREBBE L'ELENCO, non
+   schiacciato in fondo: `#conn-tree` e' `flex: 1` e si prendeva tutta la
+   colonna anche da vuoto, spingendo il messaggio contro il bottone del piede
+   con mezza barra bianca sopra. Quando l'elenco e' vuoto la parte elastica
+   passa al messaggio, che e' l'unica cosa da guardare. E' la prima schermata
+   che un utente nuovo vede. */
+#conn-tree:empty { flex: 0 0 auto; }
 
 .saved-conns-empty {
   color: var(--fg-dim);
@@ -900,6 +923,15 @@ button.ghost:hover, .btn-ghost:hover {
   border: 1px dashed var(--border);
   border-radius: 6px;
   padding: 8px 10px;
+}
+
+.saved-conns-empty:not(.hidden) {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  border: none;
 }
 
 .conn-edit-banner {
@@ -946,14 +978,6 @@ button.ghost:hover, .btn-ghost:hover {
   border-collapse: collapse;
 }
 
-#query-result-table th,
-#query-result-table td {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  padding: 6px 10px;
-}
-
 /* Intestazione: ordinamento al clic e maniglia di ridimensionamento.
    Niente `position: relative` — la regola .query-table th la rende `sticky`,
    che è già un posizionamento e fa da contenitore per la maniglia assoluta. */
@@ -963,7 +987,7 @@ button.ghost:hover, .btn-ghost:hover {
 }
 
 #query-result-table th.qt-sorted {
-  color: var(--accent, #007acc);
+  color: var(--accent-fg);
 }
 
 .qt-sort-ind {
@@ -986,7 +1010,7 @@ button.ghost:hover, .btn-ghost:hover {
 
 .qt-col-resizer:hover,
 .qt-col-resizer.dragging {
-  background: var(--accent, #007acc);
+  background: var(--accent);
 }
 
 /* Durante il trascinamento il cursore deve restare col-resize su tutta la
@@ -1228,7 +1252,7 @@ header {
 
 .app-menu .menu-item:hover {
   background: var(--hover);
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 .app-menu .menu-divider {
@@ -1336,7 +1360,7 @@ header {
 }
 
 .conn-sidebar-expand-btn svg {
-  color: var(--accent);
+  color: var(--accent-fg);
   flex-shrink: 0;
 }
 
@@ -1523,11 +1547,30 @@ header {
 }
 #tab-add-btn:hover {
   background: var(--hover);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-color: var(--accent);
 }
 
 /* ---------- Collection Tabs Bar (#coll-tab-bar) ---------- */
+
+/* La riga unica: a sinistra le tab della collection (elastiche, scorrevoli),
+   a destra le tab della vista. Sfondo e riga di separazione stanno QUI e non
+   sul solo #coll-tab-bar, altrimenti il filo si fermerebbe dove finiscono le
+   tab invece di attraversare la finestra. */
+.tabs-row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex-shrink: 0;
+  /* Riga di separazione dipinta nello sfondo, non come border: vedi
+     .tab-bar-wrap. */
+  background:
+    linear-gradient(to top, var(--border) 0 1px, transparent 1px),
+    var(--bg-2);
+}
+/* `#coll-tab-bar.hidden` E' gia' la condizione "nessun coll-tab aperto": la
+   riga non tiene un secondo stato proprio, che si potrebbe disallineare. */
+.tabs-row:has(> #coll-tab-bar.hidden) { display: none; }
 
 #coll-tab-bar {
   display: flex;
@@ -1535,15 +1578,11 @@ header {
   /* 2px, non 4: vedi "Separatori fra tab adiacenti". */
   gap: 2px;
   padding: 6px 12px 0 12px;
-  /* Riga di separazione dipinta nello sfondo, non come border: vedi
-     .tab-bar-wrap. */
-  background:
-    linear-gradient(to top, var(--border) 0 1px, transparent 1px),
-    var(--bg-2);
   overflow-x: auto;
   overflow-y: hidden;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  min-width: 0;
   scrollbar-width: none;
 }
 #coll-tab-bar::-webkit-scrollbar { display: none; }
@@ -1638,7 +1677,7 @@ header {
   color: var(--fg-dim);
 }
 
-#new-db-btn:hover { color: var(--accent); }
+#new-db-btn:hover { color: var(--accent-fg); }
 
 #db-tree {
   list-style: none;
@@ -1682,7 +1721,7 @@ header {
   background: none;
   border: none;
   padding: 2px 0;
-  color: var(--accent);
+  color: var(--accent-fg);
   font-size: 0.8rem;
   cursor: pointer;
   text-align: left;
@@ -1725,7 +1764,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   align-items: center;
   justify-content: center;
   margin-bottom: 20px;
-  color: var(--accent);
+  color: var(--accent-fg);
   box-shadow: 0 0 24px var(--accent-glow);
 }
 
@@ -1749,12 +1788,14 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 16px;
-  background: var(--bg-2);
-  border-bottom: 1px solid var(--border);
+  padding: 5px 12px 5px 8px;
+  flex-shrink: 0;
 }
 
-.view-tabs { margin-left: auto; display: flex; gap: 6px; }
+/* Niente `margin-left: auto`: a spingerle a destra e' ora il #coll-tab-bar
+   elastico che le precede, e quello spazio porta le tab della collection
+   invece di essere vuoto. */
+.view-tabs { display: flex; gap: 6px; }
 
 .view-tab {
   padding: 6px 14px;
@@ -1850,7 +1891,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 .toolbar button:hover {
   background: var(--ov-80);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-color: var(--border-2);
 }
 
@@ -1905,7 +1946,11 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 .toolbar .filter-mode-option:hover {
   border-color: transparent;
-  background: var(--bg-hover);
+  /* `--bg-hover` non esiste: il token si chiama `--hover`. Un `var()` su un
+     token non definito e SENZA ripiego rende la proprieta' invalida al calcolo,
+     quindi lo sfondo non veniva dipinto affatto — passare sopra «Cerca» o
+     «Condizione» non dava alcuna risposta. */
+  background: var(--hover);
   color: var(--fg);
 }
 
@@ -1954,10 +1999,31 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 #grid tr.v-spacer td { padding: 0; border: 0; background: none; }
 #grid tr.v-spacer:hover { background: none; }
 
-#grid th, #grid td {
+/* --------------------------------------------------------------------------
+   LE TRE TABELLE DI DATI SONO UNA SOLA, ANCHE NELLO STILE
+   --------------------------------------------------------------------------
+   `griglia.js` e' gia' il modulo unico che disegna la finestra virtuale della
+   vista Dati, della tab ⚡ e dei riquadri della Split-View. Lo STILE era invece
+   rimasto in tre blocchi indipendenti, e aveva finito per divergere su tutto
+   cio' che si vede: la vista Dati in monospazio a 0.82rem con celle da 10px di
+   respiro e intestazioni maiuscole, la tab ⚡ in proporzionale a 12px con celle
+   da 6px e intestazioni normali. Sono le stesse righe dello stesso database:
+   guardarle in due caratteri diversi a seconda di come si e' arrivati a
+   leggerle non e' una scelta, e' una divergenza che nessuno aveva deciso.
+   Qui c'e' quello che condividono; sotto restano le differenze VERE (la
+   selezione di celle, la maniglia di ridimensionamento, i colori per tipo).
+
+   DENSITA'. La cella passa da 10px a 5px di padding verticale: la riga scende
+   da 42px a ~28px, cioe' da 17 a 26 righe visibili su una finestra da 950px
+   (misurato). In una griglia di database la riga in piu' e' informazione, non
+   respiro — e 42px erano l'altezza di una riga di form, non di una tabella. */
+#grid th, #grid td,
+.pane-grid th, .pane-grid td,
+.query-table th, .query-table td,
+#query-result-table th, #query-result-table td {
   border: none;
   border-bottom: 1px solid var(--border);
-  padding: 10px 16px;
+  padding: 5px 12px;
   text-align: left;
   max-width: 360px;
   overflow: hidden;
@@ -1967,29 +2033,63 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
   font-size: 0.82rem;
 }
 
-#grid thead th {
+/* L'intestazione di una griglia porta il NOME VERO della colonna, che e' un
+   dato e non un'etichetta: `text-transform: uppercase` lo falsificava. Su
+   PostgreSQL un identificatore fra virgolette e' sensibile alle maiuscole,
+   quindi la colonna «Prova» si leggeva «PROVA» e ricopiarla in una query dava
+   «column "prova" does not exist» — l'unico posto dove il nome esatto si
+   dovrebbe poter leggere lo stava riscrivendo.
+   Il colore era `--fg-muted`, che e' il token del DISABILITATO: misurato,
+   2.36:1 sul tema scuro e 2.33:1 su quello chiaro, sotto perfino la soglia
+   3:1 del testo grande. `--fg-dim` porta a 5.66 e 5.20. */
+#grid thead th,
+.pane-grid thead th,
+.query-table th,
+#query-result-table th {
   position: sticky;
   top: 0;
   background: var(--bg-3);
-  backdrop-filter: blur(8px);
   z-index: 2;
   font-weight: 600;
   font-family: var(--font-sans);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--fg-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  color: var(--fg-dim);
   cursor: pointer;
   user-select: none;
   border-bottom: 1px solid var(--border-2);
-  padding: 8px 16px;
+  padding: 6px 12px;
 }
 
-#grid thead th:hover { color: var(--fg-dim); background: var(--bg-4); }
+#grid thead th:hover,
+.pane-grid thead th:hover,
+.query-table th:hover,
+#query-result-table th:hover { color: var(--fg-bright); background: var(--bg-4); }
 
-#grid tbody tr { transition: background var(--transition-fast); }
-#grid tbody tr:nth-child(even) { background: var(--ov-18); }
-#grid tbody tr:hover { background: var(--accent-veil); }
+/* L'altezza della riga viene IMPOSTA, non misurata e sperata: e' il presupposto
+   della finestra virtuale (vedi `--grid-row-h`). Su un `tr` `height` vale come
+   minimo, quindi da sola non basterebbe — a non farla superare provvede il
+   fatto che le celle non vanno a capo (`white-space: nowrap`) e che nessun
+   figlio in linea supera la casella di riga (vedi `.type-bool`). */
+#grid tbody tr,
+.pane-grid tbody tr,
+.query-table tbody tr,
+#query-result-table tbody tr {
+  height: var(--grid-row-h);
+  transition: background var(--transition-fast);
+}
+/* Lo spaziatore della virtualizzazione NON e' una riga: la sua altezza la
+   dichiara `griglia.js` riga per riga. */
+#grid tr.v-spacer,
+.pane-grid tr.v-spacer,
+.query-table tr.v-spacer,
+#query-result-table tr.v-spacer { height: auto; }
+#grid tbody tr:nth-child(even),
+.query-table tbody tr:nth-child(even),
+#query-result-table tbody tr:nth-child(even) { background: var(--ov-18); }
+#grid tbody tr:hover,
+.query-table tbody tr:hover,
+#query-result-table tbody tr:hover { background: var(--accent-veil); }
 
 #grid td.editable { cursor: cell; }
 
@@ -2028,55 +2128,101 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 #cellstats-body .info-table { margin-bottom: 0; }
 #cellstats-body td.copiabile { cursor: copy; }
 #cellstats-body td.copiabile:hover { background: var(--hover); color: var(--accent-hover); }
-#loading-info { color: var(--accent); margin-left: 10px; font-weight: 500; }
+#loading-info { color: var(--accent-fg); margin-left: 10px; font-weight: 500; }
 #infinite-toggle-label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; color: var(--fg-dim); font-size: 0.82rem; }
 #infinite-toggle-label input { cursor: pointer; }
 #infinite-toggle-label.disabled { opacity: 0.4; cursor: not-allowed; }
 #infinite-toggle-label.disabled input { cursor: not-allowed; }
 
-/* ── Data Type Colors — Desaturated Pastel ── */
-#grid td .type-oid {
+/* ── Colore per TIPO del valore — pastello desaturato ──
+   Il blocco era scritto due volte, byte per byte identico, per `#grid td` e
+   per `.pane-grid td`: correggerne uno lasciava l'altro intatto senza che
+   nulla lo segnalasse. La tab ⚡ non ne aveva invece nessuna copia, quindi lo
+   stesso `true` era una pillola verde nella vista Dati e testo nudo nei
+   risultati di una query — le stesse righe dello stesso database.
+   Un ELENCO di selettori, non `:is()`: `:is()` prende la specificita' del suo
+   argomento piu' forte, quindi `:is(#grid, .pane-grid) td .type-null` varrebbe
+   quanto un id anche dentro un riquadro, e le regole della Split-View che
+   contano di poterlo scavalcare smetterebbero di funzionare. */
+#grid td .type-oid,
+.pane-grid td .type-oid,
+.query-table td .type-oid,
+#query-result-table td .type-oid {
   color: var(--val-oid);   /* Soft sky blue */
   font-size: 0.78rem;
   letter-spacing: 0.01em;
 }
-#grid td .type-num {
+#grid td .type-num,
+.pane-grid td .type-num,
+.query-table td .type-num,
+#query-result-table td .type-num {
   color: var(--val-num);   /* Sage green */
   font-weight: 500;
 }
-#grid td .type-bool {
+/* `line-height: 1` e l'allineamento a meta' tengono la pillola DENTRO la
+   casella di riga. Con le misure di oggi non e' cio' che tiene la riga a 30px
+   — verificato rimettendo `padding: 1px 8px`: la riga resta 30, perche' la
+   pillola gonfia rientra comunque sotto il minimo imposto al `tr`. E' un
+   margine, non la correzione: la correzione e' `display: block` sulla checkbox
+   (vedi `.grid-select-col`), che il test SA vedere. Vale la pena tenerlo
+   perche' la finestra virtuale assume righe tutte alte uguale, e un carattere
+   piu' grande in un tema personalizzato rimetterebbe la pillola fuori misura
+   senza che nulla lo segnali. */
+#grid td .type-bool,
+.pane-grid td .type-bool,
+.query-table td .type-bool,
+#query-result-table td .type-bool {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 1px 8px;
+  padding: 0 8px;
+  line-height: 1;
+  vertical-align: middle;
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
   font-family: var(--font-sans);
   letter-spacing: 0.03em;
 }
-#grid td .type-bool[data-val="true"] {
+#grid td .type-bool[data-val="true"],
+.pane-grid td .type-bool[data-val="true"],
+.query-table td .type-bool[data-val="true"],
+#query-result-table td .type-bool[data-val="true"] {
   background: var(--success-bg);
   color: var(--val-true);
   border: 1px solid var(--success-line);
 }
-#grid td .type-bool[data-val="false"] {
+#grid td .type-bool[data-val="false"],
+.pane-grid td .type-bool[data-val="false"],
+.query-table td .type-bool[data-val="false"],
+#query-result-table td .type-bool[data-val="false"] {
   background: var(--danger-bg);
   color: var(--val-false);
   border: 1px solid var(--danger-line);
 }
-#grid td .type-date {
+#grid td .type-date,
+.pane-grid td .type-date,
+.query-table td .type-date,
+#query-result-table td .type-date {
   color: var(--val-date);   /* Amber ocre — pastel */
   font-size: 0.8rem;
 }
-#grid td .type-null {
-  color: var(--fg-muted);
+/* `--fg-muted` e' il token del DISABILITATO (2.36:1 sul fondo della griglia):
+   un valore nullo e' un'informazione, non un comando spento. */
+#grid td .type-null,
+.pane-grid td .type-null,
+.query-table td .type-null,
+#query-result-table td .type-null {
+  color: var(--fg-dim);
   font-style: normal;
   font-family: var(--font-sans);
   font-size: 0.78rem;
   letter-spacing: 0.02em;
 }
-#grid td .type-obj {
+#grid td .type-obj,
+.pane-grid td .type-obj,
+.query-table td .type-obj,
+#query-result-table td .type-obj {
   color: var(--val-obj);   /* Soft violet */
   font-size: 0.8rem;
 }
@@ -2144,7 +2290,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .statusbar select:hover,
 .statusbar button:hover {
   background: var(--ov-80);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-color: var(--border-2);
 }
 
@@ -2198,7 +2344,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .mini-btn {
   background: transparent;
   border: 1px solid var(--accent-2);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-radius: 4px;
   padding: 0 7px;
   font-size: 0.8rem;
@@ -2252,7 +2398,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   font-size: 0.95rem;
 }
 
-.edit-btn:hover { color: var(--accent); }
+.edit-btn:hover { color: var(--accent-fg); }
 
 /* ---------- Statusbar ---------- */
 
@@ -2278,6 +2424,17 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .input-utc {
   border-color: var(--accent);
 }
+
+/* L'icona del toast e' un'icona dell'applicazione (vedi showToast). */
+.toast > .toast-icona {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+.toast-success > .toast-icona { color: var(--success); }
+.toast-error   > .toast-icona { color: var(--danger); }
+.toast-warning > .toast-icona { color: var(--warning); }
+.toast-info    > .toast-icona { color: var(--info); }
 
 .toast {
   position: fixed;
@@ -2319,15 +2476,39 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 .context-menu li {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   padding: 7px 12px;
   border-radius: 3px;
   cursor: pointer;
   white-space: nowrap;
 }
 
+/* Larghezza FISSA anche per le voci senza icona: senza, le etichette di uno
+   stesso menu partirebbero da due ascisse diverse a seconda che la voce abbia
+   o no un'icona, ed e' proprio il disallineamento che un menu a icone deve
+   evitare. `flex: 0 0 auto` perche' un'icona non si comprime. */
+.context-menu li > .menu-icona {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  stroke-width: 2;
+  color: var(--fg-dim);
+}
+.context-menu li:hover > .menu-icona { color: var(--fg); }
+.context-menu li.danger > .menu-icona { color: var(--danger); }
+/* La voce senza icona resta allineata a quelle che ce l'hanno. */
+.context-menu li:not(.separator):not(:has(> .menu-icona))::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 15px;
+}
+
 .context-menu li:hover { background: var(--sel); }
 .context-menu li.danger { color: var(--danger); }
 .context-menu li.separator {
+  display: block;
   height: 1px;
   padding: 0;
   margin: 4px 6px;
@@ -2460,7 +2641,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 .uml-bar .hint { flex: 1; }
-.uml-bar code { color: var(--accent); font-family: Consolas, monospace; }
+.uml-bar code { color: var(--accent-fg); font-family: Consolas, monospace; }
 
 .uml-canvas { flex: 1; overflow: auto; padding: 10px; }
 
@@ -2539,7 +2720,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .sidebar-toggle-btn:hover {
   background: var(--hover);
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 #conn-sidebar .saved-conns-title { margin-bottom: 0; padding: 4px 14px 8px; }
@@ -2619,7 +2800,17 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 /* ---------- Selezione multipla e bulk delete ---------- */
 
 .grid-select-col { width: 32px; text-align: center; }
-.grid-select-col input[type="checkbox"] { cursor: pointer; }
+/* `display: block` non e' cosmesi: una checkbox in linea sta sulla linea di
+   base, quindi si porta dietro lo spazio del discendente e alza la casella di
+   riga. Misurato: la riga della griglia era 32px invece dei 30 che
+   `--grid-row-h` dichiara, cioe' 2px per riga che la finestra virtuale non
+   conosce — 6.000px di scarto su 3.000 righe. Tolta dal flusso in linea, la
+   riga rende esattamente l'altezza dichiarata. */
+.grid-select-col input[type="checkbox"] {
+  cursor: pointer;
+  display: block;
+  margin: 0 auto;
+}
 
 /* Barra CONTESTUALE: compare solo con una selezione attiva (vedi
    updateBulkDeleteUI in grid.js). Lo sfondo colorato la distingue dalla
@@ -2729,7 +2920,9 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .brand { display: none; }
   #polling-toggle { font-size: 0.8em; }
 
-  .view-tabs { margin-left: 0; }
+  /* `.view-tabs` non ha piu' `margin-left: auto` da annullare: le tab della
+     vista stanno in fondo alla riga dei coll-tab, e su schermo stretto la riga
+     si impila (vedi `.tabs-row`). */
   .view-tab { padding: 5px 10px; }
 
   .modal { padding: 20px 16px; }
@@ -2833,7 +3026,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   margin-bottom: 3px;
 }
 .query-history-mode {
-  color: var(--accent);
+  color: var(--accent-fg);
   font-size: 0.72rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -2894,7 +3087,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .qe-history-esito { font-size: 0.72rem; color: var(--fg-dim); }
 .qe-history-esito-ok { color: var(--status-ok); }
 .qe-history-esito-err { color: var(--status-err); }
-.qe-history-esito-script { color: var(--accent); }
+.qe-history-esito-script { color: var(--accent-fg); }
 .qe-history-run {
   font-size: 0.72rem;
   padding: 1px 8px;
@@ -2918,7 +3111,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   height: 100%;
   width: 100%;
   transform-origin: left;
-  background: var(--accent, #4a9eff);
+  background: var(--accent);
   transition: transform 0.2s ease;
 }
 .import-report {
@@ -3314,12 +3507,12 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .toolbar-dropdown-menu .dropdown-item:hover {
   background: var(--hover, rgba(255, 255, 255, 0.08));
-  color: var(--accent, #4a9eff);
+  color: var(--accent-fg);
 }
 
 .toolbar-dropdown-menu .dropdown-item.active {
   background: var(--status-info-bg);
-  color: var(--accent, #4a9eff);
+  color: var(--accent-fg);
   font-weight: 600;
 }
 
@@ -3330,12 +3523,12 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   width: 14px;
   height: 14px;
   margin: 0;
-  accent-color: var(--accent, #4a9eff);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 .toolbar-dropdown-menu .checkbox-item:has(input:checked) {
-  color: var(--accent, #4a9eff);
+  color: var(--accent-fg);
 }
 
 .toolbar-dropdown-menu .dropdown-item:disabled {
@@ -3458,7 +3651,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .side-panel-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: var(--accent, #4a9eff);
+  color: var(--accent-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3622,7 +3815,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .query-target-engine-label { white-space: nowrap; }
 .query-target-engine-label.query-engine-explicit {
-  color: var(--accent);
+  color: var(--accent-fg);
   font-weight: 600;
 }
 
@@ -3637,7 +3830,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 .query-target-label.query-target-explicit {
-  color: var(--accent);
+  color: var(--accent-fg);
   font-weight: 600;
 }
 
@@ -3691,7 +3884,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   font-weight: 600;
 }
 .badge-idle { background: var(--status-idle-bg); color: var(--fg-dim); }
-.badge-running { background: var(--info-bg); color: var(--accent); animation: pulse-glow 1.5s infinite; }
+.badge-running { background: var(--info-bg); color: var(--accent-fg); animation: pulse-glow 1.5s infinite; }
 .badge-success { background: var(--success-bg); color: var(--success); }
 .badge-error { background: var(--danger-bg); color: var(--danger); }
 
@@ -3767,7 +3960,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
    perché fanno da percorso, ma non sono ciò che si stava cercando. */
 .schema-node.schema-hit > .schema-node-label {
   background: var(--accent-glow);
-  box-shadow: inset 2px 0 0 var(--accent, #007acc);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .query-schema-filtro-nota {
@@ -3789,7 +3982,13 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 .query-editor-container {
-  flex: 1.3;
+  /* In una tab di query si SCRIVE poco e si LEGGE molto: una query tipica sta
+     in tre righe, i risultati no. L'editor prendeva 1.3 contro 1, cioe' 457px
+     su 814 (misurato a 1600x950) per un pannello quasi sempre vuoto, mentre
+     i risultati ne avevano 351 — dieci righe. Con 0.9 la proporzione si
+     inverte senza toglierne troppo a chi scrive query lunghe, e la maniglia
+     resta li' per chi vuole il contrario. */
+  flex: 0.9;
   min-height: 240px;
   display: flex;
   flex-direction: column;
@@ -3862,7 +4061,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .chunk-file-badge {
   background: var(--bg-3);
-  color: var(--accent);
+  color: var(--accent-fg);
   padding: 2px 7px;
   border-radius: 12px;
   font-size: 0.82em;
@@ -4196,7 +4395,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   z-index: 2;
   background: transparent;
   color: transparent;
-  caret-color: var(--accent, #4a9eff);
+  caret-color: var(--accent-fg);
   resize: none;
   outline: none;
 }
@@ -4280,7 +4479,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .mode-btn.active {
   background: var(--info-bg);
   border-color: var(--info-line);
-  color: var(--accent);
+  color: var(--accent-fg);
   font-weight: 600;
 }
 
@@ -4302,32 +4501,11 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 /* Query result table */
+/* Geometria e resa delle celle stanno nel blocco condiviso con #grid (vedi
+   "LE TRE TABELLE DI DATI SONO UNA SOLA"): qui resta cio' che e' suo. */
 .query-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-}
-.query-table th {
-  position: sticky;
-  top: 0;
-  background: var(--bg-3);
-  color: var(--fg);
-  border-bottom: 1px solid var(--border-2);
-  padding: 6px 10px;
-  text-align: left;
-  font-weight: 600;
-  z-index: 2;
-}
-.query-table td {
-  border-bottom: 1px solid var(--border);
-  padding: 6px 10px;
-  white-space: nowrap;
-  max-width: 350px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.query-table tr:hover {
-  background: var(--hover);
 }
 
 /* JSON Tree styling */
@@ -4342,12 +4520,18 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .json-node {
   margin-left: 16px;
 }
+/* L'espansore e' un'icona, non piu' un carattere: larghezza FISSA perche' le
+   chiavi dei vari livelli si allineino: un glifo tipografico cambia larghezza
+   col carattere in uso e disallineava l'albero. */
 .json-toggle {
   cursor: pointer;
   user-select: none;
-  color: var(--accent);
-  font-weight: bold;
+  color: var(--accent-fg);
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
   margin-right: 4px;
+  vertical-align: -2px;
 }
 .json-key { color: var(--json-key); }
 .json-string { color: var(--json-string); }
@@ -4395,7 +4579,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   transition: all 0.2s ease;
 }
 .tab-btn.active {
-  color: var(--accent);
+  color: var(--accent-fg);
   border-bottom-color: var(--accent);
 }
 .modal-tab-content {
@@ -4438,7 +4622,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   border-radius: 4px;
   background: var(--status-info-bg);
   border: 1px solid var(--status-info-bd);
-  color: var(--accent);
+  color: var(--accent-fg);
   font-size: 0.88rem;
 }
 .status-box.error {
@@ -5438,36 +5622,22 @@ body.split-resizing .split-pane {
   overflow: auto;
 }
 
+/* Geometria, intestazione e zebratura stanno nel blocco condiviso con #grid
+   (vedi "LE TRE TABELLE DI DATI SONO UNA SOLA"). */
 .pane-grid {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
-}
-.pane-grid th {
-  position: sticky;
-  top: 0;
-  background: var(--bg-3);
-  color: var(--fg);
-  border-bottom: 1px solid var(--border);
-  padding: 5px 8px;
-  text-align: left;
-  z-index: 2;
 }
 .pane-col-header {
   cursor: pointer;
   user-select: none;
 }
 .pane-col-header:hover {
-  color: var(--accent);
+  color: var(--accent-fg);
 }
-.pane-grid td {
-  border-bottom: 1px solid var(--border);
-  padding: 5px 8px;
-  white-space: nowrap;
-  max-width: 250px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* Un riquadro e' stretto: le colonne si accorciano prima che in una griglia a
+   tutta finestra. E' l'unica differenza vera che resta. */
+.pane-grid td { max-width: 250px; }
 .pane-grid td.editable {
   cursor: cell;
 }
@@ -5486,32 +5656,7 @@ body.split-resizing .split-pane {
 .pane-grid td.row-actions {
   text-align: center;
 }
-.pane-grid td .type-oid { color: var(--val-oid); font-size: 0.78rem; letter-spacing: 0.01em; }
-.pane-grid td .type-num { color: var(--val-num); font-weight: 500; }
-.pane-grid td .type-bool {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1px 8px;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: var(--font-sans);
-  letter-spacing: 0.03em;
-}
-.pane-grid td .type-bool[data-val="true"] {
-  background: var(--success-bg);
-  color: var(--val-true);
-  border: 1px solid var(--success-line);
-}
-.pane-grid td .type-bool[data-val="false"] {
-  background: var(--danger-bg);
-  color: var(--val-false);
-  border: 1px solid var(--danger-line);
-}
-.pane-grid td .type-date { color: var(--val-date); font-size: 0.8rem; }
-.pane-grid td .type-null { color: var(--fg-muted); font-style: normal; font-family: var(--font-sans); font-size: 0.78rem; letter-spacing: 0.02em; }
-.pane-grid td .type-obj { color: var(--val-obj); font-size: 0.8rem; }
+/* I colori per tipo stanno nel blocco condiviso: vedi "Colore per TIPO". */
 .pane-grid tr:hover {
   background: var(--hover);
 }
@@ -5666,7 +5811,7 @@ body.split-resizing .split-pane {
 }
 .menu-btn:hover {
   background: var(--btn-hover);
-  color: var(--accent);
+  color: var(--accent-fg);
   border-color: var(--border-2);
 }
 
@@ -5756,6 +5901,10 @@ body.split-resizing .split-pane {
   }
 
   /* Workspace Head & View Tabs */
+  /* Su schermo stretto le due meta' della riga non ci stanno affiancate: si
+     impilano, ognuna a larghezza piena e scorrevole per conto suo. */
+  .tabs-row { flex-direction: column; align-items: stretch; }
+
   .workspace-head {
     display: flex;
     flex-direction: column;
@@ -5983,7 +6132,7 @@ body.split-resizing .split-pane {
   }
 
   .mobile-nav-item:hover, .mobile-nav-item:active {
-    color: var(--accent);
+    color: var(--accent-fg);
     background: var(--ov-40);
   }
 
@@ -6246,8 +6395,8 @@ body.split-resizing .split-pane {
 }
 
 .admin-tab.active {
-  color: var(--accent, #6366f1);
-  border-bottom-color: var(--accent, #6366f1);
+  color: var(--accent-fg);
+  border-bottom-color: var(--accent);
 }
 
 .admin-pane {
@@ -6288,7 +6437,7 @@ body.split-resizing .split-pane {
 .apikey-new-head {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--accent, #818cf8);
+  color: var(--accent-fg);
   margin-bottom: 8px;
 }
 
@@ -6639,7 +6788,7 @@ button.linklike {
 
 button.linklike:hover {
   background: none;
-  color: var(--accent);
+  color: var(--accent-fg);
   transform: none;
   box-shadow: none;
 }
@@ -7119,7 +7268,7 @@ button.linklike:hover {
 
 .chart-toolbar .mini-btn.attivo {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accent-fg);
 }
 
 /* Viewport strette: la barra rapida va a capo e il grafico resta usabile. */
@@ -7703,7 +7852,7 @@ body.fk-resizing * { cursor: inherit !important; }
   margin: 0;
   font-size: 1rem;
   font-family: var(--mono);
-  color: var(--accent);
+  color: var(--accent-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -7809,7 +7958,7 @@ body.fk-resizing * { cursor: inherit !important; }
 .fk-voce.scelta { background: var(--accent-soft); color: var(--fg-bright); }
 /* La spunta occupa il suo posto anche quando non c'è: senza, il testo delle
    voci scivola di lato appena si cambia selezione. */
-.fk-voce .fk-spunta { flex: 0 0 1em; color: var(--accent); }
+.fk-voce .fk-spunta { flex: 0 0 1em; color: var(--accent-fg); }
 .fk-voce .fk-testo { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fk-voce.corrente .fk-spunta::before { content: '✓'; }
 
@@ -7829,22 +7978,39 @@ body.fk-resizing * { cursor: inherit !important; }
    un nodo: la griglia è virtualizzata e ricostruisce le righe visibili a ogni
    fotogramma di scorrimento, dove una `<span>` in più per cella si sente. */
 td.fk-cella { position: relative; padding-right: 18px; }
+/* L'indicatore e' l'icona `link` dell'applicazione, applicata come MASCHERA e
+   colorata con `currentColor`: cosi' segue il tema e il colore della cella,
+   cosa che un'emoji nel `content` non fa — ha colori propri, cambia forma da un
+   sistema all'altro, e in una colonna di celle non si allinea. La maschera
+   conserva la ragione per cui questo indicatore e' uno pseudo-elemento: nessun
+   nodo in piu' per cella. Un `background-image` non andrebbe bene, perche' li'
+   `currentColor` non arriva. */
 td.fk-cella::after {
-  content: '🔗';
+  content: '';
   position: absolute;
   right: 3px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 0.72em;
+  width: 11px;
+  height: 11px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M10%2013a5%205%200%200%200%207.54.54l3-3a5%205%200%200%200-7.07-7.07l-1.72%201.71%22%2F%3E%3Cpath%20d%3D%22M14%2011a5%205%200%200%200-7.54-.54l-3%203a5%205%200%200%200%207.07%207.07l1.71-1.71%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M10%2013a5%205%200%200%200%207.54.54l3-3a5%205%200%200%200-7.07-7.07l-1.72%201.71%22%2F%3E%3Cpath%20d%3D%22M14%2011a5%205%200%200%200-7.54-.54l-3%203a5%205%200%200%200%207.07%207.07l1.71-1.71%22%2F%3E%3C%2Fsvg%3E") center / contain no-repeat;
   opacity: 0.55;
   pointer-events: none;
 }
 /* Il collegamento solo ipotizzato (MongoDB) si distingue da quello dichiarato:
-   presentare un'ipotesi come certezza fa fidare di un riferimento inesistente. */
-td.fk-cella.fk-ipotesi::after { content: '≈'; opacity: 0.5; }
+   presentare un'ipotesi come certezza fa fidare di un riferimento inesistente.
+   Il segno resta il «circa uguale», ma tracciato con la stessa matita delle
+   altre icone invece che preso dal carattere tipografico. */
+td.fk-cella.fk-ipotesi::after {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%2015a6.5%206.5%200%200%201%207%200%206.5%206.5%200%200%200%207%200%22%2F%3E%3Cpath%20d%3D%22M5%209a6.5%206.5%200%200%201%207%200%206.5%206.5%200%200%200%207%200%22%2F%3E%3C%2Fsvg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M5%2015a6.5%206.5%200%200%201%207%200%206.5%206.5%200%200%200%207%200%22%2F%3E%3Cpath%20d%3D%22M5%209a6.5%206.5%200%200%201%207%200%206.5%206.5%200%200%200%207%200%22%2F%3E%3C%2Fsvg%3E");
+  opacity: 0.5;
+}
 td.fk-cella:hover::after { opacity: 1; }
 
-/* Pulsante 🔗 accanto all'editor inline della cella. */
+/* Pulsante di apertura del riferimento, accanto all'editor inline della cella. */
 td.editing .fk-apri-btn {
   flex: 0 0 auto;
   margin-left: var(--space-3xs);
@@ -7990,7 +8156,10 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 .script-result-tab.attiva {
   color: var(--fg);
   border-color: var(--accent);
-  background: var(--accent-bg, transparent);
+  /* `--accent-bg` non esiste: valeva il ripiego `transparent`, cioe' la scheda
+     attiva non aveva lo sfondo che questa regola dichiara di darle. Il token
+     giusto e' `--accent-soft` (il velo d'accento). */
+  background: var(--accent-soft);
   font-weight: 600;
 }
 
@@ -8094,8 +8263,12 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 .palette {
   margin-top: 10vh;
   width: min(640px, calc(100vw - 32px));
-  background: var(--panel-bg, #1b2129);
-  border: 1px solid var(--border, rgba(128,128,128,.3));
+  /* `--panel-bg` non esiste (il token e' `--bg-elevated`), quindi valeva
+     sempre il ripiego cablato: la palette era una scatola blu notte anche sul
+     tema chiaro. E' esattamente il difetto che la regola «nessun colore cablato
+     in style.css» esiste per impedire. */
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 12px 40px rgba(0,0,0,.5);
   overflow: hidden;

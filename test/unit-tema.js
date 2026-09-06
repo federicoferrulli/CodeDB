@@ -128,6 +128,8 @@ console.log('--- Test Unitari Temi ---');
   // Spostare l'accento porta con sé tutta la sua famiglia: se restasse
   // indietro si otterrebbe un tema verde con la selezione indaco.
   const verde = T.derivaTokens({ ...scuro, accent: '#22c55e' }, 'dark');
+  assert.strictEqual(verde['--accent-fg'], '#22c55e', 'anche il testo segue l\'accento personalizzato');
+  assert.strictEqual(T.derivaTokens({ ...chiaro, accent: '#000000' }, 'light')['--accent-fg'], '#000000');
   for (const tok of ['--sel', '--focus', '--border-focus', '--accent-glow', '--accent-line', '--accent-veil', '--scrollbar-thumb']) {
     assert.ok(verde[tok] && verde[tok] !== tScuro[tok], `${tok} deve seguire l'accento`);
   }

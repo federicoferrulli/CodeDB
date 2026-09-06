@@ -21,6 +21,11 @@
 const assert = require('assert');
 const S = require('../db/sessioni');
 
+// L'identità usata per annullare una query deve conservare i microsecondi PostgreSQL.
+const inizioPreciso = '2026-09-05 21:35:12.123456+00';
+assert.strictEqual(S.normalizzaPostgres([{ pid: 123, backend_start: inizioPreciso }])[0].identita,
+  `postgres-backend:${inizioPreciso}`);
+
 console.log('--- Test Unitari Monitor Sessioni ---');
 
 assert.strictEqual(S.assertIdentitaSessione('token-1', 'token-1'), true);

@@ -120,7 +120,8 @@ module.exports = (async () => {
     // TESTO di un messaggio d'errore.
     const radice = path.join(__dirname, '..');
     const file = ['server.js', 'auth/guardStrategy.js', 'mcp/McpGateway.js',
-      'db/MongoDbStrategy.js', 'db/MongoScript.js', 'db/MongoScriptRunner.js'];
+      'db/MongoDbStrategy.js', 'db/MongoScript.js', 'db/MongoScriptRunner.js',
+      ...fs.readdirSync(path.join(radice, 'server')).filter(f => f.endsWith('.js')).map(f => 'server/' + f)];
     const colpevoli = [];
     for (const f of file) {
       const testo = fs.readFileSync(path.join(radice, f), 'utf8');

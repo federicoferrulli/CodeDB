@@ -7,7 +7,7 @@
 // I dati arrivano dall'evento socket `health:connections`, che pinga ogni
 // sessione lato server (in parallelo, con timeout) e legge lo stato del tunnel.
 
-import { $, emit, esc, iniziaCaricamento } from './utils.js';
+import { $, emit, esc, iniziaCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 
 let autoTimer = null;
 const REFRESH_MS = 4000;
@@ -85,10 +85,10 @@ function latencyClass(ms) {
 function sshCell(ssh) {
   if (!ssh || !ssh.active) return '<span class="sub-text">—</span>';
   if (ssh.alive) {
-    return `<span class="health-ok">🟢 Attivo</span> <span class="sub-text">${esc(ssh.host || '')}:${esc(String(ssh.port || ''))}</span>`;
+    return `<span class="health-ok">${ICO('circle-check')} Attivo</span> <span class="sub-text">${esc(ssh.host || '')}:${esc(String(ssh.port || ''))}</span>`;
   }
   const err = ssh.lastError ? ` <span class="sub-text">(${esc(ssh.lastError)})</span>` : '';
-  return `<span class="health-err">🔴 Caduto</span>${err}`;
+  return `<span class="health-err">${ICO('circle-x')} Caduto</span>${err}`;
 }
 
 function poolCell(c) {
@@ -122,8 +122,8 @@ function render(connections) {
       ? `<span class="health-lat ${latencyClass(c.latencyMs)}">${esc(String(c.latencyMs))} ms</span>`
       : '<span class="sub-text">—</span>';
     const status = ok
-      ? '<span class="health-ok">🟢 Attiva</span>'
-      : `<span class="health-err">🔴 Errore</span><div class="sub-text">${esc(c.error || '')}</div>`;
+      ? `<span class="health-ok">${ICO('circle-check')} Attiva</span>`
+      : `<span class="health-err">${ICO('circle-x')} Errore</span><div class="sub-text">${esc(c.error || '')}</div>`;
 
     rows += `
       <tr class="${ok ? '' : 'audit-row-err'}">
@@ -150,4 +150,5 @@ function render(connections) {
       <tbody>${rows}</tbody>
     </table>
   `;
+  refreshLucideIcons(container);
 }

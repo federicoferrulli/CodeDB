@@ -24,14 +24,14 @@ const DEFAULT_PORTS = {
 // Istanzia la strategia per il tipo di database richiesto.
 // dbType assente = 'mongodb', per retrocompatibilità con le connessioni
 // salvate prima dell'introduzione del campo.
-function getStrategy(dbType) {
+function getStrategy(dbType, options = {}) {
   const key = String(dbType || 'mongodb').trim().toLowerCase();
   const Strategy = STRATEGIES[key];
   if (!Strategy) throw new Error(`Tipo di database non supportato: "${dbType}"`);
   // La strategia esce di qui gia' limitata: e' l'unico punto in cui tutte
   // vengono create, quindi e' il punto in cui un motore aggiunto in futuro
   // nasce limitato senza doversene ricordare.
-  return conTetti(new Strategy());
+  return conTetti(new Strategy(options));
 }
 
 function defaultPort(dbType) {

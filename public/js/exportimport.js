@@ -8,6 +8,7 @@ import { socket } from './socket.js';
 import { descriviEsitoImport } from './import-status.js';
 import { preparaImportCsv } from './csv.js';
 import { eseguiInParalleloOrdinato } from './export-pool.js';
+import { importaBlocco } from './import-batch.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -263,6 +264,8 @@ async function runImport() {
   const fineCaricamento = iniziaCaricamento($('#import-run'), 'Import…');
   let inserted = 0;
   let failed = 0;
+  let uncertain = 0;
+  let notSent = 0;
   let aborted = false;
   const errors = [];
   try {
@@ -281,44 +284,56 @@ async function runImport() {
       setImportProgress((i / docs.length) * 100, `${i}/${docs.length}…`);
       i += batch.length;
       try {
-        const res = await emit('collection:import', { tabId, db, coll, docs: batch });
+        const res = await importaBlocco(emit, { tabId, db, coll, docs: batch });
+        if (res.status !== 'completato') {
+          uncertain += batch.length;
+          notSent = docs.length - i;
+          errors.push(`Esito da verificare per il blocco ${res.batchId}: ${res.error} Non reimportare queste righe senza verificarne la presenza.`);
+          break;
+        }
         inserted += res.inserted;
         failed += res.failed;
         for (const e of res.errors || []) {
           if (errors.length < 20) errors.push(e);
         }
       } catch (err) {
-        // Blocco interamente fallito (es. connessione persa): conteggia e prosegui.
-        failed += batch.length;
+        // Nessuna ricevuta affidabile: la scrittura potrebbe essere avvenuta.
+        uncertain += batch.length;
+        notSent = docs.length - i;
         if (errors.length < 20) errors.push(err.message);
+        break;
       }
     }
   } finally {
     importing = false;
     fineCaricamento();
   }
-  setImportProgress(100, `${docs.length}/${docs.length}`);
+  const processed = inserted + failed;
+  setImportProgress((processed / docs.length) * 100, `${processed}/${docs.length} con esito confermato`);
 
   // Report finale: conteggio ok/errori e prime cause di errore.
   const report = $('#import-report');
   const word = isSqlType(importTarget.dbType) ? 'righe' : 'documenti';
   let html = `<strong>${inserted}</strong> ${word} su ${docs.length} importati` +
     (failed ? `, <strong class="import-failed">${failed}</strong> con errori.` : '.');
+  if (uncertain) html += ` <strong>${uncertain}</strong> con esito incerto, da verificare.`;
+  if (notSent) html += ` <strong>${notSent}</strong> non inviati.`;
   if (errors.length) {
     html += '<ul>' + errors.map((e) => `<li>${esc(e)}</li>`).join('') + '</ul>';
   }
   report.innerHTML = html;
   report.classList.remove('hidden');
   toast(
-    aborted ? 'Import interrotto: connessione di destinazione chiusa'
+    uncertain ? 'Import interrotto: alcune righe hanno un esito da verificare'
+      : aborted ? 'Import interrotto: connessione di destinazione chiusa'
       : failed ? `Import completato con ${failed} errori`
         : `Importati ${inserted} ${word} in "${coll}"`,
-    aborted || !!failed
+    aborted || !!failed || !!uncertain
   );
 
   // La griglia richiede lo stesso coll-tab; per la sidebar basta che sia ancora
   // attivo il tab di connessione, perché l'albero è condiviso da tutti i coll-tab.
-  if (!inserted) return;
+  if (!inserted && !uncertain) return;
   if (ctx.isStillActive() && state.db === db && state.coll === coll) {
     import('./grid.js').then(({ runQuery }) => runQuery({ auto: true })); // refresh post-import
   } else {
@@ -504,14 +519,13 @@ export async function exportDatabase(db) {
       if (isSql) {
         ddl = (await emit('collection:ddl', { tabId, db, coll: c.name })).ddl;
         identity = (await emit('collection:identity', { tabId, db, coll: c.name })).identity;
-        // Indici e FK viaggiano a parte e vengono applicati in coda all'import:
-        // una FK verso una tabella non ancora creata fallirebbe. I DBMS che non
-        // li espongono (e i server più vecchi) semplicemente non ne mandano.
-        try {
-          const aux = await emit('collection:auxddl', { tabId, db, coll: c.name });
-          const statements = [...(aux.indexes || []), ...(aux.foreignKeys || [])];
-          if (statements.length) postDdl = statements;
-        } catch { /* server senza collection:auxddl: export comunque valido */ }
+        // Un errore di lettura non dimostra l'assenza di indici o vincoli.
+        const aux = await emit('collection:auxddl', { tabId, db, coll: c.name });
+        if (!Array.isArray(aux.indexes) || !Array.isArray(aux.foreignKeys)) {
+          throw new Error(`Metadati di indici e vincoli incompleti per "${c.name}".`);
+        }
+        const statements = [...aux.indexes, ...aux.foreignKeys];
+        if (statements.length) postDdl = statements;
       } else {
         const stats = await emit('collection:stats', { tabId, db, coll: c.name });
         indexes = (stats.indexes || []).filter((i) => i.name !== '_id_');

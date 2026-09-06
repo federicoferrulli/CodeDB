@@ -298,6 +298,24 @@ export function creaVistaGeo(el = {}) {
     renderer = L.canvas({ padding: 0.2 });
     gruppo = L.layerGroup().addTo(mappa);
     applicaTile();
+    // Leaflet ascolta il resize della finestra, ma non quello dei pannelli:
+    // divisori trascinabili, sidebar e modali cambiano il canvas da soli.
+    // Si rimisura una volta per fotogramma, senza rifare geometrie o zoom.
+    let fotogramma = 0;
+    const osservatore = new ResizeObserver(() => {
+      if (fotogramma) return;
+      fotogramma = requestAnimationFrame(() => {
+        fotogramma = 0;
+        if (canvas.clientWidth && canvas.clientHeight) {
+          mappa.invalidateSize({ animate: false, debounceMoveend: true });
+        }
+      });
+    });
+    osservatore.observe(canvas);
+    mappa.once('unload', () => {
+      osservatore.disconnect();
+      cancelAnimationFrame(fotogramma);
+    });
   }
 
   /* ------------------------ Gestori dei pannelli ------------------------- */

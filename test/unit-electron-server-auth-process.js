@@ -6,7 +6,7 @@ const http = require('http');
 const net = require('net');
 const os = require('os');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFileSync } = require('child_process');
 const { nuovoSegretoIstanza, probeServer } = require('../electron-server-auth');
 
 function portaLibera() {
@@ -105,10 +105,32 @@ module.exports = (async () => {
   const realPort = await portaLibera();
   const markerPort = await portaLibera();
   const auditFile = path.join(os.tmpdir(), `codedb-electron-auth-${process.pid}.log`);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-launcher-'));
+  const isolatedEnv = {
+    CODEDB_RBAC: 'off', GUI_MONGO_PASSPHRASE: '',
+    CODEDB_CONNECTIONS_FILE: path.join(root, 'connections.ini'),
+    CODEDB_CONNECTIONS_DIR: path.join(root, 'conns'),
+    CODEDB_SCRIPT_RESULTS_DIR: path.join(root, 'results'),
+    CODEDB_UI_AUDIT_FILE: auditFile,
+    CODEDB_MCP_AUDIT_FILE: path.join(root, 'mcp.log'),
+  };
   let reale;
   let marker;
+  let cli;
   try {
+    execFileSync(process.execPath, ['-e', `
+      const assert = require('assert');
+      const before = process.eventNames().map(n => [n, process.listenerCount(n)]);
+      const fs = require('fs');
+      const root = process.env.CODEDB_TEST_IMPORT_ROOT;
+      const files = fs.readdirSync(root);
+      require('./server');
+      assert.deepStrictEqual(process.eventNames().map(n => [n, process.listenerCount(n)]), before);
+      assert.deepStrictEqual(fs.readdirSync(root), files);
+    `], { cwd: path.join(__dirname, '..'), windowsHide: true, timeout: 10000,
+      env: { ...process.env, ...isolatedEnv, CODEDB_TEST_IMPORT_ROOT: root } });
     reale = await avvia(path.join(__dirname, '..', 'server.js'), {
+      ...isolatedEnv,
       PORT: String(realPort), HOST: '127.0.0.1',
       CODEDB_ELECTRON_INSTANCE_SECRET: secret,
       CODEDB_UI_AUDIT_FILE: auditFile,
@@ -120,6 +142,13 @@ module.exports = (async () => {
     assert.strictEqual(await probeServer({ port: realPort, secret: nuovoSegretoIstanza() }), false,
       'un processo con identità diversa viene rifiutato');
 
+    const cliPort = await portaLibera();
+    cli = await avvia(path.join(__dirname, '..', 'bin', 'codedb.js'), {
+      ...isolatedEnv, PORT: String(cliPort), HOST: '127.0.0.1', CODEDB_ELECTRON_INSTANCE_SECRET: secret,
+    });
+    await attendiServer(cliPort, secret, cli.child, cli.stderr);
+    assert.strictEqual(await probeServer({ port: cliPort, secret }), true, 'il launcher bin avvia davvero il server');
+
     marker = await avvia(path.join(__dirname, 'fixture-electron-marker-server.js'), {
       CODEDB_TEST_MARKER_PORT: String(markerPort),
     }, { readyText: 'READY' });
@@ -128,7 +157,8 @@ module.exports = (async () => {
       'un processo estraneo col solo marker pubblico viene rifiutato');
     console.log('  OK   server reale, processo estraneo e riuso autenticato fra processi');
   } finally {
-    await Promise.all([ferma(reale && reale.child), ferma(marker && marker.child)]);
+    await Promise.all([ferma(reale && reale.child), ferma(marker && marker.child), ferma(cli && cli.child)]);
     try { fs.rmSync(auditFile, { force: true }); } catch { /* file mai creato */ }
+    fs.rmSync(root, { recursive: true, force: true });
   }
 })();

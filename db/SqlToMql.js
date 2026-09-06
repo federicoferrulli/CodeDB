@@ -467,7 +467,7 @@ function translate(sql) {
 
   // Query singola: nessun UNION. Comportamento storico (LIMIT di default 50).
   if (segments.length === 1) {
-    return translateStatement(segments[0].tokens, { defaultLimit: 50 });
+    return translateStatement(segments[0].tokens, { defaultLimit: null });
   }
 
   // UNION [ALL] → $unionWith. Ogni operando è tradotto a pipeline; il primo
@@ -531,7 +531,7 @@ function planToPipeline(plan) {
 }
 
 // Traduce una singola SELECT (senza UNION) nel piano find/aggregate.
-function translateStatement(tokens, { defaultLimit = 50 } = {}) {
+function translateStatement(tokens, { defaultLimit = null } = {}) {
   const p = new Parser(tokens);
 
   if (!p.eatKw('SELECT')) {
@@ -869,8 +869,7 @@ function buildFind({ coll, select, filter, orderBy, limit, skip, resolve = (x) =
     filter: filter || {},
     projection,
     sort,
-    // Il default (50 per una query singola, nessun limite per gli operandi di
-    // UNION) è già applicato dal chiamante: qui si passa il valore così com'è.
+    // Solo un LIMIT scritto nella query restringe il risultato.
     limit: limit != null ? limit : null,
     skip: skip || 0,
   };

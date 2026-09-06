@@ -1,5 +1,7 @@
 'use strict';
 
+const { assertImportOutcomeKnown } = require('./importFailure');
+
 const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
@@ -299,8 +301,8 @@ async function filtroRicercaGlobale(strategy, collection, db, coll, input) {
  * ------------------------------------------------------------------------- */
 
 class MongoDbStrategy extends DbStrategy {
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
     /** @type {MongoClient|null} */
     this.client = null;
     this.uri = '';
@@ -844,7 +846,9 @@ class MongoDbStrategy extends DbStrategy {
     const sort = parseQueryObject(payload.sort, {});
     const projection = parseQueryObject(payload.projection, {});
     const cap = DbStrategy.resultCap(payload);
-    const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), cap);
+    const limit = cap === Infinity
+      ? (payload.limit == null ? Infinity : Math.abs(parseInt(payload.limit, 10) || 0))
+      : Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), cap);
     const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
 
     const collection = client.db(db).collection(coll);
@@ -859,7 +863,7 @@ class MongoDbStrategy extends DbStrategy {
     // Timeout lato server sulla find: una scansione lenta (es. skip profondo)
     // viene interrotta (MaxTimeMSExpired) invece di tenere la connessione
     // occupata all'infinito. Annullabile anche via killOp sul `comment` (runId).
-    const maxTimeMS = DbStrategy.queryTimeoutMs();
+    const maxTimeMS = DbStrategy.queryTimeoutMs(this.env);
     if (maxTimeMS > 0) findOpts.maxTimeMS = maxTimeMS;
 
     // Keyset (seek) pagination: se richiesta (`payload.keyset`) e l'ordinamento è
@@ -886,10 +890,12 @@ class MongoDbStrategy extends DbStrategy {
         reverse = true;
       }
       // ks.first (o nessun estremo): prima pagina, solo ORDER BY _id ASC.
-      cursor = collection.find(kfilter, findOpts).sort(ksort).limit(limit);
+      cursor = collection.find(kfilter, findOpts).sort(ksort);
     } else {
-      cursor = collection.find(filter, findOpts).sort(sort).skip(skip).limit(limit);
+      cursor = collection.find(filter, findOpts).sort(sort).skip(skip);
     }
+    // Il limite negativo MongoDB richiede un solo batch, con al massimo |n| documenti.
+    if (Number.isFinite(limit) && limit > 0) cursor.limit(payload.limit < 0 ? -limit : limit);
 
     // Il conteggio con filtro è una scansione completa: su collection enormi
     // bloccherebbe la griglia. Il client della UI passa `deferCount` e recupera
@@ -909,7 +915,9 @@ class MongoDbStrategy extends DbStrategy {
     // Lettura a budget: il cursore si ferma al tetto delle righe O a quello dei
     // byte, così pochi documenti enormi non possono esaurire la memoria del
     // processo (vedi DbStrategy.collectCapped).
-    const collected = await DbStrategy.collectCapped(cursor, limit);
+    const collected = limit === 0
+      ? { docs: [], truncated: false }
+      : await DbStrategy.collectCapped(cursor, limit, DbStrategy.maxResultBytes(this.env));
     aggiornaCacheCatalogo(this._cacheRicerca, `${db}\0${coll}`, catalogoDaDocumenti(collected.docs));
     let docs = collected.docs;
     // Keyset "indietro": la query gira in ordine _id DESC, qui si riordina ASC.
@@ -934,7 +942,7 @@ class MongoDbStrategy extends DbStrategy {
   // (senza). Se supera CODEDB_COUNT_TIMEOUT_MS il server MongoDB interrompe la
   // query (MaxTimeMSExpired) e restituiamo null anziché propagare l'errore.
   async countWithTimeout(collection, filter, hasFilter) {
-    const maxTimeMS = DbStrategy.countTimeoutMs();
+    const maxTimeMS = DbStrategy.countTimeoutMs(this.env);
     try {
       if (!hasFilter) return await collection.estimatedDocumentCount();
       const opts = maxTimeMS > 0 ? { maxTimeMS } : {};
@@ -983,13 +991,13 @@ class MongoDbStrategy extends DbStrategy {
     // interromperle a metà lascerebbe la collection di destinazione scritta per
     // metà, cioè lo stato incoerente che il timeout dovrebbe evitare. Là il
     // rimedio giusto è l'annullamento esplicito dell'utente (cancelQuery).
-    const aggTimeout = DbStrategy.aggregateTimeoutMs();
+    const aggTimeout = DbStrategy.aggregateTimeoutMs(this.env);
     if (!materializza && aggTimeout > 0) aggOpts.maxTimeMS = aggTimeout;
 
     const agg = client.db(db).collection(coll).aggregate(pipeline, aggOpts);
-    const cursor = materializza ? agg : agg.limit(cap);
+    const cursor = materializza || !Number.isFinite(cap) ? agg : agg.limit(cap);
     // Come nella find: si smette di leggere al tetto delle righe o dei byte.
-    const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap);
+    const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap, DbStrategy.maxResultBytes(this.env));
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
     return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined, resultSet: true };
   }
@@ -1400,6 +1408,7 @@ class MongoDbStrategy extends DbStrategy {
         }
       } catch (err) {
         // BulkWriteError: alcuni documenti possono comunque essere entrati.
+        assertImportOutcomeKnown(err);
         inserted = (err.result && (err.result.insertedCount ?? err.result.nInserted)) || 0;
         for (const we of (err.writeErrors || []).slice(0, 10)) {
           errors.push(we.errmsg || we.message || String(we));

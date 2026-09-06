@@ -76,7 +76,7 @@ const DIVERGENTE = ['#0d366b', '#256abf', '#6da7ec', '#383835', '#e66767', '#d03
 export const TAVOLOZZE = {
   categorica: { etichetta: 'Categorica (8 colori, identità)', colori: CATEGORICA },
   sequenziale: { etichetta: 'Sequenziale blu (grandezza)', colori: SEQUENZIALE_BLU },
-  divergente: { etichetta: 'Divergente blu↔rosso (polarità)', colori: DIVERGENTE },
+  divergente: { etichetta: 'Divergente blu-rosso (polarità)', colori: DIVERGENTE },
 };
 
 /*
@@ -834,7 +834,7 @@ function tipoAsseX(righe, c) {
   for (let i = 0; i < limite; i++) {
     if (istante(estrai(righe[i], c.campoX)) !== null) return 'time';
   }
-  avvisi.push(`"${c.campoX || 'asse X'}" non contiene date: l'asse è stato trattato come categorie. Per forzarlo, pannello ⚙ → Assi → Tipo.`);
+  avvisi.push(`"${c.campoX || 'asse X'}" non contiene date: l'asse è stato trattato come categorie. Per forzarlo: pannello di personalizzazione, sezione Assi, campo Tipo.`);
   return 'category';
 }
 

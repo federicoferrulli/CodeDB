@@ -1,0 +1,378 @@
+[
+  {
+    "evento": "apikeys:create",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "apikeys:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "apikeys:revoke",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "app:info",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "app:license",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "app:updates:check",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "artifact:validate",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "audit:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "auth:me",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "backup:list",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "backup:restore",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "backup:run",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "backup:verify",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "collection:aggregate",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:auxddl",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:count",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:create",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:ddl",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:deleteMany",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:drop",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:explain",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:export",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:find",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:identity",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:import",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:relations",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:rename",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:stats",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:unwatch",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "collection:watch",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "column:add",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "column:alter",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "column:drop",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "connections:delete",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:export",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:get",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:import",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:save",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "connections:test",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "database:import:cancel",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:cleanup",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:list",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:start",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:state",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:upload:chunk",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "database:import:upload:finish",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "database:import:upload:start",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "database:schema-objects",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:collections",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:create",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:drop",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:killSession",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "db:list",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:rename",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "db:schema",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:search",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "db:sessions",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "doc:delete",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "doc:duplicate",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "doc:insert",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "doc:replace",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "doc:update",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "grants:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "grants:revoke",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "grants:set",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "health:connections",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "index:create",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "index:drop",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "mongo:connect",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "mongo:disconnect",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "prefs:get",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "prefs:set",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "prefs:shared:get",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "prefs:shared:set",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "query:cancel",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "query:execute",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "roles:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "schema:unwatch",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "schema:watch",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "script:abort",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:execute",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:pause",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:result",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:resume",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "script:state",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "users:create",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "users:delete",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "users:list",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "users:update",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "vault:reset",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "vault:setPassphrase",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "vault:status",
+    "famiglia": "amministrativo"
+  },
+  {
+    "evento": "vault:unlock",
+    "famiglia": "amministrativo"
+  }
+]

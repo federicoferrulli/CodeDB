@@ -16,7 +16,7 @@ import {
   CATALOGO, CHIAVE_PREFS, CHIAVE_LOCALE,
   normalizzaCombo, etichettaCombo, mappaEffettiva, impostaMappaAttiva,
 } from './scorciatoie.js';
-import { $, emit, esc, toast } from './utils.js';
+import { $, emit, esc, toast, refreshLucideIcons } from './utils.js';
 
 /** Le personalizzazioni correnti SOLO come testi ("Ctrl+K"), non forme normalizzate. */
 let personali = leggiLocali();
@@ -91,6 +91,7 @@ export function apriPannelloScorciatoie() {
         <button type="button" class="primary" id="scorciatoie-chiudi">Fatto</button>
       </div>
     </div>`;
+  refreshLucideIcons(overlay);
   document.body.appendChild(overlay);
 
   const lista = overlay.querySelector('#scorciatoie-lista');

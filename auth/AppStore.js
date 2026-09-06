@@ -45,8 +45,8 @@ function normScope(scope) {
 
 class AppStore {
   constructor({ uri, dbName } = {}) {
-    this.uri = uri || process.env.CODEDB_APP_DB_URI || '';
-    this.dbName = dbName || process.env.CODEDB_APP_DB_NAME || 'codedb_control';
+    this.uri = uri ?? process.env.CODEDB_APP_DB_URI ?? '';
+    this.dbName = dbName ?? process.env.CODEDB_APP_DB_NAME ?? 'codedb_control';
     this.client = null;
     this.db = null;
   }
@@ -87,7 +87,8 @@ class AppStore {
     // Il vecchio indice rendeva le preferenze implicitamente condivise fra
     // tutti i principal. La migrazione lo rimuove prima del nuovo confine.
     try { await this.col('prefs').dropIndex('ownerId_1_chiave_1'); } catch (err) {
-      if (err.codeName !== 'IndexNotFound' && err.code !== 27) throw err;
+      // Al primo avvio non esiste ancora nemmeno la collezione prefs.
+      if (!['IndexNotFound', 'NamespaceNotFound'].includes(err.codeName) && ![27, 26].includes(err.code)) throw err;
     }
     await this.col('prefs').createIndex(
       { ownerId: 1, ambito: 1, subjectId: 1, chiave: 1 }, { unique: true },

@@ -29,7 +29,7 @@
  *     un guasto dell'applicazione.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento } from './utils.js';
+import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { tabs } from './tabs.js';
 
 let autoTimer = null;
@@ -232,7 +232,8 @@ function mostraNota(res) {
   if (res.capacita && res.capacita.saBloccanti === false && bloccateSenzaCausa) {
     note.push('Questo database non sa dire QUALE sessione tenga il lock: le sessioni in attesa si vedono, chi le blocca va cercato fra le transazioni aperte e le scritture più vecchie.');
   }
-  box.innerHTML = note.map((n) => `<div>⚠ ${esc(n)}</div>`).join('');
+  box.innerHTML = note.map((n) => `<div>${ICO('triangle-alert')} ${esc(n)}</div>`).join('');
+  refreshLucideIcons(box);
   box.classList.toggle('hidden', note.length === 0);
 }
 
@@ -263,9 +264,9 @@ function durata(s) {
 
 function statoCella(s) {
   const badge = {
-    'in attesa': '<span class="health-err">⛔ In attesa</span>',
-    attiva: '<span class="health-ok">▶ Attiva</span>',
-    inattiva: '<span class="sub-text">⏸ Inattiva</span>',
+    'in attesa': `<span class="health-err">${ICO('circle-slash')} In attesa</span>`,
+    attiva: `<span class="health-ok">${ICO('play')} Attiva</span>`,
+    inattiva: `<span class="sub-text">${ICO('pause')} Inattiva</span>`,
   }[s.stato] || '<span class="sub-text">?</span>';
   const parti = [badge];
   // Chi blocca gli altri va detto per primo e forte: è la riga su cui agire, e
@@ -287,7 +288,7 @@ function statoCella(s) {
   return parti.join('<br>');
 }
 
-const ETICHETTA = { query: '✖ Annulla query', connessione: '⏻ Termina connessione' };
+const ETICHETTA = { query: 'Annulla query', connessione: 'Termina connessione' };
 
 /**
  * L'azione GIUSTA per lo stato della riga, non tutte quelle possibili.
@@ -332,7 +333,7 @@ function disegnaVerdetto(res, sessioni) {
   const d = res && res.diagnosi;
   if (!d) { box.innerHTML = ''; box.className = 'sessions-verdict'; return; }
 
-  const icona = { allarme: '⛔', attenzione: '⚠', ok: '✓' }[d.livello] || '•';
+  const icona = ICO({ allarme: 'circle-slash', attenzione: 'triangle-alert', ok: 'circle-check' }[d.livello] || 'circle');
   box.className = `sessions-verdict sessions-verdict-${d.livello}`;
 
   let azione = '';
@@ -354,6 +355,7 @@ function disegnaVerdetto(res, sessioni) {
       ${d.dettaglio ? `<div class="sessions-verdict-dettaglio">${esc(d.dettaglio)}</div>` : ''}
     </div>
     ${azione ? `<div class="sessions-verdict-azione">${azione}</div>` : ''}`;
+  refreshLucideIcons(box);
 }
 
 function disegna(sessioni, res) {
@@ -421,6 +423,7 @@ function disegna(sessioni, res) {
       </thead>
       <tbody>${righe}</tbody>
     </table>`;
+  refreshLucideIcons(container);
 }
 
 // Le righe tolte dalla tabella si CONTANO, non si fanno sparire: "dove sono

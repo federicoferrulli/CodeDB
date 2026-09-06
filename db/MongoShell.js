@@ -411,7 +411,8 @@ function finalizeOp(op) {
       filter: op.filter || {},
       projection: op.projection || {},
       sort: op.sort || {},
-      limit: op.limit != null ? op.limit : 50,
+      // In MongoDB limit(0) equivale a nessun limite.
+      limit: op.limit || null,
       skip: op.skip || 0,
     };
   }

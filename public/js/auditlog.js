@@ -7,7 +7,7 @@
 // gemello, per la UI, dell'audit log del gateway MCP: una riga per ogni
 // scrittura (drop, delete, query di scrittura, backup...) su qualunque DBMS.
 
-import { $, emit, esc, iniziaCaricamento } from './utils.js';
+import { $, emit, esc, iniziaCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 // Il modulo unico della griglia: stessa finestra virtuale della vista Dati e
 // della tab ⚡ (vedi griglia.js).
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo } from './griglia.js';
@@ -196,7 +196,7 @@ function detailsOf(e) {
   }
   if (counts.length) bits.push(counts.join(', '));
 
-  if (e.error) bits.push(`⚠ ${e.error}`);
+  if (e.error) bits.push(`${e.error}`);
   return bits.join(' · ');
 }
 
@@ -252,11 +252,11 @@ function disegnaVoceAudit(e) {
     const detail = e.op && e.op !== label ? e.op : '';
     const ok = e.status !== 'error';
     const statusHtml = ok
-      ? '<span class="audit-status audit-status-ok">✅ OK</span>'
-      : '<span class="audit-status audit-status-err">❌ Errore</span>';
+      ? '<span class="audit-status audit-status-ok">' + ICO('circle-check') + ' OK</span>'
+      : '<span class="audit-status audit-status-err">' + ICO('circle-x') + ' Errore</span>';
     const catHtml = e.category === 'read'
-      ? '<span class="audit-cat audit-cat-read">👁 Lettura</span>'
-      : '<span class="audit-cat audit-cat-write">✏️ Scrittura</span>';
+      ? '<span class="audit-cat audit-cat-read">' + ICO('eye') + ' Lettura</span>'
+      : '<span class="audit-cat audit-cat-write">' + ICO('pencil') + ' Scrittura</span>';
     const target = [e.db, e.coll].filter(Boolean).map(esc).join(' › ') || '<span class="sub-text">—</span>';
     const conn = e.connection ? esc(e.connection) : '<span class="sub-text">—</span>';
     const dbType = e.dbType ? `<span class="sub-text">${esc(e.dbType)}</span>` : '';
@@ -281,6 +281,9 @@ function disegnaVoceAudit(e) {
       <td class="audit-details" title="${esc(detailsOf(e))}">${esc(detailsOf(e))}</td>
       <td>${statusHtml}</td>
     `;
+  // Le icone di categoria ed esito sono <i data-lucide>: vanno disegnate qui,
+  // perche' la riga viene costruita staccata dal documento.
+  refreshLucideIcons(tr);
   return tr;
 }
 

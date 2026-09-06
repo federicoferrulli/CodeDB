@@ -20,7 +20,7 @@
  * il canvas, i controlli e l'export.
  * ------------------------------------------------------------------------- */
 
-import { $, esc, toast, openModal, closeModal } from './utils.js';
+import { $, esc, toast, openModal, closeModal, refreshLucideIcons } from './utils.js';
 import {
   TIPI, AGGREGAZIONI, AGG_GREZZO, INK, applicaInk, costruisciOption, azzeraAvvisi, prendiAvvisi,
   famigliaDi, serieDefault, CATEGORICA,
@@ -65,7 +65,7 @@ export function apriGraficoSelezione({ voci, titolo } = {}) {
 
   costruisciModale();
   const t = $('#cellchart-title');
-  if (t) t.textContent = titolo ? `📈 Grafico della selezione — ${titolo}` : '📈 Grafico della selezione';
+  if (t) t.textContent = titolo ? `Grafico della selezione — ${titolo}` : 'Grafico della selezione';
   openModal('#cellchart-overlay');
   costruisciBarra();
   disegna();
@@ -85,7 +85,7 @@ function costruisciModale() {
   overlay.className = 'overlay hidden';
   overlay.innerHTML = `
     <div class="modal wide cellchart-modal">
-      <h2 id="cellchart-title">📈 Grafico della selezione</h2>
+      <h2 id="cellchart-title"><i data-lucide="line-chart"></i> Grafico della selezione</h2>
       <div id="cellchart-bar" class="cellchart-bar"></div>
       <div id="cellchart-note" class="cellchart-note hidden"></div>
       <div id="cellchart-canvas" class="cellchart-canvas"></div>
@@ -94,6 +94,7 @@ function costruisciModale() {
         <button id="cellchart-close" class="primary">Chiudi</button>
       </div>
     </div>`;
+  refreshLucideIcons(overlay);
   document.body.appendChild(overlay);
 
   document.getElementById('cellchart-close').addEventListener('click', () => chiudi());

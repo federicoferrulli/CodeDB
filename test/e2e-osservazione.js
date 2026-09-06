@@ -100,13 +100,19 @@ function attendiPush(evento, ms = 8000) {
 
     /* --- 2. Un cambiamento arriva al client --------------------------- */
 
-    const riMessa = await emit('collection:watch', { db: DB, coll: COLL, tabId: 'tab-osserva' });
-    assert(riMessa.ok, 'collection:watch di nuovo attivo', riMessa.error);
-
     // Su MongoDB standalone i change stream non esistono: il server manda
     // `watch:unavailable` e il frontend ripiega sul polling. Entrambe le
     // risposte sono corrette, e il test le distingue invece di pretenderne una.
-    const push = await Promise.race([
+    const push = Promise.race([
+      attendiPush('collection:changed', 6000),
+      attendiPush('watch:unavailable', 6000),
+    ]);
+    const riMessa = await emit('collection:watch', { db: DB, coll: COLL, tabId: 'tab-osserva' });
+    assert(riMessa.ok, 'collection:watch di nuovo attivo', riMessa.error);
+    const preliminare = await push;
+    // Il push può precedere l'ack dell'INSERT: l'ascoltatore deve esistere già
+    // prima della scrittura, altrimenti il test perde un evento valido.
+    const successivo = preliminare ? null : Promise.race([
       attendiPush('collection:changed', 6000),
       attendiPush('watch:unavailable', 6000),
     ]);
@@ -114,10 +120,7 @@ function attendiPush(evento, ms = 8000) {
       db: DB, coll: COLL, tabId: 'tab-osserva', doc: JSON.stringify({ nome: 'osservato' }),
     });
     assert(scritto.ok, 'documento inserito nella collezione osservata', scritto.error);
-    const arrivato = push || await Promise.race([
-      attendiPush('collection:changed', 6000),
-      attendiPush('watch:unavailable', 6000),
-    ]);
+    const arrivato = preliminare || await successivo;
     assert(!!arrivato, 'il server ha risposto sull\'osservazione (cambiamento o indisponibilità)');
 
     /* --- 3. Rimettere l'osservazione è idempotente -------------------- */

@@ -45,7 +45,7 @@ import { toast } from './avvisi.js';
 // scritture sul documento sbagliato). Ogni callback che modifica lo stato deve
 // quindi usare `res._state`, mai il Proxy; e deve ridipingere solo se il proprio
 // tab è ancora quello attivo (`res._tab === activeTab()`).
-export function emit(event, payload) {
+export function emit(event, payload, { timeoutMs = 0 } = {}) {
   // Il tabId del payload, quando c'è, ha la precedenza (split view, modali con
   // contesto esplicito): `_tab`/`_state` devono descrivere il tab REALMENTE
   // interrogato, altrimenti il callback scriverebbe nello stato di un altro.
@@ -73,7 +73,9 @@ export function emit(event, payload) {
   return new Promise((resolve, reject) => {
     let settled = false;
     let onTabClosed = null;
+    let timeout = null;
     const cleanup = () => {
+      if (timeout !== null) clearTimeout(timeout);
       if (onTabClosed && typeof window !== 'undefined') {
         window.removeEventListener('codedb:tab-closed', onTabClosed);
       }
@@ -93,6 +95,20 @@ export function emit(event, payload) {
     // Anche gli errori portano l'origine: i callback di errore devono poter
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
     const fail = (msg) => rejectOnce(stamp(new Error(msg)));
+    if (timeoutMs > 0) {
+      timeout = setTimeout(() => fail('Risposta non ricevuta entro il tempo previsto: esito da verificare.'), timeoutMs);
+    }
+    const send = (name, data, ack) => {
+      if (settled) return;
+      // Il timeout nativo elimina anche ack e pacchetti non ancora inviati
+      // dalla coda Socket.IO: una scrittura scaduta non partirà più tardi.
+      if (timeoutMs > 0 && typeof socket.timeout === 'function') {
+        socket.timeout(timeoutMs).emit(name, data, (err, res) => {
+          if (err) fail('Risposta non ricevuta: esito da verificare.');
+          else if (!settled) ack(res);
+        });
+      } else socket.emit(name, data, ack);
+    };
     const tabChiuso = () => pinnedMancante || !!(tab && !tabs.list.includes(tab));
     const failTabChiuso = () => {
       const err = new Error('Operazione interrotta: il tab di origine è stato chiuso.');
@@ -110,7 +126,8 @@ export function emit(event, payload) {
       failTabChiuso();
       return;
     }
-    socket.emit(event, withTab(), (res) => {
+    send(event, withTab(), (res) => {
+      if (settled) return;
       if (tabChiuso()) { failTabChiuso(); return; }
       if (res && res.ok) {
         resolveOnce(stamp(res));
@@ -124,12 +141,13 @@ export function emit(event, payload) {
         const riconnettibile = !!(tab && (tab.connName || (tab.connCfg && tab.connCfg.saved)));
         if (isNoSession && riconnettibile && (!payload || !payload._reconnected)) {
           const cfg = { saved: tab.connName || tab.connCfg.saved };
-          socket.emit('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
+          send('mongo:connect', { ...cfg, tabId: tab.id }, (connRes) => {
+            if (settled) return;
             if (tabChiuso()) { failTabChiuso(); return; }
             if (connRes && connRes.ok) {
               tab.state.connected = true;
               toast(`Riconnessione al database riuscita per "${tab.label || 'Tab'}"`);
-              socket.emit(event, withTab({ _reconnected: true }), (retryRes) => {
+              send(event, withTab({ _reconnected: true }), (retryRes) => {
                 if (tabChiuso()) { failTabChiuso(); return; }
                 if (retryRes && retryRes.ok) {
                   resolveOnce(stamp(retryRes));

@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -57,10 +57,13 @@ function updateWizardSummary() {
   const summaryBox = $('#wizard-summary-box');
   if (!summaryBox) return;
 
-  const dbIcon = { mongodb: '🍃', mysql: '🐬', postgresql: '🐘', postgres: '🐘' }[cfg.dbType] || '🗄';
+  // L'icona del tipo di database ha gia' un posto solo: `dbTypeIcon` in
+  // utils.js, che usa le icone dell'applicazione. Questa era una seconda
+  // tabella, con glifi diversi, che nessuno teneva allineata alla prima.
+  const dbIcon = dbTypeIcon(cfg.dbType);
   const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
 
-  let html = `<div><strong>${esc(dbIcon)} ${esc(dbTypeName)}</strong> — `;
+  let html = `<div><strong>${dbIcon} ${esc(dbTypeName)}</strong> — `;
   if (cfg.connectionMode === 'uri') {
     // Una URI può contenere password e token nella query string: il riepilogo
     // conferma la modalità senza duplicare il segreto nel DOM.
@@ -72,10 +75,11 @@ function updateWizardSummary() {
     if (cfg.authSource) html += ` | Auth: <strong>${esc(cfg.authSource)}</strong>`;
   }
   if (cfg.ssh === 'true') {
-    html += `<br>🔒 <strong>Tunnel SSH attivo</strong>: <code>${esc(cfg.sshUser || 'user')}@${esc(cfg.sshHost || 'bastion')}:${esc(cfg.sshPort || '22')}</code>`;
+    html += `<br>${ICO('lock')} <strong>Tunnel SSH attivo</strong>: <code>${esc(cfg.sshUser || 'user')}@${esc(cfg.sshHost || 'bastion')}:${esc(cfg.sshPort || '22')}</code>`;
   }
   html += `</div>`;
   summaryBox.innerHTML = html;
+  refreshLucideIcons(summaryBox);
 }
 
 function selectConnTab(name) {

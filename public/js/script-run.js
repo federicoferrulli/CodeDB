@@ -14,7 +14,7 @@
  * eseguite lo decide il server, che è l'unico a dividere il testo per davvero.
  */
 
-import { $, esc, toast, emit } from './utils.js';
+import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { activeTab } from './tabs.js';
 import { state } from './state.js';
@@ -320,12 +320,15 @@ export function nascondiPannelloScript() {
   nascondiPannello();
 }
 
+// L'icona e' un CAMPO dello stato, non un carattere in testa all'etichetta:
+// e' cio' che permette di disegnarla come icona dell'applicazione invece che
+// come pittogramma, e di leggere l'etichetta senza il nome del glifo davanti.
 const ETICHETTA_STATO = {
-  running: { cls: 'status-running', testo: '⏳ In esecuzione' },
-  paused: { cls: 'status-paused', testo: '⏸ In pausa' },
-  done: { cls: 'status-completed', testo: '✓ Completato' },
-  aborted: { cls: 'status-abandoned', testo: '🛑 Interrotto' },
-  idle: { cls: '', testo: '● In attesa' },
+  running: { cls: 'status-running', icona: 'hourglass', testo: 'In esecuzione' },
+  paused: { cls: 'status-paused', icona: 'pause', testo: 'In pausa' },
+  done: { cls: 'status-completed', icona: 'circle-check', testo: 'Completato' },
+  aborted: { cls: 'status-abandoned', icona: 'circle-stop', testo: 'Interrotto' },
+  idle: { cls: '', icona: 'circle-dashed', testo: 'In attesa' },
 };
 
 function aggiornaPannello(stato) {
@@ -342,7 +345,8 @@ function aggiornaPannello(stato) {
   if (statusEl) {
     const et = ETICHETTA_STATO[stato.status] || ETICHETTA_STATO.idle;
     statusEl.className = `badge-status ${et.cls}`;
-    statusEl.textContent = et.testo;
+    statusEl.innerHTML = `${ICO(et.icona)} ${esc(et.testo)}`;
+    refreshLucideIcons(statusEl);
   }
   if (countsEl) countsEl.textContent = `${Math.min(eseguiti, total)} / ${total} istruzioni`;
   if (errEl) {
@@ -392,7 +396,7 @@ function disegnaLog() {
   }
 
   logEl.innerHTML = daMostrare.map((v) => {
-    const icona = v.interrupted ? '⏸' : (v.ok ? '✓' : '✖');
+    const icona = ICO(v.interrupted ? 'pause' : (v.ok ? 'check' : 'x'));
     const cls = v.interrupted ? 'interrupted' : (v.ok ? 'ok' : 'ko');
     const misure = v.ok
       ? `${v.rows != null ? `${v.rows} righe` : ''}${v.affected != null ? ` · ${v.affected} modificate` : ''} · ${v.ms} ms`
@@ -406,6 +410,7 @@ function disegnaLog() {
       </div>`;
   }).join('');
   logEl.scrollTop = logEl.scrollHeight;
+  refreshLucideIcons(logEl);
 }
 
 /* --- Risultati per istruzione ---------------------------------------------

@@ -11,7 +11,7 @@
  * Con RBAC spento il pulsante non compare (nessun utente da gestire).
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, showToast, chiediTesto, conCaricamento } from './utils.js';
+import { $, emit, esc, showToast, chiediTesto, conCaricamento, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 
 // Cache locale dei dati caricati all'apertura della modale.
@@ -145,16 +145,18 @@ function renderPillMultiselects() {
   const apikeyPills = $('#apikey-scope-pills');
   if (apikeyPills) {
     const connItems = data.conns.map((c) =>
-      `<button type="button" class="pill-option" data-value="${esc(c.name)}">🔌 ${esc(c.name)}</button>`
+      `<button type="button" class="pill-option" data-value="${esc(c.name)}"><i data-lucide="plug"></i> ${esc(c.name)}</button>`
     ).join('');
-    apikeyPills.innerHTML = `<button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</button>${connItems}`;
+    apikeyPills.innerHTML = `<button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutte le connessioni concesse</button>${connItems}`;
+    refreshLucideIcons(apikeyPills);
     wirePillContainer(apikeyPills, $('#apikey-scope'));
   }
 
   // Pill per i database nei Grant (Permessi)
   const grantDbPills = $('#grant-dbs-pills');
   if (grantDbPills) {
-    grantDbPills.innerHTML = `<button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>`;
+    grantDbPills.innerHTML = `<button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutti i DB</button>`;
+    refreshLucideIcons(grantDbPills);
     wirePillContainer(grantDbPills, $('#grant-dbs'));
   }
 }
@@ -389,13 +391,13 @@ function showNewKey(key) {
   }, null, 2);
 
   box.innerHTML = `
-    <div class="apikey-new-head">🔑 Nuova API key generata (copiala ora, non sarà più mostrata!)</div>
+    <div class="apikey-new-head"><i data-lucide="key"></i> Nuova API key generata (copiala ora, non sarà più mostrata!)</div>
     
     <div class="apikey-new-section">
       <span class="sub-text" style="display:block; margin-bottom:4px;">Chiave API grezza:</span>
       <div class="apikey-new-row">
         <code>${esc(key)}</code>
-        <button type="button" class="btn btn-sm btn-primary" id="apikey-copy-raw">📋 Copia Chiave</button>
+        <button type="button" class="btn btn-sm btn-primary" id="apikey-copy-raw"><i data-lucide="copy"></i> Copia Chiave</button>
       </div>
     </div>
 
@@ -403,7 +405,7 @@ function showNewKey(key) {
       <span class="sub-text" style="display:block; margin-bottom:4px;">Configurazione Client MCP (es. <code>claude_desktop_config.json</code>):</span>
       <pre class="apikey-config-code"><code>${esc(mcpConfigJson)}</code></pre>
       <div style="margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end;">
-        <button type="button" class="btn btn-sm btn-primary" id="apikey-copy-json">📋 Copia Configurazione JSON</button>
+        <button type="button" class="btn btn-sm btn-primary" id="apikey-copy-json"><i data-lucide="copy"></i> Copia Configurazione JSON</button>
         <button type="button" class="btn btn-sm btn-secondary" id="apikey-dismiss">Chiudi</button>
       </div>
     </div>`;

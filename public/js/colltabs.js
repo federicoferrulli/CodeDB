@@ -514,7 +514,7 @@ export function renderCollTabBar() {
 
     const name = document.createElement('span');
     name.className = 'coll-tab-name';
-    name.textContent = ct.isDbTab ? `⚡ ${ct.db}` : ct.coll;
+    name.textContent = ct.isDbTab ? ct.db : ct.coll;
 
     const close = document.createElement('button');
     close.type = 'button';
@@ -539,19 +539,19 @@ export function renderCollTabBar() {
       // su una (split-view, export/import) puntavano al database inventato
       // "Split-View", cioè a nulla.
       showContextMenu(e.clientX, e.clientY, ct.isSplitTab ? [
-        { label: '✏️ Rinomina area…', action: () => chiediNomeAreaSplit(ct.id) },
+        { icona: 'pencil', label: 'Rinomina area…', action: () => chiediNomeAreaSplit(ct.id) },
         { label: '⌗ Pareggia i pannelli', action: () => pareggiaPannelli(null, ct.id) },
         '---',
-        { label: '✕ Chiudi Split-View', action: () => closeCollTab(ct.id) },
+        { icona: 'x', label: 'Chiudi Split-View', action: () => closeCollTab(ct.id) },
       ] : ct.isDbTab ? [
-        { label: '✕ Chiudi tab', action: () => closeCollTab(ct.id) },
+        { icona: 'x', label: 'Chiudi tab', action: () => closeCollTab(ct.id) },
       ] : [
-        { label: '🔲 Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
-        { label: '🔲 Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }, { nuovaArea: true }) },
+        { icona: 'columns-2', label: 'Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
+        { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }, { nuovaArea: true }) },
         '---',
         ...exportImportMenuItems(ct.db, ct.coll),
         '---',
-        { label: '✕ Chiudi tab', action: () => closeCollTab(ct.id) },
+        { icona: 'x', label: 'Chiudi tab', action: () => closeCollTab(ct.id) },
       ]);
     });
 

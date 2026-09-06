@@ -20,7 +20,7 @@ check('find semplice con filtro', () => {
   eq(p.kind, 'find');
   eq(p.coll, 'users');
   eq(p.filter, { age: { $gt: 30 } });
-  eq(p.limit, 50);
+  eq(p.limit, null);
 });
 
 check('find() vuoto', () => {

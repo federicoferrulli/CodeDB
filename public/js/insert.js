@@ -1,6 +1,6 @@
 import { state } from './state.js';
 import { socket } from './socket.js';
-import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi } from './utils.js';
+import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
 import { tipoGeoJsonDaTipoColonna, colonnaGeometrica } from './geojson.js';
 import { runQuery } from './grid.js';
@@ -41,7 +41,10 @@ export function insertKindOf(typeName, dbType = state.dbType) {
 function etichettaGeo(btn) {
   let geo = null;
   try { geo = btn.value ? JSON.parse(btn.value) : null; } catch { /* testo non valido */ }
-  btn.textContent = isGeometry(geo) ? `🗺 ${geometryLabel(geo).replace(/^▦ /, '')}` : '🗺 Disegna sulla mappa…';
+  btn.innerHTML = isGeometry(geo)
+    ? `${ICO('map')} ${esc(geometryLabel(geo).replace(/^▦ /, ''))}`
+    : `${ICO('map')} Disegna sulla mappa…`;
+  refreshLucideIcons(btn);
 }
 
 export function insertInputFor(kind, { typeName = '', numericMeta = null } = {}) {

@@ -140,13 +140,11 @@ const MCP_PATH = '/mcp';
 // così catalogo e catene incrementali sono condivisi tra i due canali.
 // CODEDB_BACKUPS_DIR: override usato dall'app Electron pacchettizzata, la cui
 // cartella di installazione è di sola lettura (vedi electron-main.js).
-const BACKUP_ROOT = process.env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups');
 // Radice dei backup del tenant della sessione MCP: con RBAC attivo ogni owner
 // ha la propria (`tenants/<ownerId>`), esattamente come sul canale socket.
 // Senza, `list_backups` mostrerebbe i gruppi di tutti i tenant e
 // `restore_backup` accetterebbe quei nomi così come sono.
-const backupRootOf = (session) =>
-  backupRootFor(BACKUP_ROOT, sessionPrincipal(session).ownerId, { rbac: rbacOn() });
+
 
 function resolveBackupSelection(root, rawGroup, rawBackupId) {
   const group = String(rawGroup || '').trim();
@@ -373,13 +371,12 @@ function assertReadOnlyPipeline(pipelineText) {
  * mcp-audit.log nella root del progetto (file in .gitignore).
  * ------------------------------------------------------------------------- */
 
-const AUDIT_FILE = process.env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log');
 
 // Formato e rotazione sono condivisi con l'audit della Web UI (db/AuditLog.js):
 // qui l'auditor scrive sul file MCP, mentre server.js ne crea uno gemello su
 // ui-audit.log.
-const auditStore = makeAuditor(AUDIT_FILE);
-const { audit: defaultAudit } = auditStore;
+
+
 
 /* ---------------------------------------------------------------------------
  * Resource "schema": diagramma UML (Mermaid) + dizionario dati in markdown,
@@ -425,18 +422,18 @@ function cellaMd(v) {
 // dell'applicazione dichiara e applica un tetto (resultCap sulle righe,
 // CODEDB_MAX_RESULT_BYTES sui byte, docPerLettura negli script, i tetti di
 // disegno di geomulti.js): queste due risorse erano l'unico punto senza.
-function tettoRisorsaBytes() {
-  const n = parseInt(process.env.CODEDB_MAX_RESULT_BYTES, 10);
+function tettoRisorsaBytes(env = process.env) {
+  const n = parseInt(env.CODEDB_MAX_RESULT_BYTES, 10);
   return Number.isFinite(n) && n > 0 ? Math.min(n, 32 * 1024 * 1024) : 32 * 1024 * 1024;
 }
 
-function renderSchemaMarkdown(db, schema) {
+function renderSchemaMarkdown(db, schema, env = process.env) {
   const collections = (schema && schema.collections) || [];
   const relations = (schema && schema.relations) || [];
   const entityId = makeMermaidEntityIdResolver();
   for (const c of collections) entityId(c.name); // popola il resolver nell'ordine dello schema
 
-  const tetto = tettoRisorsaBytes();
+  const tetto = tettoRisorsaBytes(env);
   let byte = 0;
   let troncatoA = -1;
 
@@ -588,9 +585,14 @@ function errorResult(err) {
 }
 
 function buildMcpServer(session, deps) {
+  const env = deps.env || process.env;
+  const backupRootOf = current => backupRootFor(
+    env.CODEDB_BACKUPS_DIR || path.join(__dirname, '..', 'backups'),
+    sessionPrincipal(current).ownerId, { rbac: deps.rbacOn ? deps.rbacOn() : rbacOn() },
+  );
   // In produzione usa il log append-only condiviso. L'iniezione mantiene il
   // seam pubblico verificabile senza scrivere nel log reale durante i test.
-  const audit = deps.audit || defaultAudit;
+  const audit = deps.audit || makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log')).audit;
   const server = new McpServer(
     { name: 'CodeDB-mcp', version: require('../package.json').version },
     {
@@ -1607,12 +1609,12 @@ function buildMcpServer(session, deps) {
     // vincolo una API key in sola lettura poteva far copiare un intero database
     // su un bucket controllato dall'attaccante, con le credenziali cloud
     // dell'installazione.
-    const storageUrl = resolveStorageAlias(args.storage);
+    const storageUrl = resolveStorageAlias(args.storage, env);
     if (storageUrl && !canWholeConnection(sessionPrincipal(session), sess.name, 'manage')) {
       throw new Error(`Permesso negato: la API key usata non può inviare backup della connessione "${sess.name}" su storage remoto.`);
     }
     const storage = parseStorage(storageUrl);
-    const webhook = resolveSlackWebhook(args.slack_webhook);
+    const webhook = resolveSlackWebhook(args.slack_webhook, env);
     const level = Math.min(Math.max(parseInt(args.compress_level, 10) || 1, 1), 9);
     const compress = !args.no_compress;
 
@@ -1753,13 +1755,13 @@ function buildMcpServer(session, deps) {
         const publicResult = sanitizeImportResult(result);
         audit({ ...auditBase, group: pending.group, backupId: pending.backupId,
           event: result.status, targetDb: summary.targetDb, docs: summary.totalDocs });
-        await notifySlack(process.env.SLACK_WEBHOOK_URL,
+        await notifySlack(env.SLACK_WEBHOOK_URL,
           `${result.status === 'completato' ? '✅' : '❌'} CodeDB restore ${result.status} di \`${summary.targetDb}\` (${sess.name}, via MCP): ${summary.totalDocs} documenti/righe.`, log);
         return jsonResult({ executed: result.status === 'completato', target_db: summary.targetDb,
           layers: summary.layers, docs: summary.totalDocs, ...publicResult });
       } catch (err) {
         audit({ ...auditBase, event: 'failed', error: errMsg(err) });
-        await notifySlack(process.env.SLACK_WEBHOOK_URL, `❌ CodeDB restore da \`${group}/${backupId}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
+        await notifySlack(env.SLACK_WEBHOOK_URL, `❌ CodeDB restore da \`${group}/${backupId}\` (${sess.name}, via MCP) FALLITO: ${errMsg(err)}`, log);
         throw err;
       }
     }
@@ -1874,7 +1876,7 @@ function buildMcpServer(session, deps) {
       const dbName = String(db || '').trim();
       if (!dbName) throw new Error('Nome del database mancante nell\'URI (schema://{connectionId}/{db}).');
       const schema = await sess.strategy.dbSchema(dbName);
-      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderSchemaMarkdown(dbName, schema) }] };
+      return { contents: [{ uri: uri.href, mimeType: 'text/markdown', text: renderSchemaMarkdown(dbName, schema, env) }] };
     }
   );
 
@@ -1895,7 +1897,7 @@ function buildMcpServer(session, deps) {
       const schema = await sess.strategy.dbSchema(dbName);
       const graphData = await buildGraphData(schema, true);
       let testo = JSON.stringify(graphData, null, 2);
-      const tetto = tettoRisorsaBytes();
+      const tetto = tettoRisorsaBytes(env);
       if (Buffer.byteLength(testo) > tetto) {
         // Come per schema://: il taglio si DICHIARA. Un grafo tagliato in
         // silenzio fa credere che il database abbia meno tabelle di quante ne
@@ -2034,10 +2036,32 @@ function buildMcpServer(session, deps) {
  *   maxDbSessions }
  */
 function attachMcp(app, deps) {
+  const env = deps.env || process.env;
+  const auditStore = deps.auditStore || makeAuditor(env.CODEDB_MCP_AUDIT_FILE || path.join(__dirname, '..', 'mcp-audit.log'));
+  const pendingRequests = new Set();
+  let closing = false;
+  let shutdown;
+  function beginShutdown() {
+    closing = true;
+    // GET resta aperto finché vive il canale SSE. Va chiuso prima di attendere
+    // le richieste; attendere prima il GET impedirebbe ogni arresto con client attivi.
+    for (const session of mcpSessions.values()) session.transport.closeStandaloneSSEStream?.();
+  }
+  function tracked(handler) {
+    return (req, res) => {
+      if (closing) return res.status(503).json(rpcError(-32000, 'Server in arresto.'));
+      const work = Promise.resolve().then(() => handler(req, res)).catch(err => {
+        if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
+      });
+      pendingRequests.add(work);
+      work.then(() => pendingRequests.delete(work), () => pendingRequests.delete(work));
+      return work;
+    };
+  }
   /** @type {Map<string, {id: string|null, transport: any, dbSessions: Map<string, any>, lastActivity: number, destroyed: boolean}>} */
   const mcpSessions = new Map();
   const confirmQuota = deps.confirmQuota || new ConfirmQuota();
-  const runtimeDeps = { ...deps, confirmQuota };
+  const runtimeDeps = { ...deps, audit: deps.audit || auditStore.audit, confirmQuota };
 
   async function destroyMcpSession(session, { closeTransport = true } = {}) {
     if (session.destroyed) return;
@@ -2068,19 +2092,21 @@ function attachMcp(app, deps) {
   }, SWEEP_INTERVAL_MS);
   sweepTimer.unref();
 
-  async function shutdownMcp() {
-    clearInterval(sweepTimer);
-    for (const session of [...mcpSessions.values()]) {
-      await destroyMcpSession(session);
-    }
-    await auditStore.flush();
+  function shutdownMcp() {
+    beginShutdown();
+    return shutdown ||= (async () => {
+      clearInterval(sweepTimer);
+      while (pendingRequests.size) await Promise.allSettled([...pendingRequests]);
+      for (const session of [...mcpSessions.values()]) await destroyMcpSession(session);
+      await auditStore.flush();
+    })();
   }
 
   // Anti DNS-rebinding: quando il server è in ascolto solo su loopback, una
   // pagina web ostile può comunque raggiungerlo facendo puntare il proprio
   // dominio a 127.0.0.1; in quel caso però l'header Host resta quello del
   // dominio ostile, quindi basta pretendere un Host locale.
-  const bindHost = String(process.env.HOST || '127.0.0.1');
+  const bindHost = String(env.HOST || '127.0.0.1');
   const loopbackBind = ['127.0.0.1', 'localhost', '::1'].includes(bindHost);
   const LOCAL_HOST_HEADER = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i;
 
@@ -2119,7 +2145,7 @@ function attachMcp(app, deps) {
     return { principal, credentialFingerprint: credentialFingerprint(rawKey) };
   }
 
-  app.post(MCP_PATH, express.json({ limit: '50mb' }), async (req, res) => {
+  app.post(MCP_PATH, express.json({ limit: '50mb' }), tracked(async (req, res) => {
     if (!guardHost(req, res)) return;
     const auth = await authenticate(req, res);
     if (!auth) return;
@@ -2175,7 +2201,7 @@ function attachMcp(app, deps) {
     } catch (err) {
       if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
     }
-  });
+  }));
 
   // GET = stream di notifiche server→client (non usato ma previsto dal
   // protocollo), DELETE = terminazione esplicita della sessione.
@@ -2183,6 +2209,7 @@ function attachMcp(app, deps) {
     if (!guardHost(req, res)) return;
     const auth = await authenticate(req, res);
     if (!auth) return;
+    if (closing && req.method === 'GET') return res.status(503).json(rpcError(-32000, 'Server in arresto.'));
     const { principal, credentialFingerprint: requestFingerprint } = auth;
     const sid = req.headers['mcp-session-id'];
     const session = sid ? mcpSessions.get(String(sid)) : undefined;
@@ -2202,11 +2229,11 @@ function attachMcp(app, deps) {
       if (!res.headersSent) res.status(500).json(rpcError(-32603, errMsg(err)));
     }
   };
-  app.get(MCP_PATH, handleSessionRequest);
-  app.delete(MCP_PATH, handleSessionRequest);
+  app.get(MCP_PATH, tracked(handleSessionRequest));
+  app.delete(MCP_PATH, tracked(handleSessionRequest));
 
   return {
-    shutdownMcp, mcpSessions, auditHealth: auditStore.statoSalute,
+    beginShutdown, shutdownMcp, mcpSessions, auditHealth: auditStore.statoSalute,
     confirmQuota: () => confirmQuota.snapshot(),
   };
 }

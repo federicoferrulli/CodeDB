@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons } from './utils.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
 import { formattaNumero, riassuntoBreve } from './cell-stats.js';
@@ -331,16 +331,17 @@ async function showCellStats(A) {
     overlay.className = 'overlay hidden';
     overlay.innerHTML = `
       <div class="modal">
-        <h2>📊 Statistiche selezione</h2>
+        <h2><i data-lucide="sigma"></i> Statistiche selezione</h2>
         <p class="hint" style="margin:0 0 8px">Clic su un valore per copiarlo · Ctrl+clic per il valore
           grezzo (senza separatori, da incollare in una query)</p>
         <div id="cellstats-body"></div>
         <div class="modal-actions">
-          <button id="cellstats-chart" class="ghost">📈 Grafico</button>
+          <button id="cellstats-chart" class="ghost"><i data-lucide="line-chart"></i> Grafico</button>
           <button id="cellstats-copy" class="ghost">Copia riepilogo</button>
           <button id="cellstats-close" class="primary">Chiudi</button>
         </div>
       </div>`;
+    refreshLucideIcons(overlay);
     document.body.appendChild(overlay);
     document.getElementById('cellstats-close').addEventListener('click', () => overlay.classList.add('hidden'));
     // Chi guarda i numeri della selezione è esattamente chi potrebbe volerne la
@@ -1395,11 +1396,12 @@ export function creaSelezioneCelle(aggancio) {
       .filter((d) => d && '_id' in d);
     const azioniRiga = [];
     if (righe.length === 1) {
-      azioniRiga.push({ label: '✎ Modifica riga…', action: () => A.modificaRiga(righe[0]) });
+      azioniRiga.push({ icona: 'square-pen', label: 'Modifica riga…', action: () => A.modificaRiga(righe[0]) });
     }
     if (righe.length) {
       azioniRiga.push({
-        label: righe.length === 1 ? '🗑 Elimina riga' : `🗑 Elimina le ${righe.length} righe selezionate`,
+        icona: 'trash-2',
+        label: righe.length === 1 ? 'Elimina riga' : `Elimina le ${righe.length} righe selezionate`,
         action: () => A.eliminaRighe(righe),
       });
       azioniRiga.push('---');
@@ -1410,10 +1412,11 @@ export function creaSelezioneCelle(aggancio) {
       { label: 'Copia con intestazioni', action: () => copyToClipboard(A, buildTsv(A, true)) },
       { label: 'Copia avanzato ▸', action: advanced },
       '---',
-      { label: '📊 Statistiche selezione…', action: () => showCellStats(A) },
-      { label: '📈 Grafico della selezione…', action: () => mostraGraficoSelezione(A) },
+      { icona: 'sigma', label: 'Statistiche selezione…', action: () => showCellStats(A) },
+      { icona: 'line-chart', label: 'Grafico della selezione…', action: () => mostraGraficoSelezione(A) },
       ...(geometrie ? [{
-        label: `🗺 Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
+        icona: 'map',
+        label: `Mostra ${geometrie === 1 ? 'la geometria' : `le ${geometrie} geometrie`} su mappa…`,
         action: () => mostraMappaSelezione(A),
       }] : []),
       ...(righe.length ? ['---', {

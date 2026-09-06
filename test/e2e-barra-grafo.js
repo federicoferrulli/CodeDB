@@ -502,6 +502,13 @@ const ultimaChiamata = (nome) =>
     // scelto una tabella. Si misura CHI VIENE DIPINTO SOPRA nel punto in cui i
     // due si sovrappongono, non il numero dichiarato: un confronto fra
     // z-index non avrebbe visto il difetto, perché 300 > 20 era già vero.
+    // NON si sceglie un menu per nome. La barra va a capo invece di scorrere,
+    // quindi QUALE menu finisca sopra il pannello dipende dalla larghezza
+    // della finestra: a 1440x900 il menu «Esporta» sta sulla seconda riga a
+    // sinistra e il pannello non lo sfiora, e il controllo passava a vuoto
+    // dichiarandolo. Si aprono tutti i menu della barra, si misura solo quelli
+    // che si sovrappongono davvero, e si pretende che almeno uno lo faccia —
+    // altrimenti la prova non ha provato nulla e deve dirlo.
     const copertura = await page.evaluate(() => {
       const bar = document.querySelector('.graph3d-bar');
       const pannello = document.getElementById('graph3d-side-panel');
@@ -513,43 +520,48 @@ const ultimaChiamata = (nome) =>
       pannello.classList.remove('hidden');
       document.querySelector('.graph3d-container').classList.add('pannello-aperto');
 
-      // Il menu più a destra è quello che finisce davvero sopra al pannello.
-      const btn = document.getElementById('graph3d-export-menu-btn');
-      const menu = document.getElementById('graph3d-export-menu');
-      btn.click();
-      const rMenu = menu.getBoundingClientRect();
-      const rPan = pannello.getBoundingClientRect();
-      const x = Math.max(rMenu.left, rPan.left) + 4;
-      const y = Math.max(rMenu.top, rPan.top) + 4;
-      const sovrapposti = x < Math.min(rMenu.right, rPan.right) && y < Math.min(rMenu.bottom, rPan.bottom);
-      const sopra = sovrapposti
-        ? !!(document.elementFromPoint(x, y) || {}).closest
-          && !!document.elementFromPoint(x, y).closest('.toolbar-dropdown-menu')
-        : null;
+      const provati = [];
+      for (const wrap of bar.querySelectorAll('.toolbar-dropdown-wrap')) {
+        const btn = wrap.querySelector('button');
+        const menu = wrap.querySelector('.toolbar-dropdown-menu');
+        if (!btn || !menu) continue;
+        btn.click();
+        const rMenu = menu.getBoundingClientRect();
+        const rPan = pannello.getBoundingClientRect();
+        const x = Math.max(rMenu.left, rPan.left) + 4;
+        const y = Math.max(rMenu.top, rPan.top) + 4;
+        const sovrapposto = x < Math.min(rMenu.right, rPan.right) && y < Math.min(rMenu.bottom, rPan.bottom);
+        const sopra = sovrapposto
+          ? !!(document.elementFromPoint(x, y) || {}).closest
+            && !!document.elementFromPoint(x, y).closest('.toolbar-dropdown-menu')
+          : null;
+        provati.push({ id: btn.id, sovrapposto, sopra });
+        menu.classList.add('hidden');
+        btn.setAttribute('aria-expanded', 'false');
+      }
 
       const numero = (el) => Number(getComputedStyle(el).zIndex) || 0;
       const esito = {
-        sovrapposti,
-        sopra,
+        provati,
+        sovrapposti: provati.filter((m) => m.sovrapposto).length,
+        coperti: provati.filter((m) => m.sovrapposto && m.sopra !== true).map((m) => m.id),
         zBarra: numero(bar),
         zPannello: numero(pannello),
         zRail: numero(rail),
       };
 
-      menu.classList.add('hidden');
-      btn.setAttribute('aria-expanded', 'false');
       if (eraChiuso) {
         pannello.classList.add('hidden');
         document.querySelector('.graph3d-container').classList.remove('pannello-aperto');
       }
       return esito;
     });
-    ok(copertura.sovrapposti === true,
-      'il menu e il pannello si sovrappongono davvero: il controllo qui sotto non è a vuoto',
-      JSON.stringify(copertura));
-    ok(copertura.sopra === true,
-      'il menu aperto viene dipinto SOPRA il pannello laterale',
-      JSON.stringify(copertura));
+    ok(copertura.sovrapposti > 0,
+      `almeno un menu si sovrappone davvero al pannello: il controllo qui sotto non è a vuoto (${copertura.sovrapposti} su ${copertura.provati.length})`,
+      JSON.stringify(copertura.provati));
+    ok(copertura.coperti.length === 0,
+      'ogni menu aperto che tocca il pannello viene dipinto SOPRA di esso',
+      `dipinti SOTTO: ${JSON.stringify(copertura.coperti)}`);
     // La barra è il contesto di impilamento: il `z-index: 300` del menu conta
     // solo al suo interno, quindi è il numero della BARRA a decidere contro
     // pannello e strumenti. Confrontare 300 con 20 non avrebbe visto nulla:

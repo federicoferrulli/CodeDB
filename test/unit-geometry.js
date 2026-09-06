@@ -109,6 +109,17 @@ assert.strictEqual(b.sql, 'ST_GeomFromGeoJSON(?, 1, 0)', 'MySQL: anche SRID 0 va
 assert.throws(() => MySqlStrategy.geoBinding('ignoto', punto, geoMy), /SRID.*non.*noto|metadata/i,
   'MySQL: senza SRID la scrittura si ferma');
 
+// Gli export storici senza CRS rappresentano coordinate cartesiane; i nuovi
+// conservano il CRS per ogni geometria, anche su colonne con SRID misti.
+assert.strictEqual(MySqlStrategy.geoBinding('ignoto', punto, geoMy, { importazione: true }).sql,
+  'ST_GeomFromGeoJSON(?, 1, 0)');
+const puntoConCrs = { ...punto, crs: { type: 'name', properties: { name: 'EPSG:4326' } } };
+assert.strictEqual(MySqlStrategy.geoBinding('ignoto', puntoConCrs, geoMy, { importazione: true }).sql,
+  'ST_GeomFromGeoJSON(?, 1, 4326)');
+assert.strictEqual(geoMy.get('ignoto').srid, null, 'il binding non modifica la cache delle colonne');
+assert.throws(() => MySqlStrategy.geoBinding('ignoto', { ...punto, crs: { type: 'name', properties: { name: 'sconosciuto' } } }, geoMy,
+  { importazione: true }), /CRS|SRID/i);
+
 // Colonna NON geometrica: nessuna conversione, altrimenti un documento JSON con
 // un campo `type` finirebbe in ST_GeomFromGeoJSON.
 b = MySqlStrategy.geoBinding('note', punto, geoMy);

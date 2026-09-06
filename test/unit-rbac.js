@@ -36,24 +36,24 @@ assert.strictEqual(canAdminTenant(delegatoTenant), true, 'la delega tenant non r
 assert.strictEqual(canAdminTenant(adminSoloConnessione), false, 'manage su una connessione non amministra il tenant');
 assert.strictEqual(can(adminSoloConnessione, { capability: 'manage' }), false,
   'la vecchia verifica senza connessione deve restare negata');
-const serverSource = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+const serverHandlers = new Map(require('./server-fixture').catalogoEventi().map(e => [e.evento, e.handler.toString()]));
 for (const evento of ['users:list', 'users:create', 'users:update', 'users:delete',
   'grants:list', 'grants:set', 'grants:revoke',
   'apikeys:list', 'apikeys:create', 'apikeys:revoke']) {
-  const blocco = serverSource.slice(serverSource.indexOf(`amministrativo('${evento}'`));
-  assert(blocco.slice(0, 700).includes('assertTenantAdmin(principal)'),
+  const blocco = serverHandlers.get(evento);
+  assert(blocco.slice(0, 700).includes('assertTenantAdmin(socketContext.principal)'),
     `${evento} deve usare il gate tenant-level delegabile`);
   assert.strictEqual(canAdminTenant(delegatoTenant), true, `${evento}: il delegato deve essere ammesso`);
   assert.strictEqual(canAdminTenant(adminSoloConnessione), false, `${evento}: manage sulla connessione deve essere negato`);
 }
 for (const evento of ['prefs:shared:get', 'prefs:shared:set']) {
-  const blocco = serverSource.slice(serverSource.indexOf(`amministrativo('${evento}'`));
-  assert(blocco.slice(0, 550).includes('assertTenantAdmin(principal)'),
+  const blocco = serverHandlers.get(evento);
+  assert(blocco.slice(0, 550).includes('assertTenantAdmin(socketContext.principal)'),
     `${evento} deve richiedere la capability amministrativa`);
 }
 for (const [evento, registrazione] of [['connections:save', 'amministrativo'], ['backup:list', 'safeOn']]) {
-  const blocco = serverSource.slice(serverSource.indexOf(`${registrazione}('${evento}'`));
-  assert(blocco.slice(0, 900).includes('assertManage(principal)'),
+  const blocco = serverHandlers.get(evento);
+  assert(blocco.slice(0, 900).includes('assertManage(socketContext.principal)'),
     `${evento} deve restare riservato all'owner, fuori dalla delega tenant`);
 }
 console.log('  OK   Capability amministrativa tenant distinta da manage su connessione');

@@ -158,11 +158,11 @@ async function runTests() {
     // caso che il filtro strutturato deve saper decodificare: confrontare
     // l'oggetto { $oid: … } così com'è non troverebbe mai nulla.
     const rigaRif = await conFiltro(
-      [{ campo: '_id', operatore: 'uguale', valore: { $oid: String(ins1.insertedId) } }], 1
+      [{ campo: '_id', operatore: 'uguale', valore: { $oid: JSON.parse(ins1.insertedId).$oid } }], 1
     );
     assert(rigaRif.ok && rigaRif.docs.length === 1,
       `documento riferito risolto per ObjectId (${rigaRif.ok ? rigaRif.docs.length : rigaRif.error})`);
-    assert(rigaRif.ok && rigaRif.docs[0]._id && rigaRif.docs[0]._id.$oid === String(ins1.insertedId),
+    assert(rigaRif.ok && rigaRif.docs[0]._id && rigaRif.docs[0]._id.$oid === JSON.parse(ins1.insertedId).$oid,
       "l'_id torna in forma estesa ($oid), non come stringa");
 
     // Un _id inesistente: zero documenti, non un errore.

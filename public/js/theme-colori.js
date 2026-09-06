@@ -264,6 +264,7 @@ export function derivaTokens(scelte, base = 'dark') {
   /* ── Accento e tutto ciò che ne discende ── */
   if (accent) {
     out['--accent'] = scriviHex(accent);
+    out['--accent-fg'] = scriviHex(accent);
     out['--accent-2'] = scriviHex(schiarisci(accent, -0.08));
     out['--accent-hover'] = scriviHex(schiarisci(accent, chiaro ? 0.08 : 0.10));
     out['--accent-violet'] = scriviHex(accent);

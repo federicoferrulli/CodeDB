@@ -366,7 +366,21 @@ export function showContextMenu(x, y, items) {
     if (item === '---') {
       li.className = 'separator';
     } else {
-      li.textContent = item.label;
+      // L'icona e' un CAMPO della voce, non un carattere infilato in testa
+      // all'etichetta. Con l'emoji nel testo il nome accessibile della voce
+      // diventava «cestino Elimina» — un lettore di schermo pronuncia il
+      // pittogramma — e la forma del glifo cambiava da un sistema all'altro,
+      // mentre il resto dell'applicazione disegna icone Lucide. Qui l'icona e'
+      // marcata `aria-hidden`: e' un rinforzo visivo di un'etichetta che c'e'
+      // gia', non un'informazione in piu'.
+      if (item.icona) {
+        const ico = document.createElement('i');
+        ico.dataset.lucide = item.icona;
+        ico.className = 'menu-icona';
+        ico.setAttribute('aria-hidden', 'true');
+        li.appendChild(ico);
+      }
+      li.appendChild(document.createTextNode(item.label));
       if (item.danger) li.classList.add('danger');
       li.addEventListener('click', () => {
         hideContextMenu();
@@ -383,6 +397,9 @@ export function showContextMenu(x, y, items) {
     }
     menu.appendChild(li);
   }
+  // Le icone appena inserite sono ancora `<i data-lucide>`: senza questa
+  // chiamata restano elementi vuoti, cioe' un buco al posto dell'icona.
+  refreshLucideIcons(menu);
   menu.classList.remove('hidden');
   const rect = menu.getBoundingClientRect();
   menu.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + 'px';
@@ -646,9 +663,13 @@ export function buildJsonNode(val, key = null, isRoot = false) {
     header.className = 'json-header';
     header.style.cursor = 'pointer';
 
-    const toggle = document.createElement('span');
+    // Il verso dell'espansore e' un'icona dell'applicazione: `▶`/`▼` sono
+    // caratteri tipografici, e la loro larghezza cambia col carattere in uso,
+    // quindi le chiavi dell'albero non si allineavano fra un livello e l'altro.
+    const toggle = document.createElement('i');
     toggle.className = 'json-toggle';
-    toggle.textContent = isRoot ? '▼ ' : '▶ ';
+    toggle.dataset.lucide = isRoot ? 'chevron-down' : 'chevron-right';
+    toggle.setAttribute('aria-hidden', 'true');
 
     const keySpan = key ? `<span class="json-key">${esc(key)}</span>: ` : '';
     const bracketOpen = isArray ? '[' : '{';
@@ -656,6 +677,7 @@ export function buildJsonNode(val, key = null, isRoot = false) {
 
     header.innerHTML = `${keySpan}${bracketOpen} ${countText}`;
     header.prepend(toggle);
+    refreshLucideIcons(header);
     node.appendChild(header);
 
     const childrenWrap = document.createElement('div');
@@ -680,7 +702,14 @@ export function buildJsonNode(val, key = null, isRoot = false) {
       e.stopPropagation();
       renderChildren();
       const isHidden = childrenWrap.classList.toggle('hidden');
-      toggle.textContent = isHidden ? '▶ ' : '▼ ';
+      // `createIcons` ha sostituito l'<i> con un <svg>: si riscrive l'attributo
+      // sul nodo che c'e' ADESSO e lo si ridisegna, invece di cercare l'<i>
+      // originale, che non e' piu' nel documento.
+      const segno = header.querySelector('.json-toggle');
+      if (segno) {
+        segno.outerHTML = `<i class="json-toggle" data-lucide="${isHidden ? 'chevron-right' : 'chevron-down'}" aria-hidden="true"></i>`;
+        refreshLucideIcons(header);
+      }
     });
 
     return node;
@@ -716,6 +745,12 @@ export function openModal(elOrId) {
     ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
     : elOrId;
   if (!el) return;
+  // Ogni modale passa di qui, e molte costruiscono il proprio contenuto con
+  // innerHTML poco prima di aprirsi: disegnare le icone QUI vuol dire non
+  // doversene ricordare in dodici chiamanti — e un <i data-lucide> non
+  // disegnato non da alcun errore, e' semplicemente un buco al posto
+  // dell'icona. La chiamata e' circoscritta al sottoalbero della modale.
+  refreshLucideIcons(el);
   el.classList.remove('hidden');
   activeModals.add(el);
   if (activeModals.size === 1) {
@@ -823,15 +858,21 @@ export function showToast(message, type = 'info', duration = 3500) {
   toast.className = `toast toast-${type}`;
   toast.role = 'status';
 
-  const icons = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️',
-    warning: '⚠️'
+  // Icone dell'applicazione, non emoji: un pittogramma cambia forma e
+  // larghezza da un sistema all'altro, e un lettore di schermo lo pronuncia
+  // («segno di spunta bianco pesante Backup completato»). Qui e' `aria-hidden`
+  // perche' il tipo del toast e' gia' detto dal testo e dal colore.
+  const ICONE = {
+    success: 'circle-check',
+    error: 'circle-x',
+    info: 'info',
+    warning: 'triangle-alert',
   };
 
-  const iconSpan = document.createElement('span');
-  iconSpan.textContent = icons[type] || 'ℹ️';
+  const iconSpan = document.createElement('i');
+  iconSpan.dataset.lucide = ICONE[type] || ICONE.info;
+  iconSpan.className = 'toast-icona';
+  iconSpan.setAttribute('aria-hidden', 'true');
 
   const textSpan = document.createElement('span');
   textSpan.textContent = message;
@@ -848,6 +889,9 @@ export function showToast(message, type = 'info', duration = 3500) {
   toast.appendChild(textSpan);
   toast.appendChild(closeBtn);
   container.appendChild(toast);
+  // L'icona e' ancora un <i data-lucide>: senza questa chiamata resta un
+  // elemento vuoto, cioe' un buco al posto dell'icona.
+  refreshLucideIcons(toast);
 
   if (duration > 0) {
     setTimeout(() => {

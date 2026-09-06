@@ -74,7 +74,7 @@ const PASSI = [
     // applyViewTabsFor ne nasconde altre due. Un passo del tour che indica
     // schede inesistenti è peggio di nessun passo.
     titolo: 'Tre viste sugli stessi dati',
-    testo: 'Dati (griglia modificabile), Dettagli (indici e schema) e ⚡ Query & Aggregate. UML e Grafo 3D descrivono lo schema e stanno nel menu Visualizza.',
+    testo: 'Dati (griglia modificabile), Dettagli (indici e schema) e Query & Aggregate. UML e Grafo 3D descrivono lo schema e stanno nel menu Visualizza.',
   },
   {
     sel: '.view-tab[data-view="query"]',

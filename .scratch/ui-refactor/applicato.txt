@@ -1,0 +1,155 @@
+righe modificate: 77
+  430   <button type="button" id="wizard-prev-btn" class="ghost hidden">← Indietro</button>
+        -> <button type="button" id="wizard-prev-btn" class="ghost hidden"><i data-lucide="arrow-left"></i> Ind
+  431   <button type="button" id="wizard-next-btn" class="secondary">Avanti →</button>
+        -> <button type="button" id="wizard-next-btn" class="secondary">Avanti <i data-lucide="arrow-right"></i
+  1068  <span id="query-target-engine-label" class="query-target-engine-label">⚡ Auto</span>
+        -> <span id="query-target-engine-label" class="query-target-engine-label"><i data-lucide="zap"></i> Aut
+  1076  <option value="auto">⚡ Auto-detect (DB corrente)</option>
+        -> <option value="auto">Auto-detect (DB corrente)</option>
+  1077  <option value="mysql">🗄 MySQL (SQL Runner)</option>
+        -> <option value="mysql">MySQL (SQL Runner)</option>
+  1078  <option value="postgresql">🗄 PostgreSQL (SQL Runner)</option>
+        -> <option value="postgresql">PostgreSQL (SQL Runner)</option>
+  1079  <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
+        -> <option value="mongodb">MongoDB (MQL / Aggregate)</option>
+  1080  <option value="crossdb">🔀 Cross-DB (Virtual JOIN)</option>
+        -> <option value="crossdb">Cross-DB (Virtual JOIN)</option>
+  1083  title="Torna al contesto della collection aperta">↩ Torna alla collection aperta</button>
+        -> title="Torna al contesto della collection aperta"><i data-lucide="undo-2"></i> Torna alla collection
+  1151  title="Cronologia delle query eseguite in questa tab">🕘 Cronologia query</button>
+        -> title="Cronologia delle query eseguite in questa tab"><i data-lucide="history"></i> Cronologia query
+  1153  title="Apri ed esegui file SQL">📂 Apri file SQL…</button>
+        -> title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri file SQL…</button>
+  1155  title="Snippet &amp; Template">📖 Snippet &amp; Template</button>
+        -> title="Snippet &amp; Template"><i data-lucide="book-open"></i> Snippet &amp; Template</button>
+  1157  title="Pulisci editor">🧹 Pulisci editor</button>
+        -> title="Pulisci editor"><i data-lucide="eraser"></i> Pulisci editor</button>
+  1167  <span class="chunk-file-icon">📄</span>
+        -> <span class="chunk-file-icon"><i data-lucide="file-text"></i></span>
+  1173  <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequ
+        -> <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequ
+  1174  <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecu
+        -> <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecu
+  1180  <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente">◀ Prev</button>
+        -> <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente"><i data-lucide="
+  1182  <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next ▶</button>
+        -> <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next <i data-luc
+  1183  <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'ed
+        -> <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'ed
+  1234  aria-haspopup="true" aria-expanded="false" title="Esporta i risultati">📥 Esporta ▾</button>
+        -> aria-haspopup="true" aria-expanded="false" title="Esporta i risultati"><i data-lucide="download"></i
+  1236  <button id="query-export-csv" class="dropdown-item" type="button">📥 Esporta CSV</button>
+        -> <button id="query-export-csv" class="dropdown-item" type="button"><i data-lucide="download"></i> Esp
+  1237  <button id="query-export-json" class="dropdown-item" type="button">📥 Esporta JSON</button>
+        -> <button id="query-export-json" class="dropdown-item" type="button"><i data-lucide="download"></i> Es
+  1238  <button id="query-export-sql" class="dropdown-item" type="button">📥 Esporta SQL (INSERT)</button>
+        -> <button id="query-export-sql" class="dropdown-item" type="button"><i data-lucide="download"></i> Esp
+  1252  <span id="script-run-status" class="badge-status status-running">⏳ In esecuzione</span>
+        -> <span id="script-run-status" class="badge-status status-running"><i data-lucide="hourglass"></i> In 
+  1257  <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione
+        -> <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione
+  1258  <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'
+        -> <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'
+  1259  <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cu
+        -> <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cu
+  1260  <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivament
+        -> <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivament
+  1304  title="Grafici già pronti, dedotti dalla forma dei risultati">💡 Suggeriti ▾</button>
+        -> title="Grafici già pronti, dedotti dalla forma dei risultati"><i data-lucide="lightbulb"></i> Sugger
+  1312  aria-haspopup="true" aria-expanded="false" title="Esporta il grafico">⤓ Esporta ▾</button>
+        -> aria-haspopup="true" aria-expanded="false" title="Esporta il grafico"><i data-lucide="download"></i>
+  1314  <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come imm
+        -> <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come imm
+  1315  <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts
+        -> <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts
+  1319  title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON">⚙ Personal
+        -> title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON"><i data-lu
+  1344  <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come Featu
+        -> <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come Featu
+  1394  title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+        -> title="Formatta il documento (Ctrl+Shift+F)"><i data-lucide="wand-sparkles"></i> Formatta</button>
+  1396  title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+        -> title="Tutto su una riga (Ctrl+Shift+M)"><i data-lucide="fold-vertical"></i> Minifica</button>
+  1624  <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova 
+        -> <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova 
+  1636  title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+        -> title="Formatta il documento (Ctrl+Shift+F)"><i data-lucide="wand-sparkles"></i> Formatta</button>
+  1638  title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+        -> title="Tutto su una riga (Ctrl+Shift+M)"><i data-lucide="fold-vertical"></i> Minifica</button>
+  1919  <button id="mermaid-modal-copy" class="primary">📋 Copia negli appunti</button>
+        -> <button id="mermaid-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</butt
+  1933  <button id="dbml-modal-copy" class="primary">📋 Copia negli appunti</button>
+        -> <button id="dbml-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</button>
+  1947  <button id="sql-modal-copy" class="primary">📋 Copia negli appunti</button>
+        -> <button id="sql-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</button>
+  1955  <h2>🩺 Diagnostica dello Schema (Health Check)</h2>
+        -> <h2><i data-lucide="stethoscope"></i> Diagnostica dello Schema (Health Check)</h2>
+  1966  <h2>⚖️ Schema Diff (Confronto con File Locale JSON)</h2>
+        -> <h2><i data-lucide="scale"></i> Schema Diff (Confronto con File Locale JSON)</h2>
+  1982  <h2>📥 Importa ed Esplora Schema (SQL DDL / DBML)</h2>
+        -> <h2><i data-lucide="download"></i> Importa ed Esplora Schema (SQL DDL / DBML)</h2>
+  1997  <button id="import-schema-render" class="primary">🌐 Genera Grafo 3D</button>
+        -> <button id="import-schema-render" class="primary"><i data-lucide="globe"></i> Genera Grafo 3D</butto
+  2005  <h2>🔗 Ricerca Cammino Minimo tra Tabelle</h2>
+        -> <h2><i data-lucide="link"></i> Ricerca Cammino Minimo tra Tabelle</h2>
+  2016  <button id="path-modal-clear" class="ghost btn-danger-text hidden">❌ Azzera Cammino</button>
+        -> <button id="path-modal-clear" class="ghost btn-danger-text hidden"><i data-lucide="circle-x"></i> Az
+  2018  <button id="path-modal-calc" class="primary">🔍 Trova Cammino & Evidenzia 3D</button>
+        -> <button id="path-modal-calc" class="primary"><i data-lucide="search"></i> Trova Cammino & Evidenzia 
+  2026  <h2>📊 Matrice Dipendenze & Ordine di Popolamento</h2>
+        -> <h2><i data-lucide="bar-chart-3"></i> Matrice Dipendenze & Ordine di Popolamento</h2>
+  2146  <h2>💾 Gestione Backup & Ripristino</h2>
+        -> <h2><i data-lucide="hard-drive"></i> Gestione Backup & Ripristino</h2>
+  2152  <button type="button" id="tab-btn-backup-catalog" class="tab-btn">📂 Catalogo & Ripristino</button>
+        -> <button type="button" id="tab-btn-backup-catalog" class="tab-btn"><i data-lucide="folder-open"></i> 
+  2209  <button type="submit" id="btn-submit-backup" class="primary">🚀 Avvia Backup</button>
+        -> <button type="submit" id="btn-submit-backup" class="primary"><i data-lucide="rocket"></i> Avvia Back
+  2220  <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</bu
+        -> <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refr
+  2239  <h2 id="restore-title">⚡ Ripristino del backup</h2>
+        -> <h2 id="restore-title"><i data-lucide="zap"></i> Ripristino del backup</h2>
+  2268  <button type="button" id="restore-ok" class="primary">⚡ Ripristina</button>
+        -> <button type="button" id="restore-ok" class="primary"><i data-lucide="zap"></i> Ripristina</button>
+  2277  <h2>📜 Storico delle Azioni</h2>
+        -> <h2><i data-lucide="scroll-text"></i> Storico delle Azioni</h2>
+  2288  <option value="write">✏️ Scritture</option>
+        -> <option value="write">Scritture</option>
+  2289  <option value="read">👁 Letture</option>
+        -> <option value="read">Letture</option>
+  2334  <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        -> <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary"><i data-lucide="refres
+  2358  <h2>💓 Salute delle Connessioni</h2>
+        -> <h2><i data-lucide="activity"></i> Salute delle Connessioni</h2>
+  2369  <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        -> <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary"><i data-lucide="refre
+  2389  <h2>🩺 Sessioni &amp; Query attive</h2>
+        -> <h2><i data-lucide="stethoscope"></i> Sessioni &amp; Query attive</h2>
+  2407  <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        -> <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary"><i data-lucide="ref
+  2437  <h2>🎨 Tema</h2>
+        -> <h2><i data-lucide="palette"></i> Tema</h2>
+  2446  <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary">⭱ Importa da file</butt
+        -> <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary"><i data-lucide="upload"
+  2460  <h2>👥 Utenti &amp; Permessi</h2>
+        -> <h2><i data-lucide="users"></i> Utenti &amp; Permessi</h2>
+  2507  <button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>
+        -> <button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutti i D
+  2541  <button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</butt
+        -> <button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutte le 
+  2547  <button type="submit" class="btn btn-sm btn-primary">🔑 Genera API Key</button>
+        -> <button type="submit" class="btn btn-sm btn-primary"><i data-lucide="key"></i> Genera API Key</butto
+  2560  <h2>⏳ Query in Sospeso</h2>
+        -> <h2><i data-lucide="hourglass"></i> Query in Sospeso</h2>
+  2568  <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cer
+        -> <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="Cerca
+  2572  <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger">🗑 Pulisci TUTTE</butt
+        -> <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger"><i data-lucide="trash
+  2582  <span class="nav-icon">🌐</span>
+        -> <span class="nav-icon"><i data-lucide="globe"></i></span>
+  2586  <span class="nav-icon">🗄️</span>
+        -> <span class="nav-icon"><i data-lucide="database"></i></span>
+  2590  <span class="nav-icon">⚡</span>
+        -> <span class="nav-icon"><i data-lucide="zap"></i></span>
+  2594  <span class="nav-icon">💓</span>
+        -> <span class="nav-icon"><i data-lucide="activity"></i></span>

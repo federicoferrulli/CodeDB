@@ -1,7 +1,7 @@
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext } from './utils.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons } from './utils.js';
 import { activeTab, tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { refreshDbTree } from './dbtree.js';
@@ -201,16 +201,16 @@ async function executeBackup() {
       connName: tab.label || tab.savedName || 'UI Session',
     });
 
-    toast(`✅ Backup completato con successo: ${res.summary.id}`);
+    toast(`Backup completato con successo: ${res.summary.id}`);
     segnaTraguardo('backup'); // primi passi della guida (no-op se già fatto)
     if (statusEl) {
-      statusEl.textContent = `✅ Backup completato: ${res.summary.totalDocs} elementi salvati (${fmtBytes(res.summary.totalBytes)}).`;
+      statusEl.textContent = `Backup completato: ${res.summary.totalDocs} elementi salvati (${fmtBytes(res.summary.totalBytes)}).`;
     }
     setTimeout(() => {
       switchBackupTab('catalog');
     }, 1200);
   } catch (err) {
-    toast(`❌ Backup fallito: ${err.message}`, true);
+    toast(`Backup fallito: ${err.message}`, true);
     if (statusEl) {
       statusEl.classList.add('error');
       statusEl.textContent = `Errore: ${err.message}`;
@@ -293,7 +293,10 @@ function renderCatalogo() {
     }
     html += altri.map((g) => schedaGruppo(g, Boolean(conn))).join('');
   }
+  // Il contenuto si riempie a modale GIA' aperta, quindi il disegno che
+  // `openModal` fa in apertura e' gia' passato: le icone vanno disegnate qui.
   container.innerHTML = html;
+  refreshLucideIcons(container);
 
   container.querySelectorAll('.btn-verify-backup').forEach((btn) => {
     btn.addEventListener('click', (e) => {
@@ -334,7 +337,7 @@ function schedaGruppo(gName, estranea) {
 
   const testata = `
     <div class="backup-group-title">
-      📂 <strong>${esc(gName)}</strong>
+      <i data-lucide="folder-open"></i> <strong>${esc(gName)}</strong>
       <span class="sub-text">${esc(ultimo.db || '')} (${esc(ultimo.dbType || '')}) · ${list.length} backup</span>
     </div>`;
 
@@ -347,7 +350,7 @@ function schedaGruppo(gName, estranea) {
         ${notaCatena(gName, ultimo)}
       </div>
       <div class="backup-actions">
-        <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(ultimo.id)}">🔍 Verifica</button>
+        <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(ultimo.id)}"><i data-lucide="file-search"></i> Verifica</button>
         ${bottoneRipristino(gName, ultimo, 'btn-primary')}
       </div>
     </div>
@@ -366,7 +369,7 @@ function schedaGruppo(gName, estranea) {
       </td>
       <td>${badgeTipo(b)}${notaCatena(gName, b)}</td>
       <td class="backup-actions">
-        <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(b.id)}">🔍 Verifica</button>
+        <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(b.id)}"><i data-lucide="file-search"></i> Verifica</button>
         ${bottoneRipristino(gName, b, 'btn-secondary')}
       </td>
     </tr>
@@ -400,10 +403,10 @@ function badgeTipo(b) {
 function notaCatena(gName, b) {
   const catena = analizzaCatena(gName, b);
   if (catena.rotta) {
-    return `<span class="backup-chain rotta" title="${esc(catena.motivo)}">⚠ catena incompleta</span>`;
+    return `<span class="backup-chain rotta" title="${esc(catena.motivo)}"><i data-lucide="triangle-alert"></i> catena incompleta</span>`;
   }
   if (catena.layer <= 1) return '';
-  return `<span class="backup-chain" title="Il ripristino applica in ordine ${catena.layer} backup, dal full fino a questo.">🔗 catena di ${catena.layer}</span>`;
+  return `<span class="backup-chain" title="Il ripristino applica in ordine ${catena.layer} backup, dal full fino a questo."><i data-lucide="link"></i> catena di ${catena.layer}</span>`;
 }
 
 function bottoneRipristino(gName, b, classe) {
@@ -415,9 +418,9 @@ function bottoneRipristino(gName, b, classe) {
     // ripristino già avviato. Il catalogo che il client ha già in mano contiene
     // id e baseId di ogni voce, quindi la stessa catena si ricostruisce prima
     // del clic.
-    return `<button class="btn btn-sm ${classe}" disabled title="${esc(catena.motivo)}">⚡ Ripristina</button>`;
+    return `<button class="btn btn-sm ${classe}" disabled title="${esc(catena.motivo)}"><i data-lucide="rotate-ccw"></i> Ripristina</button>`;
   }
-  return `<button class="btn btn-sm ${classe} btn-restore-backup" ${attr}>⚡ Ripristina</button>`;
+  return `<button class="btn btn-sm ${classe} btn-restore-backup" ${attr}><i data-lucide="rotate-ccw"></i> Ripristina</button>`;
 }
 
 /**
@@ -510,7 +513,7 @@ async function verifyBackupIntegrity(group, backupId, bottone) {
   try {
     const res = await emit('backup:verify', { group, backupId });
     if (res.valid) {
-      esito = `<div class="status-pass">✅ Verifica SHA-256 SUPERATA: tutti i ${res.okCount} file di dati sono integri.</div>`;
+      esito = `<div class="status-pass"><i data-lucide="circle-check"></i> Verifica SHA-256 SUPERATA: tutti i ${res.okCount} file di dati sono integri.</div>`;
     } else {
       const failed = Number(res.failedCount) || 0;
       const unverifiable = Number(res.unverifiableCount) || 0;
@@ -525,7 +528,7 @@ async function verifyBackupIntegrity(group, backupId, bottone) {
         .map((d) => `<li>${esc(d.file)}: <strong>${esc(d.status)}</strong></li>`)
         .join('');
       const dettagli = detailsHtml ? `<ul>${detailsHtml}</ul>` : '';
-      esito = `<div class="status-fail">❌ Verifica FALLITA: ${problemi.join(', ')}. `
+      esito = `<div class="status-fail"><i data-lucide="circle-x"></i> Verifica FALLITA: ${problemi.join(', ')}. `
         + `${Number(res.okCount) || 0} file verificati correttamente.${dettagli}</div>`;
     }
   } catch (err) {
@@ -603,7 +606,7 @@ function chiediRipristino({ backupId, conn, dbSuggerito, layer = 1, gruppoEstran
   const warn = $('#restore-warning');
   warn.classList.toggle('hidden', !gruppoEstraneo);
   warn.innerHTML = gruppoEstraneo
-    ? `⚠️ Questo backup viene dal gruppo <strong>${esc(gruppoEstraneo)}</strong>, non dalla connessione aperta: verrà comunque scritto su <strong>${esc(conn)}</strong>.`
+    ? `<i data-lucide="triangle-alert"></i> Questo backup viene dal gruppo <strong>${esc(gruppoEstraneo)}</strong>, non dalla connessione aperta: verrà comunque scritto su <strong>${esc(conn)}</strong>.`
     : '';
 
   const input = $('#restore-target-db');
@@ -659,7 +662,7 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
   }
 
   toast(`Ripristino di ${backupId} su "${targetDb}" in corso...`);
-  apriProgresso(`⏳ Ripristino di ${backupId} su "${targetDb}" in corso…`);
+  apriProgresso(`Ripristino di ${backupId} su "${targetDb}" in corso…`);
   const fineCaricamento = iniziaCaricamento(bottone, '');
   try {
     const res = await emit('backup:restore', {
@@ -679,7 +682,7 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
       throw new Error(`${res.summary.status}: ${res.summary.error || 'restore non completato'}${retained ? ` (${retained})` : ''}`);
     }
 
-    const msg = `✅ Ripristino completato su "${res.summary.targetDb}": ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer!`;
+    const msg = `Ripristino completato su "${res.summary.targetDb}": ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer!`;
     toast(msg);
     chiudiProgresso(msg, true);
     // Un ripristino crea collection e tabelle che nell'albero non ci sono: senza
@@ -691,8 +694,8 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
       refreshDbTree();
     }
   } catch (err) {
-    toast(`❌ Ripristino fallito: ${err.message}`, true);
-    chiudiProgresso(`❌ Ripristino fallito: ${err.message}`, false);
+    toast(`Ripristino fallito: ${err.message}`, true);
+    chiudiProgresso(`Ripristino fallito: ${err.message}`, false);
     // Anche un ripristino fallito può aver applicato una parte dei layer: lo
     // schema a sinistra va riletto comunque, non è più quello di prima.
     tab.state.schemaDirty = true;

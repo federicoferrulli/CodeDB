@@ -1,0 +1,203 @@
+'use strict';
+
+import { ejsonKind, isPlainObject } from './valori.js';
+
+/* ---------------------------------------------------------------------------
+ * Statistiche di una selezione di celle (somma, media, mediana, min, max…).
+ *
+ * Sta a parte da `cellselect.js` per la stessa ragione per cui `chart-option.js`
+ * sta a parte da `charts.js`: è la parte che, sbagliata, NON si vede. Una
+ * selezione copiata male salta all'occhio; una somma sbagliata è un numero
+ * plausibile che l'utente porta via e usa. Qui non si tocca il DOM, quindi si
+ * prova in Node (`test/unit-cell-stats.js`, incluso in `npm test`).
+ *
+ * Tre scelte che non sono ovvie:
+ *
+ * 1. COSA È UN NUMERO. Le righe arrivano in Extended JSON: un DECIMAL di MySQL
+ *    è `{$numberDecimal:"12.50"}` (e da mysql2 può arrivare anche come stringa
+ *    "12.50"), un BIGINT come `{$numberLong:"…"}`. Senza conversione la somma
+ *    di una colonna di importi sarebbe vuota. Le stringhe numeriche contano
+ *    quindi come numeri. NON contano invece date e booleani: `{$date:…}` è
+ *    convertibile in millisecondi e `true` in 1, ma sommare istanti o bandiere
+ *    risponde a una domanda che nessuno ha posto e lo farebbe in silenzio.
+ *
+ * 2. LA SOMMA IN VIRGOLA MOBILE. 0.1+0.2 in IEEE 754 fa 0.30000000000000004 e
+ *    su una colonna di importi il risultato sembra un difetto del programma.
+ *    Si somma con la compensazione di Kahan e si arrotonda al numero di
+ *    decimali **presenti nei dati** (la somma di valori con 2 decimali ha 2
+ *    decimali): la cifra spuria sparisce senza inventare precisione.
+ *
+ * 3. QUANDO IL RISULTATO È APPROSSIMATO LO SI DICE. Oltre 2^53 un $numberLong
+ *    non è più rappresentabile esattamente da un double, e un DECIMAL con più
+ *    di 15 cifre significative nemmeno: `approssimato` diventa true e
+ *    l'interfaccia lo segnala, invece di mostrare un totale esatto che non lo è.
+ * ------------------------------------------------------------------------- */
+
+/** Massimo numero di decimali a cui si arrotonda la somma. */
+const MAX_DECIMALI = 12;
+
+/**
+ * Valore numerico di una cella, oppure null se non è un numero.
+ * Date e booleani sono deliberatamente esclusi (vedi nota 1 in testa al file).
+ */
+export function numeroCella(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v === 'boolean') return null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (t === '') return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+  if (!isPlainObject(v)) return null;
+  const kind = ejsonKind(v);
+  if (kind === 'number') return numeroCella(v.$numberInt ?? v.$numberLong ?? v.$numberDouble);
+  if (kind === 'decimal') return numeroCella(v.$numberDecimal);
+  return null;
+}
+
+/** Rappresentazione testuale originale di un valore numerico (per contare i decimali). */
+function testoNumerico(v) {
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') return v.trim();
+  if (isPlainObject(v)) {
+    const raw = v.$numberDecimal ?? v.$numberInt ?? v.$numberLong ?? v.$numberDouble;
+    if (raw !== undefined) return String(raw);
+  }
+  return '';
+}
+
+/** Decimali dichiarati dal valore così com'è scritto nei dati (0 se in notazione esponenziale). */
+function decimaliDi(v) {
+  const t = testoNumerico(v);
+  if (/e/i.test(t)) return MAX_DECIMALI; // 1.5e-7: non si può dedurre, non si arrotonda
+  const p = t.indexOf('.');
+  return p === -1 ? 0 : Math.min(t.length - p - 1, MAX_DECIMALI);
+}
+
+/** Cifre significative del valore così com'è scritto (per accorgersi della perdita di precisione). */
+function significativeDi(v) {
+  return testoNumerico(v).replace(/[^0-9]/g, '').replace(/^0+/, '').length;
+}
+
+/** Somma con compensazione di Kahan: l'errore accumulato su molti addendi resta trascurabile. */
+function sommaKahan(nums) {
+  let somma = 0;
+  let comp = 0;
+  for (const x of nums) {
+    const y = x - comp;
+    const t = somma + y;
+    comp = (t - somma) - y;
+    somma = t;
+  }
+  return somma;
+}
+
+/** Arrotonda a `dec` decimali senza passare per stringhe astronomiche. */
+function arrotonda(n, dec) {
+  if (!Number.isFinite(n)) return n;
+  if (Math.abs(n) >= 1e15) return n; // toFixed non aiuta più: la precisione è già persa
+  return Number(n.toFixed(Math.min(Math.max(dec, 0), MAX_DECIMALI)));
+}
+
+/** Chiave di confronto per il conteggio dei valori distinti. */
+function chiaveDistinta(v) {
+  if (v === null || v === undefined) return '\u0000null';
+  if (typeof v === 'object') return '\u0000json' + JSON.stringify(v);
+  return typeof v + '\u0000' + String(v);
+}
+
+/**
+ * Statistiche di un elenco di valori di cella (in forma EJSON).
+ * Ritorna sempre lo stesso oggetto: i campi numerici sono null quando non ci
+ * sono numeri, così chi lo consuma non deve distinguere i casi.
+ */
+export function statistiche(valori) {
+  const nums = [];
+  let vuote = 0;
+  let nonNumerici = 0;
+  let decimali = 0;
+  let approssimato = false;
+  const distinti = new Set();
+
+  for (const v of valori) {
+    if (v === null || v === undefined || v === '') { vuote++; continue; }
+    distinti.add(chiaveDistinta(v));
+    const n = numeroCella(v);
+    if (n === null) { nonNumerici++; continue; }
+    nums.push(n);
+    decimali = Math.max(decimali, decimaliDi(v));
+    if (!Number.isSafeInteger(Math.trunc(n)) || significativeDi(v) > 15) approssimato = true;
+  }
+
+  const st = {
+    celle: valori.length,
+    vuote,
+    nonNumerici,
+    distinti: distinti.size,
+    numerici: nums.length,
+    decimali,
+    approssimato,
+    somma: null,
+    media: null,
+    mediana: null,
+    min: null,
+    max: null,
+    devStd: null,
+  };
+  if (!nums.length) return st;
+
+  st.somma = arrotonda(sommaKahan(nums), decimali);
+  st.media = sommaKahan(nums) / nums.length;
+  st.min = nums.reduce((a, b) => (b < a ? b : a), nums[0]);
+  st.max = nums.reduce((a, b) => (b > a ? b : a), nums[0]);
+
+  const ord = [...nums].sort((a, b) => a - b);
+  const mid = ord.length >> 1;
+  st.mediana = ord.length % 2 ? ord[mid] : (ord[mid - 1] + ord[mid]) / 2;
+
+  if (nums.length > 1) {
+    // Deviazione standard CAMPIONARIA (n-1): una selezione è quasi sempre un
+    // campione di una tabella più grande, non l'intera popolazione.
+    const media = st.media;
+    const scarti = nums.map((x) => (x - media) * (x - media));
+    st.devStd = Math.sqrt(sommaKahan(scarti) / (nums.length - 1));
+  }
+  return st;
+}
+
+/** Statistiche colonna per colonna: `colonne` = [{ nome, valori }]. */
+export function statistichePerColonna(colonne) {
+  return colonne.map(({ nome, valori }) => ({ nome, ...statistiche(valori) }));
+}
+
+/**
+ * Numero formattato per l'interfaccia (separatori italiani).
+ * Gli estremi passano alla notazione esponenziale: `0,0000001` e
+ * `1.000.000.000.000.000.000` non si leggono comunque.
+ */
+export function formattaNumero(n, decMax = 6) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—';
+  const abs = Math.abs(n);
+  if (abs !== 0 && (abs >= 1e15 || abs < 1e-6)) return n.toExponential(4).replace('.', ',');
+  return n.toLocaleString('it-IT', { maximumFractionDigits: Math.min(Math.max(decMax, 0), 20) });
+}
+
+/**
+ * Riga compatta per la barra di stato. Vuota se non c'è niente da dire:
+ * con un solo numero selezionato somma, media, min e max sono lo stesso valore,
+ * già visibile nella cella.
+ */
+export function riassuntoBreve(st) {
+  if (!st || st.numerici < 2) return '';
+  const dec = Math.min(Math.max(st.decimali, 2), 6);
+  const parti = [
+    `Σ ${formattaNumero(st.somma, st.decimali)}`,
+    `x̄ ${formattaNumero(st.media, dec)}`,
+    `min ${formattaNumero(st.min, st.decimali)}`,
+    `max ${formattaNumero(st.max, st.decimali)}`,
+    `n ${st.numerici}`,
+  ];
+  return parti.join(' · ') + (st.approssimato ? ' ≈' : '');
+}

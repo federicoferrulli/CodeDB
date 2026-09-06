@@ -12,6 +12,9 @@ const SshTunnel = require('../db/SshTunnel');
 console.log('--- Test Unitari CodeDB ---');
 
 (async () => {
+  await require('./unit-query-senza-limite');
+  await require('./unit-server-modulare');
+  await require('./unit-mcp-auth');
   // Test 1: DbFactory instanziamento e helper
   const mongoStrategy = DbFactory.getStrategy('mongodb');
   assert.strictEqual(mongoStrategy.type, 'mongodb', 'MongoDbStrategy type deve essere mongodb');
@@ -1516,6 +1519,7 @@ console.log('--- Test Unitari CodeDB ---');
   // un recupero o un guasto parziale con un successo.
   await require('./unit-piano-import');
   await require('./unit-import-adapter');
+  await require('./unit-backup-import-regressioni');
   require('./unit-schema-objects');
   await require('./unit-import-uploads');
 

@@ -22,7 +22,7 @@
 
 import { state } from './state.js';
 import { activeTab } from './tabs.js';
-import { $, emit, isSqlType } from './utils.js';
+import { $, emit, isSqlType, refreshLucideIcons } from './utils.js';
 import {
   suggerisci, applicaSuggerimento, contestoQuery, PAROLE_SQL_WHERE,
 } from './intellisense.js';
@@ -134,9 +134,12 @@ export function invalidaSchemaIntellisense(db) {
  * Dropdown condiviso
  * ========================================================================== */
 
+// Icone dell'applicazione, non pittogrammi: nel dropdown stanno in colonna,
+// e un'emoji cambia larghezza da un sistema all'altro — cioe' i nomi dei
+// candidati non si allineavano fra una riga e l'altra.
 const ICONE = {
-  campo: '🔹', tabella: '📋', parola: '⌨', funzione: 'ƒ',
-  operatore: '$', metodo: '▸',
+  campo: 'dot', tabella: 'table-2', parola: 'type', funzione: 'function-square',
+  operatore: 'dollar-sign', metodo: 'chevron-right',
 };
 
 function creaLista(dentro, flottante) {
@@ -154,13 +157,15 @@ function disegnaVoci(list, voci, onScegli) {
     li.setAttribute('role', 'option');
     li.dataset.i = String(idx);
 
-    const icona = document.createElement('span');
+    const icona = document.createElement('i');
     icona.className = 'ac-icona';
-    icona.textContent = ICONE[voce.tipo] || '•';
+    icona.dataset.lucide = ICONE[voce.tipo] || 'circle';
+    icona.setAttribute('aria-hidden', 'true');
     const testo = document.createElement('span');
     testo.className = 'ac-testo';
     testo.textContent = voce.testo;
     li.append(icona, testo);
+    refreshLucideIcons(li);
 
     if (voce.dettaglio) {
       const det = document.createElement('span');

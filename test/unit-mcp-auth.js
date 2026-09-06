@@ -5,8 +5,7 @@
 // aperto come prima quando l'RBAC è spento.
 //
 // Monta il gateway su un'app Express reale e la interroga via HTTP: non
-// richiede alcun database. Gira in un processo dedicato (non dentro
-// test/unit.js) perché apre una porta di ascolto.
+// richiede alcun database. La porta assegnata dal sistema viene chiusa alla fine.
 // Uso: node test/unit-mcp-auth.js
 
 const assert = require('assert');
@@ -36,7 +35,7 @@ const deps = {
   resolveApiKey: async (key) => (key === 'cdb_valida' ? owner : null),
 };
 
-(async () => {
+module.exports = (async () => {
   const app = express();
   const control = attachMcp(app, deps);
   const server = http.createServer(app);
@@ -65,6 +64,7 @@ const deps = {
     req.end(initBody);
   });
 
+  let completa;
   try {
     assert.strictEqual((await post({})).status, 401, 'MCP senza API key → 401');
     assert.strictEqual((await post({ Authorization: 'Bearer cdb_sbagliata' })).status, 401, 'API key non valida → 401');
@@ -76,11 +76,30 @@ const deps = {
     assert.notStrictEqual((await post({})).status, 401, 'con RBAC spento /mcp non richiede API key');
     console.log('  OK   /mcp invariato con RBAC spento');
 
+    let accettata;
+    const pronta = new Promise(resolve => { accettata = resolve; });
+    const verifica = new Promise(resolve => { completa = resolve; });
+    deps.rbacOn = () => true;
+    deps.resolveApiKey = async () => { accettata(); await verifica; return null; };
+    const pendente = post({ Authorization: 'Bearer cdb_in_verifica' });
+    await pronta;
+    let chiuso = false;
+    const arresto = control.shutdownMcp();
+    assert.strictEqual(control.shutdownMcp(), arresto, 'arresto idempotente');
+    arresto.then(() => { chiuso = true; });
+    assert.strictEqual((await post({})).status, 503, 'nuove richieste rifiutate durante la chiusura');
+    assert.strictEqual(chiuso, false, 'la richiesta accettata mantiene vivo il gateway');
+    completa();
+    assert.strictEqual((await pendente).status, 401);
+    await arresto;
+    console.log('  OK   arresto MCP attende la richiesta accettata');
+
     console.log('\nTest del gate MCP superati!');
   } catch (err) {
     console.error('  FAIL', err && err.message);
     process.exitCode = 1;
   } finally {
+    completa?.();
     await control.shutdownMcp();
     await new Promise((r) => server.close(r));
   }

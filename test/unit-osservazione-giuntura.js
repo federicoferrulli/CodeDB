@@ -174,7 +174,7 @@ module.exports = (async () => {
     // eventi stiano davvero sulla via che riprova.
     const fs = require('fs');
     const path = require('path');
-    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server/socket.js'), 'utf8') + '\n' + require('./server-fixture').catalogoEventi().map(e => e.famiglia + "('" + e.evento + "'," + e.handler.toString()).join('\n');
     const corpoDelegate = src.slice(src.indexOf('function delegate(event, fn)'));
     assert.ok(
       /executeWithReconnect\(sess, \(strat\) => fn\(strat, richiesta\)\)/.test(corpoDelegate),
@@ -191,7 +191,7 @@ module.exports = (async () => {
     // d'errore torna a essere copiato e la riconnessione torna a mancare.
     const fs = require('fs');
     const path = require('path');
-    const src = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'server/socket.js'), 'utf8') + '\n' + require('./server-fixture').catalogoEventi().map(e => e.famiglia + "('" + e.evento + "'," + e.handler.toString()).join('\n');
     for (const evento of QUATTRO) {
       assert.ok(
         src.includes(`delegate('${evento}'`),

@@ -1,5 +1,7 @@
 'use strict';
 
+const { preparaCollectionMongo } = require('../../db/mongoCollectionOptions');
+
 /* ---------------------------------------------------------------------------
  * Ripristino da una cartella di backup. Se il backup è incrementale o
  * differenziale la catena viene risolta automaticamente risalendo i baseId
@@ -554,16 +556,9 @@ async function restoreSchemaObjects({
     const client = strategy.client;
     for (const opt of oggetti.collectionOptions || []) {
       try {
-        // `collMod` applica le opzioni a una collection che i dati hanno già
-        // creato; se non esiste ancora (collection vuota) la si crea.
-        await client.db(targetDb).command({ collMod: opt.name, ...opt.options });
+        await preparaCollectionMongo(client, targetDb, opt.name, opt.options);
       } catch (err) {
-        if (/not found|NamespaceNotFound/i.test(err.message)) {
-          await client.db(targetDb).createCollection(opt.name, opt.options)
-            .catch((e) => problems.push(`opzioni di "${opt.name}": ${e.message}`));
-        } else {
-          problems.push(`opzioni di "${opt.name}": ${err.message}`);
-        }
+        problems.push(`opzioni di "${opt.name}": ${err.message}`);
       }
     }
     for (const v of oggetti.views || []) {
@@ -659,7 +654,7 @@ async function restoreSchemaObjects({
 
 /* --- Restore MongoDB ------------------------------------------------------ */
 
-async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, tracker }) {
+async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyCollections, drop, log, problems, tracker, mongoOptions }) {
   const client = strategy.client;
   const dataFiles = layer.manifest.files.filter(
     (f) => f.kind === 'data' && (!onlyCollections || onlyCollections.includes(f.collection))
@@ -680,11 +675,7 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     // dichiara nel manifest: va materializzata, come fa gia' il motore del
     // piano per l'import.
     if (isFirst) {
-      await client.db(targetDb).createCollection(f.collection).catch((err) => {
-        // L'unico errore ignorabile e' quello che dimostra che c'e' gia'.
-        if (err.codeName === 'NamespaceExists' || err.code === 48) return;
-        throw err;
-      });
+      await preparaCollectionMongo(client, targetDb, f.collection, mongoOptions.get(f.collection) || {}, { deferValidation: true });
     }
     if (!f.identity) {
       const empty = (await collection.countDocuments({})) === 0;
@@ -1247,6 +1238,18 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   // non può provocare alcuna mutazione prima che TUTTA la catena sia valida.
   await preflightChain(chain, log, { allowUnsafeSchema });
 
+  // Le opzioni MongoDB servono alla creazione anche nel restore selettivo.
+  // Le view e gli oggetti SQL restano invece successivi al caricamento.
+  const mongoOptions = new Map();
+  if (dbType === 'mongodb') {
+    for (const layer of chain) {
+      for (const file of layer.manifest.files.filter((f) => f.kind === 'objects')) {
+        const objects = JSON.parse(fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8'));
+        for (const item of objects.collectionOptions || []) mongoOptions.set(item.name, item.options);
+      }
+    }
+  }
+
   if (onlyCollections) {
     const available = new Set(chain.flatMap((l) => l.manifest.files.filter((f) => f.kind === 'data').map((f) => f.collection)));
     for (const c of onlyCollections) {
@@ -1260,12 +1263,21 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   const problems = [];
   const tracker = new Map();
   for (let i = 0; i < chain.length; i++) {
-    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema }, explicitTarget, tracker };
+    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema }, explicitTarget, tracker, mongoOptions };
     totalWrites += dbType === 'mysql'
       ? await restoreLayerMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await restoreLayerPostgreSql(args)
         : await restoreLayerMongo(args);
+  }
+
+  // I validatori si applicano dopo i dati: la sorgente può contenere documenti
+  // anteriori al validatore corrente. Vale anche per un restore selettivo.
+  if (dbType === 'mongodb') {
+    for (const [name, options] of mongoOptions) {
+      if (onlyCollections && !onlyCollections.includes(name)) continue;
+      await preparaCollectionMongo(strategy.client, db, name, options);
+    }
   }
 
   // Terza fase: oggetti di schema (chiavi esterne, view, routine, trigger,

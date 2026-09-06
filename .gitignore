@@ -5,6 +5,7 @@ connections*
 vault.json
 vault*
 vault*
+!server/vault.js
 connections.ini.bak
 connections.ini.bak2
 # Audit log delle scritture eseguite via MCP.

@@ -170,7 +170,7 @@ function restoreEntry(entry) {
   $('#sort-input').value = entry.sort;
   hidePanel();
   $('#filter-input').focus();
-  toast('Query ripristinata: premi ▶ Esegui per lanciarla');
+  toast('Query ripristinata: premi «Esegui» per lanciarla');
 }
 
 function renderPanel() {

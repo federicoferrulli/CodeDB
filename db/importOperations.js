@@ -27,6 +27,7 @@ function createImportOperationRegistry({
   unschedule = (timer) => clearTimeout(timer),
 } = {}) {
   const operations = new Map();
+  let closed = false;
 
   function retainTerminal(op) {
     const timer = schedule(() => {
@@ -78,6 +79,7 @@ function createImportOperationRegistry({
   }
 
   function start({ plan, adapter, ownerId, actorId = null, tabId, onProgress = () => {}, onSettled = () => {} }) {
+    if (closed) throw new Error('Registro import in chiusura.');
     const operationId = String(id());
     const controller = new AbortController();
     const op = {
@@ -130,6 +132,12 @@ function createImportOperationRegistry({
   }
 
   return {
+    async close() {
+      closed = true;
+      await Promise.allSettled([...operations.values()].map(op => op.promise));
+      for (const op of operations.values()) if (op.retentionTimer) unschedule(op.retentionTimer);
+      operations.clear();
+    },
     start,
     get(operationId, ownerId, actorId = null) { return publicState(requireOwned(operationId, ownerId, actorId)); },
     list(ownerId, actorId = null) {

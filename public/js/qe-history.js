@@ -11,7 +11,7 @@
  * ------------------------------------------------------------------------- */
 
 import { activeTab } from './tabs.js';
-import { $, cut, esc, toast } from './utils.js';
+import { $, cut, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import {
   leggiVoci, registra, aggiornaEsito, filtra, connessioniPresenti, svuota,
 } from './query-history-store.js';
@@ -84,8 +84,8 @@ function ripristina(voce, esegui) {
     return;
   }
   toast(altrove
-    ? `Query ripristinata (veniva da "${voce.conn}"): premi ▶ Esegui per lanciarla qui`
-    : 'Query ripristinata: premi ▶ Esegui per lanciarla');
+    ? `Query ripristinata (veniva da "${voce.conn}"): premi «Esegui» per lanciarla qui`
+    : 'Query ripristinata: premi «Esegui» per lanciarla');
 }
 
 function badgeEsito(voce) {
@@ -97,7 +97,7 @@ function badgeEsito(voce) {
     return { testo: `✓ ${parti.join(' · ')}`.trim(), cls: 'qe-history-esito-ok' };
   }
   if (voce.esito === 'errore') {
-    return { testo: voce.ms !== null && voce.ms !== undefined ? `✖ ${voce.ms} ms` : '✖', cls: 'qe-history-esito-err' };
+    return { testo: voce.ms !== null && voce.ms !== undefined ? `${voce.ms} ms` : 'errore', cls: 'qe-history-esito-err' };
   }
   return { testo: '—', cls: 'qe-history-esito-ignoto' };
 }
@@ -162,7 +162,8 @@ function renderLista() {
     const play = document.createElement('button');
     play.className = 'qe-history-run';
     play.type = 'button';
-    play.textContent = '▶';
+    play.innerHTML = ICO('play');
+    refreshLucideIcons(play);
     play.title = 'Carica ed esegui subito';
     play.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -189,7 +190,7 @@ function renderPanel() {
 
   panel.innerHTML = `
     <div class="query-history-header">
-      <span>Cronologia query ⚡</span>
+      <span>Cronologia query</span>
       <button type="button" id="qe-history-clear">Svuota</button>
     </div>
     <div class="qe-history-filtri">

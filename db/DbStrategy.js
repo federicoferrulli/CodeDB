@@ -13,6 +13,11 @@ function unsupported() {
 }
 
 class DbStrategy {
+  constructor({ env } = {}) {
+    // Le istanze incorporate ricevono una fotografia della configurazione.
+    // I chiamanti storici senza opzioni mantengono i default del processo.
+    this.env = env;
+  }
   /** Identificatore del tipo di database (es. 'mongodb', 'mysql'). */
   get type() { return 'unknown'; }
 
@@ -539,15 +544,18 @@ function assertColumnType(type, what = 'colonna') {
 DbStrategy.assertColumnType = assertColumnType;
 
 // Tetto massimo di righe/documenti restituiti da una lettura. Il default (500)
-// preserva il comportamento della griglia paginata; il Query Engine passa un
-// `payload.maxRows` più alto per non troncare i risultati di una query
-// esplicita. Il ceiling assoluto evita di esaurire la memoria con risultati
-// enormi. Usato da tutte le strategie in collectionFind/collectionAggregate.
+// preserva il comportamento della griglia paginata; il Query Engine passa
+// Infinity per rispettare solo i LIMIT espliciti. Gli altri chiamanti possono
+// alzare il tetto fino a 100.000. Il budget in byte resta indipendente.
+// Usato da tutte le strategie in collectionFind/collectionAggregate.
 //
 // NB: `maxRows` è un campo RISERVATO AL SERVER — server.js lo rimuove da ogni
 // payload che arriva dal client (SERVER_ONLY_PAYLOAD_FIELDS), altrimenti
 // chiunque potrebbe alzare il tetto a 100.000 documenti su una normale find.
 function resultCap(payload, fallback = 500) {
+  // Solo il Query Engine imposta Infinity: le query libere non sono pagine.
+  // Il campo maxRows viene rimosso dai payload ricevuti dal client.
+  if (payload && payload.maxRows === Infinity) return Infinity;
   const m = parseInt(payload && payload.maxRows, 10);
   if (!Number.isFinite(m) || m < 1) return fallback;
   return Math.min(m, 100000);
@@ -610,8 +618,8 @@ DbStrategy.escapeRegex = escapeRegex;
 // pesano quanto decine di migliaia di documenti piccoli, e il risultato viene
 // poi serializzato in EJSON e messo su socket. Configurabile con
 // CODEDB_MAX_RESULT_BYTES; <= 0 disabilita il controllo.
-function maxResultBytes() {
-  const m = parseInt(process.env.CODEDB_MAX_RESULT_BYTES, 10);
+function maxResultBytes(env = process.env) {
+  const m = parseInt(env.CODEDB_MAX_RESULT_BYTES, 10);
   if (!Number.isFinite(m)) return 32 * 1024 * 1024; // 32 MB
   return Math.max(m, 0);
 }
@@ -668,8 +676,8 @@ DbStrategy.truncateBySize = truncateBySize;
 // Tempo massimo (ms) concesso al conteggio esatto disaccoppiato prima di
 // arrendersi e riportare un totale sconosciuto. Configurabile via env
 // CODEDB_COUNT_TIMEOUT_MS (default 5000); un valore <= 0 disabilita il timeout.
-function countTimeoutMs() {
-  const m = parseInt(process.env.CODEDB_COUNT_TIMEOUT_MS, 10);
+function countTimeoutMs(env = process.env) {
+  const m = parseInt(env.CODEDB_COUNT_TIMEOUT_MS, 10);
   if (!Number.isFinite(m)) return 5000;
   return Math.max(m, 0);
 }
@@ -682,8 +690,8 @@ DbStrategy.countTimeoutMs = countTimeoutMs;
 // pool all'infinito. Configurabile via env CODEDB_QUERY_TIMEOUT_MS (default
 // 30000); un valore <= 0 disabilita il timeout. Usato dalle strategie in
 // collectionFind.
-function queryTimeoutMs() {
-  const m = parseInt(process.env.CODEDB_QUERY_TIMEOUT_MS, 10);
+function queryTimeoutMs(env = process.env) {
+  const m = parseInt(env.CODEDB_QUERY_TIMEOUT_MS, 10);
   if (!Number.isFinite(m)) return 30000;
   return Math.max(m, 0);
 }
@@ -699,8 +707,8 @@ DbStrategy.queryTimeoutMs = queryTimeoutMs;
 // indefinito, e `cancelQuery` la ferma solo se il client ha mandato un runId e
 // l'utente del database ha il privilegio killOp — spesso assente.
 // Env CODEDB_AGGREGATE_TIMEOUT_MS (default 120000); <= 0 disabilita.
-function aggregateTimeoutMs() {
-  const m = parseInt(process.env.CODEDB_AGGREGATE_TIMEOUT_MS, 10);
+function aggregateTimeoutMs(env = process.env) {
+  const m = parseInt(env.CODEDB_AGGREGATE_TIMEOUT_MS, 10);
   if (!Number.isFinite(m)) return 120000;
   return Math.max(m, 0);
 }

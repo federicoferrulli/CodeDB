@@ -95,11 +95,11 @@ async function testMongo() {
     // (per un motivo o per l'altro); che il rifiuto sia proprio quello sulle
     // connessioni di CodeDB lo provano MySQL e PostgreSQL, dove i thread del
     // pool restano in vita fra una richiesta e l'altra.
-    const rifiuto = await emit('db:killSession', { tabId, id: nostra.id, modo: 'query' });
+    const rifiuto = await emit('db:killSession', { tabId, id: nostra.id, modo: 'query', identita: nostra.identita });
     assert(!rifiuto.ok, 'il rifiuto arriva dal SERVER anche saltando l\'interfaccia');
   }
 
-  const inesistente = await emit('db:killSession', { tabId, id: '999999999', modo: 'query' });
+  const inesistente = await emit('db:killSession', { tabId, id: '999999999', modo: 'query', identita: 'operazione-sparita' });
   assert(!inesistente.ok && /già terminata/.test(inesistente.error || ''),
     'una sessione sparita fra la lettura e il clic viene detta tale, non uccisa a caso');
 
@@ -130,7 +130,7 @@ async function testMysql() {
   // provare che la barriera sta nel SERVER e non nei pulsanti disabilitati.
   const nostro = res.sessioni.find((s) => s.nostra);
   if (nostro) {
-    const rifiuto = await emit('db:killSession', { tabId, id: nostro.id, modo: 'connessione' });
+    const rifiuto = await emit('db:killSession', { tabId, id: nostro.id, modo: 'connessione', identita: nostro.identita });
     assert(!rifiuto.ok && /CodeDB/.test(rifiuto.error || ''),
       'terminare una connessione di CodeDB è rifiutato dal server, non solo dall\'interfaccia');
   }
@@ -225,7 +225,7 @@ async function testPostgres() {
 
   const nostro = res.sessioni.find((s) => s.nostra);
   if (nostro) {
-    const rifiuto = await emit('db:killSession', { tabId, id: nostro.id, modo: 'connessione' });
+    const rifiuto = await emit('db:killSession', { tabId, id: nostro.id, modo: 'connessione', identita: nostro.identita });
     assert(!rifiuto.ok && /CodeDB/.test(rifiuto.error || ''),
       'terminare una connessione di CodeDB è rifiutato dal server, non solo dall\'interfaccia');
   }
@@ -250,7 +250,7 @@ async function testPostgres() {
   if (bersaglio) {
     assert(bersaglio.stato === 'attiva', 'ed è vista come attiva');
     const kill = await emit('db:killSession', { tabId, id: bersaglio.id, modo: 'query', identita: bersaglio.identita });
-    assert(kill.ok && kill.terminata, 'pg_cancel_backend riporta l\'annullamento');
+    assert(kill.ok && kill.terminata, `pg_cancel_backend riporta l'annullamento (${kill.error || 'ok'})`);
     const esito = await Promise.race([lenta, attendi(8000).then(() => 'in corso')]);
     assert(esito === 'errore' && Date.now() - t0 < 15000,
       'la query da 20 s è stata interrotta sul server (57014 query_canceled)');
@@ -310,7 +310,7 @@ async function testPostgres() {
   // terminabili: è l'altra metà della regola, e su PostgreSQL è visibile.
   const servizio = dopo.sessioni.find((s) => s.interna);
   if (servizio) {
-    const rifiuto = await emit('db:killSession', { tabId, id: servizio.id, modo: 'connessione' });
+    const rifiuto = await emit('db:killSession', { tabId, id: servizio.id, modo: 'connessione', identita: servizio.identita });
     assert(!rifiuto.ok && /servizio/.test(rifiuto.error || ''),
       'un processo di servizio del server non è terminabile');
   } else {

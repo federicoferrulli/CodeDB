@@ -262,6 +262,7 @@ prova('Catena: uno storico o un cambio di colonne/identita richiedono un nuovo f
         db() {
           return {
             collection() { return collection; },
+            listCollections() { return { async toArray() { return create.map((name) => ({ name, options: {} })); } }; },
             async createCollection(name) { create.push(name); },
           };
         },

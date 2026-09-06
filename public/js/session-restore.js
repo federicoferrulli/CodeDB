@@ -33,7 +33,7 @@ function collTabInputs(t, c) {
       // L'etichetta è quella che si vede sul tab (nome scelto dall'utente o
       // tabelle contenute): le aree possono essere più d'una, e ripristinarle
       // tutte con lo stesso nome renderebbe impossibile distinguerle.
-      coll: c.coll || '🔲 Affiancati',
+      coll: c.coll || 'Affiancati',
       nomeSplit: c.nomeSplit || null,
       // Lo snapshot va chiesto PER QUESTA area: senza l'id si otterrebbe sempre
       // quella a schermo, e le altre verrebbero salvate con i pannelli di questa.
@@ -142,7 +142,7 @@ function reconnectTab(info) {
             id,
             isSplitTab: true,
             db: 'Split-View',
-            coll: c.coll || '🔲 Affiancati',
+            coll: c.coll || 'Affiancati',
             nomeSplit: c.nomeSplit || null,
             snap: null,
             splitSnap: c.splitSnap,

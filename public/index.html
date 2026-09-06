@@ -427,8 +427,8 @@
           <button type="button" id="conn-test-btn" class="secondary btn-sm"
             title="Tenta la connessione lato server senza aprire un tab">Testa Connessione</button>
           <div class="wizard-nav-btns">
-            <button type="button" id="wizard-prev-btn" class="ghost hidden">← Indietro</button>
-            <button type="button" id="wizard-next-btn" class="secondary">Avanti →</button>
+            <button type="button" id="wizard-prev-btn" class="ghost hidden"><i data-lucide="arrow-left"></i> Indietro</button>
+            <button type="button" id="wizard-next-btn" class="secondary">Avanti <i data-lucide="arrow-right"></i></button>
             <button type="button" id="conn-save-btn" class="secondary hidden"
               title="Salva la connessione senza connetterti">Salva</button>
             <button type="submit" id="connect-btn" class="primary">Connetti</button>
@@ -626,11 +626,18 @@
               </div>
             </div>
 
-            <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
-
-            <div id="workspace" class="hidden">
-              <!-- Nessuna breadcrumb: il contesto (database ▸ collection) è già
-                   nel coll-tab attivo qui sopra e nell'albero a sinistra. -->
+            <!-- Le tab della collection e le tab della vista stanno sulla STESSA
+                 riga: dicono due cose complementari — quale tabella si guarda e
+                 come la si guarda — e da barre separate costavano due bande
+                 piene alte 51px l'una. La seconda era per di piu' vuota nei suoi
+                 primi 641px (misurati a 1600px): `.view-tabs` aveva ancora il
+                 `margin-left: auto` che le spingeva a destra della breadcrumb
+                 rimossa, e nessuno aveva ripreso quello spazio.
+                 La riga si nasconde con `#coll-tab-bar.hidden`, che e' gia' la
+                 condizione esatta "nessun coll-tab aperto": tenerne una seconda
+                 in JavaScript vorrebbe dire poterle far divergere. -->
+            <div class="tabs-row">
+              <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
               <div class="workspace-head">
                 <div class="view-tabs">
                   <!-- Visibile solo con la Split-View aperta (applyViewTabsFor):
@@ -665,6 +672,11 @@
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div id="workspace" class="hidden">
+              <!-- Nessuna breadcrumb: il contesto (database ▸ collection) e' gia'
+                   nel coll-tab attivo qui sopra e nell'albero a sinistra. -->
 
               <!-- ------------------- Vista dati ------------------- -->
               <div id="view-data" class="view-panel">
@@ -1053,7 +1065,7 @@
                     <button type="button" id="query-target-btn" class="query-target-btn dropdown-trigger-btn"
                       aria-haspopup="true" aria-expanded="false"
                       title="Motore e database su cui girerà la query">
-                      <span id="query-target-engine-label" class="query-target-engine-label">⚡ Auto</span>
+                      <span id="query-target-engine-label" class="query-target-engine-label"><i data-lucide="zap"></i> Auto</span>
                       <span class="query-target-sep">·</span>
                       <span id="query-target-label" class="query-target-label">—</span>
                       <span class="dropdown-caret">▾</span>
@@ -1061,14 +1073,14 @@
                     <div id="query-target-menu" class="toolbar-dropdown-menu hidden">
                       <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
                       <select id="query-target-engine" class="styled-select">
-                        <option value="auto">⚡ Auto-detect (DB corrente)</option>
-                        <option value="mysql">🗄 MySQL (SQL Runner)</option>
-                        <option value="postgresql">🗄 PostgreSQL (SQL Runner)</option>
-                        <option value="mongodb">🍃 MongoDB (MQL / Aggregate)</option>
-                        <option value="crossdb">🔀 Cross-DB (Virtual JOIN)</option>
+                        <option value="auto">Auto-detect (DB corrente)</option>
+                        <option value="mysql">MySQL (SQL Runner)</option>
+                        <option value="postgresql">PostgreSQL (SQL Runner)</option>
+                        <option value="mongodb">MongoDB (MQL / Aggregate)</option>
+                        <option value="crossdb">Cross-DB (Virtual JOIN)</option>
                       </select>
                       <button id="query-target-reset" class="dropdown-item hidden" type="button"
-                        title="Torna al contesto della collection aperta">↩ Torna alla collection aperta</button>
+                        title="Torna al contesto della collection aperta"><i data-lucide="undo-2"></i> Torna alla collection aperta</button>
                     </div>
                   </div>
 
@@ -1136,13 +1148,13 @@
                               aria-haspopup="true" aria-expanded="false" title="Altre azioni sull'editor">⋯</button>
                             <div id="query-editor-more-menu" class="toolbar-dropdown-menu hidden">
                               <button id="qe-history-btn" class="dropdown-item" type="button"
-                                title="Cronologia delle query eseguite in questa tab">🕘 Cronologia query</button>
+                                title="Cronologia delle query eseguite in questa tab"><i data-lucide="history"></i> Cronologia query</button>
                               <button id="query-open-sql-btn" class="dropdown-item" type="button"
-                                title="Apri ed esegui file SQL">📂 Apri file SQL…</button>
+                                title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri file SQL…</button>
                               <button id="query-snippet-btn" class="dropdown-item" type="button"
-                                title="Snippet &amp; Template">📖 Snippet &amp; Template</button>
+                                title="Snippet &amp; Template"><i data-lucide="book-open"></i> Snippet &amp; Template</button>
                               <button id="query-clear-btn" class="dropdown-item" type="button"
-                                title="Pulisci editor">🧹 Pulisci editor</button>
+                                title="Pulisci editor"><i data-lucide="eraser"></i> Pulisci editor</button>
                             </div>
                             <div id="qe-history-panel" class="hidden"></div>
                           </span>
@@ -1152,23 +1164,23 @@
                       <div id="query-sql-chunk-panel" class="query-chunk-panel hidden">
                         <div class="chunk-panel-top">
                           <div class="chunk-file-info">
-                            <span class="chunk-file-icon">📄</span>
+                            <span class="chunk-file-icon"><i data-lucide="file-text"></i></span>
                             <strong id="chunk-file-name" class="chunk-file-name">file.sql</strong>
                             <span id="chunk-file-size" class="chunk-file-badge">0 MB</span>
                             <span id="chunk-count-badge" class="chunk-file-badge">0 chunk</span>
                           </div>
                           <div class="chunk-panel-actions">
-                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequenzialmente">▶ Esegui Tutti i Chunk</button>
-                            <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecuzione sequenziale">🛑 Stop Esecuzione</button>
+                            <button id="chunk-run-all-btn" class="primary btn-sm" type="button" title="Esegui tutti i chunk sequenzialmente"><i data-lucide="play"></i> Esegui Tutti i Chunk</button>
+                            <button id="chunk-cancel-run-btn" class="danger btn-sm hidden" type="button" title="Interrompi esecuzione sequenziale"><i data-lucide="circle-stop"></i> Stop Esecuzione</button>
                             <button id="chunk-close-btn" class="ghost mini-btn" type="button" title="Chiudi pannello file grandi">✕ Chiudi File</button>
                           </div>
                         </div>
                         <div class="chunk-panel-nav">
                           <div class="chunk-nav-controls">
-                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente">◀ Prev</button>
+                            <button id="chunk-prev-btn" class="mini-btn" type="button" title="Chunk precedente"><i data-lucide="chevron-left"></i> Prev</button>
                             <select id="chunk-select" class="styled-select chunk-select" title="Seleziona chunk"></select>
-                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next ▶</button>
-                            <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'editor per ispezione/modifica">✏️ Carica in Editor</button>
+                            <button id="chunk-next-btn" class="mini-btn" type="button" title="Chunk successivo">Next <i data-lucide="play"></i></button>
+                            <button id="chunk-load-editor-btn" class="mini-btn" type="button" title="Carica questo chunk nell'editor per ispezione/modifica"><i data-lucide="pencil"></i> Carica in Editor</button>
                           </div>
                           <span id="chunk-byte-info" class="chunk-byte-info">0 KB - 0 KB</span>
                         </div>
@@ -1219,11 +1231,11 @@
                         <div class="results-actions">
                           <div class="toolbar-dropdown-wrap">
                             <button type="button" id="query-export-menu-btn" class="mini-btn dropdown-trigger-btn"
-                              aria-haspopup="true" aria-expanded="false" title="Esporta i risultati">📥 Esporta ▾</button>
+                              aria-haspopup="true" aria-expanded="false" title="Esporta i risultati"><i data-lucide="download"></i> Esporta ▾</button>
                             <div id="query-export-menu" class="toolbar-dropdown-menu hidden">
-                              <button id="query-export-csv" class="dropdown-item" type="button">📥 Esporta CSV</button>
-                              <button id="query-export-json" class="dropdown-item" type="button">📥 Esporta JSON</button>
-                              <button id="query-export-sql" class="dropdown-item" type="button">📥 Esporta SQL (INSERT)</button>
+                              <button id="query-export-csv" class="dropdown-item" type="button"><i data-lucide="download"></i> Esporta CSV</button>
+                              <button id="query-export-json" class="dropdown-item" type="button"><i data-lucide="download"></i> Esporta JSON</button>
+                              <button id="query-export-sql" class="dropdown-item" type="button"><i data-lucide="download"></i> Esporta SQL (INSERT)</button>
                             </div>
                           </div>
                         </div>
@@ -1237,15 +1249,15 @@
                       <div id="script-run-panel" class="script-run-panel hidden">
                         <div class="script-run-top">
                           <div class="script-run-info">
-                            <span id="script-run-status" class="badge-status status-running">⏳ In esecuzione</span>
+                            <span id="script-run-status" class="badge-status status-running"><i data-lucide="hourglass"></i> In esecuzione</span>
                             <span id="script-run-counts" class="script-run-counts">0 / 0</span>
                             <span id="script-run-errors" class="script-run-errors hidden">0 errori</span>
                           </div>
                           <div class="script-run-actions">
-                            <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione in corso">⏸ Pausa</button>
-                            <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'istruzione in corso sul database">⏸! Pausa forzata</button>
-                            <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cui si era fermato">▶ Riprendi</button>
-                            <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivamente">🛑 Interrompi</button>
+                            <button id="script-pause-btn" class="mini-btn" type="button" title="Metti in pausa dopo l'istruzione in corso"><i data-lucide="pause"></i> Pausa</button>
+                            <button id="script-force-pause-btn" class="mini-btn hidden" type="button" title="Interrompi anche l'istruzione in corso sul database"><i data-lucide="pause"></i>! Pausa forzata</button>
+                            <button id="script-resume-btn" class="mini-btn hidden" type="button" title="Riprendi dal punto in cui si era fermato"><i data-lucide="play"></i> Riprendi</button>
+                            <button id="script-abort-btn" class="mini-btn danger" type="button" title="Interrompi definitivamente"><i data-lucide="circle-stop"></i> Interrompi</button>
                             <button id="script-close-btn" class="mini-btn ghost hidden" type="button" title="Chiudi il resoconto">✕ Chiudi</button>
                           </div>
                         </div>
@@ -1289,7 +1301,7 @@
                                 <div id="chart-quickbar" class="chart-quickbar"></div>
                                 <div class="toolbar-dropdown-wrap">
                                   <button type="button" id="chart-suggest-btn" class="mini-btn dropdown-trigger-btn"
-                                    title="Grafici già pronti, dedotti dalla forma dei risultati">💡 Suggeriti ▾</button>
+                                    title="Grafici già pronti, dedotti dalla forma dei risultati"><i data-lucide="lightbulb"></i> Suggeriti ▾</button>
                                   <div id="chart-suggest-menu" class="toolbar-dropdown-menu hidden"></div>
                                 </div>
                                 <!-- Stesso trattamento dell'export dei risultati:
@@ -1297,14 +1309,14 @@
                                      Suggeriti e Personalizza restano com'erano. -->
                                 <div class="toolbar-dropdown-wrap">
                                   <button type="button" id="chart-export-menu-btn" class="mini-btn dropdown-trigger-btn"
-                                    aria-haspopup="true" aria-expanded="false" title="Esporta il grafico">⤓ Esporta ▾</button>
+                                    aria-haspopup="true" aria-expanded="false" title="Esporta il grafico"><i data-lucide="download"></i> Esporta ▾</button>
                                   <div id="chart-export-menu" class="toolbar-dropdown-menu hidden">
-                                    <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come immagine PNG">🖼 Immagine PNG</button>
-                                    <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts generata">⤓ Option ECharts (JSON)</button>
+                                    <button type="button" id="chart-export-png" class="dropdown-item" title="Scarica il grafico come immagine PNG"><i data-lucide="image"></i> Immagine PNG</button>
+                                    <button type="button" id="chart-export-option" class="dropdown-item" title="Scarica l'option ECharts generata"><i data-lucide="download"></i> Option ECharts (JSON)</button>
                                   </div>
                                 </div>
                                 <button type="button" id="chart-toggle-builder" class="mini-btn"
-                                  title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON">⚙ Personalizza</button>
+                                  title="Tutte le altre opzioni: assi, legenda, tooltip, margini, tavolozza, override JSON"><i data-lucide="sliders-horizontal"></i> Personalizza</button>
                               </div>
                               <div id="query-chart-canvas" class="chart-canvas"></div>
                               <div id="chart-empty" class="chart-empty">Esegui una query: i risultati compaiono qui come grafico.</div>
@@ -1329,7 +1341,7 @@
                             </label>
                             <span id="qmap-conta" class="qmap-conta"></span>
                             <button type="button" id="qmap-copy" class="mini-btn" title="Copia il riepilogo in TSV">Copia riepilogo</button>
-                            <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come FeatureCollection">⤓ GeoJSON</button>
+                            <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come FeatureCollection"><i data-lucide="download"></i> GeoJSON</button>
                           </div>
                           <div id="qmap-nota" class="qmap-nota hidden"></div>
                           <div id="qmap-warning" class="warning hidden"></div>
@@ -1379,9 +1391,9 @@
       <div id="insert-tab-json" class="tab-panel hidden">
         <div class="json-tools">
           <button type="button" id="insert-json-format" class="mini-btn"
-            title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+            title="Formatta il documento (Ctrl+Shift+F)"><i data-lucide="wand-sparkles"></i> Formatta</button>
           <button type="button" id="insert-json-minify" class="mini-btn"
-            title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+            title="Tutto su una riga (Ctrl+Shift+M)"><i data-lucide="fold-vertical"></i> Minifica</button>
         </div>
         <textarea id="insert-json" rows="14" spellcheck="false">{
 
@@ -1609,7 +1621,7 @@
     </div>
 
     <div class="fk-actions">
-      <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova scheda">Apri tabella ↗</button>
+      <button type="button" id="fk-apri" class="ghost" title="Apri la tabella di riferimento in una nuova scheda">Apri tabella <i data-lucide="external-link"></i></button>
       <button type="button" id="fk-usa" class="primary" disabled>Usa questo valore</button>
     </div>
   </aside>
@@ -1621,9 +1633,9 @@
       <p id="editdoc-id" class="doc-id-line"></p>
       <div class="json-tools">
         <button type="button" id="editdoc-format" class="mini-btn"
-          title="Formatta il documento (Ctrl+Shift+F)">✨ Formatta</button>
+          title="Formatta il documento (Ctrl+Shift+F)"><i data-lucide="wand-sparkles"></i> Formatta</button>
         <button type="button" id="editdoc-minify" class="mini-btn"
-          title="Tutto su una riga (Ctrl+Shift+M)">⇥ Minifica</button>
+          title="Tutto su una riga (Ctrl+Shift+M)"><i data-lucide="fold-vertical"></i> Minifica</button>
       </div>
       <textarea id="editdoc-json" rows="16" spellcheck="false"></textarea>
       <div id="editdoc-lint" class="lint-bar hidden" aria-live="polite"></div>
@@ -1904,7 +1916,7 @@
       </div>
       <div class="modal-actions">
         <button id="mermaid-modal-close" class="ghost">Chiudi</button>
-        <button id="mermaid-modal-copy" class="primary">📋 Copia negli appunti</button>
+        <button id="mermaid-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</button>
       </div>
     </div>
   </div>
@@ -1918,7 +1930,7 @@
       </div>
       <div class="modal-actions">
         <button id="dbml-modal-close" class="ghost">Chiudi</button>
-        <button id="dbml-modal-copy" class="primary">📋 Copia negli appunti</button>
+        <button id="dbml-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</button>
       </div>
     </div>
   </div>
@@ -1932,7 +1944,7 @@
       </div>
       <div class="modal-actions">
         <button id="sql-modal-close" class="ghost">Chiudi</button>
-        <button id="sql-modal-copy" class="primary">📋 Copia negli appunti</button>
+        <button id="sql-modal-copy" class="primary"><i data-lucide="copy"></i> Copia negli appunti</button>
       </div>
     </div>
   </div>
@@ -1940,7 +1952,7 @@
   <!-- ===================== Modale Audit Schema (Health Check) ===================== -->
   <div id="audit-modal" class="overlay hidden">
     <div class="modal wide">
-      <h2>🩺 Diagnostica dello Schema (Health Check)</h2>
+      <h2><i data-lucide="stethoscope"></i> Diagnostica dello Schema (Health Check)</h2>
       <div id="audit-content" class="modal-scroll-pane"></div>
       <div class="modal-actions">
         <button id="audit-modal-close" class="primary">Chiudi</button>
@@ -1951,7 +1963,7 @@
   <!-- ===================== Modale Schema Diff ===================== -->
   <div id="diff-modal" class="overlay hidden">
     <div class="modal wide">
-      <h2>⚖️ Schema Diff (Confronto con File Locale JSON)</h2>
+      <h2><i data-lucide="scale"></i> Schema Diff (Confronto con File Locale JSON)</h2>
       <div class="form-row">
         <label>Seleziona File Snapshot JSON locale:
           <input type="file" id="diff-file-input" class="file-input-compact" accept=".json" />
@@ -1967,7 +1979,7 @@
   <!-- ===================== Modale Importazione Schema Standalone ===================== -->
   <div id="import-schema-modal" class="overlay hidden">
     <div class="modal wide">
-      <h2>📥 Importa ed Esplora Schema (SQL DDL / DBML)</h2>
+      <h2><i data-lucide="download"></i> Importa ed Esplora Schema (SQL DDL / DBML)</h2>
       <div class="form-row">
         <label>Format
           <select id="import-schema-format">
@@ -1982,7 +1994,7 @@
       </div>
       <div class="modal-actions">
         <button id="import-schema-close" class="ghost">Annulla</button>
-        <button id="import-schema-render" class="primary">🌐 Genera Grafo 3D</button>
+        <button id="import-schema-render" class="primary"><i data-lucide="globe"></i> Genera Grafo 3D</button>
       </div>
     </div>
   </div>
@@ -1990,7 +2002,7 @@
   <!-- ===================== Modale Cammino Minimo (Shortest Path) ===================== -->
   <div id="path-modal" class="overlay hidden">
     <div class="modal wide">
-      <h2>🔗 Ricerca Cammino Minimo tra Tabelle</h2>
+      <h2><i data-lucide="link"></i> Ricerca Cammino Minimo tra Tabelle</h2>
       <div class="form-row">
         <label>Tabella di Partenza (Sorgente)
           <select id="path-from-select"></select>
@@ -2001,9 +2013,9 @@
       </div>
       <div id="path-result" class="path-result-pane"></div>
       <div class="modal-actions">
-        <button id="path-modal-clear" class="ghost btn-danger-text hidden">❌ Azzera Cammino</button>
+        <button id="path-modal-clear" class="ghost btn-danger-text hidden"><i data-lucide="circle-x"></i> Azzera Cammino</button>
         <button id="path-modal-close" class="ghost">Chiudi</button>
-        <button id="path-modal-calc" class="primary">🔍 Trova Cammino & Evidenzia 3D</button>
+        <button id="path-modal-calc" class="primary"><i data-lucide="search"></i> Trova Cammino & Evidenzia 3D</button>
       </div>
     </div>
   </div>
@@ -2011,7 +2023,7 @@
   <!-- ===================== Modale Matrice Dipendenze & Seeding ===================== -->
   <div id="deps-modal" class="overlay hidden">
     <div class="modal wide">
-      <h2>📊 Matrice Dipendenze & Ordine di Popolamento</h2>
+      <h2><i data-lucide="bar-chart-3"></i> Matrice Dipendenze & Ordine di Popolamento</h2>
       <div id="deps-content" class="modal-scroll-pane"></div>
       <div class="modal-actions">
         <button id="deps-modal-close" class="primary">Chiudi</button>
@@ -2131,13 +2143,13 @@
   <div id="modal-backup-manager" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>💾 Gestione Backup & Ripristino</h2>
+        <h2><i data-lucide="hard-drive"></i> Gestione Backup & Ripristino</h2>
         <button type="button" id="btn-close-backup-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
       <div class="modal-tabs">
         <button type="button" id="tab-btn-backup-new" class="tab-btn active">＋ Nuovo Backup</button>
-        <button type="button" id="tab-btn-backup-catalog" class="tab-btn">📂 Catalogo & Ripristino</button>
+        <button type="button" id="tab-btn-backup-catalog" class="tab-btn"><i data-lucide="folder-open"></i> Catalogo & Ripristino</button>
       </div>
 
       <!-- Scheda 1: Nuovo Backup -->
@@ -2194,7 +2206,7 @@
           <div id="backup-status-msg" class="status-box hidden"></div>
 
           <div class="modal-actions">
-            <button type="submit" id="btn-submit-backup" class="primary">🚀 Avvia Backup</button>
+            <button type="submit" id="btn-submit-backup" class="primary"><i data-lucide="rocket"></i> Avvia Backup</button>
           </div>
         </form>
       </div>
@@ -2205,7 +2217,7 @@
           <input type="search" id="backup-catalog-filter" class="hidden"
                  placeholder="Filtra per gruppo o database…" spellcheck="false" autocomplete="off" />
           <span id="backup-catalog-hint">Cataloghi dei backup presenti nel server:</span>
-          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary">🔄 Aggiorna Lista</button>
+          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna Lista</button>
         </div>
         <!-- Avanzamento del ripristino: alimentato dai push `backup:progress`. -->
         <div id="restore-progress" class="restore-progress hidden">
@@ -2224,7 +2236,7 @@
        nello stesso posto in cui si legge la connessione su cui si scriverà. -->
   <div id="restore-overlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="restore-title">
     <div class="modal">
-      <h2 id="restore-title">⚡ Ripristino del backup</h2>
+      <h2 id="restore-title"><i data-lucide="zap"></i> Ripristino del backup</h2>
       <p class="subtitle" id="restore-subtitle"></p>
 
       <div class="restore-target">
@@ -2253,7 +2265,7 @@
 
       <div class="modal-actions">
         <button type="button" id="restore-cancel" class="ghost">Annulla</button>
-        <button type="button" id="restore-ok" class="primary">⚡ Ripristina</button>
+        <button type="button" id="restore-ok" class="primary"><i data-lucide="zap"></i> Ripristina</button>
       </div>
     </div>
   </div>
@@ -2262,7 +2274,7 @@
   <div id="modal-audit-log" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>📜 Storico delle Azioni</h2>
+        <h2><i data-lucide="scroll-text"></i> Storico delle Azioni</h2>
         <button type="button" id="btn-close-audit-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2273,8 +2285,8 @@
         <label>Categoria:
           <select id="audit-filter-category">
             <option value="">Tutte</option>
-            <option value="write">✏️ Scritture</option>
-            <option value="read">👁 Letture</option>
+            <option value="write">Scritture</option>
+            <option value="read">Letture</option>
           </select>
         </label>
         <label>Tipo:
@@ -2319,7 +2331,7 @@
         </label>
         <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
           spellcheck="false" />
-        <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
       <div id="audit-log-list" class="catalog-list-container"></div>
 
@@ -2343,7 +2355,7 @@
   <div id="modal-health" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>💓 Salute delle Connessioni</h2>
+        <h2><i data-lucide="activity"></i> Salute delle Connessioni</h2>
         <button type="button" id="btn-close-health-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2354,7 +2366,7 @@
         <label class="health-auto">
           <input type="checkbox" id="health-auto-refresh" checked> Auto-refresh (4s)
         </label>
-        <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
       <div id="health-list" class="catalog-list-container"></div>
     </div>
@@ -2374,7 +2386,7 @@
   <div id="modal-sessions" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>🩺 Sessioni &amp; Query attive</h2>
+        <h2><i data-lucide="stethoscope"></i> Sessioni &amp; Query attive</h2>
         <button type="button" id="btn-close-sessions-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2392,7 +2404,7 @@
         <label class="health-auto">
           <input type="checkbox" id="sessions-auto-refresh" checked> Auto-refresh (5s)
         </label>
-        <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary">🔄 Aggiorna</button>
+        <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
 
       <!-- Il verdetto: la riga che risponde alla domanda per cui si è aperto
@@ -2422,7 +2434,7 @@
   <div id="modal-theme" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>🎨 Tema</h2>
+        <h2><i data-lucide="palette"></i> Tema</h2>
         <button type="button" id="btn-close-theme-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2431,7 +2443,7 @@
 
       <div class="catalog-toolbar">
         <button type="button" id="btn-tema-nuovo" class="btn btn-sm btn-secondary">＋ Nuovo tema</button>
-        <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary">⭱ Importa da file</button>
+        <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary"><i data-lucide="upload"></i> Importa da file</button>
       </div>
 
       <div id="theme-list" class="theme-list"></div>
@@ -2445,7 +2457,7 @@
   <div id="modal-admin-rbac" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>👥 Utenti &amp; Permessi</h2>
+        <h2><i data-lucide="users"></i> Utenti &amp; Permessi</h2>
         <button type="button" id="btn-close-admin-rbac" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2492,7 +2504,7 @@
             <div class="form-group flex-1">
               <label class="form-label">Database consentiti (clicca per selezionare):</label>
               <div id="grant-dbs-pills" class="pill-multiselect-container">
-                <button type="button" class="pill-option active" data-value="">🌐 Tutti i DB</button>
+                <button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutti i DB</button>
               </div>
               <input type="hidden" id="grant-dbs" value="">
             </div>
@@ -2526,13 +2538,13 @@
           <div class="form-group">
             <label class="form-label">Connessioni consentite per l'API key (clicca sulle pill per selezionare):</label>
             <div id="apikey-scope-pills" class="pill-multiselect-container">
-              <button type="button" class="pill-option active" data-value="">🌐 Tutte le connessioni concesse</button>
+              <button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutte le connessioni concesse</button>
             </div>
             <input type="hidden" id="apikey-scope" value="">
           </div>
 
           <div class="admin-form-actions">
-            <button type="submit" class="btn btn-sm btn-primary">🔑 Genera API Key</button>
+            <button type="submit" class="btn btn-sm btn-primary"><i data-lucide="key"></i> Genera API Key</button>
           </div>
         </form>
         <div id="apikey-new" class="apikey-new hidden"></div>
@@ -2545,7 +2557,7 @@
   <div id="modal-pending" class="overlay hidden">
     <div class="modal modal-lg">
       <div class="modal-header">
-        <h2>⏳ Query in Sospeso</h2>
+        <h2><i data-lucide="hourglass"></i> Query in Sospeso</h2>
         <button type="button" id="btn-close-pending-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
@@ -2553,11 +2565,11 @@
 
       <div class="catalog-toolbar pending-toolbar">
         <div class="pending-search-wrap">
-          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="🔍 Cerca per testo query, db, collezione o stato...">
+          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="Cerca per testo query, db, collezione o stato...">
         </div>
         <div class="pending-toolbar-btns">
           <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>
-          <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger">🗑 Pulisci TUTTE</button>
+          <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger"><i data-lucide="trash-2"></i> Pulisci TUTTE</button>
         </div>
       </div>
       <div id="pending-queries-list" class="catalog-list-container"></div>
@@ -2567,19 +2579,19 @@
   <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
       <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
         <button type="button" id="mobile-nav-conns" class="mobile-nav-item">
-          <span class="nav-icon">🌐</span>
+          <span class="nav-icon"><i data-lucide="globe"></i></span>
           <span class="nav-label">Connessioni</span>
         </button>
         <button type="button" id="mobile-nav-dbs" class="mobile-nav-item">
-          <span class="nav-icon">🗄️</span>
+          <span class="nav-icon"><i data-lucide="database"></i></span>
           <span class="nav-label">Database</span>
         </button>
         <button type="button" id="mobile-nav-query" class="mobile-nav-item">
-          <span class="nav-icon">⚡</span>
+          <span class="nav-icon"><i data-lucide="zap"></i></span>
           <span class="nav-label">Query Engine</span>
         </button>
         <button type="button" id="mobile-nav-health" class="mobile-nav-item">
-          <span class="nav-icon">💓</span>
+          <span class="nav-icon"><i data-lucide="activity"></i></span>
           <span class="nav-label">Salute</span>
         </button>
       </nav>

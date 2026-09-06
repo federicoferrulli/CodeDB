@@ -33,9 +33,10 @@ class EntitlementProvider {
 /* --- Community / self-host --------------------------------------------------- */
 
 class LocalEntitlementProvider extends EntitlementProvider {
-  constructor(store) {
+  constructor(store, env = process.env) {
     super();
     this.store = store;
+    this.env = { ...env };
     this.name = 'local';
   }
 
@@ -44,8 +45,8 @@ class LocalEntitlementProvider extends EntitlementProvider {
    * riavvio riallinea email e password se sono cambiate.
    */
   async bootstrap() {
-    const email = String(process.env.CODEDB_OWNER_EMAIL || '').trim();
-    const password = String(process.env.CODEDB_OWNER_PASSWORD || '');
+    const email = String(this.env.CODEDB_OWNER_EMAIL || '').trim();
+    const password = String(this.env.CODEDB_OWNER_PASSWORD || '');
     if (!email || !password) {
       throw new Error(
         'CODEDB_RBAC=on con provider "local" richiede CODEDB_OWNER_EMAIL e CODEDB_OWNER_PASSWORD: ' +
@@ -63,7 +64,7 @@ class LocalEntitlementProvider extends EntitlementProvider {
   }
 
   async getLimits() {
-    const raw = parseInt(process.env.CODEDB_MAX_SUBUSERS, 10);
+    const raw = parseInt(this.env.CODEDB_MAX_SUBUSERS, 10);
     return {
       plan: 'self-hosted',
       maxSubUsers: Number.isFinite(raw) && raw >= 0 ? raw : Infinity,
@@ -75,12 +76,12 @@ class LocalEntitlementProvider extends EntitlementProvider {
 /* --- SaaS: client del sistema di billing esterno ------------------------------ */
 
 class ExternalEntitlementProvider extends EntitlementProvider {
-  constructor(store) {
+  constructor(store, env = process.env) {
     super();
     this.store = store;
     this.name = 'external';
-    this.baseUrl = String(process.env.CODEDB_BILLING_URL || '').replace(/\/+$/, '');
-    this.apiKey = String(process.env.CODEDB_BILLING_KEY || '');
+    this.baseUrl = String(env.CODEDB_BILLING_URL || '').replace(/\/+$/, '');
+    this.apiKey = String(env.CODEDB_BILLING_KEY || '');
   }
 
   async bootstrap() {
@@ -91,11 +92,11 @@ class ExternalEntitlementProvider extends EntitlementProvider {
   }
 }
 
-function createEntitlementProvider(store) {
-  const kind = String(process.env.CODEDB_ENTITLEMENT || 'local').trim().toLowerCase();
-  if (kind === 'external') return new ExternalEntitlementProvider(store);
+function createEntitlementProvider(store, env = process.env) {
+  const kind = String(env.CODEDB_ENTITLEMENT || 'local').trim().toLowerCase();
+  if (kind === 'external') return new ExternalEntitlementProvider(store, env);
   if (kind !== 'local') throw new Error(`CODEDB_ENTITLEMENT non valido: "${kind}" (valori ammessi: local, external).`);
-  return new LocalEntitlementProvider(store);
+  return new LocalEntitlementProvider(store, env);
 }
 
 module.exports = {

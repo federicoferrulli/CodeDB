@@ -1,6 +1,6 @@
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave } from './utils.js';
+import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, lucideIconHtml as ICO } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
@@ -61,11 +61,11 @@ function connMenu(e, conn) {
   e.preventDefault();
   e.stopPropagation();
   showContextMenu(e.clientX, e.clientY, [
-    { label: '▶ Apri in nuovo tab', action: () => openConn(conn) },
-    { label: '⚡ Testa connessione', action: () => testConn(conn) },
+    { icona: 'play', label: 'Apri in nuovo tab', action: () => openConn(conn) },
+    { icona: 'zap', label: 'Testa connessione', action: () => testConn(conn) },
     '---',
-    { label: '✎ Modifica…', action: () => startEditConn(conn.name) },
-    { label: '🗑 Elimina…', danger: true, action: () => deleteConn(conn) },
+    { icona: 'square-pen', label: 'Modifica…', action: () => startEditConn(conn.name) },
+    { icona: 'trash-2', label: 'Elimina…', danger: true, action: () => deleteConn(conn) },
   ]);
 }
 
@@ -132,7 +132,8 @@ function renderConnTree() {
     const head = document.createElement('div');
     head.className = 'node-label folder-label';
     const isCollapsed = query ? false : collapsed.has(folder);
-    head.textContent = `${isCollapsed ? '▸' : '▾'} 📁 ${folder}`;
+    head.innerHTML = `${ICO(isCollapsed ? 'chevron-right' : 'chevron-down')}${ICO(isCollapsed ? 'folder' : 'folder-open')}<span>${esc(folder)}</span>`;
+    refreshLucideIcons(head);
 
     const sub = document.createElement('ul');
     sub.classList.toggle('hidden', isCollapsed);

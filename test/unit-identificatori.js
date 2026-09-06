@@ -287,7 +287,7 @@ module.exports = (async () => {
       ['split/join sul carattere di quotatura', /\.split\(quote\)\.join\(/],
     ];
     const colpevoli = [];
-    const file = ['db', 'backup', 'mcp', 'auth', 'public/js']
+    const file = ['db', 'backup', 'mcp', 'auth', 'public/js', 'server']
       .flatMap((d) => fileDaLeggere(path.join(radice, d)))
       .concat([path.join(radice, 'server.js')]);
 

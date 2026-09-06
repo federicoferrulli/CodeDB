@@ -148,7 +148,8 @@ async function eseguiPianoImport(plan, { adapter, signal = null, onProgress = ()
   let stagingStarted = false;
   let targetMayBeMutated = false;
   const phase = async (name, fn) => {
-    annullata(signal);
+    // Il recupero deve terminare anche quando l'utente annulla la promozione.
+    if (name !== 'rollback') annullata(signal);
     onProgress({ phase: name, status: 'in_corso', fingerprint: plan.fingerprint });
     const result = await fn();
     onProgress({ phase: name, status: 'completata', fingerprint: plan.fingerprint });
@@ -178,8 +179,10 @@ async function eseguiPianoImport(plan, { adapter, signal = null, onProgress = ()
       err.verification = staged || null;
       throw err;
     }
-    targetMayBeMutated = true;
-    await phase('promozione', () => adapter.promote(plan, staging, recovery));
+    await phase('promozione', () => {
+      targetMayBeMutated = true;
+      return adapter.promote(plan, staging, recovery);
+    });
     const final = await phase('verifica_finale', () => adapter.verify(plan, 'destinazione', staging));
     if (!final || final.ok !== true || final.schemaObjects === false) {
       const err = new Error(
@@ -205,6 +208,7 @@ async function eseguiPianoImport(plan, { adapter, signal = null, onProgress = ()
       });
     }
     try {
+      if (typeof adapter.setSignal === 'function') adapter.setSignal(null);
       await phase('rollback', () => adapter.restore(plan, recovery, staging, err));
       return congela({
         status: 'ripristinato_dopo_errore', fingerprint: plan.fingerprint,

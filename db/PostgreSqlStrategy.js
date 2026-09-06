@@ -1,5 +1,7 @@
 'use strict';
 
+const { assertImportOutcomeKnown } = require('./importFailure');
+
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const { EJSON } = require('bson');
@@ -362,8 +364,8 @@ function columnSql(c) {
  * ------------------------------------------------------------------------- */
 
 class PostgreSqlStrategy extends DbStrategy {
-  constructor() {
-    super();
+  constructor(options = {}) {
+    super(options);
     this.pool = null;
     this._config = null;
     // Metadati di colonna (tipo + SRID delle geometriche) per schema.tabella:
@@ -748,7 +750,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const sql = ks ? ks.sql
       : `SELECT ${selectList} FROM ${table}${whereSql}${orderSql} LIMIT $${nFiltro + 1} OFFSET $${nFiltro + 2}`;
     const params = ks ? ks.params : [...whereParams, limit, skip];
-    const ms = DbStrategy.queryTimeoutMs();
+    const ms = DbStrategy.queryTimeoutMs(this.env);
     const opHandle = payload && payload.opHandle;
 
     // Se la richiesta ha un opHandle (griglia con runId) o un timeout attivo,
@@ -791,7 +793,7 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const columns = res.fields ? res.fields.map((f) => f.name) : [];
     // Budget di byte: vedi la nota corrispondente in MySqlStrategy.
-    const capped = DbStrategy.truncateBySize(rows);
+    const capped = DbStrategy.truncateBySize(rows, DbStrategy.maxResultBytes(this.env));
     const docs = capped.rows.map((r) => {
       const doc = { ...r, _id: this.makeId(r, pk, columns) };
       return serializeRow(doc, sel.colonne);
@@ -820,7 +822,7 @@ class PostgreSqlStrategy extends DbStrategy {
   // sembra un difetto del conteggio e non del filtro.
   async countWithTimeout(table, whereSql, whereParams = []) {
     const pool = this.requirePool();
-    const ms = DbStrategy.countTimeoutMs();
+    const ms = DbStrategy.countTimeoutMs(this.env);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -843,7 +845,7 @@ class PostgreSqlStrategy extends DbStrategy {
   // c'è un runId da annullare, sono letture brevi avviate da un pannello.
   async queryConTimeout(sql, params) {
     const pool = this.requirePool();
-    const ms = DbStrategy.queryTimeoutMs();
+    const ms = DbStrategy.queryTimeoutMs(this.env);
     if (ms <= 0) return pool.query(sql, params);
     const client = await pool.connect();
     try {
@@ -877,7 +879,7 @@ class PostgreSqlStrategy extends DbStrategy {
     // configurabile degli altri tetti dell'interfaccia
     // (`DbStrategy.aggregateTimeoutMs`, env CODEDB_AGGREGATE_TIMEOUT_MS);
     // <= 0 disattiva il limite.
-    const ms = DbStrategy.aggregateTimeoutMs();
+    const ms = DbStrategy.aggregateTimeoutMs(this.env);
     const client = await pool.connect();
     // SQL Raw: la query la scrive l'utente, quindi puo' qualificare gli schemi
     // come vuole. I nomi NON qualificati devono pero' risolversi nello schema
@@ -959,7 +961,7 @@ class PostgreSqlStrategy extends DbStrategy {
    */
   async executeWriteBatch(db, statements) {
     const pool = this.requirePool();
-    const ms = DbStrategy.aggregateTimeoutMs();
+    const ms = DbStrategy.aggregateTimeoutMs(this.env);
     return eseguiBatchScritture(statements, {
       apri: () => pool.connect(),
       begin: (client) => client.query('BEGIN'),
@@ -1005,7 +1007,9 @@ class PostgreSqlStrategy extends DbStrategy {
               wait_event,
               backend_type,
               application_name,
-              backend_start,
+              -- Il driver converte timestamptz in Date perdendo i microsecondi:
+              -- l'identità confrontata prima del kill deve restare esatta.
+              backend_start::text AS backend_start,
               -- Il dato che rende il pannello una risposta invece di un
               -- elenco: chi tiene il lock che questa sessione sta aspettando.
               -- Senza, si termina la vittima e non cambia niente.
@@ -1770,6 +1774,7 @@ class PostgreSqlStrategy extends DbStrategy {
           await pool.query(sql, valori);
           inserted += 1;
         } catch (err) {
+          assertImportOutcomeKnown(err);
           if (errors.length < 10) errors.push(`Riga ${p.i + 1}: ${(err && err.message) || err}`);
         }
       }
@@ -1782,7 +1787,8 @@ class PostgreSqlStrategy extends DbStrategy {
           const { sql, valori } = sqlPerGruppo(cols, blocco.map((p) => p.values));
           await pool.query(sql, valori);
           inserted += blocco.length;
-        } catch {
+        } catch (err) {
+          assertImportOutcomeKnown(err);
           await inserisciSingole(blocco);
         }
       }

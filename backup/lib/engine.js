@@ -399,6 +399,12 @@ async function mysqlSchemaObjects(conn, db) {
   const mysql = require('mysql2');
   const qdb = myQid(db);
   const out = { views: [], routines: [], triggers: [], events: [] };
+  const requireDdl = (ddl, name) => {
+    if (typeof ddl !== 'string' || !ddl.trim()) {
+      throw new Error(`Definizione SQL di "${name}" non disponibile: verifica i permessi SHOW CREATE prima di esportare.`);
+    }
+    return ddl;
+  };
 
   const [views] = await conn.query(
     `SELECT TABLE_NAME AS name FROM information_schema.TABLES
@@ -407,7 +413,7 @@ async function mysqlSchemaObjects(conn, db) {
   );
   for (const v of views) {
     const [[row]] = await conn.query(`SHOW CREATE VIEW ${qdb}.${myQid(v.name)}`);
-    if (row && row['Create View']) out.views.push({ name: v.name, ddl: String(row['Create View']) });
+    out.views.push({ name: v.name, ddl: requireDdl(row && row['Create View'], v.name) });
   }
 
   const [routines] = await conn.query(
@@ -419,7 +425,7 @@ async function mysqlSchemaObjects(conn, db) {
     const tipo = String(r.type).toUpperCase() === 'FUNCTION' ? 'FUNCTION' : 'PROCEDURE';
     const [[row]] = await conn.query(`SHOW CREATE ${tipo} ${qdb}.${myQid(r.name)}`);
     const ddl = row && (row[`Create ${tipo === 'FUNCTION' ? 'Function' : 'Procedure'}`]);
-    if (ddl) out.routines.push({ name: r.name, type: tipo, ddl: String(ddl) });
+    out.routines.push({ name: r.name, type: tipo, ddl: requireDdl(ddl, r.name) });
   }
 
   const [triggers] = await conn.query(
@@ -429,25 +435,21 @@ async function mysqlSchemaObjects(conn, db) {
   );
   for (const t of triggers) {
     const [[row]] = await conn.query(`SHOW CREATE TRIGGER ${qdb}.${myQid(t.name)}`);
-    if (row && row['SQL Original Statement']) {
-      out.triggers.push({ name: t.name, table: t.onTable, ddl: String(row['SQL Original Statement']) });
-    }
+    out.triggers.push({ name: t.name, table: t.onTable,
+      ddl: requireDdl(row && row['SQL Original Statement'], t.name) });
   }
 
-  // Gli eventi esistono solo se lo scheduler è compilato: su alcune varianti
-  // (e su MariaDB con feature disattivate) la tabella non è interrogabile, e
-  // non è un motivo per far fallire un backup.
-  try {
-    const [events] = await conn.query(
+  // Anche con scheduler spento le definizioni degli eventi fanno parte del DB.
+  // Se il catalogo non è leggibile non possiamo dichiarare completo il backup.
+  const [events] = await conn.query(
       `SELECT EVENT_NAME AS name FROM information_schema.EVENTS
         WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME`,
       [db],
     );
-    for (const e of events) {
-      const [[row]] = await conn.query(`SHOW CREATE EVENT ${qdb}.${myQid(e.name)}`);
-      if (row && row['Create Event']) out.events.push({ name: e.name, ddl: String(row['Create Event']) });
-    }
-  } catch { /* scheduler eventi non disponibile: nessun evento da salvare */ }
+  for (const e of events) {
+    const [[row]] = await conn.query(`SHOW CREATE EVENT ${qdb}.${myQid(e.name)}`);
+    out.events.push({ name: e.name, ddl: requireDdl(row && row['Create Event'], e.name) });
+  }
 
   return out;
 }

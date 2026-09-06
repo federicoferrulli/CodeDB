@@ -1,57 +1,57 @@
 'use strict';
 
-import { $ } from './utils.js';
+import { $, refreshLucideIcons } from './utils.js';
 import { runQuery, exportQueryResults } from './query-tab.js';
 
 // Libreria di Preset e Template pronti all'uso
 export const PRESETS = [
   {
-    name: '🐬 MySQL: Multi-table JOIN',
+    name: 'MySQL: Multi-table JOIN',
     engine: 'mysql',
     code: `-- Query MySQL Multi-Table JOIN\nSELECT \n  u.id AS user_id,\n  u.name,\n  u.email,\n  o.id AS order_id,\n  o.total_amount\nFROM users u\nJOIN orders o ON u.id = o.user_id\nWHERE u.status = 'active'\nLIMIT 50;`
   },
   {
-    name: '🐬 MySQL: Temporal GROUP BY',
+    name: 'MySQL: Temporal GROUP BY',
     engine: 'mysql',
     code: `-- Aggregazione Temporale MySQL\nSELECT \n  DATE(created_at) AS order_date,\n  COUNT(*) AS total_orders,\n  SUM(total_amount) AS revenue\nFROM orders\nWHERE created_at >= '2026-01-01'\nGROUP BY DATE(created_at)\nORDER BY order_date DESC;`
   },
   {
-    name: '🐬 MySQL: Window Functions',
+    name: 'MySQL: Window Functions',
     engine: 'mysql',
     code: `-- Ranking & Window Functions MySQL\nSELECT \n  name,\n  department,\n  salary,\n  DENSE_RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS salary_rank\nFROM employees;`
   },
   {
-    name: '🍃 MongoDB: Pipeline $lookup (JOIN)',
+    name: 'MongoDB: Pipeline $lookup (JOIN)',
     engine: 'mongodb',
     code: `[\n  {\n    "$lookup": {\n      "from": "orders",\n      "localField": "_id",\n      "foreignField": "user_id",\n      "as": "user_orders"\n    }\n  },\n  {\n    "$limit": 20\n  }\n]`
   },
   {
-    name: '🍃 MongoDB: $unwind & $group',
+    name: 'MongoDB: $unwind & $group',
     engine: 'mongodb',
     code: `[\n  {\n    "$unwind": "$items"\n  },\n  {\n    "$group": {\n      "_id": "$items.category",\n      "total_sales": { "$sum": "$items.price" },\n      "count": { "$sum": 1 }\n    }\n  },\n  {\n    "$sort": { "total_sales": -1 }\n  }\n]`
   },
   {
-    name: '🍃 MongoDB: $facet Multi-Pipeline',
+    name: 'MongoDB: $facet Multi-Pipeline',
     engine: 'mongodb',
     code: `[\n  {\n    "$facet": {\n      "total_stats": [\n        { "$count": "total_documents" }\n      ],\n      "recent_docs": [\n        { "$sort": { "created_at": -1 } },\n        { "$limit": 5 }\n      ]\n    }\n  }\n]`
   },
   {
-    name: '🔀 Cross-DB: Virtual JOIN (MySQL ➔ MongoDB)',
+    name: 'Cross-DB: Virtual JOIN (MySQL → MongoDB)',
     engine: 'crossdb',
     code: `{\n  "virtualJoin": {\n    "sourceA": {\n      "dbType": "mysql",\n      "db": "shop",\n      "table": "orders",\n      "query": "SELECT id, user_id, total_amount FROM orders LIMIT 50"\n    },\n    "sourceB": {\n      "dbType": "mongodb",\n      "db": "crm",\n      "collection": "customers",\n      "foreignKey": "_id"\n    },\n    "on": {\n      "leftKey": "user_id",\n      "rightKey": "_id"\n    },\n    "as": "customer_details"\n  }\n}`
   },
   {
-    name: '🐘 PostgreSQL: Ricerca Semantica Vector (pgvector)',
+    name: 'PostgreSQL: Ricerca Semantica Vector (pgvector)',
     engine: 'postgresql',
     code: `-- Ricerca Semantica con pgvector (Cosine Similarity)\n-- Prerequisito nel DB: CREATE EXTENSION IF NOT EXISTS vector;\nSELECT \n  id,\n  title,\n  content,\n  1 - (embedding <=> '[0.12, -0.34, 0.56, 0.78]') AS similarity\nFROM documents\nORDER BY embedding <=> '[0.12, -0.34, 0.56, 0.78]'\nLIMIT 10;`
   },
   {
-    name: '🐘 PostgreSQL: Full-Text Search (tsvector & tsquery)',
+    name: 'PostgreSQL: Full-Text Search (tsvector & tsquery)',
     engine: 'postgresql',
     code: `-- Ricerca Testuale Full-Text Search PostgreSQL\nSELECT \n  id,\n  title,\n  ts_rank(to_tsvector('italian', body), to_tsquery('italian', 'ricerca & semantica')) AS rank\nFROM articles\nWHERE to_tsvector('italian', body) @@ to_tsquery('italian', 'ricerca & semantica')\nORDER BY rank DESC;`
   },
   {
-    name: '🐘 PostgreSQL: Operazioni JSONB',
+    name: 'PostgreSQL: Operazioni JSONB',
     engine: 'postgresql',
     code: `-- Query ed Operatori su Colonne JSONB in PostgreSQL\nSELECT \n  id,\n  payload->>'status' AS status,\n  payload->'user'->>'email' AS email\nFROM events\nWHERE payload @> '{"type": "user_signup"}'\nLIMIT 50;`
   }
@@ -87,7 +87,7 @@ export function openSnippetModal() {
     modal.className = 'overlay';
     modal.innerHTML = `
       <div class="modal wide">
-        <h2>📚 Libreria Snippet & Template Query</h2>
+        <h2><i data-lucide="library"></i> Libreria Snippet & Template Query</h2>
         <p class="subtitle">Seleziona un preset o inserisci parametri per la tua query</p>
 
         <div style="display: flex; gap: 12px; margin-bottom: 12px;">
@@ -110,6 +110,7 @@ export function openSnippetModal() {
         </div>
       </div>
     `;
+    refreshLucideIcons(modal);
     document.body.appendChild(modal);
 
     const select = modal.querySelector('#snippet-preset-select');

@@ -54,6 +54,9 @@ function createImportUploadRegistry({
   }
 
   return {
+    close() {
+      for (const key of uploads.keys()) discard(key);
+    },
     start(ownerId, actorId = null) {
       purge();
       if (uploads.size >= maxActive) throw new Error('Troppi caricamenti di import contemporanei.');

@@ -51,9 +51,9 @@ const DbStrategy = require('./DbStrategy');
  * pagina di griglia che impiega più di trenta secondi è quasi sempre un
  * problema, un `$group` su una collection enorme no. */
 const TEMPI = {
-  query: () => DbStrategy.queryTimeoutMs(),
-  aggregate: () => DbStrategy.aggregateTimeoutMs(),
-  count: () => DbStrategy.countTimeoutMs(),
+  query: env => DbStrategy.queryTimeoutMs(env),
+  aggregate: env => DbStrategy.aggregateTimeoutMs(env),
+  count: env => DbStrategy.countTimeoutMs(env),
 };
 
 /* Il margine minimo, quando un quarto del tetto sarebbe troppo poco. */
@@ -118,7 +118,7 @@ function soggetto(metodo) {
  */
 function conTettoDiTempo(bersaglio, metodo, args, spec, graziaMinima) {
   const esecuzione = Promise.resolve(bersaglio[metodo].apply(bersaglio, args));
-  const ms = TEMPI[spec.tempo]();
+  const ms = TEMPI[spec.tempo](bersaglio.env);
   if (ms <= 0) return esecuzione;
 
   // L'adattatore può dichiarare che questa esecuzione non va fermata. È il caso
@@ -158,7 +158,7 @@ function conTettoDiTempo(bersaglio, metodo, args, spec, graziaMinima) {
  * l'adattatore. Se l'adattatore li ha già rispettati questo passaggio non
  * cambia nulla: taglia solo ciò che eccede.
  */
-function conTettiSulRisultato(esito, payload, spec) {
+function conTettiSulRisultato(esito, payload, spec, env) {
   if (!esito || !spec.righe) return esito;
   const righe = esito[spec.righe];
   if (!Array.isArray(righe)) return esito;
@@ -175,7 +175,7 @@ function conTettiSulRisultato(esito, payload, spec) {
   // Il tetto sulle righe non basta: poche righe con BLOB o testi lunghi pesano
   // quanto decine di migliaia di documenti piccoli, e il risultato viene poi
   // serializzato in EJSON e messo su socket.
-  const perByte = DbStrategy.truncateBySize(tagliate);
+  const perByte = DbStrategy.truncateBySize(tagliate, DbStrategy.maxResultBytes(env));
   if (perByte.truncated) { tagliate = perByte.rows; troncato = true; }
 
   if (tagliate === righe && troncato === !!esito[spec.troncato]) return esito;
@@ -202,7 +202,7 @@ function conTetti(strategia, opzioni = {}) {
       const spec = LETTURE[prop];
       return async function conTettiApplicati(...args) {
         const esito = await conTettoDiTempo(bersaglio, prop, args, spec, graziaMinima);
-        return conTettiSulRisultato(esito, args[2] || {}, spec);
+        return conTettiSulRisultato(esito, args[2] || {}, spec, bersaglio.env);
       };
     },
     set(bersaglio, prop, valore) {

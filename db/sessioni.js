@@ -324,7 +324,7 @@ function normalizzaPostgres(rows, opts = {}) {
 
     out.push(sessione({
       id: r.pid,
-      identita: r.backend_start == null ? null : `postgres-backend:${new Date(r.backend_start).toISOString()}`,
+      identita: r.backend_start == null ? null : `postgres-backend:${r.backend_start instanceof Date ? r.backend_start.toISOString() : r.backend_start}`,
       utente: testo(r.usename),
       host,
       db: testo(r.datname),

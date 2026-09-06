@@ -18,7 +18,7 @@ import { MODI, payloadFiltro } from './filtro-rapido.js';
 // tre viste (vedi la nota in testa a griglia.js).
 import {
   capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga,
-  SOGLIA_VIRTUALE,
+  SOGLIA_VIRTUALE, altezzaRigaGriglia,
 } from './griglia.js';
 import { chiudiCaricamento, congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 
@@ -721,7 +721,7 @@ function buildRow(doc, rowIdx, canSelect) {
     if (rel) {
       td.classList.add('fk-cella');
       if (rel.origine !== VINCOLO) td.classList.add('fk-ipotesi');
-      td.title = `${text}\n🔗 ${rel.tabella}.${rel.colonna}`;
+      td.title = `${text}\nCollegata a ${rel.tabella}.${rel.colonna}`;
     }
     tr.appendChild(td);
   });
@@ -941,11 +941,15 @@ function renderVirtualized(preserveScroll, savedScroll, canSelect) {
     const sample = Math.min(state.docs.length, 60);
     for (let i = 0; i < sample; i++) tbody.appendChild(buildRow(state.docs[i], i, canSelect));
     const firstRow = tbody.querySelector('tr');
-    const rowH = firstRow ? Math.round(firstRow.getBoundingClientRect().height) : 28;
+    // Misurata dal DOM vero, con il token come RIPIEGO e non come costante
+    // inventata: il `28` scritto qui non aveva alcun rapporto con l'altezza che
+    // il CSS produceva davvero.
+    const rowH = firstRow ? Math.round(firstRow.getBoundingClientRect().height)
+      : altezzaRigaGriglia(grid);
     const headCells = [...$('#grid thead tr').children];
     const widths = headCells.map((th) => Math.ceil(th.getBoundingClientRect().width));
     const totalWidth = widths.reduce((a, b) => a + b, 0);
-    vctx = { rowH: rowH || 28, widths, totalWidth, start: 0, end: 0 };
+    vctx = { rowH: rowH || altezzaRigaGriglia(grid), widths, totalWidth, start: 0, end: 0 };
     // Congela: larghezze esplicite + table-layout fixed (box-sizing border-box
     // via .virtual in CSS, così width == larghezza misurata coi bordi).
     applyFrozenWidths($('#grid thead tr'));
@@ -1104,7 +1108,7 @@ function maybeLoadMore() {
   if (hasExactTotal() && state.docs.length >= state.total) { state.exhausted = true; return; }
   const wrap = $('.grid-wrap');
   if (!wrap) return;
-  const margin = (vctx ? vctx.rowH : 32) * OVERSCAN;
+  const margin = (vctx ? vctx.rowH : altezzaRigaGriglia($('#grid'))) * OVERSCAN;
   if (wrap.scrollTop + wrap.clientHeight >= wrap.scrollHeight - margin) fetchMore();
 }
 

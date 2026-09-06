@@ -35,12 +35,12 @@ export const TRAGUARDI = [
   {
     id: 'query',
     etichetta: 'Esegui una query',
-    aiuto: 'Vista ⚡ Query & Aggregate: SQL, pipeline MQL o sintassi mongosh. Su MongoDB anche SELECT tradotte.',
+    aiuto: 'Vista Query & Aggregate: SQL, pipeline MQL o sintassi mongosh. Su MongoDB anche SELECT tradotte.',
   },
   {
     id: 'grafico',
     etichetta: 'Disegna un grafico dai risultati',
-    aiuto: 'Nei risultati della query, scheda Grafici: scegli categoria e misura, oppure parti da 💡 Suggeriti.',
+    aiuto: 'Nei risultati della query, scheda Grafici: scegli categoria e misura, oppure parti dai grafici suggeriti.',
   },
   {
     id: 'backup',
@@ -76,13 +76,13 @@ export const NOVITA = [
     punti: [
       'Split-View: più tabelle o collezioni affiancate nello stesso spazio di lavoro. Si trascina una scheda sul bordo per aprire una nuova area, i separatori si spostano senza scatti e ogni area si può rinominare.',
       'Schede in anteprima come in VS Code: un clic apre la tabella in via provvisoria, il doppio clic la fissa. Sfogliare il database non riempie più la barra delle schede.',
-      'Chiavi esterne visibili in griglia: 🔗 dove il vincolo è dichiarato, ≈ dove è solo un\'ipotesi. Al doppio clic sulla cella un pannello scorre da destra con la riga riferita e l\'elenco cercabile da cui scegliere un altro valore, senza uscire dalla modifica.',
+      'Chiavi esterne visibili in griglia: un anello dove il vincolo è dichiarato, ≈ dove è solo un\'ipotesi. Al doppio clic sulla cella un pannello scorre da destra con la riga riferita e l\'elenco cercabile da cui scegliere un altro valore, senza uscire dalla modifica.',
       'IntelliSense che conosce lo schema: dopo FROM le tabelle o le collezioni, dopo un alias le sole colonne di quella tabella, dopo db. le collezioni e i metodi, dopo $ gli operatori. Le proposte seguono il dialetto del motore in uso e i nomi vengono inseriti già quotati dove serve (niente più FROM diego.Prova che su PostgreSQL cerca diego.prova). Ctrl+Spazio apre l\'elenco a richiesta.',
-      'JSON/BSON: Ctrl+Shift+F formatta e Ctrl+Shift+M minifica nell\'editor ⚡ e nelle modali di inserimento e modifica, con gli errori segnalati mentre si scrive su riga e colonna cliccabili. Il formattatore rispetta i numeri alla lettera: un intero oltre i 53 bit non viene arrotondato.',
+      'JSON/BSON: Ctrl+Shift+F formatta e Ctrl+Shift+M minifica nell\'editor delle query e nelle modali di inserimento e modifica, con gli errori segnalati mentre si scrive su riga e colonna cliccabili. Il formattatore rispetta i numeri alla lettera: un intero oltre i 53 bit non viene arrotondato.',
       'Script SQL e Mongo eseguiti istruzione per istruzione, con pausa, ripresa, stop all\'errore e avanzamento in tempo reale: un caricamento lungo non è più una scatola chiusa.',
-      'Cronologia dedicata della tab ⚡: le query eseguite restano a portata di mano e si rilanciano con un clic.',
-      'Scheda 🗺 Mappa nei risultati della query, che compare da sola quando le righe contengono geometrie — anche dentro sottodocumenti o array.',
-      'Grafico della selezione: 📈 nel menu contestuale della griglia disegna al volo le celle selezionate, scegliendo da sé l\'asse e le serie.',
+      'Cronologia dedicata della tab Query & Aggregate: le query eseguite restano a portata di mano e si rilanciano con un clic.',
+      'Scheda Mappa nei risultati della query, che compare da sola quando le righe contengono geometrie — anche dentro sottodocumenti o array.',
+      'Grafico della selezione: la voce «Grafico della selezione» nel menu contestuale della griglia disegna al volo le celle selezionate, scegliendo da sé l\'asse e le serie.',
       'Interfaccia che non si blocca più sui grandi risultati: statistiche della selezione e preparazione dei grafici passano su un altro thread oltre le 50.000 celle.',
     ],
   },

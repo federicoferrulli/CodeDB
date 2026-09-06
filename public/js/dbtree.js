@@ -80,16 +80,16 @@ export function renderDbTree(databases) {
       showContextMenu(e.clientX, e.clientY, [
         // Utile soprattutto sui database vuoti, dove non c'è alcuna collection
         // da aprire e quindi nessun modo di raggiungere il Query Engine.
-        { label: `⚡ Query & Aggregate su questo ${dbWord()}`, action: () => openDbTab(db.name) },
+        { icona: 'zap', label: `Query & Aggregate su questo ${dbWord()}`, action: () => openDbTab(db.name) },
         '---',
         { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
-        { label: `✎ Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
+        { icona: 'square-pen', label: `Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
         { label: '⟳ Aggiorna elenco', action: refreshDbTree },
         '---',
         ...dbExportImportMenuItems(db.name),
         '---',
-        { label: `🗑 Elimina ${dbWord()}…`, danger: true, action: () => dropDb(db.name) },
+        { icona: 'trash-2', label: `Elimina ${dbWord()}…`, danger: true, action: () => dropDb(db.name) },
       ]);
     });
 
@@ -127,7 +127,7 @@ export function renderCollectionsList(dbName, container, collections) {
     const query = document.createElement('button');
     query.type = 'button';
     query.className = 'node-empty-action';
-    query.textContent = `⚡ Apri Query & Aggregate`;
+    query.textContent = 'Apri Query & Aggregate';
     query.title = `Esegui query sul ${dbWord()} "${dbName}" senza aprire una ${collWord()}`;
     query.addEventListener('click', (e) => { e.stopPropagation(); openDbTab(dbName); });
     li.appendChild(query);
@@ -186,17 +186,17 @@ export function renderCollectionsList(dbName, container, collections) {
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
         { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name) },
-        { label: '🔲 Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
+        { icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
         // Stando già dentro un'area affiancata, la voce sopra aggiunge un
         // pannello lì: questa è l'unico modo di aprirne una seconda.
-        { label: '🔲 Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
-        { label: `ℹ Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
+        { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
+        { icona: 'info', label: `Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
         { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
         '---',
         ...exportImportMenuItems(dbName, coll.name),
         '---',
-        { label: `✎ Rinomina ${collWord()}…`, action: () => renameColl(dbName, coll.name) },
-        { label: `🗑 Elimina ${collWord()}…`, danger: true, action: () => dropColl(dbName, coll.name) },
+        { icona: 'square-pen', label: `Rinomina ${collWord()}…`, action: () => renameColl(dbName, coll.name) },
+        { icona: 'trash-2', label: `Elimina ${collWord()}…`, danger: true, action: () => dropColl(dbName, coll.name) },
       ]);
     });
     li.appendChild(label);

@@ -103,6 +103,10 @@ node test/e2e-tetto-scrittura.js # Test che il tetto MORDA su un server vero (My
 node test/unit-script-results.js # Test deposito su file dei risultati di uno script
 node test/e2e-tocco-griglia.js# Test gesto tattile + scorrimento automatico (Chromium, eventi touch nativi)
 node test/e2e-avvio-ui.js     # Test che la UI si carichi senza errori JS (catena degli init*)
+node test/e2e-altezza-riga.js # Test che l'altezza di riga usata dal JS sia quella resa dal CSS
+node test/e2e-contrasto-viste.js # Test del contrasto del testo RESO, nelle 5 viste e nei 2 temi
+node test/e2e-maniglie-tocco.js # Test che le maniglie di ridimensionamento rispondano al dito
+node test/e2e-icone-uniformi.js # Test che le icone siano quelle dell'app e vengano disegnate
 node test/unit-identificatori.js # Test della regola unica per quotare gli identificatori
 node test/unit-tetti.js       # Test dei tetti imposti dalla giuntura (adattatore finto)
 node test/unit-tabella-autorizzazioni.js # Test che la tabella del Proxy copra tutti i metodi
@@ -580,6 +584,46 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   disegno della **singola riga** resta della vista, perché è ciò che cambia
   davvero fra loro. Una capacità scritta male è un **errore**, non un'opzione
   ignorata.
+* **Una sola riga per le tab della collection e per quelle della vista
+  (`.tabs-row`)**: erano due barre piene alte 51px l'una, sovrapposte. La
+  seconda era vuota nei suoi primi **641px** (misurati a 1600px di larghezza):
+  `.view-tabs` aveva ancora il `margin-left: auto` con cui stava a destra della
+  breadcrumb, e quando la breadcrumb e' stata rimossa nessuno ha ripreso quello
+  spazio. Le due cose sono complementari — quale tabella si guarda e come la si
+  guarda — e ora stanno sulla stessa riga, con i coll-tab elastici a riempire
+  cio' che era vuoto. La riga si nasconde con `#coll-tab-bar.hidden`, che **e'
+  gia'** la condizione «nessun coll-tab aperto»: tenerne una seconda in
+  JavaScript vorrebbe dire poterle far divergere.
+* **Le griglie di dati sono una sola anche nello STILE**: `griglia.js` era gia'
+  il modulo comune del disegno, ma lo stile era rimasto in **quattro** blocchi
+  indipendenti (`#grid`, `.pane-grid`, `.query-table`, `#query-result-table`) e
+  aveva divergiuto su tutto cio' che si vede — monospazio a 0.82rem con celle da
+  10px nella vista Dati, proporzionale a 12px con celle da 6px nella tab ⚡ — con
+  i colori per tipo scritti **due volte byte per byte** e **mai** per la tab ⚡.
+  Li' la classe del tipo stava inoltre sul `td` invece che su uno `<span>`
+  figlio, quindi le regole `td .type-*` non la raggiungevano affatto: gli stessi
+  valori dello stesso database erano una pillola verde da una parte e testo nudo
+  dall'altra. `.type-bool` e' `inline-flex`, e `display: inline-flex` su un `td`
+  toglierebbe la cella dalla tabella: la forma DOM doveva allinearsi, non il CSS
+  piegarsi. Provato da `test/e2e-altezza-riga.js`, che confronta lo stile
+  **calcolato** e non le classi — con la classe sul posto sbagliato le classi
+  c'erano tutte.
+* **L'altezza di riga ha UNA fonte (`--grid-row-h`, `altezzaRigaGriglia`)**: la
+  finestra virtuale non misura, moltiplica un'altezza di riga per le righe che
+  non disegna — e da quel prodotto escono gli spaziatori, cioe' la lunghezza
+  della barra di scorrimento e la posizione di ogni riga. Quel numero stava
+  pero' in **quattro** posti che non si parlavano: `QUERY_ROW_H = 36` nella tab
+  ⚡, `ALTEZZA_RIGA_RIQUADRO = 34` nella Split-View, un `28` di ripiego in
+  `grid.js`, e il valore vero prodotto dal CSS, che non coincideva con nessuno
+  dei tre. Il difetto non si vede leggendo il codice, perche' ogni copia e'
+  coerente con se' stessa. Ora il token e' anche cio' che il CSS **impone** al
+  `tr`, e i due non possono divergere perche' sono lo stesso valore. Perche' la
+  riga renda davvero l'altezza dichiarata nessun figlio in linea deve superare
+  la casella di riga: la checkbox della colonna di selezione era `inline`,
+  quindi stava sulla linea di base e si portava dietro lo spazio del discendente
+  — 32px al posto di 30, cioe' 6.000px di scarto su 3.000 righe. La densita' e'
+  scesa da 42px a 30px per riga: da 17 a 26 righe visibili su una finestra da
+  950px.
 * **Le pagine obsolete non arrivano alla griglia (`coerenza-richieste.js`)**: la
   query iniziale, il caricamento incrementale e il conteggio disaccoppiato sono
   tre richieste asincrone sullo stesso stato, e quale delle due letture in volo
@@ -829,6 +873,76 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
 * **Grafico della selezione (`cellgrafico.js` / `cell-chart.js`)**: Voce 📈 del menu contestuale della griglia (e pulsante nel pannello 📊) che disegna le celle selezionate in una finestra ECharts. Lo strato puro `cell-chart.js` deduce dalla selezione l'asse X (data → categoria → ordinale di riga `#`), una serie per colonna numerica e il raggruppamento — acceso solo se i valori dell'asse si ripetono davvero.
 * **Pannello di riferimento delle chiavi esterne (`fk-vista.js` / `fk-relazioni.js`)**: le colonne collegate portano un indicatore in griglia (🔗 vincolo dichiarato, ≈ ipotesi) e, al doppio clic, un pulsante che fa scorrere da destra un pannello con la riga riferita e l'elenco cercabile da cui scegliere un altro valore. Non è una modale: la cella resta in modifica. I dati arrivano da `collection:relations` (FK della sola tabella aperta, mirata — non `db:schema`) e `collection:find` con un **filtro strutturato** (la stessa via della griglia). Il metodo separato `relatedRows` non esiste più: era un metodo a sé *dichiaratamente* perché sui motori SQL il filtro era un frammento grezzo interpolato, e tolta la causa è rientrato nel metodo comune — 202 righe in meno e un metodo in meno nell'interfaccia delle strategie. Lo strato puro `fk-relazioni.js` normalizza i descrittori delle tre sorgenti e sceglie dai dati la colonna-etichetta dell'elenco.
 * **Monitor Sessioni (`sessions.js` / `db/sessioni.js`)**: Gestione sessioni DB attive con diagnosi automatica dei lock ("chi blocca chi") ed annullamento/kill sicuro.
+* **Il gesto di trascinare una maniglia sta in un posto solo (`maniglia.js`)**:
+  c'erano tre ridimensionatori scritti tre volte, e solo quello della Split-View
+  era stato portato a Pointer Events. Gli altri due — le maniglie orizzontali
+  (barra connessioni, albero dei database, Schema Browser della tab ⚡) e il
+  separatore fra editor e risultati — ascoltavano `mousedown`/`mousemove`, e un
+  evento di mouse **non arriva da un dito ne' da una penna**: su un dispositivo
+  tattile quelle maniglie si vedevano, mostravano il cursore giusto e non
+  facevano nulla, senza alcun messaggio. Mancava anche `setPointerCapture`,
+  quindi un trascinamento veloce che usciva dalla maniglia perdeva gli eventi.
+  Nel modulo c'e' il **gesto** (quale pulsante conta, la cattura, la classe
+  `dragging`, la fine anche per annullamento); che cosa il gesto significhi —
+  una larghezza, un'altezza, delle quote — resta del chiamante, che e' dove i
+  tre divergono davvero. Il separatore verticale della tab ⚡ aveva inoltre un
+  difetto di aritmetica: scriveva **entrambe** le altezze mentre i due pannelli
+  hanno un `min-height`, quindi appena uno lo incontrava la sua altezza non
+  veniva piu' applicata e l'altra continuava a crescere — misurato, 1296px di
+  contenuto in un contenitore da 810, cioe' 486px di risultati fuori dalla
+  vista. Ora se ne scrive **una sola** e l'altro pannello e' `flex: 1`: la somma
+  non puo' sbagliare per costruzione. Provato da `test/e2e-maniglie-tocco.js`
+  con eventi di puntatore di tipo `touch`.
+* **L'accento e' due token, non uno (`--accent` e `--accent-fg`)**: lo stesso
+  indaco #6366f1 faceva sia da riempimento sotto testo bianco sia da testo su
+  fondo scuro, e un solo valore non puo' servire entrambi — misurato: 4.47:1 col
+  bianco sopra (sotto la soglia 4.5) e fra 3.87 e 4.36:1 come testo (sotto
+  anche quella). Scurirlo migliora il primo caso e peggiora il secondo. E' la
+  stessa ragione per cui esistevano gia' `--on-accent` e `--on-accent-soft`.
+  Tre token erano inoltre **usati senza essere mai definiti**: `--bg-hover`
+  (senza ripiego, quindi la proprieta' era invalida e l'hover del selettore
+  «Cerca / Condizione» non dipingeva nulla), `--panel-bg` (col ripiego cablato
+  `#1b2129`, cioe' la palette Ctrl+P era una scatola blu notte anche sul tema
+  chiaro) e `--accent-bg`. L'intestazione della griglia usava infine
+  `--fg-muted`, che e' il token del **disabilitato**: 2.36:1 sul tema scuro e
+  2.33:1 su quello chiaro, sotto perfino la soglia 3:1 del testo grande.
+  `test/e2e-contrasto-viste.js` misura il RESO — quale colore finisce sopra
+  quale superficie — e non le coppie di token dichiarate, che e' cio' che
+  `unit-tema.js` gia' prova e che non poteva vedere nessuno di questi casi.
+* **L'intestazione della griglia non e' maiuscola**: porta il **nome vero**
+  della colonna, che e' un dato e non un'etichetta. `text-transform: uppercase`
+  lo falsificava, e su PostgreSQL un identificatore fra virgolette e' sensibile
+  alle maiuscole: la colonna «Prova» si leggeva «PROVA» e ricopiarla in una
+  query dava «column "prova" does not exist». L'unico posto in cui il nome
+  esatto si dovrebbe poter leggere lo stava riscrivendo.
+* **Le icone dell'interfaccia sono UNA famiglia (Lucide), non due**: convivevano
+  il sistema dell'applicazione (`js/lucide.min.js`, gia' usato in settantaquattro
+  punti del markup) e un centinaio di emoji sparse fra `index.html`, le stringhe
+  JavaScript e perfino il `content` di uno pseudo-elemento CSS. Un'emoji non e'
+  un'icona: cambia forma e larghezza da un sistema all'altro — quindi i comandi
+  di una stessa barra non si allineano — non eredita `currentColor`, quindi non
+  segue il tema, e un lettore di schermo la PRONUNCIA, cosi' che il nome
+  accessibile di «Elimina» era «cestino Elimina». L'icona di una voce di menu e'
+  ora un CAMPO (`showContextMenu` accetta `icona`) invece di un carattere in
+  testa all'etichetta, ed e' marcata `aria-hidden`; le voci senza icona restano
+  allineate a quelle che ce l'hanno. Dove un elemento non ci puo' stare — un
+  `<option>`, un attributo `title` — il glifo si TOGLIE invece di essere
+  sostituito, perche' li' il browser rende testo puro. L'indicatore delle chiavi
+  esterne resta uno pseudo-elemento (la griglia e' virtualizzata: un nodo in piu'
+  per cella si sente) ma l'icona ci arriva come **maschera** colorata da
+  `currentColor`: un `background-image` non seguirebbe il tema. Tre eccezioni
+  dichiarate: il `©` dell'attribuzione OpenStreetMap e' un obbligo della licenza
+  delle tile, i commenti restano liberi di NOMINARE un simbolo, e i pittogrammi
+  di stato che finiscono in `textContent` sono stati tolti e non convertiti.
+  Sbagliare qui e' **silenzioso** in due modi — un nome di icona inesistente
+  lascia l'elemento vuoto, e un `<i data-lucide>` inserito con `innerHTML` senza
+  `refreshLucideIcons` pure — quindi `test/e2e-icone-uniformi.js` controlla
+  entrambi: nel browser che nessun nome sia sconosciuto e nessuna icona resti da
+  disegnare, e staticamente che ogni modulo che EMETTE `data-lucide` chiami anche
+  il disegno, perche' i rami che riempiono un pannello a modale gia' aperta (il
+  catalogo dei backup, l'elenco dei temi) una prova senza database non li
+  raggiunge. `openModal` disegna le icone della modale che apre, cosi' i dodici
+  chiamanti non devono ricordarsene.
 * **Temi (`theme.js` / `theme-colori.js` / `tokens.css`)**: Temi chiaro, scuro e personalizzati gestiti via CSS Custom Properties, applicati istantaneamente via script inline per evitare FOUC. **Nessuna modale sta più sopra una sfocatura a schermo intero**: `.overlay` — la classe che OGNI modale dell'app eredita — applicava `backdrop-filter: blur(12px)` all'intero viewport. Una correzione precedente l'aveva già tolta dalle quattro modali che si ridipingono di continuo (i due editor su mappa, l'anteprima del tema, il grafico della selezione), ragionando che altrove fosse innocua perché "dove si compone in GPU la sfocatura è di fatto gratis" — vero, misurato a 60 fps identici con e senza, col puntatore in movimento su un grafico vero. Ma quella misura provava solo il caso già accelerato: avviando Chromium con `--disable-gpu` (la condizione reale di una VM, di un desktop remoto, o di una GPU/driver in blocklist) **aprire una modale qualsiasi** sopra uno sfondo applicativo vero — non ridipingerla, la sola apertura — costava un fotogramma da **~200 ms**, misurato anche su una modale del tutto statica come "📊 Statistiche selezione". La classe di difetto non era "quali modali ridisegnano continuamente" ma "ogni modale paga la sfocatura una volta, all'apertura", quindi la correzione è ora sulla regola di base: `.overlay` non ha più `backdrop-filter`, e le quattro modali che si ridipingono di continuo non hanno più bisogno di una regola propria (resta solo `transition: none`, perché i loro ridisegni non devono innescare la `transition: all` della base). Lo sfondo scuro resta un po' più opaco (`--scrim-strong` al posto di `--scrim`) per compensare la sfocatura che non c'è più.
 
 ---

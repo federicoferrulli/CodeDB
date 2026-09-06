@@ -77,6 +77,19 @@
 
   --touch-target-min: 44px;
 
+  /* Altezza di una riga di griglia.
+     Non e' una preferenza estetica: la finestra virtuale di `griglia.js`
+     calcola gli spaziatori moltiplicando questa altezza per le righe non
+     disegnate, quindi il numero deve essere UNO e valere per il CSS e per il
+     JavaScript insieme. Era invece cablato in tre punti diversi del
+     JavaScript (`QUERY_ROW_H = 36`, `ALTEZZA_RIGA_RIQUADRO = 34`, un `28` di
+     ripiego in `grid.js`) mentre il CSS ne produceva un quarto: cambiare il
+     padding di una cella spostava l'altezza vera senza che nessuna delle
+     costanti se ne accorgesse, e la barra di scorrimento dichiarava una
+     lunghezza che non era quella del contenuto.
+     Il JavaScript la legge da qui con `altezzaRigaGriglia()`. */
+  --grid-row-h: 30px;
+
   --transition-fast:   120ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-slow:   300ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -184,8 +197,17 @@
      un solo `--on-accent` costringerebbe a sbagliarne uno dei due. */
   --on-accent-soft: #000000;
 
-  /* ── Accento — Indigo Violet ── */
-  --accent:       #6366f1;      /* Indaco elettrico — azioni primarie */
+  /* ── Accento — Indigo Violet ──
+     `--accent` e' un RIEMPIMENTO (il fondo di un bottone primario, sopra cui
+     sta `--on-accent`); `--accent-fg` e' lo stesso accento usato come TESTO o
+     come icona. Devono essere due token perche' un solo valore non puo' fare
+     entrambe le cose, ed e' misurato: l'indaco #6366f1 regge il bianco a
+     4.47:1 (sotto la soglia 4.5) e come testo su fondo scuro sta fra 3.87 e
+     4.36:1 (sotto anche quella). Scurirlo migliora il primo caso e peggiora il
+     secondo, schiarirlo il contrario. E' la stessa ragione per cui esistono
+     gia' `--on-accent` e `--on-accent-soft`. */
+  --accent:       #585aee;      /* Indaco elettrico — riempimenti primari (bianco sopra: 5.11:1) */
+  --accent-fg:    #818cf8;      /* Lo stesso accento come TESTO: 4.92–6.53:1 sulle superfici scure */
   --accent-2:     #4f46e5;      /* Indaco profondo — stato premuto */
   --accent-hover: #818cf8;      /* Indaco chiaro — hover */
   --accent-violet: #6366f1;
@@ -436,6 +458,10 @@
 
   /* ── Accento — indaco più profondo, per reggere sul bianco ── */
   --accent:       #4f46e5;
+  /* Sul bianco l'accento del tema chiaro regge gia' come testo (5.59–6.29:1):
+     qui i due ruoli coincidono, ed e' il token che lo DICHIARA invece di
+     lasciarlo capitare. */
+  --accent-fg:    #4f46e5;
   --accent-2:     #4338ca;
   --accent-hover: #6366f1;
   --accent-violet: #4f46e5;

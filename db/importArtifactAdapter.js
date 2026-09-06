@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const { preparaCollectionMongo } = require('./mongoCollectionOptions');
 const { runBackup } = require('../backup/lib/engine');
 const {
   runRestore, preflightChain, resolveChain, riqualificaDdl, cardinalitaDestinazione, restoreSchemaObjects,
@@ -100,23 +101,25 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
   async function applicaArtefatto(plan, db, { upsert = false } = {}) {
     abortIf(activeSignal);
     const artifact = plan.artifact;
-    const first = artifact.collections[0];
-    if (!(await exists(db)) && (type !== 'mongodb' || artifact.collections.length)) {
-      await strategy.createDatabase(db, type === 'mongodb' && first ? first.name : undefined);
+    if (type !== 'mongodb' && !(await exists(db))) {
+      await strategy.createDatabase(db);
     }
 
     // Prima si materializza TUTTO lo schema nello staging. Solo dopo che ogni
     // tabella e ogni identita sono compatibili puo partire la prima riga.
     for (const collection of artifact.collections) {
+      if (type === 'mongodb') {
+        const metadata = (artifact.objects && artifact.objects.collectionOptions || [])
+          .find((item) => item.name === collection.name);
+        await preparaCollectionMongo(strategy.client, db, collection.name, metadata && metadata.options || {}, { deferValidation: true });
+        continue;
+      }
       const present = (await strategy.listCollections(db)).some((c) => c.name === collection.name);
       if (present) continue;
-      if (type === 'mongodb') await strategy.createCollection(db, collection.name, {});
-      else {
-        if (!collection.ddl) throw new Error(`DDL di "${collection.name}" assente: impossibile creare la tabella.`);
-        await strategy.collectionAggregate(db, collection.name, {
-          pipeline: riqualificaDdl(collection.ddl, artifact.db, db, type),
-        });
-      }
+      if (!collection.ddl) throw new Error(`DDL di "${collection.name}" assente: impossibile creare la tabella.`);
+      await strategy.collectionAggregate(db, collection.name, {
+        pipeline: riqualificaDdl(collection.ddl, artifact.db, db, type),
+      });
     }
     for (const collection of artifact.collections) {
       abortIf(activeSignal);
@@ -306,9 +309,8 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
           session, backupDir: recovery.backupDir, targetDb: db,
           onlyCollections: null, drop: false, log, allowUnsafeSchema: false,
         });
-      } else if (type !== 'mongodb' || plan.collections.length) {
-        await strategy.createDatabase(db, type === 'mongodb' && plan.collections[0]
-          ? plan.collections[0].name : undefined);
+      } else if (type !== 'mongodb') {
+        await strategy.createDatabase(db);
       }
       return { db, retained: type !== 'postgresql' };
     },

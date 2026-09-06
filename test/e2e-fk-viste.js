@@ -268,7 +268,10 @@ const ok = (cond, etichetta, dettaglio = '') => {
     });
     ok(composta.testi[0] === '(T, A)' && composta.testi[1] === '(T, B)',
       'il selettore mostra tutte le componenti ordinate');
-    ok(composta.vincoli.length === 1 && composta.vincoli[0].startsWith('🔗 fk_composta: (azienda, cliente) → ')
+    // Il prefisso non e' piu' un'emoji: l'interfaccia usa le icone
+    // dell'applicazione (vedi e2e-icone-uniformi.js). Cio' che questo controllo
+    // prova e' che il vincolo sia UNO, con il suo nome e le coppie in ordine.
+    ok(composta.vincoli.length === 1 && composta.vincoli[0].startsWith('fk_composta: (azienda, cliente) → ')
       && composta.vincoli[0].includes('crm.clienti (tenant, codice)'),
       'Schema Browser: un solo vincolo con nome e coppie ordinate');
     ok(composta.abilitato, 'una seconda componente diversa abilita la scelta');
@@ -386,8 +389,8 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(reale.indicatori && reale.indicatori.aFk && !reale.indicatori.aIpotesi
       && reale.indicatori.bFk && reale.indicatori.bIpotesi,
     'Split-View: ogni riquadro distingue vincolo dichiarato ed euristica');
-    ok(reale.indicatori && reale.indicatori.aTitle.endsWith('🔗 clienti_a.id_a')
-      && reale.indicatori.bTitle.endsWith('🔗 fornitori_b.id_b'),
+    ok(reale.indicatori && reale.indicatori.aTitle.endsWith('Collegata a clienti_a.id_a')
+      && reale.indicatori.bTitle.endsWith('Collegata a fornitori_b.id_b'),
     'Split-View: gli indicatori appartengono alla relazione della propria connessione');
     ok(reale.titolo === 'anagrafiche_a.clienti_a.id_a',
       `Split-View: il pannello usa il bersaglio del riquadro A (${reale.titolo})`);
