@@ -2,8 +2,12 @@
 
 // CodeDB — operazioni. Stato e dipendenze appartengono alla singola istanza.
 const path = require('path');
+const crypto = require('crypto');
 const { createImportOperationRegistry } = require('../db/importOperations');
+const { creaDiario } = require('../db/diarioOperazioni');
 const { createImportUploadRegistry } = require('../db/importUploads');
+const { createArchivioUpload } = require('../db/uploadDisco');
+const { creaModuloArtefatti } = require('./http-artefatti');
 const { resolveBackupPath: confineBackupPath, backupRootFor } = require('../backup/lib/policy');
 const { pianoRinomina, improntaDatabase, confrontaStatoCorrente } = require('../db/rinominaSicura');
 const fs = require('fs');
@@ -15,7 +19,18 @@ const { runRestore } = require('../backup/lib/restore');
 function createModule({ config, identita }) {
   const BACKUP_ROOT = config.env.CODEDB_BACKUPS_DIR || path.join(config.rootDir, 'backups');
 
-  const importOperations = createImportOperationRegistry();
+  // Radice dei backup del tenant a cui appartiene il principal: con RBAC attivo
+  // ogni owner ha la propria (`tenants/<ownerId>`), come per connections.ini.
+  // Vedi backupRootFor in backup/lib/policy.js per il perché.
+  const backupRootOf = (principal) =>
+    backupRootFor(BACKUP_ROOT, principal && principal.ownerId, { rbac: config.rbacOn() });
+
+  // Diario durevole delle operazioni di import (Fase 4): sopravvive al riavvio
+  // e dichiara a esito incerto ciò che era in volo al crash.
+  const diarioImport = creaDiario({
+    radicePer: (ownerId) => path.join(backupRootOf({ ownerId }), 'import-diario'),
+  });
+  const importOperations = createImportOperationRegistry({ diario: diarioImport });
 
   const importUploads = createImportUploadRegistry({
     maxBytes: Number(config.env.CODEDB_MAX_IMPORT_BYTES) || 64 * 1024 * 1024,
@@ -24,11 +39,39 @@ function createModule({ config, identita }) {
     maxTotalBytes: Number(config.env.CODEDB_MAX_IMPORT_TOTAL_BYTES) || Number(config.env.CODEDB_MAX_IMPORT_BYTES) || 64 * 1024 * 1024,
   });
 
-  // Radice dei backup del tenant a cui appartiene il principal: con RBAC attivo
-  // ogni owner ha la propria (`tenants/<ownerId>`), come per connections.ini.
-  // Vedi backupRootFor in backup/lib/policy.js per il perché.
-  const backupRootOf = (principal) =>
-    backupRootFor(BACKUP_ROOT, principal && principal.ownerId, { rbac: config.rbacOn() });
+  // Data-plane HTTP degli artefatti (§7 del piano): i byte su disco stanno sotto
+  // la radice del tenant, nella stessa partizione dei backup. Il segreto dei
+  // ticket vive in chiaro solo in memoria: se non è configurato se ne genera
+  // uno effimero e un riavvio invalida i ticket precedenti — fail-closed, con
+  // ticket da cinque minuti è il comportamento sicuro, non un difetto.
+  const archivioUpload = createArchivioUpload({
+    radicePer: (ownerId) => path.join(backupRootOf({ ownerId }), 'artefatti'),
+    maxBytes: Number(config.env.CODEDB_ARTEFATTI_MAX_BYTES) || 10 * 1024 * 1024 * 1024,
+    maxChunkBytes: Number(config.env.CODEDB_ARTEFATTI_MAX_BLOCCO) || 4 * 1024 * 1024,
+  });
+  const artefatti = creaModuloArtefatti({
+    archivio: archivioUpload,
+    // Revoca: un ticket firmato scade ma non si revoca da solo. La revoca a
+    // caldo di CodeDB chiude i socket del soggetto, quindi un socket vivo di
+    // quell'attore E' la prova che l'accesso non e' stato revocato. Fuori
+    // dall'RBAC non c'e' revoca da onorare e non ci sono nemmeno soggetti
+    // distinti: il predicato lascia passare.
+    attoreAncoraValido: (attore) => {
+      if (!config.rbacOn()) return true;
+      return identita.soggettoConnesso(attore);
+    },
+    segreto: config.env.CODEDB_ARTEFATTI_SECRET || crypto.randomBytes(32).toString('hex'),
+    // Traccia di audit del data-plane: una riga JSON per evento di ciclo di
+    // vita, nella cartella del tenant. Mai ticket né segreti: `traccia`
+    // riceve solo risorsa, attore ed esito, e qui si scrive così com'è.
+    registraEvento: (evento) => {
+      try {
+        const dir = path.join(backupRootOf({ ownerId: evento.ownerId }), 'artefatti');
+        fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(path.join(dir, 'trasferimenti.log'), `${JSON.stringify(evento)}\n`, 'utf8');
+      } catch (_) { /* l'audit non ferma il trasferimento */ }
+    },
+  });
 
   // Confina un percorso indicato dal client dentro la radice del SUO tenant.
   const resolveBackupPath = (principal, raw, what) => confineBackupPath(raw, backupRootOf(principal), what);
@@ -163,6 +206,8 @@ function createModule({ config, identita }) {
   return {
     importOperations,
     importUploads,
+    archivioUpload,
+    artefatti,
     backupRootOf,
     resolveBackupPath,
     rinominaViaDump

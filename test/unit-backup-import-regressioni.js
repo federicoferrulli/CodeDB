@@ -270,7 +270,6 @@ const cases = [
   ['export interrotto se mancano indici e FK', async () => {
     let dataRead = false;
     const { context, notices } = frontend({ emit: async (event) => {
-      if (event === 'db:collections') return { collections: [{ name: 'clienti' }] };
       if (event === 'database:schema-objects') return { objects: {} };
       if (event === 'collection:ddl') return { ddl: 'CREATE TABLE clienti (id INT)' };
       if (event === 'collection:identity') return { identity: null };
@@ -278,7 +277,14 @@ const cases = [
       if (event === 'collection:export') { dataRead = true; throw new Error('lettura dati'); }
       throw new Error(event);
     } });
-    await vm.runInContext("exportDatabase('origine')", context);
+    // Quali oggetti si esportino lo dice ora il PIANO confermato, non una
+    // seconda lettura di `db:collections`: la barriera sui metadati è rimasta
+    // dov'era, e va provata dove ora vive il ciclo dei dati.
+    await vm.runInContext(
+      "exportWizard = { tabId: 'tab-a', db: 'origine', dbType: 'postgresql' };"
+      + "eseguiExportDatabase({ oggetti: [{ tipo: 'tabella', nome: 'clienti', struttura: true, dati: true }] })",
+      context,
+    );
     assert.strictEqual(dataRead, false, 'non si esportano dati dopo metadati persi');
     assert(notices.some((s) => s.includes('metadati negati')));
   }],

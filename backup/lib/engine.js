@@ -27,8 +27,11 @@ const { colonnaGenerata } = require('../../db/mysqlColonne');
 
 const fs = require('fs');
 const path = require('path');
-const { EJSON } = require('bson');
+// Tutte le scritture EJSON del motore passano dal codec fedele (`db/codecFedele`):
+// canonico in scrittura, mai relaxed distruttivo. Vedi il modulo per il perché.
+const { stringifyRiga, parseRiga, serializeConservativo } = require('../../db/codecFedele');
 const { ObjectId } = require('mongodb');
+const { classificaTopologia, leggiTopologia } = require('../../db/mongoTopologia');
 const {
   createFileSink, readLines, fileDelBackup, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
@@ -172,7 +175,7 @@ async function statoIdentitaDellaCatena(backupDir) {
       const stato = stati.get(file.collection);
       const righe = [];
       for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'layer identità'))) {
-        righe.push(EJSON.parse(line, { relaxed: false }));
+        righe.push(parseRiga(line));
       }
       if (file.kind === 'tombstones') applicaTombstone(stato, righe, file.identity);
       else for (const riga of righe) stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
@@ -193,7 +196,7 @@ async function identitaCorrenti(strategy, db, file) {
   for (;;) {
     const pagina = await strategy.collectionExport(db, file.collection, { format: 'json', skip, after, limit });
     for (const line of pagina.lines || []) {
-      const riga = EJSON.parse(line, { relaxed: false });
+      const riga = parseRiga(line);
       stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
     }
     skip += Number(pagina.count) || 0;
@@ -221,7 +224,7 @@ async function aggiungiTombstones({ strategy, db, base, groupDir, result, backup
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let digest;
     try {
-      for (const identita of rimossi) await sink.writeLine(EJSON.stringify(identita, { relaxed: false }));
+      for (const identita of rimossi) await sink.writeLine(stringifyRiga(identita));
       digest = await sink.close();
     } catch (err) {
       await sink.abort(err);
@@ -271,6 +274,12 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
   const files = [];
   const notes = [];
 
+  // Istante e modalità di lettura nel manifest (§5 del piano): il dump legge
+  // collection per collection con un cursore ordinario, quindi dichiara la
+  // topologia rilevata e l'assenza di snapshot globale invece di tacerle.
+  const coerenza = await leggiTopologia(client);
+  notes.push(coerenza.avviso);
+
   for (const coll of collections) {
     const collection = client.db(db).collection(coll);
     let filter = {};
@@ -297,7 +306,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     try {
       for await (const doc of cursor) {
         for (const column of Object.keys(doc)) columns.add(column);
-        await sink.writeLine(EJSON.stringify(doc, { relaxed: true }));
+        await sink.writeLine(stringifyRiga(doc));
         count += 1;
       }
       digest = await sink.close();
@@ -320,7 +329,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       const indexes = await collection.indexes();
       const relIdx = `indexes/${safeName(coll)}.json`;
       fs.mkdirSync(path.join(backupDir, 'indexes'), { recursive: true });
-      fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(EJSON.serialize(indexes, { relaxed: true }), null, 2), 'utf8');
+      fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(serializeConservativo(indexes), null, 2), 'utf8');
       files.push({ path: relIdx, collection: coll, kind: 'indexes', ...fileDigest(path.join(backupDir, relIdx)) });
     }
   }
@@ -357,13 +366,14 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
       fs.writeFileSync(
         path.join(backupDir, relOgg),
-        JSON.stringify(EJSON.serialize(oggetti, { relaxed: true }), null, 2), 'utf8',
+        JSON.stringify(serializeConservativo(oggetti), null, 2), 'utf8',
       );
       files.push({ path: relOgg, collection: null, kind: 'objects', ...fileDigest(path.join(backupDir, relOgg)) });
       log.info(`  Oggetti di schema: ${oggetti.views.length} view, ${oggetti.collectionOptions.length} collection con opzioni`);
     }
   }
-  return { files, notes };
+  const { avviso: _avviso, ...coerenzaManifest } = coerenza;
+  return { files, notes, coerenza: coerenzaManifest };
 }
 
 /* --- Dump MySQL ----------------------------------------------------------- */
@@ -703,7 +713,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // HEX() restituisce già una stringa esadecimale: va nel file così
           // com'è, e il restore la riconosce dal tipo della colonna di
           // destinazione (vedi mysqlGeoTargetColumns).
-          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          await sink.writeLine(stringifyRiga(row));
           count += 1;
         }
         digest = await sink.close();
@@ -755,7 +765,14 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
 
     await conn.query('COMMIT');
     inTransaction = false;
-    return { files, notes };
+    return {
+      files, notes,
+      coerenza: {
+        motore: 'mysql', snapshot: 'repeatable-read',
+        transazione: 'consistent-snapshot, read-only',
+        nota: 'Unica snapshot per schema e dati, con metadata lock fino al COMMIT.',
+      },
+    };
   } catch (err) {
     if (inTransaction) await conn.query('ROLLBACK').catch(() => {});
     throw err;
@@ -768,6 +785,38 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
 // in db/identificatori.js insieme a quella degli altri motori.
 function pgQid(name) {
   return quotaSempre(name, 'postgresql');
+}
+
+/**
+ * Una pagina di una tabella SENZA identità stabile, senza OFFSET.
+ *
+ * `ORDER BY ctid ... OFFSET n` rilegge dall'inizio a ogni pagina (costo
+ * quadratico) e, peggio, può saltare o duplicare righe: fra due query
+ * l'ordine fisico può cambiare e l'OFFSET conta posizioni, non righe. Il
+ * keyset su `ctid` — l'identificatore fisico di riga, sempre presente sulle
+ * tabelle base — riprende esattamente da dove si è fermato: `ctid > ultimo`.
+ *
+ * Vale dentro la snapshot REPEATABLE READ del dump, dove le versioni visibili
+ * non cambiano; non vale contro `VACUUM FULL`/`CLUSTER` concorrenti, che
+ * spostano fisicamente le righe (stesso limite di qualunque cursore).
+ * Funzione pura così la forma della query si prova senza database.
+ */
+function paginaSenzaChiave({ qualified, listaSelect, batch, sinceColumn = null, sinceParam = null, ultimoCtid = null }) {
+  const conds = [];
+  const params = [];
+  if (sinceParam) {
+    conds.push(`${pgQid(sinceColumn)} > $1`);
+    params.push(sinceParam);
+  }
+  // `(0,0)` precede qualunque riga reale (la prima è `(0,1)`): la prima pagina
+  // non ha bisogno di un ramo diverso, e ogni pagina riprende dall'ultima riga.
+  conds.push(`ctid > $${params.length + 1}`);
+  params.push(ultimoCtid || '(0,0)');
+  params.push(batch);
+  return {
+    sql: `SELECT ${listaSelect}, ctid AS __ctid FROM ${qualified} WHERE ${conds.join(' AND ')} ORDER BY ctid LIMIT $${params.length}`,
+    params,
+  };
 }
 
 /**
@@ -989,38 +1038,29 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         );
         if (!res.rows.length) break;
         for (const row of res.rows) {
-          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          await sink.writeLine(stringifyRiga(row));
           count += 1;
         }
         after = orderIdentity.map((c) => res.rows[res.rows.length - 1][c]);
         if (res.rows.length < BATCH) break;
       }
     } else {
-      // Nessuna PK: paginazione per OFFSET (tabelle senza chiave, presumibilmente
-      // piccole). ORDER BY ctid (identificatore fisico di riga, sempre presente
-      // sulle tabelle base) dà un ordine STABILE tra le pagine: senza, PostgreSQL
-      // non garantisce lo stesso ordine tra query e OFFSET potrebbe saltare o
-      // duplicare righe.
-      let offset = 0;
+      // Nessuna identità stabile: keyset su ctid, mai OFFSET. Vedi
+      // paginaSenzaChiave per il perché l'OFFSET qui perde o duplica righe.
+      let ultimoCtid = null;
       for (;;) {
-        const conds = [];
-        const params = [];
-        if (sinceParam) {
-          conds.push(`${pgQid(sinceColumn)} > $1`);
-          params.push(sinceParam);
-        }
-        const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-        params.push(BATCH, offset);
-        const res = await client.query(
-          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ctid LIMIT $${params.length - 1} OFFSET $${params.length}`,
-          params
-        );
+        const { sql, params } = paginaSenzaChiave({
+          qualified, listaSelect, batch: BATCH,
+          sinceColumn, sinceParam, ultimoCtid,
+        });
+        const res = await client.query(sql, params);
         if (!res.rows.length) break;
         for (const row of res.rows) {
-          await sink.writeLine(EJSON.stringify(row, { relaxed: true }));
+          ultimoCtid = row.__ctid;
+          delete row.__ctid;
+          await sink.writeLine(stringifyRiga(row));
           count += 1;
         }
-        offset += res.rows.length;
         if (res.rows.length < BATCH) break;
       }
     }
@@ -1075,7 +1115,14 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
 
     await client.query('COMMIT');
     inTransaction = false;
-    return { files, notes };
+    return {
+      files, notes,
+      coerenza: {
+        motore: 'postgresql', snapshot: 'repeatable-read',
+        transazione: 'read-only', lock: 'access-share',
+        nota: 'Unico client per metadati, schema e dati; lock prima della snapshot.',
+      },
+    };
   } catch (err) {
     if (inTransaction) await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -1155,6 +1202,10 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
       compress,
       startedAt,
       endedAt: new Date().toISOString(),
+      // Istante e modalità di lettura dichiarati (§5 del piano): il restore
+      // futuro e l'operatore non devono indovinarli. Assente nei manifest
+      // storici, che restano validi.
+      coerenza: result.coerenza || null,
       notes: result.notes,
       deletions: dichiarazioneCancellazioni(),
       files: result.files,
@@ -1178,4 +1229,4 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   return { backupDir, id, collections: dataFiles.length, totalDocs, totalBytes };
 }
 
-module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects };
+module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects, paginaSenzaChiave };

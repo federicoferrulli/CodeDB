@@ -342,6 +342,13 @@ const EVENT_CAPABILITY = {
   'collection:stats': 'read',
   'collection:ddl': 'read',
   'collection:identity': 'read',
+  // L'anteprima dell'export legge il catalogo del database: una lettura, e
+  // basta — nessuna riga, nessuna mutazione. La capability dell'ESECUZIONE è
+  // un'altra cosa e la dichiara il piano (`capability.ambito`).
+  'database:export:plan': 'read',
+  // La selezione di import descrive che cosa si scriverà nella destinazione:
+  // è il primo passo di un import, e ne condivide il permesso.
+  'database:import:selezione': 'manage',
   'database:import:upload:start': 'manage',
   'database:import:upload:chunk': 'manage',
   'database:import:upload:finish': 'manage',

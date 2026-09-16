@@ -11,8 +11,8 @@ module.exports = (async () => {
   const { registraEventi } = require('../server');
   const amministrativi = catalogoEventi().filter(e => e.famiglia === 'amministrativo');
   const policy = politiche();
-  await prova('tutti i 31 eventi amministrativi dichiarano audit o motivo', () => {
-    assert.strictEqual(amministrativi.length, 31);
+  await prova('tutti i 32 eventi amministrativi dichiarano audit o motivo', () => {
+    assert.strictEqual(amministrativi.length, 32);
     for (const { evento, handler } of amministrativi) {
       const voce = policy.EVENTI_AMMINISTRATIVI[evento];
       assert(voce && (voce.op || voce.tracciato === false && voce.motivo), evento);

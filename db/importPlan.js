@@ -1,30 +1,7 @@
 'use strict';
 
-const crypto = require('crypto');
+const { congela, sigilla, verificaImpronta } = require('./pianoComune');
 const { normalizzaExportDatabase, tipoDb } = require('./artefatti');
-
-function canonical(value) {
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value && typeof value === 'object') {
-    return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonical(value[key])]));
-  }
-  return value;
-}
-
-function fingerprint(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
-}
-
-function congela(value) {
-  if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value)) congela(child);
-  return Object.freeze(value);
-}
-
-function contenutoImpronta(plan) {
-  const { fingerprint: _fingerprint, ...rest } = plan;
-  return rest;
-}
 
 /** Costruisce e congela il contratto che anteprima ed esecuzione condividono. */
 function creaPianoImport({ artifact, expectedDbType, connection, targetDb, drop = false }) {
@@ -56,8 +33,7 @@ function creaPianoImport({ artifact, expectedDbType, connection, targetDb, drop 
     })),
     artifact: normalized,
   };
-  const plan = { ...body, fingerprint: fingerprint(body) };
-  return congela(plan);
+  return sigilla(body);
 }
 
 /** Piano immutabile per una catena di backup gia' descritta e validabile. */
@@ -80,13 +56,7 @@ function creaPianoRestore({ source, expectedDbType, connection, targetDb, drop =
       : { kind: 'staging-con-recupero', atomic: false, keepsRecovery: true },
     collections: source.collections || [], source,
   };
-  return congela({ ...body, fingerprint: fingerprint(body) });
-}
-
-function verificaImpronta(plan) {
-  if (!plan || plan.fingerprint !== fingerprint(contenutoImpronta(plan))) {
-    throw new Error('Il piano non coincide con la sua impronta: anteprima ed esecuzione sono divergenti.');
-  }
+  return sigilla(body);
 }
 
 /**

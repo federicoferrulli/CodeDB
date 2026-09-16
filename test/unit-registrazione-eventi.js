@@ -21,4 +21,4 @@ for (const e of eventi.filter(e => e.famiglia === 'amministrativo')) {
 }
 const dichiarati = Object.values(famiglie).flatMap(Object.keys);
 assert.strictEqual(new Set(dichiarati).size, dichiarati.length, 'Le famiglie non si sovrappongono');
-console.log('  OK   94 eventi: registrazione reale, compatibilità completa e famiglie disgiunte');
+console.log('  OK   97 eventi: registrazione reale, compatibilità completa e famiglie disgiunte');

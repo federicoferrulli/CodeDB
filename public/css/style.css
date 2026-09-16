@@ -235,9 +235,12 @@
   stroke-linecap: round; stroke-linejoin: round;
 }
 
-/* Controllo segmentato: due stati visibili insieme, quello attivo premuto. */
-.geomap-segmentato { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-alt); }
-.geomap-segmentato button {
+/* Controllo segmentato: due stati visibili insieme, quello attivo premuto.
+   `.segmented` e' il nome generico — il controllo non ha nulla di geografico, e
+   il wizard di export e' il terzo posto che ne ha bisogno. `.geomap-segmentato`
+   resta come alias per non toccare il markup della mappa. */
+.segmented, .geomap-segmentato { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-alt); }
+.segmented button, .geomap-segmentato button {
   display: inline-flex; align-items: center; gap: 6px;
   min-height: 32px; padding: 4px 12px;
   border: 1px solid transparent; border-radius: var(--radius-sm);
@@ -245,8 +248,8 @@
   font-size: 0.82rem; cursor: pointer;
   transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
 }
-.geomap-segmentato button:hover { background: var(--hover); color: var(--fg); }
-.geomap-segmentato button[aria-pressed="true"] {
+.segmented button:hover, .geomap-segmentato button:hover { background: var(--hover); color: var(--fg); }
+.segmented button[aria-pressed="true"], .geomap-segmentato button[aria-pressed="true"] {
   background: var(--accent-soft); border-color: var(--accent-line); color: var(--fg-bright);
 }
 /* Interruttore (sfondo mappa, pannello JSON): stessa forma dei bottoni della
@@ -8378,3 +8381,50 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 .palette-legenda.palette-richiami { color: var(--fg, #e6e6e6); opacity: .8; }
 
 .palette-stato { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+
+/* --- Wizard di export: albero degli oggetti ------------------------------ */
+/* Le due colonne sono indipendenti perche' «struttura» e «dati» sono due
+   decisioni diverse: esportare la DDL di una tabella senza le righe e' un caso
+   normale, non un mezzo errore. La riga di intestazione e' `sticky` perche'
+   senza, scorrendo cento tabelle, non si sa piu' quale spunta e' quale. */
+.dbexport-albero {
+  max-height: 46vh; overflow: auto;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.dbexport-riga {
+  display: grid; grid-template-columns: 1fr 5.5rem 5.5rem; align-items: center;
+  gap: 8px; padding: 4px 10px; font-size: 0.85rem;
+}
+.dbexport-riga + .dbexport-riga { border-top: 1px solid var(--border); }
+.dbexport-riga.intestazione {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--bg-1); color: var(--fg-dim);
+  font-size: 0.78rem; letter-spacing: 0.02em;
+}
+.dbexport-riga.gruppo { background: var(--bg-1); font-weight: 600; }
+.dbexport-riga > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dbexport-riga .dbexport-tipo { color: var(--fg-dim); font-size: 0.74rem; margin-left: 6px; }
+.dbexport-cella { display: flex; justify-content: center; }
+/* Una casella disabilitata dice PRIMA del clic che li' la spunta non ha senso
+   (una vista non porta righe), invece di accettare il clic e non fare nulla. */
+.dbexport-cella input:disabled { opacity: 0.35; cursor: not-allowed; }
+.dbexport-vuoto { padding: 14px 10px; color: var(--fg-dim); font-size: 0.85rem; }
+
+/* --- Conferma di un piano ------------------------------------------------ */
+.piano-voci { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 10px 0; font-size: 0.86rem; }
+.piano-voci dt { color: var(--fg-dim); }
+.piano-voci dd { margin: 0; color: var(--fg); }
+/* Gli avvisi non sono errori: descrivono una conseguenza che chi conferma deve
+   aver visto (righe orfane, vincoli non ricreabili). Stanno sopra il bottone. */
+.piano-avvisi {
+  margin: 10px 0 0; padding: 8px 10px 8px 26px;
+  border: 1px solid var(--warning-line); border-radius: var(--radius-md);
+  background: var(--warning-bg);
+  font-size: 0.82rem; color: var(--fg);
+}
+.piano-avvisi li + li { margin-top: 4px; }
+/* L'impronta e' l'identita' del piano: l'esecuzione rifiuta ciò che non
+   coincide, quindi va mostrata — non e' un dettaglio tecnico di troppo. */
+.piano-impronta { font-family: var(--mono, monospace); font-size: 0.72rem; word-break: break-all; }

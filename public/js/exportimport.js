@@ -9,6 +9,9 @@ import { descriviEsitoImport } from './import-status.js';
 import { preparaImportCsv } from './csv.js';
 import { eseguiInParalleloOrdinato } from './export-pool.js';
 import { importaBlocco } from './import-batch.js';
+import { creaStatoSelezione } from './export-selezione.js';
+import { confermaPiano } from './piano-anteprima.js';
+import { mappaNomi } from './import-mapping.js';
 
 // Export/import di collection e tabelle: l'export scarica il file a blocchi
 // (skip/limit) via `collection:export`, l'import invia batch di documenti o
@@ -356,6 +359,58 @@ export function initExportImport() {
     reader.readAsText(file);
   });
 
+  // --- Wizard di export di interi database -----------------------------------
+  $('#dbexport-cancel').addEventListener('click', () => {
+    exportWizard = null;
+    closeModal('#dbexport-overlay');
+  });
+  $('#dbexport-cerca').addEventListener('input', disegnaAlberoExport);
+  $('#dbexport-modalita').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-modalita]');
+    if (b && exportWizard) applicaModalitaExport(b.dataset.modalita);
+  });
+  $('#dbexport-albero').addEventListener('change', (e) => {
+    const casella = e.target.closest('input[data-id]');
+    if (!casella || !exportWizard) return;
+    try {
+      exportWizard.sel.imposta(casella.dataset.id, casella.dataset.colonna, casella.checked);
+    } catch (err) {
+      showError('#dbexport-error', err.message);
+      return;
+    }
+    showError('#dbexport-error', '');
+    // Toccare una casella rende la selezione personalizzata: tenere accesa
+    // «solo struttura» su una selezione che non lo è più sarebbe un'etichetta
+    // che mente, e il piano verrebbe costruito su quella.
+    if (exportWizard.modalita !== 'personalizzata') {
+      exportWizard.modalita = 'personalizzata';
+      for (const b of $('#dbexport-modalita').querySelectorAll('button')) {
+        b.setAttribute('aria-pressed', String(b.dataset.modalita === 'personalizzata'));
+      }
+    }
+    disegnaAlberoExport();
+  });
+  $('#dbexport-run').addEventListener('click', async () => {
+    if (!exportWizard) return;
+    const fine = iniziaCaricamento($('#dbexport-run'), 'Anteprima…');
+    let risposta;
+    try {
+      risposta = await pianoExportCorrente();
+    } catch (err) {
+      showError('#dbexport-error', err.message);
+      return;
+    } finally { fine(); }
+    closeModal('#dbexport-overlay');
+    // Ciò che si conferma è ciò che si esegue, e sono lo STESSO oggetto: il
+    // piano passa dal riepilogo all'esecuzione senza essere ricostruito.
+    if (!await confermaPiano(risposta.plan, { azione: 'Esporta' })) {
+      exportWizard = null;
+      return;
+    }
+    try { await eseguiExportDatabase(risposta.plan); }
+    finally { exportWizard = null; }
+  });
+
   // --- Import di interi database ---------------------------------------------
   $('#dbimport-cancel').addEventListener('click', () => {
     if (!dbImporting) {
@@ -474,26 +529,135 @@ function isSystemDb(name, dbType = state.dbType) {
   return (SYSTEM_DBS[dbType] || []).includes(String(name).toLowerCase());
 }
 
+/* --- Wizard di export: scelta del perimetro ------------------------------- */
+
+// Contesto vivo del wizard. `null` quando la modale è chiusa: ogni gestore lo
+// controlla, così un clic arrivato su una modale già chiusa non lavora su un
+// piano che non è più quello mostrato.
+let exportWizard = null;
+
+function disegnaAlberoExport() {
+  const w = exportWizard;
+  if (!w) return;
+  const visibili = new Set(w.sel.cerca($('#dbexport-cerca').value));
+  const righe = [`<div class="dbexport-riga intestazione"><span>Oggetto</span>`
+    + `<span class="dbexport-cella">Struttura</span><span class="dbexport-cella">Dati</span></div>`];
+  for (const o of w.oggetti) {
+    if (!visibili.has(o.id)) continue;
+    const casella = (colonna, attivo, spento) =>
+      `<span class="dbexport-cella"><input type="checkbox" data-id="${esc(o.id)}" data-colonna="${colonna}"`
+      + `${attivo ? ' checked' : ''}${spento ? ' disabled' : ''}`
+      + ` aria-label="${esc(o.nome)} — ${colonna}" /></span>`;
+    righe.push(
+      `<div class="dbexport-riga"><span>${esc(o.nome)}<span class="dbexport-tipo">${esc(o.tipo)}</span></span>`
+      + casella('struttura', w.sel.stato(o.id, 'struttura') === w.sel.STATI.TUTTO, false)
+      // Una vista o una routine non porta righe: la casella si DISABILITA, così
+      // lo dice prima del clic invece di accettarlo e non fare nulla.
+      + casella('dati', o.portaDati && w.sel.stato(o.id, 'dati') === w.sel.STATI.TUTTO, !o.portaDati)
+      + `</div>`
+    );
+  }
+  if (righe.length === 1) righe.push('<p class="dbexport-vuoto">Nessun oggetto corrisponde alla ricerca.</p>');
+  $('#dbexport-albero').innerHTML = righe.join('');
+  const r = w.sel.riepilogo();
+  $('#dbexport-riepilogo').textContent =
+    `${r.oggetti} oggetti · ${r.conStruttura} con struttura · ${r.conDati} con dati · ${r.esclusi.length} esclusi`;
+}
+
+function applicaModalitaExport(modalita) {
+  const w = exportWizard;
+  if (!w) return;
+  w.modalita = modalita;
+  for (const b of $('#dbexport-modalita').querySelectorAll('button')) {
+    b.setAttribute('aria-pressed', String(b.dataset.modalita === modalita));
+  }
+  // Le tre modalità globali IMPOSTANO la selezione e restano modificabili: se
+  // si tocca una casella si passa in «personalizzata», perché una modalità
+  // dichiarata che non descrive più la selezione è un'etichetta che mente.
+  if (modalita === 'struttura-e-dati') w.sel.selezionaTutto();
+  else if (modalita === 'solo-struttura') w.sel.soloStruttura();
+  else if (modalita === 'solo-dati') w.sel.soloDati();
+  disegnaAlberoExport();
+}
+
+/** Chiede al server il piano per la selezione corrente. */
+async function pianoExportCorrente() {
+  const w = exportWizard;
+  const risposta = await emit('database:export:plan', {
+    tabId: w.tabId, db: w.db,
+    modalita: w.modalita,
+    // Solo la modalità personalizzata porta una selezione: nelle altre tre il
+    // perimetro lo decide il piano, e mandargliela sarebbe dirgli due volte la
+    // stessa cosa con due voci che possono divergere.
+    selezione: w.modalita === 'personalizzata' ? w.sel.perPiano() : null,
+  });
+  return risposta;
+}
+
+/**
+ * Apre il wizard: il perimetro si sceglie e si VEDE prima di esportare.
+ *
+ * Il piano lo costruisce il server dal catalogo REALE del database — vincoli
+ * dichiarati, dipendenze di view, tabella di un trigger — e non dalle euristiche
+ * UML, che indovinano un legame dal nome di una colonna: qui un'ipotesi
+ * sbagliata non costa una freccia di troppo in un diagramma, costa una tabella
+ * esportata che nessuno ha chiesto o un perimetro che si crede chiuso e non lo è.
+ * Da lì arrivano anche le dipendenze aggiunte d'ufficio e i vincoli che non si
+ * potranno ricreare, che sono la conseguenza più facile da non vedere di una
+ * selezione parziale.
+ *
+ * Il controllo sui database di sistema resta anche qui per dare un messaggio
+ * subito, ma non è più l'unico: viveva SOLO nel browser, quindi chiunque
+ * parlasse direttamente col socket poteva chiedere `mysql` o `pg_catalog`.
+ */
 export async function exportDatabase(db) {
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
-  const isSql = isSqlType(dbType);
-  const entita = isSql ? 'tabelle' : 'collection';
   if (isSystemDb(db, dbType)) {
     toast(`"${db}" è un database di sistema: contiene metadati del server, non è esportabile.`, true);
     return;
   }
-  // Export di un intero database: decine di richieste in sequenza, quindi il tab
-  // d'origine va congelato qui (vedi nota in testa al modulo).
-  let collections;
+  let risposta;
   try {
-    // Solo collection/tabelle "vere": le view sono derivate.
-    collections = (await emit('db:collections', { tabId, db })).collections.filter((c) => c.type !== 'view');
+    exportWizard = { tabId, db, dbType, modalita: 'struttura-e-dati', sel: null, oggetti: [] };
+    risposta = await emit('database:export:plan', { tabId, db, modalita: 'struttura-e-dati' });
   } catch (err) {
+    exportWizard = null;
     toast(`Esportazione fallita: ${err.message}`, true);
     return;
   }
+  // Gli oggetti del wizard sono quelli del CATALOGO, non quelli del primo
+  // piano: il piano esclude ciò che non è selezionato, e un oggetto escluso
+  // deve restare visibile — altrimenti «solo struttura» farebbe sparire dalla
+  // lista tutto ciò che si voleva riaccendere.
+  const catalogo = risposta.catalogo || risposta.plan.oggetti;
+  exportWizard.oggetti = catalogo.map((o) => ({
+    id: o.id, tipo: o.tipo, nome: o.nome, portaDati: o.tipo === 'tabella' || o.tipo === 'collection',
+  }));
+  exportWizard.sel = creaStatoSelezione(exportWizard.oggetti);
+  $('#dbexport-subtitle').textContent =
+    `${db} · ${exportWizard.oggetti.length} oggetti nel catalogo (${dbType})`;
+  $('#dbexport-motore').textContent = risposta.motore && risposta.motore.backend === 'nativo'
+    ? `Motore: nativo (${risposta.motore.nativo.tool}).`
+    : `Motore: incorporato. ${(risposta.motore && risposta.motore.motivo) || ''}`;
+  $('#dbexport-cerca').value = '';
+  showError('#dbexport-error', '');
+  applicaModalitaExport('struttura-e-dati');
+  openModal('#dbexport-overlay');
+}
+
+/** Esegue l'export del perimetro confermato. */
+async function eseguiExportDatabase(plan) {
+  const { tabId, db, dbType } = exportWizard;
+  const isSql = isSqlType(dbType);
+  const entita = isSql ? 'tabelle' : 'collection';
+  // Che cosa si esporta lo dice il PIANO, non una seconda lettura del database:
+  // se le due liste potessero divergere, il file non conterrebbe ciò che è
+  // stato confermato — ed è esattamente ciò che l'impronta esiste per impedire.
+  const collections = plan.oggetti
+    .filter((o) => (o.tipo === 'tabella' || o.tipo === 'collection') && o.dati)
+    .map((o) => ({ name: o.nome }));
   // Il file viene assemblato come testo per non ri-parsare i blocchi EJSON.
   let parts = [];
   let exported = 0;
@@ -619,6 +783,8 @@ export function openDbImportModal() {
   $('#dbimport-progress-label').textContent = '';
   $('#dbimport-report').classList.add('hidden');
   $('#dbimport-report').innerHTML = '';
+  $('#dbimport-mapping').classList.add('hidden');
+  $('#dbimport-mapping').innerHTML = '';
   showError('#dbimport-error', '');
   $('#dbimport-run').disabled = false;
   openModal('#dbimport-overlay');
@@ -644,6 +810,45 @@ async function recuperaDbImport() {
     try { await monitorDbImport(dbImportOperationId); }
     finally { dbImporting = false; }
   }
+}
+
+/**
+ * Le collisioni di nome, prima di scrivere.
+ *
+ * Tre cose possono andare storte e sono tutte silenziose se nessuno le elenca:
+ * due oggetti diversi che finiscono sullo stesso nome, un nome che su
+ * PostgreSQL collide con uno esistente perché il motore abbassa gli
+ * identificatori non quotati (`Prova` e `prova` sono la stessa tabella), e un
+ * nome che nella destinazione esiste già. La terza la risolve la casella
+ * «elimina e ricrea», ma prima va VISTA.
+ *
+ * Non ferma l'import: sono conseguenze da conoscere, non errori.
+ */
+async function mostraMappingImport(ctx, target, plan) {
+  const pannello = $('#dbimport-mapping');
+  pannello.innerHTML = '';
+  pannello.classList.add('hidden');
+  let esistenti = [];
+  try {
+    esistenti = (await emit('db:collections', { tabId: ctx.tabId, db: target })).collections.map((c) => c.name);
+  } catch {
+    // La destinazione può non esistere ancora: è il caso normale di un import
+    // in un database nuovo, e non avere nulla con cui collidere non è un guasto.
+    esistenti = [];
+  }
+  const { avvisi } = mappaNomi({
+    sorgenti: plan.collections.map((c) => c.name),
+    esistenti,
+    motore: ctx.dbType,
+  });
+  if (!avvisi.length) return;
+  const testo = {
+    'collisione-sorgenti': (a) => `"${a.da}" e "${a.altro}" finirebbero entrambi su "${a.a}".`,
+    'fold-maiuscole': (a) => `"${a.a}" e "${a.esistente}" sono la stessa tabella su PostgreSQL (i nomi non quotati vengono abbassati).`,
+    'esiste-gia': (a) => `"${a.a}" esiste già nella destinazione.`,
+  };
+  pannello.innerHTML = avvisi.map((a) => `<li>${esc((testo[a.tipo] || (() => a.tipo))(a))}</li>`).join('');
+  pannello.classList.remove('hidden');
 }
 
 async function runDbImport() {
@@ -678,17 +883,18 @@ async function runDbImport() {
       tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target, drop, previewOnly: true,
     });
     const plan = preview.plan;
-    const identities = plan.collections.map((c) =>
-      `${c.name}: ${c.identity ? c.identity.columns.join(', ') : 'nessuna identità stabile'}`
-    ).join('\n');
-    const strategy = plan.promotion.atomic
-      ? 'swap atomico dello schema PostgreSQL'
-      : 'staging con copia full di recupero (promozione non atomica)';
-    if (!window.confirm(
-      `Import database\n\nConnessione: ${plan.connection}\nDestinazione: ${plan.targetDb}`
-      + `\nCollection/tabelle: ${plan.collections.length}\nIdentità:\n${identities}`
-      + `\nStrategia: ${strategy}\n\nProcedere?`
-    )) return;
+    // La selezione dichiara che cosa dell'archivio entra e con quale politica,
+    // e RIFIUTA qui ciò che non si può eseguire — fondere senza un'identità
+    // stabile, chiedere dati che l'archivio non contiene — invece di scoprirlo
+    // a metà import, quando la destinazione è già stata toccata.
+    await emit('database:import:selezione', {
+      tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target,
+    });
+    await mostraMappingImport(ctx, target, plan);
+    // Il riepilogo sostituisce un `window.confirm` con la stringa composta a
+    // mano qui: che cosa un piano dica sta ora in `riepilogo-piano.js`, uno
+    // solo per i tre piani, invece che in ogni punto di chiamata.
+    if (!await confermaPiano(plan, { azione: 'Importa' })) return;
     const started = await emit('database:import:start', {
       tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target, drop,
       expectedFingerprint: plan.fingerprint,

@@ -62,6 +62,23 @@ function createModule({ config, trasporto, audit, errori, dependencies }) {
    *
    * Le sessioni DB aperte dal socket vengono chiuse dal suo handler `disconnect`.
    */
+  /**
+   * Un socket di questo soggetto e' ancora aperto?
+   *
+   * E' la domanda «l'accesso e' ancora valido?» posta al meccanismo di revoca
+   * che esiste gia': `disconnettiSocketDi` e la ri-validazione periodica
+   * chiudono i socket revocati, quindi nessun socket vivo significa nessun
+   * accesso vivo. Serve al data-plane HTTP degli artefatti, dove il permesso
+   * viaggia in un ticket firmato che da solo saprebbe solo scadere.
+   */
+  function soggettoConnesso(userId) {
+    if (!userId) return false;
+    for (const s of trasporto.io.sockets.sockets.values()) {
+      if (s.principal && String(s.principal.id) === String(userId)) return true;
+    }
+    return false;
+  }
+
   function disconnettiSocketDi(userId, motivo) {
     if (!config.rbacOn() || !userId) return 0;
     let chiusi = 0;
@@ -340,6 +357,7 @@ function createModule({ config, trasporto, audit, errori, dependencies }) {
     get entitlements() { return entitlements; },
     requireStore,
     principalOf,
+    soggettoConnesso,
     disconnettiSocketDi,
     revocaAccessiConnessione,
     withConnectionAclLock,

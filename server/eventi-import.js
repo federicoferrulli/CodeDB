@@ -3,8 +3,42 @@
 // CodeDB — eventi-import. Stato e dipendenze appartengono alla singola istanza.
 const { normalizzaExportDatabase } = require('../db/artefatti');
 const { creaPianoImport } = require('../db/importPlan');
+const { leggiCatalogoExport } = require('../db/exportCatalogo');
+const { creaPianoExport } = require('../db/exportPlan');
+const { creaSelezioneImport } = require('../db/selezioneImport');
+const { backendDisponibile } = require('../backup/lib/nativi');
 const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
+const { canAdminTenant } = require('../auth/permissions');
 const path = require('path');
+
+/**
+ * L'inventario che `creaSelezioneImport` sa leggere, dall'artefatto normalizzato.
+ *
+ * Il formato `.codedb.json` elenca collection con `docs`, `ddl` e `identity`;
+ * l'inventario parla di oggetti con `haStruttura`/`haDati`. La traduzione sta
+ * qui, in un posto solo, perché è l'unico punto in cui le due forme si toccano.
+ */
+function inventarioDaArtefatto(artifact) {
+  return {
+    db: artifact.db,
+    dbType: artifact.dbType,
+    oggetti: (artifact.collections || []).map((c) => {
+      // Stessa forma dell'id del piano di export (`tipo:nome`): un id che non
+      // coincide col tipo che dichiara è un id che non si può incrociare.
+      const tipo = artifact.dbType === 'mongodb' ? 'collection' : 'tabella';
+      return {
+      id: `${tipo}:${c.name}`,
+      tipo,
+      nome: c.name,
+      // Su MongoDB non c'è DDL: la struttura è la collection stessa, che
+      // l'import materializza comunque — anche vuota.
+      haStruttura: artifact.dbType === 'mongodb' ? true : !!c.ddl,
+      haDati: Array.isArray(c.docs) && c.docs.length > 0,
+      identita: c.identity || null,
+      };
+    }),
+  };
+}
 
 function createModule({ operazioni, lock, identita, audit }) {
   function registra(socketContext, lifecycle) {
@@ -15,6 +49,91 @@ function createModule({ operazioni, lock, identita, audit }) {
       ok: true,
       artifact: normalizzaExportDatabase(payload.artifact, { expectedDbType: payload.expectedDbType }),
     }));
+
+    // Biglietto per il data-plane HTTP: il browser non può impostare header su
+    // un download, quindi la GET si autorizza con un ticket breve legato a una
+    // risorsa sola dentro il tenant di chi lo chiede. Non tocca alcun database
+    // e non esce mai dal tenant: per questo è amministrativo (tracciato, senza
+    // strategia) e non delegate (che pretenderebbe tabId e sessione).
+    //
+    // Ma il tenant non basta: un artefatto può contenere l'intero database, e
+    // un sottoutente con scope su due collection non deve scaricarlo aggirando
+    // i permessi per connessione. Il ticket lo emette solo chi amministra il
+    // tenant (owner, root o tenant-admin): gli altri usano i percorsi socket,
+    // dove ogni lettura passa dal proxy autorizzante.
+    lifecycle.amministrativo('artefatti:ticket', (payload, cb) => {
+      if (!canAdminTenant(socketContext.principal)) {
+        return cb({ ok: false, error: 'Permesso negato: il trasferimento di artefatti richiede l\u2019amministrazione del tenant.' });
+      }
+      const modulo = socketContext.artefatti || operazioni.artefatti;
+      return cb({
+        ok: true,
+        ticket: modulo.emettiTicket({
+          risorsa: payload && payload.risorsa,
+          attore: socketContext.principal.id,
+          ownerId: socketContext.principal.ownerId,
+        }),
+      });
+    });
+
+    /* --- Piano di export ---------------------------------------------------- */
+
+    // L'anteprima dell'export. Legge il catalogo REALE del database (vincoli
+    // dichiarati, dipendenze di view, tabella di un trigger — mai le euristiche
+    // UML) e ne ricava il piano immutabile e firmato che l'utente conferma.
+    //
+    // Sta QUI e non nel browser perche' due decisioni non possono stare nel
+    // client: che cosa sia un database di sistema — il controllo viveva solo in
+    // `public/js/exportimport.js`, quindi chi parlava direttamente col socket
+    // poteva chiedere `mysql` o `pg_catalog` — e quale perimetro la chiusura
+    // delle dipendenze porti davvero dentro.
+    lifecycle.delegate('database:export:plan', async (strategy, payload) => {
+      const sess = socketContext.sessions.get(lock.normTabId(payload.tabId));
+      const dbType = (sess && (sess.dbType || sess.strategy.type)) || strategy.type;
+      const db = String(payload.db || '').trim();
+      if (!db) throw new Error('Database di origine mancante.');
+      const catalogo = await leggiCatalogoExport(strategy, dbType, db);
+      // Il backend si GUARDA, non si presume: dichiarare «nativo» senza il
+      // binario farebbe fallire l'esecuzione dopo la conferma, non prima.
+      const motore = backendDisponibile(dbType);
+      const plan = creaPianoExport({
+        catalogo: { ...catalogo, db, dbType },
+        connection: (sess && (sess.connName || sess.label)) || 'ui-session',
+        modalita: payload.modalita || undefined,
+        selezione: payload.selezione || null,
+        backend: motore.backend,
+      });
+      // Il catalogo viaggia accanto al piano: il wizard deve poter mostrare
+      // anche gli oggetti che il piano ESCLUDE — altrimenti «solo struttura»
+      // farebbe sparire dalla lista proprio ciò che si vuole riaccendere.
+      return {
+        plan, motore,
+        catalogo: catalogo.oggetti.map((o) => ({ id: `${o.tipo}:${o.nome}`, tipo: o.tipo, nome: o.nome })),
+      };
+    });
+
+    /* --- Selezione di import ------------------------------------------------ */
+
+    // Che cosa dell'archivio entra, con quale politica, e che cosa resta fuori:
+    // deciso e FIRMATO prima di ogni scrittura. Rifiuta qui ciò che non si può
+    // eseguire — fondere senza un'identità stabile, chiedere dati che
+    // l'archivio non contiene — invece di scoprirlo a metà import.
+    lifecycle.delegate('database:import:selezione', async (strategy, payload) => {
+      const sess = socketContext.sessions.get(lock.normTabId(payload.tabId));
+      const uploadRegistry = socketContext.importUploads || operazioni.importUploads;
+      const artifact = payload.uploadId
+        ? uploadRegistry.get(payload.uploadId, socketContext.principal.ownerId, socketContext.principal.id)
+        : normalizzaExportDatabase(payload.artifact, { expectedDbType: strategy.type });
+      return {
+        selezione: creaSelezioneImport({
+          inventario: inventarioDaArtefatto(artifact),
+          selezione: payload.selezione || null,
+          connection: (sess && (sess.connName || sess.label)) || 'ui-session',
+          targetDb: payload.targetDb,
+          politicaDefault: payload.politicaDefault || undefined,
+        }),
+      };
+    });
 
     lifecycle.delegate('database:import:upload:start', async () => {
       const registry = socketContext.importUploads || operazioni.importUploads;

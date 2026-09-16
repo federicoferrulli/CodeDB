@@ -184,9 +184,16 @@ module.exports = (async () => {
   const fs = require('fs');
   const path = require('path');
   for (const file of ['MySqlStrategy.js', 'PostgreSqlStrategy.js']) {
-    const sorgente = fs.readFileSync(path.join(__dirname, '..', 'db', file), 'utf8');
+    // I fine riga si NORMALIZZANO: il repo tiene LF, ma un checkout Windows
+    // (`core.autocrlf`) consegna CRLF e `indexOf('\n  }\n')` non trova nulla —
+    // il metodo si riduceva a tre caratteri, quindi la prima asserzione
+    // falliva sempre e le due negative passavano sempre. Un test che non puo'
+    // fallire non prova nulla, e uno che fallisce comunque non dice nulla.
+    const sorgente = fs.readFileSync(path.join(__dirname, '..', 'db', file), 'utf8').replace(/\r\n/g, '\n');
     const corpo = sorgente.slice(sorgente.indexOf('async executeWriteBatch('));
-    const metodo = corpo.slice(0, corpo.indexOf('\n  }\n') + 4);
+    const fine = corpo.indexOf('\n  }\n');
+    assert(fine > 0, `${file}: corpo di executeWriteBatch non delimitabile`);
+    const metodo = corpo.slice(0, fine + 4);
     assert(/eseguiBatchScritture\(/.test(metodo),
       `${file} deve passare dal motore comune del batch`);
     assert(!/auditResult/.test(metodo),

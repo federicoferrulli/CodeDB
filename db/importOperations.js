@@ -25,14 +25,61 @@ function createImportOperationRegistry({
   retentionMs = 24 * 60 * 60 * 1000, maxTerminal = 100,
   schedule = (fn, ms) => setTimeout(fn, ms),
   unschedule = (timer) => clearTimeout(timer),
+  // Diario durevole per tenant (db/diarioOperazioni): senza, un riavvio
+  // dimentica le operazioni in volo con staging e recupero penzolanti.
+  // Opzionale così i contesti finti dei test restano leggeri.
+  diario = null,
+  // Periodo del battito sul diario: comodamente sotto la finestra di grazia
+  // con cui `riconcilia` dichiara orfana una voce.
+  battitoMs = 15 * 1000,
 } = {}) {
   const operations = new Map();
   let closed = false;
 
+  // Una voce di diario ha gli stessi nomi dello stato pubblico: la lettura
+  // dopo un crash non deve imparare due forme.
+  function daVoce(voce) {
+    return {
+      operationId: voce.operationId, tabId: voce.tabId || null,
+      connection: voce.connection, targetDb: voce.targetDb, fingerprint: voce.fingerprint,
+      status: voce.status, phase: voce.phase, progress: voce.progress || [],
+      startedAt: voce.iniziatoAl, endedAt: voce.terminatoAl,
+      recovery: voce.recovery, staging: voce.staging, error: voce.errore,
+      recoveryError: null, originalError: null, cleanupAt: null,
+      promotion: null, verification: null, esitoIncerto: voce.esitoIncerto === true,
+    };
+  }
+
+  // Le letture guariscono lo stato dopo un crash: riconciliare è idempotente,
+  // quindi la prima lettura dopo il riavvio dichiara l'incertezza una volta
+  // sola e le successive la mostrano.
+  function guarisci(ownerId) {
+    if (!diario || ownerId == null) return;
+    diario.riconcilia(ownerId);
+  }
+
+  function voceVisibile(voce, ownerId, actorId = null) {
+    if (!voce) return null;
+    if (ownerId != null && voce.ownerId !== ownerId) return null;
+    if (actorId != null && voce.attore !== actorId) return null;
+    return daVoce(voce);
+  }
+
+  function dimentica(op) {
+    // Il diario si rimuove solo a pulizia esplicita o a esito conservato:
+    // una voce d'errore col recupero penzolante non si cancella da sola.
+    if (diario && (op.cleanupAt || op.status === 'completato')) {
+      try { diario.rimuovi({ ownerId: op.ownerId, operationId: op.id }); } catch (_) { /* già sparita */ }
+    }
+  }
+
   function retainTerminal(op) {
     const timer = schedule(() => {
       op.retentionTimer = null;
-      if (operations.get(op.id) === op && op.status !== 'in_corso') operations.delete(op.id);
+      if (operations.get(op.id) === op && op.status !== 'in_corso') {
+        operations.delete(op.id);
+        dimentica(op);
+      }
     }, retentionMs);
     op.retentionTimer = timer;
     if (timer && typeof timer.unref === 'function') timer.unref();
@@ -42,6 +89,7 @@ function createImportOperationRegistry({
       if (oldest.retentionTimer) unschedule(oldest.retentionTimer);
       oldest.retentionTimer = null;
       operations.delete(oldest.id);
+      dimentica(oldest);
     }
   }
 
@@ -91,11 +139,35 @@ function createImportOperationRegistry({
       promise: null,
     };
     operations.set(operationId, op);
+    if (diario) {
+      try {
+        diario.registra({
+          ownerId, operationId, fingerprint: plan.fingerprint,
+          connection: op.connection, targetDb: op.targetDb, attore: actorId, tabId,
+        });
+      } catch (_) { /* il diario non ferma l'operazione: la memoria resta */ }
+    }
+
+    // Battito: finché l'operazione lavora, il diario deve poterla distinguere
+    // da una lasciata a metà da un crash — anche durante una fase lunga e
+    // silenziosa, dove nessun evento di avanzamento arriva.
+    let battito = null;
+    const batti = () => {
+      if (!diario || op.status !== 'in_corso') return;
+      try { diario.batte({ ownerId, operationId }); } catch (_) { /* vedi sotto */ }
+      battito = schedule(batti, battitoMs);
+      if (battito && typeof battito.unref === 'function') battito.unref();
+    };
+    if (diario) batti();
 
     const progress = (event) => {
+      const faseCambiata = event.phase && event.phase !== op.phase;
       op.phase = event.phase || op.phase;
       op.progress.push({ ...event, at: now() });
       if (op.progress.length > 200) op.progress.shift();
+      if (faseCambiata && diario) {
+        try { diario.fase({ ownerId, operationId, phase: op.phase, progress: op.progress }); } catch (_) { /* vedi sopra */ }
+      }
       try { onProgress(publicState(op)); } catch (_) { /* osservatore best-effort */ }
     };
     op.promise = Promise.resolve()
@@ -122,6 +194,17 @@ function createImportOperationRegistry({
         try { onProgress(publicState(op)); } catch (_) { /* osservatore best-effort */ }
         try { await onSettled(publicState(op)); }
         finally {
+          if (battito) { unschedule(battito); battito = null; }
+          if (diario) {
+            const finale = sanitizeImportResult(op.result);
+            try {
+              diario.conclude({
+                ownerId, operationId, status: op.status,
+                recovery: finale && finale.recovery, staging: finale && finale.staging,
+                errore: (finale && finale.error) || op.error,
+              });
+            } catch (_) { /* vedi sopra */ }
+          }
           // La pulizia esplicita ricostruisce l'adapter dalla connessione corrente:
           // non trattenere strategy/sessione oltre la fine dell'operazione.
           op.adapter = null;
@@ -139,10 +222,27 @@ function createImportOperationRegistry({
       operations.clear();
     },
     start,
-    get(operationId, ownerId, actorId = null) { return publicState(requireOwned(operationId, ownerId, actorId)); },
+    get(operationId, ownerId, actorId = null) {
+      try {
+        return publicState(requireOwned(operationId, ownerId, actorId));
+      } catch (mancata) {
+        if (!diario) throw mancata;
+        guarisci(ownerId);
+        const vista = voceVisibile(diario.leggi({ ownerId, operationId }), ownerId, actorId);
+        if (!vista) throw mancata;
+        return vista;
+      }
+    },
     list(ownerId, actorId = null) {
-      return [...operations.values()].filter((op) => (ownerId == null || op.ownerId === ownerId)
+      const inMemoria = [...operations.values()].filter((op) => (ownerId == null || op.ownerId === ownerId)
         && (actorId == null || op.actorId === actorId)).map(publicState);
+      if (!diario || ownerId == null) return inMemoria;
+      guarisci(ownerId);
+      const visti = new Set(inMemoria.map((op) => op.operationId));
+      const dalDiario = diario.elenca(ownerId)
+        .map((voce) => voceVisibile(voce, ownerId, actorId))
+        .filter((vista) => vista && !visti.has(vista.operationId));
+      return [...inMemoria, ...dalDiario];
     },
     cancel(operationId, ownerId, actorId = null) {
       const op = requireOwned(operationId, ownerId, actorId);
@@ -150,7 +250,17 @@ function createImportOperationRegistry({
       op.controller.abort();
       return true;
     },
-    wait(operationId) { return requireOwned(operationId).promise; },
+    wait(operationId, ownerId = null) {
+      try {
+        return requireOwned(operationId).promise;
+      } catch (mancata) {
+        // Fuori memoria c'è il diario: esito già scritto, niente da attendere.
+        // Un id che non esiste NEMMENO lì resta un errore: ingoiarlo farebbe
+        // passare per «già conclusa» un'operazione mai avviata.
+        if (diario && diario.leggi({ ownerId, operationId })) return Promise.resolve(null);
+        throw mancata;
+      }
+    },
     async cleanup(operationId, ownerId, adapter = null, actorId = null) {
       const op = requireOwned(operationId, ownerId, actorId);
       if (op.status === 'in_corso') throw new Error('L’operazione è ancora in corso.');
@@ -163,6 +273,9 @@ function createImportOperationRegistry({
       op.result = sanitizeImportResult(op.result);
       op.adapter = null;
       op.cleanupAt = now();
+      if (diario) {
+        try { diario.rimuovi({ ownerId, operationId }); } catch (_) { /* già sparita */ }
+      }
       return publicState(op);
     },
   };

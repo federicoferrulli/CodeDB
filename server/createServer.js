@@ -34,6 +34,12 @@ function createServer(options = {}) {
   });
   const { mcpControl } = require('./mcp').createModule({ trasporto, vault, connessioni, config, identita, budget });
   const { app, server, io } = trasporto;
+  // Data-plane HTTP degli artefatti: i file viaggiano qui con ticket brevi, i
+  // comandi restano su Socket.IO. Il gate Origin è lo stesso dell'handshake.
+  operazioni.artefatti.monta(app, {
+    verificaOrigine: trasporto.checkOrigin,
+    limiteBlocco: Number(config.env.CODEDB_ARTEFATTI_MAX_BLOCCO) || 4 * 1024 * 1024,
+  });
   let avvio;
   let arresto;
   let rilascio;

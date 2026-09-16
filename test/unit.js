@@ -1519,6 +1519,43 @@ console.log('--- Test Unitari CodeDB ---');
   // staging e recupero, verifica prima/dopo la promozione e non confonde mai
   // un recupero o un guasto parziale con un successo.
   await require('./unit-piano-import');
+  // Il piano di EXPORT ha le stesse proprieta' (immutabile, firmato, costruito
+  // prima di ogni lettura) e in piu' decide il perimetro: modalita', chiusura
+  // delle dipendenze dal catalogo REALE, ordine di ricostruzione, esclusioni.
+  await require('./unit-piano-export');
+  await require('./unit-export-catalogo');
+  // Fedeltà del motore (Fase 3): codec canonico unico, niente relaxed
+  // distruttivo, tabelle senza chiave in keyset su ctid senza OFFSET.
+  await require('./unit-codec-fedele');
+  // Restore e recupero (Fase 4): diario durevole, crash a esito incerto.
+  await require('./unit-diario-operazioni');
+  // Selezione import con politiche per oggetto (Fase 4, piano puro).
+  await require('./unit-selezione-import');
+  // Wizard (Fase 5, logica pura): albero di selezione a tre stati.
+  await require('./unit-export-selezione');
+  await require('./unit-import-mapping');
+  await require('./unit-riepilogo-piano');
+  // Topologia Mongo nel manifest + dump con fake (Fase 3).
+  await require('./unit-dump-mongo');
+  // Prestazioni native (Fase 6, senza binari): spawn sicuro, versioni,
+  // credenziali e vincoli dei tool con spawn iniettato.
+  await require('./unit-nativi');
+  // Trasferimento e lettura streaming: decisioni Range/blocchi/ticket senza
+  // rete e lettore v1 senza materializzare il database.
+  await require('./unit-trasferimenti');
+  await require('./unit-artefatto-streaming');
+  // Data-plane HTTP: byte su disco a blocchi con ripresa e crash-recovery,
+  // finalizzazione verificata, download Range/ETag e ticket legati al tenant.
+  await require('./unit-upload-disco');
+  await require('./unit-http-artefatti');
+  await require('./unit-artefatti-ticket');
+  // Audit del data-plane: ciclo di vita e rifiuti senza segreti.
+  await require('./unit-audit-artefatti');
+  // Il cablaggio: i moduli del piano raggiunti dai due eventi socket, e i tre
+  // moduli del wizard raggiunti dalla catena di import del browser. Un modulo
+  // provato che nessuno importa non e' una funzione consegnata.
+  await require('./unit-piano-export-evento');
+  await require('./unit-wizard-export');
   await require('./unit-import-adapter');
   await require('./unit-backup-import-regressioni');
   require('./unit-schema-objects');

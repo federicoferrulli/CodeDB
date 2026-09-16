@@ -1852,6 +1852,11 @@
           Elimina e ricrea le collection/tabelle già esistenti nella destinazione
         </label>
       </div>
+      <!-- Le collisioni di nome si VEDONO prima di scrivere: due oggetti che
+           finiscono sullo stesso nome, o un nome che su PostgreSQL collide con
+           uno esistente perché il motore abbassa gli identificatori non
+           quotati, sono differenze che dopo non si distinguono più. -->
+      <ul class="piano-avvisi hidden" id="dbimport-mapping"></ul>
       <div id="dbimport-progress" class="import-progress hidden">
         <div class="import-progress-track">
           <div id="dbimport-progress-bar" class="import-progress-bar"></div>
@@ -1863,6 +1868,57 @@
       <div class="modal-actions">
         <button id="dbimport-cancel" class="ghost">Chiudi</button>
         <button id="dbimport-run" class="primary">Importa</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Wizard di export del database ===================== -->
+  <!-- Il perimetro si SCEGLIE e si VEDE prima di esportare: il piano lo
+       costruisce il server (database:export:plan) dal catalogo reale, qui si
+       sceglie che cosa ci entra. Le due colonne sono indipendenti perché
+       «struttura» e «dati» sono due decisioni diverse. -->
+  <div id="dbexport-overlay" class="overlay hidden">
+    <div class="modal wide">
+      <h2>Esporta database</h2>
+      <p class="subtitle" id="dbexport-subtitle"></p>
+      <div class="form-row">
+        <div class="segmented" id="dbexport-modalita" role="group" aria-label="Modalità di export">
+          <button type="button" data-modalita="struttura-e-dati" aria-pressed="true">Struttura e dati</button>
+          <button type="button" data-modalita="solo-struttura" aria-pressed="false">Solo struttura</button>
+          <button type="button" data-modalita="solo-dati" aria-pressed="false">Solo dati</button>
+          <button type="button" data-modalita="personalizzata" aria-pressed="false">Personalizzata</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Cerca fra gli oggetti
+          <input type="search" id="dbexport-cerca" placeholder="nome di tabella, vista, routine…" />
+        </label>
+      </div>
+      <!-- La ricerca filtra la VISTA, mai la selezione: restringere l'albero per
+           trovare una tabella non deve cancellarne altre cento dall'export. -->
+      <div class="dbexport-albero" id="dbexport-albero" role="group" aria-label="Oggetti da esportare"></div>
+      <p class="hint" id="dbexport-riepilogo"></p>
+      <p class="hint" id="dbexport-motore"></p>
+      <div id="dbexport-error" class="error hidden"></div>
+      <div class="modal-actions">
+        <button id="dbexport-cancel" class="ghost">Annulla</button>
+        <button id="dbexport-run" class="primary">Esporta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Conferma di un piano ===================== -->
+  <!-- Ciò che si conferma è ESATTAMENTE ciò che verrà eseguito, e i due
+       guardano lo stesso oggetto: l'impronta in fondo è la sua identità. -->
+  <div id="piano-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2 id="piano-titolo">Conferma</h2>
+      <dl class="piano-voci" id="piano-voci"></dl>
+      <ul class="piano-avvisi hidden" id="piano-avvisi"></ul>
+      <p class="hint piano-impronta" id="piano-impronta"></p>
+      <div class="modal-actions">
+        <button id="piano-cancel" class="ghost">Annulla</button>
+        <button id="piano-ok" class="primary">Procedi</button>
       </div>
     </div>
   </div>

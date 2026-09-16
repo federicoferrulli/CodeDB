@@ -270,6 +270,12 @@ function createModule({ config, dependencies, errori }) {
     // --- Applicazione --------------------------------------------------------
     'app:info': NON_TRACCIATO('informazioni statiche sulla versione'),
     'artifact:validate': NON_TRACCIATO('validazione di input locale non fidato, senza effetti'),
+    // Il ticket è una credenziale breve: l'emissione va nello storico, ma il
+    // ticket stesso MAI — nei dettagli solo che cosa autorizza, non il segreto.
+    'artefatti:ticket': {
+      op: 'Emissione ticket per il trasferimento di un artefatto',
+      bersaglio: (payload) => payload && String(payload.risorsa || ''),
+    },
     'app:updates:check': NON_TRACCIATO('interrogazione del canale aggiornamenti'),
     'app:license': NON_TRACCIATO('testo della licenza'),
     'audit:list': NON_TRACCIATO('lettura dello storico: tracciarla lo riempirebbe di se stessa'),
@@ -353,6 +359,11 @@ function createModule({ config, dependencies, errori }) {
     'collection:explain':   (p) => ({ coll: p.coll, op: 'Piano di esecuzione (explain)' }),
     'collection:export':    (p) => ({ coll: p.coll, op: 'Export collection/tabella' }),
     'collection:identity':  (p) => ({ coll: p.coll, op: 'Lettura identità stabile' }),
+    // L'anteprima di un export dichiara il perimetro che si sta per portare
+    // fuori dal database: è l'azione che precede l'uscita dei dati, e va nello
+    // storico anche quando poi nessuno conferma.
+    'database:export:plan':  (p) => ({ op: 'Anteprima del piano di export', db: p.db, modalita: cutStr(p.modalita, 40) }),
+    'database:import:selezione': (p) => ({ op: 'Anteprima della selezione di import', db: cutStr(p.targetDb, 80) }),
     // Il pannello delle chiavi esterne legge righe VERE di un'altra tabella, non
     // metadati: è una lettura di dati quanto una find, e come tale va tracciata.
     // (`collection:relations` invece resta fuori, come db:schema: sono i soli

@@ -24,6 +24,10 @@
     "famiglia": "amministrativo"
   },
   {
+    "evento": "artefatti:ticket",
+    "famiglia": "amministrativo"
+  },
+  {
     "evento": "artifact:validate",
     "famiglia": "amministrativo"
   },
@@ -160,6 +164,10 @@
     "famiglia": "safeOn"
   },
   {
+    "evento": "database:export:plan",
+    "famiglia": "delegate"
+  },
+  {
     "evento": "database:import:cancel",
     "famiglia": "operazioneLunga"
   },
@@ -170,6 +178,10 @@
   {
     "evento": "database:import:list",
     "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:import:selezione",
+    "famiglia": "delegate"
   },
   {
     "evento": "database:import:start",
