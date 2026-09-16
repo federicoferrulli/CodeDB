@@ -161,8 +161,13 @@ export function apriPannelloFk({
   aggiornaTastiera();
   // Un fotogramma prima di animare: applicando `aperto` nello stesso frame in
   // cui si toglie `hidden`, il browser non ha uno stato di partenza da cui
-  // animare e il pannello comparirebbe di scatto.
-  requestAnimationFrame(() => pannello.classList.add('aperto'));
+  // animare e il pannello comparirebbe di scatto. Il fotogramma arriva DOPO:
+  // se nel frattempo il pannello è stato chiuso (o riaperto altrove),
+  // riaggiungere `aperto` lo lascerebbe visibile e orfano per sempre.
+  const miaApertura = c;
+  requestAnimationFrame(() => {
+    if (apertura === miaApertura) pannello.classList.add('aperto');
+  });
 
   document.addEventListener('keydown', onKeydown, true);
 

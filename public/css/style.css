@@ -2389,6 +2389,25 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .insert-form .req { color: var(--danger); font-weight: 700; }
 #insert-addfield { margin-top: 8px; }
 #insert-form-empty { padding: 10px 4px; }
+/* Campo con chiave esterna: controllo + pulsante 🔗 sulla stessa riga. */
+#insert-form td.insert-value { vertical-align: middle; }
+#insert-form td.insert-value:has(.fk-apri-btn) { display: flex; align-items: center; gap: var(--space-3xs); }
+#insert-form td.insert-value:has(.fk-apri-btn) input,
+#insert-form td.insert-value:has(.fk-apri-btn) select { flex: 1 1 auto; min-width: 0; }
+#insert-form .fk-apri-btn {
+  flex: 0 0 auto;
+  padding: 0 var(--space-2xs);
+  background: transparent;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  color: var(--fg-dim);
+  cursor: pointer;
+  font-size: 0.9em;
+  line-height: 1.6;
+}
+#insert-form .fk-apri-btn:hover { color: var(--fg-bright); border-color: var(--accent-line); background: var(--accent-soft); }
+#insert-fk-error { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+#insert-fk-error.hidden { display: none; }
 
 .edit-btn {
   background: transparent;

@@ -133,6 +133,7 @@ node test/e2e-palette.js      # Test della palette Ctrl+P: virtualizzazione e ri
 node test/e2e-selezione-celle-viste.js # Test della selezione di celle in piu' griglie indipendenti (Chromium)
 node test/e2e-incolla-esatto-atomico.js # Test che l'incolla di celle sia esatto (numeri, fusi) e atomico (Chromium)
 node test/e2e-fk-viste.js     # Test del pannello 🔗 aperto da piu' griglie (Chromium)
+node test/e2e-fk-inserimento.js # Test della scelta di una FK nel form «Nuova riga» (Chromium)
 node test/e2e-geometrie-viste.js # Test delle celle geometriche in ogni griglia (Chromium)
 node test/unit-geo-editor.js   # Test del sottotipo geometrico dichiarato dalla colonna
 node test/unit-geo-modifica.js # Test delle operazioni dei bottoni azione sulla mappa

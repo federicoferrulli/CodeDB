@@ -147,6 +147,12 @@ console.log('--- Test Unitari Relazioni (Chiavi Esterne) ---');
     assert.ok(stessoValore({ $numberLong: '7' }, 7));
     assert.ok(!stessoValore(42, 43));
     assert.ok(!stessoValore(null, 0), 'nullo e zero non sono lo stesso riferimento');
+    // `null` (si scrive NULL) e `undefined` (campo vuoto) non sono la stessa
+    // cosa: confonderli disabiliterebbe «Usa questo valore» scegliendo NULL da
+    // una cella vuota, nel form come nella griglia.
+    assert.ok(!stessoValore(null, undefined), 'nullo e campo vuoto non sono lo stesso riferimento');
+    assert.ok(stessoValore(null, null), 'nullo riconfermato resta lo stesso riferimento');
+    assert.ok(stessoValore(undefined, undefined), 'campo vuoto riconfermato resta lo stesso riferimento');
     assert.ok(!stessoValore('abc', 'abd'));
     // Il testo che non è un numero resta il testo che è.
     assert.strictEqual(chiaveValore('ABC-1'), 'ABC-1');
