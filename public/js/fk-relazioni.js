@@ -182,7 +182,14 @@ function testoData(d) {
  * distinguerli toglierebbe la spunta proprio dove serve leggerla.
  */
 export function chiaveValore(v) {
-  if (v === null || v === undefined) return '\0nullo';
+  // `null` (valore scelto, si scrive NULL) e `undefined` (campo vuoto o riga
+  // senza quella colonna) NON sono lo stesso riferimento: confonderli
+  // disabiliterebbe «Usa questo valore» proprio quando si sceglie NULL da una
+  // cella vuota — nel form di inserimento, dove omesso e nullo devono restare
+  // distinti. Vale anche per l'edit: un campo mancante che diventa NULL è una
+  // modifica, non una riconferma.
+  if (v === null) return '\0nullo';
+  if (v === undefined) return '\0manca';
   if (typeof v === 'object' && !Array.isArray(v)) {
     if (typeof v.$oid === 'string') return v.$oid;
     if (v.$numberLong !== undefined) return String(v.$numberLong);

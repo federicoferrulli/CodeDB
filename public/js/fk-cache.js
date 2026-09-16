@@ -31,31 +31,46 @@ export function relazioniPer(contesto) {
  * Carica una volta le relazioni del bersaglio e condivide anche la richiesta in
  * volo. Una tabella senza relazioni viene memorizzata come Map vuota: `null`
  * significa soltanto «non ancora chiesto».
+ *
+ * Con `lancia: true` il fallimento viene propagato invece di diventare una Map
+ * vuota: serve al form di inserimento, che deve distinguere «nessuna relazione»
+ * da «lettura fallita» per mostrare un errore e riprovare. Griglia e Split-View
+ * chiamano senza opzioni e conservano il silenzio di prima.
  */
-export function caricaRelazioni(contesto) {
+export function caricaRelazioni(contesto, { lancia = false } = {}) {
   const k = chiave(contesto);
   if (!k) return Promise.resolve(new Map());
   if (cache.has(k)) return Promise.resolve(cache.get(k));
-  if (inCorso.has(k)) return inCorso.get(k);
+  // Una richiesta in volo nata silenziosa risolve con una Map vuota anche in
+  // caso di errore e nasconderebbe il fallimento a chi chiede `lancia`: quel
+  // chiamante usa una richiesta propria, senza toccare quella condivisa.
+  if (inCorso.has(k) && !lancia) return inCorso.get(k);
 
   const versione = generazione;
   const richiesta = emit('collection:relations', {
     tabId: contesto.tabId,
     db: contesto.db,
     coll: contesto.coll,
-  }).then((res) => indicizzaRelazioni(res.relazioni))
+  }).then((res) => {
+    const indice = indicizzaRelazioni(res.relazioni);
+    // Solo il successo si memorizza: un fallimento resta «non ancora chiesto»
+    // (null), così un nuovo tentativo rilegge davvero invece di riusare una Map
+    // vuota che sembrava «nessuna relazione». Il costo è una sola rilettura di
+    // metadati alla prossima query, non un ciclo.
+    if (versione === generazione) cache.set(k, indice);
+    return indice;
+  })
     // Il metadato è accessorio: se fallisce la griglia continua senza badge,
-    // come prima. La Map vuota evita una nuova richiesta a ogni ridisegno.
-    .catch(() => new Map())
-    .then((indice) => {
-      if (versione === generazione) cache.set(k, indice);
-      return indice;
+    // come prima — ma senza memorizzare nulla (vedi sopra).
+    .catch((err) => {
+      if (lancia) throw err;
+      return new Map();
     })
     .finally(() => {
-      if (inCorso.get(k) === richiesta) inCorso.delete(k);
+      if (!lancia && inCorso.get(k) === richiesta) inCorso.delete(k);
     });
 
-  inCorso.set(k, richiesta);
+  if (!lancia) inCorso.set(k, richiesta);
   return richiesta;
 }
 
