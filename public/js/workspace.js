@@ -128,7 +128,9 @@ export function renderWorkspace() {
     if (!state.queryDb) state.queryDb = activeCt.db;
     $('#placeholder').classList.add('hidden');
     $('#workspace').classList.remove('hidden');
-    setView('query');
+    // L'UML e' l'altra vista di livello database: forzare 'query' qui la
+    // chiuderebbe a ogni ridisegno del workspace.
+    setView(state.view === 'uml' ? 'uml' : 'query');
     return;
   }
 

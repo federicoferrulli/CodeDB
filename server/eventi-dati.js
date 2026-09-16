@@ -2,7 +2,7 @@
 
 // CodeDB — eventi-dati. Stato e dipendenze appartengono alla singola istanza.
 const { pianoRinomina } = require('../db/rinominaSicura');
-const { limitaSchema } = require('../db/schemaProgressivo');
+const { schemaPaginato } = require('../db/schemaSnapshot');
 const { scegliIdentitaSql } = require('../backup/lib/identity');
 const { readSchemaObjects } = require('../db/schemaObjects');
 const { createImportBatchRegistry } = require('../db/importBatches');
@@ -67,9 +67,16 @@ function createModule({ query, lock, identita, operazioni, audit }) {
 
     lifecycle.delegate('db:drop', async (strategy, { db }) => { await strategy.dropDatabase(db); return {}; });
 
-    lifecycle.delegate('db:schema', async (strategy, payload) => {
-      const schema = await strategy.dbSchema(payload.db);
-      return payload.progressive === true ? limitaSchema(schema, payload) : schema;
+    // Lo schema progressivo passa da uno SNAPSHOT di sessione: la seconda
+    // pagina non rilegge il catalogo e, su MongoDB, non rifà il campionamento
+    // di ogni collection — che non era solo costo, era una seconda pagina che
+    // poteva osservare campi diversi dalla prima. Lo snapshot muore con la
+    // scadenza, con una DDL della stessa sessione (giuntura `delegate`) e con
+    // `refresh: true`. La lettura non progressiva resta quella di prima:
+    // nessun consumatore storico cambia comportamento.
+    lifecycle.delegate('db:schema', async (strategy, payload, sess) => {
+      if (payload.progressive !== true) return strategy.dbSchema(payload.db);
+      return schemaPaginato(strategy, sess, payload);
     });
 
     // --- Gestione collection/tabelle, colonne e indici ---------------------------

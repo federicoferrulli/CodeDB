@@ -578,12 +578,29 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     if (button) button.onclick = async () => {
       button.disabled = true;
       try {
+        // Le relazioni hanno un cursore PROPRIO, indipendente da quello del
+        // catalogo (db/schemaProgressivo.js). Mandando solo `cursor` si
+        // riceveva a ogni pagina la stessa prima fetta di relazioni, e quelle
+        // delle tabelle oltre la prima pagina non arrivavano mai: prima dei
+        // tre cursori erano filtrate sulla fetta corrente, quindi paginare il
+        // catalogo se le portava dietro. La `revisione` accompagna i cursori:
+        // se il catalogo è cambiato sotto, il server lo dichiara invece di
+        // servire una fetta che non corrisponde più a quella di prima.
+        const cursori = page.cursori || {};
         const next = await emit('db:schema', {
-          db: state.db, progressive: true, cursor: page.nextCursor,
+          db: state.db, progressive: true,
+          cursor: page.nextCursor,
+          relationCursor: cursori.relazioni || 0,
+          revisione: page.revisione,
           collectionLimit: GRAFO_BUDGET.nodes, fieldLimit: GRAFO_BUDGET.fields,
           relationLimit: GRAFO_BUDGET.links,
         });
-        state.dbSchema = unisciPagineSchema(state.dbSchema, next);
+        // Se il catalogo è cambiato durante la paginazione, fondere le due
+        // pagine ne mescolerebbe due diversi credendoli lo stesso: si tiene
+        // quella nuova, che il server ha già rimandato da capo.
+        state.dbSchema = next.schemaPage && next.schemaPage.revisioneCambiata
+          ? next
+          : unisciPagineSchema(state.dbSchema, next);
         renderGraph3d({ preserveInstance: true });
       } catch (err) { button.textContent = err.message; }
     };

@@ -1175,6 +1175,12 @@ console.log('--- Test Unitari CodeDB ---');
   // sembra funzionare e mostra un elenco di righe indistinguibili.
   require('./unit-fk-relazioni');
 
+  // Test 24-octies: decisioni del diagramma UML interattivo (identità degli
+  // oggetti, FK composte come UN collegamento, unione delle pagine di schema,
+  // disposizione, annullamento, import). Sbagliate non lanciano: disegnano un
+  // diagramma che sembra giusto e descrive un modello che non esiste.
+  await require('./unit-uml-modello');
+
   // Test 24-quater: euristiche di analisi dello schema, condivise fra
   // l'interfaccia (Grafo 3D) e il gateway MCP. Erano due copie già divergenti:
   // un ordine di popolamento sbagliato e un report GDPR pieno di falsi positivi
@@ -1364,7 +1370,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-write-batch');
   await require('./unit-mongodb-bulk-insert');
   await require('./unit-preferenze-principal');
-  require('./unit-schema-progressivo');
+  await require('./unit-schema-progressivo');
   await require('./unit-grafo-budget');
   require('./unit-ssh-pinning');
   await require('./unit-electron-server-auth');

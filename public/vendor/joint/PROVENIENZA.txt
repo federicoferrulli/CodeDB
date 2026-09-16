@@ -1,0 +1,15 @@
+@joint/core 4.3.3 — JointJS Community, Mozilla Public License 2.0.
+Sorgente: https://registry.npmjs.org/@joint/core/-/core-4.3.3.tgz
+File distribuito: dist/joint.min.js (UMD, globale `joint`). Nessuna modifica.
+
+Il foglio di stile della distribuzione (dist/joint.css) NON e' vendorizzato, ed
+e' una scelta: la vista UML porta il proprio stile in public/css/style.css e
+segue i token del tema, cosa che joint.css (colori fissi) non farebbe. Misurato
+su questa versione, nulla di funzionale dipende da quel foglio: `position:
+relative` sul Paper lo scrive JointJS INLINE, e `.connection-wrap` — l'unica
+regola di joint.css che non sia cosmetica, la fascia invisibile spessa che rende
+cliccabile un collegamento sottile — non viene emessa affatto dal markup dei
+link usato qui. `test/e2e-uml.js` sorveglia proprio quest'ultimo punto: se un
+aggiornamento di JointJS ricominciasse a emettere `.connection-wrap`, senza
+joint.css resterebbe spessa zero e i collegamenti diventerebbero quasi
+impossibili da centrare — un difetto che nessun errore segnalerebbe.

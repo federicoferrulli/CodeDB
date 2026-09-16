@@ -72,6 +72,9 @@ node test/e2e-postgres.js  # Test end-to-end PostgreSQL (verifica isolamento sch
 node test/e2e-mcp.js       # Test end-to-end gateway MCP (MongoDB)
 node test/e2e-mcp-mysql.js # Test end-to-end gateway MCP (MySQL)
 node test/e2e-query-engine.js  # Test Query Engine & Virtual JOINs
+node test/e2e-uml.js          # Test end-to-end diagramma UML (JointJS vero, nessun database)
+node test/e2e-uml-scenari.js  # Test scenari UML (drenaggio grande, contesti, storage)
+node test/e2e-uml-prestazioni.js # Misure di prestazione UML (100 nodi/200 relazioni)
 node test/e2e-backup.js       # Test CLI Backup (MongoDB)
 node test/e2e-backup-mysql.js # Test CLI Backup (MySQL)
 node test/e2e-dbexport.js     # Test Export/Import intero DB via socket

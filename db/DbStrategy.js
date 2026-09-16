@@ -315,6 +315,10 @@ function relationsForCollection(collection, byName) {
       field: f.name,
       to: target,
       many: types.includes('array') || /ids$/.test(low),
+      // L'origine viaggia con la relazione: il diagramma UML deve poter
+      // disegnare un'IPOTESI in modo diverso da un vincolo dichiarato, e
+      // dedurla dall'assenza di `constraint` sarebbe una regola implicita.
+      origine: 'euristica',
     });
   }
   return relations;

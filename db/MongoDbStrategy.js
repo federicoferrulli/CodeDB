@@ -14,6 +14,12 @@ const {
 } = require('./ricercaGlobale');
 const sessioni = require('./sessioni');
 const { normalizzaDocumentiInsert, risultatoInsertMany } = require('./mongoInsert');
+
+// Quanti documenti si guardano per DEDURRE i campi di una collection. È una
+// costante dichiarata e non un numero scritto nella chiamata, perché viaggia
+// fino all'interfaccia: la vista che mostra questi campi deve poter dire su
+// quanti documenti sono stati osservati.
+const CAMPIONE_SCHEMA = 50;
 const {
   pianificaDuplicazione, calcolaNuovoValore, documentoSorgente, applicaRicalcolo, valoreSemplice, riavvolgi,
 } = require('./duplica');
@@ -675,7 +681,7 @@ class MongoDbStrategy extends DbStrategy {
     const collections = [];
     for (const c of infos) {
       const collection = database.collection(c.name);
-      const schema = await sampleSchema(collection, 50);
+      const schema = await sampleSchema(collection, CAMPIONE_SCHEMA);
       // Il conteggio viaggia con lo schema perche' il grafo deve poter
       // nascondere le collection vuote (vedi la nota gemella in
       // MySqlStrategy). `estimatedDocumentCount` legge i metadati e non
@@ -690,7 +696,19 @@ class MongoDbStrategy extends DbStrategy {
       collections.push({ name: c.name, fields: schema.fields, rowsApprox });
     }
     collections.sort((a, b) => a.name.localeCompare(b.name));
-    return { collections, relations: DbStrategy.detectRelations(collections) };
+    // I campi di una collection non sono DICHIARATI: sono osservati su un
+    // campione. Chi mostra questo schema deve poterlo dire, altrimenti un
+    // elenco campionato ha l'aria di un elenco esaustivo e un campo raro
+    // assente diventa indistinguibile da un campo che non esiste.
+    return {
+      collections,
+      relations: DbStrategy.detectRelations(collections),
+      campionamento: {
+        documenti: CAMPIONE_SCHEMA,
+        collezioni: collections.length,
+        quando: new Date().toISOString(),
+      },
+    };
   }
 
   // Riferimenti uscenti dalla sola collection indicata (pannello di riferimento

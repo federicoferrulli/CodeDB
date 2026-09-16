@@ -81,6 +81,9 @@ export function renderDbTree(databases) {
         // Utile soprattutto sui database vuoti, dove non c'è alcuna collection
         // da aprire e quindi nessun modo di raggiungere il Query Engine.
         { icona: 'zap', label: `Query & Aggregate su questo ${dbWord()}`, action: () => openDbTab(db.name) },
+        // La panoramica UML dell'intero database: prima si poteva aprire solo
+        // da una tabella, cioe' partendo dal contesto sbagliato.
+        { icona: 'network', label: `Diagramma UML del ${dbWord()}`, action: () => { openDbTab(db.name); setView('uml'); } },
         '---',
         { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
         { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
