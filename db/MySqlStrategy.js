@@ -1373,10 +1373,11 @@ class MySqlStrategy extends DbStrategy {
     }));
 
     const [fkRows] = await pool.query(
-      `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_TABLE_SCHEMA,
-              REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+      `SELECT CONSTRAINT_NAME, ORDINAL_POSITION, TABLE_NAME, COLUMN_NAME,
+              REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
        FROM information_schema.KEY_COLUMN_USAGE
-       WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
+       WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
+    ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
       [db]
     );
 
@@ -1390,6 +1391,13 @@ class MySqlStrategy extends DbStrategy {
         toDb: fk.REFERENCED_TABLE_SCHEMA || db,
         external: !!fk.REFERENCED_TABLE_SCHEMA && fk.REFERENCED_TABLE_SCHEMA !== db,
         many: true,
+        // Identità del vincolo e colonna di DESTINAZIONE: senza, una FK
+        // composta arrivava al diagramma come N relazioni indipendenti fra gli
+        // stessi due nodi, indistinguibili da N chiavi esterne distinte.
+        constraint: fk.CONSTRAINT_NAME,
+        ordine: Number(fk.ORDINAL_POSITION) || 1,
+        toField: fk.REFERENCED_COLUMN_NAME,
+        origine: 'vincolo',
       });
       fkSet.add(`${fk.TABLE_NAME}.${fk.COLUMN_NAME}->${fk.REFERENCED_TABLE_NAME}`);
     }

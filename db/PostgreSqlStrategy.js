@@ -1466,7 +1466,7 @@ class PostgreSqlStrategy extends DbStrategy {
     }));
 
     const fkRes = await pool.query(
-      `SELECT kcu.table_name, kcu.column_name,
+      `SELECT tc.constraint_name, kcu.ordinal_position, kcu.table_name, kcu.column_name,
               rcu.table_schema AS referenced_table_schema,
               rcu.table_name AS referenced_table_name,
               rcu.column_name AS referenced_column_name
@@ -1478,7 +1478,8 @@ class PostgreSqlStrategy extends DbStrategy {
            ON rcu.constraint_name = rc.unique_constraint_name
           AND rcu.constraint_schema = rc.unique_constraint_schema
           AND rcu.ordinal_position = kcu.position_in_unique_constraint
-        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1`,
+        WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = $1
+     ORDER BY tc.constraint_name, kcu.ordinal_position`,
       [schema]
     );
 
@@ -1492,6 +1493,12 @@ class PostgreSqlStrategy extends DbStrategy {
         toDb: fk.referenced_table_schema || schema,
         external: !!fk.referenced_table_schema && fk.referenced_table_schema !== schema,
         many: true,
+        // Vedi la nota gemella in MySqlStrategy: identità del vincolo e colonna
+        // riferita tengono insieme le coppie di una FK composta.
+        constraint: fk.constraint_name,
+        ordine: Number(fk.ordinal_position) || 1,
+        toField: fk.referenced_column_name,
+        origine: 'vincolo',
       });
       fkSet.add(`${fk.table_name}.${fk.column_name}->${fk.referenced_table_name}`);
     }

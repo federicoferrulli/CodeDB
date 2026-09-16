@@ -826,15 +826,215 @@
               </div>
 
               <!-- ------------------- Vista UML ------------------- -->
+              <!-- Il diagramma e' il documento, gli strumenti gli stanno
+                   sopra: una sola barra con le scelte che riguardano l'intero
+                   diagramma, e un gruppo FLOTTANTE sul canvas per la
+                   telecamera (zoom, adatta, minimappa) - come nell'editor
+                   cartografico e nella barra del Grafo 3D, e per la stessa
+                   ragione. Le icone sono quelle dell'applicazione (Lucide),
+                   non emoji: un'emoji cambia forma e larghezza da un sistema
+                   all'altro e un lettore di schermo la pronuncia. -->
               <div id="view-uml" class="view-panel hidden">
                 <div class="uml-bar">
-                  <span class="hint" id="uml-hint">
-                    Associazioni dedotte dai nomi dei campi (es. <code>user_id</code> → collection
-                    <code>users</code>) e dai tipi ObjectId su un campione di documenti.
-                  </span>
-                  <button id="uml-refresh" class="ghost">⟳ Rigenera</button>
+                  <!-- Lo stato del canvas vive in `aria-pressed`, cioe' nella
+                       proprieta' che lo dichiara anche a chi non vede il
+                       colore. Un bottone solo che cambia etichetta non
+                       direbbe se descrive lo stato di adesso o quello che si
+                       otterrebbe premendolo. -->
+                  <div class="uml-segmentato" role="group" aria-label="Che cosa fa il clic sul diagramma">
+                    <button type="button" id="uml-mode-esplora" class="uml-seg" aria-pressed="true"
+                      title="Naviga e consulta: nulla si sposta">
+                      <i data-lucide="mouse-pointer-2" aria-hidden="true"></i><span>Esplora</span>
+                    </button>
+                    <button type="button" id="uml-mode-modifica" class="uml-seg" aria-pressed="false"
+                      title="Sposta i nodi, collega i campi, aggiungi note ed entita'">
+                      <i data-lucide="pencil" aria-hidden="true"></i><span>Modifica diagramma</span>
+                    </button>
+                  </div>
+
+                  <div class="uml-gruppo">
+                    <button type="button" id="uml-undo" class="ghost uml-icona" title="Annulla (Ctrl+Z)"
+                      aria-label="Annulla"><i data-lucide="undo-2" aria-hidden="true"></i></button>
+                    <button type="button" id="uml-redo" class="ghost uml-icona" title="Ripeti (Ctrl+Maiusc+Z)"
+                      aria-label="Ripeti"><i data-lucide="redo-2" aria-hidden="true"></i></button>
+                  </div>
+
+                  <div class="uml-gruppo">
+                    <button type="button" id="uml-disponi" class="ghost" title="Dispone i nodi non bloccati">
+                      <i data-lucide="layout-grid" aria-hidden="true"></i><span class="uml-testo">Disponi</span>
+                    </button>
+                    <button type="button" id="uml-nota" class="ghost" title="Aggiungi una nota">
+                      <i data-lucide="sticky-note" aria-hidden="true"></i><span class="uml-testo">Nota</span>
+                    </button>
+                    <button type="button" id="uml-entita" class="ghost"
+                      title="Aggiungi un'entita' che esiste solo nel diagramma">
+                      <i data-lucide="box" aria-hidden="true"></i><span class="uml-testo">Entita'</span>
+                    </button>
+                    <button type="button" id="uml-rimuovi" class="ghost"
+                      title="Toglie dal DIAGRAMMA cio' che e' selezionato: nel database non cambia nulla">
+                      <i data-lucide="eye-off" aria-hidden="true"></i><span class="uml-testo">Rimuovi</span>
+                    </button>
+                    <button type="button" id="uml-aggancio" class="ghost" aria-pressed="true"
+                      title="Aggancia alla griglia">
+                      <i data-lucide="grid-2x2" aria-hidden="true"></i><span class="uml-testo">Aggancia</span>
+                    </button>
+                    <div class="toolbar-dropdown-wrap">
+                      <button type="button" id="uml-ordina-btn" class="ghost" aria-haspopup="true"
+                        aria-expanded="false" title="Allinea o distribuisci gli elementi scelti">
+                        <i data-lucide="align-start-vertical" aria-hidden="true"></i><span class="uml-testo">Ordina</span>
+                        <i data-lucide="chevron-down" aria-hidden="true"></i>
+                      </button>
+                      <div id="uml-ordina-menu" class="toolbar-dropdown-menu hidden">
+                        <button type="button" class="dropdown-item" data-allinea="sinistra">
+                          <i data-lucide="align-start-vertical" aria-hidden="true"></i> Allinea a sinistra
+                        </button>
+                        <button type="button" class="dropdown-item" data-allinea="centroX">
+                          <i data-lucide="align-center-vertical" aria-hidden="true"></i> Centra in orizzontale
+                        </button>
+                        <button type="button" class="dropdown-item" data-allinea="destra">
+                          <i data-lucide="align-end-vertical" aria-hidden="true"></i> Allinea a destra
+                        </button>
+                        <button type="button" class="dropdown-item" data-allinea="alto">
+                          <i data-lucide="align-start-horizontal" aria-hidden="true"></i> Allinea in alto
+                        </button>
+                        <button type="button" class="dropdown-item" data-allinea="centroY">
+                          <i data-lucide="align-center-horizontal" aria-hidden="true"></i> Centra in verticale
+                        </button>
+                        <button type="button" class="dropdown-item" data-allinea="basso">
+                          <i data-lucide="align-end-horizontal" aria-hidden="true"></i> Allinea in basso
+                        </button>
+                        <button type="button" class="dropdown-item" data-distribuisci="x">
+                          <i data-lucide="align-horizontal-distribute-center" aria-hidden="true"></i> Distribuisci in orizzontale
+                        </button>
+                        <button type="button" class="dropdown-item" data-distribuisci="y">
+                          <i data-lucide="align-vertical-distribute-center" aria-hidden="true"></i> Distribuisci in verticale
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <span class="uml-spazio"></span>
+
+                  <div class="uml-gruppo">
+                    <label class="uml-campo" for="uml-diagrammi">
+                      <span class="pill-nome">Diagramma</span>
+                      <select id="uml-diagrammi" title="Diagrammi salvati per questo database"></select>
+                    </label>
+                    <button type="button" id="uml-nuovo" class="ghost uml-icona" title="Nuovo diagramma"
+                      aria-label="Nuovo diagramma"><i data-lucide="file-plus-2" aria-hidden="true"></i></button>
+                    <button type="button" id="uml-diagramma-menu" class="ghost uml-icona"
+                      title="Rinomina, duplica o elimina questo diagramma" aria-haspopup="true"
+                      aria-label="Azioni sul diagramma"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button>
+                    <span id="uml-stato" class="uml-stato salvato">Salvato</span>
+                  </div>
+
+                  <div class="uml-gruppo">
+                    <div class="toolbar-dropdown-wrap">
+                      <button type="button" id="uml-esporta-btn" class="ghost" aria-haspopup="true"
+                        aria-expanded="false" title="Esporta il diagramma">
+                        <i data-lucide="download" aria-hidden="true"></i><span class="uml-testo">Esporta</span>
+                        <i data-lucide="chevron-down" aria-hidden="true"></i>
+                      </button>
+                      <div id="uml-esporta-menu" class="toolbar-dropdown-menu hidden">
+                        <label class="dropdown-item checkbox-item uml-check">
+                          <input type="checkbox" id="uml-esp-selezione"> Solo la selezione
+                        </label>
+                        <button type="button" class="dropdown-item" id="uml-esp-json">
+                          <i data-lucide="braces" aria-hidden="true"></i> JSON CodeDB (riapribile)
+                        </button>
+                        <button type="button" class="dropdown-item" id="uml-esp-svg">
+                          <i data-lucide="file-code-2" aria-hidden="true"></i> SVG
+                        </button>
+                        <button type="button" class="dropdown-item" id="uml-esp-png">
+                          <i data-lucide="image" aria-hidden="true"></i> PNG
+                        </button>
+                        <button type="button" class="dropdown-item" id="uml-importa">
+                          <i data-lucide="upload" aria-hidden="true"></i> Importa JSON…
+                        </button>
+                      </div>
+                    </div>
+                    <button type="button" id="uml-refresh" class="ghost uml-icona"
+                      title="Rilegge lo schema dal database e riconcilia il diagramma"
+                      aria-label="Rileggi lo schema"><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
+                  </div>
                 </div>
-                <div id="uml-canvas" class="uml-canvas"></div>
+
+                <div class="uml-layout">
+                  <aside id="uml-catalogo" class="uml-side">
+                    <div class="uml-side-testa">
+                      <label class="visually-hidden" for="uml-cerca">Cerca oggetti e campi</label>
+                      <input type="search" id="uml-cerca" class="uml-cerca"
+                        placeholder="Cerca tabelle e campi…" autocomplete="off">
+                    </div>
+                    <ul id="uml-catalogo-lista" class="uml-catalogo-lista"></ul>
+                    <div id="uml-catalogo-piede" class="uml-side-piede"></div>
+                  </aside>
+                  <div class="resizer" data-resize="uml-catalogo"></div>
+
+                  <div class="uml-centro">
+                    <div id="uml-canvas" class="uml-canvas"></div>
+                    <!-- Il fondo di questo gruppo e' PIENO e non translucido:
+                         sopra un canvas chiaro un velo rende i comandi
+                         indistinguibili dal disegno. -->
+                    <div class="uml-flottante">
+                      <button type="button" id="uml-zoom-piu" class="ghost uml-icona" title="Ingrandisci"
+                        aria-label="Ingrandisci"><i data-lucide="zoom-in" aria-hidden="true"></i></button>
+                      <span id="uml-zoom-valore" class="uml-zoom-valore">100%</span>
+                      <button type="button" id="uml-zoom-meno" class="ghost uml-icona" title="Riduci"
+                        aria-label="Riduci"><i data-lucide="zoom-out" aria-hidden="true"></i></button>
+                      <button type="button" id="uml-adatta" class="ghost uml-icona" title="Adatta alla vista"
+                        aria-label="Adatta alla vista"><i data-lucide="maximize" aria-hidden="true"></i></button>
+                      <button type="button" id="uml-centra" class="ghost uml-icona" title="Centra sulla selezione"
+                        aria-label="Centra sulla selezione"><i data-lucide="crosshair" aria-hidden="true"></i></button>
+                    </div>
+                    <div id="uml-minimap" class="uml-minimap" aria-hidden="true"></div>
+                  </div>
+
+                  <aside id="uml-ispettore" class="uml-side uml-ispettore">
+                    <div class="uml-side-testa">
+                      <strong id="uml-nome" class="uml-nome">Diagramma</strong>
+                      <button type="button" id="uml-ispettore-toggle" class="ghost uml-icona" aria-pressed="true"
+                        title="Mostra o nasconde l'ispettore" aria-label="Ispettore">
+                        <i data-lucide="panel-right" aria-hidden="true"></i>
+                      </button>
+                    </div>
+                    <div id="uml-ispettore-corpo" class="uml-ispettore-corpo"></div>
+                  </aside>
+                </div>
+
+                <div id="uml-dati" class="uml-dati hidden">
+                  <div class="uml-dati-bar">
+                    <strong id="uml-dati-titolo">Dati</strong>
+                    <span id="uml-dati-pagina" class="hint"></span>
+                    <span class="uml-spazio"></span>
+                    <button type="button" id="uml-dati-prec" class="ghost uml-icona" title="Pagina precedente"
+                      aria-label="Pagina precedente"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                    <button type="button" id="uml-dati-succ" class="ghost uml-icona" title="Pagina successiva"
+                      aria-label="Pagina successiva"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+                    <button type="button" id="uml-dati-dettaglio" class="ghost" aria-pressed="false"
+                      title="Mostra la riga scelta per intero, in Extended JSON">
+                      <i data-lucide="braces" aria-hidden="true"></i><span class="uml-testo">Dettaglio</span>
+                    </button>
+                    <button type="button" id="uml-dati-griglia" class="ghost"
+                      title="Apre la tabella nella griglia, dove si puo' anche modificare">
+                      <i data-lucide="external-link" aria-hidden="true"></i><span class="uml-testo">Apri nella griglia</span>
+                    </button>
+                    <button type="button" id="uml-dati-affianca" class="ghost"
+                      title="Affianca la tabella in Split-View, accanto a quella che stai gia' guardando">
+                      <i data-lucide="columns-2" aria-hidden="true"></i><span class="uml-testo">Affianca</span>
+                    </button>
+                    <button type="button" id="uml-dati-chiudi" class="ghost uml-icona" title="Chiudi il pannello dati"
+                      aria-label="Chiudi"><i data-lucide="x" aria-hidden="true"></i></button>
+                  </div>
+                  <div class="uml-dati-area">
+                    <div id="uml-dati-corpo" class="uml-dati-corpo"></div>
+                    <!-- Il dettaglio della riga sta ACCANTO alla tabella, non al
+                         suo posto: si sceglie una riga guardando le altre, e
+                         sostituire l'elenco toglierebbe proprio il contesto per
+                         cui la si stava scegliendo. -->
+                    <aside id="uml-dati-json" class="uml-dati-json hidden"></aside>
+                  </div>
+                </div>
               </div>
 
               <!-- ------------------- Vista Grafo 3D ------------------- -->

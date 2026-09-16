@@ -33,9 +33,11 @@ function parolaColl() {
 
 // Un coll-tab "a livello database" (`isDbTab`) non ha una collection: serve ai
 // database ancora VUOTI, dove prima non si poteva aprire nulla e quindi non si
-// riusciva nemmeno a creare la prima tabella con una query. Ha la sola vista
-// ⚡ Query & Aggregate: le altre (Dati, Dettagli, UML, Grafo 3D) descrivono una
-// collection che qui non esiste.
+// riusciva nemmeno a creare la prima tabella con una query. Ha le viste che
+// descrivono il DATABASE e non una collection: ⚡ Query & Aggregate e ◫ UML.
+// Dati e Dettagli descrivono una collection che qui non esiste; l'UML invece
+// e' proprio la panoramica dell'intero database, ed era raggiungibile solo
+// passando da una tabella qualsiasi — cioe' dal contesto sbagliato.
 //
 // Con la Split-View attiva compare invece la tab "🔲 Affiancati": le altre
 // restano cliccabili e agiscono sul pannello a fuoco (vedi `setView`). Prima il
@@ -51,7 +53,7 @@ export function applyViewTabsFor(ct) {
     // singola con i risultati di prima, cioè dati vecchi sotto un'altra
     // etichetta. Al suo posto c'è "Affiancati".
     if (vista === 'data' && split) { el.classList.add('hidden'); return; }
-    el.classList.toggle('hidden', soloQuery && vista !== 'query');
+    el.classList.toggle('hidden', soloQuery && vista !== 'query' && vista !== 'uml');
   });
 }
 

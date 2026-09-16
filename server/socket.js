@@ -2,6 +2,7 @@
 
 // CodeDB — socket. Stato e dipendenze appartengono alla singola istanza.
 const { eventCapability } = require('../auth/capabilities');
+const { invalidaSnapshot } = require('../db/schemaSnapshot');
 const { can } = require('../auth/permissions');
 const { payloadEsecuzione } = require('../db/payloadEsecuzione');
 
@@ -259,7 +260,12 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
         // connessione dedicata e vi scrive connectionId/processID.
         const richiesta = payloadEsecuzione(payload, { runId, opHandle });
         try {
-          const result = await connessioni.executeWithReconnect(sess, (strat) => fn(strat, richiesta));
+          const result = await connessioni.executeWithReconnect(sess, (strat) => fn(strat, richiesta, sess));
+          // Una DDL riuscita rende obsoleti i metadati tenuti in sessione: lo
+          // snapshot dello schema si butta QUI, dalla capability, e non da un
+          // elenco di nomi di evento che si dimentica di aggiornare quando ne
+          // nasce uno nuovo.
+          if (capability === 'ddl') invalidaSnapshot(sess);
           cb({ ok: true, ...result });
           audit.auditDelegate(cls, sess, event, payload, 'ok', result, null);
         } catch (err) {

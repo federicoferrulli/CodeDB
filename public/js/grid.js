@@ -24,10 +24,11 @@ import {
 import { chiudiCaricamento, congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 
 export function applyDbTypeToWorkspace() {
-  const isSql = isSqlType(state.dbType);
-  $('#uml-hint').innerHTML = isSql
-    ? 'Relazioni dalle <b>foreign key</b> dichiarate, più quelle dedotte dai nomi delle colonne (es. <code>user_id</code> → tabella <code>users</code>).'
-    : 'Associazioni dedotte dai nomi dei campi (es. <code>user_id</code> → collection <code>users</code>) e dai tipi ObjectId su un campione di documenti.';
+  // La frase generica sull'origine delle relazioni UML non sta piu' qui: il
+  // diagramma dichiara l'origine di OGNI collegamento (vincolo, ipotesi,
+  // logica) sull'arco e nell'ispettore, che e' piu' preciso di una nota unica
+  // valida per tutte — ed era l'unica cosa che questa funzione scriveva nella
+  // vista UML.
   applyQueryPlaceholders();
 }
 

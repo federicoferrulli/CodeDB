@@ -153,6 +153,8 @@ node test/e2e-barra-grafo.js   # Test del cablaggio della barra del Grafo 3D (Ch
 node test/e2e-integrita-import.js # Matrice reale di integrita' su MongoDB, MySQL e PostgreSQL
 node test/unit-sql-integrita-righe.js # Test dell'integrita' di una riga SQL (colonne generate, BIGINT, _id reale)
 node test/e2e-sql-integrita-ui.js # Test nel browser della riga SQL: _id reale, chiave di scrittura, colonne calcolate
+node test/unit-uml-modello.js # Test delle decisioni del diagramma UML (identita', FK composte, storia, import)
+node test/e2e-uml.js          # Test del diagramma UML con JointJS vero (Chromium, senza DB)
 
 # Backup CLI & Marcatori
 npm run backup -- <cmd>    # CLI di backup/restore (backup, restore, list, verify, help)
@@ -760,7 +762,65 @@ Applicazione Web modulare in vanilla JavaScript (nessun framework o build step).
   Split-View e per l'export, che rifacevano il calcolo per conto proprio.
   Un'aggregazione MongoDB senza documenti resta l'unico caso senza colonne, ed è
   corretto: lì la forma del risultato non è dichiarata da nessuno.
-  4. **UML (`uml.js`)**: Diagramma E-R generato in SVG.
+  4. **UML (`uml.js` / `uml-modello.js` / `uml-paper.js` / `uml-store.js`)**:
+  diagramma E-R **interattivo** su JointJS Community 4.3.3 (`public/vendor/joint`,
+  MPL-2.0, caricato solo quando si apre la vista). Il vecchio renderer
+  ricostruiva un SVG con `innerHTML` a ogni disegno, mostrava la sola tabella
+  aperta con i suoi vicini, tagliava i campi a undici e **escludeva gli
+  auto-riferimenti**: non era un diagramma su cui si potesse lavorare, era una
+  figura. La differenza non è la libreria — è che ora **esistono tre stati
+  distinti** dove prima ce n'era uno.
+  **Lo SCHEMA OSSERVATO** arriva dal server e non si modifica trascinando. **Il
+  DOCUMENTO DEL DIAGRAMMA** (posizioni, nodi presenti, note, entità di progetto,
+  relazioni logiche) è l'unica cosa che si salva, in IndexedDB per (utente,
+  connessione, database), con un controllo di **revisione** perché due finestre
+  sullo stesso diagramma sono due autosave sullo stesso record. **Lo STATO DELLA
+  VISTA** (zoom, selezione, pannelli, richieste in volo) non si salva: non è
+  lavoro, è dove si stava guardando. Nessuna interazione del canvas scrive nel
+  database, e una relazione disegnata a mano lo dichiara nel toast e
+  nell'ispettore — una linea non è un vincolo.
+  **L'identità di un oggetto è una tupla codificata** (connessione, database,
+  tipo, nome) e non una concatenazione con punti: uno schema `a.b` con tabella
+  `c` sarebbe indistinguibile da uno schema `a` con tabella `b.c`, e due tabelle
+  omonime di schemi diversi finirebbero fuse in un nodo solo con le relazioni di
+  entrambe.
+  **Una FK composta è UN collegamento**, con tutte le coppie ordinate:
+  `dbSchema()` restituiva una riga per colonna senza il nome del vincolo né la
+  colonna di destinazione, quindi quattro frecce fra gli stessi due nodi
+  dicevano «quattro chiavi esterne». Le tre strategie dichiarano ora `constraint`,
+  `ordine`, `toField` e `origine` (`vincolo` / `euristica`), e ogni arco
+  **dichiara la propria origine a parole** oltre che con tratteggio e colore.
+  **La distribuzione Community non porta selezione multipla, minimappa,
+  cronologia ed export**: sono `ui.Selection`, `ui.Navigator`,
+  `dia.CommandManager` e `format.toSVG`, tutti di JointJS+ (vedi
+  `docs/ricerca-jointjs.md`). Stanno quindi in `uml-paper.js`, insieme allo zoom
+  al puntatore — il Paper scala attorno alla propria origine, e «ingrandire dove
+  punta il mouse» è una correzione della traslazione. Il Paper scrive
+  `position: relative` **inline** sul proprio elemento, e un inline batte il CSS:
+  la minimappa si monta su un figlio, perché montata sul proprio riquadro ne
+  annullava il `position: absolute` e si mangiava la larghezza del canvas.
+  **L'annullamento lavora su ISTANTANEE del documento**, non su comandi
+  invertibili: quindici gesti sono quindici occasioni di scrivere l'inverso
+  sbagliato, e il documento è piccolo (nessuna riga di database ci entra mai).
+  L'istantanea si registra alla **pressione**, non al rilascio: un trascinamento
+  multiplo torna così indietro in una volta sola.
+  **La risposta dei metadati completi non ridisegna il canvas.** Scegliere un
+  nodo ne chiede l'elenco intero delle colonne e degli indici
+  (`collection:stats`), ed è la via con cui «tutti i metadati autorizzati sono
+  raggiungibili» senza scaricare l'intero database; ma quella risposta arriva
+  mentre l'utente sta ancora tenendo premuto il nodo appena scelto, e
+  ricostruire le celle sotto le dita **annullava il gesto in corso** — il primo
+  trascinamento dopo ogni selezione non faceva nulla. Sul nodo resta la sintesi,
+  nell'ispettore vanno i metadati completi: è la distinzione dichiarata, non un
+  ripiego. `test/e2e-uml.js` lo misura con un trascinamento vero, e la sua
+  sensibilità è stata verificata rompendo di proposito il gate della modalità,
+  l'istantanea per gesto, la conversione delle coordinate del rilascio e la
+  richiesta dei metadati.
+  **Ciò che si importa è ricostruito campo per campo**, mai adottato: un JSON
+  esterno che diventa il documento è un JSON esterno che decide che cosa il
+  programma disegna. `validaDocumento` copia solo i campi ammessi, forza i tipi,
+  taglia le stringhe, rifiuta coordinate non finite e relazioni verso elementi
+  assenti, e **dichiara** ciò che ha scartato.
   5. **Grafo 3D (`graph3d.js`)**: Vista interattiva 3D Force-Graph (Three.js) con percorsi BFS e diagnosi schema.
   **Il grafo è il documento, gli strumenti gli stanno sopra**: la barra teneva
   nove comandi allo stesso peso visivo, tutti etichettati con un'emoji, su

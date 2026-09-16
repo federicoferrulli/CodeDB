@@ -177,7 +177,10 @@ module.exports = (async () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'server/socket.js'), 'utf8') + '\n' + require('./server-fixture').catalogoEventi().map(e => e.famiglia + "('" + e.evento + "'," + e.handler.toString()).join('\n');
     const corpoDelegate = src.slice(src.indexOf('function delegate(event, fn)'));
     assert.ok(
-      /executeWithReconnect\(sess, \(strat\) => fn\(strat, richiesta\)\)/.test(corpoDelegate),
+      // La sessione è il terzo argomento (serve allo snapshot dello schema):
+      // ciò che questo controllo protegge è che la chiamata passi comunque da
+      // `executeWithReconnect`, non quanti argomenti riceva l'handler.
+      /executeWithReconnect\(sess, \(strat\) => fn\(strat, richiesta(, sess)?\)\)/.test(corpoDelegate),
       'delegate deve invocare la strategia attraverso executeWithReconnect: '
       + 'è da lì che viene la riconnessione automatica'
     );

@@ -2222,7 +2222,8 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 #grid td .type-obj,
 .pane-grid td .type-obj,
 .query-table td .type-obj,
-#query-result-table td .type-obj {
+#query-result-table td .type-obj,
+.uml-dati-tab td .type-obj {
   color: var(--val-obj);   /* Soft violet */
   font-size: 0.8rem;
 }
@@ -2628,38 +2629,391 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 /* ---------- Vista UML ---------- */
+/* Il diagramma e' il documento: occupa tutto lo spazio che avanza, e gli
+   strumenti gli stanno sopra o ai lati. Catalogo e ispettore sono richiudibili,
+   il pannello dati si apre solo su richiesta. */
 
-#view-uml { overflow: hidden; }
+#view-uml { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 
 .uml-bar {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
+  gap: var(--space-sm);
+  /* Una riga sola che VA A CAPO invece di scorrere: una seconda riga si vede,
+     una porzione fuori schermo no. Stessa scelta della barra del Grafo 3D. */
+  flex-wrap: wrap;
+  padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--border);
   background: var(--bg-2);
 }
 
-.uml-bar .hint { flex: 1; }
-.uml-bar code { color: var(--accent-fg); font-family: Consolas, monospace; }
+.uml-gruppo { display: inline-flex; align-items: center; gap: var(--space-2xs); }
+.uml-spazio { flex: 1 1 auto; min-width: 0; }
 
-.uml-canvas { flex: 1; overflow: auto; padding: 10px; }
+/* Controllo segmentato: i due stati si vedono insieme, quello in vigore e'
+   premuto. Con un bottone solo che cambia etichetta non si capisce se
+   l'etichetta descriva lo stato di adesso o quello che si otterrebbe. */
+.uml-segmentato {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-alt);
+}
+.uml-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg-dim);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.uml-seg:hover { background: var(--hover); color: var(--fg); }
+.uml-seg[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--fg-bright);
+}
+.uml-seg i { width: 15px; height: 15px; }
 
-.uml-msg { color: var(--fg-dim); padding: 14px; }
+.uml-bar button.ghost { display: inline-flex; align-items: center; gap: 6px; }
+.uml-bar button.ghost i { width: 15px; height: 15px; }
+.uml-icona { padding: 5px 7px; }
+.uml-bar button.ghost[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--fg-bright);
+}
+.uml-bar button.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
 
-.uml-box rect { fill: var(--bg-2); stroke: var(--border); stroke-width: 1.2; }
-.uml-box .uml-head { fill: var(--bg-3); }
-.uml-box.focal rect { stroke: var(--accent-2); stroke-width: 1.6; }
-.uml-box.focal .uml-head { fill: var(--sel); }
+/* Nome e valore dentro UN solo bordo: una `<select>` di sistema accanto a
+   un'etichetta e' un controllo che sembra caduto li' da un'altra interfaccia. */
+.uml-campo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  height: 30px;
+  padding: 0 var(--space-xs) 0 var(--space-md);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.uml-campo:hover { background: var(--hover); border-color: var(--border-2); }
+.uml-campo .pill-nome { white-space: nowrap; }
+.uml-campo select {
+  /* La freccia di sistema e quella globale si sovrapporrebbero: qui la
+     `<select>` e' nuda dentro la pillola. */
+  background: transparent !important;
+  background-image: none !important;
+  border: 0;
+  padding: 0 var(--space-xs) 0 0;
+  min-width: 0;
+  max-width: 180px;
+  color: var(--fg-bright);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+}
 
-.uml-title { fill: var(--fg); font-weight: 600; font-size: 13px; }
-.uml-field { fill: var(--fg); font-size: 11.5px; font-family: Consolas, monospace; }
-.uml-field.dim { fill: var(--fg-dim); font-style: italic; }
-.uml-type { fill: var(--fg-dim); font-size: 11px; font-family: Consolas, monospace; }
+/* Lo stato del salvataggio e' una PAROLA, non un pallino colorato: il testo
+   dice gia' tutto, e il colore resta decorazione. Per questo il testo e'
+   `--fg`, non il token dello stato — quei tre token sono pensati per bordi e
+   veli, e come TESTO su fondo chiaro scendono sulla soglia di contrasto. */
+.uml-stato {
+  padding: 3px 9px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  color: var(--fg);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.uml-stato.salvato { border-color: var(--success-line); background: var(--success-bg); }
+.uml-stato.modificato { border-color: var(--warning-line); background: var(--warning-bg); }
+.uml-stato.errore { border-color: var(--danger-line); background: var(--danger-bg); }
 
-.uml-edge { stroke: var(--fg-dim); stroke-width: 1.3; }
-.uml-edge-label { fill: var(--accent); font-size: 11px; font-family: Consolas, monospace; }
-#uml-arrow path { fill: var(--fg-dim); }
+.uml-check { display: flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
+
+/* ---------- Corpo a tre colonne ---------- */
+
+.uml-layout { flex: 1; display: flex; min-height: 0; }
+
+.uml-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 240px;
+  flex: 0 0 auto;
+  background: var(--bg-2);
+  border-right: 1px solid var(--border);
+}
+.uml-ispettore { border-right: 0; border-left: 1px solid var(--border); width: 320px; }
+.uml-ispettore.chiuso { width: 40px; }
+.uml-ispettore.chiuso .uml-ispettore-corpo,
+.uml-ispettore.chiuso .uml-nome { display: none; }
+
+.uml-side-testa {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--border);
+}
+.uml-nome { flex: 1; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uml-cerca { width: 100%; }
+.uml-side-piede {
+  padding: var(--space-xs) var(--space-sm);
+  border-top: 1px solid var(--border);
+  color: var(--fg-dim);
+  font-size: 0.75rem;
+}
+
+.uml-catalogo-lista { flex: 1; overflow: auto; margin: 0; padding: var(--space-2xs) 0; list-style: none; }
+.uml-cat-voce {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 4px var(--space-sm);
+  font-size: 0.8rem;
+  color: var(--fg);
+  cursor: grab;
+  user-select: none;
+}
+.uml-cat-voce:hover { background: var(--hover); }
+.uml-cat-voce.scelta { background: var(--sel); }
+/* Gia' nel diagramma: il segno sta nell'ICONA, non nel solo colore. */
+.uml-cat-voce.dentro { color: var(--fg-dim); }
+.uml-cat-voce i { width: 14px; height: 14px; flex: 0 0 auto; }
+.uml-cat-nome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uml-cat-meta { color: var(--fg-dim); font-size: 0.7rem; font-family: var(--mono); }
+.uml-cat-badge {
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--fg-bright);
+  font-size: 0.65rem;
+}
+.uml-cat-vuoto { padding: var(--space-md); color: var(--fg-dim); font-size: 0.8rem; }
+
+.uml-centro { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; }
+
+.uml-canvas {
+  flex: 1; min-width: 0; min-height: 0; position: relative; overflow: hidden;
+  background: var(--bg-1);
+  /* Senza questo il browser si prende il gesto del dito per scorrere la pagina
+     prima che il canvas veda un solo `pointermove`: pan e pizzico non
+     esisterebbero sul tattile. */
+  touch-action: none;
+}
+.uml-canvas.uml-vuoto { display: flex; align-items: center; justify-content: center; }
+.uml-canvas.in-modifica { cursor: crosshair; }
+/* Il cursore dice che cosa fara' il gesto: una mano su un nodo, il mirino sul
+   vuoto quando il clic tira un rettangolo di selezione. */
+.uml-canvas .joint-element { cursor: default; }
+.uml-canvas.in-modifica .joint-element { cursor: move; }
+/* Le maniglie di collegamento compaiono avvicinandosi al nodo: sempre visibili
+   sarebbero duecento pallini su venti tabelle. */
+.uml-canvas.in-modifica .joint-element:hover .joint-port circle { opacity: 1; }
+.uml-canvas .joint-port circle { transition: opacity var(--transition-fast); }
+.uml-canvas .joint-element:focus-visible,
+.uml-canvas .joint-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+.uml-msg { color: var(--fg-dim); padding: var(--space-lg); text-align: center; max-width: 42ch; }
+
+/* Rettangolo di selezione: e' HTML sopra al Paper, non un elemento del grafo —
+   non deve finire nell'export ne' nel documento salvato. */
+.uml-rubber {
+  position: absolute;
+  z-index: 12;
+  pointer-events: none;
+  border: 1px dashed var(--accent);
+  background: var(--sel);
+  border-radius: 2px;
+}
+
+/* Gruppo flottante della TELECAMERA. Fondo pieno: sul tema chiaro un velo
+   sopra il canvas rende i comandi indistinguibili dal disegno. */
+.uml-flottante {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  z-index: 16;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+}
+.uml-flottante button { padding: 5px 7px; }
+.uml-flottante button i { width: 15px; height: 15px; }
+.uml-zoom-valore {
+  text-align: center;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  color: var(--fg-dim);
+  padding: 2px 0;
+}
+
+.uml-minimap {
+  position: absolute;
+  right: var(--space-md);
+  bottom: var(--space-md);
+  z-index: 15;
+  width: 180px;
+  height: 120px;
+  overflow: hidden;
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+}
+
+/* ---------- Ispettore ---------- */
+
+.uml-ispettore-corpo { flex: 1; overflow: auto; padding: var(--space-md); font-size: 0.8rem; }
+.uml-isp-titolo { margin: 0 0 2px; font-size: 0.95rem; }
+.uml-isp-sotto { margin: 0 0 var(--space-md); color: var(--fg-dim); font-size: 0.75rem; }
+.uml-isp-sez {
+  margin: var(--space-lg) 0 var(--space-xs);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  /* `--fg-dim`, non `--fg-muted`: quello e' il token del disabilitato e non
+     raggiunge la soglia di contrasto nemmeno per il testo grande. */
+  color: var(--fg-dim);
+}
+.uml-isp-azioni { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.uml-isp-azioni button { font-size: 0.75rem; }
+.uml-isp-azioni button i { width: 14px; height: 14px; }
+.uml-isp-tab { width: 100%; border-collapse: collapse; }
+.uml-isp-tab td { padding: 2px 4px; border-bottom: 1px solid var(--border); vertical-align: top; }
+.uml-isp-tab td.mono, .uml-isp-elenco.mono, .uml-ispettore-corpo .mono { font-family: var(--mono); font-size: 0.72rem; }
+.uml-ispettore-corpo .dim { color: var(--fg-dim); }
+.uml-isp-elenco { margin: 0; padding-left: var(--space-lg); }
+.uml-isp-elenco li { margin-bottom: 3px; }
+.uml-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-2);
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  color: var(--fg-dim);
+}
+.uml-tag.vincolo { color: var(--fg-bright); border-color: var(--accent-line); background: var(--accent-soft); }
+.uml-tag.ipotesi { border-style: dashed; }
+/* «caricato / parziale / non disponibile» e' una PAROLA: che cosa si stia
+   guardando non deve dipendere da una sfumatura. */
+.uml-stato-dato { font-size: 0.7rem; padding: 0 5px; border-radius: var(--radius-sm); border: 1px solid var(--border-2); }
+.uml-stato-dato.ok { color: var(--fg); border-color: var(--success-line); background: var(--success-bg); }
+.uml-stato-dato.parziale { color: var(--fg); border-color: var(--warning-line); background: var(--warning-bg); }
+.uml-stato-dato.attesa { color: var(--fg-dim); }
+.uml-stato-dato.assente { color: var(--fg); border-color: var(--danger-line); background: var(--danger-bg); }
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-fg);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-btn:hover { color: var(--fg-bright); }
+
+/* ---------- Pannello dati ---------- */
+
+.uml-dati {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 38vh;
+  border-top: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.uml-dati.hidden { display: none; }
+.uml-dati-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+  border-bottom: 1px solid var(--border);
+}
+.uml-dati-bar button.ghost { display: inline-flex; align-items: center; gap: 6px; }
+.uml-dati-bar button.ghost i { width: 15px; height: 15px; }
+.uml-dati-area { flex: 1; display: flex; min-height: 0; }
+.uml-dati-corpo { flex: 1; min-width: 0; overflow: auto; }
+.uml-dati-json {
+  flex: 0 0 auto;
+  width: 320px;
+  overflow: auto;
+  padding: var(--space-sm);
+  border-left: 1px solid var(--border);
+  background: var(--bg-1);
+  font-size: 0.75rem;
+}
+.uml-dati-json.hidden { display: none; }
+.uml-dati-tab { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+.uml-dati-tab th, .uml-dati-tab td {
+  padding: 3px var(--space-sm);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.uml-dati-tab th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-3);
+  color: var(--fg-dim);
+  font-weight: 600;
+  /* Il nome vero della colonna: `text-transform` lo falsificherebbe, e su
+     PostgreSQL un identificatore fra virgolette e' sensibile alle maiuscole. */
+  text-transform: none;
+}
+.uml-dati-tab tbody tr { cursor: pointer; }
+.uml-dati-tab tbody tr:hover { background: var(--hover); }
+.uml-dati-tab tbody tr.scelta { background: var(--sel); }
+
+/* ---------- Viewport ridotta ---------- */
+
+@media (max-width: 1100px) {
+  /* L'ispettore diventa un pannello SOVRAPPOSTO: a questa larghezza tre
+     colonne lascerebbero al diagramma meno spazio di quello che serve. */
+  .uml-ispettore {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 18;
+    box-shadow: var(--shadow-md);
+  }
+  .uml-side { width: 190px; }
+  .uml-bar .uml-testo { display: none; }
+}
+
+@media (pointer: coarse) {
+  .uml-seg, .uml-bar button.ghost, .uml-flottante button, .uml-dati-bar button { min-height: var(--touch-target-min); }
+  .uml-cat-voce { min-height: var(--touch-target-min); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uml-seg, .uml-canvas .joint-port circle { transition: none; }
+}
 
 /* ---------- Modale modifica documento ---------- */
 
