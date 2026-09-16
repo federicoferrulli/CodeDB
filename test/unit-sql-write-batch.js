@@ -184,7 +184,13 @@ module.exports = (async () => {
   const fs = require('fs');
   const path = require('path');
   for (const file of ['MySqlStrategy.js', 'PostgreSqlStrategy.js']) {
-    const sorgente = fs.readFileSync(path.join(__dirname, '..', 'db', file), 'utf8');
+    // I ritorni a capo si normalizzano PRIMA di ritagliare. I .js non sono in
+    // .gitattributes, quindi su un checkout Windows core.autocrlf consegna il
+    // file con CRLF: il separatore cercato qui sotto non esisteva, indexOf
+    // tornava -1 e il ritaglio diventava lungo tre caratteri — i controlli
+    // fallivano per il sistema operativo invece che per il codice.
+    const sorgente = fs.readFileSync(path.join(__dirname, '..', 'db', file), 'utf8')
+      .split('\r').join('');
     const corpo = sorgente.slice(sorgente.indexOf('async executeWriteBatch('));
     const metodo = corpo.slice(0, corpo.indexOf('\n  }\n') + 4);
     assert(/eseguiBatchScritture\(/.test(metodo),
