@@ -7,7 +7,6 @@ import { tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { descriviEsitoImport } from './import-status.js';
 import { preparaImportCsv } from './csv.js';
-import { eseguiInParalleloOrdinato } from './export-pool.js';
 import { importaBlocco } from './import-batch.js';
 import { creaStatoSelezione } from './export-selezione.js';
 import { confermaPiano } from './piano-anteprima.js';
@@ -122,6 +121,7 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
   // Anche l'export va ancorato al tab d'origine: senza, cambiare connessione a
   // metà scaricamento farebbe arrivare i blocchi successivi da un'altra
   // connessione e il file prodotto conterrebbe dati di due database diversi.
+  if (exportWizard) { toast('Un export ? gi? aperto o in corso.', true); return; }
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
@@ -391,15 +391,19 @@ export function initExportImport() {
     disegnaAlberoExport();
   });
   $('#dbexport-run').addEventListener('click', async () => {
-    if (!exportWizard) return;
+    if (!exportWizard || exportWizard.inCorso) return;
+    const wizard = exportWizard;
+    wizard.inCorso = true;
     const fine = iniziaCaricamento($('#dbexport-run'), 'Anteprima…');
     let risposta;
     try {
       risposta = await pianoExportCorrente();
     } catch (err) {
       showError('#dbexport-error', err.message);
+      wizard.inCorso = false;
       return;
     } finally { fine(); }
+    if (exportWizard !== wizard) return;
     closeModal('#dbexport-overlay');
     // Ciò che si conferma è ciò che si esegue, e sono lo STESSO oggetto: il
     // piano passa dal riepilogo all'esecuzione senza essere ricostruito.
@@ -407,8 +411,8 @@ export function initExportImport() {
       exportWizard = null;
       return;
     }
-    try { await eseguiExportDatabase(risposta.plan); }
-    finally { exportWizard = null; }
+    try { await eseguiExportDatabase(risposta.plan, wizard); }
+    finally { if (exportWizard === wizard) exportWizard = null; }
   });
 
   // --- Import di interi database ---------------------------------------------
@@ -497,22 +501,18 @@ export function initExportImport() {
 // Voci di menu contestuale per un intero database (sidebar).
 export function dbExportImportMenuItems(db) {
   return [
-    { label: '⤓ Esporta database (JSON)…', action: () => exportDatabase(db) },
+    { label: '⤓ Esporta database…', action: () => exportDatabase(db) },
     { label: '⤒ Importa database…', action: openDbImportModal },
   ];
 }
 
 /* ---------------------------------------------------------------------------
- * Export/import di INTERI database: un unico file .codedb.json auto-contenuto
- * { formato, versione, dbType, db, collections: [{ name, ddl, indexes, docs }] }
- * con i documenti/righe in Extended JSON (relaxed). L'export riusa i blocchi
- * di collection:export (formato json per entrambi i dbType) più il CREATE
- * TABLE (collection:ddl, MySQL) e gli indici (collection:stats, MongoDB);
- * l'import ricrea schema e indici e invia i dati con collection:import.
+ * Export di INTERI database: il server esegue il piano confermato e pubblica
+ * un file SQL o EJSON verificato. Il browser segue lo stato e avvia il download
+ * HTTP, senza accumulare il database in memoria. L'import CodeDB conserva il
+ * proprio percorso con anteprima, staging e recupero.
  * ------------------------------------------------------------------------- */
 
-const DB_EXPORT_FORMAT = 'codedb-database';
-const DB_EXPORT_CONCURRENCY = 3;
 
 // Database di sistema: metadati generati dal server, non dati dell'utente.
 // Esportarli produce viste non ricreabili, importarci sopra è distruttivo.
@@ -586,6 +586,7 @@ async function pianoExportCorrente() {
   const risposta = await emit('database:export:plan', {
     tabId: w.tabId, db: w.db,
     modalita: w.modalita,
+    formato: $('#dbexport-formato').value,
     // Solo la modalità personalizzata porta una selezione: nelle altre tre il
     // perimetro lo decide il piano, e mandargliela sarebbe dirgli due volte la
     // stessa cosa con due voci che possono divergere.
@@ -611,6 +612,7 @@ async function pianoExportCorrente() {
  * parlasse direttamente col socket poteva chiedere `mysql` o `pg_catalog`.
  */
 export async function exportDatabase(db) {
+  if (exportWizard?.inCorso) { toast('Un export è già in corso.', true); return; }
   const origin = captureContext();
   const { tabId } = origin;
   const dbType = origin.st.dbType;
@@ -619,14 +621,16 @@ export async function exportDatabase(db) {
     return;
   }
   let risposta;
+  const wizard = { tabId, db, dbType, modalita: 'struttura-e-dati', sel: null, oggetti: [] };
   try {
-    exportWizard = { tabId, db, dbType, modalita: 'struttura-e-dati', sel: null, oggetti: [] };
+    exportWizard = wizard;
     risposta = await emit('database:export:plan', { tabId, db, modalita: 'struttura-e-dati' });
   } catch (err) {
-    exportWizard = null;
+    if (exportWizard === wizard) exportWizard = null;
     toast(`Esportazione fallita: ${err.message}`, true);
     return;
   }
+  if (exportWizard !== wizard) return;
   // Gli oggetti del wizard sono quelli del CATALOGO, non quelli del primo
   // piano: il piano esclude ciò che non è selezionato, e un oggetto escluso
   // deve restare visibile — altrimenti «solo struttura» farebbe sparire dalla
@@ -641,6 +645,9 @@ export async function exportDatabase(db) {
   $('#dbexport-motore').textContent = risposta.motore && risposta.motore.backend === 'nativo'
     ? `Motore: nativo (${risposta.motore.nativo.tool}).`
     : `Motore: incorporato. ${(risposta.motore && risposta.motore.motivo) || ''}`;
+  $('#dbexport-formato').innerHTML = isSqlType(dbType)
+    ? '<option value="sql">Script SQL (.sql)</option><option value="codedb-json">CodeDB EJSON (.codedb.json)</option>'
+    : '<option value="codedb-json">CodeDB EJSON (.codedb.json)</option>';
   $('#dbexport-cerca').value = '';
   showError('#dbexport-error', '');
   applicaModalitaExport('struttura-e-dati');
@@ -648,101 +655,27 @@ export async function exportDatabase(db) {
 }
 
 /** Esegue l'export del perimetro confermato. */
-async function eseguiExportDatabase(plan) {
-  const { tabId, db, dbType } = exportWizard;
-  const isSql = isSqlType(dbType);
-  const entita = isSql ? 'tabelle' : 'collection';
-  // Che cosa si esporta lo dice il PIANO, non una seconda lettura del database:
-  // se le due liste potessero divergere, il file non conterrebbe ciò che è
-  // stato confermato — ed è esattamente ciò che l'impronta esiste per impedire.
-  const collections = plan.oggetti
-    .filter((o) => (o.tipo === 'tabella' || o.tipo === 'collection') && o.dati)
-    .map((o) => ({ name: o.nome }));
-  // Il file viene assemblato come testo per non ri-parsare i blocchi EJSON.
-  let parts = [];
-  let exported = 0;
-  let objects = null;
+async function eseguiExportDatabase(plan, wizard) {
+  const { tabId, db } = wizard;
   try {
-    objects = (await emit('database:schema-objects', { tabId, db })).objects || null;
-    const objectCount = Object.values(objects || {}).reduce(
-      (sum, value) => sum + (Array.isArray(value) ? value.length : 0), 0,
-    );
-    if (!collections.length && !objectCount) {
-      toast(`Il database "${db}" non contiene ${entita} o oggetti di schema da esportare.`, true);
-      return;
-    }
-    // Ogni worker assembla una stringa JSON autonoma. Il pool ne conserva la
-    // posizione originale, quindi le risposte possono arrivare fuori ordine
-    // senza cambiare l'artefatto finale. Dentro una singola collezione i blocchi
-    // restano sequenziali: `after`/`skip` del successivo dipendono dal precedente.
-    const risultati = await eseguiInParalleloOrdinato(collections, async (c) => {
-      let ddl = null;
-      let indexes = null;
-      let postDdl = null;
-      let identity = dbType === 'mongodb' ? { kind: 'mongodb-id', columns: ['_id'] } : null;
-      if (isSql) {
-        ddl = (await emit('collection:ddl', { tabId, db, coll: c.name })).ddl;
-        identity = (await emit('collection:identity', { tabId, db, coll: c.name })).identity;
-        // Un errore di lettura non dimostra l'assenza di indici o vincoli.
-        const aux = await emit('collection:auxddl', { tabId, db, coll: c.name });
-        if (!Array.isArray(aux.indexes) || !Array.isArray(aux.foreignKeys)) {
-          throw new Error(`Metadati di indici e vincoli incompleti per "${c.name}".`);
-        }
-        const statements = [...aux.indexes, ...aux.foreignKeys];
-        if (statements.length) postDdl = statements;
-      } else {
-        const stats = await emit('collection:stats', { tabId, db, coll: c.name });
-        indexes = (stats.indexes || []).filter((i) => i.name !== '_id_');
-      }
-      const lines = [];
-      let skip = 0;
-      let after = null;
-      let total = 0;
-      for (;;) {
-        const res = await emit('collection:export', { tabId, db, coll: c.name, skip, after, limit: CHUNK, format: 'json' });
-        // Vedi la nota in exportCollection: il totale arriva solo sul primo
-        // blocco e va conservato, non riletto da ogni risposta.
-        if (res.total != null) total = res.total;
-        lines.push(...res.lines);
-        skip += res.count;
-        after = res.nextAfter != null ? res.nextAfter : after;
-        toast(`Esportazione di "${db}"… ${c.name}: ${Math.min(skip, total)}/${total}`);
-        if (res.count < CHUNK || skip >= total) break;
-      }
-      return {
-        count: lines.length,
-        part: `  { "name": ${JSON.stringify(c.name)}, "ddl": ${JSON.stringify(ddl)}, ` +
-        `"identity": ${JSON.stringify(identity)}, "indexes": ${JSON.stringify(indexes)}, ` +
-        `"postDdl": ${JSON.stringify(postDdl)}, "docs": [\n    ` +
-        lines.join(',\n    ') + '\n  ] }',
-      };
-    }, DB_EXPORT_CONCURRENCY);
-    parts = risultati.map((risultato) => risultato.part);
-    exported = risultati.reduce((totale, risultato) => totale + risultato.count, 0);
+    const started = await emit('database:export:start', { tabId, fingerprint: plan.fingerprint });
+    let operation;
+    do {
+      await new Promise(resolve => setTimeout(resolve, 750));
+      ({ operation } = await emit('database:export:status', { tabId, db, operationId: started.operation.id }));
+      if (operation.status === 'fallito') throw new Error(operation.error);
+      toast(`Esportazione di "${db}"… ${operation.collection || ''}: ${operation.rows} righe/documenti`);
+    } while (operation.status === 'in_corso');
+    const link = document.createElement('a');
+    link.href = operation.url;
+    link.download = operation.filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    toast(`Export verificato: ${operation.collections} tabelle/collection, ${operation.rows} righe/documenti. Download avviato.`);
   } catch (err) {
     toast(`Esportazione fallita: ${err.message}`, true);
-    return;
   }
-
-  // `generatore` è una firma di provenienza DICHIARATA (come il campo `tool`
-  // dei manifest di backup): dice a chi riceve il file quale programma lo ha
-  // prodotto e quando, che è la prima cosa che serve sapere aprendo un export
-  // altrui. Non è nascosta e non cambia nulla nel formato — l'import ignora i
-  // campi che non conosce, quindi i file vecchi restano validi e i nuovi si
-  // aprono anche con le versioni precedenti.
-  let generatore = 'CodeDB';
-  try {
-    const info = await emit('app:info', { tabId });
-    if (info && info.version) generatore = `CodeDB ${info.version}`;
-  } catch { /* la firma non deve poter far fallire un export */ }
-
-  const text =
-    `{ "formato": ${JSON.stringify(DB_EXPORT_FORMAT)}, "versione": 1, ` +
-    `"generatore": ${JSON.stringify(generatore)}, "creato": ${JSON.stringify(new Date().toISOString())}, ` +
-    `"dbType": ${JSON.stringify(dbType)}, "db": ${JSON.stringify(db)},\n` +
-    `"objects": ${JSON.stringify(objects)},\n"collections": [\n` + parts.join(',\n') + '\n] }\n';
-  downloadBlob(text, `${db}.codedb.json`, 'application/json;charset=utf-8');
-  toast(`Esportato il database "${db}": ${collections.length} ${entita}, ${exported} ${isSql ? 'righe' : 'documenti'}`);
 }
 
 /* --- Import di un intero database ----------------------------------------- */

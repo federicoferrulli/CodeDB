@@ -24,7 +24,7 @@ function archivio(tmp, extra = {}) {
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
-(async () => {
+module.exports = (async () => {
   /* --- Percorso felice ---------------------------------------------------- */
 
   {
@@ -35,18 +35,18 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     assert.ok(maxChunkBytes > 0);
     const primo = Buffer.from('primi-dati-');
     const secondo = Buffer.from('secondi-dati');
-    let esito = store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: primo, attore: 'terminale-1' });
+    let esito = await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: primo, attore: 'terminale-1' });
     assert.strictEqual(esito.ripetuto, false);
     assert.strictEqual(esito.scritti, primo.length);
     // Ripresa: lo stesso blocco è idempotente e non sposta la posizione.
-    esito = store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: primo, attore: 'terminale-1' });
+    esito = await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: primo, attore: 'terminale-1' });
     assert.strictEqual(esito.ripetuto, true);
     assert.strictEqual(esito.scritti, primo.length);
-    esito = store.aggiungi(uploadId, 'ada', { offset: primo.length, contenuto: secondo, attore: 'terminale-1' });
+    esito = await store.aggiungi(uploadId, 'ada', { offset: primo.length, contenuto: secondo, attore: 'terminale-1' });
     const totale = Buffer.concat([primo, secondo]);
     assert.strictEqual(esito.scritti, totale.length);
     assert.deepStrictEqual(store.stato(uploadId, 'ada', 'terminale-1').scritti, totale.length);
-    const manifest = store.finalizza(uploadId, 'ada', {
+    const manifest = await store.finalizza(uploadId, 'ada', {
       dimensioneAttesa: totale.length, digestAtteso: sha(totale), nome: 'prova.bin', attore: 'terminale-1',
     });
     assert.strictEqual(manifest.digest, sha(totale));
@@ -69,15 +69,15 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const store = archivio(tmp);
     const { uploadId } = store.avvia('ada');
     const contenuto = Buffer.from('0123456789');
-    store.aggiungi(uploadId, 'ada', { offset: 0, contenuto });
-    assert.throws(() => store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('ABCDEFGHIJ') }),
+    await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto });
+    await assert.rejects(() => store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('ABCDEFGHIJ') }),
       /corrotto|Conflitto/, 'stesso offset, contenuto diverso: rifiutato, non scelto');
-    assert.throws(() => store.aggiungi(uploadId, 'ada', { offset: 99, contenuto }),
+    await assert.rejects(() => store.aggiungi(uploadId, 'ada', { offset: 99, contenuto }),
       /sequenza/i, 'un salto lascia byte mai scritti: rifiutato');
-    assert.throws(() => store.aggiungi(uploadId, 'ada', { offset: 10, contenuto: Buffer.alloc(0) }),
+    await assert.rejects(() => store.aggiungi(uploadId, 'ada', { offset: 10, contenuto: Buffer.alloc(0) }),
       /vuoto/i);
     // La sessione è intatta dopo i rifiuti: si prosegue dall'offset giusto.
-    const esito = store.aggiungi(uploadId, 'ada', { offset: 10, contenuto });
+    const esito = await store.aggiungi(uploadId, 'ada', { offset: 10, contenuto });
     assert.strictEqual(esito.scritti, 20);
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('  OK   conflitti e buchi rifiutati, sessione intatta');
@@ -90,10 +90,10 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const store = archivio(tmp, { maxBytes: 12, maxChunkBytes: 10, maxPerOwner: 1 });
     const { uploadId } = store.avvia('ada');
     assert.throws(() => store.avvia('ada'), /contemporanei/, 'tetto per account');
-    assert.throws(() => store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.alloc(11) }),
+    await assert.rejects(() => store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.alloc(11) }),
       /troppo grande/i, 'blocco oltre il tetto');
-    store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.alloc(10) });
-    assert.throws(() => store.aggiungi(uploadId, 'ada', { offset: 10, contenuto: Buffer.alloc(10) }),
+    await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.alloc(10) });
+    await assert.rejects(() => store.aggiungi(uploadId, 'ada', { offset: 10, contenuto: Buffer.alloc(10) }),
       /troppo grande/i, 'artefatto oltre il tetto');
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('  OK   tetti di blocco, artefatto e concorrenza');
@@ -106,18 +106,18 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const store = archivio(tmp);
     const { uploadId } = store.avvia('ada');
     const dati = Buffer.from('sei-byte-sei-bytes-1234');
-    store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: dati });
-    assert.throws(() => store.finalizza(uploadId, 'ada', {
+    await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: dati });
+    await assert.rejects(() => store.finalizza(uploadId, 'ada', {
       dimensioneAttesa: dati.length + 1, digestAtteso: sha(dati),
     }), /incompleto/i, 'dimensione dichiarata diversa: niente pubblicazione');
-    assert.throws(() => store.finalizza(uploadId, 'ada', {
+    await assert.rejects(() => store.finalizza(uploadId, 'ada', {
       dimensioneAttesa: dati.length, digestAtteso: '0'.repeat(64),
     }), /corrotto|coincide/i, 'impronta diversa: niente pubblicazione');
-    assert.throws(() => store.finalizza(uploadId, 'ada', {
+    await assert.rejects(() => store.finalizza(uploadId, 'ada', {
       dimensioneAttesa: dati.length, digestAtteso: 'non-esadecimale',
     }), /non valida/i);
     // Dopo i rifiuti la sessione c'è ancora e si finalizza davvero.
-    const manifest = store.finalizza(uploadId, 'ada', { dimensioneAttesa: dati.length, digestAtteso: sha(dati) });
+    const manifest = await store.finalizza(uploadId, 'ada', { dimensioneAttesa: dati.length, digestAtteso: sha(dati) });
     assert.strictEqual(manifest.dimensione, dati.length);
     assert.throws(() => store.stato(uploadId, 'ada'), /non trovato/i, 'finalizzata: non più riprendibile');
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -132,14 +132,14 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const prima = createArchivioUpload({ radicePer, id: () => `u${++n}` });
     const { uploadId } = prima.avvia('ada', 'a1');
     const dati = Buffer.from('parte-prima-');
-    prima.aggiungi(uploadId, 'ada', { offset: 0, contenuto: dati, attore: 'a1' });
+    await prima.aggiungi(uploadId, 'ada', { offset: 0, contenuto: dati, attore: 'a1' });
     // Il processo muore qui: si butta l'istanza e se ne costruisce un'altra.
     const dopo = createArchivioUpload({ radicePer, id: () => 'mai-usato' });
     const resto = Buffer.from('parte-dopo');
-    const esito = dopo.aggiungi(uploadId, 'ada', { offset: dati.length, contenuto: resto, attore: 'a1' });
+    const esito = await dopo.aggiungi(uploadId, 'ada', { offset: dati.length, contenuto: resto, attore: 'a1' });
     assert.strictEqual(esito.scritti, dati.length + resto.length, 'si riparte dallo stato su disco');
     const totale = Buffer.concat([dati, resto]);
-    const manifest = dopo.finalizza(uploadId, 'ada', {
+    const manifest = await dopo.finalizza(uploadId, 'ada', {
       dimensioneAttesa: totale.length, digestAtteso: sha(totale), attore: 'a1',
     });
     assert.strictEqual(manifest.digest, sha(totale));
@@ -169,7 +169,7 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const { tmp } = radice();
     const store = archivio(tmp);
     const { uploadId } = store.avvia('ada', 'a1');
-    store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('x'), attore: 'a1' });
+    await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('x'), attore: 'a1' });
     assert.throws(() => store.stato(uploadId, 'bea'), /non trovato/i, 'un tenant non vede l altro');
     assert.throws(() => store.stato(uploadId, 'ada', 'altro-attore'), /non trovato/i);
     assert.throws(() => store.stato('../scappa', 'ada'), /non valido/i);
@@ -193,7 +193,7 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const { tmp } = radice();
     const store = archivio(tmp);
     const { uploadId } = store.avvia('ada');
-    store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('y') });
+    await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: Buffer.from('y') });
     assert.deepStrictEqual(store.scarta(uploadId, 'ada'), { ok: true });
     assert.throws(() => store.stato(uploadId, 'ada'), /non trovato/i);
     fs.rmSync(tmp, { recursive: true, force: true });
@@ -211,7 +211,7 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     const dati = (c) => Buffer.from(c.repeat(60));
     const chiudi = async (byte) => {
       const { uploadId } = store.avvia('ada');
-      store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: byte });
+      await store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: byte });
       return store.finalizza(uploadId, 'ada', { dimensioneAttesa: byte.length, digestAtteso: sha(byte) });
     };
     // 60 byte finalizzati: restano 90 di quota, ma una sessione ne prenota 100.
@@ -227,6 +227,35 @@ const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
     console.log('  OK   quota all avvio, retention configurata, uso misurato');
   }
 
+  {
+    const { tmp } = radice();
+    const store = archivio(tmp);
+    const { uploadId } = store.avvia('ada');
+    const chunk = Buffer.alloc(1024 * 1024, 97), hash = crypto.createHash('sha256');
+    const writing = store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: chunk });
+    await assert.rejects(store.aggiungi(uploadId, 'ada', { offset: 0, contenuto: chunk }), /occupato/);
+    assert.throws(() => store.scarta(uploadId, 'ada'), /occupato/);
+    await writing; hash.update(chunk);
+    for (let i = 1; i < 32; i++) { await store.aggiungi(uploadId, 'ada', { offset: i * chunk.length, contenuto: chunk }); hash.update(chunk); }
+    const digest = hash.digest('hex');
+    let ticks = 0, duranteHash = false, updates = 0;
+    const original = crypto.createHash;
+    const timer = setInterval(() => ticks++, 0);
+    crypto.createHash = (...args) => {
+      const hash = original(...args), update = hash.update;
+      hash.update = function (bytes) { updates++; duranteHash ||= ticks > 0; return update.call(this, bytes); };
+      return hash;
+    };
+    try {
+      const completing = store.finalizza(uploadId, 'ada', { dimensioneAttesa: 32 * chunk.length, digestAtteso: digest });
+      await assert.rejects(store.aggiungi(uploadId, 'ada', { offset: 32 * chunk.length, contenuto: chunk }), /occupato/);
+      assert.throws(() => store.scarta(uploadId, 'ada'), /occupato/);
+      const manifest = await completing;
+      assert.strictEqual(manifest.digest, digest);
+      assert(updates > 1 && duranteHash, 'il timer deve avanzare DURANTE il checksum, non solo prima della pubblicazione');
+    } finally { crypto.createHash = original; clearInterval(timer); fs.rmSync(tmp, { recursive: true, force: true }); }
+    console.log('  OK   checksum non bloccante e mutazioni concorrenti escluse sullo stesso upload');
+  }
   console.log('  OK   Archivio upload su disco passed');
 })().catch((err) => {
   console.error('  FAIL Archivio upload:', err.stack || err);

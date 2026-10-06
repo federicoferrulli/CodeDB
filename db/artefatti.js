@@ -211,6 +211,20 @@ function validaRiferimentiCrossDatabase(target, database, dbType, sql) {
   }
 }
 
+// Il catalogo PostgreSQL può emettere nomi nudi; SHOW CREATE usa backtick.
+// Riutilizzare il lexer evita confronti di sottostringhe con nomi di colonne.
+function riferimentiChiaveEsterna(sql) {
+  const tokens = tokenizza(sql);
+  const nomi = [];
+  for (let i = 0; i < tokens.length; i++) {
+    if (keyword(tokens[i], 'REFERENCES')) {
+      const nome = leggiNome(tokens, i + 1);
+      if (nome) nomi.push(nome.name);
+    }
+  }
+  return nomi;
+}
+
 function validaDdlCollezione(sql, { dbType, database, collection, forme = null, allowUnsafeSchema = false } = {}) {
   const testo = String(sql == null ? '' : sql);
   const statements = splitStatementsDetailed(testo, { backslashEscape: tipoDb(dbType) === 'mysql' });
@@ -449,6 +463,7 @@ function normalizzaLayerBackup(input, { allowUnsafeSchema = false } = {}) {
 }
 
 module.exports = {
+  riferimentiChiaveEsterna,
   FORMATO_EXPORT,
   tipoDb,
   estraiBersaglio,

@@ -11,11 +11,11 @@ module.exports = (async () => {
   const { registraEventi } = require('../server');
   function conGiuntura(opts) { const ctx = contestoFinto(opts); registraEventi(ctx); return ctx; }
   const policy = politiche();
-  await prova('otto punti reali, usati da tutte le 14 operazioni lunghe', () => {
+  await prova('otto punti reali, usati da tutte le 15 operazioni lunghe', () => {
     const punti = Object.keys(policy.PUNTI_ESTENSIONE);
     assert.strictEqual(punti.length, 8);
     const eventi = catalogoEventi().filter(e => e.famiglia === 'operazioneLunga');
-    assert.strictEqual(eventi.length, 14);
+    assert.strictEqual(eventi.length, 15);
     for (const { evento } of eventi) {
       const usati = policy.OPERAZIONI_LUNGHE[evento];
       assert(usati.length > 0, evento);

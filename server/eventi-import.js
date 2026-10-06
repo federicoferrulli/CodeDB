@@ -4,9 +4,10 @@
 const { normalizzaExportDatabase } = require('../db/artefatti');
 const { creaPianoImport } = require('../db/importPlan');
 const { leggiCatalogoExport } = require('../db/exportCatalogo');
-const { creaPianoExport } = require('../db/exportPlan');
+const { creaPianoExport, databaseDiSistema } = require('../db/exportPlan');
 const { creaSelezioneImport } = require('../db/selezioneImport');
-const { backendDisponibile } = require('../backup/lib/nativi');
+const { creaFileExport } = require('../db/exportFile');
+const { verificaImpronta } = require('../db/pianoComune');
 const { createImportArtifactAdapter } = require('../db/importArtifactAdapter');
 const { canAdminTenant } = require('../auth/permissions');
 const path = require('path');
@@ -89,20 +90,29 @@ function createModule({ operazioni, lock, identita, audit }) {
     // delle dipendenze porti davvero dentro.
     lifecycle.delegate('database:export:plan', async (strategy, payload) => {
       const sess = socketContext.sessions.get(lock.normTabId(payload.tabId));
+      identita.assertWholeConnection(socketContext.principal, sess.connName, 'read', 'esportare il database');
       const dbType = (sess && (sess.dbType || sess.strategy.type)) || strategy.type;
       const db = String(payload.db || '').trim();
       if (!db) throw new Error('Database di origine mancante.');
+      if (databaseDiSistema(dbType, db)) throw new Error('Un database di sistema non è esportabile.');
       const catalogo = await leggiCatalogoExport(strategy, dbType, db);
-      // Il backend si GUARDA, non si presume: dichiarare «nativo» senza il
-      // binario farebbe fallire l'esecuzione dopo la conferma, non prima.
-      const motore = backendDisponibile(dbType);
+      const motore = { backend: 'incorporato', motivo: 'File prodotto sul server e scaricato via HTTP.' };
+      const formato = payload.formato || 'codedb-json';
+      if (!['codedb-json', 'sql'].includes(formato) || (dbType === 'mongodb' && formato === 'sql')) {
+        throw new Error('Formato non disponibile per questo database.');
+      }
       const plan = creaPianoExport({
         catalogo: { ...catalogo, db, dbType },
         connection: (sess && (sess.connName || sess.label)) || 'ui-session',
         modalita: payload.modalita || undefined,
         selezione: payload.selezione || null,
         backend: motore.backend,
+        formato,
+        limiteByte: formato === 'codedb-json' ? operazioni.maxImportBytes : null,
+        compressione: false,
+        consistenza: dbType === 'mongodb' ? 'nessuno snapshot globale; conteggi verificati' : 'snapshot repeatable-read; tabelle non transazionali escluse dalla garanzia',
       });
+      sess.exportPlan = plan;
       // Il catalogo viaggia accanto al piano: il wizard deve poter mostrare
       // anche gli oggetti che il piano ESCLUDE — altrimenti «solo struttura»
       // farebbe sparire dalla lista proprio ciò che si vuole riaccendere.
@@ -110,6 +120,59 @@ function createModule({ operazioni, lock, identita, audit }) {
         plan, motore,
         catalogo: catalogo.oggetti.map((o) => ({ id: `${o.tipo}:${o.nome}`, tipo: o.tipo, nome: o.nome })),
       };
+    });
+
+    lifecycle.operazioneLunga('database:export:start', (payload, cb) => {
+      const sess = socketContext.sessions.get(lock.normTabId(payload.tabId));
+      if (!sess || sess.closed) throw new Error('Nessuna connessione attiva.');
+      identita.assertWholeConnection(socketContext.principal, sess.connName, 'read', 'esportare il database');
+      const plan = sess.exportPlan;
+      verificaImpronta(plan);
+      if (payload.fingerprint !== plan.fingerprint) throw new Error('Il piano di export è cambiato: riaprire l’anteprima.');
+      if (sess.exportOperation?.status === 'in_corso') throw new Error('Un export è già in corso su questa connessione.');
+      const principal = socketContext.principal;
+      const operation = { id: require('crypto').randomUUID(), status: 'in_corso', rows: 0 };
+      sess.exportOperation = operation;
+      const check = () => {
+        if (sess.closed || socketContext.socket.disconnected || operation.cancelled) throw new Error('Export annullato.');
+        identita.assertWholeConnection(socketContext.principal, sess.connName, 'read', 'continuare l’export');
+      };
+      lifecycle.acquisisciLeaseOperazione(sess);
+      cb({ ok: true, operation: { ...operation } });
+      creaFileExport({
+        strategy: sess.strategy, plan, check,
+        archivio: socketContext.archivioUpload || operazioni.archivioUpload,
+        ownerId: principal.ownerId, actorId: principal.id,
+        maxBytes: plan.formato === 'codedb-json' ? operazioni.maxImportBytes : Infinity,
+        progress: value => Object.assign(operation, value),
+      }).then(result => {
+        Object.assign(operation, result, { status: 'completato' });
+      }, err => {
+        Object.assign(operation, { status: 'fallito', error: err.message });
+      }).finally(async () => {
+        audit.auditWrite(sess, 'database:export:start', { db: plan.sourceDb },
+          { op: 'Export database', fingerprint: plan.fingerprint, formato: plan.formato },
+          operation.status === 'completato' ? 'ok' : 'error', operation,
+          operation.error ? new Error(operation.error) : null, 'read');
+        await lifecycle.rilasciaLeaseOperazione(sess);
+      }).catch(() => {
+        // L'esito dell'export è già registrato; il teardown non pubblica file.
+      });
+    });
+
+    lifecycle.delegate('database:export:status', async (_strategy, payload, sess) => {
+      identita.assertWholeConnection(socketContext.principal, sess.connName, 'read', 'vedere l’export');
+      const operation = sess.exportOperation;
+      if (!operation || operation.id !== payload.operationId) throw new Error('Export non trovato.');
+      if (payload.cancel) operation.cancelled = true;
+      const { manifest, ...view } = operation;
+      if (manifest && operation.status === 'completato') {
+        const modulo = socketContext.artefatti || operazioni.artefatti;
+        const ticket = modulo.emettiTicket({ risorsa: `artefatto:${manifest.id}`, attore: socketContext.principal.id, ownerId: socketContext.principal.ownerId });
+        view.url = `/artefatti/${manifest.id}/scarica?ticket=${encodeURIComponent(ticket)}`;
+        view.filename = manifest.nome;
+      }
+      return { operation: view };
     });
 
     /* --- Selezione di import ------------------------------------------------ */
@@ -178,7 +241,10 @@ function createModule({ operazioni, lock, identita, audit }) {
         targetDb: payload.targetDb,
         drop: !!payload.drop,
       });
+      // Il riepilogo dell'anteprima legge `kind`, `dbType` e `sourceDb`: senza
+      // di essi il piano mostrato non e' riconoscibile come piano.
       const publicPlan = {
+        kind: plan.kind, dbType: plan.dbType, sourceDb: plan.sourceDb,
         fingerprint: plan.fingerprint, connection: plan.connection, targetDb: plan.targetDb,
         collections: plan.collections, promotion: plan.promotion, drop: plan.drop,
       };

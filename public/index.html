@@ -836,83 +836,6 @@
                    all'altro e un lettore di schermo la pronuncia. -->
               <div id="view-uml" class="view-panel hidden">
                 <div class="uml-bar">
-                  <!-- Lo stato del canvas vive in `aria-pressed`, cioe' nella
-                       proprieta' che lo dichiara anche a chi non vede il
-                       colore. Un bottone solo che cambia etichetta non
-                       direbbe se descrive lo stato di adesso o quello che si
-                       otterrebbe premendolo. -->
-                  <div class="uml-segmentato" role="group" aria-label="Che cosa fa il clic sul diagramma">
-                    <button type="button" id="uml-mode-esplora" class="uml-seg" aria-pressed="true"
-                      title="Naviga e consulta: nulla si sposta">
-                      <i data-lucide="mouse-pointer-2" aria-hidden="true"></i><span>Esplora</span>
-                    </button>
-                    <button type="button" id="uml-mode-modifica" class="uml-seg" aria-pressed="false"
-                      title="Sposta i nodi, collega i campi, aggiungi note ed entita'">
-                      <i data-lucide="pencil" aria-hidden="true"></i><span>Modifica diagramma</span>
-                    </button>
-                  </div>
-
-                  <div class="uml-gruppo">
-                    <button type="button" id="uml-undo" class="ghost uml-icona" title="Annulla (Ctrl+Z)"
-                      aria-label="Annulla"><i data-lucide="undo-2" aria-hidden="true"></i></button>
-                    <button type="button" id="uml-redo" class="ghost uml-icona" title="Ripeti (Ctrl+Maiusc+Z)"
-                      aria-label="Ripeti"><i data-lucide="redo-2" aria-hidden="true"></i></button>
-                  </div>
-
-                  <div class="uml-gruppo">
-                    <button type="button" id="uml-disponi" class="ghost" title="Dispone i nodi non bloccati">
-                      <i data-lucide="layout-grid" aria-hidden="true"></i><span class="uml-testo">Disponi</span>
-                    </button>
-                    <button type="button" id="uml-nota" class="ghost" title="Aggiungi una nota">
-                      <i data-lucide="sticky-note" aria-hidden="true"></i><span class="uml-testo">Nota</span>
-                    </button>
-                    <button type="button" id="uml-entita" class="ghost"
-                      title="Aggiungi un'entita' che esiste solo nel diagramma">
-                      <i data-lucide="box" aria-hidden="true"></i><span class="uml-testo">Entita'</span>
-                    </button>
-                    <button type="button" id="uml-rimuovi" class="ghost"
-                      title="Toglie dal DIAGRAMMA cio' che e' selezionato: nel database non cambia nulla">
-                      <i data-lucide="eye-off" aria-hidden="true"></i><span class="uml-testo">Rimuovi</span>
-                    </button>
-                    <button type="button" id="uml-aggancio" class="ghost" aria-pressed="true"
-                      title="Aggancia alla griglia">
-                      <i data-lucide="grid-2x2" aria-hidden="true"></i><span class="uml-testo">Aggancia</span>
-                    </button>
-                    <div class="toolbar-dropdown-wrap">
-                      <button type="button" id="uml-ordina-btn" class="ghost" aria-haspopup="true"
-                        aria-expanded="false" title="Allinea o distribuisci gli elementi scelti">
-                        <i data-lucide="align-start-vertical" aria-hidden="true"></i><span class="uml-testo">Ordina</span>
-                        <i data-lucide="chevron-down" aria-hidden="true"></i>
-                      </button>
-                      <div id="uml-ordina-menu" class="toolbar-dropdown-menu hidden">
-                        <button type="button" class="dropdown-item" data-allinea="sinistra">
-                          <i data-lucide="align-start-vertical" aria-hidden="true"></i> Allinea a sinistra
-                        </button>
-                        <button type="button" class="dropdown-item" data-allinea="centroX">
-                          <i data-lucide="align-center-vertical" aria-hidden="true"></i> Centra in orizzontale
-                        </button>
-                        <button type="button" class="dropdown-item" data-allinea="destra">
-                          <i data-lucide="align-end-vertical" aria-hidden="true"></i> Allinea a destra
-                        </button>
-                        <button type="button" class="dropdown-item" data-allinea="alto">
-                          <i data-lucide="align-start-horizontal" aria-hidden="true"></i> Allinea in alto
-                        </button>
-                        <button type="button" class="dropdown-item" data-allinea="centroY">
-                          <i data-lucide="align-center-horizontal" aria-hidden="true"></i> Centra in verticale
-                        </button>
-                        <button type="button" class="dropdown-item" data-allinea="basso">
-                          <i data-lucide="align-end-horizontal" aria-hidden="true"></i> Allinea in basso
-                        </button>
-                        <button type="button" class="dropdown-item" data-distribuisci="x">
-                          <i data-lucide="align-horizontal-distribute-center" aria-hidden="true"></i> Distribuisci in orizzontale
-                        </button>
-                        <button type="button" class="dropdown-item" data-distribuisci="y">
-                          <i data-lucide="align-vertical-distribute-center" aria-hidden="true"></i> Distribuisci in verticale
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
                   <span class="uml-spazio"></span>
 
                   <div class="uml-gruppo">
@@ -920,12 +843,6 @@
                       <span class="pill-nome">Diagramma</span>
                       <select id="uml-diagrammi" title="Diagrammi salvati per questo database"></select>
                     </label>
-                    <button type="button" id="uml-nuovo" class="ghost uml-icona" title="Nuovo diagramma"
-                      aria-label="Nuovo diagramma"><i data-lucide="file-plus-2" aria-hidden="true"></i></button>
-                    <button type="button" id="uml-diagramma-menu" class="ghost uml-icona"
-                      title="Rinomina, duplica o elimina questo diagramma" aria-haspopup="true"
-                      aria-label="Azioni sul diagramma"><i data-lucide="ellipsis-vertical" aria-hidden="true"></i></button>
-                    <span id="uml-stato" class="uml-stato salvato">Salvato</span>
                   </div>
 
                   <div class="uml-gruppo">
@@ -940,16 +857,13 @@
                           <input type="checkbox" id="uml-esp-selezione"> Solo la selezione
                         </label>
                         <button type="button" class="dropdown-item" id="uml-esp-json">
-                          <i data-lucide="braces" aria-hidden="true"></i> JSON CodeDB (riapribile)
+                          <i data-lucide="braces" aria-hidden="true"></i> JSON CodeDB
                         </button>
                         <button type="button" class="dropdown-item" id="uml-esp-svg">
                           <i data-lucide="file-code-2" aria-hidden="true"></i> SVG
                         </button>
                         <button type="button" class="dropdown-item" id="uml-esp-png">
                           <i data-lucide="image" aria-hidden="true"></i> PNG
-                        </button>
-                        <button type="button" class="dropdown-item" id="uml-importa">
-                          <i data-lucide="upload" aria-hidden="true"></i> Importa JSON…
                         </button>
                       </div>
                     </div>
@@ -2081,6 +1995,10 @@
     <div class="modal wide">
       <h2>Esporta database</h2>
       <p class="subtitle" id="dbexport-subtitle"></p>
+      <label>Formato del file
+        <select id="dbexport-formato"><option value="codedb-json">CodeDB EJSON (.codedb.json)</option></select>
+      </label>
+      <p class="hint">Gli script .sql si eseguono con mysql o psql e indicano il database/schema di origine. Il formato JSON rispetta il limite di import mostrato nell’anteprima. MongoDB e le tabelle MySQL non transazionali richiedono una finestra senza scritture per garantire la coerenza.</p>
       <div class="form-row">
         <div class="segmented" id="dbexport-modalita" role="group" aria-label="Modalità di export">
           <button type="button" data-modalita="struttura-e-dati" aria-pressed="true">Struttura e dati</button>

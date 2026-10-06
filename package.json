@@ -22,6 +22,8 @@
     "build:win": "npm run electron:icons && npm run electron:licenza && electron-builder --win --publish never",
     "build:mac": "npm run electron:icons && npm run electron:licenza && electron-builder --mac --publish never",
     "build:linux": "npm run electron:icons && npm run electron:licenza && electron-builder --linux --publish never",
+    "prepare:android": "node android/prepare.cjs",
+    "build:android": "npm run prepare:android && gradle -p android assembleRelease",
     "build:all": "npm run electron:icons && npm run electron:licenza && electron-builder -mwl --publish never",
     "build:dir": "npm run electron:icons && npm run electron:licenza && electron-builder --dir --publish never",
     "release:win": "npm run electron:icons && npm run electron:licenza && node tools/pubblica.js win",
@@ -103,6 +105,7 @@
     "files": [
       "**/*",
       "!dist/**",
+      "!android/**",
       "!docs/**",
       "!issue/**",
       "!test/**",

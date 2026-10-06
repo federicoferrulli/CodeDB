@@ -168,6 +168,14 @@
     "famiglia": "delegate"
   },
   {
+    "evento": "database:export:start",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "database:export:status",
+    "famiglia": "delegate"
+  },
+  {
     "evento": "database:import:cancel",
     "famiglia": "operazioneLunga"
   },
@@ -354,6 +362,18 @@
   {
     "evento": "script:state",
     "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "uml:apply",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "uml:preview",
+    "famiglia": "delegate"
+  },
+  {
+    "evento": "uml:table",
+    "famiglia": "delegate"
   },
   {
     "evento": "users:create",

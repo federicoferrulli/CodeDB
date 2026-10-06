@@ -6,6 +6,7 @@ import { isPlainObject, ejsonKind, fmtBytes, safeUUID, jsonBreve, tronca } from 
 // L'avviso passeggero vive in un modulo foglia: il trasporto ne ha bisogno e
 // non puo' importare questo file (vedi la nota sul trasporto piu' sotto).
 import { toast } from './avvisi.js';
+import { limitiViewport } from './viewport.js';
 
 export const $ = (sel) => document.querySelector(sel);
 
@@ -400,8 +401,9 @@ export function showContextMenu(x, y, items) {
   refreshLucideIcons(menu);
   menu.classList.remove('hidden');
   const rect = menu.getBoundingClientRect();
-  menu.style.left = Math.max(4, Math.min(x, window.innerWidth - rect.width - 4)) + 'px';
-  menu.style.top = Math.max(4, Math.min(y, window.innerHeight - rect.height - 4)) + 'px';
+  const area = limitiViewport();
+  menu.style.left = Math.max(area.left + 4, Math.min(x, area.right - rect.width - 4)) + 'px';
+  menu.style.top = Math.max(area.top + 4, Math.min(y, area.bottom - rect.height - 4)) + 'px';
 }
 
 export function hideContextMenu() {
@@ -414,7 +416,9 @@ export function hideContextMenu() {
 // `ReferenceError: document is not defined`, cioe' rendeva non provabile ogni
 // modulo che risalisse fin qui. La guardia non cambia nulla nella pagina.
 if (typeof document !== 'undefined') {
-  document.addEventListener('click', hideContextMenu);
+  // Chiude il menu precedente PRIMA del comando: in bubbling lo stesso clic
+  // richiudeva anche il menu appena aperto da un pulsante (es. UML).
+  document.addEventListener('click', hideContextMenu, true);
   window.addEventListener('blur', hideContextMenu);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') hideContextMenu();
@@ -579,23 +583,21 @@ export function positionFixedDropdown(btn, menu) {
   const rect = btn.getBoundingClientRect();
   const menuWidth = menu.offsetWidth || 220;
   const menuHeight = menu.offsetHeight || 180;
-  const screenWidth = window.innerWidth;
-  const screenHeight = window.innerHeight;
+  const area = limitiViewport();
 
   menu.style.position = 'fixed';
   menu.style.zIndex = '100000';
 
   // Posizionamento verticale: sotto il bottone, oppure sopra se in basso non c'è spazio sufficiente
   let top = rect.bottom + 6;
-  if (top + menuHeight > screenHeight - 8 && rect.top - menuHeight - 6 > 0) {
-    top = Math.max(8, rect.top - menuHeight - 6);
+  if (top + menuHeight > area.bottom - 8) {
+    top = rect.top - menuHeight - 6;
   }
-  menu.style.top = `${top}px`;
+  menu.style.top = `${Math.max(area.top + 8, Math.min(top, area.bottom - menuHeight - 8))}px`;
 
   // Posizionamento orizzontale: allinea a destra col bottone, garantendo che sia sempre compreso nello schermo (8px dal bordo)
   let left = rect.right - menuWidth;
-  if (left < 8) left = 8;
-  if (left + menuWidth > screenWidth - 8) left = Math.max(8, screenWidth - menuWidth - 8);
+  left = Math.max(area.left + 8, Math.min(left, area.right - menuWidth - 8));
 
   menu.style.left = `${left}px`;
   menu.style.right = 'auto';

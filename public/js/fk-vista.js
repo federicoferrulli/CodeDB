@@ -158,7 +158,6 @@ export function apriPannelloFk({
   pannello.style.removeProperty('--fk-chiusura');
   applicaMisura(pannello, leggiMisura());
   riposizionaPannello(pannello);
-  aggiornaTastiera();
   // Un fotogramma prima di animare: applicando `aperto` nello stesso frame in
   // cui si toglie `hidden`, il browser non ha uno stato di partenza da cui
   // animare e il pannello comparirebbe di scatto. Il fotogramma arriva DOPO:
@@ -252,40 +251,6 @@ function limiti() {
     wMax: Math.max(MIN_LARGHEZZA, window.innerWidth - 48),
     hMax: Math.max(MIN_ALTEZZA, window.innerHeight - 120),
   };
-}
-
-/* --------------------------- Tastiera virtuale ---------------------------- *
- * Su mobile il pannello è un foglio appoggiato in basso, e la casella di
- * ricerca sta dentro. Toccandola si apre la tastiera virtuale — che NON
- * accorcia le unità viewport: `100vh` resta l'altezza di tutto lo schermo,
- * quindi il foglio non si sposta e la casella in cui si sta scrivendo finisce
- * sotto i tasti. È il difetto classico dei bottom sheet, e si vede solo su un
- * telefono vero.
- *
- * `visualViewport` è l'unica API che dice quanto spazio la tastiera sta
- * occupando davvero; dove manca (browser vecchi) il valore resta 0 e il
- * comportamento è quello di prima, non peggiore.
- * ------------------------------------------------------------------------- */
-
-function altezzaTastiera() {
-  const vv = window.visualViewport;
-  if (!vv) return 0;
-  // Quanto della finestra è coperto dal basso. Sotto una soglia è il normale
-  // assestarsi delle barre del browser, non una tastiera.
-  const coperto = window.innerHeight - vv.height - vv.offsetTop;
-  return coperto > 120 ? Math.round(coperto) : 0;
-}
-
-function aggiornaTastiera() {
-  const pannello = $('#fk-pannello');
-  if (!pannello) return;
-  // Solo da aperto e solo su mobile: altrove la variabile non è nemmeno letta
-  // dal CSS, e scriverla a ogni assestamento sarebbe lavoro a vuoto.
-  if (!apertura || !pannelloFkMobile()) {
-    pannello.style.removeProperty('--fk-tastiera');
-    return;
-  }
-  pannello.style.setProperty('--fk-tastiera', `${altezzaTastiera()}px`);
 }
 
 function applicaMisura(pannello, misura) {
@@ -480,7 +445,6 @@ export function chiudiPannelloFk() {
 
   pannello.classList.remove('aperto');
   pannello.setAttribute('aria-hidden', 'true');
-  aggiornaTastiera(); // `apertura` è già null: rimuove il sollevamento da tastiera
   // `hidden` solo a dissolvenza finita: toglierlo subito farebbe sparire il
   // pannello di colpo invece di farlo uscire.
   // Se un'altra griglia lo riapre durante la dissolvenza, il `transitionend`
@@ -776,20 +740,12 @@ export function initFkVista() {
   collegaManiglia($('#fk-res-y'), pannello, 'y');
   collegaSwipeFk($('#fk-grab'), pannello);
 
-  // Tastiera virtuale e rotazione dello schermo: il foglio si risolleva sopra i
-  // tasti invece di finirci sotto. `resize` copre anche il passaggio fra
-  // disposizione mobile e desktop trascinando la finestra.
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', aggiornaTastiera);
-    window.visualViewport.addEventListener('scroll', aggiornaTastiera);
-  }
   mqMobile.addEventListener('change', () => {
     if (!apertura) return;
     // Cambiata la disposizione, gli stili inline dell'altra vanno rifatti da
     // zero: un `top` da desktop su un foglio mobile lo mette fuori posto.
     applicaMisura(pannello, leggiMisura());
     riposizionaPannello(pannello);
-    aggiornaTastiera();
   });
 
   $('#fk-close').addEventListener('click', chiudiPannelloFk);

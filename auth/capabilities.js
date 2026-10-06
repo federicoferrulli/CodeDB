@@ -346,6 +346,7 @@ const EVENT_CAPABILITY = {
   // basta — nessuna riga, nessuna mutazione. La capability dell'ESECUZIONE è
   // un'altra cosa e la dichiara il piano (`capability.ambito`).
   'database:export:plan': 'read',
+  'database:export:status': 'read',
   // La selezione di import descrive che cosa si scriverà nella destinazione:
   // è il primo passo di un import, e ne condivide il permesso.
   'database:import:selezione': 'manage',
@@ -379,6 +380,9 @@ const EVENT_CAPABILITY = {
   'collection:rename': 'ddl',
   'collection:drop': 'ddl',
   'column:add': 'ddl',
+  'uml:preview': 'read',
+  'uml:table': 'read',
+  'uml:apply': 'ddl',
   'column:alter': 'ddl',
   'column:drop': 'ddl',
   'index:create': 'ddl',
@@ -439,6 +443,10 @@ const METHOD_CAPABILITY = {
   dropCollection:      { cap: 'ddl', db: 0, coll: 1 },
   addColumn:           { cap: 'ddl', db: 0, coll: 1 },
   alterColumn:         { cap: 'ddl', db: 0, coll: 1 },
+  columnAlterSql:      { cap: 'read', db: 0, coll: 1 },
+  columnDefinition:    { cap: 'read', db: 0, coll: 1 },
+  primaryKeyName:      { cap: 'read', db: 0, coll: 1 },
+  applySchemaStatement: { cap: 'ddl', db: 0, coll: 1, coll2: 2 },
   dropColumn:          { cap: 'ddl', db: 0, coll: 1 },
   createIndex:         { cap: 'ddl', db: 0, coll: 1 },
   dropIndex:           { cap: 'ddl', db: 0, coll: 1 },

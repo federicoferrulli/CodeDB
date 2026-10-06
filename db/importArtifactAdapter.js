@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const { preparaCollectionMongo } = require('./mongoCollectionOptions');
-const { runBackup } = require('../backup/lib/engine');
+const { runBackup, splitMySqlForeignKeys } = require('../backup/lib/engine');
 const {
   runRestore, preflightChain, resolveChain, riqualificaDdl, cardinalitaDestinazione, restoreSchemaObjects,
 } = require('../backup/lib/restore');
@@ -227,9 +227,15 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       }
     } else if (typeof strategy.tableAuxDdl === 'function') {
       for (const collection of plan.artifact.collections) {
-        const expected = (collection.postDdl || [])
+        const inlineForeignKeys = type === 'mysql' && collection.ddl
+          ? splitMySqlForeignKeys(collection.ddl, collection.name).foreignKeys : [];
+        const expected = [...inlineForeignKeys, ...(collection.postDdl || [])]
           .map((sql) => canonicalSqlForDb(riqualificaDdl(sql, plan.sourceDb, db, type), db)).sort();
-        const aux = await strategy.tableAuxDdl(db, collection.name);
+        // MySQL incorpora i vincoli in SHOW CREATE TABLE; tableAuxDdl e'
+        // invece il percorso PostgreSQL per DDL separata.
+        const aux = type === 'mysql'
+          ? { indexes: [], foreignKeys: splitMySqlForeignKeys(await strategy.tableDdl(db, collection.name), collection.name).foreignKeys }
+          : await strategy.tableAuxDdl(db, collection.name);
         const actualDdl = [...(aux.indexes || []), ...(aux.foreignKeys || [])]
           .map((sql) => canonicalSqlForDb(sql, db)).sort();
         const differences = inventoryDifferences({ ddl: expected }, { ddl: actualDdl }, { exact: plan.drop });

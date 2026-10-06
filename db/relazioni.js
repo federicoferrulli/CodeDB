@@ -10,6 +10,8 @@ function raggruppaVincoli(righe) {
       gruppo = {
         nome: String(r.nome), db: r.db || '', tabella: String(r.tabella),
         origine: 'vincolo', molti: false, coppie: [],
+        ...(r.onDelete ? { onDelete: String(r.onDelete) } : {}),
+        ...(r.onUpdate ? { onUpdate: String(r.onUpdate) } : {}),
       };
       gruppi.set(chiave, gruppo);
     }

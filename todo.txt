@@ -1,0 +1,3 @@
+-> dobbiamo inserire la possibilità di importare ed esportare i db in sql, non dobbiamo creare un protocollo proprietario dobbiamo rendere questo tool utilizzabile a chinque
+
+-> Dobbiamo fare un giro se ci connettiamo ad un db senza tabelle e senza niente cosa possiamo fare?

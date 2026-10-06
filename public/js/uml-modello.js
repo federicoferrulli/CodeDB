@@ -1,4 +1,5 @@
 'use strict';
+import { leggiOperazioni } from './uml-progetto-modello.js';
 
 /* ---------------------------------------------------------------------------
  * Le decisioni del diagramma UML, separate dal disegno.
@@ -587,6 +588,7 @@ export function stessaStruttura(a, b) {
       logiche: perId(doc && doc.logiche),
       gruppi: perId(doc && doc.gruppi),
       instradamenti: doc && doc.instradamenti ? doc.instradamenti : {},
+      progetto: doc?.progetto || [],
     };
   };
   return JSON.stringify(scheletro(a)) === JSON.stringify(scheletro(b));
@@ -666,6 +668,7 @@ export function validaDocumento(grezzo) {
     avvisi.push(`Versione ${testo(String(grezzo.versione), 20)} non riconosciuta: letta come versione 1.`);
   }
   doc.nome = testo(grezzo.nome, 120) || 'Diagramma';
+  doc.progetto = leggiOperazioni(grezzo.progetto);
 
   let contati = 0;
   let troncato = false;

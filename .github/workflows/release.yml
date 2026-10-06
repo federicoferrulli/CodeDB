@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Costruzione degli installer CodeDB per Windows, macOS e Linux.
+# Costruzione degli installer CodeDB per Windows, macOS, Linux e Android.
 #
 # Perché esiste: ogni sistema può essere impacchettato SOLO sulla propria
 # piattaforma. Il `.dmg` richiede `hdiutil` (macOS), il `.deb` richiede `fpm`
@@ -179,6 +179,117 @@ jobs:
             dist/*.deb
             dist/*.yml
             dist/*.blockmap
+
+  android:
+    name: Android (APK autonomo)
+    needs: verifica
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: SDK e compilatore Android
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
+      - name: Prepara il server incorporato
+        run: npm run prepare:android
+      - name: Usa la versione Node del runtime mobile per la prova
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.20.4'
+      - name: Verifica runtime e isolamento
+        run: node android/test.cjs
+      - name: Prepara la firma persistente
+        if: needs.verifica.outputs.pubblica == 'true'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE" ] || [ -z "$STORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo 'Configura i quattro secret ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS e ANDROID_KEY_PASSWORD: vedi android/README.md.' >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE" | base64 --decode > "$RUNNER_TEMP/codedb.jks"
+      - name: Compila APK release firmato
+        if: needs.verifica.outputs.pubblica == 'true'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/codedb.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          gradle -p android assembleRelease lintRelease
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify android/app/build/outputs/apk/release/app-release.apk
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/CodeDB-${{ needs.verifica.outputs.versione }}-android.apk"
+      - name: Compila APK di prova (avvio manuale senza pubblicazione)
+        if: needs.verifica.outputs.pubblica != 'true'
+        run: |
+          gradle -p android assembleDebug lintDebug
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/CodeDB-${{ needs.verifica.outputs.versione }}-android-debug.apk"
+      - name: Controlla il contenuto nativo dell'APK
+        run: node android/test.cjs dist/*.apk
+      - name: Abilita accelerazione emulatore
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Prova avvio autonomo su Android
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: gradle -p android connectedDebugAndroidTest
+      - name: Carica APK verificato
+        uses: actions/upload-artifact@v4
+        with:
+          name: codedb-android-${{ needs.verifica.outputs.versione }}
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      - name: Rapporti Android
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapporti-android
+          path: android/app/build/reports/
+      - name: Rimuovi la copia temporanea della chiave
+        if: always()
+        run: rm -f "$RUNNER_TEMP/codedb.jks"
+
+  pubblica-android:
+    name: Aggiungi APK alla release desktop
+    needs: [verifica, build, android]
+    if: needs.verifica.outputs.pubblica == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: codedb-android-${{ needs.verifica.outputs.versione }}
+          path: dist
+      # electron-builder ha già creato la release: nessuna creazione concorrente.
+      - name: Allega APK alla stessa release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          VERSIONE: ${{ needs.verifica.outputs.versione }}
+        run: gh release upload "v$VERSIONE" dist/*.apk --clobber
 
 # ---------------------------------------------------------------------------
 # FIRMA — limite dichiarato, non dimenticato.

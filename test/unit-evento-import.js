@@ -47,6 +47,16 @@ module.exports = (async () => {
   const preview = await ctx.socket.chiama('database:import:start', { ...request, previewOnly: true });
   assert.strictEqual(preview.ok, true);
   assert.strictEqual(preview.preview, true);
+  // Il piano dell'anteprima deve essere LEGGIBILE dal riepilogo che il wizard
+  // mostra: un piano senza `kind` arrivava fin qui e falliva sotto gli occhi
+  // dell'utente con «Tipo di piano sconosciuto».
+  const { riepilogoPiano } = await import('../public/js/riepilogo-piano.js');
+  const riepilogo = riepilogoPiano(preview.plan);
+  assert.strictEqual(riepilogo.kind, 'import-database');
+  assert.ok(
+    !riepilogo.voci.some((v) => v.valore.includes('undefined')),
+    'nessuna voce del riepilogo mostra un campo mancante',
+  );
   const withoutConfirmation = await ctx.socket.chiama('database:import:start', request);
   assert.strictEqual(withoutConfirmation.ok, false, 'senza impronta confermata il piano non parte');
   const response = await ctx.socket.chiama('database:import:start', {

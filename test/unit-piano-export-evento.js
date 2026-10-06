@@ -52,6 +52,19 @@ const strategiaFinta = {
 module.exports = (async () => {
   const { registraEventi } = require('../server');
 
+  {
+    const principal = { id: 'limitato', ownerId: 'tenant', root: false, owner: false,
+      grants: [{ connName: 'locale', capabilities: ['read'], scope: { databases: ['negozio'], collections: ['clienti'] } }] };
+    let letto = false;
+    const strategy = { type: 'mysql', pool: { getConnection() { letto = true; throw new Error('Non deve leggere il catalogo'); } } };
+    const scoped = contestoFinto({ principal, sessioni: [['tab-1', sessioneFinta({ strategy, dbType: 'mysql', connName: 'locale', principal })]] });
+    registraEventi(scoped);
+    const res = await scoped.socket.chiama('database:export:plan', { tabId: 'tab-1', db: 'negozio' });
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(letto, false, 'lo scope si controlla prima di accedere al driver nativo');
+    console.log('  OK   RBAC: catalogo non esposto a grant limitati');
+  }
+
   const ctx = contestoFinto({
     sessioni: [['tab-1', sessioneFinta({ strategy: strategiaFinta, dbType: 'mysql', connName: 'locale' })]],
   });

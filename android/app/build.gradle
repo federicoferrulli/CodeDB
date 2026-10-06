@@ -1,0 +1,59 @@
+plugins { id 'com.android.application' }
+
+def metadata = new groovy.json.JsonSlurper().parse(file('../../package.json'))
+def signingPath = System.getenv('ANDROID_KEYSTORE_PATH')
+
+android {
+    namespace 'com.codedb.android'
+    compileSdk 35
+    ndkVersion '27.2.12479018'
+    defaultConfig {
+        applicationId 'com.codedb.android'
+        minSdk 24
+        targetSdk 35
+        versionCode Integer.parseInt(System.getenv('ANDROID_VERSION_CODE') ?: '1')
+        versionName metadata.version
+        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64' }
+        externalNativeBuild { cmake { arguments '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON', '-DANDROID_STL=c++_shared' } }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildFeatures { buildConfig true }
+    signingConfigs {
+        if (signingPath) {
+            release {
+                storeFile file(signingPath)
+                storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROID_KEY_ALIAS')
+                keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release { if (signingPath) signingConfig signingConfigs.release }
+        debug { applicationIdSuffix '.debug' }
+    }
+    externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt'; version '3.22.1' } }
+    sourceSets.main.assets.srcDirs += [layout.buildDirectory.dir('generated/assets')]
+    // libnode upstream richiede estrazione delle librerie al momento dell'installazione.
+    packaging { jniLibs { useLegacyPackaging true } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+
+tasks.register('runtimeZip', Zip) {
+    from rootProject.layout.buildDirectory.dir('node-project')
+    archiveFileName = 'runtime.zip'
+    destinationDirectory = layout.buildDirectory.dir('generated/assets')
+    doFirst {
+        if (!rootProject.file('build/node-project/mobile.cjs').exists()) {
+            throw new GradleException('Esegui prima node android/prepare.cjs dalla radice del repository.')
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'runtimeZip' }
+
+dependencies {
+    implementation 'androidx.core:core:1.15.0'
+    implementation 'androidx.webkit:webkit:1.12.1'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'junit:junit:4.13.2'
+}

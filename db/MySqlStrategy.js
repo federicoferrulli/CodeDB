@@ -5,7 +5,7 @@ const { assertImportOutcomeKnown } = require('./importFailure');
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const mysql = require('mysql2');
-const { colonnaGenerata } = require('./mysqlColonne');
+const { colonnaGenerata, defaultDaCreate } = require('./mysqlColonne');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { splitStatements } = require('./sqlText');
@@ -241,6 +241,8 @@ function columnSql(c) {
   // dallo scope di chi ha la sola capability `ddl`. Vedi DbStrategy.
   DbStrategy.assertColumnType(type);
   let s = `${qid(name)} ${type}`;
+  if (c.charset) s += ` CHARACTER SET ${qid(c.charset)}`;
+  if (c.collation) s += ` COLLATE ${qid(c.collation)}`;
   if (c.nullable === false) s += ' NOT NULL';
   if (c.default != null && String(c.default).trim() !== '') s += ` DEFAULT ${defaultSql(c.default)}`;
   // La visibilità (MySQL 8.0.23+) va DOPO il default e PRIMA di
@@ -1421,15 +1423,19 @@ class MySqlStrategy extends DbStrategy {
   async columnRelations(db, coll) {
     const pool = this.requirePool();
     const [rows] = await pool.query(
-      `SELECT CONSTRAINT_NAME, ORDINAL_POSITION, COLUMN_NAME,
-              REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
-         FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL
-     ORDER BY CONSTRAINT_NAME, ORDINAL_POSITION`,
+      `SELECT k.CONSTRAINT_NAME, k.ORDINAL_POSITION, k.COLUMN_NAME,
+              k.REFERENCED_TABLE_SCHEMA, k.REFERENCED_TABLE_NAME, k.REFERENCED_COLUMN_NAME,
+              r.DELETE_RULE, r.UPDATE_RULE
+         FROM information_schema.KEY_COLUMN_USAGE k
+         JOIN information_schema.REFERENTIAL_CONSTRAINTS r
+           ON r.CONSTRAINT_SCHEMA = k.CONSTRAINT_SCHEMA AND r.TABLE_NAME = k.TABLE_NAME AND r.CONSTRAINT_NAME = k.CONSTRAINT_NAME
+        WHERE k.TABLE_SCHEMA = ? AND k.TABLE_NAME = ? AND k.REFERENCED_TABLE_NAME IS NOT NULL
+     ORDER BY k.CONSTRAINT_NAME, k.ORDINAL_POSITION`,
       [db, coll]
     );
     return raggruppaVincoli(rows.map((r) => ({
       nome: r.CONSTRAINT_NAME,
+      onDelete: r.DELETE_RULE, onUpdate: r.UPDATE_RULE,
       ordine: r.ORDINAL_POSITION,
       campo: r.COLUMN_NAME,
       db: r.REFERENCED_TABLE_SCHEMA || db,
@@ -1722,11 +1728,22 @@ class MySqlStrategy extends DbStrategy {
 
   // payload: { oldName, column: { name, type, nullable, default } }
   async alterColumn(db, coll, payload) {
-    const pool = this.requirePool();
+    const sql = await this.columnAlterSql(db, coll, payload);
+    await this.requirePool().query(sql);
+    this._cacheColonne.clear();
+  }
+
+  // La stessa istruzione alimenta l'anteprima UML e la modifica immediata.
+  async columnAlterSql(db, coll, payload) {
     const oldName = String((payload && payload.oldName) || '').trim();
     if (!oldName) throw new Error('Nome della colonna da modificare mancante.');
+    return MySqlStrategy.columnAlterSql(db, coll, { ...payload, oldName }, await this.columnDefinition(db, coll, oldName));
+  }
+
+  async columnDefinition(db, coll, oldName) {
+    const pool = this.requirePool();
     const [rows] = await pool.query(
-      `SELECT EXTRA AS extra, GENERATION_EXPRESSION AS generationExpression,
+      `SELECT EXTRA AS extra, COLUMN_DEFAULT AS defaultValue, COLUMN_TYPE AS columnType, GENERATION_EXPRESSION AS generationExpression,
               COLUMN_COMMENT AS comment, CHARACTER_SET_NAME AS charset, COLLATION_NAME AS collation
          FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?`,
@@ -1734,6 +1751,23 @@ class MySqlStrategy extends DbStrategy {
     );
     const originale = rows[0];
     if (!originale) throw new Error(`Colonna ${oldName} non trovata.`);
+    if (/default_generated/i.test(originale.extra || '') && originale.defaultValue != null) {
+      originale.defaultExpression = defaultDaCreate(await this.tableDdl(db, coll), qid(oldName));
+    }
+    if (/^(geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)$/i.test(originale.columnType)) {
+      try {
+        const [srids] = await pool.query('SELECT SRS_ID AS srid FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND COLUMN_NAME = ?', [db, coll, oldName]);
+        originale.srid = srids[0]?.srid;
+      } catch (err) {
+        if (err.code !== 'ER_BAD_FIELD_ERROR') throw err; // MariaDB e MySQL precedenti non hanno SRS_ID.
+      }
+    }
+    return originale;
+  }
+
+  // I metadati arrivano dal server; la bozza li aggiorna dopo ogni ALTER.
+  static columnAlterSql(db, coll, payload, originale) {
+    const oldName = payload.oldName;
     if (String(originale.generationExpression || '').trim()) {
       throw new Error(
         'La modifica visuale di una colonna generata non è supportata: usa una DDL esplicita per non perderne l’espressione.'
@@ -1757,17 +1791,26 @@ class MySqlStrategy extends DbStrategy {
     // tipo di una colonna nascosta la rendeva visibile — cioè la faceva
     // ricomparire in tutte le `SELECT *` delle applicazioni che la usano.
     column.invisible = /\bINVISIBLE\b/i.test(extra);
-    let definizione = columnSql(column);
     const tipoTestuale = /^(?:char|varchar|tinytext|text|mediumtext|longtext|enum|set)\b/i.test(String(column.type || '').trim());
-    if (tipoTestuale && originale.charset) definizione += ` CHARACTER SET ${qid(originale.charset)}`;
-    if (tipoTestuale && originale.collation) definizione += ` COLLATE ${qid(originale.collation)}`;
+    let definizione = columnSql({ ...column,
+      invisible: false, autoIncrement: false,
+      charset: tipoTestuale ? originale.charset : undefined,
+      collation: tipoTestuale ? originale.collation : undefined,
+      // Le espressioni già presenti sono metadati del DB, non SQL del client.
+      default: /default_generated/i.test(extra) && String(column.default ?? '') === String(originale.defaultValue ?? '') ? undefined : column.default,
+    });
+    if (/default_generated/i.test(extra) && String(column.default ?? '') === String(originale.defaultValue ?? '') && originale.defaultValue != null) {
+      definizione += ` DEFAULT ${originale.defaultExpression}`;
+    }
+    if (column.invisible) definizione += ' INVISIBLE';
+    if (column.autoIncrement) definizione += ' AUTO_INCREMENT';
     const onUpdate = extra.match(/on update CURRENT_TIMESTAMP(?:\(\d+\))?/i);
     if (onUpdate) definizione += ` ${onUpdate[0].toUpperCase()}`;
     if (originale.comment) definizione += ` COMMENT ${mysql.escape(String(originale.comment))}`;
-    await pool.query(
-      `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${definizione}`
-    );
-    this._cacheColonne.clear();
+    if (/^(geometry|point|linestring|polygon|multipoint|multilinestring|multipolygon|geometrycollection)$/i.test(String(column.type).trim())) {
+      if (originale.srid != null) definizione += ` SRID ${Number(originale.srid)}`;
+    }
+    return `ALTER TABLE ${qtable(db, coll)} CHANGE COLUMN ${qid(oldName)} ${definizione}`;
   }
 
   async dropColumn(db, coll, name) {
@@ -1902,3 +1945,5 @@ installaMetadati(MySqlStrategy.prototype, DIALETTO_METADATI);
 MySqlStrategy.scegliCollazione = scegliCollazione;
 
 module.exports = MySqlStrategy;
+MySqlStrategy.columnSql = columnSql;
+MySqlStrategy.defaultSql = defaultSql;

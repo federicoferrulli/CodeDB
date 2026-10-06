@@ -86,20 +86,19 @@ function scriviAtomico(file, contenuto) {
   fs.renameSync(tmp, file);
 }
 
-function improntaFile(file) {
+async function improntaFile(file, check) {
   const hash = crypto.createHash('sha256');
-  const fd = fs.openSync(file, 'r');
-  try {
-    const buf = Buffer.alloc(BLOCCO_RILETTURA);
-    for (;;) {
-      const letti = fs.readSync(fd, buf, 0, buf.length, null);
-      if (!letti) break;
-      hash.update(buf.subarray(0, letti));
-    }
-  } finally {
-    fs.closeSync(fd);
+  for await (const buf of fs.createReadStream(file, { highWaterMark: BLOCCO_RILETTURA })) {
+    check();
+    hash.update(buf);
   }
   return hash.digest('hex');
+}
+
+async function scriviAtomicoAsync(file, contenuto) {
+  const tmp = `${file}.tmp-${process.pid}`;
+  await fs.promises.writeFile(tmp, contenuto);
+  await fs.promises.rename(tmp, file);
 }
 
 function createArchivioUpload({
@@ -121,6 +120,7 @@ function createArchivioUpload({
   conservaFinaliMs = Number(process.env.CODEDB_ARTEFATTI_RETENTION_MS) || Infinity,
 } = {}) {
   if (typeof radicePer !== 'function') throw new Error('Archivio upload senza radice per tenant.');
+  const occupati = new Set();
 
   const radiceDi = (ownerId) => path.resolve(radicePer(proprietarioSicuro(ownerId)));
   const dirSessione = (ownerId, uploadId) =>
@@ -140,7 +140,7 @@ function createArchivioUpload({
     for (const nome of nomi) {
       try {
         const stato = leggiStato(path.join(base, nome, 'stato.json'));
-        if (stato.ownerId === ownerId && stato.toccatoAl + ttlMs > now()) attive.push(nome);
+        if (stato.ownerId === ownerId && (occupati.has(path.join(base, nome)) || stato.toccatoAl + ttlMs > now())) attive.push(nome);
       } catch { /* incompleto o illeggibile: lo spazza pulisciScaduti */ }
     }
     return attive;
@@ -162,15 +162,27 @@ function createArchivioUpload({
     return stato;
   }
 
-  function persiste(ownerId, stato) {
+  async function persiste(ownerId, stato) {
     stato.toccatoAl = now();
-    scriviAtomico(fileStato(stato.ownerId, stato.uploadId), JSON.stringify(stato));
+    await scriviAtomicoAsync(fileStato(stato.ownerId, stato.uploadId), JSON.stringify(stato));
     return stato;
+  }
+
+  // L'I/O asincrono non deve permettere due append, oppure scarto e
+  // finalizzazione, sullo stesso file. Upload diversi restano indipendenti.
+  async function modifica(uploadId, ownerId, attore, fn) {
+    const dir = dirSessione(ownerId, uploadId);
+    const stato = carica(ownerId, uploadId, { attore });
+    if (occupati.has(dir)) throw guasto('CONFLITTO', 'Caricamento occupato: attendi l’operazione in corso.');
+    occupati.add(dir);
+    try { return await fn(stato); }
+    finally { occupati.delete(dir); }
   }
 
   function scarta(uploadId, ownerId, attore = null) {
     const nr = idSicuro(uploadId, 'Caricamento');
     const dir = dirSessione(ownerId, nr);
+    if (occupati.has(dir)) throw guasto('CONFLITTO', 'Caricamento occupato: attendi l’operazione in corso.');
     let stato = null;
     try { stato = leggiStato(path.join(dir, 'stato.json')); } catch { /* già sparito */ }
     if (stato) {
@@ -189,6 +201,7 @@ function createArchivioUpload({
     } catch { return { rimossi: 0 }; }
     let rimossi = 0;
     for (const nome of nomi) {
+      if (occupati.has(path.join(base, nome))) continue;
       try {
         const stato = leggiStato(path.join(base, nome, 'stato.json'));
         if (stato.toccatoAl + ttlMs <= adesso) {
@@ -258,34 +271,35 @@ function createArchivioUpload({
     },
 
     aggiungi(uploadId, ownerId, { offset, contenuto, attore = null } = {}) {
-      const stato = carica(ownerId, uploadId, { attore });
-      if (!Buffer.isBuffer(contenuto) || !contenuto.length) {
-        throw guasto('INVALIDO', 'Blocco vuoto o non binario.');
-      }
-      if (contenuto.length > maxChunkBytes) {
-        throw guasto('LIMITE', `Blocco troppo grande: massimo ${maxChunkBytes} byte.`);
-      }
-      const impronte = new Map(Object.entries(stato.impronte || {}).map(([k, v]) => [Number(k), v]));
-      const decisione = decidiBlocco({
-        offset, contenuto, scritti: stato.scritti, improntePerOffset: impronte, massimo: Math.min(maxBytes, stato.maxBytes || maxBytes),
+      return modifica(uploadId, ownerId, attore, async stato => {
+        if (!Buffer.isBuffer(contenuto) || !contenuto.length) {
+          throw guasto('INVALIDO', 'Blocco vuoto o non binario.');
+        }
+        if (contenuto.length > maxChunkBytes) {
+          throw guasto('LIMITE', `Blocco troppo grande: massimo ${maxChunkBytes} byte.`);
+        }
+        const impronte = new Map(Object.entries(stato.impronte || {}).map(([k, v]) => [Number(k), v]));
+        const decisione = decidiBlocco({
+          offset, contenuto, scritti: stato.scritti, improntePerOffset: impronte, massimo: Math.min(maxBytes, stato.maxBytes || maxBytes),
+        });
+        if (decisione.azione === 'rifiuta') {
+          const sequenza = /fuori sequenza/i.test(decisione.motivo || '');
+          const conflitto = /conflitto/i.test(decisione.motivo || '');
+          throw guasto(
+            conflitto ? 'CONFLITTO' : (sequenza ? 'SEQUENZA' : (/troppo grande/i.test(decisione.motivo || '') ? 'LIMITE' : 'INVALIDO')),
+            decisione.motivo,
+          );
+        }
+        if (decisione.azione === 'gia-scritto') {
+          await persiste(ownerId, stato);
+          return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: true };
+        }
+        await fs.promises.appendFile(fileParte(ownerId, stato.uploadId), contenuto);
+        stato.scritti = decisione.scritti;
+        stato.impronte[String(offset)] = { impronta: decisione.impronta, lunghezza: contenuto.length };
+        await persiste(ownerId, stato);
+        return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: false };
       });
-      if (decisione.azione === 'rifiuta') {
-        const sequenza = /fuori sequenza/i.test(decisione.motivo || '');
-        const conflitto = /conflitto/i.test(decisione.motivo || '');
-        throw guasto(
-          conflitto ? 'CONFLITTO' : (sequenza ? 'SEQUENZA' : (/troppo grande/i.test(decisione.motivo || '') ? 'LIMITE' : 'INVALIDO')),
-          decisione.motivo,
-        );
-      }
-      if (decisione.azione === 'gia-scritto') {
-        persiste(ownerId, stato);
-        return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: true };
-      }
-      fs.appendFileSync(fileParte(ownerId, stato.uploadId), contenuto);
-      stato.scritti = decisione.scritti;
-      stato.impronte[String(offset)] = { impronta: decisione.impronta, lunghezza: contenuto.length };
-      persiste(ownerId, stato);
-      return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: false };
     },
 
     stato(uploadId, ownerId, attore = null) {
@@ -293,37 +307,39 @@ function createArchivioUpload({
       return { uploadId: stato.uploadId, scritti: stato.scritti, maxBytes: stato.maxBytes || maxBytes };
     },
 
-    finalizza(uploadId, ownerId, { dimensioneAttesa, digestAtteso, nome = null, attore = null } = {}) {
-      const stato = carica(ownerId, uploadId, { attore });
-      const dimensione = Number(dimensioneAttesa);
-      if (!Number.isInteger(dimensione) || dimensione < 0) {
-        throw guasto('INVALIDO', 'Dimensione attesa mancante o non valida.');
-      }
-      const digest = String(digestAtteso || '').toLowerCase();
-      if (!/^[0-9a-f]{64}$/.test(digest)) {
-        throw guasto('INVALIDO', 'Impronta attesa mancante o non valida (SHA-256 esadecimale).');
-      }
-      if (stato.scritti !== dimensione) {
-        throw guasto('INCOMPLETO',
-          `Caricamento incompleto: ricevuti ${stato.scritti} byte, attesi ${dimensione}.`);
-      }
-      const effettivo = improntaFile(fileParte(ownerId, stato.uploadId));
-      if (effettivo !== digest) {
-        throw guasto('INCOMPLETO',
-          'Impronta del file non coincide con quella dichiarata: il trasferimento è corrotto o mescola due file.');
-      }
-      const artefattoId = idSicuro(String(id()), 'Artefatto');
-      const dir = dirFinale(ownerId, artefattoId);
-      fs.mkdirSync(dir, { recursive: true });
-      fs.renameSync(fileParte(ownerId, stato.uploadId), path.join(dir, 'dati.bin'));
-      const manifest = {
-        v: 1, id: artefattoId, algoritmo: 'sha256', digest: effettivo, dimensione,
-        nome: String(nome || `${artefattoId}.bin`).replace(/["\\\r\n]/g, '').slice(0, 120) || `${artefattoId}.bin`,
-        ownerId: stato.ownerId, attore: stato.attore, finalizzatoAl: now(),
-      };
-      scriviAtomico(path.join(dir, 'manifesto.json'), JSON.stringify(manifest));
-      fs.rmSync(dirSessione(ownerId, stato.uploadId), { recursive: true, force: true });
-      return manifest;
+    finalizza(uploadId, ownerId, { dimensioneAttesa, digestAtteso, nome = null, attore = null, check = () => {} } = {}) {
+      return modifica(uploadId, ownerId, attore, async stato => {
+        const dimensione = Number(dimensioneAttesa);
+        if (!Number.isInteger(dimensione) || dimensione < 0) {
+          throw guasto('INVALIDO', 'Dimensione attesa mancante o non valida.');
+        }
+        const digest = String(digestAtteso || '').toLowerCase();
+        if (!/^[0-9a-f]{64}$/.test(digest)) {
+          throw guasto('INVALIDO', 'Impronta attesa mancante o non valida (SHA-256 esadecimale).');
+        }
+        if (stato.scritti !== dimensione) {
+          throw guasto('INCOMPLETO',
+            `Caricamento incompleto: ricevuti ${stato.scritti} byte, attesi ${dimensione}.`);
+        }
+        const effettivo = await improntaFile(fileParte(ownerId, stato.uploadId), check);
+        if (effettivo !== digest) {
+          throw guasto('INCOMPLETO',
+            'Impronta del file non coincide con quella dichiarata: il trasferimento è corrotto o mescola due file.');
+        }
+        const artefattoId = idSicuro(String(id()), 'Artefatto');
+        const dir = dirFinale(ownerId, artefattoId);
+        check();
+        await fs.promises.mkdir(dir, { recursive: true });
+        await fs.promises.rename(fileParte(ownerId, stato.uploadId), path.join(dir, 'dati.bin'));
+        const manifest = {
+          v: 1, id: artefattoId, algoritmo: 'sha256', digest: effettivo, dimensione,
+          nome: String(nome || `${artefattoId}.bin`).replace(/["\\\r\n]/g, '').slice(0, 120) || `${artefattoId}.bin`,
+          ownerId: stato.ownerId, attore: stato.attore, finalizzatoAl: now(),
+        };
+        await scriviAtomicoAsync(path.join(dir, 'manifesto.json'), JSON.stringify(manifest));
+        await fs.promises.rm(dirSessione(ownerId, stato.uploadId), { recursive: true, force: true });
+        return manifest;
+      });
     },
 
     scarta,

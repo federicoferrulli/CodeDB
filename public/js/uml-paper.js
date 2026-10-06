@@ -144,9 +144,19 @@ export class Tavola {
     this._scollegamenti = [];
 
     const col = palette();
+    // Il Paper ADOTTA l'elemento che riceve, e `paper.remove()` lo TOGLIE dalla
+    // pagina: montandolo su `#uml-canvas` il primo `distruggi()` (cambio di
+    // database, «Rigenera», uscita dalla vista) cancellava il contenitore
+    // stesso, e il montaggio successivo trovava `null` — `messaggio()` taceva
+    // per la sua guardia e `monta()` moriva su `innerHTML`. Si monta su un
+    // figlio, come per la minimappa e per la stessa ragione.
+    const dentro = document.createElement('div');
+    dentro.style.width = '100%';
+    dentro.style.height = '100%';
+    contenitore.appendChild(dentro);
     this.graph = new joint.dia.Graph({}, { cellNamespace: joint.shapes });
     this.paper = new joint.dia.Paper({
-      el: contenitore,
+      el: dentro,
       model: this.graph,
       width: '100%',
       height: '100%',

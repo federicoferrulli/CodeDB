@@ -135,7 +135,9 @@ function creaModuloArtefatti({
     res.set('ETag', etag);
     res.set('Accept-Ranges', 'bytes');
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="${manifest.nome}"`);
+    const fallback = manifest.nome.replace(/[^\x20-\x7e]|["\\]/g, '_');
+    const encoded = encodeURIComponent(manifest.nome).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+    res.set('Content-Disposition', `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`);
     res.set('Cache-Control', 'no-store');
     if (decisione.stato === 416) {
       res.set('Content-Range', decisione.contentRange);
@@ -209,7 +211,7 @@ function creaModuloArtefatti({
       });
     });
 
-    app.post('/artefatti/caricamenti/:id/blocco', cancello, express.raw({ type: '*/*', limit: limiteBlocco }), (req, res) => {
+    app.post('/artefatti/caricamenti/:id/blocco', cancello, express.raw({ type: '*/*', limit: limiteBlocco }), async (req, res) => {
       let id;
       try {
         id = validaRisorsa(`caricamento:${req.params.id}`).split(':')[1];
@@ -233,7 +235,7 @@ function creaModuloArtefatti({
         return errore(res, 400, 'Impronta del blocco non coincide con il contenuto.');
       }
       try {
-        const esito = archivio.aggiungi(id, auth.ownerId, { offset, contenuto, attore: auth.attore });
+        const esito = await archivio.aggiungi(id, auth.ownerId, { offset, contenuto, attore: auth.attore });
         return res.json({ ok: true, ...esito });
       } catch (err) {
         traccia('blocco-rifiutato', {
@@ -244,7 +246,7 @@ function creaModuloArtefatti({
       }
     });
 
-    app.post('/artefatti/caricamenti/:id/finalizza', cancello, express.json({ limit: '16kb' }), (req, res) => {
+    app.post('/artefatti/caricamenti/:id/finalizza', cancello, express.json({ limit: '16kb' }), async (req, res) => {
       let id;
       try {
         id = validaRisorsa(`caricamento:${req.params.id}`).split(':')[1];
@@ -254,7 +256,7 @@ function creaModuloArtefatti({
       const auth = autorizza(req, res, `caricamento:${id}`);
       if (auth.errore) return auth.errore;
       try {
-        const manifest = archivio.finalizza(id, auth.ownerId, {
+        const manifest = await archivio.finalizza(id, auth.ownerId, {
           dimensioneAttesa: req.body && req.body.dimensioneAttesa,
           digestAtteso: req.body && req.body.digestAtteso,
           nome: req.body && req.body.nome,

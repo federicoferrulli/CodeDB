@@ -105,7 +105,10 @@ async function pgColonneDaSalvare(q, schema, table) {
     if (TIPI_BINARI_PG.has(base)) {
       binarie.add(c.name);
       pezzi.push(`encode(${id}, 'hex') AS ${id}`);
-    } else if (TIPI_TEMPORALI_PG.has(base) || TIPI_TEMPORALI_PG.has(String(c.ctype).toLowerCase())) {
+    } else if (base === 'json' || base === 'jsonb' || String(c.ctype).endsWith('[]')
+        || TIPI_TEMPORALI_PG.has(base) || TIPI_TEMPORALI_PG.has(String(c.ctype).toLowerCase())) {
+      // JSON e array attraversano il backup nella forma testuale del DBMS,
+      // senza conversioni numeriche o marcatori BSON dentro il contenuto.
       pezzi.push(`${id}::text AS ${id}`);
     } else if (isPostgresNativeGeometryType(base)) {
       // Tipi geometrici NATIVI di PostgreSQL (point, box, circle…): il driver

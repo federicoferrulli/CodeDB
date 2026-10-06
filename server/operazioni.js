@@ -206,6 +206,8 @@ function createModule({ config, identita }) {
   return {
     importOperations,
     importUploads,
+    maxImportBytes: Math.min(Number(config.env.CODEDB_MAX_IMPORT_BYTES) || 64 * 1024 * 1024,
+      Number(config.env.CODEDB_MAX_IMPORT_TOTAL_BYTES) || Number(config.env.CODEDB_MAX_IMPORT_BYTES) || 64 * 1024 * 1024),
     archivioUpload,
     artefatti,
     backupRootOf,

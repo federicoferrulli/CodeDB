@@ -12,6 +12,7 @@ const SshTunnel = require('../db/SshTunnel');
 console.log('--- Test Unitari CodeDB ---');
 
 (async () => {
+  await require('./unit-database-export');
   await require('./unit-query-senza-limite');
   await require('./unit-sql-integrita-righe');
   await require('./unit-server-modulare');
@@ -1180,6 +1181,7 @@ console.log('--- Test Unitari CodeDB ---');
   // disposizione, annullamento, import). Sbagliate non lanciano: disegnano un
   // diagramma che sembra giusto e descrive un modello che non esiste.
   await require('./unit-uml-modello');
+  await require('./unit-uml-progetto');
 
   // Test 24-quater: euristiche di analisi dello schema, condivise fra
   // l'interfaccia (Grafo 3D) e il gateway MCP. Erano due copie già divergenti:

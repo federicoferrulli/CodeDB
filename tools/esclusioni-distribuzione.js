@@ -29,6 +29,7 @@
 const ESCLUSIONI = [
   // Prodotti di build e materiale di sviluppo
   '!dist/**',
+  '!android/**',
   '!docs/**',
   '!issue/**',
   '!test/**',

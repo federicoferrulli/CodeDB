@@ -6,10 +6,41 @@ const { schemaPaginato } = require('../db/schemaSnapshot');
 const { scegliIdentitaSql } = require('../backup/lib/identity');
 const { readSchemaObjects } = require('../db/schemaObjects');
 const { createImportBatchRegistry } = require('../db/importBatches');
+const progettoUml = require('../db/umlProgetto');
+const { can } = require('../auth/permissions');
 
 function createModule({ query, lock, identita, operazioni, audit }) {
   const importBatches = createImportBatchRegistry();
   function registra(socketContext, lifecycle) {
+    const autorizzaUml = (sess, db) => (coll) => {
+      for (const capability of ['read', 'ddl']) {
+        if (!can(socketContext.principal, { connName: sess.connName, db, coll, capability })) {
+          throw new Error(`Permesso negato: ${capability} sulla tabella «${coll}».`);
+        }
+      }
+    };
+    lifecycle.delegate('uml:preview', async (strategy, p, sess) => {
+      const plan = await progettoUml.prepara(strategy, p.db, p.operations, autorizzaUml(sess, p.db));
+      // Una sola anteprima per sessione: un'altra anteprima invalida la precedente.
+      if (sess.umlPlan?.status === 'in_corso') throw new Error('Applicazione UML già in corso.');
+      sess.umlPlan = plan;
+      return { token: plan.token, steps: plan.steps, expires: plan.expires };
+    });
+    lifecycle.delegate('uml:table', async (strategy, p, sess) => {
+      autorizzaUml(sess, p.db)(p.coll);
+      if (!['mysql', 'postgres', 'postgresql'].includes(strategy.type)) throw new Error('Progettazione SQL non disponibile su questa connessione.');
+      return { fields: await strategy.tableFields(p.db, p.coll), relazioni: await strategy.columnRelations(p.db, p.coll) };
+    });
+    lifecycle.delegate('uml:apply', async (strategy, p, sess) => {
+      const plan = sess.umlPlan;
+      if (!plan || p.token !== plan.token || p.db !== plan.db) throw new Error('Anteprima non valida per questa sessione.');
+      lifecycle.acquisisciLeaseOperazione(sess);
+      try {
+        return await progettoUml.applica(strategy, plan, autorizzaUml(sess, p.db));
+      } finally {
+        await lifecycle.rilasciaLeaseOperazione(sess);
+      }
+    });
     // --- Esplorazione e gestione database (delegati alla strategia) ------------
 
     lifecycle.delegate('db:list', async (strategy) => ({ databases: await strategy.listDatabases() }));

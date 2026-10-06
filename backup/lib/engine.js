@@ -581,7 +581,9 @@ async function mysqlColumnMeta(conn, db, table) {
       // giro EJSON del file NDJSON: torna come oggetto e MySQL lo rifiuta
       // ("Data too long"). In esadecimale sono testo puro ed esatti.
       pezzi.push(`HEX(${id}) AS ${id}`);
-    } else if (tipo === 'bigint' || TIPI_TEMPORALI_MYSQL.has(tipo)) {
+    } else if (tipo === 'bigint' || tipo === 'json' || TIPI_TEMPORALI_MYSQL.has(tipo)) {
+      // JSON resta testo: JSON.parse nel driver arrotonda gli interi grandi
+      // e il successivo EJSON ne cambia anche la rappresentazione.
       // BIGINT: vedi sopra. Date e orari: il driver li converte in Date di
       // JavaScript, che ha risoluzione al MILLISECONDO — un DATETIME(6) con
       // .999999 tornava .999000, e un TIMESTAMP passava anche per il fuso

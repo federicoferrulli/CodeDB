@@ -1522,6 +1522,7 @@ class PostgreSqlStrategy extends DbStrategy {
     const schema = schemaOf(db);
     const res = await pool.query(
       `SELECT tc.constraint_name, kcu.ordinal_position, kcu.column_name,
+              rc.delete_rule, rc.update_rule,
               rcu.table_schema AS referenced_table_schema,
               rcu.table_name   AS referenced_table_name,
               rcu.column_name  AS referenced_column_name
@@ -1542,12 +1543,22 @@ class PostgreSqlStrategy extends DbStrategy {
     );
     return raggruppaVincoli(res.rows.map((r) => ({
       nome: r.constraint_name,
+      onDelete: r.delete_rule, onUpdate: r.update_rule,
       ordine: r.ordinal_position,
       campo: r.column_name,
       db: r.referenced_table_schema || schema,
       tabella: r.referenced_table_name,
       colonna: r.referenced_column_name,
     })));
+  }
+
+  async primaryKeyName(db, coll) {
+    const res = await this.requirePool().query(
+      `SELECT c.conname FROM pg_catalog.pg_constraint c
+       JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+       JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'p'`, [schemaOf(db), coll]);
+    return res.rows[0]?.conname || null;
   }
 
   async collectionExport(db, coll, payload) {
@@ -1748,7 +1759,8 @@ class PostgreSqlStrategy extends DbStrategy {
         });
         return `(${ph.join(', ')})`;
       });
-      let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}`;
+      // Un import conserva anche gli identificatori GENERATED ALWAYS.
+      let sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) OVERRIDING SYSTEM VALUE VALUES ${tuple.join(', ')}`;
       if (pk.length && pk.every((c) => cols.includes(c))) {
         const updateCols = cols.filter((c) => !pk.includes(c));
         sql += ` ON CONFLICT (${pk.map(qid).join(', ')})`;
@@ -2098,3 +2110,5 @@ class PostgreSqlStrategy extends DbStrategy {
 installaMetadati(PostgreSqlStrategy.prototype, DIALETTO_METADATI);
 
 module.exports = PostgreSqlStrategy;
+PostgreSqlStrategy.columnSql = columnSql;
+PostgreSqlStrategy.defaultSql = defaultSql;

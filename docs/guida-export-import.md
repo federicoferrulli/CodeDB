@@ -1,7 +1,63 @@
 # Guida operativa — export e import (parti verificate)
 
-Stato: copre solo ciò che è implementato e provato (`npm test` verde, 17 suite
-del piano). Il resto del piano resta nelle issue di
+## Export dalla sidebar
+
+«Esporta database…» permette di scegliere **Script SQL (.sql)** su MySQL e
+PostgreSQL, oppure **CodeDB EJSON (.codedb.json)** sui tre motori. La scelta di
+struttura, dati e oggetti si applica al file effettivo. SQL non rappresenta i
+documenti e gli indici MongoDB: per MongoDB resta disponibile EJSON.
+
+Il server conserva il piano confermato, produce il file a blocchi su disco,
+verifica i conteggi e il checksum e solo allora offre il download HTTP.
+Il browser non tiene una copia del database. Il motore usato è quello
+incorporato: la presenza di `mysqldump` o `pg_dump` non cambia questo percorso.
+L'accesso al catalogo e all'esecuzione richiede lettura sull'intera connessione.
+
+Lo script SQL contiene il database/schema di origine e si esegue con il client
+del motore, per esempio `mysql -u utente -p < database.sql` oppure
+`psql -U utente -d database_fisico -v ON_ERROR_STOP=1 -f schema.sql`.
+Le routine MySQL usano la direttiva `DELIMITER` del client mysql.
+Gli script preservano gli ID MySQL pari a zero e gli istanti temporali usando
+UTC durante export e ripristino. Al termine MySQL ripristina modalità SQL,
+fuso orario e controllo FK della sessione destinataria.
+L'export SQL «solo dati» gestisce anche FK cicliche, composte e autorelazioni:
+i vincoli vengono verificati dopo il caricamento e prima del commit. Su MySQL
+serve il privilegio `CREATE TEMPORARY TABLES`; su PostgreSQL occorre poter
+alterare i vincoli delle tabelle. Gli errori devono fermare il client SQL:
+non usare opzioni che proseguono dopo un errore. Il rollback dei dati richiede
+tabelle transazionali; le DDL MySQL non sono annullabili come un'unica transazione.
+Le viste materializzate PostgreSQL vengono definite senza dati e popolate dopo
+il caricamento delle tabelle, nell'ordine delle dipendenze. Le routine possono
+quindi riferire le viste già durante la propria creazione.
+La finestra «Importa database» continua a leggere il formato CodeDB e offre
+staging e recupero; eseguire uno script con il client SQL non usa quel percorso.
+
+MySQL/InnoDB e PostgreSQL usano una sola transazione repeatable-read per export.
+MongoDB e le tabelle MySQL non transazionali non hanno questa garanzia: per
+ottenere un file coerente occorre sospendere le scritture. Un conteggio uguale
+non dimostra che i valori non siano cambiati, e l'anteprima lo dichiara.
+
+Il formato JSON condivide il limite configurato dell'import (64 MiB di default,
+`CODEDB_MAX_IMPORT_BYTES` e quota `CODEDB_MAX_IMPORT_TOTAL_BYTES`): il limite è
+mostrato prima della conferma e superarlo non produce un file dichiarato valido
+ma non reimportabile. SQL usa la quota disco degli artefatti
+(`CODEDB_ARTEFATTI_MAX_BYTES`, 10 GiB di default). Per file JSON più grandi occorre
+dimensionare e aumentare il limite di import; l'import mantiene i documenti in
+memoria durante validazione e staging.
+
+Scrittura dei blocchi e lettura per il checksum usano I/O asincrono; il checksum
+viene aggiornato a blocchi, lasciando avanzare l'event loop fra le letture.
+
+Verifica dedicata: `test/unit-database-export.js`,
+`test/e2e-export-regressioni.js` (porte MySQL e PostgreSQL esplicite) e
+`test/e2e-export-formati.js`. Quest'ultimo richiede le porte esplicite
+`EXPORT_MYSQL_PORT`, `EXPORT_PG_PORT`, `EXPORT_MONGO_PORT` di server di prova;
+crea e rimuove soltanto database con nomi casuali. Se si indicano
+`EXPORT_MYSQL_CONTAINER` e `EXPORT_PG_CONTAINER`, il roundtrip usa direttamente
+mysql e psql nei container indicati.
+
+Le sezioni seguenti descrivono i moduli e le verifiche del piano originale.
+Il resto del piano resta nelle issue di
 `.scratch/export-import-fedele/` e in `gate-stato.md`: questa guida non lo
 promette.
 
@@ -62,6 +118,6 @@ leggibili. Tabelle PostgreSQL senza chiave: keyset su `ctid`, mai `OFFSET`.
 
 ## Non ancora (serve ambiente o browser)
 
-Esecuzione degli export/import selettivi sui DBMS, tool nativi in esercizio,
-wizard DOM con progresso e accessibilità, benchmark e gate E2E. Vedi
+Import selettivi completi sui DBMS, backend nativi di dump,
+wizard DOM con progresso e accessibilità, benchmark e gate E2E estesi. Vedi
 `gate-stato.md` per il dettaglio prova per prova.

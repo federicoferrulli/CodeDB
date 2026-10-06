@@ -35,6 +35,9 @@ export function riepilogoPiano(piano) {
     const soloStruttura = oggetti.filter((o) => o.struttura && !o.dati);
     voce('Origine', `${piano.connection} · ${piano.sourceDb} (${piano.dbType})`);
     voce('Modalità', piano.modalita);
+    voce('Formato', piano.formato);
+    voce('Consistenza', piano.consistenza);
+    if (piano.limiteByte) voce('Limite file', `${Math.floor(piano.limiteByte / 1024 / 1024)} MiB (limite configurato per l’import)`);
     voce('Oggetti', oggetti.length);
     voce('Con dati', conDati.length);
     voce('Solo struttura', soloStruttura.length);

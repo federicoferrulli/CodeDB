@@ -267,25 +267,19 @@ const cases = [
       return [[]];
     } }, 'origine'), /f/);
   }],
-  ['export interrotto se mancano indici e FK', async () => {
-    let dataRead = false;
+  ['export fallito sul server non avvia il download', async () => {
+    let download = false;
     const { context, notices } = frontend({ emit: async (event) => {
-      if (event === 'database:schema-objects') return { objects: {} };
-      if (event === 'collection:ddl') return { ddl: 'CREATE TABLE clienti (id INT)' };
-      if (event === 'collection:identity') return { identity: null };
-      if (event === 'collection:auxddl') throw new Error('metadati negati');
-      if (event === 'collection:export') { dataRead = true; throw new Error('lettura dati'); }
+      if (event === 'database:export:start') return { operation: { id: 'export-1' } };
+      if (event === 'database:export:status') return { operation: { status: 'fallito', error: 'metadati negati' } };
       throw new Error(event);
-    } });
-    // Quali oggetti si esportino lo dice ora il PIANO confermato, non una
-    // seconda lettura di `db:collections`: la barriera sui metadati è rimasta
-    // dov'era, e va provata dove ora vive il ciclo dei dati.
+    }, document: { createElement() { download = true; throw new Error('download inatteso'); } } });
     await vm.runInContext(
       "exportWizard = { tabId: 'tab-a', db: 'origine', dbType: 'postgresql' };"
-      + "eseguiExportDatabase({ oggetti: [{ tipo: 'tabella', nome: 'clienti', struttura: true, dati: true }] })",
+      + "eseguiExportDatabase({ fingerprint: 'piano-1' }, exportWizard)",
       context,
     );
-    assert.strictEqual(dataRead, false, 'non si esportano dati dopo metadati persi');
+    assert.strictEqual(download, false, 'non si scarica un export incompleto');
     assert(notices.some((s) => s.includes('metadati negati')));
   }],
   ['opzioni MongoDB alla creazione dello staging', async () => {

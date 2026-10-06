@@ -2651,11 +2651,29 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 /* ---------- Vista UML ---------- */
+.uml-progetto { flex: 0 0 auto; max-height: 52vh; overflow: auto; padding: var(--space-sm); background: var(--bg-2); border-bottom: 1px solid var(--border); }
+.uml-progetto-testa, .uml-progetto-riga { display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.uml-progetto-testa { margin-bottom: var(--space-sm); }
+.uml-progetto-testa span { flex: 1; }
+.uml-progetto-corpo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-md); }
+.uml-progetto label { display: flex; flex-direction: column; gap: var(--space-2xs); margin-bottom: var(--space-sm); }
+.uml-progetto [hidden] { display: none; }
+.uml-progetto input, .uml-progetto select { max-width: 100%; min-width: 0; }
+.uml-progetto-colonne { overflow-x: auto; margin-bottom: var(--space-sm); }
+.uml-progetto-colonne table { width: 100%; }
+.uml-progetto-colonne input:not([type="checkbox"]) { width: 130px; }
+.uml-progetto-revisione li { display: flex; align-items: center; gap: var(--space-2xs); padding: var(--space-2xs) 0; }
+.uml-progetto-revisione li span { flex: 1; overflow-wrap: anywhere; }
+.uml-progetto pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+@media (max-width: 1000px) { .uml-progetto-corpo { grid-template-columns: minmax(0, 1fr); } }
 /* Il diagramma e' il documento: occupa tutto lo spazio che avanza, e gli
    strumenti gli stanno sopra o ai lati. Catalogo e ispettore sono richiudibili,
    il pannello dati si apre solo su richiesta. */
 
-#view-uml { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+#view-uml { position: relative; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+
+/* I diagrammi salvati appartengono al database. */
+.uml-semplice .uml-gruppo:has(#uml-diagrammi) { display: none; }
 
 .uml-bar {
   display: flex;
@@ -2671,39 +2689,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .uml-gruppo { display: inline-flex; align-items: center; gap: var(--space-2xs); }
 .uml-spazio { flex: 1 1 auto; min-width: 0; }
-
-/* Controllo segmentato: i due stati si vedono insieme, quello in vigore e'
-   premuto. Con un bottone solo che cambia etichetta non si capisce se
-   l'etichetta descriva lo stato di adesso o quello che si otterrebbe. */
-.uml-segmentato {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-alt);
-}
-.uml-seg {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 3px 10px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--fg-dim);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-.uml-seg:hover { background: var(--hover); color: var(--fg); }
-.uml-seg[aria-pressed="true"] {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: var(--fg-bright);
-}
-.uml-seg i { width: 15px; height: 15px; }
 
 .uml-bar button.ghost { display: inline-flex; align-items: center; gap: 6px; }
 .uml-bar button.ghost i { width: 15px; height: 15px; }
@@ -2745,22 +2730,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   font-weight: 500;
   cursor: pointer;
 }
-
-/* Lo stato del salvataggio e' una PAROLA, non un pallino colorato: il testo
-   dice gia' tutto, e il colore resta decorazione. Per questo il testo e'
-   `--fg`, non il token dello stato — quei tre token sono pensati per bordi e
-   veli, e come TESTO su fondo chiaro scendono sulla soglia di contrasto. */
-.uml-stato {
-  padding: 3px 9px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font-size: 0.75rem;
-  white-space: nowrap;
-}
-.uml-stato.salvato { border-color: var(--success-line); background: var(--success-bg); }
-.uml-stato.modificato { border-color: var(--warning-line); background: var(--warning-bg); }
-.uml-stato.errore { border-color: var(--danger-line); background: var(--danger-bg); }
 
 .uml-check { display: flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
 
@@ -2806,7 +2775,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   padding: 4px var(--space-sm);
   font-size: 0.8rem;
   color: var(--fg);
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
 }
 .uml-cat-voce:hover { background: var(--hover); }
@@ -2836,19 +2805,24 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   touch-action: none;
 }
 .uml-canvas.uml-vuoto { display: flex; align-items: center; justify-content: center; }
-.uml-canvas.in-modifica { cursor: crosshair; }
 /* Il cursore dice che cosa fara' il gesto: una mano su un nodo, il mirino sul
    vuoto quando il clic tira un rettangolo di selezione. */
 .uml-canvas .joint-element { cursor: default; }
-.uml-canvas.in-modifica .joint-element { cursor: move; }
 /* Le maniglie di collegamento compaiono avvicinandosi al nodo: sempre visibili
    sarebbero duecento pallini su venti tabelle. */
-.uml-canvas.in-modifica .joint-element:hover .joint-port circle { opacity: 1; }
 .uml-canvas .joint-port circle { transition: opacity var(--transition-fast); }
 .uml-canvas .joint-element:focus-visible,
 .uml-canvas .joint-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 .uml-msg { color: var(--fg-dim); padding: var(--space-lg); text-align: center; max-width: 42ch; }
+.uml-canvas[aria-busy="true"] .uml-msg { width: min(100%, 580px); max-width: none; }
+.uml-skeleton { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-lg); margin-top: var(--space-lg); }
+.uml-skeleton-nodo { display: grid; gap: var(--space-sm); padding: var(--space-md); border: 1px solid var(--border); border-radius: var(--radius-md); }
+.uml-skeleton-nodo .skeleton-text { width: 75%; }
+.uml-skeleton-nodo .skeleton-text:last-child { width: 50%; }
+.uml-centro:has(.uml-vuoto) .uml-flottante,
+.uml-centro:has(.uml-vuoto) .uml-minimap { display: none; }
+.uml-layout:has(.uml-canvas[aria-busy="true"]) .uml-ispettore { visibility: hidden; }
 
 /* Rettangolo di selezione: e' HTML sopra al Paper, non un elemento del grafo —
    non deve finire nell'export ne' nel documento salvato. */
@@ -3014,6 +2988,9 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 /* ---------- Viewport ridotta ---------- */
 
 @media (max-width: 1100px) {
+  .uml-semplice #uml-catalogo, .uml-semplice [data-resize="uml-catalogo"] { display: none; }
+  .uml-semplice .uml-ispettore { position: static; flex-shrink: 0; box-shadow: none; }
+  #view-uml:has(#uml-progetto:not(.hidden)) .uml-ispettore { display: none; }
   /* L'ispettore diventa un pannello SOVRAPPOSTO: a questa larghezza tre
      colonne lascerebbero al diagramma meno spazio di quello che serve. */
   .uml-ispettore {
@@ -3029,12 +3006,12 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 @media (pointer: coarse) {
-  .uml-seg, .uml-bar button.ghost, .uml-flottante button, .uml-dati-bar button { min-height: var(--touch-target-min); }
+  .uml-bar button.ghost, .uml-flottante button, .uml-dati-bar button { min-height: var(--touch-target-min); }
   .uml-cat-voce { min-height: var(--touch-target-min); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .uml-seg, .uml-canvas .joint-port circle { transition: none; }
+  .uml-canvas .joint-port circle { transition: none; }
 }
 
 /* ---------- Modale modifica documento ---------- */
@@ -3561,7 +3538,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   gap: 8px;
   row-gap: 6px;
   flex-wrap: wrap;
-  padding: 8px calc(12px + var(--sar)) 8px calc(12px + var(--sal));
+  padding: 8px 12px;
   background: var(--bg-2, #1b1e23);
   border-bottom: 1px solid var(--border, #2a2e35);
   /*
@@ -4009,7 +3986,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   flex-direction: column;
   z-index: 20;
   transition: transform 0.25s ease;
-  padding-bottom: var(--sab);
+  /* La safe area è già applicata al workspace. */
 }
 .graph3d-side-panel.hidden {
   transform: translateX(100%);
@@ -8417,10 +8394,8 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 
      Due vincoli che non si vedono guardando un browser desktop ristretto:
 
-     1. `--fk-tastiera` lo solleva all'apertura della tastiera virtuale: le
-        unità viewport NON si accorciano quando compare, quindi la casella di
-        ricerca finirebbe sotto i tasti mentre ci si scrive. Il valore lo
-        aggiorna fk-vista.js leggendo `visualViewport`.
+     1. Il rettangolo visibile condiviso lo solleva sopra la tastiera e gli
+        inset, come gli altri pannelli (vedi le regole safe area in fondo).
      2. `--fk-chiusura` è lo spostamento del trascinamento verso il basso: si
         scrive durante lo swipe e si azzera al rilascio (vedi collegaSwipeFk).
 
@@ -8428,26 +8403,23 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
      il desktop (allineamento alla cella, misura ricordata): qui la disposizione
      è una sola e la sceglie il CSS. */
   .fk-pannello {
-    --fk-tastiera: 0px;
     --fk-chiusura: 0px;
     right: 0;
     left: 0;
     width: auto !important;
     top: auto !important;
     bottom: 0;
-    padding-bottom: var(--sab);
     /* Il drawer COPRE la barra di navigazione invece di starle sopra: è una
        superficie temporanea che prende il posto della pagina, e lasciare
        scoperti quattro pulsanti sotto un foglio sospeso li rendeva solo
        toccabili per sbaglio. */
-    margin-bottom: var(--fk-tastiera);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     border-bottom: none;
-    max-height: min(78vh, calc(100vh - var(--fk-tastiera) - 56px)) !important;
+    max-height: calc(var(--area-altezza) - 16px) !important;
     box-shadow: 0 -12px 40px var(--sh-450);
     transform: translateY(calc(100% + var(--fk-chiusura)));
     transform-origin: bottom center;
-    transition: opacity var(--transition-fast), transform var(--transition-normal), margin-bottom var(--transition-fast);
+    transition: opacity var(--transition-fast), transform var(--transition-normal);
   }
   .fk-pannello.aperto { transform: translateY(var(--fk-chiusura)); }
   /* Durante lo swipe il drawer deve seguire il dito senza inerzia. */
@@ -8801,3 +8773,81 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 /* L'impronta e' l'identita' del piano: l'esecuzione rifiuta ciò che non
    coincide, quindi va mostrata — non e' un dettaglio tecnico di troppo. */
 .piano-impronta { font-family: var(--mono, monospace); font-size: 0.72rem; word-break: break-all; }
+
+/* --- Area visibile: notch, barre di sistema e tastiera -------------------- */
+:root {
+  --pagina-altezza: 100vh;
+  --vista-top: 0px;
+  --vista-bottom: 0px;
+  --area-top: calc(var(--vista-top) + var(--sat));
+  --area-bottom: max(var(--sab), var(--vista-bottom));
+  --area-altezza: calc(var(--pagina-altezza) - var(--area-top) - var(--area-bottom));
+  --area-larghezza: calc(100vw - var(--sal) - var(--sar));
+  --nav-mobile: 0px;
+}
+@supports (height: 100dvh) { :root { --pagina-altezza: 100dvh; } }
+
+#app {
+  padding: var(--area-top) var(--sar) calc(var(--area-bottom) + var(--nav-mobile)) var(--sal);
+}
+#app > header { flex-shrink: 0; }
+
+/* Lo sfondo copre lo schermo; solo il contenuto evita le zone riservate.
+   I limiti valgono anche per modali ridimensionabili con misure inline. */
+.overlay, .palette-overlay {
+  padding: calc(var(--area-top) + 12px) calc(var(--sar) + 12px)
+    calc(var(--area-bottom) + 12px) calc(var(--sal) + 12px);
+}
+.overlay .modal {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: min(100%, calc(var(--area-larghezza) - 24px)) !important;
+  max-height: calc(var(--area-altezza) - 24px) !important;
+}
+.palette {
+  margin-top: calc(var(--area-altezza) * .1);
+  max-width: 100%;
+  max-height: calc(var(--area-altezza) * .9 - 24px);
+  display: flex;
+  flex-direction: column;
+}
+#palette-input { flex-shrink: 0; }
+#palette-lista { min-height: 0; }
+.context-menu, .toolbar-dropdown-menu, .app-menu {
+  min-width: 0;
+  max-width: calc(var(--area-larghezza) - 16px);
+  max-height: calc(var(--area-altezza) - 16px);
+  overflow: auto;
+}
+.toast {
+  bottom: calc(var(--area-bottom) + var(--nav-mobile) + 24px);
+  left: calc(var(--sal) + var(--area-larghezza) / 2);
+  max-width: min(760px, calc(var(--area-larghezza) - 48px));
+}
+.onb-checklist {
+  right: calc(var(--sar) + var(--space-lg));
+  bottom: calc(var(--area-bottom) + var(--nav-mobile) + var(--space-lg));
+  max-width: calc(var(--area-larghezza) - var(--space-xl));
+  max-height: calc(var(--area-altezza) - var(--nav-mobile) - var(--space-xl));
+  overflow: auto;
+}
+@media (max-width: 900px) {
+  :root { --nav-mobile: 56px; }
+  #conn-sidebar, #sidebar {
+    top: var(--area-top);
+    bottom: var(--area-bottom);
+    left: var(--sal);
+    height: auto;
+    max-width: var(--area-larghezza);
+    transform: translateX(calc(-100% - var(--sal)));
+  }
+  #conn-sidebar.open, #sidebar.open { transform: translateX(0); }
+  .mobile-bottom-nav, .fk-pannello {
+    left: var(--sal);
+    right: var(--sar);
+    bottom: var(--area-bottom);
+  }
+  /* In orizzontale la tastiera può lasciare meno spazio della sola testata:
+     anche ricerca e azioni devono poter scorrere, non soltanto l'elenco. */
+  .fk-pannello { overflow-y: auto; }
+}

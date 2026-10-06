@@ -24,7 +24,8 @@ const {
   analyzeSql, isFileIoSql,
   analyzeMongoPipeline, assertNoMongoServerJs, matchesAny, shellWriteCapabilities,
 } = require('./capabilities');
-const { can, scopeFor } = require('./permissions');
+const { can, scopeFor, canWholeConnection } = require('./permissions');
+const { stripSqlNoise } = require('../db/sqlText');
 const { assertScopedClauses } = require('./sqlClause');
 // La validazione strutturale del filtro: vedi db/filtro.js.
 const { normalizzaFiltro } = require('../db/filtro');
@@ -258,7 +259,14 @@ function guardStrategy(strategy, ctx) {
             throw new Error('I commenti SQL eseguibili /*! … */ e /*M! … */ non sono consentiti in SQL Raw.');
           }
           if (authorization.sql && authorization.sql.multipleStatements) {
-            throw new Error('Più istruzioni SQL nello stesso SQL Raw non sono consentite: usa lo ScriptRunner.');
+            // Nei corpi MySQL i punti e virgola appartengono a una sola CREATE.
+            // Solo un gestore senza scope puo' crearli; il driver mantiene
+            // multipleStatements:false e rifiuta eventuali comandi accodati.
+            const corpoMySql = target.type === 'mysql'
+              && canWholeConnection(principal, connName, 'manage')
+              && /^\s*CREATE\s+(?:PROCEDURE|FUNCTION|TRIGGER|EVENT)\b/i.test(
+                stripSqlNoise(args[2]?.pipeline, { backslashEscape: true }));
+            if (!corpoMySql) throw new Error('Più istruzioni SQL nello stesso SQL Raw non sono consentite: usa lo ScriptRunner.');
           }
           if (authorization.sqlBatch) {
             for (const { analysis } of authorization.sqlBatch) {

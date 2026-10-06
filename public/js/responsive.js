@@ -2,6 +2,7 @@
 
 import { $ } from './utils.js';
 import { notificaCambioLarghezza } from './splitview.js';
+import { initViewport } from './viewport.js';
 
 // Modalità mobile/tablet (vedi media query in style.css): le due sidebar
 // diventano drawer a scomparsa pilotati dagli hamburger nell'header.
@@ -27,6 +28,7 @@ function toggleDrawer(sel) {
 }
 
 export function initResponsive() {
+  initViewport();
   $('#menu-conns-btn').addEventListener('click', () => toggleDrawer('#conn-sidebar'));
   $('#menu-dbs-btn').addEventListener('click', () => toggleDrawer('#sidebar'));
   $('#drawer-backdrop').addEventListener('click', closeDrawers);

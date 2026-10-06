@@ -65,6 +65,13 @@ class DbStrategy {
   async alterColumn(_db, _coll, _payload) { throw unsupported(); }
   async dropColumn(_db, _coll, _name) { throw unsupported(); }
 
+  // Accesso strutturato: il Symbol è creato solo dal compilatore UML del server.
+  // Non si rende SQL Raw disponibile agli utenti con scope limitato.
+  async applySchemaStatement(db, coll, _target, payload) {
+    if (payload?.[DbStrategy.UML_DDL] !== true || !['mysql', 'postgres', 'postgresql'].includes(this.type)) throw unsupported();
+    return this.collectionAggregate(db, coll, { pipeline: payload.sql });
+  }
+
   /** payload: { fields: '{"campo": 1}', name?, unique? } */
   async createIndex(_db, _coll, _payload) { throw unsupported(); }
   async dropIndex(_db, _coll, _name) { throw unsupported(); }
@@ -720,3 +727,4 @@ function aggregateTimeoutMs(env = process.env) {
 DbStrategy.aggregateTimeoutMs = aggregateTimeoutMs;
 
 module.exports = DbStrategy;
+DbStrategy.UML_DDL = Symbol('codedb.uml-ddl');

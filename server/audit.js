@@ -165,6 +165,7 @@ function createModule({ config, dependencies, errori }) {
    * compare qui — o che non usa alcun punto — non si registra.
    */
   const OPERAZIONI_LUNGHE = {
+    'database:export:start': ['rispostaAnticipata', 'avanzamento', 'statoDiSessione'],
     'query:execute': [
       'annullamentoMutevole',
       'categoriaAuditFinale',
@@ -329,6 +330,8 @@ function createModule({ config, dependencies, errori }) {
   };
 
   const AUDIT_WRITES = {
+    'uml:apply':             (p, r) => ({ coll: p.coll, op: 'Applicazione progetto UML', esito: r?.status,
+      passi: (r?.results || []).map((s) => ({ tabella: s.table, operazione: s.kind, esito: s.status })) }),
     'db:create':             (p) => ({ coll: p.coll, op: 'Creazione database' }),
     'db:rename':             (p) => ({ newName: p.newName, op: 'Rinomina database' }),
     'db:drop':               () => ({ op: 'Eliminazione database' }),
@@ -363,6 +366,7 @@ function createModule({ config, dependencies, errori }) {
     // fuori dal database: è l'azione che precede l'uscita dei dati, e va nello
     // storico anche quando poi nessuno conferma.
     'database:export:plan':  (p) => ({ op: 'Anteprima del piano di export', db: p.db, modalita: cutStr(p.modalita, 40) }),
+    'database:export:status': (p) => ({ op: 'Stato dell’export', db: p.db }),
     'database:import:selezione': (p) => ({ op: 'Anteprima della selezione di import', db: cutStr(p.targetDb, 80) }),
     // Il pannello delle chiavi esterne legge righe VERE di un'altra tabella, non
     // metadati: è una lettura di dati quanto una find, e come tale va tracciata.
@@ -414,6 +418,9 @@ function createModule({ config, dependencies, errori }) {
   // automatiche (polling/live/refresh post-scrittura marcate _bg dal client).
   function auditDelegate(cls, sess, event, payload, status, result, error) {
     if (!cls) return;
+    if (event === 'uml:apply' && result?.status === 'interrotto') {
+      status = 'error'; error = new Error(result.error || 'Applicazione UML interrotta.');
+    }
     if (event === 'collection:import') {
       if (payload.batchId && payload.statusOnly) return; // consultazione della ricevuta
       if (result && (result.status === 'incerto' || result.failed > 0)) {
