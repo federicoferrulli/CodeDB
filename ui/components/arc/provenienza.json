@@ -1,0 +1,165 @@
+{
+  "retrievedAt": "2026-10-07T10:58:22.465Z",
+  "files": [
+    {
+      "path": "ui/components/arc/foundation.css",
+      "sha256": "73535d61af5f35a3374a5242b8e53b1f5ac11a7454f7e37e38b57e76a51fd3ed",
+      "source": "https://uiarc.dev/r/arc-foundation.json"
+    },
+    {
+      "path": "ui/components/arc/motion-tokens.ts",
+      "sha256": "13af43b57ed38e5b72cfc06ff0ccc39b0593721f04840e73532893593cc61491",
+      "source": "https://uiarc.dev/r/arc-foundation.json"
+    },
+    {
+      "path": "ui/components/arc/lib/motion-tokens.ts",
+      "sha256": "bec65d2e1b180dd3c574edc60cf84e0fa336e7ff8640eba0c70bcf0ae765fb8a",
+      "source": "https://uiarc.dev/r/arc-foundation.json"
+    },
+    {
+      "path": "ui/components/arc/button/button.tsx",
+      "sha256": "2e33ac923371afa716fcf81d06006484fca9b6c7d25a6aa7d51a63c94bd1b105",
+      "source": "https://uiarc.dev/r/button.json"
+    },
+    {
+      "path": "ui/components/arc/button/button.module.css",
+      "sha256": "61ea6f33ef8dcf2e8335967c30e9ec4ca211ec06ee6a81fde3239b0d2c8bcb84",
+      "source": "https://uiarc.dev/r/button.json"
+    },
+    {
+      "path": "ui/components/arc/input/input.tsx",
+      "sha256": "cae629a315ef8cf999d8b5a987d800e55847f5ae2f317bc389b263bbcdea0da5",
+      "source": "https://uiarc.dev/r/input.json"
+    },
+    {
+      "path": "ui/components/arc/input/input.module.css",
+      "sha256": "ef6716aa7b9f45898859735f416ac932517b94e66bed6b3d23d7aed180529bdf",
+      "source": "https://uiarc.dev/r/input.json"
+    },
+    {
+      "path": "ui/components/arc/dialog/dialog.tsx",
+      "sha256": "eb84a7eb2ac864dc07f2825eab252eac78e9c6b889d0e9f00bf6b2b799975ade",
+      "source": "https://uiarc.dev/r/dialog.json"
+    },
+    {
+      "path": "ui/components/arc/dialog/dialog.module.css",
+      "sha256": "b43cd10ab34fad31445686c5681e5938c2245c10c465a2b2e3774d802a81e603",
+      "source": "https://uiarc.dev/r/dialog.json"
+    },
+    {
+      "path": "ui/components/arc/toast/toast.tsx",
+      "sha256": "ea3e5de23a4e87d01c6cb1468f5fa839c06dcd1621b3507b03bba385f0f4d81e",
+      "source": "https://uiarc.dev/r/toast.json"
+    },
+    {
+      "path": "ui/components/arc/toast/toast.module.css",
+      "sha256": "7c971d71804b5d4b10c876a08d8a5b3caa0ef19aa7d94d0ccfdb9e291d02fa1c",
+      "source": "https://uiarc.dev/r/toast.json"
+    },
+    {
+      "path": "ui/components/arc/empty-state/empty-state.tsx",
+      "sha256": "4a3d91c4fb7e2c4c316322854887a9e995e4e0343e41e64dbd6e3c505d7e3b5c",
+      "source": "https://uiarc.dev/r/empty-state.json"
+    },
+    {
+      "path": "ui/components/arc/empty-state/empty-state.module.css",
+      "sha256": "e65e4c4b6e3bd31b8925cb6a5d58e8c4826ffca6efb100f786c70428f98afc1a",
+      "source": "https://uiarc.dev/r/empty-state.json"
+    },
+    {
+      "path": "ui/components/arc/dropdown-menu/dropdown-menu.tsx",
+      "source": "https://uiarc.dev/r/dropdown-menu.json",
+      "sha256": "555391c3bd2a0a3ba9818240a34a53ce51be40d2b9f290a23569bf6cf2328704"
+    },
+    {
+      "path": "ui/components/arc/dropdown-menu/dropdown-menu.module.css",
+      "source": "https://uiarc.dev/r/dropdown-menu.json",
+      "sha256": "4328a7c341379cedadce7dec990ed6eec57e7d26899f49ffa72202995c5baae4"
+    },
+    {
+      "path": "ui/components/arc/checkbox/checkbox.tsx",
+      "source": "https://uiarc.dev/r/checkbox.json",
+      "sha256": "4759251a0b2a83320cb4078e840f61481a23be0b38b9aa7c077c2e85e6dde00d"
+    },
+    {
+      "path": "ui/components/arc/checkbox/checkbox.module.css",
+      "source": "https://uiarc.dev/r/checkbox.json",
+      "sha256": "6cc8ae35edbd99dac2ea3768a6db0932429ecb06febab06e048a4b94974251b6"
+    },
+    {
+      "path": "ui/components/arc/alert/alert.tsx",
+      "source": "https://uiarc.dev/r/alert.json",
+      "sha256": "9274031ede5420e54a3a65825e19062c12443731d4171143054f9104f8fc946c"
+    },
+    {
+      "path": "ui/components/arc/alert/alert.module.css",
+      "source": "https://uiarc.dev/r/alert.json",
+      "sha256": "938cddc734989a721d38e92ed62c40df3a911cc3c6af6d9da313daaaf57965a6"
+    },
+    {
+      "path": "ui/components/arc/select/select.tsx",
+      "source": "https://uiarc.dev/r/select.json",
+      "sha256": "673dc0c887a255c87bfbabd1835606d87cfbf59ed6fd4909a28038f00f673eaa"
+    },
+    {
+      "path": "ui/components/arc/select/select.module.css",
+      "source": "https://uiarc.dev/r/select.json",
+      "sha256": "f700250cfa39db22e974f417d6d776e70b037e031500ca85c3c94e0c558a2b04"
+    },
+    {
+      "path": "ui/components/arc/textarea/textarea.tsx",
+      "source": "https://uiarc.dev/r/textarea.json",
+      "sha256": "1ed43b87e45b04180f1c6b8b3b7543e071bed3a6fcb2033e98015c77a8b7135a"
+    },
+    {
+      "path": "ui/components/arc/textarea/textarea.module.css",
+      "source": "https://uiarc.dev/r/textarea.json",
+      "sha256": "57a9294f6f7eea903296334bf1203982b41736aa1082a83af4dc2e8bbc6a144c"
+    },
+    {
+      "path": "ui/components/arc/calendar/calendar.tsx",
+      "sha256": "cf09873e5d895e46129159e62f7e494f448cfd247aaddd6c9a54de45a5d6c108",
+      "source": "https://uiarc.dev/r/calendar.json"
+    },
+    {
+      "path": "ui/components/arc/lib/use-today.ts",
+      "sha256": "069a833b34cb103040013346c07ad453d235da1096ea011d2c50bd148029a3af",
+      "source": "https://uiarc.dev/r/calendar.json"
+    },
+    {
+      "path": "ui/components/arc/calendar/calendar.module.css",
+      "sha256": "2e019a6ca658f124c7ea0303aac46aa615a4e6bb3bc485c57d3b85acb0d26adc",
+      "source": "https://uiarc.dev/r/calendar.json"
+    },
+    {
+      "path": "ui/components/arc/date-picker/date-picker.tsx",
+      "sha256": "996d6b6703f7478c9ce286a3bbcd49a10aac0cb489b0d8915dfd89dad9c4efb8",
+      "source": "https://uiarc.dev/r/date-picker.json"
+    },
+    {
+      "path": "ui/components/arc/date-picker/date-picker.module.css",
+      "sha256": "fc3907dc484832ef441b367dd16135bf081ec77894ea1ae7c9c59508a2abe95a",
+      "source": "https://uiarc.dev/r/date-picker.json"
+    },
+    {
+      "path": "ui/components/arc/color-picker/color-picker.tsx",
+      "sha256": "621d6f4a3feef414f8c506163ced908e3d4be37b66b1572debf229f7e9b6c3e1",
+      "source": "https://uiarc.dev/r/color-picker.json"
+    },
+    {
+      "path": "ui/components/arc/color-picker/color-picker.module.css",
+      "sha256": "c5fd30e3c4c638197fc288b3711f317f8849ba90293dd6a364bc4ee71de55fec",
+      "source": "https://uiarc.dev/r/color-picker.json"
+    },
+    {
+      "path": "ui/components/arc/text-morph/text-morph.tsx",
+      "sha256": "24b6559369ab4e5ca84e4465f3c9e4a973f3c259e90a539f8778c0cc0b9042c2",
+      "source": "https://uiarc.dev/r/text-morph.json"
+    },
+    {
+      "path": "ui/components/arc/text-morph/text-morph.module.css",
+      "sha256": "bd51e5ba739e7b7272ad4b46fb500617aaaefb2ae4303010edaea6057f975989",
+      "source": "https://uiarc.dev/r/text-morph.json"
+    }
+  ]
+}

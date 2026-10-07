@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 import { $, esc, emit, showToast, chiediTesto } from './utils.js';
 import { leggiOperazioni, tabelleProgettate, metadatiProgettati } from './uml-progetto-modello.js';
 import { invalidaSchemaIntellisense } from './autocomplete.js';
@@ -40,6 +41,7 @@ export function creaProgettista({ contesto, documento, tabelle, modifica, aggior
       <td><input aria-label="Auto incremento" data-col="autoIncrement" type="checkbox" ${c.autoIncrement ? 'checked' : ''}></td>
       <td><input aria-label="Chiave primaria" data-col="primaryKey" type="checkbox" ${c.primaryKey ? 'checked' : ''}></td>
       <td><button type="button" data-delete-column aria-label="Rimuovi colonna dalla bozza">×</button></td>`;
+    mountArcControls(tr);
     tr.querySelector('[data-delete-column]').onclick = () => tr.remove();
     el.querySelector('tbody').append(tr);
   }
@@ -51,6 +53,7 @@ export function creaProgettista({ contesto, documento, tabelle, modifica, aggior
     const list = el.querySelector('[data-queue]');
     list.innerHTML = operazioni().map((o, i) => `<li><span>${esc(etichette[o.kind])}: <strong>${esc(o.table)}</strong>${o.name ? ` · ${esc(o.name)}` : ''}</span>
       <button type="button" data-edit="${i}">Modifica</button><button type="button" data-remove="${i}" aria-label="Rimuovi operazione ${i + 1}">×</button></li>`).join('') || '<li>Nessuna modifica in bozza.</li>';
+    mountArcControls(list);
     list.querySelectorAll('[data-remove]').forEach((b) => { b.onclick = () => cambia(operazioni().filter((_, i) => i !== +b.dataset.remove)); });
     list.querySelectorAll('[data-edit]').forEach((b) => { b.onclick = () => compila(operazioni()[+b.dataset.edit], +b.dataset.edit); });
     el.querySelector('[data-preview]').disabled = busy || !operazioni().length;
@@ -234,6 +237,7 @@ export function creaProgettista({ contesto, documento, tabelle, modifica, aggior
       </form><div class="uml-progetto-revisione"><strong>Modifiche da applicare</strong><ol data-queue></ol>
       <div class="uml-progetto-riga"><button type="button" data-preview>Anteprima SQL</button><button type="button" data-apply disabled>Applica al database…</button></div>
       <p data-error role="status" aria-live="polite"></p><pre data-sql tabindex="0" aria-label="SQL ed esito dell’applicazione"></pre></div></div>`;
+    mountArcControls(el);
     el.querySelector('[data-close]').onclick = chiudi;
     el.querySelector('[data-kind]').onchange = () => { el.querySelector('[data-index]').value = ''; aggiornaTabelle(); aggiornaForm(); };
     el.querySelector('[data-table]').onchange = aggiornaForm;

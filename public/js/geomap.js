@@ -34,6 +34,7 @@ import {
   geometriaVuota, problemaGeometria, creaStoria,
 } from './geo-modifica.js';
 import { tokenTema } from './theme.js';
+import { updateArcSelect } from '../arc/ui.js';
 
 // Ri-esportati per comodita' di chi apre l'editor: chi importa geomap.js ha
 // gia' quello che serve per riconoscere ed etichettare una geometria.
@@ -634,18 +635,12 @@ function creaMappa() {
 function preparaSelettoreTipo(readOnly) {
   const sel = $('#geomap-type');
   if (!sel) return;
-  sel.querySelectorAll('option[data-extra]').forEach((o) => o.remove());
+  const options = [...MODIFICABILI].map(value => ({ value, label: value }));
   const tipo = isGeometry(stato.geo) ? stato.geo.type : 'Point';
   if (!MODIFICABILI.has(tipo)) {
-    const o = document.createElement('option');
-    o.value = tipo;
-    o.textContent = `${tipo} (non convertibile)`;
-    o.disabled = true;
-    o.dataset.extra = '1';
-    sel.appendChild(o);
+    options.push({ value: tipo, label: `${tipo} (non convertibile)`, disabled: true });
   }
-  sel.value = tipo;
-  sel.disabled = !!readOnly;
+  updateArcSelect(sel, { options, value: tipo, disabled: !!readOnly });
 }
 
 /**
@@ -909,7 +904,7 @@ export function initGeoMap() {
   document.addEventListener('keydown', (e) => {
     if (!stato || stato.readOnly) return;
     if ($('#geomap-overlay').classList.contains('hidden')) return;
-    const dentroTesto = e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT');
+    const dentroTesto = e.target && e.target.closest('textarea, input, select, [role="combobox"], [role="option"]');
     if (dentroTesto) return;
     const k = e.key.toLowerCase();
     if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); (e.shiftKey ? ripeti : annulla)(); return; }

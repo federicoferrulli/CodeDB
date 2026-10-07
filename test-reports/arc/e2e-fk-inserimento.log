@@ -1,0 +1,33 @@
+--- E2E: chiavi esterne nel form di inserimento ---
+  [32m✔ OK[0m   il pulsante indica destinazione e nome accessibile
+  [32m✔ OK[0m   il pannello si apre entrando nel campo su desktop
+  [32m✔ OK[0m   il bersaglio qualifica lo schema di destinazione
+  [32m✔ OK[0m   riga riferita ed elenco usano tabId e database del vincolo
+  [32m✔ OK[0m   «Usa questo valore» compila il campo
+  [32m✔ OK[0m   la bozza contiene la FK scelta
+  [32m✔ OK[0m   nessuna scrittura prima di «Inserisci»
+  [32m✔ OK[0m   «Inserisci» scrive una sola volta
+  [32m✔ OK[0m   la scrittura usa il contesto congelato, non il tab attivo
+  [32m✔ OK[0m   il payload contiene la FK scelta
+  [32m✔ OK[0m   il salvataggio chiude form e pannello di sua proprietà
+  [32m✔ OK[0m   il selettore mostra tutte le componenti ordinate
+  [32m✔ OK[0m   aperta da un componente, compila tutte le colonne dalla stessa riga
+  [32m✔ OK[0m   la bozza composta è completa
+  [32m✔ OK[0m   dati riferiti incompleti non modificano parzialmente il form
+  [32m✔ OK[0m   BIGINT oltre 2^53 senza arrotondamenti
+  [32m✔ OK[0m   chiave testuale senza perdita di zeri
+  [32m✔ OK[0m   null scelto distinto dal campo omesso
+  [32m✔ OK[0m   la modifica manuale dopo la scelta vince
+  [32m✔ OK[0m   la scheda JSON include le FK compilate
+  [32m✔ OK[0m   una risposta tardiva non aggiorna il form riaperto
+  [32m✔ OK[0m   errore di lettura: messaggio leggibile senza selezioni false
+  [32m✔ OK[0m   con le relazioni in errore l’inserimento manuale resta utilizzabile
+  [32m✔ OK[0m   «Riprova» collega i pulsanti
+  [32m✔ OK[0m   Escape col pannello aperto chiude prima il pannello
+  [32m✔ OK[0m   la chiusura del form chiude anche il pannello di sua proprietà
+  [32m✔ OK[0m   su mobile il focus non apre il pannello da solo
+  [32m✔ OK[0m   su mobile il pulsante apre il pannello e la scelta compila
+  [32m✔ OK[0m   la scelta nell’editing continua a salvare
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- FK in inserimento: tutti i test superati ---

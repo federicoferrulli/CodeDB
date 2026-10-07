@@ -1,6 +1,6 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto } from './utils.js';
 import { loadSavedConnections } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
@@ -413,13 +413,13 @@ export function initConnection() {
     if (!file) return;
     // Il pulsante visibile è "Importa", non il campo file nascosto che ha
     // appena aperto il selettore: è quello che deve mostrare l'attesa.
-    conCaricamento($('#conn-import-btn'), () => file.text().then((ini) => {
+    conCaricamento($('#conn-import-btn'), () => file.text().then(async (ini) => {
       // Un file esportato con una passphrase scelta porta un'intestazione che
       // lo dichiara: la si riconosce qui per chiedere la passphrase PRIMA di
       // mandare il file, invece di far tornare un errore dal server.
       const conPassphrase = /^\s*\[__codedb_export__\]/m.test(ini);
       const passphrase = conPassphrase
-        ? (window.prompt('Questo file è stato esportato con una passphrase. Inseriscila per importarlo:') || '')
+        ? await chiediTesto({ titolo: 'Importa connessioni cifrate', sottotitolo: 'Inserisci la passphrase scelta quando hai esportato questo file.', etichetta: 'Passphrase', password: true, ok: 'Importa' })
         : '';
       if (conPassphrase && !passphrase) {
         toast('Import annullato: senza la passphrase i segreti non sono leggibili.', true);

@@ -1,3 +1,4 @@
+import { mountArcControls, createArcButton, controlElement } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
@@ -311,7 +312,7 @@ function handleSplitKeys(e) {
   // (o al `window`) è il documento stesso, che non ha `closest` — e la chiamata
   // secca lanciava un TypeError, cioè nessuna scorciatoia funzionante.
   const t = e.target;
-  if (t && typeof t.closest === 'function' && (t.closest('input, textarea, select') || t.isContentEditable)) return;
+  if (t && typeof t.closest === 'function' && (t.closest('input, textarea, select, [role="combobox"], [role="option"], [role="checkbox"], [data-arc-calendar-popup], [data-arc-color-popup]') || t.isContentEditable)) return;
   if (!$('#workspace')?.classList.contains('split-active')) return;
 
   const corrente = getFocusedPaneId();
@@ -1358,6 +1359,7 @@ function createPaneElement(paneId) {
     </div>
   `;
 
+  mountArcControls(paneEl);
   const dbSelect = paneEl.querySelector('.pane-db-select');
   const collSelect = paneEl.querySelector('.pane-coll-select');
 
@@ -1856,6 +1858,7 @@ function updatePaneUI(paneId) {
         if (docId) {
           const cb = document.createElement('input');
           cb.type = 'checkbox';
+          cb.setAttribute('aria-label', `Seleziona documento ${docId}`);
           cb.checked = p.selectedDocs.has(docId);
           cb.addEventListener('change', () => {
             if (cb.checked) p.selectedDocs.add(docId);
@@ -1871,7 +1874,7 @@ function updatePaneUI(paneId) {
         const actionsTd = document.createElement('td');
         actionsTd.className = 'row-actions';
         if (docId) {
-          const editBtn = document.createElement('button');
+          const editBtn = createArcButton({ 'aria-label': 'Modifica documento' });
           editBtn.className = 'edit-btn';
           editBtn.textContent = '✎';
           editBtn.title = 'Modifica documento (riga intera)';
@@ -1883,14 +1886,14 @@ function updatePaneUI(paneId) {
               onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
             });
           });
-          actionsTd.appendChild(editBtn);
+          actionsTd.appendChild(controlElement(editBtn));
 
-          const delBtn = document.createElement('button');
+          const delBtn = createArcButton({ variant: 'danger', 'aria-label': 'Elimina documento' });
           delBtn.className = 'del-btn';
           delBtn.textContent = '✕';
           delBtn.title = 'Elimina documento';
           delBtn.addEventListener('click', () => deletePaneDoc(paneId, doc));
-          actionsTd.appendChild(delBtn);
+          actionsTd.appendChild(controlElement(delBtn));
         }
         tr.appendChild(actionsTd);
       }
@@ -2281,6 +2284,7 @@ function comparePaneSchemas() {
 
   // Da openModal e non da `classList`: così Esc la chiude come ogni altra
   // modale dell'applicazione, invece di essere l'unica che resta aperta.
+  mountArcControls(modal);
   openModal(modal);
   modal.querySelector('.close-compare-btn').addEventListener('click', () => closeModal(modal));
 }

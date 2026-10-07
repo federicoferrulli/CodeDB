@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -355,6 +356,7 @@ function disegnaVerdetto(res, sessioni) {
       ${d.dettaglio ? `<div class="sessions-verdict-dettaglio">${esc(d.dettaglio)}</div>` : ''}
     </div>
     ${azione ? `<div class="sessions-verdict-azione">${azione}</div>` : ''}`;
+  mountArcControls(box);
   refreshLucideIcons(box);
 }
 
@@ -423,6 +425,7 @@ function disegna(sessioni, res) {
       </thead>
       <tbody>${righe}</tbody>
     </table>`;
+  mountArcControls(container);
   refreshLucideIcons(container);
 }
 
@@ -443,6 +446,7 @@ function riassuntoNascoste(tutte) {
   box.innerHTML = mostraNonAzionabili
     ? `In elenco anche ${pezzi.join(' e ')}, su cui non si può agire. <button type="button" data-toggle-nascosti>Nascondi</button>`
     : `Non mostrate: ${pezzi.join(' e ')}, su cui non si può agire. <button type="button" data-toggle-nascosti>Mostra</button>`;
+  mountArcControls(box);
 }
 
 /* --- Terminazione ----------------------------------------------------------- */

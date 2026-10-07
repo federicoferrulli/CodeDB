@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
@@ -325,6 +326,7 @@ async function runImport() {
     html += '<ul>' + errors.map((e) => `<li>${esc(e)}</li>`).join('') + '</ul>';
   }
   report.innerHTML = html;
+  mountArcControls(report);
   report.classList.remove('hidden');
   toast(
     uncertain ? 'Import interrotto: alcune righe hanno un esito da verificare'
@@ -878,6 +880,7 @@ function renderDbImportState(operation) {
   }
   report.className = description.className;
   report.innerHTML = html;
+  mountArcControls(report);
   report.classList.remove('hidden');
   if (!terminal) return;
   const ok = description.ok;

@@ -1,0 +1,31 @@
+--- E2E: geometrie nelle viste a griglia ---
+  [32m✔ OK[0m   Point, LineString e Polygon hanno tutti la classe `type-geo`
+  [32m✔ OK[0m   Point ha l'etichetta geometrica compatta (▦ Point (12.50000, 41.90000))
+  [32m✔ OK[0m   LineString riporta il numero di vertici (▦ LineString (2 punti))
+  [32m✔ OK[0m   Polygon riporta anche il vertice di chiusura (▦ Polygon (5 punti))
+  [32m✔ OK[0m   ogni cella geometrica spiega nel title come aprire la mappa
+  [32m✔ OK[0m   tab Query: il doppio clic apre `#geomap-overlay`
+  [32m✔ OK[0m   tab Query: il pulsante Applica geometria è nascosto
+  [32m✔ OK[0m   tab Query: il JSON è in sola lettura
+  [32m✔ OK[0m   tab Query: il titolo indica la colonna (Geometria — linea)
+  [32m✔ OK[0m   Split-View: la cella geometrica è disegnata nel riquadro reale
+  [32m✔ OK[0m   Split-View: la resa condivisa applica `type-geo` alla CELLA, non al ripiego
+  [32m✔ OK[0m   Split-View: la cella geometrica non passa dal ripiego `displayValueBreve`
+  [32m✔ OK[0m   Split-View: il title spiega come aprire la geometria
+  [32m✔ OK[0m   Split-View: il doppio clic apre la geometria in modifica
+  [32m✔ OK[0m   Split-View: il titolo conserva il campo (Geometria — posizione)
+  [32m✔ OK[0m   Split-View: il salvataggio usa tab, database e collection del proprio riquadro
+  [32m✔ OK[0m   riquadro senza `_id`: la geometria e’ comunque riconosciuta e disegnata
+  [32m✔ OK[0m   riquadro senza `_id`: la cella non si dichiara modificabile
+  [32m✔ OK[0m   riquadro senza `_id`: la mappa si apre SENZA il pulsante Applica geometria
+  [32m✔ OK[0m   riquadro senza `_id`: il GeoJSON si legge ma non si scrive
+  [32m✔ OK[0m   vista Dati: la cella geometrica è presente e modificabile
+  [32m✔ OK[0m   vista Dati: l’editor conserva la modalità di modifica
+  [32m✔ OK[0m   vista Dati: il titolo indica il campo (Geometria — posizione)
+  [32m✔ OK[0m   vista Dati: il salvataggio mantiene il bersaglio corretto
+  [32m✔ OK[0m   vista Dati: Applica geometria invia il nuovo GeoJSON con `doc:update`
+  [32m✔ OK[0m   vista Dati senza `_id`: la geometria si disegna ma la cella non e’ modificabile
+  [32m✔ OK[0m   vista Dati senza `_id`: la mappa si apre in sola lettura
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- Geometrie nelle viste: tutti i test superati ---

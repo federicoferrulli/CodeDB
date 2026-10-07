@@ -1,0 +1,16 @@
+{
+  "checks": [
+    "Nessun input, select o textarea applicativo iniziale privo di Arc"
+  ],
+  "coverage": [
+    {
+      "name": "Tutti i form statici, file e textarea compresi",
+      "total": 118,
+      "models": 36,
+      "missing": []
+    }
+  ],
+  "layouts": [],
+  "errors": [],
+  "requests": []
+}

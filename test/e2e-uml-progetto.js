@@ -6,6 +6,7 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const { prepara, applica } = require('../db/umlProgetto');
 const DbStrategy = require('../db/DbStrategy');
+const { scegliArc } = require('./arc-controls');
 
 (async () => {
   const server = await startTestServer({ port: 3158 });
@@ -92,10 +93,10 @@ const DbStrategy = require('../db/DbStrategy');
       assert.strictEqual(calls.length, 0, 'salvare la bozza non esegue SQL');
 
       // La colonna esiste soltanto nella bozza: nessuna lettura dal DB può trovarla.
-      await page.selectOption('#uml-progetto [data-kind]', 'alterColumn');
-      await page.selectOption('#uml-progetto [data-table]', 'ordini');
+      await scegliArc(page, '#uml-progetto [data-kind]', 'alterColumn');
+      await scegliArc(page, '#uml-progetto [data-table]', 'ordini');
       await page.waitForSelector('#uml-progetto [data-field] option[value="cliente_id"]', { state: 'attached' });
-      await page.selectOption('#uml-progetto [data-field]', 'cliente_id');
+      await scegliArc(page, '#uml-progetto [data-field]', 'cliente_id');
       await page.fill('#uml-progetto [data-col="type"]', 'bigint');
       await page.click('#uml-progetto button[type="submit"]');
       await page.click('#uml-progetto [data-preview]');
@@ -104,11 +105,11 @@ const DbStrategy = require('../db/DbStrategy');
       assert.strictEqual(calls.length, 0, 'CREATE e ALTER della bozza restano un’anteprima');
       await page.click('#uml-progetto [data-remove="1"]');
 
-      await page.selectOption('#uml-progetto [data-kind]', 'addForeignKey');
-      await page.selectOption('#uml-progetto [data-table]', 'ordini');
+      await scegliArc(page, '#uml-progetto [data-kind]', 'addForeignKey');
+      await scegliArc(page, '#uml-progetto [data-table]', 'ordini');
       await page.fill('#uml-progetto [data-name]', 'fk_cliente');
       await page.fill('#uml-progetto [data-key]', 'cliente_id');
-      await page.selectOption('#uml-progetto [data-target]', 'clienti');
+      await scegliArc(page, '#uml-progetto [data-target]', 'clienti');
       await page.fill('#uml-progetto [data-references]', 'id');
       await page.click('#uml-progetto button[type="submit"]');
       await page.waitForFunction(() => window.draft.progetto?.length === 2);

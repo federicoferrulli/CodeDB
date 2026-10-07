@@ -14,7 +14,9 @@
   <link
     href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap"
     rel="stylesheet">
+  <link rel="stylesheet" href="arc/ui.css" />
   <link rel="stylesheet" href="css/style.css" />
+  <link rel="stylesheet" href="css/arc-theme.css" />
   <script src="js/lucide.min.js"></script>
 
   <!-- ===================== Tema: applicazione PRIMA del primo paint =====================
@@ -491,7 +493,7 @@
           </span>
         </div>
         <div class="sidebar-search">
-          <input type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
+          <input aria-label="Cerca connessioni" type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
             spellcheck="false" />
         </div>
         <ul id="conn-tree"></ul>
@@ -523,7 +525,8 @@
            runtime (position: fixed) da positionFixedDropdown, che lo ribalta
            verso l'alto quando sotto non c'è spazio — qui è sempre il caso, il
            bottone sta in fondo alla finestra. -->
-      <div id="settings-menu" class="app-menu hidden" role="menu">
+      <!-- Registro comandi letto dal menu Arc: unica sorgente per etichette e permessi. -->
+      <div id="settings-menu" class="hidden">
         <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
           <i data-lucide="archive"></i> Backup &amp; Restore
         </button>
@@ -607,7 +610,7 @@
               <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
             </div>
             <div class="sidebar-search">
-              <input type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+              <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
                 spellcheck="false" />
             </div>
             <ul id="db-tree"></ul>
@@ -702,7 +705,7 @@
                       aria-label="Testo da cercare in tutti i campi"
                       placeholder="Cerca in tutti i campi…" />
                   </span>
-                  <input id="sort-input" type="text" spellcheck="false" class="narrow"
+                  <input aria-label="Ordinamento" id="sort-input" type="text" spellcheck="false" class="narrow"
                     placeholder='Sort, es. { "name": 1 }' />
                   <span class="query-history-wrap">
                     <button id="query-history-btn" title="Query recenti di questa collection"
@@ -1234,7 +1237,7 @@
                     </div>
                     <div class="sidebar-search">
 
-                      <input type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
+                      <input aria-label="Filtra tabelle e campi" type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
                         autocomplete="off" spellcheck="false" />
                     </div>
                     <div id="query-schema-tree" class="query-schema-tree"></div>
@@ -1769,25 +1772,7 @@
        chiediTesto() in js/utils.js. -->
   <div id="askinput-overlay" class="overlay hidden" role="dialog" aria-modal="true"
        aria-labelledby="askinput-title">
-    <div class="modal">
-      <h2 id="askinput-title">Inserisci un valore</h2>
-      <p class="subtitle hidden" id="askinput-subtitle"></p>
-      <div class="form-row">
-        <label><span id="askinput-label">Valore</span>
-          <input type="text" id="askinput-value" spellcheck="false" autocomplete="off" />
-        </label>
-      </div>
-      <div class="form-row hidden" id="askinput-check-row">
-        <label class="inline">
-          <input type="checkbox" id="askinput-check" />
-          <span id="askinput-check-label"></span>
-        </label>
-      </div>
-      <div class="modal-actions">
-        <button id="askinput-cancel" class="ghost">Annulla</button>
-        <button id="askinput-ok" class="primary">Conferma</button>
-      </div>
-    </div>
+    <div class="modal"><!-- Contenuto React: ui/prompt.tsx --></div>
   </div>
 
   <div id="dbcreate-overlay" class="overlay hidden">
@@ -2311,8 +2296,6 @@
   <!-- ===================== Menu contestuale ===================== -->
   <ul id="context-menu" class="context-menu hidden"></ul>
 
-  <div id="toast" class="toast hidden"></div>
-
   <!-- ===================== Modale Backup & Restore ===================== -->
   <div id="modal-backup-manager" class="overlay hidden">
     <div class="modal modal-lg">
@@ -2388,7 +2371,7 @@
       <!-- Scheda 2: Catalogo & Ripristino -->
       <div id="section-backup-catalog" class="modal-tab-content hidden">
         <div class="catalog-toolbar">
-          <input type="search" id="backup-catalog-filter" class="hidden"
+          <input aria-label="Filtra backup per gruppo o database" type="search" id="backup-catalog-filter" class="hidden"
                  placeholder="Filtra per gruppo o database…" spellcheck="false" autocomplete="off" />
           <span id="backup-catalog-hint">Cataloghi dei backup presenti nel server:</span>
           <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna Lista</button>
@@ -2503,7 +2486,7 @@
             <option value="error">Errore</option>
           </select>
         </label>
-        <input type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
+        <input aria-label="Filtra audit per database" type="text" id="audit-filter-db" placeholder="Filtra per database..." autocomplete="off"
           spellcheck="false" />
         <button type="button" id="btn-refresh-audit" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
@@ -2647,9 +2630,9 @@
       <!-- Sottoutenti -->
       <div class="admin-pane" data-pane="subusers">
         <form id="subuser-form" class="admin-form">
-          <input type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required>
-          <input type="text" id="subuser-name" class="form-control form-control-sm" placeholder="Nome (opzionale)">
-          <input type="password" id="subuser-password" class="form-control form-control-sm" placeholder="Password" autocomplete="new-password" required>
+          <input aria-label="Email del sottoutente" type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required>
+          <input aria-label="Nome del sottoutente" type="text" id="subuser-name" class="form-control form-control-sm" placeholder="Nome (opzionale)">
+          <input aria-label="Password del sottoutente" type="password" id="subuser-password" class="form-control form-control-sm" placeholder="Password" autocomplete="new-password" required>
           <button type="submit" class="btn btn-sm btn-primary">+ Crea</button>
         </form>
         <div id="subuser-limit" class="sub-text admin-limit"></div>
@@ -2684,7 +2667,7 @@
             </div>
             <div class="form-group flex-1">
               <label class="form-label">Collezioni / Tabelle (opzionale):</label>
-              <input type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Es: orders*, users (vuoto = tutte)">
+              <input aria-label="Ambito delle tabelle e collection" type="text" id="grant-colls" class="form-control form-control-sm" placeholder="Es: orders*, users (vuoto = tutte)">
             </div>
           </div>
 
@@ -2705,7 +2688,7 @@
             </div>
             <div class="form-group flex-2">
               <label class="form-label">Etichetta client</label>
-              <input type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Es. Claude Desktop / MCP Cursor" required>
+              <input aria-label="Nome della chiave API" type="text" id="apikey-label" class="form-control form-control-sm" placeholder="Es. Claude Desktop / MCP Cursor" required>
             </div>
           </div>
 
@@ -2739,7 +2722,7 @@
 
       <div class="catalog-toolbar pending-toolbar">
         <div class="pending-search-wrap">
-          <input type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="Cerca per testo query, db, collezione o stato...">
+          <input aria-label="Cerca query sospese" type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="Cerca per testo query, db, collezione o stato...">
         </div>
         <div class="pending-toolbar-btns">
           <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>

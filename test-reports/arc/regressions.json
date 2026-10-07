@@ -1,0 +1,72 @@
+[
+  {
+    "suite": "e2e-avvio-ui",
+    "code": 0,
+    "durationMs": 5509
+  },
+  {
+    "suite": "e2e-fk-inserimento",
+    "code": 0,
+    "durationMs": 11914
+  },
+  {
+    "suite": "e2e-fk-viste",
+    "code": 0,
+    "durationMs": 7696
+  },
+  {
+    "suite": "e2e-editor-geometrico",
+    "code": 0,
+    "durationMs": 16674
+  },
+  {
+    "suite": "e2e-geometrie-viste",
+    "code": 0,
+    "durationMs": 11545
+  },
+  {
+    "suite": "e2e-uml",
+    "code": 0,
+    "durationMs": 7959
+  },
+  {
+    "suite": "e2e-uml-progetto",
+    "code": 0,
+    "durationMs": 9965
+  },
+  {
+    "suite": "e2e-query-virtual-scroll",
+    "code": 0,
+    "durationMs": 5256
+  },
+  {
+    "suite": "e2e-split-bersaglio-riquadro",
+    "code": 0,
+    "durationMs": 5828
+  },
+  {
+    "suite": "e2e-tocco-griglia",
+    "code": 0,
+    "durationMs": 2859
+  },
+  {
+    "suite": "e2e-richieste-intellisense",
+    "code": 0,
+    "durationMs": 3849
+  },
+  {
+    "suite": "e2e-uml-modalita",
+    "code": 0,
+    "durationMs": 10145
+  },
+  {
+    "suite": "e2e-barra-grafo",
+    "code": 0,
+    "durationMs": 14534
+  },
+  {
+    "suite": "e2e-palette",
+    "code": 0,
+    "durationMs": 5437
+  }
+]

@@ -1,0 +1,352 @@
+{
+  "date": "2026-10-07",
+  "endpoint": "https://uiarc.dev/api/mcp",
+  "tools": [
+    "search_components",
+    "list_components",
+    "get_component",
+    "get_install_command",
+    "get_skill"
+  ],
+  "skills": [
+    "SKILL",
+    "composition",
+    "design",
+    "accessibility",
+    "responsive",
+    "motion",
+    "checklist"
+  ],
+  "components": [
+    {
+      "id": "button",
+      "source": "https://uiarc.dev/components/button",
+      "whenToUse": [
+        "Any single action on a page, form, or dialog, such as Save, Continue, or Cancel.",
+        "Actions whose label changes in place, like Save to Saved, where the width should spring instead of jump.",
+        "Short async work where a spinner on the button is enough feedback, via loading."
+      ],
+      "whenNotToUse": [
+        "Use action-button when the button itself should show pending and success states after an async commit.",
+        "Use split-button when one default action has two to five close variants.",
+        "Use hold-to-confirm for destructive actions that need more than a single click."
+      ]
+    },
+    {
+      "id": "input",
+      "source": "https://uiarc.dev/components/input",
+      "whenToUse": [
+        "Any single-line text value in a form, such as name, email, or URL.",
+        "Fields whose helper or error copy changes as the person types, where the message should reword in place.",
+        "Plain form posts, since it forwards name and every native input attribute."
+      ],
+      "whenNotToUse": [
+        "Use textarea for multi-line text.",
+        "Use password-field, search-field, or number-field when the value has that shape.",
+        "Use inline-edit for a value shown as page text and edited in place."
+      ]
+    },
+    {
+      "id": "textarea",
+      "source": "https://uiarc.dev/components/textarea",
+      "whenToUse": [
+        "Free-form multi-line text like bios, comments, or feedback.",
+        "Fields with a live character count, which rolls its digits in the helper row."
+      ],
+      "whenNotToUse": [
+        "Use input for single-line values.",
+        "Use inline-edit with multiline for a description edited in place on a page.",
+        "Use tag-input when the text is really a list of short values."
+      ]
+    },
+    {
+      "id": "select",
+      "source": "https://uiarc.dev/components/select",
+      "whenToUse": [
+        "A short fixed list where typing is not needed, such as region or sort order.",
+        "Form fields that should submit natively through Radix's hidden select via name."
+      ],
+      "whenNotToUse": [
+        "Use combobox for long or searchable lists.",
+        "Use multi-select when several values can be chosen.",
+        "Use segmented-control for two to four choices that should stay visible."
+      ]
+    },
+    {
+      "id": "checkbox",
+      "source": "https://uiarc.dev/components/checkbox",
+      "whenToUse": [
+        "Independent on and off choices confirmed by a submit, such as accepting terms.",
+        "Parent rows that show a partial selection through the indeterminate state."
+      ],
+      "whenNotToUse": [
+        "Use switch for settings that apply immediately.",
+        "Use radio-group when only one option can be chosen.",
+        "Use chip-group for filter facets people toggle often."
+      ]
+    },
+    {
+      "id": "dialog",
+      "source": "https://uiarc.dev/components/dialog",
+      "whenToUse": [
+        "Confirmations and decisions that must interrupt, such as Delete project.",
+        "Short forms like rename or invite that fit in one focused panel.",
+        "Flows where the dialog title changes between steps and should crossfade in place."
+      ],
+      "whenNotToUse": [
+        "Use drawer for long forms or detail panels that keep the page in context.",
+        "Use bottom-sheet for mobile-first secondary tasks with snap heights.",
+        "Use popover for light, non-modal content anchored to a trigger."
+      ]
+    },
+    {
+      "id": "dropdown-menu",
+      "source": "https://uiarc.dev/components/dropdown-menu",
+      "whenToUse": [
+        "A list of commands behind a labelled button, such as Rename, Duplicate, and Delete.",
+        "Row or card actions where a visible trigger is clearer than right-click.",
+        "Short grouped menus with separators and one destructive item at the end."
+      ],
+      "whenNotToUse": [
+        "Use split-button when one command is the default.",
+        "Use context-menu for right-click actions on content.",
+        "Use user-menu for the account menu, and command-palette for searching many commands."
+      ]
+    },
+    {
+      "id": "toast",
+      "source": "https://uiarc.dev/components/toast",
+      "whenToUse": [
+        "A single success confirmation, like Changes saved, controlled with local state.",
+        "Demos or small apps that do not need a toast queue."
+      ],
+      "whenNotToUse": [
+        "Use toast-stack for app-wide notifications with types, actions, updates, and stacking.",
+        "Use alert for persistent messages that should stay in the page flow."
+      ]
+    },
+    {
+      "id": "alert",
+      "source": "https://uiarc.dev/components/alert",
+      "whenToUse": [
+        "Persistent, in-flow messages about a page or form, such as an expiring card.",
+        "Status that changes over time, where one alert should morph between tones.",
+        "Dismissible notices that should collapse and close the gap below them."
+      ],
+      "whenNotToUse": [
+        "Use toast or toast-stack for transient results of an action.",
+        "Use empty-state when there is no content to show.",
+        "Use dialog when people must respond before continuing."
+      ]
+    },
+    {
+      "id": "empty-state",
+      "source": "https://uiarc.dev/components/empty-state",
+      "whenToUse": [
+        "Empty lists, zero search results, and first-run views.",
+        "A view that should morph between states, such as empty and success, by changing props."
+      ],
+      "whenNotToUse": [
+        "Use skeleton while data is still loading.",
+        "Use alert for errors inside a page that still has content.",
+        "Use onboarding-checklist when first-run needs several steps."
+      ]
+    },
+    {
+      "id": "calendar",
+      "source": "https://uiarc.dev/components/calendar",
+      "whenToUse": [
+        "Inline date picking where the month should stay visible, such as booking pages.",
+        "Picking one date with blocked days via minDate, maxDate, and disabledDates."
+      ],
+      "whenNotToUse": [
+        "Use date-picker for a form field that opens a calendar popover.",
+        "Use time-picker for times of day.",
+        "Use booking-pill for a full compact booking flow."
+      ]
+    },
+    {
+      "id": "date-picker",
+      "source": "https://uiarc.dev/components/date-picker",
+      "whenToUse": [
+        "A date field in a form, such as a start or due date.",
+        "Dates with limits or blocked days, shown in a locale format."
+      ],
+      "whenNotToUse": [
+        "Use calendar inline when the grid should stay visible.",
+        "Use time-picker for times, and pair it with this for a full timestamp."
+      ]
+    },
+    {
+      "id": "time-picker",
+      "source": "https://uiarc.dev/components/time-picker",
+      "whenToUse": [
+        "Picking a time of day at a fixed interval, such as meetings or reminders.",
+        "Fields that show 12-hour times but store 24-hour HH:mm values."
+      ],
+      "whenNotToUse": [
+        "Use date-picker for dates, pairing the two for a timestamp.",
+        "Use time-dial for a more tactile, showcase time selection.",
+        "Use select when only a few named times are allowed."
+      ]
+    },
+    {
+      "id": "color-picker",
+      "source": "https://uiarc.dev/components/color-picker",
+      "whenToUse": [
+        "Theme editors and brand settings where users choose an exact color.",
+        "Design tools that need hex, RGB, HSL, and OKLCH input plus opacity.",
+        "Any color choice where contrast against a background should be visible while picking."
+      ],
+      "whenNotToUse": [
+        "Use segmented-control or radio-group when the choice is between a few fixed colors.",
+        "Use input for a plain hex field with no visual picking.",
+        "Use chip-group for tagging items with a small preset palette."
+      ]
+    },
+    {
+      "id": "text-morph",
+      "source": "https://uiarc.dev/components/text-morph",
+      "whenToUse": [
+        "Status words that change a few letters at a time, such as Follow and Following.",
+        "Custom buttons or badges that need a morphing label without the rest of the button.",
+        "Inline counters or short state labels that should glide instead of jump."
+      ],
+      "whenNotToUse": [
+        "Use word-rotate for a sentence with one cycling word.",
+        "Use button or action-swap when you want the morph plus button behaviour.",
+        "Avoid it for text that wraps, since it always renders a single line."
+      ]
+    },
+    {
+      "id": "inline-edit",
+      "source": "https://uiarc.dev/components/inline-edit",
+      "whenToUse": [
+        "Titles and descriptions read far more often than edited, like a project name.",
+        "Single fields that save on their own with optimistic updates and rollback."
+      ],
+      "whenNotToUse": [
+        "Use input or textarea in a form when several fields save together.",
+        "Use input when the field should always look editable."
+      ]
+    },
+    {
+      "id": "number-field",
+      "source": "https://uiarc.dev/components/number-field",
+      "whenToUse": [
+        "Bounded quantities like seats, items, or prices where the exact number matters.",
+        "Values people nudge with steppers, arrow keys, or by dragging the label with scrub.",
+        "Numbers with units, using a prefix or a pluralizing suffix function."
+      ],
+      "whenNotToUse": [
+        "Use slider when the approximate position matters more than the exact number.",
+        "Use input for numeric strings like phone numbers or codes."
+      ]
+    },
+    {
+      "id": "file-dropzone",
+      "source": "https://uiarc.dev/components/file-dropzone",
+      "whenToUse": [
+        "Attachments and uploads with drag and drop plus a file picker.",
+        "Uploads that need per-file progress, retry, and cancel through onUpload."
+      ],
+      "whenNotToUse": [
+        "Use input with type file only when a native picker with no list is enough.",
+        "Use empty-state when the drop area is the only thing on an empty page and needs a larger call to action."
+      ]
+    },
+    {
+      "id": "tabs",
+      "source": "https://uiarc.dev/components/tabs",
+      "whenToUse": [
+        "Peer views of the same object, such as Overview, Activity, and Settings.",
+        "Panels with different heights, where the container should spring between them.",
+        "Long tab sets that need to scroll horizontally with edge buttons."
+      ],
+      "whenNotToUse": [
+        "Use segmented-control for a compact value toggle not tied to panels.",
+        "Use accordion for stacked sections people read in order.",
+        "Use liquid-tab-bar or morph-nav for app-level navigation between routes."
+      ]
+    },
+    {
+      "id": "pagination",
+      "source": "https://uiarc.dev/components/pagination",
+      "whenToUse": [
+        "Paged server results and long tables.",
+        "Lists where the page should live in the URL or state and fetch on change."
+      ],
+      "whenNotToUse": [
+        "Use carousel for browsing slides.",
+        "Use timeline with maxHeight for a scrolling feed instead of pages."
+      ]
+    },
+    {
+      "id": "sortable-data-table",
+      "source": "https://uiarc.dev/components/sortable-data-table",
+      "whenToUse": [
+        "Tabular records people sort and select, such as projects, invoices, or users.",
+        "Tables that need Shift-click range selection and a count line with Clear."
+      ],
+      "whenNotToUse": [
+        "Use data-grid when people edit cells like a spreadsheet.",
+        "Use timeline for chronological activity.",
+        "Use reorderable-list when people set the order by hand."
+      ]
+    },
+    {
+      "id": "context-menu",
+      "source": "https://uiarc.dev/components/context-menu",
+      "whenToUse": [
+        "Secondary actions on a file, card, or row where a visible menu button would add clutter.",
+        "Desktop-style right-click menus that also open from the keyboard with Shift+F10 or the ContextMenu key.",
+        "Short flat lists of item actions with one destructive option."
+      ],
+      "whenNotToUse": [
+        "Use dropdown-menu when the actions deserve a visible trigger.",
+        "Use swipe-actions for touch-first lists like an inbox.",
+        "Avoid it on targets that need their own click action, since a plain click on the target also opens the menu."
+      ]
+    },
+    {
+      "id": "combobox",
+      "source": "https://uiarc.dev/components/combobox",
+      "whenToUse": [
+        "Single-choice fields with long lists, such as time zones or countries.",
+        "Lists where people know the name and want to type, including aliases via keywords."
+      ],
+      "whenNotToUse": [
+        "Use select for a short list where typing adds nothing.",
+        "Use multi-select when several values can be chosen.",
+        "Use expanding-search when the search navigates instead of setting a value."
+      ]
+    },
+    {
+      "id": "resizable-panels",
+      "source": "https://uiarc.dev/components/resizable-panels",
+      "whenToUse": [
+        "Editor, mail, or dashboard layouts where people trade space between side-by-side panes.",
+        "Sidebars that should collapse by dragging or flicking toward the edge.",
+        "Layouts whose pane sizes should persist between visits via onLayoutChange."
+      ],
+      "whenNotToUse": [
+        "Use drawer for a panel that slides over the page.",
+        "Use tabs when only one pane needs to be visible at a time.",
+        "Avoid it for vertical splits, since it is horizontal only."
+      ]
+    },
+    {
+      "id": "tree-view",
+      "source": "https://uiarc.dev/components/tree-view",
+      "whenToUse": [
+        "Files, folders, and nested categories people expand and select.",
+        "Side panels next to code-block or a detail view where selection drives content.",
+        "Hierarchies that need full keyboard navigation with arrow keys."
+      ],
+      "whenNotToUse": [
+        "Use accordion for a few collapsible sections of content.",
+        "Use breadcrumb to show the path to the current page."
+      ]
+    }
+  ]
+}

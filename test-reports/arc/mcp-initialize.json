@@ -1,0 +1,23 @@
+{
+  "status": 401,
+  "headers": {
+    "access-control-allow-headers": "content-type, accept, authorization, mcp-protocol-version, mcp-method, mcp-name, mcp-session-id, last-event-id",
+    "access-control-allow-methods": "POST, GET, OPTIONS",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "mcp-protocol-version, mcp-session-id, www-authenticate",
+    "alt-svc": "h3=\":443\"; ma=86400",
+    "cache-control": "no-store",
+    "cf-ray": "a46cc9344c5c1f11-MXP",
+    "content-type": "application/json",
+    "date": "Wed, 07 Oct 2026 12:07:33 GMT",
+    "nel": "{\"report_to\":\"cf-nel\",\"success_fraction\":0.0,\"max_age\":604800}",
+    "report-to": "{\"group\":\"cf-nel\",\"max_age\":604800,\"endpoints\":[{\"url\":\"https://a.nel.cloudflare.com/report/v4?s=OEkzF1oL66NEGU0yW5QX7mh7%2B8pJFrPdP6WtUYX5LQMQvRFrrYuUZG9RdOEyBiq0L0meqay8mAzerkeQhvZ9kRK%2B4tdEEqz7ib8JRGwYZ0JsDGgISytxeLrx7II%3D\"}]}",
+    "server": "cloudflare",
+    "vary": "rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch",
+    "www-authenticate": "Bearer resource_metadata=\"https://uiarc.dev/.well-known/oauth-protected-resource/api/mcp\", scope=\"openid profile email\"",
+    "x-clerk-auth-reason": "session-token-and-uat-missing",
+    "x-clerk-auth-status": "signed-out",
+    "x-opennext": "1"
+  },
+  "body": "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32001,\"message\":\"Sign in to use the Arc MCP server. Your MCP client opens the sign-in page; a free account is enough. Setup: https://uiarc.dev/docs/ai#mcp\",\"data\":{\"docs\":\"https://uiarc.dev/docs/ai#mcp\"}}}"
+}

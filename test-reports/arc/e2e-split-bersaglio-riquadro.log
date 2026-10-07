@@ -1,0 +1,14 @@
+--- E2E: bersaglio del riquadro Split-View congelato ---
+  [32m✔ OK[0m   tre letture in volo prima di qualunque risposta (3)
+  [32m✔ OK[0m   le colonne mostrate sono quelle di "prodotti", non un mix con le altre due
+  [32m✔ OK[0m   le righe mostrate sono esattamente le 5 di "prodotti", nel loro ordine
+  [32m✔ OK[0m   il riepilogo del riquadro non riporta il totale di "clienti" né di "ordini"
+  [32m✔ OK[0m   il riepilogo mostra il totale di "prodotti" (5 documenti)
+  [32m✔ OK[0m   l'editor si è aperto sulla cella di "prodotti"
+  [32m✔ OK[0m   una sola scrittura emessa (1)
+  [32m✔ OK[0m   la scrittura raggiunge "prodotti", non la collezione a cui il riquadro è passato dopo
+  [32m✔ OK[0m   il database di scrittura resta quello originario
+  [32m✔ OK[0m   l'_id scritto è quello della riga originale di "prodotti" (100)
+  [32m✔ OK[0m   nessun errore JS nella pagina
+
+--- Bersaglio riquadro: tutti i test superati ---

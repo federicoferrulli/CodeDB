@@ -1,3 +1,4 @@
+import { createArcInput, createArcButton, controlElement } from '../arc/ui.js';
 import { state } from './state.js';
 import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext } from './utils.js';
 import { refreshDbTree, collWord, dbWord } from './dbtree.js';
@@ -137,12 +138,11 @@ function addColRow(values = {}) {
   const tr = document.createElement('tr');
   const cell = (el) => {
     const td = document.createElement('td');
-    td.appendChild(el);
+    td.appendChild(controlElement(el));
     return td;
   };
   const text = (cls, value, placeholder, list) => {
-    const i = document.createElement('input');
-    i.type = 'text';
+    const i = createArcInput({ type: 'text', 'aria-label': { 'col-name': 'Nome colonna', 'col-type': 'Tipo colonna', 'col-default': 'Valore predefinito' }[cls] });
     i.className = cls;
     i.value = value || '';
     if (placeholder) i.placeholder = placeholder;
@@ -153,11 +153,12 @@ function addColRow(values = {}) {
   const check = (cls, checked) => {
     const i = document.createElement('input');
     i.type = 'checkbox';
+    i.setAttribute('aria-label', { 'col-null': 'Ammette NULL', 'col-ai': 'Auto incremento', 'col-pk': 'Chiave primaria' }[cls]);
     i.className = cls;
     i.checked = !!checked;
     return i;
   };
-  const del = document.createElement('button');
+  const del = createArcButton();
   del.type = 'button';
   del.className = 'del-btn';
   del.textContent = '✕';

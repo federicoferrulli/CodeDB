@@ -1,0 +1,104 @@
+{
+  "checks": [
+    "Input inline: Escape annulla, Enter e blur salvano valore esatto e contesto",
+    "Select booleano: tastiera, popup, Escape e scelta senza salvataggio al blur interno",
+    "Date UTC e ObjectId: conversione conservata, valore invalido non inviato",
+    "Textarea documento: lint, formattazione, minificazione e payload doc:replace",
+    "Duplica e modifica: Arc dinamico, anteprima, checkbox, validazione e riapertura senza doppi invii",
+    "Inserimento: campi Arc dinamici, valore false distinto dal vuoto, cambio tipo e rimozione",
+    "Geometria: Arc Button/Select/Textarea nel dialogo annidato, GeoJSON restituito alla bozza",
+    "Date invalide e ore incomplete: nessun invio, nessuna omissione silenziosa, bozza conservata",
+    "Form e popup a 390/768/1440, due temi; errore server conserva bozza e permette riprova",
+    "Modifica colonna: Checkbox NULL e Select conversione BSON",
+    "Smontaggio React quando la griglia elimina la cella in modifica",
+    "Movimento standard e ridotto; nessun errore JS o risorsa locale mancante"
+  ],
+  "layouts": [
+    {
+      "theme": "light",
+      "width": 390,
+      "page": 390,
+      "formOverflow": 0,
+      "modal": [
+        12,
+        378
+      ],
+      "menu": [
+        33,
+        357
+      ]
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "page": 768,
+      "formOverflow": 0,
+      "modal": [
+        19.203125,
+        748.796875
+      ],
+      "menu": [
+        394,
+        691.3125
+      ]
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "page": 1440,
+      "formOverflow": 0,
+      "modal": [
+        390,
+        1050
+      ],
+      "menu": [
+        730,
+        992.515625
+      ]
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "page": 390,
+      "formOverflow": 0,
+      "modal": [
+        12,
+        378
+      ],
+      "menu": [
+        33,
+        357
+      ]
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "page": 768,
+      "formOverflow": 0,
+      "modal": [
+        19.203125,
+        748.796875
+      ],
+      "menu": [
+        394,
+        691.3125
+      ]
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "page": 1440,
+      "formOverflow": 0,
+      "modal": [
+        390,
+        1050
+      ],
+      "menu": [
+        730,
+        992.515625
+      ]
+    }
+  ],
+  "errors": [],
+  "requests": []
+}

@@ -24,6 +24,9 @@ function frontend(extra = {}) {
       return nodes.get(id);
     },
     toast: (message) => notices.push(message), esc: (v) => String(v), showError() {},
+    // Qui si prova il protocollo d'importazione in VM; il renderer Arc è
+    // verificato nel browser dalle suite e2e-arc.
+    mountArcControls() {},
     isSqlType: (type) => type !== 'mongodb',
     state: {}, tabs: { list: [{ id: 'tab-a' }] },
     iniziaCaricamento: () => () => {}, marcaDatiSporchi() {}, refreshDbTree: async () => {},

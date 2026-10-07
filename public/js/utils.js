@@ -499,7 +499,9 @@ export function reorderById(list, fromId, toId, key = 'id') {
 export function showError(id, msg) {
   const el = $(id);
   if (el) {
-    el.textContent = msg || '';
+    if (document.documentElement?.dataset?.arcReady) {
+      document.dispatchEvent(new CustomEvent('codedb:field-error', { detail: { element: el, message: String(msg || '') } }));
+    } else el.textContent = msg || '';
     el.classList.toggle('hidden', !msg);
   }
 }
@@ -731,15 +733,6 @@ export function buildJsonNode(val, key = null, isRoot = false) {
 }
 
 /* ---------- Gestione Modali & Overlay Centralizzata ---------- */
-const activeModals = new Set();
-
-function handleModalEsc(e) {
-  if (e.key === 'Escape' && activeModals.size > 0) {
-    const lastModal = Array.from(activeModals).pop();
-    closeModal(lastModal);
-  }
-}
-
 export function openModal(elOrId) {
   const el = typeof elOrId === 'string'
     ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
@@ -752,10 +745,6 @@ export function openModal(elOrId) {
   // dell'icona. La chiamata e' circoscritta al sottoalbero della modale.
   refreshLucideIcons(el);
   el.classList.remove('hidden');
-  activeModals.add(el);
-  if (activeModals.size === 1) {
-    document.addEventListener('keydown', handleModalEsc);
-  }
   const focusable = el.querySelector('input:not([type="hidden"]), button, select, textarea');
   if (focusable) focusable.focus();
 }
@@ -782,59 +771,11 @@ export function openModal(elOrId) {
  * valore risolto resta la stringa di sempre, così i chiamanti esistenti non
  * cambiano.
  */
-export function chiediTesto({ titolo, sottotitolo, etichetta, valore = '', password = false, ok = 'Conferma', spunta = null } = {}) {
-  const overlay = $('#askinput-overlay');
-  // Senza la modale in pagina, meglio annullare che restare in attesa per sempre.
-  if (!overlay) return Promise.resolve(null);
-  $('#askinput-title').textContent = titolo || 'Inserisci un valore';
-  const sub = $('#askinput-subtitle');
-  sub.textContent = sottotitolo || '';
-  sub.classList.toggle('hidden', !sottotitolo);
-  $('#askinput-label').textContent = etichetta || 'Valore';
-  $('#askinput-ok').textContent = ok;
-  const input = $('#askinput-value');
-  input.type = password ? 'password' : 'text';
-  input.value = valore == null ? '' : String(valore);
-
-  const rigaSpunta = $('#askinput-check-row');
-  const casella = $('#askinput-check');
-  if (rigaSpunta && casella) {
-    rigaSpunta.classList.toggle('hidden', !spunta);
-    // Sempre riazzerata all'apertura: una casella che ricorda la scelta
-    // precedente farebbe eliminare un database a chi apre la modale e conferma
-    // senza rileggerla.
-    casella.checked = !!(spunta && spunta.valore);
-    if (spunta) $('#askinput-check-label').textContent = spunta.etichetta || '';
-  }
-
-  return new Promise((resolve) => {
-    let chiuso = false;
-    const finish = (res) => {
-      if (chiuso) return;
-      chiuso = true;
-      document.removeEventListener('keydown', onEsc, true);
-      $('#askinput-ok').removeEventListener('click', onOk);
-      $('#askinput-cancel').removeEventListener('click', onCancel);
-      input.removeEventListener('keydown', onEnter);
-      closeModal(overlay);
-      resolve(res);
-    };
-    const onOk = () => finish(spunta ? { testo: input.value, spunta: !!(casella && casella.checked) } : input.value);
-    const onCancel = () => finish(null);
-    const onEnter = (e) => { if (e.key === 'Enter') { e.preventDefault(); onOk(); } };
-    // Esc lo intercetta anche handleModalEsc, che chiude la modale ma non
-    // saprebbe risolvere la promise: senza questo il chiamante resterebbe
-    // appeso e la modale successiva troverebbe i gestori di quella prima.
-    const onEsc = (e) => { if (e.key === 'Escape') finish(null); };
-
-    $('#askinput-ok').addEventListener('click', onOk);
-    $('#askinput-cancel').addEventListener('click', onCancel);
-    input.addEventListener('keydown', onEnter);
-    document.addEventListener('keydown', onEsc, true);
-    openModal(overlay);
-    input.focus();
-    input.select();
-  });
+export function chiediTesto(options = {}) {
+  if (!document.getElementById('askinput-overlay')) return Promise.resolve(null);
+  return new Promise(resolve => document.dispatchEvent(new CustomEvent('codedb:ask-input', {
+    detail: { ...options, resolve },
+  })));
 }
 
 export function closeModal(elOrId) {
@@ -843,65 +784,14 @@ export function closeModal(elOrId) {
     : elOrId;
   if (!el) return;
   el.classList.add('hidden');
-  activeModals.delete(el);
-  if (activeModals.size === 0) {
-    document.removeEventListener('keydown', handleModalEsc);
-  }
 }
 
 /* ---------- Gestione Notifiche Toast ---------- */
 export function showToast(message, type = 'info', duration = 3500) {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
-
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.role = 'status';
-
-  // Icone dell'applicazione, non emoji: un pittogramma cambia forma e
-  // larghezza da un sistema all'altro, e un lettore di schermo lo pronuncia
-  // («segno di spunta bianco pesante Backup completato»). Qui e' `aria-hidden`
-  // perche' il tipo del toast e' gia' detto dal testo e dal colore.
-  const ICONE = {
-    success: 'circle-check',
-    error: 'circle-x',
-    info: 'info',
-    warning: 'triangle-alert',
-  };
-
-  const iconSpan = document.createElement('i');
-  iconSpan.dataset.lucide = ICONE[type] || ICONE.info;
-  iconSpan.className = 'toast-icona';
-  iconSpan.setAttribute('aria-hidden', 'true');
-
-  const textSpan = document.createElement('span');
-  textSpan.textContent = message;
-  textSpan.style.flex = '1';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn-close';
-  closeBtn.textContent = '✕';
-  closeBtn.ariaLabel = 'Chiudi notifica';
-  closeBtn.onclick = () => toast.remove();
-
-  toast.appendChild(iconSpan);
-  toast.appendChild(textSpan);
-  toast.appendChild(closeBtn);
-  container.appendChild(toast);
-  // L'icona e' ancora un <i data-lucide>: senza questa chiamata resta un
-  // elemento vuoto, cioe' un buco al posto dell'icona.
-  refreshLucideIcons(toast);
-
-  if (duration > 0) {
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.2s ease';
-        setTimeout(() => toast.remove(), 200);
-      }
-    }, duration);
-  }
+  if (!document.getElementById('toast-container')) return;
+  document.dispatchEvent(new CustomEvent('codedb:toast', {
+    detail: { message: String(message), type, duration },
+  }));
 }
 
 /* ---------- Rendering Skeleton Pending States ---------- */

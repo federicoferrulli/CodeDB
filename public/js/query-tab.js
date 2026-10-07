@@ -1936,7 +1936,7 @@ export function runQuery(opzioni = {}) {
 // Esportazione dei risultati raw da memoria (tutti i record caricati)
 export function exportQueryResults(format) {
   if (!currentResults || !currentResults.length) {
-    alert('Nessun dato da esportare.');
+    toast('Nessun dato da esportare.');
     return;
   }
 

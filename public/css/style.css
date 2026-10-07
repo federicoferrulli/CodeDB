@@ -1189,88 +1189,6 @@ header {
   flex-shrink: 0;
 }
 
-.app-menu {
-  /* Posizione decisa a runtime da positionFixedDropdown (position: fixed):
-     il menu non vive piu' dentro un contenitore relative nell'header. */
-  position: fixed;
-  width: 230px;
-  max-width: calc(100vw - 16px);
-  box-sizing: border-box;
-  background: var(--bg-2, #1e1e2e);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.15));
-  border-radius: 10px;
-  padding: 6px;
-  box-shadow: 0 10px 30px var(--sh-600);
-  z-index: 10000;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  /* Apertura e chiusura sono simmetriche e partono dal BASSO: il menu nasce
-     sopra il pulsante Impostazioni, in fondo alla barra connessioni. La
-     chiusura è pilotata da `.closing` in main.js — `.hidden` è `display: none`
-     e da solo farebbe sparire il menu di scatto. */
-  animation: appMenuIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.app-menu.closing {
-  animation: appMenuOut 0.14s ease-in forwards;
-  pointer-events: none;
-}
-
-@keyframes appMenuIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes appMenuOut {
-  from { opacity: 1; transform: translateY(0) scale(1); }
-  to { opacity: 0; transform: translateY(6px) scale(0.98); }
-}
-
-/* Chi ha chiesto meno animazioni non le riceve: il menu compare e sparisce.
-   `main.js` non se ne accorge — il timer di sicurezza chiude lo stesso. */
-@media (prefers-reduced-motion: reduce) {
-  .app-menu, .app-menu.closing { animation: none; }
-}
-
-.app-menu .menu-item {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start !important;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 12px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--fg);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  text-align: left !important;
-  transition: all 0.15s ease;
-}
-
-.app-menu .menu-item:hover {
-  background: var(--hover);
-  color: var(--accent-fg);
-}
-
-.app-menu .menu-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 4px 6px;
-}
-
-.app-menu .checkbox-item {
-  justify-content: flex-start !important;
-  text-align: left !important;
-  color: var(--fg-dim);
-  cursor: pointer;
-}
-
 .body {
   display: flex;
   flex: 1;
@@ -2233,7 +2151,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 #grid td.editing { padding: 0; }
 #grid td.editing input,
-#grid td.editing select {
+#grid td.editing [data-arc-component="select"] {
   width: 100%;
   border: 2px solid var(--accent);
   border-radius: 0;
@@ -2387,7 +2305,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .insert-form td:first-child { width: 28%; white-space: nowrap; }
 .insert-form td.insert-type { width: 22%; }
 .insert-form input:not([type='checkbox']),
-.insert-form select { width: 100%; }
+.insert-form [data-arc-component="select"] { width: 100%; }
 .insert-form input[type='datetime-local'],
 .insert-form input[type='date'] { color-scheme: dark; }
 .insert-form .req { color: var(--danger); font-weight: 700; }
@@ -2397,7 +2315,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 #insert-form td.insert-value { vertical-align: middle; }
 #insert-form td.insert-value:has(.fk-apri-btn) { display: flex; align-items: center; gap: var(--space-3xs); }
 #insert-form td.insert-value:has(.fk-apri-btn) input,
-#insert-form td.insert-value:has(.fk-apri-btn) select { flex: 1 1 auto; min-width: 0; }
+#insert-form td.insert-value:has(.fk-apri-btn) [data-arc-component="select"] { flex: 1 1 auto; min-width: 0; }
 #insert-form .fk-apri-btn {
   flex: 0 0 auto;
   padding: 0 var(--space-2xs);
@@ -2447,40 +2365,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .input-utc {
   border-color: var(--accent);
 }
-
-/* L'icona del toast e' un'icona dell'applicazione (vedi showToast). */
-.toast > .toast-icona {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-}
-.toast-success > .toast-icona { color: var(--success); }
-.toast-error   > .toast-icona { color: var(--danger); }
-.toast-warning > .toast-icona { color: var(--warning); }
-.toast-info    > .toast-icona { color: var(--info); }
-
-.toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--bg-3);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-md);
-  padding: 10px 18px;
-  box-shadow: var(--shadow-md);
-  z-index: 200;
-  /* Gli errori sono frasi intere (causa + rimedio + dettaglio tecnico, vedi
-     db/errors.js), non più codici di driver: senza un tetto alla larghezza il
-     riquadro cresce da entrambi i lati (è centrato con translateX) e finisce
-     fuori dallo schermo, tagliando proprio l'inizio del messaggio. */
-  max-width: min(760px, calc(100vw - 48px));
-  text-align: left;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.toast.error { border-color: var(--danger); }
 
 /* ---------- Menu contestuale ---------- */
 
@@ -5998,7 +5882,7 @@ body.split-resizing .split-pane {
   padding: 0;
 }
 .pane-grid td.editing input,
-.pane-grid td.editing select {
+.pane-grid td.editing [data-arc-component="select"] {
   width: 100%;
   border: 2px solid var(--accent);
   border-radius: 0;
@@ -8380,7 +8264,7 @@ td.editing .fk-apri-btn:hover { color: var(--fg-bright); border-color: var(--acc
 td.editing.fk-cella { display: flex; align-items: center; gap: var(--space-3xs); }
 /* Con l'editor aperto l'indicatore permanente sarebbe un doppione del pulsante. */
 td.editing.fk-cella::after { content: none; }
-td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
+td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; min-width: 0; }
 
 @media (max-width: 900px) {
   /* Su schermo stretto affiancare non è più possibile: il pannello si appoggia
@@ -8813,16 +8697,11 @@ td.editing.fk-cella input { flex: 1 1 auto; min-width: 0; }
 }
 #palette-input { flex-shrink: 0; }
 #palette-lista { min-height: 0; }
-.context-menu, .toolbar-dropdown-menu, .app-menu {
+.context-menu, .toolbar-dropdown-menu {
   min-width: 0;
   max-width: calc(var(--area-larghezza) - 16px);
   max-height: calc(var(--area-altezza) - 16px);
   overflow: auto;
-}
-.toast {
-  bottom: calc(var(--area-bottom) + var(--nav-mobile) + 24px);
-  left: calc(var(--sal) + var(--area-larghezza) / 2);
-  max-width: min(760px, calc(var(--area-larghezza) - 48px));
 }
 .onb-checklist {
   right: calc(var(--sar) + var(--space-lg));

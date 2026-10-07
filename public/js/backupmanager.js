@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
@@ -296,6 +297,7 @@ function renderCatalogo() {
   // Il contenuto si riempie a modale GIA' aperta, quindi il disegno che
   // `openModal` fa in apertura e' gia' passato: le icone vanno disegnate qui.
   container.innerHTML = html;
+  mountArcControls(container);
   refreshLucideIcons(container);
 
   container.querySelectorAll('.btn-verify-backup').forEach((btn) => {

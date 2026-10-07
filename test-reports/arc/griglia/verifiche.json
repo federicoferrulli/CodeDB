@@ -1,0 +1,34 @@
+{
+  "data": "2026-10-07",
+  "perimetro": "Editor di modifica, inserimento, duplicazione, colonna e geometria della griglia CodeDB",
+  "comandiSuperati": [
+    "npm run build:ui",
+    "npm run typecheck:ui",
+    "npm test",
+    "node test/e2e-arc.js",
+    "node test/e2e-arc-griglia.js",
+    "node test/e2e-numeri-esatti-inserimento.js",
+    "node test/e2e-fk-inserimento.js",
+    "node test/e2e-fk-viste.js",
+    "node test/e2e-editor-geometrico.js",
+    "node test/e2e-incolla-esatto-atomico.js",
+    "node test/e2e-selezione-celle-viste.js",
+    "git diff --check"
+  ],
+  "sensibilita": {
+    "comando": "node test/e2e-arc-griglia.js --mutant",
+    "exitCode": 1,
+    "regressioneRilevata": true,
+    "mutazione": "Rimozione della protezione blur del Select nel solo sorgente HTTP servito a Playwright",
+    "errore": "Timeout aspettando l'opzione false: il salvataggio al blur ha smontato la cella prima della scelta",
+    "sorgentiSuDiscoModificati": false
+  },
+  "reportBrowser": "report.json",
+  "logUnitari": "unit.log",
+  "limiti": [
+    "I test browser usano il trasporto Socket.IO controllato e i veri moduli UI; non certificano scritture o DDL su un DBMS reale.",
+    "MongoDB, MySQL e PostgreSQL locali non disponibili; daemon Docker Desktop non attivo.",
+    "MCP Arc non autenticato (HTTP 401); sorgenti Free del registry ufficiale, senza chiamate Arc a runtime.",
+    "Nessuna build installer Electron o APK Android eseguita."
+  ]
+}

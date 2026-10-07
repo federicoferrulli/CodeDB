@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -148,6 +149,7 @@ function renderPillMultiselects() {
       `<button type="button" class="pill-option" data-value="${esc(c.name)}"><i data-lucide="plug"></i> ${esc(c.name)}</button>`
     ).join('');
     apikeyPills.innerHTML = `<button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutte le connessioni concesse</button>${connItems}`;
+    mountArcControls(apikeyPills);
     refreshLucideIcons(apikeyPills);
     wirePillContainer(apikeyPills, $('#apikey-scope'));
   }
@@ -156,6 +158,7 @@ function renderPillMultiselects() {
   const grantDbPills = $('#grant-dbs-pills');
   if (grantDbPills) {
     grantDbPills.innerHTML = `<button type="button" class="pill-option active" data-value=""><i data-lucide="globe"></i> Tutti i DB</button>`;
+    mountArcControls(grantDbPills);
     refreshLucideIcons(grantDbPills);
     wirePillContainer(grantDbPills, $('#grant-dbs'));
   }
@@ -243,6 +246,7 @@ function renderUsers() {
       <thead><tr><th>Email</th><th>Nome</th><th>Stato</th><th>Creato</th><th>Azioni</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  mountArcControls(container);
 }
 
 function scopeText(scope) {
@@ -273,6 +277,7 @@ function renderGrants() {
       <thead><tr><th>Sottoutente</th><th>Connessione</th><th>Ruolo</th><th>Scope</th><th>Azioni</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  mountArcControls(container);
 }
 
 function renderKeys() {
@@ -300,6 +305,7 @@ function renderKeys() {
       <thead><tr><th>Etichetta</th><th>Soggetto</th><th>Prefisso</th><th>Connessioni</th><th>Ultimo uso</th><th>Azioni</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+  mountArcControls(container);
 }
 
 /* --- Moduli di creazione --------------------------------------------------- */
@@ -412,6 +418,7 @@ function showNewKey(key) {
 
   box.classList.remove('hidden');
 
+  mountArcControls(box);
   $('#apikey-copy-raw').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(key);

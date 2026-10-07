@@ -1,0 +1,7 @@
+{
+  "checks": [
+    "Connessione dal wizard Arc e lettura tramite Socket.IO reale",
+    "Input, Select e DatePicker: scritture reali, booleano false, UTC e millisecondi; BSON Long intatto"
+  ],
+  "errors": []
+}

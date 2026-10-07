@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /**
@@ -273,6 +274,7 @@ function disegnaElenco() {
 
   el.innerHTML = base
     + (miei ? `<div class="tema-sezione">I tuoi temi</div>${miei}` : '');
+  mountArcControls(el);
   refreshLucideIcons(el);
 }
 
@@ -438,6 +440,7 @@ function disegnaEditor() {
       <button type="button" class="btn btn-secondary" data-editor="annulla">Annulla</button>
     </div>`;
 
+  mountArcControls(p);
   aggiornaAvvisi();
 }
 

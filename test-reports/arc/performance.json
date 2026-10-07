@@ -1,0 +1,84 @@
+{
+  "samples": [
+    {
+      "version": "before",
+      "run": 0,
+      "bytes": 5008104,
+      "dcl": 788.7999999523163,
+      "fcp": 532,
+      "scriptMs": 156.159,
+      "taskMs": 520.596
+    },
+    {
+      "version": "after",
+      "run": 0,
+      "bytes": 5546572,
+      "dcl": 995.2000000476837,
+      "fcp": 552,
+      "scriptMs": 302.09000000000003,
+      "taskMs": 697.496
+    },
+    {
+      "version": "before",
+      "run": 1,
+      "bytes": 5008104,
+      "dcl": 737.8999998569489,
+      "fcp": 484,
+      "scriptMs": 163.228,
+      "taskMs": 511.887
+    },
+    {
+      "version": "after",
+      "run": 1,
+      "bytes": 5546572,
+      "dcl": 853.7999999523163,
+      "fcp": 452,
+      "scriptMs": 300.63,
+      "taskMs": 685.551
+    },
+    {
+      "version": "before",
+      "run": 2,
+      "bytes": 5008104,
+      "dcl": 720,
+      "fcp": 452,
+      "scriptMs": 144.101,
+      "taskMs": 487.85200000000003
+    },
+    {
+      "version": "after",
+      "run": 2,
+      "bytes": 5546572,
+      "dcl": 911.1999998092651,
+      "fcp": 504,
+      "scriptMs": 299.56,
+      "taskMs": 679.217
+    }
+  ],
+  "bundle": [
+    {
+      "file": "public/arc/ui.js",
+      "bytes": 500035,
+      "gzipBytes": 162555
+    },
+    {
+      "file": "public/arc/ui.css",
+      "bytes": 27914,
+      "gzipBytes": 5618
+    }
+  ],
+  "before": {
+    "bytes": 5008104,
+    "dcl": 737.8999998569489,
+    "fcp": 484,
+    "scriptMs": 156.159,
+    "taskMs": 511.887
+  },
+  "after": {
+    "bytes": 5546572,
+    "dcl": 911.1999998092651,
+    "fcp": 504,
+    "scriptMs": 300.63,
+    "taskMs": 685.551
+  }
+}

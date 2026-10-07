@@ -1,0 +1,805 @@
+{
+  "checks": [
+    "Navigazione Dati → Dettagli → Query e impostazioni; screenshot alle tre larghezze; due temi; nessun errore JS o HTTP"
+  ],
+  "surfaces": [
+    {
+      "name": "inizio-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "inizio-light",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "inizio-light",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        }
+      ]
+    },
+    {
+      "name": "query",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "query",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "query",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "temi",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "temi",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "temi",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "tema-editor",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "tema-editor",
+      "width": 768,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "tema-editor",
+      "width": 390,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    },
+    {
+      "name": "query-errore",
+      "width": 1440,
+      "overflow": false,
+      "font": "13px",
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 9.36
+        },
+        {
+          "text": "Database",
+          "size": 9.36
+        },
+        {
+          "text": "DatiDati",
+          "size": 11.05
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 11.05
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 11.05
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 11.05
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 9.36
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 11.7
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "requests": []
+}

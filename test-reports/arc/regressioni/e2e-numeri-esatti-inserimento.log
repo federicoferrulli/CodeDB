@@ -1,0 +1,39 @@
+--- E2E: numeri esatti nell'inserimento (issue 05) ---
+  [32m✔ OK[0m   inserimento: "bigint_max_mysql" produce {"$numberLong":"9223372036854775807"}
+  [32m✔ OK[0m   modifica inline: "bigint_max_mysql" produce {"$numberLong":"9223372036854775807"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "bigint_max_mysql" (testo "9223372036854775807")
+  [32m✔ OK[0m   inserimento: "bigint_min_mysql" produce {"$numberLong":"-9223372036854775808"}
+  [32m✔ OK[0m   modifica inline: "bigint_min_mysql" produce {"$numberLong":"-9223372036854775808"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "bigint_min_mysql" (testo "-9223372036854775808")
+  [32m✔ OK[0m   inserimento: "bigint_unsigned_max_mysql" produce {"$numberDecimal":"18446744073709551615"}
+  [32m✔ OK[0m   modifica inline: "bigint_unsigned_max_mysql" produce {"$numberDecimal":"18446744073709551615"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "bigint_unsigned_max_mysql" (testo "18446744073709551615")
+  [32m✔ OK[0m   inserimento: "bigint_unsigned_sotto_2_63_mysql" produce {"$numberLong":"9223372036854775807"}
+  [32m✔ OK[0m   modifica inline: "bigint_unsigned_sotto_2_63_mysql" produce {"$numberLong":"9223372036854775807"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "bigint_unsigned_sotto_2_63_mysql" (testo "9223372036854775807")
+  [32m✔ OK[0m   inserimento: "decimal_alta_precisione_mysql" produce {"$numberDecimal":"1234567890.123456789012345678"}
+  [32m✔ OK[0m   modifica inline: "decimal_alta_precisione_mysql" produce {"$numberDecimal":"1234567890.123456789012345678"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "decimal_alta_precisione_mysql" (testo "1234567890.123456789012345678")
+  [32m✔ OK[0m   inserimento: "bigint_oltre_2_53_postgres" produce {"$numberLong":"9007199254740993"}
+  [32m✔ OK[0m   modifica inline: "bigint_oltre_2_53_postgres" produce {"$numberLong":"9007199254740993"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "bigint_oltre_2_53_postgres" (testo "9007199254740993")
+  [32m✔ OK[0m   inserimento: "numeric_esteso_postgres" produce {"$numberDecimal":"-99999999999999999999999999999999999999.99"}
+  [32m✔ OK[0m   modifica inline: "numeric_esteso_postgres" produce {"$numberDecimal":"-99999999999999999999999999999999999999.99"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "numeric_esteso_postgres" (testo "-99999999999999999999999999999999999999.99")
+  [32m✔ OK[0m   inserimento: "long_mongo" produce {"$numberLong":"9007199254740995"}
+  [32m✔ OK[0m   modifica inline: "long_mongo" produce {"$numberLong":"9007199254740995"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "long_mongo" (testo "9007199254740995")
+  [32m✔ OK[0m   inserimento: "decimal_piccolissimo_mongo" produce {"$numberDecimal":"0.00000000000000000000000000000000000001"}
+  [32m✔ OK[0m   modifica inline: "decimal_piccolissimo_mongo" produce {"$numberDecimal":"0.00000000000000000000000000000000000001"}
+  [32m✔ OK[0m   inserimento e modifica coincidono per "decimal_piccolissimo_mongo" (testo "0.00000000000000000000000000000000000001")
+  [32m✔ OK[0m   casella dello stesso tipo (text) per "bigint" in inserimento e modifica
+  [32m✔ OK[0m   casella dello stesso tipo (text) per "bigint unsigned" in inserimento e modifica
+  [32m✔ OK[0m   casella dello stesso tipo (text) per "decimal(38,18)" in inserimento e modifica
+  [32m✔ OK[0m   casella dello stesso tipo (number) per "int" in inserimento e modifica
+  [32m✔ OK[0m   un BIGINT usa una casella di TESTO (non "number", che arrotonderebbe con le frecce native)
+  [32m✔ OK[0m   un valore fuori intervallo fa fallire buildInsertDoc invece di restituire un documento parziale
+  [32m✔ OK[0m   l'errore nomina la colonna responsabile
+  [32m✔ OK[0m   controprova: Number() al posto del codec perde le ultime cifre di 2^63 - 1 (renderebbe rosso il confronto sopra)
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- Numeri esatti nell'inserimento: tutti i test superati ---

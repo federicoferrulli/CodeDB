@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { $, refreshLucideIcons } from './utils.js';
@@ -111,6 +112,7 @@ export function openSnippetModal() {
       </div>
     `;
     refreshLucideIcons(modal);
+    mountArcControls(modal);
     document.body.appendChild(modal);
 
     const select = modal.querySelector('#snippet-preset-select');

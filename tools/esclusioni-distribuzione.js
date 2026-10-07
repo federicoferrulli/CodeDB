@@ -34,6 +34,8 @@ const ESCLUSIONI = [
   '!issue/**',
   '!test/**',
   '!tools/**',
+  '!ui/**',
+  '!test-reports/arc/**',
   '!backups/**',
   '!.git*',
   '!Dockerfile',

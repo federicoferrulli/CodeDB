@@ -1,0 +1,8 @@
+OK Avvio React, Arc e moduli CodeDB; onboarding nel portal
+OK Wizard: tre DBMS, porte, salto SSH e errore di connessione reale
+OK Contenimento e ripristino del focus, Escape sul wizard
+page.waitForFunction: Timeout 30000ms exceeded.
+    at C:\repository\CodeDB\test\e2e-arc.js:77:16 {
+  log: [],
+  name: 'TimeoutError'
+}

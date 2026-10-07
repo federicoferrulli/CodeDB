@@ -1,0 +1,164 @@
+{
+  "checks": [
+    "Nessun input, select o textarea applicativo iniziale privo di Arc",
+    "Select e Checkbox: controller reale, reset, assegnazioni e disabilitazione",
+    "Import connessioni cifrate: passphrase Arc mascherata, invio reale del controller e annullamento senza import",
+    "Checkbox griglia: selezione reale, stato misto, tastiera e seleziona tutti",
+    "Form DDL dinamico: payload reale e bozza conservata su errore",
+    "ColorPicker: input Hex, slider, tema persistente, Escape e tre larghezze",
+    "Controlli dinamici di palette e snippet collegati ai rispettivi controller",
+    "Select del grafico: cambio reale di tipo e ricostruzione dei controlli",
+    "DatePicker: limiti, frecce/Enter, data senza ora, reset e pulizia della bozza invalida",
+    "Nessun errore JavaScript, hydration o risorsa locale mancante"
+  ],
+  "coverage": [
+    {
+      "name": "Tutti i form statici, file e textarea compresi",
+      "total": 118,
+      "models": 36,
+      "missing": []
+    },
+    {
+      "name": "Griglia con checkbox di riga e selezione parziale",
+      "total": 123,
+      "models": 39,
+      "missing": []
+    },
+    {
+      "name": "DDL: righe dinamiche, datalist, default, NULL e chiavi",
+      "total": 129,
+      "models": 42,
+      "missing": []
+    },
+    {
+      "name": "Editor tema: nome, base, colori, valori esadecimali",
+      "total": 145,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema light, 390px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema light, 768px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema light, 1440px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 390px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 768px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 1440px",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Palette dinamica",
+      "total": 146,
+      "models": 50,
+      "missing": []
+    },
+    {
+      "name": "Snippet: Select e Textarea readonly",
+      "total": 147,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Grafici: barra rapida e configuratore completo",
+      "total": 192,
+      "models": 79,
+      "missing": []
+    },
+    {
+      "name": "Grafici ricostruiti dopo cambio tipo",
+      "total": 195,
+      "models": 81,
+      "missing": []
+    }
+  ],
+  "layouts": [
+    {
+      "theme": "light",
+      "width": 390,
+      "rect": {
+        "x": 41.59375,
+        "y": 506.296875,
+        "width": 247,
+        "height": 416
+      }
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "rect": {
+        "x": 64.71875,
+        "y": 394.1875,
+        "width": 247,
+        "height": 416
+      }
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "rect": {
+        "x": 734.984375,
+        "y": 548,
+        "width": 247,
+        "height": 404
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "rect": {
+        "x": 41.59375,
+        "y": 506.296875,
+        "width": 247,
+        "height": 416
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "rect": {
+        "x": 64.71875,
+        "y": 394.1875,
+        "width": 247,
+        "height": 416
+      }
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "rect": {
+        "x": 734.984375,
+        "y": 548,
+        "width": 247,
+        "height": 404
+      }
+    }
+  ],
+  "errors": [],
+  "requests": []
+}

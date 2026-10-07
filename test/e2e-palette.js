@@ -54,7 +54,7 @@ const apriPalette = (page) => page.evaluate(() => document.dispatchEvent(
   try {
     const page = await browser.newPage();
     const erroriJs = [];
-    page.on('pageerror', (err) => erroriJs.push(String(err && err.message || err)));
+    page.on('pageerror', (err) => erroriJs.push(String(err && (err.stack || err.message) || err)));
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
 

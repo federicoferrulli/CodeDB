@@ -1,0 +1,1877 @@
+{
+  "checks": [
+    "Avvio React, Arc e moduli CodeDB; onboarding nel portal",
+    "Wizard: tre DBMS, porte, salto SSH e errore di connessione reale",
+    "Contenimento e ripristino del focus, Escape sul wizard",
+    "Arc Input/Button: Enter restituisce il valore, Escape risolve null",
+    "Dialoghi e palette annidati: focus utilizzabile, Escape annulla solo quello superiore",
+    "Arc Dropdown Menu: apertura da tastiera e comando Tema reale",
+    "Notifiche: errore annunciato, testo lungo integro, successo e chiusura",
+    "38 overlay: portal Arc, identità del DOM e valori conservati",
+    "Overlay dinamico delle scorciatoie acquisito dal bridge",
+    "390/768/1024/1440 px, chiaro/scuro, movimento ridotto: nessun overflow",
+    "Tutti i pannelli statici: contenitori visibili e senza overflow a tre larghezze",
+    "Tema personalizzato: accento Arc collegato e persistente al reload",
+    "Ricaricamento diretto della rotta / e movimento standard",
+    "Nessun errore JavaScript, React o HTTP"
+  ],
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 390,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 15.59375,
+        "y": 39.203125,
+        "width": 358.796875,
+        "height": 881.578125
+      },
+      "foreground": "rgb(226, 232, 240)",
+      "background": "rgb(22, 27, 34)"
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 30.71875,
+        "y": 112.203125,
+        "width": 706.546875,
+        "height": 735.578125
+      },
+      "foreground": "rgb(226, 232, 240)",
+      "background": "rgb(22, 27, 34)"
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 272,
+        "y": 116.203125,
+        "width": 480,
+        "height": 727.578125
+      },
+      "foreground": "rgb(226, 232, 240)",
+      "background": "rgb(22, 27, 34)"
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 480,
+        "y": 116.203125,
+        "width": 480,
+        "height": 727.578125
+      },
+      "foreground": "rgb(226, 232, 240)",
+      "background": "rgb(22, 27, 34)"
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 15.59375,
+        "y": 39.203125,
+        "width": 358.796875,
+        "height": 881.578125
+      },
+      "foreground": "rgb(31, 41, 55)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 30.71875,
+        "y": 112.203125,
+        "width": 706.546875,
+        "height": 735.578125
+      },
+      "foreground": "rgb(31, 41, 55)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 272,
+        "y": 116.203125,
+        "width": 480,
+        "height": 727.578125
+      },
+      "foreground": "rgb(31, 41, 55)",
+      "background": "rgb(255, 255, 255)"
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "pageOverflow": false,
+      "modalOverflow": false,
+      "fits": true,
+      "rect": {
+        "x": 480,
+        "y": 116.203125,
+        "width": 480,
+        "height": 727.578125
+      },
+      "foreground": "rgb(31, 41, 55)",
+      "background": "rgb(255, 255, 255)"
+    }
+  ],
+  "errors": [],
+  "requests": [],
+  "controls": {
+    "buttons": 249,
+    "inputs": 63,
+    "unlabeledInputs": []
+  },
+  "overlays": [
+    {
+      "id": "conn-error-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "login-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "vault-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "passphrase-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "about-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "onboarding-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "connect-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "insert-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "geomap-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "geomulti-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "editdoc-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "askinput-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "dbcreate-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "collcreate-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "coledit-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "connexport-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "import-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "dbimport-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "dbexport-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "piano-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "explain-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "idxcreate-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "mermaid-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "dbml-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "sql-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "audit-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "diff-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "import-schema-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "path-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "deps-modal",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-backup-manager",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "restore-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-audit-log",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-health",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-sessions",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-theme",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-admin-rbac",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "modal-pending",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "conn-error-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "login-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "vault-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "passphrase-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "about-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "onboarding-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connect-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "insert-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomap-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomulti-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "editdoc-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "askinput-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbcreate-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "collcreate-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "coledit-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connexport-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbimport-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbexport-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "piano-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "explain-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "idxcreate-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "mermaid-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbml-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "sql-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "audit-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "diff-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-schema-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "path-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "deps-modal",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-backup-manager",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "restore-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-audit-log",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-health",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-sessions",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-theme",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-admin-rbac",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-pending",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "conn-error-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "login-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "vault-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "passphrase-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "about-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "onboarding-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connect-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "insert-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomap-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomulti-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "editdoc-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "askinput-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbcreate-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "collcreate-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "coledit-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connexport-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbimport-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbexport-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "piano-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "explain-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "idxcreate-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "mermaid-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbml-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "sql-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "audit-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "diff-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-schema-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "path-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "deps-modal",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-backup-manager",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "restore-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-audit-log",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-health",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-sessions",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-theme",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-admin-rbac",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-pending",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "conn-error-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "login-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "vault-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "passphrase-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "about-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "onboarding-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connect-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "insert-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomap-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "geomulti-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "editdoc-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "askinput-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbcreate-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "collcreate-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "coledit-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "connexport-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbimport-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbexport-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "piano-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "explain-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "idxcreate-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "mermaid-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "dbml-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "sql-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "audit-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "diff-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "import-schema-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "path-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "deps-modal",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-backup-manager",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "restore-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-audit-log",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-health",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-sessions",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-theme",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-admin-rbac",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "modal-pending",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    }
+  ],
+  "resources": [
+    {
+      "name": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap",
+      "bytes": 0,
+      "duration": 0
+    },
+    {
+      "name": "/arc/ui.css",
+      "bytes": 48482,
+      "duration": 9
+    },
+    {
+      "name": "/css/style.css",
+      "bytes": 265513,
+      "duration": 15
+    },
+    {
+      "name": "/css/arc-theme.css",
+      "bytes": 10230,
+      "duration": 9
+    },
+    {
+      "name": "/js/lucide.min.js",
+      "bytes": 414215,
+      "duration": 10
+    },
+    {
+      "name": "/codedb.png",
+      "bytes": 29719,
+      "duration": 13
+    },
+    {
+      "name": "/socket.io/socket.io.js",
+      "bytes": 37660,
+      "duration": 8
+    },
+    {
+      "name": "/js/lib/three.min.js",
+      "bytes": 669891,
+      "duration": 23
+    },
+    {
+      "name": "/js/lib/3d-force-graph.min.js",
+      "bytes": 691299,
+      "duration": 23
+    },
+    {
+      "name": "/js/main.js",
+      "bytes": 8842,
+      "duration": 10
+    },
+    {
+      "name": "/css/tokens.css",
+      "bytes": 26289,
+      "duration": 7
+    },
+    {
+      "name": "/css/base.css",
+      "bytes": 2971,
+      "duration": 7
+    },
+    {
+      "name": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
+      "bytes": 0,
+      "duration": 0
+    },
+    {
+      "name": "https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2",
+      "bytes": 48256,
+      "duration": 0
+    },
+    {
+      "name": "/arc/ui.js",
+      "bytes": 579256,
+      "duration": 26
+    },
+    {
+      "name": "/js/state.js",
+      "bytes": 861,
+      "duration": 14
+    },
+    {
+      "name": "/js/tabs.js",
+      "bytes": 8737,
+      "duration": 16
+    },
+    {
+      "name": "/js/utils.js",
+      "bytes": 37500,
+      "duration": 23
+    },
+    {
+      "name": "/js/uml.js",
+      "bytes": 46212,
+      "duration": 30
+    },
+    {
+      "name": "/js/graph3d.js",
+      "bytes": 71180,
+      "duration": 33
+    },
+    {
+      "name": "/js/connection.js",
+      "bytes": 24895,
+      "duration": 36
+    },
+    {
+      "name": "/js/connmanager.js",
+      "bytes": 8786,
+      "duration": 40
+    },
+    {
+      "name": "/js/tabbar.js",
+      "bytes": 2194,
+      "duration": 42
+    },
+    {
+      "name": "/js/workspace.js",
+      "bytes": 6959,
+      "duration": 46
+    },
+    {
+      "name": "/js/dbtree.js",
+      "bytes": 12316,
+      "duration": 50
+    },
+    {
+      "name": "/js/schema-ops.js",
+      "bytes": 18558,
+      "duration": 51
+    },
+    {
+      "name": "/js/grid.js",
+      "bytes": 68737,
+      "duration": 52
+    },
+    {
+      "name": "/js/cellselect.js",
+      "bytes": 75056,
+      "duration": 54
+    },
+    {
+      "name": "/js/inlineEdit.js",
+      "bytes": 20264,
+      "duration": 55
+    },
+    {
+      "name": "/js/fk-vista.js",
+      "bytes": 35726,
+      "duration": 60
+    },
+    {
+      "name": "/js/insert.js",
+      "bytes": 30654,
+      "duration": 63
+    },
+    {
+      "name": "/js/geomap.js",
+      "bytes": 42793,
+      "duration": 64
+    },
+    {
+      "name": "/js/geomulti.js",
+      "bytes": 3783,
+      "duration": 65
+    },
+    {
+      "name": "/js/details.js",
+      "bytes": 6204,
+      "duration": 66
+    },
+    {
+      "name": "/js/live.js",
+      "bytes": 8187,
+      "duration": 68
+    },
+    {
+      "name": "/js/responsive.js",
+      "bytes": 3053,
+      "duration": 69
+    },
+    {
+      "name": "/js/exportimport.js",
+      "bytes": 40642,
+      "duration": 71
+    },
+    {
+      "name": "/js/vault.js",
+      "bytes": 6569,
+      "duration": 74
+    },
+    {
+      "name": "/js/auth.js",
+      "bytes": 4773,
+      "duration": 77
+    },
+    {
+      "name": "/js/query-tab.js",
+      "bytes": 85645,
+      "duration": 78
+    },
+    {
+      "name": "/js/backupmanager.js",
+      "bytes": 29410,
+      "duration": 79
+    },
+    {
+      "name": "/js/auditlog.js",
+      "bytes": 12331,
+      "duration": 80
+    },
+    {
+      "name": "/js/health.js",
+      "bytes": 5664,
+      "duration": 82
+    },
+    {
+      "name": "/js/sessions.js",
+      "bytes": 23145,
+      "duration": 89
+    },
+    {
+      "name": "/js/session-restore.js",
+      "bytes": 10642,
+      "duration": 91
+    },
+    {
+      "name": "/js/colltabs.js",
+      "bytes": 25221,
+      "duration": 93
+    },
+    {
+      "name": "/js/splitview.js",
+      "bytes": 92249,
+      "duration": 95
+    },
+    {
+      "name": "/js/admin-rbac.js",
+      "bytes": 19647,
+      "duration": 95
+    },
+    {
+      "name": "/js/pending-queries.js",
+      "bytes": 25106,
+      "duration": 95
+    },
+    {
+      "name": "/js/script-run.js",
+      "bytes": 20784,
+      "duration": 96
+    },
+    {
+      "name": "/js/passphrase.js",
+      "bytes": 8070,
+      "duration": 96
+    },
+    {
+      "name": "/js/onboarding.js",
+      "bytes": 24041,
+      "duration": 96
+    },
+    {
+      "name": "/js/about.js",
+      "bytes": 7997,
+      "duration": 97
+    },
+    {
+      "name": "/js/theme.js",
+      "bytes": 25034,
+      "duration": 97
+    },
+    {
+      "name": "/js/scorciatoie-ui.js",
+      "bytes": 8070,
+      "duration": 97
+    },
+    {
+      "name": "/js/palette.js",
+      "bytes": 17670,
+      "duration": 97
+    },
+    {
+      "name": "/js/chart-runtime.js",
+      "bytes": 5331,
+      "duration": 98
+    },
+    {
+      "name": "/js/maniglia.js",
+      "bytes": 4061,
+      "duration": 98
+    },
+    {
+      "name": "/js/socket.js",
+      "bytes": 2884,
+      "duration": 84
+    },
+    {
+      "name": "/js/valori.js",
+      "bytes": 7412,
+      "duration": 84
+    },
+    {
+      "name": "/js/geojson.js",
+      "bytes": 12217,
+      "duration": 77
+    },
+    {
+      "name": "/js/avvisi.js",
+      "bytes": 1273,
+      "duration": 77
+    },
+    {
+      "name": "/js/viewport.js",
+      "bytes": 1293,
+      "duration": 77
+    },
+    {
+      "name": "/js/righe.js",
+      "bytes": 1199,
+      "duration": 78
+    },
+    {
+      "name": "/js/trasporto.js",
+      "bytes": 9480,
+      "duration": 78
+    },
+    {
+      "name": "/js/coerenza-richieste.js",
+      "bytes": 4065,
+      "duration": 71
+    },
+    {
+      "name": "/js/uml-modello.js",
+      "bytes": 34161,
+      "duration": 71
+    },
+    {
+      "name": "/js/uml-paper.js",
+      "bytes": 56666,
+      "duration": 72
+    },
+    {
+      "name": "/js/uml-store.js",
+      "bytes": 5456,
+      "duration": 72
+    },
+    {
+      "name": "/js/schema-analisi.js",
+      "bytes": 16986,
+      "duration": 69
+    },
+    {
+      "name": "/js/schema-export.js",
+      "bytes": 10065,
+      "duration": 69
+    },
+    {
+      "name": "/js/grafo-budget.js",
+      "bytes": 3504,
+      "duration": 69
+    },
+    {
+      "name": "/js/grafo-comandi.js",
+      "bytes": 5324,
+      "duration": 69
+    },
+    {
+      "name": "/js/onboarding-stato.js",
+      "bytes": 18300,
+      "duration": 68
+    },
+    {
+      "name": "/js/autocomplete.js",
+      "bytes": 20276,
+      "duration": 52
+    },
+    {
+      "name": "/js/queryhistory.js",
+      "bytes": 10355,
+      "duration": 52
+    },
+    {
+      "name": "/js/fk-relazioni.js",
+      "bytes": 13840,
+      "duration": 52
+    },
+    {
+      "name": "/js/fk-cache.js",
+      "bytes": 3290,
+      "duration": 53
+    },
+    {
+      "name": "/js/cella-geometria.js",
+      "bytes": 2500,
+      "duration": 53
+    },
+    {
+      "name": "/js/filtro-rapido.js",
+      "bytes": 2732,
+      "duration": 53
+    },
+    {
+      "name": "/js/griglia.js",
+      "bytes": 10207,
+      "duration": 53
+    },
+    {
+      "name": "/js/cell-stats.js",
+      "bytes": 8020,
+      "duration": 51
+    },
+    {
+      "name": "/js/calcoli.js",
+      "bytes": 9800,
+      "duration": 51
+    },
+    {
+      "name": "/js/geo-stats.js",
+      "bytes": 14527,
+      "duration": 52
+    },
+    {
+      "name": "/js/cellgrafico.js",
+      "bytes": 13777,
+      "duration": 52
+    },
+    {
+      "name": "/js/scorrimento-bordo.js",
+      "bytes": 1872,
+      "duration": 53
+    },
+    {
+      "name": "/js/identificatori.mjs",
+      "bytes": 8357,
+      "duration": 53
+    },
+    {
+      "name": "/js/valori-esatti.js",
+      "bytes": 7283,
+      "duration": 54
+    },
+    {
+      "name": "/js/json-lint.js",
+      "bytes": 6455,
+      "duration": 54
+    },
+    {
+      "name": "/js/geo-leaflet.js",
+      "bytes": 2360,
+      "duration": 46
+    },
+    {
+      "name": "/js/geo-modifica.js",
+      "bytes": 16434,
+      "duration": 46
+    },
+    {
+      "name": "/js/geo-vista.js",
+      "bytes": 19726,
+      "duration": 47
+    },
+    {
+      "name": "/js/import-status.js",
+      "bytes": 519,
+      "duration": 40
+    },
+    {
+      "name": "/js/csv.js",
+      "bytes": 3828,
+      "duration": 40
+    },
+    {
+      "name": "/js/import-batch.js",
+      "bytes": 1171,
+      "duration": 41
+    },
+    {
+      "name": "/js/export-selezione.js",
+      "bytes": 6209,
+      "duration": 41
+    },
+    {
+      "name": "/js/piano-anteprima.js",
+      "bytes": 2443,
+      "duration": 42
+    },
+    {
+      "name": "/js/import-mapping.js",
+      "bytes": 3106,
+      "duration": 42
+    },
+    {
+      "name": "/js/snippet-manager.js",
+      "bytes": 7230,
+      "duration": 34
+    },
+    {
+      "name": "/js/sql-chunker.js",
+      "bytes": 5903,
+      "duration": 34
+    },
+    {
+      "name": "/js/query-highlighter.js",
+      "bytes": 9049,
+      "duration": 35
+    },
+    {
+      "name": "/js/sql-split.js",
+      "bytes": 3737,
+      "duration": 35
+    },
+    {
+      "name": "/js/qe-history.js",
+      "bytes": 9728,
+      "duration": 36
+    },
+    {
+      "name": "/js/query-formatter.js",
+      "bytes": 17731,
+      "duration": 36
+    },
+    {
+      "name": "/js/intellisense.js",
+      "bytes": 25187,
+      "duration": 36
+    },
+    {
+      "name": "/js/sql-dialetti.js",
+      "bytes": 6827,
+      "duration": 37
+    },
+    {
+      "name": "/js/query-editor.js",
+      "bytes": 6549,
+      "duration": 37
+    },
+    {
+      "name": "/js/charts.js",
+      "bytes": 48778,
+      "duration": 38
+    },
+    {
+      "name": "/js/query-map.js",
+      "bytes": 6801,
+      "duration": 38
+    },
+    {
+      "name": "/js/table-cols.js",
+      "bytes": 10714,
+      "duration": 38
+    },
+    {
+      "name": "/js/script-esito.js",
+      "bytes": 5525,
+      "duration": 31
+    },
+    {
+      "name": "/js/split-layout.js",
+      "bytes": 14556,
+      "duration": 34
+    },
+    {
+      "name": "/js/scorciatoie.js",
+      "bytes": 9089,
+      "duration": 35
+    },
+    {
+      "name": "/js/theme-colori.js",
+      "bytes": 19471,
+      "duration": 35
+    },
+    {
+      "name": "/js/palette-ricerca.js",
+      "bytes": 3899,
+      "duration": 35
+    },
+    {
+      "name": "/js/uml-progetto-modello.js",
+      "bytes": 4587,
+      "duration": 32
+    },
+    {
+      "name": "/js/query-history-store.js",
+      "bytes": 5671,
+      "duration": 29
+    },
+    {
+      "name": "/js/calcoli-protocollo.js",
+      "bytes": 3150,
+      "duration": 27
+    },
+    {
+      "name": "/js/chart-option.js",
+      "bytes": 62458,
+      "duration": 27
+    },
+    {
+      "name": "/js/cell-chart.js",
+      "bytes": 10499,
+      "duration": 27
+    },
+    {
+      "name": "/js/json-bson.js",
+      "bytes": 19343,
+      "duration": 26
+    },
+    {
+      "name": "/js/riepilogo-piano.js",
+      "bytes": 4334,
+      "duration": 24
+    },
+    {
+      "name": "/js/geo-risultati.js",
+      "bytes": 7294,
+      "duration": 18
+    },
+    {
+      "name": "/js/costruttori-bson.js",
+      "bytes": 681,
+      "duration": 4
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjbbdhb",
+      "bytes": 118,
+      "duration": 4
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjch5u4&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 2,
+      "duration": 4
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjcijhw&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 32,
+      "duration": 5
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjcze9m&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 98,
+      "duration": 4
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjd0bos&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 2,
+      "duration": 2
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjd6gfa&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 2,
+      "duration": 3
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=bnjd7bla&sid=uQftN4r6QkoxrS6sAAAE",
+      "bytes": 932,
+      "duration": 3
+    },
+    {
+      "name": "/vendor/echarts/echarts.min.js",
+      "bytes": 1121928,
+      "duration": 5
+    }
+  ]
+}

@@ -12,18 +12,13 @@
  * funzionare: è la stessa scelta già fatta per `valori.js`.
  */
 
-let timer = null;
-
 export function toast(msg, isError = false) {
-  const el = document.querySelector('#toast');
-  if (!el) return;
-  el.textContent = msg;
-  el.classList.toggle('error', isError);
-  el.classList.remove('hidden');
-  clearTimeout(timer);
+  if (!document.querySelector('#toast-container')) return;
   // La durata segue la lunghezza: gli errori ora sono frasi con causa e rimedio
   // (db/errors.js) e in 3 secondi fissi non si leggevano — sparivano prima della
   // parte che dice cosa fare. ~55 ms per carattere, fra 3 e 12 secondi.
   const durata = Math.min(Math.max(3000, String(msg).length * 55), 12000);
-  timer = setTimeout(() => el.classList.add('hidden'), durata);
+  document.dispatchEvent(new CustomEvent('codedb:toast', {
+    detail: { message: String(msg), type: isError ? 'error' : 'info', duration: durata, replace: true },
+  }));
 }

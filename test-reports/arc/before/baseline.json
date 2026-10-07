@@ -1,0 +1,2466 @@
+[
+  {
+    "width": 390,
+    "errors": [],
+    "overflow": false,
+    "resources": [
+      {
+        "name": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap",
+        "bytes": 823,
+        "duration": 3209
+      },
+      {
+        "name": "/css/style.css",
+        "bytes": 269077,
+        "duration": 11
+      },
+      {
+        "name": "/codedb.png",
+        "bytes": 29719,
+        "duration": 9
+      },
+      {
+        "name": "/socket.io/socket.io.js",
+        "bytes": 37660,
+        "duration": 19
+      },
+      {
+        "name": "/js/lucide.min.js",
+        "bytes": 414215,
+        "duration": 12
+      },
+      {
+        "name": "/js/lib/three.min.js",
+        "bytes": 669891,
+        "duration": 21
+      },
+      {
+        "name": "/js/lib/3d-force-graph.min.js",
+        "bytes": 691299,
+        "duration": 28
+      },
+      {
+        "name": "/js/main.js",
+        "bytes": 11156,
+        "duration": 9
+      },
+      {
+        "name": "/css/tokens.css",
+        "bytes": 26289,
+        "duration": 3
+      },
+      {
+        "name": "/css/base.css",
+        "bytes": 3130,
+        "duration": 6
+      },
+      {
+        "name": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
+        "bytes": 954,
+        "duration": 3188
+      },
+      {
+        "name": "/js/state.js",
+        "bytes": 861,
+        "duration": 6
+      },
+      {
+        "name": "/js/tabs.js",
+        "bytes": 8737,
+        "duration": 9
+      },
+      {
+        "name": "/js/utils.js",
+        "bytes": 41624,
+        "duration": 11
+      },
+      {
+        "name": "/js/graph3d.js",
+        "bytes": 71192,
+        "duration": 12
+      },
+      {
+        "name": "/js/uml.js",
+        "bytes": 46158,
+        "duration": 13
+      },
+      {
+        "name": "/js/connection.js",
+        "bytes": 24895,
+        "duration": 12
+      },
+      {
+        "name": "/js/connmanager.js",
+        "bytes": 8786,
+        "duration": 13
+      },
+      {
+        "name": "/js/tabbar.js",
+        "bytes": 2194,
+        "duration": 17
+      },
+      {
+        "name": "/js/workspace.js",
+        "bytes": 6959,
+        "duration": 18
+      },
+      {
+        "name": "/js/dbtree.js",
+        "bytes": 12316,
+        "duration": 20
+      },
+      {
+        "name": "/js/schema-ops.js",
+        "bytes": 18501,
+        "duration": 19
+      },
+      {
+        "name": "/js/inlineEdit.js",
+        "bytes": 19829,
+        "duration": 23
+      },
+      {
+        "name": "/js/fk-vista.js",
+        "bytes": 35726,
+        "duration": 24
+      },
+      {
+        "name": "/js/grid.js",
+        "bytes": 68737,
+        "duration": 24
+      },
+      {
+        "name": "/js/geomap.js",
+        "bytes": 42853,
+        "duration": 26
+      },
+      {
+        "name": "/js/insert.js",
+        "bytes": 30462,
+        "duration": 25
+      },
+      {
+        "name": "/js/geomulti.js",
+        "bytes": 3783,
+        "duration": 26
+      },
+      {
+        "name": "/js/cellselect.js",
+        "bytes": 74816,
+        "duration": 142
+      },
+      {
+        "name": "/js/details.js",
+        "bytes": 6078,
+        "duration": 26
+      },
+      {
+        "name": "/js/live.js",
+        "bytes": 8187,
+        "duration": 27
+      },
+      {
+        "name": "/js/responsive.js",
+        "bytes": 3053,
+        "duration": 43
+      },
+      {
+        "name": "/js/auth.js",
+        "bytes": 4773,
+        "duration": 43
+      },
+      {
+        "name": "/js/exportimport.js",
+        "bytes": 40537,
+        "duration": 43
+      },
+      {
+        "name": "/js/query-tab.js",
+        "bytes": 85645,
+        "duration": 48
+      },
+      {
+        "name": "/js/vault.js",
+        "bytes": 6569,
+        "duration": 48
+      },
+      {
+        "name": "/js/auditlog.js",
+        "bytes": 12331,
+        "duration": 49
+      },
+      {
+        "name": "/js/health.js",
+        "bytes": 5664,
+        "duration": 52
+      },
+      {
+        "name": "/js/backupmanager.js",
+        "bytes": 29331,
+        "duration": 54
+      },
+      {
+        "name": "/js/sessions.js",
+        "bytes": 23019,
+        "duration": 55
+      },
+      {
+        "name": "/js/session-restore.js",
+        "bytes": 10642,
+        "duration": 55
+      },
+      {
+        "name": "/js/colltabs.js",
+        "bytes": 25221,
+        "duration": 56
+      },
+      {
+        "name": "/js/splitview.js",
+        "bytes": 92068,
+        "duration": 57
+      },
+      {
+        "name": "/js/admin-rbac.js",
+        "bytes": 19421,
+        "duration": 56
+      },
+      {
+        "name": "/js/pending-queries.js",
+        "bytes": 25106,
+        "duration": 57
+      },
+      {
+        "name": "/js/script-run.js",
+        "bytes": 20784,
+        "duration": 58
+      },
+      {
+        "name": "/js/passphrase.js",
+        "bytes": 8070,
+        "duration": 60
+      },
+      {
+        "name": "/js/onboarding.js",
+        "bytes": 23908,
+        "duration": 60
+      },
+      {
+        "name": "/js/theme.js",
+        "bytes": 24941,
+        "duration": 63
+      },
+      {
+        "name": "/js/about.js",
+        "bytes": 7997,
+        "duration": 64
+      },
+      {
+        "name": "/js/palette.js",
+        "bytes": 17527,
+        "duration": 64
+      },
+      {
+        "name": "/js/scorciatoie-ui.js",
+        "bytes": 8021,
+        "duration": 67
+      },
+      {
+        "name": "/js/chart-runtime.js",
+        "bytes": 5331,
+        "duration": 64
+      },
+      {
+        "name": "/js/maniglia.js",
+        "bytes": 4061,
+        "duration": 65
+      },
+      {
+        "name": "/js/socket.js",
+        "bytes": 2884,
+        "duration": 57
+      },
+      {
+        "name": "/js/valori.js",
+        "bytes": 7412,
+        "duration": 57
+      },
+      {
+        "name": "/js/onboarding-stato.js",
+        "bytes": 18300,
+        "duration": 52
+      },
+      {
+        "name": "/js/schema-analisi.js",
+        "bytes": 16986,
+        "duration": 59
+      },
+      {
+        "name": "/js/grafo-comandi.js",
+        "bytes": 5324,
+        "duration": 61
+      },
+      {
+        "name": "/js/schema-export.js",
+        "bytes": 10065,
+        "duration": 60
+      },
+      {
+        "name": "/js/grafo-budget.js",
+        "bytes": 3504,
+        "duration": 65
+      },
+      {
+        "name": "/js/uml-modello.js",
+        "bytes": 34161,
+        "duration": 64
+      },
+      {
+        "name": "/js/uml-paper.js",
+        "bytes": 56666,
+        "duration": 64
+      },
+      {
+        "name": "/js/coerenza-richieste.js",
+        "bytes": 4065,
+        "duration": 65
+      },
+      {
+        "name": "/js/uml-store.js",
+        "bytes": 5456,
+        "duration": 67
+      },
+      {
+        "name": "/js/avvisi.js",
+        "bytes": 1324,
+        "duration": 70
+      },
+      {
+        "name": "/js/geojson.js",
+        "bytes": 12217,
+        "duration": 70
+      },
+      {
+        "name": "/js/righe.js",
+        "bytes": 1199,
+        "duration": 70
+      },
+      {
+        "name": "/js/viewport.js",
+        "bytes": 1293,
+        "duration": 70
+      },
+      {
+        "name": "/js/trasporto.js",
+        "bytes": 9480,
+        "duration": 70
+      },
+      {
+        "name": "/js/json-lint.js",
+        "bytes": 6455,
+        "duration": 44
+      },
+      {
+        "name": "/js/valori-esatti.js",
+        "bytes": 7283,
+        "duration": 44
+      },
+      {
+        "name": "/js/fk-relazioni.js",
+        "bytes": 13840,
+        "duration": 46
+      },
+      {
+        "name": "/js/filtro-rapido.js",
+        "bytes": 2732,
+        "duration": 45
+      },
+      {
+        "name": "/js/autocomplete.js",
+        "bytes": 20276,
+        "duration": 44
+      },
+      {
+        "name": "/js/fk-cache.js",
+        "bytes": 3290,
+        "duration": 44
+      },
+      {
+        "name": "/js/queryhistory.js",
+        "bytes": 10355,
+        "duration": 45
+      },
+      {
+        "name": "/js/cella-geometria.js",
+        "bytes": 2500,
+        "duration": 45
+      },
+      {
+        "name": "/js/griglia.js",
+        "bytes": 10207,
+        "duration": 46
+      },
+      {
+        "name": "/js/geo-modifica.js",
+        "bytes": 16434,
+        "duration": 46
+      },
+      {
+        "name": "/js/geo-vista.js",
+        "bytes": 19726,
+        "duration": 47
+      },
+      {
+        "name": "/js/geo-leaflet.js",
+        "bytes": 2360,
+        "duration": 47
+      },
+      {
+        "name": "/js/csv.js",
+        "bytes": 3828,
+        "duration": 47
+      },
+      {
+        "name": "/js/piano-anteprima.js",
+        "bytes": 2443,
+        "duration": 48
+      },
+      {
+        "name": "/js/import-status.js",
+        "bytes": 519,
+        "duration": 45
+      },
+      {
+        "name": "/js/import-batch.js",
+        "bytes": 1171,
+        "duration": 49
+      },
+      {
+        "name": "/js/export-selezione.js",
+        "bytes": 6209,
+        "duration": 48
+      },
+      {
+        "name": "/js/import-mapping.js",
+        "bytes": 3106,
+        "duration": 49
+      },
+      {
+        "name": "/js/sql-split.js",
+        "bytes": 3737,
+        "duration": 51
+      },
+      {
+        "name": "/js/snippet-manager.js",
+        "bytes": 7153,
+        "duration": 49
+      },
+      {
+        "name": "/js/sql-chunker.js",
+        "bytes": 5903,
+        "duration": 51
+      },
+      {
+        "name": "/js/query-highlighter.js",
+        "bytes": 9049,
+        "duration": 51
+      },
+      {
+        "name": "/js/qe-history.js",
+        "bytes": 9621,
+        "duration": 52
+      },
+      {
+        "name": "/js/query-formatter.js",
+        "bytes": 17731,
+        "duration": 52
+      },
+      {
+        "name": "/js/intellisense.js",
+        "bytes": 25187,
+        "duration": 53
+      },
+      {
+        "name": "/js/sql-dialetti.js",
+        "bytes": 6827,
+        "duration": 54
+      },
+      {
+        "name": "/js/query-editor.js",
+        "bytes": 6549,
+        "duration": 54
+      },
+      {
+        "name": "/js/charts.js",
+        "bytes": 48679,
+        "duration": 55
+      },
+      {
+        "name": "/js/query-map.js",
+        "bytes": 6801,
+        "duration": 56
+      },
+      {
+        "name": "/js/table-cols.js",
+        "bytes": 10714,
+        "duration": 56
+      },
+      {
+        "name": "/js/script-esito.js",
+        "bytes": 5525,
+        "duration": 46
+      },
+      {
+        "name": "/js/split-layout.js",
+        "bytes": 14556,
+        "duration": 40
+      },
+      {
+        "name": "/js/theme-colori.js",
+        "bytes": 19471,
+        "duration": 41
+      },
+      {
+        "name": "/js/scorciatoie.js",
+        "bytes": 9089,
+        "duration": 41
+      },
+      {
+        "name": "/js/palette-ricerca.js",
+        "bytes": 3899,
+        "duration": 41
+      },
+      {
+        "name": "/js/uml-progetto-modello.js",
+        "bytes": 4587,
+        "duration": 29
+      },
+      {
+        "name": "/js/json-bson.js",
+        "bytes": 19343,
+        "duration": 4
+      },
+      {
+        "name": "/js/query-history-store.js",
+        "bytes": 5671,
+        "duration": 27
+      },
+      {
+        "name": "/js/geo-stats.js",
+        "bytes": 14527,
+        "duration": 26
+      },
+      {
+        "name": "/js/riepilogo-piano.js",
+        "bytes": 4334,
+        "duration": 27
+      },
+      {
+        "name": "/js/identificatori.mjs",
+        "bytes": 8357,
+        "duration": 25
+      },
+      {
+        "name": "/js/chart-option.js",
+        "bytes": 62458,
+        "duration": 19
+      },
+      {
+        "name": "/js/calcoli.js",
+        "bytes": 9800,
+        "duration": 21
+      },
+      {
+        "name": "/js/geo-risultati.js",
+        "bytes": 7294,
+        "duration": 12
+      },
+      {
+        "name": "/js/costruttori-bson.js",
+        "bytes": 681,
+        "duration": 12
+      },
+      {
+        "name": "/js/cell-stats.js",
+        "bytes": 8020,
+        "duration": 9
+      },
+      {
+        "name": "/js/scorrimento-bordo.js",
+        "bytes": 1872,
+        "duration": 10
+      },
+      {
+        "name": "/js/cellgrafico.js",
+        "bytes": 13777,
+        "duration": 12
+      },
+      {
+        "name": "/js/calcoli-protocollo.js",
+        "bytes": 3150,
+        "duration": 4
+      },
+      {
+        "name": "/js/cell-chart.js",
+        "bytes": 10499,
+        "duration": 4
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrs9lqyt",
+        "bytes": 118,
+        "duration": 11
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrsafuow&sid=kWzvAtHbbL6hx6YwAAAA",
+        "bytes": 2,
+        "duration": 6
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrsagens&sid=kWzvAtHbbL6hx6YwAAAA",
+        "bytes": 32,
+        "duration": 10
+      },
+      {
+        "name": "/vendor/echarts/echarts.min.js",
+        "bytes": 1121928,
+        "duration": 20
+      }
+    ],
+    "overlays": [
+      {
+        "id": "conn-error-overlay",
+        "title": " Collegamento al server CodeDB non riuscito",
+        "controls": 1
+      },
+      {
+        "id": "login-overlay",
+        "title": " Accedi a CodeDB",
+        "controls": 3
+      },
+      {
+        "id": "vault-overlay",
+        "title": " Sblocco Vault",
+        "controls": 8
+      },
+      {
+        "id": "passphrase-overlay",
+        "title": " Cambia passphrase",
+        "controls": 5
+      },
+      {
+        "id": "about-overlay",
+        "controls": 1
+      },
+      {
+        "id": "onboarding-overlay",
+        "title": "Benvenuto in CodeDB",
+        "controls": 4
+      },
+      {
+        "id": "connect-overlay",
+        "title": " Connessione Database",
+        "controls": 30
+      },
+      {
+        "id": "insert-overlay",
+        "title": "Nuovo documento",
+        "controls": 8
+      },
+      {
+        "id": "geomap-overlay",
+        "title": "Geometria",
+        "controls": 17
+      },
+      {
+        "id": "geomulti-overlay",
+        "title": "Geometrie sulla mappa",
+        "controls": 5
+      },
+      {
+        "id": "editdoc-overlay",
+        "title": "Modifica documento",
+        "controls": 5
+      },
+      {
+        "id": "askinput-overlay",
+        "title": "Inserisci un valore",
+        "controls": 4
+      },
+      {
+        "id": "dbcreate-overlay",
+        "title": "Nuovo database",
+        "controls": 4
+      },
+      {
+        "id": "collcreate-overlay",
+        "title": "Nuova collection",
+        "controls": 4
+      },
+      {
+        "id": "coledit-overlay",
+        "title": "Aggiungi colonna",
+        "controls": 7
+      },
+      {
+        "id": "connexport-overlay",
+        "title": "Esporta connessioni",
+        "controls": 3
+      },
+      {
+        "id": "import-overlay",
+        "title": "Importa",
+        "controls": 4
+      },
+      {
+        "id": "dbimport-overlay",
+        "title": "Importa database",
+        "controls": 5
+      },
+      {
+        "id": "dbexport-overlay",
+        "title": "Esporta database",
+        "controls": 8
+      },
+      {
+        "id": "piano-overlay",
+        "title": "Conferma",
+        "controls": 2
+      },
+      {
+        "id": "explain-overlay",
+        "title": "Piano di esecuzione",
+        "controls": 1
+      },
+      {
+        "id": "idxcreate-overlay",
+        "title": "Nuovo indice",
+        "controls": 5
+      },
+      {
+        "id": "mermaid-modal",
+        "title": "Diagramma ER (Mermaid)",
+        "controls": 3
+      },
+      {
+        "id": "dbml-modal",
+        "title": "Schema DBML (dbdiagram.io)",
+        "controls": 3
+      },
+      {
+        "id": "sql-modal",
+        "title": "Schema SQL DDL (CREATE TABLE)",
+        "controls": 3
+      },
+      {
+        "id": "audit-modal",
+        "title": " Diagnostica dello Schema (Health Check)",
+        "controls": 1
+      },
+      {
+        "id": "diff-modal",
+        "title": " Schema Diff (Confronto con File Locale JSON)",
+        "controls": 2
+      },
+      {
+        "id": "import-schema-modal",
+        "title": " Importa ed Esplora Schema (SQL DDL / DBML)",
+        "controls": 4
+      },
+      {
+        "id": "path-modal",
+        "title": " Ricerca Cammino Minimo tra Tabelle",
+        "controls": 5
+      },
+      {
+        "id": "deps-modal",
+        "title": " Matrice Dipendenze & Ordine di Popolamento",
+        "controls": 1
+      },
+      {
+        "id": "modal-backup-manager",
+        "title": " Gestione Backup & Ripristino",
+        "controls": 14
+      },
+      {
+        "id": "restore-overlay",
+        "title": " Ripristino del backup",
+        "controls": 4
+      },
+      {
+        "id": "modal-audit-log",
+        "title": " Storico delle Azioni",
+        "controls": 9
+      },
+      {
+        "id": "modal-health",
+        "title": " Salute delle Connessioni",
+        "controls": 3
+      },
+      {
+        "id": "modal-sessions",
+        "title": " Sessioni & Query attive",
+        "controls": 5
+      },
+      {
+        "id": "modal-theme",
+        "title": " Tema",
+        "controls": 4
+      },
+      {
+        "id": "modal-admin-rbac",
+        "title": " Utenti & Permessi",
+        "controls": 20
+      },
+      {
+        "id": "modal-pending",
+        "title": " Query in Sospeso",
+        "controls": 4
+      }
+    ]
+  },
+  {
+    "width": 768,
+    "errors": [],
+    "overflow": false,
+    "resources": [
+      {
+        "name": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap",
+        "bytes": 823,
+        "duration": 316
+      },
+      {
+        "name": "/css/style.css",
+        "bytes": 269077,
+        "duration": 7
+      },
+      {
+        "name": "/js/lucide.min.js",
+        "bytes": 414215,
+        "duration": 15
+      },
+      {
+        "name": "/codedb.png",
+        "bytes": 29719,
+        "duration": 13
+      },
+      {
+        "name": "/js/main.js",
+        "bytes": 11156,
+        "duration": 13
+      },
+      {
+        "name": "/socket.io/socket.io.js",
+        "bytes": 37660,
+        "duration": 26
+      },
+      {
+        "name": "/js/lib/three.min.js",
+        "bytes": 669891,
+        "duration": 20
+      },
+      {
+        "name": "/js/lib/3d-force-graph.min.js",
+        "bytes": 691299,
+        "duration": 35
+      },
+      {
+        "name": "/css/tokens.css",
+        "bytes": 26289,
+        "duration": 4
+      },
+      {
+        "name": "/css/base.css",
+        "bytes": 3130,
+        "duration": 4
+      },
+      {
+        "name": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
+        "bytes": 1031,
+        "duration": 300
+      },
+      {
+        "name": "/js/state.js",
+        "bytes": 861,
+        "duration": 7
+      },
+      {
+        "name": "/js/connection.js",
+        "bytes": 24895,
+        "duration": 7
+      },
+      {
+        "name": "/js/graph3d.js",
+        "bytes": 71192,
+        "duration": 7
+      },
+      {
+        "name": "/js/connmanager.js",
+        "bytes": 8786,
+        "duration": 9
+      },
+      {
+        "name": "/js/utils.js",
+        "bytes": 41624,
+        "duration": 10
+      },
+      {
+        "name": "/js/uml.js",
+        "bytes": 46158,
+        "duration": 11
+      },
+      {
+        "name": "/js/tabs.js",
+        "bytes": 8737,
+        "duration": 39
+      },
+      {
+        "name": "/js/workspace.js",
+        "bytes": 6959,
+        "duration": 10
+      },
+      {
+        "name": "/js/schema-ops.js",
+        "bytes": 18501,
+        "duration": 14
+      },
+      {
+        "name": "/js/dbtree.js",
+        "bytes": 12316,
+        "duration": 14
+      },
+      {
+        "name": "/js/grid.js",
+        "bytes": 68737,
+        "duration": 14
+      },
+      {
+        "name": "/js/tabbar.js",
+        "bytes": 2194,
+        "duration": 19
+      },
+      {
+        "name": "/js/cellselect.js",
+        "bytes": 74816,
+        "duration": 16
+      },
+      {
+        "name": "/js/inlineEdit.js",
+        "bytes": 19829,
+        "duration": 16
+      },
+      {
+        "name": "/js/fk-vista.js",
+        "bytes": 35726,
+        "duration": 18
+      },
+      {
+        "name": "/js/geomulti.js",
+        "bytes": 3783,
+        "duration": 20
+      },
+      {
+        "name": "/js/insert.js",
+        "bytes": 30462,
+        "duration": 18
+      },
+      {
+        "name": "/js/details.js",
+        "bytes": 6078,
+        "duration": 22
+      },
+      {
+        "name": "/js/live.js",
+        "bytes": 8187,
+        "duration": 22
+      },
+      {
+        "name": "/js/geomap.js",
+        "bytes": 42853,
+        "duration": 34
+      },
+      {
+        "name": "/js/responsive.js",
+        "bytes": 3053,
+        "duration": 22
+      },
+      {
+        "name": "/js/vault.js",
+        "bytes": 6569,
+        "duration": 23
+      },
+      {
+        "name": "/js/exportimport.js",
+        "bytes": 40537,
+        "duration": 22
+      },
+      {
+        "name": "/js/auth.js",
+        "bytes": 4773,
+        "duration": 24
+      },
+      {
+        "name": "/js/auditlog.js",
+        "bytes": 12331,
+        "duration": 26
+      },
+      {
+        "name": "/js/backupmanager.js",
+        "bytes": 29331,
+        "duration": 26
+      },
+      {
+        "name": "/js/query-tab.js",
+        "bytes": 85645,
+        "duration": 27
+      },
+      {
+        "name": "/js/health.js",
+        "bytes": 5664,
+        "duration": 27
+      },
+      {
+        "name": "/js/colltabs.js",
+        "bytes": 25221,
+        "duration": 30
+      },
+      {
+        "name": "/js/sessions.js",
+        "bytes": 23019,
+        "duration": 30
+      },
+      {
+        "name": "/js/session-restore.js",
+        "bytes": 10642,
+        "duration": 33
+      },
+      {
+        "name": "/js/splitview.js",
+        "bytes": 92068,
+        "duration": 30
+      },
+      {
+        "name": "/js/admin-rbac.js",
+        "bytes": 19421,
+        "duration": 33
+      },
+      {
+        "name": "/js/pending-queries.js",
+        "bytes": 25106,
+        "duration": 33
+      },
+      {
+        "name": "/js/script-run.js",
+        "bytes": 20784,
+        "duration": 33
+      },
+      {
+        "name": "/js/passphrase.js",
+        "bytes": 8070,
+        "duration": 37
+      },
+      {
+        "name": "/js/about.js",
+        "bytes": 7997,
+        "duration": 36
+      },
+      {
+        "name": "/js/theme.js",
+        "bytes": 24941,
+        "duration": 36
+      },
+      {
+        "name": "/js/scorciatoie-ui.js",
+        "bytes": 8021,
+        "duration": 38
+      },
+      {
+        "name": "/js/palette.js",
+        "bytes": 17527,
+        "duration": 40
+      },
+      {
+        "name": "/js/chart-runtime.js",
+        "bytes": 5331,
+        "duration": 41
+      },
+      {
+        "name": "/js/onboarding.js",
+        "bytes": 23908,
+        "duration": 42
+      },
+      {
+        "name": "/js/maniglia.js",
+        "bytes": 4061,
+        "duration": 41
+      },
+      {
+        "name": "/js/socket.js",
+        "bytes": 2884,
+        "duration": 30
+      },
+      {
+        "name": "/js/onboarding-stato.js",
+        "bytes": 18300,
+        "duration": 30
+      },
+      {
+        "name": "/js/grafo-budget.js",
+        "bytes": 3504,
+        "duration": 33
+      },
+      {
+        "name": "/js/grafo-comandi.js",
+        "bytes": 5324,
+        "duration": 33
+      },
+      {
+        "name": "/js/schema-export.js",
+        "bytes": 10065,
+        "duration": 34
+      },
+      {
+        "name": "/js/schema-analisi.js",
+        "bytes": 16986,
+        "duration": 45
+      },
+      {
+        "name": "/js/geojson.js",
+        "bytes": 12217,
+        "duration": 33
+      },
+      {
+        "name": "/js/avvisi.js",
+        "bytes": 1324,
+        "duration": 33
+      },
+      {
+        "name": "/js/viewport.js",
+        "bytes": 1293,
+        "duration": 33
+      },
+      {
+        "name": "/js/valori.js",
+        "bytes": 7412,
+        "duration": 34
+      },
+      {
+        "name": "/js/righe.js",
+        "bytes": 1199,
+        "duration": 34
+      },
+      {
+        "name": "/js/trasporto.js",
+        "bytes": 9480,
+        "duration": 35
+      },
+      {
+        "name": "/js/uml-modello.js",
+        "bytes": 34161,
+        "duration": 35
+      },
+      {
+        "name": "/js/uml-store.js",
+        "bytes": 5456,
+        "duration": 36
+      },
+      {
+        "name": "/js/coerenza-richieste.js",
+        "bytes": 4065,
+        "duration": 35
+      },
+      {
+        "name": "/js/uml-paper.js",
+        "bytes": 56666,
+        "duration": 40
+      },
+      {
+        "name": "/js/fk-relazioni.js",
+        "bytes": 13840,
+        "duration": 33
+      },
+      {
+        "name": "/js/valori-esatti.js",
+        "bytes": 7283,
+        "duration": 33
+      },
+      {
+        "name": "/js/json-lint.js",
+        "bytes": 6455,
+        "duration": 33
+      },
+      {
+        "name": "/js/autocomplete.js",
+        "bytes": 20276,
+        "duration": 33
+      },
+      {
+        "name": "/js/queryhistory.js",
+        "bytes": 10355,
+        "duration": 36
+      },
+      {
+        "name": "/js/fk-cache.js",
+        "bytes": 3290,
+        "duration": 35
+      },
+      {
+        "name": "/js/cella-geometria.js",
+        "bytes": 2500,
+        "duration": 35
+      },
+      {
+        "name": "/js/filtro-rapido.js",
+        "bytes": 2732,
+        "duration": 35
+      },
+      {
+        "name": "/js/griglia.js",
+        "bytes": 10207,
+        "duration": 38
+      },
+      {
+        "name": "/js/geo-vista.js",
+        "bytes": 19726,
+        "duration": 34
+      },
+      {
+        "name": "/js/geo-leaflet.js",
+        "bytes": 2360,
+        "duration": 34
+      },
+      {
+        "name": "/js/calcoli.js",
+        "bytes": 9800,
+        "duration": 35
+      },
+      {
+        "name": "/js/cell-stats.js",
+        "bytes": 8020,
+        "duration": 34
+      },
+      {
+        "name": "/js/scorrimento-bordo.js",
+        "bytes": 1872,
+        "duration": 38
+      },
+      {
+        "name": "/js/cellgrafico.js",
+        "bytes": 13777,
+        "duration": 38
+      },
+      {
+        "name": "/js/geo-stats.js",
+        "bytes": 14527,
+        "duration": 59
+      },
+      {
+        "name": "/js/identificatori.mjs",
+        "bytes": 8357,
+        "duration": 37
+      },
+      {
+        "name": "/js/csv.js",
+        "bytes": 3828,
+        "duration": 35
+      },
+      {
+        "name": "/js/import-status.js",
+        "bytes": 519,
+        "duration": 35
+      },
+      {
+        "name": "/js/import-batch.js",
+        "bytes": 1171,
+        "duration": 37
+      },
+      {
+        "name": "/js/piano-anteprima.js",
+        "bytes": 2443,
+        "duration": 37
+      },
+      {
+        "name": "/js/import-mapping.js",
+        "bytes": 3106,
+        "duration": 37
+      },
+      {
+        "name": "/js/export-selezione.js",
+        "bytes": 6209,
+        "duration": 37
+      },
+      {
+        "name": "/js/snippet-manager.js",
+        "bytes": 7153,
+        "duration": 33
+      },
+      {
+        "name": "/js/sql-chunker.js",
+        "bytes": 5903,
+        "duration": 34
+      },
+      {
+        "name": "/js/query-highlighter.js",
+        "bytes": 9049,
+        "duration": 36
+      },
+      {
+        "name": "/js/sql-split.js",
+        "bytes": 3737,
+        "duration": 35
+      },
+      {
+        "name": "/js/qe-history.js",
+        "bytes": 9621,
+        "duration": 35
+      },
+      {
+        "name": "/js/query-formatter.js",
+        "bytes": 17731,
+        "duration": 35
+      },
+      {
+        "name": "/js/intellisense.js",
+        "bytes": 25187,
+        "duration": 37
+      },
+      {
+        "name": "/js/charts.js",
+        "bytes": 48679,
+        "duration": 38
+      },
+      {
+        "name": "/js/sql-dialetti.js",
+        "bytes": 6827,
+        "duration": 38
+      },
+      {
+        "name": "/js/query-editor.js",
+        "bytes": 6549,
+        "duration": 38
+      },
+      {
+        "name": "/js/query-map.js",
+        "bytes": 6801,
+        "duration": 38
+      },
+      {
+        "name": "/js/table-cols.js",
+        "bytes": 10714,
+        "duration": 41
+      },
+      {
+        "name": "/js/split-layout.js",
+        "bytes": 14556,
+        "duration": 38
+      },
+      {
+        "name": "/js/script-esito.js",
+        "bytes": 5525,
+        "duration": 34
+      },
+      {
+        "name": "/js/geo-modifica.js",
+        "bytes": 16434,
+        "duration": 35
+      },
+      {
+        "name": "/js/theme-colori.js",
+        "bytes": 19471,
+        "duration": 31
+      },
+      {
+        "name": "/js/scorciatoie.js",
+        "bytes": 9089,
+        "duration": 33
+      },
+      {
+        "name": "/js/palette-ricerca.js",
+        "bytes": 3899,
+        "duration": 32
+      },
+      {
+        "name": "/js/uml-progetto-modello.js",
+        "bytes": 4587,
+        "duration": 25
+      },
+      {
+        "name": "/js/json-bson.js",
+        "bytes": 19343,
+        "duration": 23
+      },
+      {
+        "name": "/js/query-history-store.js",
+        "bytes": 5671,
+        "duration": 21
+      },
+      {
+        "name": "/js/calcoli-protocollo.js",
+        "bytes": 3150,
+        "duration": 18
+      },
+      {
+        "name": "/js/cell-chart.js",
+        "bytes": 10499,
+        "duration": 15
+      },
+      {
+        "name": "/js/chart-option.js",
+        "bytes": 62458,
+        "duration": 15
+      },
+      {
+        "name": "/js/riepilogo-piano.js",
+        "bytes": 4334,
+        "duration": 15
+      },
+      {
+        "name": "/js/geo-risultati.js",
+        "bytes": 7294,
+        "duration": 9
+      },
+      {
+        "name": "/js/costruttori-bson.js",
+        "bytes": 681,
+        "duration": 2
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrunjqml",
+        "bytes": 118,
+        "duration": 2
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zruo5rih&sid=VR5AOjpeeOT9rmrlAAAC",
+        "bytes": 2,
+        "duration": 3
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zruo6qq1&sid=VR5AOjpeeOT9rmrlAAAC",
+        "bytes": 32,
+        "duration": 7
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zruoflu8&sid=VR5AOjpeeOT9rmrlAAAC",
+        "bytes": 98,
+        "duration": 6
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zruofc4b&sid=VR5AOjpeeOT9rmrlAAAC",
+        "bytes": 2,
+        "duration": 6
+      },
+      {
+        "name": "/vendor/echarts/echarts.min.js",
+        "bytes": 1121928,
+        "duration": 20
+      }
+    ],
+    "overlays": [
+      {
+        "id": "conn-error-overlay",
+        "title": " Collegamento al server CodeDB non riuscito",
+        "controls": 1
+      },
+      {
+        "id": "login-overlay",
+        "title": " Accedi a CodeDB",
+        "controls": 3
+      },
+      {
+        "id": "vault-overlay",
+        "title": " Sblocco Vault",
+        "controls": 8
+      },
+      {
+        "id": "passphrase-overlay",
+        "title": " Cambia passphrase",
+        "controls": 5
+      },
+      {
+        "id": "about-overlay",
+        "controls": 1
+      },
+      {
+        "id": "onboarding-overlay",
+        "title": "Benvenuto in CodeDB",
+        "controls": 4
+      },
+      {
+        "id": "connect-overlay",
+        "title": " Connessione Database",
+        "controls": 30
+      },
+      {
+        "id": "insert-overlay",
+        "title": "Nuovo documento",
+        "controls": 8
+      },
+      {
+        "id": "geomap-overlay",
+        "title": "Geometria",
+        "controls": 17
+      },
+      {
+        "id": "geomulti-overlay",
+        "title": "Geometrie sulla mappa",
+        "controls": 5
+      },
+      {
+        "id": "editdoc-overlay",
+        "title": "Modifica documento",
+        "controls": 5
+      },
+      {
+        "id": "askinput-overlay",
+        "title": "Inserisci un valore",
+        "controls": 4
+      },
+      {
+        "id": "dbcreate-overlay",
+        "title": "Nuovo database",
+        "controls": 4
+      },
+      {
+        "id": "collcreate-overlay",
+        "title": "Nuova collection",
+        "controls": 4
+      },
+      {
+        "id": "coledit-overlay",
+        "title": "Aggiungi colonna",
+        "controls": 7
+      },
+      {
+        "id": "connexport-overlay",
+        "title": "Esporta connessioni",
+        "controls": 3
+      },
+      {
+        "id": "import-overlay",
+        "title": "Importa",
+        "controls": 4
+      },
+      {
+        "id": "dbimport-overlay",
+        "title": "Importa database",
+        "controls": 5
+      },
+      {
+        "id": "dbexport-overlay",
+        "title": "Esporta database",
+        "controls": 8
+      },
+      {
+        "id": "piano-overlay",
+        "title": "Conferma",
+        "controls": 2
+      },
+      {
+        "id": "explain-overlay",
+        "title": "Piano di esecuzione",
+        "controls": 1
+      },
+      {
+        "id": "idxcreate-overlay",
+        "title": "Nuovo indice",
+        "controls": 5
+      },
+      {
+        "id": "mermaid-modal",
+        "title": "Diagramma ER (Mermaid)",
+        "controls": 3
+      },
+      {
+        "id": "dbml-modal",
+        "title": "Schema DBML (dbdiagram.io)",
+        "controls": 3
+      },
+      {
+        "id": "sql-modal",
+        "title": "Schema SQL DDL (CREATE TABLE)",
+        "controls": 3
+      },
+      {
+        "id": "audit-modal",
+        "title": " Diagnostica dello Schema (Health Check)",
+        "controls": 1
+      },
+      {
+        "id": "diff-modal",
+        "title": " Schema Diff (Confronto con File Locale JSON)",
+        "controls": 2
+      },
+      {
+        "id": "import-schema-modal",
+        "title": " Importa ed Esplora Schema (SQL DDL / DBML)",
+        "controls": 4
+      },
+      {
+        "id": "path-modal",
+        "title": " Ricerca Cammino Minimo tra Tabelle",
+        "controls": 5
+      },
+      {
+        "id": "deps-modal",
+        "title": " Matrice Dipendenze & Ordine di Popolamento",
+        "controls": 1
+      },
+      {
+        "id": "modal-backup-manager",
+        "title": " Gestione Backup & Ripristino",
+        "controls": 14
+      },
+      {
+        "id": "restore-overlay",
+        "title": " Ripristino del backup",
+        "controls": 4
+      },
+      {
+        "id": "modal-audit-log",
+        "title": " Storico delle Azioni",
+        "controls": 9
+      },
+      {
+        "id": "modal-health",
+        "title": " Salute delle Connessioni",
+        "controls": 3
+      },
+      {
+        "id": "modal-sessions",
+        "title": " Sessioni & Query attive",
+        "controls": 5
+      },
+      {
+        "id": "modal-theme",
+        "title": " Tema",
+        "controls": 4
+      },
+      {
+        "id": "modal-admin-rbac",
+        "title": " Utenti & Permessi",
+        "controls": 20
+      },
+      {
+        "id": "modal-pending",
+        "title": " Query in Sospeso",
+        "controls": 4
+      }
+    ]
+  },
+  {
+    "width": 1440,
+    "errors": [],
+    "overflow": false,
+    "resources": [
+      {
+        "name": "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap",
+        "bytes": 823,
+        "duration": 337
+      },
+      {
+        "name": "/css/style.css",
+        "bytes": 269077,
+        "duration": 7
+      },
+      {
+        "name": "/js/lucide.min.js",
+        "bytes": 414215,
+        "duration": 13
+      },
+      {
+        "name": "/codedb.png",
+        "bytes": 29719,
+        "duration": 9
+      },
+      {
+        "name": "/socket.io/socket.io.js",
+        "bytes": 37660,
+        "duration": 15
+      },
+      {
+        "name": "/js/lib/three.min.js",
+        "bytes": 669891,
+        "duration": 17
+      },
+      {
+        "name": "/js/lib/3d-force-graph.min.js",
+        "bytes": 691299,
+        "duration": 29
+      },
+      {
+        "name": "/js/main.js",
+        "bytes": 11156,
+        "duration": 9
+      },
+      {
+        "name": "/css/tokens.css",
+        "bytes": 26289,
+        "duration": 3
+      },
+      {
+        "name": "/css/base.css",
+        "bytes": 3130,
+        "duration": 3
+      },
+      {
+        "name": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
+        "bytes": 954,
+        "duration": 322
+      },
+      {
+        "name": "/js/tabs.js",
+        "bytes": 8737,
+        "duration": 11
+      },
+      {
+        "name": "/js/state.js",
+        "bytes": 861,
+        "duration": 11
+      },
+      {
+        "name": "/js/utils.js",
+        "bytes": 41624,
+        "duration": 11
+      },
+      {
+        "name": "/js/graph3d.js",
+        "bytes": 71192,
+        "duration": 12
+      },
+      {
+        "name": "/js/uml.js",
+        "bytes": 46158,
+        "duration": 16
+      },
+      {
+        "name": "/js/connmanager.js",
+        "bytes": 8786,
+        "duration": 18
+      },
+      {
+        "name": "/js/tabbar.js",
+        "bytes": 2194,
+        "duration": 19
+      },
+      {
+        "name": "/js/workspace.js",
+        "bytes": 6959,
+        "duration": 19
+      },
+      {
+        "name": "/js/connection.js",
+        "bytes": 24895,
+        "duration": 18
+      },
+      {
+        "name": "/js/dbtree.js",
+        "bytes": 12316,
+        "duration": 21
+      },
+      {
+        "name": "/js/schema-ops.js",
+        "bytes": 18501,
+        "duration": 22
+      },
+      {
+        "name": "/js/grid.js",
+        "bytes": 68737,
+        "duration": 22
+      },
+      {
+        "name": "/js/inlineEdit.js",
+        "bytes": 19829,
+        "duration": 23
+      },
+      {
+        "name": "/js/fk-vista.js",
+        "bytes": 35726,
+        "duration": 25
+      },
+      {
+        "name": "/js/cellselect.js",
+        "bytes": 74816,
+        "duration": 22
+      },
+      {
+        "name": "/js/insert.js",
+        "bytes": 30462,
+        "duration": 24
+      },
+      {
+        "name": "/js/geomulti.js",
+        "bytes": 3783,
+        "duration": 24
+      },
+      {
+        "name": "/js/geomap.js",
+        "bytes": 42853,
+        "duration": 26
+      },
+      {
+        "name": "/js/responsive.js",
+        "bytes": 3053,
+        "duration": 27
+      },
+      {
+        "name": "/js/exportimport.js",
+        "bytes": 40537,
+        "duration": 27
+      },
+      {
+        "name": "/js/live.js",
+        "bytes": 8187,
+        "duration": 32
+      },
+      {
+        "name": "/js/details.js",
+        "bytes": 6078,
+        "duration": 28
+      },
+      {
+        "name": "/js/vault.js",
+        "bytes": 6569,
+        "duration": 30
+      },
+      {
+        "name": "/js/auth.js",
+        "bytes": 4773,
+        "duration": 32
+      },
+      {
+        "name": "/js/health.js",
+        "bytes": 5664,
+        "duration": 35
+      },
+      {
+        "name": "/js/sessions.js",
+        "bytes": 23019,
+        "duration": 36
+      },
+      {
+        "name": "/js/query-tab.js",
+        "bytes": 85645,
+        "duration": 34
+      },
+      {
+        "name": "/js/backupmanager.js",
+        "bytes": 29331,
+        "duration": 33
+      },
+      {
+        "name": "/js/auditlog.js",
+        "bytes": 12331,
+        "duration": 37
+      },
+      {
+        "name": "/js/session-restore.js",
+        "bytes": 10642,
+        "duration": 40
+      },
+      {
+        "name": "/js/colltabs.js",
+        "bytes": 25221,
+        "duration": 37
+      },
+      {
+        "name": "/js/splitview.js",
+        "bytes": 92068,
+        "duration": 37
+      },
+      {
+        "name": "/js/pending-queries.js",
+        "bytes": 25106,
+        "duration": 41
+      },
+      {
+        "name": "/js/admin-rbac.js",
+        "bytes": 19421,
+        "duration": 42
+      },
+      {
+        "name": "/js/script-run.js",
+        "bytes": 20784,
+        "duration": 59
+      },
+      {
+        "name": "/js/passphrase.js",
+        "bytes": 8070,
+        "duration": 61
+      },
+      {
+        "name": "/js/theme.js",
+        "bytes": 24941,
+        "duration": 59
+      },
+      {
+        "name": "/js/onboarding.js",
+        "bytes": 23908,
+        "duration": 105
+      },
+      {
+        "name": "/js/about.js",
+        "bytes": 7997,
+        "duration": 106
+      },
+      {
+        "name": "/js/scorciatoie-ui.js",
+        "bytes": 8021,
+        "duration": 61
+      },
+      {
+        "name": "/js/palette.js",
+        "bytes": 17527,
+        "duration": 62
+      },
+      {
+        "name": "/js/maniglia.js",
+        "bytes": 4061,
+        "duration": 63
+      },
+      {
+        "name": "/js/chart-runtime.js",
+        "bytes": 5331,
+        "duration": 63
+      },
+      {
+        "name": "/js/valori.js",
+        "bytes": 7412,
+        "duration": 50
+      },
+      {
+        "name": "/js/socket.js",
+        "bytes": 2884,
+        "duration": 50
+      },
+      {
+        "name": "/js/avvisi.js",
+        "bytes": 1324,
+        "duration": 51
+      },
+      {
+        "name": "/js/geojson.js",
+        "bytes": 12217,
+        "duration": 51
+      },
+      {
+        "name": "/js/viewport.js",
+        "bytes": 1293,
+        "duration": 53
+      },
+      {
+        "name": "/js/trasporto.js",
+        "bytes": 9480,
+        "duration": 55
+      },
+      {
+        "name": "/js/righe.js",
+        "bytes": 1199,
+        "duration": 55
+      },
+      {
+        "name": "/js/schema-analisi.js",
+        "bytes": 16986,
+        "duration": 55
+      },
+      {
+        "name": "/js/schema-export.js",
+        "bytes": 10065,
+        "duration": 56
+      },
+      {
+        "name": "/js/grafo-budget.js",
+        "bytes": 3504,
+        "duration": 56
+      },
+      {
+        "name": "/js/grafo-comandi.js",
+        "bytes": 5324,
+        "duration": 57
+      },
+      {
+        "name": "/js/coerenza-richieste.js",
+        "bytes": 4065,
+        "duration": 29
+      },
+      {
+        "name": "/js/uml-paper.js",
+        "bytes": 56666,
+        "duration": 31
+      },
+      {
+        "name": "/js/uml-modello.js",
+        "bytes": 34161,
+        "duration": 31
+      },
+      {
+        "name": "/js/uml-store.js",
+        "bytes": 5456,
+        "duration": 31
+      },
+      {
+        "name": "/js/onboarding-stato.js",
+        "bytes": 18300,
+        "duration": 30
+      },
+      {
+        "name": "/js/queryhistory.js",
+        "bytes": 10355,
+        "duration": 31
+      },
+      {
+        "name": "/js/autocomplete.js",
+        "bytes": 20276,
+        "duration": 30
+      },
+      {
+        "name": "/js/fk-cache.js",
+        "bytes": 3290,
+        "duration": 31
+      },
+      {
+        "name": "/js/fk-relazioni.js",
+        "bytes": 13840,
+        "duration": 31
+      },
+      {
+        "name": "/js/cella-geometria.js",
+        "bytes": 2500,
+        "duration": 32
+      },
+      {
+        "name": "/js/filtro-rapido.js",
+        "bytes": 2732,
+        "duration": 32
+      },
+      {
+        "name": "/js/griglia.js",
+        "bytes": 10207,
+        "duration": 32
+      },
+      {
+        "name": "/js/json-lint.js",
+        "bytes": 6455,
+        "duration": 31
+      },
+      {
+        "name": "/js/valori-esatti.js",
+        "bytes": 7283,
+        "duration": 32
+      },
+      {
+        "name": "/js/geo-leaflet.js",
+        "bytes": 2360,
+        "duration": 32
+      },
+      {
+        "name": "/js/geo-vista.js",
+        "bytes": 19726,
+        "duration": 32
+      },
+      {
+        "name": "/js/cell-stats.js",
+        "bytes": 8020,
+        "duration": 27
+      },
+      {
+        "name": "/js/calcoli.js",
+        "bytes": 9800,
+        "duration": 28
+      },
+      {
+        "name": "/js/cellgrafico.js",
+        "bytes": 13777,
+        "duration": 29
+      },
+      {
+        "name": "/js/geo-stats.js",
+        "bytes": 14527,
+        "duration": 29
+      },
+      {
+        "name": "/js/scorrimento-bordo.js",
+        "bytes": 1872,
+        "duration": 29
+      },
+      {
+        "name": "/js/identificatori.mjs",
+        "bytes": 8357,
+        "duration": 29
+      },
+      {
+        "name": "/js/geo-modifica.js",
+        "bytes": 16434,
+        "duration": 28
+      },
+      {
+        "name": "/js/import-status.js",
+        "bytes": 519,
+        "duration": 28
+      },
+      {
+        "name": "/js/csv.js",
+        "bytes": 3828,
+        "duration": 40
+      },
+      {
+        "name": "/js/import-batch.js",
+        "bytes": 1171,
+        "duration": 39
+      },
+      {
+        "name": "/js/export-selezione.js",
+        "bytes": 6209,
+        "duration": 45
+      },
+      {
+        "name": "/js/import-mapping.js",
+        "bytes": 3106,
+        "duration": 46
+      },
+      {
+        "name": "/js/piano-anteprima.js",
+        "bytes": 2443,
+        "duration": 48
+      },
+      {
+        "name": "/js/snippet-manager.js",
+        "bytes": 7153,
+        "duration": 47
+      },
+      {
+        "name": "/js/sql-chunker.js",
+        "bytes": 5903,
+        "duration": 49
+      },
+      {
+        "name": "/js/query-highlighter.js",
+        "bytes": 9049,
+        "duration": 51
+      },
+      {
+        "name": "/js/sql-split.js",
+        "bytes": 3737,
+        "duration": 52
+      },
+      {
+        "name": "/js/query-formatter.js",
+        "bytes": 17731,
+        "duration": 53
+      },
+      {
+        "name": "/js/sql-dialetti.js",
+        "bytes": 6827,
+        "duration": 56
+      },
+      {
+        "name": "/js/intellisense.js",
+        "bytes": 25187,
+        "duration": 54
+      },
+      {
+        "name": "/js/qe-history.js",
+        "bytes": 9621,
+        "duration": 53
+      },
+      {
+        "name": "/js/query-map.js",
+        "bytes": 6801,
+        "duration": 56
+      },
+      {
+        "name": "/js/charts.js",
+        "bytes": 48679,
+        "duration": 56
+      },
+      {
+        "name": "/js/query-editor.js",
+        "bytes": 6549,
+        "duration": 56
+      },
+      {
+        "name": "/js/table-cols.js",
+        "bytes": 10714,
+        "duration": 56
+      },
+      {
+        "name": "/js/split-layout.js",
+        "bytes": 14556,
+        "duration": 58
+      },
+      {
+        "name": "/js/script-esito.js",
+        "bytes": 5525,
+        "duration": 48
+      },
+      {
+        "name": "/js/scorciatoie.js",
+        "bytes": 9089,
+        "duration": 46
+      },
+      {
+        "name": "/js/palette-ricerca.js",
+        "bytes": 3899,
+        "duration": 45
+      },
+      {
+        "name": "/js/theme-colori.js",
+        "bytes": 19471,
+        "duration": 37
+      },
+      {
+        "name": "/js/json-bson.js",
+        "bytes": 19343,
+        "duration": 7
+      },
+      {
+        "name": "/js/query-history-store.js",
+        "bytes": 5671,
+        "duration": 8
+      },
+      {
+        "name": "/js/uml-progetto-modello.js",
+        "bytes": 4587,
+        "duration": 7
+      },
+      {
+        "name": "/js/calcoli-protocollo.js",
+        "bytes": 3150,
+        "duration": 9
+      },
+      {
+        "name": "/js/chart-option.js",
+        "bytes": 62458,
+        "duration": 10
+      },
+      {
+        "name": "/js/riepilogo-piano.js",
+        "bytes": 4334,
+        "duration": 10
+      },
+      {
+        "name": "/js/cell-chart.js",
+        "bytes": 10499,
+        "duration": 10
+      },
+      {
+        "name": "/js/geo-risultati.js",
+        "bytes": 7294,
+        "duration": 10
+      },
+      {
+        "name": "/js/costruttori-bson.js",
+        "bytes": 681,
+        "duration": 4
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrx25e57",
+        "bytes": 118,
+        "duration": 2
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrx2r6aq&sid=4iOFfapFU5_BdvkPAAAE",
+        "bytes": 2,
+        "duration": 2
+      },
+      {
+        "name": "/socket.io/?EIO=4&transport=polling&t=zrx2svgk&sid=4iOFfapFU5_BdvkPAAAE",
+        "bytes": 32,
+        "duration": 5
+      },
+      {
+        "name": "/vendor/echarts/echarts.min.js",
+        "bytes": 1121928,
+        "duration": 12
+      }
+    ],
+    "overlays": [
+      {
+        "id": "conn-error-overlay",
+        "title": " Collegamento al server CodeDB non riuscito",
+        "controls": 1
+      },
+      {
+        "id": "login-overlay",
+        "title": " Accedi a CodeDB",
+        "controls": 3
+      },
+      {
+        "id": "vault-overlay",
+        "title": " Sblocco Vault",
+        "controls": 8
+      },
+      {
+        "id": "passphrase-overlay",
+        "title": " Cambia passphrase",
+        "controls": 5
+      },
+      {
+        "id": "about-overlay",
+        "controls": 1
+      },
+      {
+        "id": "onboarding-overlay",
+        "title": "Benvenuto in CodeDB",
+        "controls": 4
+      },
+      {
+        "id": "connect-overlay",
+        "title": " Connessione Database",
+        "controls": 30
+      },
+      {
+        "id": "insert-overlay",
+        "title": "Nuovo documento",
+        "controls": 8
+      },
+      {
+        "id": "geomap-overlay",
+        "title": "Geometria",
+        "controls": 17
+      },
+      {
+        "id": "geomulti-overlay",
+        "title": "Geometrie sulla mappa",
+        "controls": 5
+      },
+      {
+        "id": "editdoc-overlay",
+        "title": "Modifica documento",
+        "controls": 5
+      },
+      {
+        "id": "askinput-overlay",
+        "title": "Inserisci un valore",
+        "controls": 4
+      },
+      {
+        "id": "dbcreate-overlay",
+        "title": "Nuovo database",
+        "controls": 4
+      },
+      {
+        "id": "collcreate-overlay",
+        "title": "Nuova collection",
+        "controls": 4
+      },
+      {
+        "id": "coledit-overlay",
+        "title": "Aggiungi colonna",
+        "controls": 7
+      },
+      {
+        "id": "connexport-overlay",
+        "title": "Esporta connessioni",
+        "controls": 3
+      },
+      {
+        "id": "import-overlay",
+        "title": "Importa",
+        "controls": 4
+      },
+      {
+        "id": "dbimport-overlay",
+        "title": "Importa database",
+        "controls": 5
+      },
+      {
+        "id": "dbexport-overlay",
+        "title": "Esporta database",
+        "controls": 8
+      },
+      {
+        "id": "piano-overlay",
+        "title": "Conferma",
+        "controls": 2
+      },
+      {
+        "id": "explain-overlay",
+        "title": "Piano di esecuzione",
+        "controls": 1
+      },
+      {
+        "id": "idxcreate-overlay",
+        "title": "Nuovo indice",
+        "controls": 5
+      },
+      {
+        "id": "mermaid-modal",
+        "title": "Diagramma ER (Mermaid)",
+        "controls": 3
+      },
+      {
+        "id": "dbml-modal",
+        "title": "Schema DBML (dbdiagram.io)",
+        "controls": 3
+      },
+      {
+        "id": "sql-modal",
+        "title": "Schema SQL DDL (CREATE TABLE)",
+        "controls": 3
+      },
+      {
+        "id": "audit-modal",
+        "title": " Diagnostica dello Schema (Health Check)",
+        "controls": 1
+      },
+      {
+        "id": "diff-modal",
+        "title": " Schema Diff (Confronto con File Locale JSON)",
+        "controls": 2
+      },
+      {
+        "id": "import-schema-modal",
+        "title": " Importa ed Esplora Schema (SQL DDL / DBML)",
+        "controls": 4
+      },
+      {
+        "id": "path-modal",
+        "title": " Ricerca Cammino Minimo tra Tabelle",
+        "controls": 5
+      },
+      {
+        "id": "deps-modal",
+        "title": " Matrice Dipendenze & Ordine di Popolamento",
+        "controls": 1
+      },
+      {
+        "id": "modal-backup-manager",
+        "title": " Gestione Backup & Ripristino",
+        "controls": 14
+      },
+      {
+        "id": "restore-overlay",
+        "title": " Ripristino del backup",
+        "controls": 4
+      },
+      {
+        "id": "modal-audit-log",
+        "title": " Storico delle Azioni",
+        "controls": 9
+      },
+      {
+        "id": "modal-health",
+        "title": " Salute delle Connessioni",
+        "controls": 3
+      },
+      {
+        "id": "modal-sessions",
+        "title": " Sessioni & Query attive",
+        "controls": 5
+      },
+      {
+        "id": "modal-theme",
+        "title": " Tema",
+        "controls": 4
+      },
+      {
+        "id": "modal-admin-rbac",
+        "title": " Utenti & Permessi",
+        "controls": 20
+      },
+      {
+        "id": "modal-pending",
+        "title": " Query in Sospeso",
+        "controls": 4
+      }
+    ]
+  }
+]

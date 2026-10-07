@@ -1,5 +1,7 @@
 'use strict';
 
+import '../arc/ui.js';
+
 import { state } from './state.js';
 import { onTabChange } from './tabs.js';
 import { $, migraChiave, initToolbarDropdown } from './utils.js';
@@ -132,7 +134,7 @@ function initResizers() {
   });
 }
 
-import { positionFixedDropdown, refreshLucideIcons } from './utils.js';
+import { refreshLucideIcons } from './utils.js';
 import { rendiTrascinabile } from './maniglia.js';
 
 // Cambio del tab attivo (switch o chiusura): ri-render di barra e workspace.
@@ -150,64 +152,7 @@ onTabChange(() => {
 // del menu ⋮ nell'header e dei bottoncini della dock, che ripetevano in parte
 // gli stessi comandi in due punti diversi dello schermo.
 function initSettingsMenu() {
-  const btn = $('#conn-settings-btn');
-  const menu = $('#settings-menu');
-  if (!btn || !menu) return;
-
-  // Chiusura ANIMATA: `.hidden` è `display: none`, quindi togliere e basta fa
-  // sparire il menu di scatto mentre l'apertura è dissolta — l'asimmetria si
-  // nota. Si passa da `.closing` (animazione in uscita) e solo alla fine si
-  // mette `.hidden`; il timer di sicurezza serve perché `animationend` non
-  // arriva se l'animazione è disattivata (prefers-reduced-motion) o se il
-  // nodo viene nascosto da qualcun altro nel frattempo.
-  let timerChiusura = null;
-  const nascondi = () => {
-    clearTimeout(timerChiusura);
-    timerChiusura = null;
-    menu.classList.remove('closing');
-    menu.classList.add('hidden');
-  };
-  const senzaAnimazioni = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const chiudi = () => {
-    btn.setAttribute('aria-expanded', 'false');
-    if (menu.classList.contains('hidden') || menu.classList.contains('closing')) return;
-    if (senzaAnimazioni()) { nascondi(); return; }
-    menu.classList.add('closing');
-    timerChiusura = setTimeout(nascondi, 200);
-  };
-  menu.addEventListener('animationend', (e) => {
-    if (e.target === menu && menu.classList.contains('closing')) nascondi();
-  });
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    // Aperto (o in chiusura, cioè ancora visibile): il clic sul pulsante lo
-    // richiude con la sua animazione.
-    if (!menu.classList.contains('hidden') && !menu.classList.contains('closing')) {
-      chiudi();
-      return;
-    }
-    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
-    clearTimeout(timerChiusura);
-    menu.classList.remove('closing'); // riapertura durante la dissolvenza
-    positionFixedDropdown(btn, menu);
-    btn.setAttribute('aria-expanded', 'true');
-  });
-
-  menu.addEventListener('click', (e) => {
-    if (e.target.closest('.menu-item')) chiudi();
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!e.target.closest('#conn-settings-btn') && !e.target.closest('#settings-menu')) chiudi();
-  });
-
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') chiudi();
-  });
-
-  window.addEventListener('resize', chiudi);
-  window.addEventListener('scroll', chiudi, true);
+  document.dispatchEvent(new Event('codedb:settings-ready'));
 }
 
 // Per primo: con RBAC attivo la schermata di accesso deve comparire prima che

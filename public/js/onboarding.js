@@ -1,4 +1,5 @@
 'use strict';
+import { mountArcControls } from '../arc/ui.js';
 
 /* ---------------------------------------------------------------------------
  * Guida introduttiva (onboarding): benvenuto, tour guidato, primi passi.
@@ -260,6 +261,7 @@ function apriModale(html) {
   const corpo = $('#onboarding-body');
   if (!overlay || !corpo) return;
   corpo.innerHTML = html;
+  mountArcControls(corpo);
   overlay.classList.remove('hidden');
   refreshLucideIcons();
 
@@ -454,6 +456,7 @@ function vaiAlPasso(i) {
       <button type="button" class="primary" data-tour="succ">${ultimo ? 'Ho finito' : 'Avanti'}</button>
     </div>
   `;
+  mountArcControls(tour.elFumetto);
   tour.elFumetto.querySelectorAll('[data-tour]').forEach((b) => {
     b.addEventListener('click', () => {
       const a = b.dataset.tour;
@@ -582,6 +585,7 @@ export function disegnaChecklist(forza) {
     ${finito ? '<p class="onb-check-fine">Ci sei. Da qui in poi il pannello non ricompare.</p>' : ''}
   `;
 
+  mountArcControls(box);
   box.querySelector('[data-check="chiudi"]').addEventListener('click', () => {
     aggiornaStato({ checklistChiusa: true });
     box.remove();

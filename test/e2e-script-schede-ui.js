@@ -1,4 +1,5 @@
 'use strict';
+const { scegliArc } = require('./arc-controls');
 
 /* ---------------------------------------------------------------------------
  * Test E2E in browser: risultati PER ISTRUZIONE di uno script (tab ⚡).
@@ -107,7 +108,7 @@ async function eseguiScript(page, sql) {
     await page.waitForSelector('#connect-btn');
 
     // Connessione a MySQL dal modulo vero.
-    await page.selectOption('#conn-dbtype', 'mysql');
+    await scegliArc(page, '#conn-dbtype', 'mysql');
     await page.fill('input[name="host"]', MYSQL_HOST);
     await page.fill('input[name="port"]', String(MYSQL_PORT));
     await page.fill('input[name="username"]', MYSQL_USER);

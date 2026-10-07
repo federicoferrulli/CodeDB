@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { mountArcControls } from '../arc/ui.js';
 import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext } from './utils.js';
 
 let indexCreateContext = null;
@@ -69,6 +70,8 @@ export function renderDetails({ stats, indexes, fields, sampled }, dbType = stat
         })
         .join('')
     : `<tr><td colspan="4" class="dim">${isMysql ? 'Nessuna colonna' : 'Collection vuota'}</td></tr>`;
+  mountArcControls($('#index-table'));
+  mountArcControls($('#schema-table'));
 }
 
 export function initDetails() {

@@ -1,4 +1,5 @@
 'use strict';
+const { scegliArc } = require('./arc-controls');
 
 // Browser reale, schema simulato: paginazione completa, contesti, campioni e archivio in sola lettura.
 
@@ -281,7 +282,7 @@ async function apriUml(page, server, { db, schema, rispondi, pagine, guastaStora
         window.__uml.loadUml(true);
       });
       await page.waitForSelector('#uml-diagrammi option[value="condiviso"]', { state: 'attached' });
-      await page.selectOption('#uml-diagrammi', 'condiviso');
+      await scegliArc(page, '#uml-diagrammi', 'condiviso');
       await page.waitForFunction(() => window.__uml.statoUml().idDiagramma === 'condiviso');
       await page.evaluate(async () => {
         const st = window.__uml.statoUml();
@@ -295,7 +296,7 @@ async function apriUml(page, server, { db, schema, rispondi, pagine, guastaStora
       ok(true, 'rileggere il diagramma carica la versione aggiornata senza sovrascriverla');
       await apriUml(page, server, { db: 'ufficio', schema });
       await page.waitForSelector('#uml-diagrammi option[value="condiviso"]', { state: 'attached' });
-      await page.selectOption('#uml-diagrammi', 'condiviso');
+      await scegliArc(page, '#uml-diagrammi', 'condiviso');
       await page.waitForFunction(() => window.__uml.statoUml().doc.nome === 'Aggiornato da altra finestra');
       ok(true, 'il diagramma salvato resta consultabile dopo la ricarica');
       await page.close();

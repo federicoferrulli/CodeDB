@@ -2,7 +2,8 @@
 
 import { state } from './state.js';
 import { campoScrivibile } from './righe.js';
-import { $, emit, displayValue, toast, showContextMenu, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons } from './utils.js';
+import { mountArcControls, createArcCheckbox, controlElement } from '../arc/ui.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
 import { formattaNumero, riassuntoBreve } from './cell-stats.js';
@@ -672,6 +673,10 @@ function duplicaConEditor(A, doc, conChiaviIniziale) {
       </div>`;
     document.body.appendChild(overlay);
 
+    mountArcControls(overlay);
+    document.getElementById('duprow-chiavi').replaceWith(controlElement(createArcCheckbox({
+      id: 'duprow-chiavi', label: 'Mantieni le altre chiavi (cambia solo la primaria)',
+    })));
     document.getElementById('duprow-cancel').addEventListener('click', () => {
       overlay.classList.add('hidden');
     });
@@ -711,8 +716,7 @@ function duplicaConEditor(A, doc, conChiaviIniziale) {
     }).catch((err) => {
       ta.disabled = false;
       descEl.textContent = '';
-      errEl.textContent = err.message;
-      errEl.classList.remove('hidden');
+      showError('#duprow-error', err.message);
     });
   };
 
@@ -723,16 +727,13 @@ function duplicaConEditor(A, doc, conChiaviIniziale) {
   // congelato all'APERTURA, non letto al clic (stesso motivo di CDB-A18): la
   // modale resta aperta quanto l'utente vuole e nel frattempo puo' cambiare
   // tab, mentre `state` punta sempre a quello attivo.
-  const oldOk = document.getElementById('duprow-ok');
-  const newOk = oldOk.cloneNode(true);
-  oldOk.replaceWith(newOk);
-  newOk.addEventListener('click', () => {
+  const newOk = document.getElementById('duprow-ok');
+  newOk.onclick = () => {
     let parsed;
     try {
       parsed = JSON.parse(ta.value);
     } catch (ex) {
-      errEl.textContent = 'JSON non valido: ' + ex.message;
-      errEl.classList.remove('hidden');
+      showError('#duprow-error', 'JSON non valido: ' + ex.message);
       return;
     }
     errEl.classList.add('hidden');
@@ -745,10 +746,9 @@ function duplicaConEditor(A, doc, conChiaviIniziale) {
       if (origin.isStillActive()) A.ricarica();
       else marcaDatiSporchi(origin, bersaglio.db, bersaglio.coll);
     }).catch((err) => {
-      errEl.textContent = friendlyInsertError(err.message);
-      errEl.classList.remove('hidden');
+      showError('#duprow-error', friendlyInsertError(err.message));
     });
-  });
+  };
 }
 
 // Traduce l'errore di chiave duplicata (E11000) in un messaggio comprensibile
@@ -791,7 +791,8 @@ function copyText(text, messaggio) {
 
 function inputFocused() {
   const el = document.activeElement;
-  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+  return el && (el.matches('input, textarea, select, [role="combobox"], [role="checkbox"], [role="option"], [role="slider"]')
+    || el.closest('[data-arc-calendar-popup], [data-arc-color-popup], .arc-date-field') || el.isContentEditable);
 }
 
 // Selezione al mousedown, in base ai modificatori.

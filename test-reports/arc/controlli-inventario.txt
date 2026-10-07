@@ -1,0 +1,72 @@
+﻿public/js\cellselect.js:665:          <input type="checkbox" id="duprow-chiavi"> Mantieni le altre chiavi (cambia solo la primaria)
+public/js\cellselect.js:667:        <textarea id="duprow-json" rows="16" spellcheck="false"></textarea>
+public/js\cellselect.js:780:    const ta = document.createElement('textarea');
+public/js\cellgrafico.js:161:      <select data-campo="tipo">${opzioni(TIPI.map((t) => ({ v: t.v, et: t.et })), prima.tipo)}</select>
+public/js\cellgrafico.js:165:      <select data-campo="campoX">${opzioni(candidatiX.map((c) => ({
+public/js\cellgrafico.js:171:      <select data-campo="agg" title="${esc(cfg.aggrega
+public/js\charts.js:363:const sel = (path, lista, valore, extra = '') => `<select data-path="${path}" ${extra}>${opzioni(lista, valore)}</select>`;
+public/js\charts.js:364:const num = (path, valore, min, max, step = 1) => `<input type="number" data-path="${path}" value="${valore ?? ''}" ${min !== undefined ? `min="${min}"` : ''} ${max !== undefined ? `max="${max}"` : ''} step="${step}">`;
+public/js\charts.js:365:const txt = (path, valore, ph = '') => `<input type="text" data-path="${path}" value="${esc(String(valore ?? ''))}" placeholder="${esc(ph)}">`;
+public/js\charts.js:368:    <input type="checkbox" data-path="${path}"${valore ? ' checked' : ''} ${extra}>
+public/js\charts.js:392:      ${riga('Tipo', `<select data-path="tipo" ${d} data-ricostruisci="1">${opzioni(TIPI.map((t) => ({ v: t.v, et: t.et })), s.tipo)}</select>`)}
+public/js\charts.js:393:      ${riga('Nome (legenda)', `<input type="text" data-path="nome" ${d} value="${esc(s.nome)}" placeholder="${esc(s.campoY || 'automatico')}">`)}
+public/js\charts.js:394:      ${riga('Campo valore (Y)', `<select data-path="campoY" ${d}>${opzioniCampi(s.campoY)}</select>`, s.agg === 'conteggio' ? 'Con "Conteggio righe" il campo non serve.' : '')}
+public/js\charts.js:395:      ${fam === 'heatmap' ? riga('Campo categoria Y', `<select data-path="campoY2" ${d}>${opzioniCampi(s.campoY2)}</select>`, 'La mappa di calore incrocia due categorie.') : ''}
+public/js\charts.js:396:      ${c.aggrega ? riga('Aggregazione', `<select data-path="agg" ${d}>${opzioni(AGGREGAZIONI, s.agg)}</select>`) : ''}
+public/js\charts.js:400:          <input type="color" data-path="colore" ${d} value="${esc(colore)}">
+public/js\charts.js:405:      ${cartesiano ? riga('Impila con (nome gruppo)', `<input type="text" data-path="stack" ${d} value="${esc(s.stack)}" placeholder="vuoto = non impilata">`, 'Stesso nome su più serie = barre/aree impilate.') : ''}
+public/js\charts.js:407:      ${s.tipo === 'area' || s.tipo === 'radar' ? riga('Opacità area (%)', `<input type="number" data-path="areaOpacita" ${d} value="${s.areaOpacita}" min="0" max="60" step="5">`, 'Una velatura: sopra il 20% copre griglia e serie sotto.') : ''}
+public/js\charts.js:408:      ${linea ? riga('Spessore linea', `<input type="number" data-path="larghezzaLinea" ${d} value="${s.larghezzaLinea}" min="1" max="6">`) : ''}
+public/js\charts.js:409:      ${(linea || s.tipo === 'scatter') ? riga('Simbolo', `<select data-path="simbolo" ${d}>${opzioni(['circle', 'rect', 'roundRect', 'triangle', 'diamond', 'pin', 'arrow', 'none'], s.simbolo)}</select>`) : ''}
+public/js\charts.js:410:      ${(linea || s.tipo === 'scatter') ? riga('Dimensione simbolo', `<input type="number" data-path="dimSimbolo" ${d} value="${s.dimSimbolo}" min="8" max="40">`, 'Minimo 8px: sotto non si colpisce col mouse.') : ''}
+public/js\charts.js:411:      ${s.tipo === 'bar' ? riga('Spessore max barra', `<input type="number" data-path="barMax" ${d} value="${s.barMax}" min="4" max="80">`, 'Barra sottile: la fascia non va riempita.') : ''}
+public/js\charts.js:413:      ${s.etichette && cartesiano ? riga('Posizione etichette', `<select data-path="posEtichette" ${d}>${opzioni(['top', 'inside', 'right', 'left', 'bottom'], s.posEtichette)}</select>`) : ''}
+public/js\charts.js:414:      ${riga('Opacità (%)', `<input type="number" data-path="opacita" ${d} value="${s.opacita}" min="10" max="100" step="5">`)}
+public/js\charts.js:432:        ${riga(fam === 'circolare' ? 'Campo categoria (fette)' : 'Campo asse X', `<select data-path="campoX">${opzioniCampi(c.campoX)}</select>`,
+public/js\charts.js:549:        <textarea data-path="override" id="chart-override" spellcheck="false" rows="8" placeholder='{ "series": [ { "barGap": "10%" } ] }'>${esc(c.override)}</textarea>
+public/js\charts.js:560:        ${riga('Salvate', `<select id="chart-preset-select">${opzioni([{ v: '', et: '— scegli —' }].concat(nomiPreset().map((n) => ({ v: n, et: n }))), '')}</select>`)}
+public/js\charts.js:607:      <select data-path="tipo" ${d} data-ricostruisci="1">${opzioni(TIPI.map((t) => ({ v: t.v, et: t.et })), s.tipo)}</select>
+public/js\charts.js:611:      <select data-path="campoX">${opzioniCampi(c.campoX)}</select>
+public/js\charts.js:616:      <select data-path="campoY2" ${d}>${opzioniCampi(s.campoY2)}</select>
+public/js\charts.js:620:      <select data-path="campoY" ${d}${c.aggrega && s.agg === 'conteggio' ? ' disabled title="Con «Conteggio righe» il campo non serve"' : ''}>${opzioniCampi(s.campoY)}</select>
+public/js\charts.js:624:      <select data-path="agg" ${d} data-ricostruisci="1" title="${esc(c.aggrega
+public/js\exportimport.js:548:      `<span class="dbexport-cella"><input type="checkbox" data-id="${esc(o.id)}" data-colonna="${colonna}"`
+public/js\geo-vista.js:445:  const ta = document.createElement('textarea');
+public/js\graph3d.js:75:// La modalità di colorazione era il `value` di una <select> il cui nome stava
+public/js\graph3d.js:79:// Il filtro dei vicini era il `value` di una <select>, cioè uno stato che
+public/js\graph3d.js:1248:     * La <select> che il filtro aveva prima queste cose le faceva gratis:
+public/js\grid.js:577:    const checkAll = document.createElement('input');
+public/js\grid.js:657:    const checkbox = document.createElement('input');
+public/js\palette.js:209:      <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
+public/js\qe-history.js:198:      <input type="search" id="qe-history-search" placeholder="Cerca nel codice, database, tabella…" autocomplete="off">
+public/js\qe-history.js:199:      <select id="qe-history-conn" title="Filtra per connessione">
+public/js\schema-ops.js:154:    const i = document.createElement('input');
+public/js\snippet-manager.js:97:            <select id="snippet-preset-select" class="styled-select" style="width: 100%; padding: 6px;">
+public/js\snippet-manager.js:105:          <textarea id="snippet-preview" rows="8" spellcheck="false" readonly style="width:100%; font-family:monospace; background:var(--input-bg); color:var(--fg); border:1px solid var(--border-2); padding:8px;"></textarea>
+public/js\splitview.js:1320:        <select class="pane-db-select" title="Seleziona Database" aria-label="Database del pannello"></select>
+public/js\splitview.js:1322:        <select class="pane-coll-select" title="Seleziona Tabella/Collezione" aria-label="${isSql ? 'Tabella del pannello' : 'Collection del pannello'}"></select>
+public/js\splitview.js:1332:      <input type="text" class="pane-filter-input" placeholder="${isSql ? 'Clausola WHERE...' : 'Filtro JSON...'}" value="${esc(p.filter)}" spellcheck="false" aria-label="Filtro" />
+public/js\splitview.js:1333:      <input type="text" class="pane-sort-input" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" aria-label="Ordinamento" />
+public/js\splitview.js:1792:      const checkAll = document.createElement('input');
+public/js\splitview.js:1859:          const cb = document.createElement('input');
+public/js\theme.js:405:        <input type="color" data-scelta="${c.chiave}" value="${esc(t.scelte[c.chiave])}" />
+public/js\theme.js:406:        <input type="text" class="tema-campo-hex" data-scelta-hex="${c.chiave}"
+public/js\theme.js:421:        <input type="text" id="tema-nome" value="${esc(t.nome)}" maxlength="60" />
+public/js\theme.js:426:        <select id="tema-base">
+public/js\uml-progetto.js:37:    tr.innerHTML = `<td><input aria-label="Nome colonna" data-col="name" required value="${esc(c.name || '')}"></td>
+public/js\uml-progetto.js:38:      <td><input aria-label="Tipo colonna" data-col="type" required list="${ctx.dbType === 'mysql' ? 'mysql' : 'postgres'}-types" value="${esc(c.type || 'integer')}"></td>
+public/js\uml-progetto.js:39:      <td><input aria-label="Ammette NULL" data-col="nullable" type="checkbox" ${c.nullable !== false ? 'checked' : ''}></td>
+public/js\uml-progetto.js:40:      <td><input aria-label="Valore predefinito" data-col="default" value="${esc(c.default || '')}"></td>
+public/js\uml-progetto.js:41:      <td><input aria-label="Auto incremento" data-col="autoIncrement" type="checkbox" ${c.autoIncrement ? 'checked' : ''}></td>
+public/js\uml-progetto.js:42:      <td><input aria-label="Chiave primaria" data-col="primaryKey" type="checkbox" ${c.primaryKey ? 'checked' : ''}></td>
+public/js\uml-progetto.js:224:        <input type="hidden" data-index value="">
+public/js\uml-progetto.js:225:        <div class="uml-progetto-riga"><label>Operazione<select data-kind>${Object.entries(etichette).map(([v, label]) => `<option value="${v}">${label}</option>`).join('')}</select></label>
+public/js\uml-progetto.js:226:        <label data-table-label>Tabella<select data-table>${options(nomi())}</select></label>
+public/js\uml-progetto.js:227:        <label data-name-label>Nome<input data-name maxlength="63"></label></div>
+public/js\uml-progetto.js:228:        <label data-field-label>Colonna<select data-field></select></label>
+public/js\uml-progetto.js:229:        <label data-fk-label>Vincolo<select data-fk></select></label>
+public/js\uml-progetto.js:231:        <label data-key-label>Colonne, in ordine (separate da virgola)<input data-key placeholder="cliente_id"></label>
+public/js\uml-progetto.js:232:        <div data-relation class="uml-progetto-riga"><label>Tabella riferita<select data-target>${options(nomi())}</select></label>
+public/js\uml-progetto.js:233:        <label>Colonne riferite, nello stesso ordine<input data-references placeholder="id"></label>
+public/js\uml-progetto.js:234:        <label>Su eliminazione<select data-ondelete>${options(['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', ...(ctx.dbType !== 'mysql' ? ['SET DEFAULT'] : [])])}</select></label>
+public/js\uml-progetto.js:235:        <label>Su aggiornamento<select data-onupdate>${options(['NO ACTION', 'RESTRICT', 'CASCADE', 'SET NULL', ...(ctx.dbType !== 'mysql' ? ['SET DEFAULT'] : [])])}</select></label></div>

@@ -1221,7 +1221,7 @@ export function initGraph3d() {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const isHidden = menu.classList.contains('hidden');
-      document.querySelectorAll('.toolbar-dropdown-menu, .app-menu').forEach((m) => m.classList.add('hidden'));
+      document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
       // `aria-expanded` va riportato su TUTTI i trigger, non solo su questo:
       // la riga sopra ha appena chiuso anche il menu dell'altro.
       document.querySelectorAll('.dropdown-trigger-btn[aria-expanded]').forEach((t) => t.setAttribute('aria-expanded', 'false'));

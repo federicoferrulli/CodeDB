@@ -1,0 +1,15 @@
+[
+  {
+    "port": 27017,
+    "status": "raggiungibile",
+    "protocollo": "MongoDB ping riuscito"
+  },
+  {
+    "port": 3306,
+    "status": "ECONNREFUSED"
+  },
+  {
+    "port": 5432,
+    "status": "ECONNREFUSED"
+  }
+]

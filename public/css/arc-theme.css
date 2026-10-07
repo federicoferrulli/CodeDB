@@ -1,0 +1,188 @@
+/* Arc + CodeDB: il marchio e i temi utente restano l'unica sorgente dei colori.
+   I controlli DOM locali condividono la foundation con i componenti React. */
+:root, :root[data-theme] {
+  --background: var(--bg);
+  --surface: var(--bg-surface);
+  --surface-raised: var(--bg-elevated);
+  --surface-muted: var(--bg-4);
+  --foreground: var(--fg);
+  --text-secondary: var(--fg-dim);
+  --text-muted: var(--fg-dim);
+  --border-subtle: var(--border);
+  --border-strong: var(--border-3);
+  --accent-strong: var(--accent-2);
+  --accent-subtle: var(--accent-soft);
+  --accent-foreground: var(--on-accent);
+  --control-on: var(--accent);
+  --control-glyph: var(--on-accent);
+  --control-track: var(--bg-4);
+  --control-fill: var(--accent);
+  --focus-ring: var(--accent-fg);
+  --font-body: var(--font-sans);
+  --font-display: var(--font-sans);
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-surface: 16px;
+  --radius-md: var(--radius-control);
+  --radius-lg: var(--radius-panel);
+  --radius-xl: var(--radius-surface);
+  --control-height-sm: 32px;
+  --control-height-md: 36px;
+  --control-height-lg: 44px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --shadow-resting: none;
+  --shadow-raised: var(--shadow-md);
+  --shadow-floating: var(--shadow-lg);
+  --z-toast: 10000;
+}
+
+/* HTML semantico per i controlli imperativi: non sono componenti Arc React.
+   Densità compatta per i dati; campi e azioni delle finestre hanno più respiro. */
+html, body { background-image: none; }
+button, .btn {
+  border-radius: var(--radius-control);
+  letter-spacing: var(--tracking-body);
+  transition: background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard);
+}
+button:hover, button.primary, button.primary:hover, button.danger:hover,
+.btn:hover, .btn-primary, .btn-primary:hover, .btn-danger:hover { box-shadow: none; transform: none; }
+button.primary, button.danger, .btn-primary, .btn-danger { font-weight: 500; letter-spacing: var(--tracking-body); }
+button.primary:hover, .btn-primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+button:disabled, button[aria-disabled="true"] { cursor: not-allowed; opacity: .5; }
+input, select, textarea { border-radius: var(--radius-control); }
+input::placeholder, textarea::placeholder { color: var(--text-muted); opacity: 1; }
+input:focus, select:focus, textarea:focus { box-shadow: none !important; }
+:is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus-ring) !important;
+  outline-offset: 2px;
+}
+input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
+.modal {
+  background: var(--surface);
+  border-color: var(--border-strong);
+  border-radius: var(--radius-surface);
+  padding: var(--space-xl);
+  box-shadow: var(--shadow-floating);
+  animation-duration: var(--duration-fast);
+}
+.modal h2 { font-size: var(--text-lg); font-weight: 500; letter-spacing: var(--tracking-body); color: var(--foreground); }
+.modal :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]), select) {
+  min-height: var(--control-height-md);
+  font-size: var(--text-sm);
+}
+.modal :is(.modal-actions, .connect-actions) button { min-height: var(--control-height-md); }
+.form-row { margin-bottom: var(--space-lg); gap: var(--space-md); }
+.form-row label { gap: var(--space-sm); font-size: var(--text-xs); }
+.modal-actions, .connect-actions { gap: var(--space-sm); }
+.wizard-steps-bar { background: transparent; border: 0; padding: 0; border-radius: 0; gap: var(--space-2xs); }
+.wizard-step-badge { padding: var(--space-sm); font-size: var(--text-xs); }
+.wizard-panel { animation-duration: var(--duration-fast); }
+.arc-prompt-field { margin-block: var(--space-lg); }
+.error.arc-inline-alert { padding: 0; background: none; border: 0; }
+
+/* Il portal Arc resta nell'overlay proprietario: identità e contesto dei
+   pannelli originali non cambiano; Radix gestisce focus e stack modale. */
+.arc-dialog-root { display: contents; }
+.arc-dialog-shell, .arc-panel-slot { display: contents; }
+.arc-editor-control, .arc-select-field { display: contents; }
+.insert-form [data-arc-component="select"] { width: 100%; min-width: 0; }
+:is(#grid, .pane-grid) td.editing [data-arc-component="select"] { width: 100%; min-width: 0; }
+[data-arc-select-popup] { min-width: max(160px, var(--radix-select-trigger-width)); max-height: min(320px, var(--radix-select-content-available-height)); }
+.overlay[data-arc-dialog="open"] { pointer-events: auto; }
+.overlay { transition: none; z-index: var(--z-modal); }
+
+/* Tutte le superfici locali: shell, navigazione, menu, editor e finestre. */
+:is(.sidebar-title, .conn-sidebar-title, .toolbar-section-title) { text-transform: none; letter-spacing: var(--tracking-body); }
+:is(.context-menu, .toolbar-dropdown-menu) {
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-floating);
+  padding: var(--space-sm);
+}
+:is(.menu-item, .dropdown-item, .ctx-item) { border-radius: var(--radius-control); }
+:is(.menu-item, .dropdown-item, .ctx-item):focus-visible { background: var(--surface-muted); color: var(--foreground); }
+:is(.view-tab, .tab, .qe-tab).active { color: var(--accent-fg); }
+:is(.info-box, .warn-box, .success-box, .error, .success-msg) {
+  border-radius: var(--radius-control); line-height: var(--leading-body); overflow-wrap: anywhere;
+}
+:is(.stat-card, .health-card, .backup-card) { border-radius: var(--radius-panel); box-shadow: none; }
+.palette { border-radius: var(--radius-panel); box-shadow: var(--shadow-floating); }
+:is(.tabs-row, .toolbar, .query-toolbar, .modal-header) > * { min-width: 0; }
+:is(.grid-wrap, .results-table-wrap) { min-width: 0; }
+.form-group { min-width: 0; }
+.modal select { max-width: 100%; }
+
+#welcome > section, #placeholder > section { max-width: 520px; width: 100%; padding: var(--space-xl); }
+#welcome { padding: var(--space-xl); }
+#welcome button { min-height: var(--control-height-lg); }
+#toast-container.arc-notifications {
+  position: fixed; inset: auto var(--space-lg) var(--space-lg) auto;
+  width: min(420px, calc(100% - var(--space-xl))); max-height: calc(100dvh - var(--space-xl));
+  display: grid; gap: var(--space-sm); overflow-y: auto; z-index: var(--z-toast);
+  pointer-events: none;
+}
+.arc-notifications > * { width: 100%; pointer-events: auto; }
+.arc-settings { width: 100%; }
+.arc-settings > button { width: 100%; justify-content: flex-start; }
+/* I menu in portal devono stare anche sopra i dialoghi, mai dietro una mappa. */
+[data-radix-popper-content-wrapper] { z-index: calc(var(--z-modal) + 100) !important; }
+
+/* I modelli conservano i contratti DOM; solo i controlli Arc sono visibili. */
+[data-arc-model] { display: none !important; }
+.arc-field-host, .arc-field-host > .arc-select-field { display: contents; }
+.arc-field-host[hidden] { display: none !important; }
+.arc-field-host > div:has(> [data-arc-component="checkbox"]) { display: inline-flex; vertical-align: middle; flex: 0 0 auto; }
+[data-arc-component="select"] { max-width: 100%; min-width: 0; }
+.arc-field-host > .arc-select-field > button { min-height: var(--control-height-sm); }
+.arc-field-host > div:has(> [data-arc-component="color-picker"]) { min-width: 0; }
+.arc-date-control { display: grid; grid-template-columns: minmax(0, 1fr) minmax(110px, .8fr) auto; align-items: end; gap: var(--space-sm); min-width: 0; }
+.arc-date-control > * { min-width: 0; }
+.arc-date-control .arc-time-input { width: 100%; font-variant-numeric: tabular-nums; }
+.arc-date-iso, .arc-date-error { grid-column: 1 / -1; }
+.arc-date-error { color: var(--danger); font-size: var(--text-xs); white-space: normal; }
+.arc-date-control:not(:has(.arc-time-input)) { grid-template-columns: minmax(0, 1fr) auto; }
+td.editing:has(.arc-date-control) { min-width: 360px; }
+[data-arc-calendar-popup], [data-arc-color-popup] {
+  position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 16px); overflow-y: auto;
+  z-index: calc(var(--z-modal) + 200);
+}
+[data-arc-color-popup] { padding: 0; border: 0; background: transparent; overflow: visible; }
+[data-arc-color-popup] [role="dialog"] { max-height: calc(100dvh - 16px); overflow-y: auto; }
+.tema-scelta [data-arc-component="color-picker"] { max-width: 100%; }
+[data-arc-component="color-picker"][data-compact] { padding: 3px; border-radius: var(--radius-control); }
+
+@media (max-width: 600px) {
+  /* Ogni campo resta leggibile insieme al valore, anche con il menu aperto. */
+  #insert-form, #insert-form tbody { display: block; width: 100%; }
+  #insert-form tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; padding-block: var(--space-sm); border-bottom: 1px solid var(--border); }
+  #insert-form td { min-width: 0; width: auto; border: 0; padding: var(--space-2xs); white-space: normal; overflow-wrap: anywhere; }
+  #insert-form td.insert-value { grid-column: 1 / -1; grid-row: 2; }
+  #insert-form td.row-actions { grid-column: 3; grid-row: 1; }
+  #insert-form .geo-pick { white-space: normal; width: 100%; }
+  .modal { padding: var(--space-lg); }
+  .wizard-steps-bar { flex-wrap: wrap; }
+  .wizard-step-badge { flex: 1; justify-content: flex-start; }
+  .connect-actions { flex-wrap: wrap; }
+  .wizard-nav-btns { flex-wrap: wrap; }
+  .form-row label.small { flex: 0 0 90px; }
+  .modal .form-row:has(> label.small) { flex-direction: row; }
+  .modal-actions { flex-wrap: wrap; }
+  .modal-actions button { white-space: normal; }
+  .segmented { flex-wrap: wrap; }
+  #toast-container.arc-notifications { bottom: calc(72px + var(--sab)); }
+}
+@media (pointer: coarse), (max-width: 600px) {
+  :root, :root[data-theme] { --control-height-sm: 44px; --control-height-md: 44px; }
+  .modal button, .toolbar-dropdown-menu button { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  button:active { transform: none; }
+}

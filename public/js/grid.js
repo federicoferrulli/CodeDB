@@ -657,6 +657,7 @@ function buildRow(doc, rowIdx, canSelect) {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     const docId = idOf(doc);
+    checkbox.setAttribute('aria-label', `Seleziona documento ${docId}`);
     checkbox.checked = state.selectedDocs.has(docId);
     checkbox.addEventListener('change', () => {
       if (checkbox.checked) {

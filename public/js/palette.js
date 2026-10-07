@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -205,7 +206,7 @@ function apriPalette() {
   overlay.className = 'palette-overlay';
   overlay.innerHTML = `
     <div class="palette">
-      <input id="palette-input" type="text" spellcheck="false" autocomplete="off"
+      <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
         placeholder="Cerca tutto, oppure &gt; comandi &nbsp;# database &nbsp;@ tabelle" />
       <ul id="palette-lista" role="listbox">
         <li class="palette-spazio" aria-hidden="true"></li>
@@ -217,6 +218,7 @@ function apriPalette() {
         <span class="palette-legenda"></span>
       </div>
     </div>`;
+  mountArcControls(overlay);
   document.body.appendChild(overlay);
 
   const lista = overlay.querySelector('#palette-lista');
@@ -269,7 +271,7 @@ function apriPalette() {
     else if (e.key === 'Enter') {
       e.preventDefault();
       esegui(palette.viste[palette.selezione]);
-    } else if (e.key === 'Escape') { e.preventDefault(); chiudiPalette(); }
+    } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); chiudiPalette(); }
   });
 
   // Scorrere non ricalcola l'elenco: ridisegna solo la finestra, e al massimo

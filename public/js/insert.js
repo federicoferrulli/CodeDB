@@ -9,6 +9,7 @@ import { decodificaNumeroEsatto, richiedePrecisioneEsatta, testoNumeroEsatto } f
 import { caricaRelazioni } from './fk-cache.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, pannelloFkMobile } from './fk-vista.js';
 import { setDaRelazione, bersaglioRelazione, VINCOLO } from './fk-relazioni.js';
+import { createArcInput, createArcButton, createArcSelect, controlElement } from '../arc/ui.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
@@ -55,9 +56,7 @@ export function insertInputFor(kind, { typeName = '', numericMeta = null } = {})
   // GeoJSON in `value` — così il resto del form (lettura, cambio tipo,
   // rimozione riga) continua a trattarlo come un input qualsiasi.
   if (kind === 'geo') {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'ghost geo-pick';
+    const btn = createArcButton({ className: 'ghost geo-pick' });
     btn.value = '';
     btn.dataset.geoType = tipoGeoJsonDaTipoColonna(typeName) || '';
     etichettaGeo(btn);
@@ -78,28 +77,20 @@ export function insertInputFor(kind, { typeName = '', numericMeta = null } = {})
   }
 
   if (kind === 'bool') {
-    const s = document.createElement('select');
-    for (const v of ['', 'true', 'false']) {
-      const o = document.createElement('option');
-      o.value = v;
-      o.textContent = v === '' ? '(vuoto)' : v;
-      s.appendChild(o);
-    }
-    return s;
+    return createArcSelect({ label: 'Valore booleano', options: ['', 'true', 'false'].map(value => ({ value, label: value === '' ? '(vuoto)' : value })) });
   }
-  const i = document.createElement('input');
+  const esatto = kind === 'number' && richiedePrecisioneEsatta(numericMeta || { type: typeName });
+  const i = createArcInput({ type: kind === 'number' ? (esatto ? 'text' : 'number')
+    : kind === 'datetime' ? 'datetime-local' : kind === 'date' ? 'date' : 'text' });
   if (kind === 'number') {
     // BIGINT e BSON Long non stanno in un double senza perdere cifre: come
     // l'editing inline (buildEditor in inlineEdit.js), qui la casella diventa
     // testo, altrimenti le frecce del controllo nativo — che calcolano su
     // `valueAsNumber`, un double — arrotonderebbero un valore oltre 2^53 al
     // primo clic, prima ancora di inviarlo.
-    const esatto = richiedePrecisioneEsatta(numericMeta || { type: typeName });
-    i.type = esatto ? 'text' : 'number';
     if (!esatto) i.step = 'any';
   }
   else if (kind === 'datetime') {
-    i.type = 'datetime-local';
     i.step = '0.001';
     // L'ora si scrive e si legge in UTC, come nella griglia (CDB-15): il
     // controllo del browser suggerisce l'ora locale, quindi va detto.
@@ -107,9 +98,7 @@ export function insertInputFor(kind, { typeName = '', numericMeta = null } = {})
     i.setAttribute('aria-label', 'Data e ora in UTC');
     i.classList.add('input-utc');
   }
-  else if (kind === 'date') { i.type = 'date'; }
   else {
-    i.type = 'text';
     if (kind === 'oid') i.placeholder = '24 caratteri esadecimali';
     if (kind === 'json') i.placeholder = 'JSON, es. {"a": 1} oppure [1, 2]';
   }
@@ -142,11 +131,11 @@ export function addInsertRow(opts) {
 
   const nameTd = document.createElement('td');
   if (opts.nameEditable) {
-    row.nameInput = document.createElement('input');
+    row.nameInput = createArcInput({ 'aria-label': 'Nome del campo' });
     row.nameInput.type = 'text';
     row.nameInput.placeholder = 'nome campo';
     row.nameInput.spellcheck = false;
-    nameTd.appendChild(row.nameInput);
+    nameTd.appendChild(controlElement(row.nameInput));
   } else {
     nameTd.innerHTML = `<span class="mono">${esc(opts.name)}</span>` +
       (opts.required ? '<span class="req" title="Obbligatorio: NOT NULL senza default"> *</span>' : '');
@@ -156,25 +145,20 @@ export function addInsertRow(opts) {
   const typeTd = document.createElement('td');
   typeTd.className = 'insert-type';
   if (opts.nameEditable) {
-    const sel = document.createElement('select');
     const kinds = [['text', 'testo'], ['number', 'numero'], ['bool', 'booleano'],
                    ['datetime', 'data (UTC)'], ['oid', 'ObjectId'], ['json', 'JSON'],
                    // Su MongoDB il tipo di un campo NUOVO non è deducibile da
                    // nessuno schema: la geometria va potuta scegliere a mano.
                    ['geo', 'geometria (mappa)']];
-    for (const [v, label] of kinds) {
-      const o = document.createElement('option');
-      o.value = v;
-      o.textContent = label;
-      sel.appendChild(o);
-    }
+    const sel = createArcSelect({ label: 'Tipo del campo', value: row.kind, options: kinds.map(([value, label]) => ({ value, label })) });
     sel.addEventListener('change', () => {
       row.kind = sel.value;
       const fresh = insertInputFor(row.kind);
-      row.input.replaceWith(fresh);
+      fresh.setAttribute('aria-label', 'Valore del campo');
+      controlElement(row.input).replaceWith(controlElement(fresh));
       row.input = fresh;
     });
-    typeTd.appendChild(sel);
+    typeTd.appendChild(controlElement(sel));
   } else {
     typeTd.innerHTML = `<span class="dim">${esc(opts.typeLabel || '')}</span>`;
   }
@@ -183,7 +167,7 @@ export function addInsertRow(opts) {
   const valTd = document.createElement('td');
   valTd.className = 'insert-value';
   if (row.auto) {
-    const i = document.createElement('input');
+    const i = createArcInput();
     i.type = 'text';
     i.disabled = true;
     i.placeholder = '(auto)';
@@ -191,22 +175,21 @@ export function addInsertRow(opts) {
   } else {
     row.input = insertInputFor(row.kind, { typeName: opts.typeName, numericMeta: row.numericMeta });
   }
-  valTd.appendChild(row.input);
+  if (!row.input.hasAttribute('aria-label')) row.input.setAttribute('aria-label', `Valore ${opts.name || 'del campo'}`);
+  valTd.appendChild(controlElement(row.input));
   tr.appendChild(valTd);
 
   const delTd = document.createElement('td');
   delTd.className = 'row-actions';
   if (opts.removable) {
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'del-btn';
+    const del = createArcButton({ className: 'del-btn', 'aria-label': 'Rimuovi campo' });
     del.textContent = '✕';
     del.title = 'Rimuovi campo';
     del.addEventListener('click', () => {
       tr.remove();
       insertRows = insertRows.filter((r) => r !== row);
     });
-    delTd.appendChild(del);
+    delTd.appendChild(controlElement(del));
   }
   tr.appendChild(delTd);
 
@@ -229,6 +212,9 @@ export function insertRowValue(row, dbType = insertContext ? insertContext.dbTyp
   // ObjectId per una stringa). Una digitazione manuale invalida la copia e
   // torna qui sotto.
   if (row.haFkScelto) return row.fkValore === undefined ? undefined : row.fkValore;
+  if (['date', 'datetime'].includes(row.kind) && row.input.validity && !row.input.validity.valid) {
+    throw new Error(row.input.validationMessage);
+  }
   const raw = row.input.value;
   const t = String(raw == null ? '' : raw).trim();
   if (t === '') return undefined;
@@ -446,10 +432,8 @@ function apriPannelloPerRiga(row, apertura) {
 function collegaPulsanteFk(row, apertura) {
   const relazione = row.fkRelazione;
   if (!relazione || !row.input || !row.input.parentElement) return;
-  const valTd = row.input.parentElement;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'fk-apri-btn';
+  const valTd = row.input.closest('td');
+  const btn = createArcButton({ className: 'fk-apri-btn' });
   btn.innerHTML = ICO('link');
   refreshLucideIcons(btn);
   btn.tabIndex = -1;
@@ -462,7 +446,7 @@ function collegaPulsanteFk(row, apertura) {
     if (pannelloFkAperto(row.input)) chiudiPannelloFk();
     else apriPannelloPerRiga(row, apertura);
   });
-  valTd.appendChild(btn);
+  valTd.appendChild(controlElement(btn));
   row.input.addEventListener('focus', () => {
     if (row.saltaProssimoFocus) { row.saltaProssimoFocus = false; return; }
     // Su mobile il pannello si apre dal pulsante: l'apertura automatica
@@ -523,12 +507,10 @@ function mostraErroreFk(messaggio, riprova) {
   const testo = document.createElement('span');
   testo.textContent = `Riferimenti non caricati: ${messaggio}. Puoi comunque inserire i valori a mano. `;
   el.appendChild(testo);
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'ghost';
+  const btn = createArcButton({ className: 'ghost' });
   btn.textContent = 'Riprova';
   btn.addEventListener('click', riprova);
-  el.appendChild(btn);
+  el.appendChild(controlElement(btn));
   el.classList.remove('hidden');
 }
 

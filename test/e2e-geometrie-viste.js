@@ -38,6 +38,11 @@ const ok = (cond, etichetta, dettaglio = '') => {
 
     const resa = await page.evaluate(async () => {
       const { renderResults, setResultsViewMode } = await import('/js/query-tab.js');
+      // La griglia virtuale disegna soltanto la vista visibile, come nell'uso
+      // reale. La fixture precedente leggeva una tabella ancora nascosta.
+      for (const id of ['welcome', 'placeholder']) document.getElementById(id).classList.add('hidden');
+      for (const id of ['tab-body', 'workspace', 'view-query']) document.getElementById(id).classList.remove('hidden');
+      for (const panel of document.querySelectorAll('#workspace .view-panel')) panel.classList.toggle('hidden', panel.id !== 'view-query');
       setResultsViewMode('table');
       renderResults([{
         punto: { type: 'Point', coordinates: [12.5, 41.9] },
@@ -47,6 +52,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
           coordinates: [[[12.5, 41.9], [12.6, 41.9], [12.6, 42], [12.5, 42], [12.5, 41.9]]],
         },
       }]);
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       return [...document.querySelectorAll('#query-result-table tbody td')].map((td) => ({
         classe: td.classList.contains('type-geo'),
         testo: td.textContent,

@@ -10,6 +10,7 @@ import {
   decodificaNumeroEsatto, metadatoNumerico, richiedePrecisioneEsatta, testoNumeroEsatto,
 } from './valori-esatti.js';
 import { setDaRelazione } from './fk-relazioni.js';
+import { createArcInput, createArcButton, createArcSelect, controlElement } from '../arc/ui.js';
 
 /**
  * Costruisce l'input adatto al tipo del valore.
@@ -33,8 +34,7 @@ export function buildEditor(current, metadata = {}) {
   }
 
   if (type === 'date') {
-    const input = document.createElement('input');
-    input.type = 'datetime-local';
+    const input = createArcInput({ type: 'datetime-local' });
     input.step = '0.001';
     // ORA UTC, non locale (CDB-15). Il controllo `datetime-local` è per
     // definizione ora locale, e qui invece si mostra e si rilegge UTC: la scelta
@@ -59,29 +59,22 @@ export function buildEditor(current, metadata = {}) {
       original: input.value,
       buildValue: () => {
         const d2 = new Date(input.value + 'Z');
-        if (input.value === '' || Number.isNaN(d2.getTime())) throw new Error('Data non valida');
+        if (input.value === '' || !input.validity.valid || Number.isNaN(d2.getTime())) throw new Error('Data non valida');
         return { $date: d2.toISOString() };
       },
     };
   }
 
   if (type === 'bool') {
-    const input = document.createElement('select');
-    for (const v of ['true', 'false']) {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      input.appendChild(opt);
-    }
+    const input = createArcSelect({ label: 'Valore booleano', options: ['true', 'false'].map(value => ({ value, label: value })) });
     const setValue = (v) => { input.value = String(v); };
     setValue(current);
     return { input, setValue, original: input.value, buildValue: () => input.value === 'true' };
   }
 
   if (type === 'number') {
-    const input = document.createElement('input');
     const metadato = numericMeta;
-    input.type = richiedePrecisioneEsatta(metadato) ? 'text' : 'number';
+    const input = createArcInput({ type: richiedePrecisioneEsatta(metadato) ? 'text' : 'number' });
     input.step = 'any';
     const setValue = (v) => { input.value = testoNumeroEsatto(v); };
     setValue(current);
@@ -94,8 +87,7 @@ export function buildEditor(current, metadata = {}) {
   }
 
   if (type === 'decimal') {
-    const input = document.createElement('input');
-    input.type = 'text';
+    const input = createArcInput({ type: 'text' });
     const setValue = (v) => { input.value = testoNumeroEsatto(v); };
     setValue(current);
     return {
@@ -107,7 +99,7 @@ export function buildEditor(current, metadata = {}) {
   }
 
   if (type === 'oid') {
-    const input = document.createElement('input');
+    const input = createArcInput();
     // Il pannello delle chiavi esterne consegna l'ObjectId in forma EJSON
     // ({$oid}); la casella vuole i 24 esadecimali nudi, che è anche ciò che
     // `buildValue` riconvaliderà.
@@ -125,7 +117,7 @@ export function buildEditor(current, metadata = {}) {
     };
   }
 
-  const input = document.createElement('input');
+  const input = createArcInput();
   const setValue = (v) => { input.value = editValue(v); };
   setValue(current);
   return { input, setValue, original: input.value, buildValue: () => parseEdited(input.value) };
@@ -235,7 +227,8 @@ export function startEdit(td, doc, field, opts = {}) {
 
   td.classList.add('editing');
   td.innerHTML = '';
-  td.appendChild(input);
+  if (!input.hasAttribute('aria-label')) input.setAttribute('aria-label', `Modifica ${field}`);
+  td.appendChild(controlElement(input));
   input.focus();
   if (input.select) input.select();
 
@@ -275,6 +268,9 @@ export function startEdit(td, doc, field, opts = {}) {
   };
 
   input.addEventListener('keydown', (e) => {
+    // Enter apre il Select; Escape chiude prima le opzioni. Il salvataggio
+    // passa da change, dopo la scelta, non dall'apertura del menu.
+    if (input.dataset.arcComponent === 'select' && (e.key === 'Enter' || input.dataset.state === 'open')) return;
     if (e.key === 'Enter') save();
     if (e.key === 'Escape') cancel();
   });
@@ -284,10 +280,12 @@ export function startEdit(td, doc, field, opts = {}) {
   // che si sta per riempire. `relatedTarget` è dove sta andando il fuoco;
   // quando il browser non lo fornisce si guarda dove è effettivamente finito.
   input.addEventListener('blur', (e) => {
+    if (e.relatedTarget?.closest?.('.arc-date-field, [data-arc-calendar-popup]')) return;
+    if (input.dataset.arcComponent === 'select' && input.dataset.state === 'open') return;
     if (fuocoNelPannelloFk(e.relatedTarget || document.activeElement)) return;
     save();
   });
-  if (input.tagName === 'SELECT') input.addEventListener('change', save);
+  if (input.dataset.arcComponent === 'select') input.addEventListener('change', save);
 
   // Colonna collegata a un'altra tabella: il pannello di scelta si apre da solo
   // e accanto all'input compare 🔗 per riaprirlo se lo si è chiuso. Va tutto
@@ -379,9 +377,7 @@ function tdSorgente(input) {
  * *prima* del proprio `click`, e non succederebbe assolutamente nulla.
  */
 function aggiungiPulsanteFk(td, editor, doc, field, relazione, opts) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'fk-apri-btn';
+  const btn = createArcButton({ className: 'fk-apri-btn' });
   btn.innerHTML = ICO('link');
   refreshLucideIcons(btn);
   btn.tabIndex = -1; // il Tab dell'editor resta quello di sempre
@@ -393,7 +389,7 @@ function aggiungiPulsanteFk(td, editor, doc, field, relazione, opts) {
     if (pannelloFkAperto(sorgente)) chiudiPannelloFk();
     else mostraPannelloFk(editor, doc, field, relazione, { ...opts, sorgente });
   });
-  td.appendChild(btn);
+  td.appendChild(controlElement(btn));
 }
 
 let editDocContext = null;

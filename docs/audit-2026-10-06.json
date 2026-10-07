@@ -1,0 +1,839 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-10-06",
+  "versione_analizzata": "0.1.5-beta.1",
+  "commit": "b07baf04d7cede685fa7a7ccf31ef6d119c1ec33",
+  "tipo": "Review funzionale: inventario per aree, limiti, analisi dei percorsi critici e prove locali. Nessuna correzione del prodotto.",
+  "conclusione": "Non tutte le funzionalità mantengono il contratto dichiarato. 8 rilievi riprodotti localmente (1 alto, 6 medi, 1 basso); suite ordinaria verde non sufficiente a dimostrare correttezza completa.",
+  "riepilogo": {
+    "totale": 8,
+    "critica": 0,
+    "alta": 1,
+    "media": 6,
+    "bassa": 1,
+    "aperti": 8,
+    "aree_censite": 34
+  },
+  "metodo": [
+    "Inventario delle macrofunzionalità e lettura mirata dei flussi backend/frontend, delle protezioni comuni e dei test. Non una lettura integrale di ogni funzione del repository.",
+    "Unità e riproduzioni senza database reali. La suite apre server temporanei e usa file temporanei; npm test fuori sandbox dopo EPERM di spawn, con approvazione ottenuta.",
+    "Un E2E browser esistente, UML con schema simulato, server e profilo temporanei. Non avviato il server personale né usati vault o connessioni dell'utente.",
+    "Nessun fix ai sorgenti applicativi. Mutazione di SqlToMql esclusivamente in memoria per misurare sensibilità della prova.",
+    "Schema JSON compatibile con gli audit precedenti, più matrice funzionale. reference/report-schema.md e scripts/validate-audit.mjs della skill non presenti: struttura, conteggi, ID e riferimenti validati con Node."
+  ],
+  "verifiche": [
+    {
+      "comando": "npm test",
+      "esito": "PASS",
+      "exit_code": 0,
+      "log": "test-reports/review-funzionale-2026-10-06-unit.log",
+      "limiti": "Suite senza DB reali. Prima esecuzione in sandbox terminata per EPERM nei processi figli; ripetizione autorizzata completata."
+    },
+    {
+      "comando": "node test/sql-to-mql.js",
+      "esito": "PASS",
+      "test": 75,
+      "limiti": "Non raggiunto da test/unit.js; aspettative di aggregazione e alias codificano comportamenti errati."
+    },
+    {
+      "comando": "node test/mongo-shell.js",
+      "esito": "PASS",
+      "test": 24,
+      "limiti": "Parser senza DB; non raggiunto da test/unit.js."
+    },
+    {
+      "comando": "node test/e2e-uml-modalita.js",
+      "esito": "PASS",
+      "exit_code": 0,
+      "limiti": "JointJS/browser reali, schema/socket simulati. Consultazione singola/database, FK composte ed esterne, cambio contesto, risposte tardive, skeleton/errori, sola lettura."
+    },
+    {
+      "comando": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON test-reports/review-funzionale-2026-10-06.cjs",
+      "esito": "11 asserzioni di contratto fallite su 11; 8 rilievi riprodotti; nessun errore del runner",
+      "exit_code": 1,
+      "log": "test-reports/review-funzionale-2026-10-06-riproduzioni.log",
+      "limiti": "Exit 1 intenzionale finché i difetti restano. Driver del test transazioni simulati; nessun DB scritto."
+    },
+    {
+      "comando": "Controllo sensibilità incluso nella diagnostica",
+      "esito": "PASS",
+      "limiti": "Un controllo: pipeline COUNT corretta in memoria accettata, reintroduzione del guasto rifiutata. Non eseguite mutazioni su tutte le suite esistenti."
+    }
+  ],
+  "ambito_analizzato": [
+    "Trasporto, limiti sessioni, connessioni/SSH, gate di autorizzazione e principali percorsi query/script",
+    "Strategie SQL/MongoDB nei percorsi lettura, risultati, transazioni e cataloghi",
+    "Piani, limiti e garanzie dei percorsi export/import, backup/restore e rinomina",
+    "Logiche pure di griglia, valori, statistiche/grafici, geometrie, layout, autocomplete, cronologia e schema/diagrammi",
+    "Conferme MCP, vault, audit, monitor sessioni e impostazioni attraverso codice mirato e suite esistente",
+    "UML in browser con schema simulato; autenticazione Electron/server con processi reali"
+  ],
+  "ambito_non_analizzato": [
+    "Integrazione con MongoDB/MySQL/PostgreSQL reali, permessi reali, grandi moli, rete instabile, carico e memoria di picco",
+    "Roundtrip backup/restore reale su tutti i tipi, oggetti SQL, versioni DBMS, estensioni, trigger ed effetti collaterali",
+    "Intero DOM e flussi CRUD, mappe/grafici e 3D nel browser: test dinamico limitato all'UML",
+    "Provider cloud, SSH remoto, webhook/notifiche e client MCP esterni",
+    "Installer/release e aggiornamento installato Electron, pacchetto Android, hardware mobile, audit completo di accessibilità",
+    "Dipendenze vendorizzate/node_modules, landing e artefatti compilati; nessuna scansione CVE o certificazione di sicurezza"
+  ],
+  "finding": [
+    {
+      "id": "CDB-F08",
+      "severita": "alta",
+      "titolo": "Le transazioni degli script non conservano la connessione fisica",
+      "categoria": "integrita dati",
+      "modulo": "server/eventi-script.js; db/MySqlStrategy.js; db/PostgreSqlStrategy.js",
+      "riferimenti": [
+        "server/eventi-script.js:123",
+        "server/eventi-script.js:131",
+        "db/MySqlStrategy.js:826",
+        "db/MySqlStrategy.js:909",
+        "db/PostgreSqlStrategy.js:885",
+        "db/PostgreSqlStrategy.js:952",
+        "server/query.js:49"
+      ],
+      "problema": "Ogni istruzione dello script acquisisce e rilascia separatamente una connessione del pool. BEGIN, DML e ROLLBACK/COMMIT non hanno un lease comune. Il server ammette quattro script sulla stessa sessione e i pool SQL hanno otto connessioni; sotto concorrenza la transazione può essere distribuita su client diversi. Sono coinvolti anche stato di sessione e tabelle temporanee.",
+      "scenario": "BEGIN; INSERT INTO t VALUES (1); ROLLBACK; con assegnazioni del pool A, B, A. Nella prova locale il runner conclude tutte le istruzioni senza errori ma la scrittura su B è in autocommit e resta presente.",
+      "verifica": "Riprodotto con ScriptRun, executeQueryCode e strategie SQL reali, sostituendo solo il pool con due connessioni simulate alternate. Due asserzioni fallite, una per DBMS. Non riprodotto contro DBMS reali; scheduling del pool e persistenza sono simulati.",
+      "fix": "Riservare una connessione fisica al run e conservarla lungo tutte le istruzioni, con rilascio e rollback delle transazioni ancora aperte su errore, annullamento e chiusura. Gestire anche transazioni esplicite tra query interattive. Riutilizzare le primitive di sqlWriteBatch dove compatibili senza rendere implicitamente atomico ogni script.",
+      "fonti": [
+        "https://node-postgres.com/features/transactions"
+      ],
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F01",
+      "severita": "media",
+      "titolo": "COUNT, GROUP BY e DISTINCT SQL su MongoDB generano uno stage non valido",
+      "categoria": "query SQL su MongoDB",
+      "modulo": "db/SqlToMql.js",
+      "riferimenti": [
+        "db/SqlToMql.js:954",
+        "db/SqlToMql.js:988",
+        "server/query.js:503",
+        "db/MongoDbStrategy.js:1015",
+        "test/sql-to-mql.js:159"
+      ],
+      "problema": "buildAggregate inserisce direttamente {_id, aggregati} nella pipeline anziché {$group: {_id, aggregati}}. Il Query Engine e la strategia inoltrano tale pipeline senza correggerla. La suite dedicata confronta proprio questa forma errata e quindi passa.",
+      "scenario": "SELECT COUNT(*) AS n FROM users produce [{_id:null,n:{$sum:1}},{$project:{_id:0,n:1}}]. Vale anche per raggruppamenti, DISTINCT e sottoquery che dipendono da tali raggruppamenti.",
+      "verifica": "Il controllo strutturale sulla pipeline generata fallisce. Correzione esclusivamente in memoria: il controllo passa; reintroducendo il codice difettoso fallisce. node test/sql-to-mql.js passa comunque 75 test. Nessun invio a MongoDB reale.",
+      "fix": "Inserire {$group: groupStage}; aggiornare le aspettative dei test al protocollo MongoDB e aggiungere un caso integrato che esegua davvero COUNT/GROUP BY.",
+      "fonti": [
+        "https://www.mongodb.com/docs/manual/reference/operator/aggregation/group/"
+      ],
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F02",
+      "severita": "media",
+      "titolo": "Il percorso UI dei Virtual JOIN non collega due connessioni",
+      "categoria": "funzionalita non cablata",
+      "modulo": "server/query.js; db/VirtualJoinEngine.js",
+      "riferimenti": [
+        "server/query.js:319",
+        "db/VirtualJoinEngine.js:66",
+        "db/VirtualJoinEngine.js:99",
+        "public/js/snippet-manager.js:39",
+        "test/e2e-query-engine.js:69"
+      ],
+      "problema": "La libreria accetta due strategie, ma il percorso reale della UI invoca execute(spec, strat, strat). I dbType delle sorgenti decidono solo quale testo generare, non quale connessione aprire. Lo snippet pubblicizzato MySQL→MongoDB raggiunge entrambi i lati tramite il solo motore del tab attivo.",
+      "scenario": "Tab MySQL, sourceA MySQL shop.orders e sourceB MongoDB crm.customers: il lato B genera una pipeline JSON che viene passata alla strategia MySQL. Tab MongoDB: il primo lato riceve SQL nel percorso delle pipeline.",
+      "verifica": "Chiamato executeQueryCode reale con una strategia che registra le chiamate: i due lati riportano ['mysql','mysql'], non ['mysql','mongodb']. Il test E2E esistente verifica il JOIN richiamando direttamente la libreria con due strategie finte, non il routing UI.",
+      "fix": "Identificare esplicitamente le connessioni delle sorgenti e risolvere due strategie autorizzate, verificando tipo, scope e ciclo di vita. Usare il tipo effettivo della strategia anziché fidarsi del solo dbType dichiarato.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F03",
+      "severita": "media",
+      "titolo": "Virtual JOIN scarta corrispondenze e informazioni di troncamento",
+      "categoria": "risultati incompleti",
+      "modulo": "db/VirtualJoinEngine.js",
+      "riferimenti": [
+        "db/VirtualJoinEngine.js:73",
+        "db/VirtualJoinEngine.js:77",
+        "db/VirtualJoinEngine.js:117",
+        "db/VirtualJoinEngine.js:124",
+        "db/VirtualJoinEngine.js:131",
+        "server/query.js:319"
+      ],
+      "problema": "Letture ridotte a res.docs perdono truncated. La Map contiene un solo documento per chiave e sovrascrive le corrispondenze precedenti. Il risultato sembra un JOIN completo ma equivale a un lookup con l'ultimo match. maxPayloadSize non elimina il tetto predefinito di 500 righe delle strategie perché non viene passato maxRows.",
+      "scenario": "Due ordini sul lato B con lo stesso customer_id: rimane soltanto l'ultimo. Una sorgente con truncated:true produce invece una risposta di successo senza avviso, anche nel Query Engine che normalmente rifiuta risultati incompleti.",
+      "verifica": "Due controlli locali falliscono: conservazione di due match e rifiuto del risultato troncato. Routing completo attraversato per la seconda prova. Limiti di lettura verificati nel codice, senza un dataset reale oltre 500 righe.",
+      "fix": "Propagare la completezza di entrambe le sorgenti e il budget finale. Definire e applicare la cardinalità del JOIN: raccogliere tutti i match oppure verificare e dichiarare un contratto 1:1 che rifiuti chiavi duplicate. Non riportare un risultato parziale come completo.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F05",
+      "severita": "media",
+      "titolo": "La revisione dello schema non rileva modifiche a cardinalità invariata",
+      "categoria": "schema e diagrammi",
+      "modulo": "db/schemaProgressivo.js",
+      "riferimenti": [
+        "db/schemaProgressivo.js:69",
+        "db/schemaProgressivo.js:74",
+        "db/schemaProgressivo.js:98",
+        "db/schemaSnapshot.js:103",
+        "public/js/uml-modello.js:85"
+      ],
+      "problema": "L'impronta considera nomi delle collezioni, numero dei campi e numero delle relazioni, ma non identità dei campi, ordine o contenuto delle relazioni. Due cataloghi diversi possono avere la stessa revisione e consentire la fusione di pagine incompatibili.",
+      "scenario": "Prima pagina con campi a,b. Dopo scadenza dello snapshot o rilettura, a è rinominato z e viene chiesta la continuazione con il cursore precedente. La revisione resta identica: revisioneCambiata:false e il client può conservare a ormai inesistente. Anche cambiare destinazione di una FK senza cambiare il numero di relazioni non cambia l'impronta.",
+      "verifica": "Invocati revisioneSchema e limitaSchema reali con i due cataloghi: nessuna invalidazione. Non simulata la DDL su un server reale. Lo snapshot per sessione protegge finché resta valido; il difetto emerge quando viene sostituito.",
+      "fix": "Calcolare la revisione sulle identità e sugli attributi strutturali effettivamente paginati, con ordinamento deterministico, oppure assegnare un identificatore univoco a ogni snapshot e invalidare i cursori al suo cambio.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F07",
+      "severita": "media",
+      "titolo": "Il budget dichiarato in byte non è un tetto effettivo",
+      "categoria": "limiti di memoria",
+      "modulo": "db/DbStrategy.js",
+      "riferimenti": [
+        "db/DbStrategy.js:659",
+        "db/DbStrategy.js:660",
+        "db/DbStrategy.js:679",
+        "db/DbStrategy.js:680",
+        "db/tetti.js:176",
+        "db/MySqlStrategy.js:847",
+        "db/PostgreSqlStrategy.js:922"
+      ],
+      "problema": "collectCapped e truncateBySize contano caratteri JavaScript, non byte UTF-8. Entrambi ammettono inoltre la prima riga anche se supera da sola il budget. La protezione comune non corregge questi due casi. Le query SQL materializzano il risultato del driver prima del controllo, quindi 32 MiB non è neppure un limite al picco RAM del processo.",
+      "scenario": "Con tetto 100 byte una riga contenente 200 caratteri ASCII torna senza truncated. Con tetto 200 byte due righe contenenti 40 caratteri CJK ciascuna superano 260 byte UTF-8 e sono comunque accettate.",
+      "verifica": "Due asserzioni su truncateBySize falliscono con gli input indicati; letta anche la logica speculare in collectCapped. Non eseguito stress/OOM. La materializzazione SQL è un limite architetturale osservato, non una misura di RAM.",
+      "fix": "Misurare i byte serializzati e segnalare o rifiutare anche la prima riga fuori tetto. Esplicitare la differenza tra dimensione del risultato e RAM del driver; per contenere quest'ultima serve lettura SQL a streaming/cursore.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F04",
+      "severita": "media",
+      "titolo": "Gli alias dei SELECT semplici su MongoDB sono accettati ma ignorati",
+      "categoria": "semantica SQL",
+      "modulo": "db/SqlToMql.js",
+      "riferimenti": [
+        "db/SqlToMql.js:846",
+        "db/SqlToMql.js:854",
+        "db/SqlToMql.js:856",
+        "server/query.js:509"
+      ],
+      "problema": "Il parser accetta AS ma buildFind proietta il nome originale e scarta l'alias. Il chiamante non rinomina i campi. Un commento e il test dedicato dichiarano questo comportamento, ma non lo segnalano all'utente che esegue la query.",
+      "scenario": "SELECT name AS etichetta FROM users genera projection:{name:1,_id:0}: il risultato ha name anziché etichetta. Il comportamento differisce dal ramo aggregazione/JOIN che applica l'alias.",
+      "verifica": "Test locale sulla traduzione reale: etichetta non compare nella proiezione. Nessun DB necessario per accertare la perdita dell'alias nel piano.",
+      "fix": "Usare una proiezione con alias, passando al ramo di aggregazione quando necessario; gestire coerentemente ORDER BY sugli alias. Non ignorare sintassi accettata.",
+      "stato": "aperto"
+    },
+    {
+      "id": "CDB-F06",
+      "severita": "bassa",
+      "titolo": "La cronologia elimina query diverse durante la deduplicazione",
+      "categoria": "cronologia",
+      "modulo": "public/js/query-history-store.js",
+      "riferimenti": [
+        "public/js/query-history-store.js:43",
+        "public/js/query-history-store.js:46",
+        "public/js/query-history-store.js:112"
+      ],
+      "problema": "La normalizzazione comprime tutti gli spazi del codice, compresi i letterali stringa. La chiave non include coll, benché filtri MQL uguali su collezioni diverse siano esecuzioni distinte.",
+      "scenario": "Eseguire SELECT 'a  b' AS testo e poi SELECT 'a b' AS testo sulla stessa connessione/database: in cronologia resta una sola voce. Nessuna query o dato del DB viene modificato; si perde la voce precedente.",
+      "verifica": "Importato il modulo reale con storage in memoria: leggiVoci restituisce una voce, non due. Il caso coll mancante è rilevato staticamente e non incluso nelle 11 asserzioni.",
+      "fix": "Deduplicare sul testo esatto, limitandosi al trim esterno, e includere il contesto di esecuzione necessario, almeno coll per le query che lo usano.",
+      "stato": "aperto"
+    }
+  ],
+  "funzionalita": [
+    {
+      "id": "FUN-01",
+      "nome": "Connessioni MongoDB/MySQL/PostgreSQL e SSH",
+      "esito": "Parzialmente verificata: ciclo di vita e pin SSH provati localmente.",
+      "limiti": "8 sessioni per socket, 100 globali; 500 socket globali, 20 per IP; pool SQL fino a 8 connessioni ciascuno. SSH richiede pin noto, persistenza al primo uso o approvazione esplicita; rete remota non esercitata.",
+      "riferimenti": [
+        "server/budget.js",
+        "server/eventi-connessioni.js",
+        "db/SshTunnel.js"
+      ],
+      "prove": [
+        "npm test: lifecycle, server-modulare, ssh-pinning"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-02",
+      "nome": "Navigazione database, tabelle e dettagli",
+      "esito": "Logica e isolamento coperti da test locali; cataloghi reali non interrogati.",
+      "limiti": "Il livello database PostgreSQL indica lo schema, non il database fisico. Su MongoDB schema e percentuali di presenza derivano da campioni; collectionStats usa 100 documenti.",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js",
+        "db/MongoDbStrategy.js",
+        "public/js/details.js"
+      ],
+      "prove": [
+        "npm test: sql-metadati, relazioni-sql, schema-progressivo"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-03",
+      "nome": "Griglia, paginazione e conteggi",
+      "esito": "Coperta da test unitari; integrazione con grandi dataset non misurata.",
+      "limiti": "Pagine ordinarie con tetto server 500 righe; interfaccia 25/50/100/200. Keyset solo dove chiavi/ordinamento lo consentono; offset rimane costoso in profondità. Conteggio separato: 5 s, poi totale sconosciuto. Query griglia: 30 s.",
+      "riferimenti": [
+        "db/DbStrategy.js",
+        "db/MySqlStrategy.js",
+        "db/PostgreSqlStrategy.js",
+        "db/MongoDbStrategy.js",
+        "public/js/grid.js"
+      ],
+      "prove": [
+        "npm test: griglia, ordinamento-strategia, filtro, coerenza-richieste"
+      ],
+      "rilievi": [
+        "CDB-F07"
+      ]
+    },
+    {
+      "id": "FUN-04",
+      "nome": "Ricerca globale e filtri avanzati",
+      "esito": "Test locali verdi sui tre dialetti.",
+      "limiti": "Ricerca letterale e insensibile al caso, massimo 2000 caratteri; su MongoDB solo percorsi rilevati nel campione e nelle righe lette, cache 60 s: un campo raro può mancare. La ricerca globale può richiedere scansioni estese. SQL libero limitato da RBAC.",
+      "riferimenti": [
+        "db/ricercaGlobale.js",
+        "db/MongoDbStrategy.js:297",
+        "auth/guardStrategy.js"
+      ],
+      "prove": [
+        "npm test: ricerca-globale, filtro-rapido, filtro-autorizzazione"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-05",
+      "nome": "Inserimento, duplicazione, modifica e cancellazione",
+      "esito": "Test locali coprono tipi esatti, bersaglio e batch; CRUD reale non eseguito.",
+      "limiti": "Senza PK l'identificazione SQL può dipendere dai valori della riga; duplicati identici non hanno identità persistente distinta. Le scritture di singola riga limitano il bersaglio a una riga. Colonne generate escluse dalla modifica; date nell'editor esplicitamente UTC.",
+      "riferimenti": [
+        "public/js/insert.js",
+        "public/js/inlineEdit.js",
+        "db/duplica.js",
+        "db/sqlTabellare.js",
+        "db/MySqlStrategy.js:1267",
+        "db/PostgreSqlStrategy.js:697"
+      ],
+      "prove": [
+        "npm test: sql-integrita-righe, scritture-bersaglio, duplica, valori-esatti, mongodb-bulk-insert"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-06",
+      "nome": "Navigazione e scelta delle chiavi esterne",
+      "esito": "Contratti e relazioni provati senza DB.",
+      "limiti": "Pagina di riferimento fino a 200 righe; ricerca descrittiva fino a 6 colonne testuali. Relazioni SQL dal catalogo; MongoDB può usare euristiche. Il DBMS continua a imporre i vincoli reali.",
+      "riferimenti": [
+        "db/DbStrategy.js:579",
+        "public/js/fk-relazioni.js",
+        "db/relazioni.js"
+      ],
+      "prove": [
+        "npm test: fk-relazioni, relazioni-sql"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-07",
+      "nome": "Query SQL native, explain e annullamento",
+      "esito": "Test locali su dispatch, classificazione, timeout e risultati; motori reali non eseguiti.",
+      "limiti": "Query Engine senza tetto fisso alle righe, ma con budget risultati nominale 32 MiB e timeout aggregazioni 120 s. Cancel dipende da privilegi del DBMS. Grandi SELECT SQL vengono materializzati in memoria prima del taglio. Explain e funzioni SQL dipendono dal motore e dalla sua versione.",
+      "riferimenti": [
+        "server/query.js",
+        "db/MySqlStrategy.js:818",
+        "db/PostgreSqlStrategy.js:867",
+        "db/tetti.js"
+      ],
+      "prove": [
+        "npm test: query-senza-limite, tetto-tempo, sql-tables"
+      ],
+      "rilievi": [
+        "CDB-F07",
+        "CDB-F08"
+      ]
+    },
+    {
+      "id": "FUN-08",
+      "nome": "Traduzione SQL verso MongoDB",
+      "esito": "Non conforme in più casi accettati.",
+      "limiti": "Solo un sottoinsieme SQL: equi-join INNER/LEFT a una coppia di campi; aggregati COUNT/SUM/AVG/MIN/MAX; UNION e derived table. RIGHT/FULL/CROSS JOIN, IN(SELECT), confronti colonna-colonna e molte funzioni sono rifiutati. LIKE cambia sensibilità al caso in base al prefisso; non è un dialetto SQL completo.",
+      "riferimenti": [
+        "db/SqlToMql.js",
+        "server/query.js"
+      ],
+      "prove": [
+        "75 test dedicati verdi, ma due contratti mirati falliscono"
+      ],
+      "rilievi": [
+        "CDB-F01",
+        "CDB-F04"
+      ]
+    },
+    {
+      "id": "FUN-09",
+      "nome": "Shell e script MongoDB",
+      "esito": "Parser e interprete coperti da test locali.",
+      "limiti": "Interprete di un sottoinsieme mongosh, senza eval e senza JS arbitrario sul server DB. Budget default 60 s e 5000 chiamate DB. $where/$function/$accumulator vietati. $out/$merge esclusi dal timeout ordinario: annullamento esplicito.",
+      "riferimenti": [
+        "db/MongoShell.js",
+        "db/MongoScript.js",
+        "db/MongoScriptRunner.js",
+        "server/query.js",
+        "auth/capabilities.js"
+      ],
+      "prove": [
+        "npm test: mongo-script, divieto-server-js; node test/mongo-shell.js: 24 test verdi"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-10",
+      "nome": "Script SQL, pausa, ripresa e schede risultati",
+      "esito": "Esecuzione per istruzione provata; transazioni esplicite non affidabili sotto concorrenza.",
+      "limiti": "20000 istruzioni per invio e 4 run per sessione; pausa cooperativa dopo l'istruzione corrente. Default 500 voci di resoconto; fino a 50 result set/256 MiB per deposito, pulizia a 24 h e fino a 5 depositi per sessione. Errori o annullamenti non annullano implicitamente tutte le scritture precedenti.",
+      "riferimenti": [
+        "server/eventi-script.js",
+        "db/ScriptRunner.js",
+        "db/ScriptResults.js"
+      ],
+      "prove": [
+        "npm test: script-runner, script-results, script-esito; riproduzione con pool simulati"
+      ],
+      "rilievi": [
+        "CDB-F08"
+      ]
+    },
+    {
+      "id": "FUN-11",
+      "nome": "Virtual JOIN Cross-DB",
+      "esito": "Promessa della UI non soddisfatta; risultati potenzialmente incompleti.",
+      "limiti": "Routing attuale su una sola strategia. Merge in RAM su una chiave per lato; nessuna semantica completa INNER/LEFT/FULL né cardinalità 1:N conservata. maxPayloadSize default 1000, massimo 100000, ma i cap delle strategie restano indipendenti.",
+      "riferimenti": [
+        "server/query.js:319",
+        "db/VirtualJoinEngine.js"
+      ],
+      "prove": [
+        "3 contratti mirati falliti"
+      ],
+      "rilievi": [
+        "CDB-F02",
+        "CDB-F03"
+      ]
+    },
+    {
+      "id": "FUN-12",
+      "nome": "Cronologia, snippet e query in sospeso",
+      "esito": "Cronologia con difetto riprodotto; gestione del registro coperta dai test esistenti.",
+      "limiti": "Cronologia Query Engine massimo 200 voci; codice oltre 20000 caratteri non registrato. Persistenza browser best-effort. Dopo F5 le query in volo sono marcate disconnesse; non sono job persistenti del DB. Gli snippet richiedono tabelle/estensioni indicate nell'esempio.",
+      "riferimenti": [
+        "public/js/query-history-store.js",
+        "public/js/pending-queries.js",
+        "public/js/snippet-manager.js"
+      ],
+      "prove": [
+        "npm test: query-history e pending-queries; riproduzione locale"
+      ],
+      "rilievi": [
+        "CDB-F06",
+        "CDB-F02"
+      ]
+    },
+    {
+      "id": "FUN-13",
+      "nome": "IntelliSense, formattazione e lint JSON/BSON",
+      "esito": "Test locali verdi.",
+      "limiti": "Completamento euristico dal cursore e dallo schema rilevato; fino a 12 suggerimenti, 20 se forzato. Per testo oltre 100000 caratteri usa una finestra da 20000. Non sostituisce la validazione del DBMS. Formattazione BSON conserva i token numerici senza JSON.parse distruttivo.",
+      "riferimenti": [
+        "public/js/intellisense.js",
+        "public/js/autocomplete.js",
+        "public/js/json-bson.js",
+        "public/js/query-formatter.js"
+      ],
+      "prove": [
+        "npm test: intellisense, json-bson, query-formatter, highlighter"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-14",
+      "nome": "Tab, split view e ripristino sessione",
+      "esito": "Logica di layout e contesti asincroni coperta; verifica browser limitata all'UML.",
+      "limiti": "Ripristino F5 solo per connessioni salvate e con sessionStorage disponibile. Le credenziali non sono persistite nel browser. Pannelli split minimi 220×120 px; limite connessioni invariato. Ripristino del layout non equivale a mantenere vive le query.",
+      "riferimenti": [
+        "public/js/session-restore.js",
+        "public/js/split-layout.js",
+        "public/js/splitview.js",
+        "public/js/coerenza-richieste.js"
+      ],
+      "prove": [
+        "npm test: split-layout, coerenza-richieste, trasporto; E2E UML cambio contesto"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-15",
+      "nome": "Selezione celle, copia/incolla e statistiche",
+      "esito": "Test locali verdi sulle trasformazioni.",
+      "limiti": "Si opera sulle righe caricate/selezionate, non sull'intero database. Statistiche Number con Kahan e avviso di approssimazione per precisione elevata; il riepilogo durante selezione si limita a 20000 celle. Le garanzie di scrittura dipendono dal motore e dal batch.",
+      "riferimenti": [
+        "public/js/cellselect.js",
+        "public/js/cell-stats.js",
+        "public/js/valori-esatti.js",
+        "db/sqlWriteBatch.js"
+      ],
+      "prove": [
+        "npm test: cell-stats, valori-esatti, csv-sicuro, sql-write-batch"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-16",
+      "nome": "Grafici e grafico della selezione",
+      "esito": "Calcolo delle opzioni e aggregazioni coperti; resa visiva non esaminata in questa sessione.",
+      "limiti": "Grafici sui risultati caricati. Rilevamento automatico dei campi su 300 righe; heatmap default 60 categorie per asse. Long/Decimal possono essere aggregati esattamente, ma il renderer rappresenta numeri approssimati e lo dichiara.",
+      "riferimenti": [
+        "public/js/chart-option.js",
+        "public/js/cell-chart.js",
+        "public/js/charts.js"
+      ],
+      "prove": [
+        "npm test: charts, cell-chart, valori-esatti"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-17",
+      "nome": "Calcoli su Web Worker",
+      "esito": "Dispatcher e fallback provati localmente.",
+      "limiti": "Il codice corrente sposta le statistiche di valori piatti da 50000 celle; campi e precalcolo grafici sulle righe restano sul thread chiamante per evitare copie costose. Il disegno resta sul main thread. AGENTS.md descrive un perimetro di offload più ampio del codice corrente.",
+      "riferimenti": [
+        "public/js/calcoli.js",
+        "public/js/calcoli-protocollo.js"
+      ],
+      "prove": [
+        "npm test: calcoli"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-18",
+      "nome": "Mappe risultati, geometrie e editor",
+      "esito": "Riconoscimento e trasformazioni coperti dai test locali; mappe nel browser non esercitate.",
+      "limiti": "Rilevamento fino a 250000 nodi/20000 celle, 2 livelli di sottodocumenti e 8 di array. Disegno fino a 1500 geometrie e circa 120000 vertici, lista 500; il primo oggetto può superare il budget vertici. Coordinate/CRS non compatibili non vengono trasformati universalmente. Misure geografiche non sono misure catastali certificate.",
+      "riferimenti": [
+        "public/js/geo-risultati.js",
+        "public/js/geo-vista.js",
+        "public/js/geo-stats.js",
+        "public/js/geo-modifica.js",
+        "db/pg-geo-nativo.js"
+      ],
+      "prove": [
+        "npm test: geo-risultati, geo-stats, geo-editor, geo-modifica, geometry, pg-geo-nativo"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-19",
+      "nome": "UML in consultazione e schema progressivo",
+      "esito": "Test browser mirato passato; rilevato un difetto nella revisione dello schema.",
+      "limiti": "Schema progressivo default 80 tabelle/40 campi/200 relazioni per pagina, massimi 200/200/1000 con continuazioni. Snapshot server 60 s. Su MongoDB campi/relazioni osservati o euristici non sono vincoli certificati.",
+      "riferimenti": [
+        "db/schemaProgressivo.js",
+        "db/schemaSnapshot.js",
+        "public/js/uml.js",
+        "public/js/uml-modello.js"
+      ],
+      "prove": [
+        "npm test: uml-modello, schema-progressivo; node test/e2e-uml-modalita.js passato"
+      ],
+      "rilievi": [
+        "CDB-F05"
+      ]
+    },
+    {
+      "id": "FUN-20",
+      "nome": "Progettazione UML e DDL visuale",
+      "esito": "Piani e applicazione coperti da test locali; applicazione DDL reale non eseguita.",
+      "limiti": "Disponibile per MySQL/PostgreSQL. Da 1 a 100 operazioni, entro 256000 byte; fino a 200 colonne per nuova tabella. Applicazione per step: errore può lasciare step già applicati e viene indicato. Non offre rollback atomico dell'intera bozza.",
+      "riferimenti": [
+        "db/umlProgetto.js",
+        "public/js/uml-progetto.js",
+        "public/js/uml-progetto-modello.js"
+      ],
+      "prove": [
+        "npm test: uml-progetto, ddl-roundtrip, tipi-colonna"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-21",
+      "nome": "Grafo 3D, percorsi, dipendenze, PII e salute schema",
+      "esito": "Algoritmi puri coperti; rendering 3D non verificato dal vivo.",
+      "limiti": "Finestra grafica 120 nodi/12 campi/240 archi; cache browser fino a 10 minuti. Relazioni implicite e PII sono euristiche sui nomi e sullo schema: falsi positivi/negativi possibili; non equivalgono a certificazione GDPR. Analisi su un catalogo parziale restano parziali.",
+      "riferimenti": [
+        "public/js/grafo-budget.js",
+        "public/js/graph3d.js",
+        "public/js/schema-analisi.js"
+      ],
+      "prove": [
+        "npm test: grafo-budget, grafo-comandi, schema-analisi"
+      ],
+      "rilievi": [
+        "CDB-F05"
+      ]
+    },
+    {
+      "id": "FUN-22",
+      "nome": "Export/import singola collezione e risultati",
+      "esito": "Test locali sui formati e batch; roundtrip reale non eseguito.",
+      "limiti": "JSON/EJSON, CSV e SQL hanno fedeltà diversa; CSV non conserva da solo tipi/schema e la modalità sicura neutralizza formule. Export collezione a blocchi; quello dei risultati contiene i risultati disponibili, non una nuova estrazione completa. Non è equivalente al backup con snapshot.",
+      "riferimenti": [
+        "public/js/exportimport.js",
+        "db/csv.js",
+        "db/codecFedele.js",
+        "db/importBatches.js",
+        "db/MySqlStrategy.js:1459"
+      ],
+      "prove": [
+        "npm test: csv-sicuro, sql-valori-esatti, sql-integrita-righe, export-metadati, import-status"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-23",
+      "nome": "Export/import database, staging e recupero",
+      "esito": "Contratti, piani e gestione errori verificati senza DB reali.",
+      "limiti": "Export server su disco, download HTTP; formato CodeDB JSON limitato per default a 64 MiB, SQL alla quota artefatti di 10 GiB. Import UI carica ancora il testo del file nel browser e la validazione mantiene dati in memoria. PostgreSQL promozione tramite swap schema; MySQL/MongoDB staging con recupero, non atomicità globale. Import selettivo/mapping completo non certificato.",
+      "riferimenti": [
+        "db/databaseExport.js",
+        "db/importPlan.js",
+        "db/importUploads.js",
+        "server/operazioni.js",
+        "public/js/exportimport.js:455",
+        "docs/guida-export-import.md"
+      ],
+      "prove": [
+        "npm test: database-export, piano-import, import-adapter, backup-import-regressioni, diario-operazioni"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-24",
+      "nome": "Artefatti HTTP, upload riprendibili e download Range",
+      "esito": "Prove HTTP locali verdi.",
+      "limiti": "Ticket di 5 minuti vincolati a risorsa/attore/tenant; blocchi default 4 MiB, singolo artefatto 10 GiB. Quota tenant/retention configurabili. Esistenza delle API non significa che ogni wizard UI usi quel percorso: import database usa il registro socket distinto.",
+      "riferimenti": [
+        "server/http-artefatti.js",
+        "db/uploadDisco.js",
+        "db/trasferimenti.js",
+        "server/operazioni.js",
+        "public/js/exportimport.js:462"
+      ],
+      "prove": [
+        "npm test: http-artefatti, artefatti-ticket, upload-disco, trasferimenti, audit-artefatti"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-25",
+      "nome": "Backup full, incrementale, differenziale e restore",
+      "esito": "Catene, identità, tombstone, codec e recupero coperti da test locali.",
+      "limiti": "Incrementale richiede un indicatore aggiornato correttamente dall'applicazione. MongoDB senza since-field cattura nuovi ObjectId, non aggiornamenti; SQL senza campo data può fare copia completa della tabella. Cancellazioni gestite da tombstone nelle catene moderne. Snapshot SQL repeatable-read; MongoDB senza snapshot globale. Non equivalgono a PITR/binlog/oplog continuo.",
+      "riferimenti": [
+        "backup/lib/engine.js",
+        "backup/lib/tombstones.js",
+        "backup/lib/restore.js",
+        "db/backupRestoreAdapter.js"
+      ],
+      "prove": [
+        "npm test: backup-cancellazioni, tombstone-backup, identita-backup, codec-fedele, piano-import"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-26",
+      "nome": "Rinomina database e gestione schema",
+      "esito": "Garanzie e rifiuti coperti da test locali.",
+      "limiti": "Dove la rinomina è nativa si usa il DBMS; dove non è atomicamente sicura il piano copia/verifica e conserva l'origine. Non promettere che il vecchio database sparisca sempre. DDL e tipi supportati dipendono dal motore.",
+      "riferimenti": [
+        "db/rinominaSicura.js",
+        "db/MySqlStrategy.js",
+        "db/PostgreSqlStrategy.js",
+        "db/MongoDbStrategy.js"
+      ],
+      "prove": [
+        "npm test: rinomina-sicura, rinomina-oggetti, tipi-colonna"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-27",
+      "nome": "Storage cloud backup e notifiche",
+      "esito": "Letto il percorso; nessuna prova con provider reali.",
+      "limiti": "Upload opzionale dopo copia locale; SDK AWS/GCS/Azure non inclusi tra le dipendenze e richiedono installazione/credenziali. storage.js espone upload, non un browser remoto o un restore automatico da URI cloud. Notifiche e rete provider non provate.",
+      "riferimenti": [
+        "backup/lib/storage.js",
+        "backup/lib/notify.js",
+        "backup/cli.js"
+      ],
+      "prove": [
+        "Nessun upload o invio eseguito"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-28",
+      "nome": "RBAC, utenti, API key e isolamento",
+      "esito": "Test locali su guard, autenticazione MCP, scope e revoca; control plane reale non usato.",
+      "limiti": "RBAC opzionale e dipendente da MongoDB di controllo. Senza RBAC il principal è root; esposizione di rete protetta da gate di avvio. Gli scope proteggono database/collezioni, non sono row-level security. SQL Raw con scope ristretto è intenzionalmente negato.",
+      "riferimenti": [
+        "auth/guardStrategy.js",
+        "auth/permissions.js",
+        "server/identita.js",
+        "server/trasporto.js"
+      ],
+      "prove": [
+        "npm test: rbac, handler-scope, tabella-autorizzazioni, mcp-auth, avvio-rete"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-29",
+      "nome": "Vault e connessioni salvate",
+      "esito": "Primitive crittografiche, migrazione e pin coperti da test locali; vault reale intatto.",
+      "limiti": "Vault unico per installazione; cambio/reset solo amministratore installazione. Reset non decifra i vecchi segreti: mette da parte i file. Passphrase e stato di sblocco restano requisiti operativi; ricontrollare l'avviso per configurazioni senza protezione.",
+      "riferimenti": [
+        "db/vault.js",
+        "server/vault.js",
+        "server/eventi-vault.js"
+      ],
+      "prove": [
+        "npm test: vault, ssh-pinning"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-30",
+      "nome": "Gateway MCP",
+      "esito": "Tool di autenticazione, DDL, scritture e conferme provati su server locali con strategie finte.",
+      "limiti": "32 sessioni MCP, inattività 30 minuti; token di conferma monouso a 5 minuti. Il server verifica il token, non può dimostrare che una persona abbia approvato: questo resta un obbligo del client/agente. Backup richiede privilegi ampi. Nessun client AI esterno o DB reale collegato.",
+      "riferimenti": [
+        "mcp/McpGateway.js",
+        "mcp/ConfirmQuota.js",
+        "server/mcp.js"
+      ],
+      "prove": [
+        "npm test: mcp-auth, mcp-payload, mcp-execute-ddl, mcp-execute-write-batch, mcp-conferme-quota"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-31",
+      "nome": "Monitor sessioni e lock",
+      "esito": "Normalizzazione e identità del bersaglio provate localmente.",
+      "limiti": "Massimo 500 sessioni, query visualizzata fino a 4000 caratteri. Visibilità e kill dipendono dai privilegi DB; sessioni interne e proprie protette. Non tutti i DBMS espongono la stessa diagnosi dei lock.",
+      "riferimenti": [
+        "db/sessioni.js",
+        "public/js/sessions.js",
+        "db/MySqlStrategy.js",
+        "db/PostgreSqlStrategy.js"
+      ],
+      "prove": [
+        "npm test: sessioni, sessioni-identita"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-32",
+      "nome": "Audit log, errori e pannello salute",
+      "esito": "Persistenza/serializzazione log ed errori coperti da test locali; salute dei DB non misurata.",
+      "limiti": "Audit locale con rotazione a 5 MiB e una copia .1; non è un registro esterno immutabile a conservazione illimitata. Pannello salute è diagnostico puntuale, non monitoraggio storico/SLA.",
+      "riferimenti": [
+        "db/AuditLog.js",
+        "db/errors.js",
+        "server/eventi-monitoraggio.js",
+        "public/js/health.js"
+      ],
+      "prove": [
+        "npm test: audit-serializzato, audit-artefatti, errors"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-33",
+      "nome": "Temi, responsive, scorciatoie, onboarding e palette",
+      "esito": "Logica pura provata; accessibilità e dispositivi reali non certificati.",
+      "limiti": "Temi/preset dipendono dallo storage browser. Contrasto dei token verificato dai test, ma non equivale a controllo completo di ogni schermata o uso con screen reader. Test UML esercita movimento ridotto; nessun test mobile hardware.",
+      "riferimenti": [
+        "public/js/theme.js",
+        "public/js/theme-colori.js",
+        "public/js/responsive.js",
+        "public/js/scorciatoie.js",
+        "public/js/onboarding-stato.js",
+        "public/js/palette-ricerca.js"
+      ],
+      "prove": [
+        "npm test: tema, scorciatoie, onboarding, palette-ricerca; E2E UML"
+      ],
+      "rilievi": []
+    },
+    {
+      "id": "FUN-34",
+      "nome": "Electron, aggiornamenti, PWA e packaging Android",
+      "esito": "Autenticazione server desktop provata con processi reali; applicazioni confezionate non avviate.",
+      "limiti": "Electron con nodeIntegration:false, contextIsolation:true, sandbox:true; download aggiornamenti su scelta utente. Service worker mantiene solo guscio statico: non rende disponibili offline i database. Build, installer, firma, aggiornamento installato e Android fuori dalla verifica dinamica.",
+      "riferimenti": [
+        "electron-main.js",
+        "electron-aggiornamenti.js",
+        "electron-server-auth.js",
+        "public/sw.js",
+        "package.json"
+      ],
+      "prove": [
+        "npm test: electron-server-auth e electron-server-auth-process; Android non testato"
+      ],
+      "rilievi": []
+    }
+  ],
+  "priorita_intervento": [
+    {
+      "id": "CDB-F08",
+      "motivo": "Proteggere prima l'integrità: transazioni con lease fisico e prova concorrente su DB reali."
+    },
+    {
+      "id": "CDB-F01",
+      "motivo": "Correzione piccola, impatto ampio su COUNT/GROUP BY/DISTINCT; aggiornare anche i test che oggi validano la forma sbagliata."
+    },
+    {
+      "id": "CDB-F02",
+      "motivo": "Collegare realmente le due connessioni prima di promettere JOIN fra motori."
+    },
+    {
+      "id": "CDB-F03",
+      "motivo": "Chiudere contestualmente la completezza/cardinalità del JOIN."
+    },
+    {
+      "id": "CDB-F07",
+      "motivo": "Rendere veritieri i tetti e distinguere limite del risultato da consumo del driver."
+    }
+  ],
+  "interventi_successivi": [
+    "CDB-F04: alias SQL",
+    "CDB-F05: revisione dello schema",
+    "CDB-F06: deduplicazione cronologia"
+  ],
+  "note_documentazione": [
+    "AGENTS.md/README non costituiscono prova: ad esempio README_IT descrive ancora rinomina MongoDB con eliminazione origine, mentre pianoRinomina non nativo conserva l'origine.",
+    "AGENTS.md descrive offload al Worker per scansione campi e precalcolo grafici; calcoli-protocollo.js dichiara che tali compiti sulle righe restano sul thread chiamante.",
+    "docs/matrice-fedelta-export-import.md contiene sezioni storiche sul vecchio export costruito nel browser; docs/guida-export-import.md e databaseExport.js descrivono il percorso corrente su server. Le voci storiche 'perso' non sono state riproposte automaticamente come bug presenti."
+  ],
+  "note_revisione": [
+    {
+      "data": "2026-10-06",
+      "cosa": "Prima review funzionale richiesta da Keus. Rilievi aperti; aggiunti solo rapporto, diagnostica ripetibile e log. Nessun problema dichiarato risolto."
+    }
+  ]
+}

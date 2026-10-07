@@ -1026,7 +1026,7 @@ export function initUml() {
 
   document.addEventListener('keydown', (e) => {
     if (state.view !== 'uml' || !V.tavola || e.key !== 'Escape') return;
-    if (e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+    if (e.target.closest('input, select, textarea, [role="combobox"], [role="option"], [role="checkbox"], [contenteditable="true"]')) return;
     V.selezione = [];
     V.tavola.imposta([]);
     sincronizzaPannelli();

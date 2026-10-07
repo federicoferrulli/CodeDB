@@ -120,7 +120,7 @@ export function apriPannelloScorciatoie() {
   // riga e' in attesa. Esc annulla; i soli modificatori vengono ignorati.
   const onKeyDown = (e) => {
     if (!inRegistrazione) return;
-    if (e.key === 'Escape') { inRegistrazione = null; disegna(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); inRegistrazione = null; disegna(); return; }
     if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return;
     e.preventDefault();
     e.stopPropagation();

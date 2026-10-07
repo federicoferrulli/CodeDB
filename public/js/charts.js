@@ -1,3 +1,4 @@
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -569,6 +570,7 @@ function costruisciPannello() {
     </details>`;
   // Il pannello si ricostruisce a modale gia' aperta: il disegno fatto da
   // `openModal` in apertura e' gia' passato.
+  mountArcControls(host);
   refreshLucideIcons(host);
 }
 
@@ -651,6 +653,7 @@ function costruisciSuggeriti() {
     + (sug.approssimato ? ' <span class="chart-approx">— valori approssimati</span>' : '')
     + '</button>'
   )).join('') || '<div class="dropdown-empty">Nessuna proposta per questi dati.</div>';
+  mountArcControls(menu);
 }
 
 /** Applica una proposta sopra la configurazione corrente. */

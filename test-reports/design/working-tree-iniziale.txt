@@ -1,0 +1,69 @@
+﻿ M package-lock.json
+ M package.json
+ M public/css/base.css
+ M public/css/style.css
+ M public/index.html
+ M public/js/admin-rbac.js
+ M public/js/avvisi.js
+ M public/js/backupmanager.js
+ M public/js/cellselect.js
+ M public/js/charts.js
+ M public/js/connection.js
+ M public/js/details.js
+ M public/js/exportimport.js
+ M public/js/geomap.js
+ M public/js/graph3d.js
+ M public/js/grid.js
+ M public/js/inlineEdit.js
+ M public/js/insert.js
+ M public/js/main.js
+ M public/js/onboarding.js
+ M public/js/palette.js
+ M public/js/qe-history.js
+ M public/js/query-tab.js
+ M public/js/schema-ops.js
+ M public/js/scorciatoie-ui.js
+ M public/js/sessions.js
+ M public/js/snippet-manager.js
+ M public/js/splitview.js
+ M public/js/theme.js
+ M public/js/uml-progetto.js
+ M public/js/uml.js
+ M public/js/utils.js
+ M test-reports/screenshots/uml-caricamento-compatto.png
+ M test-reports/screenshots/uml-caricamento.png
+ M test-reports/screenshots/uml-progetto-mysql-compatto.png
+ M test-reports/screenshots/uml-progetto-mysql.png
+ M test-reports/screenshots/uml-progetto-postgresql-compatto.png
+ M test-reports/screenshots/uml-progetto-postgresql.png
+ M test-reports/screenshots/uml-tabella-compatto.png
+ M test-reports/screenshots/uml-tabella.png
+ M test/e2e-geometrie-viste.js
+ M test/e2e-palette.js
+ M test/e2e-playwright.js
+ M test/e2e-script-schede-ui.js
+ M test/e2e-uml-modalita.js
+ M test/e2e-uml-progetto-regressioni.js
+ M test/e2e-uml-progetto.js
+ M test/e2e-uml-scenari.js
+ M test/unit-backup-import-regressioni.js
+ M tools/esclusioni-distribuzione.js
+?? docs/audit-2026-10-06.json
+?? docs/migrazione-arc.md
+?? public/arc/
+?? public/css/arc-theme.css
+?? test-reports/arc/
+?? test-reports/design/
+?? test-reports/review-backup-2026-10-06.cjs
+?? test-reports/review-funzionale-2026-10-06-riproduzioni.log
+?? test-reports/review-funzionale-2026-10-06-unit.log
+?? test-reports/review-funzionale-2026-10-06.cjs
+?? test/arc-controls.js
+?? test/arc-performance.cjs
+?? test/arc-regressions.cjs
+?? test/e2e-arc-campi.js
+?? test/e2e-arc-griglia.js
+?? test/e2e-arc-mongodb.js
+?? test/e2e-arc.js
+?? tools/build-ui.mjs
+?? ui/

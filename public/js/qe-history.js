@@ -1,3 +1,4 @@
+import { mountArcControls, createArcButton, controlElement } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -159,7 +160,7 @@ function renderLista() {
     spanEsito.textContent = esito.testo;
     basso.appendChild(spanEsito);
 
-    const play = document.createElement('button');
+    const play = createArcButton();
     play.className = 'qe-history-run';
     play.type = 'button';
     play.innerHTML = ICO('play');
@@ -169,7 +170,7 @@ function renderLista() {
       e.stopPropagation();
       ripristina(voce, true);
     });
-    basso.appendChild(play);
+    basso.appendChild(controlElement(play));
     item.appendChild(basso);
 
     item.addEventListener('click', (e) => ripristina(voce, e.ctrlKey || e.metaKey));
@@ -202,6 +203,7 @@ function renderPanel() {
     </div>
     <div id="qe-history-list" class="qe-history-list"></div>`;
 
+  mountArcControls(panel);
   const search = $('#qe-history-search');
   if (search) {
     search.value = filtroTesto;

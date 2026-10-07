@@ -1,4 +1,5 @@
 'use strict';
+const { scegliArc } = require('./arc-controls');
 
 // JointJS vero, schema simulato: vista singola, database e isolamento.
 // UML_TEST_MUTATION=1 forza il database anche nel contesto di una tabella:
@@ -165,7 +166,7 @@ const { startTestServer } = require('./e2e-harness');
     });
     await page.click('#uml-refresh');
     await ready('database');
-    await page.selectOption('#uml-diagrammi', 'salvato');
+    await scegliArc(page, '#uml-diagrammi', 'salvato');
     await ready('database');
     assert(!(await page.locator('#uml-canvas').innerText()).includes('ordini_bozza'), 'il canvas mostra lo schema effettivo');
     const before = await page.evaluate(() => ({ doc: window.__uml.statoUml().doc, id: window.__uml.statoUml().idDiagramma }));

@@ -1,3 +1,4 @@
+const { scegliArc } = require('./arc-controls');
 'use strict';
 
 /**
@@ -351,7 +352,7 @@ async function main() {
     await page.screenshot({ path: path.join(SCREENSHOTS_DIR, '04-connect-wizard.png') });
 
     // 3.2 Compilazione wizard passo 1 (Parametri)
-    await page.selectOption('#conn-dbtype', 'mongodb');
+    await scegliArc(page, '#conn-dbtype', 'mongodb');
     await page.fill('#connect-form input[name="host"]', '127.0.0.1');
     await page.fill('#connect-form input[name="port"]', '27017');
 

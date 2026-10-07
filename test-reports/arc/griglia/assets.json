@@ -1,0 +1,18 @@
+{
+  "measuredAt": "2026-10-07T13:48:34.256Z",
+  "baseline": "test-reports/arc/performance.json (snapshot prima degli editor)",
+  "bundle": [
+    {
+      "file": "public/arc/ui.js",
+      "bytes": 529148,
+      "gzipBytes": 170743
+    },
+    {
+      "file": "public/arc/ui.css",
+      "bytes": 33299,
+      "gzipBytes": 6393
+    }
+  ],
+  "totalBytes": 562447,
+  "deltaFromPreviousSnapshot": 34498
+}

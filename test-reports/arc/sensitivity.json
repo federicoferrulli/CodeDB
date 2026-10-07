@@ -1,0 +1,6 @@
+{
+  "mutation": "Annullamento sostituito con semplice hide: la Promise resta sospesa",
+  "exitCode": 1,
+  "detected": true,
+  "productionFilesChanged": false
+}
