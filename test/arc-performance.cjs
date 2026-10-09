@@ -27,7 +27,7 @@ const { startTestServer } = require('./e2e-harness');
     const median = key => samples.map(s => s[key]).sort((a, b) => a - b)[1];
     const report = { samples, median: Object.fromEntries(['bytes', 'dcl', 'fcp', 'scriptMs'].map(k => [k, median(k)])),
       bundle: ['public/arc/ui.js', 'public/arc/ui.css'].map(file => { const data = fs.readFileSync(file); return { file, bytes: data.length, gzipBytes: gzipSync(data).length }; }) };
-    fs.writeFileSync('test-reports/arc/performance-finale.json', JSON.stringify(report, null, 2));
+    fs.writeFileSync(process.argv[2] || 'test-reports/arc/performance-finale.json', JSON.stringify(report, null, 2));
     console.log(JSON.stringify(report));
   } finally { await browser.close(); await server.stop(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

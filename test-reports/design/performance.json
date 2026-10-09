@@ -1,0 +1,43 @@
+{
+  "samples": [
+    {
+      "run": 0,
+      "bytes": 5664692,
+      "dcl": 1060.5,
+      "fcp": 516,
+      "scriptMs": 478.467
+    },
+    {
+      "run": 1,
+      "bytes": 5664692,
+      "dcl": 1019.8999998569489,
+      "fcp": 480,
+      "scriptMs": 458.844
+    },
+    {
+      "run": 2,
+      "bytes": 5664692,
+      "dcl": 988.4000000953674,
+      "fcp": 468,
+      "scriptMs": 457.792
+    }
+  ],
+  "median": {
+    "bytes": 5664692,
+    "dcl": 1019.8999998569489,
+    "fcp": 480,
+    "scriptMs": 458.844
+  },
+  "bundle": [
+    {
+      "file": "public/arc/ui.js",
+      "bytes": 579282,
+      "gzipBytes": 188052
+    },
+    {
+      "file": "public/arc/ui.css",
+      "bytes": 48482,
+      "gzipBytes": 8978
+    }
+  ]
+}

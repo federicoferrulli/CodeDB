@@ -23,8 +23,6 @@ export interface DatePickerProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
   format?: Intl.DateTimeFormatOptions;
   /** Adds a Today button to the calendar header. */
   showToday?: boolean;
-  /** CodeDB: affianca il calendario al campo data con precisione completa. */
-  compact?: boolean;
 }
 
 const monthStart = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);

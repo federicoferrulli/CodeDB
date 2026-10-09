@@ -1,0 +1,22 @@
+{
+  "checks": [
+    "Ricerca comandi visibile, apertura e ripristino del focus"
+  ],
+  "surfaces": [
+    {
+      "name": "inizio-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 32,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 8
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "requests": []
+}

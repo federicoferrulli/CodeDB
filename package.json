@@ -66,7 +66,8 @@
     "dev:ui": "node tools/build-ui.mjs --watch",
     "typecheck:ui": "tsc -p ui/tsconfig.json",
     "test:e2e:arc": "node test/e2e-arc.js && node test/e2e-arc-griglia.js && node test/e2e-arc-campi.js",
-    "test:e2e:arc:regressioni": "node test/arc-regressions.cjs"
+    "test:e2e:arc:regressioni": "node test/arc-regressions.cjs",
+    "test:e2e:design": "node test/e2e-design.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
@@ -127,7 +128,7 @@
       "!issue/**",
       "!test/**",
       "!tools/**",
-      "!test-reports/arc/**",
+      "!test-reports/**",
       "!ui/**",
       "!backups/**",
       "!.git*",

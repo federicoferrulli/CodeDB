@@ -20,9 +20,9 @@
   --focus-ring: var(--accent-fg);
   --font-body: var(--font-sans);
   --font-display: var(--font-sans);
-  --radius-control: 8px;
-  --radius-panel: 12px;
-  --radius-surface: 16px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --radius-surface: 12px;
   --radius-md: var(--radius-control);
   --radius-lg: var(--radius-panel);
   --radius-xl: var(--radius-surface);
@@ -148,11 +148,16 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
 .arc-date-iso, .arc-date-error { grid-column: 1 / -1; }
 .arc-date-error { color: var(--danger); font-size: var(--text-xs); white-space: normal; }
 .arc-date-control:not(:has(.arc-time-input)) { grid-template-columns: minmax(0, 1fr) auto; }
-td.editing:has(.arc-date-control) { min-width: 360px; }
+.arc-date-control.arc-date-inline { position: relative; width: max-content; grid-template-columns: minmax(144px, max-content) 112px; gap: var(--space-2xs); background: var(--surface); }
+:is(#grid, .pane-grid) td.editing:has(.arc-date-inline) { overflow: visible; position: relative; z-index: 1; }
+.arc-date-inline .arc-date-error { position: absolute; inset-block-start: 100%; inset-inline: 0; padding: var(--space-sm); background: var(--surface); }
+.arc-date-cell > label { display: none; }
+.arc-date-inline :is([data-arc-component="date-picker"], .arc-time-input) { min-height: calc(var(--grid-row-h) - 4px); padding-inline: var(--space-sm); font-family: var(--font-mono); font-size: var(--text-xs); }
 [data-arc-calendar-popup], [data-arc-color-popup] {
   position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 16px); overflow-y: auto;
   z-index: calc(var(--z-modal) + 200);
 }
+[data-arc-calendar-popup] { font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 400; line-height: var(--leading-body); text-align: left; white-space: normal; }
 [data-arc-color-popup] { padding: 0; border: 0; background: transparent; overflow: visible; }
 [data-arc-color-popup] [role="dialog"] { max-height: calc(100dvh - 16px); overflow-y: auto; }
 .tema-scelta [data-arc-component="color-picker"] { max-width: 100%; }

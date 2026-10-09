@@ -48,7 +48,7 @@
   [32m✔ OK[0m   Fine salta all'ultima voce
   [32m✔ OK[0m   Esc chiude e riporta il fuoco sul bottone: lasciarlo su una voce nascosta lo perderebbe
   [32m✔ OK[0m   anche «Analisi» si apre e si percorre da tastiera
-  [32m✔ OK[0m   almeno un menu si sovrappone davvero al pannello: il controllo qui sotto non è a vuoto (1 su 3)
+  [32m✔ OK[0m   almeno un menu si sovrappone davvero al pannello: il controllo qui sotto non è a vuoto (3 su 3)
   [32m✔ OK[0m   ogni menu aperto che tocca il pannello viene dipinto SOPRA di esso
   [32m✔ OK[0m   la barra, che è il contesto di impilamento dei suoi menu, sta sopra pannello e strumenti
   [32m✔ OK[0m   ogni strumento icona dichiara un aria-label: senza, è un bottone senza nome

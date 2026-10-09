@@ -2,6 +2,8 @@
   "checks": [
     "Input inline: Escape annulla, Enter e blur salvano valore esatto e contesto",
     "Select booleano: tastiera, popup, Escape e scelta senza salvataggio al blur interno",
+    "Data e ora inline: precisione UTC, Invio/blur, Escape, validazione correggibile, tastiera e due temi a tre larghezze",
+    "Griglia virtualizzata: ora modificabile e non tagliata, altezza riga invariata",
     "Date UTC e ObjectId: conversione conservata, valore invalido non inviato",
     "Textarea documento: lint, formattazione, minificazione e payload doc:replace",
     "Duplica e modifica: Arc dinamico, anteprima, checkbox, validazione e riapertura senza doppi invii",
@@ -38,8 +40,8 @@
         748.796875
       ],
       "menu": [
-        394,
-        691.3125
+        396,
+        695.8125
       ]
     },
     {
@@ -52,8 +54,8 @@
         1050
       ],
       "menu": [
-        730,
-        992.515625
+        732,
+        989.015625
       ]
     },
     {
@@ -80,8 +82,8 @@
         748.796875
       ],
       "menu": [
-        394,
-        691.3125
+        396,
+        695.8125
       ]
     },
     {
@@ -94,8 +96,8 @@
         1050
       ],
       "menu": [
-        730,
-        992.515625
+        732,
+        989.015625
       ]
     }
   ],

@@ -30,16 +30,35 @@ const report = { checks: [], surfaces: [], errors: [], requests: [] };
         const geometry = await page.evaluate(() => ({
           overflow: document.documentElement.scrollWidth > innerWidth + 1,
           font: getComputedStyle(document.documentElement).fontSize,
+          row: document.querySelector('#grid tbody tr:not(.v-spacer)')?.getBoundingClientRect().height,
+          expectedRow: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--grid-row-h')),
           labels: [...document.querySelectorAll('.sidebar-title, .view-tab, .editor-header')].filter(e => e.getClientRects().length).map(e => ({ text: e.textContent.trim(), size: parseFloat(getComputedStyle(e).fontSize) })),
         }));
         report.surfaces.push({ name, width, ...geometry });
         assert.equal(geometry.overflow, false, `${name}: overflow a ${width}`);
         if (!before) assert(geometry.labels.every(l => l.size >= 12), `${name}: etichette sotto 12 px`);
+        if (!before && name.startsWith('dati-')) assert(Math.abs(geometry.row - geometry.expectedRow) <= 1, `${name}: riga ${geometry.row}, attesa ${geometry.expectedRow}`);
+        if (!before && name.startsWith('query')) {
+          for (const selector of ['#query-target-btn', '#query-run-btn', '#query-stop-btn', '#query-status-badge']) {
+            const control = page.locator(selector);
+            if (!await control.isVisible()) continue;
+            const rect = await control.boundingBox();
+            assert(rect.x >= 0 && rect.x + rect.width <= width + 1, `${name}: ${selector} tagliato a ${width}px`);
+          }
+        }
         await page.screenshot({ path: `${dir}/${name}-${width}.png`, animations: 'disabled' });
       }
       await page.setViewportSize({ width: 1440, height: 960 });
     }
     if (mutant) await page.addStyleTag({ content: '.sidebar-title { font-size: 8px !important; }' });
+    if (!before) {
+      await page.locator('#command-palette-open').click();
+      await page.locator('#palette-input').fill('>tema');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => document.activeElement?.id === 'command-palette-open');
+      assert(await page.locator('#command-palette-open').evaluate(e => e === document.activeElement));
+      report.checks.push('Ricerca comandi visibile, apertura e ripristino del focus');
+    }
     for (const theme of ['light', 'dark']) {
       await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
       await snapshot(`inizio-${theme}`);
@@ -61,7 +80,7 @@ const report = { checks: [], surfaces: [], errors: [], requests: [] };
         collTabs: [{ id: 'ordini-fixture', db: 'gestionale', coll: 'ordini', view: 'data' }], activeCollId: 'ordini-fixture' });
       impostaSocket({ on() {}, off() {}, emit(event, payload, cb) {
         if (event === 'collection:stats') return cb?.({ ok: true, stats, fields, indexes, sampled: 26 });
-        if (event === 'db:schema') return cb?.({ ok: true, schema: { collections: [{ name: 'ordini', fields, indexes }], relations: [] } });
+        if (event === 'db:schema') return cb?.({ ok: true, collections: [{ name: 'ordini', fields, indexes }, { name: 'clienti', fields }, { name: 'prodotti', fields }] });
         if (event === 'collection:find') return cb?.({ ok: true, docs, columns: state.columns, total: docs.length });
         cb?.({ ok: true, databases: state.databases, collections: state.databases[0].collections, fields, relazioni: [], sessions: [] });
       } });
@@ -77,6 +96,34 @@ const report = { checks: [], surfaces: [], errors: [], requests: [] };
     await page.locator('#stats-table tbody tr').first().waitFor();
     await snapshot('dettagli');
     await page.locator('.view-tab[data-view="query"]').click();
+    if (!before) {
+      const initialWidth = (await page.locator('.query-main-panel').boundingBox()).width;
+      await page.locator('#query-toggle-schema-btn').click();
+      assert.equal(await page.locator('#query-toggle-schema-btn').getAttribute('aria-expanded'), 'false');
+      assert((await page.locator('.query-main-panel').boundingBox()).width > initialWidth + 100);
+      await page.locator('#query-toggle-schema-btn').click();
+      assert.equal(await page.locator('#query-toggle-schema-btn').getAttribute('aria-expanded'), 'true');
+      const handle = await page.locator('[data-resize="query-sidebar"]').boundingBox();
+      const schemaWidth = (await page.locator('#query-schema-sidebar').boundingBox()).width;
+      report.resize = { handle, schemaWidth, target: await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.outerHTML.slice(0, 300), { x: handle.x + handle.width / 2, y: handle.y + 50 }) };
+      await page.mouse.move(handle.x + handle.width / 2, handle.y + 50);
+      await page.mouse.down();
+      await page.mouse.move(handle.x + handle.width / 2 + 60, handle.y + 50, { steps: 5 });
+      await page.mouse.up();
+      report.resize.after = (await page.locator('#query-schema-sidebar').boundingBox()).width;
+      assert(report.resize.after >= schemaWidth + 50, JSON.stringify(report.resize));
+      await page.setViewportSize({ width: 390, height: 960 });
+      await page.locator('#query-toggle-schema-btn').click();
+      assert.equal(await page.locator('#query-toggle-schema-btn').getAttribute('aria-expanded'), 'true');
+      await page.locator('#query-schema-close').click();
+      assert.equal(await page.locator('#query-toggle-schema-btn').getAttribute('aria-expanded'), 'false');
+      await page.locator('#query-toggle-schema-btn').click();
+      await page.keyboard.press('Escape');
+      assert.equal(await page.locator('#query-toggle-schema-btn').getAttribute('aria-expanded'), 'false');
+      await page.setViewportSize({ width: 1440, height: 960 });
+      await page.evaluate(() => { document.getElementById('query-schema-sidebar').style.width = ''; });
+      report.checks.push('Schema desktop richiudibile e ridimensionabile; drawer mobile apribile e richiudibile');
+    }
     await page.locator('#query-editor-input').fill("SELECT cliente, stato, importo, pagato\nFROM ordini\nWHERE importo > 500\nORDER BY creato DESC\nLIMIT 50;");
     await page.evaluate(async () => {
       const m = await import('/js/query-tab.js'); m.updateEditorHighlight(); m.renderResults(window.designDocs); m.updateQueryMetrics('success', 28, 26);
@@ -89,9 +136,10 @@ const report = { checks: [], surfaces: [], errors: [], requests: [] };
     await page.keyboard.press('Escape');
     await page.evaluate(async () => {
       const { showError, showToast } = await import('/js/utils.js');
-      showError('#query-tab-error', 'La query non è stata eseguita. Correggi il nome della collezione e riprova.');
+      showError('#query-error-box', 'La query non è stata eseguita. Correggi il nome della collezione e riprova.');
       showToast('Esportazione completata: 26 righe.', 'success', 0);
     });
+    await page.locator('#query-error-box [role="alert"]').waitFor();
     await snapshot('query-errore', [1440]);
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.requests, []);

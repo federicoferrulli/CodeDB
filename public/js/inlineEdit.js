@@ -34,17 +34,12 @@ export function buildEditor(current, metadata = {}) {
   }
 
   if (type === 'date') {
-    const input = createArcInput({ type: 'datetime-local' });
+    const input = createArcInput({ type: 'datetime-local', className: 'arc-inline-date-model' });
     input.step = '0.001';
-    // ORA UTC, non locale (CDB-15). Il controllo `datetime-local` è per
-    // definizione ora locale, e qui invece si mostra e si rilegge UTC: la scelta
-    // è voluta — la griglia stampa `toISOString()`, l'export e l'EJSON parlano
-    // UTC, e mostrare l'ora locale solo nell'editor significherebbe vedere due
-    // orari diversi per lo stesso istante (e un valore che cambia in viaggio).
-    // Quello che mancava era DIRLO: senza, chi scrive "10:00" crede di indicare
-    // le 10:00 di casa propria e ne salva altre.
-    input.title = 'Ora UTC, come nella griglia (non l\'ora locale del computer)';
-    input.setAttribute('aria-label', 'Data e ora in UTC');
+    // Il modello conserva il timestamp UTC completo della griglia (CDB-15).
+    // DatePicker e Input dell'ora modificano insieme il valore, senza cambi di fuso.
+    input.title = 'Data e ora UTC, come nella griglia';
+    input.setAttribute('aria-label', 'Data UTC');
     input.classList.add('input-utc');
     const setValue = (v) => {
       const raw = (v && isPlainObject(v.$date)) ? Number(v.$date.$numberLong)
@@ -243,6 +238,10 @@ export function startEdit(td, doc, field, opts = {}) {
 
   const save = () => {
     if (finished) return;
+    if (input.classList.contains('arc-inline-date-model') && !input.validity.valid) {
+      input.reportValidity();
+      return;
+    }
     finished = true;
     chiudiPannelloFk();
     if (input.value === original) {

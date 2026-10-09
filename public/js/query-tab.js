@@ -191,21 +191,29 @@ export function initQueryTab() {
     });
   }
 
-  // Toggle Schema Browser Drawer (Mobile)
+  // Lo schema è richiudibile anche su desktop: lo spazio torna a codice e risultati.
   const toggleSchemaBtn = $('#query-toggle-schema-btn');
   const closeSchemaBtn = $('#query-schema-close');
   const schemaSidebar = $('#query-schema-sidebar');
+  const schemaMobile = window.matchMedia('(max-width: 900px)');
+  const aggiornaSchemaEspanso = () => toggleSchemaBtn?.setAttribute('aria-expanded', String(
+    schemaMobile.matches ? schemaSidebar?.classList.contains('open') : !schemaSidebar?.classList.contains('collapsed')
+  ));
+  schemaMobile.addEventListener('change', aggiornaSchemaEspanso);
+  aggiornaSchemaEspanso();
 
   if (toggleSchemaBtn && schemaSidebar) {
     toggleSchemaBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      schemaSidebar.classList.toggle('open');
+      schemaSidebar.classList.toggle(schemaMobile.matches ? 'open' : 'collapsed');
+      aggiornaSchemaEspanso();
     });
   }
 
   if (closeSchemaBtn && schemaSidebar) {
     closeSchemaBtn.addEventListener('click', () => {
       schemaSidebar.classList.remove('open');
+      aggiornaSchemaEspanso();
     });
   }
 
@@ -1273,18 +1281,122 @@ function renderResultsTable(rows, colonneDichiarate) {
 }
 
 // Render JSON Tree View
+let queryJsonRigheRef = null;
+let queryJsonRoot = null;
+let queryJsonRows = [];
+let queryJsonNodes = new Map();
+let queryJsonWindow = null;
+let queryJsonScrollAttached = false;
+const JSON_OVERSCAN = 8;
+
+// Si appiattiscono solo i rami aperti. I descrittori conservano le espansioni,
+// mentre i nodi DOM usciti dalla finestra vengono rilasciati.
+function aggiornaRigheJson() {
+  queryJsonRows = [];
+  const pila = [queryJsonRoot];
+  while (pila.length) {
+    const riga = pila.pop();
+    queryJsonRows.push(riga);
+    if (!riga.aperto || riga.val === null || typeof riga.val !== 'object') continue;
+    riga.figli ??= Object.keys(riga.val).map(k => ({
+      val: riga.val[k], key: Array.isArray(riga.val) ? null : k,
+      livello: riga.livello + 1, aperto: false,
+    }));
+    for (let i = riga.figli.length - 1; i >= 0; i--) pila.push(riga.figli[i]);
+  }
+}
+
+function renderJsonVirtualWindow() {
+  const view = $('#query-json-view');
+  const container = $('#query-json-tree');
+  if (!queryJsonRoot || !container || !view?.clientHeight) return;
+  const css = getComputedStyle(container);
+  const altezzaRiga = parseFloat(css.getPropertyValue('--json-row-h'));
+  const sopra = parseFloat(css.paddingTop) || 0;
+  const sotto = parseFloat(css.paddingBottom) || 0;
+  // Richiudere un ramo può accorciare l'elenco sotto la posizione corrente.
+  const massimo = Math.max(0, queryJsonRows.length * altezzaRiga + sopra + sotto - view.clientHeight);
+  if (view.scrollTop > massimo) view.scrollTop = massimo;
+  const { inizio, fine, spazioSopra, spazioSotto } = finestraVirtuale({
+    scrollTop: Math.max(0, view.scrollTop - sopra), altezzaViewport: view.clientHeight,
+    altezzaRiga, righeTotali: queryJsonRows.length, overscan: JSON_OVERSCAN,
+  });
+  if (queryJsonWindow?.righe === queryJsonRows && queryJsonWindow.inizio === inizio
+      && queryJsonWindow.fine === fine && queryJsonWindow.altezzaRiga === altezzaRiga) return;
+
+  const focus = container.contains(document.activeElement) ? document.activeElement : null;
+  const frammento = document.createDocumentFragment();
+  const aggiungiSpazio = altezza => {
+    const spazio = document.createElement('div');
+    spazio.style.height = `${altezza}px`;
+    spazio.setAttribute('aria-hidden', 'true');
+    frammento.appendChild(spazio);
+  };
+  aggiungiSpazio(spazioSopra);
+  const nodi = new Map();
+  for (let i = inizio; i < fine; i++) {
+    const riga = queryJsonRows[i];
+    const nodo = queryJsonNodes.get(riga) || buildJsonNode(riga.val, riga.key, riga.aperto, aperto => {
+      riga.aperto = aperto;
+      aggiornaRigheJson();
+      renderJsonVirtualWindow();
+    });
+    nodo.classList.add('json-virtual-row');
+    nodo.style.marginLeft = `${(riga.livello + 1) * 16}px`;
+    nodo.dataset.jsonIndex = i;
+    nodi.set(riga, nodo);
+    frammento.appendChild(nodo);
+  }
+  aggiungiSpazio(spazioSotto);
+  container.replaceChildren(frammento);
+  queryJsonNodes = nodi;
+  queryJsonWindow = { righe: queryJsonRows, inizio, fine, altezzaRiga };
+  if (focus?.isConnected) focus.focus({ preventScroll: true });
+}
+
+function attachJsonVScroll() {
+  const view = $('#query-json-view');
+  if (!view || queryJsonScrollAttached) return;
+  queryJsonScrollAttached = true;
+  let frame = 0;
+  const aggiorna = () => {
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      renderJsonVirtualWindow();
+    });
+  };
+  view.addEventListener('scroll', aggiorna, { passive: true });
+  new ResizeObserver(aggiorna).observe(view);
+}
+
 function renderResultsJsonTree(data) {
   const container = $('#query-json-tree');
   if (!container) return;
+  // Come nella tabella, gli stessi risultati mantengono nodi, espansioni e scroll.
+  if (queryJsonRigheRef === data && container.firstElementChild) {
+    renderJsonVirtualWindow();
+    return;
+  }
+  queryJsonRigheRef = null;
+  queryJsonRoot = null;
+  queryJsonRows = [];
+  queryJsonNodes.clear();
+  queryJsonWindow = null;
   container.innerHTML = '';
+  const view = $('#query-json-view');
+  if (view) view.scrollTop = 0;
 
   if (!data || (Array.isArray(data) && data.length === 0)) {
     container.innerHTML = '<span style="color: var(--fg-dim);">Nessun risultato da mostrare</span>';
     return;
   }
 
-  const tree = buildJsonNode(data, 'root', true);
-  container.appendChild(tree);
+  queryJsonRoot = { val: data, key: 'root', livello: 0, aperto: true };
+  aggiornaRigheJson();
+  attachJsonVScroll();
+  renderJsonVirtualWindow();
+  queryJsonRigheRef = data;
 }
 
 

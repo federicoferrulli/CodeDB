@@ -35,7 +35,7 @@ const ESCLUSIONI = [
   '!test/**',
   '!tools/**',
   '!ui/**',
-  '!test-reports/arc/**',
+  '!test-reports/**',
   '!backups/**',
   '!.git*',
   '!Dockerfile',

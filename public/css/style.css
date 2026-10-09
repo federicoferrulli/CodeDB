@@ -2150,7 +2150,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 #grid td.editing { padding: 0; }
-#grid td.editing input,
+#grid td.editing input:not(.arc-date-control input),
 #grid td.editing [data-arc-component="select"] {
   width: 100%;
   border: 2px solid var(--accent);
@@ -4757,6 +4757,17 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .json-node {
   margin-left: 16px;
 }
+/* L'albero virtuale usa righe fisse; i valori lunghi restano leggibili scorrendo. */
+#query-json-tree {
+  --json-row-h: 20px;
+  overflow-anchor: none;
+}
+.json-virtual-row {
+  height: var(--json-row-h);
+  line-height: var(--json-row-h);
+  white-space: nowrap;
+  width: max-content;
+}
 /* L'espansore e' un'icona, non piu' un carattere: larghezza FISSA perche' le
    chiavi dei vari livelli si allineino: un glifo tipografico cambia larghezza
    col carattere in uso e disallineava l'albero. */
@@ -5881,7 +5892,7 @@ body.split-resizing .split-pane {
 .pane-grid td.editing {
   padding: 0;
 }
-.pane-grid td.editing input,
+.pane-grid td.editing input:not(.arc-date-control input),
 .pane-grid td.editing [data-arc-component="select"] {
   width: 100%;
   border: 2px solid var(--accent);

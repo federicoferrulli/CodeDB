@@ -14,6 +14,7 @@ function closeDrawers() {
   $('#conn-sidebar')?.classList.remove('open');
   $('#sidebar')?.classList.remove('open');
   $('#query-schema-sidebar')?.classList.remove('open');
+  $('#query-toggle-schema-btn')?.setAttribute('aria-expanded', String(!mq.matches && !$('#query-schema-sidebar')?.classList.contains('collapsed')));
   $('#drawer-backdrop')?.classList.add('hidden');
 }
 

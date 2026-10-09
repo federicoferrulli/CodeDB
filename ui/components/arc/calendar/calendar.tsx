@@ -92,7 +92,7 @@ function SelectionDisc({ cell, reduced }: { cell: number; reduced: boolean }) {
     controls.push(animate(opacity, 1, reduced ? { duration: 0 } : { duration: duration.fast, ease: ease.enter }), animate(scale, 1, reduced ? { duration: 0 } : spring.snappy));
     return () => controls.forEach((control) => control.stop());
   }, [cell, visible, reduced, col, row, opacity, scale]);
-  return <motion.span className={styles.highlight} style={{ transform, opacity }} aria-hidden="true"><span className={styles.highlightFill} /></motion.span>;
+  return <motion.span className={styles.highlight} data-arc-calendar-highlight="" style={{ transform, opacity }} aria-hidden="true"><span className={styles.highlightFill} /></motion.span>;
 }
 
 /** One month on the strip. Only the month being navigated to is focusable and exposed; the one sliding past is inert. */

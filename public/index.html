@@ -11,12 +11,10 @@
   <link rel="icon" type="image/png" href="codedb.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link
-    href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap"
-    rel="stylesheet">
   <link rel="stylesheet" href="arc/ui.css" />
   <link rel="stylesheet" href="css/style.css" />
   <link rel="stylesheet" href="css/arc-theme.css" />
+  <link rel="stylesheet" href="css/workbench.css" />
   <script src="js/lucide.min.js"></script>
 
   <!-- ===================== Tema: applicazione PRIMA del primo paint =====================
@@ -56,6 +54,12 @@
 </head>
 
 <body>
+  <!-- DIREZIONE: uno spazio di lavoro per query ed editing intensivo.
+       IDENTITÀ: CodeDB, indaco per azioni e selezione, superfici neutre, Inter e codice monospaziato.
+       PERCORSO: connessione, tabella, lettura/modifica; stato e bersaglio restano riconoscibili.
+       COMPOSIZIONE: navigazione compatta a sinistra, codice e dati al centro; form leggibili nelle finestre.
+       FORMA: ambiente operativo richiesto da Keus, senza card decorative o layout marketing.
+       Direzione vincolata dal brief: nessun sorteggio di concept, seed o comp approvato separatamente. -->
   <!-- ===================== Handshake rifiutato / server irraggiungibile =====================
        Il server rifiuta l'handshake Socket.IO con un motivo esplicito (gate
        sull'Origin, header Host su istanza in loopback), ma il browser non
@@ -442,7 +446,7 @@
 
   <!-- ===================== Layout principale ===================== -->
   <div id="app">
-    <header>
+    <header class="header">
       <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate"
         aria-label="Connessioni salvate"><i data-lucide="panel-left"></i></button>
       <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo"
@@ -450,6 +454,10 @@
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
       <span id="conn-info" class="conn-info hidden"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
+      <button type="button" id="command-palette-open" class="ghost command-palette-open"
+        aria-label="Cerca tabelle e comandi" title="Cerca tabelle e comandi">
+        <i data-lucide="search"></i><span>Cerca tabelle e comandi</span>
+      </button>
 
       <!-- Nell'header resta la sola coda delle query in sospeso: gli strumenti
            stanno tutti nel menu "Impostazioni" in fondo alla barra connessioni
@@ -1202,8 +1210,9 @@
                   </div>
 
                   <div class="query-actions">
-                    <button id="query-toggle-schema-btn" class="ghost btn-sm mobile-only-btn" type="button"
-                      title="Mostra/Nascondi Schema Browser"><i data-lucide="folder-tree"></i> <span class="btn-label-mobile">Schema</span></button>
+                    <button id="query-toggle-schema-btn" class="ghost btn-sm" type="button"
+                      aria-controls="query-schema-sidebar" aria-expanded="true"
+                      title="Mostra o nascondi lo schema"><i data-lucide="folder-tree"></i> <span class="btn-label-mobile">Schema</span></button>
                     <button id="query-run-btn" class="primary" title="Esegui query (Ctrl+Invio)"><i data-lucide="play"></i> <span id="query-run-label">Esegui Query</span></button>
                     <button id="query-stop-btn" class="danger hidden" title="Annulla esecuzione query"><i data-lucide="square"></i>
                       Annulla</button>

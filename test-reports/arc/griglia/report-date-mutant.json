@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Input inline: Escape annulla, Enter e blur salvano valore esatto e contesto",
+    "Select booleano: tastiera, popup, Escape e scelta senza salvataggio al blur interno"
+  ],
+  "layouts": [],
+  "errors": [],
+  "requests": [],
+  "editing": []
+}

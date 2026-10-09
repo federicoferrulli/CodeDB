@@ -1,0 +1,786 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-07T18:19:47.813Z",
+  "title": "Design System: CodeDB",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Indaco operativo · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2170 276.12)",
+          "oklch(26.43% 0.2170 276.12)",
+          "oklch(37.86% 0.2170 276.12)",
+          "oklch(49.29% 0.2170 276.12)",
+          "oklch(60.71% 0.2170 276.12)",
+          "oklch(72.14% 0.2170 276.12)",
+          "oklch(83.57% 0.2170 276.12)",
+          "oklch(95.00% 0.2170 276.12)"
+        ]
+      },
+      "accent-fg": {
+        "role": "primary",
+        "displayName": "Indaco di lettura · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1583 276.93)",
+          "oklch(26.43% 0.1583 276.93)",
+          "oklch(37.86% 0.1583 276.93)",
+          "oklch(49.29% 0.1583 276.93)",
+          "oklch(60.71% 0.1583 276.93)",
+          "oklch(72.14% 0.1583 276.93)",
+          "oklch(83.57% 0.1583 276.93)",
+          "oklch(95.00% 0.1583 276.93)"
+        ]
+      },
+      "accent-2": {
+        "role": "primary",
+        "displayName": "Indaco profondo · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2301 276.97)",
+          "oklch(26.43% 0.2301 276.97)",
+          "oklch(37.86% 0.2301 276.97)",
+          "oklch(49.29% 0.2301 276.97)",
+          "oklch(60.71% 0.2301 276.97)",
+          "oklch(72.14% 0.2301 276.97)",
+          "oklch(83.57% 0.2301 276.97)",
+          "oklch(95.00% 0.2301 276.97)"
+        ]
+      },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "Velo indaco · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2041 277.12 / 0.12)",
+          "oklch(26.43% 0.2041 277.12 / 0.12)",
+          "oklch(37.86% 0.2041 277.12 / 0.12)",
+          "oklch(49.29% 0.2041 277.12 / 0.12)",
+          "oklch(60.71% 0.2041 277.12 / 0.12)",
+          "oklch(72.14% 0.2041 277.12 / 0.12)",
+          "oklch(83.57% 0.2041 277.12 / 0.12)",
+          "oklch(95.00% 0.2041 277.12 / 0.12)"
+        ]
+      },
+      "on-accent": {
+        "role": "primary",
+        "displayName": "Testo sull'accento · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "bg": {
+        "role": "neutral",
+        "displayName": "Piano di lavoro · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0140 258.36)",
+          "oklch(26.43% 0.0140 258.36)",
+          "oklch(37.86% 0.0140 258.36)",
+          "oklch(49.29% 0.0140 258.36)",
+          "oklch(60.71% 0.0140 258.36)",
+          "oklch(72.14% 0.0140 258.36)",
+          "oklch(83.57% 0.0140 258.36)",
+          "oklch(95.00% 0.0140 258.36)"
+        ]
+      },
+      "bg-2": {
+        "role": "neutral",
+        "displayName": "Cornice di navigazione · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0126 254.02)",
+          "oklch(26.43% 0.0126 254.02)",
+          "oklch(37.86% 0.0126 254.02)",
+          "oklch(49.29% 0.0126 254.02)",
+          "oklch(60.71% 0.0126 254.02)",
+          "oklch(72.14% 0.0126 254.02)",
+          "oklch(83.57% 0.0126 254.02)",
+          "oklch(95.00% 0.0126 254.02)"
+        ]
+      },
+      "bg-1": {
+        "role": "neutral",
+        "displayName": "Piano incassato · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0124 254.17)",
+          "oklch(26.43% 0.0124 254.17)",
+          "oklch(37.86% 0.0124 254.17)",
+          "oklch(49.29% 0.0124 254.17)",
+          "oklch(60.71% 0.0124 254.17)",
+          "oklch(72.14% 0.0124 254.17)",
+          "oklch(83.57% 0.0124 254.17)",
+          "oklch(95.00% 0.0124 254.17)"
+        ]
+      },
+      "bg-surface": {
+        "role": "neutral",
+        "displayName": "Superficie dei controlli · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0157 256.82)",
+          "oklch(26.43% 0.0157 256.82)",
+          "oklch(37.86% 0.0157 256.82)",
+          "oklch(49.29% 0.0157 256.82)",
+          "oklch(60.71% 0.0157 256.82)",
+          "oklch(72.14% 0.0157 256.82)",
+          "oklch(83.57% 0.0157 256.82)",
+          "oklch(95.00% 0.0157 256.82)"
+        ]
+      },
+      "bg-elevated": {
+        "role": "neutral",
+        "displayName": "Superficie sovrapposta · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0296 256.85)",
+          "oklch(26.43% 0.0296 256.85)",
+          "oklch(37.86% 0.0296 256.85)",
+          "oklch(49.29% 0.0296 256.85)",
+          "oklch(60.71% 0.0296 256.85)",
+          "oklch(72.14% 0.0296 256.85)",
+          "oklch(83.57% 0.0296 256.85)",
+          "oklch(95.00% 0.0296 256.85)"
+        ]
+      },
+      "bg-4": {
+        "role": "neutral",
+        "displayName": "Superficie di interazione · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0397 266.94)",
+          "oklch(26.43% 0.0397 266.94)",
+          "oklch(37.86% 0.0397 266.94)",
+          "oklch(49.29% 0.0397 266.94)",
+          "oklch(60.71% 0.0397 266.94)",
+          "oklch(72.14% 0.0397 266.94)",
+          "oklch(83.57% 0.0397 266.94)",
+          "oklch(95.00% 0.0397 266.94)"
+        ]
+      },
+      "fg": {
+        "role": "neutral",
+        "displayName": "Testo principale · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0126 255.51)",
+          "oklch(26.43% 0.0126 255.51)",
+          "oklch(37.86% 0.0126 255.51)",
+          "oklch(49.29% 0.0126 255.51)",
+          "oklch(60.71% 0.0126 255.51)",
+          "oklch(72.14% 0.0126 255.51)",
+          "oklch(83.57% 0.0126 255.51)",
+          "oklch(95.00% 0.0126 255.51)"
+        ]
+      },
+      "fg-dim": {
+        "role": "neutral",
+        "displayName": "Testo secondario · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0292 262.29)",
+          "oklch(26.43% 0.0292 262.29)",
+          "oklch(37.86% 0.0292 262.29)",
+          "oklch(49.29% 0.0292 262.29)",
+          "oklch(60.71% 0.0292 262.29)",
+          "oklch(72.14% 0.0292 262.29)",
+          "oklch(83.57% 0.0292 262.29)",
+          "oklch(95.00% 0.0292 262.29)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Bordo sottile · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00 / 0.07)",
+          "oklch(26.43% 0.0000 0.00 / 0.07)",
+          "oklch(37.86% 0.0000 0.00 / 0.07)",
+          "oklch(49.29% 0.0000 0.00 / 0.07)",
+          "oklch(60.71% 0.0000 0.00 / 0.07)",
+          "oklch(72.14% 0.0000 0.00 / 0.07)",
+          "oklch(83.57% 0.0000 0.00 / 0.07)",
+          "oklch(95.00% 0.0000 0.00 / 0.07)"
+        ]
+      },
+      "border-3": {
+        "role": "neutral",
+        "displayName": "Bordo marcato · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00 / 0.18)",
+          "oklch(26.43% 0.0000 0.00 / 0.18)",
+          "oklch(37.86% 0.0000 0.00 / 0.18)",
+          "oklch(49.29% 0.0000 0.00 / 0.18)",
+          "oklch(60.71% 0.0000 0.00 / 0.18)",
+          "oklch(72.14% 0.0000 0.00 / 0.18)",
+          "oklch(83.57% 0.0000 0.00 / 0.18)",
+          "oklch(95.00% 0.0000 0.00 / 0.18)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Errore e azione distruttiva · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1661 22.22)",
+          "oklch(26.43% 0.1661 22.22)",
+          "oklch(37.86% 0.1661 22.22)",
+          "oklch(49.29% 0.1661 22.22)",
+          "oklch(60.71% 0.1661 22.22)",
+          "oklch(72.14% 0.1661 22.22)",
+          "oklch(83.57% 0.1661 22.22)",
+          "oklch(95.00% 0.1661 22.22)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Esito positivo · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1363 154.45)",
+          "oklch(26.43% 0.1363 154.45)",
+          "oklch(37.86% 0.1363 154.45)",
+          "oklch(49.29% 0.1363 154.45)",
+          "oklch(60.71% 0.1363 154.45)",
+          "oklch(72.14% 0.1363 154.45)",
+          "oklch(83.57% 0.1363 154.45)",
+          "oklch(95.00% 0.1363 154.45)"
+        ]
+      },
+      "warning": {
+        "role": "semantic",
+        "displayName": "Avviso · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1644 84.43)",
+          "oklch(26.43% 0.1644 84.43)",
+          "oklch(37.86% 0.1644 84.43)",
+          "oklch(49.29% 0.1644 84.43)",
+          "oklch(60.71% 0.1644 84.43)",
+          "oklch(72.14% 0.1644 84.43)",
+          "oklch(83.57% 0.1644 84.43)",
+          "oklch(95.00% 0.1644 84.43)"
+        ]
+      },
+      "info": {
+        "role": "semantic",
+        "displayName": "Informazione · scuro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1434 254.62)",
+          "oklch(26.43% 0.1434 254.62)",
+          "oklch(37.86% 0.1434 254.62)",
+          "oklch(49.29% 0.1434 254.62)",
+          "oklch(60.71% 0.1434 254.62)",
+          "oklch(72.14% 0.1434 254.62)",
+          "oklch(83.57% 0.1434 254.62)",
+          "oklch(95.00% 0.1434 254.62)"
+        ]
+      },
+      "light-accent": {
+        "role": "primary",
+        "displayName": "Indaco operativo · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2301 276.97)",
+          "oklch(26.43% 0.2301 276.97)",
+          "oklch(37.86% 0.2301 276.97)",
+          "oklch(49.29% 0.2301 276.97)",
+          "oklch(60.71% 0.2301 276.97)",
+          "oklch(72.14% 0.2301 276.97)",
+          "oklch(83.57% 0.2301 276.97)",
+          "oklch(95.00% 0.2301 276.97)"
+        ]
+      },
+      "light-accent-fg": {
+        "role": "primary",
+        "displayName": "Indaco di lettura · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2301 276.97)",
+          "oklch(26.43% 0.2301 276.97)",
+          "oklch(37.86% 0.2301 276.97)",
+          "oklch(49.29% 0.2301 276.97)",
+          "oklch(60.71% 0.2301 276.97)",
+          "oklch(72.14% 0.2301 276.97)",
+          "oklch(83.57% 0.2301 276.97)",
+          "oklch(95.00% 0.2301 276.97)"
+        ]
+      },
+      "light-accent-2": {
+        "role": "primary",
+        "displayName": "Indaco profondo · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2146 277.02)",
+          "oklch(26.43% 0.2146 277.02)",
+          "oklch(37.86% 0.2146 277.02)",
+          "oklch(49.29% 0.2146 277.02)",
+          "oklch(60.71% 0.2146 277.02)",
+          "oklch(72.14% 0.2146 277.02)",
+          "oklch(83.57% 0.2146 277.02)",
+          "oklch(95.00% 0.2146 277.02)"
+        ]
+      },
+      "light-accent-soft": {
+        "role": "primary",
+        "displayName": "Velo indaco · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.2301 276.97 / 0.1)",
+          "oklch(26.43% 0.2301 276.97 / 0.1)",
+          "oklch(37.86% 0.2301 276.97 / 0.1)",
+          "oklch(49.29% 0.2301 276.97 / 0.1)",
+          "oklch(60.71% 0.2301 276.97 / 0.1)",
+          "oklch(72.14% 0.2301 276.97 / 0.1)",
+          "oklch(83.57% 0.2301 276.97 / 0.1)",
+          "oklch(95.00% 0.2301 276.97 / 0.1)"
+        ]
+      },
+      "light-on-accent": {
+        "role": "primary",
+        "displayName": "Testo sull'accento · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "light-bg": {
+        "role": "neutral",
+        "displayName": "Piano di lavoro · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "light-bg-2": {
+        "role": "neutral",
+        "displayName": "Cornice di navigazione · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0062 255.47)",
+          "oklch(26.43% 0.0062 255.47)",
+          "oklch(37.86% 0.0062 255.47)",
+          "oklch(49.29% 0.0062 255.47)",
+          "oklch(60.71% 0.0062 255.47)",
+          "oklch(72.14% 0.0062 255.47)",
+          "oklch(83.57% 0.0062 255.47)",
+          "oklch(95.00% 0.0062 255.47)"
+        ]
+      },
+      "light-bg-1": {
+        "role": "neutral",
+        "displayName": "Piano incassato · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0051 247.88)",
+          "oklch(26.43% 0.0051 247.88)",
+          "oklch(37.86% 0.0051 247.88)",
+          "oklch(49.29% 0.0051 247.88)",
+          "oklch(60.71% 0.0051 247.88)",
+          "oklch(72.14% 0.0051 247.88)",
+          "oklch(83.57% 0.0051 247.88)",
+          "oklch(95.00% 0.0051 247.88)"
+        ]
+      },
+      "light-bg-surface": {
+        "role": "neutral",
+        "displayName": "Superficie dei controlli · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "light-bg-elevated": {
+        "role": "neutral",
+        "displayName": "Superficie sovrapposta · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0000 0.00)",
+          "oklch(26.43% 0.0000 0.00)",
+          "oklch(37.86% 0.0000 0.00)",
+          "oklch(49.29% 0.0000 0.00)",
+          "oklch(60.71% 0.0000 0.00)",
+          "oklch(72.14% 0.0000 0.00)",
+          "oklch(83.57% 0.0000 0.00)",
+          "oklch(95.00% 0.0000 0.00)"
+        ]
+      },
+      "light-bg-4": {
+        "role": "neutral",
+        "displayName": "Superficie di interazione · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0126 255.51)",
+          "oklch(26.43% 0.0126 255.51)",
+          "oklch(37.86% 0.0126 255.51)",
+          "oklch(49.29% 0.0126 255.51)",
+          "oklch(60.71% 0.0126 255.51)",
+          "oklch(72.14% 0.0126 255.51)",
+          "oklch(83.57% 0.0126 255.51)",
+          "oklch(95.00% 0.0126 255.51)"
+        ]
+      },
+      "light-fg": {
+        "role": "neutral",
+        "displayName": "Testo principale · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0296 256.85)",
+          "oklch(26.43% 0.0296 256.85)",
+          "oklch(37.86% 0.0296 256.85)",
+          "oklch(49.29% 0.0296 256.85)",
+          "oklch(60.71% 0.0296 256.85)",
+          "oklch(72.14% 0.0296 256.85)",
+          "oklch(83.57% 0.0296 256.85)",
+          "oklch(95.00% 0.0296 256.85)"
+        ]
+      },
+      "light-fg-dim": {
+        "role": "neutral",
+        "displayName": "Testo secondario · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0248 252.66)",
+          "oklch(26.43% 0.0248 252.66)",
+          "oklch(37.86% 0.0248 252.66)",
+          "oklch(49.29% 0.0248 252.66)",
+          "oklch(60.71% 0.0248 252.66)",
+          "oklch(72.14% 0.0248 252.66)",
+          "oklch(83.57% 0.0248 252.66)",
+          "oklch(95.00% 0.0248 252.66)"
+        ]
+      },
+      "light-border": {
+        "role": "neutral",
+        "displayName": "Bordo sottile · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0398 265.75 / 0.1)",
+          "oklch(26.43% 0.0398 265.75 / 0.1)",
+          "oklch(37.86% 0.0398 265.75 / 0.1)",
+          "oklch(49.29% 0.0398 265.75 / 0.1)",
+          "oklch(60.71% 0.0398 265.75 / 0.1)",
+          "oklch(72.14% 0.0398 265.75 / 0.1)",
+          "oklch(83.57% 0.0398 265.75 / 0.1)",
+          "oklch(95.00% 0.0398 265.75 / 0.1)"
+        ]
+      },
+      "light-border-3": {
+        "role": "neutral",
+        "displayName": "Bordo marcato · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.0398 265.75 / 0.22)",
+          "oklch(26.43% 0.0398 265.75 / 0.22)",
+          "oklch(37.86% 0.0398 265.75 / 0.22)",
+          "oklch(49.29% 0.0398 265.75 / 0.22)",
+          "oklch(60.71% 0.0398 265.75 / 0.22)",
+          "oklch(72.14% 0.0398 265.75 / 0.22)",
+          "oklch(83.57% 0.0398 265.75 / 0.22)",
+          "oklch(95.00% 0.0398 265.75 / 0.22)"
+        ]
+      },
+      "light-danger": {
+        "role": "semantic",
+        "displayName": "Errore e azione distruttiva · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1949 26.61)",
+          "oklch(26.43% 0.1949 26.61)",
+          "oklch(37.86% 0.1949 26.61)",
+          "oklch(49.29% 0.1949 26.61)",
+          "oklch(60.71% 0.1949 26.61)",
+          "oklch(72.14% 0.1949 26.61)",
+          "oklch(83.57% 0.1949 26.61)",
+          "oklch(95.00% 0.1949 26.61)"
+        ]
+      },
+      "light-success": {
+        "role": "semantic",
+        "displayName": "Esito positivo · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1084 164.34)",
+          "oklch(26.43% 0.1084 164.34)",
+          "oklch(37.86% 0.1084 164.34)",
+          "oklch(49.29% 0.1084 164.34)",
+          "oklch(60.71% 0.1084 164.34)",
+          "oklch(72.14% 0.1084 164.34)",
+          "oklch(83.57% 0.1084 164.34)",
+          "oklch(95.00% 0.1084 164.34)"
+        ]
+      },
+      "light-warning": {
+        "role": "semantic",
+        "displayName": "Avviso · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1070 67.68)",
+          "oklch(26.43% 0.1070 67.68)",
+          "oklch(37.86% 0.1070 67.68)",
+          "oklch(49.29% 0.1070 67.68)",
+          "oklch(60.71% 0.1070 67.68)",
+          "oklch(72.14% 0.1070 67.68)",
+          "oklch(83.57% 0.1070 67.68)",
+          "oklch(95.00% 0.1070 67.68)"
+        ]
+      },
+      "light-info": {
+        "role": "semantic",
+        "displayName": "Informazione · chiaro",
+        "tonalRamp": [
+          "oklch(15.00% 0.1859 258.14)",
+          "oklch(26.43% 0.1859 258.14)",
+          "oklch(37.86% 0.1859 258.14)",
+          "oklch(49.29% 0.1859 258.14)",
+          "oklch(60.71% 0.1859 258.14)",
+          "oklch(72.14% 0.1859 258.14)",
+          "oklch(83.57% 0.1859 258.14)",
+          "oklch(95.00% 0.1859 258.14)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Titolo finestra",
+        "purpose": "Titoli delle finestre su desktop."
+      },
+      "headline-mobile": {
+        "displayName": "Titolo finestra mobile",
+        "purpose": "Titoli delle finestre fino a 900px."
+      },
+      "title": {
+        "displayName": "Titolo di sezione",
+        "purpose": "Sezioni dei dettagli, editor del tema e stati vuoti."
+      },
+      "body": {
+        "displayName": "Testo di interfaccia",
+        "purpose": "Testo generale; la radice resta a 16px."
+      },
+      "label": {
+        "displayName": "Etichetta compatta",
+        "purpose": "Toolbar, schede, metadati e intestazioni della griglia."
+      },
+      "control": {
+        "displayName": "Azione",
+        "purpose": "Pulsanti Arc con peso medio."
+      },
+      "code": {
+        "displayName": "Codice",
+        "purpose": "Metriche comuni a textarea, evidenziazione e numeri di riga."
+      },
+      "data": {
+        "displayName": "Valori della griglia",
+        "purpose": "Dati tecnici monospaziati con cifre tabulari."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-resting",
+        "value": "none",
+        "purpose": "Superfici e pulsanti a riposo."
+      },
+      {
+        "name": "shadow-raised",
+        "value": "var(--shadow-md)",
+        "purpose": "Elevazione intermedia collegata al tema corrente."
+      },
+      {
+        "name": "shadow-floating",
+        "value": "var(--shadow-lg)",
+        "purpose": "Menu, palette dei comandi e finestre collegate al tema corrente."
+      },
+      {
+        "name": "shadow-md-dark",
+        "value": "0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3)",
+        "purpose": "Base scura del livello intermedio."
+      },
+      {
+        "name": "shadow-md-light",
+        "value": "0 4px 14px rgba(15, 23, 42, 0.10), 0 2px 5px rgba(15, 23, 42, 0.06)",
+        "purpose": "Base chiara del livello intermedio."
+      },
+      {
+        "name": "shadow-lg-dark",
+        "value": "0 16px 48px rgba(0, 0, 0, 0.6), 0 4px 16px rgba(0, 0, 0, 0.4)",
+        "purpose": "Base scura dei livelli fluttuanti."
+      },
+      {
+        "name": "shadow-lg-light",
+        "value": "0 16px 44px rgba(15, 23, 42, 0.16), 0 4px 14px rgba(15, 23, 42, 0.09)",
+        "purpose": "Base chiara dei livelli fluttuanti."
+      }
+    ],
+    "motion": [
+      {
+        "name": "duration-fast",
+        "value": "160ms",
+        "purpose": "Feedback cromatico dei controlli Arc e DOM."
+      },
+      {
+        "name": "duration-standard",
+        "value": "240ms",
+        "purpose": "Transizioni di stato dei componenti Arc."
+      },
+      {
+        "name": "ease-standard",
+        "value": "cubic-bezier(.22,1,.36,1)",
+        "purpose": "Curva condivisa attraverso la foundation Arc."
+      },
+      {
+        "name": "tab-morph",
+        "value": "0.24s",
+        "purpose": "Transizione delle schede di connessione e tabella."
+      },
+      {
+        "name": "tab-ease",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Curva delle schede raccordate al pannello."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "prefers-reduced-motion: reduce",
+        "purpose": "La regola finale riduce le durate CSS a .01ms e una sola iterazione; i componenti Arc rispettano anche la preferenza nel proprio comportamento."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "desktop-compatto",
+        "value": "1100px"
+      },
+      {
+        "name": "navigazione-mobile",
+        "value": "900px"
+      },
+      {
+        "name": "form-stretti",
+        "value": "600px"
+      },
+      {
+        "name": "controlli-touch",
+        "value": "(pointer: coarse), (max-width: 600px)"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Pulsante primary",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Azione principale nel contesto corrente.",
+      "html": "<button type=\"button\" class=\"ds-button-primary\">Esegui query</button>",
+      "css": ".ds-button-primary{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--control-height-md);padding:0 var(--space-4);border:1px solid transparent;border-radius:var(--radius-control);font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;line-height:var(--leading-body);letter-spacing:var(--tracking-body);cursor:pointer;transition:background-color var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard),opacity var(--duration-fast) var(--ease-standard)}.ds-button-primary:disabled,.ds-button-primary[aria-disabled=true]{opacity:.5;cursor:not-allowed}.ds-button-primary{background:var(--accent);color:var(--accent-foreground);border-color:var(--accent)}@media(hover:hover) and (pointer:fine){.ds-button-primary:hover:not(:disabled){opacity:.91}}.ds-button-primary:active:not(:disabled){opacity:.84}.ds-button-primary:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-button-primary{transition:none}}"
+    },
+    {
+      "name": "Pulsante secondary",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Azione alternativa con superficie e bordo neutri.",
+      "html": "<button type=\"button\" class=\"ds-button-secondary\">Annulla</button>",
+      "css": ".ds-button-secondary{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--control-height-md);padding:0 var(--space-4);border:1px solid transparent;border-radius:var(--radius-control);font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;line-height:var(--leading-body);letter-spacing:var(--tracking-body);cursor:pointer;transition:background-color var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard),opacity var(--duration-fast) var(--ease-standard)}.ds-button-secondary:disabled,.ds-button-secondary[aria-disabled=true]{opacity:.5;cursor:not-allowed}.ds-button-secondary{background:var(--surface);color:var(--foreground);border-color:var(--border)}.ds-button-secondary:hover:not(:disabled),.ds-button-secondary:active:not(:disabled){background:var(--surface-muted)}.ds-button-secondary:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-button-secondary{transition:none}}"
+    },
+    {
+      "name": "Pulsante ghost",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Azione secondaria senza superficie a riposo.",
+      "html": "<button type=\"button\" class=\"ds-button-ghost\">Impostazioni</button>",
+      "css": ".ds-button-ghost{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--control-height-md);padding:0 var(--space-4);border:1px solid transparent;border-radius:var(--radius-control);font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;line-height:var(--leading-body);letter-spacing:var(--tracking-body);cursor:pointer;transition:background-color var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard),opacity var(--duration-fast) var(--ease-standard)}.ds-button-ghost:disabled,.ds-button-ghost[aria-disabled=true]{opacity:.5;cursor:not-allowed}.ds-button-ghost{background:transparent;color:var(--text-secondary)}.ds-button-ghost:hover:not(:disabled),.ds-button-ghost:active:not(:disabled){background:var(--surface-muted);color:var(--foreground)}.ds-button-ghost:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-button-ghost{transition:none}}"
+    },
+    {
+      "name": "Pulsante danger",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Azione distruttiva riconoscibile dal testo semantico.",
+      "html": "<button type=\"button\" class=\"ds-button-danger\">Elimina</button>",
+      "css": ".ds-button-danger{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);min-height:var(--control-height-md);padding:0 var(--space-4);border:1px solid transparent;border-radius:var(--radius-control);font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;line-height:var(--leading-body);letter-spacing:var(--tracking-body);cursor:pointer;transition:background-color var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard),opacity var(--duration-fast) var(--ease-standard)}.ds-button-danger:disabled,.ds-button-danger[aria-disabled=true]{opacity:.5;cursor:not-allowed}.ds-button-danger{background:var(--surface);color:var(--danger);border-color:var(--border)}.ds-button-danger:hover:not(:disabled),.ds-button-danger:active:not(:disabled){background:var(--surface-muted);border-color:var(--danger)}.ds-button-danger:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-button-danger{transition:none}}"
+    },
+    {
+      "name": "Campo di testo",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Etichetta, campo e descrizione vicini; focus visibile ed errore semantico.",
+      "html": "<label class=\"ds-field\"><span class=\"ds-field-label\">Nome connessione</span><input class=\"ds-input\" type=\"text\" placeholder=\"Ambiente di lavoro\" aria-describedby=\"ds-field-help\"><span class=\"ds-field-help\" id=\"ds-field-help\">Un nome riconoscibile nella barra laterale.</span></label>",
+      "css": ".ds-field{display:grid;min-width:0;font-family:var(--font-sans)}.ds-field-label{margin-bottom:var(--space-2);font-size:var(--text-sm);font-weight:500;color:var(--foreground)}.ds-input{min-width:0;min-height:var(--control-height-md);padding:0 var(--space-3);border:1px solid var(--border-strong);border-radius:var(--radius-control);background:var(--surface);color:var(--foreground);font-family:var(--font-sans);font-size:var(--text-sm);letter-spacing:var(--tracking-body);transition:border-color var(--duration-fast) var(--ease-standard)}.ds-input::placeholder{color:var(--text-muted)}.ds-input:hover:not(:disabled),.ds-input:focus-visible{border-color:var(--foreground)}.ds-input[aria-invalid=true]{border-color:var(--danger)}.ds-input:disabled{opacity:.5;background:var(--surface-muted);cursor:not-allowed}.ds-field-help{padding-top:var(--space-2);font-size:var(--text-xs);color:var(--text-muted)}.ds-input:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-input{transition:none}}"
+    },
+    {
+      "name": "Selettore di vista",
+      "kind": "nav",
+      "refersTo": "view-active",
+      "description": "Viste del workspace con selezione indaco tenue e testo esplicito.",
+      "html": "<nav class=\"ds-views\" aria-label=\"Vista\"><button type=\"button\" class=\"ds-view ds-view-selected\" aria-current=\"page\">Dati</button><button type=\"button\" class=\"ds-view\">Dettagli</button><button type=\"button\" class=\"ds-view\">Query &amp; Aggregate</button></nav>",
+      "css": ".ds-views{display:flex;flex-wrap:wrap;gap:var(--space-2xs);background:var(--background)}.ds-view{min-height:var(--control-height-sm);padding:var(--space-xs) var(--space-md);border:1px solid transparent;border-radius:var(--radius-control);background:transparent;color:var(--text-secondary);font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;cursor:pointer;transition:background-color var(--duration-fast) var(--ease-standard)}.ds-view:hover{background:var(--hover);color:var(--foreground);border-color:var(--border)}.ds-view-selected,.ds-view-selected:hover{background:var(--accent-subtle);color:var(--accent-fg);border-color:transparent}.ds-view:active{background:var(--surface-muted)}.ds-view:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(prefers-reduced-motion:reduce){.ds-view{transition:none}}"
+    },
+    {
+      "name": "Valori booleani",
+      "kind": "chip",
+      "description": "Etichette informative della griglia: testo, fondo e bordo distinguono i valori.",
+      "html": "<span class=\"ds-bool ds-bool-true\">true</span> <span class=\"ds-bool ds-bool-false\">false</span>",
+      "css": ".ds-bool{display:inline-flex;align-items:center;justify-content:center;padding:0 var(--space-sm);border:1px solid;border-radius:var(--radius-sm);font-family:var(--font-sans);font-size:var(--text-xs);font-weight:400;line-height:1;letter-spacing:.03em;vertical-align:middle}.ds-bool-true{background:var(--success-bg);border-color:var(--success-line);color:var(--val-true)}.ds-bool-false{background:var(--danger-bg);border-color:var(--danger-line);color:var(--val-false)}"
+    },
+    {
+      "name": "Riepilogo statistico",
+      "kind": "card",
+      "refersTo": "statistic-panel",
+      "description": "Contenitore funzionale di riepilogo, con bordo e senza ombra ornamentale.",
+      "html": "<section class=\"ds-stat\" aria-label=\"Righe comuni\"><div class=\"ds-stat-number\">26</div><div class=\"ds-stat-label\">Righe comuni</div></section>",
+      "css": ".ds-stat{padding:var(--space-md);border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--bg-2);color:var(--fg);font-family:var(--font-sans);text-align:center;box-shadow:none}.ds-stat-number{font-size:1.6rem;font-weight:bold;font-variant-numeric:tabular-nums}.ds-stat-label{font-size:.8rem;color:var(--fg-dim)}"
+    },
+    {
+      "name": "Finestra di lavoro",
+      "kind": "custom",
+      "refersTo": "dialog",
+      "description": "Anteprima della superficie modale; il focus e lo stack reali sono gestiti dai componenti Arc/Radix.",
+      "html": "<section class=\"ds-dialog\" role=\"dialog\" aria-labelledby=\"ds-dialog-title\"><h2 class=\"ds-dialog-title\" id=\"ds-dialog-title\">Nuova connessione</h2><p class=\"ds-dialog-copy\">Scegli il database da aprire nel workspace.</p><div class=\"ds-dialog-actions\"><button type=\"button\" class=\"ds-dialog-close\">Chiudi</button></div></section>",
+      "css": ".ds-dialog{padding:var(--space-xl);background:var(--surface);color:var(--foreground);border:1px solid var(--border-strong);border-radius:var(--radius-surface);box-shadow:var(--shadow-floating);font-family:var(--font-sans)}.ds-dialog-title{margin:0 0 var(--space-lg);font-size:var(--text-xl);font-weight:500;line-height:1.3;letter-spacing:var(--tracking-body)}.ds-dialog-copy{font-size:var(--text-sm);line-height:1.55;max-width:75ch}.ds-dialog-actions{display:flex;justify-content:flex-end;border-top:1px solid var(--border);padding-top:var(--space-lg);margin-top:var(--space-xl)}.ds-dialog-close{min-height:var(--control-height-md);padding:0 var(--space-lg);border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);color:var(--foreground);font-family:var(--font-sans);font-size:var(--text-sm);font-weight:500;cursor:pointer}.ds-dialog-close:hover,.ds-dialog-close:active{background:var(--surface-muted)}.ds-dialog-close:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}@media(max-width:900px){.ds-dialog{padding:var(--space-lg)}.ds-dialog-title{font-size:var(--text-lg)}}"
+    },
+    {
+      "name": "Griglia dei risultati",
+      "kind": "custom",
+      "description": "Intestazione neutra, valori monospaziati, cifre tabulari e altezza condivisa con il motore virtuale.",
+      "html": "<div class=\"ds-grid-wrap\"><table class=\"ds-grid\"><thead><tr><th scope=\"col\">cliente</th><th scope=\"col\">importo</th></tr></thead><tbody><tr><td>Officina Nord</td><td class=\"ds-grid-number\">441.50</td></tr><tr><td>Studio Verde</td><td class=\"ds-grid-number\">588.50</td></tr></tbody></table></div>",
+      "css": ".ds-grid-wrap{overflow-x:auto;background:var(--background);color:var(--foreground)}.ds-grid{width:100%;border-collapse:collapse;white-space:nowrap;font-variant-numeric:tabular-nums}.ds-grid tr{height:var(--grid-row-h)}.ds-grid th,.ds-grid td{padding:var(--space-2xs) var(--space-md);border-bottom:1px solid var(--border);line-height:1.4;text-align:left}.ds-grid th{font-family:var(--font-sans);font-size:var(--text-xs);font-weight:500;background:var(--surface)}.ds-grid td{font-family:var(--font-mono);font-size:var(--text-sm)}.ds-grid-number{color:var(--val-num)}.ds-grid tbody tr:hover{background:var(--accent-veil)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "L'ambiente operativo CodeDB",
+    "overview": "CodeDB è un banco di lavoro per query ed editing intensivo: denso nei dati, leggibile nei form, sobrio nelle superfici. Connessione, tabella e vista mantengono identità distinte mentre codice e risultati occupano il centro. L'indaco segnala azioni e selezione; Inter e JetBrains Mono separano comandi e contenuto tecnico.\n\nLa direzione deriva dall'identità e dall'uso indicati da Keus in [PRODUCT.md](PRODUCT.md), non da un nuovo concept. Card decorative e composizioni da sito marketing non appartengono al workspace. Le superfici funzionali, le finestre e i riepiloghi esistenti restano parte del sistema.\n\nQuesta documentazione è una scansione dell'implementazione. Le fonti sono [tokens.css](public/css/tokens.css), [base.css](public/css/base.css), [arc-theme.css](public/css/arc-theme.css), [workbench.css](public/css/workbench.css), [style.css](public/css/style.css) e i [componenti Arc](ui/components/arc). La foundation Arc viene caricata prima del tema CodeDB: i suoi valori sovrascritti non sono regole dell'applicazione. Il contratto di direzione è nel `body` di [index.html](public/index.html); non è stato prodotto un seed o un comp approvato separatamente.",
+    "keyCharacteristics": [
+      "Superfici neutre e indaco funzionale.",
+      "Densità compatta senza ridurre la radice tipografica.",
+      "Codice e dati monospaziati, comandi in Inter.",
+      "Temi chiaro, scuro e personalizzati sullo stesso sistema di ruoli.",
+      "Focus visibile e controlli adattati a tastiera e touch."
+    ],
+    "rules": [
+      {
+        "name": "The Colore per funzione Rule",
+        "body": "Usa i token del ruolo e del tema: non sostituire il testo d'accento con il colore di riempimento e non cablare nuove tinte nelle superfici comuni.",
+        "section": "colors"
+      },
+      {
+        "name": "The Densità leggibile Rule",
+        "body": "La radice resta a 16px. Ottieni compattezza con righe, padding e disposizione, senza ridurre lo zoom globale o disallineare i livelli dell'editor.",
+        "section": "typography"
+      },
+      {
+        "name": "The Profondità di servizio Rule",
+        "body": "Usa l'elevazione per distinguere un livello temporaneo; non aggiungerla a ogni regione del workspace.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** usare i token CodeDB attraverso il bridge Arc anche nei temi personalizzati.",
+      "**Do** distinguere accento di riempimento, accento di lettura e colori informativi.",
+      "**Do** mantenere la radice a 16px e condividere l'altezza delle righe con la virtualizzazione.",
+      "**Do** preservare focus visibile, etichette accessibili e movimento ridotto.",
+      "**Do** ricomporre toolbar e form su schermi stretti mantenendo visibili bersaglio ed esecuzione.",
+      "**Do** riusare i controlli Arc e la cromatura comune intorno ai motori specializzati."
+    ],
+    "donts": [
+      "**Don't** introdurre card decorative o composizioni marketing nel workspace.",
+      "**Don't** ripristinare i default della foundation Arc che il tema CodeDB sovrascrive.",
+      "**Don't** fondere sintassi, tipi dei dati, stati e identità dei database in un'unica palette decorativa.",
+      "**Don't** ridurre il testo o tagliare le azioni per far stare una toolbar su una sola riga.",
+      "**Don't** alterare separatamente le metriche di editor, evidenziazione e numeri di riga.",
+      "**Don't** trattare le rampe esplorative del sidecar o i valori locali non registrati come nuovi token dell'app."
+    ]
+  }
+}

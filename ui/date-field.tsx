@@ -23,6 +23,7 @@ export function DateField({ model, label }: { model: HTMLInputElement; label: st
     setIso(model.value);
   }
   const dateTime = model.type === 'datetime-local';
+  const inline = model.classList.contains('arc-inline-date-model');
   const date = (text = '') => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return undefined;
     const value = new Date(`${text}T12:00:00`);
@@ -50,23 +51,26 @@ export function DateField({ model, label }: { model: HTMLInputElement; label: st
     event.preventDefault(); event.stopPropagation();
     model.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true }));
   };
-  return <div className="arc-date-control" data-arc-component="date-field" onBlur={blur} onKeyDown={key}>
+  return <div className={`arc-date-control${inline ? ' arc-date-inline' : ''}`} data-arc-component="date-field" onBlur={blur} onKeyDown={key}>
     <DatePicker label={label} locale="it-IT" showToday value={date(parts[0])} minDate={date(model.min.slice(0, 10))}
+      className={inline ? 'arc-date-cell' : undefined}
       aria-invalid={!model.validity.valid || undefined} aria-describedby={model.validationMessage ? errorId : undefined}
       maxDate={date(model.max.slice(0, 10))} disabled={model.disabled || model.readOnly}
       onChange={value => {
         const day = value ? `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}` : '';
         apply(dateTime && day ? [day, parts[1] || '00:00'] : [day]);
       }} />
-    {dateTime && <Input label="Ora UTC" aria-label="Ora UTC (ore, minuti, secondi e millisecondi)" data-arc-component="input"
-      className="arc-time-input" type="text" placeholder="HH:mm:ss.SSS" value={parts[1] || ''} disabled={model.disabled} readOnly={model.readOnly}
-      aria-invalid={model.validationMessage ? true : undefined}
+    {dateTime && <Input bare={inline} label="Ora UTC" aria-label="Ora UTC (ore, minuti, secondi e millisecondi)" data-arc-component="input"
+      className="arc-time-input" type="text" placeholder="HH:mm:ss.SSS" title="Ora UTC · HH:mm:ss.SSS" value={parts[1] || ''}
+      disabled={model.disabled} readOnly={model.readOnly} aria-invalid={model.validationMessage ? true : undefined} aria-describedby={model.validationMessage ? errorId : undefined}
       onChange={event => apply([parts[0] || '', event.target.value])} />}
-    <Button variant="ghost" size="sm" type="button" className="arc-date-iso-toggle" disabled={model.disabled || model.readOnly} aria-expanded={editingIso}
-      aria-label="Modifica data e ora in formato ISO" onClick={() => setEditingIso(!editingIso)}>ISO</Button>
-    {editingIso && <Input bare className="arc-date-iso" label="Data ISO" aria-label="Data ISO" data-arc-component="input" value={iso}
-      disabled={model.disabled} readOnly={model.readOnly} aria-invalid={!model.validity.valid || undefined} aria-describedby={errorId}
-      placeholder={dateTime ? 'AAAA-MM-GGTHH:mm:ss.SSS' : 'AAAA-MM-GG'} onChange={event => apply(event.target.value.split('T'))} />}
+    {!inline && <>
+      <Button variant="ghost" size="sm" type="button" className="arc-date-iso-toggle" disabled={model.disabled || model.readOnly} aria-expanded={editingIso}
+        aria-label="Modifica data e ora in formato ISO" onClick={() => setEditingIso(!editingIso)}>ISO</Button>
+      {editingIso && <Input bare className="arc-date-iso" label="Data ISO" aria-label="Data ISO" data-arc-component="input" value={iso}
+        disabled={model.disabled} readOnly={model.readOnly} aria-invalid={!model.validity.valid || undefined} aria-describedby={errorId}
+        placeholder={dateTime ? 'AAAA-MM-GGTHH:mm:ss.SSS' : 'AAAA-MM-GG'} onChange={event => apply(event.target.value.split('T'))} />}
+    </>}
     {model.validationMessage && <span id={errorId} className="arc-date-error" role="alert">{model.validationMessage}</span>}
   </div>;
 }

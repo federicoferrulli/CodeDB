@@ -645,8 +645,8 @@ export function initToolbarDropdown(btnSel, menuSel) {
   window.addEventListener('scroll', chiudi, true);
 }
 
-// Costruttore albero JSON interattivo con rendering pigro dei figli
-export function buildJsonNode(val, key = null, isRoot = false) {
+// Con onToggle il chiamante dispone i figli nella propria finestra virtuale.
+export function buildJsonNode(val, key = null, isRoot = false, onToggle = null) {
   const node = document.createElement('div');
   node.className = 'json-node';
 
@@ -664,6 +664,9 @@ export function buildJsonNode(val, key = null, isRoot = false) {
     const header = document.createElement('div');
     header.className = 'json-header';
     header.style.cursor = 'pointer';
+    header.tabIndex = 0;
+    header.setAttribute('role', 'button');
+    header.setAttribute('aria-expanded', String(isRoot));
 
     // Il verso dell'espansore e' un'icona dell'applicazione: `▶`/`▼` sono
     // caratteri tipografici, e la loro larghezza cambia col carattere in uso,
@@ -682,10 +685,12 @@ export function buildJsonNode(val, key = null, isRoot = false) {
     refreshLucideIcons(header);
     node.appendChild(header);
 
-    const childrenWrap = document.createElement('div');
-    childrenWrap.className = 'json-children';
-    if (!isRoot) childrenWrap.classList.add('hidden');
-    node.appendChild(childrenWrap);
+    const childrenWrap = onToggle ? null : document.createElement('div');
+    if (childrenWrap) {
+      childrenWrap.className = 'json-children';
+      if (!isRoot) childrenWrap.classList.add('hidden');
+      node.appendChild(childrenWrap);
+    }
 
     let rendered = false;
     const renderChildren = () => {
@@ -698,12 +703,16 @@ export function buildJsonNode(val, key = null, isRoot = false) {
       childrenWrap.appendChild(frag);
     };
 
-    if (isRoot) renderChildren();
+    if (isRoot && childrenWrap) renderChildren();
 
     header.addEventListener('click', (e) => {
       e.stopPropagation();
-      renderChildren();
-      const isHidden = childrenWrap.classList.toggle('hidden');
+      const isHidden = header.getAttribute('aria-expanded') === 'true';
+      if (childrenWrap) {
+        renderChildren();
+        childrenWrap.classList.toggle('hidden', isHidden);
+      }
+      header.setAttribute('aria-expanded', String(!isHidden));
       // `createIcons` ha sostituito l'<i> con un <svg>: si riscrive l'attributo
       // sul nodo che c'e' ADESSO e lo si ridisegna, invece di cercare l'<i>
       // originale, che non e' piu' nel documento.
@@ -711,6 +720,13 @@ export function buildJsonNode(val, key = null, isRoot = false) {
       if (segno) {
         segno.outerHTML = `<i class="json-toggle" data-lucide="${isHidden ? 'chevron-right' : 'chevron-down'}" aria-hidden="true"></i>`;
         refreshLucideIcons(header);
+      }
+      if (onToggle) onToggle(!isHidden);
+    });
+    header.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        header.click();
       }
     });
 

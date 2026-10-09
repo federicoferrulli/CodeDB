@@ -78,7 +78,10 @@ export function setView(view) {
   }
 
   state.view = view;
-  document.querySelectorAll('.view-tab').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view-tab').forEach((t) => {
+    t.classList.toggle('active', t.dataset.view === view);
+    t.setAttribute('aria-pressed', String(t.dataset.view === view));
+  });
   document.querySelectorAll('.view-menu-item').forEach((t) => t.classList.toggle('active', t.dataset.view === view));
   // Il pulsante "Visualizza" fa da tab per le due viste che ospita: quando una è
   // attiva ne prende il nome ed è evidenziato come gli altri tab, altrimenti chi
@@ -114,7 +117,7 @@ document.addEventListener('click', (e) => {
 // l'elemento indicato da data-resize; la larghezza è ricordata in localStorage.
 function initResizers() {
   document.querySelectorAll('.resizer[data-resize]').forEach((rz) => {
-    const el = document.getElementById(rz.dataset.resize);
+    const el = document.getElementById(rz.dataset.resize) || (rz.dataset.resize === 'query-sidebar' ? $('#query-schema-sidebar') : null);
     if (!el) return;
     // Prefisso unificato con recupero del valore precedente (CDB-64).
     const key = migraChiave(`width:${rz.dataset.resize}`, `gui-db:width:${rz.dataset.resize}`);

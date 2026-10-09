@@ -421,6 +421,7 @@ let inizializzato = false;
 export function initPalette() {
   if (inizializzato) return;
   inizializzato = true;
+  document.getElementById('command-palette-open')?.addEventListener('click', apriPalette);
 
   document.addEventListener('keydown', (e) => {
     const id = azioneDiEvento(e);
