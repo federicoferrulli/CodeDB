@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const { scegliArc, spuntaArc } = require('./arc-controls');
-const dir = 'test-reports/arc/campi';
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/arc/campi`;
 const mutant = process.argv.includes('--mutant');
 fs.mkdirSync(dir, { recursive: true });
 const report = { checks: [], coverage: [], layouts: [], errors: [], requests: [] };

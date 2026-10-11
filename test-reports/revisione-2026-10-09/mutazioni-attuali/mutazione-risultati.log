@@ -1,0 +1,19 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+OK Separatore tastiera, limiti e valore accessibile aggiornato
+OK Menu visibile dell’esploratore, frecce, Escape e ritorno al comando
+OK Cambio densità durante editing: bozza integra e spaziatori coerenti
+OK Drawer: stato, focus iniziale, chiusura e focus restituito
+OK Molte schede: bozze, contesto, riordino senza trascinamento e selezione separata dalle azioni
+OK Shell, griglia, query e dettagli: 11 viewport, tre temi, landscape e reflow a 320px; geometria virtuale coerente
+AssertionError [ERR_ASSERTION]: Editor occupa la superficie scelta
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-revisione.js:194:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

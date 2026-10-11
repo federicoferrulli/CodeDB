@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Escape deve uscire dalla modifica della griglia virtuale
+
+1 !== 0
+
+    at C:\repository\CodeDB\test\e2e-uscita-editing.js:31:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 1,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,11 @@
+{"scroll":53,"tastiera":0,"blocchi":4}
+AssertionError [ERR_ASSERTION]: Dati: freccia modifica la larghezza reale
+    at ridimensiona (C:\repository\CodeDB\test\e2e-griglia-fluidita.js:119:7)
+    at async C:\repository\CodeDB\test\e2e-griglia-fluidita.js:128:23 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

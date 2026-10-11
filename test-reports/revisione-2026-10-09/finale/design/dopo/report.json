@@ -1,0 +1,443 @@
+{
+  "checks": [
+    "Ricerca comandi visibile, apertura e ripristino del focus"
+  ],
+  "surfaces": [
+    {
+      "name": "inizio-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "inizio-light",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "inizio-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "inizio-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "connessione",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 30,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "row": 30,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 48,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 30,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "row": 30,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dati-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 48,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 768,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "dettagli",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "requests": [],
+  "resize": {
+    "handle": {
+      "x": 428,
+      "y": 168.796875,
+      "width": 4,
+      "height": 791.203125
+    },
+    "schemaWidth": 184,
+    "target": "<div class=\"resizer\" data-resize=\"query-sidebar\" tabindex=\"0\" role=\"separator\" aria-label=\"Larghezza Schema Browser\n                      \n                        ⟳\n                        ✕\" aria-controls=\"query-schema-sidebar\" aria-orientation=\"vertical\" aria-valuemin=\"150\" aria-valuemax=\"648\" ari",
+    "after": 244
+  }
+}

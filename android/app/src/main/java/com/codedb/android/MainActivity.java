@@ -42,6 +42,9 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        // Le barre poggiano sulla superficie chiara del tema nativo, fuori dalla WebView.
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(true);
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightNavigationBars(true);
         content = new FrameLayout(this);
         // Il contenitore restringe anche le WebView precedenti al supporto CSS
         // degli inset. L'unione prende il massimo, senza sommare tastiera e barra.

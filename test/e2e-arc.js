@@ -6,7 +6,7 @@ const fs = require('node:fs');
 const { scegliArc } = require('./arc-controls');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
-const dir = 'test-reports/arc/after';
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/arc/after`;
 fs.mkdirSync(dir, { recursive: true });
 const report = { checks: [], layouts: [], errors: [], requests: [] };
 function checked(name) { report.checks.push(name); console.log('OK', name); }

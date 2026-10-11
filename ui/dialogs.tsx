@@ -13,12 +13,14 @@ function Pannello({ panel, overlay }: { panel: HTMLElement; overlay: HTMLElement
     panel.scrollTop = 0;
     // I popup degli editor fanno parte della finestra attiva: restando nel
     // body sarebbero fuori dal focus trap Radix e non più utilizzabili.
-    const auxiliary = (overlay.id === 'palette-overlay' ? [] : [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante')])
+    const auxiliary = (overlay.id === 'palette-overlay' ? [] : [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante, #context-menu')])
       .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
     for (const { node } of auxiliary) slot.current!.append(node);
     if (focused && panel.contains(focused)) focused.focus({ preventScroll: true });
     return () => {
-      for (const { node, parent, next } of auxiliary) parent.insertBefore(node, next?.parentNode === parent ? next : null);
+      for (const { node, parent, next } of auxiliary) {
+        if (node.parentNode === slot.current) (parent.isConnected ? parent : document.body).insertBefore(node, next?.parentNode === parent && parent.isConnected ? next : null);
+      }
       overlay.prepend(panel);
     };
   }, [panel, overlay]);
@@ -143,7 +145,7 @@ export function initDialogs() {
     const fk = document.querySelector<HTMLElement>('#fk-pannello[aria-hidden="false"]');
     if (fk) { e.preventDefault(); e.stopImmediatePropagation(); document.getElementById('fk-close')?.click(); return; }
     const context = document.querySelector<HTMLElement>('#context-menu:not(.hidden)');
-    if (context) { e.preventDefault(); e.stopImmediatePropagation(); context.classList.add('hidden'); return; }
+    if (context) return; // Il menu ripristina il focus al proprio comando di apertura.
     e.preventDefault(); e.stopImmediatePropagation();
     dismiss(opened[opened.length - 1]);
   }, true);

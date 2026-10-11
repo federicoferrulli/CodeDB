@@ -98,6 +98,10 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
 
     lifecycle.safeOn('backup:restore', async (payload, cb) => {
       const tabId = lock.normTabId(payload.tabId);
+      const operationId = payload.operationId;
+      if (operationId !== undefined && (typeof operationId !== 'string' || !/^[\w-]{1,80}$/.test(operationId))) {
+        throw new Error('Identificatore del ripristino non valido.');
+      }
       const sess = socketContext.sessions.get(tabId);
       if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
       // Il restore riscrive interi database: operazione da amministratore.
@@ -139,7 +143,7 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       // serve: le si intercetta invece di aprire un secondo canale, così
       // backup/lib resta intatto e la CLI si comporta esattamente come prima.
       const inviaProgresso = (riga, errore) => {
-        socketContext.socket.emit('backup:progress', { tabId, backupId, riga: String(riga), errore: !!errore });
+        socketContext.socket.emit('backup:progress', { tabId, backupId, operationId, riga: String(riga), errore: !!errore });
       };
       const logUi = {
         ...log,

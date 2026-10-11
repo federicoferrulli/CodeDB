@@ -1,0 +1,58 @@
+--- E2E: barra del Grafo 3D ---
+  [32m✔ OK[0m   «Relazioni implicite» nasce premuto, come lo stato che rappresenta
+  [32m✔ OK[0m   «Solo popolate» nasce non premuto
+  [32m✔ OK[0m   il segmentato del colore dichiara quale dei due è in vigore
+  [32m✔ OK[0m   nessuna emoji come icona nella barra
+  [32m✔ OK[0m   senza una tabella scelta il filtro dei vicini è disattivato
+  [32m✔ OK[0m   il motivo sta nel title, prima del clic
+  [32m✔ OK[0m   la rotazione automatica non è mai disabilitata
+  [32m✔ OK[0m   il grafo nasce con i controlli orbit: i TrackballControls predefiniti non hanno autoRotate
+  [32m✔ OK[0m   il fondo della scena è il token del tema, non il blu quasi nero predefinito
+  [32m✔ OK[0m   passando al tema chiaro il fondo del grafo cambia con esso
+  [32m✔ OK[0m   i nomi delle tabelle vengono disegnati anche con schemaPage.complete = false
+  [32m✔ OK[0m   si parte a tre dimensioni
+  [32m✔ OK[0m   «Vista 2D» chiede al grafo due dimensioni, non solo un ridisegno
+  [32m✔ OK[0m   il bottone 2D dichiara di essere premuto
+  [32m✔ OK[0m   in 2D l'orbita si blocca: altrimenti il primo trascinamento riporterebbe la scena di sbieco
+  [32m✔ OK[0m   le costanti di THREE sono leggibili: il confronto qui sotto non è a vuoto
+  [32m✔ OK[0m   in 2D il trascinamento sposta sul piano X-Y invece di non fare nulla
+  [32m✔ OK[0m   in 2D spostamento e ingrandimento restano disponibili
+  [32m✔ OK[0m   la rotazione automatica arriva ai controlli che la implementano
+  [32m✔ OK[0m   il bottone della rotazione dichiara di essere premuto
+  [32m✔ OK[0m   accendere la rotazione mentre si è in 2D riporta in 3D, invece di contraddirsi
+  [32m✔ OK[0m   la rotazione sopravvive al ridisegno del grafo
+  [32m✔ OK[0m   tornati in 3D il trascinamento torna a ruotare la scena
+  [32m✔ OK[0m   scegliere «Centralità» sposta lo stato premuto su un solo bottone
+  [32m✔ OK[0m   lo schema di prova arriva intero al grafo
+  [32m✔ OK[0m   la tabella a zero righe sparisce davvero dal grafo
+  [32m✔ OK[0m   «Solo popolate» dichiara di essere acceso
+  [32m✔ OK[0m   il messaggio dice quante tabelle sono sparite e che il conteggio è stimato
+  [32m✔ OK[0m   una ricerca a vuoto lo dice, invece di comportarsi come una ricerca non scritta
+  [32m✔ OK[0m   l'esito «assente» è distinto anche nello stile
+  [32m✔ OK[0m   il bottone per azzerare compare col testo
+  [32m✔ OK[0m   la corrispondenza dichiara che cosa ha trovato
+  [32m✔ OK[0m   azzerare la ricerca riporta campo, esito e bottone allo stato di partenza
+  [32m✔ OK[0m   col pannello aperto gli strumenti si spostano a sinistra, invece di finirgli sotto
+  [32m✔ OK[0m   nella barra non resta nessuna <select>: nessuna tendina di sistema
+  [32m✔ OK[0m   il filtro usa lo stesso menu di «Analisi» e «Schema»
+  [32m✔ OK[0m   le voci sono alternative che si escludono, non comandi
+  [32m✔ OK[0m   il controllo è alto come le pillole che gli stanno accanto
+  [32m✔ OK[0m   una freccia sola, quella dello sprite
+  [32m✔ OK[0m   il valore è allineato contro la freccia — la cosa che una <select> non permetteva
+  [32m✔ OK[0m   il valore scelto si legge sul bottone a menu chiuso
+  [32m✔ OK[0m   una sola voce risulta scelta, e nel menu è quella spuntata
+  [32m✔ OK[0m   scegliendo, il menu si chiude e il bottone lo dichiara
+  [32m✔ OK[0m   la scelta arriva al grafo: il filtro riduce davvero i nodi disegnati
+  [32m✔ OK[0m   freccia giù apre il menu e porta il fuoco sulla prima voce
+  [32m✔ OK[0m   le frecce percorrono le voci
+  [32m✔ OK[0m   Fine salta all'ultima voce
+  [32m✔ OK[0m   Esc chiude e riporta il fuoco sul bottone: lasciarlo su una voce nascosta lo perderebbe
+  [32m✔ OK[0m   anche «Analisi» si apre e si percorre da tastiera
+  [32m✔ OK[0m   almeno un menu si sovrappone davvero al pannello: il controllo qui sotto non è a vuoto (1 su 3)
+  [32m✔ OK[0m   ogni menu aperto che tocca il pannello viene dipinto SOPRA di esso
+  [32m✔ OK[0m   la barra, che è il contesto di impilamento dei suoi menu, sta sopra pannello e strumenti
+  [32m✔ OK[0m   ogni strumento icona dichiara un aria-label: senza, è un bottone senza nome
+  [32m✔ OK[0m   gli strumenti del rail sono icone SVG, non testo o emoji
+  [32m✔ OK[0m   nessun errore JavaScript durante la prova
+
+--- Barra del Grafo 3D: tutti i test superati ---

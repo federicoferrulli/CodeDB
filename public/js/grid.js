@@ -1,8 +1,9 @@
 import { state } from './state.js';
 import { campoScrivibile, identitaRiga } from './righe.js';
 import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
-import { openCollTab, pinActiveCollTab } from './colltabs.js';
-import { startEdit } from './inlineEdit.js';
+import { openCollTab, pinActiveCollTab, currentCollTab } from './colltabs.js';
+import { configuraColonne } from './table-resize.js';
+import { startEdit, segnalaBozza } from './inlineEdit.js';
 import { attachAutocomplete } from './autocomplete.js';
 import { applyCellSelection, clearCellSelection } from './cellselect.js';
 import { recordQuery, initQueryHistory } from './queryhistory.js';
@@ -148,6 +149,9 @@ export function runQuery(opts = {}) {
   // riusato per la nuova collection, quindi una risposta in ritardo scriverebbe
   // i documenti della collection precedente sotto le colonne di quella nuova.
   const originColl = state.activeCollId;
+  const originTab = activeTab();
+  const originDocument = originTab?.state.collTabs.find(c => c.id === originColl);
+  if (originDocument) { originDocument.gridRunId = runId; originDocument.gridError = null; }
 
   const payload = {
     db: state.db,
@@ -198,6 +202,24 @@ export function runQuery(opts = {}) {
     // griglia), db/coll/coll-tab il secondo — lo stato piatto ora descrive
     // un'altra collection e applicarla la corromperebbe. La regola è quella di
     // `fetchMore` e del conteggio, letta dal contesto congelato alla chiamata.
+    if (originDocument && originDocument.gridRunId === runId && st.activeCollId !== originColl) {
+      if (!st.collTabs.includes(originDocument)) return;
+      Object.assign(originDocument.snap ||= {}, {
+        docs: res.docs, columns: res.columns, columnMeta: res.columnMeta || {},
+        skip: res.skip, limit: res.limit, total: res.total, docsParziali: false,
+        selectedDocs: new Set(), cellSel: { anchor: null, focus: null, cells: new Set() },
+      });
+      originDocument.dataDirty = false;
+      if (res.total == null) emit('collection:count', { ...payload, tabId: richiesta.tabId, _bg: true }).then(count => {
+        if (originDocument.gridRunId !== runId) return;
+        originDocument.snap.total = count.total;
+        if (originTab.state.activeCollId === originColl) {
+          originTab.state.total = count.total;
+          if (activeTab() === originTab) updateFooter();
+        }
+      }).catch(() => {});
+      return;
+    }
     if (!contestoCorrente(st, {
       gridRunId: richiesta.runId, activeCollId: originColl,
       db: richiesta.db, coll: richiesta.coll,
@@ -263,6 +285,11 @@ export function runQuery(opts = {}) {
     // Errore di una find annullata/superata: non disturbare l'utente, la
     // richiesta più recente sta già gestendo la vista.
     const st = (err && err._state) || state;
+    if (originDocument?.gridRunId === runId) {
+      originDocument.gridError = err.message;
+      if (!opts.auto && originDocument.snap) Object.assign(originDocument.snap, { docs: [], total: 0, selectedDocs: new Set() });
+      if (st.activeCollId !== originColl) return;
+    }
     if (runId !== st.gridRunId || st.activeCollId !== originColl) return;
     if (isForActiveTab(err)) {
       // Una richiesta esplicita fallita non deve lasciare a schermo le righe
@@ -357,6 +384,8 @@ function computeExhausted(res, st = state) {
 // collection. Best-effort: un errore non deve rompere la griglia già mostrata.
 function requestTotalCount(payload, origin = state, originColl = state.activeCollId, originTabId) {
   const token = (origin.countToken = (origin.countToken || 0) + 1);
+  const document = origin.collTabs.find(c => c.id === originColl);
+  const gridRunId = document?.gridRunId;
   // Contesto congelato alla CHIAMATA: db e collection possono cambiare mentre
   // il conteggio gira, e confrontarli alla risposta con lo stato di allora e'
   // l'unico modo di sapere se quel totale descrive ancora cio' che si vede.
@@ -381,6 +410,9 @@ function requestTotalCount(payload, origin = state, originColl = state.activeCol
       // (`origin`), non quello attivo alla risposta.
       const st = res._state;
       if (st !== origin) return; // il tab è cambiato sotto: conteggio non pertinente
+      if (document?.snap && document.gridRunId === gridRunId) {
+        Object.assign(document.snap, { total: res.total, countApprox: !!res.approx, countTimedOut: res.total == null });
+      }
       if (!contestoCorrente(st, richiesta)) return;
       st.countPending = false;
       if (res.total == null) {
@@ -639,7 +671,6 @@ function buildHead(thead, canSelect) {
   });
   thead.appendChild(headRow);
 
-  if (vctx && vctx.widths) applyFrozenWidths(headRow);
 }
 
 // Costruisce una singola riga (tr) per il documento all'indice `rowIdx` in
@@ -647,6 +678,7 @@ function buildHead(thead, canSelect) {
 // virtualizzato.
 function buildRow(doc, rowIdx, canSelect) {
   const tr = document.createElement('tr');
+  tr.className = rowIdx % 2 ? 'grid-row-even' : '';
   // Letto una volta per riga e non per cella: è una Map, ma la ricerca avviene
   // dentro il ciclo di rendering delle righe visibili, a ogni fotogramma.
   const relazioni = relazioniCorrenti();
@@ -706,7 +738,7 @@ function buildRow(doc, rowIdx, canSelect) {
       const span = document.createElement('span');
       if (cls) span.className = cls;
       if (dataVal !== undefined) span.dataset.val = dataVal;
-      span.textContent = valore === undefined ? '' : text;
+      span.textContent = text;
       td.title = text;
       td.appendChild(span);
     }
@@ -726,6 +758,7 @@ function buildRow(doc, rowIdx, canSelect) {
       if (rel.origine !== VINCOLO) td.classList.add('fk-ipotesi');
       td.title = `${text}\nCollegata a ${rel.tabella}.${rel.colonna}`;
     }
+    if (state.editDrafts?.size) segnalaBozza(td, doc, col, { tabId: activeTab()?.id, db: state.db, coll: state.coll });
     tr.appendChild(td);
   });
   return tr;
@@ -874,16 +907,6 @@ function cellaNellaSelezione(td) {
   return !!(cells && cells.size && cells.has(`${td.dataset.r}:${td.dataset.c}`));
 }
 
-function applyFrozenWidths(headRow) {
-  [...headRow.children].forEach((th, i) => {
-    if (vctx.widths[i] != null) th.style.width = `${vctx.widths[i]}px`;
-  });
-}
-
-function clearFrozenWidths() {
-  document.querySelectorAll('#grid thead th').forEach((th) => { th.style.width = ''; });
-}
-
 export function renderGrid(opts = {}) {
   const preserveScroll = !!opts.preserveScroll;
   const grid = $('#grid');
@@ -898,13 +921,16 @@ export function renderGrid(opts = {}) {
 
   thead.innerHTML = '';
   buildHead(thead, canSelect);
+  const documento = currentCollTab();
+  configuraColonne(grid, {
+    nomi: [null, ...state.columns], righe: state.docs,
+    larghezze: documento ? (documento.gridWidths ||= new Map()) : new Map(),
+  });
 
   const virtual = vaVirtualizzata(state.docs.length, CAPACITA_DATI, VIRTUAL_THRESHOLD);
   if (!virtual) {
     vctx = null;
     grid.classList.remove('virtual');
-    grid.style.width = '';
-    clearFrozenWidths();
     disegnaCorpo({
       tbody,
       righe: state.docs,
@@ -926,49 +952,35 @@ export function renderGrid(opts = {}) {
   maybeLoadMore();
 }
 
-// Prepara la virtualizzazione: alla prima chiamata (o dopo un cambio dataset)
-// misura l'altezza di riga e congela le larghezze delle colonne con un render
-// campione a layout automatico, poi passa a table-layout fixed e renderizza la
-// sola finestra visibile.
+// Le colonne sono già misurate sul campione; il corpo monta solo la finestra visibile.
 function renderVirtualized(preserveScroll, savedScroll, canSelect) {
   const grid = $('#grid');
   const wrap = $('.grid-wrap');
-  const tbody = $('#grid tbody');
-
   if (!preserveScroll || !vctx) {
-    grid.classList.remove('virtual');
-    grid.style.width = '';
-    clearFrozenWidths();
-    tbody.innerHTML = '';
-    // Render campione a layout automatico per misurare altezza e larghezze.
-    const sample = Math.min(state.docs.length, 60);
-    for (let i = 0; i < sample; i++) tbody.appendChild(buildRow(state.docs[i], i, canSelect));
-    const firstRow = tbody.querySelector('tr');
-    // Misurata dal DOM vero, con il token come RIPIEGO e non come costante
-    // inventata: il `28` scritto qui non aveva alcun rapporto con l'altezza che
-    // il CSS produceva davvero.
-    const rowH = firstRow ? Math.round(firstRow.getBoundingClientRect().height)
-      : altezzaRigaGriglia(grid);
-    const headCells = [...$('#grid thead tr').children];
-    const widths = headCells.map((th) => Math.ceil(th.getBoundingClientRect().width));
-    const totalWidth = widths.reduce((a, b) => a + b, 0);
-    vctx = { rowH: rowH || altezzaRigaGriglia(grid), widths, totalWidth, start: 0, end: 0 };
-    // Congela: larghezze esplicite + table-layout fixed (box-sizing border-box
-    // via .virtual in CSS, così width == larghezza misurata coi bordi).
-    applyFrozenWidths($('#grid thead tr'));
-    grid.style.width = `${totalWidth}px`;
+    vctx = { rowH: altezzaRigaGriglia(grid), start: 0, end: 0 };
     grid.classList.add('virtual');
   }
   vctx.canSelect = canSelect;
   if (wrap) wrap.scrollTop = preserveScroll ? savedScroll : 0;
-  renderVirtualWindow();
+  renderVirtualWindow(false);
 }
 
 // Renderizza la sola finestra di righe visibili (più OVERSCAN) con gli spacer.
-function renderVirtualWindow() {
+function renderVirtualWindow(conservaRighe = true) {
   if (!vctx) return;
   const wrap = $('.grid-wrap');
   const tbody = $('#grid tbody');
+  // La densità può cambiare senza una nuova query; anche gli spaziatori devono seguirla.
+  const rowH = altezzaRigaGriglia($('#grid'));
+  if (rowH !== vctx.rowH) {
+    const ratio = rowH / vctx.rowH;
+    vctx.rowH = rowH;
+    for (const spacer of tbody.querySelectorAll('.v-spacer td')) {
+      spacer.style.height = `${parseFloat(spacer.style.height) * ratio}px`;
+    }
+    if (wrap) wrap.scrollTop *= ratio;
+  }
+  if (conservaRighe && tbody.querySelector('td.editing')) return;
   // L'aritmetica della finestra sta nel modulo comune: era scritta due volte,
   // qui e in query-tab.js, con le stesse operazioni e nomi diversi.
   const finestra = finestraVirtuale({
@@ -987,6 +999,7 @@ function renderVirtualWindow() {
     disegnaRiga: (doc, i) => buildRow(doc, i, vctx.canSelect),
     finestra,
     colonneTotali: 1 + state.columns.length, // colonna dei checkbox + colonne dati
+    conservaRighe,
   });
   applyCellSelection();
 }
@@ -996,6 +1009,7 @@ function renderVirtualWindow() {
 // DOM quando è fuori dalla finestra virtualizzata).
 export function ensureRowRendered(r) {
   if (!vctx) return;
+  vctx.rowH = altezzaRigaGriglia($('#grid'));
   const wrap = $('.grid-wrap');
   if (!wrap) return;
   const dove = scorrimentoPerRiga({
@@ -1403,6 +1417,10 @@ export function initGrid() {
   // (throttle con requestAnimationFrame) e, se attivo, alimenta lo scroll
   // infinito. Salta il re-render della finestra mentre si sta editando una
   // cella, per non distruggere l'input a fuoco.
+  const aggiornaGeometria = () => { if (vctx) renderVirtualWindow(); };
+  new ResizeObserver(aggiornaGeometria).observe($('.grid-wrap'));
+  window.matchMedia('(pointer: coarse), (max-width: 600px)').addEventListener('change', aggiornaGeometria);
+  document.addEventListener('codedb:tema', aggiornaGeometria);
   $('.grid-wrap').addEventListener('scroll', () => {
     if (scrollRaf) return;
     scrollRaf = requestAnimationFrame(() => {

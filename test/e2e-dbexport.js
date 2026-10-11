@@ -17,6 +17,7 @@ const DB = 'gui_e2e_dbexport';
 const DB2 = 'gui_e2e_dbexport_copy';
 const MYSQL_PORT = parseInt(process.env.MYSQL_PORT, 10) || 3306;
 const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || '';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 let socket = null;
 let testServer = null;
@@ -53,7 +54,7 @@ async function verificaTotaleSoloPrimoBlocco(base, etichetta) {
 
 async function testMongo() {
   console.log('MongoDB (tab "m")');
-  const conn = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId: 'm' });
+  const conn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, tabId: 'm' });
   assert(conn.ok, `connessione (${conn.ok ? 'ok' : conn.error})`);
   if (!conn.ok) return;
   const t = (p) => ({ ...p, tabId: 'm' });

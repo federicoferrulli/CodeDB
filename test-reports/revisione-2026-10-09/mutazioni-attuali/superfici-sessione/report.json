@@ -1,0 +1,129 @@
+{
+  "environment": "Chromium; UI reale, trasporto simulato",
+  "checks": [],
+  "surfaces": [
+    {
+      "name": "utenti",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "utenti",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "utenti",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "utenti",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "grants",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "grants",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "grants",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "grants",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "apikeys",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "apikeys",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "apikeys",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "apikeys",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "audit",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "audit",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "audit",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "audit",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "salute",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "salute",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "salute",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "salute",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "sessioni",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "sessioni",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "sessioni",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "sessioni",
+      "theme": "light",
+      "width": 390
+    }
+  ],
+  "errors": [],
+  "requests": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Il monitor rende leggibile e copiabile la query completa\n+ actual - expected\n\n+ 'UPDATE ordini SET stato = $1 /* contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo '\n- 'UPDATE ordini SET stato = $1 /* contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo */'\n\n    at C:\\repository\\CodeDB\\test\\e2e-superfici.js:86:16"
+}

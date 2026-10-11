@@ -1,0 +1,23 @@
+--- E2E: incolla di celle esatto e atomico (issue 06) ---
+  [32m✔ OK[0m   BIGINT al limite 2^63-1 resta esatto ({"$numberLong":"9223372036854775807"})
+  [32m✔ OK[0m   BIGINT oltre 2^53 non passa da Number ({"$numberLong":"9007199254740993"})
+  [32m✔ OK[0m   decimale ad alta precisione esatto ({"$numberDecimal":"1234567890.123456789012345678"})
+  [32m✔ OK[0m   testo non numerico su colonna bigint rifiutato (BIGINT non valido: è richiesto un intero.)
+  [32m✔ OK[0m   DATE: calendario puro, nessun fuso preteso (ottenuto "2024-06-15")
+  [32m✔ OK[0m   DATETIME naive: stringa locale preservata al carattere attraverso il cambio d'ora ("2026-10-25T02:30:00")
+  [32m✔ OK[0m   TIMESTAMPTZ prima del cambio d'ora → istante UTC corretto ({"$date":"2026-10-25T00:30:00.000Z"})
+  [32m✔ OK[0m   TIMESTAMPTZ dopo il cambio d'ora → istante UTC diverso, stesso orario civile ({"$date":"2026-10-25T01:30:00.000Z"})
+  [32m✔ OK[0m   TIMESTAMPTZ senza fuso esplicito rifiutato, non convertito implicitamente (Istante ambiguo: indica il fuso con Z oppure con un offset, per esempio +02:00.)
+  [32m✔ OK[0m   MongoDB: $date resta istante senza tipo di colonna dichiarato ({"$date":"2026-10-25T02:30:00.000Z"})
+  [32m✔ OK[0m   MongoDB: istante ambiguo rifiutato anche senza colonna SQL (Istante ambiguo: indica il fuso con Z oppure con un offset, per esempio +02:00.)
+  [32m✔ OK[0m   blocco con una cella non valida: ZERO scritture inviate (0 doc:update) — il database resta invariato
+  [32m✔ OK[0m   l'errore identifica riga e colonna ("Incolla annullato prima di ogni scrittura. Riga 2, colonna "big": BIGINT non valido: è richiesto un intero.")
+  [32m✔ OK[0m   il blocco valido produce una sola doc:update (1) toast="5 celle incollate in 1 righe"
+  [32m✔ OK[0m   scrittura reale: BIGINT esatto ({"$numberLong":"9223372036854775807"})
+  [32m✔ OK[0m   scrittura reale: decimale esatto ({"$numberDecimal":"1234567890.123456789012345678"})
+  [32m✔ OK[0m   scrittura reale: DATE senza fuso ("2024-06-15")
+  [32m✔ OK[0m   scrittura reale: DATETIME locale invariato ("2026-10-25T02:30:00")
+  [32m✔ OK[0m   scrittura reale: TIMESTAMPTZ convertito in UTC dal fuso esplicito ({"$date":"2026-10-25T00:30:00.000Z"})
+  [32m✔ OK[0m   nessun errore JS in pagina ()
+
+Tutti i test superati.

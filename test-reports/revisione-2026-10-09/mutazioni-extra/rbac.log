@@ -1,0 +1,10 @@
+locator.waitFor: Timeout 30000ms exceeded.
+Call log:
+[2m  - waiting for locator('#subuser-list').getByText('Sospeso', { exact: true }) to be visible[22m
+
+    at C:\repository\CodeDB\test\e2e-rbac-ui.js:27:133 {
+  log: [
+    "  - waiting for locator('#subuser-list').getByText('Sospeso', { exact: true }) to be visible"
+  ],
+  name: 'TimeoutError'
+}

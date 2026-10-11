@@ -1,0 +1,37 @@
+[
+  {
+    "name": "larghezza_mobile",
+    "detected": true,
+    "expected": "Le connessioni occupano tutta"
+  },
+  {
+    "name": "menu_mobile",
+    "detected": true,
+    "expected": "Le azioni del database"
+  },
+  {
+    "name": "uscita",
+    "detected": true,
+    "expected": "Escape deve uscire"
+  },
+  {
+    "name": "bordo",
+    "detected": true,
+    "expected": "Annulla è raggiungibile"
+  },
+  {
+    "name": "uml",
+    "detected": true,
+    "expected": "colonne del campione UML"
+  },
+  {
+    "name": "rbac",
+    "detected": true,
+    "expected": "getByText('Sospeso'"
+  },
+  {
+    "name": "restore",
+    "detected": true,
+    "expected": "Il backend distingue"
+  }
+]

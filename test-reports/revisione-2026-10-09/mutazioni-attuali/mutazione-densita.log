@@ -1,0 +1,12 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+OK Separatore tastiera, limiti e valore accessibile aggiornato
+OK Menu visibile dell’esploratore, frecce, Escape e ritorno al comando
+AssertionError [ERR_ASSERTION]: Geometria touch virtuale {"body":36504,"row":48,"count":1200,"heights":[{"row":"0","actual":48},{"row":"1","actual":48},{"row":"2","actual":48},{"row":"3","actual":48},{"row":"4","actual":48},{"row":"5","actual":48},{"row":"6","actual":48},{"row":"7","actual":48},{"row":"8","actual":48},{"row":"9","actual":48},{"row":"10","actual":48},{"row":"11","actual":48},{"row":"12","actual":48},{"row":"13","actual":48},{"row":"14","actual":48},{"row":"15","actual":48},{"row":"16","actual":48},{"row":"17","actual":48},{"row":"18","actual":48},{"row":"19","actual":48},{"row":"20","actual":48},{"row":"21","actual":48},{"row":"22","actual":48},{"row":"23","actual":48},{"row":"24","actual":48},{"row":"25","actual":48},{"row":"26","actual":48},{"row":"27","actual":48},{"actual":35160,"spacer":"35160px"}]}
+    at C:\repository\CodeDB\test\e2e-revisione.js:119:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, showContextMenu, toast, isSqlType, refreshLucideIcons, isForActiveTab } from './utils.js';
+import { $, emit, showContextMenu, toast, isSqlType, refreshLucideIcons, isForActiveTab, aggiungiMenuNodo } from './utils.js';
 import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
@@ -57,6 +57,9 @@ export function renderDbTree(databases) {
     // porta l'utente qui): senza questo attributo l'unico `[data-db]` in pagina
     // era quello delle collection, e cercare il database ne apriva una a caso.
     label.dataset.db = db.name;
+    label.title = db.name;
+    label.tabIndex = 0;
+    label.setAttribute('role', 'button');
     li.appendChild(label);
 
     const sub = document.createElement('ul');
@@ -67,10 +70,12 @@ export function renderDbTree(databases) {
       if (!sub.classList.contains('hidden')) {
         sub.classList.add('hidden');
         state.expandedDbs.delete(db.name);
+        label.setAttribute('aria-expanded', 'false');
         return;
       }
       sub.classList.remove('hidden');
       state.expandedDbs.add(db.name);
+      label.setAttribute('aria-expanded', 'true');
       if (sub.childElementCount === 0) loadCollections(db.name, sub);
     });
 
@@ -107,6 +112,11 @@ export function renderDbTree(databases) {
       }
     }
 
+    label.setAttribute('aria-expanded', String(!sub.classList.contains('hidden')));
+    label.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); label.click(); }
+    });
+    aggiungiMenuNodo(label, db.name);
     tree.appendChild(li);
   }
   refreshLucideIcons(tree);
@@ -160,6 +170,12 @@ export function renderCollectionsList(dbName, container, collections) {
     label.appendChild(name);
     label.dataset.db = dbName;
     label.dataset.coll = coll.name;
+    label.title = `${dbName} / ${coll.name}`;
+    label.tabIndex = 0;
+    label.setAttribute('role', 'button');
+    label.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); label.click(); }
+    });
     if (dbName === state.db && coll.name === state.coll) label.classList.add('selected');
 
     if (coll.count !== null && coll.count !== undefined) {
@@ -203,6 +219,7 @@ export function renderCollectionsList(dbName, container, collections) {
       ]);
     });
     li.appendChild(label);
+    aggiungiMenuNodo(label, coll.name);
     frag.appendChild(li);
   }
   container.appendChild(frag);

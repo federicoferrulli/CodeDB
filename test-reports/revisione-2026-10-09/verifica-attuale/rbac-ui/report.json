@@ -1,0 +1,7 @@
+{
+  "checks": [
+    "Login errato recuperabile e login owner reale a 390/1440; creazione, sospensione e riattivazione sottoutente dalla UI su control plane MongoDB"
+  ],
+  "errors": [],
+  "environment": "Chromium + backend RBAC + MongoDB reale isolato"
+}

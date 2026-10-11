@@ -138,7 +138,7 @@ export function openSnippetModal() {
       if (preset) {
         const editor = $('#query-editor-input');
         const engineSelect = $('#query-target-engine');
-        if (editor) editor.value = preset.code;
+        if (editor) { editor.value = preset.code; editor.dispatchEvent(new Event('input', { bubbles: true })); }
         if (engineSelect) engineSelect.value = preset.engine;
       }
       modal.classList.add('hidden');

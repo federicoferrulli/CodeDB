@@ -1,12 +1,14 @@
 import { state } from './state.js';
+import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
+import { queryDocument, documentoVisibile } from './query-document.js';
 import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
 import { highlightQueryCode } from './query-highlighter.js';
 import { isScript, countStatements } from './sql-split.js';
-import { runScript, runScriptAndWait, nascondiPannelloScript } from './script-run.js';
+import { runScript, runScriptAndWait, abortScript, isScriptActive, nascondiPannelloScript } from './script-run.js';
 import { initQeHistory, registraEsecuzione, aggiornaEsecuzione, connCorrente } from './qe-history.js';
 import { refreshDbTree } from './dbtree.js';
 import { formatCode, minifyCode } from './query-formatter.js';
@@ -19,6 +21,7 @@ import { quotaIdentificatore, quotaSempre } from './sql-dialetti.js';
 // vista Dati (vedi griglia.js).
 import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, altezzaRigaGriglia } from './griglia.js';
 import { rendiTrascinabile } from './maniglia.js';
+import { toggleDrawer, closeDrawers } from './responsive.js';
 import { aggiornaLint, agganciaLint } from './json-lint.js';
 import {
   initQueryEditor, aggiornaNumeriRiga, segnalaRigaErrore, rigaDaMessaggio, selezioneEditor,
@@ -40,27 +43,61 @@ let currentResults = [];
 // a valle, e' proprio il difetto che le faceva sparire quando le righe erano
 // zero.
 let currentColumns = [];
+let currentMetrics = ['idle'];
 
-// Stato per il Chunking File SQL
-let activeSqlChunker = null;
-let currentChunkIndex = 0;
-let isChunkRunning = false;
-let stopChunkRunRequested = false;
+export function snapshotQueryView() {
+  const editor = $('#query-editor-input');
+  return {
+    results: currentResults, columns: currentColumns, metrics: currentMetrics,
+    mode: activeViewMode, order: queryOrdine, widths: queryLarghezze,
+    manualWidths: queryLarghezzeManuali, chartCfg: state.chartCfg,
+    targetDb: state.queryDb, targetColl: state.queryColl,
+    selection: editor ? [editor.selectionStart, editor.selectionEnd, editor.scrollTop] : null,
+    scroll: $('#query-table-view')?.scrollTop || 0,
+    editorHeight: $('#query-editor-container')?.style.height || '',
+    schemaSearch: $('#query-schema-search')?.value || '',
+    file: activeSqlFile,
+    surface: $('.query-main-panel')?.dataset.surface || 'both',
+  };
+}
 
-/**
- * Chiude il file SQL aperto a blocchi. Sta qui, e non dentro la chiusura di
- * `initSqlChunking`, perché serve anche a `resetQueryView`: un file aperto
- * appartiene al contesto in cui lo si è aperto, e trovarne il pannello su
- * un'altra connessione con i pulsanti "Esegui tutti i chunk" attivi è
- * esattamente il tipo di equivoco che questo intervento elimina.
- */
+export function restoreQueryView(q) {
+  if (!q) return;
+  setQuerySurface(q.surface || 'both');
+  activeSqlFile = q.file || null;
+  renderSqlFile();
+  state.queryDb = q.targetDb || null;
+  state.queryColl = q.targetColl || null;
+  state.chartCfg = q.chartCfg || null;
+  queryOrdine = q.order || [];
+  queryLarghezze = q.widths || new Map();
+  queryLarghezzeManuali = q.manualWidths || new Set();
+  currentResults = q.results || [];
+  currentColumns = q.columns || [];
+  queryColsSig = colonneRisultato(currentColumns, currentResults).join('\u0000');
+  setResultsViewMode(q.mode || 'table');
+  updateQueryMetrics(...(q.metrics || ['idle']));
+  $('#query-stop-btn')?.classList.toggle('hidden', !q.runId);
+  const editor = $('#query-editor-input');
+  if (editor && q.selection) {
+    editor.setSelectionRange(q.selection[0], q.selection[1]);
+    editor.scrollTop = q.selection[2];
+  }
+  const container = $('#query-editor-container');
+  if (container) { container.style.height = q.editorHeight || ''; container.style.flex = q.editorHeight ? 'none' : ''; }
+  if ($('#query-table-view')) $('#query-table-view').scrollTop = q.scroll || 0;
+  if ($('#query-schema-search')) $('#query-schema-search').value = q.schemaSearch || '';
+  filterQuerySchemaBrowser(q.schemaSearch || '');
+  renderQueryTarget();
+}
+
+// Il file e la sua sequenza appartengono al documento anche fuori fuoco.
+let activeSqlFile = null;
+let renderSqlFile = () => {};
+
 function chiudiFileSql() {
-  activeSqlChunker = null;
-  currentChunkIndex = 0;
-  const panel = $('#query-sql-chunk-panel');
-  if (panel) panel.classList.add('hidden');
-  const prog = $('#chunk-progress-container');
-  if (prog) prog.classList.add('hidden');
+  activeSqlFile = null;
+  renderSqlFile();
 }
 
 export function updateEditorHighlight() {
@@ -167,8 +204,12 @@ function minificaEditor() {
 }
 
 export function initQueryTab() {
+  for (const surface of ['editor', 'results', 'both']) {
+    $(`#query-show-${surface}`)?.addEventListener('click', () => setQuerySurface(surface));
+  }
   initSnippetManager();
   initSqlChunking();
+  $('#query-save-sql-btn')?.addEventListener('click', salvaQueryFile);
   initQeHistory();
   const targetEngineSelect = $('#query-target-engine');
   const runBtn = $('#query-run-btn');
@@ -205,14 +246,16 @@ export function initQueryTab() {
   if (toggleSchemaBtn && schemaSidebar) {
     toggleSchemaBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      schemaSidebar.classList.toggle(schemaMobile.matches ? 'open' : 'collapsed');
+      if (schemaMobile.matches) toggleDrawer('#query-schema-sidebar');
+      else schemaSidebar.classList.toggle('collapsed');
       aggiornaSchemaEspanso();
     });
   }
 
   if (closeSchemaBtn && schemaSidebar) {
     closeSchemaBtn.addEventListener('click', () => {
-      schemaSidebar.classList.remove('open');
+      closeDrawers();
+      toggleSchemaBtn.focus();
       aggiornaSchemaEspanso();
     });
   }
@@ -245,6 +288,11 @@ export function initQueryTab() {
   // Azioni editor e sincronizzazione highlight
   if (editorInput) {
     editorInput.addEventListener('input', updateEditorHighlight);
+    editorInput.addEventListener('input', () => {
+      const q = queryDocument();
+      if (q) { q.code = editorInput.value; q.dirty = q.code !== (q.savedCode || ''); }
+      import('./colltabs.js').then(m => m.pinActiveCollTab());
+    });
     editorInput.addEventListener('scroll', () => {
       if (highlightPre) {
         highlightPre.scrollTop = editorInput.scrollTop;
@@ -274,6 +322,9 @@ export function initQueryTab() {
   // trasformazioni del testo (Ctrl+Shift+F formatta, Ctrl+Shift+M minifica).
   if (editorInput) {
     editorInput.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault(); salvaQueryFile(); return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
         e.preventDefault();
         formattaEditor();
@@ -325,7 +376,7 @@ export function initQueryTab() {
   }
 
   if (runBtn) {
-    runBtn.addEventListener('click', () => runQuery());
+    runBtn.addEventListener('click', () => runQuery()?.catch(() => {}));
   }
 
   if (stopBtn) {
@@ -367,221 +418,118 @@ export function initQueryTab() {
 }
 
 // Inizializza ed aggancia la gestione del Chunking per File SQL Grandi
+function salvaQueryFile() {
+  const code = $('#query-editor-input')?.value || '';
+  const url = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${(state.db || 'query').replace(/[^\w.-]/g, '_')}.sql`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const q = queryDocument();
+  if (q) { q.savedCode = code; q.dirty = false; }
+}
+
 function initSqlChunking() {
-  const openBtn = $('#query-open-sql-btn');
   const fileInput = $('#query-open-sql-input');
-  const chunkPanel = $('#query-sql-chunk-panel');
-  const fileNameEl = $('#chunk-file-name');
-  const fileSizeEl = $('#chunk-file-size');
-  const countBadgeEl = $('#chunk-count-badge');
-  const chunkSelect = $('#chunk-select');
-  const prevBtn = $('#chunk-prev-btn');
-  const nextBtn = $('#chunk-next-btn');
-  const loadEditorBtn = $('#chunk-load-editor-btn');
-  const closeBtn = $('#chunk-close-btn');
-  const runAllBtn = $('#chunk-run-all-btn');
-  const cancelRunBtn = $('#chunk-cancel-run-btn');
-  const progressContainer = $('#chunk-progress-container');
-  const progressFill = $('#chunk-progress-fill');
-  const progressText = $('#chunk-progress-text');
-  const byteInfoEl = $('#chunk-byte-info');
-  const editorInput = $('#query-editor-input');
+  const editor = $('#query-editor-input');
+  if (!fileInput || !editor) return;
+  const panel = $('#query-sql-chunk-panel');
+  const select = $('#chunk-select');
+  const run = $('#chunk-run-all-btn');
+  const cancel = $('#chunk-cancel-run-btn');
+  const progress = $('#chunk-progress-container');
 
-  if (!openBtn || !fileInput) return;
-
-  openBtn.addEventListener('click', () => {
-    fileInput.click();
-  });
-
-  fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
-
+  renderSqlFile = () => {
+    const file = activeSqlFile;
+    panel.classList.toggle('hidden', !file);
+    if (!file) { progress.classList.add('hidden'); return; }
+    const info = file.chunker.getFileInfo();
+    $('#chunk-file-name').textContent = info.name;
+    $('#chunk-file-size').textContent = info.formattedSize;
+    $('#chunk-count-badge').textContent = `${info.chunkCount} blocchi`;
+    select.replaceChildren(...file.chunker.chunks.map(c => new Option(`Blocco ${c.index + 1} / ${info.chunkCount} (${formatBytes(c.size)})`, c.index)));
+    select.value = file.index;
+    run.classList.toggle('hidden', file.running);
+    cancel.classList.toggle('hidden', !file.running);
+    progress.classList.toggle('hidden', !file.message);
+    $('#chunk-progress-text').textContent = file.message || '';
+    $('#chunk-progress-fill').style.width = `${file.percent || 0}%`;
+    $('#chunk-byte-info').textContent = file.bytes || '';
+  };
+  const preview = async (file, index) => {
+    if (!file || index < 0 || index >= file.chunker.getChunkCount()) return;
+    const data = await file.chunker.readChunk(index);
+    file.index = index;
+    file.bytes = `Byte ${formatBytes(data.startByte)} ? ${formatBytes(data.endByte)} / ${formatBytes(data.totalBytes)}`;
+    file.document.code = data.text;
+    file.document.dirty = true;
+    if (activeSqlFile === file && documentoVisibile(file.tab, file.collTabId)) {
+      editor.value = data.text; updateEditorHighlight(); renderSqlFile();
+    }
+    return data.text;
+  };
+  $('#query-open-sql-btn')?.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', async () => {
+    const source = fileInput.files?.[0];
+    if (!source) return;
     fileInput.value = '';
-
-    // File piccolo (<= 1MB): caricamento diretto nell'editor
-    if (file.size <= 1024 * 1024) {
-      try {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (editorInput) {
-            editorInput.value = String(reader.result || '');
-            updateEditorHighlight();
-          }
-          if (chunkPanel) chunkPanel.classList.add('hidden');
-          toast(`File "${file.name}" caricato nell'editor (${formatBytes(file.size)})`);
-        };
-        reader.onerror = () => toast('Impossibile leggere il file selezionato', 'error');
-        reader.readAsText(file);
-      } catch (err) {
-        toast(`Errore durante la lettura del file: ${err.message}`, 'error');
-      }
-      return;
-    }
-
-    // File grande (> 1MB): attivazione SqlChunker
+    const tab = activeTab(), collTabId = tab?.state.activeCollId;
+    const document = queryDocument(tab, collTabId);
     try {
-      toast(`Caricamento e analisi file "${file.name}" (${formatBytes(file.size)})...`);
-      activeSqlChunker = new SqlChunker(file, 1024 * 1024);
-      await activeSqlChunker.init();
-
-      const info = activeSqlChunker.getFileInfo();
-      if (fileNameEl) fileNameEl.textContent = info.name;
-      if (fileSizeEl) fileSizeEl.textContent = info.formattedSize;
-      if (countBadgeEl) countBadgeEl.textContent = `${info.chunkCount} chunk`;
-
-      if (chunkSelect) {
-        chunkSelect.innerHTML = '';
-        activeSqlChunker.chunks.forEach((c) => {
-          const opt = document.createElement('option');
-          opt.value = c.index;
-          opt.textContent = `Chunk ${c.index + 1} / ${info.chunkCount} (${formatBytes(c.size)})`;
-          chunkSelect.appendChild(opt);
-        });
+      if (source.size <= 1024 * 1024) {
+        document.code = await source.text(); document.dirty = true; document.file = null;
+        if (documentoVisibile(tab, collTabId)) { chiudiFileSql(); editor.value = document.code; updateEditorHighlight(); }
+        return;
       }
-
-      if (chunkPanel) chunkPanel.classList.remove('hidden');
-      if (progressContainer) progressContainer.classList.add('hidden');
-
-      await selectAndPreviewChunk(0);
-      toast(`File "${file.name}" (${info.formattedSize}) suddiviso in ${info.chunkCount} chunk.`);
-    } catch (err) {
-      toast(`Errore nella suddivisione a chunk: ${err.message}`, 'error');
-    }
+      const chunker = new SqlChunker(source, 1024 * 1024);
+      await chunker.init();
+      const file = { chunker, index: 0, running: false, cancelled: false, tab, collTabId, document };
+      document.file = file;
+      if (documentoVisibile(tab, collTabId)) activeSqlFile = file;
+      await preview(file, 0);
+    } catch (err) { toast(`Impossibile aprire ${source.name}: ${err.message}`, true); }
   });
-
-  async function selectAndPreviewChunk(index, updateEditor = true) {
-    if (!activeSqlChunker) return;
-    const total = activeSqlChunker.getChunkCount();
-    if (index < 0 || index >= total) return;
-
-    currentChunkIndex = index;
-    if (chunkSelect) chunkSelect.value = index;
-
-    const chunkData = await activeSqlChunker.readChunk(index);
-    if (byteInfoEl) {
-      byteInfoEl.textContent = `Byte ${formatBytes(chunkData.startByte)} - ${formatBytes(chunkData.endByte)} (Tot. ${formatBytes(chunkData.totalBytes)})`;
-    }
-
-    if (updateEditor && editorInput) {
-      editorInput.value = chunkData.text;
-      updateEditorHighlight();
-    }
-  }
-
-  if (prevBtn) {
-    prevBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex - 1));
-  }
-
-  if (nextBtn) {
-    nextBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex + 1));
-  }
-
-  if (chunkSelect) {
-    chunkSelect.addEventListener('change', (e) => {
-      selectAndPreviewChunk(parseInt(e.target.value, 10));
-    });
-  }
-
-  if (loadEditorBtn) {
-    loadEditorBtn.addEventListener('click', () => selectAndPreviewChunk(currentChunkIndex, true));
-  }
-
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      chiudiFileSql();
-      toast('File SQL chiuso.');
-    });
-  }
-
-  if (runAllBtn) {
-    runAllBtn.addEventListener('click', async () => {
-      if (!activeSqlChunker || isChunkRunning) return;
-      isChunkRunning = true;
-      stopChunkRunRequested = false;
-
-      if (runAllBtn) runAllBtn.classList.add('hidden');
-      if (cancelRunBtn) cancelRunBtn.classList.remove('hidden');
-      if (progressContainer) progressContainer.classList.remove('hidden');
-
-      const totalChunks = activeSqlChunker.getChunkCount();
-      let totalRows = 0;
-      const tStart = performance.now();
-
-      for (let i = currentChunkIndex; i < totalChunks; i++) {
-        if (stopChunkRunRequested) {
-          toast('Esecuzione sequenziale dei chunk interrotta dall\'utente.');
-          break;
-        }
-
-        const pct = Math.round(((i + 1) / totalChunks) * 100);
-        if (progressFill) progressFill.style.width = `${pct}%`;
-        if (progressText) {
-          progressText.textContent = `Esecuzione Chunk ${i + 1}/${totalChunks} (${pct}%) — ${totalRows} righe/record elaborati...`;
-        }
-
-        try {
-          await selectAndPreviewChunk(i, true);
-          // Un chunk contiene quasi sempre MOLTE istruzioni: va eseguito come
-          // script e ATTESO fino alla fine, altrimenti i blocchi successivi
-          // partirebbero tutti insieme (`runScript` ritorna all'avvio).
-          const testoChunk = ($('#query-editor-input')?.value || '').trim();
-          if (isScript(testoChunk)) {
-            const stato = await runScriptAndWait({
-              code: testoChunk,
-              engine: $('#query-target-engine')?.value || 'auto',
-              ...queryTarget(),
-              stopOnError: !!$('#query-stop-on-error')?.checked,
-            });
-            if (stato) {
-              totalRows += stato.eseguiti || 0;
-              // Uno script interrotto (pausa/abort) ferma anche la sequenza:
-              // proseguire coi blocchi successivi ignorerebbe la volontà
-              // dell'utente di fermarsi.
-              if (stato.status === 'aborted' || stato.status === 'paused') {
-                stopChunkRunRequested = true;
-                if (progressText) progressText.textContent = `Sequenza fermata al Chunk ${i + 1}/${totalChunks}`;
-                break;
-              }
-            }
-          } else {
-            const res = await runQuery();
-            if (res && (res.data || res.docs)) {
-              const list = res.data || res.docs;
-              totalRows += Array.isArray(list) ? list.length : 1;
-            }
-          }
-        } catch (err) {
-          toast(`Errore durante l'esecuzione del Chunk ${i + 1}: ${err.message}`, 'error');
-          if (progressText) {
-            progressText.textContent = `Interrotto per errore al Chunk ${i + 1}/${totalChunks}`;
-          }
-          break;
-        }
+  $('#chunk-prev-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index - 1));
+  $('#chunk-next-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index + 1));
+  select.addEventListener('change', () => preview(activeSqlFile, Number(select.value)));
+  $('#chunk-load-editor-btn')?.addEventListener('click', () => preview(activeSqlFile, activeSqlFile?.index));
+  const stop = file => {
+    if (!file) return;
+    file.cancelled = true;
+    if (file.running) abortScript(file.document.scriptRunId);
+  };
+  $('#chunk-close-btn')?.addEventListener('click', () => {
+    stop(activeSqlFile);
+    if (activeSqlFile) activeSqlFile.document.file = null;
+    chiudiFileSql();
+  });
+  cancel.addEventListener('click', () => stop(activeSqlFile));
+  run.addEventListener('click', async () => {
+    const file = activeSqlFile;
+    if (!file || file.running) return;
+    const target = queryTarget();
+    const engine = $('#query-target-engine')?.value || 'auto';
+    const stopOnError = !!$('#query-stop-on-error')?.checked;
+    file.running = true; file.cancelled = false;
+    const total = file.chunker.getChunkCount();
+    let rows = 0;
+    try {
+      for (let i = file.index; i < total && !file.cancelled; i++) {
+        if (!file.tab.state.collTabs.some(c => c.id === file.collTabId)) { file.cancelled = true; break; }
+        file.percent = Math.round(i / total * 100);
+        file.message = `Blocco ${i + 1}/${total} ? ${rows} istruzioni eseguite`;
+        const code = await preview(file, i);
+        if (file.cancelled) break;
+        const result = await runScriptAndWait({ code, engine, ...target, stopOnError, tab: file.tab, collTabId: file.collTabId });
+        rows += result?.eseguiti || 0;
+        if (result?.status === 'aborted' || result?.status === 'paused' || result?.status === 'error') file.cancelled = true;
       }
-
-      isChunkRunning = false;
-      const elapsed = Math.round(performance.now() - tStart);
-      if (runAllBtn) runAllBtn.classList.remove('hidden');
-      if (cancelRunBtn) cancelRunBtn.classList.add('hidden');
-
-      if (!stopChunkRunRequested) {
-        if (progressFill) progressFill.style.width = '100%';
-        if (progressText) {
-          progressText.textContent = `✓ Esecuzione completata in ${elapsed} ms! Totale ${totalRows} righe/record elaborati su ${totalChunks} chunk.`;
-        }
-        toast(`Esecuzione completata! ${totalRows} righe elaborate su ${totalChunks} chunk (${elapsed} ms).`);
-      }
-    });
-  }
-
-  if (cancelRunBtn) {
-    cancelRunBtn.addEventListener('click', () => {
-      stopChunkRunRequested = true;
-      if (cancelRunBtn) cancelRunBtn.classList.add('hidden');
-      if (runAllBtn) runAllBtn.classList.remove('hidden');
-    });
-  }
+      file.message = file.cancelled ? 'Sequenza interrotta' : `Completato ? ${rows} istruzioni eseguite`;
+      if (!file.cancelled) file.percent = 100;
+    } catch (err) { file.message = `Interrotto: ${err.message}`; }
+    finally { file.running = false; if (activeSqlFile === file) renderSqlFile(); }
+  });
 }
 
 // Inizializza la tab Query
@@ -591,6 +539,14 @@ export function loadQueryTab() {
 }
 
 // Resizer verticale tra editor e pannello risultati
+function setQuerySurface(surface) {
+  const panel = $('.query-main-panel');
+  if (!panel) return;
+  panel.dataset.surface = surface;
+  for (const name of ['editor', 'results', 'both']) $(`#query-show-${name}`)?.setAttribute('aria-pressed', String(name === surface));
+  requestAnimationFrame(() => { resizeChart(); resizeQueryMap(); });
+}
+
 function initVerticalResizer() {
   const resizer = $('#query-editor-resizer');
   const topPanel = $('#query-editor-container');
@@ -617,6 +573,7 @@ function initVerticalResizer() {
   // il dito e la penna non producono.
   rendiTrascinabile(resizer, {
     asse: 'y',
+    etichetta: 'Altezza editor query', controllato: topPanel, minimo, massimo,
     inizio: () => topPanel.getBoundingClientRect().height,
     sposta: (dy, altezzaIniziale) => {
       topPanel.style.flex = 'none';
@@ -695,6 +652,7 @@ function allargaRisultatiPerDisegno() {
 
 // Aggiorna badge e metriche
 export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg = null) {
+  currentMetrics = [status, timeMs, count, errorMsg];
   const statusBadge = $('#query-status-badge');
   const timeMetric = $('#query-time-metric');
   const timeVal = $('#query-time-val');
@@ -707,11 +665,13 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
     if (status === 'idle') statusBadge.textContent = '● In attesa';
     else if (status === 'running') {
       statusBadge.textContent = 'Esecuzione...';
+      queryRigheRef = null;
       const tableView = $('#query-table-view');
       if (tableView) showSkeletonGrid(tableView, 8, 5);
     }
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
     else if (status === 'error') statusBadge.textContent = 'Errore';
+    else if (status === 'cancelled') statusBadge.textContent = 'Annullata';
   }
 
   // `idle` significa "non c'è nessun risultato": le due metriche vanno
@@ -719,7 +679,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
   // 1.203 righe» sopravviveva al cambio di collection e continuava a
   // descrivere una query eseguita altrove — il numero più fuorviante di tutti,
   // perché ha l'aria di essere appena stato calcolato.
-  if (status === 'idle') {
+  if (status === 'idle' || status === 'cancelled' || status === 'running') {
     if (timeMetric) timeMetric.classList.add('hidden');
     if (countMetric) countMetric.classList.add('hidden');
   }
@@ -844,7 +804,7 @@ export function resetQueryView() {
   // Un file SQL aperto a blocchi appartiene al contesto in cui è stato aperto.
   // Se però l'esecuzione sequenziale è in volo non si tocca nulla: chiuderlo
   // sotto i piedi di chi sta eseguendo sarebbe peggio del residuo.
-  if (!isChunkRunning) chiudiFileSql();
+  chiudiFileSql();
 
   const ricerca = $('#query-schema-search');
   if (ricerca) ricerca.value = '';
@@ -867,7 +827,6 @@ let queryLarghezze = new Map();            // colonna → px
 let queryLarghezzeManuali = new Set();     // colonne allargate a mano: non si ricalcolano
 let queryColsSig = '';                     // firma del set di colonne
 let queryRigheRef = null;                  // riferimento all'ultimo result set reso
-let queryResizeInCorso = false;
 /* L'altezza di riga non e' piu' una costante scritta qui: era 36 mentre il CSS
    ne produceva un'altra, e la finestra virtuale calcolava gli spaziatori sul
    numero sbagliato. Si legge dal token `--grid-row-h` (vedi
@@ -920,21 +879,6 @@ function calcolaLarghezze(righe, colonne, tabella) {
   });
 }
 
-/** Scrive le larghezze correnti nel <colgroup> (creandolo se manca). */
-function applicaColgroup(table) {
-  let cg = table.querySelector('colgroup');
-  if (!cg) {
-    cg = document.createElement('colgroup');
-    table.insertBefore(cg, table.firstChild);
-  }
-  cg.innerHTML = '';
-  queryTableCols.forEach((c) => {
-    const col = document.createElement('col');
-    col.style.width = `${queryLarghezze.get(c) || LARGH_MIN}px`;
-    cg.appendChild(col);
-  });
-}
-
 /** Intestazione: etichetta, freccia di ordinamento e maniglia di larghezza. */
 function costruisciIntestazione(thead) {
   thead.innerHTML = '';
@@ -959,14 +903,14 @@ function costruisciIntestazione(thead) {
       th.appendChild(ind);
     }
 
-    const rz = document.createElement('div');
-    rz.className = 'qt-col-resizer';
-    rz.dataset.col = colName;
-    th.appendChild(rz);
-
     tr.appendChild(th);
   });
   thead.appendChild(tr);
+  const manuali = queryLarghezzeManuali;
+  configuraColonne(thead.closest('table'), {
+    nomi: queryTableCols, righe: queryTableRows, larghezze: queryLarghezze,
+    modificata: nome => manuali.add(nome),
+  });
 }
 
 /**
@@ -1005,56 +949,6 @@ function ordinaPer(col, accumula) {
   renderQueryVirtualWindow();
 }
 
-/** Larghezza della colonna adattata al contenuto del campione (doppio clic). */
-function autoAdatta(col) {
-  const table = $('#query-result-table');
-  const idx = queryTableCols.indexOf(col);
-  if (!table || idx < 0) return;
-  const w = larghezzeColonne(queryTableRows, [col], {
-    misura: misuratoreTesto(table),
-    testo: testoCella,
-    max: 800, // a mano si concede più del tetto automatico: l'ha chiesto l'utente
-  }).get(col);
-  if (!w) return;
-  queryLarghezze.set(col, w);
-  queryLarghezzeManuali.add(col);
-  const colEl = table.querySelectorAll('colgroup col')[idx];
-  if (colEl) colEl.style.width = `${w}px`;
-}
-
-function iniziaRidimensiona(handle, ev) {
-  const col = handle.dataset.col;
-  const idx = queryTableCols.indexOf(col);
-  const table = $('#query-result-table');
-  if (!table || idx < 0) return;
-  ev.preventDefault();
-
-  const colEl = table.querySelectorAll('colgroup col')[idx];
-  const startX = ev.clientX;
-  const startW = queryLarghezze.get(col) || LARGH_MIN;
-  handle.classList.add('dragging');
-  document.body.classList.add('qt-resizing');
-
-  const onMove = (e) => {
-    const w = Math.max(48, Math.round(startW + (e.clientX - startX)));
-    queryLarghezze.set(col, w);
-    queryLarghezzeManuali.add(col);
-    if (colEl) colEl.style.width = `${w}px`;
-  };
-  const onUp = () => {
-    document.removeEventListener('mousemove', onMove);
-    document.removeEventListener('mouseup', onUp);
-    handle.classList.remove('dragging');
-    document.body.classList.remove('qt-resizing');
-    // Il `click` arriva subito dopo il `mouseup`: senza questa bandiera, il
-    // rilascio della maniglia ordinerebbe anche la colonna.
-    queryResizeInCorso = true;
-    setTimeout(() => { queryResizeInCorso = false; }, 0);
-  };
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
 /* Gestori DELEGATI e registrati una volta sola: l'intestazione viene riscritta
    a ogni query e a ogni cambio di ordinamento. */
 function attachQueryHeaderEvents() {
@@ -1065,28 +959,18 @@ function attachQueryHeaderEvents() {
   queryHeaderAttached = true;
 
   thead.addEventListener('click', (e) => {
-    if (queryResizeInCorso) return;
     if (e.target.classList.contains('qt-col-resizer')) return;
     const th = e.target.closest('th');
     if (!th || !th.dataset.col) return;
     ordinaPer(th.dataset.col, e.shiftKey || e.ctrlKey || e.metaKey);
   });
 
-  thead.addEventListener('mousedown', (e) => {
-    if (!e.target.classList.contains('qt-col-resizer')) return;
-    iniziaRidimensiona(e.target, e);
-  });
-
-  thead.addEventListener('dblclick', (e) => {
-    if (!e.target.classList.contains('qt-col-resizer')) return;
-    e.preventDefault();
-    autoAdatta(e.target.dataset.col);
-  });
 }
 
 /** Una riga del result set. Non ha identita': niente checkbox, niente `_id`. */
-function disegnaRigaRisultato(row) {
+function disegnaRigaRisultato(row, indice) {
   const tr = document.createElement('tr');
+  tr.className = indice % 2 ? 'grid-row-even' : '';
   // Niente altezza in linea: la impone il CSS con `--grid-row-h`, che e' anche
   // il numero su cui la finestra virtuale calcola gli spaziatori. Scriverla qui
   // significava tenerne una seconda copia, e questa girava per ogni riga a ogni
@@ -1178,6 +1062,7 @@ function renderQueryVirtualWindow() {
     // simulare righe che ci starebbero comunque.
     finestra,
     colonneTotali: queryTableCols.length || 1,
+    conservaRighe: !!queryVirtualWindow,
   });
   queryVirtualWindow = { righe: queryTableRows, inizio, fine, altezzaRiga };
 }
@@ -1197,6 +1082,8 @@ function attachQueryVScroll() {
   container.addEventListener('scroll', aggiorna, { passive: true });
   // Il pannello cambia altezza anche trascinando il divisorio, senza scroll.
   new ResizeObserver(aggiorna).observe(container);
+  window.matchMedia('(pointer: coarse), (max-width: 600px)').addEventListener('change', aggiorna);
+  document.addEventListener('codedb:tema', aggiorna);
 }
 
 /**
@@ -1270,7 +1157,6 @@ function renderResultsTable(rows, colonneDichiarate) {
     ? ordinaRigheMultiple(righe, queryOrdine)
     : righe;
 
-  applicaColgroup(table);
   costruisciIntestazione(thead);
 
   attachQueryVScroll();
@@ -1782,9 +1668,7 @@ function insertTextInEditor(text) {
   updateEditorHighlight();
 }
 
-// La query in volo vive nello stato del TAB (`state.queryRunId`, freshState in
-// tabs.js): come variabile di modulo, runId e tabId potevano appartenere a due
-// tab diversi. Vedi la nota lì e la migrazione già fatta per queryDb.
+// Il run appartiene al documento: due schede della stessa connessione possono eseguire insieme.
 
 /* ---------------------------------------------------------------------------
  * Bersaglio della tab Query & Aggregate.
@@ -1873,15 +1757,17 @@ export function cancelActiveQuery() {
   // volta sola e da lì il suo runId, invece di incrociare una variabile di
   // modulo con il tab del momento.
   const curTab = activeTab();
-  const st = (curTab && curTab.state) || state;
-  const runIdToCancel = st.queryRunId;
+  const q = queryDocument(curTab);
+  const runIdToCancel = q?.runId;
   if (runIdToCancel) {
-    st.queryRunId = null;
+    q.runId = null;
+    q.metrics = ['cancelled'];
     const currentTabId = curTab ? curTab.id : undefined;
     emit('query:cancel', { tabId: currentTabId, runId: runIdToCancel })
       .catch((err) => console.warn('[QueryTab] Errore invio query:cancel:', err));
     markPaused(runIdToCancel);
-    updateQueryMetrics('idle');
+    renderResults(currentResults, currentColumns);
+    updateQueryMetrics('cancelled');
     toast('Query annullata dall\'utente');
   }
 }
@@ -1948,9 +1834,15 @@ export function runQuery(opzioni = {}) {
   // Il run appartiene al tab che lo lancia: il tab d'origine è quello a cui
   // andranno l'annullamento e l'azzeramento alla risposta.
   const statoRun = (curTab && curTab.state) || state;
-  statoRun.queryRunId = runId;
+  const documentoRun = queryDocument(curTab);
+  if (isScriptActive(documentoRun.scriptRunId)) abortScript(documentoRun.scriptRunId);
+  documentoRun.scriptRunId = null;
+  nascondiPannelloScript();
+  if (documentoRun.runId) emit('query:cancel', { tabId: currentTabId, runId: documentoRun.runId }).catch(() => {});
+  documentoRun.runId = runId;
+  documentoRun.metrics = ['running'];
   const { db: targetDb, coll: targetColl } = queryTarget();
-  const connName = state.connName || state.connId || 'Default';
+  const connName = curTab?.label || 'Connessione';
   const collTabId = state.activeCollId || null;
 
   const pendingHandle = trackPending({
@@ -1979,10 +1871,10 @@ export function runQuery(opzioni = {}) {
       // Si azzera nello stato del TAB D'ORIGINE (res._state), non in quello
       // attivo al ritorno della risposta.
       const stRun = (res && res._state) || statoRun;
-      const latest = stRun.queryRunId === runId;
-      const stessoContesto = latest && stRun.activeCollId === collTabId;
+      const latest = documentoRun.runId === runId;
+      const stessoContesto = latest && documentoVisibile(curTab, collTabId);
       const strutturaCambiata = cambiaStruttura(code);
-      if (latest) stRun.queryRunId = null;
+      if (latest) documentoRun.runId = null;
 
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
@@ -1990,6 +1882,7 @@ export function runQuery(opzioni = {}) {
       // `columns` e' la dichiarazione del motore su QUESTO result set: e'
       // l'unica cosa che descrive una SELECT senza righe.
       const colonne = Array.isArray(res.columns) ? res.columns : [];
+      if (latest) Object.assign(documentoRun, { results: rows, columns: colonne, metrics: ['success', elapsed, rows.length] });
       aggiornaEsecuzione(idStorico, { esito: 'ok', ms: elapsed, righe: rows.length });
 
       // Se il server segnala un cambio di database (es. via USE <dbname>).
@@ -1997,6 +1890,10 @@ export function runQuery(opzioni = {}) {
       // ritorno della risposta: `state` è un Proxy sul tab attivo, quindi
       // scriverci direttamente spostava il bersaglio del tab sbagliato — e la
       // query successiva partiva verso un altro database senza alcun avviso.
+      if (latest && res && res.activeDb) {
+        documentoRun.targetDb = res.activeDb;
+        documentoRun.targetColl = null;
+      }
       if (stessoContesto && res && res.activeDb) {
         const st = res._state || state;
         st.queryDb = res.activeDb;
@@ -2007,7 +1904,7 @@ export function runQuery(opzioni = {}) {
       // Il pannello dei risultati è unico: i risultati di un tab passato in
       // background restano nello storico delle query in sospeso, ma non devono
       // sostituire ciò che l'utente sta guardando su un'altra connessione.
-      if (latest && isForActiveTab(res) && stopBtn) stopBtn.classList.add('hidden');
+      if (stessoContesto && stopBtn) stopBtn.classList.add('hidden');
       if (strutturaCambiata) {
         // Anche il completamento automatico tiene una copia dello schema: dopo
         // una DDL proporrebbe tabelle che non esistono più.
@@ -2027,13 +1924,13 @@ export function runQuery(opzioni = {}) {
     .catch((err) => {
       const elapsed = Math.round(performance.now() - executionStartedAt);
       const stRunErr = (err && err._state) || statoRun;
-      const latest = stRunErr.queryRunId === runId;
-      const stessoContesto = latest && stRunErr.activeCollId === collTabId;
-      if (latest) stRunErr.queryRunId = null;
+      const latest = documentoRun.runId === runId;
+      const stessoContesto = latest && documentoVisibile(curTab, collTabId);
+      if (latest) Object.assign(documentoRun, { runId: null, results: [], columns: [], metrics: ['error', elapsed, 0, err.message] });
 
       pendingHandle.fail(err, elapsed);
       aggiornaEsecuzione(idStorico, { esito: 'errore', ms: elapsed });
-      if (latest && isForActiveTab(err) && stopBtn) stopBtn.classList.add('hidden');
+      if (stessoContesto && stopBtn) stopBtn.classList.add('hidden');
       if (stessoContesto && isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
         renderResults([], []);

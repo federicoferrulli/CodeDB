@@ -30,11 +30,12 @@ const targets = createE2eTargetRegistry({ destructive: true, prefix: 'gui_mongod
 const DB = targets.target('source');
 const DB_RESTORE = targets.target('restore');
 const CLI = path.join(__dirname, '..', 'backup', 'cli.js');
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-backup-e2e-'));
 const iniFile = path.join(tmpRoot, 'connections.ini');
 const destRoot = path.join(tmpRoot, 'backups');
-fs.writeFileSync(iniFile, '[e2e-backup]\ndbType=mongodb\nhost=localhost\nport=27017\n', 'utf8');
+fs.writeFileSync(iniFile, `[e2e-backup]\ndbType=mongodb\nhost=localhost\nport=${MONGO_PORT}\n`, 'utf8');
 
 function cli(...args) {
   return execFileSync(process.execPath, [CLI, ...args], {
@@ -44,7 +45,7 @@ function cli(...args) {
 }
 
 async function main() {
-  const client = new MongoClient('mongodb://localhost:27017', { serverSelectionTimeoutMS: 4000 });
+  const client = new MongoClient(`mongodb://localhost:${MONGO_PORT}`, { serverSelectionTimeoutMS: 4000 });
   await client.connect();
   try {
     await targets.drop(DB, (name) => client.db(name).dropDatabase()).catch(() => {});

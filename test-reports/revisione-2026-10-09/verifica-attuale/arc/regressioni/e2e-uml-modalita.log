@@ -1,0 +1,4 @@
+✓ Singola: relazioni dirette paginate, FK composta, schema esterno e gesti di sola lettura
+✓ Cambio tabella, rientro da Dati e diagramma database con nota conservata
+✓ Caricamento senza dettagli tecnici, skeleton database, movimento ridotto, completamento ed errore
+✓ Risposte tardive scartate e Intero database nel contesto senza tabella

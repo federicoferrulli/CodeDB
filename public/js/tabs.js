@@ -18,6 +18,9 @@ import { safeUUID } from './valori.js';
  * ------------------------------------------------------------------------- */
 
 const allaChiusuraDelTab = [];
+const guardieChiusura = [];
+
+export function primaDellaChiusura(fn) { guardieChiusura.push(fn); }
 
 /** Registra qualcosa da fare quando un tab viene chiuso. */
 export function allaChiusura(fn) {
@@ -161,6 +164,9 @@ export function switchTab(id) {
 }
 
 export function closeTab(id) {
+  const target = tabs.list.find(t => t.id === id);
+  if (!target) return false;
+  if (guardieChiusura.some(fn => fn(target) === false)) return false;
   avvisaDellaChiusura(id);
   const i = tabs.list.findIndex((t) => t.id === id);
   if (i < 0) return;
@@ -185,6 +191,7 @@ export function closeTab(id) {
 // connessione aperta". Le sessioni server sono già state chiuse dal server.
 export function closeAllTabs() {
   for (const tab of tabs.list) {
+    avvisaDellaChiusura(tab.id);
     if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
       window.dispatchEvent(new CustomEvent('codedb:tab-closed', { detail: { tabId: tab.id } }));
     }

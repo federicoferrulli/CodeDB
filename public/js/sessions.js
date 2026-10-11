@@ -30,7 +30,7 @@ import { mountArcControls } from '../arc/ui.js';
  *     un guasto dell'applicazione.
  * ------------------------------------------------------------------------- */
 
-import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, cut, toast, iniziaCaricamento, conCaricamento, openModal, closeModal, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { tabs } from './tabs.js';
 
 let autoTimer = null;
@@ -49,6 +49,13 @@ let ultimoGiro = 0;
 const REFRESH_MS = 5000;
 
 export function initSessions() {
+  const queryOverlay = document.createElement('div');
+  queryOverlay.id = 'session-query-overlay'; queryOverlay.className = 'overlay hidden';
+  queryOverlay.innerHTML = `<div class="modal modal-lg"><h2 id="session-query-title">Query della sessione</h2><p id="session-query-note" class="modal-hint"></p><label for="session-query-text">Testo restituito dal database</label><textarea id="session-query-text" class="code-export-textarea" rows="12" readonly></textarea><div class="modal-actions"><button type="button" id="session-query-copy">Copia query</button><button type="button" id="session-query-close">Chiudi</button></div></div>`;
+  document.body.append(queryOverlay);
+  mountArcControls(queryOverlay);
+  $('#session-query-close').addEventListener('click', () => closeModal(queryOverlay));
+  $('#session-query-copy').addEventListener('click', () => navigator.clipboard.writeText($('#session-query-text').value).then(() => toast('Query copiata')).catch(err => toast(err.message, true)));
   const btn = $('#btn-sessions');
   if (btn) btn.addEventListener('click', apri);
 
@@ -395,7 +402,7 @@ function disegna(sessioni, res) {
 
   const righe = viste.map((s) => {
     const query = s.query
-      ? `<code class="sessions-query" title="${esc(s.query)}">${esc(cut(s.query, 140))}${s.queryTroncata ? ' …' : ''}</code>`
+      ? `<code class="sessions-query">${esc(cut(s.query, 140))}${s.queryTroncata ? ' …' : ''}</code><button type="button" class="btn btn-sm btn-ghost" data-session-query="${esc(s.id)}">Leggi query</button>`
       : '<span class="sub-text">—</span>';
     const chi = [
       esc(s.utente || '—'),
@@ -416,6 +423,7 @@ function disegna(sessioni, res) {
       </tr>`;
   }).join('');
 
+  const scrollLeft = container.scrollLeft;
   container.innerHTML = `
     <table class="backup-table sessions-table">
       <thead>
@@ -427,6 +435,7 @@ function disegna(sessioni, res) {
     </table>`;
   mountArcControls(container);
   refreshLucideIcons(container);
+  container.scrollLeft = scrollLeft;
 }
 
 // Le righe tolte dalla tabella si CONTANO, non si fanno sparire: "dove sono
@@ -452,6 +461,17 @@ function riassuntoNascoste(tutte) {
 /* --- Terminazione ----------------------------------------------------------- */
 
 async function onClickLista(e) {
+  const query = e.target.closest('[data-session-query]');
+  if (query) {
+    const s = ultimeSessioni.find(s => String(s.id) === query.dataset.sessionQuery);
+    if (!s) return;
+    const conn = tabs.list.find(t => t.id === tabIdCorrente)?.label || 'connessione';
+    $('#session-query-title').textContent = `Sessione ${s.id} · ${conn} / ${s.db || '—'}`;
+    $('#session-query-note').textContent = s.queryTroncata ? 'Il database ha restituito una query troncata.' : 'Testo completo restituito dal database, conservato durante l’aggiornamento del monitor.';
+    $('#session-query-text').value = s.query;
+    openModal('#session-query-overlay');
+    return;
+  }
   const btn = e.target.closest('button[data-kill]');
   if (!btn || btn.disabled) return;
   const modo = btn.dataset.kill;

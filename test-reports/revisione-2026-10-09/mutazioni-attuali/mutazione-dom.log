@@ -1,0 +1,10 @@
+{"scroll":2080,"tastiera":1000,"blocchi":53}
+AssertionError [ERR_ASSERTION]: Scorrere 60 righe deve montare solo le righe entranti, conservando quelle visibili
+    at C:\repository\CodeDB\test\e2e-griglia-fluidita.js:111:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Electron: server incorporato e profilo isolato, ridimensionamento, zoom nativo 100/200%, dialog/focus e salvataggio SQL esatto"
+  ],
+  "errors": [],
+  "environments": [
+    {
+      "electron": "43.2.0",
+      "chromium": "150.0.7871.129",
+      "node": "24.18.0"
+    }
+  ]
+}

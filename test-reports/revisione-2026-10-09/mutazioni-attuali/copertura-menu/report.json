@@ -1,0 +1,12 @@
+{
+  "environment": "Chromium, viewport simulati; trasporto controllato, renderer reali",
+  "checks": [
+    "Cinque valori distinti; testo copiabile completo e stringa vuota invariata",
+    "Separatore tastiera, limiti e valore accessibile aggiornato"
+  ],
+  "layouts": [],
+  "errors": [],
+  "requests": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Freccia sposta il focus del menu\n    at C:\\repository\\CodeDB\\test\\e2e-revisione.js:102:12",
+  "phase": "pronta"
+}

@@ -20,10 +20,11 @@ export function initSettings() {
       if (node.classList.contains('menu-divider')) { separatorBefore = true; continue; }
       if (!(node instanceof HTMLButtonElement) || node.classList.contains('hidden')) continue;
       items.push({ label: node.textContent!.trim(), disabled: node.disabled, separatorBefore,
-        onSelect: () => { node.click(); } });
+        // La finestra ricorda il pulsante stabile, non la voce che Radix sta smontando.
+        onSelect: () => requestAnimationFrame(() => { document.getElementById('conn-settings-btn')?.focus({ preventScroll: true }); node.click(); }) });
       separatorBefore = false;
     }
-    flushSync(() => root.render(<DropdownMenu triggerId="conn-settings-btn" label="Impostazioni" icon={<Settings size={16} />} items={items} />));
+    flushSync(() => root.render(<DropdownMenu triggerId="conn-settings-btn" label="Strumenti" icon={<Settings size={16} />} items={items} />));
   }
   new MutationObserver(render).observe(commands, { attributes: true, attributeFilter: ['class', 'disabled'], subtree: true, childList: true, characterData: true });
   render();

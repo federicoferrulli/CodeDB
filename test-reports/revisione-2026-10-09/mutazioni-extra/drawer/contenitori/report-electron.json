@@ -1,0 +1,12 @@
+{
+  "checks": [],
+  "errors": [],
+  "environments": [
+    {
+      "electron": "43.2.0",
+      "chromium": "150.0.7871.129",
+      "node": "24.18.0"
+    }
+  ],
+  "failure": "AssertionError [ERR_ASSERTION]: Il pannello chiuso conn-sidebar non copre il lavoro dopo il cambio di viewport\n\ntrue !== false\n\n    at electron (C:\\repository\\CodeDB\\test\\e2e-contenitori.js:48:92)\n    at async C:\\repository\\CodeDB\\test\\e2e-contenitori.js:119:51"
+}

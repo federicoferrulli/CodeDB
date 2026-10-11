@@ -612,6 +612,9 @@ export class Tavola {
    */
   monta({ nodi = [], links = [], note = [], entita = [], logiche = [], irrisolti = new Set(), gruppi = [], instradamenti = {} }) {
     const col = palette();
+    this.paper.drawBackground({ color: col.bg1 });
+    this.paper.setGrid({ name: 'dot', args: { color: col.bordo, thickness: 1 } });
+    this.minimappa?.drawBackground({ color: col.bg1 });
     this._nascondiVertici();
     this._gestoVertici = null;
     this._costruzione = true;

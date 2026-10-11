@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
+import { limitiViewport } from '../../../../public/js/viewport.js';
 
 // CodeDB: il top layer evita il ritaglio nei pannelli scorrevoli e resta nel
 // sottoalbero del dialogo, quindi Radix conserva correttamente il focus.
@@ -8,12 +9,18 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
   useLayoutEffect(() => {
     const target = panel.current, trigger = anchor.current;
     if (!target || !trigger || !open) return;
-    target.showPopover?.();
     const position = () => {
-      if (!trigger.getClientRects().length) { dismiss.current(); return; }
+      if (!trigger.getClientRects().length) {
+        if (target.matches(':popover-open')) target.hidePopover?.();
+        dismiss.current(); return;
+      }
+      if (!target.matches(':popover-open')) target.showPopover?.();
       const box = trigger.getBoundingClientRect();
-      target.style.left = `${Math.max(8, Math.min(box.left, window.innerWidth - target.offsetWidth - 8))}px`;
-      target.style.top = `${Math.max(8, Math.min(box.bottom + 4, window.innerHeight - target.offsetHeight - 8))}px`;
+      const { left, top, right, bottom } = limitiViewport();
+      const below = box.bottom + 4;
+      const y = below + target.offsetHeight > bottom - 8 ? box.top - target.offsetHeight - 4 : below;
+      target.style.left = `${Math.max(left + 8, Math.min(box.left, right - target.offsetWidth - 8))}px`;
+      target.style.top = `${Math.max(top + 8, Math.min(y, bottom - target.offsetHeight - 8))}px`;
     };
     position();
     const observer = new ResizeObserver(position);
@@ -21,9 +28,13 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
     observer.observe(trigger);
     window.addEventListener('resize', position);
     window.addEventListener('scroll', position, true);
+    window.visualViewport?.addEventListener('resize', position);
+    window.visualViewport?.addEventListener('scroll', position);
     return () => {
       observer.disconnect(); window.removeEventListener('resize', position);
       window.removeEventListener('scroll', position, true);
+      window.visualViewport?.removeEventListener('resize', position);
+      window.visualViewport?.removeEventListener('scroll', position);
       if (target.hidePopover && target.matches(':popover-open')) target.hidePopover();
     };
   }, [open, anchor, panel]);

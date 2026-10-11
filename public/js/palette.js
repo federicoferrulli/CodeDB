@@ -3,7 +3,7 @@ import { mountArcControls } from '../arc/ui.js';
 
 /* ---------------------------------------------------------------------------
  * Palette di ricerca e comandi veloci (Ctrl+P) + dispatcher delle scorciatoie
- * GLOBALI (Ctrl+B barra connessioni, Ctrl+W chiudi scheda, Ctrl+P palette).
+ * GLOBALI (Ctrl+B pannello sinistro, Ctrl+W chiudi scheda, Ctrl+P palette).
  *
  * Le combinazioni vengono dal catalogo (`scorciatoie.js`), quindi sono
  * rimappabili da Impostazioni e salvate sotto al tenant. Il dispatcher esegue
@@ -19,7 +19,8 @@ import { activeTab, tabs, closeTab } from './tabs.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { closeCollTab, openCollTab } from './colltabs.js';
-import { toggleConnSidebar, elencoConnessioni } from './connmanager.js';
+import { elencoConnessioni } from './connmanager.js';
+import { toggleDrawer } from './responsive.js';
 import { openConnModal } from './connection.js';
 import { $, emit, toast } from './utils.js';
 import { connectAndOpenTab } from './connection.js';
@@ -53,7 +54,7 @@ const ALTEZZA_RIGA = 34;
 /* ------------------------------ Azioni globali ---------------------------- */
 
 function mostraBarraConnessioni() {
-  toggleConnSidebar();
+  toggleDrawer('#conn-sidebar');
 }
 
 function chiudiScheda() {
@@ -75,7 +76,7 @@ function chiudiScheda() {
 /** Le voci della palette: comandi fissi + connessioni + database + tabelle. */
 function raccogliVoci() {
   const voci = [
-    { tipo: 'Comando', etichetta: 'Mostra/nascondi la barra connessioni', esegui: mostraBarraConnessioni },
+    { tipo: 'Comando', etichetta: 'Mostra/nascondi il pannello sinistro', esegui: mostraBarraConnessioni },
     { tipo: 'Comando', etichetta: 'Nuova connessione', esegui: () => openConnModal() },
   ];
   for (const conn of elencoConnessioni()) {

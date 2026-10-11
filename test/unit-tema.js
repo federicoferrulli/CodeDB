@@ -99,8 +99,8 @@ console.log('--- Test Unitari Temi ---');
   const tScuro = T.derivaTokens(scuro, 'dark');
   const tChiaro = T.derivaTokens(chiaro, 'light');
 
-  assert.strictEqual(tScuro['--bg'], '#0d1117');
-  assert.strictEqual(tScuro['--accent'], '#6366f1');
+  assert.strictEqual(tScuro['--bg'], '#121419');
+  assert.strictEqual(tScuro['--accent'], '#585aee');
 
   // Il VERSO: su tema scuro una superficie sollevata è più CHIARA dello
   // sfondo, su tema chiaro più SCURA. È l'errore che rende invisibili i menu.

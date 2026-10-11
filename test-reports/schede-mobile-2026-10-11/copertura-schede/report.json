@@ -1,0 +1,15 @@
+{
+  "environment": "Chromium, viewport simulati; trasporto controllato, renderer reali",
+  "checks": [
+    "Cinque valori distinti; testo copiabile completo e stringa vuota invariata",
+    "Separatore tastiera, limiti e valore accessibile aggiornato",
+    "Menu visibile dell’esploratore, frecce, Escape e ritorno al comando",
+    "Cambio densità durante editing: bozza integra e spaziatori coerenti",
+    "Drawer: stato, focus iniziale, chiusura e focus restituito"
+  ],
+  "layouts": [],
+  "errors": [],
+  "requests": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Lo switcher attiva il documento scelto\n+ actual - expected\n\n+ 'oggetto_11_con_nome_lungo_e_spazi'\n- 'ordini'\n\n    at C:\\repository\\CodeDB\\test\\e2e-revisione.js:157:12",
+  "phase": "pronta"
+}

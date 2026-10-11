@@ -1,0 +1,5 @@
+{
+  "checks": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Escape deve uscire dalla modifica della griglia virtuale\n\n1 !== 0\n\n    at C:\\repository\\CodeDB\\test\\e2e-uscita-editing.js:30:12"
+}

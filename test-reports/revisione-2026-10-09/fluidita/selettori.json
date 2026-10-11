@@ -1,0 +1,2112 @@
+[
+  {
+    "selector": ".body:has(#conn-sidebar.collapsed)",
+    "us": 192017,
+    "tentativi": 157
+  },
+  {
+    "selector": "#grid :is(th, td)",
+    "us": 97110,
+    "tentativi": 147770
+  },
+  {
+    "selector": ":is(.sidebar-title, .conn-sidebar-title, .toolbar-section-title)",
+    "us": 87206,
+    "tentativi": 147770
+  },
+  {
+    "selector": ":is(.tabs-row, .toolbar, .query-toolbar, .modal-header) > *",
+    "us": 78170,
+    "tentativi": 147770
+  },
+  {
+    "selector": "td:not(table td)",
+    "us": 67362,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".body:has(#tab-body.hidden)",
+    "us": 63965,
+    "tentativi": 157
+  },
+  {
+    "selector": "td",
+    "us": 52846,
+    "tentativi": 247596
+  },
+  {
+    "selector": "*",
+    "us": 50475,
+    "tentativi": 295540
+  },
+  {
+    "selector": "#grid.virtual td",
+    "us": 46963,
+    "tentativi": 123798
+  },
+  {
+    "selector": "#grid td.editable",
+    "us": 43874,
+    "tentativi": 115815
+  },
+  {
+    "selector": ":is(.info-box, .warn-box, .success-box, .error, .success-msg)",
+    "us": 40141,
+    "tentativi": 147770
+  },
+  {
+    "selector": ":is(.grid-wrap, .results-table-wrap)",
+    "us": 38394,
+    "tentativi": 147770
+  },
+  {
+    "selector": "::-webkit-scrollbar",
+    "us": 37724,
+    "tentativi": 147770
+  },
+  {
+    "selector": "abbr[title]",
+    "us": 35833,
+    "tentativi": 130744
+  },
+  {
+    "selector": "tbody.selezione-celle td",
+    "us": 31504,
+    "tentativi": 123798
+  },
+  {
+    "selector": ":is(.menu-item, .dropdown-item, .ctx-item)",
+    "us": 30780,
+    "tentativi": 147770
+  },
+  {
+    "selector": ":is(.context-menu, .toolbar-dropdown-menu)",
+    "us": 30653,
+    "tentativi": 147770
+  },
+  {
+    "selector": ":is(.stat-card, .health-card, .backup-card)",
+    "us": 28565,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".kv-table td:first-child",
+    "us": 24591,
+    "tentativi": 247596
+  },
+  {
+    "selector": ".modal :is(input:not([type=\"checkbox\"]):not([type=\"radio\"]):not([type=\"range\"]):not([type=\"color\"]), select)",
+    "us": 24473,
+    "tentativi": 147770
+  },
+  {
+    "selector": "#grid td",
+    "us": 22548,
+    "tentativi": 123798
+  },
+  {
+    "selector": "#view-data > .toolbar :is(button, input)",
+    "us": 20138,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".sessions-table td:nth-child(2)",
+    "us": 19935,
+    "tentativi": 247596
+  },
+  {
+    "selector": ".sessions-table td:nth-child(3)",
+    "us": 19596,
+    "tentativi": 247596
+  },
+  {
+    "selector": ".arc-notifications > *",
+    "us": 19419,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".pane-grid td",
+    "us": 18483,
+    "tentativi": 247596
+  },
+  {
+    "selector": "button",
+    "us": 17511,
+    "tentativi": 65940
+  },
+  {
+    "selector": "#workspace.split-active.split-mostra-pannelli > :not(.workspace-head):not(.split-container):not(#pane-runtime-deck)",
+    "us": 16517,
+    "tentativi": 147770
+  },
+  {
+    "selector": "body.qt-resizing *",
+    "us": 16318,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".geomulti-list td",
+    "us": 16239,
+    "tentativi": 123798
+  },
+  {
+    "selector": "acronym[title]",
+    "us": 16130,
+    "tentativi": 130744
+  },
+  {
+    "selector": "body.fk-resizing *",
+    "us": 15593,
+    "tentativi": 147770
+  },
+  {
+    "selector": "input[type=\"checkbox\" i]",
+    "us": 15441,
+    "tentativi": 32185
+  },
+  {
+    "selector": ".query-topbar :is(button, select)",
+    "us": 15243,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".embedded-panel :is(.header, #conn-sidebar, #sidebar, .tab-bar-wrap, .tabs-row, .mobile-bottom-nav, .body > .resizer, .tab-body > .resizer, #welcome, #placeholder)",
+    "us": 14635,
+    "tentativi": 147770
+  },
+  {
+    "selector": "td.editing.fk-cella :is(input, [data-arc-component=\"select\"])",
+    "us": 14178,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".arc-date-control > *",
+    "us": 14055,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".pane-grid td.editable",
+    "us": 13819,
+    "tentativi": 115815
+  },
+  {
+    "selector": ".pane-grid :is(th, td)",
+    "us": 13564,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".modal :is(h3, h4)",
+    "us": 12778,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".toolbar :is(.icon-only, #query-history-btn)",
+    "us": 12762,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".pane-specialized > :is(.split-pane-toolbar, .split-pane-body, .split-pane-statusbar, .pane-error-banner)",
+    "us": 12541,
+    "tentativi": 147770
+  },
+  {
+    "selector": "input",
+    "us": 12430,
+    "tentativi": 44274
+  },
+  {
+    "selector": ":is(#grid, .pane-grid) .grid-select-col [role=\"checkbox\"]",
+    "us": 12058,
+    "tentativi": 7850
+  },
+  {
+    "selector": "#query-result-table :is(th, td)",
+    "us": 11921,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".info-table :is(th, td)",
+    "us": 11675,
+    "tentativi": 147770
+  },
+  {
+    "selector": "#modal-theme .modal:has(#theme-editor:not(.hidden)) > :is(.catalog-toolbar, #theme-list, .modal-hint)",
+    "us": 11558,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".arc-date-inline :is([data-arc-component=\"date-picker\"], .arc-time-input)",
+    "us": 11419,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".modal :is(.subtitle, .modal-hint)",
+    "us": 11409,
+    "tentativi": 147770
+  },
+  {
+    "selector": ".geomulti-list tr[data-i]:hover td",
+    "us": 11312,
+    "tentativi": 123798
+  },
+  {
+    "selector": "button:disabled",
+    "us": 10965,
+    "tentativi": 32970
+  },
+  {
+    "selector": ".sessions-table td:nth-child(5)",
+    "us": 10897,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(6)",
+    "us": 10890,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(7)",
+    "us": 10869,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".geomulti-list tr.attiva td",
+    "us": 10824,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".kv-table td:last-child",
+    "us": 10606,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".about-tabella td",
+    "us": 10420,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td",
+    "us": 10393,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".uml-dati-tab td",
+    "us": 10336,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".explain-table td",
+    "us": 10246,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".sessions-table td",
+    "us": 10177,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".uml-isp-tab td",
+    "us": 10000,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".backup-table td",
+    "us": 9986,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".insert-form td:first-child",
+    "us": 9926,
+    "tentativi": 123798
+  },
+  {
+    "selector": "#grid tr.v-spacer td",
+    "us": 9881,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(2)",
+    "us": 9829,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".sessions-table td:nth-child(4)",
+    "us": 9823,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".info-table td",
+    "us": 9748,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".insert-form td",
+    "us": 9737,
+    "tentativi": 123798
+  },
+  {
+    "selector": "#grid tbody tr:nth-child(2n)",
+    "us": 9716,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".sessions-table td:nth-child(7)",
+    "us": 9654,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(1)",
+    "us": 9653,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-row-err td",
+    "us": 9610,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(3)",
+    "us": 9563,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".sessions-row-blocca > td",
+    "us": 9527,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".cols-editor td",
+    "us": 9441,
+    "tentativi": 123798
+  },
+  {
+    "selector": "#query-result-table td",
+    "us": 9406,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".query-table td",
+    "us": 9358,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".cols-editor td:nth-child(n+3):not(:nth-child(4))",
+    "us": 9269,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".verify-result-row td",
+    "us": 9261,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(4)",
+    "us": 9252,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".audit-table td:nth-child(5)",
+    "us": 8973,
+    "tentativi": 123798
+  },
+  {
+    "selector": ".sessions-table td:nth-child(1)",
+    "us": 8775,
+    "tentativi": 123798
+  },
+  {
+    "selector": "input:not([type=\"file\" i], [type=\"image\" i], [type=\"checkbox\" i], [type=\"radio\" i])",
+    "us": 8629,
+    "tentativi": 7379
+  },
+  {
+    "selector": "button:active",
+    "us": 6614,
+    "tentativi": 32970
+  },
+  {
+    "selector": "button:hover",
+    "us": 6462,
+    "tentativi": 21980
+  },
+  {
+    "selector": "input:disabled",
+    "us": 5975,
+    "tentativi": 29516
+  },
+  {
+    "selector": "[data-arc-component=\"select\"]",
+    "us": 5755,
+    "tentativi": 11775
+  },
+  {
+    "selector": "input[type=\"checkbox\" i]:disabled",
+    "us": 5337,
+    "tentativi": 6437
+  },
+  {
+    "selector": ".grid-select-col input[type=\"checkbox\"]",
+    "us": 5016,
+    "tentativi": 6437
+  },
+  {
+    "selector": ".k:is([aria-haspopup]:not([aria-haspopup=\"false\"]), [data-state], [role=\"combobox\"])",
+    "us": 4761,
+    "tentativi": 4396
+  },
+  {
+    "selector": "input:not([type=\"range\" i], [type=\"checkbox\" i], [type=\"radio\" i])",
+    "us": 4565,
+    "tentativi": 7379
+  },
+  {
+    "selector": "#grid .grid-select-col",
+    "us": 3972,
+    "tentativi": 3990
+  },
+  {
+    "selector": "input[type=\"checkbox\"]",
+    "us": 3512,
+    "tentativi": 6437
+  },
+  {
+    "selector": "[data-arc-model]",
+    "us": 3212,
+    "tentativi": 6437
+  },
+  {
+    "selector": ".grid-select-col",
+    "us": 3064,
+    "tentativi": 3990
+  },
+  {
+    "selector": ".l",
+    "us": 3041,
+    "tentativi": 6437
+  },
+  {
+    "selector": "button:active:disabled",
+    "us": 2975,
+    "tentativi": 21980
+  },
+  {
+    "selector": ".m button",
+    "us": 2841,
+    "tentativi": 10990
+  },
+  {
+    "selector": "select:not(:-internal-list-box):not([multiple]) > button:first-child",
+    "us": 2839,
+    "tentativi": 21980
+  },
+  {
+    "selector": "#grid tbody tr",
+    "us": 2679,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".sidebar-search input",
+    "us": 2591,
+    "tentativi": 14758
+  },
+  {
+    "selector": "#grid td.editing [data-arc-component=\"select\"]",
+    "us": 2579,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".insert-form [data-arc-component=\"select\"]",
+    "us": 2567,
+    "tentativi": 23550
+  },
+  {
+    "selector": ".k[aria-busy=\"true\"]",
+    "us": 2420,
+    "tentativi": 4396
+  },
+  {
+    "selector": "input:-internal-autofill-previewed",
+    "us": 2240,
+    "tentativi": 7379
+  },
+  {
+    "selector": "input::-internal-email-verification-indicator[data-state=\"verified\"]",
+    "us": 2135,
+    "tentativi": 6594
+  },
+  {
+    "selector": "#tab-bar:has(.dragging) .conn-tab",
+    "us": 2020,
+    "tentativi": 471
+  },
+  {
+    "selector": ".l:disabled",
+    "us": 1997,
+    "tentativi": 6437
+  },
+  {
+    "selector": ".document-row > button:first-child",
+    "us": 1881,
+    "tentativi": 10990
+  },
+  {
+    "selector": "[data-arc-color-popup] [role=\"dialog\"]",
+    "us": 1845,
+    "tentativi": 7850
+  },
+  {
+    "selector": "#coll-tab-bar:has(.dragging) .coll-tab",
+    "us": 1769,
+    "tentativi": 471
+  },
+  {
+    "selector": "table > tr",
+    "us": 1734,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".input-group > .ac-wrap > input",
+    "us": 1716,
+    "tentativi": 14758
+  },
+  {
+    "selector": ".form-row input:not([type=\"checkbox\"]):not([type=\"radio\"])",
+    "us": 1667,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".segmented button",
+    "us": 1636,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".statusbar button",
+    "us": 1572,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".k:disabled",
+    "us": 1546,
+    "tentativi": 4396
+  },
+  {
+    "selector": ".toolbar button",
+    "us": 1496,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".pane-grid td.editing [data-arc-component=\"select\"]",
+    "us": 1447,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".k",
+    "us": 1443,
+    "tentativi": 4396
+  },
+  {
+    "selector": "div",
+    "us": 1379,
+    "tentativi": 2302
+  },
+  {
+    "selector": ".modal :is(.modal-actions, .connect-actions) button",
+    "us": 1367,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".split-pane-title [data-arc-component=\"select\"]",
+    "us": 1319,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".saved-conns-tools button",
+    "us": 1295,
+    "tentativi": 10990
+  },
+  {
+    "selector": "input:-internal-autofill-selected",
+    "us": 1275,
+    "tentativi": 7379
+  },
+  {
+    "selector": "#welcome button",
+    "us": 1236,
+    "tentativi": 10990
+  },
+  {
+    "selector": "tr",
+    "us": 1235,
+    "tentativi": 4548
+  },
+  {
+    "selector": ".tema-scelta [data-arc-component=\"color-picker\"]",
+    "us": 1233,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".uml-flottante button",
+    "us": 1209,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".input-group > input",
+    "us": 1130,
+    "tentativi": 14758
+  },
+  {
+    "selector": ".embedded-panel .query-topbar button",
+    "us": 1096,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".toolbar-dropdown-menu .checkbox-item input[type=\"checkbox\"]",
+    "us": 1096,
+    "tentativi": 6437
+  },
+  {
+    "selector": ".m button:active:not(:disabled)",
+    "us": 1092,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".geomap-segmentato button",
+    "us": 1090,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".pane-viewbar button",
+    "us": 1053,
+    "tentativi": 10990
+  },
+  {
+    "selector": "#insert-form td.insert-value:has(.fk-apri-btn) [data-arc-component=\"select\"]",
+    "us": 1049,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".onb-fumetto-azioni button:disabled",
+    "us": 1033,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".m button:hover:not(:disabled)",
+    "us": 1029,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".header-polling-toggle input",
+    "us": 967,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".m button:disabled",
+    "us": 963,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".onb-fumetto-azioni button:hover:not(:disabled)",
+    "us": 947,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".sessions-hidden button:hover",
+    "us": 946,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".segmented button:hover",
+    "us": 939,
+    "tentativi": 10990
+  },
+  {
+    "selector": ":is(#grid, .pane-grid) td.editing [data-arc-component=\"select\"]",
+    "us": 930,
+    "tentativi": 11775
+  },
+  {
+    "selector": ".query-history-header button",
+    "us": 927,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".sessions-actions button",
+    "us": 926,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".statusbar button:hover",
+    "us": 925,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".rr",
+    "us": 921,
+    "tentativi": 4396
+  },
+  {
+    "selector": ".graph3d-bar button",
+    "us": 920,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".modal .modal-actions button",
+    "us": 920,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".saved-conns-tools button:disabled",
+    "us": 915,
+    "tentativi": 10990
+  },
+  {
+    "selector": "#grid tbody tr:hover",
+    "us": 913,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".uml-isp-azioni button",
+    "us": 902,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".toolbar button:hover",
+    "us": 900,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".saved-conns-tools button:hover:not(:disabled)",
+    "us": 895,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".audit-pager button:disabled",
+    "us": 855,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".arc-field-host > div:has(> [data-arc-component=\"checkbox\"])",
+    "us": 853,
+    "tentativi": 1151
+  },
+  {
+    "selector": ".arc-field-host > .arc-select-field > button",
+    "us": 852,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".conn-edit-banner button",
+    "us": 850,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".onb-fumetto-azioni button",
+    "us": 846,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".conn-edit-banner button:hover",
+    "us": 846,
+    "tentativi": 10990
+  },
+  {
+    "selector": "#infinite-toggle-label input",
+    "us": 845,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".embedded-panel button",
+    "us": 830,
+    "tentativi": 10990
+  },
+  {
+    "selector": ":is(.view-tab, .tab, .qe-tab).active",
+    "us": 819,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".bulk-delete-toolbar button:disabled",
+    "us": 817,
+    "tentativi": 10990
+  },
+  {
+    "selector": "input[type=\"text\" i]",
+    "us": 814,
+    "tentativi": 628
+  },
+  {
+    "selector": ".sessions-hidden button",
+    "us": 808,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".document-row > button:last-child",
+    "us": 789,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".body:has(#tab-body.hidden) #conn-sidebar",
+    "us": 785,
+    "tentativi": 157
+  },
+  {
+    "selector": "#grid td.editing input:not(.arc-date-control input)",
+    "us": 784,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".geomap-segmentato button:hover",
+    "us": 782,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".arc-settings > button",
+    "us": 781,
+    "tentativi": 10990
+  },
+  {
+    "selector": ".chart-check input",
+    "us": 781,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".toolbar input",
+    "us": 780,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".bulk-delete-toolbar button",
+    "us": 776,
+    "tentativi": 10990
+  },
+  {
+    "selector": "#insert-form td.insert-value:has(.fk-apri-btn) input",
+    "us": 765,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".palette input",
+    "us": 702,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".pane-grid td.editing input:not(.arc-date-control input)",
+    "us": 686,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".view-tab.active",
+    "us": 674,
+    "tentativi": 2512
+  },
+  {
+    "selector": ".graph3d-bar input",
+    "us": 672,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".graph3d-bar .grafo-cerca input",
+    "us": 660,
+    "tentativi": 7379
+  },
+  {
+    "selector": "button.ghost",
+    "us": 653,
+    "tentativi": 1099
+  },
+  {
+    "selector": ".wizard-step-badge.active",
+    "us": 633,
+    "tentativi": 2512
+  },
+  {
+    "selector": ".form-group input",
+    "us": 630,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".uml-progetto input",
+    "us": 621,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".H:hover:not(:disabled)",
+    "us": 621,
+    "tentativi": 2355
+  },
+  {
+    "selector": ".conn-tab::before",
+    "us": 620,
+    "tentativi": 1413
+  },
+  {
+    "selector": ".dbexport-cella input:disabled",
+    "us": 609,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".ac-wrap input",
+    "us": 608,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".insert-form input:not([type=\"checkbox\"])",
+    "us": 588,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".qe-history-filtri input",
+    "us": 586,
+    "tentativi": 7379
+  },
+  {
+    "selector": "#filter-mode-switch[data-modo=\"condizione\"] ~ #filter-group #filter-input",
+    "us": 574,
+    "tentativi": 157
+  },
+  {
+    "selector": ".pending-search-wrap input",
+    "us": 557,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".H",
+    "us": 526,
+    "tentativi": 2355
+  },
+  {
+    "selector": ".coll-tab::before",
+    "us": 522,
+    "tentativi": 1413
+  },
+  {
+    "selector": "#infinite-toggle-label.disabled input",
+    "us": 518,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".uml-progetto-colonne input:not([type=\"checkbox\"])",
+    "us": 510,
+    "tentativi": 7379
+  },
+  {
+    "selector": ".node-label > span",
+    "us": 495,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".H:active:not(:disabled)",
+    "us": 493,
+    "tentativi": 2355
+  },
+  {
+    "selector": ".view-tab",
+    "us": 486,
+    "tentativi": 1570
+  },
+  {
+    "selector": ".J:hover:not(:disabled)",
+    "us": 465,
+    "tentativi": 1884
+  },
+  {
+    "selector": ".toolbar button.icon-only",
+    "us": 451,
+    "tentativi": 471
+  },
+  {
+    "selector": ".Ya > span",
+    "us": 434,
+    "tentativi": 1916
+  },
+  {
+    "selector": "input[type=\"file\" i]",
+    "us": 434,
+    "tentativi": 314
+  },
+  {
+    "selector": "input[type=\"file\" i]:disabled",
+    "us": 431,
+    "tentativi": 157
+  },
+  {
+    "selector": ".toolbar .filter-mode-option",
+    "us": 408,
+    "tentativi": 628
+  },
+  {
+    "selector": ".hidden",
+    "us": 392,
+    "tentativi": 1256
+  },
+  {
+    "selector": "#grid td .type-num",
+    "us": 390,
+    "tentativi": 547
+  },
+  {
+    "selector": ".conn-tab.active",
+    "us": 381,
+    "tentativi": 2512
+  },
+  {
+    "selector": ".pane-grid .grid-select-col",
+    "us": 380,
+    "tentativi": 3990
+  },
+  {
+    "selector": ".J:active:not(:disabled)",
+    "us": 348,
+    "tentativi": 1884
+  },
+  {
+    "selector": ".settings-btn > span",
+    "us": 341,
+    "tentativi": 3832
+  },
+  {
+    "selector": "button.primary",
+    "us": 339,
+    "tentativi": 471
+  },
+  {
+    "selector": ".onb-barra span",
+    "us": 338,
+    "tentativi": 1916
+  },
+  {
+    "selector": "#cell-info:not(:empty)",
+    "us": 338,
+    "tentativi": 106
+  },
+  {
+    "selector": ".conn-tab",
+    "us": 337,
+    "tentativi": 1413
+  },
+  {
+    "selector": ".toolbar .filter-mode-option.active",
+    "us": 337,
+    "tentativi": 2512
+  },
+  {
+    "selector": "#conn-sidebar",
+    "us": 336,
+    "tentativi": 628
+  },
+  {
+    "selector": ".body",
+    "us": 330,
+    "tentativi": 314
+  },
+  {
+    "selector": ".c:hover:not(:disabled, [aria-invalid=\"true\"])",
+    "us": 327,
+    "tentativi": 785
+  },
+  {
+    "selector": ".query-table tbody tr:hover",
+    "us": 318,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".menu-btn",
+    "us": 314,
+    "tentativi": 628
+  },
+  {
+    "selector": ".c",
+    "us": 307,
+    "tentativi": 785
+  },
+  {
+    "selector": ".Ga > span",
+    "us": 303,
+    "tentativi": 1916
+  },
+  {
+    "selector": "button.ghost:hover",
+    "us": 303,
+    "tentativi": 1099
+  },
+  {
+    "selector": "input[type=\"hidden\" i]",
+    "us": 302,
+    "tentativi": 314
+  },
+  {
+    "selector": ".pane-grid tr:hover",
+    "us": 298,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".coll-tab",
+    "us": 297,
+    "tentativi": 1413
+  },
+  {
+    "selector": ".J",
+    "us": 296,
+    "tentativi": 1884
+  },
+  {
+    "selector": ".cellchart-campo > span",
+    "us": 285,
+    "tentativi": 1916
+  },
+  {
+    "selector": "#conn-add-btn",
+    "us": 283,
+    "tentativi": 314
+  },
+  {
+    "selector": ".view-tab:hover",
+    "us": 274,
+    "tentativi": 785
+  },
+  {
+    "selector": ".conn-tab::after",
+    "us": 273,
+    "tentativi": 1413
+  },
+  {
+    "selector": ".cellchart-note > div::before",
+    "us": 263,
+    "tentativi": 1151
+  },
+  {
+    "selector": "tbody.selezione-celle td.cell-selected",
+    "us": 258,
+    "tentativi": 374
+  },
+  {
+    "selector": ".coll-tab::after",
+    "us": 256,
+    "tentativi": 1413
+  },
+  {
+    "selector": ".chart-quick-field > span",
+    "us": 251,
+    "tentativi": 3832
+  },
+  {
+    "selector": ".coll-tab.active::before",
+    "us": 250,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".c[aria-invalid=\"true\"]",
+    "us": 249,
+    "tentativi": 785
+  },
+  {
+    "selector": ".coll-tab.active",
+    "us": 246,
+    "tentativi": 2512
+  },
+  {
+    "selector": ":is(#grid, .pane-grid) .grid-select-col .arc-field-host > div",
+    "us": 243,
+    "tentativi": 1151
+  },
+  {
+    "selector": ".geomap-json.hidden",
+    "us": 241,
+    "tentativi": 628
+  },
+  {
+    "selector": ".pane-grid tbody tr",
+    "us": 239,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".script-run-actions .hidden",
+    "us": 238,
+    "tentativi": 628
+  },
+  {
+    "selector": ".conn-tab.active::before",
+    "us": 238,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".toolbar-dropdown-menu .dropdown-item.active",
+    "us": 237,
+    "tentativi": 1256
+  },
+  {
+    "selector": "[dir=\"ltr\" i]",
+    "us": 222,
+    "tentativi": 157
+  },
+  {
+    "selector": ".query-table tbody tr",
+    "us": 213,
+    "tentativi": 2274
+  },
+  {
+    "selector": "aside",
+    "us": 203,
+    "tentativi": 314
+  },
+  {
+    "selector": ".uml-dati-tab tbody tr",
+    "us": 202,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".coll-tab[draggable=\"true\"]",
+    "us": 196,
+    "tentativi": 471
+  },
+  {
+    "selector": "#new-db-btn",
+    "us": 196,
+    "tentativi": 314
+  },
+  {
+    "selector": ".uml-progetto-testa span",
+    "us": 193,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".query-table tbody tr:nth-child(2n)",
+    "us": 188,
+    "tentativi": 2274
+  },
+  {
+    "selector": "#conn-sidebar.collapsed",
+    "us": 188,
+    "tentativi": 157
+  },
+  {
+    "selector": ".fk-pannello.hidden",
+    "us": 186,
+    "tentativi": 628
+  },
+  {
+    "selector": ".l[data-state=\"checked\"] .p",
+    "us": 184,
+    "tentativi": 52
+  },
+  {
+    "selector": "#query-result-table tbody tr:hover",
+    "us": 178,
+    "tentativi": 2274
+  },
+  {
+    "selector": "#query-result-table tbody tr:nth-child(2n)",
+    "us": 177,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".admin-tab.active",
+    "us": 175,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".uml-dati.hidden",
+    "us": 175,
+    "tentativi": 628
+  },
+  {
+    "selector": ".uml-bar button.ghost",
+    "us": 174,
+    "tentativi": 1099
+  },
+  {
+    "selector": ".conn-tab[draggable=\"true\"]",
+    "us": 173,
+    "tentativi": 471
+  },
+  {
+    "selector": "#query-result-table tbody tr",
+    "us": 170,
+    "tentativi": 2274
+  },
+  {
+    "selector": ".conn-add-btn-primary",
+    "us": 169,
+    "tentativi": 314
+  },
+  {
+    "selector": ".uml-dati-tab tbody tr:hover",
+    "us": 164,
+    "tentativi": 2274
+  },
+  {
+    "selector": "#filter-input",
+    "us": 164,
+    "tentativi": 314
+  },
+  {
+    "selector": ".conn-tab:not(.active):hover",
+    "us": 161,
+    "tentativi": 471
+  },
+  {
+    "selector": ".header .command-palette-open",
+    "us": 160,
+    "tentativi": 157
+  },
+  {
+    "selector": ".pill-option.active",
+    "us": 160,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".tab.active",
+    "us": 158,
+    "tentativi": 1256
+  },
+  {
+    "selector": "._a > span",
+    "us": 156,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".statusbar button.pager-compact",
+    "us": 156,
+    "tentativi": 157
+  },
+  {
+    "selector": ".S > span",
+    "us": 152,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".R span",
+    "us": 152,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".coll-tab.active::after",
+    "us": 151,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".restore-target-row span",
+    "us": 151,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".dbexport-riga > span:first-child",
+    "us": 147,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".arc-field-host > div:has(> [data-arc-component=\"color-picker\"])",
+    "us": 147,
+    "tentativi": 1151
+  },
+  {
+    "selector": ".editor-header > span",
+    "us": 146,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".graph3d-path-badge span",
+    "us": 146,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".tab-btn.active",
+    "us": 142,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".uml-progetto-revisione li span",
+    "us": 141,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".c:disabled",
+    "us": 135,
+    "tentativi": 785
+  },
+  {
+    "selector": ".query-metrics > span",
+    "us": 133,
+    "tentativi": 1916
+  },
+  {
+    "selector": "input[type=\"hidden\" i]:disabled",
+    "us": 133,
+    "tentativi": 157
+  },
+  {
+    "selector": "button.primary:hover",
+    "us": 131,
+    "tentativi": 471
+  },
+  {
+    "selector": ".conn-tab + .conn-tab",
+    "us": 131,
+    "tentativi": 471
+  },
+  {
+    "selector": "svg:not(:root)",
+    "us": 131,
+    "tentativi": 104
+  },
+  {
+    "selector": ".ta span",
+    "us": 130,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".graph3d-side-panel.hidden",
+    "us": 129,
+    "tentativi": 628
+  },
+  {
+    "selector": ".onb-check-head > span:first-child",
+    "us": 129,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".conn-tab.active::after",
+    "us": 128,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".toolbar button.primary",
+    "us": 128,
+    "tentativi": 157
+  },
+  {
+    "selector": ".La > span",
+    "us": 127,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".ac-list li.active",
+    "us": 127,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".sessions-note div + div",
+    "us": 124,
+    "tentativi": 1151
+  },
+  {
+    "selector": ".coll-tab + .coll-tab",
+    "us": 124,
+    "tentativi": 471
+  },
+  {
+    "selector": ".cols-editor input[type=\"text\"]",
+    "us": 122,
+    "tentativi": 628
+  },
+  {
+    "selector": ".view-tab:active",
+    "us": 120,
+    "tentativi": 785
+  },
+  {
+    "selector": ".chart-palette-preview span",
+    "us": 120,
+    "tentativi": 1916
+  },
+  {
+    "selector": "[dir=\"rtl\" i]",
+    "us": 119,
+    "tentativi": 157
+  },
+  {
+    "selector": ".cellchart-misure > span",
+    "us": 118,
+    "tentativi": 1916
+  },
+  {
+    "selector": ".pill-option.active::after",
+    "us": 114,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".coll-tab:not(.active):hover",
+    "us": 111,
+    "tentativi": 471
+  },
+  {
+    "selector": "#new-db-btn:hover",
+    "us": 110,
+    "tentativi": 314
+  },
+  {
+    "selector": "#conn-add-btn:hover",
+    "us": 107,
+    "tentativi": 314
+  },
+  {
+    "selector": "#documents-open",
+    "us": 106,
+    "tentativi": 157
+  },
+  {
+    "selector": "#workspace-split-btn",
+    "us": 105,
+    "tentativi": 157
+  },
+  {
+    "selector": "#sort-input",
+    "us": 105,
+    "tentativi": 314
+  },
+  {
+    "selector": ".menu-btn:hover",
+    "us": 105,
+    "tentativi": 314
+  },
+  {
+    "selector": ".segmented button[aria-pressed=\"true\"]",
+    "us": 104,
+    "tentativi": 785
+  },
+  {
+    "selector": "#grid tr.v-spacer",
+    "us": 104,
+    "tentativi": 104
+  },
+  {
+    "selector": ".pager-compact",
+    "us": 102,
+    "tentativi": 157
+  },
+  {
+    "selector": ".query-inline-check.hidden",
+    "us": 102,
+    "tentativi": 628
+  },
+  {
+    "selector": ".sidebar-toggle-btn",
+    "us": 100,
+    "tentativi": 157
+  },
+  {
+    "selector": ".uml-dati-json.hidden",
+    "us": 95,
+    "tentativi": 628
+  },
+  {
+    "selector": "#view-menu-btn.active",
+    "us": 94,
+    "tentativi": 157
+  },
+  {
+    "selector": ".header-pending-btn",
+    "us": 94,
+    "tentativi": 157
+  },
+  {
+    "selector": ".toolbar .filter-mode-option:hover",
+    "us": 91,
+    "tentativi": 314
+  },
+  {
+    "selector": ".audit-toolbar input[type=\"text\"]",
+    "us": 90,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".mode-btn.active",
+    "us": 89,
+    "tentativi": 1256
+  },
+  {
+    "selector": ".o",
+    "us": 89,
+    "tentativi": 157
+  },
+  {
+    "selector": ".conn-sidebar-expand-btn",
+    "us": 89,
+    "tentativi": 157
+  },
+  {
+    "selector": ".uml-dati-bar button.ghost",
+    "us": 89,
+    "tentativi": 1099
+  },
+  {
+    "selector": ".statusbar button.pager-compact:hover",
+    "us": 88,
+    "tentativi": 157
+  },
+  {
+    "selector": ".toolbar-dropdown-menu.hidden",
+    "us": 87,
+    "tentativi": 628
+  },
+  {
+    "selector": ".query-chunk-panel.hidden",
+    "us": 86,
+    "tentativi": 628
+  },
+  {
+    "selector": ".embedded-panel .body",
+    "us": 85,
+    "tentativi": 314
+  },
+  {
+    "selector": "#grid tr.v-spacer:hover",
+    "us": 83,
+    "tentativi": 104
+  },
+  {
+    "selector": "#view-menu-btn",
+    "us": 82,
+    "tentativi": 157
+  },
+  {
+    "selector": ".uml-bar button.ghost:disabled",
+    "us": 82,
+    "tentativi": 1099
+  },
+  {
+    "selector": ".graph3d-path-badge.hidden",
+    "us": 79,
+    "tentativi": 628
+  },
+  {
+    "selector": "#cell-info",
+    "us": 75,
+    "tentativi": 106
+  },
+  {
+    "selector": ".btn-icon",
+    "us": 74,
+    "tentativi": 157
+  },
+  {
+    "selector": ".l[data-state=\"unchecked\"]:hover:not(:disabled) .p",
+    "us": 73,
+    "tentativi": 52
+  },
+  {
+    "selector": ".uml-bar button.ghost[aria-pressed=\"true\"]",
+    "us": 72,
+    "tentativi": 1099
+  },
+  {
+    "selector": ".pane-active-jump",
+    "us": 70,
+    "tentativi": 157
+  },
+  {
+    "selector": ".conn-sidebar-expand-btn:hover",
+    "us": 66,
+    "tentativi": 157
+  },
+  {
+    "selector": ".geomap-segmentato button[aria-pressed=\"true\"]",
+    "us": 66,
+    "tentativi": 785
+  },
+  {
+    "selector": ".warn-box.hidden",
+    "us": 63,
+    "tentativi": 628
+  },
+  {
+    "selector": ".l:active:not(:disabled) .p",
+    "us": 62,
+    "tentativi": 52
+  },
+  {
+    "selector": ":not(svg)",
+    "us": 61,
+    "tentativi": 104
+  },
+  {
+    "selector": ".F",
+    "us": 61,
+    "tentativi": 157
+  },
+  {
+    "selector": ".coll-tab.active + .coll-tab",
+    "us": 60,
+    "tentativi": 471
+  },
+  {
+    "selector": ".pane-viewbar button[aria-pressed=\"true\"]",
+    "us": 58,
+    "tentativi": 785
+  },
+  {
+    "selector": ".info-box.hidden",
+    "us": 58,
+    "tentativi": 628
+  },
+  {
+    "selector": ".grafo-cerca-azzera.hidden",
+    "us": 58,
+    "tentativi": 628
+  },
+  {
+    "selector": ".script-run-errors.hidden",
+    "us": 57,
+    "tentativi": 628
+  },
+  {
+    "selector": ".conn-tab:hover + .conn-tab",
+    "us": 57,
+    "tentativi": 471
+  },
+  {
+    "selector": ".split-pane-toolbar input[type=\"text\"]",
+    "us": 57,
+    "tentativi": 628
+  },
+  {
+    "selector": ".success-box.hidden",
+    "us": 55,
+    "tentativi": 628
+  },
+  {
+    "selector": ".sidebar-toggle-btn:hover",
+    "us": 55,
+    "tentativi": 157
+  },
+  {
+    "selector": ".conn-tab.active + .conn-tab",
+    "us": 54,
+    "tentativi": 471
+  },
+  {
+    "selector": ".pane-error-banner.hidden",
+    "us": 54,
+    "tentativi": 628
+  },
+  {
+    "selector": ".o[data-state=\"open\"]",
+    "us": 52,
+    "tentativi": 157
+  },
+  {
+    "selector": ".query-table td .type-num",
+    "us": 51,
+    "tentativi": 547
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-year-field[disabled]",
+    "us": 50,
+    "tentativi": 157
+  },
+  {
+    "selector": ".coll-tab:hover + .coll-tab",
+    "us": 47,
+    "tentativi": 471
+  },
+  {
+    "selector": ".o:hover:not([data-disabled])",
+    "us": 46,
+    "tentativi": 157
+  },
+  {
+    "selector": ".pane-grid td .type-num",
+    "us": 45,
+    "tentativi": 547
+  },
+  {
+    "selector": "[dir=\"auto\" i]",
+    "us": 45,
+    "tentativi": 157
+  },
+  {
+    "selector": ".script-run-panel.hidden",
+    "us": 45,
+    "tentativi": 628
+  },
+  {
+    "selector": "bdo[dir]",
+    "us": 43,
+    "tentativi": 157
+  },
+  {
+    "selector": ".toolbar button.primary:hover",
+    "us": 42,
+    "tentativi": 157
+  },
+  {
+    "selector": "textarea[dir=\"auto\" i]",
+    "us": 42,
+    "tentativi": 157
+  },
+  {
+    "selector": ":not(foreignObject) > svg",
+    "us": 42,
+    "tentativi": 52
+  },
+  {
+    "selector": "pre[dir=\"auto\" i]",
+    "us": 39,
+    "tentativi": 157
+  },
+  {
+    "selector": "tbody.selezione-celle td.cell-focus",
+    "us": 39,
+    "tentativi": 67
+  },
+  {
+    "selector": "button.primary:active",
+    "us": 38,
+    "tentativi": 157
+  },
+  {
+    "selector": ".Ir",
+    "us": 36,
+    "tentativi": 52
+  },
+  {
+    "selector": ".F:active:not(:disabled)",
+    "us": 36,
+    "tentativi": 157
+  },
+  {
+    "selector": "#query-result-table td .type-num",
+    "us": 36,
+    "tentativi": 547
+  },
+  {
+    "selector": ".F:hover:not(:disabled)",
+    "us": 36,
+    "tentativi": 157
+  },
+  {
+    "selector": "#cell-info:not(:empty):hover",
+    "us": 35,
+    "tentativi": 106
+  },
+  {
+    "selector": ".p",
+    "us": 34,
+    "tentativi": 52
+  },
+  {
+    "selector": "button.primary:disabled",
+    "us": 33,
+    "tentativi": 157
+  },
+  {
+    "selector": ".chart-builder input[type=\"text\"]",
+    "us": 31,
+    "tentativi": 628
+  },
+  {
+    "selector": ".conn-add-btn-primary:hover",
+    "us": 31,
+    "tentativi": 157
+  },
+  {
+    "selector": ".o[data-disabled]",
+    "us": 30,
+    "tentativi": 157
+  },
+  {
+    "selector": "#conn-add-btn:active",
+    "us": 29,
+    "tentativi": 157
+  },
+  {
+    "selector": ".conn-add-btn-primary:active",
+    "us": 28,
+    "tentativi": 157
+  },
+  {
+    "selector": ".o:active:not([data-disabled])",
+    "us": 27,
+    "tentativi": 157
+  },
+  {
+    "selector": ".l[data-state=\"indeterminate\"] .p",
+    "us": 26,
+    "tentativi": 52
+  },
+  {
+    "selector": ".Ar",
+    "us": 23,
+    "tentativi": 52
+  },
+  {
+    "selector": ".arc-field-host",
+    "us": 22,
+    "tentativi": 52
+  },
+  {
+    "selector": ".arc-field-host[hidden]",
+    "us": 22,
+    "tentativi": 52
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-day-field[disabled]",
+    "us": 17,
+    "tentativi": 157
+  },
+  {
+    "selector": ".Br",
+    "us": 17,
+    "tentativi": 52
+  },
+  {
+    "selector": ".vault-hint .mini-btn.primary",
+    "us": 17,
+    "tentativi": 157
+  },
+  {
+    "selector": ".onb-fumetto-azioni .primary",
+    "us": 17,
+    "tentativi": 157
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-second-field[disabled]",
+    "us": 14,
+    "tentativi": 157
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-ampm-field[disabled]",
+    "us": 13,
+    "tentativi": 157
+  },
+  {
+    "selector": ".sessions-actions button[disabled]",
+    "us": 12,
+    "tentativi": 157
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-week-field[disabled]",
+    "us": 11,
+    "tentativi": 157
+  },
+  {
+    "selector": ".onb-fumetto-azioni .primary:hover",
+    "us": 11,
+    "tentativi": 157
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-month-field[disabled]",
+    "us": 10,
+    "tentativi": 157
+  },
+  {
+    "selector": ".ca svg",
+    "us": 9,
+    "tentativi": 52
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-minute-field[disabled]",
+    "us": 9,
+    "tentativi": 157
+  },
+  {
+    "selector": ".statusbar button.pager-compact svg",
+    "us": 9,
+    "tentativi": 52
+  },
+  {
+    "selector": ".db-type-badge svg",
+    "us": 9,
+    "tentativi": 52
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-hour-field[disabled]",
+    "us": 8,
+    "tentativi": 157
+  },
+  {
+    "selector": "input::-webkit-datetime-edit-millisecond-field[disabled]",
+    "us": 7,
+    "tentativi": 157
+  },
+  {
+    "selector": ".query-table tr.v-spacer",
+    "us": 7,
+    "tentativi": 104
+  },
+  {
+    "selector": ".pane-grid tr.v-spacer",
+    "us": 7,
+    "tentativi": 104
+  },
+  {
+    "selector": ".node-actions svg",
+    "us": 6,
+    "tentativi": 52
+  },
+  {
+    "selector": ".vault-hint .mini-btn.primary:hover",
+    "us": 5,
+    "tentativi": 157
+  },
+  {
+    "selector": ".settings-btn svg",
+    "us": 5,
+    "tentativi": 52
+  },
+  {
+    "selector": "#query-result-table tr.v-spacer",
+    "us": 5,
+    "tentativi": 104
+  },
+  {
+    "selector": ".conn-sidebar-expand-btn svg",
+    "us": 5,
+    "tentativi": 52
+  },
+  {
+    "selector": ".vault-back svg",
+    "us": 5,
+    "tentativi": 52
+  },
+  {
+    "selector": ".warn-box svg",
+    "us": 5,
+    "tentativi": 52
+  },
+  {
+    "selector": ".g svg",
+    "us": 4,
+    "tentativi": 52
+  },
+  {
+    "selector": ".success-box svg",
+    "us": 4,
+    "tentativi": 52
+  },
+  {
+    "selector": ".i > svg:first-child",
+    "us": 3,
+    "tentativi": 52
+  },
+  {
+    "selector": ".filter-mode-option svg",
+    "us": 3,
+    "tentativi": 52
+  },
+  {
+    "selector": "body",
+    "us": 3,
+    "tentativi": 4
+  },
+  {
+    "selector": ".info-box svg",
+    "us": 2,
+    "tentativi": 52
+  },
+  {
+    "selector": ".statusbar button.pager-compact:hover svg",
+    "us": 2,
+    "tentativi": 52
+  },
+  {
+    "selector": ".vault-reset-title svg",
+    "us": 2,
+    "tentativi": 52
+  },
+  {
+    "selector": "body:-webkit-full-page-media",
+    "us": 1,
+    "tentativi": 1
+  }
+]

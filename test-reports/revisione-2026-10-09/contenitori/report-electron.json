@@ -1,0 +1,12 @@
+{
+  "checks": [],
+  "errors": [],
+  "environments": [
+    {
+      "electron": "43.2.0",
+      "chromium": "150.0.7871.129",
+      "node": "24.18.0"
+    }
+  ],
+  "failure": "page.waitForEvent: Timeout 30000ms exceeded while waiting for event \"download\"\n=========================== logs ===========================\nwaiting for event \"download\"\n============================================================\n    at electron (C:\\repository\\CodeDB\\test\\e2e-contenitori.js:51:25)\n    at async C:\\repository\\CodeDB\\test\\e2e-contenitori.js:95:51"
+}

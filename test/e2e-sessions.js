@@ -31,6 +31,7 @@ const PG_PORT = parseInt(process.env.PG_PORT, 10) || 5432;
 const PG_USER = process.env.PG_USER || 'postgres';
 const PG_PASSWORD = process.env.PG_PASSWORD || '';
 const PG_DATABASE = process.env.PG_DATABASE || 'postgres';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 let socket = null;
 let testServer = null;
@@ -74,8 +75,8 @@ const attendi = (ms) => new Promise((r) => setTimeout(r, ms));
 async function testMongo() {
   console.log('\n1. MongoDB');
   const tabId = 'sess-mongo';
-  const conn = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId });
-  if (!conn.ok) { console.error('  SALTATO: MongoDB non raggiungibile su localhost:27017'); process.exitCode = 1; return; }
+  const conn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, tabId });
+  if (!conn.ok) { console.error(`  SALTATO: MongoDB non raggiungibile su localhost:${MONGO_PORT}`); process.exitCode = 1; return; }
 
   const res = await emit('db:sessions', { tabId });
   assert(res.ok && Array.isArray(res.sessioni), 'db:sessions risponde con un elenco');

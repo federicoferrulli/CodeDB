@@ -18,13 +18,16 @@ import { $, toast, safeUUID } from './utils.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { ensureActiveCollLoaded } from './colltabs.js';
-import { getSplitStateSnapshot, restoreSplitStateSnapshot } from './splitview.js';
+import { getSplitStateSnapshot, restoreSplitStateSnapshot, modifichePendentiNeiPannelli } from './splitview.js';
 
 const KEY = 'codedb:session';
 
 // Input correnti di un coll-tab: dal DOM se è quello attivo del tab attivo
 // (mentre è attivo la verità è il DOM), altrimenti dal suo snapshot salvato.
 function collTabInputs(t, c) {
+  const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
+  const query = { code: activeNow ? ($('#query-editor-input')?.value || '') : (c.snapQuery?.code || ''),
+    engine: activeNow ? ($('#query-target-engine')?.value || 'auto') : (c.snapQuery?.engine || 'auto'), dirty: !!c.snapQuery?.dirty };
   if (c.isSplitTab) {
     return {
       id: c.id,
@@ -43,15 +46,14 @@ function collTabInputs(t, c) {
 
   // Tab a livello database (database senza collection): non ha input di griglia
   // né snapshot, basta sapere su quale database era aperto.
-  if (c.isDbTab) return { id: c.id, isDbTab: true, db: c.db, coll: null, view: 'query' };
+  if (c.isDbTab) return { id: c.id, isDbTab: true, db: c.db, coll: null, view: 'query', query };
 
-  const activeNow = t.id === tabs.activeId && c.id === t.state.activeCollId;
   if (activeNow) {
     const gruppoFiltro = $('#filter-mode-switch');
     const modoFiltro = gruppoFiltro?.dataset.modo === 'condizione' ? 'condizione' : 'rapido';
     const corrente = $('#filter-input')?.value || '';
     return {
-      id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
+      id: c.id, db: c.db, coll: c.coll, preview: !!c.preview, query,
       filter: $('#filter-input')?.value || '',
       filterMode: modoFiltro,
       quickSearch: modoFiltro === 'rapido' ? corrente : (gruppoFiltro?.dataset.testoRapido || ''),
@@ -65,7 +67,7 @@ function collTabInputs(t, c) {
   }
   const src = c.snap || c.restore || {};
   return {
-    id: c.id, db: c.db, coll: c.coll, preview: !!c.preview,
+    id: c.id, db: c.db, coll: c.coll, preview: !!c.preview, query,
     filter: src.filter || '',
     filterMode: src.filterMode || 'rapido',
     quickSearch: src.quickSearch != null ? src.quickSearch : (src.filter || ''),
@@ -149,7 +151,7 @@ function reconnectTab(info) {
           };
         }
         if (c.isDbTab) {
-          return { id: c.id || safeUUID(), db: c.db, coll: null, isDbTab: true, snap: null };
+          return { id: c.id || safeUUID(), db: c.db, coll: null, isDbTab: true, snap: null, snapQuery: c.query || null };
         }
         return {
           id: c.id || safeUUID(),
@@ -157,6 +159,7 @@ function reconnectTab(info) {
           coll: c.coll,
           snap: null,
           preview: !!c.preview,
+          snapQuery: c.query || null,
           restore: {
             filter: c.filter,
             filterMode: c.filterMode,
@@ -251,5 +254,11 @@ async function doRestoreSession() {
 export function initSessionPersistence() {
   // beforeunload copre F5 e la chiusura; pagehide è più affidabile su mobile.
   window.addEventListener('beforeunload', persistSession);
+  window.addEventListener('beforeunload', event => {
+    if (modifichePendentiNeiPannelli() || tabs.list.some(t => t.state.writesInFlight || t.state.editDrafts?.size || t.state.collTabs.some(c => c.snapQuery?.dirty))
+        || document.querySelector('.overlay:not(.hidden)[data-unsaved]')) {
+      event.preventDefault(); event.returnValue = '';
+    }
+  });
   window.addEventListener('pagehide', persistSession);
 }

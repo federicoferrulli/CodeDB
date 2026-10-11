@@ -2,13 +2,14 @@ import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons } from './utils.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons, safeUUID } from './utils.js';
 import { activeTab, tabs } from './tabs.js';
 import { socket } from './socket.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
 let currentTabMode = 'new'; // 'new' | 'catalog'
+const ripristini = new Map();
 
 // Ultimo catalogo letto dal server e gruppi con lo storico aperto: il filtro
 // ridisegna dai dati già in mano invece di richiedere di nuovo l'elenco.
@@ -64,9 +65,9 @@ export function initBackupManager() {
   // che è unico come tutto il resto del workspace.
   if (socket) {
     socket.on('backup:progress', (ev) => {
-      const tab = activeTab();
-      if (!tab || (ev.tabId && ev.tabId !== tab.id)) return;
-      aggiungiRigaProgresso(ev.riga, ev.errore);
+      const progresso = ripristini.get(ev.operationId);
+      if (!progresso || ev.tabId !== progresso.tabId) return;
+      aggiungiRigaProgresso(progresso.log, ev.riga, ev.errore);
     });
   }
 }
@@ -75,17 +76,18 @@ export function initBackupManager() {
 
 const MAX_RIGHE_PROGRESSO = 200;
 
-function apriProgresso(titolo) {
+function apriProgresso(titolo, tabId) {
   const box = $('#restore-progress');
-  if (!box) return;
-  $('#restore-progress-title').textContent = titolo;
-  $('#restore-progress-log').innerHTML = '';
-  box.classList.remove('hidden', 'esito-ok', 'esito-ko');
+  const section = document.createElement('section'); section.className = 'restore-progress';
+  const head = document.createElement('div'); head.className = 'restore-progress-head'; head.textContent = titolo;
+  const log = document.createElement('div'); log.className = 'restore-progress-log'; log.setAttribute('role', 'log');
+  section.append(head, log); box.prepend(section); box.classList.remove('hidden');
+  const progresso = { id: safeUUID(), tabId, section, head, log };
+  ripristini.set(progresso.id, progresso);
+  return progresso;
 }
 
-function aggiungiRigaProgresso(riga, errore) {
-  const log = $('#restore-progress-log');
-  if (!log || $('#restore-progress').classList.contains('hidden')) return;
+function aggiungiRigaProgresso(log, riga, errore) {
   const div = document.createElement('div');
   div.className = errore ? 'riga-ko' : '';
   div.textContent = riga;
@@ -96,17 +98,18 @@ function aggiungiRigaProgresso(riga, errore) {
   log.scrollTop = log.scrollHeight;
 }
 
-function chiudiProgresso(titolo, ok) {
-  const box = $('#restore-progress');
-  if (!box) return;
-  $('#restore-progress-title').textContent = titolo;
-  box.classList.add(ok ? 'esito-ok' : 'esito-ko');
+function chiudiProgresso(progresso, titolo, ok) {
+  progresso.head.textContent = titolo;
+  progresso.section.classList.add(ok ? 'esito-ok' : 'esito-ko');
+  ripristini.delete(progresso.id);
+  // Mantiene gli esiti recenti senza rimuovere mai un'attività ancora in corso.
+  [...$('#restore-progress').querySelectorAll('.esito-ok, .esito-ko')].slice(10).forEach(el => el.remove());
 }
 
 export function openBackupModal() {
   populateDatabaseDropdown();
   openModal('#modal-backup-manager');
-  switchBackupTab('new');
+  switchBackupTab(currentTabMode);
   fetchBackupCatalog();
 }
 
@@ -186,11 +189,12 @@ async function executeBackup() {
   const fineCaricamento = iniziaCaricamento(btnSubmit, 'Backup in corso…');
   if (statusEl) {
     statusEl.classList.remove('hidden', 'error');
-    statusEl.textContent = `Esecuzione del backup (${type}) in corso...`;
+    statusEl.textContent = `Backup ${type} di ${tab.label} / ${db} in corso… Chiudere la finestra non interrompe il backup.`;
   }
 
   try {
     const res = await emit('backup:run', {
+      tabId: tab.id,
       db,
       type,
       collections: collections || undefined,
@@ -205,10 +209,10 @@ async function executeBackup() {
     toast(`Backup completato con successo: ${res.summary.id}`);
     segnaTraguardo('backup'); // primi passi della guida (no-op se già fatto)
     if (statusEl) {
-      statusEl.textContent = `Backup completato: ${res.summary.totalDocs} elementi salvati (${fmtBytes(res.summary.totalBytes)}).`;
+      statusEl.textContent = `Backup completato di ${tab.label} / ${db}: ${res.summary.totalDocs} elementi salvati (${fmtBytes(res.summary.totalBytes)}).`;
     }
     setTimeout(() => {
-      switchBackupTab('catalog');
+      if (!$('#modal-backup-manager').classList.contains('hidden') && activeTab() === tab) switchBackupTab('catalog');
     }, 1200);
   } catch (err) {
     toast(`Backup fallito: ${err.message}`, true);
@@ -664,11 +668,13 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
   }
 
   toast(`Ripristino di ${backupId} su "${targetDb}" in corso...`);
-  apriProgresso(`Ripristino di ${backupId} su "${targetDb}" in corso…`);
+  const destinatario = `${tab.label} / ${targetDb}`;
+  const progresso = apriProgresso(`Ripristino di ${backupId} su ${destinatario} in corso… Chiudere la finestra non interrompe il ripristino.`, origin.tabId);
   const fineCaricamento = iniziaCaricamento(bottone, '');
   try {
     const res = await emit('backup:restore', {
       tabId: origin.tabId,
+      operationId: progresso.id,
       group,
       backupId,
       targetDb,
@@ -684,9 +690,9 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
       throw new Error(`${res.summary.status}: ${res.summary.error || 'restore non completato'}${retained ? ` (${retained})` : ''}`);
     }
 
-    const msg = `Ripristino completato su "${res.summary.targetDb}": ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer!`;
+    const msg = `Ripristino completato su ${destinatario}: ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer.`;
     toast(msg);
-    chiudiProgresso(msg, true);
+    chiudiProgresso(progresso, msg, true);
     // Un ripristino crea collection e tabelle che nell'albero non ci sono: senza
     // questa ricarica la sidebar continua a mostrare lo schema di prima, e
     // l'unico modo di vedere i dati appena riportati è ricaricare la pagina.
@@ -697,7 +703,7 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
     }
   } catch (err) {
     toast(`Ripristino fallito: ${err.message}`, true);
-    chiudiProgresso(`Ripristino fallito: ${err.message}`, false);
+    chiudiProgresso(progresso, `Ripristino fallito su ${destinatario}: ${err.message}`, false);
     // Anche un ripristino fallito può aver applicato una parte dei layer: lo
     // schema a sinistra va riletto comunque, non è più quello di prima.
     tab.state.schemaDirty = true;

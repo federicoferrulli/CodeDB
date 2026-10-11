@@ -1,0 +1,9 @@
+AssertionError [ERR_ASSERTION]: Il progresso resta associato al ripristino B quando il focus è su A
+    at C:\repository\CodeDB\test\e2e-superfici.js:121:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

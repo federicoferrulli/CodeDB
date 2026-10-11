@@ -1,0 +1,102 @@
+[
+  {
+    "mutation": "valori",
+    "detected": true,
+    "expected": "NULL, mancante"
+  },
+  {
+    "mutation": "separatore",
+    "detected": true,
+    "expected": "Il separatore modifica"
+  },
+  {
+    "mutation": "menu",
+    "detected": true,
+    "expected": "Freccia sposta"
+  },
+  {
+    "mutation": "densita",
+    "detected": true,
+    "expected": "Geometria touch virtuale"
+  },
+  {
+    "mutation": "drawer",
+    "detected": true,
+    "expected": "Drawer chiuso"
+  },
+  {
+    "mutation": "focus_drawer",
+    "detected": true,
+    "expected": "La scelta nel drawer"
+  },
+  {
+    "mutation": "focus_schede",
+    "detected": true,
+    "expected": "Il riordino mantiene"
+  },
+  {
+    "mutation": "schema",
+    "detected": true,
+    "expected": "Il drawer schema"
+  },
+  {
+    "mutation": "schede",
+    "detected": true,
+    "expected": "Lo switcher attiva"
+  },
+  {
+    "mutation": "risultati",
+    "detected": true,
+    "expected": "Editor occupa"
+  },
+  {
+    "mutation": "progresso",
+    "detected": true,
+    "expected": "Il progresso resta associato"
+  },
+  {
+    "mutation": "concorrenza",
+    "detected": true,
+    "expected": "I ripristini concorrenti"
+  },
+  {
+    "mutation": "sessione",
+    "detected": true,
+    "expected": "Il monitor rende leggibile"
+  },
+  {
+    "mutation": "dom",
+    "detected": true,
+    "expected": "Scorrere 60 righe"
+  },
+  {
+    "mutation": "colonne",
+    "detected": true,
+    "expected": "freccia modifica"
+  },
+  {
+    "mutation": "connessioni",
+    "detected": true,
+    "expected": "riprende la sessione"
+  },
+  {
+    "mutation": "anteprima",
+    "detected": true,
+    "expected": "Mantieni conserva"
+  },
+  {
+    "mutation": "bozza",
+    "detected": true,
+    "expected": "Una bozza impedisce"
+  },
+  {
+    "mutation": "navigatore",
+    "detected": true,
+    "expected": "La sezione connessioni"
+  },
+  {
+    "mutation": "sheet",
+    "detected": true,
+    "expected": "La ricerca sopravvive"
+  }
+]

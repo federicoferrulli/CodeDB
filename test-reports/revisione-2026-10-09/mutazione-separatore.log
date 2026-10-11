@@ -1,0 +1,10 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+AssertionError [ERR_ASSERTION]: Il separatore modifica la larghezza da tastiera
+    at C:\repository\CodeDB\test\e2e-revisione.js:90:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

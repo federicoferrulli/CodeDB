@@ -1,11 +1,14 @@
 import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
-import { switchCollTab, openCollTab } from './colltabs.js';
-import { runQuery } from './query-tab.js';
+import { switchCollTab, openCollTab, openDbTab } from './colltabs.js';
+import { runQuery, updateEditorHighlight, setQueryTarget } from './query-tab.js';
+import { queryDocument } from './query-document.js';
+import { setView } from './main.js';
 import { knowsScriptRun, focusScriptRun, resumeScript } from './script-run.js';
 
 const STORAGE_KEY = 'codedb:pending';
+const ospite = typeof window !== 'undefined' ? window.frameElement?.codedbPanel : null;
 
 let pendingQueries = [];
 const listeners = [];
@@ -107,6 +110,7 @@ export function getPendingCount() {
 }
 
 export function trackPending(meta) {
+  if (ospite) return ospite.pending.trackPending({ ...meta, paneId: ospite.paneId, connName: ospite.label });
   const id = meta.runId || (Date.now() + '-' + Math.random().toString(36).slice(2));
   const item = {
     id,
@@ -118,6 +122,7 @@ export function trackPending(meta) {
     connName: meta.connName || '',
     tabId: meta.tabId || null,
     collTabId: meta.collTabId || null,
+    paneId: meta.paneId || null,
     startedAt: Date.now(),
     endedAt: null,
     elapsedMs: null,
@@ -170,6 +175,7 @@ export function trackPending(meta) {
  * proprio quello che l'utente deve poter ritrovare.
  */
 export function updateScriptProgress(runId, stato) {
+  if (ospite) return ospite.pending.updateScriptProgress(runId, stato);
   const q = pendingQueries.find((x) => x.runId === runId || x.id === runId);
   if (!q || !stato) return;
 
@@ -204,6 +210,7 @@ export function updateScriptProgress(runId, stato) {
 }
 
 export function markPaused(runId) {
+  if (ospite) return ospite.pending.markPaused(runId);
   const q = pendingQueries.find((x) => x.runId === runId || x.id === runId);
   if (q && q.status === 'running') {
     q.status = 'paused';
@@ -271,6 +278,7 @@ export function markAbandonedByCollTab(collTabId) {
 }
 
 export function removePending(id) {
+  if (ospite) return ospite.pending.removePending(id);
   const idx = pendingQueries.findIndex((x) => x.id === id);
   if (idx >= 0) {
     pendingQueries.splice(idx, 1);
@@ -631,6 +639,16 @@ export function renderPendingModalList() {
 export function resumePendingQuery(id) {
   const item = pendingQueries.find((x) => x.id === id);
   if (!item) return;
+  if (item.paneId) {
+    import('./splitview.js').then(m => m.riprendiQueryPane(item)).catch(err => toast(err.message, true));
+    $('#modal-pending')?.classList.add('hidden');
+    return;
+  }
+  const origine = tabs.list.find(t => t.id === item.tabId);
+  if (!origine) {
+    toast(`La sessione ${item.connName || 'di origine'} è stata chiusa. Riconnettila e copia il testo dal registro nel suo editor.`, true);
+    return;
+  }
 
   // Uno SCRIPT non si "rilancia": si RIPRENDE dal cursore che il server ha
   // conservato, altrimenti si rieseguirebbero istruzioni già applicate (per un
@@ -641,8 +659,10 @@ export function resumePendingQuery(id) {
     const modaleScript = $('#modal-pending');
     if (modaleScript) modaleScript.classList.add('hidden');
     if (item.tabId && tabs.list.some((t) => t.id === item.tabId)) switchTab(item.tabId);
+    if (item.collTabId) switchCollTab(item.collTabId);
+    setView('query');
     focusScriptRun(item.runId);
-    resumeScript(item.runId);
+    resumeScript(item.runId).catch(() => {});
     return;
   }
   if (item.kind === 'script' && !knowsScriptRun(item.runId)) {
@@ -661,13 +681,18 @@ export function resumePendingQuery(id) {
       switchCollTab(item.collTabId);
     } else if (item.db && item.coll) {
       openCollTab(item.db, item.coll);
+    } else if (item.db) {
+      openDbTab(item.db);
     }
   }
 
   // 3. Riempi l'editor della query
   const editorInput = $('#query-editor-input');
+  if (queryDocument()?.dirty && editorInput?.value !== item.code
+    && !confirm('Sostituire la query non salvata con quella del registro?')) return;
   if (editorInput) {
     editorInput.value = item.code;
+    editorInput.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
   const engineSelect = $('#query-target-engine');
@@ -680,13 +705,18 @@ export function resumePendingQuery(id) {
   if (modal) modal.classList.add('hidden');
 
   // 5. Rilancia la query
+  setView('query');
+  setQueryTarget(item.db, item.coll);
+  updateEditorHighlight();
+  // Il cursore di uno script perduto non si può ricostruire: rieseguirlo
+  // automaticamente potrebbe duplicare scritture già applicate.
+  if (item.kind === 'script' || item.status === 'running') return;
   toast('Ripristino query nell\'editor ed esecuzione...');
-  setTimeout(() => {
-    runQuery();
-  }, 100);
+  runQuery().catch(() => {});
 }
 
 export function initPendingQueries() {
+  if (ospite) return;
   load();
 
   // Socket disconnect hook

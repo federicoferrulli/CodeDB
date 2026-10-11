@@ -18,6 +18,7 @@ const { MongoClient } = require('mongodb');
 const PORT = parseInt(process.env.RBAC_PORT, 10) || 3131;
 const BASE = `http://127.0.0.1:${PORT}`;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
+const MONGO_PORT = Number(process.env.MONGO_PORT || new URL(MONGO_URI).port || 27017);
 
 const APP_DB = 'codedb_rbac_e2e';        // control plane (utenti, ruoli, grant)
 const DATA_DB = 'gui_mongodb_e2e_rbac';  // database "dell'utente" su cui provare i permessi
@@ -76,6 +77,8 @@ async function startRbacServer({ maxSubUsers = 1, verbose = false } = {}) {
       CODEDB_OWNER_PASSWORD: OWNER.password,
       CODEDB_MAX_SUBUSERS: String(maxSubUsers),
       CODEDB_CONNECTIONS_FILE: iniPath,
+      CODEDB_CONNECTIONS_DIR: path.join(dir, 'conns'),
+      GUI_MONGO_PASSPHRASE: '',
       CODEDB_UI_AUDIT_FILE: path.join(dir, 'ui-audit.log'),
       CODEDB_MCP_AUDIT_FILE: path.join(dir, 'mcp-audit.log'),
       CODEDB_BACKUPS_DIR: path.join(dir, 'backups'),
@@ -119,13 +122,13 @@ async function seedOwnerConnections(dir) {
     `[${CONN_NAME}]`,
     'dbType=mongodb',
     'host=localhost',
-    'port=27017',
+    `port=${MONGO_PORT}`,
     'readOnly=false',
     '',
     `[${OTHER_CONN}]`,
     'dbType=mongodb',
     'host=localhost',
-    'port=27017',
+    `port=${MONGO_PORT}`,
     '',
   ].join('\n'), 'utf8');
 }

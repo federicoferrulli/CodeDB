@@ -373,7 +373,7 @@ export function eBase(id) {
 export function scelteIniziali(base = 'dark') {
   return base === 'light'
     ? { bg: '#ffffff', fg: '#1f2937', accent: '#4f46e5', success: '#12805c', warning: '#96601a', danger: '#c92a2a', info: '#0b62d0' }
-    : { bg: '#0d1117', fg: '#e2e8f0', accent: '#6366f1', success: '#86efac', warning: '#fbbf24', danger: '#f87171', info: '#60a5fa' };
+    : { bg: '#121419', fg: '#e2e8f0', accent: '#585aee', success: '#86efac', warning: '#fbbf24', danger: '#f87171', info: '#60a5fa' };
 }
 
 /**

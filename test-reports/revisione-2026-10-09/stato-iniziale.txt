@@ -1,0 +1,101 @@
+﻿ M .impeccable/design.json
+ M DESIGN.md
+ M public/css/arc-theme.css
+ M public/css/style.css
+ M public/css/tokens.css
+ M public/css/workbench.css
+ M public/index.html
+ M public/js/colltabs.js
+ M public/js/grid.js
+ M public/js/inlineEdit.js
+ M public/js/insert.js
+ M public/js/main.js
+ M public/js/pending-queries.js
+ M public/js/query-tab.js
+ M public/js/script-run.js
+ M public/js/session-restore.js
+ M public/js/snippet-manager.js
+ M public/js/socket.js
+ M public/js/splitview.js
+ M public/js/tabbar.js
+ M public/js/tabs.js
+ M public/js/theme-colori.js
+ M public/js/trasporto.js
+ M public/js/uml-paper.js
+ M public/js/uml.js
+ M public/js/utils.js
+ M test-reports/arc/after/connection-dark-1024.png
+ M test-reports/arc/after/connection-dark-1440.png
+ M test-reports/arc/after/connection-dark-390.png
+ M test-reports/arc/after/connection-dark-768.png
+ M test-reports/arc/after/connection-light-1024.png
+ M test-reports/arc/after/connection-light-1440.png
+ M test-reports/arc/after/connection-light-390.png
+ M test-reports/arc/after/connection-light-768.png
+ M test-reports/arc/after/notifications-1440.png
+ M test-reports/arc/after/report.json
+ M test-reports/arc/after/shortcuts-1440.png
+ M test-reports/arc/after/theme-1440.png
+ M test-reports/arc/after/welcome-1440.png
+ M test-reports/arc/after/workspace-custom-1440.png
+ M test-reports/arc/after/workspace-dark-1024.png
+ M test-reports/arc/after/workspace-dark-1440.png
+ M test-reports/arc/after/workspace-dark-390.png
+ M test-reports/arc/after/workspace-dark-768.png
+ M test-reports/arc/after/workspace-light-1024.png
+ M test-reports/arc/after/workspace-light-1440.png
+ M test-reports/arc/after/workspace-light-390.png
+ M test-reports/arc/after/workspace-light-768.png
+ M test-reports/design/dopo/connessione-1440.png
+ M test-reports/design/dopo/connessione-390.png
+ M test-reports/design/dopo/connessione-768.png
+ M test-reports/design/dopo/dati-dark-1440.png
+ M test-reports/design/dopo/dati-dark-390.png
+ M test-reports/design/dopo/dati-dark-768.png
+ M test-reports/design/dopo/dati-light-1440.png
+ M test-reports/design/dopo/dati-light-390.png
+ M test-reports/design/dopo/dati-light-768.png
+ M test-reports/design/dopo/dettagli-1440.png
+ M test-reports/design/dopo/dettagli-390.png
+ M test-reports/design/dopo/dettagli-768.png
+ M test-reports/design/dopo/inizio-dark-1440.png
+ M test-reports/design/dopo/inizio-dark-390.png
+ M test-reports/design/dopo/inizio-dark-768.png
+ M test-reports/design/dopo/inizio-light-1440.png
+ M test-reports/design/dopo/inizio-light-390.png
+ M test-reports/design/dopo/inizio-light-768.png
+ M test-reports/design/dopo/query-1440.png
+ M test-reports/design/dopo/query-390.png
+ M test-reports/design/dopo/query-768.png
+ M test-reports/design/dopo/query-errore-1440.png
+ M test-reports/design/dopo/report.json
+ M test-reports/design/dopo/tema-editor-1440.png
+ M test-reports/design/dopo/tema-editor-390.png
+ M test-reports/design/dopo/tema-editor-768.png
+ M test-reports/design/dopo/temi-1440.png
+ M test-reports/design/dopo/temi-390.png
+ M test-reports/design/dopo/temi-768.png
+ M test/e2e-design.js
+ M test/unit-tema.js
+?? public/js/pane-runtime.js
+?? public/js/query-document.js
+?? test-reports/design/dopo/grafici-dark-1440.png
+?? test-reports/design/dopo/grafici-dark-390.png
+?? test-reports/design/dopo/grafici-light-1440.png
+?? test-reports/design/dopo/grafici-light-390.png
+?? test-reports/design/dopo/grafo-dark-1440.png
+?? test-reports/design/dopo/grafo-dark-390.png
+?? test-reports/design/dopo/grafo-light-1440.png
+?? test-reports/design/dopo/grafo-light-390.png
+?? test-reports/design/dopo/mappa-dark-1440.png
+?? test-reports/design/dopo/mappa-dark-390.png
+?? test-reports/design/dopo/mappa-light-1440.png
+?? test-reports/design/dopo/mappa-light-390.png
+?? test-reports/design/dopo/uml-dark-1440.png
+?? test-reports/design/dopo/uml-dark-390.png
+?? test-reports/design/dopo/uml-light-1440.png
+?? test-reports/design/dopo/uml-light-390.png
+?? test-reports/revisione-2026-10-09/
+?? test-reports/workbench/
+?? test/e2e-workbench-reale.js
+?? test/e2e-workbench.js

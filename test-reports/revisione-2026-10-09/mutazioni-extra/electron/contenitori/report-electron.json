@@ -1,0 +1,12 @@
+{
+  "checks": [],
+  "errors": [],
+  "environments": [
+    {
+      "electron": "43.2.0",
+      "chromium": "150.0.7871.129",
+      "node": "24.18.0"
+    }
+  ],
+  "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ ''\n- 'SELECT nome, preciso FROM ordini'\n\n    at electron (C:\\repository\\CodeDB\\test\\e2e-contenitori.js:62:12)\n    at async C:\\repository\\CodeDB\\test\\e2e-contenitori.js:113:51"
+}

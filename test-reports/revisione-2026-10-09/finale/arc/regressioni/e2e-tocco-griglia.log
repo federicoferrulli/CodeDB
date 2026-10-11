@@ -1,0 +1,16 @@
+--- E2E: scorrimento automatico col dito (assunzioni di piattaforma) ---
+  con cattura:   {"scrollTop":580,"move":8,"up":0,"cancel":0,"ricostruzioni":12,"viste":29,"sottoBarra":29}
+  senza cattura: {"scrollTop":560,"move":8,"up":0,"cancel":0,"ricostruzioni":12,"viste":28,"sottoBarra":28}
+  [32m✔ OK[0m   scorrere il contenitore da codice non annulla il puntatore (nessun pointercancel)
+  [32m✔ OK[0m   il contenitore scorre da solo col dito fermo sul bordo
+  [32m✔ OK[0m   la finestra virtuale è stata ricostruita durante il gesto
+  [32m✔ OK[0m   la cella sotto al dito continua a essere trovata mentre le righe cambiano
+  [32m✔ OK[0m   la riga sotto al dito AVANZA con lo scorrimento: è ciò che fa crescere la selezione
+  [32m✔ OK[0m   il pointerup arriva a gesto finito: il ciclo si ferma
+  [32m✔ OK[0m   a dito alzato lo scorrimento non prosegue
+  [32m✔ OK[0m   la cattura esplicita non peggiora mai la consegna degli eventi
+  sopra la barra: {"scrollTop":580,"move":8,"up":0,"cancel":0,"ricostruzioni":12,"viste":29,"sottoBarra":29}
+  [32m✔ OK[0m   in cima alla pila c'è l'elemento sovrapposto: elementFromPoint da solo NON darebbe la cella
+  [32m✔ OK[0m   elementsFromPoint trova comunque la cella sotto l'elemento sovrapposto: la selezione continua a seguire
+
+--- Scorrimento col dito: tutti i test superati ---

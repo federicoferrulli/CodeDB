@@ -1,0 +1,19 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+OK Separatore tastiera, limiti e valore accessibile aggiornato
+OK Menu visibile dell’esploratore, frecce, Escape e ritorno al comando
+OK Cambio densità durante editing: bozza integra e spaziatori coerenti
+OK Drawer: stato, focus iniziale, chiusura e focus restituito
+AssertionError [ERR_ASSERTION]: Lo switcher attiva il documento scelto
++ actual - expected
+
++ 'oggetto_11_con_nome_lungo_e_spazi'
+- 'ordini'
+
+    at C:\repository\CodeDB\test\e2e-revisione.js:147:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'oggetto_11_con_nome_lungo_e_spazi',
+  expected: 'ordini',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

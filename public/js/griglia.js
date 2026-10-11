@@ -156,24 +156,62 @@ export function spaziatore(altezza, colonne, doc = document) {
  * @param {number} p.colonneTotali  colspan degli spaziatori
  * @returns {{ disegnate:number }}
  */
-export function disegnaCorpo({ tbody, righe, disegnaRiga, finestra, colonneTotali }) {
+const corpiVirtuali = new WeakMap();
+
+export function disegnaCorpo({ tbody, righe, disegnaRiga, finestra, colonneTotali, conservaRighe = false }) {
   const doc = tbody.ownerDocument || document;
+  const precedente = conservaRighe && corpiVirtuali.get(tbody);
+  // Solo lo scorrimento riusa le righe: una lettura o modifica dei dati le ricostruisce.
+  if (finestra && precedente?.righe === righe && precedente.colonne === colonneTotali
+      && [...precedente.nodi.values()].every(nodo => nodo.parentNode === tbody)) {
+    const { nodi } = precedente;
+    for (const [indice, nodo] of nodi) {
+      if (indice < finestra.inizio || indice >= finestra.fine) { nodo.remove(); nodi.delete(indice); }
+    }
+    for (const [lato, altezza] of [['sopra', finestra.spazioSopra], ['sotto', finestra.spazioSotto]]) {
+      let nodo = precedente[lato];
+      if (!altezza) { nodo?.remove(); precedente[lato] = null; continue; }
+      if (!nodo) {
+        nodo = precedente[lato] = spaziatore(altezza, colonneTotali, doc);
+        if (lato === 'sopra') tbody.prepend(nodo); else tbody.append(nodo);
+      } else {
+        nodo.firstElementChild.style.height = `${altezza}px`;
+      }
+    }
+    let successivo = precedente.sotto;
+    for (let i = finestra.fine - 1; i >= finestra.inizio; i--) {
+      let nodo = nodi.get(i);
+      if (!nodo) {
+        nodo = disegnaRiga(righe[i], i);
+        tbody.insertBefore(nodo, successivo);
+        nodi.set(i, nodo);
+      }
+      successivo = nodo;
+    }
+    return { disegnate: finestra.fine - finestra.inizio };
+  }
   const frammento = doc.createDocumentFragment();
   const inizio = finestra ? finestra.inizio : 0;
   const fine = finestra ? finestra.fine : righe.length;
+  const corpo = { righe, colonne: colonneTotali, nodi: new Map(), sopra: null, sotto: null };
 
   if (finestra && finestra.spazioSopra > 0) {
-    frammento.appendChild(spaziatore(finestra.spazioSopra, colonneTotali, doc));
+    corpo.sopra = spaziatore(finestra.spazioSopra, colonneTotali, doc);
+    frammento.appendChild(corpo.sopra);
   }
   for (let i = inizio; i < fine; i++) {
-    frammento.appendChild(disegnaRiga(righe[i], i));
+    const nodo = disegnaRiga(righe[i], i);
+    if (finestra) corpo.nodi.set(i, nodo);
+    frammento.appendChild(nodo);
   }
   if (finestra && finestra.spazioSotto > 0) {
-    frammento.appendChild(spaziatore(finestra.spazioSotto, colonneTotali, doc));
+    corpo.sotto = spaziatore(finestra.spazioSotto, colonneTotali, doc);
+    frammento.appendChild(corpo.sotto);
   }
 
   tbody.innerHTML = '';
   tbody.appendChild(frammento);
+  if (finestra) corpiVirtuali.set(tbody, corpo); else corpiVirtuali.delete(tbody);
   return { disegnate: fine - inizio };
 }
 

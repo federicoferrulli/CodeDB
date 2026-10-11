@@ -1,0 +1,8 @@
+{
+  "checks": [
+    "Escape, calendario, Applica/Annulla e millisecondi: 1440px",
+    "Escape, calendario, Applica/Annulla e millisecondi: 390px",
+    "Data non valida annullabile; bozza recuperabile dopo errore server"
+  ],
+  "errors": []
+}

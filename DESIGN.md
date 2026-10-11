@@ -7,12 +7,12 @@ colors:
   accent-2: "#4f46e5"
   accent-soft: "rgba(99, 102, 241, 0.12)"
   on-accent: "#ffffff"
-  bg: "#0d1117"
-  bg-2: "#090d12"
-  bg-1: "#0b0f14"
-  bg-surface: "#161b22"
-  bg-elevated: "#1f2937"
-  bg-4: "#1a2236"
+  bg: "#121419"
+  bg-2: "#17191f"
+  bg-1: "#101217"
+  bg-surface: "#1b1e25"
+  bg-elevated: "#252932"
+  bg-4: "#272b35"
   fg: "#e2e8f0"
   fg-dim: "#8892a4"
   border: "rgba(255, 255, 255, 0.07)"
@@ -43,12 +43,6 @@ colors:
 typography:
   headline:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
-    fontSize: "20px"
-    fontWeight: 500
-    lineHeight: 1.3
-    letterSpacing: "-0.01em"
-  headline-mobile:
-    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "16px"
     fontWeight: 500
     lineHeight: 1.3
@@ -65,6 +59,11 @@ typography:
   label:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "12px"
+  column-header:
+    fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
+    fontSize: "13px"
+    fontWeight: 600
+    lineHeight: 1.4
   control:
     fontFamily: "Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif"
     fontSize: "13px"
@@ -83,8 +82,8 @@ typography:
 rounded:
   sm: "4px"
   control: "6px"
-  panel: "10px"
-  surface: "12px"
+  panel: "6px"
+  surface: "8px"
 spacing:
   2xs: "4px"
   xs: "6px"
@@ -100,41 +99,45 @@ components:
     typography: "{typography.control}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "36px"
+    height: "32px"
   button-secondary:
     backgroundColor: "{colors.bg-surface}"
     textColor: "{colors.fg}"
     typography: "{typography.control}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "36px"
+    height: "32px"
   button-ghost:
     backgroundColor: "transparent"
     textColor: "{colors.fg-dim}"
     typography: "{typography.control}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "36px"
+    height: "32px"
   button-danger:
     backgroundColor: "{colors.bg-surface}"
     textColor: "{colors.danger}"
     typography: "{typography.control}"
     rounded: "{rounded.control}"
     padding: "0 16px"
-    height: "36px"
+    height: "32px"
   input:
     backgroundColor: "{colors.bg-surface}"
     textColor: "{colors.fg}"
     rounded: "{rounded.control}"
     padding: "0 12px"
-    height: "36px"
+    height: "32px"
   view-active:
     backgroundColor: "{colors.accent-soft}"
     textColor: "{colors.accent-fg}"
     typography: "{typography.label}"
     rounded: "{rounded.control}"
     padding: "6px 12px"
-    height: "32px"
+    height: "28px"
+  column-header:
+    textColor: "{colors.fg}"
+    typography: "{typography.column-header}"
+    height: "36px"
   statistic-panel:
     backgroundColor: "{colors.bg-2}"
     textColor: "{colors.fg}"
@@ -145,6 +148,11 @@ components:
     textColor: "{colors.fg}"
     rounded: "{rounded.surface}"
     padding: "24px"
+  navigation-sheet:
+    backgroundColor: "{colors.bg-elevated}"
+    textColor: "{colors.fg}"
+    rounded: "{rounded.panel}"
+    width: "min(100%, 36rem)"
 ---
 
 # Design System: CodeDB
@@ -153,17 +161,24 @@ components:
 
 **Creative North Star: "L'ambiente operativo CodeDB"**
 
-CodeDB è un banco di lavoro per query ed editing intensivo: denso nei dati, leggibile nei form, sobrio nelle superfici. Connessione, tabella e vista mantengono identità distinte mentre codice e risultati occupano il centro. L'indaco segnala azioni e selezione; Inter e JetBrains Mono separano comandi e contenuto tecnico.
+CodeDB è un banco di lavoro per query ed editing intensivo: denso nei dati, leggibile nei form, sobrio nelle superfici. Connessione, database o schema e documento aperto mantengono identità distinte mentre codice e risultati occupano il centro. Ogni pannello affiancato mostra il proprio contesto. L'indaco segnala azioni e selezione; Inter e JetBrains Mono separano comandi e contenuto tecnico.
 
 La direzione deriva dall'identità e dall'uso indicati da Keus in [PRODUCT.md](PRODUCT.md), non da un nuovo concept. Card decorative e composizioni da sito marketing non appartengono al workspace. Le superfici funzionali, le finestre e i riepiloghi esistenti restano parte del sistema.
 
 Questa documentazione è una scansione dell'implementazione. Le fonti sono [tokens.css](public/css/tokens.css), [base.css](public/css/base.css), [arc-theme.css](public/css/arc-theme.css), [workbench.css](public/css/workbench.css), [style.css](public/css/style.css) e i [componenti Arc](ui/components/arc). La foundation Arc viene caricata prima del tema CodeDB: i suoi valori sovrascritti non sono regole dell'applicazione. Il contratto di direzione è nel `body` di [index.html](public/index.html); non è stato prodotto un seed o un comp approvato separatamente.
+
+Le regole descrivono il sistema nel codice; copertura dei flussi, prove e limiti sono nella matrice di [revisione grafica](docs/revisione-grafica.md). Questa descrizione non certifica la conformità WCAG né sostituisce le verifiche nei contenitori nativi.
 
 **Key Characteristics:**
 
 - Superfici neutre e indaco funzionale.
 - Densità compatta senza ridurre la radice tipografica.
 - Codice e dati monospaziati, comandi in Inter.
+- Contesto esplicito in ogni pannello e indicazione testuale del pannello attivo.
+- Connessioni salvate, sessioni, documenti e viste riconoscibili come livelli distinti.
+- Un navigatore desktop a sezioni; gli stessi alberi nei pannelli di navigazione mobile.
+- Strumenti sotto l'esploratore, ancorato al fondo del navigatore anche quando le sezioni sono collassate.
+- Intestazioni leggibili e colonne ridimensionabili senza cambiare i dati.
 - Temi chiaro, scuro e personalizzati sullo stesso sistema di ruoli.
 - Focus visibile e controlli adattati a tastiera e touch.
 
@@ -190,6 +205,8 @@ I token senza prefisso nel frontmatter rappresentano il tema scuro; `light-` rip
 
 I colori semantici `danger`, `success`, `warning` e `info` comunicano esiti e avvisi. Le famiglie per stato, sintassi dell'editor, nodi JSON, tipi delle celle e motori database hanno significati propri: non sono accenti di marca aggiuntivi e non vanno fuse. Grafici, mappe e grafi conservano la propria codifica informativa.
 
+I booleani usano la stessa famiglia viola per `true` e `false`, con fondo e bordo neutri: è il testo a distinguere il valore. `false`, zero e `NULL` non rappresentano un errore. Le celle distinguono esplicitamente `NULL`, campo `mancante` e stringa vuota (`""`); non usare lo stile disabilitato per nascondere questa informazione.
+
 Le rampe a otto passi nel sidecar sono anteprime OKLCH sintetiche per il pannello, non palette aggiuntive adottate dall'applicazione.
 
 **The Colore per funzione Rule.** Usa i token del ruolo e del tema: non sostituire il testo d'accento con il colore di riempimento e non cablare nuove tinte nelle superfici comuni.
@@ -203,27 +220,32 @@ Le rampe a otto passi nel sidecar sono anteprime OKLCH sintetiche per il pannell
 
 ### Hierarchy
 
-- **Headline:** titoli delle finestre; su mobile passa al ruolo `headline-mobile`.
+- **Headline:** titoli delle finestre, con la stessa misura contenuta su desktop e mobile.
 - **Title:** titoli delle sezioni e degli stati vuoti. Il marchio usa un peso maggiore (600).
 - **Body:** testo dell'interfaccia; suggerimenti lunghi nei form usano un'interlinea più aperta e una lunghezza massima (75ch).
-- **Label:** metadati, intestazioni della griglia, toolbar, schede e suggerimenti brevi.
+- **Label:** metadati, toolbar, schede e suggerimenti brevi.
+- **Column header:** nomi delle colonne delle griglie, più marcati delle etichette secondarie e con spazio riservato al ridimensionamento.
 - **Control:** pulsanti e azioni, con peso medio.
 - **Code:** editor, evidenziazione e numeri di riga condividono le stesse metriche, anche su mobile.
 - **Data:** valori delle griglie; cifre tabulari per colonne numeriche e metriche. Le intestazioni restano in Inter.
 
-La scala applicata dal bridge è compatta (12, 13, 14, 16, 20px per i ruoli qui registrati). Il gradino da 24px è disponibile nel bridge ma non definisce una gerarchia ricorrente nelle viste rilevate. Il frontmatter conserva solo i ruoli effettivamente usati.
+La scala operativa del bridge usa 12, 13, 14 e 16px. I gradini da 20 e 24px restano disponibili nella foundation, ma non sono la gerarchia dei titoli della shell e delle finestre qui registrata. L'editor conserva la propria metrica monospaziata.
 
 **The Densità leggibile Rule.** La radice resta a 16px. Ottieni compattezza con righe, padding e disposizione, senza ridurre lo zoom globale o disallineare i livelli dell'editor.
 
 ## Layout
 
-Il workspace occupa il viewport e assegna lo scorrimento alle regioni operative. La navigazione è laterale; schede di connessione, schede di tabella e selettore di vista formano livelli distinti. La testata è compatta (48px). Le due sidebar principali partono da 208px e scendono a 184px fra 901 e 1100px; lo Schema Browser delle query parte da 184px, passa a 160px nello stesso intervallo ed è richiudibile su desktop. Queste misure descrivono la shell attuale, non una griglia obbligatoria per ogni nuova finestra.
+Il workspace occupa il viewport e assegna lo scorrimento alle regioni operative. Su desktop un solo navigatore ridimensionabile contiene le sezioni «Connessioni», sempre espansa, e «Database» o «Schemi», collassabile dalla propria testata. Il pulsante in alto a sinistra e Ctrl+B chiudono e riaprono l'intero navigatore, ricordandone lo stato. Il separatore orizzontale ripartisce l'altezza con trascinamento o tastiera; larghezza, ripartizione e stato dell'esploratore sono ricordati. Le azioni di aggiunta rimangono nelle testate. Il menu «Strumenti» occupa un footer indipendente sotto l'esploratore, ancorato al fondo del navigatore. Quando «Database» o «Schemi» è collassato, la sua testata resta immediatamente sopra il footer: entrambi rimangono in basso e lo spazio libero appartiene alla regione superiore. La larghezza iniziale del navigatore è 244px, ridotta a 224px fra 901 e 1100px; la testata della shell usa `--shell-header-height` (44px). A destra la barra delle connessioni attive, senza l'etichetta ridondante «Sessioni», la riga dei documenti aperti e il selettore di vista hanno posizioni distinte. Il comando «Schede» compare solo nella navigazione mobile, fino a 900px. Le schede dei documenti occupano l'intera riga disponibile; le modalità Dati, Dettagli, Query e Visualizza stanno nella riga successiva. Lo Schema Browser delle query parte da 184px, passa a 160px nello stesso intervallo ed è richiudibile su desktop. Queste misure descrivono la shell, non una griglia obbligatoria per ogni nuova finestra.
 
 La scala di spaziatura nel frontmatter ordina distanza fra icone, gruppi, righe di form e margini delle finestre. Arc usa anche alias numerici in rem: con la radice invariata, 2/3/4/6 corrispondono a `sm`/`md`/`lg`/`xl`. Le toolbar stanno accanto al contenuto comandato; le azioni delle finestre chiudono il form, separate da un bordo.
 
-Le righe dei dati hanno una sorgente condivisa con il motore virtuale (`--grid-row-h`: 32px). Con puntatore grossolano oppure viewport fino a 600px diventano 48px; i controlli piccoli e medi passano a un minimo di 44px. Su desktop i controlli usano altezze minime di 32, 36 e 44px secondo il contesto; le altezze dei componenti nel frontmatter descrivono la taglia media, non un limite al contenuto.
+Le righe dei dati hanno una sorgente condivisa con il motore virtuale (`--grid-row-h`: 30px). Con puntatore grossolano oppure viewport fino a 600px diventano 48px; i controlli piccoli e medi passano a un minimo di 44px. Su desktop i controlli usano altezze minime di 28, 32 e 44px secondo il contesto; le altezze dei componenti nel frontmatter descrivono la taglia media, non un limite al contenuto. I documenti incorporati nei pannelli conservano la densità desktop con un puntatore preciso.
 
-Fino a 900px la shell adotta la navigazione mobile. La toolbar Dati dispone filtro, ordinamento e azioni in una griglia su più righe; la toolbar Query manda a capo bersaglio, esecuzione e metriche. Il pulsante di esecuzione resta visibile. Le finestre riducono il padding e i titoli; fino a 600px l'editor del tema porta i controlli sotto le rispettive etichette. Codice e tabelle possono scorrere orizzontalmente senza comprimere i valori.
+Fino a 900px la shell adotta la navigazione mobile. «Connessioni» e «Database» o «Schemi» aprono il BottomSheet Arc locale: due altezze, 60% e 94% dell'area disponibile, per passare dalla scelta rapida all'esplorazione estesa. Solo la testata trascina il pannello; il contenuto conserva lo scorrimento e la selezione del testo. Lo Schema Browser delle query rimane un drawer laterale. Le barre delle connessioni e dei documenti e il contatore delle sessioni sono nascosti: resta «Schede», che apre nello stesso BottomSheet Arc l'elenco raggruppato per connessione, con selezione, riordino, chiusura e nuova connessione. Tornando al desktop il drawer si chiude e ricompaiono le barre. Le viste Dati, Dettagli e Query rimangono disponibili anche su mobile. Questa composizione riguarda la navigazione: editor, JSON e form complessi mantengono le proprie superfici ampie.
+
+La toolbar Dati dispone filtro, ordinamento e azioni in una griglia su più righe; la toolbar Query manda a capo bersaglio, esecuzione e metriche. Il pulsante di esecuzione resta visibile. Nelle query i comandi «Editor», «Risultati» ed «Entrambi» cambiano la superficie visibile mantenendo lo stato del documento. Le finestre riducono il padding; fino a 600px l'editor del tema porta i controlli sotto le rispettive etichette. Codice, griglie e tabelle amministrative larghe scorrono nel proprio contenitore, senza trascinare orizzontalmente la shell.
+
+I pannelli affiancati si ridimensionano con separatori e possono mostrare contesti di connessioni diverse. Su viewport stretti si impilano in un'area scorrevole: editor e risultati mantengono spazio utilizzabile, invece di dividersi l'altezza residua dello schermo. Il comando per raggiungere il pannello attivo riporta il focus visivo al contesto corrente; la massimizzazione mostra un pannello nell'area disponibile.
 
 **Contesto vicino.** Mantieni bersaglio, azione ed esito nel pannello che governano; quando lo spazio diminuisce, ricomponi i gruppi prima di ridurre la leggibilità.
 
@@ -239,13 +261,15 @@ La profondità ordinaria nasce da superfici tonali e bordi sottili. Testata, too
 
 Le definizioni complete di ombre, transizioni e breakpoint sono nel [sidecar](.impeccable/design.json), fuori dallo schema dei token primitivi. Le transizioni brevi rispondono allo stato dei controlli; i componenti Arc conservano il proprio feedback di pressione. La preferenza di movimento ridotto abbrevia le transizioni e disattiva i movimenti non necessari.
 
+Le righe virtualizzate non animano il fondo durante lo scorrimento: l'alternanza segue l'indice del record, non la posizione momentanea nel DOM. Drawer, BottomSheet e backdrop usano livelli condivisi. Il BottomSheet segue il trascinamento e torna a una delle sue altezze con la molla `smooth` Arc; il movimento ridotto elimina la traslazione animata, mantenendo una breve dissolvenza. Menu e selettori restano sopra il contenitore di apertura senza introdurre valori locali arbitrari.
+
 **The Profondità di servizio Rule.** Usa l'elevazione per distinguere un livello temporaneo; non aggiungerla a ogni regione del workspace.
 
 ## Shapes
 
 Gli angoli sono contenuti: `control` per pulsanti e campi, `panel` per menu e pannelli, `surface` per finestre. Il raggio `sm` serve alle etichette compatte dei valori. Bordi sottili e allineamenti definiscono le regioni; le impostazioni privilegiano righe separate, non una card per etichetta.
 
-Le schede di connessione e tabella conservano il raccordo sagomato con il pannello: raggio e spalla condivisi (10px), fondo della scheda attiva uguale alla superficie di arrivo. Le forme circolari di indicatori, checkbox e controlli colore restano funzionali; non estendere il linguaggio delle pillole a ogni contenitore.
+Le schede di connessione e documento sono piatte, senza spalle o raccordi sagomati. La scheda attiva usa peso maggiore e una sottolineatura d'accento; i pannelli affiancati hanno angoli retti. Le forme circolari di indicatori, checkbox e controlli colore restano funzionali; non estendere il linguaggio delle pillole a ogni contenitore.
 
 ## Components
 
@@ -261,11 +285,19 @@ Campi neutri con bordo marcato, raggio `control`, etichetta e messaggio vicini. 
 
 ### Navigation
 
-Connessioni, tabelle e viste restano riconoscibili senza intestazioni decorative. La selezione degli alberi usa un velo indaco e un segno laterale; la vista attiva usa velo e testo d'accento. Gli stati inattivi sono secondari, l'hover li rende più leggibili. Le schede dei documenti mantengono chiusura, nome e relazione visiva con il pannello. Su mobile la navigazione si adatta e offre bersagli touch adeguati.
+Connessioni, database o schemi, documenti e viste restano riconoscibili senza intestazioni decorative. La selezione degli alberi usa un velo indaco e un segno laterale; la vista attiva usa velo e testo d'accento. Gli stati inattivi sono secondari, l'hover li rende più leggibili. Le schede delle connessioni esplicitano il motore; quelle dei documenti mantengono prefisso del database o schema, nome e chiusura. Il contatore indica le sessioni aperte rispetto al limite di otto. Le schede hanno semantica e navigazione da tastiera; i nomi lunghi mantengono il testo completo nei tooltip. Su mobile la navigazione si adatta e offre bersagli touch adeguati.
+
+Aprire una connessione salvata già connessa riprende la sessione esistente. «Apri un'altra sessione» nel suo menu crea esplicitamente una sessione aggiuntiva. L'esploratore mostra il nome della connessione corrente; su PostgreSQL il livello database del prodotto è presentato come «Schemi». Ricerca delle connessioni, ricerca di database/oggetti e filtro dei dati rimangono separati.
+
+Le anteprime espongono «Mantieni» per fissare la scheda senza doppio clic. Una bozza di cella, una query modificata o un'esecuzione in corso impediscono che l'apertura di un'altra anteprima sostituisca quel documento. Il selettore «Schede» mostra appartenenza, anteprima e modifiche non salvate; la selezione è separata dal menu con riordino, copia del nome e chiusura. I menu degli alberi hanno un pulsante visibile e accesso da tastiera.
+
+Il [BottomSheet locale](ui/components/arc/bottom-sheet/bottom-sheet.tsx) usa Radix per modalità, focus ed Escape. L'[adattatore di navigazione](ui/navigation-sheet.tsx) sposta gli stessi nodi e controller degli alberi nel pannello e li riporta alla posizione originale alla chiusura: non clona i controlli e conserva lo scroll. La sezione è visibile nello sheet anche se collassata sul desktop; al ritorno recupera quello stato. Il comando sulla presa espande o riduce il pannello con clic, Invio o frecce; il pulsante «Chiudi» resta distinto. La testata mostra il titolo e, per database o schemi, la connessione corrente. Il ritorno al controllo di apertura è coordinato da `responsive.js`; menu e finestre annidati hanno precedenza nella gestione di Escape. Questo contratto non presume che le prove della tastiera virtuale Android siano complete: stato e limiti delle verifiche restano nella matrice.
+
+Anche il footer «Strumenti» entra nel BottomSheet insieme all'albero, usando lo stesso nodo e lo stesso menu del desktop. Rimane sotto il contenuto di navigazione e torna nel navigatore alla chiusura, senza duplicare comandi o stato.
 
 ### Chips
 
-Le etichette compatte comunicano tipi ed esiti. I booleani associano testo esplicito, bordo e fondo semantico; il colore non sostituisce il valore. Badge database e indicatori di connessione mantengono le famiglie specifiche già definite nei token.
+Le etichette compatte comunicano tipi ed esiti. I booleani associano testo esplicito, fondo e bordo neutri: non diventano badge di successo o errore. Badge database e indicatori di connessione mantengono le famiglie specifiche già definite nei token.
 
 ### Cards / Containers
 
@@ -275,9 +307,27 @@ I riepiloghi statistici e di stato sono contenitori funzionali con superficie ne
 
 Finestre con raggio `surface`, superficie del tema, bordo marcato e ombra fluttuante. Titolo, contenuto e azioni hanno una gerarchia distinta; i form hanno più spazio della griglia. I componenti Arc/Radix gestiscono focus e sovrapposizione entro gli overlay dell'app. Menu e selettori aperti rimangono sopra la finestra che li ospita.
 
+Le finestre di inserimento e modifica esplicitano connessione, database o schema e tabella o collezione nel titolo. Le modifiche pendenti richiedono conferma prima della chiusura; il bersaglio non viene dedotto dal pannello che acquisisce il focus dopo l'apertura.
+
+Un'attività lunga mantiene il proprio contesto e lo stato reale anche se cambia la vista. Il restore raggruppa messaggi e avanzamento per singola operazione. Nel monitor delle sessioni «Leggi query» apre il testo completo in una finestra copiabile, anche quando la tabella lo abbrevia.
+
+### Griglie e intestazioni
+
+Griglia principale, risultati query, pannelli affiancati e campione dati UML condividono il ridimensionamento in [table-resize.js](public/js/table-resize.js). Le intestazioni usano il ruolo `column-header`, una superficie neutra distinta e un bordo inferiore leggibile; con puntatore grossolano o viewport fino a 600px diventano alte 44px. Il nome completo resta accessibile nel tooltip e nel menu della colonna.
+
+Il bordo destro espone una presa visibile con area interattiva larga 24px. Trascinamento, frecce da tastiera e menu «Imposta larghezza…» sono vie equivalenti; «Adatta al contenuto» e «Copia nome completo» non richiedono hover o doppio clic. Le larghezze manuali appartengono al documento o pannello; non modificano ordinamento, query o valori. Il componente usa `colgroup` e layout fisso; lo scorrimento orizzontale rimane locale.
+
+Le righe trattenute nella finestra virtuale conservano i propri nodi durante lo scorrimento. L'altezza effettiva e gli spaziatori seguono la densità condivisa; tema, viewport e puntatore non devono creare una geometria diversa da quella del motore virtuale. Hover, selezione, cella attiva e bozza restano distinguibili: selezione con fondo tenue, cella attiva contornata, bozza con segno e asterisco. L'abbreviazione di un valore è soltanto visiva e non cambia il contenuto copiato o inviato.
+
+L'editor inline presenta «Applica» e «Annulla» vicino alla cella, con nomi accessibili espliciti. Sono uscite visibili aggiuntive: Invio ed Escape restano disponibili, e uscire dal campo continua a salvare secondo il comportamento esistente. Il passaggio ai pulsanti, al selettore Arc aperto, al calendario o al pannello FK non deve salvare prematuramente. «Annulla» scarta la bozza; un errore di validazione o salvataggio la conserva nel contesto originario.
+
 ### Workspace dati e query
 
 L'unità caratteristica è il pannello operativo: contesto e comandi, editor o griglia, risultati e stato. Mantieni la riga condivisa con la virtualizzazione e le metriche comuni a textarea, evidenziazione e gutter. I canvas di Leaflet, ECharts, JointJS e Three.js conservano i propri motori; la cromatura intorno ad essi usa le stesse superfici delle altre viste. Gli stati vuoti spiegano il prossimo passo senza un involucro ornamentale.
+
+Nell'area affiancata ogni pannello espone connessione, database o schema e documento, con Dati e Query immediatamente disponibili. Dettagli, UML, grafo e operazioni di disposizione restano nel menu del pannello. La parola «Attivo» accompagna il segno d'accento: il colore non è l'unico indizio del focus. Esecuzione, annullamento, errori e risultati rimangono nel pannello proprietario; filtri, selezioni, paginazione e bozze appartengono al documento. Le bozze di celle non salvate usano un segno inferiore e un asterisco.
+
+I pannelli specializzati incorporano i controller reali in documenti isolati, con la stessa sessione Socket.IO della connessione e senza consumare ulteriori sessioni. Il runtime rimane montato durante riordino e cambio scheda; tema e focus sono coordinati con la shell. Questa scelta preserva gli editor e le interazioni Arc già presenti.
 
 I controlli riusano i componenti reali in `ui/components/arc`, con CSS Modules e isole React. I controller del workspace restano moduli ESM vanilla. Gli esempi HTML/CSS del sidecar sono anteprime autonome del linguaggio visivo, non sostituti dei componenti o dei loro comportamenti.
 
@@ -291,6 +341,10 @@ I controlli riusano i componenti reali in `ui/components/arc`, con CSS Modules e
 - **Do** preservare focus visibile, etichette accessibili e movimento ridotto.
 - **Do** ricomporre toolbar e form su schermi stretti mantenendo visibili bersaglio ed esecuzione.
 - **Do** riusare i controlli Arc e la cromatura comune intorno ai motori specializzati.
+- **Do** mostrare connessione, database o schema e documento vicino all'azione, anche nei pannelli affiancati.
+- **Do** mantenere leggibili i nomi delle colonne e offrire ridimensionamento con puntatore, tastiera e menu.
+- **Do** conservare selezioni, bozze e larghezze nel documento proprietario durante la navigazione.
+- **Do** riusare gli stessi alberi fra navigatore desktop e BottomSheet mobile, conservando controller e scroll.
 
 ### Don't:
 
@@ -299,4 +353,8 @@ I controlli riusano i componenti reali in `ui/components/arc`, con CSS Modules e
 - **Don't** fondere sintassi, tipi dei dati, stati e identità dei database in un'unica palette decorativa.
 - **Don't** ridurre il testo o tagliare le azioni per far stare una toolbar su una sola riga.
 - **Don't** alterare separatamente le metriche di editor, evidenziazione e numeri di riga.
+- **Don't** affidare al solo colore l'identificazione del pannello attivo.
+- **Don't** usare i colori di errore per `false`, zero o `NULL`.
+- **Don't** animare l'alternanza delle righe durante lo scorrimento virtuale.
+- **Don't** far competere il trascinamento del BottomSheet con lo scorrimento o la selezione del suo contenuto.
 - **Don't** trattare le rampe esplorative del sidecar o i valori locali non registrati come nuovi token dell'app.

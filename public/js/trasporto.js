@@ -72,10 +72,13 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
     _state: tab ? tab.state : (pinnedMancante ? null : state),
   });
   return new Promise((resolve, reject) => {
+    const scrittura = !!tab && /^doc:(insert|update|replace|delete)$/.test(event);
+    if (scrittura) tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1;
     let settled = false;
     let onTabClosed = null;
     let timeout = null;
     const cleanup = () => {
+      if (scrittura) tab.state.writesInFlight--;
       if (timeout !== null) clearTimeout(timeout);
       if (onTabClosed && typeof window !== 'undefined') {
         window.removeEventListener('codedb:tab-closed', onTabClosed);

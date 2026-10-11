@@ -1,0 +1,17 @@
+AssertionError [ERR_ASSERTION]: Il backend distingue i progressi dei ripristini concorrenti
++ actual - expected
+
+  [
++   undefined
+-   'fixture-0',
+-   'fixture-1'
+  ]
+
+    at C:\repository\CodeDB\test\e2e-workbench-reale.js:174:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

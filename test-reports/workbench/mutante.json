@@ -1,0 +1,6 @@
+{
+  "transport": "simulato, risposte consegnate fuori ordine",
+  "checks": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: La risposta A non deve dipingere il documento B\n\ntrue !== false\n\n    at C:\\repository\\CodeDB\\test\\e2e-workbench.js:82:12"
+}

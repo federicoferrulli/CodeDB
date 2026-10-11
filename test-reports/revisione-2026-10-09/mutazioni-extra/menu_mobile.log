@@ -1,0 +1,11 @@
+{"scroll":53,"tastiera":0,"blocchi":0}
+OK: larghezza reale, nessun ordinamento accidentale, persistenza del documento, query, pannello, touch e immissione numerica
+AssertionError [ERR_ASSERTION]: Le azioni del database sono raggiungibili anche nel foglio ridotto
+    at C:\repository\CodeDB\test\e2e-griglia-fluidita.js:203:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

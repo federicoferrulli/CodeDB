@@ -1,0 +1,41 @@
+[
+  {
+    "mutation": "valori",
+    "detected": true,
+    "expected": "NULL, mancante"
+  },
+  {
+    "mutation": "separatore",
+    "detected": true,
+    "expected": "Il separatore modifica"
+  },
+  {
+    "mutation": "menu",
+    "detected": true,
+    "expected": "Freccia sposta"
+  },
+  {
+    "mutation": "densita",
+    "detected": true,
+    "expected": "Geometria touch virtuale"
+  },
+  {
+    "mutation": "drawer",
+    "detected": true,
+    "expected": "Drawer chiuso"
+  },
+  {
+    "mutation": "schede",
+    "detected": true,
+    "expected": "Lo switcher attiva"
+  },
+  {
+    "mutation": "risultati",
+    "detected": true,
+    "expected": "Editor occupa"
+  },
+  {
+    "mutation": "progresso-ripristino",
+    "detected": true
+  }
+]

@@ -448,7 +448,7 @@
   <div id="app">
     <header class="header">
       <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate"
-        aria-label="Connessioni salvate"><i data-lucide="panel-left"></i></button>
+        aria-label="Connessioni salvate"><i data-lucide="panel-left"></i><span class="menu-conns-label">Nascondi pannello</span></button>
       <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo"
         aria-label="Database del tab attivo"><i data-lucide="database"></i></button>
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
@@ -486,55 +486,47 @@
 
     <div class="body">
       <!-- ------------------- Connection manager ------------------- -->
+      <div id="navigator">
       <aside id="conn-sidebar">
         <div class="sidebar-title">
-          <span>Connessioni</span>
-          <span class="saved-conns-tools">
-            <button type="button" id="conn-export-btn" title="Scarica connections.ini (segreti cifrati)"
-              aria-label="Scarica connections.ini (segreti cifrati)"><i data-lucide="download"></i></button>
-            <button type="button" id="conn-import-btn" title="Importa connessioni da un file .ini"
-              aria-label="Importa connessioni da un file .ini"><i data-lucide="upload"></i></button>
-            <button type="button" id="conn-sidebar-toggle-btn" class="sidebar-toggle-btn"
-              title="Comprimi barra connessioni" aria-label="Comprimi barra connessioni">
-              <i data-lucide="panel-left-close"></i>
-            </button>
-          </span>
+          <span class="navigator-section-title">Connessioni</span>
+          <div class="navigator-actions">
+            <button type="button" id="conn-add-btn" title="Aggiungi connessione" aria-label="Aggiungi connessione"><i data-lucide="plus"></i></button>
+          </div>
         </div>
-        <div class="sidebar-search">
-          <input aria-label="Cerca connessioni" type="text" id="conn-search" placeholder="Cerca connessioni..." autocomplete="off"
-            spellcheck="false" />
+        <div id="conn-section-body" class="navigator-section-body">
+          <div class="sidebar-search"><input aria-label="Cerca connessioni" type="text" id="conn-search" placeholder="Cerca connessioni…" autocomplete="off" spellcheck="false" /></div>
+          <ul id="conn-tree"></ul>
+          <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
         </div>
-        <ul id="conn-tree"></ul>
-        <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
-
-        <div class="sidebar-footer-wrap">
-          <button type="button" id="conn-add-btn" class="conn-add-btn-primary">
-            <i data-lucide="plus"></i> <span>Aggiungi connessione</span>
-          </button>
-
-          <!-- Un solo ingresso a tutti gli strumenti. Il menu vero è fuori da
-               questa aside (vedi #settings-menu): la barra connessioni si può
-               comprimere, e un menu figlio di un elemento nascosto sarebbe
-               invisibile anche da aperto. -->
-          <button type="button" id="conn-settings-btn" class="settings-btn"
-            title="Backup, storico, salute, utenti, passphrase, informazioni" aria-haspopup="true"
-            aria-expanded="false">
-            <i data-lucide="settings"></i>
-            <span>Impostazioni</span>
-            <i data-lucide="chevron-up" class="settings-btn-caret"></i>
-          </button>
-        </div>
-
         <input type="file" id="conn-import-file" accept=".ini,.txt,text/plain" class="hidden" />
       </aside>
+      <div id="navigator-divider" class="resizer-v hidden"></div>
+          <aside id="sidebar" class="hidden">
+            <div class="sidebar-title">
+              <button type="button" id="explorer-toggle-btn" class="navigator-section-toggle" aria-expanded="true" aria-controls="explorer-section-body"><i data-lucide="chevron-down"></i><span id="explorer-title">Database</span></button>
+              <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
+            </div>
+            <div id="explorer-section-body" class="navigator-section-body">
+            <div id="explorer-context" class="explorer-context"></div>
+            <div class="sidebar-search">
+              <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
+                spellcheck="false" />
+            </div>
+            <ul id="db-tree"></ul>
+            </div>
+          </aside>
+      <div id="navigator-tools">
+        <button type="button" id="conn-settings-btn" aria-haspopup="true" aria-expanded="false"><i data-lucide="settings"></i>Strumenti</button>
+      </div>
+      </div>
       <div class="resizer" data-resize="conn-sidebar"></div>
 
-      <!-- Menu "Impostazioni": aperto da #conn-settings-btn e posizionato a
-           runtime (position: fixed) da positionFixedDropdown, che lo ribalta
-           verso l'alto quando sotto non c'è spazio — qui è sempre il caso, il
-           bottone sta in fondo alla finestra. -->
       <!-- Registro comandi letto dal menu Arc: unica sorgente per etichette e permessi. -->
       <div id="settings-menu" class="hidden">
+        <button id="conn-export-btn" class="menu-item" type="button" title="Scarica connections.ini (segreti cifrati)">Esporta connessioni</button>
+        <button id="conn-import-btn" class="menu-item" type="button">Importa connessioni</button>
+        <div class="menu-divider"></div>
         <button id="btn-backup-manager" class="menu-item" type="button" title="Gestione Backup & Ripristino">
           <i data-lucide="archive"></i> Backup &amp; Restore
         </button>
@@ -592,12 +584,9 @@
 
       <div class="main-area">
         <div class="tab-bar-wrap">
-          <button type="button" id="conn-sidebar-expand-btn" class="conn-sidebar-expand-btn hidden"
-            title="Espandi barra connessioni" aria-label="Espandi barra connessioni">
-            <i data-lucide="panel-left-open"></i>
-            <span class="btn-label">Connessioni</span>
-          </button>
           <div id="tab-bar"></div>
+          <button type="button" id="documents-open" class="ghost" aria-haspopup="dialog" title="Connessioni e documenti aperti"><i data-lucide="panels-top-left"></i> Schede</button>
+          <span id="session-count" title="Fino a 8 connessioni attive; ogni connessione può contenere più database e pannelli">0 / 8</span>
         </div>
 
         <div id="welcome" class="placeholder">
@@ -612,19 +601,6 @@
         </div>
 
         <div id="tab-body" class="tab-body hidden">
-          <aside id="sidebar">
-            <div class="sidebar-title">
-              <span>Database</span>
-              <button id="new-db-btn" title="Nuovo database" aria-label="Nuovo database"><i data-lucide="plus"></i></button>
-            </div>
-            <div class="sidebar-search">
-              <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
-                spellcheck="false" />
-            </div>
-            <ul id="db-tree"></ul>
-          </aside>
-          <div class="resizer" data-resize="sidebar"></div>
-
           <main>
             <div id="placeholder" class="placeholder">
               <div class="empty-state-card">
@@ -650,6 +626,8 @@
             <div class="tabs-row">
               <div id="coll-tab-bar" class="coll-tab-bar hidden"></div>
               <div class="workspace-head">
+                <button type="button" id="workspace-split-btn" class="ghost" title="Affianca un documento da qualsiasi connessione" aria-label="Affianca un documento"><i data-lucide="columns-2"></i><span>Affianca</span></button>
+                <button type="button" id="workspace-active-pane-btn" class="ghost pane-active-jump" title="Raggiungi il pannello attivo" aria-label="Raggiungi il pannello attivo"><i data-lucide="locate-fixed"></i></button>
                 <div class="view-tabs">
                   <!-- Visibile solo con la Split-View aperta (applyViewTabsFor):
                        è il modo di tornare ai pannelli dopo essere passati a
@@ -1256,6 +1234,11 @@
 
                   <!-- Pannello Centrale/Destro: Editor + Risultati -->
                   <div class="query-main-panel">
+                    <div class="query-surface-switch" role="group" aria-label="Area query">
+                      <button type="button" id="query-show-editor" aria-pressed="false" aria-controls="query-editor-container">Editor</button>
+                      <button type="button" id="query-show-results" aria-pressed="false" aria-controls="query-results-container">Risultati</button>
+                      <button type="button" id="query-show-both" aria-pressed="true" aria-controls="query-editor-container query-results-container">Entrambi</button>
+                    </div>
                     <!-- Sezione Superiore: Editor -->
                     <div id="query-editor-container" class="query-editor-container">
                       <div class="editor-header">
@@ -1277,6 +1260,8 @@
                                 title="Cronologia delle query eseguite in questa tab"><i data-lucide="history"></i> Cronologia query</button>
                               <button id="query-open-sql-btn" class="dropdown-item" type="button"
                                 title="Apri ed esegui file SQL"><i data-lucide="folder-open"></i> Apri file SQL…</button>
+                              <button id="query-save-sql-btn" class="dropdown-item" type="button"
+                                title="Scarica il testo della query (Ctrl+S)"><i data-lucide="save"></i> Salva query…</button>
                               <button id="query-snippet-btn" class="dropdown-item" type="button"
                                 title="Snippet &amp; Template"><i data-lucide="book-open"></i> Snippet &amp; Template</button>
                               <button id="query-clear-btn" class="dropdown-item" type="button"
@@ -2386,10 +2371,7 @@
           <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna Lista</button>
         </div>
         <!-- Avanzamento del ripristino: alimentato dai push `backup:progress`. -->
-        <div id="restore-progress" class="restore-progress hidden">
-          <div class="restore-progress-head"><span id="restore-progress-title"></span></div>
-          <div id="restore-progress-log" class="restore-progress-log"></div>
-        </div>
+        <div id="restore-progress" class="hidden" aria-label="Attività di ripristino"></div>
         <div id="backup-catalog-list" class="catalog-list-container"></div>
       </div>
     </div>
@@ -2639,9 +2621,9 @@
       <!-- Sottoutenti -->
       <div class="admin-pane" data-pane="subusers">
         <form id="subuser-form" class="admin-form">
-          <input aria-label="Email del sottoutente" type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required>
-          <input aria-label="Nome del sottoutente" type="text" id="subuser-name" class="form-control form-control-sm" placeholder="Nome (opzionale)">
-          <input aria-label="Password del sottoutente" type="password" id="subuser-password" class="form-control form-control-sm" placeholder="Password" autocomplete="new-password" required>
+          <label>Email del sottoutente<input type="email" id="subuser-email" class="form-control form-control-sm" placeholder="email@esempio.com" required></label>
+          <label>Nome (opzionale)<input type="text" id="subuser-name" class="form-control form-control-sm"></label>
+          <label>Password del sottoutente<input type="password" id="subuser-password" class="form-control form-control-sm" autocomplete="new-password" required></label>
           <button type="submit" class="btn btn-sm btn-primary">+ Crea</button>
         </form>
         <div id="subuser-limit" class="sub-text admin-limit"></div>

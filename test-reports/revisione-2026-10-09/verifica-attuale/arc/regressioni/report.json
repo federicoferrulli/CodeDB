@@ -1,0 +1,97 @@
+[
+  {
+    "suite": "unit",
+    "code": 0,
+    "durationMs": 37377
+  },
+  {
+    "suite": "e2e-avvio-ui",
+    "code": 0,
+    "durationMs": 5743
+  },
+  {
+    "suite": "e2e-fk-inserimento",
+    "code": 0,
+    "durationMs": 12870
+  },
+  {
+    "suite": "e2e-fk-viste",
+    "code": 0,
+    "durationMs": 9080
+  },
+  {
+    "suite": "e2e-editor-geometrico",
+    "code": 0,
+    "durationMs": 17484
+  },
+  {
+    "suite": "e2e-geometrie-viste",
+    "code": 0,
+    "durationMs": 13693
+  },
+  {
+    "suite": "e2e-numeri-esatti-inserimento",
+    "code": 0,
+    "durationMs": 3853
+  },
+  {
+    "suite": "e2e-incolla-esatto-atomico",
+    "code": 0,
+    "durationMs": 6133
+  },
+  {
+    "suite": "e2e-selezione-celle-viste",
+    "code": 0,
+    "durationMs": 8897
+  },
+  {
+    "suite": "e2e-uml",
+    "code": 0,
+    "durationMs": 10016
+  },
+  {
+    "suite": "e2e-uml-progetto",
+    "code": 0,
+    "durationMs": 16623
+  },
+  {
+    "suite": "e2e-uml-progetto-regressioni",
+    "code": 0,
+    "durationMs": 22526
+  },
+  {
+    "suite": "e2e-uml-modalita",
+    "code": 0,
+    "durationMs": 9109
+  },
+  {
+    "suite": "e2e-query-virtual-scroll",
+    "code": 0,
+    "durationMs": 4663
+  },
+  {
+    "suite": "e2e-split-bersaglio-riquadro",
+    "code": 0,
+    "durationMs": 5259
+  },
+  {
+    "suite": "e2e-tocco-griglia",
+    "code": 0,
+    "durationMs": 2577
+  },
+  {
+    "suite": "e2e-richieste-intellisense",
+    "code": 0,
+    "durationMs": 3411
+  },
+  {
+    "suite": "e2e-barra-grafo",
+    "code": 0,
+    "durationMs": 14214
+  },
+  {
+    "suite": "e2e-palette",
+    "code": 0,
+    "durationMs": 5420
+  }
+]

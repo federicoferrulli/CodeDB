@@ -1,0 +1,9 @@
+AssertionError [ERR_ASSERTION]: I ripristini concorrenti conservano log distinti
+    at C:\repository\CodeDB\test\e2e-superfici.js:130:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

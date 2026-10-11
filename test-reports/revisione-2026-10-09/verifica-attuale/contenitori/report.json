@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "Electron: server incorporato e profilo isolato, ridimensionamento, zoom nativo 100/200%, dialog/focus e salvataggio SQL esatto"
+  ],
+  "errors": [],
+  "environments": [
+    {
+      "electron": "43.2.0",
+      "chromium": "150.0.7871.129",
+      "node": "24.18.0"
+    },
+    {
+      "android": "15",
+      "device": "emulator-5580",
+      "webview": "Mozilla/5.0 (Linux; Android 15; sdk_gphone64_x86_64 Build/AE3A.240806.043; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.219 Mobile Safari/537.36"
+    }
+  ],
+  "failure": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(await page.locator('#query-editor-input').evaluate(el=>el===document.activeElement&&el.getBoundingClientRect().bottom<=visualViewport.height+visualViewport.offsetTop+1))\n\n    at android (C:\\repository\\CodeDB\\test\\e2e-contenitori.js:88:5)\n    at async C:\\repository\\CodeDB\\test\\e2e-contenitori.js:102:113"
+}

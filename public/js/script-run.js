@@ -18,6 +18,7 @@ import { $, esc, toast, emit, lucideIconHtml as ICO, refreshLucideIcons } from '
 import { socket } from './socket.js';
 import { activeTab } from './tabs.js';
 import { state } from './state.js';
+import { queryDocument, documentoVisibile } from './query-document.js';
 import { countStatements } from './sql-split.js';
 import {
   trackPending, updateScriptProgress, removePending,
@@ -48,13 +49,18 @@ function nuovoRunId() {
  * Avvia uno script. Ritorna una promise che si risolve all'AVVIO (non alla
  * fine): la fine arriva con gli eventi di progresso.
  */
-export function runScript({ code, engine, db, coll, stopOnError = false } = {}) {
+export function runScript({ code, engine, db, coll, stopOnError = false, tab = activeTab(), collTabId = tab?.state.activeCollId } = {}) {
   const testo = String(code || '').trim();
   if (!testo) return Promise.resolve(null);
 
-  const tab = activeTab();
   const tabId = tab ? tab.id : undefined;
   const runId = nuovoRunId();
+  const documento = queryDocument(tab, collTabId);
+  if (documento.runId) socket.emit('query:cancel', { tabId, runId: documento.runId });
+  documento.runId = null;
+  if (isScriptActive(documento.scriptRunId)) abortScript(documento.scriptRunId);
+  documento.scriptRunId = runId;
+  documento.metrics = ['running'];
   const totalePrevisto = countStatements(testo);
 
   const handle = trackPending({
@@ -63,9 +69,9 @@ export function runScript({ code, engine, db, coll, stopOnError = false } = {}) 
     engine: engine || 'auto',
     db,
     coll,
-    connName: state.connName || state.connId || 'Default',
+    connName: tab?.label || 'Connessione',
     tabId,
-    collTabId: state.activeCollId || null,
+    collTabId,
     kind: 'script',
     total: totalePrevisto,
   });
@@ -78,15 +84,16 @@ export function runScript({ code, engine, db, coll, stopOnError = false } = {}) 
   attesa.promise = new Promise((resolve) => { attesa.resolve = resolve; });
 
   runs.set(runId, {
-    runId, tabId, total: totalePrevisto, handle, log: [], stato: null, attesa,
+    runId, tabId, tab, collTabId, documento, total: totalePrevisto, handle, log: [], stato: { status: 'running' }, attesa,
     // Elenco delle schede di risultato (arriva a fine script) e quale è aperta.
     risultati: null, schedaAperta: null,
   });
-  runVisibile = runId;
-
-  mostraPannello();
-  aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
-  updateQueryMetrics('running');
+  if (documentoVisibile(tab, collTabId)) {
+    runVisibile = runId;
+    mostraPannello();
+    aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
+    updateQueryMetrics('running');
+  }
 
   return emit('script:execute', {
     code: testo,
@@ -101,7 +108,7 @@ export function runScript({ code, engine, db, coll, stopOnError = false } = {}) 
       const r = runs.get(runId);
       if (r && res && res.total) r.total = res.total;
       toast(`Script avviato: ${res.total} istruzioni`);
-      aggiornaPannello({ status: 'running', cursor: 0, total: res.total, eseguiti: 0, falliti: 0 });
+      if (documentoVisibile(tab, collTabId) && runVisibile === runId) aggiornaPannello({ status: 'running', cursor: 0, total: res.total, eseguiti: 0, falliti: 0 });
       return res;
     })
     .catch((err) => {
@@ -111,7 +118,10 @@ export function runScript({ code, engine, db, coll, stopOnError = false } = {}) 
       attesa.resolve({ status: 'error', error: err.message, eseguiti: 0, falliti: 0, total: 0 });
       runs.delete(runId);
       if (runVisibile === runId) nascondiPannello();
-      updateQueryMetrics('error', null, 0, err.message || 'Avvio dello script non riuscito');
+      if (documento.scriptRunId === runId) {
+        documento.metrics = ['error', null, 0, err.message || 'Avvio dello script non riuscito'];
+        if (documentoVisibile(tab, collTabId)) updateQueryMetrics(...documento.metrics);
+      }
       throw err;
     });
 }
@@ -157,7 +167,7 @@ export function resumeScript(runId = runVisibile) {
   mostraPannello();
   return emit('script:resume', { runId, tabId: r && r.tabId })
     .then((res) => {
-      if (res && res.stato) aggiornaPannello(res.stato);
+      if (res?.stato && runVisibile === runId && documentoVisibile(r.tab, r.collTabId)) aggiornaPannello(res.stato);
       toast('Script ripreso');
       return res;
     })
@@ -178,10 +188,8 @@ export function abortScript(runId = runVisibile) {
       // Deve risultare "interrotto" e non "in pausa", altrimenti il registro
       // offrirebbe una ripresa che il server non può più onorare.
       const finale = { ...(r && r.stato), status: 'aborted' };
-      updateScriptProgress(runId, finale);
+      onProgress({ runId, tipo: 'aborted', stato: finale });
       toast('Script interrotto');
-      if (runVisibile === runId) aggiornaPannello(finale);
-      if (r && r.attesa) r.attesa.resolve(finale);
       return res;
     })
     .catch(() => {});
@@ -212,6 +220,21 @@ function onProgress(ev) {
   // per strada, che il diradamento degli eventi lascia incompleto (vedi
   // script-esito.js).
   r.log = unisciLog(r.log, stato, MAX_LOG);
+  if ((ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted') && r.attesa) r.attesa.resolve(stato);
+  if (stato.status === 'aborted' && r.documento.scriptRunId === ev.runId) r.documento.metrics = ['cancelled'];
+  if ((ev.tipo === 'done' || ev.tipo === 'paused') && r.documento.scriptRunId === ev.runId) {
+    const risultato = haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato : { docs: [], columns: [] };
+    r.documento.results = risultato.docs;
+    r.documento.columns = risultato.columns;
+    r.documento.metrics = [stato.falliti ? 'error' : 'success',
+      stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
+      risultato.docs.length, stato.falliti ? `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
+    if (ev.risultati) {
+      r.risultati = ev.risultati;
+      r.schedaAperta = schedaAttiva(ev.risultati.schede, ev.ultimoRisultato);
+    }
+  }
+  if (ev.tipo === 'done' && r.tab) r.tab.state.schemaDirty = true;
 
   if (ev.tipo === 'statement' && ev.result) {
     r.log.push(ev.result);
@@ -219,16 +242,20 @@ function onProgress(ev) {
     // Prima istruzione fallita: si evidenzia la riga nel sorgente. È il punto
     // in cui l'utente deve guardare, e con uno script lungo trovarlo a mano
     // è il lavoro più noioso.
-    if (!ev.result.ok && !ev.result.interrupted && runVisibile === ev.runId) {
+    if (!ev.result.ok && !ev.result.interrupted && runVisibile === ev.runId && documentoVisibile(r.tab, r.collTabId)) {
       segnalaRigaErrore(ev.result.line);
     }
   }
 
   // Solo il run mostrato tocca il pannello: gli altri aggiornano comunque il
   // registro (badge e modale delle query in sospeso).
-  if (runVisibile !== ev.runId) return;
+  if (runVisibile !== ev.runId || r.documento.scriptRunId !== ev.runId || !documentoVisibile(r.tab, r.collTabId)) return;
 
   aggiornaPannello(stato);
+  if (stato.status === 'aborted') {
+    renderResults(r.documento.results || [], r.documento.columns || []);
+    updateQueryMetrics('cancelled');
+  }
 
   // Righe MOSTRATE nella griglia: sono quelle che il contatore deve dire.
   let righeMostrate = null;
@@ -465,8 +492,9 @@ function apriScheda(pos) {
     .then((res) => {
       // Nel frattempo l'utente può aver cambiato run o scheda: la risposta di
       // una richiesta sorpassata non deve sovrascrivere ciò che sta guardando.
-      if (runVisibile !== runId) return;
+      if (runVisibile !== runId || !documentoVisibile(r.tab, r.collTabId)) return;
       r.schedaAperta = pos;
+      Object.assign(r.documento, { results: res.docs || [], columns: res.columns || [], metrics: ['success', null, (res.docs || []).length] });
       disegnaSchede();
       renderResults(res.docs || [], res.columns || []);
       updateQueryMetrics('success', null, (res.docs || []).length);
@@ -487,6 +515,8 @@ function cutStr(s, n) {
  */
 export function focusScriptRun(runId) {
   if (!runs.has(runId)) return false;
+  const proprietario = runs.get(runId);
+  if (!documentoVisibile(proprietario.tab, proprietario.collTabId)) return false;
   runVisibile = runId;
   mostraPannello();
   const r = runs.get(runId);

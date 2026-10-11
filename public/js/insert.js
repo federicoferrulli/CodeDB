@@ -10,6 +10,8 @@ import { caricaRelazioni } from './fk-cache.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, pannelloFkMobile } from './fk-vista.js';
 import { setDaRelazione, bersaglioRelazione, VINCOLO } from './fk-relazioni.js';
 import { createArcInput, createArcButton, createArcSelect, controlElement } from '../arc/ui.js';
+import { proteggiModifiche } from './utils.js';
+import { tabs } from './tabs.js';
 
 let insertRows = [];
 let insertJsonTouched = false;
@@ -560,7 +562,9 @@ export function openInsertDocForContext(ctx = null) {
   const { db, coll, tabId, dbType } = insertContext;
   const isSql = isSqlType(dbType);
 
-  $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
+  const target = `${tabs.list.find(t => t.id === tabId)?.label || 'Connessione'} / ${db} / ${coll}`;
+  $('#insert-title').textContent = `${isSql ? 'Nuova riga' : 'Nuovo documento'} · ${target}`;
+  proteggiModifiche('#insert-overlay', tabId, target);
   $('#insert-json').value = '{\n  \n}';
   // La barra del linting appartiene al documento precedente: si riparte muti.
   const lintEl = $('#insert-json-lint');
@@ -693,7 +697,7 @@ export function initInsert() {
       coll,
       doc: docText,
     }), 'Inserisco…').then(() => {
-      closeModal('#insert-overlay');
+      closeModal('#insert-overlay', { saved: true });
       toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
       if (ctx && ctx.onSaveSuccess) {
         ctx.onSaveSuccess();

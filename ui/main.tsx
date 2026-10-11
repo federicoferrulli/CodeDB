@@ -11,8 +11,9 @@ import { initPrompt } from './prompt';
 import { initControls } from './controls';
 import { initErrors } from './errors';
 import './components/arc/foundation.css';
-export { createArcInput, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect } from './editor-controls';
+export { createArcInput, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect, mountArcEditActions } from './editor-controls';
 export { initControls as mountArcControls } from './controls';
+export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
 import { initGridFields } from './editor-controls';
 import { observeFields } from './fields';
 

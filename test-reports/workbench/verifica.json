@@ -1,0 +1,101 @@
+{
+  "data": "2026-10-09",
+  "esito": "Implementazione integrata nel frontend vanilla e Arc esistente; verifiche completate.",
+  "modifiche": [
+    "Token e densità condivisi per shell, schede, controlli, griglie, finestre e viste specialistiche; temi chiaro, scuro e personalizzati.",
+    "Pannelli ridimensionabili fra connessioni diverse, con controller reali isolati e la sessione server originaria.",
+    "Stato query, risultati, filtri, selezioni, paginazione e bozze conservati per documento; risposte tardive, errori e annullamenti instradati al proprietario.",
+    "Chiusura e disconnessione proteggono scritture e modifiche pendenti e mantengono i pannelli delle altre sessioni.",
+    "Ripresa dal registro vincolata alla sessione d'origine; script senza cursore recuperati senza ripetere automaticamente scritture.",
+    "Documentazione del sistema visivo aggiornata in DESIGN.md e .impeccable/design.json."
+  ],
+  "verifiche": [
+    {
+      "comando": "npm test",
+      "esito": "superato",
+      "prova": "unit.log",
+      "nota": "Il test di processo Electron richiede esecuzione fuori dalla sandbox; l'esecuzione completa finale è passata."
+    },
+    {
+      "comando": "node test/e2e-workbench.js",
+      "esito": "15 scenari superati",
+      "trasporto": "simulato con risposte controllate fuori ordine, controller e Arc reali",
+      "prova": "report.json"
+    },
+    {
+      "comando": "node test/e2e-workbench-reale.js",
+      "esito": "4 scenari superati",
+      "motori": [
+        "MongoDB",
+        "MySQL",
+        "PostgreSQL"
+      ],
+      "prova": "reale.json"
+    },
+    {
+      "comando": "node test/e2e-workbench.js --mutant",
+      "esito": "fallimento atteso",
+      "difetto": "Disattivata soltanto nella risposta JavaScript servita al browser la guardia del documento visibile; il test rileva risultati di A mostrati in B.",
+      "prova": "mutante.json",
+      "ripristino": "File corretti mai modificati dalla mutazione; esecuzione normale finale superata."
+    },
+    {
+      "comando": "node test/e2e-arc.js",
+      "esito": "14 controlli superati, inclusi 38 overlay, focus, tastiera, movimento standard e ridotto e tema personalizzato al reload",
+      "prova": "../arc/after/report.json"
+    },
+    {
+      "comando": "node test/e2e-design.js",
+      "esito": "44 combinazioni superficie/larghezza superate, inclusi JointJS, WebGL, ECharts e Leaflet reali su dati sintetici",
+      "prova": "../design/dopo/report.json"
+    },
+    {
+      "comando": "node test/e2e-split-bersaglio-riquadro.js",
+      "esito": "superato; risposte obsolete e bersaglio di scrittura congelato"
+    },
+    {
+      "comando": "node test/e2e-pagine-obsolete.js",
+      "esito": "superato; risposte tardive di lettura e conteggio"
+    },
+    {
+      "comando": "node test/e2e-query-virtual-scroll.js",
+      "esito": "superato con 100.123 righe"
+    },
+    {
+      "comando": "node test/e2e-script-schede-ui.js",
+      "esito": "superato con MySQL reale temporaneo; più risultati e scritture nello stesso script"
+    },
+    {
+      "comando": "node test/e2e-uml.js",
+      "esito": "superato con JointJS reale"
+    },
+    {
+      "comando": "git diff --check",
+      "esito": "superato"
+    },
+    {
+      "comando": "Impeccable detector",
+      "esito": "nessun rilievo",
+      "prova": "design-detector.json"
+    }
+  ],
+  "ambienti": {
+    "browser": "Chromium tramite Playwright, viewport 390–1600 px; emulazione di prefers-reduced-motion",
+    "reali": "Database e schemi casuali di proprietà del test. MongoDB locale; MySQL e PostgreSQL in container temporanei dedicati, senza volumi.",
+    "pulizia": "Fixture ripulite dai test; container codedb-workbench-mysql-3178 e codedb-workbench-pg-3178 fermati e rimossi tramite --rm.",
+    "sessioni": "Limite esistente di 8 sessioni mantenuto; i pannelli incorporati riusano la sessione e non aprono nuove connessioni."
+  },
+  "schermate": [
+    "confronto-dark-1600.png",
+    "confronto-light-390.png",
+    "mongo-mysql-reali.png",
+    "tema-personalizzato.png",
+    "../design/dopo/dati-light-1440.png",
+    "../design/dopo/uml-light-390.png"
+  ],
+  "limiti": [
+    "Non verificati installer Electron, dispositivi touch fisici o una matrice di browser diversi da Chromium.",
+    "I risultati e le bozze delle celle restano in memoria: il cambio scheda li conserva, il ricaricamento completo della pagina no. La persistenza delle connessioni salvate conserva layout e testo delle query.",
+    "Ogni pannello specializzato mantiene un documento incorporato; il consumo di memoria con molti canvas simultanei non è stato misurato."
+  ]
+}

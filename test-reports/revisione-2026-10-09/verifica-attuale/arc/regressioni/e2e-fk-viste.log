@@ -1,0 +1,24 @@
+--- E2E: chiavi esterne in più griglie indipendenti ---
+  [32m✔ OK[0m   la prima griglia marca una FK dichiarata con `fk-cella`
+  [32m✔ OK[0m   la seconda griglia distingue l'euristica con `fk-ipotesi`
+  [32m✔ OK[0m   gli indicatori mostrano nel title la propria tabella e colonna
+  [32m✔ OK[0m   la riga riferita usa tabId, database e tabella della griglia A
+  [32m✔ OK[0m   la riga riferita usa il filtro strutturato corretto
+  [32m✔ OK[0m   `onScegli` riceve il valore selezionato nell'elenco
+  [32m✔ OK[0m   due griglie conservano titoli e relazioni distinti
+  [32m✔ OK[0m   la griglia B non eredita richieste o contesto dalla griglia A
+  [32m✔ OK[0m   `startEdit` usa relazione e contesto espliciti del chiamante
+  [32m✔ OK[0m   «Apri tabella» rispetta il tabId della griglia di provenienza
+  [32m✔ OK[0m   la vista Dati continua ad aprire la modifica inline senza opzioni
+  [32m✔ OK[0m   il selettore mostra tutte le componenti ordinate
+  [32m✔ OK[0m   Schema Browser: un solo vincolo con nome e coppie ordinate
+  [32m✔ OK[0m   una seconda componente diversa abilita la scelta
+  [32m✔ OK[0m   la scelta invia entrambe le colonne in un solo aggiornamento
+  [32m✔ OK[0m   Split-View: entrambi i riquadri reali disegnano le proprie righe
+  [32m✔ OK[0m   Split-View: ogni riquadro distingue vincolo dichiarato ed euristica
+  [32m✔ OK[0m   Split-View: gli indicatori appartengono alla relazione della propria connessione
+  [32m✔ OK[0m   Split-View: il pannello usa il bersaglio del riquadro A (anagrafiche_a.clienti_a.id_a)
+  [32m✔ OK[0m   Split-View: riga riferita ed elenco usano il tabId del riquadro A
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- Chiavi esterne: tutti i test superati ---

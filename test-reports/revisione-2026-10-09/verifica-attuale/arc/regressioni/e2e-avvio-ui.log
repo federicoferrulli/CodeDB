@@ -1,0 +1,9 @@
+--- E2E: avvio della UI senza errori JavaScript ---
+  [32m✔ OK[0m   nessun errore JavaScript durante il caricamento della UI
+  [32m✔ OK[0m   la griglia è nel DOM
+  [32m✔ OK[0m   un mousedown su una cella la seleziona: initCellSelect è agganciato
+  [32m✔ OK[0m   il trascinamento estende il rettangolo di selezione
+  [32m✔ OK[0m   ECharts si scalda da sé a interfaccia ferma (apertura del grafico senza attesa)
+  [32m✔ OK[0m   il grafico di riscaldamento non resta nel documento
+
+--- Avvio UI: tutti i test superati ---

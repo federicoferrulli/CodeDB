@@ -1,0 +1,14 @@
+{"scroll":53,"tastiera":0,"blocchi":9}
+OK: larghezza reale, nessun ordinamento accidentale, persistenza del documento, query, pannello, touch e immissione numerica
+AssertionError [ERR_ASSERTION]: Cliccare una connessione aperta riprende la sessione, senza duplicarla
+
+3 !== 1
+
+    at C:\repository\CodeDB\test\e2e-griglia-fluidita.js:165:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 3,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

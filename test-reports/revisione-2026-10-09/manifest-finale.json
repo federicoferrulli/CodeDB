@@ -1,0 +1,449 @@
+{
+    "dataUtc":  "2026-10-10T00:06:36.0377944Z",
+    "baseGit":  "7f92a7182e4d4bb064e99f1ca1b3a7e9c9c58ccf",
+    "revisione":  "Working tree non consolidato; baseline e modifiche iniziali preservate",
+    "matrice":  "docs/revisione-grafica.md",
+    "ambienti":  [
+                     "Chromium, viewport e trasporto simulati",
+                     "MongoDB 8 / MySQL 8.4 / PostgreSQL 17 reali su container di fixture",
+                     "SSH loopback usa e getta",
+                     "Electron 43.2.0, profilo temporaneo",
+                     "Emulatore Android 15 x86_64, WebView 124 e Node Mobile"
+                 ],
+    "comandi":  [
+                    {
+                        "comando":  "npm run build:ui",
+                        "esito":  "superato",
+                        "log":  "build-attuale.log",
+                        "sha256":  "fa7e366a59bd0c01e91bf607d7d8e018a35d1363c6ab6a63873dc21fca84ae06"
+                    },
+                    {
+                        "comando":  "npm run typecheck:ui",
+                        "esito":  "superato",
+                        "log":  "typecheck-attuale.log",
+                        "sha256":  "42c498a88b840c57ecddc70f1561475eb604acfff2d8497a9315d816d7a2bd6b"
+                    },
+                    {
+                        "comando":  "npm test",
+                        "esito":  "superato",
+                        "log":  "unitari-attuali.log",
+                        "sha256":  "6398c393fbe311fc08df2bc9b2dd505bdf8dd20f626b1c36337a7f7b62de5199"
+                    },
+                    {
+                        "comando":  "git diff --check",
+                        "esito":  "superato",
+                        "log":  "diff-check-attuale.log",
+                        "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                    },
+                    {
+                        "comando":  "npm run test:e2e:design",
+                        "esito":  "superato",
+                        "log":  "design-attuale.log",
+                        "sha256":  "604bc54c16c8820753636fa5709ccbd29cfa96512016d366047ab6de791c5f07"
+                    },
+                    {
+                        "comando":  "npm run test:e2e:arc",
+                        "esito":  "superato",
+                        "log":  "arc-attuale.log",
+                        "sha256":  "0e06dbcc3f492b8fc875a108c627a3d4146de46cfb4272f47f917a92c92ea6b1"
+                    },
+                    {
+                        "comando":  "npm run test:e2e:arc:regressioni",
+                        "esito":  "superato",
+                        "log":  "arc-regressioni-attuali.log",
+                        "sha256":  "48afa4a92735b2dd912782d09453e1ab20c7523f5d83e002aef7c4c330ccf624"
+                    },
+                    {
+                        "comando":  "node test/e2e-workbench.js",
+                        "esito":  "superato",
+                        "log":  "workbench-attuale.log",
+                        "sha256":  "5e823e14baafc4a98815ed0ad0494c149ddc9f025f1aea1271f6646f92f55084"
+                    },
+                    {
+                        "comando":  "node test/e2e-revisione.js",
+                        "esito":  "superato",
+                        "log":  "verifica-attuale/copertura/report.json",
+                        "sha256":  "e766dcb81c849aa19b10156b54df6ca4ec3d884ca93d1cab3a8f6d177e8f8f7b"
+                    },
+                    {
+                        "comando":  "node test/e2e-workbench-reale.js",
+                        "esito":  "superato",
+                        "log":  "reale-attuale.log",
+                        "sha256":  "cf261a52e1c1511c67072387efe75083e61e23beb7b9332dacafc6ccb8b6a871"
+                    },
+                    {
+                        "comando":  "node test/e2e-superfici.js",
+                        "esito":  "superato",
+                        "log":  "superfici-attuali.log",
+                        "sha256":  "45c134896a0c6122482717245c2419de943b9d3e5e7c6d0f8d3247093b3a5289"
+                    },
+                    {
+                        "comando":  "node test/e2e-griglia-fluidita.js",
+                        "esito":  "superato",
+                        "log":  "fluidita-attuale.log",
+                        "sha256":  "addcb756a17528b34574648b4a989c19ae1364eb9b4bc9c64df40b597c1ff351"
+                    },
+                    {
+                        "comando":  "node test/e2e-uscita-editing.js",
+                        "esito":  "superato",
+                        "log":  "uscita-attuale.log",
+                        "sha256":  "d7ec81bee35ae422666c06f721972fcf7089fe3507cb0f8efb131986ed2f1b7c"
+                    },
+                    {
+                        "comando":  "node test/e2e-safe-area.js",
+                        "esito":  "superato",
+                        "log":  "safe-area-attuale.log",
+                        "sha256":  "245621fe2428e530e7a6c3835399a22cfb46b78b5c1b0b78dd49ca054a1b21f4"
+                    },
+                    {
+                        "comando":  "node test/e2e-rbac-ui.js",
+                        "esito":  "superato",
+                        "log":  "rbac-ui-attuale.log",
+                        "sha256":  "ca4fb59e4cc0f2e5e8961b749ebbe7b55f4c9160ca0491c91df9f6096f428cf3"
+                    },
+                    {
+                        "comando":  "node test/e2e-vault-passphrase.js",
+                        "esito":  "superato",
+                        "log":  "vault-attuale.log",
+                        "sha256":  "bf3ef368f01972a130a87496426a0a8333eed16f3350d2e58cc335005cc7f31a"
+                    },
+                    {
+                        "comando":  "node test/e2e-contenitori.js --electron-only",
+                        "esito":  "superato",
+                        "log":  "electron-finale.log",
+                        "sha256":  "8b7a4ddd0627392f675b96c9f35ba71db58ef95cd0ad126596a825bfedde7bc5"
+                    },
+                    {
+                        "comando":  "node test/e2e-contenitori.js --android-only",
+                        "esito":  "superato",
+                        "log":  "android-ui-attuale.log",
+                        "sha256":  "b97eccebc570f4b37dd198b6f3ea6581bf1a1127d708f415bc3f31cb0e2b0c49"
+                    },
+                    {
+                        "comando":  "gradle -p android assembleDebug connectedDebugAndroidTest",
+                        "esito":  "superato",
+                        "log":  "android-build-attuale.log",
+                        "sha256":  "68f2a99ad7dc4f123b7ddecc94770ded0dcc1b622c65aaa8a9a868bd1cf4eb47"
+                    },
+                    {
+                        "comando":  "node android/test.cjs android/app/build/outputs/apk/debug/app-debug.apk",
+                        "esito":  "superato",
+                        "log":  "android-pacchetto-attuale.log",
+                        "sha256":  "46d4153ba7f4c6b244451bec24f52ef35bb12ffcbe7715192d791f8b4f46d84b"
+                    }
+                ],
+    "sorgenti":  [
+                     {
+                         "file":  ".impeccable/design.json",
+                         "sha256":  "597b449c188370187b427743f945e0848ead3015ed5fb164c33af3d4750765ac"
+                     },
+                     {
+                         "file":  "android/app/src/main/java/com/codedb/android/MainActivity.java",
+                         "sha256":  "420dc0813aa94257c1b4e334ca43dba56b1aebf3bdd6a1adfda0cd5d0fefc6e9"
+                     },
+                     {
+                         "file":  "DESIGN.md",
+                         "sha256":  "aef5ae91bfc5249f70623fa119d71ae5d16edda041ce3efd8b414ee46d52ce49"
+                     },
+                     {
+                         "file":  "docs/revisione-grafica.md",
+                         "sha256":  "18baf7cb6e72105219f163e82cd1337e8c0d504f0bd13d6673d0409dcff0c3f7"
+                     },
+                     {
+                         "file":  "public/arc/ui.css",
+                         "sha256":  "0185dc7966c17370865e41299c78068dad742311bc3966b3ddb76df8a86a969a"
+                     },
+                     {
+                         "file":  "public/arc/ui.js",
+                         "sha256":  "421417b261ef9b94deb2d324b25b4ec45ff8aeb327fc2c99cd126aa78c06d680"
+                     },
+                     {
+                         "file":  "public/css/arc-theme.css",
+                         "sha256":  "7a47d709e2c99578b320a83ed1718622a50dabfd7e2a10c7c795906441a99954"
+                     },
+                     {
+                         "file":  "public/css/base.css",
+                         "sha256":  "f192b50439681b067c5e8b2ffa42db0731281ba2f53555e34b38303892794516"
+                     },
+                     {
+                         "file":  "public/css/style.css",
+                         "sha256":  "3d03be9cbba02535f273a5c5b1bda373bbd1737f8ffa04c10c42ef5ed7b2ce18"
+                     },
+                     {
+                         "file":  "public/css/tokens.css",
+                         "sha256":  "66ce2a2150b0c3d24950e30a32cf56704b85b9b21504af642061eeaf88a56b8b"
+                     },
+                     {
+                         "file":  "public/css/workbench.css",
+                         "sha256":  "769d09fcb903b1d17e4774c1146fbadb8ce538f49a241e5d55fc97e967937b32"
+                     },
+                     {
+                         "file":  "public/index.html",
+                         "sha256":  "fa49ec0b512351a073a4e3f5620743caae72215ae7ec61b339dc81c4c91daa5a"
+                     },
+                     {
+                         "file":  "public/js/backupmanager.js",
+                         "sha256":  "47ac6b377c44ae5542c86e19ed1229cd452a07867b3dc471b891700aab5e0e5b"
+                     },
+                     {
+                         "file":  "public/js/colltabs.js",
+                         "sha256":  "753fa1fc19348fb9dfa358a251156b66a62431bb6e96d9e20655da2fbeaa26e1"
+                     },
+                     {
+                         "file":  "public/js/connmanager.js",
+                         "sha256":  "2b240705b06cfc4727e9f556751aa7f76750f95dd4539f265142e7450bc51e08"
+                     },
+                     {
+                         "file":  "public/js/dbtree.js",
+                         "sha256":  "09472f41cc845848397b116102a9622f376c2936a6327add147c0615b4b29fd1"
+                     },
+                     {
+                         "file":  "public/js/document-switcher.js",
+                         "sha256":  "540281c7076f1d93395670f09e25299ea33d6a311a5412df2acbf6b9d4a6b314"
+                     },
+                     {
+                         "file":  "public/js/grid.js",
+                         "sha256":  "a04bc54b00853082b1aba63144c966c828dad5ca0492c1acfcc2bb5c09846b08"
+                     },
+                     {
+                         "file":  "public/js/griglia.js",
+                         "sha256":  "41ad67229eb8f6f54cc619243c0e67aedcfff26b01b8f0340b2c02b9a5bbe0d1"
+                     },
+                     {
+                         "file":  "public/js/inlineEdit.js",
+                         "sha256":  "d3dc265deb199e19b82cbda96a4ace88fdc3c948b6169e9f6c347de2ae62c499"
+                     },
+                     {
+                         "file":  "public/js/insert.js",
+                         "sha256":  "45c78b9c4cb2c7341e5a2993bae43b26814b1649b95670c4faa6b2b4969d902f"
+                     },
+                     {
+                         "file":  "public/js/main.js",
+                         "sha256":  "668ce88f9a0dd2f33514bc7b2b68afabe0df75d42837936ef56a54953dd64e04"
+                     },
+                     {
+                         "file":  "public/js/maniglia.js",
+                         "sha256":  "f9fb238d2a17794298c10e78d0ee8b6ff0e840abfb70594370d2f38c19236dbd"
+                     },
+                     {
+                         "file":  "public/js/pane-runtime.js",
+                         "sha256":  "a5d969ce4dba421804fb9039448b0e592f5dcbe74f72fdd2bd9f7ba984842065"
+                     },
+                     {
+                         "file":  "public/js/pending-queries.js",
+                         "sha256":  "8ac2940da43d8750db73c837c45f4aa6d7e2ed7b50b384b4d8050d1ff86c6cef"
+                     },
+                     {
+                         "file":  "public/js/query-document.js",
+                         "sha256":  "09a6c3e460ee4a43d0e1f88dbb3357a6c6ced75727d072163802fbb0802ef3e0"
+                     },
+                     {
+                         "file":  "public/js/query-tab.js",
+                         "sha256":  "ef2567cf1a9b599735632ec6fa5184530c65c699d3aa573325b12a1cc4a90c32"
+                     },
+                     {
+                         "file":  "public/js/responsive.js",
+                         "sha256":  "7a0ac8f2556660eac36c800c17e6e65475382905b371725a8b06d1de4596ef96"
+                     },
+                     {
+                         "file":  "public/js/script-run.js",
+                         "sha256":  "fa5f2962cbefc41d60a0c47be4f00ab6d4b351d7ceede475abcb1d2c74f9fa09"
+                     },
+                     {
+                         "file":  "public/js/session-restore.js",
+                         "sha256":  "a0b85c1b01329bb9a88a4564bab20406ccc2e608687aa491fefdf0fbf56310e5"
+                     },
+                     {
+                         "file":  "public/js/sessions.js",
+                         "sha256":  "8783cde49b3e7d0e6b7fdfc84b44561cb09d977ca9005524ac15ed1d8b445891"
+                     },
+                     {
+                         "file":  "public/js/snippet-manager.js",
+                         "sha256":  "e85d7361432ebed21f9716249e6e4e3a0a04ecd6c2d726c8423491bd73068327"
+                     },
+                     {
+                         "file":  "public/js/socket.js",
+                         "sha256":  "d05380d34752fa2e5376dc84354a916a56d08abda5f15849bb73be81f7e13dd2"
+                     },
+                     {
+                         "file":  "public/js/splitview.js",
+                         "sha256":  "32f1ce11bdd2a66ecc3cdf90249d78279851bf04c5833b8d38f9663b0d7fb572"
+                     },
+                     {
+                         "file":  "public/js/tabbar.js",
+                         "sha256":  "b665ba7ae360511f953486a75a9bcfd1976e547064ef9fdafcea4286d6565265"
+                     },
+                     {
+                         "file":  "public/js/table-resize.js",
+                         "sha256":  "635f9b070f2b7079f67908bffa16c1cae61cf57b508b3b34296d58257a026c67"
+                     },
+                     {
+                         "file":  "public/js/tabs.js",
+                         "sha256":  "e071f76af440015008feceae40e858eaa9e7cf28517c6066e425dcc58c6d79f5"
+                     },
+                     {
+                         "file":  "public/js/theme-colori.js",
+                         "sha256":  "91f40fd0d51a48312a333b1483b5891082e141cde928e3d4d174af53a3342000"
+                     },
+                     {
+                         "file":  "public/js/trasporto.js",
+                         "sha256":  "0de04fb2f9fae31666ded2449e2b78b36bd2edeff2dfa98da22f24acce8d34ff"
+                     },
+                     {
+                         "file":  "public/js/uml.js",
+                         "sha256":  "8c433104f6606dba6163c4199eb2e554f3bdd0723c993bb384e7cde4cbab2a94"
+                     },
+                     {
+                         "file":  "public/js/uml-paper.js",
+                         "sha256":  "5924d61e160e7d31b90b44baaf60a43ba8c651cdcc9455a696da908e8454c1c0"
+                     },
+                     {
+                         "file":  "public/js/utils.js",
+                         "sha256":  "a0195e16ce08f423af535c80bace4ae21d6f4bcea78fa49fc3cf0a81ad299413"
+                     },
+                     {
+                         "file":  "public/js/viewport.d.ts",
+                         "sha256":  "779bf72220d689fd7705d9212f496769c71d3e0ca7b79cb1d84efe49b4b70952"
+                     },
+                     {
+                         "file":  "public/js/workspace.js",
+                         "sha256":  "340a42da46d550ef4913ec264d6a1e94bbc2bcea4fe65fc15d31b739a7805914"
+                     },
+                     {
+                         "file":  "server/eventi-backup.js",
+                         "sha256":  "eff2970709a8d53a496ea2853754926aeab70168b5c399983d3e9a2fb010e37b"
+                     },
+                     {
+                         "file":  "test/arc-regressions.cjs",
+                         "sha256":  "8f5a279d39e3e1e423d731faea95ea00216b9c904e68504103c2991d9715a305"
+                     },
+                     {
+                         "file":  "test/e2e-arc.js",
+                         "sha256":  "ffa8a68621db33c125edb301024dae97128d896747177f8759d591371bbbc02f"
+                     },
+                     {
+                         "file":  "test/e2e-arc-campi.js",
+                         "sha256":  "e9c45a82a456f8fdf01cfb9ec173354ea936617afee8d588b6163da2dc8abf8f"
+                     },
+                     {
+                         "file":  "test/e2e-arc-griglia.js",
+                         "sha256":  "1810f17cd58745dae7805f052a00b338b1d772c13a729df4f4ef5f03b3e29359"
+                     },
+                     {
+                         "file":  "test/e2e-arc-mongodb.js",
+                         "sha256":  "21e00208cd01bb6618d3a63a8bd4f124fcd7a3512299bddd5db9bea37292a947"
+                     },
+                     {
+                         "file":  "test/e2e-backup.js",
+                         "sha256":  "ab3b1be2bdce2bf9df265ed9fa4d1b9308e10b4420f2de6494759f04151b038c"
+                     },
+                     {
+                         "file":  "test/e2e-barra-grafo.js",
+                         "sha256":  "d294dbcb9e3712ba8a523591f3a22f2b68d8f2cb933eb2ab804a8be3fea9f809"
+                     },
+                     {
+                         "file":  "test/e2e-contenitori.js",
+                         "sha256":  "1e4bf92dc3ce45e80929bb134d500e54b43478c5bd9a976a9a5b2f1a6a8c303f"
+                     },
+                     {
+                         "file":  "test/e2e-dbexport.js",
+                         "sha256":  "2dbebdc5d358003d705c98c385a62352c26d489ddf45ab4e7a0b8e62f2a10707"
+                     },
+                     {
+                         "file":  "test/e2e-design.js",
+                         "sha256":  "608298533951ac70f3b902b948e4b0ad31b26cf61d4a261b976b221d21e7bea2"
+                     },
+                     {
+                         "file":  "test/e2e-griglia-fluidita.js",
+                         "sha256":  "e9a8d54403bfa27873a3c4cc42c97bc830929b94ddd552b63048582e4dceb1ab"
+                     },
+                     {
+                         "file":  "test/e2e-rbac-ui.js",
+                         "sha256":  "975608a1abee4a1f14cc0fcbdee697af84c53f54732b6148702d7915d42e6905"
+                     },
+                     {
+                         "file":  "test/e2e-revisione.js",
+                         "sha256":  "e6196f209888abf084a3652a43bbefdb3cfe42d0d07f9332e1fcad1b970722d2"
+                     },
+                     {
+                         "file":  "test/e2e-safe-area.js",
+                         "sha256":  "fcbb19197e6ddb9b9da18800d6f645fef76546c667b94ec7a1e52f5de28820fa"
+                     },
+                     {
+                         "file":  "test/e2e-sessions.js",
+                         "sha256":  "fbe6d70f99ff0977dbe0d618ca65c026a7a3ed416032bd7611fa4e153aa3fe19"
+                     },
+                     {
+                         "file":  "test/e2e-superfici.js",
+                         "sha256":  "d32eb921c792cca6c47b7536afa3ffdb584c9559629e1666e5937d6edebb6a2b"
+                     },
+                     {
+                         "file":  "test/e2e-uml.js",
+                         "sha256":  "bf578965c6cc22ed0fa7899745204c2a84ea96f523fa6ad821f95c79d76848f3"
+                     },
+                     {
+                         "file":  "test/e2e-uml-modalita.js",
+                         "sha256":  "9199c26e9fb4685144d2675432168db06ba128b00b3b3767843202a3fb7c1e2e"
+                     },
+                     {
+                         "file":  "test/e2e-uscita-editing.js",
+                         "sha256":  "599253fd4a99e2a54a812bf4118e7d2634a487692c4cc175bd852543d20eb75f"
+                     },
+                     {
+                         "file":  "test/e2e-workbench.js",
+                         "sha256":  "2cda857c8807e517ed907913181e45a68fd638002debffa66fc5b38f5fc08a31"
+                     },
+                     {
+                         "file":  "test/e2e-workbench-reale.js",
+                         "sha256":  "95f4a52e68b7b1a7af0314cae9ec5c5e273fe2314ead7e41dc43c545f1ddaf7e"
+                     },
+                     {
+                         "file":  "test/rbac-harness.js",
+                         "sha256":  "fe309fe96a1d7d0c22d92e203d284bcb0f9653b953ca6a56dd6bc80f59fd7e71"
+                     },
+                     {
+                         "file":  "test/unit-tema.js",
+                         "sha256":  "c4304291519547ba7a636926765b05a41fe424b8f1e142ffe5e8158361a78730"
+                     },
+                     {
+                         "file":  "test/verifica-mutazioni-revisione.cjs",
+                         "sha256":  "392dd3ea239f16b0183eec5fb935013910bd6083799b9d43252304c7318b68f1"
+                     },
+                     {
+                         "file":  "ui/components/arc/bottom-sheet/bottom-sheet.module.css",
+                         "sha256":  "f23e98fd42b95c4220e6230102b3c566ac28174d40c8c6ac2055d934ecbe00d1"
+                     },
+                     {
+                         "file":  "ui/components/arc/bottom-sheet/bottom-sheet.tsx",
+                         "sha256":  "fbc9d94c7517b75c59e441fb15052d08dd79c8508bdbd6ab3124909d59f88807"
+                     },
+                     {
+                         "file":  "ui/components/arc/lib/use-anchored-popover.ts",
+                         "sha256":  "4620027dd725bd4153d3990af1e5117b047384f32fa3cd8195d30953c7bad582"
+                     },
+                     {
+                         "file":  "ui/components/arc/provenienza.json",
+                         "sha256":  "8223b0b90dc61ba24dca7e4ef9824d8b1537614c2b68042b10216b6e5e123de8"
+                     },
+                     {
+                         "file":  "ui/dialogs.tsx",
+                         "sha256":  "bf3c72bf80df899998ccec18cd4acd2b6dd94f190a58a5f08576194d0031e3c7"
+                     },
+                     {
+                         "file":  "ui/editor-controls.tsx",
+                         "sha256":  "976b5384b7c49f6a19c83714bde3823b1da3176be875bf23b0dfe91c00ce5ad5"
+                     },
+                     {
+                         "file":  "ui/main.tsx",
+                         "sha256":  "a33f91ad14abf8d11f3f7f435bc51dfeace59906c2818da8221c4a8576f7d7de"
+                     },
+                     {
+                         "file":  "ui/navigation-sheet.tsx",
+                         "sha256":  "33e581510bc03d32196c57853a9ea3f86fff6681cfb394f1af587f2ba7175db5"
+                     },
+                     {
+                         "file":  "ui/settings.tsx",
+                         "sha256":  "9fc51e68e7e8cc89722d45bea39e707a1361582420c02f73470a458cc3d8d8ec"
+                     }
+                 ]
+}

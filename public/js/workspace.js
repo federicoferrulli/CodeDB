@@ -68,11 +68,16 @@ export function renderWorkspace() {
 
   $('#welcome').classList.toggle('hidden', connected);
   $('#tab-body').classList.toggle('hidden', !connected);
+  $('#sidebar').classList.toggle('hidden', !connected);
+  $('#navigator-divider').classList.toggle('hidden', !connected);
   // Hamburger dei database (drawer mobile): ha senso solo con un tab connesso.
   $('#menu-dbs-btn').classList.toggle('hidden', !connected);
   $('#conn-info').classList.toggle('hidden', !connected);
   $('#conn-info').innerHTML = connected ? `${dbTypeIcon(state.dbType)} <span>${esc(state.connLabel)}</span>` : '';
   refreshLucideIcons($('#conn-info'));
+  $('#explorer-title').textContent = state.dbType === 'postgresql' ? 'Schemi' : 'Database';
+  $('#explorer-context').textContent = connected ? tab.label : '';
+  $('#explorer-context').title = connected ? state.connLabel : '';
   if (!connected) {
     $('#live-badge').classList.add('hidden');
     $('#polling-toggle').classList.add('hidden');

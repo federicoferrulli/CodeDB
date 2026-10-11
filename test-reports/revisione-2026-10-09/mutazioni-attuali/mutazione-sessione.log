@@ -1,0 +1,14 @@
+AssertionError [ERR_ASSERTION]: Il monitor rende leggibile e copiabile la query completa
++ actual - expected
+
++ 'UPDATE ordini SET stato = $1 /* contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo '
+- 'UPDATE ordini SET stato = $1 /* contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo */'
+
+    at C:\repository\CodeDB\test\e2e-superfici.js:86:16 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'UPDATE ordini SET stato = $1 /* contesto completo contesto completo contesto completo contesto completo contesto completo contesto completo ',
+  expected: 'pleto contesto completo contesto completo contesto completo */...',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

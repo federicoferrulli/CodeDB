@@ -43,6 +43,7 @@ let reale = null;
 
 /** Il socket vero, aperto alla prima richiesta. */
 export function socketReale() {
+  if (!reale && typeof window !== 'undefined' && window.frameElement?.codedbPanel) reale = window.frameElement.codedbPanel.socket;
   // `auth` come funzione viene rivalutata a ogni tentativo di connessione: dopo
   // un login il socket si riconnette portando il token appena ottenuto.
   if (!reale) reale = io({ auth: (cb) => cb({ token: getToken() }) });

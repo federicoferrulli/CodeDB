@@ -1,0 +1,14 @@
+{"scroll":53,"tastiera":0,"blocchi":0}
+OK: larghezza reale, nessun ordinamento accidentale, persistenza del documento, query, pannello, touch e immissione numerica
+AssertionError [ERR_ASSERTION]: La ricerca sopravvive alla chiusura
+
+'' !== 'prodotti'
+
+    at C:\repository\CodeDB\test\e2e-griglia-fluidita.js:208:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '',
+  expected: 'prodotti',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,15 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const zlib = require('node:zlib');
+const { createHash } = require('node:crypto');
+const root = path.resolve('test-reports/revisione-2026-10-09/fluidita');
+const source = path.resolve(root, 'trace.json');
+if (path.dirname(source) !== root) throw new Error('Percorso della traccia non valido');
+const original = fs.readFileSync(source);
+const compressed = zlib.gzipSync(original);
+fs.writeFileSync(`${source}.gz`, compressed);
+const hash = buffer => createHash('sha256').update(buffer).digest('hex');
+if (hash(zlib.gunzipSync(fs.readFileSync(`${source}.gz`))) !== hash(original)) throw new Error('Verifica archivio fallita');
+fs.unlinkSync(source);
+console.log(JSON.stringify({ originale: original.length, compresso: compressed.length, sha256: hash(original) }));

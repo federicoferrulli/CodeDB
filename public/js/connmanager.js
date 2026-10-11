@@ -1,10 +1,12 @@
 'use strict';
 
-import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, lucideIconHtml as ICO } from './utils.js';
+import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, aggiungiMenuNodo, lucideIconHtml as ICO } from './utils.js';
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
+import { tabs, switchTab, activeTab } from './tabs.js';
+import { saveWorkspaceInputs } from './workspace.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
-// (campo `folder` in connections.ini). Click = apri in un nuovo tab.
+// (campo `folder` in connections.ini). Il clic riprende una sessione già aperta.
 
 let allConns = [];
 
@@ -36,7 +38,10 @@ export function elencoConnessioni() {
   return Array.isArray(allConns) ? allConns : [];
 }
 
-function openConn(conn) {
+function openConn(conn, nuova = false) {
+  const esistenti = tabs.list.filter(t => t.connName === conn.name && t.state.connected);
+  const aperta = esistenti.find(t => t.id === activeTab()?.id) || esistenti[0];
+  if (!nuova && aperta) { saveWorkspaceInputs(); switchTab(aperta.id); return; }
   toast(`Connessione a "${conn.name}"…`);
   connectAndOpenTab({ saved: conn.name })
     .then(() => toast(`Connesso a "${conn.name}"`))
@@ -61,7 +66,7 @@ function connMenu(e, conn) {
   e.preventDefault();
   e.stopPropagation();
   showContextMenu(e.clientX, e.clientY, [
-    { icona: 'play', label: 'Apri in nuovo tab', action: () => openConn(conn) },
+    { icona: 'play', label: 'Apri un’altra sessione', action: () => openConn(conn, true) },
     { icona: 'zap', label: 'Testa connessione', action: () => testConn(conn) },
     '---',
     { icona: 'square-pen', label: 'Modifica…', action: () => startEditConn(conn.name) },
@@ -74,7 +79,9 @@ function connItem(conn) {
   li.className = 'conn-item';
   const label = document.createElement('div');
   label.className = 'node-label';
-  label.title = `${conn.label}\nClick: apri in un nuovo tab — tasto destro: altre azioni`;
+  label.tabIndex = 0;
+  label.setAttribute('role', 'button');
+  label.title = `${conn.label}\nApri o riprendi la connessione. Il menu consente una nuova sessione.`;
 
   const name = document.createElement('span');
   name.className = 'conn-name';
@@ -86,7 +93,11 @@ function connItem(conn) {
   label.append(name, detail);
   label.addEventListener('click', () => openConn(conn));
   label.addEventListener('contextmenu', (e) => connMenu(e, conn));
+  label.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); label.click(); }
+  });
   li.appendChild(label);
+  aggiungiMenuNodo(label, conn.name);
   return li;
 }
 
@@ -131,7 +142,10 @@ function renderConnTree() {
     li.className = 'conn-folder';
     const head = document.createElement('div');
     head.className = 'node-label folder-label';
+    head.tabIndex = 0;
+    head.setAttribute('role', 'button');
     const isCollapsed = query ? false : collapsed.has(folder);
+    head.setAttribute('aria-expanded', String(!isCollapsed));
     head.innerHTML = `${ICO(isCollapsed ? 'chevron-right' : 'chevron-down')}${ICO(isCollapsed ? 'folder' : 'folder-open')}<span>${esc(folder)}</span>`;
     refreshLucideIcons(head);
 
@@ -143,6 +157,10 @@ function renderConnTree() {
       if (collapsed.has(folder)) collapsed.delete(folder); else collapsed.add(folder);
       persistCollapsed();
       renderConnTree();
+      [...tree.querySelectorAll('.folder-label')].find(el => el.textContent === folder)?.focus();
+    });
+    head.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); head.click(); }
     });
 
     li.append(head, sub);
@@ -163,39 +181,10 @@ function fillFolderDatalist() {
   }
 }
 
-const SIDEBAR_COLLAPSED_KEY = migraChiave('conn-sidebar-collapsed', 'gui-db:conn-sidebar-collapsed');
-
-export function toggleConnSidebar(forceCollapsed) {
-  const sidebar = $('#conn-sidebar');
-  const resizer = document.querySelector('.resizer[data-resize="conn-sidebar"]');
-  const expandBtn = $('#conn-sidebar-expand-btn');
-  const toggleBtn = $('#conn-sidebar-toggle-btn');
-  if (!sidebar) return;
-
-  const isCurrentlyCollapsed = sidebar.classList.contains('collapsed');
-  const collapse = typeof forceCollapsed === 'boolean' ? forceCollapsed : !isCurrentlyCollapsed;
-
-  sidebar.classList.toggle('collapsed', collapse);
-  if (resizer) resizer.classList.toggle('collapsed', collapse);
-  if (expandBtn) expandBtn.classList.toggle('hidden', !collapse);
-
-  if (toggleBtn) {
-    toggleBtn.title = collapse ? 'Espandi barra connessioni' : 'Comprimi barra connessioni';
-    toggleBtn.setAttribute('aria-label', toggleBtn.title);
-    toggleBtn.innerHTML = collapse ? `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <line x1="9" y1="3" x2="9" y2="21"/>
-        <polyline points="14 10 17 12 14 14"/>
-      </svg>` : `
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-        <line x1="9" y1="3" x2="9" y2="21"/>
-        <polyline points="16 10 13 12 16 14"/>
-      </svg>`;
-  }
-
-  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapse ? 'true' : 'false');
+function impostaSezione(sidebar, button, collapse) {
+  sidebar.classList.toggle('section-collapsed', collapse);
+  document.getElementById(button.getAttribute('aria-controls')).classList.toggle('hidden', collapse);
+  button.setAttribute('aria-expanded', String(!collapse));
 }
 
 export function initConnManager() {
@@ -205,17 +194,13 @@ export function initConnManager() {
     searchInput.addEventListener('input', () => renderConnTree());
   }
 
-  const toggleBtn = $('#conn-sidebar-toggle-btn');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => toggleConnSidebar());
-  }
+  const explorerKey = migraChiave('explorer-collapsed', 'gui-db:explorer-collapsed');
+  const explorerToggle = $('#explorer-toggle-btn');
+  const toggleExplorer = collapse => {
+    impostaSezione($('#sidebar'), explorerToggle, collapse);
+    localStorage.setItem(explorerKey, String(collapse));
+  };
+  explorerToggle.addEventListener('click', () => toggleExplorer(explorerToggle.getAttribute('aria-expanded') === 'true'));
+  if (localStorage.getItem(explorerKey) === 'true') toggleExplorer(true);
 
-  const expandBtn = $('#conn-sidebar-expand-btn');
-  if (expandBtn) {
-    expandBtn.addEventListener('click', () => toggleConnSidebar(false));
-  }
-
-  if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true') {
-    toggleConnSidebar(true);
-  }
 }

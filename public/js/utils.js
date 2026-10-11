@@ -111,6 +111,9 @@ export const MAX_TESTO_CELLA = 1000;
 const memoTestoBreve = new WeakMap();
 
 export function displayValueBreve(v, max = MAX_TESTO_CELLA) {
+  if (v === null) return { text: 'NULL', cls: 'type-null' };
+  if (v === undefined) return { text: 'mancante', cls: 'type-null' };
+  if (v === '') return { text: '""', cls: 'type-null' };
   const memoizzabile = v !== null && typeof v === 'object';
   if (memoizzabile) {
     const perMax = memoTestoBreve.get(v);
@@ -357,14 +360,22 @@ export function showQueryError(msg) {
   }
 }
 
+let contextMenuOpener;
 export function showContextMenu(x, y, items) {
   const menu = $('#context-menu');
+  menu.setAttribute('popover', 'manual');
+  contextMenuOpener = document.activeElement;
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Azioni');
   menu.innerHTML = '';
   for (const item of items) {
     const li = document.createElement('li');
     if (item === '---') {
       li.className = 'separator';
+      li.setAttribute('role', 'separator');
     } else {
+      li.setAttribute('role', 'menuitem');
+      li.tabIndex = -1;
       // L'icona e' un CAMPO della voce, non un carattere infilato in testa
       // all'etichetta. Con l'emoji nel testo il nome accessibile della voce
       // diventava «cestino Elimina» — un lettore di schermo pronuncia il
@@ -380,9 +391,11 @@ export function showContextMenu(x, y, items) {
         li.appendChild(ico);
       }
       li.appendChild(document.createTextNode(item.label));
+      if (item.disabled) li.setAttribute('aria-disabled', 'true');
       if (item.danger) li.classList.add('danger');
       li.addEventListener('click', () => {
-        hideContextMenu();
+        if (item.disabled) return;
+        hideContextMenu(true);
         // Un'eccezione qui risaliva al listener e moriva in console: la voce di
         // menu non faceva NULLA e non c'era alcun indizio del perché (è così che
         // si è manifestato `prompt()` mancante in Electron). Ora si vede.
@@ -400,14 +413,50 @@ export function showContextMenu(x, y, items) {
   // chiamata restano elementi vuoti, cioe' un buco al posto dell'icona.
   refreshLucideIcons(menu);
   menu.classList.remove('hidden');
+  menu.showPopover?.(); // Coordinate viewport anche dentro pannelli trasformati.
   const rect = menu.getBoundingClientRect();
   const area = limitiViewport();
   menu.style.left = Math.max(area.left + 4, Math.min(x, area.right - rect.width - 4)) + 'px';
   menu.style.top = Math.max(area.top + 4, Math.min(y, area.bottom - rect.height - 4)) + 'px';
+  menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true });
+  menu.onkeydown = e => {
+    const entries = [...menu.querySelectorAll('[role="menuitem"]')];
+    const index = entries.indexOf(document.activeElement);
+    const next = e.key === 'Home' ? entries[0] : e.key === 'End' ? entries.at(-1)
+      : e.key === 'ArrowDown' ? entries[(index + 1) % entries.length]
+      : e.key === 'ArrowUp' ? entries[(index + entries.length - 1) % entries.length] : null;
+    if (next) { e.preventDefault(); e.stopPropagation(); next.focus(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); document.activeElement?.click(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); hideContextMenu(true); }
+    if (e.key === 'Tab') hideContextMenu(true);
+  };
 }
 
-export function hideContextMenu() {
-  $('#context-menu').classList.add('hidden');
+export function hideContextMenu(restoreFocus = false) {
+  const menu = $('#context-menu');
+  if (menu.matches(':popover-open')) menu.hidePopover();
+  menu.classList.add('hidden');
+  if (restoreFocus === true && contextMenuOpener?.isConnected) contextMenuOpener.focus({ preventScroll: true });
+}
+
+// La stessa azione è raggiungibile dal menu visibile e da Shift+F10.
+export function aggiungiMenuNodo(label, nome) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'node-actions';
+  button.setAttribute('aria-label', `Azioni ${nome}`);
+  button.setAttribute('aria-haspopup', 'menu');
+  button.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
+  const apri = e => {
+    e.preventDefault(); e.stopPropagation();
+    const rect = button.getBoundingClientRect();
+    label.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: rect.left, clientY: rect.bottom }));
+  };
+  button.addEventListener('click', apri);
+  label.addEventListener('keydown', e => {
+    if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) apri(e);
+  });
+  label.after(button);
 }
 
 // Il menu contestuale si chiude da solo: un clic altrove, la finestra che perde
@@ -418,8 +467,8 @@ export function hideContextMenu() {
 if (typeof document !== 'undefined') {
   // Chiude il menu precedente PRIMA del comando: in bubbling lo stesso clic
   // richiudeva anche il menu appena aperto da un pulsante (es. UML).
-  document.addEventListener('click', hideContextMenu, true);
-  window.addEventListener('blur', hideContextMenu);
+  document.addEventListener('click', e => { if (!e.target.closest('#context-menu')) hideContextMenu(); }, true);
+  window.addEventListener('blur', () => hideContextMenu());
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') hideContextMenu();
   });
@@ -754,6 +803,7 @@ export function openModal(elOrId) {
     ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
     : elOrId;
   if (!el) return;
+  delete el.dataset.unsaved;
   // Ogni modale passa di qui, e molte costruiscono il proprio contenuto con
   // innerHTML poco prima di aprirsi: disegnare le icone QUI vuol dire non
   // doversene ricordare in dodici chiamanti — e un <i data-lucide> non
@@ -794,11 +844,25 @@ export function chiediTesto(options = {}) {
   })));
 }
 
-export function closeModal(elOrId) {
+export function proteggiModifiche(elOrId, tabId, bersaglio) {
+  const el = typeof elOrId === 'string' ? document.querySelector(elOrId) : elOrId;
+  if (!el) return;
+  el.dataset.editTab = tabId || '';
+  el.dataset.editTarget = bersaglio;
+  if (el.dataset.editGuard) return;
+  el.dataset.editGuard = 'true';
+  const dirty = () => { el.dataset.unsaved = 'true'; };
+  el.addEventListener('input', dirty);
+  el.addEventListener('change', dirty);
+}
+
+export function closeModal(elOrId, { saved = false } = {}) {
   const el = typeof elOrId === 'string'
     ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
     : elOrId;
   if (!el) return;
+  if (!saved && el.dataset.unsaved && !confirm(`Scartare le modifiche non salvate a ${el.dataset.editTarget || 'questo documento'}?`)) return;
+  delete el.dataset.unsaved;
   el.classList.add('hidden');
 }
 

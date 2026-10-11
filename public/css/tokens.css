@@ -52,8 +52,8 @@
   /* Geometria delle tab (vedi "smart corner" in style.css). La spalluccia non
      va oltre il raggio superiore, altrimenti la tab sembra appoggiata su un
      piedistallo invece di uscire dal pannello. */
-  --tab-radius:  10px;
-  --tab-shoulder:10px;
+  --tab-radius:  4px;
+  --tab-shoulder:0px;
   --tab-morph:   0.24s;
   --tab-ease:    cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -88,7 +88,9 @@
      costanti se ne accorgesse, e la barra di scorrimento dichiarava una
      lunghezza che non era quella del contenuto.
      Il JavaScript la legge da qui con `altezzaRigaGriglia()`. */
-  --grid-row-h: 32px;
+  --grid-row-h: 30px;
+  --navigator-width: 244px;
+  --shell-header-height: 44px;
 
   --transition-fast:   120ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -96,6 +98,8 @@
 
   --z-sidebar:  100;
   --z-header:   200;
+  --z-drawer-backdrop: 290;
+  --z-drawer:   300;
   --z-dropdown: 900;
   --z-modal:    1000;
   --z-toast:    2000;
@@ -116,18 +120,18 @@
   color-scheme: dark;
 
   /* ── Superfici ── */
-  --bg:         #0d1117;        /* Sfondo del contenuto (GitHub dark navy) */
-  --bg-2:       #090d12;        /* Sidebar — leggermente più scura */
-  --bg-3:       #111827;        /* Header / superfici sollevate */
-  --bg-4:       #1a2236;        /* Hover di una superficie sollevata */
-  --bg-surface: #161b22;        /* Card, input, modali */
-  --bg-elevated:#1f2937;        /* Menu a tendina, tooltip */
+  --bg:         #121419;        /* Dati e codice */
+  --bg-2:       #17191f;        /* Navigazione */
+  --bg-3:       #1b1e25;        /* Barre operative */
+  --bg-4:       #272b35;        /* Hover */
+  --bg-surface: #1b1e25;        /* Controlli e finestre */
+  --bg-elevated:#252932;        /* Menu e tooltip */
   /* Superficie INCASSATA: codice, log, celle di output. Sul tema scuro è più
      scura dello sfondo, su quello chiaro è più grigia — in entrambi i casi
      "sotto" al piano della pagina. Era usata in sette punti di `style.css`
      senza essere mai definita: `background: var(--bg-1)` non ha valore, quindi
      quei pannelli erano semplicemente TRASPARENTI. */
-  --bg-1:       #0b0f14;
+  --bg-1:       #101217;
   /* Alias storici, usati in un punto ciascuno. */
   --bg-alt:     var(--bg-surface);
   --panel:      var(--bg-elevated);
@@ -341,8 +345,8 @@
   /* Tipo del valore nelle celle della griglia */
   --val-oid:   #93c5fd;
   --val-num:   #86efac;
-  --val-true:  #86efac;
-  --val-false: #f87171;
+  --val-true:  #c4b5fd;
+  --val-false: #c4b5fd;
   --val-date:  #fcd34d;
   --val-obj:   #c4b5fd;
   --val-geo:   #4ec9b0;
@@ -571,8 +575,8 @@
 
   --val-oid:   #0a52a8;
   --val-num:   #0f7a4a;
-  --val-true:  #0f7a4a;
-  --val-false: #c92a2a;
+  --val-true:  #6d28d9;
+  --val-false: #6d28d9;
   --val-date:  #8a5a00;
   --val-obj:   #6532c8;
   --val-geo:   #0c7c8c;

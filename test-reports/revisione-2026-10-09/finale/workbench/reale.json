@@ -1,0 +1,15 @@
+{
+  "engines": [
+    "MongoDB reale",
+    "MySQL reale",
+    "PostgreSQL reale"
+  ],
+  "checks": [
+    "Query parallele MongoDB/MySQL, cambio focus prima della risposta MySQL, precisione Decimal128",
+    "Annullamento reale MySQL e nuova query sulla stessa sessione",
+    "Filtro di un pannello e scrittura: database originale invariato, modifica solo nel secondo database MongoDB, MySQL invariato",
+    "PostgreSQL: schemi distinti della stessa connessione, identificatori con maiuscole, risposte concorrenti e risultati ripristinati",
+    "Editing inline reale MySQL/PostgreSQL e isolamento dello schema omonimo"
+  ],
+  "errors": []
+}

@@ -1,0 +1,59 @@
+import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
+import { useLayoutEffect, useRef } from 'react';
+import { BottomSheet } from './components/arc/bottom-sheet/bottom-sheet';
+
+function Navigatore({ panel, tools }: { panel: HTMLElement; tools: boolean }) {
+  const slot = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    // Stessi nodi e controller: il passaggio mobile non ricrea alberi o controlli Arc.
+    const nodes = [panel, ...(tools ? [document.getElementById('navigator-tools')!] : []), document.getElementById('context-menu')!].map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
+    const scroll = [...panel.querySelectorAll<HTMLElement>('*')].filter(node => node.scrollTop).map(node => [node, node.scrollTop] as const);
+    const body = panel.querySelector<HTMLElement>('.navigator-section-body') || panel;
+    const collapsed = body.classList.contains('hidden');
+    const width = panel.style.width;
+    panel.style.removeProperty('width');
+    body.classList.remove('hidden');
+    nodes.forEach(({ node }) => slot.current!.append(node));
+    scroll.forEach(([node, top]) => { node.scrollTop = top; });
+    return () => {
+      const current = [...panel.querySelectorAll<HTMLElement>('*')].filter(node => node.scrollTop).map(node => [node, node.scrollTop] as const);
+      nodes.forEach(({ node, parent, next }) => {
+        if (node.parentNode === slot.current) (parent.isConnected ? parent : document.body).insertBefore(node, next?.parentNode === parent && parent.isConnected ? next : null);
+      });
+      panel.style.width = width;
+      body.classList.toggle('hidden', collapsed);
+      current.forEach(([node, top]) => { node.scrollTop = top; });
+    };
+  }, [panel, tools]);
+  return <div ref={slot} className="arc-navigation-slot" />;
+}
+
+let root: ReturnType<typeof createRoot> | undefined;
+let notifyClose: (() => void) | undefined;
+export function closeNavigationSheet() {
+  const notify = notifyClose;
+  if (!notify) return;
+  notifyClose = undefined;
+  flushSync(() => root!.render(null));
+  notify();
+}
+export function openNavigationSheet(panel: HTMLElement, onClose: () => void, options: { title?: string; description?: string; tools?: boolean } = {}) {
+  if (!root) {
+    const host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+  }
+  notifyClose = onClose;
+  const connections = panel.id === 'conn-sidebar';
+  flushSync(() => root!.render(<BottomSheet open title={options.title ?? (connections ? 'Connessioni' : document.getElementById('explorer-title')!.textContent!.trim())}
+    description={options.description ?? (connections ? 'Scegli una connessione o aggiungine una nuova.' : document.getElementById('explorer-context')?.textContent?.trim())}
+    detents={[.6, .94]} className="arc-navigation-sheet"
+    onOpenChange={open => { if (!open) closeNavigationSheet(); }}
+    onCloseAutoFocus={event => event.preventDefault()}
+    onEscapeKeyDown={event => {
+      if (document.querySelector('.overlay:not(.hidden), #context-menu:not(.hidden), [data-state="open"][role="menu"]')) event.preventDefault();
+    }}>
+    <Navigatore panel={panel} tools={options.tools !== false} />
+  </BottomSheet>));
+}

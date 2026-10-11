@@ -2,6 +2,7 @@
 // Vista UML di sola consultazione. Le risposte asincrone restano legate al contesto di apertura.
 
 import { state } from './state.js';
+import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import {
   $, emit, esc, showToast, showContextMenu, refreshLucideIcons, displayValueBreve,
@@ -822,6 +823,7 @@ function disegnaDati() {
         const { text, cls } = displayValueBreve(r[c], 120);
         return `<td${cls ? ` class="${cls}"` : ''}>${esc(text ?? '')}</td>`;
       }).join('')}</tr>`).join('')}</tbody></table>`;
+    configuraColonne(corpo.querySelector('table'), { nomi: colonne, righe: d.docs, larghezze: d.larghezze ||= new Map() });
     corpo.querySelectorAll('tr[data-riga]').forEach((tr) => {
       tr.onclick = () => {
         d.rigaScelta = Number(tr.dataset.riga);
@@ -974,6 +976,7 @@ function menuCanvas(x, y) {
 export function initUml() {
   const bar = $('#view-uml');
   if (!bar) return;
+  document.addEventListener('codedb:tema', ridisegna);
   $('#uml-adatta')?.addEventListener('click', () => V.tavola && V.tavola.adatta());
   $('#uml-centra')?.addEventListener('click', () => V.tavola && V.tavola.centraSu(V.selezione));
   $('#uml-zoom-piu')?.addEventListener('click', () => V.tavola && V.tavola.zoomA(V.tavola.scala * 1.2));

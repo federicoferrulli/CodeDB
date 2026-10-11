@@ -966,17 +966,18 @@ button.ghost:hover, .btn-ghost:hover {
   contain: content;
   transform: translateZ(0);
 }
+.catalog-list-container { overflow-x: auto; min-width: 0; }
 
 /* Le larghezze le decide il <colgroup> costruito da table-cols.js misurando il
    contenuto: `fixed` le rende stabili durante lo scorrimento virtualizzato (con
    `auto` il browser le ricalcolerebbe sulle sole righe nel DOM, cioè a ogni
    scroll), e `max-content` lascia che la tabella sia PIÙ LARGA del pannello —
    da cui la barra orizzontale. Con `width: 100%` non poteva esserlo, e venti
-   colonne diventavano venti strisce illeggibili. Il `min-width` evita il vuoto
-   a destra quando le colonne sono poche. */
+   colonne diventavano venti strisce illeggibili. Anche poche colonne rispettano
+   la larghezza scelta, lasciando libero lo spazio rimanente. */
 #query-result-table {
   width: max-content;
-  min-width: 100%;
+  min-width: 0;
   table-layout: fixed;
   border-collapse: collapse;
 }
@@ -1003,17 +1004,16 @@ button.ghost:hover, .btn-ghost:hover {
   position: absolute;
   top: 0;
   right: 0;
-  width: 7px;
+  width: 24px;
   height: 100%;
   cursor: col-resize;
-  /* Non è un bordo visibile: si scopre passandoci sopra, come nelle griglie a
-     cui l'utente è abituato. */
   background: transparent;
 }
+.qt-col-resizer::after { content: ''; position: absolute; right: 4px; top: 25%; height: 50%; width: 2px; background: var(--border-strong); }
 
 .qt-col-resizer:hover,
 .qt-col-resizer.dragging {
-  background: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* Durante il trascinamento il cursore deve restare col-resize su tutta la
@@ -1912,7 +1912,7 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 
 .grid-wrap { flex: 1; overflow: auto; min-height: 0; }
 
-#grid { border-collapse: collapse; width: max-content; min-width: 100%; font-size: 0.84rem; }
+#grid { border-collapse: collapse; width: max-content; min-width: 0; font-size: 0.84rem; }
 
 /* Virtual scrolling */
 #grid.virtual { table-layout: fixed; min-width: 0; }
@@ -1997,7 +1997,6 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .query-table tbody tr,
 #query-result-table tbody tr {
   height: var(--grid-row-h);
-  transition: background var(--transition-fast);
 }
 /* Lo spaziatore della virtualizzazione NON e' una riga: la sua altezza la
    dichiara `griglia.js` riga per riga. */
@@ -2005,9 +2004,10 @@ main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height:
 .pane-grid tr.v-spacer,
 .query-table tr.v-spacer,
 #query-result-table tr.v-spacer { height: auto; }
-#grid tbody tr:nth-child(even),
-.query-table tbody tr:nth-child(even),
-#query-result-table tbody tr:nth-child(even) { background: var(--ov-18); }
+#grid tbody tr.grid-row-even,
+.pane-grid tbody tr.grid-row-even,
+.query-table tbody tr.grid-row-even,
+#query-result-table tbody tr.grid-row-even { background: var(--ov-18); }
 #grid tbody tr:hover,
 .query-table tbody tr:hover,
 #query-result-table tbody tr:hover { background: var(--accent-veil); }
@@ -2109,17 +2109,17 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 .pane-grid td .type-bool[data-val="true"],
 .query-table td .type-bool[data-val="true"],
 #query-result-table td .type-bool[data-val="true"] {
-  background: var(--success-bg);
+  background: var(--bg-4);
   color: var(--val-true);
-  border: 1px solid var(--success-line);
+  border: 1px solid var(--border-3);
 }
 #grid td .type-bool[data-val="false"],
 .pane-grid td .type-bool[data-val="false"],
 .query-table td .type-bool[data-val="false"],
 #query-result-table td .type-bool[data-val="false"] {
-  background: var(--danger-bg);
+  background: var(--bg-4);
   color: var(--val-false);
-  border: 1px solid var(--danger-line);
+  border: 1px solid var(--border-3);
 }
 #grid td .type-date,
 .pane-grid td .type-date,
@@ -2369,6 +2369,8 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 /* ---------- Menu contestuale ---------- */
 
 .context-menu {
+  margin: 0;
+  inset: auto;
   position: fixed;
   z-index: 300;
   list-style: none;
@@ -3101,7 +3103,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   position: fixed;
   inset: 0;
   background: var(--sh-450);
-  z-index: 140;
+  z-index: var(--z-drawer-backdrop);
 }
 
 /* --- Tablet portrait e telefoni: sidebar a scomparsa ------------------- */
@@ -3110,21 +3112,12 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .resizer { display: none; }
   .conn-sidebar-expand-btn, .sidebar-toggle-btn { display: none !important; }
 
-  /* Le sidebar escono dal flusso e diventano drawer (il width !important
-     vince sul width inline salvato dai resizer del desktop). */
-  #conn-sidebar, #sidebar {
+  /* Fuori flusso ma con geometria: conservano lo scroll prima del passaggio nel portal. */
+  #navigator > #conn-sidebar, #navigator > #sidebar {
     position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 0;
-    z-index: 150;
-    width: min(85vw, 320px) !important;
-    transform: translateX(-100%);
-    transition: transform 0.2s ease;
-    border-right: 1px solid var(--border);
-    box-shadow: 0 0 30px var(--sh-550);
+    inset: var(--area-top) auto var(--area-bottom) var(--sal);
+    visibility: hidden;
   }
-  #conn-sidebar.open, #sidebar.open { transform: translateX(0); }
 
   header { flex-wrap: wrap; gap: 8px; row-gap: 4px; padding: 8px 10px; }
   .conn-info { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
@@ -3197,7 +3190,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   .statusbar { padding: 4px 10px; }
   .workspace-head { padding: 5px 12px; }
   #tab-bar { min-height: 28px; }
-  #conn-sidebar, #sidebar { width: min(55vw, 300px) !important; }
 }
 
 /* --- Touch: target più grandi e niente auto-zoom iOS -------------------- */
@@ -3437,7 +3429,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
    * il tetto è questo. Barra e pannello non si sovrappongono mai fra loro —
    * l'una sta sopra all'altro — quindi alzarla non copre nulla.
    */
-  z-index: 30;
+  z-index: var(--z-dropdown);
 }
 .graph3d-bar input,
 .graph3d-bar select,
@@ -4250,6 +4242,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 .editor-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   position: relative;
 }
@@ -4630,6 +4623,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 
 #query-editor-input {
   z-index: 2;
+  min-height: 0;
   background: transparent;
   color: transparent;
   caret-color: var(--accent-fg);
@@ -5508,8 +5502,8 @@ button[aria-busy="true"] {
    FUORI dalla finestra proprio la colonna delle azioni, cioè i pulsanti per
    cui il pannello esiste. Con le larghezze dichiarate, l'unica colonna
    elastica è la query — che è anche l'unica che si può accorciare senza
-   perdere nulla, visto che il testo intero resta nel `title`. */
-.sessions-table { font-size: 0.84rem; table-layout: fixed; width: 100%; }
+   perdere nulla: «Leggi query» apre il testo completo. */
+.sessions-table { font-size: 0.84rem; table-layout: fixed; width: 100%; min-width: 974px; }
 .sessions-table td { vertical-align: top; }
 .sessions-table th:nth-child(1), .sessions-table td:nth-child(1) { width: 62px; }
 .sessions-table th:nth-child(2), .sessions-table td:nth-child(2) { width: 150px; }
@@ -5523,8 +5517,7 @@ button[aria-busy="true"] {
 .sessions-id { font-family: var(--font-mono); color: var(--fg-dim); white-space: nowrap; }
 .sessions-table .health-lat { white-space: nowrap; }
 
-/* Una riga sola: una query da 4000 caratteri manderebbe la riga a coprire
-   mezzo schermo. Il testo intero resta nel `title`. */
+/* L'estratto resta breve; il comando accanto apre il testo completo. */
 .sessions-query {
   display: block;
   max-width: 100%;
@@ -5618,7 +5611,7 @@ button[aria-busy="true"] {
    irraggiungibili finché la Split-View era aperta — e rendeva `null` ogni
    $('#…') sulla toolbar. La testata resta visibile: è da lì che si passa a una
    vista sul pannello a fuoco e si torna indietro con "Affiancati". */
-#workspace.split-active.split-mostra-pannelli > *:not(.workspace-head):not(.split-container) {
+#workspace.split-active.split-mostra-pannelli > *:not(.workspace-head):not(.split-container):not(#pane-runtime-deck) {
   display: none !important;
 }
 /* …e viceversa: guardando una vista normale i pannelli restano vivi, solo
@@ -5788,11 +5781,6 @@ body.split-resizing .split-pane {
    i pannelli sulla stessa connessione sarebbe la stessa parola ripetuta su ogni
    testata, e a rimetterci sarebbero i nomi di database e tabella, che su un
    pannello stretto sono la prima cosa a essere troncata. */
-.split-container.una-connessione .split-pane-head .conn-name,
-.split-container.una-connessione .split-pane-head .db-icon,
-.split-container.una-connessione .split-pane-head .sep-conn {
-  display: none;
-}
 
 .split-pane-title {
   display: flex;
@@ -6067,9 +6055,7 @@ body.split-resizing .split-pane {
   position: fixed;
   inset: 0;
   background: var(--scrim);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  z-index: 140;
+  z-index: var(--z-drawer-backdrop);
   transition: opacity 0.25s ease;
 }
 
@@ -6107,7 +6093,6 @@ body.split-resizing .split-pane {
 
   /* Single-row touch-scrollable Tab Bars */
   #tab-bar, #coll-tab-bar {
-    display: flex !important;
     flex-wrap: nowrap !important;
     overflow-x: auto !important;
     -webkit-overflow-scrolling: touch;
@@ -6121,27 +6106,6 @@ body.split-resizing .split-pane {
   #tab-bar .tab, #tab-bar .tab-item, #coll-tab-bar .coll-tab, .tab-item {
     flex-shrink: 0 !important;
     white-space: nowrap !important;
-  }
-
-  /* Off-canvas Drawers */
-  #conn-sidebar,
-  #sidebar {
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: -290px;
-    width: 280px;
-    height: 100%;
-    z-index: 150;
-    box-shadow: 0 0 40px var(--sh-850);
-    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-    background: var(--bg-2);
-    border-right: 1px solid var(--glass-border);
-  }
-
-  #conn-sidebar.open,
-  #sidebar.open {
-    transform: translateX(290px);
   }
 
   .resizer {
@@ -6248,28 +6212,31 @@ body.split-resizing .split-pane {
 
   /* ---- Vista Query & Aggregate: Schema Sidebar come Off-Canvas Drawer su Mobile ---- */
   .query-layout-body {
-    position: relative !important;
-    overflow: hidden !important;
+    position: relative;
+    overflow: hidden;
   }
   .query-sidebar {
-    position: absolute !important;
-    top: 0 !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    z-index: 80 !important;
+    position: fixed;
+    top: var(--area-top);
+    bottom: var(--area-bottom);
+    left: var(--sal);
+    z-index: var(--z-drawer);
     width: 280px !important;
-    max-width: 85vw !important;
-    height: 100% !important;
-    max-height: 100% !important;
-    background: var(--bg-2) !important;
-    border-right: 1px solid var(--border) !important;
-    border-bottom: none !important;
-    box-shadow: 6px 0 30px var(--sh-700) !important;
-    transform: translateX(-100%) !important;
-    transition: transform 0.25s ease-in-out !important;
+    max-width: min(85vw, var(--area-larghezza));
+    height: auto;
+    max-height: var(--area-altezza);
+    background: var(--bg-2);
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    box-shadow: var(--shadow-floating);
+    transform: translateX(calc(-100% - var(--sal)));
+    visibility: hidden;
+    transition: none;
   }
   .query-sidebar.open {
-    transform: translateX(0) !important;
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--transition-fast);
   }
   .query-layout-body > .resizer[data-resize="query-sidebar"] {
     display: none !important;
@@ -6657,16 +6624,20 @@ body.split-resizing .split-pane {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
+  align-items: flex-end;
   background: var(--bg-surface, rgba(255, 255, 255, 0.03));
   padding: 12px;
   border-radius: var(--radius-md, 6px);
   border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
 
-.admin-form .form-control {
+.admin-form > label {
   flex: 1 1 160px;
   min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  font-size: var(--text-sm);
 }
 
 .admin-limit {
@@ -7645,7 +7616,7 @@ button.linklike:hover {
   position: fixed;
   right: var(--space-lg);
   bottom: var(--space-lg);
-  z-index: 8000;
+  z-index: var(--z-header);
   width: 300px;
   max-width: calc(100vw - var(--space-xl));
   background: var(--bg-elevated);
@@ -8723,15 +8694,6 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
 }
 @media (max-width: 900px) {
   :root { --nav-mobile: 56px; }
-  #conn-sidebar, #sidebar {
-    top: var(--area-top);
-    bottom: var(--area-bottom);
-    left: var(--sal);
-    height: auto;
-    max-width: var(--area-larghezza);
-    transform: translateX(calc(-100% - var(--sal)));
-  }
-  #conn-sidebar.open, #sidebar.open { transform: translateX(0); }
   .mobile-bottom-nav, .fk-pannello {
     left: var(--sal);
     right: var(--sar);

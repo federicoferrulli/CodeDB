@@ -1,0 +1,11 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+OK Separatore tastiera, limiti e valore accessibile aggiornato
+AssertionError [ERR_ASSERTION]: Freccia sposta il focus del menu
+    at C:\repository\CodeDB\test\e2e-revisione.js:102:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'Query & Aggregate su questo database',
+  expected: 'Query & Aggregate su questo database',
+  operator: 'notStrictEqual',
+  diff: 'simple'
+}

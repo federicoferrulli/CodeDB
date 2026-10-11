@@ -535,7 +535,7 @@ const ultimaChiamata = (nome) =>
           ? !!(document.elementFromPoint(x, y) || {}).closest
             && !!document.elementFromPoint(x, y).closest('.toolbar-dropdown-menu')
           : null;
-        provati.push({ id: btn.id, sovrapposto, sopra });
+        provati.push({ id: btn.id, sovrapposto, sopra, punto: [x, y], elemento: document.elementFromPoint(x, y)?.outerHTML.slice(0, 240), menu: [rMenu.x, rMenu.y, rMenu.width, rMenu.height] });
         menu.classList.add('hidden');
         btn.setAttribute('aria-expanded', 'false');
       }
@@ -561,7 +561,7 @@ const ultimaChiamata = (nome) =>
       JSON.stringify(copertura.provati));
     ok(copertura.coperti.length === 0,
       'ogni menu aperto che tocca il pannello viene dipinto SOPRA di esso',
-      `dipinti SOTTO: ${JSON.stringify(copertura.coperti)}`);
+      `dipinti SOTTO: ${JSON.stringify(copertura)}`);
     // La barra è il contesto di impilamento: il `z-index: 300` del menu conta
     // solo al suo interno, quindi è il numero della BARRA a decidere contro
     // pannello e strumenti. Confrontare 300 con 20 non avrebbe visto nulla:

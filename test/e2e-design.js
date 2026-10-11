@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const before = process.argv.includes('--before');
 const mutant = process.argv.includes('--mutant');
-const dir = `test-reports/design/${before ? 'prima' : mutant ? 'mutante' : 'dopo'}`;
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/design/${before ? 'prima' : mutant ? 'mutante' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 const report = { checks: [], surfaces: [], errors: [], requests: [] };
 
@@ -141,6 +141,37 @@ const report = { checks: [], surfaces: [], errors: [], requests: [] };
     });
     await page.locator('#query-error-box [role="alert"]').waitFor();
     await snapshot('query-errore', [1440]);
+    if (!before) {
+      await page.evaluate(() => { document.getElementById('query-error-box').classList.add('hidden'); });
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { document.documentElement.dataset.theme = t; document.dispatchEvent(new CustomEvent('codedb:tema')); }, theme);
+        await page.evaluate(async () => (await import('/js/main.js')).setView('uml'));
+        await page.locator('#uml-canvas .joint-element').first().waitFor();
+        assert(await page.evaluate(async () => {
+          const t = (await import('/js/uml.js')).statoUml().tavola;
+          return [...t.perChiave.values()][0].attr('corpo/fill') === getComputedStyle(document.documentElement).getPropertyValue('--bg-2').trim();
+        }), 'I nodi UML devono seguire il tema anche dopo il primo montaggio');
+        await snapshot(`uml-${theme}`, [1440, 390]);
+        await page.evaluate(async () => (await import('/js/main.js')).setView('graph3d'));
+        await page.locator('#graph3d-canvas canvas').first().waitFor();
+        await snapshot(`grafo-${theme}`, [1440, 390]);
+        await page.evaluate(async () => {
+          (await import('/js/main.js')).setView('query');
+          (await import('/js/query-tab.js')).renderResults(window.designDocs);
+        });
+        await page.locator('#res-mode-chart').click();
+        await page.locator('#query-chart-canvas canvas').first().waitFor();
+        await snapshot(`grafici-${theme}`, [1440, 390]);
+        await page.evaluate(async () => (await import('/js/query-tab.js')).renderResults([
+          { cliente: 'Officina Nord', posizione: { type: 'Point', coordinates: [9.19, 45.46] } },
+          { cliente: 'Studio Verde', posizione: { type: 'Point', coordinates: [9.21, 45.47] } },
+        ]));
+        await page.locator('#res-mode-map').click();
+        await page.locator('#query-map-view .leaflet-container').waitFor();
+        await snapshot(`mappa-${theme}`, [1440, 390]);
+      }
+      report.checks.push('JointJS, WebGL 3D, ECharts e Leaflet reali su dati sintetici: chiaro/scuro, desktop e mobile');
+    }
     assert.deepEqual(report.errors, []);
     assert.deepEqual(report.requests, []);
     report.checks.push('Navigazione Dati → Dettagli → Query e impostazioni; screenshot alle tre larghezze; due temi; nessun errore JS o HTTP');

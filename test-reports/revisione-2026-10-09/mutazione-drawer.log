@@ -1,0 +1,13 @@
+OK Cinque valori distinti; testo copiabile completo e stringa vuota invariata
+OK Separatore tastiera, limiti e valore accessibile aggiornato
+OK Menu visibile dell’esploratore, frecce, Escape e ritorno al comando
+OK Cambio densità durante editing: bozza integra e spaziatori coerenti
+AssertionError [ERR_ASSERTION]: Drawer chiuso escluso dalla tastiera
+    at C:\repository\CodeDB\test\e2e-revisione.js:117:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

@@ -1,0 +1,26 @@
+--- E2E: diagramma UML interattivo (JointJS) ---
+  [32m✔ OK[0m   JointJS è servito da public/vendor, non da un CDN
+  [32m✔ OK[0m   nessuna risorsa del diagramma arriva dalla rete
+  [32m✔ OK[0m   i cinque oggetti dello schema sono nodi del diagramma
+  [32m✔ OK[0m   il catalogo elenca gli stessi oggetti
+  [32m✔ OK[0m   le due righe della FK composta danno UN arco solo
+  [32m✔ OK[0m   l’arco composto DICHIARA di valere due colonne
+  [32m✔ OK[0m   ogni arco dice la propria origine a parole, non col solo colore
+  [32m✔ OK[0m   all’apertura il diagramma è INQUADRATO: nessun nodo nasce fuori dalla vista
+  [32m✔ OK[0m   il trascinamento lascia il nodo fermo
+  [32m✔ OK[0m   l’ispettore chiede i metadati COMPLETI dell’oggetto scelto
+  [32m✔ OK[0m   e mostra anche i campi che lo schema progressivo aveva tagliato
+  [32m✔ OK[0m   gli indici compaiono nell’ispettore
+  [32m✔ OK[0m   la completezza è dichiarata a parole («caricato»), non lasciata indovinare
+  [32m✔ OK[0m   i sottodocumenti si leggono nelle celle
+  [32m✔ OK[0m   nessuna cella dice «[object Object]»
+  [32m✔ OK[0m   l’export produce un SVG
+  [32m✔ OK[0m   nessuno script nell’SVG esportato
+  [32m✔ OK[0m   i colori sono INCORPORATI: l’SVG non dipende dal foglio di stile dell’app
+  [32m✔ OK[0m   la trasformazione di vista non finisce nell’export: il viewBox inquadra il contenuto
+  [32m✔ OK[0m   i nomi delle tabelle ci sono per intero nell’SVG
+  [32m✔ OK[0m   #uml-canvas è ancora in pagina dopo un rimontaggio
+  [32m✔ OK[0m   il secondo montaggio conserva tutti i nodi
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- UML: tutti i test superati ---

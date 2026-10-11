@@ -8,7 +8,7 @@ const suites = ['unit', 'e2e-avvio-ui', 'e2e-fk-inserimento', 'e2e-fk-viste',
   'e2e-uml-progetto', 'e2e-uml-progetto-regressioni', 'e2e-uml-modalita',
   'e2e-query-virtual-scroll', 'e2e-split-bersaglio-riquadro', 'e2e-tocco-griglia',
   'e2e-richieste-intellisense', 'e2e-barra-grafo', 'e2e-palette'];
-const dir = 'test-reports/arc/regressioni';
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/arc/regressioni`;
 fs.mkdirSync(dir, { recursive: true });
 const results = [];
 for (const suite of suites) {

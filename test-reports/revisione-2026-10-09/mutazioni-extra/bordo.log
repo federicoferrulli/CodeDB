@@ -1,0 +1,9 @@
+AssertionError [ERR_ASSERTION]: Annulla è raggiungibile anche sull’ultima riga
+    at C:\repository\CodeDB\test\e2e-uscita-editing.js:68:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

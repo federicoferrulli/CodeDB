@@ -1,11 +1,12 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { Button, type ButtonProps } from './components/arc/button/button';
 import { Input, type InputProps } from './components/arc/input/input';
 import { Select, type SelectProps } from './components/arc/select/select';
 import { Checkbox } from './components/arc/checkbox/checkbox';
 import { mountFields } from './fields';
+import { useAnchoredPopover } from './components/arc/lib/use-anchored-popover';
 
 // Gli editor vengono creati prima di collegare i listener applicativi. Ogni
 // controllo possiede un piccolo host: la griglia può rimuoverlo senza spostare
@@ -51,6 +52,25 @@ export function createArcInput(props: Omit<InputProps, 'label'> = {}) {
 export function createArcButton(props: ButtonProps = {}) {
   return mount<HTMLButtonElement>(ref => <Button type="button" variant="ghost" size="sm" domContent=""
     data-arc-component="button" {...props} ref={ref} />).control;
+}
+
+export function mountArcEditActions(cell: HTMLElement, field: string, save: () => void, cancel: () => void) {
+  function Actions() {
+    const anchor = useRef(cell), panel = useRef<HTMLDivElement>(null);
+    // Nascondere una vista non equivale ad annullare la bozza della cella.
+    useAnchoredPopover(true, anchor, panel, () => {});
+    return <div ref={panel} popover="manual" className="inline-edit-actions" role="group" aria-label={`Modifica ${field}`}
+      onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); } }}>
+      {([['Applica', save], ['Annulla', cancel]] as const).map(([label, action]) => <Button key={label} type="button" variant="ghost" size="sm"
+        aria-label={`${label} modifica`} onPointerDown={event => event.preventDefault()} onClick={action}>{label}</Button>)}
+    </div>;
+  }
+  // Il top layer evita il taglio sull'ultima riga; il nodo resta nella cella per focus e blur.
+  const host = document.createElement('span');
+  host.className = 'arc-editor-control'; host.dataset.arcOwned = '';
+  cell.append(host);
+  const root = createRoot(host); roots.set(host, root);
+  flushSync(() => root.render(<Actions />));
 }
 
 export function createArcSelect({ options, value = options[0]?.value || '', label }: Pick<SelectProps, 'options' | 'label'> & { value?: string }) {

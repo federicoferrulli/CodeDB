@@ -1,8 +1,8 @@
 'use strict';
 
 import { state } from './state.js';
-import { activeTab } from './tabs.js';
-import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType } from './utils.js';
+import { activeTab, primaDellaChiusura, allaChiusura } from './tabs.js';
+import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType, showQueryError, toast } from './utils.js';
 import { exportImportMenuItems } from './exportimport.js';
 import {
   runQuery, renderGrid, applyQueryPlaceholders, leggiStatoFiltro, applicaStatoFiltro,
@@ -11,9 +11,22 @@ import { startWatch } from './live.js';
 import { setView } from './main.js';
 import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
 import { markAbandonedByCollTab } from './pending-queries.js';
-import { resetQueryView, updateEditorHighlight } from './query-tab.js';
+import { resetQueryView, updateEditorHighlight, snapshotQueryView, restoreQueryView } from './query-tab.js';
+import { focusScriptRun } from './script-run.js';
 import { chiudiPannelloFk } from './fk-vista.js';
 import { segnaTraguardo } from './onboarding-stato.js';
+
+primaDellaChiusura(tab => {
+  if (tab.state.writesInFlight) { toast(`Salvataggio in corso su ${tab.label}: attendi l’esito prima di disconnettere.`, true); return false; }
+  const form = [...document.querySelectorAll('.overlay:not(.hidden)[data-unsaved]')].some(el => el.dataset.editTab === tab.id);
+  return !(form || tab.state.editDrafts?.size || tab.state.collTabs.some(c => c.snapQuery?.dirty))
+    || confirm(`Disconnettere ${tab.label}? Le modifiche e le query non salvate verranno scartate.`);
+});
+allaChiusura(id => {
+  for (const el of document.querySelectorAll('.overlay[data-edit-tab]')) {
+    if (el.dataset.editTab === id) { delete el.dataset.unsaved; el.classList.add('hidden'); }
+  }
+});
 
 // Tab di secondo livello: le collection/tabelle aperte dentro un tab di
 // connessione (t.state.collTabs). Ogni coll-tab ha uno snapshot di query,
@@ -57,38 +70,15 @@ export function applyViewTabsFor(ct) {
   });
 }
 
-// Righe conservate nello snapshot di un coll-tab in secondo piano (CDB-62).
-//
-// Lo snapshot serve a far ricomparire la vista com'era senza rifare la query:
-// per questo conserva anche i risultati. Il costo però si moltiplica per il
-// numero di tab aperti — dieci coll-tab con lo scroll infinito su documenti
-// grandi tengono in memoria decine di migliaia di righe che nessuno sta
-// guardando, e il browser rallenta senza una causa visibile. Oltre la soglia si
-// conserva l'inizio (quello che si vede riattivando il tab) e si segna che
-// mancano le altre: alla riattivazione `ensureActiveCollLoaded` rifà la query,
-// cioè esattamente ciò che accade dopo un refresh della pagina.
-const MAX_DOCS_SNAPSHOT = 500;
-
-/**
- * Conserva il CODICE della tab ⚡ per il coll-tab indicato.
- *
- * Sta a parte da `saveActiveSnapshot` perché quello esce subito per i tab
- * split e per i tab a livello database — mentre il codice dell'editor ha senso
- * proprio anche lì: il tab-database è il coll-tab nato per la sola vista Query,
- * ed è quello in cui si scrive la prima CREATE TABLE.
- *
- * Il resto della vista (risultati, grafico, metriche, pannello script) NON si
- * conserva: descrive un'esecuzione, e un'esecuzione appartiene al momento in
- * cui è avvenuta. Il codice invece è lavoro dell'utente.
- */
+// Mantiene lo stesso oggetto: anche le risposte in volo scrivono qui.
 export function salvaSnapshotQuery(ct) {
   if (!ct) return;
   const editor = $('#query-editor-input');
   if (!editor) return; // pagina non ancora montata
-  ct.snapQuery = {
+  Object.assign(ct.snapQuery ||= {}, snapshotQueryView(), {
     code: editor.value || '',
     engine: $('#query-target-engine')?.value || 'auto',
-  };
+  });
 }
 
 /** Vista ⚡ pulita e codice del coll-tab ripristinato (o editor vuoto). */
@@ -102,6 +92,8 @@ export function applicaSnapshotQuery(ct) {
   if (engine) engine.value = q ? (q.engine || 'auto') : 'auto';
   // Ridisegna evidenziazione, numeri di riga ed etichetta "Esegui Script (N)".
   updateEditorHighlight();
+  restoreQueryView(q);
+  if (q?.scriptRunId) focusScriptRun(q.scriptRunId);
 }
 
 function saveActiveSnapshot() {
@@ -109,7 +101,6 @@ function saveActiveSnapshot() {
   salvaSnapshotQuery(ct);
   if (!ct || ct.isSplitTab || ct.isDbTab) return;
   const docs = Array.isArray(state.docs) ? state.docs : [];
-  const troppi = docs.length > MAX_DOCS_SNAPSHOT;
   const filtro = leggiStatoFiltro();
   ct.snap = {
     filter: $('#filter-input')?.value || '',
@@ -123,8 +114,15 @@ function saveActiveSnapshot() {
     skip: state.skip,
     limit: state.limit,
     total: state.total,
-    docs: troppi ? docs.slice(0, MAX_DOCS_SNAPSHOT) : docs,
-    docsParziali: troppi,
+    countApprox: state.countApprox,
+    countTimedOut: state.countTimedOut,
+    countKey: state.countKey,
+    countToken: state.countToken,
+    exhausted: state.exhausted,
+    docs,
+    selectedDocs: new Set(state.selectedDocs),
+    cellSel: { ...state.cellSel, cells: new Set(state.cellSel.cells) },
+    scroll: { top: $('.grid-wrap')?.scrollTop || 0, left: $('.grid-wrap')?.scrollLeft || 0 },
     columns: state.columns,
     columnMeta: state.columnMeta,
     view: state.view,
@@ -217,6 +215,8 @@ function activate(ct, { fresh }) {
   // precedente (il token cambierà alla prossima runQuery) e azzera i flag footer.
   state.countPending = false;
   state.countTimedOut = false;
+  state.gridRunId = ct.gridRunId || null;
+  state.cellSel = { anchor: null, focus: null, cells: new Set() };
 
   $('#live-badge').classList.add('hidden');
 
@@ -276,14 +276,24 @@ function activate(ct, { fresh }) {
     state.limit = s.limit;
     state.total = s.total;
     state.docs = s.docs;
+    state.countApprox = !!s.countApprox;
+    state.countTimedOut = !!s.countTimedOut;
+    state.countKey = s.countKey;
+    state.countToken = s.countToken || 0;
+    state.exhausted = !!s.exhausted;
     state.columns = s.columns;
     state.columnMeta = s.columnMeta || {};
+    state.selectedDocs = s.selectedDocs || new Set();
+    state.cellSel = s.cellSel || { anchor: null, focus: null, cells: new Set() };
     renderGrid(); // risultati dalla cache: nessuna nuova query
+    const grid = $('.grid-wrap');
+    if (grid && s.scroll) { grid.scrollTop = s.scroll.top; grid.scrollLeft = s.scroll.left; }
     setView(s.view || 'data');
   }
   // Il change stream della sessione è unico: segue la collection attiva.
   // L'eventuale auto-refresh (MySQL) si ferma e va riattivato sul nuovo tab.
   startWatch();
+  showQueryError(ct.gridError || null);
 }
 
 // Attiva il coll-tab attivo del tab corrente se i suoi dati non sono ancora
@@ -329,6 +339,13 @@ export function openCollTab(db, coll, { preview = false } = {}) {
   if (!t || !t.state.connected) return;
   segnaTraguardo('tabella'); // primi passi della guida (no-op se già fatto)
   saveActiveSnapshot();
+  // Una bozza appartiene al documento anche quando l'utente esplora un altro oggetto.
+  for (const precedente of t.state.collTabs.filter(c => c.preview)) {
+    const bozza = [...(t.state.editDrafts?.keys() || [])].some(key => {
+      const [dbBozza, collBozza] = JSON.parse(key); return dbBozza === precedente.db && collBozza === precedente.coll;
+    });
+    if (bozza || precedente.snapQuery?.dirty || precedente.snapQuery?.runId || precedente.snapQuery?.scriptRunId) precedente.preview = false;
+  }
   let ct = t.state.collTabs.find((c) => c.db === db && c.coll === coll && !c.isSplitTab);
   if (ct) {
     // Riapertura: il doppio clic fissa un tab già in anteprima, mentre il clic
@@ -377,20 +394,20 @@ export function switchCollTab(id) {
   activate(ct, { fresh: false });
 }
 
-export function closeCollTab(id) {
-  markAbandonedByCollTab(id);
+export function closeCollTab(id, { force = false } = {}) {
   const t = activeTab();
   if (!t) return;
   const list = t.state.collTabs;
   const i = list.findIndex((c) => c.id === id);
   if (i < 0) return;
-
-  if (list[i].isSplitTab) {
-    // Con più aree affiancate aperte va chiusa PROPRIO questa, che non è
-    // necessariamente quella a schermo.
-    closeSplitView({ collTabId: id });
-    return;
-  }
+  if (list[i].isSplitTab) { closeSplitView({ collTabId: id }); return; }
+  if (!force && list[i].snapQuery?.dirty && !confirm(`Chiudere ${list[i].coll || list[i].db} e scartare la query non salvata?`)) return;
+  if (list[i].gridRunId) emitFireAndForget('query:cancel', { tabId: t.id, runId: list[i].gridRunId });
+  if (list[i].snapQuery?.runId) emitFireAndForget('query:cancel', { runId: list[i].snapQuery.runId });
+  if (list[i].snapQuery) list[i].snapQuery.runId = null;
+  if (list[i].snapQuery?.scriptRunId) emitFireAndForget('script:abort', { runId: list[i].snapQuery.scriptRunId });
+  if (list[i].snapQuery?.file) list[i].snapQuery.file.cancelled = true;
+  markAbandonedByCollTab(id);
 
   const wasActive = list[i].id === t.state.activeCollId;
   list.splice(i, 1);
@@ -424,7 +441,7 @@ export function closeCollTabsWhere(pred, st = null) {
     return;
   }
   if (!t) return;
-  for (const id of t.state.collTabs.filter(pred).map((c) => c.id)) closeCollTab(id);
+  for (const id of t.state.collTabs.filter(pred).map((c) => c.id)) closeCollTab(id, { force: true });
 }
 
 // Applica una modifica a tutti i coll-tab (es. rename di db/collection).
@@ -468,6 +485,8 @@ function clearCollWorkspace() {
 export function renderCollTabBar() {
   const bar = $('#coll-tab-bar');
   bar.innerHTML = '';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Documenti aperti');
   const t = activeTab();
   const list = t && t.state.connected ? t.state.collTabs : [];
   bar.classList.toggle('hidden', !list.length);
@@ -484,18 +503,23 @@ export function renderCollTabBar() {
     bar.addEventListener('drop', (e) => e.stopPropagation());
   }
 
-  // Il coll-tab È la breadcrumb (quella sotto la barra è stata rimossa: ripeteva
-  // un contesto già evidenziato qui e nell'albero a sinistra). Il nome del
-  // database compare però come prefisso attenuato SOLO quando i tab aperti
-  // vengono da più database: con uno solo sarebbe la stessa parola ripetuta su
-  // ogni tab, cioè rumore che ruba spazio ai nomi delle tabelle. Il contesto
-  // completo resta sempre nel `title` al passaggio del mouse.
-  const dbAperti = new Set(list.filter((c) => !c.isSplitTab).map((c) => c.db));
-  const mostraDb = dbAperti.size > 1;
+  // La scheda sostituisce la breadcrumb: il database resta sempre esplicito.
+  const mostraDb = true;
 
   for (const ct of list) {
     const el = document.createElement('div');
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '') + (ct.preview ? ' preview' : '');
+    el.setAttribute('role', 'tab');
+    el.setAttribute('aria-selected', String(ct.id === t.state.activeCollId));
+    el.tabIndex = ct.id === t.state.activeCollId ? 0 : -1;
+    el.addEventListener('keydown', e => {
+      if (e.target !== el) return;
+      const index = list.indexOf(ct);
+      const next = e.key === 'Home' ? list[0] : e.key === 'End' ? list.at(-1) : e.key === 'ArrowRight' ? list[(index + 1) % list.length]
+        : e.key === 'ArrowLeft' ? list[(index + list.length - 1) % list.length] : null;
+      if (next) { e.preventDefault(); switchCollTab(next.id); bar.querySelector('[aria-selected="true"]')?.focus(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); }
+    });
     el.title = (ct.isDbTab
       ? `${ct.db} — solo Query & Aggregate (nessuna ${parolaColl()})`
       : ct.isSplitTab
@@ -503,7 +527,8 @@ export function renderCollTabBar() {
         // cosa: qui il contesto utile è che è un'area, e cosa contiene.
         ? `Area affiancata: ${ct.coll}\nTasto destro per rinominarla`
         : `${ct.db} ▸ ${ct.coll}`)
-      + (ct.preview ? '\nAnteprima: doppio clic per fissare il tab' : '');
+      + (ct.preview ? '\nAnteprima: usa Mantieni aperta per conservare questa scheda' : '');
+    el.setAttribute('aria-label', `${t.label} / ${ct.db} / ${ct.coll || 'Query'}${ct.preview ? ' — Anteprima' : ''}`);
 
     // Il tab-database mostra già il proprio database, quello di split-view non
     // ne ha uno solo: il prefisso riguarda i coll-tab normali.
@@ -522,6 +547,7 @@ export function renderCollTabBar() {
     close.type = 'button';
     close.className = 'coll-tab-close';
     close.title = 'Chiudi';
+    close.setAttribute('aria-label', `Chiudi ${ct.coll || ct.db}`);
     close.textContent = '✕';
     close.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -577,7 +603,15 @@ export function renderCollTabBar() {
     );
 
     if (dbEl) el.append(dbEl);
-    el.append(name, close);
+    el.append(name);
+    if (ct.preview) {
+      const pin = document.createElement('button'); pin.type = 'button'; pin.className = 'coll-tab-pin';
+      pin.textContent = 'Mantieni'; pin.title = 'Mantieni aperta: non verrà sostituita dalla prossima anteprima';
+      pin.setAttribute('aria-label', `Mantieni aperta ${ct.coll || ct.db}`);
+      pin.addEventListener('click', e => { e.stopPropagation(); pinCollTab(ct.id); bar.querySelector('[aria-selected="true"]')?.focus(); });
+      el.append(pin);
+    }
+    el.append(close);
     bar.appendChild(el);
   }
 }

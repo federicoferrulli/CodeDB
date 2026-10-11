@@ -26,6 +26,8 @@ const { startTestServer } = require('./e2e-harness');
       Object.defineProperty(window, 'visualViewport', { value: vv, configurable: true });
     });
     await page.goto(server.url);
+    await page.waitForSelector('html[data-arc-ready="true"]');
+    if(await page.locator('#onboarding-close').isVisible())await page.locator('#onboarding-close').click();
     await page.waitForFunction(() => document.documentElement.style.getPropertyValue('--pagina-altezza'));
     await page.evaluate(() => document.querySelectorAll('.overlay').forEach(el => el.classList.add('hidden')));
     const cdp = await page.context().newCDPSession(page);
@@ -46,12 +48,15 @@ const { startTestServer } = require('./e2e-harness');
       if (width <= 900) {
         dentro(await page.locator('.mobile-bottom-nav').boundingBox(), area, 'Navigazione inferiore');
         for (const selector of ['#conn-sidebar', '#sidebar']) {
-          await page.locator(selector).evaluate(el => {
-            el.style.transition = 'none'; el.classList.add('open');
-            for (let parent = el; parent; parent = parent.parentElement) parent.classList.remove('hidden');
-          });
+          await page.evaluate(async selector => {
+            document.querySelector(selector).classList.remove('hidden');
+            (await import('/js/responsive.js')).toggleDrawer(selector);
+          },selector);
+          await page.locator(selector).waitFor({state:'visible'});
+          await page.locator('.arc-navigation-sheet [data-grabber]').press('Home');
+          await page.waitForTimeout(400);
           dentro(await page.locator(selector).boundingBox(), area, selector);
-          await page.locator(selector).evaluate(el => el.classList.remove('open'));
+          await page.evaluate(async () => (await import('/js/responsive.js')).closeDrawers());
         }
       }
       // Prova tutte le modali statiche, incluse quelle con minimi fissi e

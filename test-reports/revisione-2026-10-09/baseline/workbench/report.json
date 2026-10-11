@@ -1,0 +1,21 @@
+{
+  "transport": "simulato, risposte consegnate fuori ordine",
+  "checks": [
+    "Query concorrenti su database diversi della stessa connessione: risultati, codice e annullamento isolati",
+    "Filtro e selezione delle celle conservati al cambio documento",
+    "Salvataggio in volo protetto; errore dopo cambio documento conserva la bozza, recuperabile e annullabile",
+    "Editor documento: contesto esplicito e chiusura annullabile con modifiche pendenti",
+    "Script a blocchi: avanzamento in background, stessa sessione e database, nessuna modifica del secondo editor",
+    "Salvataggio del testo query via Ctrl+S, senza trasformare il contenuto",
+    "Script sostituito: errore tardivo ignorato; annullamento definitivo termina stato e caricamento",
+    "Script senza cursore recuperato come testo, senza ripetere scritture già applicate",
+    "Due connessioni affiancate: risposte invertite, cambio focus e annullamento per run e sessione",
+    "Layout, focus e cambio connessione non rimontano gli editor dei pannelli",
+    "Palette globale dall’editor incorporato, ridimensionamento con puntatore e tastiera",
+    "Temi chiaro, scuro e token personalizzati; desktop, laptop e viewport stretto senza overflow della pagina",
+    "Chiusura annullabile con query non salvate; disconnessione del proprietario trasferisce il confronto superstite",
+    "Ripresa dalla sessione chiusa: testo conservato nel registro e nessuna esecuzione sulla sessione superstite",
+    "Errore di connessione senza alterare la sessione già aperta"
+  ],
+  "errors": []
+}

@@ -1,0 +1,24 @@
+.overlay { position: fixed; inset: 0; z-index: var(--z-drawer-backdrop); background: var(--sh-550); }
+.sheet {
+  position: fixed; z-index: var(--z-drawer); inset-inline: var(--sal) var(--sar);
+  bottom: calc(var(--area-bottom, 0px) - var(--sheet-extension));
+  display: flex; flex-direction: column; width: min(100%, 36rem);
+  height: calc(var(--sheet-max) * var(--area-altezza, 100dvh) + var(--sheet-extension));
+  margin-inline: auto; overflow: hidden; box-sizing: border-box;
+  padding-bottom: var(--sheet-extension); border: 1px solid var(--border-strong); border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0; background: var(--surface-raised);
+  color: var(--foreground); box-shadow: var(--shadow-floating); font-family: var(--font-body); outline: none;
+}
+.header { position: relative; flex: none; padding: 0 12px 8px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid var(--border); }
+.sheet[data-dragging] .header { cursor: grabbing; }
+.grabber { display: flex; width: 64px; min-height: 44px; align-items: center; justify-content: center; margin: 0 auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: inherit; }
+.grabberBar { width: 36px; height: 4px; border-radius: var(--radius-sm); background: var(--text-secondary); }
+.headRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.headText { min-width: 0; }
+.title { margin: 0; font: 600 16px/1.4 var(--font-body); }
+.description { margin: 2px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.close { display: grid; flex: none; width: 44px; min-height: 44px; place-items: center; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--foreground); cursor: pointer; }
+.grabber:focus-visible, .close:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: -3px; }
+@media (hover: hover) { .close:hover, .grabber:hover { background: var(--sel); } }
+.body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-x pan-y pinch-zoom; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

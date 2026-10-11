@@ -37,12 +37,36 @@
  * @param {(delta: number, partenza: any, ev: PointerEvent) => void} opzioni.sposta
  * @param {(partenza: any) => void} [opzioni.fine]
  */
-export function rendiTrascinabile(maniglia, { asse = 'x', inizio, sposta, fine }) {
+export function rendiTrascinabile(maniglia, { asse = 'x', inizio, sposta, fine, etichetta, controllato, minimo, massimo }) {
   if (!maniglia) return;
   // Senza questo il browser interpreta il trascinamento come uno scorrimento
   // della pagina e annulla il puntatore a metà gesto. È l'equivalente, per il
   // dito, di `preventDefault` sul mousedown.
   maniglia.style.touchAction = 'none';
+  if (controllato) {
+    maniglia.tabIndex = 0;
+    maniglia.setAttribute('role', 'separator');
+    maniglia.setAttribute('aria-label', etichetta);
+    maniglia.setAttribute('aria-controls', controllato.id);
+    maniglia.setAttribute('aria-orientation', asse === 'x' ? 'vertical' : 'horizontal');
+    const aggiorna = () => {
+      maniglia.setAttribute('aria-valuemin', Math.round(minimo()));
+      maniglia.setAttribute('aria-valuemax', Math.round(massimo()));
+      maniglia.setAttribute('aria-valuenow', Math.round(inizio()));
+    };
+    new ResizeObserver(aggiorna).observe(controllato);
+    maniglia.addEventListener('keydown', e => {
+      const delta = e.key === 'Home' ? minimo() - inizio() : e.key === 'End' ? massimo() - inizio()
+        : e.key === (asse === 'x' ? 'ArrowLeft' : 'ArrowUp') ? -16
+        : e.key === (asse === 'x' ? 'ArrowRight' : 'ArrowDown') ? 16 : null;
+      if (delta === null) return;
+      e.preventDefault(); e.stopPropagation();
+      const prima = inizio();
+      sposta(delta, prima, e);
+      fine?.(prima);
+      aggiorna();
+    });
+  }
 
   const coord = (e) => (asse === 'x' ? e.clientX : e.clientY);
   let partenza = null;

@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "Escape, calendario, Applica/Annulla e millisecondi: 1440px",
+    "Escape, calendario, Applica/Annulla e millisecondi: 390px",
+    "Data non valida annullabile; bozza recuperabile dopo errore server"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Annulla è raggiungibile anche sull’ultima riga\n    at C:\\repository\\CodeDB\\test\\e2e-uscita-editing.js:60:5"
+}

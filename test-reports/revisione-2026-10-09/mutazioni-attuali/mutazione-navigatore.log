@@ -1,0 +1,14 @@
+{"scroll":53,"tastiera":0,"blocchi":0}
+OK: larghezza reale, nessun ordinamento accidentale, persistenza del documento, query, pannello, touch e immissione numerica
+AssertionError [ERR_ASSERTION]: La sezione connessioni si chiude conservando l’intestazione
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-griglia-fluidita.js:180:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

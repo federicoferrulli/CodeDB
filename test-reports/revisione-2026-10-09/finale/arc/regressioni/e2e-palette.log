@@ -1,0 +1,28 @@
+--- E2E: palette dei comandi (Ctrl+P) ---
+  [32m✔ OK[0m   nessuna voce «[object Object]» in palette
+  [32m✔ OK[0m   db:collections riceve il nome del database come stringa, per ogni database
+  [32m✔ OK[0m   le tabelle di tutti i database sono in elenco
+  [32m✔ OK[0m   in DOM ci sono solo le righe della finestra visibile
+  [32m✔ OK[0m   lo spaziatore sotto rende la barra di scorrimento coerente col totale
+  [32m✔ OK[0m   si cerca una tabella per nome, col suo database come nota
+  [32m✔ OK[0m   cercare il nome del database trova il database e le sue 100 tabelle
+  [32m✔ OK[0m   un termine senza risultati lascia l'avviso, non una lista vuota
+  [32m✔ OK[0m   «#» cerca fra i soli database
+  [32m✔ OK[0m   il piede dice quale richiamo e' attivo
+  [32m✔ OK[0m   «@» cerca fra le sole tabelle
+  [32m✔ OK[0m   «>» cerca fra i soli comandi — non fra le connessioni, che sono un'altra cosa
+  [32m✔ OK[0m   lo stesso termine senza richiamo non e' ristretto a un tipo
+  [32m✔ OK[0m   un carattere qualunque in testa non viene scambiato per un richiamo
+  [32m✔ OK[0m   il piede insegna i richiami finche' non se ne usa uno
+  [32m✔ OK[0m   scorrere non accumula righe in DOM
+  [32m✔ OK[0m   in fondo alla lista c'è davvero l'ultima voce
+  [32m✔ OK[0m   lo spaziatore sopra tiene il posto di ciò che non è disegnato
+  [32m✔ OK[0m   le frecce muovono la selezione anche su righe non disegnate
+  [32m✔ OK[0m   la riga selezionata viene portata in vista
+  [32m✔ OK[0m   il nodo del database nell'albero e' raggiungibile per nome
+  [32m✔ OK[0m   scegliere un database dalla palette lo espande nell'albero
+  [32m✔ OK[0m   scegliere una voce chiude la palette
+  [32m✔ OK[0m   scegliere una tabella la apre nel workspace
+  [32m✔ OK[0m   nessun errore JavaScript durante l'uso della palette
+
+[32mTutti i controlli superati[0m

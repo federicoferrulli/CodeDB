@@ -1,0 +1,255 @@
+{
+  "scroll": {
+    "righeAggiunte": 53,
+    "righeRimosse": 52,
+    "longTasks": [
+      69,
+      87,
+      72,
+      66,
+      56,
+      64,
+      59,
+      65,
+      58,
+      57,
+      50,
+      59,
+      57
+    ],
+    "frames": [
+      8.400000095367432,
+      16.59999990463257,
+      17.100000143051147,
+      15.700000047683716,
+      17,
+      17.5,
+      17,
+      22.59999990463257,
+      27.40000009536743,
+      69.39999985694885,
+      88.79999995231628,
+      74.80000019073486,
+      66.5,
+      57.59999990463257,
+      63.799999952316284,
+      60.10000014305115,
+      66,
+      60.19999980926514,
+      47.40000009536743,
+      58.09999990463257,
+      51.90000009536743,
+      47.700000047683716,
+      44.39999985694885,
+      44.200000047683716,
+      42.799999952316284,
+      43.200000047683716,
+      40.5,
+      41.200000047683716,
+      40,
+      42.299999952316284,
+      40.10000014305115,
+      40.5,
+      44.799999952316284,
+      41.09999990463257,
+      47.700000047683716,
+      39.799999952316284,
+      40.60000014305115,
+      48.19999980926514,
+      39.30000019073486,
+      38.799999952316284,
+      43.09999990463257,
+      38.5,
+      40.200000047683716,
+      42.700000047683716,
+      60.39999985694885,
+      58.5,
+      40.60000014305115,
+      44.700000047683716,
+      38.5,
+      44.69999980926514,
+      41,
+      35.90000009536743,
+      47,
+      51.09999990463257,
+      41.40000009536743,
+      38,
+      36.299999952316284,
+      48.799999952316284,
+      48.80000019073486,
+      39.5
+    ]
+  },
+  "costiScroll": {
+    "LayoutCount": 53,
+    "RecalcStyleCount": 113,
+    "LayoutDuration": 0.201953,
+    "RecalcStyleDuration": 1.053399,
+    "ScriptDuration": 0.533596,
+    "TaskDuration": 2.6501529999999995
+  },
+  "tastiera": {
+    "righeAggiunte": 0,
+    "righeRimosse": 0,
+    "longTasks": [],
+    "frames": []
+  },
+  "mouse": {
+    "righeAggiunte": 0,
+    "righeRimosse": 0,
+    "longTasks": [],
+    "frames": []
+  },
+  "hot": [
+    {
+      "nome": "(program)",
+      "url": "",
+      "riga": 0,
+      "campioni": 2051
+    },
+    {
+      "nome": "(idle)",
+      "url": "",
+      "riga": 0,
+      "campioni": 626
+    },
+    {
+      "nome": "getBoundingClientRect",
+      "url": "",
+      "riga": 0,
+      "campioni": 123
+    },
+    {
+      "nome": "getPropertyValue",
+      "url": "",
+      "riga": 0,
+      "campioni": 113
+    },
+    {
+      "nome": "scrollIntoView",
+      "url": "",
+      "riga": 0,
+      "campioni": 105
+    },
+    {
+      "nome": "get scrollTop",
+      "url": "",
+      "riga": 0,
+      "campioni": 47
+    },
+    {
+      "nome": "cellFromTd",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 95,
+      "campioni": 39
+    },
+    {
+      "nome": "",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 160,
+      "campioni": 33
+    },
+    {
+      "nome": "cellFromTd",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 95,
+      "campioni": 24
+    },
+    {
+      "nome": "cellFromTd",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 95,
+      "campioni": 24
+    },
+    {
+      "nome": "",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 160,
+      "campioni": 23
+    },
+    {
+      "nome": "querySelectorAll",
+      "url": "",
+      "riga": 0,
+      "campioni": 20
+    },
+    {
+      "nome": "cellFromTd",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 95,
+      "campioni": 20
+    },
+    {
+      "nome": "",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 160,
+      "campioni": 18
+    },
+    {
+      "nome": "",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 160,
+      "campioni": 18
+    },
+    {
+      "nome": "formattaNumero",
+      "url": "http://127.0.0.1:3185/js/cell-stats.js",
+      "riga": 180,
+      "campioni": 17
+    },
+    {
+      "nome": "applica",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 138,
+      "campioni": 16
+    },
+    {
+      "nome": "pL",
+      "url": "http://127.0.0.1:3185/arc/ui.js",
+      "riga": 61,
+      "campioni": 16
+    },
+    {
+      "nome": "applica",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 138,
+      "campioni": 15
+    },
+    {
+      "nome": "remove",
+      "url": "",
+      "riga": 0,
+      "campioni": 14
+    },
+    {
+      "nome": "",
+      "url": "http://127.0.0.1:3185/js/grid.js",
+      "riga": 715,
+      "campioni": 13
+    },
+    {
+      "nome": "MutationObserver.observe.childList",
+      "url": "http://127.0.0.1:3185/arc/ui.js",
+      "riga": 61,
+      "campioni": 13
+    },
+    {
+      "nome": "(garbage collector)",
+      "url": "",
+      "riga": 0,
+      "campioni": 11
+    },
+    {
+      "nome": "applica",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 138,
+      "campioni": 9
+    },
+    {
+      "nome": "applica",
+      "url": "http://127.0.0.1:3185/js/cellselect.js",
+      "riga": 138,
+      "campioni": 9
+    }
+  ]
+}

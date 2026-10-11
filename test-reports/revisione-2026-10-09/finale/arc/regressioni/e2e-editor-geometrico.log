@@ -1,0 +1,39 @@
+--- E2E: editor geometrico (tipo dichiarato e multipart) ---
+  [32m✔ OK[0m   una colonna MultiPolygon apre l'editor gia' su MultiPolygon (MultiPolygon)
+  [32m✔ OK[0m   la geometria iniziale e' un MultiPolygon (MultiPolygon)
+  [32m✔ OK[0m   il comando per la parte successiva e' quello del tipo (Nuovo poligono: conclude quello corrente e ne inizia un altro|Nuovo poligono: conclude quello corrente e ne inizia un altro)
+  [32m✔ OK[0m   Ridisegna svuota la geometria conservando il tipo
+  [32m✔ OK[0m   un MultiPolygon vuoto non viene salvato e dice perche' (Ogni poligono richiede almeno un anello chiuso con 3 vertici.)
+  [32m✔ OK[0m   tre clic sulla mappa fanno un anello chiuso di 4 posizioni (4)
+  [32m✔ OK[0m   il primo e l’ultimo vertice coincidono: l’anello e’ chiuso
+  [32m✔ OK[0m   "Nuovo poligono" aggiunge una seconda parte (2)
+  [32m✔ OK[0m   i vertici successivi vanno nella parte ATTIVA, non nella prima
+  [32m✔ OK[0m   il MultiPolygon completo viene applicato con entrambe le parti
+  [32m✔ OK[0m   dopo tre vertici l’anello è chiuso e «Annulla» è attivo
+  [32m✔ OK[0m   su un Polygon il bottone «Parte» non compare: di parti ne ha una sola
+  [32m✔ OK[0m   i bottoni sul vertice si accendono solo quando un vertice è scelto
+  [32m✔ OK[0m   la barra dice quale vertice è scelto (vertice 2 di 4)
+  [32m✔ OK[0m   «Vertice dopo» infila un vertice a metà lato senza aprire l’anello
+  [32m✔ OK[0m   il vertice appena inserito diventa quello scelto (vertice 3 di 5)
+  [32m✔ OK[0m   «Vertice» elimina quello scelto
+  [32m✔ OK[0m   sotto il minimo di vertici l’eliminazione viene rifiutata, non eseguita
+  [32m✔ OK[0m   «Annulla» riporta indietro l’ultima modifica e abilita «Rifai»
+  [32m✔ OK[0m   «Rifai» la riapplica
+  [32m✔ OK[0m   un clic a 18 px dal vertice lo sceglie lo stesso
+  [32m✔ OK[0m   lontano da ogni vertice la scelta si azzera
+  [32m✔ OK[0m   sopra una maniglia il cursore dichiara che si può prendere
+  [32m✔ OK[0m   scegliere un vertice non riempie la storia: «Annulla» disfa la modifica vera
+  [32m✔ OK[0m   chiudendo il pannello GeoJSON la mappa si prende la larghezza intera
+  [32m✔ OK[0m   e si riapre dichiarando il proprio stato
+  [32m✔ OK[0m   l’interruttore dello sfondo e la casella dicono sempre la stessa cosa
+  [32m✔ OK[0m   una geometria esistente si apre in sola selezione (modifica)
+  [32m✔ OK[0m   il clic sullo sfondo NON aggiunge un vertice a una geometria esistente
+  [32m✔ OK[0m   scelto «Disegna» nel controllo segmentato, il clic torna ad aggiungere
+  [32m✔ OK[0m   una colonna MultiLineString apre sul proprio tipo (MultiLineString, Nuova linea: conclude quella corrente e ne inizia un’altra|Nuova linea: conclude quella corrente e ne inizia un’altra)
+  [32m✔ OK[0m   senza sottotipo dichiarato si resta su Point (Point)
+  [32m✔ OK[0m   in sola lettura spariscono strumenti, modalità e salvataggio
+  [32m✔ OK[0m   il form di inserimento porta il sottotipo dei due motori fino alla mappa
+  [32m✔ OK[0m   una colonna `geometry` senza sottotipo non ne dichiara uno
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- Editor geometrico: tutti i test superati ---

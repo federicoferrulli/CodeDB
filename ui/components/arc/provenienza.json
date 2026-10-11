@@ -160,6 +160,20 @@
       "path": "ui/components/arc/text-morph/text-morph.module.css",
       "sha256": "bd51e5ba739e7b7272ad4b46fb500617aaaefb2ae4303010edaea6057f975989",
       "source": "https://uiarc.dev/r/text-morph.json"
+    },
+    {
+      "path": "ui/components/arc/bottom-sheet/bottom-sheet.tsx",
+      "sha256": "c31e59f706c6da72acf78737c842fc58bf1e42d75002b89103914308d689d3f3",
+      "source": "https://uiarc.dev/r/bottom-sheet.json",
+      "retrievedAt": "2026-10-10",
+      "adaptations": "Italiano, token CodeDB, viewport utile, trascinamento dalla testata e integrazione dei pannelli esistenti."
+    },
+    {
+      "path": "ui/components/arc/bottom-sheet/bottom-sheet.module.css",
+      "sha256": "7e7f5d9d09757b8c76afacd694bed8151fe48c9afe9e7a85a157361902275624",
+      "source": "https://uiarc.dev/r/bottom-sheet.json",
+      "retrievedAt": "2026-10-10",
+      "adaptations": "Italiano, token CodeDB, viewport utile, trascinamento dalla testata e integrazione dei pannelli esistenti."
     }
   ]
 }

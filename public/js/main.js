@@ -44,6 +44,14 @@ import { initTheme } from './theme.js';
 import { initScorciatoie } from './scorciatoie-ui.js';
 import { initPalette } from './palette.js';
 import { scaldaEcharts } from './chart-runtime.js';
+import { contestoIncorporato, preparaPannelloIncorporato } from './pane-runtime.js';
+import { snapshotQueryView } from './query-tab.js';
+import { queryDocument } from './query-document.js';
+import { initDocumentSwitcher } from './document-switcher.js';
+import { setPaneView, scegliPannelloDaAffiancare, raggiungiPannelloAttivo } from './splitview.js';
+
+preparaPannelloIncorporato();
+$('#workspace-active-pane-btn')?.addEventListener('click', raggiungiPannelloAttivo);
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -69,9 +77,8 @@ export function setView(view) {
       view = 'split';
       mostraPannelliAffiancati(true);
     } else {
-      const ctx = contestoPaneAFuoco();
-      if (ctx) { state.db = ctx.db; state.coll = ctx.coll; }
-      mostraPannelliAffiancati(false);
+      setPaneView(null, view);
+      return;
     }
   } else if (view === 'split') {
     return; // nessuna area affiancata da mostrare
@@ -116,18 +123,35 @@ document.addEventListener('click', (e) => {
 // Maniglie di ridimensionamento orizzontale: ogni .resizer ridimensiona
 // l'elemento indicato da data-resize; la larghezza è ricordata in localStorage.
 function initResizers() {
+  const navigator = $('#navigator');
+  const connections = $('#conn-sidebar');
+  const keyHeight = migraChiave('navigator-connections-height', 'gui-db:navigator-connections-height');
+  const maximum = () => Math.max(100, navigator.clientHeight - 100);
+  const setHeight = value => navigator.style.setProperty('--connections-height', `${Math.min(maximum(), Math.max(100, value))}px`);
+  const savedHeight = Number(localStorage.getItem(keyHeight));
+  if (savedHeight > 0 && Number.isFinite(savedHeight)) navigator.style.setProperty('--connections-height', `${Math.max(100, savedHeight)}px`);
+  rendiTrascinabile($('#navigator-divider'), {
+    asse: 'y', etichetta: 'Spazio delle connessioni nel navigatore', controllato: connections,
+    minimo: () => 100, massimo: maximum, inizio: () => connections.getBoundingClientRect().height,
+    sposta: (delta, height) => setHeight(height + delta),
+    fine: () => localStorage.setItem(keyHeight, String(connections.getBoundingClientRect().height)),
+  });
   document.querySelectorAll('.resizer[data-resize]').forEach((rz) => {
-    const el = document.getElementById(rz.dataset.resize) || (rz.dataset.resize === 'query-sidebar' ? $('#query-schema-sidebar') : null);
+    const el = rz.dataset.resize === 'conn-sidebar' ? navigator : document.getElementById(rz.dataset.resize) || (rz.dataset.resize === 'query-sidebar' ? $('#query-schema-sidebar') : null);
     if (!el) return;
     // Prefisso unificato con recupero del valore precedente (CDB-64).
     const key = migraChiave(`width:${rz.dataset.resize}`, `gui-db:width:${rz.dataset.resize}`);
     const saved = localStorage.getItem(key);
-    if (saved) el.style.width = saved;
+    if (saved) {
+      el.style.width = saved;
+    }
     // Il gesto sta in `maniglia.js`: prima questo ascoltava `mousedown`, cioe'
     // un evento che il dito e la penna non producono — la barra laterale non
     // si poteva ridimensionare a tocco, e nulla lo diceva.
     rendiTrascinabile(rz, {
       asse: 'x',
+      etichetta: `Larghezza ${el.querySelector('.sidebar-title, h3')?.textContent.trim() || 'navigatore'}`,
+      controllato: el, minimo: () => 150, massimo: () => window.innerWidth * 0.45,
       inizio: () => el.getBoundingClientRect().width,
       sposta: (dx, larghezzaIniziale) => {
         el.style.width = `${Math.min(Math.max(150, larghezzaIniziale + dx), window.innerWidth * 0.45)}px`;
@@ -160,12 +184,11 @@ function initSettingsMenu() {
 
 // Per primo: con RBAC attivo la schermata di accesso deve comparire prima che
 // gli altri moduli inizino a parlare col server.
-initAuth();
+if (!contestoIncorporato) initAuth();
 initToolbarDropdown('#view-menu-btn', '#view-menu'); // menu "Visualizza" (UML, Grafo 3D)
 initUml();
 initGraph3d();
-initConnection();
-initConnManager();
+if (!contestoIncorporato) { initConnection(); initConnManager(); }
 initDbTree();
 initSchemaOps();
 initGrid();
@@ -176,35 +199,32 @@ initInsert();
 initGeoMap();
 initGeoMulti();
 initDetails();
-initLive();
+if (!contestoIncorporato) initLive();
 initResizers();
+if (!contestoIncorporato) initDocumentSwitcher();
 initResponsive();
 initExportImport();
-initVault();
+if (!contestoIncorporato) initVault();
 initQueryTab();
-initBackupManager();
-initAuditLog();
-initHealth();
-initSessions();
-initAdminRbac();
+if (!contestoIncorporato) { initBackupManager(); initAuditLog(); initHealth(); initSessions(); initAdminRbac(); }
 initPendingQueries();
 initScriptRun();
-initPassphrase();
-initSessionPersistence();
+if (!contestoIncorporato) initPassphrase();
+if (!contestoIncorporato) initSessionPersistence();
 initSplitView();
-initSettingsMenu();
-initAbout();
+$('#workspace-split-btn')?.addEventListener('click', e => scegliPannelloDaAffiancare(e.currentTarget));
+if (!contestoIncorporato) { initSettingsMenu(); initAbout(); }
 initScorciatoie();
-initPalette();
+if (!contestoIncorporato) initPalette();
 // Presto: lo script in linea dell'`<head>` ha già dipinto la palette giusta,
 // ma il CSS di un tema PERSONALIZZATO lo conosce solo questo modulo — prima
 // che lo aggiunga si vede la sola base, e più tardi lo si vedrebbe cambiare
 // sotto gli occhi.
-initTheme();
+if (!contestoIncorporato) initTheme();
 // Per ultima: decide da sé se aprirsi (primo avvio o dopo un aggiornamento) e
 // deve trovare il resto dell'interfaccia già montato, perché il tour indica
 // elementi reali e salta quelli che non ci sono.
-initOnboarding();
+if (!contestoIncorporato) initOnboarding();
 
 // A interfaccia montata e a macchina ferma: la libreria dei grafici pesa 1,1 MB
 // e compilarla costa ~250 ms, che senza questo si pagano fra il clic su 📈 e la
@@ -215,3 +235,27 @@ scaldaEcharts();
 renderTabBar();
 renderWorkspace();
 refreshLucideIcons();
+if (contestoIncorporato) {
+  contestoIncorporato.riprendi = async item => {
+    const script = await import('./script-run.js');
+      if (item.kind === 'script' && script.knowsScriptRun(item.runId)) {
+      script.focusScriptRun(item.runId);
+      if (item.status === 'paused') return script.resumeScript(item.runId);
+        return;
+      }
+      const query = await import('./query-tab.js');
+      if (contestoIncorporato.dirty() && $('#query-editor-input').value !== item.code
+        && !confirm('Sostituire la query non salvata con quella del registro?')) return;
+      $('#query-editor-input').value = item.code;
+    $('#query-editor-input').dispatchEvent(new Event('input'));
+      $('#query-target-engine').value = item.engine;
+      query.setQueryTarget(item.db, item.coll);
+      if (item.kind !== 'script' && item.status !== 'running') return query.runQuery();
+  };
+  contestoIncorporato.setView = setView;
+  contestoIncorporato.snapshot = () => ({ ...queryDocument(), ...snapshotQueryView(),
+    code: $('#query-editor-input').value, engine: $('#query-target-engine').value });
+  contestoIncorporato.dirty = () => !!queryDocument()?.dirty || !!document.querySelector('td.editing, .overlay:not(.hidden):has(textarea)');
+  contestoIncorporato.ready = true;
+  contestoIncorporato.onReady();
+}

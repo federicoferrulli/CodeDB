@@ -42,6 +42,7 @@ const SCHEMA = {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
+    if(process.argv.includes('--mutant-colonne'))await page.route('**/js/table-resize.js',async route=>{const response=await route.fetch(),code=await response.text();await route.fulfill({response,body:code.replace('const scrivi = value => {','const scrivi = value => { return;')});});
     const errori = [];
     const retiEsterne = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
@@ -205,6 +206,14 @@ const SCHEMA = {
     const dati = await page.evaluate(() => document.getElementById('uml-dati-corpo').textContent);
     ok(/Roma/.test(dati), 'i sottodocumenti si leggono nelle celle', dati.slice(0, 160));
     ok(!/\[object Object\]/.test(dati), 'nessuna cella dice «[object Object]»');
+    for (const width of [1440,390]) {
+      await page.setViewportSize({width,height:900});
+      const handle=page.locator('.uml-dati-tab .qt-col-resizer').first();
+      const prima=(await handle.locator('..').boundingBox()).width;
+      await handle.focus();await handle.press('ArrowRight');
+      ok(Math.abs((await handle.locator('..').boundingBox()).width-prima-16)<2, `colonne del campione UML ridimensionabili a ${width}px`);
+    }
+    await page.setViewportSize({width:1440,height:900});
     await page.click('#uml-dati-chiudi');
     await page.waitForTimeout(200);
     /* --- 6. Export SVG autonomo ------------------------------------------- */

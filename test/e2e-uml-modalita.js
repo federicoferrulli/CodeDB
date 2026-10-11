@@ -29,6 +29,8 @@ const { startTestServer } = require('./e2e-harness');
       });
     }
     await page.goto(server.url);
+    await page.waitForSelector('html[data-arc-ready="true"]');
+    if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
     await page.waitForSelector('#uml-canvas', { state: 'attached' });
     await page.evaluate(async () => {
       const { impostaSocket } = await import('/js/socket.js');
@@ -70,7 +72,7 @@ const { startTestServer } = require('./e2e-harness');
       tabs.activeId = tab.id;
       window.__state = tab.state;
       for (const id of ['welcome', 'placeholder', 'onboarding-overlay']) document.getElementById(id)?.classList.add('hidden');
-      for (const id of ['tab-body', 'workspace', 'coll-tab-bar']) document.getElementById(id).classList.remove('hidden');
+      for (const id of ['tab-body', 'workspace', 'coll-tab-bar', 'sidebar']) document.getElementById(id).classList.remove('hidden');
       for (const el of document.querySelectorAll('#workspace .view-panel:not(#view-uml)')) el.classList.add('hidden');
       window.__uml = await import('/js/uml.js');
       window.__setView = (await import('/js/main.js')).setView;

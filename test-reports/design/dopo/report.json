@@ -2,6 +2,7 @@
   "checks": [
     "Ricerca comandi visibile, apertura e ripristino del focus",
     "Schema desktop richiudibile e ridimensionabile; drawer mobile apribile e richiudibile",
+    "JointJS, WebGL 3D, ECharts e Leaflet reali su dati sintetici: chiaro/scuro, desktop e mobile",
     "Navigazione Dati → Dettagli → Query e impostazioni; screenshot alle tre larghezze; due temi; nessun errore JS o HTTP"
   ],
   "surfaces": [
@@ -10,7 +11,7 @@
       "width": 1440,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -23,7 +24,7 @@
       "width": 768,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -49,7 +50,7 @@
       "width": 1440,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -62,7 +63,7 @@
       "width": 768,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -88,7 +89,7 @@
       "width": 1440,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -101,7 +102,7 @@
       "width": 768,
       "overflow": false,
       "font": "16px",
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -127,8 +128,8 @@
       "width": 1440,
       "overflow": false,
       "font": "16px",
-      "row": 32,
-      "expectedRow": 32,
+      "row": 30,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -161,8 +162,8 @@
       "width": 768,
       "overflow": false,
       "font": "16px",
-      "row": 32,
-      "expectedRow": 32,
+      "row": 30,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -229,8 +230,8 @@
       "width": 1440,
       "overflow": false,
       "font": "16px",
-      "row": 32,
-      "expectedRow": 32,
+      "row": 30,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -263,8 +264,8 @@
       "width": 768,
       "overflow": false,
       "font": "16px",
-      "row": 32,
-      "expectedRow": 32,
+      "row": 30,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -332,7 +333,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -366,7 +367,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -434,7 +435,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -465,7 +466,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -476,7 +477,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -507,7 +508,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -549,7 +550,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -560,7 +561,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -591,7 +592,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -602,7 +603,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -633,7 +634,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -675,7 +676,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -686,7 +687,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -717,7 +718,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -728,7 +729,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -759,7 +760,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -801,7 +802,7 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -812,7 +813,7 @@
       "overflow": false,
       "font": "16px",
       "row": 0,
-      "expectedRow": 32,
+      "expectedRow": 30,
       "labels": [
         {
           "text": "Connessioni",
@@ -843,7 +844,615 @@
           "size": 12
         },
         {
-          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Snippet & Template\n                               Pulisci editor",
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "uml-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Diagramma UMLUML",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "uml-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Diagramma UMLUML",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafo-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Grafo 3DGrafo",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafo-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Grafo 3DGrafo",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafici-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafici-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "mappa-dark",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "mappa-dark",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "uml-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Diagramma UMLUML",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "uml-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Diagramma UMLUML",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafo-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Grafo 3DGrafo",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafo-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "Grafo 3DGrafo",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafici-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "grafici-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "mappa-light",
+      "width": 1440,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 30,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
+          "size": 12
+        }
+      ]
+    },
+    {
+      "name": "mappa-light",
+      "width": 390,
+      "overflow": false,
+      "font": "16px",
+      "row": 0,
+      "expectedRow": 48,
+      "labels": [
+        {
+          "text": "Connessioni",
+          "size": 12
+        },
+        {
+          "text": "Database",
+          "size": 12
+        },
+        {
+          "text": "DatiDati",
+          "size": 12
+        },
+        {
+          "text": "DettagliInfo",
+          "size": 12
+        },
+        {
+          "text": "Query &\n                      AggregateQuery",
+          "size": 12
+        },
+        {
+          "text": "VisualizzaVista",
+          "size": 12
+        },
+        {
+          "text": "Schema Browser\n                      \n                        ⟳\n                        ✕",
+          "size": 12
+        },
+        {
+          "text": "Editor Query (SQL / MQL JSON)\n                        \n                        \n                          \n                           Formatta\n                          \n                          \n                            ⋯\n                            \n                               Cronologia query\n                               Apri file SQL…\n                               Salva query…\n                               Snippet & Template\n                               Pulisci editor",
           "size": 12
         }
       ]
@@ -853,10 +1462,10 @@
   "requests": [],
   "resize": {
     "handle": {
-      "x": 608,
-      "y": 175,
+      "x": 428,
+      "y": 168.796875,
       "width": 4,
-      "height": 785
+      "height": 791.203125
     },
     "schemaWidth": 184,
     "target": "<div class=\"resizer\" data-resize=\"query-sidebar\" style=\"touch-action: none;\"></div>",

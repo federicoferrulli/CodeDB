@@ -1,0 +1,31 @@
+--- E2E: la selezione di celle in più griglie indipendenti ---
+  [32m✔ OK[0m   il trascinamento su alfa seleziona il rettangolo 3×2 (6 celle)
+  [32m✔ OK[0m   beta resta intatta: nessuna cella selezionata (0)
+  [32m✔ OK[0m   alfa: le 6 celle sono DIPINTE nel suo DOM (6)
+  [32m✔ OK[0m   beta: nessuna cella dipinta nel suo DOM (0)
+  [32m✔ OK[0m   le due griglie hanno due oggetti di stato distinti
+  [32m✔ OK[0m   Ctrl+A va alla griglia toccata per ultima (alfa 12, beta 0)
+  [32m✔ OK[0m   toccando beta il comando passa a lei: Ctrl+A la riempie (12)
+  [32m✔ OK[0m   e alfa non viene toccata dal Ctrl+A di beta (12)
+  [32m✔ OK[0m   Split-View: la griglia di un riquadro è nel DOM
+  [32m✔ OK[0m   Split-View: le celle di un riquadro portano riga e colonna (data-r/data-c)
+  [32m✔ OK[0m   Split-View: il trascinamento dentro il riquadro seleziona il rettangolo 3×2 (6 celle)
+  [32m✔ OK[0m   Split-View: una sola cella ha il fuoco (1)
+  [32m✔ OK[0m   Split-View: la selezione sopravvive al ridisegno del riquadro (6 celle)
+  [32m✔ OK[0m   Split-View: il menu contestuale della selezione si apre dentro il riquadro
+  [32m✔ OK[0m   Split-View: la cella selezionata è DIPINTA davvero (il CSS non è più legato a #grid)
+  [32m✔ OK[0m   Split-View: sulla cella selezionata il dito non scorre (touch-action: none)
+  [32m✔ OK[0m   il Proxy `state` punta al tab attivo, non al riquadro: la condizione del difetto e riprodotta
+  [32m✔ OK[0m   l'incolla dentro il riquadro produce una scrittura (1 doc:update)
+  [32m✔ OK[0m   la scrittura va sulla tabella del RIQUADRO, non su quella del tab attivo (db_del_riquadro.tabella_del_riquadro)
+  [32m✔ OK[0m   e sulla connessione del riquadro: il tabId congelato non è quello del tab attivo (CDB-A18)
+  [32m✔ OK[0m   Split-View: il doppio clic apre ancora la modifica inline della cella
+  [32m✔ OK[0m   Split-View: la cella in modifica contiene davvero un campo di testo
+  [32m✔ OK[0m   Split-View: nella cella in modifica il testo resta selezionabile (user-select non spento dalla selezione)
+  [32m✔ OK[0m   vista Dati: il trascinamento seleziona 2×2 come sempre (4)
+  [32m✔ OK[0m   vista Dati: lo stato della selezione resta in `state.cellSel`
+  [32m✔ OK[0m   vista Dati: applyCellSelection() ridipinge dopo un render (4)
+  [32m✔ OK[0m   vista Dati: il tbody è marcato `.selezione-celle` (le regole CSS seguono la capacità)
+  [32m✔ OK[0m   nessun errore JavaScript durante le prove
+
+--- Selezione di celle: tutti i test superati ---

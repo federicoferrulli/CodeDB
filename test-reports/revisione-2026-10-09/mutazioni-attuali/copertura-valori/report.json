@@ -1,0 +1,9 @@
+{
+  "environment": "Chromium, viewport simulati; trasporto controllato, renderer reali",
+  "checks": [],
+  "layouts": [],
+  "errors": [],
+  "requests": [],
+  "failure": "AssertionError [ERR_ASSERTION]: NULL, mancante, vuoto, zero e false sono distinguibili\n\n4 !== 5\n\n    at C:\\repository\\CodeDB\\test\\e2e-revisione.js:86:12",
+  "phase": "pronta"
+}

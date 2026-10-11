@@ -10,7 +10,9 @@ import {
   decodificaNumeroEsatto, metadatoNumerico, richiedePrecisioneEsatta, testoNumeroEsatto,
 } from './valori-esatti.js';
 import { setDaRelazione } from './fk-relazioni.js';
-import { createArcInput, createArcButton, createArcSelect, controlElement } from '../arc/ui.js';
+import { createArcInput, createArcButton, createArcSelect, controlElement, mountArcEditActions } from '../arc/ui.js';
+import { proteggiModifiche } from './utils.js';
+import { tabs } from './tabs.js';
 
 /**
  * Costruisce l'input adatto al tipo del valore.
@@ -124,6 +126,21 @@ export function buildEditor(current, metadata = {}) {
  * (tab e collection) va quindi congelato all'inizio, altrimenti una geometria
  * confermata dopo un cambio di tab finirebbe nella tabella sbagliata.
  */
+function chiaveBozza(ctx, doc, field) { return JSON.stringify([ctx.db, ctx.coll, idOf(doc), field]); }
+
+function bozzeContesto(ctx) {
+  const tab = tabs.list.find(t => t.id === ctx.tabId);
+  return tab ? (tab.state.editDrafts ||= new Map()) : null;
+}
+
+export function segnalaBozza(td, doc, field, ctx) {
+  const drafts = tabs.list.find(t => t.id === ctx.tabId)?.state.editDrafts;
+  if (!drafts?.size || !drafts.has(chiaveBozza(ctx, doc, field))) return;
+  td.classList.add('edit-draft');
+  td.title = 'Modifica non salvata: riapri la cella per correggerla o premi Esc per scartarla.';
+  td.setAttribute('aria-label', `${field}: modifica non salvata`);
+}
+
 export function salvaCampo(doc, field, value, ctx) {
   return salvaCampi(doc, { [field]: value }, ctx);
 }
@@ -134,6 +151,8 @@ export function salvaCampi(doc, set, ctx) {
   // Oggi entrambi i chiamanti passano `ctx`, ma il ripiego non deve essere
   // una trappola per il prossimo.
   const c = ctx || contestoScrittura();
+  const drafts = bozzeContesto(c);
+  const inviati = Object.keys(set).map(field => [chiaveBozza(c, doc, field), drafts?.get(chiaveBozza(c, doc, field))]);
   return emit('doc:update', {
     tabId: c.tabId,
     db: c.db,
@@ -141,6 +160,7 @@ export function salvaCampi(doc, set, ctx) {
     id: idOf(doc),
     set,
   }).then((res) => {
+    for (const [key, value] of inviati) if (drafts?.get(key) === value) drafts?.delete(key);
     const campi = Object.keys(set);
     toast(campi.length === 1 ? `Campo "${campi[0]}" aggiornato` : `${campi.length} campi aggiornati atomicamente`);
     // Il refresh rilegge dagli input del workspace, che appartengono al tab
@@ -219,6 +239,15 @@ export function startEdit(td, doc, field, opts = {}) {
   }
 
   const { input, original, buildValue, setValue } = buildEditor(doc[field], opts.metadato);
+  const drafts = bozzeContesto(ctx);
+  const key = chiaveBozza(ctx, doc, field);
+  if (drafts?.has(key)) input.value = drafts.get(key);
+  const conserva = () => {
+    if (input.value === original) drafts?.delete(key);
+    else drafts?.set(key, input.value);
+  };
+  input.addEventListener('input', conserva);
+  input.addEventListener('change', conserva);
 
   td.classList.add('editing');
   td.innerHTML = '';
@@ -231,6 +260,7 @@ export function startEdit(td, doc, field, opts = {}) {
 
   const cancel = () => {
     if (finished) return;
+    drafts?.delete(key);
     finished = true;
     chiudiPannelloFk();
     ridisegna({ preserveScroll: true });
@@ -238,6 +268,7 @@ export function startEdit(td, doc, field, opts = {}) {
 
   const save = () => {
     if (finished) return;
+    conserva();
     if (input.classList.contains('arc-inline-date-model') && !input.validity.valid) {
       input.reportValidity();
       return;
@@ -278,13 +309,15 @@ export function startEdit(td, doc, field, opts = {}) {
   // valore da metterci, e chiudere l'editor farebbe sparire proprio la cella
   // che si sta per riempire. `relatedTarget` è dove sta andando il fuoco;
   // quando il browser non lo fornisce si guarda dove è effettivamente finito.
-  input.addEventListener('blur', (e) => {
-    if (e.relatedTarget?.closest?.('.arc-date-field, [data-arc-calendar-popup]')) return;
+  td.addEventListener('focusout', (e) => {
+    if (td.contains(e.relatedTarget) || e.relatedTarget?.closest?.('[data-arc-calendar-popup]')) return;
     if (input.dataset.arcComponent === 'select' && input.dataset.state === 'open') return;
     if (fuocoNelPannelloFk(e.relatedTarget || document.activeElement)) return;
     save();
   });
   if (input.dataset.arcComponent === 'select') input.addEventListener('change', save);
+
+  mountArcEditActions(td, field, save, cancel);
 
   // Colonna collegata a un'altra tabella: il pannello di scelta si apre da solo
   // e accanto all'input compare 🔗 per riaprirlo se lo si è chiuso. Va tutto
@@ -411,7 +444,9 @@ export function openEditDoc(doc, context = null) {
   }
   // I campi sono dati, non proprietà di controllo del prototipo.
   const copy = documentoModificabile(doc);
-  $('#editdoc-id').textContent = `Identificatore originale: ${displayValue(identitaRiga(doc)).text}`;
+  const target = `${tabs.list.find(t => t.id === editDocContext.tabId)?.label || 'Connessione'} / ${editDocContext.db} / ${editDocContext.coll}`;
+  $('#editdoc-id').textContent = `${target} · Identificatore originale: ${displayValue(identitaRiga(doc)).text}`;
+  proteggiModifiche('#editdoc-overlay', editDocContext.tabId, target);
   $('#editdoc-json').value = JSON.stringify(copy, null, 2);
   $('#editdoc-error').classList.add('hidden');
   const lintEl = $('#editdoc-lint');
@@ -452,7 +487,7 @@ export function initInlineEdit() {
       id: idOf(doc),
       doc: $('#editdoc-json').value,
     }), 'Salvo…').then((res) => {
-      closeModal('#editdoc-overlay');
+      closeModal('#editdoc-overlay', { saved: true });
       toast('Documento aggiornato');
       if (ctx && ctx.onSaveSuccess) {
         ctx.onSaveSuccess();

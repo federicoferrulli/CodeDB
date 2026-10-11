@@ -1,0 +1,272 @@
+{
+  "environment": "Chromium; UI reale, trasporto simulato",
+  "checks": [
+    "Utenti, permessi, MCP, audit errore, salute disconnessa, sessioni bloccanti e vault: finestre popolate nei due temi e due viewport",
+    "Backup A resta identificato dopo chiusura, cambio connessione B e riapertura",
+    "Ripristino: destinatario esplicito, dialog annidato, avanzamento dopo cambio connessione e riapertura, esito persistente"
+  ],
+  "surfaces": [
+    {
+      "name": "utenti",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "utenti",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "utenti",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "utenti",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "grants",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "grants",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "grants",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "grants",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "apikeys",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "apikeys",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "apikeys",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "apikeys",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "audit",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "audit",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "audit",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "audit",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "salute",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "salute",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "salute",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "salute",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "sessioni",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "sessioni",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "sessioni",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "sessioni",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "sessione-query",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "sessione-query",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "sessione-query",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "sessione-query",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "vault",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "vault",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "vault",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "vault",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "audit-permessi",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "audit-permessi",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "audit-permessi",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "audit-permessi",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "backup",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "backup",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "backup",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "backup",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "catalogo-errore",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "catalogo-errore",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "catalogo-errore",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "catalogo-errore",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "ripristino-conferma",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "ripristino-conferma",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "ripristino-conferma",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "ripristino-conferma",
+      "theme": "light",
+      "width": 390
+    },
+    {
+      "name": "ripristino-esito",
+      "theme": "dark",
+      "width": 1440
+    },
+    {
+      "name": "ripristino-esito",
+      "theme": "dark",
+      "width": 390
+    },
+    {
+      "name": "ripristino-esito",
+      "theme": "light",
+      "width": 1440
+    },
+    {
+      "name": "ripristino-esito",
+      "theme": "light",
+      "width": 390
+    }
+  ],
+  "errors": [],
+  "requests": []
+}
