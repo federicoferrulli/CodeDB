@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
@@ -486,12 +487,13 @@ async function onClickLista(e) {
     : `Annullare la query in corso nella sessione ${id}?\n\nLa sessione resta aperta; la sua transazione, se c'è, no.`;
   const chi = `\n\nUtente: ${s.utente || '—'}${s.db ? ` · Database: ${s.db}` : ''}`;
   const q = s.query ? `\nQuery: ${s.query.slice(0, 200)}${s.query.length > 200 ? '…' : ''}` : '';
-  if (!confirm(cosa + chi + q)) return;
+  const tabId = tabIdCorrente;
+  if (!await chiediConferma(cosa + chi + q)) return;
 
   await conCaricamento(btn, async () => {
     try {
       const res = await emit('db:killSession', {
-        tabId: tabIdCorrente, id, modo, identita: s.identita,
+        tabId, id, modo, identita: s.identita,
       });
       if (res.terminata) {
         toast(modo === 'connessione' ? `Connessione ${id} terminata.` : `Query della sessione ${id} annullata.`);

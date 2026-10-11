@@ -156,6 +156,7 @@ function createModule({ vault, identita, config }) {
         hasUri: has('uri'),
         hasSshPassword: has('sshPassword'),
         hasSshPassphrase: has('sshPassphrase'),
+        hasSshPrivateKey: has('sshPrivateKey'),
       };
       for (const f of vault.SECRET_FIELDS) delete fields[f];
       cb({ ok: true, fields, ...flags });

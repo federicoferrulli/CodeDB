@@ -1,0 +1,79 @@
+{
+  "checks": [],
+  "errors": [],
+  "phase": "Booleano 844×390, riga 0",
+  "failure": "AssertionError [ERR_ASSERTION]: La griglia lascia spazio alle righe oltre l’intestazione fissa\n    at C:\\repository\\CodeDB\\test\\e2e-uscita-editing.js:56:7",
+  "geometry": {
+    ".grid-wrap": {
+      "rect": {
+        "x": 0,
+        "y": 248.796875,
+        "width": 844,
+        "height": 40.203125,
+        "top": 248.796875,
+        "right": 844,
+        "bottom": 289,
+        "left": 0
+      },
+      "scrollTop": 22498,
+      "scrollHeight": 36036
+    },
+    "#grid thead": {
+      "rect": {
+        "x": 0,
+        "y": -22249.203125,
+        "width": 540,
+        "height": 36,
+        "top": -22249.203125,
+        "right": 540,
+        "bottom": -22213.203125,
+        "left": 0
+      },
+      "scrollTop": 0,
+      "scrollHeight": 36
+    },
+    "#grid td[data-r=\"0\"][data-c=\"3\"]": null,
+    "#view-data": {
+      "rect": {
+        "x": 0,
+        "y": 85.796875,
+        "width": 844,
+        "height": 240.203125,
+        "top": 85.796875,
+        "right": 844,
+        "bottom": 326,
+        "left": 0
+      },
+      "scrollTop": 0,
+      "scrollHeight": 240
+    },
+    "#workspace": {
+      "rect": {
+        "x": 0,
+        "y": 85.796875,
+        "width": 844,
+        "height": 240.203125,
+        "top": 85.796875,
+        "right": 844,
+        "bottom": 326,
+        "left": 0
+      },
+      "scrollTop": 0,
+      "scrollHeight": 240
+    },
+    "main": {
+      "rect": {
+        "x": 0,
+        "y": 44,
+        "width": 844,
+        "height": 282,
+        "top": 44,
+        "right": 844,
+        "bottom": 326,
+        "left": 0
+      },
+      "scrollTop": 0,
+      "scrollHeight": 282
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 'use strict';
 
 import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, migraChiave, aggiungiMenuNodo, lucideIconHtml as ICO } from './utils.js';
@@ -55,8 +56,8 @@ function testConn(conn) {
     .catch((err) => toast(`✗ "${conn.name}": ${err.message}`, true));
 }
 
-function deleteConn(conn) {
-  if (!confirm(`Eliminare la connessione salvata "${conn.name}"?`)) return;
+async function deleteConn(conn) {
+  if (!await chiediConferma(`Eliminare la connessione salvata "${conn.name}"?`)) return;
   emit('connections:delete', { name: conn.name })
     .then(() => loadSavedConnections())
     .catch((err) => toast(err.message, true));

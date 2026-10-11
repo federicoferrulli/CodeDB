@@ -1,4 +1,5 @@
-import { mountArcControls, createArcButton, controlElement } from '../arc/ui.js';
+import { chiediConferma } from './conferma.js';
+import { mountArcControls, createArcButton, controlElement, renderDataEmpty } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
@@ -11,7 +12,7 @@ import { queryDocument, copiaQuery } from './query-document.js';
 import { payloadFiltro } from './filtro-rapido.js';
 import { leggiStatoFiltro } from './grid.js';
 import { snapshotQueryView } from './query-tab.js';
-import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, conCaricamento, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, hideContextMenu, conCaricamento, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
 import { startEdit, openEditDoc, segnalaBozza } from './inlineEdit.js';
 import { relazioniPer, caricaRelazioni } from './fk-cache.js';
 import { VINCOLO } from './fk-relazioni.js';
@@ -49,11 +50,11 @@ export function modifichePendentiNeiPannelli() {
   return [...aree.values()].some(a => [...a.panes.values()].some(p => p.runtime ? p.runtime.dirty() : p.query?.dirty));
 }
 
-primaDellaChiusura(tab => {
+primaDellaChiusura(async tab => {
   const dipendenti = [...aree.values()].flatMap(a => [...a.panes.values()]).filter(p => p.tabId === tab.id);
   if (!dipendenti.length) return true;
   const modificati = dipendenti.some(p => (p.runtime ? p.runtime.dirty() : p.query?.dirty));
-  return confirm(`Disconnettere ${tab.label}? Verranno chiusi ${dipendenti.length} pannelli collegati.${modificati ? ' Contengono testo non salvato.' : ''} Le altre connessioni resteranno aperte.`);
+  return await chiediConferma(`Disconnettere ${tab.label}? Verranno chiusi ${dipendenti.length} pannelli collegati.${modificati ? ' Contengono testo non salvato.' : ''} Le altre connessioni resteranno aperte.`);
 });
 
 allaChiusura(tabId => {
@@ -136,6 +137,10 @@ function nextPaneId() {
   return 'pane_' + safeUUID();
 }
 
+export function splitDisponibile() {
+  return !window.matchMedia('(max-width: 900px)').matches;
+}
+
 /**
  * L'area affiancata è quella che si sta guardando ADESSO?
  *
@@ -151,7 +156,7 @@ export function splitInPrimoPiano() {
   // alcuna collection da promuovere, quindi la nuova nasce con un pannello solo
   // e ci si trascina dentro il secondo. Pretendendone due, quell'area appena
   // creata non sarebbe riconosciuta come tale e la sua vista resterebbe vuota.
-  return !!(a && a.active && a.panes.size >= 1);
+  return splitDisponibile() && !!(a && a.active && a.panes.size >= 1);
 }
 
 /** Database e tabella del pannello a fuoco dell'area corrente: è il bersaglio
@@ -336,6 +341,7 @@ export function setPaneView(paneId, view) {
 }
 
 export function scegliPannelloDaAffiancare(button) {
+  if (!splitDisponibile()) return;
   const rect = button.getBoundingClientRect();
   const voci = [];
   for (const tab of tabs.list.filter(t => t.state.connected)) {
@@ -352,6 +358,7 @@ export function scegliPannelloDaAffiancare(button) {
 }
 
 export async function riprendiQueryPane(item) {
+  if (!splitDisponibile()) { toast('Riprendi questa query da desktop. Il codice resta disponibile nel registro.'); return; }
   const a = areaDiPane(item.paneId);
   const p = a?.panes.get(item.paneId);
   if (!p) { toast('Il pannello di origine è stato chiuso. Il testo resta nel registro delle query.', true); return; }
@@ -404,6 +411,7 @@ export function initSplitView() {
  * pannello.
  */
 function handleSplitKeys(e) {
+  if (!splitDisponibile()) return;
   const a = areaAttiva();
   if (!a || !a.active || !a.panes.size) return;
   if (!e.altKey || e.ctrlKey || e.metaKey) return;
@@ -544,6 +552,7 @@ export function discardSplitViewIfOrphan() {
 }
 
 function handleWorkspaceDragOver(e) {
+  if (!splitDisponibile()) { hideDropPreview(); return; }
   if (
     e.target.closest('#coll-tab-bar') ||
     e.target.closest('#tab-bar') ||
@@ -638,6 +647,7 @@ function hideDropPreview() {
 
 function handleWorkspaceDrop(e) {
   hideDropPreview();
+  if (!splitDisponibile()) return;
 
   if (
     e.target.closest('#coll-tab-bar') ||
@@ -684,7 +694,8 @@ function handleWorkspaceDrop(e) {
   addOrSplitPane(targetPaneId, dir, item);
 }
 
-export function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
+export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
+  if (!splitDisponibile()) return;
   const t = activeTab();
   const tabId = item.tabId || (t ? t.id : null);
   if (!tabId) return;
@@ -780,7 +791,7 @@ export function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
   } else if (targetPaneId && a.panes.has(targetPaneId)) {
     if (dir === 'center') {
       const precedente = a.panes.get(targetPaneId);
-      if (!confermaChiusuraPane(precedente)) { a.panes.delete(pId); return; }
+      if (!await confermaChiusuraPane(precedente) || !splitDisponibile()) { a.panes.delete(pId); return; }
       disposePane(precedente);
       newPane.id = targetPaneId;
       a.panes.set(targetPaneId, newPane);
@@ -813,10 +824,10 @@ export function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
   import('./colltabs.js').then((m) => m.renderCollTabBar());
 }
 
-export function closePane(paneId) {
+export async function closePane(paneId) {
   const a = areaDiPane(paneId);
   if (!a) return;
-  if (!confermaChiusuraPane(a.panes.get(paneId))) return;
+  if (!await confermaChiusuraPane(a.panes.get(paneId))) return;
   disposePane(a.panes.get(paneId));
   const vicino = vicinoDi(a.layout, paneId, 'prev') || vicinoDi(a.layout, paneId, 'next');
 
@@ -847,8 +858,8 @@ function disposePane(p) {
   p.gridResize?.disconnect();
 }
 
-function confermaChiusuraPane(p) {
-  return !p || !((p.runtime ? p.runtime.dirty() : p.query?.dirty)) || confirm(`Chiudere ${p.db} / ${p.coll || 'Query'} e scartare il testo non salvato?`);
+async function confermaChiusuraPane(p) {
+  return !p || !((p.runtime ? p.runtime.dirty() : p.query?.dirty)) || await chiediConferma(`Chiudere ${p.db} / ${p.coll || 'Query'} e scartare il testo non salvato?`);
 }
 
 /* ------------------- reazione alle DDL (drop e rinomina) ------------------ */
@@ -1002,13 +1013,13 @@ export function ruotaOrientamento(paneId) {
   renderSplitView();
 }
 
-export function chiudiAltriPane(paneId) {
+export async function chiudiAltriPane(paneId) {
   const a = areaDiPane(paneId);
   if (!a) return;
   const altri = elencoPane(a.layout).filter((id) => id !== paneId);
   if (!altri.length) return;
-  if (!confirm(`Chiudere gli altri ${altri.length} ${altri.length === 1 ? 'pannello' : 'pannelli'}?`)) return;
-  if (altri.some(id => !confermaChiusuraPane(a.panes.get(id)))) return;
+  if (!await chiediConferma(`Chiudere gli altri ${altri.length} ${altri.length === 1 ? 'pannello' : 'pannelli'}?`)) return;
+  for (const id of altri) if (!await confermaChiusuraPane(a.panes.get(id))) return;
   altri.forEach(id => {
     disposePane(a.panes.get(id));
     a.panes.delete(id); a.elementi.delete(id); a.layout = rimuovi(a.layout, id);
@@ -1020,13 +1031,14 @@ export function chiudiAltriPane(paneId) {
   import('./colltabs.js').then(m => m.renderCollTabBar());
 }
 
-/**
- * Ricalcolo dopo un cambio di larghezza della finestra (lo chiama
- * `responsive.js`). Le quote non cambiano — sono rapporti — ma il minimo in
- * pixel sì, e un pannello massimizzato su una finestra che nel frattempo si è
- * impilata è una schermata da cui non si capisce come uscire.
- */
+/** Su mobile torna a una scheda singola, conservando le aree per il desktop. */
 export function notificaCambioLarghezza() {
+  hideDropPreview();
+  hideContextMenu();
+  if (!splitDisponibile()) {
+    if (areaAttiva()) import('./workspace.js').then(m => { if (areaAttiva()) m.renderWorkspace(); });
+    return;
+  }
   const a = areaAttiva();
   if (!a || !a.active) return;
   a.maximizedPaneId = null;
@@ -1043,11 +1055,11 @@ export function notificaCambioLarghezza() {
  * normale; chiudendo con la ✕ il tab dell'area affiancata si vuole invece che
  * sparisca, e riaprire qualcosa sembrerebbe un tab che non si lascia chiudere.
  */
-export function closeSplitView({ riapri = false, collTabId = null } = {}) {
+export async function closeSplitView({ riapri = false, collTabId = null } = {}) {
   const a = collTabId ? aree.get(collTabId) : areaAttiva();
   if (!a) return;
   if ([...a.panes.values()].some(p => (p.runtime ? p.runtime.dirty() : p.query?.dirty))
-      && !confirm('Chiudere l’area e scartare il testo non salvato dei suoi pannelli?')) return;
+      && !await chiediConferma('Chiudere l’area e scartare il testo non salvato dei suoi pannelli?')) return;
   for (const p of a.panes.values()) disposePane(p);
 
   const superstite = a.panes.get(a.focusedPaneId) || Array.from(a.panes.values())[0] || null;
@@ -1197,6 +1209,11 @@ function emitPaneQuery(tabId, event, payload) {
 }
 
 export function renderSplitView() {
+  if (!splitDisponibile()) {
+    deactivateSplitView();
+    if (areaAttiva()) import('./workspace.js').then(m => { if (areaAttiva()) m.renderWorkspace(); });
+    return;
+  }
   const ws = $('#workspace');
   if (!ws) return;
   // Si disegna SEMPRE l'area del coll-tab attivo: con più aree aperte "la
@@ -1368,12 +1385,12 @@ function startPaneEdit(td, paneId, doc, field) {
   });
 }
 
-function deletePaneDoc(paneId, doc) {
+async function deletePaneDoc(paneId, doc) {
   const p = paneById(paneId);
   if (!p) return;
   const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
   const { text } = displayValue(identitaRiga(doc));
-  if (!confirm(`Eliminare il documento con _id = ${text} da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}?`)) return;
+  if (!await chiediConferma(`Eliminare il documento con _id = ${text} da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}?`)) return;
 
   emitPaneQuery(bersaglio.tabId, 'doc:delete', {
     db: bersaglio.db,
@@ -1395,7 +1412,7 @@ function deletePaneDoc(paneId, doc) {
  * eliminazione singola in un ciclo darebbe una conferma e una rilettura PER
  * RIGA: su venti righe selezionate, venti finestre di dialogo.
  */
-function eliminaRigheRiquadro(paneId, ids) {
+async function eliminaRigheRiquadro(paneId, ids) {
   const p = paneById(paneId);
   if (!p) return Promise.resolve();
   const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
@@ -1403,7 +1420,7 @@ function eliminaRigheRiquadro(paneId, ids) {
     toast('Nessun documento selezionato', true);
     return Promise.resolve();
   }
-  if (!confirm(`Eliminare i ${ids.length} documenti selezionati da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}? Questa azione non si può annullare.`)) return Promise.resolve();
+  if (!await chiediConferma(`Eliminare i ${ids.length} documenti selezionati da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}? Questa azione non si può annullare.`)) return Promise.resolve();
 
   // A ondate, non tutte insieme (CDB-72): stesso limite già applicato alla
   // griglia principale e all'incolla di celle. Mandare centinaia di doc:delete
@@ -1524,8 +1541,8 @@ function createPaneElement(paneId) {
   dbSelect.innerHTML = databases.map(db => `<option value="${esc(db)}" ${db === p.db ? 'selected' : ''}>${esc(db)}</option>`).join('');
   popolaSelectColl(collSelect, [], p.coll);
 
-  dbSelect.addEventListener('change', () => {
-    if (!confermaChiusuraPane(p)) { dbSelect.value = p.db; return; }
+  dbSelect.addEventListener('change', async () => {
+    if (!await confermaChiusuraPane(p)) { dbSelect.value = p.db; return; }
     disposePane(p); p.runtime = null; p.query = null;
     const generazione = (p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1);
     const dbRichiesto = dbSelect.value;
@@ -1558,8 +1575,8 @@ function createPaneElement(paneId) {
     popolaSelectColl(collSelect, colls, collIniziale);
   });
 
-  collSelect.addEventListener('change', () => {
-    if (!confermaChiusuraPane(p)) { collSelect.value = p.coll; return; }
+  collSelect.addEventListener('change', async () => {
+    if (!await confermaChiusuraPane(p)) { collSelect.value = p.coll; return; }
     disposePane(p); p.runtime = null; p.query = null;
     p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1;
     p.coll = collSelect.value;
@@ -1919,6 +1936,7 @@ function updatePaneUI(paneId) {
   // significherebbe che uno scorrimento cancella «Nessuna riga trovata» per
   // ridisegnare una pagina che non c'è più. Viene rimessa in fondo.
   p.ridisegnaFinestra = null;
+  renderDataEmpty(contenitore, null);
 
   if (p.loading) {
     tbody.innerHTML = '<tr><td colspan="100" class="pane-loading">Caricamento in corso...</td></tr>';
@@ -1928,7 +1946,15 @@ function updatePaneUI(paneId) {
   if (!p.docs || p.docs.length === 0) {
     // "documento o riga" era una scorciatoia: il tipo di database è noto, e
     // scriverli entrambi fa sembrare che il programma non sappia dove sta.
-    tbody.innerHTML = `<tr><td colspan="100" class="pane-empty">${isSql ? 'Nessuna riga trovata.' : 'Nessun documento trovato.'}</td></tr>`;
+    if (!p.error) renderDataEmpty(contenitore, {
+      title: 'Nessun risultato',
+      description: p.filter && p.filter !== '{}' ? 'Prova un’altra ricerca o modifica la condizione applicata.' : 'Non ci sono righe da mostrare in questo pannello.',
+      kind: 'search', actionLabel: p.filter && p.filter !== '{}' ? 'Modifica filtro' : 'Aggiorna',
+      onAction: () => {
+        if (p.filter && p.filter !== '{}') paneEl.querySelector('.pane-filter-input')?.focus();
+        else paneEl.querySelector('.pane-refresh-btn')?.click();
+      },
+    });
   } else {
     // Stessa regola della tabella ⚡: le dichiarate prima e nel loro ordine,
     // poi i campi che compaiono solo nei documenti. Su MongoDB `p.columns` è un
@@ -2299,9 +2325,7 @@ function creaResizer(area, percorso, indice, contenitoreEl) {
   r.setAttribute('aria-valuemin', '0');
   r.setAttribute('aria-valuemax', '100');
 
-  // L'asse si legge dal layout REALE e non dal tipo del nodo: sotto i 900px il
-  // CSS impila le righe, e continuare a misurare in orizzontale farebbe muovere
-  // il separatore nella direzione sbagliata — cioè non muoverlo affatto.
+  // L'asse segue la disposizione corrente anche dopo una rotazione dell'area.
   const orizz = () => getComputedStyle(contenitoreEl).flexDirection === 'row';
 
   const minPx = () => (orizz() ? MIN_PANE_LARGHEZZA : MIN_PANE_ALTEZZA);

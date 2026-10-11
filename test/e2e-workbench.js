@@ -40,7 +40,12 @@ fs.mkdirSync(dir, { recursive: true });
         emit(name, payload, ack) {
           window.wb.sent.push({ name, payload });
           if (name === 'query:execute' || name === 'doc:update' || (name === 'script:execute' && window.wb.holdScript) || (name === 'collection:find' && window.wb.holdFind)) { window.wb.queue.push({ name, payload, ack }); return; }
-          if (name === 'mongo:connect') { ack?.({ ok: false, error: 'Connessione di prova non raggiungibile' }); return; }
+          if (name === 'mongo:connect') {
+            ack?.(window.wb.acceptConnections
+              ? { ok: true, dbType: payload.dbType, label: payload.host, databases: [] }
+              : { ok: false, error: 'Connessione di prova non raggiungibile' });
+            return;
+          }
           if (name === 'script:execute') { ack?.({ ok: true, runId: payload.runId, total: 2 }); return; }
           const docs = Array.from({ length: 12 }, (_, i) => ({ _id: i + 1, cliente: `${payload.tabId} · ${payload.db} · ${payload.coll} · ${i + 1}`, totale: { $numberDecimal: '12345678901234567890.123456789' } }));
           ack?.({ ok: true, docs, columns: ['_id', 'cliente', 'totale'], total: 12, skip: payload.skip || 0, limit: 50,
@@ -66,6 +71,26 @@ fs.mkdirSync(dir, { recursive: true });
       (await import('/js/colltabs.js')).openCollTab('vendite', 'ordini');
     });
     await page.locator('#grid tbody tr:not(.v-spacer)').first().waitFor();
+
+    // Aperture oltre l'ottava senza contatore nell'interfaccia.
+    const extraIds = await page.evaluate(async () => {
+      const { connectAndOpenTab } = await import('/js/connection.js');
+      window.wb.acceptConnections = true;
+      for (let i = 0; i < 10; i++) {
+        await connectAndOpenTab({ dbType: ['mongodb', 'mysql', 'postgresql'][i % 3], host: `connessione-${i}` });
+      }
+      window.wb.acceptConnections = false;
+      return window.wb.tabs.list.slice(2).map(t => t.id);
+    });
+    assert.equal(await page.locator('#tab-bar .conn-tab').count(), 12);
+    assert.equal(await page.locator('#session-count').count(), 0);
+    await page.evaluate(async ids => {
+      const { closeTab, switchTab } = await import('/js/tabs.js');
+      for (const id of ids) await closeTab(id);
+      switchTab('locale');
+    }, extraIds);
+    assert.equal(await page.locator('#tab-bar .conn-tab').count(), 2);
+    report.checks.push('Dodici connessioni da UI, nessun contatore e rilascio delle connessioni aggiunte');
 
     // Due database della stessa connessione: B resta intatto quando arriva A.
     await page.locator('.view-tab[data-view="query"]').click();
@@ -222,7 +247,7 @@ fs.mkdirSync(dir, { recursive: true });
     await page.evaluate(async () => {
       const m = await import('/js/splitview.js');
       m.addOrSplitPane(null, 'right', { tabId: 'analisi', db: 'archivio', coll: 'ordini', view: 'query' });
-      const snap = m.getSplitStateSnapshot(); window.wb.panes = snap.panes.map(([id]) => id);
+      const snap = m.getSplitStateSnapshot(); window.wb.panes = snap.panes.map(([id]) => id); window.wb.areaId = snap.splitCollTabId;
       await m.runPaneQuery(snap.panes.find(([, p]) => p.tabId === 'locale')[0]);
       const req = window.wb.sent.filter(r => r.name === 'collection:find' && r.payload.tabId === 'locale').at(-1);
       if (req.payload.cercaOvunque?.valore !== 'Acme' || req.payload.filter) throw new Error('Il pannello deve conservare la ricerca rapida originale');
@@ -286,18 +311,19 @@ fs.mkdirSync(dir, { recursive: true });
       await page.evaluate(t => document.documentElement.dataset.theme = t, theme);
       for (const width of [1600, 1280, 390]) {
         await page.setViewportSize({ width, height: width === 390 ? 1000 : 900 });
+        if (width > 900) await page.evaluate(async () => (await import('/js/colltabs.js')).switchCollTab(window.wb.areaId));
         await page.waitForTimeout(120);
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
         await page.screenshot({ path: `${dir}/confronto-${theme}-${width}.png`, animations: 'disabled' });
         if (width === 390) {
-          await page.locator('#workspace-active-pane-btn').click();
-          await page.waitForTimeout(60);
-          const bounds = await frames[0].locator('#query-editor-input').boundingBox();
-          assert(bounds.y >= 0 && bounds.y < 900, 'Il pannello attivo si raggiunge con un comando');
+          assert(await page.locator('#workspace-split-btn').isHidden());
+          assert.equal(await page.locator('.split-container').count(), 0, 'Su mobile si lavora in una scheda singola');
+          assert.equal(await frames[1].locator('#query-editor-input').inputValue(), 'SELECT PANNELLO_2', 'La bozza del pannello nascosto resta intatta');
         }
       }
     }
     await page.setViewportSize({ width: 1600, height: 1000 });
+    await page.evaluate(async () => (await import('/js/colltabs.js')).switchCollTab(window.wb.areaId));
     await page.evaluate(() => { document.documentElement.style.setProperty('--accent-fg', '#c4b5fd'); document.documentElement.style.setProperty('--accent', '#6d28d9'); });
     await page.waitForTimeout(100);
     assert.equal(await frames[0].evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()), '#6d28d9');

@@ -34,7 +34,6 @@ function createModule({ trasporto, vault, connessioni, config, identita, budget 
     rbacOn: config.rbacOn,
     resolveApiKey: identita.resolvePrincipalFromApiKey,
     allowedConnections,
-    maxDbSessions: budget.MAX_SESSIONS_PER_SOCKET,
     tryAcquireGlobalSession: budget.tryAcquireGlobalSession,
     releaseGlobalSession: budget.releaseGlobalSession,
   });

@@ -1,0 +1,6 @@
+{
+  "transport": "simulato, risposte consegnate fuori ordine",
+  "checks": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n'12 / 8' !== '12'\n\n    at C:\\repository\\CodeDB\\test\\e2e-workbench.js:95:12"
+}

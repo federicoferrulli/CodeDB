@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "Selezione file senza estensione; rifiuto .pub e file troppo grande; autenticazione e inoltro SSH reali",
+    "Riepilogo senza chiave in chiaro; file cifrato; get restituisce solo presenza; nessuna chiave nei tab/storage",
+    "Modifica con chiave conservata e riconnessione salvata, anche dopo ricaricamento",
+    "Passphrase errata spiegata, chiave cifrata accettata e percorso Windows tra virgolette funzionante",
+    "Passphrase salvata riutilizzata senza rinviarla al browser; sostituzione della chiave aggiorna il suggerimento"
+  ],
+  "layouts": [],
+  "errors": []
+}

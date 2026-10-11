@@ -88,7 +88,7 @@ async function android() {
     await page.screenshot({path:path.join(dir,'android-editor.png')});
     const before=await page.evaluate(()=>visualViewport.height);
     run('shell','settings','put','secure','show_ime_with_hard_keyboard','1');
-    await page.locator('#menu-dbs-btn').click();await page.locator('#db-search').click();
+    await page.locator('#mobile-nav-dbs').click();await page.locator('#db-search').click();
     await page.waitForFunction(before=>visualViewport.height<before-100,before,{timeout:15000});
     await page.locator('#db-search').fill('ordi');
     assert(await page.locator('#db-search').evaluate(el=>{const r=el.getBoundingClientRect();return r.bottom<=visualViewport.height+visualViewport.offsetTop&&r.top>=visualViewport.offsetTop;}),'Ricerca del BottomSheet visibile sopra la tastiera reale');

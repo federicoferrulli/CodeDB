@@ -10,6 +10,9 @@
   color: var(--foreground); box-shadow: var(--shadow-floating); font-family: var(--font-body); outline: none;
 }
 .header { position: relative; flex: none; padding: 0 12px 8px; cursor: grab; touch-action: none; user-select: none; border-bottom: 1px solid var(--border); }
+.sheet[data-fit-content] { height: auto; max-height: calc(.94 * var(--area-altezza, 100dvh) + var(--sheet-extension)); }
+.sheet[data-fit-content] .close { border-color: transparent; background: transparent; }
+.compactGrabber { display: flex; height: 16px; align-items: center; justify-content: center; }
 .sheet[data-dragging] .header { cursor: grabbing; }
 .grabber { display: flex; width: 64px; min-height: 44px; align-items: center; justify-content: center; margin: 0 auto; padding: 0; border: 0; border-radius: var(--radius-sm); background: transparent; cursor: inherit; }
 .grabberBar { width: 36px; height: 4px; border-radius: var(--radius-sm); background: var(--text-secondary); }

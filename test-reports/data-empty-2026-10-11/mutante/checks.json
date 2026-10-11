@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "Griglia: vuota, filtrata, Aggiorna invia la richiesta e Modifica filtro porta il focus al campo",
+    "Query: stato iniziale e zero risultati distinti, colonne conservate, azione editor funzionante da tabella/JSON/grafico"
+  ],
+  "layouts": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Il vuoto scompare quando arrivano dati\n\n1 !== 0\n\n    at C:\\repository\\CodeDB\\test\\e2e-data-empty.js:108:12"
+}

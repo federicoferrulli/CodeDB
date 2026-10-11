@@ -186,6 +186,14 @@ export class Tavola {
     this._collegaEventi();
     this._osservatore = new ResizeObserver(() => {
       if (this.smontato) return;
+      const { clientWidth: w, clientHeight: h } = this.contenitore;
+      if (w && h) {
+        if (this._dimensioni) {
+          const t = this.paper.translate();
+          this.paper.translate(t.tx + (w - this._dimensioni.w) / 2, t.ty + (h - this._dimensioni.h) / 2);
+        }
+        this._dimensioni = { w, h };
+      }
       this._aggiornaMinimappa();
       this.eventi.onVista?.(this.vistaCorrente());
     });
@@ -392,8 +400,7 @@ export class Tavola {
     this._ascolta(window, 'pointermove', (evt) => {
       if (this._pizzico && this._pizzico.puntatori.has(evt.pointerId)) {
         this._pizzico.puntatori.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
-        this._aggiornaPizzico();
-        return;
+        if (this._pizzico.puntatori.size === 2) { this._aggiornaPizzico(); return; }
       }
       if (this._pan) {
         this.paper.translate(this._pan.t.tx + (evt.clientX - this._pan.x), this._pan.t.ty + (evt.clientY - this._pan.y));
@@ -409,11 +416,14 @@ export class Tavola {
     });
 
     const fineGestoSfondo = (evt) => {
+      this._pan = null;
       if (this._pizzico) {
         this._pizzico.puntatori.delete(evt.pointerId);
-        if (this._pizzico.puntatori.size < 2) this._pizzico = null;
+        this._pizzico.distanza = 0;
+        const [rimasto] = this._pizzico.puntatori.values();
+        if (!rimasto) this._pizzico = null;
+        else if (!this.modifica) this._pan = { ...rimasto, t: p.translate() };
       }
-      this._pan = null;
       this._congelaMinimappa(false);
       // Fine di un trascinamento di vertici: si leggono dove sono arrivati e
       // si scrivono nel documento. La voce di storia è già stata aperta al
@@ -459,6 +469,11 @@ export class Tavola {
       if (evt.pointerType === 'mouse') return;
       if (!this._pizzico) this._pizzico = { puntatori: new Map(), distanza: 0 };
       this._pizzico.puntatori.set(evt.pointerId, { x: evt.clientX, y: evt.clientY });
+      // In consultazione si trascina anche partendo da un nodo, senza spostarlo.
+      if (this._pizzico.puntatori.size === 1 && !this.modifica) {
+        this._pan = { x: evt.clientX, y: evt.clientY, t: p.translate() };
+        this._congelaMinimappa(true);
+      }
       if (this._pizzico.puntatori.size === 2) {
         // Con due dita non si trascina più: si ingrandisce.
         this._pan = null;

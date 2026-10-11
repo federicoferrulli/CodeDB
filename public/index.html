@@ -286,7 +286,7 @@
         <div class="wizard-step-line"></div>
         <button type="button" class="wizard-step-badge" data-step="3">
           <span class="step-num">3</span>
-          <span class="step-title">Salva & Connetti</span>
+          <span class="step-title">Conferma</span>
         </button>
       </div>
 
@@ -381,16 +381,35 @@
               </label>
             </div>
             <div class="form-row">
+              <label>Autenticazione SSH
+                <select name="sshAuth" id="conn-ssh-auth">
+                  <option value="password">Password</option>
+                  <option value="upload">File dal dispositivo</option>
+                  <option value="path">Percorso sul server CodeDB</option>
+                </select>
+              </label>
+            </div>
+            <div class="form-row" id="conn-ssh-password-row">
               <label>Password SSH
                 <input type="password" name="sshPassword" placeholder="(vuoto se usi una chiave)" autocomplete="off" />
               </label>
             </div>
-            <div class="form-row">
-              <label>Chiave privata (percorso file)
-                <input type="text" name="sshKeyFile" placeholder="es. C:\Users\Keus\.ssh\id_rsa" autocomplete="off" />
+            <div id="conn-ssh-upload-row" class="hidden">
+              <div class="form-row">
+                <label>Chiave privata dal dispositivo
+                  <button type="button" id="conn-ssh-key-select" aria-describedby="conn-ssh-key-status">Scegli file…</button>
+                </label>
+                <input type="file" id="conn-ssh-key-upload" class="hidden" tabindex="-1" />
+              </div>
+              <p id="conn-ssh-key-status" class="hint" role="status">Scegli la chiave privata, non il file .pub. Massimo 64 KB.</p>
+            </div>
+            <div class="form-row hidden" id="conn-ssh-path-row">
+              <label>Percorso della chiave sul server CodeDB
+                <input type="text" name="sshKeyFile" placeholder="es. ~/.ssh/id_ed25519" autocomplete="off" />
+                <span class="hint">Il file deve essere leggibile dal processo CodeDB. Per un file sul tuo dispositivo usa «File dal dispositivo».</span>
               </label>
             </div>
-            <div class="form-row">
+            <div class="form-row hidden" id="conn-ssh-passphrase-row">
               <label>Passphrase chiave
                 <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)"
                   autocomplete="off" />
@@ -398,18 +417,20 @@
             </div>
             <div class="form-row">
               <label>Impronta host SSH
-                <input type="text" name="sshHostKey" placeholder="(registrata automaticamente al primo collegamento)"
+                <input type="text" name="sshHostKey" placeholder="SHA256:… (impronta verificata del server)"
                   autocomplete="off" spellcheck="false"
                   title="Impronta SHA-256 della chiave del server SSH, nel formato di OpenSSH. Viene registrata al primo collegamento riuscito; dopo, una chiave diversa fa fallire la connessione (possibile man-in-the-middle). Puoi confrontarla con: ssh-keyscan -t rsa HOST | ssh-keygen -lf -" />
               </label>
             </div>
-            <p class="wizard-panel-hint">L'impronta della chiave del server viene registrata al primo collegamento riuscito. Se in seguito cambia, la connessione viene rifiutata: è la protezione contro un server SSH che si sostituisce al tuo (man-in-the-middle). Svuota il campo solo se sai che la chiave è cambiata legittimamente.</p>
+            <p class="wizard-panel-hint">Per una nuova connessione, inserisci l'impronta verificata del server SSH. Le connessioni già salvate possono registrarla al primo collegamento. Una variazione dell'impronta blocca la connessione.</p>
           </div>
         </div>
 
-        <!-- ================= PASSO 3: Salvataggio & Connessione ================= -->
+        <!-- ================= PASSO 3: Riepilogo e conferma ================= -->
         <div class="wizard-panel hidden" data-step="3">
-          <p class="wizard-panel-hint">Assegna un nome per salvare questa connessione o procedi direttamente.</p>
+          <h3 id="wizard-summary-title" tabindex="-1">Controlla la connessione</h3>
+          <div id="wizard-summary-box" class="wizard-summary-box"></div>
+          <p class="wizard-panel-hint">Per conservarla, scegli un nome. Lascia vuoto per connetterti senza salvarla.</p>
           <div class="form-row">
             <label>Salva come
               <input type="text" name="saveAs" placeholder="(opzionale: es. DB Produzione)" autocomplete="off"
@@ -422,7 +443,7 @@
           </div>
           <datalist id="conn-folders"></datalist>
 
-          <div id="wizard-summary-box" class="wizard-summary-box"></div>
+          <p id="conn-save-status" class="connection-save-status" role="status"></p>
         </div>
 
         <div id="connect-error" class="error hidden"></div>
@@ -455,8 +476,8 @@
       <span id="conn-info" class="conn-info hidden"></span>
       <span id="live-badge" class="live-badge hidden" title="Aggiornamenti in tempo reale attivi">● LIVE</span>
       <button type="button" id="command-palette-open" class="ghost command-palette-open"
-        aria-label="Cerca tabelle e comandi" title="Cerca tabelle e comandi">
-        <i data-lucide="search"></i><span>Cerca tabelle e comandi</span>
+        aria-label="Cerca tabelle e comandi" aria-haspopup="dialog" title="Cerca tabelle e comandi">
+        <i data-lucide="search"></i><span>Cerca</span><kbd aria-hidden="true">Ctrl+P</kbd>
       </button>
 
       <!-- Nell'header resta la sola coda delle query in sospeso: gli strumenti
@@ -585,8 +606,6 @@
       <div class="main-area">
         <div class="tab-bar-wrap">
           <div id="tab-bar"></div>
-          <button type="button" id="documents-open" class="ghost" aria-haspopup="dialog" title="Connessioni e documenti aperti"><i data-lucide="panels-top-left"></i> Schede</button>
-          <span id="session-count" title="Fino a 8 connessioni attive; ogni connessione può contenere più database e pannelli">0 / 8</span>
         </div>
 
         <div id="welcome" class="placeholder">
@@ -691,42 +710,46 @@
                       aria-label="Testo da cercare in tutti i campi"
                       placeholder="Cerca in tutti i campi…" />
                   </span>
-                  <input aria-label="Ordinamento" id="sort-input" type="text" spellcheck="false" class="narrow"
-                    placeholder='Sort, es. { "name": 1 }' />
-                  <span class="query-history-wrap">
-                    <button id="query-history-btn" title="Query recenti di questa collection"
-                      aria-label="Query recenti di questa collection"><i data-lucide="clock"></i></button>
-                    <div id="query-history-panel" class="hidden"></div>
+                  <span class="input-group" id="sort-group">
+                    <input aria-label="Ordinamento" id="sort-input" type="text" spellcheck="false" class="narrow"
+                      placeholder='Sort, es. { "name": 1 }' />
                   </span>
-                  <!-- Una sola azione porta un'etichetta: è quella che si preme.
-                       Il resto è icona sola (inserimento, ricarica) o sta nel menu
-                       ⋯, perché con cinque pulsanti dello stesso peso "Esegui"
-                       smetteva di essere il pulsante ovvio. -->
-                  <button id="run-btn" class="primary" title="Esegui (Invio)"><i data-lucide="play"></i> Esegui</button>
-                  <button id="insert-btn" class="icon-only" title="Inserisci un nuovo documento"
-                    aria-label="Inserisci un nuovo documento"><i data-lucide="plus"></i></button>
-                  <button id="refresh-btn" class="icon-only" title="Ricarica" aria-label="Ricarica"><i
-                      data-lucide="rotate-cw"></i></button>
-                  <div class="toolbar-dropdown-wrap">
-                    <button type="button" id="data-more-btn" class="icon-only" aria-haspopup="true"
-                      aria-expanded="false" title="Altre azioni" aria-label="Altre azioni"><i
-                        data-lucide="more-horizontal"></i></button>
-                    <div id="data-more-menu" class="toolbar-dropdown-menu hidden">
-                      <button type="button" id="explain-btn" class="dropdown-item"
-                        title="Piano di esecuzione della query corrente"><i data-lucide="compass"></i> Piano di
-                        esecuzione</button>
-                      <label id="polling-toggle" class="dropdown-item checkbox-item hidden"
-                        title="Aggiorna automaticamente ogni 5 secondi">
-                        <input type="checkbox" id="polling-checkbox">
-                        <i data-lucide="timer"></i>
-                        <span>Aggiornamento automatico (5s)</span>
-                      </label>
-                      <div class="dropdown-divider"></div>
-                      <!-- Distruttiva e senza bersaglio visibile: sta qui, non a un
-                           clic di distanza accanto ai dati. -->
-                      <button type="button" id="delete-all-btn" class="dropdown-item danger" disabled
-                        title="Elimina tutti i documenti che soddisfano il filtro corrente"><i
-                          data-lucide="trash-2"></i> Elimina tutto…</button>
+                  <div class="data-toolbar-actions">
+                    <span class="query-history-wrap">
+                      <button id="query-history-btn" title="Query recenti di questa collection"
+                        aria-label="Query recenti di questa collection"><i data-lucide="clock"></i></button>
+                      <div id="query-history-panel" class="hidden"></div>
+                    </span>
+                    <!-- Una sola azione porta un'etichetta: è quella che si preme.
+                         Il resto è icona sola (inserimento, ricarica) o sta nel menu
+                         ⋯, perché con cinque pulsanti dello stesso peso "Esegui"
+                         smetteva di essere il pulsante ovvio. -->
+                    <button id="run-btn" class="primary" title="Esegui (Invio)"><i data-lucide="play"></i> Esegui</button>
+                    <button id="insert-btn" class="icon-only" title="Inserisci un nuovo documento"
+                      aria-label="Inserisci un nuovo documento"><i data-lucide="plus"></i></button>
+                    <button id="refresh-btn" class="icon-only" title="Ricarica" aria-label="Ricarica"><i
+                        data-lucide="rotate-cw"></i></button>
+                    <div class="toolbar-dropdown-wrap">
+                      <button type="button" id="data-more-btn" class="icon-only" aria-haspopup="true"
+                        aria-expanded="false" title="Altre azioni" aria-label="Altre azioni"><i
+                          data-lucide="more-horizontal"></i></button>
+                      <div id="data-more-menu" class="toolbar-dropdown-menu hidden">
+                        <button type="button" id="explain-btn" class="dropdown-item"
+                          title="Piano di esecuzione della query corrente"><i data-lucide="compass"></i> Piano di
+                          esecuzione</button>
+                        <label id="polling-toggle" class="dropdown-item checkbox-item hidden"
+                          title="Aggiorna automaticamente ogni 5 secondi">
+                          <input type="checkbox" id="polling-checkbox">
+                          <i data-lucide="timer"></i>
+                          <span>Aggiornamento automatico (5s)</span>
+                        </label>
+                        <div class="dropdown-divider"></div>
+                        <!-- Distruttiva e senza bersaglio visibile: sta qui, non a un
+                             clic di distanza accanto ai dati. -->
+                        <button type="button" id="delete-all-btn" class="dropdown-item danger" disabled
+                          title="Elimina tutti i documenti che soddisfano il filtro corrente"><i
+                            data-lucide="trash-2"></i> Elimina tutto…</button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -751,27 +774,29 @@
                 </div>
 
                 <div class="statusbar">
-                  <span id="result-info"></span>
-                  <span id="cell-info"></span>
-                  <span id="loading-info"></span>
-                  <span class="spacer"></span>
-                  <!-- Quando tutte le righe stanno in una pagina non c'è nulla da
-                       impaginare: i cinque controlli si riducono a "1–1 di 1", che
-                       li riapre con un clic. -->
-                  <!-- Il testo sta in uno span suo: l'icona è statica e non deve
-                       essere spazzata via dal testo riscritto a ogni query. -->
-                  <button type="button" id="pager-compact" class="pager-compact hidden"
-                    title="Mostra i controlli di impaginazione"><span id="pager-compact-text"></span><i
-                      data-lucide="unfold-horizontal"></i></button>
-                  <span id="pager" class="pager">
+                  <div class="status-overview">
+                    <div class="status-summary">
+                      <span id="result-info" role="status"></span>
+                      <span id="cell-info"></span>
+                      <span id="loading-info"></span>
+                      <button type="button" id="pager-compact" class="pager-compact hidden"
+                        aria-controls="pager" aria-expanded="false" title="Mostra i controlli di paginazione">
+                        <span id="pager-compact-text"></span><i data-lucide="unfold-horizontal" aria-hidden="true"></i>
+                      </button>
+                    </div>
                     <label id="infinite-toggle-label"
                       title="Scroll infinito: carica altri dati man mano che scorri (solo find)">
-                      <input type="checkbox" id="infinite-toggle"> ∞ Scroll
+                      <input type="checkbox" id="infinite-toggle"><span>Scroll continuo</span>
                     </label>
-                    <button id="prev-btn" class="ghost">‹ Prec</button>
-                    <span id="page-info"></span>
-                    <button id="next-btn" class="ghost">Succ ›</button>
-                    <select id="page-size" title="Righe per pagina (o per blocco con scroll infinito)">
+                  </div>
+                  <div id="pager" class="pager">
+                    <nav class="pager-navigation" aria-label="Paginazione dei risultati">
+                      <button type="button" id="prev-btn" class="ghost" title="Pagina precedente" aria-label="Pagina precedente"><i data-lucide="chevron-left" aria-hidden="true"></i></button>
+                      <button type="button" id="page-info" class="pager-range" disabled aria-controls="pager"><span class="pager-range-value"><span id="page-info-text"></span><i data-lucide="chevron-up" aria-hidden="true"></i></span><small id="pager-mobile-total" aria-hidden="true"></small></button>
+                      <button type="button" id="next-btn" class="ghost" title="Pagina successiva" aria-label="Pagina successiva"><i data-lucide="chevron-right" aria-hidden="true"></i></button>
+                    </nav>
+                    <label class="pager-size"><span>Righe</span>
+                    <select id="page-size" aria-label="Righe per pagina o blocco" title="Righe per pagina (o per blocco con scroll infinito)">
                       <option>25</option>
                       <option selected>50</option>
                       <option>100</option>
@@ -780,7 +805,10 @@
                       <option>1000</option>
                       <option>5000</option>
                     </select>
-                  </span>
+                    </label>
+                  </div>
+                  <button type="button" id="pager-options-open" class="ghost" aria-label="Opzioni dei risultati" title="Opzioni dei risultati" aria-haspopup="dialog" aria-expanded="false" aria-controls="pager-options"><i data-lucide="sliders-horizontal" aria-hidden="true"></i></button>
+                  <div id="pager-options" class="hidden"></div>
                 </div>
               </div>
 
@@ -824,6 +852,21 @@
                    non emoji: un'emoji cambia forma e larghezza da un sistema
                    all'altro e un lettore di schermo la pronuncia. -->
               <div id="view-uml" class="view-panel hidden">
+                <div class="uml-mobile-bar" aria-label="Navigazione diagramma">
+                  <button type="button" id="uml-mobile-catalogo" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="uml-catalogo">
+                    <i data-lucide="list-tree" aria-hidden="true"></i>Tabelle
+                  </button>
+                  <button type="button" id="uml-mobile-dettagli" class="ghost" aria-haspopup="dialog" aria-expanded="false" aria-controls="uml-ispettore" disabled>
+                    <i data-lucide="info" aria-hidden="true"></i>Dettagli
+                  </button>
+                  <span class="uml-spazio"></span>
+                  <button type="button" id="uml-mobile-strumenti" class="ghost uml-icona" aria-label="Strumenti del diagramma" title="Strumenti del diagramma" aria-haspopup="dialog" aria-expanded="false">
+                    <i data-lucide="ellipsis" aria-hidden="true"></i>
+                  </button>
+                  <button type="button" id="uml-mobile-espandi" class="ghost uml-icona" aria-label="Espandi diagramma" title="Espandi diagramma" aria-pressed="false">
+                    <i data-lucide="maximize-2" aria-hidden="true"></i>
+                  </button>
+                </div>
                 <div class="uml-bar">
                   <span class="uml-spazio"></span>
 
@@ -1545,6 +1588,7 @@
         <symbol id="ico-nuova-parte" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
         <symbol id="ico-elimina" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/></symbol>
         <symbol id="ico-vertice" viewBox="0 0 24 24"><path d="M4 18 20 6"/><circle cx="12" cy="12" r="3"/><path d="M18 15v6"/><path d="M15 18h6"/></symbol>
+        <symbol id="ico-mirino" viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/><path d="M12 1v7m0 8v7M1 12h7m8 0h7"/></symbol>
         <symbol id="ico-json" viewBox="0 0 24 24"><path d="M8 3H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1"/><path d="M16 3h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"/></symbol>
         <symbol id="ico-sfondo" viewBox="0 0 24 24"><path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
       </svg>
@@ -1555,7 +1599,7 @@
       </div>
 
       <div class="geomap-toolbar">
-        <label class="geomap-campo">Tipo
+        <label class="geomap-campo"><span class="geomap-control-label">Tipo</span>
           <select id="geomap-type">
             <option value="Point">Point</option>
             <option value="MultiPoint">MultiPoint</option>
@@ -1583,14 +1627,14 @@
 
         <span class="geomap-spazio"></span>
 
-        <button type="button" id="geomap-tiles-btn" class="geomap-interruttore" aria-pressed="false"
+        <button type="button" id="geomap-tiles-btn" class="geomap-interruttore" aria-pressed="false" aria-label="Sfondo mappa"
                 title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, l'editor funziona su sfondo neutro">
-          <svg class="ico" aria-hidden="true"><use href="#ico-sfondo"/></svg>Sfondo mappa
+          <svg class="ico" aria-hidden="true"><use href="#ico-sfondo"/></svg><span class="geomap-control-label">Sfondo mappa</span>
         </button>
         <input type="checkbox" id="geomap-tiles" class="visually-hidden" tabindex="-1" aria-hidden="true" />
-        <button type="button" id="geomap-json-btn" class="geomap-interruttore" aria-pressed="true"
-                aria-controls="geomap-json" title="Mostra o nasconde il GeoJSON accanto alla mappa">
-          <svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg>GeoJSON
+        <button type="button" id="geomap-json-btn" class="geomap-interruttore" aria-pressed="true" aria-label="GeoJSON"
+                aria-controls="geomap-json" title="Mostra o nasconde il GeoJSON">
+          <svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg><span class="geomap-control-label">GeoJSON</span>
         </button>
       </div>
 
@@ -1598,7 +1642,12 @@
 
       <div class="geomap-body">
         <div class="geomap-scena">
-          <div id="geomap-canvas" class="geomap-canvas"></div>
+          <div id="geomap-canvas" class="geomap-canvas">
+            <svg id="geomap-mirino" class="geomap-mirino hidden" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <use class="geomap-mirino-outline" href="#ico-mirino"/>
+              <use href="#ico-mirino"/>
+            </svg>
+          </div>
 
           <!-- Strumenti della FORMA: stanno sulla mappa, come in un editor
                cartografico, perché è lì che si guarda mentre si lavora. -->
@@ -1631,11 +1680,15 @@
                possibile è un comando che nessuno scopre. -->
           <div class="geomap-azioni-vertice" id="geomap-azioni">
             <span id="geomap-selezione" class="geomap-selezione">nessun vertice scelto</span>
-            <button type="button" id="geomap-insert-vertex" class="geomap-pill" title="Inserisce un vertice a metà del lato successivo (Ins)">
-              <svg class="ico" aria-hidden="true"><use href="#ico-vertice"/></svg>Inserisci vertice
+            <button type="button" id="geomap-mirino-apply" class="primary hidden" aria-describedby="geomap-note">Seleziona</button>
+            <button type="button" id="geomap-mirino-select" class="geomap-pill hidden" aria-label="Seleziona un altro vertice al mirino" title="Seleziona un altro vertice al mirino">
+              <svg class="ico" aria-hidden="true"><use href="#ico-mirino"/></svg>
             </button>
-            <button type="button" id="geomap-del-vertex" class="geomap-pill pericolo" title="Elimina il vertice selezionato (Canc)">
-              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg>Elimina vertice
+            <button type="button" id="geomap-insert-vertex" class="geomap-pill" aria-label="Inserisci vertice" title="Inserisce un vertice a metà del lato successivo (Ins)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-vertice"/></svg><span class="geomap-control-label">Inserisci vertice</span>
+            </button>
+            <button type="button" id="geomap-del-vertex" class="geomap-pill pericolo" aria-label="Elimina vertice" title="Elimina il vertice selezionato (Canc)">
+              <svg class="ico" aria-hidden="true"><use href="#ico-elimina"/></svg><span class="geomap-control-label">Elimina vertice</span>
             </button>
           </div>
 
@@ -2724,23 +2777,19 @@
     </div>
   </div>
 
-  <!-- ===================== Mobile Bottom Navigation Bar ===================== -->
-      <nav id="mobile-bottom-nav" class="mobile-bottom-nav">
-        <button type="button" id="mobile-nav-conns" class="mobile-nav-item">
-          <span class="nav-icon"><i data-lucide="globe"></i></span>
+  <!-- La stessa barra entra nel drawer per passare fra le sezioni. -->
+      <nav id="mobile-bottom-nav" class="mobile-bottom-nav" aria-label="Navigazione workspace">
+        <button type="button" id="mobile-nav-conns" class="mobile-nav-item" aria-haspopup="dialog">
+          <span class="nav-icon" aria-hidden="true"><i data-lucide="server"></i></span>
           <span class="nav-label">Connessioni</span>
         </button>
-        <button type="button" id="mobile-nav-dbs" class="mobile-nav-item">
-          <span class="nav-icon"><i data-lucide="database"></i></span>
+        <button type="button" id="mobile-nav-dbs" class="mobile-nav-item" aria-haspopup="dialog">
+          <span class="nav-icon" aria-hidden="true"><i data-lucide="database"></i></span>
           <span class="nav-label">Database</span>
         </button>
-        <button type="button" id="mobile-nav-query" class="mobile-nav-item">
-          <span class="nav-icon"><i data-lucide="zap"></i></span>
-          <span class="nav-label">Query Engine</span>
-        </button>
-        <button type="button" id="mobile-nav-health" class="mobile-nav-item">
-          <span class="nav-icon"><i data-lucide="activity"></i></span>
-          <span class="nav-label">Salute</span>
+        <button type="button" id="documents-open" class="mobile-nav-item" aria-haspopup="dialog">
+          <span class="nav-icon" aria-hidden="true"><i data-lucide="panels-top-left"></i></span>
+          <span class="nav-label">Schede</span>
         </button>
       </nav>
 

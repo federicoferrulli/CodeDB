@@ -1,0 +1,1 @@
+SELECT BLOCCO_1;

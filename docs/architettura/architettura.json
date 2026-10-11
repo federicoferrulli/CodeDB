@@ -9,7 +9,7 @@
     "convenzioni": [
       "I documenti viaggiano come Extended JSON (EJSON): serializzazione relaxed dal server, parse relaxed:false per MongoDB e relaxed:true per SQL.",
       "Ogni risposta socket e { ok: true, ... } oppure { ok: false, error }.",
-      "Gli id di sessione DB sono per-tab: Map<tabId, sessione> per socket, massimo 8 per socket.",
+      "Gli id di sessione DB sono per-tab: Map<tabId, sessione> per socket; budget globale di 100 connessioni condiviso con MCP, senza un limite separato per client.",
       "Testi UI, messaggi di errore e commenti sono in italiano."
     ]
   },
@@ -192,7 +192,7 @@
 
     { "id": "session-map", "label": "Map<tabId, sessione>", "group": "core", "x": 990, "y": 100,
       "file": "server.js",
-      "sommario": "Una strategia dedicata + eventuale tunnel SSH per ogni tab, max 8 per socket.",
+      "sommario": "Una strategia dedicata + eventuale tunnel SSH per ogni tab; budget globale condiviso con MCP.",
       "dettaglio": "tabId assente = sessione 'default', retro-compatibile col comportamento a connessione singola. Alla disconnessione del socket vengono chiuse tutte le sessioni (e abortiti gli script)." },
 
     { "id": "delegate", "label": "delegate() — pipeline eventi", "group": "core", "x": 990, "y": 160,
@@ -559,7 +559,7 @@
         { "from": "ui-panels", "to": "ui-socket", "nota": "connection.js invia mongo:connect { saved | cfg, tabId }. Le credenziali di una connessione salvata non passano mai dal browser." },
         { "from": "ui-socket", "to": "origin-gate", "nota": "Trasporto." },
         { "from": "origin-gate", "to": "socket-io", "nota": "Trasporto." },
-        { "from": "socket-io", "to": "establish", "nota": "Controllo del limite di 8 sessioni per socket dentro il lock." },
+        { "from": "socket-io", "to": "establish", "nota": "Prenotazione del budget globale delle connessioni dentro il lock." },
         { "from": "establish", "to": "connstore-ini", "nota": "resolveEffectiveCfg legge il file del TENANT richiedente: data/conns/<ownerId>.ini con RBAC on, il file condiviso altrimenti." },
         { "from": "connstore-ini", "to": "vault", "nota": "I segreti (password DB, sshPassword, sshPassphrase) si decifrano qui e non lasciano mai il server." },
         { "from": "establish", "to": "ssh-tunnel", "nota": "Solo in modalita Parametri: porta locale effimera, host key verificata con accept-new, host/port riscritti verso il capo locale (+ directConnection=true su MongoDB)." },

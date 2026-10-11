@@ -67,6 +67,7 @@ lucide-react/dist/esm/shared/src/utils/hasA11yProp.mjs:
 lucide-react/dist/esm/context.mjs:
 lucide-react/dist/esm/Icon.mjs:
 lucide-react/dist/esm/createLucideIcon.mjs:
+lucide-react/dist/esm/icons/arrow-right.mjs:
 lucide-react/dist/esm/icons/calendar-days.mjs:
 lucide-react/dist/esm/icons/check.mjs:
 lucide-react/dist/esm/icons/chevron-down.mjs:
@@ -82,7 +83,10 @@ lucide-react/dist/esm/icons/info.mjs:
 lucide-react/dist/esm/icons/layout-grid.mjs:
 lucide-react/dist/esm/icons/pipette.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
+lucide-react/dist/esm/icons/search.mjs:
 lucide-react/dist/esm/icons/settings.mjs:
+lucide-react/dist/esm/icons/table-2.mjs:
+lucide-react/dist/esm/icons/terminal.mjs:
 lucide-react/dist/esm/icons/triangle-alert.mjs:
 lucide-react/dist/esm/icons/x.mjs:
 lucide-react/dist/esm/lucide-react.mjs:

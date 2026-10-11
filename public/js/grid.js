@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
 import { campoScrivibile, identitaRiga } from './righe.js';
 import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
@@ -23,6 +24,10 @@ import {
   SOGLIA_VIRTUALE, altezzaRigaGriglia,
 } from './griglia.js';
 import { chiudiCaricamento, congelaContesto, contestoCorrente } from './coerenza-richieste.js';
+import { openNavigationSheet, closeNavigationSheet, renderDataEmpty } from '../arc/ui.js';
+import { closeDrawers } from './responsive.js';
+
+let opzioniPagerAperte = false;
 
 export function applyDbTypeToWorkspace() {
   // La frase generica sull'origine delle relazioni UML non sta piu' qui: il
@@ -188,6 +193,7 @@ export function runQuery(opts = {}) {
   });
 
   if (!opts.auto) {
+    renderDataEmpty($('.grid-wrap'), null);
     showSkeletonGrid('#grid');
   }
 
@@ -922,10 +928,25 @@ export function renderGrid(opts = {}) {
   thead.innerHTML = '';
   buildHead(thead, canSelect);
   const documento = currentCollTab();
+  const filtro = (documento?.snap?.filter ?? $('#filter-input')?.value ?? '').trim();
+  const filtrata = !!filtro && filtro !== '{}';
+  renderDataEmpty(wrap, !state.docs.length && !documento?.gridError ? {
+    title: state.skip > 0 ? 'Nessuna riga in questa pagina' : filtrata ? 'Nessuna corrispondenza' : isSqlType(state.dbType) ? 'Questa tabella è vuota' : 'Questa collection è vuota',
+    description: state.skip > 0 ? 'Torna all’inizio per vedere i risultati disponibili.' : filtrata
+      ? 'Prova un’altra ricerca o modifica la condizione applicata.' : 'Non ci sono ancora dati da visualizzare. Aggiorna dopo aver aggiunto nuove righe.',
+    kind: filtrata ? 'search' : 'data',
+    actionLabel: state.skip > 0 ? 'Prima pagina' : filtrata ? 'Modifica filtro' : 'Aggiorna',
+    onAction: () => {
+      if (state.skip > 0) { state.skip = 0; runQuery(); }
+      else if (filtrata) $('#filter-input')?.focus();
+      else $('#refresh-btn')?.click();
+    },
+  } : null);
   configuraColonne(grid, {
     nomi: [null, ...state.columns], righe: state.docs,
     larghezze: documento ? (documento.gridWidths ||= new Map()) : new Map(),
   });
+  if (!state.columns.length && !state.docs.length) thead.innerHTML = '';
 
   const virtual = vaVirtualizzata(state.docs.length, CAPACITA_DATI, VIRTUAL_THRESHOLD);
   if (!virtual) {
@@ -1025,16 +1046,17 @@ export function ensureRowRendered(r) {
 }
 
 function updateFooter() {
-  const docWord = isSqlType(state.dbType) ? 'righe' : 'documenti';
+  const docWord = isSqlType(state.dbType) ? (state.total === 1 ? 'riga' : 'righe') : (state.total === 1 ? 'documento' : 'documenti');
   // Totale sconosciuto: '…' mentre il conteggio gira, '?' se è andato in timeout.
   // Totale stimato dai metadati (approx): mostrato con "≈" e trattato come NON
   // esatto per la navigazione, così una stima imprecisa non nasconde righe reali.
   const known = state.total != null;
   const exact = hasExactTotal();
   const totalDisplay = known ? `${state.countApprox ? '≈ ' : ''}${state.total}` : (state.countTimedOut ? '?' : '…');
+  $('#result-info').textContent = `${totalDisplay} ${docWord}`;
+  $('#pager-mobile-total').textContent = `di ${totalDisplay} ${docWord}`;
   if (state.infiniteScroll && $('#query-mode').value !== 'aggregate') {
-    $('#result-info').textContent = `${totalDisplay} ${docWord} — ${state.docs.length} caricati`;
-    $('#page-info').textContent = (exact && state.docs.length >= state.total)
+    $('#page-info-text').textContent = (exact && state.docs.length >= state.total)
       ? 'tutti'
       : `${state.docs.length}${known ? ` / ${totalDisplay}` : ''}`;
     $('#prev-btn').disabled = true;
@@ -1042,10 +1064,9 @@ function updateFooter() {
   } else {
     const from = state.docs.length === 0 ? 0 : state.skip + 1;
     const to = Math.min(state.skip + state.docs.length, state.skip + state.limit);
-    $('#result-info').textContent = `${totalDisplay} ${docWord} — ${state.docs.length} mostrati`;
     // Con totale esatto clampiamo l'intervallo al totale; con stima o totale
     // sconosciuto mostriamo l'intervallo grezzo (la stima potrebbe essere < reale).
-    $('#page-info').textContent = exact
+    $('#page-info-text').textContent = exact
       ? `${state.total === 0 ? 0 : from}–${Math.min(to, state.total) || state.docs.length}`
       : `${from}–${to}`;
     $('#prev-btn').disabled = state.skip === 0;
@@ -1059,12 +1080,8 @@ function updateFooter() {
   updatePagerCollapse(exact);
 }
 
-// Footer comprimibile. Quando il risultato sta tutto in una pagina non c'è
-// nulla da impaginare, e i cinque controlli (∞ Scroll, Prec, intervallo, Succ,
-// righe per pagina) occupano metà barra per non fare niente: si riducono a una
-// sola scritta "1–1 di 1 documenti", che li riapre con un clic. L'intervallo
-// resta cliccabile per richiuderli, e la scelta vive nello stato del tab —
-// vale finché si guarda questo risultato, non per sempre.
+// Con un totale esatto di una sola pagina basta il riepilogo; la scelta di
+// riaprire i controlli appartiene al risultato corrente.
 function updatePagerCollapse(exact) {
   const pager = $('#pager');
   const chip = $('#pager-compact');
@@ -1082,8 +1099,8 @@ function updatePagerCollapse(exact) {
 
   pager.classList.toggle('hidden', compresso);
   chip.classList.toggle('hidden', !compresso);
-  // Da compresso il chip dice già tutto: "1 documenti — 1 mostrati" sarebbe la
-  // stessa frase due volte.
+  $('#infinite-toggle-label').classList.toggle('hidden', compresso && !opzioniPagerAperte);
+  // Il riepilogo compresso contiene già il totale.
   if (info) info.classList.toggle('hidden', compresso);
 
   if (compresso) {
@@ -1104,7 +1121,12 @@ function updatePagerCollapse(exact) {
   if (pageInfo) {
     const richiudibile = unaPagina && !!state.pagerExpanded;
     pageInfo.classList.toggle('pager-toggle', richiudibile);
-    pageInfo.title = richiudibile ? 'Nascondi i controlli di impaginazione' : '';
+    pageInfo.disabled = !richiudibile;
+    pageInfo.title = richiudibile ? 'Riduci i controlli di paginazione' : 'Intervallo delle righe visualizzate';
+    const intervallo = $('#page-info-text').textContent;
+    pageInfo.setAttribute('aria-label', richiudibile ? `${intervallo}: riduci i controlli di paginazione` : `Risultati visualizzati: ${intervallo}, totale ${$('#result-info').textContent}`);
+    if (richiudibile) pageInfo.setAttribute('aria-expanded', 'true');
+    else pageInfo.removeAttribute('aria-expanded');
   }
 }
 
@@ -1204,11 +1226,11 @@ function fetchMore() {
   });
 }
 
-export function deleteDoc(doc) {
+export async function deleteDoc(doc) {
   const { text } = displayValue(identitaRiga(doc));
-  if (!confirm(`Eliminare il documento con _id = ${text}?`)) return;
   const origin = captureContext();
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
+  if (!await chiediConferma(`Eliminare il documento con _id = ${text}?`)) return;
   emit('doc:delete', {
     ...bersaglio,
     id: idOf(doc),
@@ -1225,17 +1247,17 @@ export function deleteDoc(doc) {
 
 // Elimina i documenti passati (righe della selezione celle, non i checkbox):
 // una sola conferma per tutti, poi le stesse ondate di `deleteSelectedDocs`.
-export function deleteDocs(docs) {
+export async function deleteDocs(docs) {
   const ids = docs.filter((d) => d && '_id' in d).map(idOf);
   if (ids.length === 0) { toast('Nessuna riga da eliminare', true); return; }
   if (ids.length === 1) { deleteDoc(docs.find((d) => d && '_id' in d)); return; }
   const isSql = isSqlType(state.dbType);
   const cosa = isSql ? 'righe' : 'documenti';
-  if (!confirm(`Eliminare ${ids.length} ${cosa}? Questa azione non si può annullare.`)) return;
-
   const origin = captureContext();
-  // Bersaglio congelato, non riletto a ogni richiesta: vedi deleteSelectedDocs.
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
+  if (!await chiediConferma(`Eliminare ${ids.length} ${cosa}? Questa azione non si può annullare.`)) return;
+
+  // Bersaglio congelato, non riletto a ogni richiesta: vedi deleteSelectedDocs.
   eseguiAOndate(ids, 8, (id) => emit('doc:delete', { ...bersaglio, id }))
     .then((results) => {
       const failed = results.filter((r) => r.status === 'rejected');
@@ -1247,7 +1269,7 @@ export function deleteDocs(docs) {
     });
 }
 
-export function deleteSelectedDocs() {
+export async function deleteSelectedDocs() {
   // Elimina solo i documenti realmente presenti in pagina: protegge da
   // selezioni rimaste orfane dopo un refresh o un cambio di risultati.
   const visible = new Set(state.docs.filter((d) => '_id' in d).map(idOf));
@@ -1256,11 +1278,12 @@ export function deleteSelectedDocs() {
     toast('Nessun documento selezionato', true);
     return;
   }
-  if (!confirm(`Eliminare i ${ids.length} documenti selezionati? Questa azione non si può annullare.`)) return;
+  const origin = captureContext();
+  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
+  if (!await chiediConferma(`Eliminare i ${ids.length} documenti selezionati? Questa azione non si può annullare.`)) return;
 
   // Tab e collection d'origine catturati prima di partire: le risposte arrivano
   // a operazione lunga conclusa, quando l'utente può essere altrove.
-  const origin = captureContext();
   // E il BERSAGLIO va congelato con loro (CDB-A18). `state` è un Proxy sul tab
   // ATTIVO ed `emit()` inietta il tab attivo AL MOMENTO DELLA CHIAMATA: siccome
   // le ondate distribuiscono le cancellazioni nel tempo, passare a un altro tab
@@ -1270,7 +1293,6 @@ export function deleteSelectedDocs() {
   // colpiva la riga omonima della tabella sbagliata. Il punto non è fermarsi
   // (le scritture vanno completate) ma indirizzarle: `isStillActive()` decide
   // solo se ridipingere.
-  const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
   // A ondate, non tutte insieme (CDB-51): una cancellazione multipla di
   // centinaia di righe riempirebbe la coda del socket e il pool della sessione,
   // lasciando in attesa ogni altra operazione dell'utente.
@@ -1289,7 +1311,7 @@ export function deleteSelectedDocs() {
   });
 }
 
-export function deleteAllWithFilter() {
+export async function deleteAllWithFilter() {
   if ($('#query-mode').value === 'aggregate') return; // solo in modalità find
   // Il filtro con cui si cancella dev'essere lo STESSO che ha prodotto le
   // righe a schermo. Mandare il testo grezzo mentre la griglia filtra in
@@ -1310,13 +1332,13 @@ export function deleteAllWithFilter() {
   const msg = filter
     ? `Eliminare ${isSql ? `le ${count}righe` : `i ${count}documenti`} che soddisfano questo filtro? Questa azione non si può annullare.`
     : `Nessun filtro impostato: eliminare ${isSql ? `TUTTE le ${count}righe` : `TUTTI i ${count}documenti`} di "${state.coll}"? Questa azione non si può annullare.`;
-  if (!confirm(msg)) return;
-
-  // Una sola richiesta, e la `confirm()` blocca il thread — ma il bersaglio si
-  // congela lo stesso: la regola "una scrittura non legge il Proxy `state`" vale
-  // qui come altrove, ed è verificata da test/unit-scritture-bersaglio.js.
   const origin = captureContext();
   const bersaglio = { tabId: origin.tabId, db: origin.st.db, coll: origin.st.coll };
+  if (!await chiediConferma(msg)) return;
+
+  // La conferma è asincrona su mobile: il bersaglio si
+  // congela lo stesso: la regola "una scrittura non legge il Proxy `state`" vale
+  // qui come altrove, ed è verificata da test/unit-scritture-bersaglio.js.
   conCaricamento($('#delete-all-btn'), () => emit('collection:deleteMany', {
     ...bersaglio,
     ...condizione,
@@ -1366,6 +1388,31 @@ export function updateBulkDeleteUI() {
 
 export function initGrid() {
   collegaGestiTattili();
+
+  $('#pager-options-open').addEventListener('click', () => {
+    if (!window.matchMedia('(max-width: 900px)').matches) return;
+    closeDrawers();
+    const panel = $('#pager-options'), opener = $('#pager-options-open');
+    // Sposta i controlli originali: Arc, valori e listener restano gli stessi.
+    const controls = [$('.pager-size'), $('#infinite-toggle-label')].map(node => ({ node, parent: node.parentNode, next: node.nextSibling }));
+    opzioniPagerAperte = true;
+    controls.forEach(({ node }) => { node.classList.remove('hidden'); panel.append(node); });
+    opener.setAttribute('aria-expanded', 'true');
+    openNavigationSheet(panel, () => {
+      controls.forEach(({ node, parent, next }) => parent.insertBefore(node, next?.parentNode === parent ? next : null));
+      panel.classList.add('hidden');
+      opzioniPagerAperte = false;
+      opener.setAttribute('aria-expanded', 'false');
+      updateFooter();
+      const target = window.matchMedia('(max-width: 900px)').matches ? opener : ($('#pager').classList.contains('hidden') ? $('#pager-compact') : $('#page-size'));
+      if (!$('#workspace').classList.contains('hidden') && !$('#view-data').classList.contains('hidden')) target.focus({ preventScroll: true });
+    }, { title: 'Opzioni dei risultati', description: '', tools: false, navigation: false, fitContent: true });
+  });
+  const view = $('#view-data'), workspace = $('#workspace');
+  const closeHiddenOptions = new MutationObserver(() => {
+    if (opzioniPagerAperte && (view.classList.contains('hidden') || workspace.classList.contains('hidden'))) closeNavigationSheet();
+  });
+  for (const node of [view, workspace]) closeHiddenOptions.observe(node, { attributes: true, attributeFilter: ['class'] });
 
   // Due scelte visibili, due testi conservati: cambiare modalità non distrugge
   // ciò che l'utente aveva scritto nell'altra.
@@ -1489,15 +1536,17 @@ export function initGrid() {
     runQuery();
   });
 
-  // Footer comprimibile: il chip riapre i controlli, l'intervallo li richiude.
+  // Il focus segue il comando visibile anche usando Invio o Spazio.
   $('#pager-compact').addEventListener('click', () => {
     state.pagerExpanded = true;
     updateFooter();
+    $('#page-info').focus();
   });
   $('#page-info').addEventListener('click', () => {
     if (!state.pagerExpanded) return;
     state.pagerExpanded = false;
     updateFooter();
+    $('#pager-compact').focus();
   });
 
   initQueryHistory();

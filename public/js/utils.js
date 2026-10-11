@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { socket } from './socket.js';
 import { state } from './state.js';
 import { tabs, activeTab } from './tabs.js';
@@ -856,12 +857,12 @@ export function proteggiModifiche(elOrId, tabId, bersaglio) {
   el.addEventListener('change', dirty);
 }
 
-export function closeModal(elOrId, { saved = false } = {}) {
+export async function closeModal(elOrId, { saved = false } = {}) {
   const el = typeof elOrId === 'string'
     ? (elOrId.startsWith('#') || elOrId.startsWith('.') ? document.querySelector(elOrId) : (document.getElementById(elOrId) || document.querySelector(elOrId)))
     : elOrId;
   if (!el) return;
-  if (!saved && el.dataset.unsaved && !confirm(`Scartare le modifiche non salvate a ${el.dataset.editTarget || 'questo documento'}?`)) return;
+  if (!saved && el.dataset.unsaved && !await chiediConferma(`Scartare le modifiche non salvate a ${el.dataset.editTarget || 'questo documento'}?`)) return;
   delete el.dataset.unsaved;
   el.classList.add('hidden');
 }

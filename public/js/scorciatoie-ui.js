@@ -58,6 +58,7 @@ async function salvaScorciatoie(p) {
   const { mappa, errori } = mappaEffettiva(personali);
   impostaMappaAttiva(mappa);
   salvaLocali(personali); // mirror locale: copre RBAC spento e fa da cache istantanea
+  document.dispatchEvent(new CustomEvent('codedb:scorciatoie'));
   try {
     await emit('prefs:set', { chiave: CHIAVE_PREFS, valore: personali });
     return { dove: 'account', errori };

@@ -130,7 +130,7 @@ npm run backup -- help    # Full usage guide
 ### Notes & Key Principles
 
 - **Multi-database engine:** MongoDB uses EJSON and `ObjectId`; MySQL/PostgreSQL expose a virtual `_id` representing the primary key `{ col: val }` (or fallback to full row).
-- **Session Isolation:** Each tab maintains its own server session (dedicated database client/pool + SSH tunnel, max 8 per socket).
+- **Session Isolation:** Each tab maintains its own server session (dedicated database client/pool + SSH tunnel). Connections share a global budget of 100 per server instance across UI and MCP, with no separate per-client cap.
 - **Real-time Updates:** MongoDB real-time updates require Replica Sets or MongoDB Atlas. Standalone MongoDB gracefully degrades to manual refresh (⟳).
 - **EJSON Support:** MongoDB filters accept Extended JSON, e.g. `{ "_id": { "$oid": "..." } }`. 24-character hex strings in `_id` are automatically converted to `ObjectId`.
 - **Encrypted Credentials:** Saved connections live in `connections.ini` encrypted with AES-256-GCM via a Vault Master Passphrase. Secrets are never exposed to the browser.

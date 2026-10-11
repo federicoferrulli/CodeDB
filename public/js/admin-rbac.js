@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
@@ -466,7 +467,7 @@ function wireListActions() {
         await conCaricamento(btn, () => emit('users:update', { id: btn.dataset.id, password: pwd }), '');
         showToast('Password aggiornata (le sessioni attive del sottoutente sono state chiuse).', 'success');
       } else if (action === 'del-user') {
-        if (!window.confirm(`Eliminare il sottoutente "${btn.dataset.email}"? I suoi permessi e le sue API key verranno rimossi.`)) return;
+        if (!await chiediConferma(`Eliminare il sottoutente "${btn.dataset.email}"? I suoi permessi e le sue API key verranno rimossi.`)) return;
         await conCaricamento(btn, () => emit('users:delete', { id: btn.dataset.id }), '');
         showToast('Sottoutente eliminato.', 'success');
         await reload();
@@ -475,7 +476,7 @@ function wireListActions() {
         showToast('Permesso revocato.', 'success');
         await reload();
       } else if (action === 'revoke-key') {
-        if (!window.confirm('Revocare questa API key? I client che la usano perderanno subito l\'accesso.')) return;
+        if (!await chiediConferma('Revocare questa API key? I client che la usano perderanno subito l\'accesso.')) return;
         await conCaricamento(btn, () => emit('apikeys:revoke', { id: btn.dataset.id }), '');
         showToast('API key revocata.', 'success');
         await reload();

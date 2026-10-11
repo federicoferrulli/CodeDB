@@ -1,0 +1,6 @@
+{
+  "layouts": [],
+  "checks": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: I comandi dei vertici non coprono mappa o strumenti\n    at C:\\repository\\CodeDB\\test\\e2e-geomap-mobile.js:51:9"
+}

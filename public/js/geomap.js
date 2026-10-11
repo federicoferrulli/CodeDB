@@ -62,6 +62,7 @@ let numVertici = 0;        // quanti vertici ha la geometria disegnata
 let timerTesto = 0;        // debounce del JSON digitato a mano
 let trascinando = false;   // trascinamento di un vertice in corso
 let fineTrascinamento = 0; // istante dell'ultimo rilascio (vedi aggiungiPunto)
+const vistaMobile = window.matchMedia('(max-width: 900px)');
 
 /* --------------------------------- Mappa --------------------------------- */
 
@@ -133,6 +134,7 @@ function disegna() {
   if (layerForma) layerForma.addTo(gruppoForma);
   numVertici = posizioni(geo).length;
   disegnaManiglie();
+  aggiornaMirino();
 }
 
 /**
@@ -176,10 +178,11 @@ function disegnaManiglie() {
     const m = L.circleMarker(latlng(pos), {
       ...stileManiglia(percorso),
       renderer: rendererManiglie,
+      interactive: !vistaMobile.matches,
     }).addTo(gruppoManiglie);
     manigliePerPercorso.set(percorso.join('/'), m);
-    if (conTooltip) m.bindTooltip(fmtCoord(pos), { direction: 'top' });
-    if (!modificabile) continue;
+    if (conTooltip && !vistaMobile.matches) m.bindTooltip(fmtCoord(pos), { direction: 'top' });
+    if (!modificabile || vistaMobile.matches) continue;
 
     // Premere una maniglia la SELEZIONA e insieme comincia il trascinamento: i
     // bottoni azione (elimina, inserisci) agiscono sulla selezione, e chiedere
@@ -477,7 +480,65 @@ function eliminaVerticeSelezionato() {
 
 function inserisciDopoSelezionato() {
   if (!selezioneValida()) { toast('Seleziona il vertice dopo il quale inserirne uno nuovo.', true); return; }
-  applicaModifica((g) => inserisciVerticeDopo(g, stato.selezione));
+  applicaModifica((g) => {
+    const r = inserisciVerticeDopo(g, stato.selezione);
+    if (vistaMobile.matches && !r.errore) spostaAlMirino(r.geo, r.selezione);
+    return r;
+  });
+}
+
+function posizioneMirino() {
+  const centro = mappa.getCenter().wrap();
+  return [Number(centro.lng.toFixed(7)), Number(centro.lat.toFixed(7))];
+}
+
+function spostaAlMirino(geo, percorso) {
+  const prima = percorso.reduce((coordinate, indice) => coordinate[indice], geo.coordinates);
+  // Lo spostamento cambia solo longitudine e latitudine, conservando quota e misure.
+  scriviPosizioneChiudendo(geo, percorso, [...posizioneMirino(), ...prima.slice(2)]);
+}
+
+function selezionaAlMirino() {
+  if (!mappa || !stato || stato.readOnly || !vistaMobile.matches) return;
+  const percorso = verticeVicinoA(mappa.getCenter());
+  if (percorso) seleziona(percorso);
+}
+
+function applicaMirino() {
+  if (!mappa || !stato || stato.readOnly || !vistaMobile.matches || !MODIFICABILI.has(stato.geo.type)) return;
+  if (stato.geo.type !== 'Point' && stato.modo === 'aggiungi') {
+    applicaModifica(g => aggiungiVertice(g, posizioneMirino(), stato.parteAttiva));
+  } else if (stato.geo.type === 'Point' || selezioneValida()) {
+    applicaModifica(g => {
+      const geo = JSON.parse(JSON.stringify(g));
+      const selezione = g.type === 'Point' ? [] : stato.selezione;
+      spostaAlMirino(geo, selezione);
+      return { geo, selezione, parteAttiva: null, errore: '' };
+    });
+  } else selezionaAlMirino();
+}
+
+function aggiornaMirino() {
+  if (!stato) return;
+  const tipo = stato.geo.type;
+  const attivo = vistaMobile.matches && !stato.readOnly && MODIFICABILI.has(tipo);
+  const scelto = selezioneValida();
+  const aggiunge = stato.modo === 'aggiungi';
+  $('#geomap-mirino').classList.toggle('hidden', !attivo);
+  $('#geomap-mirino-apply').classList.toggle('hidden', !attivo);
+  $('#geomap-mirino-select').classList.toggle('hidden', !attivo || tipo === 'Point' || aggiunge || !scelto);
+  $('#geomap-insert-vertex').classList.toggle('hidden', vistaMobile.matches && (tipo === 'Point' || tipo === 'MultiPoint'));
+  $('#geomap-del-vertex').classList.toggle('hidden', vistaMobile.matches && tipo === 'Point');
+  if (!attivo || !mappa) return;
+  const vicino = verticeVicinoA(mappa.getCenter());
+  const azione = $('#geomap-mirino-apply');
+  azione.textContent = tipo === 'Point' ? 'Posiziona qui' : aggiunge ? 'Aggiungi qui' : scelto ? 'Sposta qui' : 'Seleziona';
+  azione.disabled = tipo !== 'Point' && !aggiunge && !scelto && !vicino;
+  $('#geomap-mirino-select').disabled = !vicino;
+  $('#geomap-mirino').classList.toggle('agganciato', !!vicino);
+  const vertice = scelto && tipo !== 'Point' ? `V${stato.selezione.at(-1) + 1} · ` : '';
+  const parte = multipart(tipo) ? `P${stato.parteAttiva + 1} · ` : '';
+  $('#geomap-selezione').textContent = `${parte}${vertice}${fmtCoord(posizioneMirino())}`;
 }
 
 function eliminaParteAttiva() {
@@ -515,7 +576,7 @@ function inquadra() {
     .map(({ pos }) => latlng(pos));
   if (!punti.length) return;
   if (punti.length === 1) mappa.setView(punti[0], Math.max(mappa.getZoom(), 13));
-  else mappa.fitBounds(L.latLngBounds(punti), { padding: [30, 30] });
+  else mappa.fitBounds(L.latLngBounds(punti), { paddingTopLeft: vistaMobile.matches ? [60, 30] : [30, 30], paddingBottomRight: [30, 30] });
 }
 
 /* ---------------------------- Testo ⇄ geometria --------------------------- */
@@ -541,10 +602,14 @@ function aggiornaIntestazione() {
   const nota = $('#geomap-note');
   if (nota) {
     nota.textContent = nonModificabile
-      ? `Le geometrie ${stato.geo.type} si visualizzano sulla mappa ma si modificano dal JSON qui accanto.`
-      : (stato.readOnly ? '' : (stato.modo === 'aggiungi'
-        ? 'Disegna: il clic aggiunge un vertice alla parte attiva · trascina un vertice per spostarlo · Ctrl+Z annulla.'
-        : 'Modifica: il clic sceglie un vertice (il clic sullo sfondo non aggiunge nulla) · Canc elimina · Ins inserisce a metà lato · Ctrl+Z annulla.'));
+      ? `Le geometrie ${stato.geo.type} si visualizzano sulla mappa ma si modificano dalla vista GeoJSON.`
+      : stato.readOnly ? '' : vistaMobile.matches
+        ? stato.geo.type === 'Point' || stato.modo === 'aggiungi'
+          ? 'Sposta la mappa sotto il mirino, poi conferma il punto.'
+          : 'Porta un vertice nel mirino e selezionalo. Sposta la mappa, poi premi «Sposta qui».'
+        : stato.modo === 'aggiungi'
+          ? 'Disegna: il clic aggiunge un vertice alla parte attiva · trascina un vertice per spostarlo · Ctrl+Z annulla.'
+          : 'Modifica: il clic sceglie un vertice (il clic sullo sfondo non aggiunge nulla) · Canc elimina · Ins inserisce a metà lato · Ctrl+Z annulla.';
     nota.classList.toggle('hidden', !nota.textContent);
   }
   aggiornaControlliDisegno();
@@ -607,6 +672,10 @@ function creaMappa() {
   // SVG per vertice — con qualche centinaio di maniglie la differenza in
   // fluidità è netta e il DOM resta leggero.
   mappa = L.map('geomap-canvas', { center: [41.9, 12.5], zoom: 5, zoomControl: true, preferCanvas: true });
+  // Drawer, rotazione e cambio vista ridimensionano il canvas senza un resize della finestra.
+  new ResizeObserver(() => {
+    if ($('#geomap-canvas').clientWidth && $('#geomap-canvas').clientHeight) mappa.invalidateSize({ pan: false });
+  }).observe($('#geomap-canvas'));
   rendererForma = L.canvas({ padding: 0.2 });
   // `tolerance` allarga il bersaglio delle maniglie SENZA ingrandire il
   // cerchietto: preso il raggio (7) più metà del contorno, prendere un vertice
@@ -617,11 +686,16 @@ function creaMappa() {
   gruppoForma = L.layerGroup().addTo(mappa);
   gruppoManiglie = L.layerGroup().addTo(mappa);
   applicaTile();
-  mappa.on('click', (e) => aggiungiPunto(e.latlng));
+  mappa.on('click', (e) => { if (!vistaMobile.matches) aggiungiPunto(e.latlng); });
   // Le maniglie visibili cambiano quando cambia il riquadro. Si ricalcolano a
   // movimento FINITO (non durante il pan, che deve restare fluido) e mai in
   // mezzo a un trascinamento, dove le maniglie esistenti sono già quelle giuste.
-  mappa.on('moveend zoomend', () => { if (!trascinando) disegnaManiglie(); });
+  mappa.on('moveend zoomend', () => { if (!trascinando) disegnaManiglie(); aggiornaMirino(); });
+  let frameMirino = 0;
+  mappa.on('move', () => {
+    if (!vistaMobile.matches || frameMirino) return;
+    frameMirino = requestAnimationFrame(() => { frameMirino = 0; aggiornaMirino(); });
+  });
 }
 
 /**
@@ -700,7 +774,7 @@ function aggiornaControlliDisegno() {
       : (tipo === 'Point' ? 'Un Point ha una sola posizione: cambia il tipo' : 'Elimina il vertice selezionato (Canc)'));
   abilita('#geomap-insert-vertex', modificabile && !!selezione && tipo !== 'Point' && tipo !== 'MultiPoint',
     !selezione ? 'Seleziona il vertice dopo il quale inserirne uno nuovo'
-      : 'Inserisce un vertice a metà del lato successivo (Ins)');
+      : vistaMobile.matches ? 'Inserisci al mirino dopo il vertice selezionato' : 'Inserisce un vertice a metà del lato successivo (Ins)');
   abilita('#geomap-del-part', modificabile && piuParti && parti > 1,
     parti > 1 ? 'Elimina la parte attiva' : 'È l’ultima parte: usa «Ridisegna» per ricominciare');
 
@@ -729,6 +803,7 @@ function aggiornaControlliDisegno() {
         : `premi un vertice per sceglierlo${piuParti ? ` · parte ${(stato.parteAttiva || 0) + 1} di ${parti}` : ''}`);
     info.classList.toggle('dim', !selezione);
   }
+  aggiornaMirino();
 }
 
 function ridisegnaDaZero() {
@@ -786,6 +861,7 @@ export async function openGeoEditor({
   $('#geomap-title').textContent = campo ? `Geometria — ${campo}` : 'Geometria';
   $('#geomap-error').classList.add('hidden');
   $('#geomap-json').readOnly = !!readOnly;
+  mostraGeoJson(!vistaMobile.matches);
   $('#geomap-save').classList.toggle('hidden', !!readOnly);
   preparaSelettoreTipo(readOnly);
   $('#geomap-tiles').checked = tileAttive();
@@ -840,13 +916,17 @@ function cambiaTipo(nuovo) {
 export function initGeoMap() {
   const overlay = $('#geomap-overlay');
   if (!overlay) return;
+  vistaMobile.addEventListener('change', () => {
+    mostraGeoJson(!vistaMobile.matches);
+    if (stato) { aggiornaIntestazione(); disegna(); }
+  });
 
   $('#geomap-cancel').addEventListener('click', () => closeModal('#geomap-overlay'));
 
   $('#geomap-save').addEventListener('click', () => {
     clearTimeout(timerTesto);
     leggiTesto(); // eventuali modifiche a mano non ancora applicate (debounce compreso)
-    if (!$('#geomap-error').classList.contains('hidden')) return;
+    if (!$('#geomap-error').classList.contains('hidden')) { mostraGeoJson(true); return; }
     if (!isGeometry(stato.geo)) {
       toast('Geometria non valida.', true);
       return;
@@ -889,6 +969,8 @@ export function initGeoMap() {
   $('#geomap-redo').addEventListener('click', ripeti);
   $('#geomap-del-vertex').addEventListener('click', eliminaVerticeSelezionato);
   $('#geomap-insert-vertex').addEventListener('click', inserisciDopoSelezionato);
+  $('#geomap-mirino-apply').addEventListener('click', applicaMirino);
+  $('#geomap-mirino-select').addEventListener('click', selezionaAlMirino);
   $('#geomap-del-part').addEventListener('click', eliminaParteAttiva);
   const cambiaModo = (modo) => {
     if (!stato || stato.readOnly || stato.modo === modo) return;
@@ -928,10 +1010,10 @@ export function initGeoMap() {
   // Il pannello GeoJSON si chiude quando serve tutta la mappa. Leaflet deve
   // rileggere le dimensioni del contenitore: senza `invalidateSize` la mappa
   // resta disegnata sulla larghezza di prima, con metà riquadro grigio.
-  $('#geomap-json-btn').addEventListener('click', () => {
-    const ta = $('#geomap-json');
-    const chiuso_ = ta.classList.toggle('hidden');
-    $('#geomap-json-btn').setAttribute('aria-pressed', chiuso_ ? 'false' : 'true');
-    if (mappa) setTimeout(() => mappa.invalidateSize(), 0);
-  });
+  $('#geomap-json-btn').addEventListener('click', () => mostraGeoJson($('#geomap-json').classList.contains('hidden')));
+}
+
+function mostraGeoJson(visibile) {
+  $('#geomap-json').classList.toggle('hidden', !visibile);
+  $('#geomap-json-btn').setAttribute('aria-pressed', String(visibile));
 }

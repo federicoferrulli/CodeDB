@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 'use strict';
 
 import '../arc/ui.js';
@@ -245,7 +246,7 @@ if (contestoIncorporato) {
       }
       const query = await import('./query-tab.js');
       if (contestoIncorporato.dirty() && $('#query-editor-input').value !== item.code
-        && !confirm('Sostituire la query non salvata con quella del registro?')) return;
+        && !await chiediConferma('Sostituire la query non salvata con quella del registro?')) return;
       $('#query-editor-input').value = item.code;
     $('#query-editor-input').dispatchEvent(new Event('input'));
       $('#query-target-engine').value = item.engine;

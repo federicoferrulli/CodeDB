@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Desktop: area affiancata con editor reale e bozza non salvata",
+    "Passaggio a mobile: scheda singola, comandi rimossi, area e bozza conservate",
+    "Creazione diretta, trascinamento, scorciatoie e riapertura dello split bloccati su mobile",
+    "Schede e menu Database non propongono aree affiancate",
+    "Soglia 900/901px e ritorno desktop: editor singolo e runtime affiancato conservano bozze distinte",
+    "Ripristino mobile di una sessione con sole aree split: database singolo utilizzabile e bozze intatte",
+    "Area con soli pannelli di un’altra connessione: navigatore disponibile, nessun contesto errato e area conservata"
+  ],
+  "errors": [],
+  "ok": true
+}

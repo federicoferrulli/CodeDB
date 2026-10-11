@@ -1,0 +1,157 @@
+{
+  "layouts": [
+    {
+      "width": 390,
+      "height": 844,
+      "map": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 619.09375,
+        "width": 364,
+        "height": 318.453125
+      },
+      "rail": {
+        "x": 13,
+        "y": 625.09375,
+        "right": 377,
+        "bottom": 669.09375,
+        "width": 364,
+        "height": 44
+      },
+      "vertices": {
+        "x": 13,
+        "y": 675.09375,
+        "right": 377,
+        "bottom": 743.8125,
+        "width": 364,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 743.8125,
+        "width": 364,
+        "height": 443.171875
+      },
+      "overflow": false
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "map": {
+        "x": 13,
+        "y": 294.40625,
+        "right": 307,
+        "bottom": 574.40625,
+        "width": 294,
+        "height": 280
+      },
+      "rail": {
+        "x": 13,
+        "y": 580.40625,
+        "right": 307,
+        "bottom": 624.40625,
+        "width": 294,
+        "height": 44
+      },
+      "vertices": {
+        "x": 13,
+        "y": 630.40625,
+        "right": 307,
+        "bottom": 699.125,
+        "width": 294,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 13,
+        "y": 294.40625,
+        "right": 307,
+        "bottom": 620.625,
+        "width": 294,
+        "height": 326.21875
+      },
+      "overflow": false
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "map": {
+        "x": 239,
+        "y": 133.40625,
+        "right": 831,
+        "bottom": 313.40625,
+        "width": 592,
+        "height": 180
+      },
+      "rail": {
+        "x": 239,
+        "y": 319.40625,
+        "right": 831,
+        "bottom": 363.40625,
+        "width": 592,
+        "height": 44
+      },
+      "vertices": {
+        "x": 239,
+        "y": 369.40625,
+        "right": 831,
+        "bottom": 438.125,
+        "width": 592,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 239,
+        "y": 133.40625,
+        "right": 831,
+        "bottom": 378,
+        "width": 592,
+        "height": 244.59375
+      },
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 960,
+      "map": {
+        "x": 155,
+        "y": 236.296875,
+        "right": 975.5,
+        "bottom": 716.296875,
+        "width": 820.5,
+        "height": 480
+      },
+      "rail": {
+        "x": 921.5,
+        "y": 246.296875,
+        "right": 965.5,
+        "bottom": 422.296875,
+        "width": 44,
+        "height": 176
+      },
+      "vertices": {
+        "x": 312.5234375,
+        "y": 648.296875,
+        "right": 817.9765625,
+        "bottom": 694.296875,
+        "width": 505.453125,
+        "height": 46
+      },
+      "body": {
+        "x": 155,
+        "y": 236.296875,
+        "right": 1285,
+        "bottom": 716.296875,
+        "width": 1130,
+        "height": 480
+      },
+      "overflow": false
+    }
+  ],
+  "checks": [
+    "Touch: selezione vertice, inserimento, annulla, cambio Mappa/GeoJSON e salvataggio",
+    "Sola lettura: mappa e GeoJSON consultabili, nessuna modifica abilitata"
+  ],
+  "errors": []
+}

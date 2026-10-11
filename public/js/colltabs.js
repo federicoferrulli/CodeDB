@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 'use strict';
 
 import { state } from './state.js';
@@ -9,18 +10,18 @@ import {
 } from './grid.js';
 import { startWatch } from './live.js';
 import { setView } from './main.js';
-import { addOrSplitPane, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
+import { addOrSplitPane, splitDisponibile, getSplitStateSnapshot, renderSplitView, deactivateSplitView, closeSplitView, pareggiaPannelli, chiediNomeAreaSplit, chiudiPaneDove, aggiornaPaneDove } from './splitview.js';
 import { markAbandonedByCollTab } from './pending-queries.js';
 import { resetQueryView, updateEditorHighlight, snapshotQueryView, restoreQueryView } from './query-tab.js';
 import { focusScriptRun } from './script-run.js';
 import { chiudiPannelloFk } from './fk-vista.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 
-primaDellaChiusura(tab => {
+primaDellaChiusura(async tab => {
   if (tab.state.writesInFlight) { toast(`Salvataggio in corso su ${tab.label}: attendi l’esito prima di disconnettere.`, true); return false; }
   const form = [...document.querySelectorAll('.overlay:not(.hidden)[data-unsaved]')].some(el => el.dataset.editTab === tab.id);
   return !(form || tab.state.editDrafts?.size || tab.state.collTabs.some(c => c.snapQuery?.dirty))
-    || confirm(`Disconnettere ${tab.label}? Le modifiche e le query non salvate verranno scartate.`);
+    || await chiediConferma(`Disconnettere ${tab.label}? Le modifiche e le query non salvate verranno scartate.`);
 });
 allaChiusura(id => {
   for (const el of document.querySelectorAll('.overlay[data-edit-tab]')) {
@@ -36,6 +37,23 @@ allaChiusura(id => {
 export function currentCollTab() {
   const t = activeTab();
   return t ? t.state.collTabs.find((c) => c.id === t.state.activeCollId) : null;
+}
+
+export function adattaCollTabAlViewport() {
+  const ct = currentCollTab();
+  if (splitDisponibile() || !ct?.isSplitTab) return;
+  const focusNelPane = document.activeElement?.closest('.split-container, #pane-runtime-deck');
+  const t = activeTab();
+  const area = getSplitStateSnapshot(ct.id);
+  const locali = (area?.panes || []).map(([, p]) => p).filter(p => p.tabId === t.id);
+  const pane = locali.find(p => p.id === area.focusedPaneId) || locali[0];
+  const schede = t.state.collTabs.filter(c => !c.isSplitTab);
+  const singola = schede.find(c => c.db === pane?.db && c.coll === pane?.coll) || schede[0];
+  // Le aree e i runtime restano vivi: nessuna bozza viene chiusa o ricopiata.
+  if (singola) activate(singola, { fresh: false });
+  else if (pane?.db) openDbTab(pane.db);
+  else { deactivateSplitView(); clearCollWorkspace(); }
+  if (focusNelPane) $('#documents-open')?.focus({ preventScroll: true });
 }
 
 // Copia locale di `collWord()` (dbtree.js): importarla creerebbe il ciclo
@@ -72,7 +90,7 @@ export function applyViewTabsFor(ct) {
 
 // Mantiene lo stesso oggetto: anche le risposte in volo scrivono qui.
 export function salvaSnapshotQuery(ct) {
-  if (!ct) return;
+  if (!ct || ct.isSplitTab) return;
   const editor = $('#query-editor-input');
   if (!editor) return; // pagina non ancora montata
   Object.assign(ct.snapQuery ||= {}, snapshotQueryView(), {
@@ -140,6 +158,7 @@ function markTreeSelection() {
 function activate(ct, { fresh }) {
   const t = activeTab();
   t.state.activeCollId = ct.id;
+  if (ct.isSplitTab && !splitDisponibile()) { adattaCollTabAlViewport(); return; }
   // Il pannello di riferimento è ancorato a una cella di QUESTA griglia: dopo
   // il cambio di scheda parlerebbe di una tabella che non è più sotto.
   chiudiPannelloFk();
@@ -394,14 +413,16 @@ export function switchCollTab(id) {
   activate(ct, { fresh: false });
 }
 
-export function closeCollTab(id, { force = false } = {}) {
+export async function closeCollTab(id, { force = false } = {}) {
   const t = activeTab();
   if (!t) return;
   const list = t.state.collTabs;
-  const i = list.findIndex((c) => c.id === id);
+  let i = list.findIndex((c) => c.id === id);
   if (i < 0) return;
-  if (list[i].isSplitTab) { closeSplitView({ collTabId: id }); return; }
-  if (!force && list[i].snapQuery?.dirty && !confirm(`Chiudere ${list[i].coll || list[i].db} e scartare la query non salvata?`)) return;
+  if (list[i].isSplitTab) return closeSplitView({ collTabId: id });
+  if (!force && list[i].snapQuery?.dirty && !await chiediConferma(`Chiudere ${list[i].coll || list[i].db} e scartare la query non salvata?`)) return;
+  i = list.findIndex((c) => c.id === id);
+  if (i < 0) return;
   if (list[i].gridRunId) emitFireAndForget('query:cancel', { tabId: t.id, runId: list[i].gridRunId });
   if (list[i].snapQuery?.runId) emitFireAndForget('query:cancel', { runId: list[i].snapQuery.runId });
   if (list[i].snapQuery) list[i].snapQuery.runId = null;
@@ -574,9 +595,11 @@ export function renderCollTabBar() {
       ] : ct.isDbTab ? [
         { icona: 'x', label: 'Chiudi tab', action: () => closeCollTab(ct.id) },
       ] : [
-        { icona: 'columns-2', label: 'Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
-        { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }, { nuovaArea: true }) },
-        '---',
+        ...(splitDisponibile() ? [
+          { icona: 'columns-2', label: 'Apri in Split-View (Affianca)', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }) },
+          { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: ct.db, coll: ct.coll, tabId: t.id }, { nuovaArea: true }) },
+          '---',
+        ] : []),
         ...exportImportMenuItems(ct.db, ct.coll),
         '---',
         { icona: 'x', label: 'Chiudi tab', action: () => closeCollTab(ct.id) },

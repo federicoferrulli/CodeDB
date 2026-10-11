@@ -4,7 +4,7 @@ import { setView } from './main.js'; // or grid.js
 import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
 import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
-import { addOrSplitPane } from './splitview.js';
+import { addOrSplitPane, splitDisponibile } from './splitview.js';
 import { activeTab } from './tabs.js';
 import { openDbTab } from './colltabs.js';
 
@@ -205,10 +205,11 @@ export function renderCollectionsList(dbName, container, collections) {
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
         { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name) },
-        { icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
-        // Stando già dentro un'area affiancata, la voce sopra aggiunge un
-        // pannello lì: questa è l'unico modo di aprirne una seconda.
-        { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
+        ...(splitDisponibile() ? [
+          { icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
+          // La prima voce aggiunge qui; la seconda crea un'altra area.
+          { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
+        ] : []),
         { icona: 'info', label: `Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
         { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
         '---',

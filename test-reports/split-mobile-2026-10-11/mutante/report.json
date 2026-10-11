@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "Desktop: area affiancata con editor reale e bozza non salvata",
+    "Passaggio a mobile: scheda singola, comandi rimossi, area e bozza conservate"
+  ],
+  "errors": [],
+  "ok": false,
+  "failure": "AssertionError [ERR_ASSERTION]: Su mobile neppure una chiamata diretta può creare uno split\n\n3 !== 2\n\n    at C:\\repository\\CodeDB\\test\\e2e-split-mobile.js:84:12"
+}

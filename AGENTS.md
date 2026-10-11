@@ -108,7 +108,7 @@ CodeDB è un'interfaccia stile DBeaver con supporto multi-database (**MongoDB**,
 ### 1. Trasporto e Protocollo
 * **Socket.IO**: Tutta la comunicazione browser ↔ backend usa WebSocket con acknowledgment `{ ok: true, ... }` o `{ ok: false, error }`.
 * **Gate di Sicurezza & CORS**: Controllo Origin/Host anti DNS-rebinding (`checkOrigin`). Endpoint `GET /handshake-check` per la diagnosi di errori di connessione dal client.
-* **Gestione Sessioni e Tab**: Per ogni socket viene mantenuta una `Map<tabId, sessione>` (strategia DB + eventuale tunnel SSH, max 8 per socket).
+* **Gestione Sessioni e Tab**: Per ogni socket viene mantenuta una `Map<tabId, sessione>` (strategia DB + eventuale tunnel SSH). UI e MCP condividono un budget globale di 100 connessioni per istanza, senza un limite separato per client.
 
 ### 2. Strategy Pattern (`db/`)
 * **`DbStrategy.js`**: Interfaccia astratta e helper euristici UML.

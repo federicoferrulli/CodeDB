@@ -118,7 +118,7 @@ Esempio di prompt: *"Connettiti alla connessione 'Produzione', guarda lo schema 
 
 - **Sola lettura di default**: `execute_query` non può mai scrivere, nemmeno sulle connessioni scrivibili. Su MongoDB sono vietati gli stage `$out`/`$merge`; su MySQL la query deve iniziare con SELECT/WITH/SHOW/DESCRIBE/EXPLAIN e gira comunque in una transazione `READ ONLY` (timeout 30 s), che blocca anche il DML annidato. Le scritture (DML e drop) passano solo da `execute_write`, solo su connessioni con `readOnly=false`, e con conferma a due passaggi.
 - Le credenziali non transitano mai verso l'AI: si connette solo per nome di connessione salvata. `connections.ini` non è modificabile dall'AI, tranne il solo flag `readOnly` via `set_connection_read_only`, sempre con doppia conferma.
-- Max 8 connessioni DB per sessione MCP, 32 sessioni MCP; le sessioni inattive da 30 minuti vengono chiuse.
+- Le connessioni DB condividono con la UI il budget globale di 100 per istanza, senza un limite separato per client. Max 32 sessioni MCP; le sessioni inattive da 30 minuti vengono chiuse.
 - Con bind su loopback (default) l'endpoint rifiuta richieste con header `Host` non locale (anti DNS-rebinding). Se esponi il server in rete (`HOST=0.0.0.0`), ricorda che **non c'è autenticazione**: fallo solo su reti fidate.
 
 ## 6. Risoluzione problemi

@@ -178,7 +178,7 @@ module.exports = (async () => {
       assert.strictEqual((await leggi(cb)).ok, true);
     });
 
-    await prova('UI e MCP condividono la quota e rilasciano tutte le connessioni', async () => {
+    await prova('UI e MCP superano 8 connessioni per client, condividono la quota globale e rilasciano le risorse', async () => {
       const { Client } = require('@modelcontextprotocol/sdk/client/index.js');
       const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
       let vive = 0;
@@ -189,25 +189,46 @@ module.exports = (async () => {
         }),
       } });
       await s.start();
-      const contesti = Array.from({ length: 13 }, () => contestoFinto());
-      for (const ctx of contesti) s.registraEventi(ctx);
-      const saved = await contesti[0].socket.chiama('connections:save', { name: 'finta', cfg: { dbType: 'mongodb', host: 'localhost' } });
+      const ctx = contestoFinto();
+      s.registraEventi(ctx);
+      const saved = await ctx.socket.chiama('connections:save', { name: 'finta', cfg: { dbType: 'mongodb', host: 'localhost' } });
       assert(saved.ok, saved.error);
       for (let i = 0; i < 100; i++) {
-        const res = await contesti[Math.floor(i / 8)].socket.chiama('mongo:connect', { saved: 'finta', tabId: String(i) });
+        const res = await ctx.socket.chiama('mongo:connect', { saved: 'finta', tabId: String(i) });
         assert(res.ok, res.error);
       }
+      assert.strictEqual(ctx.sessions.size, 100);
+      const riconnesso = await ctx.socket.chiama('mongo:connect', { saved: 'finta', tabId: '0' });
+      assert(riconnesso.ok, riconnesso.error);
+      assert.strictEqual(vive, 100, 'riconnettere lo stesso tab non consuma una quota aggiuntiva');
+      const oltreQuota = await ctx.socket.chiama('mongo:connect', { saved: 'finta', tabId: '100' });
+      assert.strictEqual(oltreQuota.ok, false);
+      assert.match(oltreQuota.error, /limite globale/);
       const client = new Client({ name: 'quota-test', version: '1' });
       try {
         await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${s.server.address().port}/mcp`)));
         const bloccato = await client.callTool({ name: 'connect_database', arguments: { saved: 'finta' } });
         assert.strictEqual(bloccato.isError, true);
         assert.match(JSON.stringify(bloccato), /limite globale/);
-        await contesti[0].socket.chiama('mongo:disconnect', { tabId: '0' });
-        await contesti[0].socket.chiama('mongo:disconnect', { tabId: '0' });
-        const aperto = await client.callTool({ name: 'connect_database', arguments: { saved: 'finta' } });
-        assert(!aperto.isError, JSON.stringify(aperto));
+        for (let i = 0; i < 12; i++) {
+          const chiuso = await ctx.socket.chiama('mongo:disconnect', { tabId: String(i) });
+          assert(chiuso.ok, chiuso.error);
+        }
+        await ctx.socket.chiama('mongo:disconnect', { tabId: '0' });
+        const ids = new Set();
+        for (let i = 0; i < 12; i++) {
+          const aperto = await client.callTool({ name: 'connect_database', arguments: { saved: 'finta' } });
+          assert(!aperto.isError, JSON.stringify(aperto));
+          ids.add(JSON.parse(aperto.content[0].text).connection_id);
+        }
+        assert.strictEqual(ids.size, 12, 'ogni connessione MCP ha un identificatore distinto');
         assert.strictEqual(vive, 100, 'il doppio disconnect non libera una quota aggiuntiva');
+        const eccedente = await client.callTool({ name: 'connect_database', arguments: { saved: 'finta' } });
+        assert.strictEqual(eccedente.isError, true);
+        assert.match(JSON.stringify(eccedente), /limite globale/);
+        const chiuso = await client.callTool({ name: 'disconnect_database', arguments: { connection_id: [...ids][0] } });
+        assert(!chiuso.isError, JSON.stringify(chiuso));
+        assert.strictEqual(vive, 99);
         let scadenza;
         try { await Promise.race([s.stop(), new Promise((_r, reject) => { scadenza = setTimeout(() => reject(new Error('Arresto bloccato con un client MCP attivo')), 3000); })]); }
         finally { clearTimeout(scadenza); }

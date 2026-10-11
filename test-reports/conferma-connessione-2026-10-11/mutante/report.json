@@ -1,0 +1,6 @@
+{
+  "checks": [],
+  "layouts": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Il primo Connetti non deve aprire né salvare la connessione\n\n1 !== 0\n\n    at C:\\repository\\CodeDB\\test\\e2e-conferma-connessione.js:69:12"
+}

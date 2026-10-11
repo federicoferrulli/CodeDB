@@ -58,6 +58,8 @@ const SCHEMA = {
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#uml-canvas', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(600);
+    if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
+    if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();
 
     /* --- Preparazione: workspace visibile, socket finto, schema in cache --- */
     await page.evaluate(async (schema) => {
@@ -208,12 +210,17 @@ const SCHEMA = {
     ok(!/\[object Object\]/.test(dati), 'nessuna cella dice «[object Object]»');
     for (const width of [1440,390]) {
       await page.setViewportSize({width,height:900});
+      if (width <= 900) {
+        await page.click('#uml-mobile-dettagli');
+        await page.click('#uml-ispettore-corpo [data-isp="dati"]');
+      }
       const handle=page.locator('.uml-dati-tab .qt-col-resizer').first();
       const prima=(await handle.locator('..').boundingBox()).width;
       await handle.focus();await handle.press('ArrowRight');
       ok(Math.abs((await handle.locator('..').boundingBox()).width-prima-16)<2, `colonne del campione UML ridimensionabili a ${width}px`);
     }
     await page.setViewportSize({width:1440,height:900});
+    await page.click('#uml-ispettore-corpo [data-isp="dati"]');
     await page.click('#uml-dati-chiudi');
     await page.waitForTimeout(200);
     /* --- 6. Export SVG autonomo ------------------------------------------- */

@@ -1,7 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { Dialog, DialogContent } from './components/arc/dialog/dialog';
+import { BottomSheet } from './components/arc/bottom-sheet/bottom-sheet';
 
 // I pannelli contengono editor, mappe e form imperativi. Si sposta lo STESSO
 // nodo nel portal Arc: listener, valori, selezioni e riferimenti restano validi.
@@ -9,8 +10,9 @@ function Pannello({ panel, overlay }: { panel: HTMLElement; overlay: HTMLElement
   const slot = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const focused = document.activeElement as HTMLElement | null;
+    const scroll = panel.scrollTop;
     slot.current!.append(panel);
-    panel.scrollTop = 0;
+    panel.scrollTop = scroll;
     // I popup degli editor fanno parte della finestra attiva: restando nel
     // body sarebbero fuori dal focus trap Radix e non più utilizzabili.
     const auxiliary = (overlay.id === 'palette-overlay' ? [] : [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante, #context-menu')])
@@ -25,6 +27,46 @@ function Pannello({ panel, overlay }: { panel: HTMLElement; overlay: HTMLElement
     };
   }, [panel, overlay]);
   return <div ref={slot} className="arc-panel-slot" />;
+}
+
+const barriers = ['login-overlay', 'vault-overlay', 'conn-error-overlay'];
+
+function Finestra({ open, panel, overlay, dismiss, restoreFocus }: {
+  open: boolean; panel: HTMLElement; overlay: HTMLElement; dismiss: () => void; restoreFocus: () => void;
+}) {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 900px)').matches);
+  useLayoutEffect(() => {
+    const media = window.matchMedia('(max-width: 900px)');
+    const update = () => setMobile(media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  const heading = panel.querySelector<HTMLElement>('h1, h2, h3');
+  if (heading) heading.dataset.arcSheetHeading = '';
+  const title = heading?.textContent?.trim() || (overlay.id === 'palette-overlay' ? 'Cerca database, tabelle e comandi' : 'CodeDB');
+  const events = {
+    onOpenAutoFocus: (event: Event) => {
+      if (overlay.contains(document.activeElement) && document.activeElement !== document.body) event.preventDefault();
+    },
+    onCloseAutoFocus: (event: Event) => {
+      event.preventDefault();
+      // Il cambio di formato conserva il focus nel form, la chiusura lo restituisce.
+      if (overlay.classList.contains('hidden') || !overlay.isConnected) restoreFocus();
+    },
+    onPointerDownOutside: (event: Event) => { if (overlay.id !== 'palette-overlay') event.preventDefault(); },
+    onEscapeKeyDown: (event: KeyboardEvent) => event.preventDefault(),
+  };
+  const children = <Pannello panel={panel} overlay={overlay} />;
+  const onOpenChange = (value: boolean) => { if (!value) dismiss(); };
+  return mobile
+    ? <BottomSheet open={open} onOpenChange={onOpenChange} container={overlay} title={title}
+        dismissible={!barriers.includes(overlay.id)} detents={[.7, .94]}
+        initialDetent={overlay.id === 'geomap-overlay' || (window.visualViewport?.height ?? window.innerHeight) < 600 ? 1 : 0}
+        className="arc-dialog-sheet" closeLabel="Chiudi finestra" {...events}>{children}</BottomSheet>
+    : <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent embedded container={overlay} className="arc-dialog-shell" title={title}
+          aria-labelledby={heading?.id} {...events}>{children}</DialogContent>
+      </Dialog>;
 }
 
 export function initDialogs() {
@@ -52,7 +94,8 @@ export function initDialogs() {
 
   function dismiss(overlay: HTMLElement) {
     // Login e vault sono barriere reali, non finestre annullabili.
-    if (['login-overlay', 'vault-overlay', 'conn-error-overlay'].includes(overlay.id)) return;
+    if (barriers.includes(overlay.id)) return;
+    if (overlay.id === 'palette-overlay') { overlay.dispatchEvent(new Event('codedb:close-dialog')); return; }
     const close = overlay.querySelector<HTMLButtonElement>(
       'button[id$="-cancel"]:not(#conn-edit-cancel), button[id$="-cancel-btn"], button[id$="-close"], button[id$="-close-btn"], button[id$="-chiudi"], button[id^="btn-close-"], .close-compare-btn, [data-azione="chiudi"]'
     );
@@ -95,22 +138,8 @@ export function initDialogs() {
       const heading = panel.querySelector<HTMLElement>('h2, h3');
       if (heading && !heading.id) heading.id = `arc-dialog-title-${++titleSequence}`;
       flushSync(() => root.render(
-        <Dialog open={next} onOpenChange={value => { if (!value) dismiss(overlay); }}>
-          <DialogContent embedded container={overlay} className="arc-dialog-shell"
-            title={panel.querySelector('h2, h3')?.textContent?.trim() || (overlay.id === 'palette-overlay' ? 'Cerca database, tabelle e comandi' : 'CodeDB')}
-            aria-labelledby={heading?.id}
-            onOpenAutoFocus={e => {
-              if (overlay.contains(document.activeElement) && document.activeElement !== document.body) e.preventDefault();
-            }}
-            onCloseAutoFocus={e => {
-              e.preventDefault();
-              if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
-            }}
-            onPointerDownOutside={e => e.preventDefault()}
-            onEscapeKeyDown={e => e.preventDefault()}>
-            <Pannello panel={panel} overlay={overlay} />
-          </DialogContent>
-        </Dialog>
+        next ? <Finestra open={next} panel={panel} overlay={overlay} dismiss={() => dismiss(overlay)}
+          restoreFocus={() => { if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true }); }} /> : null
       ));
       restack();
     };
@@ -141,7 +170,7 @@ export function initDialogs() {
     if (e.key !== 'Escape' || !opened.length) return;
     // Escape appartiene prima al menu del campo, poi alla finestra che lo contiene.
     if (document.querySelector('[data-arc-select-popup], [data-arc-calendar-popup]:popover-open, [data-arc-color-popup]:popover-open')) return;
-    if (document.querySelector('.scorciatoie-riga.attiva, .ac-list:not(.hidden), #palette-overlay:not(.hidden)')) return;
+    if (document.querySelector('.scorciatoie-riga.attiva, .ac-list:not(.hidden)')) return;
     const fk = document.querySelector<HTMLElement>('#fk-pannello[aria-hidden="false"]');
     if (fk) { e.preventDefault(); e.stopImmediatePropagation(); document.getElementById('fk-close')?.click(); return; }
     const context = document.querySelector<HTMLElement>('#context-menu:not(.hidden)');

@@ -5990,32 +5990,6 @@ body.split-resizing .split-pane {
 .badge.match { color: var(--status-ok); font-weight: bold; }
 .badge.diff { color: var(--status-warn); font-weight: bold; }
 
-/* ---------- Split-View su schermi stretti e dispositivi a tocco ---------- */
-
-/* Stesso punto di rottura del resto dell'interfaccia (e di responsive.js).
-   Due pannelli affiancati su una finestra stretta non sono due viste, sono due
-   colonne di puntini di sospensione: si impilano. */
-@media (max-width: 900px) {
-  .split-layout-row {
-    flex-direction: column;
-  }
-  .split-layout-row > .split-resizer-v {
-    flex-basis: 6px;
-    cursor: row-resize;
-  }
-  .split-pane-title select {
-    max-width: 45%;
-  }
-  /* Su schermo stretto ogni pixel verticale conta: i pannelli si toccano e il
-     riquadro esterno sparisce. */
-  .split-container {
-    padding: 0;
-  }
-  .split-pane {
-    border-radius: 0;
-  }
-}
-
 /* Un separatore da 6px è afferrabile col mouse, non con un dito. */
 @media (pointer: coarse) {
   .split-resizer-v { flex-basis: 12px; }
@@ -6356,7 +6330,7 @@ body.split-resizing .split-pane {
   }
 
   #app {
-    padding-bottom: 56px;
+    padding-bottom: var(--nav-mobile);
   }
 }
 
@@ -8488,7 +8462,13 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
   overflow: hidden;
 }
 
+.palette-search { display: flex; align-items: center; flex-shrink: 0; border-bottom: 1px solid var(--border); }
+.palette-close { width: 44px; height: 44px; flex-shrink: 0; margin: 4px; }
+.arc-dialog-sheet .palette-close { display: none; }
+
 #palette-input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   box-sizing: border-box;
   padding: 12px 14px;
@@ -8497,7 +8477,6 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
   background: transparent;
   color: var(--fg, #e6e6e6);
   font-size: 15px;
-  border-bottom: 1px solid var(--border, rgba(128,128,128,.25));
 }
 
 /* Due correzioni alla stessa aritmetica, entrambe misurate.
@@ -8693,7 +8672,7 @@ td.editing.fk-cella :is(input, [data-arc-component="select"]) { flex: 1 1 auto; 
   overflow: auto;
 }
 @media (max-width: 900px) {
-  :root { --nav-mobile: 56px; }
+  :root { --nav-mobile: 64px; }
   .mobile-bottom-nav, .fk-pannello {
     left: var(--sal);
     right: var(--sar);

@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "Griglia: vuota, filtrata, Aggiorna invia la richiesta e Modifica filtro porta il focus al campo",
+    "Query: stato iniziale e zero risultati distinti, colonne conservate, azione editor funzionante da tabella/JSON/grafico",
+    "Transizioni: vuoto → caricamento → dati → errore → reset, senza messaggi residui o duplicati",
+    "Script: messaggio aggiornato anche quando le righe arrivano prima dello stato success/cancelled",
+    "Pannello affiancato: composizione condivisa e pulsante Aggiorna funzionante"
+  ],
+  "layouts": [],
+  "errors": []
+}

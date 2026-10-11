@@ -163,10 +163,11 @@ export function switchTab(id) {
   listeners.forEach((fn) => fn(activeTab()));
 }
 
-export function closeTab(id) {
+export async function closeTab(id) {
   const target = tabs.list.find(t => t.id === id);
   if (!target) return false;
-  if (guardieChiusura.some(fn => fn(target) === false)) return false;
+  for (const guardia of guardieChiusura) if (await guardia(target) === false) return false;
+  if (!tabs.list.includes(target)) return false;
   avvisaDellaChiusura(id);
   const i = tabs.list.findIndex((t) => t.id === id);
   if (i < 0) return;

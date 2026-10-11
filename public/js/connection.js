@@ -1,7 +1,7 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
 import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto } from './utils.js';
-import { loadSavedConnections } from './connmanager.js';
+import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
@@ -12,6 +12,14 @@ import { segnaTraguardo } from './onboarding-stato.js';
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
 
 let editingConn = null;
+let savedSecrets = {};
+let savedSshKeyName = '';
+let savedSshAuth = '';
+let savedSshKeyFile = '';
+let uploadedSshKey = null;
+let sshKeyRead = 0;
+let sshKeyLoading = false;
+let sshKeyError = '';
 let currentStep = 1;
 
 export function setWizardStep(step) {
@@ -36,13 +44,14 @@ export function setWizardStep(step) {
   const subtitles = {
     1: 'Passo 1: Parametri di connessione',
     2: 'Passo 2: Configurazione Tunnel SSH',
-    3: 'Passo 3: Salvataggio & Connessione',
+    3: 'Passo 3: Riepilogo e conferma',
   };
   const subtitleEl = $('#wizard-subtitle');
   if (subtitleEl) subtitleEl.textContent = subtitles[currentStep] || '';
 
   $('#wizard-prev-btn')?.classList.toggle('hidden', currentStep === 1);
   $('#wizard-next-btn')?.classList.toggle('hidden', currentStep === 3);
+  $('#connect-btn').textContent = currentStep === 3 ? 'Conferma e connetti' : 'Connetti';
 
   $('#connect-error')?.classList.add('hidden');
   $('#connect-test-msg')?.classList.add('hidden');
@@ -52,33 +61,55 @@ export function setWizardStep(step) {
   }
 }
 
+function riepilogoUri(uri) {
+  const parts = uri.trim().match(/^(mongodb(?:\+srv)?:\/\/)([^/?#]+)([^?#]*)(?:\?([^#]*))?$/i);
+  if (!parts) return 'URI inserita (contenuto nascosto: formato non riconosciuto)';
+  const [, protocol, authority, path, query] = parts;
+  const at = authority.lastIndexOf('@');
+  const user = at < 0 ? '' : authority.slice(0, at).split(':')[0];
+  // Solo le opzioni note e non segrete sono riportate in chiaro.
+  const visible = /^(authSource|authMechanism|replicaSet|tls|ssl|retryWrites|retryReads|readPreference|directConnection|loadBalanced|appName|connectTimeoutMS|serverSelectionTimeoutMS|socketTimeoutMS|maxPoolSize|minPoolSize|w|wtimeoutMS|compressors)$/i;
+  const options = [...new URLSearchParams(query)].map(([key, value]) =>
+    `${key}=${visible.test(key) ? value : '••••••'}`).join('&');
+  return `${protocol}${at < 0 ? authority : `${user}:••••••@${authority.slice(at + 1)}`}${path}${query === undefined ? '' : `?${options}`}`;
+}
+
 function updateWizardSummary() {
   const cfg = readConnForm();
   const summaryBox = $('#wizard-summary-box');
   if (!summaryBox) return;
-
-  // L'icona del tipo di database ha gia' un posto solo: `dbTypeIcon` in
-  // utils.js, che usa le icone dell'applicazione. Questa era una seconda
-  // tabella, con glifi diversi, che nessuno teneva allineata alla prima.
   const dbIcon = dbTypeIcon(cfg.dbType);
   const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
-
-  let html = `<div><strong>${dbIcon} ${esc(dbTypeName)}</strong> — `;
+  const secret = field => {
+    const retained = savedSecrets[field] && (field === 'sshPassphrase' ? sameSavedSshKey(cfg) : field !== 'sshPassword' || cfg.sshAuth === savedSshAuth);
+    return cfg[field] ? '•••••• · Inserita' : retained ? 'Invariata · Già salvata' : 'Non impostata';
+  };
+  const rows = [];
   if (cfg.connectionMode === 'uri') {
-    // Una URI può contenere password e token nella query string: il riepilogo
-    // conferma la modalità senza duplicare il segreto nel DOM.
-    html += 'URI MongoDB completa configurata';
+    rows.push(['Modalità', 'URI completa'], ['URI', cfg.uri.trim() ? riepilogoUri(cfg.uri) : secret('uri')]);
   } else {
-    html += `Host: <strong>${esc(cfg.host || 'localhost')}:${esc(cfg.port || '')}</strong>`;
-    if (cfg.username) html += ` | User: <strong>${esc(cfg.username)}</strong>`;
-    if (cfg.database) html += ` | DB: <strong>${esc(cfg.database)}</strong>`;
-    if (cfg.authSource) html += ` | Auth: <strong>${esc(cfg.authSource)}</strong>`;
+    rows.push(['Host', cfg.host.trim() || 'localhost'],
+      ['Porta', cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]],
+      ['Utente', cfg.username || 'Non impostato'], ['Password', secret('password')],
+      cfg.dbType === 'mongodb' ? ['Auth source', cfg.authSource || 'admin'] : ['Database', cfg.database || 'Non specificato']);
   }
+  rows.push(['Tunnel SSH', cfg.ssh === 'true' ? 'Attivo' : 'Disattivato']);
   if (cfg.ssh === 'true') {
-    html += `<br>${ICO('lock')} <strong>Tunnel SSH attivo</strong>: <code>${esc(cfg.sshUser || 'user')}@${esc(cfg.sshHost || 'bastion')}:${esc(cfg.sshPort || '22')}</code>`;
+    rows.push(['Host SSH', cfg.sshHost || 'Non impostato'], ['Porta SSH', cfg.sshPort || '22'],
+      ['Utente SSH', cfg.sshUser || 'Non impostato'],
+      ['Autenticazione SSH', { password: 'Password', upload: 'File dal dispositivo', path: 'Percorso sul server CodeDB' }[cfg.sshAuth]]);
+    if (cfg.sshAuth === 'password') rows.push(['Password SSH', secret('sshPassword')]);
+    else rows.push(['Chiave privata', cfg.sshAuth === 'path' ? cfg.sshKeyFile || 'Non impostata'
+      : cfg.sshKeyName ? `${cfg.sshKeyName} · ${uploadedSshKey ? 'Caricata' : 'Già salvata'}` : savedSecrets.sshPrivateKey ? 'Già salvata' : 'Non selezionata'],
+    ['Passphrase chiave', secret('sshPassphrase')]);
+    rows.push(['Impronta host SSH', cfg.sshHostKey || 'Non impostata']);
   }
-  html += `</div>`;
-  summaryBox.innerHTML = html;
+  summaryBox.innerHTML = `<strong class="connection-summary-engine">${dbIcon} ${esc(dbTypeName)}</strong>
+    <dl class="connection-summary-fields">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`;
+  const saved = cfg.saveAs && (cfg.saveAs === editingConn || elencoConnessioni().some(conn => conn.name === cfg.saveAs));
+  $('#conn-save-status').textContent = cfg.saveAs
+    ? `${saved ? 'La connessione salvata verrà aggiornata' : 'La connessione verrà salvata'} come “${cfg.saveAs}”${cfg.folder ? ` nella cartella “${cfg.folder}”` : ''}, solo se il collegamento riesce.`
+    : 'La connessione non verrà salvata. Sarà disponibile solo per questa sessione.';
   refreshLucideIcons(summaryBox);
 }
 
@@ -114,6 +145,62 @@ export function syncConnForm() {
   } else {
     if (port.value === '3306' || port.value === '5432') port.value = '27017';
   }
+  syncSshAuth();
+}
+
+function sameSavedSshKey(cfg) {
+  return cfg.sshAuth === savedSshAuth && (cfg.sshAuth === 'upload' ? !uploadedSshKey : cfg.sshKeyFile === savedSshKeyFile);
+}
+
+function syncSshAuth() {
+  const mode = $('#connect-form').elements.sshAuth.value;
+  $('#connect-form').elements.sshPassphrase.placeholder = savedSecrets.sshPassphrase && sameSavedSshKey(readConnForm())
+    ? '(invariata se lasciata vuota)' : '(se la chiave è protetta)';
+  $('#conn-ssh-password-row').classList.toggle('hidden', mode !== 'password');
+  $('#conn-ssh-upload-row').classList.toggle('hidden', mode !== 'upload');
+  $('#conn-ssh-path-row').classList.toggle('hidden', mode !== 'path');
+  $('#conn-ssh-passphrase-row').classList.toggle('hidden', mode === 'password');
+  $('#conn-ssh-key-status').textContent = sshKeyError || (sshKeyLoading ? 'Lettura del file…' : uploadedSshKey
+    ? `Chiave caricata: ${uploadedSshKey.name}. Verrà conservata nel vault solo se salvi la connessione.`
+    : savedSecrets.sshPrivateKey ? `Chiave già salvata: ${savedSshKeyName || 'chiave privata'}. Scegli un file solo per sostituirla.`
+      : 'Scegli la chiave privata, non il file .pub. Massimo 64 KB.');
+}
+
+async function readSshKeyFile() {
+  const read = ++sshKeyRead;
+  const file = $('#conn-ssh-key-upload').files[0];
+  uploadedSshKey = null;
+  sshKeyError = '';
+  sshKeyLoading = !!file;
+  syncSshAuth();
+  try {
+    if (!file) return;
+    if (!file.size || file.size > 64 * 1024) throw new Error('Scegli un file non vuoto di massimo 64 KB.');
+    const text = await file.text();
+    if (read !== sshKeyRead) return;
+    if (!text.trim()) throw new Error('Il file di chiave privata è vuoto.');
+    if (/^(ssh-|ecdsa-|sk-)|BEGIN (?:RSA )?PUBLIC KEY/.test(text.trim())) throw new Error('Hai selezionato una chiave pubblica. Scegli la chiave privata, non il file .pub.');
+    uploadedSshKey = { name: file.name, text };
+  } catch (error) {
+    if (read === sshKeyRead) sshKeyError = error.message || 'Impossibile leggere il file selezionato.';
+  } finally {
+    if (read === sshKeyRead) {
+      sshKeyLoading = false;
+      syncSshAuth();
+      if (currentStep === 3) updateWizardSummary();
+    }
+  }
+}
+
+function validateSshKey(cfg) {
+  if (cfg.ssh !== 'true' || cfg.sshAuth !== 'upload') return true;
+  const message = sshKeyLoading ? 'Attendi la lettura della chiave privata.' : sshKeyError
+    || (!uploadedSshKey && !savedSecrets.sshPrivateKey ? 'Scegli il file di chiave privata dal tuo dispositivo.' : '');
+  if (!message) return true;
+  setWizardStep(2);
+  showError('#connect-error', message);
+  $('#conn-ssh-key-select').focus();
+  return false;
 }
 
 function readConnForm() {
@@ -135,20 +222,27 @@ function readConnForm() {
     else cfg.authSource = form.elements.authSource.value;
   }
   cfg.dbType = form.elements.dbType.value;
-  cfg.saveAs = form.elements.saveAs.value;
-  cfg.folder = form.elements.folder.value;
+  cfg.saveAs = form.elements.saveAs.value.trim();
+  cfg.folder = form.elements.folder.value.trim();
   const sshOn = form.elements.ssh.checked;
   cfg.ssh = sshOn ? 'true' : '';
   if (sshOn) {
     cfg.sshHost = form.elements.sshHost.value;
     cfg.sshPort = form.elements.sshPort.value;
     cfg.sshUser = form.elements.sshUser.value;
-    cfg.sshPassword = form.elements.sshPassword.value;
-    cfg.sshKeyFile = form.elements.sshKeyFile.value;
+    cfg.sshAuth = form.elements.sshAuth.value;
+    if (cfg.sshAuth === 'password') cfg.sshPassword = form.elements.sshPassword.value;
+    else {
+      if (cfg.sshAuth === 'path') cfg.sshKeyFile = form.elements.sshKeyFile.value;
+      else {
+        cfg.sshPrivateKey = uploadedSshKey?.text || '';
+        cfg.sshKeyName = uploadedSshKey?.name || savedSshKeyName;
+      }
+      cfg.sshPassphrase = form.elements.sshPassphrase.value;
+    }
     // Impronta della host key: non è un segreto, viaggia in chiaro col resto
     // della configurazione ed è registrata al primo collegamento riuscito.
     cfg.sshHostKey = form.elements.sshHostKey.value.trim();
-    cfg.sshPassphrase = form.elements.sshPassphrase.value;
   }
   return cfg;
 }
@@ -176,7 +270,7 @@ function closeConnModal() {
 // DENTRO la stringa (`mongodb://utente:segreto@host/`): togliere il campo
 // `password` e lasciare l'URI significava dichiarare chiuso un buco che restava
 // aperto per metà degli utenti (CDB-70).
-const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase', 'uri'];
+const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase', 'sshPrivateKey', 'uri'];
 
 /**
  * Configurazione conservabile sul tab: per una connessione salvata resta il
@@ -233,6 +327,9 @@ export function connectAndOpenTab(cfg) {
 export function startEditConn(name) {
   emit('connections:get', { name }).then((res) => {
     const f = res.fields;
+    clearSshKey();
+    savedSecrets = { password: res.hasPassword, uri: res.hasUri, sshPassword: res.hasSshPassword, sshPassphrase: res.hasSshPassphrase, sshPrivateKey: res.hasSshPrivateKey };
+    savedSshKeyName = f.sshKeyName || '';
     const form = $('#connect-form');
     const dbType = f.dbType || 'mongodb';
     const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType.includes('postgres');
@@ -253,6 +350,9 @@ export function startEditConn(name) {
     form.elements.sshHost.value = f.sshHost || '';
     form.elements.sshPort.value = f.sshPort || '22';
     form.elements.sshUser.value = f.sshUser || '';
+    form.elements.sshAuth.value = f.sshAuth || (res.hasSshPrivateKey ? 'upload' : f.sshKeyFile ? 'path' : 'password');
+    savedSshAuth = form.elements.sshAuth.value;
+    savedSshKeyFile = f.sshKeyFile || '';
     form.elements.sshPassword.value = '';
     form.elements.sshPassword.placeholder = res.hasSshPassword ? '(invariata se lasciata vuota)' : '(vuoto se usi una chiave)';
     form.elements.sshKeyFile.value = f.sshKeyFile || '';
@@ -272,8 +372,21 @@ export function startEditConn(name) {
   }).catch((err) => toast(err.message, true));
 }
 
+function clearSshKey() {
+  sshKeyRead++;
+  uploadedSshKey = null;
+  savedSshKeyName = '';
+  savedSshAuth = '';
+  savedSshKeyFile = '';
+  sshKeyLoading = false;
+  sshKeyError = '';
+  $('#conn-ssh-key-upload').value = '';
+}
+
 function cancelEditConn() {
   editingConn = null;
+  savedSecrets = {};
+  clearSshKey();
   const form = $('#connect-form');
   form.reset();
   form.elements.password.placeholder = '';
@@ -303,9 +416,17 @@ export function initConnection() {
 
   $('#conn-dbtype').addEventListener('change', syncConnForm);
   $('#conn-ssh-toggle').addEventListener('change', syncConnForm);
+  $('#conn-ssh-auth').addEventListener('change', syncSshAuth);
+  $('#conn-ssh-key-select').addEventListener('click', () => $('#conn-ssh-key-upload').click());
+  $('#conn-ssh-key-upload').addEventListener('change', readSshKeyFile);
+  $('#connect-form').addEventListener('input', event => {
+    if (event.target.name === 'sshKeyFile') syncSshAuth();
+    if (currentStep === 3) updateWizardSummary();
+  });
 
   $('#conn-test-btn')?.addEventListener('click', () => {
     const cfg = readConnForm();
+    if (!validateSshKey(cfg)) return;
     if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#conn-test-btn');
     $('#connect-error').classList.add('hidden');
@@ -329,7 +450,13 @@ export function initConnection() {
 
   $('#connect-form').addEventListener('submit', (e) => {
     e.preventDefault();
+    if (currentStep !== 3) {
+      setWizardStep(3);
+      $('#wizard-summary-title').focus();
+      return;
+    }
     const cfg = readConnForm();
+    if (!validateSshKey(cfg)) return;
     if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#connect-btn');
     $('#connect-error').classList.add('hidden');
@@ -359,6 +486,7 @@ export function initConnection() {
 
   $('#conn-save-btn').addEventListener('click', () => {
     const cfg = readConnForm();
+    if (!validateSshKey(cfg)) return;
     const name = (cfg.saveAs || '').trim();
     if (!name) {
       const err = $('#connect-error');

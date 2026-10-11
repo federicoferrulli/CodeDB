@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Precedente/successiva, ultima pagina, Select Arc e scroll continuo conservano la navigazione",
+    "Riepilogo ridotto e controlli espansi accessibili da tastiera, con focus conservato"
+  ],
+  "layouts": [],
+  "errors": [],
+  "ok": false,
+  "failure": "AssertionError [ERR_ASSERTION]: 1440/piccolo: intervallo spezzato su 3 righe\n    at inspect (C:\\repository\\CodeDB\\test\\e2e-paginazione.js:98:7)\n    at async C:\\repository\\CodeDB\\test\\e2e-paginazione.js:118:11"
+}

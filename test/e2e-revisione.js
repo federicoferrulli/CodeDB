@@ -24,6 +24,7 @@ fs.mkdirSync(dir, { recursive: true });
       separatore: ['maniglia.js', 'sposta(delta, prima, e);', '/* mutazione: nessun ridimensionamento da tastiera */'],
       menu: ['utils.js', 'next.focus();', '/* mutazione: focus fermo */'],
       schede: ['document-switcher.js', 'if (doc) switchCollTab(doc.id);', '/* mutazione: documento non selezionato */'],
+      navigazione: ['responsive.js', "$('#mobile-nav-dbs').addEventListener('click', () => toggleDrawer('#sidebar'));", "$('#mobile-nav-dbs').addEventListener('click', () => toggleDrawer('#conn-sidebar'));"],
       risultati: ['query-tab.js', 'panel.dataset.surface = surface;', "panel.dataset.surface = 'both';"],
       drawer: ['responsive.js', 'el.inert = mq.matches && !open;', 'el.inert = false;'],
       focus_drawer: ['responsive.js', 'if (restoreFocus && drawerOpener?.isConnected)', 'if (false)'],
@@ -119,14 +120,14 @@ fs.mkdirSync(dir, { recursive: true });
     assert(Math.abs(g.body - g.row * g.count) < 2, `Geometria touch virtuale ${JSON.stringify(g)}`);
     check('Cambio densità durante editing: bozza integra e spaziatori coerenti');
     assert(await page.locator('#sidebar').evaluate(el => el.inert), 'Drawer chiuso escluso dalla tastiera');
-    await page.locator('#menu-dbs-btn').click();
-    assert.equal(await page.locator('#menu-dbs-btn').getAttribute('aria-expanded'), 'true');
+    await page.locator('#mobile-nav-dbs').click();
+    assert.equal(await page.locator('#mobile-nav-dbs').getAttribute('aria-expanded'), 'true');
     assert(await page.locator('.arc-navigation-sheet').evaluate(el => el.contains(document.activeElement)));
     await page.keyboard.press('Escape');
-    assert(await page.locator('#menu-dbs-btn').evaluate(el => document.activeElement === el), 'La scelta nel drawer restituisce il focus al comando Database');
-    await page.locator('#menu-dbs-btn').click();
+    assert(await page.locator('#mobile-nav-dbs').evaluate(el => document.activeElement === el), 'La scelta nel drawer restituisce il focus al comando Database');
+    await page.locator('#mobile-nav-dbs').click();
     await page.locator('#db-tree .coll .node-label').first().focus();await page.keyboard.press('Enter');
-    assert(await page.locator('#menu-dbs-btn').evaluate(el=>document.activeElement===el),'La scelta nel drawer restituisce il focus fuori dal contenuto inert');
+    assert(await page.locator('#mobile-nav-dbs').evaluate(el=>document.activeElement===el),'La scelta nel drawer restituisce il focus fuori dal contenuto inert');
     check('Drawer: stato, focus iniziale, chiusura e focus restituito');
 
     await page.evaluate(async () => {
@@ -139,12 +140,28 @@ fs.mkdirSync(dir, { recursive: true });
     assert.equal(await page.locator('#documents-open').isVisible(), false, 'Schede non duplica le barre desktop');
     assert(await page.locator('#tab-bar').isVisible() && await page.locator('#coll-tab-bar').isVisible(), 'Desktop conserva le barre delle schede');
     await page.setViewportSize({width:390,height:844});
-    for (const selector of ['#tab-bar', '#coll-tab-bar', '#session-count']) assert.equal(await page.locator(selector).isVisible(), false, `Su mobile resta solo Schede: ${selector}`);
+    for (const selector of ['#menu-conns-btn', '#menu-dbs-btn', '.tab-bar-wrap']) assert.equal(await page.locator(selector).isVisible(), false, `Nessun comando duplicato in alto: ${selector}`);
+    const navigation = await page.locator('#mobile-bottom-nav').elementHandle();
+    assert.deepEqual(await page.locator('#mobile-bottom-nav .nav-label').allTextContents(), ['Connessioni','Database','Schede']);
+    await page.locator('#mobile-nav-conns').click();
+    await page.getByRole('dialog',{name:'Connessioni',exact:true}).waitFor();
+    assert(await navigation.evaluate(el=>!!el.closest('[role="dialog"]')), 'La stessa barra entra nel drawer modale');
+    await page.locator('#mobile-nav-dbs').click();
+    assert.equal(await page.locator('.arc-navigation-sheet').getAttribute('aria-labelledby').then(id=>page.locator(`[id="${id}"]`).textContent()), 'Database', 'La barra cambia sezione nel drawer');
+    assert.equal(await page.locator('#mobile-nav-conns').getAttribute('aria-expanded'), 'false');
+    assert.equal(await page.locator('#mobile-nav-dbs').getAttribute('aria-expanded'), 'true');
+    for (const selector of ['#tab-bar', '#coll-tab-bar']) assert.equal(await page.locator(selector).isVisible(), false, `Su mobile resta solo Schede: ${selector}`);
     await page.locator('#documents-open').click();
     const sheet = page.getByRole('dialog', {name:'Schede aperte',exact:true});
     await sheet.waitFor();
     assert(await sheet.locator('[data-grabber]').isVisible(), 'Schede usa il BottomSheet Arc con maniglia');
     assert.equal(await page.locator('#documents-open').getAttribute('aria-expanded'), 'true');
+    assert.equal(await page.locator('#mobile-bottom-nav [aria-expanded="true"]').count(), 1, 'Una sola sezione selezionata');
+    assert.equal(await page.locator('#documents-panel [aria-current="true"]').count(), 1, 'Un solo documento in uso');
+    assert(await page.locator('#documents-panel [aria-current="true"]').evaluate(el=>{const row=el.getBoundingClientRect(),list=el.closest('.documents-list').getBoundingClientRect();return row.top>=list.top-1&&row.bottom<=list.bottom+1;}), 'Il drawer si apre sul documento in uso');
+    for (const button of await page.locator('#mobile-bottom-nav button').all()) {
+      assert(await button.evaluate(el=>{const r=el.getBoundingClientRect();return r.width>=44&&r.height>=44&&r.bottom<=innerHeight+1&&el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));}), 'Tutte le voci della barra sono raggiungibili nel drawer');
+    }
     await page.screenshot({path:`${dir}/schede-mobile.png`});
     assert((await page.locator('#documents-panel').textContent()).includes('Modifiche non salvate'));
     const order = await page.evaluate(async () => (await import('/js/tabs.js')).activeTab().state.collTabs.map(c => c.id));
@@ -156,7 +173,11 @@ fs.mkdirSync(dir, { recursive: true });
     await page.locator('#documents-panel .document-row > button:first-child').filter({ hasText: /^ordini/ }).click();
     assert.equal(await page.evaluate(async () => (await import('/js/state.js')).state.coll), 'ordini', 'Lo switcher attiva il documento scelto');
     assert.equal(await sheet.count(), 0, 'Selezionare un documento chiude il drawer');
+    assert(await navigation.evaluate(el=>el.isConnected&&!el.closest('[role="dialog"]')), 'La stessa barra torna nel workspace');
     assert(await page.locator('#documents-open').evaluate(el=>el===document.activeElement), 'La selezione restituisce il focus a Schede');
+    await page.locator('#documents-open').click();
+    await page.locator('#documents-open').click();
+    assert.equal(await sheet.count(), 0, 'Premere la voce selezionata richiude il drawer');
     await page.locator('#documents-open').click();
     await page.keyboard.press('Control+b');
     await page.getByRole('dialog',{name:'Connessioni',exact:true}).waitFor();
@@ -259,8 +280,9 @@ fs.mkdirSync(dir, { recursive: true });
     assert.equal(await page.evaluate(async()=>(await import('/js/tabs.js')).tabs.list.some(t=>t.id==='b')), false, 'Disconnessione disponibile nel drawer');
     await page.keyboard.press('Escape');
     await page.evaluate(async()=>{(await import('/js/tabs.js')).closeAllTabs();});
+    assert(await page.locator('#mobile-nav-dbs').isDisabled(), 'Senza connessione Database indica la propria indisponibilità');
     await page.locator('#documents-open').click();
-    assert.equal(await page.locator('#documents-panel .documents-list').textContent(), 'Nessuna connessione aperta.');
+    assert(await page.locator('#documents-panel .documents-empty').isVisible(), 'Stato vuoto con indicazione del prossimo passo');
     await page.locator('#documents-new-connection').click();
     await page.locator('#connect-overlay').waitFor({state:'visible'});
     assert.equal(await sheet.count(), 0, 'Nuova connessione chiude il drawer prima di aprire il form');

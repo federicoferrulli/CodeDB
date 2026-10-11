@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { createArcInput, createArcButton, controlElement } from '../arc/ui.js';
 import { state } from './state.js';
 import { $, emit, toast, openModal, closeModal, isSqlType, isForActiveTab, chiediTesto, conCaricamento, captureContext } from './utils.js';
@@ -119,12 +120,12 @@ export async function renameDb(name) {
   }).catch((err) => toast(err.message, true));
 }
 
-export function dropDb(name) {
+export async function dropDb(name) {
   const origin = captureSchemaTarget({ word: dbWord(), wordCap: dbWord(true) });
   const what = origin.word === 'schema'
     ? `lo schema "${name}" e TUTTE le tabelle che contiene`
     : `il database "${name}" e TUTTI i suoi dati`;
-  if (!confirm(`Eliminare ${what}?
+  if (!await chiediConferma(`Eliminare ${what}?
 L'operazione non è reversibile.`)) return;
   emit('db:drop', { tabId: origin.tabId, db: name }).then((res) => {
     toast(`${origin.wordCap} "${name}" eliminato`);
@@ -235,9 +236,9 @@ export async function renameColl(dbName, collName) {
   }).catch((err) => toast(err.message, true));
 }
 
-export function dropColl(dbName, collName) {
+export async function dropColl(dbName, collName) {
   const origin = captureSchemaTarget({ db: dbName, coll: collName, word: collWord(), wordCap: collWord(true) });
-  if (!confirm(`Eliminare la ${origin.word} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
+  if (!await chiediConferma(`Eliminare la ${origin.word} "${collName}" e TUTTI i suoi dati?\nL'operazione non è reversibile.`)) return;
   emit('collection:drop', { tabId: origin.tabId, db: dbName, coll: collName }).then((res) => {
     toast(`"${collName}" eliminata`);
     res._state.dbSchema = null;
@@ -351,7 +352,7 @@ export function initSchemaOps() {
     closeModal('#coledit-overlay');
   });
 
-  $('#schema-table').addEventListener('click', (e) => {
+  $('#schema-table').addEventListener('click', async (e) => {
     const editBtn = e.target.closest('.col-edit');
     if (editBtn) return openColumnModal(JSON.parse(editBtn.dataset.field));
     const delBtn = e.target.closest('.col-del');
@@ -362,7 +363,7 @@ export function initSchemaOps() {
     const msg = isSql
       ? `Eliminare la colonna "${name}" e tutti i suoi dati?\nL'operazione non è reversibile.`
       : `Rimuovere il campo "${name}" da TUTTI i documenti della collection?\nL'operazione non è reversibile.`;
-    if (!confirm(msg)) return;
+    if (!await chiediConferma(msg)) return;
     conCaricamento(delBtn, () => emit('column:drop', {
       tabId: origin.tabId, db: origin.db, coll: origin.coll, name,
     }), '').then((res) => {

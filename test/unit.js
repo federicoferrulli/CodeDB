@@ -16,6 +16,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-query-senza-limite');
   await require('./unit-sql-integrita-righe');
   await require('./unit-server-modulare');
+  await require('./unit-ssh-keys');
   await require('./unit-mcp-auth');
   // Test 1: DbFactory instanziamento e helper
   const mongoStrategy = DbFactory.getStrategy('mongodb');

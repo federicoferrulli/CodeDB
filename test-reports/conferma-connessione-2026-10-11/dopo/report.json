@@ -1,0 +1,52 @@
+{
+  "checks": [
+    "Connetti e Invio aprono il riepilogo; nome esistente dichiarato; Indietro conserva i dati; Annulla non connette",
+    "MySQL e PostgreSQL: parametri e porte corretti, connessione non salvata dopo conferma",
+    "SSH completo e segreti mascherati; salvataggio esplicito; errore conserva il form e conferma in caricamento",
+    "URI multi-host leggibile con password e opzioni sensibili mascherate",
+    "Modifica esistente: segreti mantenuti dichiarati, stato aggiornato se si cancella il nome"
+  ],
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "height": 844
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "height": 844
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "height": 1000
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "height": 844
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "height": 844
+    }
+  ],
+  "errors": []
+}

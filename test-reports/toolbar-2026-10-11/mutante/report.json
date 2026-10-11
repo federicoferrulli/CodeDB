@@ -1,0 +1,108 @@
+{
+  "layouts": [
+    {
+      "label": "dark/1440",
+      "box": {
+        "x": 248,
+        "y": 155.796875,
+        "right": 1440,
+        "bottom": 202.796875,
+        "width": 1192,
+        "height": 47
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 257,
+          "y": 164.796875,
+          "right": 327.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 329.53125,
+          "y": 164.796875,
+          "right": 430.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 439.296875,
+          "y": 161.796875,
+          "right": 1001.765625,
+          "bottom": 195.796875,
+          "width": 562.46875,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 1009.765625,
+          "y": 161.796875,
+          "right": 1329.765625,
+          "bottom": 195.796875,
+          "width": 320,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 1197.765625,
+          "y": 161.796875,
+          "right": 1225.765625,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 1233.765625,
+          "y": 161.796875,
+          "right": 1324,
+          "bottom": 195.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1332,
+          "y": 161.796875,
+          "right": 1360,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1368,
+          "y": 161.796875,
+          "right": 1396,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1404,
+          "y": 161.796875,
+          "right": 1432,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [
+        "sort-input/query-history-btn",
+        "sort-input/run-btn"
+      ],
+      "mobile": false,
+      "overflow": false
+    }
+  ],
+  "checks": [],
+  "errors": [],
+  "ok": false,
+  "failure": "AssertionError [ERR_ASSERTION]: dark/1440: comandi sovrapposti\n+ actual - expected\n\n+ [\n+   'sort-input/query-history-btn',\n+   'sort-input/run-btn'\n+ ]\n- []\n\n    at inspect (C:\\repository\\CodeDB\\test\\e2e-toolbar-responsive.js:54:14)\n    at async C:\\repository\\CodeDB\\test\\e2e-toolbar-responsive.js:65:9"
+}

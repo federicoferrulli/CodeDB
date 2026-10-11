@@ -1,0 +1,10 @@
+{
+  "checks": [
+    "Canvas a tutta larghezza e comandi touch senza sovrapposizioni",
+    "Catalogo ricercabile, centratura della tabella e dettagli leggibili con nomi lunghi",
+    "Dati e dettaglio JSON nel drawer, senza ridurre il diagramma",
+    "Diagrammi salvati, esportazione e aggiornamento raggiungibili dagli strumenti"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: un dito deve trascinare il diagramma\n    at drag (C:\\repository\\CodeDB\\test\\e2e-uml-mobile.js:128:7)\n    at async C:\\repository\\CodeDB\\test\\e2e-uml-mobile.js:132:5"
+}

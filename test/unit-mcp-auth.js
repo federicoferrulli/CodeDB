@@ -27,7 +27,6 @@ const deps = {
   setConnectionReadOnly: () => {},
   establishConnection: async () => { throw new Error('non usato in questo test'); },
   teardownConnection: async () => {},
-  maxDbSessions: 1,
   tryAcquireGlobalSession: () => true,
   releaseGlobalSession: () => {},
   allowedConnections,

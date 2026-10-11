@@ -114,6 +114,7 @@ async function eseguiScript(page, sql) {
     await page.fill('input[name="username"]', MYSQL_USER);
     await page.fill('input[name="password"]', MYSQL_PASSWORD);
     await page.click('#connect-btn');
+    await page.getByRole('button', { name: 'Conferma e connetti', exact: true }).click();
     await page.waitForSelector('#conn-sidebar', { state: 'visible', timeout: 20000 });
     await page.waitForFunction(() => {
       const t = document.querySelector('#db-tree');

@@ -22,9 +22,9 @@ import { closeCollTab, openCollTab } from './colltabs.js';
 import { elencoConnessioni } from './connmanager.js';
 import { toggleDrawer } from './responsive.js';
 import { openConnModal } from './connection.js';
-import { $, emit, toast } from './utils.js';
+import { $, emit, toast, refreshLucideIcons, lucideIconHtml } from './utils.js';
 import { connectAndOpenTab } from './connection.js';
-import { azioneDiEvento } from './scorciatoie.js';
+import { azioneDiEvento, etichettaCombo, mappaAttiva } from './scorciatoie.js';
 import { filtra, interpreta, RICHIAMI } from './palette-ricerca.js';
 import { finestraVirtuale, scorrimentoPerRiga } from './griglia.js';
 
@@ -207,8 +207,11 @@ function apriPalette() {
   overlay.className = 'palette-overlay';
   overlay.innerHTML = `
     <div class="palette">
-      <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
-        placeholder="Cerca tutto, oppure &gt; comandi &nbsp;# database &nbsp;@ tabelle" />
+      <div class="palette-search">
+        <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
+          placeholder="Cerca tutto, oppure &gt; comandi &nbsp;# database &nbsp;@ tabelle" />
+        <button type="button" id="palette-close" class="ghost palette-close" aria-label="Chiudi ricerca" title="Chiudi ricerca (Esc)">${lucideIconHtml('x')}</button>
+      </div>
       <ul id="palette-lista" role="listbox">
         <li class="palette-spazio" aria-hidden="true"></li>
         <li class="palette-spazio" aria-hidden="true"></li>
@@ -220,6 +223,8 @@ function apriPalette() {
       </div>
     </div>`;
   mountArcControls(overlay);
+  refreshLucideIcons(overlay);
+  overlay.querySelector('#palette-close').addEventListener('click', chiudiPalette);
   document.body.appendChild(overlay);
 
   const lista = overlay.querySelector('#palette-lista');
@@ -296,6 +301,7 @@ function apriPalette() {
   overlay.addEventListener('mousedown', (e) => {
     if (e.target === overlay) chiudiPalette(); // click fuori: si chiude, come le modali
   });
+  overlay.addEventListener('codedb:close-dialog', chiudiPalette);
 
   overlay.classList.add('aperta');
   disegna();
@@ -422,7 +428,17 @@ let inizializzato = false;
 export function initPalette() {
   if (inizializzato) return;
   inizializzato = true;
-  document.getElementById('command-palette-open')?.addEventListener('click', apriPalette);
+  const pulsante = document.getElementById('command-palette-open');
+  if (pulsante) {
+    pulsante.addEventListener('click', apriPalette);
+    const aggiornaRichiamo = () => {
+      const richiamo = etichettaCombo(mappaAttiva().paletteComandi);
+      pulsante.querySelector('kbd').textContent = richiamo;
+      pulsante.title = `Cerca tabelle e comandi (${richiamo})`;
+    };
+    aggiornaRichiamo();
+    document.addEventListener('codedb:scorciatoie', aggiornaRichiamo);
+  }
 
   document.addEventListener('keydown', (e) => {
     const id = azioneDiEvento(e);

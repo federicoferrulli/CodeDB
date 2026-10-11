@@ -1,6 +1,7 @@
 {
   "transport": "simulato, risposte consegnate fuori ordine",
   "checks": [
+    "Dodici connessioni da UI, nessun contatore e rilascio delle connessioni aggiunte",
     "Query concorrenti su database diversi della stessa connessione: risultati, codice e annullamento isolati",
     "Filtro e selezione delle celle conservati al cambio documento",
     "Salvataggio in volo protetto; errore dopo cambio documento conserva la bozza, recuperabile e annullabile",

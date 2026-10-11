@@ -1,0 +1,42 @@
+{
+  "checks": [
+    "40 dialog nel BottomSheet Arc a 320×650: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 390×844: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 844×390: identità, larghezza, limiti e scroll"
+  ],
+  "errors": [],
+  "defects": [
+    {
+      "phase": "onboarding-overlay 320×650",
+      "geometry": {
+        "width": 320,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-backup-manager 320×650",
+      "geometry": {
+        "width": 320,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-audit-log 320×650",
+      "geometry": {
+        "width": 320,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    }
+  ],
+  "phase": "session-query-overlay 844×390",
+  "failure": "AssertionError [ERR_ASSERTION]: Tutti i dialog devono rientrare nel drawer senza overflow\n+ actual - expected\n\n+ [\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 320\n+     },\n+     phase: 'onboarding-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 320\n+     },\n+     phase: 'modal-backup-manager 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 320\n+     },\n+     phase: 'modal-audit-log 320×650'\n+   }\n+ ]\n- []\n\n    at C:\\repository\\CodeDB\\test\\e2e-dialog-drawer.js:46:12"
+}

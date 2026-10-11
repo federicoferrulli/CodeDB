@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "Dropdown booleano senza sovrapposizioni: prima/ultima riga, desktop, mobile, 320px e landscape",
+    "Escape, calendario, Applica/Annulla e millisecondi: 1440px",
+    "Escape, calendario, Applica/Annulla e millisecondi: 390px",
+    "Escape, calendario, Applica/Annulla e millisecondi: 320px",
+    "Escape, calendario, Applica/Annulla e millisecondi: 844px",
+    "Data non valida annullabile; bozza recuperabile dopo errore server"
+  ],
+  "errors": [],
+  "phase": "Booleano 844×390, riga 1199"
+}

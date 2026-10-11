@@ -1,0 +1,92 @@
+{
+  "checks": [],
+  "errors": [],
+  "phase": "Booleano 1440×900, riga 0",
+  "failure": "AssertionError [ERR_ASSERTION]: Booleano 1440×900, riga 0: dropdown e Applica/Annulla non si sovrappongono: {\"actions\":{\"x\":691,\"y\":275.796875,\"width\":173.40625,\"height\":38},\"menu\":{\"x\":691,\"y\":275.796875,\"width\":160,\"height\":90}}\n    at noOverlap (C:\\repository\\CodeDB\\test\\e2e-uscita-editing.js:37:7)\n    at async C:\\repository\\CodeDB\\test\\e2e-uscita-editing.js:59:7",
+  "geometry": {
+    ".grid-wrap": {
+      "rect": {
+        "x": 248,
+        "y": 202.796875,
+        "width": 1192,
+        "height": 660.203125,
+        "top": 202.796875,
+        "right": 1440,
+        "bottom": 863,
+        "left": 248
+      },
+      "scrollTop": 0,
+      "scrollHeight": 36039
+    },
+    "#grid thead": {
+      "rect": {
+        "x": 248,
+        "y": 202.796875,
+        "width": 540,
+        "height": 36,
+        "top": 202.796875,
+        "right": 788,
+        "bottom": 238.796875,
+        "left": 248
+      },
+      "scrollTop": 0,
+      "scrollHeight": 36
+    },
+    "#grid td[data-r=\"0\"][data-c=\"3\"]": {
+      "rect": {
+        "x": 691,
+        "y": 238.796875,
+        "width": 97,
+        "height": 33,
+        "top": 238.796875,
+        "right": 788,
+        "bottom": 271.796875,
+        "left": 691
+      },
+      "scrollTop": 0,
+      "scrollHeight": 32
+    },
+    "#view-data": {
+      "rect": {
+        "x": 248,
+        "y": 155.796875,
+        "width": 1192,
+        "height": 744.203125,
+        "top": 155.796875,
+        "right": 1440,
+        "bottom": 900,
+        "left": 248
+      },
+      "scrollTop": 0,
+      "scrollHeight": 744
+    },
+    "#workspace": {
+      "rect": {
+        "x": 248,
+        "y": 155.796875,
+        "width": 1192,
+        "height": 744.203125,
+        "top": 155.796875,
+        "right": 1440,
+        "bottom": 900,
+        "left": 248
+      },
+      "scrollTop": 0,
+      "scrollHeight": 744
+    },
+    "main": {
+      "rect": {
+        "x": 248,
+        "y": 80,
+        "width": 1192,
+        "height": 820,
+        "top": 80,
+        "right": 1440,
+        "bottom": 900,
+        "left": 248
+      },
+      "scrollTop": 0,
+      "scrollHeight": 820
+    }
+  }
+}

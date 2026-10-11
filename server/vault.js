@@ -4,6 +4,7 @@
 const path = require('path');
 const Vault = require('../db/vault');
 const fs = require('fs');
+const { sshAuthMode, MAX_SSH_KEY_BYTES } = require('../db/SshTunnel');
 
 function createModule({ config, errori, dependencies }) {
   /* ---------------------------------------------------------------------------
@@ -29,12 +30,12 @@ function createModule({ config, errori, dependencies }) {
     // sshHostKey: impronta SHA256 della host key del bastion. NON è un segreto
     // (è un'impronta pubblica) ma va conservata: è ciò che rende rilevabile un
     // MITM sul tunnel. Registrata al primo collegamento riuscito.
-    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshPassword', 'sshKeyFile', 'sshPassphrase', 'sshHostKey',
+    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshAuth', 'sshPassword', 'sshKeyFile', 'sshPrivateKey', 'sshKeyName', 'sshPassphrase', 'sshHostKey',
   ];
 
   // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
   // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
-  const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase', 'uri'];
+  const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase', 'sshPrivateKey', 'uri'];
 
   // Sezione di intestazione dei file esportati con una passphrase scelta: porta
   // il salt e i parametri scrypt con cui ridervare la chiave sull'altra macchina.
@@ -549,11 +550,15 @@ function createModule({ config, errori, dependencies }) {
 
   // Tiene solo i campi noti e non vuoti di una configurazione di connessione.
   function sanitizeConnCfg(cfg) {
+    if (cfg.sshPrivateKey != null && (typeof cfg.sshPrivateKey !== 'string' || Buffer.byteLength(cfg.sshPrivateKey) > MAX_SSH_KEY_BYTES)) {
+      throw new Error('La chiave privata SSH deve essere un file di testo di massimo 64 KB.');
+    }
     const clean = Object.fromEntries(
       CONN_FIELDS
-        .filter((f) => cfg[f] != null && String(cfg[f]).trim() !== '')
-        .map((f) => [f, String(cfg[f]).trim()])
+        .filter((f) => cfg[f] != null && (SECRET_FIELDS.includes(f) ? String(cfg[f]) !== '' : String(cfg[f]).trim() !== ''))
+        .map((f) => [f, SECRET_FIELDS.includes(f) ? String(cfg[f]) : String(cfg[f]).trim()])
     );
+    if (clean.sshKeyName) clean.sshKeyName = clean.sshKeyName.replace(/[\r\n]/g, ' ');
     return preserveConnSecrets(clean, null);
   }
 
@@ -587,6 +592,8 @@ function createModule({ config, errori, dependencies }) {
       // SSH irraggiungibili in questa modalità.
       delete merged.sshPassword;
       delete merged.sshPassphrase;
+      delete merged.sshPrivateKey;
+      delete merged.sshKeyName;
       return merged;
     }
     delete merged.uri;
@@ -598,14 +605,30 @@ function createModule({ config, errori, dependencies }) {
     // attivo. Disattivandolo vengono rimossi invece di restare inutilizzati nel
     // file delle connessioni.
     if (sshEnabled(merged)) {
-      if (previousMode === 'fields' && previous) {
-        for (const f of ['sshPassword', 'sshPassphrase']) {
-          if (!merged[f] && previous[f]) merged[f] = previous[f];
+      const mode = sshAuthMode(merged);
+      merged.sshAuth = mode;
+      const sameMode = previousMode === 'fields' && previous && sshAuthMode(previous) === mode;
+      if (mode === 'password') {
+        if (!merged.sshPassword && sameMode) merged.sshPassword = previous.sshPassword;
+        delete merged.sshPassphrase;
+      } else {
+        delete merged.sshPassword;
+        const sameKey = sameMode && (mode === 'upload'
+          ? !merged.sshPrivateKey
+          : merged.sshKeyFile === previous.sshKeyFile);
+        if (mode === 'upload' && sameKey && !merged.sshPrivateKey) {
+          merged.sshPrivateKey = previous.sshPrivateKey;
+          merged.sshKeyName = previous.sshKeyName;
         }
+        if (!merged.sshPassphrase && sameKey) merged.sshPassphrase = previous.sshPassphrase;
       }
+      if (mode !== 'upload') { delete merged.sshPrivateKey; delete merged.sshKeyName; }
+      if (mode !== 'path') delete merged.sshKeyFile;
     } else {
       delete merged.sshPassword;
       delete merged.sshPassphrase;
+      delete merged.sshPrivateKey;
+      delete merged.sshKeyName;
     }
     return merged;
   }

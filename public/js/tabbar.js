@@ -10,8 +10,6 @@ export function renderTabBar() {
   bar.innerHTML = '';
   bar.setAttribute('role', 'tablist');
   bar.setAttribute('aria-label', 'Connessioni attive');
-  const count = $('#session-count');
-  if (count) count.textContent = `${tabs.list.filter(t => t.state.connected).length} / 8`;
 
   for (const tab of tabs.list) {
     if (!tab.state.connected) continue; // i tab compaiono a connessione riuscita

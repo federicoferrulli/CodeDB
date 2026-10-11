@@ -31,7 +31,6 @@ const deps = {
     strategy, tunnel: null, dbType: 'mongodb', effective: savedConnection,
   }),
   teardownConnection: async () => {},
-  maxDbSessions: 1,
   tryAcquireGlobalSession: () => true,
   releaseGlobalSession: () => {},
   rbacOn: () => false,

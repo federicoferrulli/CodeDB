@@ -27,7 +27,7 @@ const CONNECTIONS_FILE = process.env.CODEDB_CONNECTIONS_FILE
 // username e password e viene quindi cifrata integralmente nel file INI.
 // Senza il campo uri qui la UI salvava correttamente ENC:..., ma la CLI passava
 // il ciphertext al driver e ogni backup pianificato falliva all'avvio.
-const SECRET_FIELDS = ['password', 'uri', 'sshPassword', 'sshPassphrase'];
+const SECRET_FIELDS = ['password', 'uri', 'sshPassword', 'sshPassphrase', 'sshPrivateKey'];
 
 // Connessioni per tenant (CDB-50). Con RBAC attivo il server non scrive più nel
 // file condiviso: ogni owner ha `data/conns/<ownerId>.ini`. La CLI leggeva solo

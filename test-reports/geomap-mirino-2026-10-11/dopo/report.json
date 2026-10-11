@@ -1,0 +1,162 @@
+{
+  "layouts": [
+    {
+      "width": 390,
+      "height": 844,
+      "map": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 599.90625,
+        "width": 364,
+        "height": 299.265625
+      },
+      "rail": {
+        "x": 13,
+        "y": 605.90625,
+        "right": 377,
+        "bottom": 649.90625,
+        "width": 364,
+        "height": 44
+      },
+      "vertices": {
+        "x": 13,
+        "y": 655.90625,
+        "right": 377,
+        "bottom": 724.625,
+        "width": 364,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 724.625,
+        "width": 364,
+        "height": 423.984375
+      },
+      "overflow": false
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "map": {
+        "x": 13,
+        "y": 294.40625,
+        "right": 307,
+        "bottom": 495.90625,
+        "width": 294,
+        "height": 201.5
+      },
+      "rail": {
+        "x": 13,
+        "y": 501.90625,
+        "right": 307,
+        "bottom": 545.90625,
+        "width": 294,
+        "height": 44
+      },
+      "vertices": {
+        "x": 13,
+        "y": 551.90625,
+        "right": 307,
+        "bottom": 620.625,
+        "width": 294,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 13,
+        "y": 294.40625,
+        "right": 307,
+        "bottom": 620.625,
+        "width": 294,
+        "height": 326.21875
+      },
+      "overflow": false
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "map": {
+        "x": 239,
+        "y": 133.40625,
+        "right": 709,
+        "bottom": 328,
+        "width": 470,
+        "height": 194.59375
+      },
+      "rail": {
+        "x": 239,
+        "y": 334,
+        "right": 709,
+        "bottom": 378,
+        "width": 470,
+        "height": 44
+      },
+      "vertices": {
+        "x": 715,
+        "y": 240.5625,
+        "right": 831,
+        "bottom": 378,
+        "width": 116,
+        "height": 137.4375
+      },
+      "body": {
+        "x": 239,
+        "y": 133.40625,
+        "right": 831,
+        "bottom": 378,
+        "width": 592,
+        "height": 244.59375
+      },
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 960,
+      "map": {
+        "x": 155,
+        "y": 236.296875,
+        "right": 975.5,
+        "bottom": 716.296875,
+        "width": 820.5,
+        "height": 480
+      },
+      "rail": {
+        "x": 921.5,
+        "y": 246.296875,
+        "right": 965.5,
+        "bottom": 422.296875,
+        "width": 44,
+        "height": 176
+      },
+      "vertices": {
+        "x": 315.2421875,
+        "y": 648.296875,
+        "right": 815.2578125,
+        "bottom": 694.296875,
+        "width": 500.015625,
+        "height": 46
+      },
+      "body": {
+        "x": 155,
+        "y": 236.296875,
+        "right": 1285,
+        "bottom": 716.296875,
+        "width": 1130,
+        "height": 480
+      },
+      "overflow": false
+    }
+  ],
+  "checks": [
+    "Touch 390: mirino centrato, selezione, pan senza modifiche, spostamento con chiusura anello, inserimento, eliminazione, aggiunta, annulla/ripeti, cambio Mappa/GeoJSON e salvataggio",
+    "Point: quota conservata, annulla, ridisegno; MultiLineString: cambio vertice e parte attiva",
+    "Sola lettura: mappa e GeoJSON consultabili, nessuna modifica abilitata",
+    "Touch 320: mirino centrato, selezione, pan senza modifiche, spostamento con chiusura anello, inserimento, eliminazione, aggiunta, annulla/ripeti, cambio Mappa/GeoJSON e salvataggio",
+    "Sola lettura: mappa e GeoJSON consultabili, nessuna modifica abilitata",
+    "Touch 844: mirino centrato, selezione, pan senza modifiche, spostamento con chiusura anello, inserimento, eliminazione, aggiunta, annulla/ripeti, cambio Mappa/GeoJSON e salvataggio",
+    "Sola lettura: mappa e GeoJSON consultabili, nessuna modifica abilitata"
+  ],
+  "errors": []
+}

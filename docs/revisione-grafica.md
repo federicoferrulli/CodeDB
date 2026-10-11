@@ -2,6 +2,42 @@
 
 Perimetro: intera applicazione operativa in `public/`, inclusi gli strumenti amministrativi. Escluso il sito marketing. Priorità confermata da Keus: query e modifica intensiva dei dati. La migrazione Arc già presente viene riutilizzata.
 
+## Focus e chiusura della ricerca globale — 11 ottobre 2026
+
+Il blocco dei clic esterni nell'adattatore dei dialog impediva di chiudere la palette con il puntatore. La ricerca ora consente la chiusura esterna passando dal suo controller; le altre finestre mantengono la protezione precedente. Aggiunta una X Arc visibile accanto al campo sul desktop; su mobile rimane la chiusura nella testata del BottomSheet. Verificati focus automatico, scrittura immediata, Escape, Ctrl+P, X, clic esterno e riapertura. Se la ricerca è sopra un form, chiuderla restituisce il focus alla bozza intatta.
+
+Superati `test/e2e-ricerca-focus.js` (1440×900, 390×844, 320×650, 844×390 e due casi annidati), `test/e2e-arc.js`, build, typecheck e controlli di sintassi/diff. La controprova `--mutant` reintroduce il blocco nella sola risposta HTTP del bundle e riproduce la mancata chiusura. Report e screenshot ispezionati in `test-reports/ricerca-focus-2026-10-11/finale/`. Chromium e server isolato; nessuna nuova prova su telefoni fisici o contenitori nativi.
+
+## Tutti i dialog mobile nel BottomSheet Arc — 11 ottobre 2026
+
+Fino a 900px l'adattatore condiviso dei dialog usa il BottomSheet Arc anche per i form, la palette comandi, le finestre aggiunte dinamicamente e le conferme. Il desktop conserva le finestre. Il passaggio di formato sposta gli stessi nodi: bozza, selezione e focus rimangono nel form. Apertura al 70% o al 94% sui viewport bassi, espansione dalla maniglia e scorrimento entro l'area utile. La chiusura richiama il controller originale, anche per la palette; login e vault non si possono aggirare chiudendo il drawer.
+
+Le conferme mobile attendono una risposta senza bloccare il browser. I chiamanti aspettano il consenso e catturano il bersaglio prima dell'attesa; annullare lo scarto mantiene la bozza. Verificati anche disconnessione con query non salvata e ripristino del focus fra dialog annidati. A 320px sono stati corretti l'overflow dei testi della guida iniziale, delle schede Backup e della paginazione Audit.
+
+Prove correnti in `test-reports/dialog-drawer-2026-10-11/finale/`: `test/e2e-dialog-drawer.js` copre 40 dialog a 320×650, 390×844 e 844×390, più palette, conferme, cambio desktop/mobile e barriera vault. `test/e2e-safe-area.js` copre inset, rotazione e tastiera simulata; `test/e2e-workbench.js` copre 15 scenari del workspace; `test/e2e-arc.js` copre form, controlli, dialog annidati, temi chiaro/scuro e movimento normale/ridotto. Tutte superate, insieme a build e typecheck UI. Report e screenshot ispezionati; Chromium e server isolati, con dati e trasporto sintetici. Nessuna nuova prova su telefono fisico, Electron, WebView Android o database reali.
+
+Anche `npm test` è superato (`finale/unit.log`): un primo avvio in parallelo era scaduto nella prova di autenticazione del processo server, poi la suite completa è passata da sola. La controprova `test/e2e-dialog-drawer.js --mutant` restringe il drawer a 180px solo nel DOM del browser di test e fallisce sul controllo geometrico; nessuna mutazione rimane nei sorgenti.
+
+## Sovrapposizioni negli editor della griglia — 11 ottobre 2026
+
+Il menu booleano e Applica/Annulla venivano posizionati indipendentemente sotto la stessa cella. Select e calendario ora riservano lo spazio effettivo dei comandi, anche quando si aprono sopra la cella. Il posizionamento condiviso sceglie il lato prima di limitare l'altezza: un calendario troppo alto scorre nello spazio disponibile, senza invadere i comandi. Per gli editor della griglia il limite inferiore esclude anche la barra mobile; un ancoraggio fuori vista nasconde il relativo popover.
+
+La verifica ha trovato anche una griglia ridotta alla sola intestazione su mobile orizzontale: la vista Dati mantiene ora spazio per le righe e il workspace scorre. Verificati menu booleani sulla prima/ultima riga, calendari, accessibilità dei controlli tramite hit test, Escape, annullamento, salvataggio tipizzato, millisecondi UTC e recupero della bozza dopo errore. Viewport 1440×900, 390×844/900, 320×650 e 844×390; nessuna intersezione fra popup, Applica/Annulla e barra mobile nei casi coperti.
+
+Superati build e typecheck UI, `test/e2e-uscita-editing.js`, `test/e2e-arc-griglia.js`, `test/e2e-arc-campi.js` e `test/e2e-revisione.js` (11 viewport e tre temi). L'ultima estensione del limite alla barra mobile è stata verificata nuovamente con la suite di uscita editing. Le controprove `--mutant-sovrapposizione` e `--mutant-altezza` falliscono rispettivamente sull'intersezione menu/comandi e sullo spazio disponibile alle righe: modificano solo il DOM o la risposta HTTP del browser di test, senza alterare i sorgenti.
+
+Report e screenshot ispezionati in `test-reports/editor-griglia-2026-10-11/`. Chromium con dati e trasporto sintetici e server isolato; nessuna nuova verifica su dispositivi fisici, Safari/Firefox, Electron, WebView Android o database reali.
+
+## Barra e drawer mobile — 11 ottobre 2026
+
+La navigazione mobile ha tre accessi fissi: Connessioni, Database e Schede. La stessa barra entra nel BottomSheet Arc, dentro il suo perimetro modale, per cambiare sezione senza dover prima chiudere il pannello. La voce aperta ha indicatore, colore e `aria-expanded`; premendola di nuovo si richiude il drawer. Database resta indisponibile senza una connessione attiva. Query rimane nelle viste del workspace e Salute nel menu Strumenti. Rimossi i comandi duplicati nell'header mobile e la riga superiore dedicata a Schede; il desktop mantiene il pulsante visibile per comprimere e riaprire il navigatore.
+
+Il drawer usa il 70% o il 94% dell'area disponibile; con altezza inferiore a 600px parte espanso. Ricerca e aggiunta condividono una riga. L'elenco Schede distingue connessioni e documenti con icone, contesto, stato «In uso» e indicazione delle modifiche non salvate; porta in vista il documento corrente e conserva le azioni nel menu separato. La barra è alta 64px, rispetta safe area e tastiera e rimane fuori dallo scorrimento degli elenchi. I nodi originali, le bozze e i controller sono riutilizzati.
+
+Verificati build e typecheck UI, `test/e2e-revisione.js`, `test/e2e-griglia-fluidita.js` e `test/e2e-safe-area.js`: tre sezioni, stato selezionato, chiusura ripetendo il comando, ritorno del focus, documento attivo visibile, cambi di connessione con bozza, menu annidati, ritorno desktop, layout su 11 viewport e tre temi, safe area e tastiera simulata anche dentro il drawer. Controprova `--mutant=navigazione`: il comando Database viene indirizzato a Connessioni nella sola risposta HTTP di test; la suite fallisce sullo stato atteso del comando Database. I sorgenti non vengono mutati.
+
+Evidenze in `test-reports/bottom-navigation-2026-10-11/`; dati e trasporto sintetici, Chromium e server isolati. Revisione finale di sorgenti e screenshot completata; nessuna nuova verifica su dispositivi fisici, WebView Android o Electron. Le sezioni successive documentano le iterazioni precedenti.
+
 ## Schede mobile — 11 ottobre 2026
 
 Fino a 900px le barre delle connessioni e dei documenti e il contatore delle sessioni sono nascosti: resta il pulsante «Schede». L'elenco si apre nel BottomSheet Arc già usato da Connessioni e Database, con gli stessi controller delle schede e senza duplicare lo stato del workspace. Conserva selezione, bozze, riordino, menu di chiusura/disconnessione e accesso a Nuova connessione anche dall'elenco vuoto. Tornando al desktop il drawer si chiude e le barre ricompaiono. Il passaggio fra i drawer aggiorna stato accessibile e focus.
@@ -194,3 +230,33 @@ Build e typecheck superati; suite griglia (14 gruppi) e campi (10 gruppi) supera
 La controprova `node test/e2e-arc-griglia.js --mutant-date` introduce soltanto nel browser il salvataggio prematuro alla scelta del giorno: il test fallisce prima della modifica dell'ora, come previsto. [Report della controprova](../test-reports/arc/griglia/report-date-mutant.json).
 
 [Prima](../test-reports/arc/datepicker/prima-1440.png), [dopo desktop](../test-reports/arc/datepicker/inline-dark-1440.png), [dopo mobile](../test-reports/arc/datepicker/inline-light-390.png).
+
+## UML su mobile — 11 ottobre 2026
+
+Il canvas usa tutta la larghezza; catalogo, dettagli, dati e strumenti riusano i pannelli originali nei BottomSheet Arc. Zoom e inquadratura hanno una riga dedicata, separata dal diagramma. La vista può espandersi a schermo intero; il contesto di una tabella parte centrato sulla selezione. Il primo dito trascina anche sui nodi senza modificarli; due dita ingrandiscono e il dito rimasto riprende il trascinamento. Chiusura del drawer, ritorno al desktop e cambio vista ripristinano pannelli e focus.
+
+Superati `build:ui`, `typecheck:ui`, `e2e-uml-mobile.js`, `e2e-uml.js`, `e2e-uml-modalita.js`, `e2e-arc.js` ed `e2e-safe-area.js`. La nuova prova usa JointJS e controller reali con trasporto simulato: include ricerca, selezione, nomi lunghi, dati e JSON, menu annidato, gesti touch inviati da Chromium, temi, 320/390/844/1440 px e rotazione. [Report](../test-reports/uml-mobile-2026-10-11/dopo/report.json). Non prova database reali, dispositivi fisici o Safari.
+
+## Split-View solo desktop — 11 ottobre 2026
+
+Fino a 900px lo split non è disponibile: rimossi i comandi dalla testata, dai menu Database/UML e le aree affiancate dal drawer Schede. Creazione, trascinamento, scorciatoie e ripresa delle query nei pannelli rispettano la stessa soglia. Passando a mobile o ripristinando una sessione, il workspace mostra una scheda singola; aree, runtime e bozze restano conservati per il desktop. Una query proveniente da un pannello si riprende da desktop, mentre il codice resta consultabile nel registro.
+
+Superati `e2e-split-mobile.js` (7 gruppi), `e2e-workbench.js` (15 scenari) ed `e2e-uml-mobile.js` (8 gruppi), con controller e Chromium reali e trasporto simulato. Verificati soglia 900/901px, editor distinti, sessioni con sole aree split e pannelli di altre connessioni. La controprova `--mutant` rimuove nel solo browser la guardia di creazione e fallisce come previsto. [Report](../test-reports/split-mobile-2026-10-11/dopo/report.json), [controprova](../test-reports/split-mobile-2026-10-11/mutante/report.json). Non verificati dispositivi fisici o Safari.
+
+## Paginazione desktop e mobile — 11 ottobre 2026
+
+Il footer separa totale, scroll continuo, intervallo e righe per pagina. Rimossi il conteggio duplicato e le abbreviazioni Prec/Succ; le frecce hanno nomi accessibili. Su mobile la barra occupa una sola riga di 53px: frecce, intervallo con totale sottostante e pulsante opzioni, con bersagli da 44px. «Scroll continuo» e righe per pagina passano in un BottomSheet Arc compatto, usando gli stessi nodi, valori e listener del desktop. Le opzioni restano disponibili anche dal riepilogo ridotto; chiusura, cambio vista e ritorno al desktop ripristinano i controlli. Il layout desktop rimane invariato. La modalità ridotta conserva apertura, chiusura e focus da tastiera.
+
+Superati `e2e-paginazione.js` (navigazione, dimensione pagina, scroll continuo, tastiera, drawer con Escape annidato e ripristino dei controlli, conteggi sconosciuti/stimati e 48 layout a 320/390/768/844/1024/1440px nei due temi) ed `e2e-safe-area.js` (quattro viewport, 40 modali e tastiera virtuale). In landscape basso il footer resta raggiungibile scorrendo il workspace. Build e typecheck UI superati; nessun errore JavaScript o rilievo nello scan layout. La controprova `--mutant-compact` riporta deliberatamente il footer a 102px nel solo browser e fallisce sul limite di altezza, come previsto. [Report](../test-reports/paginazione-2026-10-11/dopo/report.json), [controprova](../test-reports/paginazione-2026-10-11/mutante-compatto/report.json), [desktop](../test-reports/paginazione-2026-10-11/dopo/light-1440.png), [mobile](../test-reports/paginazione-2026-10-11/dopo/dark-390.png), [opzioni](../test-reports/paginazione-2026-10-11/dopo/opzioni-mobile.png). Trasporto simulato; non verificati dispositivi fisici o Safari.
+
+## Toolbar Dati senza sovrapposizioni — 11 ottobre 2026
+
+Riprodotta a 1024px la sovrapposizione fra ordinamento e cronologia: l'autocomplete aggiungeva un contenitore che non riceveva le dimensioni e l'area mobile assegnate all'input. Filtro e ordinamento hanno ora gruppi stabili, con input contenuti nella loro larghezza; le azioni desktop vanno a capo come gruppo. Su mobile l'ordinamento occupa correttamente quattro colonne e mantiene bersagli da 44px. La cronologia si ancora alla toolbar, con larghezza limitata allo spazio disponibile.
+
+Superato `e2e-toolbar-responsive.js`: 27 layout fra 320 e 1440px nei temi chiaro/scuro, landscape, soglia 900/901px e navigatore allargato. Verificati esecuzione con filtro e sort, ripristino dalla cronologia, completamento da tastiera, menu e testi conservati al resize. La controprova `--mutant` forza un input più largo del gruppo e fallisce sulle sovrapposizioni, come previsto. Superata anche la regressione `e2e-paginazione.js` con 48 layout; nessun errore JavaScript o rilievo nello scan layout. [Prima](../test-reports/toolbar-2026-10-11/prima/report.json), [report](../test-reports/toolbar-2026-10-11/dopo/report.json), [desktop stretto](../test-reports/toolbar-2026-10-11/dopo/dark-1024.png), [mobile](../test-reports/toolbar-2026-10-11/dopo/light-390.png). Chromium con trasporto simulato; non verificati dispositivi fisici o Safari.
+
+## Opzioni dei risultati compatte — 11 ottobre 2026
+
+Il drawer delle due opzioni usa ora l'altezza naturale del contenuto: 130px nei viewport verificati. Testata ridotta, «Righe» con selettore e spunta vicina a «Scroll continuo» occupano una fascia; le etichette possono andare a capo come gruppi quando necessario. Il BottomSheet Arc conserva chiusura, trascinamento, focus e bersagli da 44px. L'ordine del DOM segue quello visivo. La variante ad altezza naturale non usa margini dipendenti dalla traslazione, che altererebbero la misura durante il trascinamento.
+
+Superati build e typecheck UI, `e2e-paginazione.js` (8 layout del drawer a 320/390/768/844px nei due temi, ordine del focus, controlli, Escape, trascinamento e 48 layout del footer) ed `e2e-safe-area.js` (quattro viewport, 40 modali, tastiera e pinch). La controprova `--mutant-sheet` ripristina un pannello da 360px nel browser e fallisce sul vincolo di compattezza. [Anteprima](../test-reports/paginazione-2026-10-11/dopo/opzioni-dark-390.png), [report](../test-reports/paginazione-2026-10-11/dopo/report.json), [controprova](../test-reports/paginazione-2026-10-11/mutante-drawer/report.json). Non verificati dispositivi fisici o Safari.

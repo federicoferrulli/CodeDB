@@ -9,7 +9,7 @@ import {
   leggiStatoFiltro, applicaStatoFiltro,
 } from './grid.js';
 import {
-  renderCollTabBar, applyViewTabsFor, currentCollTab, salvaSnapshotQuery, applicaSnapshotQuery,
+  renderCollTabBar, applyViewTabsFor, currentCollTab, salvaSnapshotQuery, applicaSnapshotQuery, adattaCollTabAlViewport,
 } from './colltabs.js';
 import { deactivateSplitView, renderSplitView, discardSplitViewIfOrphan } from './splitview.js';
 import { setView } from './main.js';
@@ -57,6 +57,7 @@ export function renderWorkspace() {
   // Il tab che ospitava l'area affiancata è stato chiuso: lo stato dei pannelli
   // è orfano, va buttato (altrimenti resterebbe agganciato a sessioni morte).
   discardSplitViewIfOrphan();
+  if (connected) adattaCollTabAlViewport();
   // La Split-View è del tab attivo solo se il suo coll-tab è quello attivo: in
   // ogni altro caso (cambio tab, chiusura, disconnessione) i pannelli vanno
   // tolti di mezzo, altrimenti resterebbero a schermo sopra un'altra connessione.
@@ -72,6 +73,8 @@ export function renderWorkspace() {
   $('#navigator-divider').classList.toggle('hidden', !connected);
   // Hamburger dei database (drawer mobile): ha senso solo con un tab connesso.
   $('#menu-dbs-btn').classList.toggle('hidden', !connected);
+  $('#mobile-nav-dbs').disabled = !connected;
+  $('#mobile-nav-dbs').title = connected ? `Database di ${tab.label}` : 'Apri una connessione per esplorare i database';
   $('#conn-info').classList.toggle('hidden', !connected);
   $('#conn-info').innerHTML = connected ? `${dbTypeIcon(state.dbType)} <span>${esc(state.connLabel)}</span>` : '';
   refreshLucideIcons($('#conn-info'));

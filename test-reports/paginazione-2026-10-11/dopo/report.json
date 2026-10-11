@@ -1,0 +1,2632 @@
+{
+  "checks": [
+    "Precedente/successiva, ultima pagina, Select Arc e scroll continuo conservano la navigazione",
+    "Riepilogo ridotto e controlli espansi accessibili da tastiera, con focus conservato",
+    "Drawer Arc compatto: controlli originali, valori conservati, Escape annidato, focus e ripristino desktop/cambio vista",
+    "Opzioni ad altezza naturale su 8 layout: controlli vicini, nessuno spazio vuoto e chiusura trascinando la testata",
+    "48 layout: temi chiaro/scuro, desktop/mobile/landscape, risultati piccoli, grandi e vuoti senza sovrapposizioni",
+    "Conteggi sconosciuti/stimati mantengono Avanti; il menu Arc resta nel viewport mobile"
+  ],
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 1440,
+      "name": "piccolo",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 1038.6875,
+          "y": 868,
+          "right": 1066.6875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1171.296875,
+          "y": 868,
+          "right": 1199.296875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1203.296875,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 56.609375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "name": "pagine",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 1046.515625,
+          "y": 868,
+          "right": 1074.515625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1179.125,
+          "y": 868,
+          "right": 1207.125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1211.125,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 48.78125,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "name": "grande",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 907.703125,
+          "y": 868,
+          "right": 935.703125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1040.3125,
+          "y": 868,
+          "right": 1068.3125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1072.3125,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 187.59375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1440,
+      "name": "vuoto",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 260,
+          "y": 868,
+          "right": 376.984375,
+          "bottom": 896,
+          "width": 116.984375,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "name": "piccolo",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 622.6875,
+          "y": 868,
+          "right": 650.6875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 755.296875,
+          "y": 868,
+          "right": 783.296875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 787.296875,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 56.609375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "name": "pagine",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 630.515625,
+          "y": 868,
+          "right": 658.515625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 763.125,
+          "y": 868,
+          "right": 791.125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 795.125,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 48.78125,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "name": "grande",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 491.703125,
+          "y": 868,
+          "right": 519.703125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 624.3125,
+          "y": 868,
+          "right": 652.3125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 656.3125,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 187.59375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "name": "vuoto",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 240,
+          "y": 868,
+          "right": 356.984375,
+          "bottom": 896,
+          "width": 116.984375,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 704,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 326,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 256,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 780,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "name": "piccolo",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 1038.6875,
+          "y": 868,
+          "right": 1066.6875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1171.296875,
+          "y": 868,
+          "right": 1199.296875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1203.296875,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 56.609375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "name": "pagine",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 1046.515625,
+          "y": 868,
+          "right": 1074.515625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1179.125,
+          "y": 868,
+          "right": 1207.125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1211.125,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 48.78125,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "name": "grande",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 907.703125,
+          "y": 868,
+          "right": 935.703125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 1040.3125,
+          "y": 868,
+          "right": 1068.3125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 1072.3125,
+          "y": 868,
+          "right": 1259.90625,
+          "bottom": 896,
+          "width": 187.59375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 1263.90625,
+          "y": 868,
+          "right": 1291.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 1348,
+          "y": 868,
+          "right": 1428,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "name": "vuoto",
+      "box": {
+        "x": 248,
+        "y": 863,
+        "right": 1440,
+        "bottom": 900,
+        "width": 1192,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 260,
+          "y": 868,
+          "right": 376.984375,
+          "bottom": 896,
+          "width": 116.984375,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "name": "piccolo",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 622.6875,
+          "y": 868,
+          "right": 650.6875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 755.296875,
+          "y": 868,
+          "right": 783.296875,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 787.296875,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 56.609375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "name": "pagine",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 630.515625,
+          "y": 868,
+          "right": 658.515625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 763.125,
+          "y": 868,
+          "right": 791.125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 795.125,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 48.78125,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "name": "grande",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "_r_3h_",
+          "x": 491.703125,
+          "y": 868,
+          "right": 519.703125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "prev-btn",
+          "x": 624.3125,
+          "y": 868,
+          "right": 652.3125,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "page-info",
+          "x": 656.3125,
+          "y": 868,
+          "right": 843.90625,
+          "bottom": 896,
+          "width": 187.59375,
+          "height": 28
+        },
+        {
+          "id": "next-btn",
+          "x": 847.90625,
+          "y": 868,
+          "right": 875.90625,
+          "bottom": 896,
+          "width": 28,
+          "height": 28
+        },
+        {
+          "id": "_r_3i_",
+          "x": 932,
+          "y": 868,
+          "right": 1012,
+          "bottom": 896,
+          "width": 80,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "name": "vuoto",
+      "box": {
+        "x": 228,
+        "y": 863,
+        "right": 1024,
+        "bottom": 900,
+        "width": 796,
+        "height": 37
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 240,
+          "y": 868,
+          "right": 356.984375,
+          "bottom": 896,
+          "width": 116.984375,
+          "height": 28
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 900
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 664,
+          "bottom": 832,
+          "width": 608,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 668,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 768,
+        "bottom": 836,
+        "width": 768,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 712,
+          "bottom": 832,
+          "width": 704,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 716,
+          "y": 788,
+          "right": 760,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 286,
+          "bottom": 832,
+          "width": 230,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 290,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 390,
+        "bottom": 836,
+        "width": 390,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 334,
+          "bottom": 832,
+          "width": 326,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 338,
+          "y": 788,
+          "right": 382,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 788,
+          "right": 52,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 788,
+          "right": 216,
+          "bottom": 832,
+          "width": 160,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 220,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 783,
+        "right": 320,
+        "bottom": 836,
+        "width": 320,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 788,
+          "right": 264,
+          "bottom": 832,
+          "width": 256,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 268,
+          "y": 788,
+          "right": 312,
+          "bottom": 832,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 836
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "name": "piccolo",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "name": "pagine",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "name": "grande",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "prev-btn",
+          "x": 8,
+          "y": 277.796875,
+          "right": 52,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "page-info",
+          "x": 56,
+          "y": 277.796875,
+          "right": 740,
+          "bottom": 321.796875,
+          "width": 684,
+          "height": 44
+        },
+        {
+          "id": "next-btn",
+          "x": 744,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 1,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "name": "vuoto",
+      "box": {
+        "x": 0,
+        "y": 272.796875,
+        "right": 844,
+        "bottom": 325.796875,
+        "width": 844,
+        "height": 53
+      },
+      "controls": [
+        {
+          "id": "pager-compact",
+          "x": 8,
+          "y": 277.796875,
+          "right": 788,
+          "bottom": 321.796875,
+          "width": 780,
+          "height": 44
+        },
+        {
+          "id": "pager-options-open",
+          "x": 792,
+          "y": 277.796875,
+          "right": 836,
+          "bottom": 321.796875,
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "overlaps": false,
+      "rangeLines": 0,
+      "pageOverflow": false,
+      "footerOverflow": false,
+      "navTop": 326
+    }
+  ],
+  "sheets": [
+    {
+      "theme": "dark",
+      "width": 320,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 768,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 768,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "height": 130,
+      "blank": 0,
+      "overlap": false,
+      "touch": true,
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "ok": true
+}

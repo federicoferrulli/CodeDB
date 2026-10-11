@@ -1,0 +1,1212 @@
+{
+  "checks": [
+    "40 dialog nel BottomSheet Arc a 320×650: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 390×844: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 844×390: identità, larghezza, limiti e scroll"
+  ],
+  "errors": [],
+  "defects": [
+    {
+      "phase": "conn-error-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "login-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "vault-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "passphrase-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "about-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "onboarding-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connect-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "insert-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "geomap-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "geomulti-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "editdoc-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "askinput-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbcreate-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "collcreate-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "coledit-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connexport-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbimport-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbexport-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "piano-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "explain-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "idxcreate-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "mermaid-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbml-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "sql-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "audit-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "diff-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-schema-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "path-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "deps-modal 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-backup-manager 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "restore-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-audit-log 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-health 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-sessions 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-theme 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-admin-rbac 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-pending 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "confirm-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "session-query-overlay 320×650",
+      "geometry": {
+        "width": 180,
+        "top": 39,
+        "bottom": 650,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "conn-error-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "login-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "vault-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "passphrase-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "about-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "onboarding-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connect-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "insert-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "geomap-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "geomulti-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "editdoc-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "askinput-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbcreate-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "collcreate-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "coledit-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connexport-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbimport-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbexport-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "piano-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "explain-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "idxcreate-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "mermaid-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbml-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "sql-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "audit-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "diff-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-schema-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "path-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "deps-modal 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-backup-manager 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "restore-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-audit-log 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-health 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-sessions 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-theme 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-admin-rbac 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-pending 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "confirm-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "session-query-overlay 390×844",
+      "geometry": {
+        "width": 180,
+        "top": 50.640625,
+        "bottom": 844,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "conn-error-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "login-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "vault-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "passphrase-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "about-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "onboarding-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connect-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "insert-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "geomap-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "geomulti-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "editdoc-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "askinput-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbcreate-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "collcreate-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "coledit-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "connexport-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbimport-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbexport-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "piano-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "explain-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "idxcreate-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "mermaid-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "dbml-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "sql-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "audit-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "diff-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "import-schema-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "path-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "deps-modal 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-backup-manager 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "restore-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-audit-log 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-health 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-sessions 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "modal-theme 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-admin-rbac 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": true
+      }
+    },
+    {
+      "phase": "modal-pending 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "confirm-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    },
+    {
+      "phase": "session-query-overlay 844×390",
+      "geometry": {
+        "width": 180,
+        "top": 23.40625,
+        "bottom": 390,
+        "same": true,
+        "overflow": false
+      }
+    }
+  ],
+  "phase": "session-query-overlay 844×390",
+  "failure": "AssertionError [ERR_ASSERTION]: Tutti i dialog devono rientrare nel drawer senza overflow\n+ actual - expected\n\n+ [\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'conn-error-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'login-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'vault-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'passphrase-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'about-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'onboarding-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'connect-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'insert-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'geomap-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'geomulti-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'editdoc-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'askinput-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'dbcreate-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'collcreate-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'coledit-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'connexport-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'import-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'dbimport-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'dbexport-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'piano-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'explain-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'idxcreate-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'mermaid-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'dbml-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'sql-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'audit-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'diff-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'import-schema-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'path-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'deps-modal 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-backup-manager 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'restore-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-audit-log 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-health 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-sessions 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-theme 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: true,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-admin-rbac 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'modal-pending 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'confirm-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 650,\n+       overflow: false,\n+       same: true,\n+       top: 39,\n+       width: 180\n+     },\n+     phase: 'session-query-overlay 320×650'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'conn-error-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'login-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'vault-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'passphrase-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'about-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'onboarding-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: true,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'connect-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'insert-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: true,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'geomap-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'geomulti-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'editdoc-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'askinput-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'dbcreate-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'collcreate-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'coledit-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'connexport-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'import-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'dbimport-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'dbexport-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'piano-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'explain-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'idxcreate-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'mermaid-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'dbml-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'sql-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'audit-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'diff-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'import-schema-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'path-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'deps-modal 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-backup-manager 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'restore-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: true,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-audit-log 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-health 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-sessions 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: true,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-theme 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: true,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-admin-rbac 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'modal-pending 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'confirm-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 844,\n+       overflow: false,\n+       same: true,\n+       top: 50.640625,\n+       width: 180\n+     },\n+     phase: 'session-query-overlay 390×844'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'conn-error-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'login-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'vault-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'passphrase-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'about-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'onboarding-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'connect-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'insert-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'geomap-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'geomulti-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'editdoc-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'askinput-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'dbcreate-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'collcreate-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'coledit-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'connexport-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'import-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'dbimport-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'dbexport-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'piano-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'explain-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'idxcreate-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'mermaid-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'dbml-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'sql-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'audit-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'diff-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'import-schema-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'path-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'deps-modal 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-backup-manager 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'restore-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-audit-log 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-health 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-sessions 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-theme 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: true,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-admin-rbac 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'modal-pending 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'confirm-overlay 844×390'\n+   },\n+   {\n+     geometry: {\n+       bottom: 390,\n+       overflow: false,\n+       same: true,\n+       top: 23.40625,\n+       width: 180\n+     },\n+     phase: 'session-query-overlay 844×390'\n+   }\n+ ]\n- []\n\n    at C:\\repository\\CodeDB\\test\\e2e-dialog-drawer.js:47:12"
+}

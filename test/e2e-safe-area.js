@@ -11,7 +11,7 @@ const { startTestServer } = require('./e2e-harness');
   let browser;
   try {
     browser = await chromium.launch();
-    const page = await browser.newPage();
+    const page = await browser.newPage({ reducedMotion: 'reduce' });
     // Il mock nasce prima dell'app: un solo viewport e un solo insieme di
     // listener. Gli eventi reali tardivi leggono gli stessi dati simulati.
     await page.addInitScript(() => {
@@ -56,6 +56,7 @@ const { startTestServer } = require('./e2e-harness');
           await page.locator('.arc-navigation-sheet [data-grabber]').press('Home');
           await page.waitForTimeout(400);
           dentro(await page.locator(selector).boundingBox(), area, selector);
+          dentro(await page.locator('.arc-navigation-sheet #mobile-bottom-nav').boundingBox(), area, 'Navigazione nel drawer');
           await page.evaluate(async () => (await import('/js/responsive.js')).closeDrawers());
         }
       }
@@ -65,6 +66,7 @@ const { startTestServer } = require('./e2e-harness');
       assert(modals.length > 10);
       for (const modal of modals) {
         await modal.evaluate(el => { el.style.animation = 'none'; el.closest('.overlay').classList.remove('hidden'); });
+        if (width <= 900) { await modal.locator('xpath=ancestor::*[@role="dialog"]').waitFor(); await page.waitForTimeout(160); }
         const rect = await modal.boundingBox();
         if (rect) dentro(rect, area, await modal.evaluate(el => el.closest('.overlay').id));
         await modal.evaluate(el => el.closest('.overlay').classList.add('hidden'));
@@ -80,7 +82,7 @@ const { startTestServer } = require('./e2e-harness');
         const menu = document.querySelector('.toolbar-dropdown-menu').cloneNode(true);
         menu.id = 'safe-menu';
         document.body.appendChild(menu);
-        positionFixedDropdown(document.querySelector('#menu-conns-btn'), menu);
+        positionFixedDropdown(document.querySelector(innerWidth <= 900 ? '#mobile-nav-conns' : '#menu-conns-btn'), menu);
       });
       dentro(await page.locator('#safe-menu').boundingBox(), area, 'Menu a tendina');
       await page.locator('#safe-menu').evaluate(el => el.remove());
@@ -95,6 +97,7 @@ const { startTestServer } = require('./e2e-harness');
       Object.assign(window.visualViewport, { width: 390, height: 844, offsetTop: 0, offsetLeft: 0, scale: 1 });
     });
     for (const [height, offsetTop] of [[430, 0], [430, 70], [844, 0]]) {
+      await page.locator('#fk-pannello').evaluate(el => { el.classList.add('hidden'); el.classList.remove('aperto'); });
       await page.evaluate(({ height, offsetTop }) => {
         Object.assign(window.visualViewport, { height, offsetTop });
         window.visualViewport.dispatchEvent(new Event('resize'));
@@ -102,11 +105,18 @@ const { startTestServer } = require('./e2e-harness');
       }, { height, offsetTop });
       const area = { left: 0, top: offsetTop + 59, right: 390, bottom: Math.min(height + offsetTop, 810) };
       dentro(await page.locator('.mobile-bottom-nav').boundingBox(), area, 'Navigazione con tastiera');
+      await page.locator('#mobile-nav-conns').click();
+      await page.locator('.arc-navigation-sheet [data-grabber]').press('Home');
+      await page.waitForTimeout(400);
+      dentro(await page.locator('.arc-navigation-sheet #mobile-bottom-nav').boundingBox(), area, 'Navigazione nel drawer con tastiera');
+      await page.keyboard.press('Escape');
       const modal = page.locator('#modal-audit-log .modal');
       await modal.evaluate(el => el.closest('.overlay').classList.remove('hidden'));
+      await page.waitForTimeout(160);
       dentro(await modal.boundingBox(), area, 'Modale con tastiera');
       await modal.evaluate(el => el.closest('.overlay').classList.add('hidden'));
       await page.keyboard.press('Control+p');
+      await page.waitForTimeout(160);
       dentro(await page.locator('.palette').boundingBox(), area, 'Palette con tastiera');
       await page.keyboard.press('Escape');
       await page.locator('#fk-pannello').evaluate(el => { el.classList.remove('hidden'); el.classList.add('aperto'); el.style.transition = 'none'; });

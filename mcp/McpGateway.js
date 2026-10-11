@@ -666,9 +666,6 @@ function buildMcpServer(session, deps) {
     if (!canUseConnection(sessionPrincipal(session), String(saved || ''))) {
       throw new Error(`Permesso negato: la API key usata non ha accesso alla connessione "${saved}".`);
     }
-    if (session.dbSessions.size >= deps.maxDbSessions) {
-      throw new Error(`Raggiunto il limite di ${deps.maxDbSessions} connessioni per questa sessione MCP: chiudine una con disconnect_database.`);
-    }
     if (!deps.tryAcquireGlobalSession()) {
       throw new Error('Raggiunto il limite globale di connessioni al database: riprova più tardi.');
     }
@@ -2032,8 +2029,7 @@ function buildMcpServer(session, deps) {
 /**
  * Monta l'endpoint MCP su `app`. `deps` arriva da server.js:
  * { loadConnections, connLabel, connDbType, establishConnection,
- *   teardownConnection, tryAcquireGlobalSession, releaseGlobalSession,
- *   maxDbSessions }
+ *   teardownConnection, tryAcquireGlobalSession, releaseGlobalSession }
  */
 function attachMcp(app, deps) {
   const env = deps.env || process.env;

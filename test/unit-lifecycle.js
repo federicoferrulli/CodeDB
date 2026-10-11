@@ -22,7 +22,6 @@ console.log('--- Test Unitari Lifecycle & Graceful Shutdown ---');
       teardownConnection: async () => { teardownCalled = true; },
       tryAcquireGlobalSession: () => true,
       releaseGlobalSession: () => { releasedGlobalSession = true; },
-      maxDbSessions: 5,
     };
 
     const app = express();

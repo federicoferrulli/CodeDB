@@ -45,7 +45,7 @@ export function closeDrawers({ restoreFocus = false } = {}) {
   $('#query-toggle-schema-btn')?.setAttribute('aria-expanded', String(!mq.matches && !$('#query-schema-sidebar')?.classList.contains('collapsed')));
   $('#drawer-backdrop')?.classList.add('hidden');
   syncDrawers();
-  if (restoreFocus && drawerOpener?.isConnected) drawerOpener.focus({ preventScroll: true });
+  if (restoreFocus && drawerOpener?.isConnected) (mq.matches ? drawerOpener : $('#menu-conns-btn')).focus({ preventScroll: true });
 }
 
 export function toggleDrawer(sel) {
@@ -82,24 +82,8 @@ export function initResponsive() {
   $('#menu-dbs-btn').addEventListener('click', () => toggleDrawer('#sidebar'));
   $('#drawer-backdrop').addEventListener('click', () => { closeDrawers(); drawerOpener?.focus(); });
 
-  // Bottom Nav Mobile Listeners
-  const mobConns = $('#mobile-nav-conns');
-  const mobDbs = $('#mobile-nav-dbs');
-  const mobQuery = $('#mobile-nav-query');
-  const mobHealth = $('#mobile-nav-health');
-
-  if (mobConns) mobConns.addEventListener('click', () => toggleDrawer('#conn-sidebar'));
-  if (mobDbs) mobDbs.addEventListener('click', () => toggleDrawer('#sidebar'));
-  if (mobQuery) mobQuery.addEventListener('click', () => {
-    closeDrawers();
-    const queryTabBtn = document.querySelector('.view-tab[data-view="query"]');
-    if (queryTabBtn) queryTabBtn.click();
-  });
-  if (mobHealth) mobHealth.addEventListener('click', () => {
-    closeDrawers();
-    const healthBtn = $('#btn-health');
-    if (healthBtn) healthBtn.click();
-  });
+  $('#mobile-nav-conns').addEventListener('click', () => toggleDrawer('#conn-sidebar'));
+  $('#mobile-nav-dbs').addEventListener('click', () => toggleDrawer('#sidebar'));
 
   // Scegliere qualcosa dentro un drawer lo chiude: una collection/tabella
   // nel tree dei database, una connessione salvata o "＋ Aggiungi".
@@ -129,9 +113,6 @@ export function initResponsive() {
 
   // Tornando alla larghezza desktop i drawer si resettano.
   mq.addEventListener('change', closeDrawers);
-  // …e i pannelli affiancati si riadattano: sotto i 900px il CSS li impila,
-  // quindi le quote vanno riapplicate sull'asse nuovo e un eventuale pannello
-  // massimizzato va ripristinato (a schermo stretto sarebbe una schermata da
-  // cui non si capisce come uscire).
+  // Su mobile lo split lascia il posto a una scheda singola.
   mq.addEventListener('change', notificaCambioLarghezza);
 }

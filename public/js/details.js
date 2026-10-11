@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
 import { mountArcControls } from '../arc/ui.js';
 import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext } from './utils.js';
@@ -75,13 +76,13 @@ export function renderDetails({ stats, indexes, fields, sampled }, dbType = stat
 }
 
 export function initDetails() {
-  $('#index-table').addEventListener('click', (e) => {
+  $('#index-table').addEventListener('click', async (e) => {
     const btn = e.target.closest('.idx-del');
     if (!btn) return;
     const origin = captureDetailsTarget();
     const name = btn.dataset.name;
     const extra = name.toUpperCase() === 'PRIMARY' ? '\nAttenzione: è la chiave primaria della tabella.' : '';
-    if (!confirm(`Eliminare l'indice "${name}"?${extra}`)) return;
+    if (!await chiediConferma(`Eliminare l'indice "${name}"?${extra}`)) return;
     conCaricamento(btn, () => emit('index:drop', {
       tabId: origin.tabId, db: origin.db, coll: origin.coll, name,
     }), '').then((res) => {

@@ -97,6 +97,24 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
 .overlay[data-arc-dialog="open"] { pointer-events: auto; }
 .overlay { transition: none; z-index: var(--z-modal); }
 
+/* Il BottomSheet Arc possiede la superficie; il form originale conserva lo scroll. */
+:is(.overlay, .palette-overlay):has(.arc-dialog-sheet) { background: transparent; }
+.arc-dialog-sheet { width: var(--area-larghezza); max-width: none; }
+.arc-dialog-sheet > div:nth-child(2) { overflow: hidden; }
+.arc-dialog-sheet .arc-panel-slot { display: flex; flex: 1; min-height: 0; }
+.overlay .arc-dialog-sheet .modal, .arc-dialog-sheet .palette {
+  width: 100% !important; max-width: 100% !important; min-width: 0 !important;
+  height: 100% !important; max-height: 100% !important; min-height: 0 !important;
+  flex: 1; margin: 0; border: 0; border-radius: 0; box-shadow: none; animation: none;
+  overflow-y: auto; overscroll-behavior: contain;
+}
+.arc-dialog-sheet [data-arc-sheet-heading] { display: none; }
+.arc-dialog-sheet .onb-scelta { white-space: normal; }
+.arc-dialog-sheet .onb-scelta > * { min-width: 0; }
+.arc-dialog-sheet :is(.modal-tabs, .audit-pager) { flex-wrap: wrap; }
+.arc-dialog-sheet .tab-btn { white-space: normal; }
+.arc-confirm-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+
 /* Tutte le superfici locali: shell, navigazione, menu, editor e finestre. */
 :is(.sidebar-title, .conn-sidebar-title, .toolbar-section-title) { text-transform: none; letter-spacing: var(--tracking-body); }
 :is(.context-menu, .toolbar-dropdown-menu) {

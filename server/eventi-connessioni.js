@@ -14,9 +14,6 @@ function createModule({ lock, budget, identita, connessioni, vault }) {
       // Tutto il corpo (controllo dei limiti compreso) gira dentro il lock: i
       // controlli devono vedere lo stato lasciato dall'apertura precedente.
       await lifecycle.withConnectLock(tabId, async () => {
-        if (!socketContext.sessions.has(tabId) && socketContext.sessions.size >= budget.MAX_SESSIONS_PER_SOCKET) {
-          throw new Error(`Raggiunto il limite di ${budget.MAX_SESSIONS_PER_SOCKET} connessioni contemporanee: chiudi un tab.`);
-        }
         // Nome della connessione salvata: è la chiave su cui poggiano i permessi,
         // quindi va risolto PRIMA di aprire qualsiasi cosa.
         const connName = String(cfg.saved || cfg.saveAs || '').trim() || null;

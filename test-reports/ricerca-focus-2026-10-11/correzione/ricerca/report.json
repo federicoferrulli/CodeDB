@@ -1,0 +1,18 @@
+{
+  "checks": [
+    "1440×900, Escape: scrittura immediata, chiusura e focus restituito",
+    "1440×900, Control+p: scrittura immediata, chiusura e focus restituito",
+    "1440×900, esterno: scrittura immediata, chiusura e focus restituito",
+    "390×844, Escape: scrittura immediata, chiusura e focus restituito",
+    "390×844, Control+p: scrittura immediata, chiusura e focus restituito",
+    "390×844, esterno: scrittura immediata, chiusura e focus restituito",
+    "320×650, Escape: scrittura immediata, chiusura e focus restituito",
+    "320×650, Control+p: scrittura immediata, chiusura e focus restituito",
+    "320×650, esterno: scrittura immediata, chiusura e focus restituito",
+    "844×390, Escape: scrittura immediata, chiusura e focus restituito",
+    "844×390, Control+p: scrittura immediata, chiusura e focus restituito",
+    "844×390, esterno: scrittura immediata, chiusura e focus restituito"
+  ],
+  "errors": [],
+  "phase": "844×390, esterno"
+}

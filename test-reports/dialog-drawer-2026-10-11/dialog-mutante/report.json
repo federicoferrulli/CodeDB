@@ -1,0 +1,16 @@
+{
+  "checks": [],
+  "errors": [],
+  "defects": [
+    {
+      "phase": "conn-error-overlay 320×650",
+      "width": 180,
+      "top": 39,
+      "bottom": 650,
+      "same": true,
+      "overflow": false
+    }
+  ],
+  "phase": "conn-error-overlay 320×650",
+  "failure": "AssertionError [ERR_ASSERTION]: Il dialog deve occupare la larghezza del drawer mobile\n    at C:\\repository\\CodeDB\\test\\e2e-dialog-drawer.js:40:30"
+}

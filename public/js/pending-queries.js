@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
@@ -636,7 +637,7 @@ export function renderPendingModalList() {
   attachPendingVScroll();
 }
 
-export function resumePendingQuery(id) {
+export async function resumePendingQuery(id) {
   const item = pendingQueries.find((x) => x.id === id);
   if (!item) return;
   if (item.paneId) {
@@ -689,7 +690,7 @@ export function resumePendingQuery(id) {
   // 3. Riempi l'editor della query
   const editorInput = $('#query-editor-input');
   if (queryDocument()?.dirty && editorInput?.value !== item.code
-    && !confirm('Sostituire la query non salvata con quella del registro?')) return;
+    && !await chiediConferma('Sostituire la query non salvata con quella del registro?')) return;
   if (editorInput) {
     editorInput.value = item.code;
     editorInput.dispatchEvent(new Event('input', { bubbles: true }));

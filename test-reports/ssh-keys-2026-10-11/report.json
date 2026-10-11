@@ -1,0 +1,31 @@
+{
+  "desktop": {
+    "checks": [
+      "Selezione file senza estensione; rifiuto .pub e file troppo grande; autenticazione e inoltro SSH reali",
+      "Riepilogo senza chiave in chiaro; file cifrato; get restituisce solo presenza; nessuna chiave nei tab/storage",
+      "Modifica con chiave conservata e riconnessione salvata, anche dopo ricaricamento",
+      "Passphrase errata spiegata, chiave cifrata accettata e percorso Windows tra virgolette funzionante",
+      "Passphrase salvata riutilizzata senza rinviarla al browser; sostituzione della chiave aggiorna il suggerimento"
+    ],
+    "layouts": [],
+    "errors": []
+  },
+  "mobile": {
+    "checks": [
+      "Selezione file senza estensione; rifiuto .pub e file troppo grande; autenticazione e inoltro SSH reali",
+      "Riepilogo senza chiave in chiaro; file cifrato; get restituisce solo presenza; nessuna chiave nei tab/storage",
+      "Modifica con chiave conservata e riconnessione salvata, anche dopo ricaricamento",
+      "Passphrase errata spiegata, chiave cifrata accettata e percorso Windows tra virgolette funzionante",
+      "Passphrase salvata riutilizzata senza rinviarla al browser; sostituzione della chiave aggiorna il suggerimento"
+    ],
+    "layouts": [],
+    "errors": []
+  },
+  "layouts": [],
+  "unit": "npm test superato; unit-ssh-keys ripetuto dopo ultima modifica vault",
+  "drawer": "40 dialog a 320x650, 390x844, 844x390; focus e conservazione stato verificati",
+  "confirmation": "5 scenari e 8 layout superati",
+  "build": "build:ui e typecheck:ui superati",
+  "sensitivity": "Mutante in memoria senza chiave upload intercettato; clic perso nel drawer riprodotto prima della correzione",
+  "limits": "Server SSH locale reale con endpoint echo; nessuna chiave o database personale utilizzato"
+}

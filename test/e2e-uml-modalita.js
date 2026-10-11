@@ -31,6 +31,7 @@ const { startTestServer } = require('./e2e-harness');
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
     if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();
+    if (await page.getByRole('button', { name: 'Nascondi i primi passi' }).isVisible()) await page.getByRole('button', { name: 'Nascondi i primi passi' }).click();
     await page.waitForSelector('#uml-canvas', { state: 'attached' });
     await page.evaluate(async () => {
       const { impostaSocket } = await import('/js/socket.js');
@@ -139,9 +140,11 @@ const { startTestServer } = require('./e2e-harness');
     await page.click('#uml-adatta');
     await page.screenshot({ path: 'test-reports/screenshots/uml-tabella-compatto.png' });
     assert.equal(await page.locator('#view-uml select:visible').count(), 0);
-    const toolbar = await page.locator('.uml-bar').boundingBox();
+    assert.equal(await page.locator('#uml-ispettore').isVisible(), false, 'il diagramma compatto usa tutta la larghezza');
+    await page.click('#uml-mobile-dettagli');
     const inspector = await page.locator('#uml-ispettore').boundingBox();
-    assert(inspector.y >= toolbar.y + toolbar.height, 'l’ispettore compatto lascia accessibili i comandi');
+    assert(inspector.width > 300 && inspector.x >= 0 && inspector.x + inspector.width <= 760, 'i dettagli usano il drawer senza schiacciare il canvas');
+    await page.locator('.arc-navigation-sheet').getByRole('button', { name: 'Chiudi' , exact: true }).click();
     await page.setViewportSize({ width: 1600, height: 950 });
     console.log('✓ Singola: relazioni dirette paginate, FK composta, schema esterno e gesti di sola lettura');
 

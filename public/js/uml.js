@@ -18,9 +18,11 @@ import { caricaJoint, Tavola, altezzaNodo, campiVisibili } from './uml-paper.js'
 import * as archivio from './uml-store.js';
 import { setView } from './main.js';
 import { selectCollection } from './grid.js';
-import { addOrSplitPane } from './splitview.js';
+import { addOrSplitPane, splitDisponibile } from './splitview.js';
 import { getCurrentUser } from './auth.js';
 import { socket } from './socket.js';
+import { openNavigationSheet, closeNavigationSheet } from '../arc/ui.js';
+import { closeDrawers } from './responsive.js';
 
 // Il tetto più alto che `limitaSchema` concede: l'UML è la vista in cui
 // «mancano delle tabelle» è un difetto, non un'ottimizzazione. Ciò che resta
@@ -28,6 +30,27 @@ import { socket } from './socket.js';
 const BUDGET = { collectionLimit: 200, fieldLimit: 200, relationLimit: 1000 };
 const RIGHE_PAGINA = 25;
 const diagrammiDatabase = new Map();
+const mobile = window.matchMedia('(max-width: 900px)');
+let pannelloMobile = null;
+
+function chiudiPannelloMobile() {
+  if (pannelloMobile) closeNavigationSheet();
+}
+
+function apriPannelloMobile(pannello, titolo, pulsante) {
+  if (!mobile.matches) return;
+  closeDrawers();
+  pannelloMobile = pannello;
+  if (pannello.id === 'uml-dati') pannello.classList.remove('hidden');
+  pulsante?.setAttribute('aria-expanded', 'true');
+  openNavigationSheet(pannello, () => {
+    pannelloMobile = null;
+    pulsante?.setAttribute('aria-expanded', 'false');
+    if (pannello.id === 'uml-dati') pannello.classList.add('hidden');
+    const destinazione = mobile.matches ? pulsante : $('#uml-ispettore-toggle');
+    if (!$('#view-uml').classList.contains('hidden')) destinazione?.focus({ preventScroll: true });
+  }, { title: titolo, description: '', tools: false, navigation: false });
+}
 
 /** Stato della vista. Il canvas è uno solo, quindi questo oggetto è uno solo. */
 const V = {
@@ -87,6 +110,7 @@ export function loadUml(force) {
   }
   const ctx = contestoOra();
   $('#view-uml').classList.toggle('uml-semplice', ctx.modalita === 'tabella');
+  $('#uml-diagrammi').closest('.uml-gruppo').classList.toggle('hidden', ctx.modalita === 'tabella');
   const cambiato = !V.contesto || V.contesto.tabId !== ctx.tabId
     || V.contesto.connId !== ctx.connId || V.contesto.db !== ctx.db
     || V.contesto.modalita !== ctx.modalita || V.contesto.coll !== ctx.coll;
@@ -336,7 +360,11 @@ function monta() {
   const tavola = V.tavola;
   const adattaAppenaMisurabile = () => {
     if (V.tavola !== tavola || tavola.smontato) return;
-    if (canvas.clientWidth > 0 && canvas.clientHeight > 0) { tavola.adatta(); return; }
+    if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
+      if (mobile.matches && semplice()) tavola.centraSu(V.selezione);
+      else tavola.adatta();
+      return;
+    }
     requestAnimationFrame(adattaAppenaMisurabile);
   };
   requestAnimationFrame(adattaAppenaMisurabile);
@@ -365,6 +393,7 @@ function sincronizzaPannelli() {
 }
 
 function smonta() {
+  chiudiPannelloMobile();
   if (V.tavola) { V.tavola.distruggi(); V.tavola = null; }
 }
 
@@ -451,7 +480,7 @@ function aggiornaCatalogo() {
   el.innerHTML = voci.map(({ c, chiave, perCampo }) => {
     const dentro = !!V.doc.nodi[chiave];
     return `<li class="uml-cat-voce${dentro ? ' dentro' : ''}${scelte.has(chiave) ? ' scelta' : ''}"
-      data-chiave="${esc(chiave)}" title="${esc(c.name)} — ${dentro ? 'centra sul diagramma' : 'non presente nel diagramma salvato'}">
+      role="button" tabindex="0" aria-disabled="${!dentro}" data-chiave="${esc(chiave)}" title="${esc(c.name)} — ${dentro ? 'centra sul diagramma' : 'non presente nel diagramma salvato'}">
       <i data-lucide="${dentro ? 'check-square' : 'table-2'}" aria-hidden="true"></i>
       <span class="uml-cat-nome">${esc(c.name)}</span>
       <span class="uml-cat-meta">${c.rowsApprox == null ? '' : `~${c.rowsApprox}`}</span>
@@ -731,6 +760,7 @@ function collegaIspettore(el, chiave) {
 }
 
 function azioneIspettore(azione, chiave) {
+  if (azione !== 'dati') chiudiPannelloMobile();
   const gruppo = V.doc.gruppi.find((g) => g.id === chiave);
   if (azione === 'gruppo-comprimi' && gruppo) { commutaGruppo(gruppo); return; }
   const parti = leggiChiave(chiave);
@@ -782,6 +812,7 @@ function apriDati(chiave, opzioni = {}) {
     chiave, db: parti.db, coll: parti.nome, skip: 0, docs: [], columns: [],
     filtro: opzioni.filtro || null, titolo: opzioni.titolo || null, rigaScelta: null,
   };
+  apriPannelloMobile(pannello, `Dati · ${parti.nome}`, $('#uml-mobile-dettagli'));
   leggiPaginaDati();
 }
 
@@ -941,6 +972,8 @@ function apriDiagramma(id) {
 function aggiornaComandi() {
   $('#view-uml').classList.toggle('uml-semplice', semplice());
   $('#uml-centra').disabled = !V.selezione.length;
+  $('#uml-mobile-dettagli').disabled = !V.selezione.length;
+  $('#uml-mobile-dettagli').title = V.selezione.length === 1 ? `Dettagli: ${nomeMembro(V.selezione[0])}` : 'Dettagli della selezione';
 }
 
 /* ================================= Menu ================================== */
@@ -953,7 +986,7 @@ function menuNodo(x, y, chiavi) {
     ...(parti && V.doc.nodi[uno] ? [
       { icona: 'table-2', label: 'Dati dell’oggetto', action: () => apriDati(uno) },
       { icona: 'external-link', label: 'Apri nella griglia', action: () => { selectCollection(parti.db, parti.nome); setView('data'); } },
-      { icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: parti.db, coll: parti.nome, tabId: V.contesto.tabId }) },
+      ...(splitDisponibile() ? [{ icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: parti.db, coll: parti.nome, tabId: V.contesto.tabId }) }] : []),
     ] : []),
     ...(chiavi.some((k) => V.doc.nodi[k]) ? [
       { icona: 'chevrons-up-down', label: 'Espandi / comprimi', action: () => commutaNodo(chiavi) },
@@ -976,6 +1009,28 @@ function menuCanvas(x, y) {
 export function initUml() {
   const bar = $('#view-uml');
   if (!bar) return;
+  for (const [id, selettore, titolo] of [
+    ['catalogo', '#uml-catalogo', 'Tabelle del diagramma'],
+    ['dettagli', '#uml-ispettore', 'Dettagli della selezione'],
+    ['strumenti', '.uml-bar', 'Strumenti del diagramma'],
+  ]) {
+    const pulsante = $(`#uml-mobile-${id}`);
+    pulsante.addEventListener('click', () => apriPannelloMobile($(selettore), titolo, pulsante));
+  }
+  const espandi = $('#uml-mobile-espandi');
+  const espandiDiagramma = (aperto) => {
+    bar.classList.toggle('uml-schermo-intero', aperto);
+    espandi.setAttribute('aria-pressed', String(aperto));
+    espandi.title = aperto ? 'Riduci diagramma' : 'Espandi diagramma';
+    espandi.setAttribute('aria-label', espandi.title);
+    espandi.innerHTML = `<i data-lucide="${aperto ? 'minimize-2' : 'maximize-2'}" aria-hidden="true"></i>`;
+    refreshLucideIcons(espandi);
+  };
+  espandi.addEventListener('click', () => espandiDiagramma(!bar.classList.contains('uml-schermo-intero')));
+  mobile.addEventListener('change', () => { chiudiPannelloMobile(); espandiDiagramma(false); });
+  new MutationObserver(() => {
+    if (bar.classList.contains('hidden')) { chiudiPannelloMobile(); espandiDiagramma(false); }
+  }).observe(bar, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('codedb:tema', ridisegna);
   $('#uml-adatta')?.addEventListener('click', () => V.tavola && V.tavola.adatta());
   $('#uml-centra')?.addEventListener('click', () => V.tavola && V.tavola.centraSu(V.selezione));
@@ -989,7 +1044,7 @@ export function initUml() {
     const chiuso = $('#uml-ispettore').classList.toggle('chiuso');
     ispettoreToggle.setAttribute('aria-pressed', String(!chiuso));
   });
-  $('#uml-dati-chiudi')?.addEventListener('click', () => { $('#uml-dati').classList.add('hidden'); V.dati = null; });
+  $('#uml-dati-chiudi')?.addEventListener('click', () => { chiudiPannelloMobile(); $('#uml-dati').classList.add('hidden'); V.dati = null; });
   $('#uml-dati-prec')?.addEventListener('click', () => { V.dati.skip = Math.max(0, V.dati.skip - RIGHE_PAGINA); leggiPaginaDati(); });
   $('#uml-dati-succ')?.addEventListener('click', () => { V.dati.skip += RIGHE_PAGINA; leggiPaginaDati(); });
   $('#uml-dati-griglia')?.addEventListener('click', () => {
@@ -1021,14 +1076,22 @@ export function initUml() {
     if (!voce || !V.tavola) return;
     const chiave = voce.dataset.chiave;
     if (!V.doc.nodi[chiave]) return;
+    chiudiPannelloMobile();
     V.selezione = [chiave];
     V.tavola.imposta(V.selezione);
     V.tavola.centraSu([chiave]);
     sincronizzaPannelli();
   });
+  lista?.addEventListener('keydown', e => {
+    if (!['Enter', ' '].includes(e.key)) return;
+    e.preventDefault();
+    e.target.closest('[data-chiave]')?.click();
+  });
 
   document.addEventListener('keydown', (e) => {
     if (state.view !== 'uml' || !V.tavola || e.key !== 'Escape') return;
+    if (pannelloMobile || document.querySelector('.arc-navigation-sheet, .overlay:not(.hidden), #context-menu:not(.hidden)')) return;
+    if (bar.classList.contains('uml-schermo-intero')) { espandiDiagramma(false); espandi.focus(); return; }
     if (e.target.closest('input, select, textarea, [role="combobox"], [role="option"], [role="checkbox"], [contenteditable="true"]')) return;
     V.selezione = [];
     V.tavola.imposta([]);

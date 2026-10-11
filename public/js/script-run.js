@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 /**
  * CodeDB — Esecuzione di SCRIPT dalla tab ⚡ Query & Aggregate (lato client)
  *
@@ -541,9 +542,10 @@ export function initScriptRun() {
   bind('#script-pause-btn', () => pauseScript(runVisibile, false));
   bind('#script-force-pause-btn', () => pauseScript(runVisibile, true));
   bind('#script-resume-btn', () => resumeScript(runVisibile));
-  bind('#script-abort-btn', () => {
-    if (confirm('Interrompere definitivamente lo script? Le istruzioni già eseguite restano applicate.')) {
-      abortScript(runVisibile);
+  bind('#script-abort-btn', async () => {
+    const runId = runVisibile;
+    if (await chiediConferma('Interrompere definitivamente lo script? Le istruzioni già eseguite restano applicate.')) {
+      abortScript(runId);
     }
   });
   bind('#script-close-btn', () => {

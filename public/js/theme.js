@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
@@ -315,10 +316,10 @@ function duplica(id) {
   apriEditor(null, { id: idLibero('tema'), nome, base, scelte });
 }
 
-function elimina(id) {
+async function elimina(id) {
   const temi = temiSalvati();
   if (!temi[id]) return;
-  if (!window.confirm(`Eliminare il tema "${temi[id].nome}"? L'operazione non è reversibile.`)) return;
+  if (!await chiediConferma(`Eliminare il tema "${temi[id].nome}"? L'operazione non è reversibile.`)) return;
   delete temi[id];
   scriviTemi(temi);
   // Se era quello in uso si torna all'automatico, altrimenti l'applicazione
@@ -594,7 +595,7 @@ function suClicEditor(e) {
       // tornare indietro prima di ritrovarsi l'interfaccia inutilizzabile.
       const avvisi = diagnostica(v.tema.scelte);
       const grave = avvisi.some((a) => a.campo === 'fg' && a.rapporto < SOGLIA_TESTO);
-      if (grave && !window.confirm(
+      if (grave && !await chiediConferma(
         'Con questi colori il testo è difficile da leggere sullo sfondo.\n\nSalvare lo stesso?')) return;
 
       const temi = temiSalvati();

@@ -57,4 +57,44 @@ export function initPrompt() {
   const overlay = document.getElementById('askinput-overlay');
   const host = overlay?.querySelector('.modal');
   if (overlay && host) flushSync(() => createRoot(host).render(<Prompt overlay={overlay} />));
+  const confirmation = document.createElement('div');
+  confirmation.id = 'confirm-overlay';
+  confirmation.className = 'overlay hidden';
+  const panel = document.createElement('div');
+  panel.className = 'modal';
+  confirmation.append(panel);
+  document.body.append(confirmation);
+  flushSync(() => createRoot(panel).render(<Conferma overlay={confirmation} />));
+}
+
+function Conferma({ overlay }: { overlay: HTMLElement }) {
+  const [message, setMessage] = useState('');
+  const pending = useRef<((result: boolean) => void) | null>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
+  function finish(result: boolean) {
+    const resolve = pending.current;
+    pending.current = null;
+    overlay.classList.add('hidden');
+    resolve?.(result);
+  }
+  useLayoutEffect(() => {
+    const receive = (event: Event) => {
+      const { messaggio, resolve } = (event as CustomEvent<{ messaggio: string; resolve: (result: boolean) => void }>).detail;
+      pending.current?.(false);
+      pending.current = resolve;
+      flushSync(() => setMessage(messaggio));
+      overlay.classList.remove('hidden');
+      cancel.current?.focus();
+    };
+    document.addEventListener('codedb:ask-confirm', receive);
+    return () => document.removeEventListener('codedb:ask-confirm', receive);
+  }, [overlay]);
+  return <div data-arc-owned="confirmation">
+    <h2>Conferma operazione</h2>
+    <p className="arc-confirm-message">{message}</p>
+    <div className="modal-actions">
+      <Button ref={cancel} id="confirm-cancel" variant="secondary" onClick={() => finish(false)}>Annulla</Button>
+      <Button id="confirm-ok" onClick={() => finish(true)}>Conferma</Button>
+    </div>
+  </div>;
 }

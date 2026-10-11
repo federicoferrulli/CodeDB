@@ -128,7 +128,7 @@ npm run backup -- help    # guida completa
 | Tab di collection | ogni collection/tabella aperta in un proprio coll-tab con snapshot di query e vista |
 | Connessioni salvate | sidebar sinistra raggruppata per cartella (`folder`); menu contestuale per aprire/testare/modificare/eliminare |
 | Import/export connessioni | scambio del file `.ini` completo (password incluse) |
-| Tunnel SSH | connessione via SSH (password o chiave privata + passphrase), solo in modalità "Parametri" |
+| Tunnel SSH | password, file di chiave privata dal dispositivo o percorso sul server CodeDB; passphrase per chiavi protette, solo in modalità "Parametri" |
 | Albero database → collection/tabelle | sidebar, con conteggio documenti/righe |
 | Vista tabellare | colonne = unione delle chiavi (Mongo) o colonne della tabella (MySQL) |
 | Query `find` / WHERE | filtro e sort nella toolbar (JSON/EJSON per Mongo, clausola WHERE + `ORDER BY` per MySQL) |
@@ -162,8 +162,9 @@ npm run backup -- help    # guida completa
   all'intera riga se la tabella non ha PK. Per MySQL il `filter` è una clausola
   WHERE libera, il `sort` è SQL o JSON, e la modalità "SQL Raw" esegue query libere.
 - Ogni **tab** ha la propria sessione server (strategia dedicata + eventuale tunnel
-  SSH, quindi un client/pool per tab, max 8 per socket); alla disconnessione del
-  socket vengono chiuse tutte le sessioni.
+  SSH, quindi un client/pool per tab), senza un limite separato per client. UI e MCP
+  condividono un budget globale di 100 connessioni per istanza; alla disconnessione
+  del socket vengono chiuse tutte le sue sessioni.
 - Gli **aggiornamenti in tempo reale** (MongoDB) usano i change stream, disponibili
   solo su replica set / Atlas. Su standalone l'app funciona senza badge LIVE (usa ⟳).
   MySQL non ha watch.

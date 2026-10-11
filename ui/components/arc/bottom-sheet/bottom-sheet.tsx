@@ -2,7 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, FocusEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import type { ComponentPropsWithoutRef, CSSProperties, FocusEvent, KeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { AnimatePresence, animate, motion, useMotionValue, usePresence, useReducedMotion, useTransform } from "motion/react";
 import { X } from "lucide-react";
 import { motionTokens } from "../lib/motion-tokens";
@@ -11,6 +11,10 @@ import styles from "./bottom-sheet.module.css";
 export interface BottomSheetProps {
   
   trigger?: ReactNode;
+  container?: HTMLElement;
+  dismissible?: boolean;
+  onOpenAutoFocus?: (event: Event) => void;
+  onPointerDownOutside?: ComponentPropsWithoutRef<typeof DialogPrimitive.Content>["onPointerDownOutside"];
   onCloseAutoFocus?: (event: Event) => void;
   onEscapeKeyDown?: (event: globalThis.KeyboardEvent) => void;
   open?: boolean;
@@ -18,6 +22,7 @@ export interface BottomSheetProps {
   onOpenChange?: (open: boolean) => void;
   title: string;
   description?: string;
+  fitContent?: boolean;
   
   detents?: number[];
   
@@ -60,7 +65,7 @@ function velocityOf(samples: Drag["samples"], now: number) {
   return (last.y - first.y) / ((last.t - first.t) / 1000);
 }
 
-export function BottomSheet({ trigger, open: openProp, defaultOpen = false, onOpenChange, ...props }: BottomSheetProps) {
+export function BottomSheet({ trigger, container, open: openProp, defaultOpen = false, onOpenChange, ...props }: BottomSheetProps) {
   const [uncontrolled, setUncontrolled] = useState(defaultOpen);
   const open = openProp ?? uncontrolled;
   const setOpen = useCallback((next: boolean) => {
@@ -71,14 +76,14 @@ export function BottomSheet({ trigger, open: openProp, defaultOpen = false, onOp
   return <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
     {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
     
-    <AnimatePresence>{open && <DialogPrimitive.Portal key="sheet" forceMount><Sheet {...props} onDismiss={dismiss} /></DialogPrimitive.Portal>}</AnimatePresence>
+    <AnimatePresence>{open && <DialogPrimitive.Portal key="sheet" container={container} forceMount><Sheet {...props} onDismiss={dismiss} /></DialogPrimitive.Portal>}</AnimatePresence>
   </DialogPrimitive.Root>;
 }
 
-function Sheet({ title, description, detents = [.45, .92], initialDetent = 0, onDetentChange, closeLabel = "Chiudi", className, children, onDismiss, onCloseAutoFocus, onEscapeKeyDown }: Omit<BottomSheetProps, "trigger" | "open" | "defaultOpen" | "onOpenChange"> & { onDismiss: () => void }) {
+function Sheet({ title, description, fitContent = false, detents = [.45, .92], initialDetent = 0, onDetentChange, closeLabel = "Chiudi", className, children, onDismiss, onCloseAutoFocus, onEscapeKeyDown, onOpenAutoFocus, onPointerDownOutside, dismissible = true }: Omit<BottomSheetProps, "trigger" | "open" | "defaultOpen" | "onOpenChange"> & { onDismiss: () => void }) {
   const [isPresent, safeToRemove] = usePresence();
   const reduced = useReducedMotion() ?? false;
-  const detentKey = detents.join(",");
+  const detentKey = fitContent ? "1" : detents.join(",");
   const stops = useMemo(() => detentKey.split(",").map(Number).filter(stop => stop > 0).sort((a, b) => a - b), [detentKey]);
   const top = stops.length - 1;
   const [detent, setDetent] = useState(() => clamp(Math.round(initialDetent), 0, top));
@@ -203,14 +208,15 @@ function Sheet({ title, description, detents = [.45, .92], initialDetent = 0, on
     
     const velocity = current < 0 ? 0 : velocityOf(state.samples, time);
     const projected = current + velocity * PROJECTION;
-    const candidates: Stop[] = [...stops.map((_, index) => index), "closed"];
+    const candidates: Stop[] = [...stops.map((_, index) => index), ...(dismissible ? ["closed" as const] : [])];
     let target = candidates.reduce((best, stop) => Math.abs(offset(stop) - projected) < Math.abs(offset(best) - projected) ? stop : best);
     
-    if (Math.abs(velocity) > FLICK && target === state.from) target = velocity < 0 ? Math.min(state.from + 1, top) : state.from === 0 ? "closed" : state.from - 1;
+    if (Math.abs(velocity) > FLICK && target === state.from) target = velocity < 0 ? Math.min(state.from + 1, top) : state.from === 0 ? (dismissible ? "closed" : 0) : state.from - 1;
     
-    if (target === "closed") { if (!reduced) go("closed", velocity); onDismiss(); return; }
+    // Se il controller chiede conferma prima di chiudere, il pannello resta raggiungibile.
+    if (target === "closed") { rest(state.from); onDismiss(); return; }
     rest(target, velocity);
-  }, [go, offset, onDismiss, reduced, rest, stops, top, y]);
+  }, [dismissible, go, offset, onDismiss, rest, stops, top, y]);
 
 // Gli alberi hanno scroll e selezione propri: si trascina soltanto la testata.
 
@@ -273,7 +279,9 @@ function Sheet({ title, description, detents = [.45, .92], initialDetent = 0, on
 
   function bodyFocus(event: FocusEvent<HTMLDivElement>) {
     if (detentRef.current === top || !(event.target instanceof Element)) return;
-    if (event.target.matches('input, textarea, [contenteditable="true"]') || event.target.getBoundingClientRect().bottom > window.innerHeight - 8) rest(top);
+    // Un pulsante toccato non deve spostarsi fra pressione e rilascio: si perderebbe il clic.
+    if (event.target.matches('input, textarea, [contenteditable="true"]')
+        || (event.target.matches(':focus-visible') && event.target.getBoundingClientRect().bottom > window.innerHeight - 8)) rest(top);
   }
 
   function sheetKey(event: KeyboardEvent<HTMLDivElement>) {
@@ -303,26 +311,26 @@ function Sheet({ title, description, detents = [.45, .92], initialDetent = 0, on
       {...(description ? {} : { "aria-describedby": undefined })}
       onCloseAutoFocus={onCloseAutoFocus}
       onEscapeKeyDown={onEscapeKeyDown}
-      onOpenAutoFocus={event => { event.preventDefault(); sheetRef.current?.focus({ preventScroll: true }); }}
+      onOpenAutoFocus={event => { onOpenAutoFocus?.(event); if (!event.defaultPrevented) { event.preventDefault(); sheetRef.current?.focus({ preventScroll: true }); } }}
       
-      onPointerDownOutside={event => { const { present, at } = presenceChange.current; if (!present || event.detail.originalEvent.timeStamp < at) event.preventDefault(); }}
+      onPointerDownOutside={event => { onPointerDownOutside?.(event); const { present, at } = presenceChange.current; if (!dismissible || !present || event.detail.originalEvent.timeStamp < at) event.preventDefault(); }}
     >
-      <motion.div ref={sheetRef} className={[styles.sheet, className].filter(Boolean).join(" ")} style={style} data-expanded={expanded ? "" : undefined} onKeyDown={sheetKey}>
+      <motion.div ref={sheetRef} className={[styles.sheet, className].filter(Boolean).join(" ")} style={style} data-expanded={expanded ? "" : undefined} data-fit-content={fitContent ? "" : undefined} onKeyDown={sheetKey}>
         <div className={styles.header} onPointerDown={headerDown} onPointerMove={headerMove} onPointerUp={headerUp} onPointerCancel={headerUp}>
-          <button type="button" className={styles.grabber} data-grabber="" aria-label={expanded ? "Riduci pannello" : "Espandi pannello"} aria-expanded={expanded} onClick={grabberClick} onKeyDown={grabberKey}>
+          {fitContent ? <span className={styles.compactGrabber} aria-hidden="true"><span className={styles.grabberBar} /></span> : <button type="button" className={styles.grabber} data-grabber="" aria-label={expanded ? "Riduci pannello" : "Espandi pannello"} aria-expanded={expanded} onClick={grabberClick} onKeyDown={grabberKey}>
             <span className={styles.grabberBar} aria-hidden="true" />
-          </button>
+          </button>}
           <div className={styles.headRow}>
             <div className={styles.headText}>
               <DialogPrimitive.Title className={styles.title}>{title}</DialogPrimitive.Title>
               {description ? <DialogPrimitive.Description className={styles.description}>{description}</DialogPrimitive.Description> : null}
             </div>
-            <DialogPrimitive.Close className={styles.close} aria-label={closeLabel}>
+            {dismissible && <DialogPrimitive.Close className={styles.close} aria-label={closeLabel}>
               <X size={16} strokeWidth={1.75} aria-hidden="true" />
-            </DialogPrimitive.Close>
+            </DialogPrimitive.Close>}
           </div>
         </div>
-        <motion.div ref={bodyRef} className={styles.body} style={{ marginBottom: hiddenBody }} onFocus={bodyFocus}>{children}</motion.div>
+        <motion.div ref={bodyRef} className={styles.body} style={{ marginBottom: fitContent ? 0 : hiddenBody }} onFocus={bodyFocus}>{children}</motion.div>
         <span className={styles.srOnly} role="status" aria-live="polite">{announcement}</span>
       </motion.div>
     </DialogPrimitive.Content>

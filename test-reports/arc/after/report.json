@@ -7,7 +7,7 @@
     "Dialoghi e palette annidati: focus utilizzabile, Escape annulla solo quello superiore",
     "Arc Dropdown Menu: apertura da tastiera e comando Tema reale",
     "Notifiche: errore annunciato, testo lungo integro, successo e chiusura",
-    "38 overlay: portal Arc, identità del DOM e valori conservati",
+    "40 overlay: portal Arc, identità del DOM e valori conservati",
     "Overlay dinamico delle scorciatoie acquisito dal bridge",
     "390/768/1024/1440 px, chiaro/scuro, movimento ridotto: nessun overflow",
     "Tutti i pannelli statici: contenitori visibili e senza overflow a tre larghezze",
@@ -23,10 +23,10 @@
       "modalOverflow": false,
       "fits": true,
       "rect": {
-        "x": 15.59375,
-        "y": 28.28125,
-        "width": 358.796875,
-        "height": 903.4375
+        "x": 1,
+        "y": 385.9072265625,
+        "width": 388,
+        "height": 574.09375
       },
       "foreground": "rgb(226, 232, 240)",
       "background": "rgb(27, 30, 37)"
@@ -38,10 +38,10 @@
       "modalOverflow": false,
       "fits": true,
       "rect": {
-        "x": 30.71875,
-        "y": 119.421875,
-        "width": 706.546875,
-        "height": 721.140625
+        "x": 1,
+        "y": 385.9072265625,
+        "width": 766,
+        "height": 574.09375
       },
       "foreground": "rgb(226, 232, 240)",
       "background": "rgb(27, 30, 37)"
@@ -83,10 +83,10 @@
       "modalOverflow": false,
       "fits": true,
       "rect": {
-        "x": 15.59375,
-        "y": 28.28125,
-        "width": 358.796875,
-        "height": 903.4375
+        "x": 1,
+        "y": 385.9072265625,
+        "width": 388,
+        "height": 574.09375
       },
       "foreground": "rgb(31, 41, 55)",
       "background": "rgb(255, 255, 255)"
@@ -98,10 +98,10 @@
       "modalOverflow": false,
       "fits": true,
       "rect": {
-        "x": 30.71875,
-        "y": 119.421875,
-        "width": 706.546875,
-        "height": 721.140625
+        "x": 1,
+        "y": 385.9072265625,
+        "width": 766,
+        "height": 574.09375
       },
       "foreground": "rgb(31, 41, 55)",
       "background": "rgb(255, 255, 255)"
@@ -140,7 +140,7 @@
   "errors": [],
   "requests": [],
   "controls": {
-    "buttons": 253,
+    "buttons": 260,
     "inputs": 63,
     "unlabeledInputs": []
   },
@@ -406,6 +406,20 @@
     },
     {
       "id": "modal-pending",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "confirm-overlay",
+      "portal": true,
+      "samePanel": true,
+      "sameInput": true,
+      "value": true
+    },
+    {
+      "id": "session-query-overlay",
       "portal": true,
       "samePanel": true,
       "sameInput": true,
@@ -680,6 +694,20 @@
       "fits": true
     },
     {
+      "id": "confirm-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "session-query-overlay",
+      "width": 390,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
       "id": "conn-error-overlay",
       "width": 768,
       "visible": true,
@@ -946,6 +974,20 @@
       "fits": true
     },
     {
+      "id": "confirm-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "session-query-overlay",
+      "width": 768,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
       "id": "conn-error-overlay",
       "width": 1440,
       "visible": true,
@@ -1206,6 +1248,20 @@
     },
     {
       "id": "modal-pending",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "confirm-overlay",
+      "width": 1440,
+      "visible": true,
+      "overflow": false,
+      "fits": true
+    },
+    {
+      "id": "session-query-overlay",
       "width": 1440,
       "visible": true,
       "overflow": false,
@@ -1215,63 +1271,63 @@
   "resources": [
     {
       "name": "/arc/ui.css",
-      "bytes": 48558,
-      "duration": 9
-    },
-    {
-      "name": "/css/style.css",
-      "bytes": 265667,
+      "bytes": 50845,
       "duration": 16
     },
     {
       "name": "/css/arc-theme.css",
-      "bytes": 11055,
-      "duration": 10
+      "bytes": 12468,
+      "duration": 21
+    },
+    {
+      "name": "/css/style.css",
+      "bytes": 264228,
+      "duration": 32
     },
     {
       "name": "/css/workbench.css",
-      "bytes": 19284,
-      "duration": 10
-    },
-    {
-      "name": "/socket.io/socket.io.js",
-      "bytes": 37660,
-      "duration": 7
-    },
-    {
-      "name": "/codedb.png",
-      "bytes": 29719,
-      "duration": 16
+      "bytes": 37004,
+      "duration": 22
     },
     {
       "name": "/js/lucide.min.js",
       "bytes": 414215,
-      "duration": 10
+      "duration": 22
+    },
+    {
+      "name": "/codedb.png",
+      "bytes": 29719,
+      "duration": 29
+    },
+    {
+      "name": "/socket.io/socket.io.js",
+      "bytes": 37660,
+      "duration": 17
     },
     {
       "name": "/js/lib/three.min.js",
       "bytes": 669891,
-      "duration": 16
-    },
-    {
-      "name": "/js/main.js",
-      "bytes": 10965,
-      "duration": 11
+      "duration": 35
     },
     {
       "name": "/js/lib/3d-force-graph.min.js",
       "bytes": 691299,
-      "duration": 31
+      "duration": 37
+    },
+    {
+      "name": "/js/main.js",
+      "bytes": 12407,
+      "duration": 23
     },
     {
       "name": "/css/tokens.css",
-      "bytes": 26237,
-      "duration": 14
+      "bytes": 26281,
+      "duration": 6
     },
     {
       "name": "/css/base.css",
-      "bytes": 3169,
-      "duration": 14
+      "bytes": 3163,
+      "duration": 6
     },
     {
       "name": "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap",
@@ -1284,594 +1340,619 @@
       "duration": 0
     },
     {
+      "name": "/js/conferma.js",
+      "bytes": 381,
+      "duration": 24
+    },
+    {
       "name": "/arc/ui.js",
-      "bytes": 579553,
-      "duration": 19
+      "bytes": 595501,
+      "duration": 72
     },
     {
       "name": "/js/state.js",
       "bytes": 861,
-      "duration": 32
+      "duration": 33
     },
     {
       "name": "/js/tabs.js",
-      "bytes": 9014,
-      "duration": 19
+      "bytes": 9091,
+      "duration": 36
     },
     {
       "name": "/js/utils.js",
-      "bytes": 38728,
-      "duration": 19
+      "bytes": 41408,
+      "duration": 47
     },
     {
       "name": "/js/uml.js",
-      "bytes": 46212,
-      "duration": 31
+      "bytes": 49781,
+      "duration": 68
     },
     {
       "name": "/js/graph3d.js",
       "bytes": 71180,
-      "duration": 31
+      "duration": 76
     },
     {
       "name": "/js/connection.js",
-      "bytes": 25005,
-      "duration": 31
+      "bytes": 27233,
+      "duration": 80
     },
     {
       "name": "/js/connmanager.js",
-      "bytes": 8786,
-      "duration": 31
+      "bytes": 8499,
+      "duration": 81
     },
     {
       "name": "/js/tabbar.js",
-      "bytes": 3460,
-      "duration": 31
+      "bytes": 3403,
+      "duration": 85
     },
     {
       "name": "/js/workspace.js",
-      "bytes": 6959,
-      "duration": 31
+      "bytes": 7545,
+      "duration": 91
     },
     {
       "name": "/js/dbtree.js",
-      "bytes": 12316,
-      "duration": 31
+      "bytes": 13067,
+      "duration": 102
     },
     {
       "name": "/js/schema-ops.js",
-      "bytes": 18801,
-      "duration": 31
-    },
-    {
-      "name": "/js/inlineEdit.js",
-      "bytes": 20350,
-      "duration": 31
-    },
-    {
-      "name": "/js/cellselect.js",
-      "bytes": 75056,
-      "duration": 31
+      "bytes": 18906,
+      "duration": 103
     },
     {
       "name": "/js/grid.js",
-      "bytes": 70544,
-      "duration": 31
+      "bytes": 72192,
+      "duration": 104
     },
     {
-      "name": "/js/insert.js",
-      "bytes": 30925,
-      "duration": 31
+      "name": "/js/cellselect.js",
+      "bytes": 75120,
+      "duration": 105
     },
     {
-      "name": "/js/geomap.js",
-      "bytes": 42793,
-      "duration": 31
-    },
-    {
-      "name": "/js/geomulti.js",
-      "bytes": 3783,
-      "duration": 31
+      "name": "/js/inlineEdit.js",
+      "bytes": 21728,
+      "duration": 108
     },
     {
       "name": "/js/fk-vista.js",
       "bytes": 35726,
-      "duration": 31
+      "duration": 121
+    },
+    {
+      "name": "/js/insert.js",
+      "bytes": 30925,
+      "duration": 126
+    },
+    {
+      "name": "/js/geomap.js",
+      "bytes": 42793,
+      "duration": 128
+    },
+    {
+      "name": "/js/geomulti.js",
+      "bytes": 3783,
+      "duration": 134
+    },
+    {
+      "name": "/js/details.js",
+      "bytes": 6271,
+      "duration": 140
     },
     {
       "name": "/js/live.js",
       "bytes": 8187,
-      "duration": 31
+      "duration": 143
     },
     {
       "name": "/js/responsive.js",
-      "bytes": 3201,
-      "duration": 35
-    },
-    {
-      "name": "/js/details.js",
-      "bytes": 6204,
-      "duration": 31
-    },
-    {
-      "name": "/js/exportimport.js",
-      "bytes": 40642,
-      "duration": 38
+      "bytes": 5889,
+      "duration": 151
     },
     {
       "name": "/js/vault.js",
       "bytes": 6569,
-      "duration": 38
+      "duration": 158
+    },
+    {
+      "name": "/js/exportimport.js",
+      "bytes": 40726,
+      "duration": 157
     },
     {
       "name": "/js/auth.js",
       "bytes": 4773,
-      "duration": 38
+      "duration": 160
+    },
+    {
+      "name": "/js/query-tab.js",
+      "bytes": 88812,
+      "duration": 169
+    },
+    {
+      "name": "/js/backupmanager.js",
+      "bytes": 30288,
+      "duration": 169
     },
     {
       "name": "/js/auditlog.js",
       "bytes": 12331,
-      "duration": 38
-    },
-    {
-      "name": "/js/query-tab.js",
-      "bytes": 90535,
-      "duration": 38
-    },
-    {
-      "name": "/js/backupmanager.js",
-      "bytes": 29410,
-      "duration": 38
-    },
-    {
-      "name": "/js/sessions.js",
-      "bytes": 23145,
-      "duration": 38
+      "duration": 175
     },
     {
       "name": "/js/health.js",
       "bytes": 5664,
-      "duration": 38
+      "duration": 187
+    },
+    {
+      "name": "/js/sessions.js",
+      "bytes": 25052,
+      "duration": 187
     },
     {
       "name": "/js/session-restore.js",
-      "bytes": 10962,
-      "duration": 48
+      "bytes": 11349,
+      "duration": 195
     },
     {
       "name": "/js/colltabs.js",
-      "bytes": 27012,
-      "duration": 51
+      "bytes": 29116,
+      "duration": 197
     },
     {
       "name": "/js/splitview.js",
-      "bytes": 100277,
-      "duration": 57
+      "bytes": 103899,
+      "duration": 200
     },
     {
       "name": "/js/admin-rbac.js",
-      "bytes": 19647,
-      "duration": 53
+      "bytes": 19707,
+      "duration": 205
     },
     {
       "name": "/js/pending-queries.js",
-      "bytes": 25886,
-      "duration": 54
+      "bytes": 26793,
+      "duration": 207
     },
     {
       "name": "/js/script-run.js",
-      "bytes": 22650,
-      "duration": 54
+      "bytes": 23058,
+      "duration": 208
     },
     {
       "name": "/js/passphrase.js",
       "bytes": 8070,
-      "duration": 70
+      "duration": 209
     },
     {
       "name": "/js/onboarding.js",
       "bytes": 24041,
-      "duration": 71
+      "duration": 210
     },
     {
       "name": "/js/about.js",
       "bytes": 7997,
-      "duration": 74
+      "duration": 211
     },
     {
       "name": "/js/theme.js",
-      "bytes": 25034,
-      "duration": 75
+      "bytes": 25100,
+      "duration": 213
     },
     {
       "name": "/js/scorciatoie-ui.js",
-      "bytes": 8070,
-      "duration": 75
+      "bytes": 8133,
+      "duration": 213
     },
     {
       "name": "/js/palette.js",
-      "bytes": 17760,
-      "duration": 76
+      "bytes": 18636,
+      "duration": 214
     },
     {
       "name": "/js/chart-runtime.js",
       "bytes": 5331,
-      "duration": 89
+      "duration": 214
     },
     {
       "name": "/js/pane-runtime.js",
-      "bytes": 6837,
-      "duration": 90
+      "bytes": 7683,
+      "duration": 215
     },
     {
       "name": "/js/query-document.js",
-      "bytes": 508,
-      "duration": 91
+      "bytes": 887,
+      "duration": 215
+    },
+    {
+      "name": "/js/document-switcher.js",
+      "bytes": 6960,
+      "duration": 216
     },
     {
       "name": "/js/maniglia.js",
-      "bytes": 4061,
-      "duration": 92
+      "bytes": 5178,
+      "duration": 216
     },
     {
       "name": "/js/socket.js",
       "bytes": 3014,
-      "duration": 76
+      "duration": 187
     },
     {
       "name": "/js/valori.js",
       "bytes": 7412,
-      "duration": 79
+      "duration": 187
     },
     {
       "name": "/js/geojson.js",
       "bytes": 12217,
-      "duration": 79
+      "duration": 172
     },
     {
       "name": "/js/avvisi.js",
       "bytes": 1273,
-      "duration": 80
+      "duration": 172
     },
     {
       "name": "/js/viewport.js",
       "bytes": 1293,
-      "duration": 81
+      "duration": 172
     },
     {
       "name": "/js/righe.js",
       "bytes": 1199,
-      "duration": 82
+      "duration": 172
     },
     {
       "name": "/js/trasporto.js",
       "bytes": 9693,
-      "duration": 87
+      "duration": 173
+    },
+    {
+      "name": "/js/table-resize.js",
+      "bytes": 4316,
+      "duration": 155
     },
     {
       "name": "/js/coerenza-richieste.js",
       "bytes": 4065,
-      "duration": 72
+      "duration": 155
     },
     {
       "name": "/js/uml-modello.js",
       "bytes": 34161,
-      "duration": 74
+      "duration": 155
     },
     {
       "name": "/js/uml-paper.js",
-      "bytes": 56666,
-      "duration": 74
+      "bytes": 57636,
+      "duration": 155
     },
     {
       "name": "/js/uml-store.js",
       "bytes": 5456,
-      "duration": 75
-    },
-    {
-      "name": "/js/onboarding-stato.js",
-      "bytes": 18300,
-      "duration": 76
+      "duration": 157
     },
     {
       "name": "/js/schema-analisi.js",
       "bytes": 16986,
-      "duration": 77
+      "duration": 146
     },
     {
       "name": "/js/schema-export.js",
       "bytes": 10065,
-      "duration": 78
+      "duration": 145
     },
     {
       "name": "/js/grafo-budget.js",
       "bytes": 3504,
-      "duration": 80
+      "duration": 145
     },
     {
       "name": "/js/grafo-comandi.js",
       "bytes": 5324,
-      "duration": 80
+      "duration": 147
     },
     {
-      "name": "/js/json-lint.js",
-      "bytes": 6455,
-      "duration": 79
-    },
-    {
-      "name": "/js/valori-esatti.js",
-      "bytes": 7283,
-      "duration": 79
-    },
-    {
-      "name": "/js/fk-relazioni.js",
-      "bytes": 13840,
-      "duration": 79
-    },
-    {
-      "name": "/js/cell-stats.js",
-      "bytes": 8020,
-      "duration": 79
-    },
-    {
-      "name": "/js/calcoli.js",
-      "bytes": 9800,
-      "duration": 79
-    },
-    {
-      "name": "/js/geo-stats.js",
-      "bytes": 14527,
-      "duration": 79
-    },
-    {
-      "name": "/js/scorrimento-bordo.js",
-      "bytes": 1872,
-      "duration": 79
-    },
-    {
-      "name": "/js/cellgrafico.js",
-      "bytes": 13777,
-      "duration": 79
-    },
-    {
-      "name": "/js/identificatori.mjs",
-      "bytes": 8357,
-      "duration": 79
-    },
-    {
-      "name": "/js/fk-cache.js",
-      "bytes": 3290,
-      "duration": 79
-    },
-    {
-      "name": "/js/geo-leaflet.js",
-      "bytes": 2360,
-      "duration": 84
-    },
-    {
-      "name": "/js/geo-modifica.js",
-      "bytes": 16434,
-      "duration": 84
-    },
-    {
-      "name": "/js/geo-vista.js",
-      "bytes": 19726,
-      "duration": 84
-    },
-    {
-      "name": "/js/filtro-rapido.js",
-      "bytes": 2732,
-      "duration": 83
+      "name": "/js/onboarding-stato.js",
+      "bytes": 18300,
+      "duration": 146
     },
     {
       "name": "/js/autocomplete.js",
       "bytes": 20276,
-      "duration": 83
+      "duration": 124
     },
     {
       "name": "/js/queryhistory.js",
       "bytes": 10355,
-      "duration": 82
+      "duration": 125
+    },
+    {
+      "name": "/js/fk-cache.js",
+      "bytes": 3290,
+      "duration": 126
+    },
+    {
+      "name": "/js/fk-relazioni.js",
+      "bytes": 13840,
+      "duration": 125
     },
     {
       "name": "/js/cella-geometria.js",
       "bytes": 2500,
-      "duration": 82
+      "duration": 127
+    },
+    {
+      "name": "/js/filtro-rapido.js",
+      "bytes": 2732,
+      "duration": 128
     },
     {
       "name": "/js/griglia.js",
-      "bytes": 10207,
-      "duration": 82
+      "bytes": 11907,
+      "duration": 128
+    },
+    {
+      "name": "/js/cell-stats.js",
+      "bytes": 8020,
+      "duration": 126
+    },
+    {
+      "name": "/js/calcoli.js",
+      "bytes": 9800,
+      "duration": 126
+    },
+    {
+      "name": "/js/geo-stats.js",
+      "bytes": 14527,
+      "duration": 126
+    },
+    {
+      "name": "/js/cellgrafico.js",
+      "bytes": 13777,
+      "duration": 126
+    },
+    {
+      "name": "/js/scorrimento-bordo.js",
+      "bytes": 1872,
+      "duration": 127
+    },
+    {
+      "name": "/js/identificatori.mjs",
+      "bytes": 8357,
+      "duration": 128
+    },
+    {
+      "name": "/js/valori-esatti.js",
+      "bytes": 7283,
+      "duration": 129
+    },
+    {
+      "name": "/js/json-lint.js",
+      "bytes": 6455,
+      "duration": 130
+    },
+    {
+      "name": "/js/geo-leaflet.js",
+      "bytes": 2360,
+      "duration": 111
+    },
+    {
+      "name": "/js/geo-modifica.js",
+      "bytes": 16434,
+      "duration": 113
+    },
+    {
+      "name": "/js/geo-vista.js",
+      "bytes": 19726,
+      "duration": 113
     },
     {
       "name": "/js/import-status.js",
       "bytes": 519,
-      "duration": 78
+      "duration": 87
     },
     {
       "name": "/js/csv.js",
       "bytes": 3828,
-      "duration": 78
+      "duration": 87
     },
     {
       "name": "/js/import-batch.js",
       "bytes": 1171,
-      "duration": 78
-    },
-    {
-      "name": "/js/piano-anteprima.js",
-      "bytes": 2443,
-      "duration": 78
-    },
-    {
-      "name": "/js/import-mapping.js",
-      "bytes": 3106,
-      "duration": 78
+      "duration": 87
     },
     {
       "name": "/js/export-selezione.js",
       "bytes": 6209,
-      "duration": 78
+      "duration": 88
+    },
+    {
+      "name": "/js/piano-anteprima.js",
+      "bytes": 2443,
+      "duration": 89
+    },
+    {
+      "name": "/js/import-mapping.js",
+      "bytes": 3106,
+      "duration": 89
     },
     {
       "name": "/js/snippet-manager.js",
       "bytes": 7294,
-      "duration": 75
+      "duration": 77
     },
     {
       "name": "/js/sql-chunker.js",
       "bytes": 5903,
-      "duration": 75
+      "duration": 78
     },
     {
       "name": "/js/query-highlighter.js",
       "bytes": 9049,
-      "duration": 75
+      "duration": 79
     },
     {
       "name": "/js/sql-split.js",
       "bytes": 3737,
-      "duration": 75
+      "duration": 79
     },
     {
       "name": "/js/qe-history.js",
       "bytes": 9728,
-      "duration": 75
+      "duration": 80
     },
     {
       "name": "/js/query-formatter.js",
       "bytes": 17731,
-      "duration": 75
+      "duration": 80
     },
     {
       "name": "/js/intellisense.js",
       "bytes": 25187,
-      "duration": 75
+      "duration": 81
     },
     {
       "name": "/js/sql-dialetti.js",
       "bytes": 6827,
-      "duration": 75
+      "duration": 81
     },
     {
       "name": "/js/query-editor.js",
       "bytes": 6549,
-      "duration": 75
+      "duration": 82
     },
     {
       "name": "/js/charts.js",
       "bytes": 48778,
-      "duration": 74
+      "duration": 83
     },
     {
       "name": "/js/query-map.js",
       "bytes": 6801,
-      "duration": 75
+      "duration": 83
     },
     {
       "name": "/js/table-cols.js",
       "bytes": 10714,
-      "duration": 74
+      "duration": 84
     },
     {
       "name": "/js/split-layout.js",
       "bytes": 14556,
-      "duration": 63
+      "duration": 56
     },
     {
       "name": "/js/script-esito.js",
       "bytes": 5525,
-      "duration": 66
+      "duration": 51
     },
     {
       "name": "/js/theme-colori.js",
       "bytes": 19470,
-      "duration": 54
+      "duration": 51
     },
     {
       "name": "/js/scorciatoie.js",
-      "bytes": 9089,
-      "duration": 54
+      "bytes": 9102,
+      "duration": 63
     },
     {
       "name": "/js/palette-ricerca.js",
       "bytes": 3899,
-      "duration": 53
+      "duration": 63
     },
     {
       "name": "/js/uml-progetto-modello.js",
       "bytes": 4587,
-      "duration": 18
-    },
-    {
-      "name": "/js/json-bson.js",
-      "bytes": 19343,
-      "duration": 10
-    },
-    {
-      "name": "/js/calcoli-protocollo.js",
-      "bytes": 3150,
-      "duration": 14
-    },
-    {
-      "name": "/js/chart-option.js",
-      "bytes": 62458,
-      "duration": 11
-    },
-    {
-      "name": "/js/cell-chart.js",
-      "bytes": 10499,
-      "duration": 12
+      "duration": 58
     },
     {
       "name": "/js/query-history-store.js",
       "bytes": 5671,
-      "duration": 7
+      "duration": 58
+    },
+    {
+      "name": "/js/calcoli-protocollo.js",
+      "bytes": 3150,
+      "duration": 56
+    },
+    {
+      "name": "/js/chart-option.js",
+      "bytes": 62458,
+      "duration": 54
+    },
+    {
+      "name": "/js/cell-chart.js",
+      "bytes": 10499,
+      "duration": 53
+    },
+    {
+      "name": "/js/json-bson.js",
+      "bytes": 19343,
+      "duration": 50
     },
     {
       "name": "/js/riepilogo-piano.js",
       "bytes": 4334,
-      "duration": 9
+      "duration": 44
     },
     {
       "name": "/js/geo-risultati.js",
       "bytes": 7294,
-      "duration": 7
+      "duration": 35
     },
     {
       "name": "/js/costruttori-bson.js",
       "bytes": 681,
-      "duration": 4
+      "duration": 7
     },
     {
-      "name": "/socket.io/?EIO=4&transport=polling&t=1gycumuf",
+      "name": "/socket.io/?EIO=4&transport=polling&t=317kpabe",
       "bytes": 118,
       "duration": 4
     },
     {
-      "name": "/socket.io/?EIO=4&transport=polling&t=1gydt5n3&sid=Obx5RfB1tRxpMrHGAAAE",
+      "name": "/socket.io/?EIO=4&transport=polling&t=317nhj2u&sid=F5WRQNy3Wl5rfL-vAAAE",
       "bytes": 2,
-      "duration": 8
+      "duration": 6
     },
     {
-      "name": "/socket.io/?EIO=4&transport=polling&t=1gydusiw&sid=Obx5RfB1tRxpMrHGAAAE",
+      "name": "/socket.io/?EIO=4&transport=polling&t=317nk3ci&sid=F5WRQNy3Wl5rfL-vAAAE",
       "bytes": 32,
       "duration": 8
     },
     {
-      "name": "/socket.io/?EIO=4&transport=polling&t=1gyecnar&sid=Obx5RfB1tRxpMrHGAAAE",
+      "name": "/socket.io/?EIO=4&transport=polling&t=317ogfyr&sid=F5WRQNy3Wl5rfL-vAAAE",
       "bytes": 98,
       "duration": 4
     },
     {
-      "name": "/socket.io/?EIO=4&transport=polling&t=1gyecvl1&sid=Obx5RfB1tRxpMrHGAAAE",
+      "name": "/socket.io/?EIO=4&transport=polling&t=317ogxw7&sid=F5WRQNy3Wl5rfL-vAAAE",
       "bytes": 2,
-      "duration": 3
+      "duration": 2
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=317ot0tm&sid=F5WRQNy3Wl5rfL-vAAAE",
+      "bytes": 2,
+      "duration": 5
+    },
+    {
+      "name": "/socket.io/?EIO=4&transport=polling&t=317ovx4w&sid=F5WRQNy3Wl5rfL-vAAAE",
+      "bytes": 932,
+      "duration": 4
     },
     {
       "name": "/vendor/echarts/echarts.min.js",
       "bytes": 1121928,
-      "duration": 5
+      "duration": 6
     }
   ]
 }

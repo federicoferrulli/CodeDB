@@ -10,8 +10,6 @@ function createModule() {
    * ------------------------------------------------------------------------- */
 
   // Limiti di sicurezza e prevenzione esaurimento risorse
-  const MAX_SESSIONS_PER_SOCKET = 8;
-
   const MAX_GLOBAL_SESSIONS = 100;
 
   const MAX_GLOBAL_SOCKETS = 500;
@@ -23,7 +21,6 @@ function createModule() {
   const ipConnections = new Map();
 
   return {
-    MAX_SESSIONS_PER_SOCKET,
     MAX_GLOBAL_SESSIONS,
     MAX_GLOBAL_SOCKETS,
     MAX_SOCKETS_PER_IP,

@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
@@ -433,12 +434,13 @@ export function initExportImport() {
   $('#dbimport-report').addEventListener('click', async (event) => {
     const button = event.target.closest('[data-dbimport-cleanup]');
     if (!button || !dbImportOperationId) return;
-    if (!window.confirm('Eliminare definitivamente la copia di recupero e lo staging conservato?')) return;
+    const operationId = dbImportOperationId;
+    const tabId = tabs.activeId || (dbImportContext && dbImportContext.tabId);
+    if (!await chiediConferma('Eliminare definitivamente la copia di recupero e lo staging conservato?')) return;
     const fine = iniziaCaricamento(button, 'Elimino…');
     try {
       const response = await emit('database:import:cleanup', {
-        tabId: tabs.activeId || (dbImportContext && dbImportContext.tabId),
-        operationId: dbImportOperationId,
+        tabId, operationId,
       });
       renderDbImportState(response.operation);
     } catch (err) {

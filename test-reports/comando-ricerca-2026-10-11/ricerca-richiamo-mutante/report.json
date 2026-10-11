@@ -1,0 +1,29 @@
+{
+  "checks": [
+    "1440×900, Escape: scrittura immediata, chiusura e focus restituito",
+    "1440×900, Control+p: scrittura immediata, chiusura e focus restituito",
+    "1440×900, esterno: scrittura immediata, chiusura e focus restituito",
+    "1440×900, pulsante: scrittura immediata, chiusura e focus restituito",
+    "390×844, Escape: scrittura immediata, chiusura e focus restituito",
+    "390×844, Control+p: scrittura immediata, chiusura e focus restituito",
+    "390×844, esterno: scrittura immediata, chiusura e focus restituito",
+    "390×844, pulsante: scrittura immediata, chiusura e focus restituito",
+    "320×650, Escape: scrittura immediata, chiusura e focus restituito",
+    "320×650, Control+p: scrittura immediata, chiusura e focus restituito",
+    "320×650, esterno: scrittura immediata, chiusura e focus restituito",
+    "320×650, pulsante: scrittura immediata, chiusura e focus restituito",
+    "844×390, Escape: scrittura immediata, chiusura e focus restituito",
+    "844×390, Control+p: scrittura immediata, chiusura e focus restituito",
+    "844×390, esterno: scrittura immediata, chiusura e focus restituito",
+    "844×390, pulsante: scrittura immediata, chiusura e focus restituito",
+    "1440px: ricerca annidata, clic esterno chiude solo la ricerca e restituisce il focus alla bozza",
+    "390px: ricerca annidata, clic esterno chiude solo la ricerca e restituisce il focus alla bozza"
+  ],
+  "errors": [],
+  "phase": "844×390, pulsante",
+  "failure": "page.waitForFunction: Timeout 5000ms exceeded.\n    at C:\\repository\\CodeDB\\test\\e2e-ricerca-focus.js:96:16",
+  "focus": {
+    "id": "command-palette-open",
+    "role": null
+  }
+}

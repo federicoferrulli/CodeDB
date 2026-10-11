@@ -1,8 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useState } from 'react';
-import { Database, LayoutGrid } from 'lucide-react';
-import { Button } from './components/arc/button/button';
+import { LayoutGrid } from 'lucide-react';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import Toast from './components/arc/toast/toast';
 import { initDialogs } from './dialogs';
@@ -14,6 +13,8 @@ import './components/arc/foundation.css';
 export { createArcInput, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect, mountArcEditActions } from './editor-controls';
 export { initControls as mountArcControls } from './controls';
 export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
+import { renderDataEmpty } from './data-empty';
+export { renderDataEmpty };
 import { initGridFields } from './editor-controls';
 import { observeFields } from './fields';
 
@@ -24,15 +25,20 @@ initErrors();
 
 // Le due viste vuote non hanno stato duplicato: visibilità e azioni restano
 // quelle del workspace, i componenti Arc ne possiedono solo il contenuto.
-for (const [id, title, description, Icon] of [
-  ['welcome', 'Nessuna connessione aperta', 'Apri una connessione salvata dalla barra laterale oppure aggiungi un database per iniziare.', Database],
-  ['placeholder', 'Esplora i dati', 'Seleziona una collection o tabella dalla barra laterale per visualizzare le righe o eseguire query avanzate.', LayoutGrid],
-] as const) {
-  const host = document.getElementById(id);
-  if (host) flushSync(() => createRoot(host).render(<EmptyState title={title} description={description}
-    icon={<Icon size={28} strokeWidth={1.75} />} label={title}
-    action={id === 'welcome' ? <Button type="button" onClick={() => document.getElementById('conn-add-btn')?.click()}>Aggiungi connessione</Button> : undefined} />));
+const welcome = document.getElementById('welcome');
+if (welcome) {
+  welcome.replaceChildren();
+  renderDataEmpty(welcome, {
+    title: 'Nessuna connessione aperta',
+    description: 'Apri una connessione salvata da Connessioni oppure aggiungine una nuova.',
+    kind: 'connection', actionLabel: 'Aggiungi connessione',
+    onAction: () => document.getElementById('conn-add-btn')?.click(),
+  });
 }
+const placeholder = document.getElementById('placeholder');
+if (placeholder) flushSync(() => createRoot(placeholder).render(<EmptyState title="Esplora i dati"
+  description="Seleziona una collection o tabella dalla barra laterale per visualizzare le righe o eseguire query avanzate."
+  icon={<LayoutGrid size={28} strokeWidth={1.75} />} label="Esplora i dati" />));
 
 initPrompt();
 

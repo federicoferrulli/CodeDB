@@ -8,7 +8,7 @@ import { CalendarDays, ChevronDown } from "lucide-react";
 import { Calendar, type CalendarDateMatcher } from "../calendar/calendar";
 import { motionTokens } from "../lib/motion-tokens";
 import styles from "./date-picker.module.css";
-import { useAnchoredPopover } from "../lib/use-anchored-popover";
+import { useAnchoredPopover, useInlineEditOffset } from "../lib/use-anchored-popover";
 
 export interface DatePickerProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "value" | "onChange"> {
   label: string;
@@ -52,7 +52,8 @@ export function DatePicker({ label, value, onChange, description, placeholder = 
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
-  useAnchoredPopover(open, triggerRef, popoverRef, () => setOpen(false));
+  const { gap } = useInlineEditOffset(open, triggerRef);
+  useAnchoredPopover(open, triggerRef, popoverRef, () => setOpen(false), gap);
   const closeTimer = useRef<number | undefined>(undefined);
   const formatter = new Intl.DateTimeFormat(locale, format);
   const reduce = useReducedMotion() ?? false;

@@ -64,7 +64,6 @@ const deps = {
     };
   },
   teardownConnection: async () => {},
-  maxDbSessions: 4,
   tryAcquireGlobalSession: () => true,
   releaseGlobalSession: () => {},
   rbacOn: () => true,

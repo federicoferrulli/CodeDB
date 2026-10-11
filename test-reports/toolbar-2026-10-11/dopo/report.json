@@ -1,0 +1,2629 @@
+{
+  "layouts": [
+    {
+      "label": "dark/1440",
+      "box": {
+        "x": 248,
+        "y": 155.796875,
+        "right": 1440,
+        "bottom": 202.796875,
+        "width": 1192,
+        "height": 47
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 257,
+          "y": 164.796875,
+          "right": 327.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 329.53125,
+          "y": 164.796875,
+          "right": 430.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 439.296875,
+          "y": 161.796875,
+          "right": 1001.765625,
+          "bottom": 195.796875,
+          "width": 562.46875,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 1009.765625,
+          "y": 161.796875,
+          "right": 1189.765625,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 1197.765625,
+          "y": 161.796875,
+          "right": 1225.765625,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 1233.765625,
+          "y": 161.796875,
+          "right": 1324,
+          "bottom": 195.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1332,
+          "y": 161.796875,
+          "right": 1360,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1368,
+          "y": 161.796875,
+          "right": 1396,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1404,
+          "y": 161.796875,
+          "right": 1432,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/1180",
+      "box": {
+        "x": 248,
+        "y": 155.796875,
+        "right": 1180,
+        "bottom": 202.796875,
+        "width": 932,
+        "height": 47
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 257,
+          "y": 164.796875,
+          "right": 327.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 329.53125,
+          "y": 164.796875,
+          "right": 430.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 439.296875,
+          "y": 161.796875,
+          "right": 741.765625,
+          "bottom": 195.796875,
+          "width": 302.46875,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 749.765625,
+          "y": 161.796875,
+          "right": 929.765625,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 937.765625,
+          "y": 161.796875,
+          "right": 965.765625,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 973.765625,
+          "y": 161.796875,
+          "right": 1064,
+          "bottom": 195.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1072,
+          "y": 161.796875,
+          "right": 1100,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1108,
+          "y": 161.796875,
+          "right": 1136,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1144,
+          "y": 161.796875,
+          "right": 1172,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/1024",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 1024,
+        "bottom": 244.796875,
+        "width": 796,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 828,
+          "bottom": 195.796875,
+          "width": 408.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 836,
+          "y": 161.796875,
+          "right": 1016,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 781.765625,
+          "y": 203.796875,
+          "right": 809.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 817.765625,
+          "y": 203.796875,
+          "right": 908,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 916,
+          "y": 203.796875,
+          "right": 944,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 952,
+          "y": 203.796875,
+          "right": 980,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 988,
+          "y": 203.796875,
+          "right": 1016,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/980",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 980,
+        "bottom": 244.796875,
+        "width": 752,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 784,
+          "bottom": 195.796875,
+          "width": 364.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 792,
+          "y": 161.796875,
+          "right": 972,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 737.765625,
+          "y": 203.796875,
+          "right": 765.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 773.765625,
+          "y": 203.796875,
+          "right": 864,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 872,
+          "y": 203.796875,
+          "right": 900,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 908,
+          "y": 203.796875,
+          "right": 936,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 944,
+          "y": 203.796875,
+          "right": 972,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/950",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 950,
+        "bottom": 244.796875,
+        "width": 722,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 754,
+          "bottom": 195.796875,
+          "width": 334.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 762,
+          "y": 161.796875,
+          "right": 942,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 707.765625,
+          "y": 203.796875,
+          "right": 735.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 743.765625,
+          "y": 203.796875,
+          "right": 834,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 842,
+          "y": 203.796875,
+          "right": 870,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 878,
+          "y": 203.796875,
+          "right": 906,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 914,
+          "y": 203.796875,
+          "right": 942,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/920",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 920,
+        "bottom": 244.796875,
+        "width": 692,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 724,
+          "bottom": 195.796875,
+          "width": 304.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 732,
+          "y": 161.796875,
+          "right": 912,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 677.765625,
+          "y": 203.796875,
+          "right": 705.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 713.765625,
+          "y": 203.796875,
+          "right": 804,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 812,
+          "y": 203.796875,
+          "right": 840,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 848,
+          "y": 203.796875,
+          "right": 876,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 884,
+          "y": 203.796875,
+          "right": 912,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/901",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 901,
+        "bottom": 244.796875,
+        "width": 673,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 705,
+          "bottom": 195.796875,
+          "width": 285.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 713,
+          "y": 161.796875,
+          "right": 893,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 658.765625,
+          "y": 203.796875,
+          "right": 686.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 694.765625,
+          "y": 203.796875,
+          "right": 785,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 793,
+          "y": 203.796875,
+          "right": 821,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 829,
+          "y": 203.796875,
+          "right": 857,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 865,
+          "y": 203.796875,
+          "right": 893,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "dark/900",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 900,
+        "bottom": 248.796875,
+        "width": 900,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 300.65625,
+          "bottom": 138.796875,
+          "width": 291.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 302.65625,
+          "y": 94.796875,
+          "right": 594.328125,
+          "bottom": 138.796875,
+          "width": 291.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 595.328125,
+          "bottom": 189.796875,
+          "width": 587.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 595.328125,
+          "bottom": 239.796875,
+          "width": 587.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 601.328125,
+          "y": 94.796875,
+          "right": 743.65625,
+          "bottom": 138.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 601.328125,
+          "y": 145.796875,
+          "right": 891.984375,
+          "bottom": 189.796875,
+          "width": 290.65625,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 601.328125,
+          "y": 195.796875,
+          "right": 743.65625,
+          "bottom": 239.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 749.65625,
+          "y": 195.796875,
+          "right": 891.984375,
+          "bottom": 239.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 749.65625,
+          "y": 94.796875,
+          "right": 891.984375,
+          "bottom": 138.796875,
+          "width": 142.328125,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "dark/844",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 844,
+        "bottom": 248.796875,
+        "width": 844,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 282,
+          "bottom": 138.796875,
+          "width": 273,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 284,
+          "y": 94.796875,
+          "right": 557,
+          "bottom": 138.796875,
+          "width": 273,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 558,
+          "bottom": 189.796875,
+          "width": 550,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 558,
+          "bottom": 239.796875,
+          "width": 550,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 564,
+          "y": 94.796875,
+          "right": 697,
+          "bottom": 138.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 564,
+          "y": 145.796875,
+          "right": 836,
+          "bottom": 189.796875,
+          "width": 272,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 564,
+          "y": 195.796875,
+          "right": 697,
+          "bottom": 239.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 703,
+          "y": 195.796875,
+          "right": 836,
+          "bottom": 239.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 703,
+          "y": 94.796875,
+          "right": 836,
+          "bottom": 138.796875,
+          "width": 133,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "dark/768",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 768,
+        "bottom": 248.796875,
+        "width": 768,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 256.65625,
+          "bottom": 138.796875,
+          "width": 247.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 258.65625,
+          "y": 94.796875,
+          "right": 506.328125,
+          "bottom": 138.796875,
+          "width": 247.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 507.328125,
+          "bottom": 189.796875,
+          "width": 499.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 507.328125,
+          "bottom": 239.796875,
+          "width": 499.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 513.328125,
+          "y": 94.796875,
+          "right": 633.65625,
+          "bottom": 138.796875,
+          "width": 120.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 513.328125,
+          "y": 145.796875,
+          "right": 760,
+          "bottom": 189.796875,
+          "width": 246.671875,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 513.328125,
+          "y": 195.796875,
+          "right": 633.65625,
+          "bottom": 239.796875,
+          "width": 120.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 639.65625,
+          "y": 195.796875,
+          "right": 760,
+          "bottom": 239.796875,
+          "width": 120.34375,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 639.65625,
+          "y": 94.796875,
+          "right": 760,
+          "bottom": 138.796875,
+          "width": 120.34375,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "dark/600",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 600,
+        "bottom": 262,
+        "width": 600,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 200.65625,
+          "bottom": 152,
+          "width": 191.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 202.65625,
+          "y": 108,
+          "right": 394.328125,
+          "bottom": 152,
+          "width": 191.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 395.328125,
+          "bottom": 203,
+          "width": 387.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 395.328125,
+          "bottom": 253,
+          "width": 387.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 401.328125,
+          "y": 108,
+          "right": 493.65625,
+          "bottom": 152,
+          "width": 92.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 401.328125,
+          "y": 159,
+          "right": 592,
+          "bottom": 203,
+          "width": 190.671875,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 401.328125,
+          "y": 209,
+          "right": 493.65625,
+          "bottom": 253,
+          "width": 92.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 499.65625,
+          "y": 209,
+          "right": 592,
+          "bottom": 253,
+          "width": 92.34375,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 499.65625,
+          "y": 108,
+          "right": 592,
+          "bottom": 152,
+          "width": 92.34375,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "dark/390",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 390,
+        "bottom": 262,
+        "width": 390,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 130.65625,
+          "bottom": 152,
+          "width": 121.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 132.65625,
+          "y": 108,
+          "right": 254.328125,
+          "bottom": 152,
+          "width": 121.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 255.328125,
+          "bottom": 203,
+          "width": 247.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 255.328125,
+          "bottom": 253,
+          "width": 247.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 261.328125,
+          "y": 108,
+          "right": 318.65625,
+          "bottom": 152,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 261.328125,
+          "y": 159,
+          "right": 381.984375,
+          "bottom": 203,
+          "width": 120.65625,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 261.328125,
+          "y": 209,
+          "right": 318.65625,
+          "bottom": 253,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 324.65625,
+          "y": 209,
+          "right": 381.984375,
+          "bottom": 253,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 324.65625,
+          "y": 108,
+          "right": 381.984375,
+          "bottom": 152,
+          "width": 57.328125,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "dark/320",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 320,
+        "bottom": 262,
+        "width": 320,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 107.328125,
+          "bottom": 152,
+          "width": 98.328125,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 109.328125,
+          "y": 108,
+          "right": 207.65625,
+          "bottom": 152,
+          "width": 98.328125,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 208.65625,
+          "bottom": 203,
+          "width": 200.65625,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 208.65625,
+          "bottom": 253,
+          "width": 200.65625,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 214.65625,
+          "y": 108,
+          "right": 260.328125,
+          "bottom": 152,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 214.65625,
+          "y": 159,
+          "right": 312,
+          "bottom": 203,
+          "width": 97.34375,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 214.65625,
+          "y": 209,
+          "right": 260.328125,
+          "bottom": 253,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 266.328125,
+          "y": 209,
+          "right": 312,
+          "bottom": 253,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 266.328125,
+          "y": 108,
+          "right": 312,
+          "bottom": 152,
+          "width": 45.671875,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/1440",
+      "box": {
+        "x": 248,
+        "y": 155.796875,
+        "right": 1440,
+        "bottom": 202.796875,
+        "width": 1192,
+        "height": 47
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 257,
+          "y": 164.796875,
+          "right": 327.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 329.53125,
+          "y": 164.796875,
+          "right": 430.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 439.296875,
+          "y": 161.796875,
+          "right": 1001.765625,
+          "bottom": 195.796875,
+          "width": 562.46875,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 1009.765625,
+          "y": 161.796875,
+          "right": 1189.765625,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 1197.765625,
+          "y": 161.796875,
+          "right": 1225.765625,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 1233.765625,
+          "y": 161.796875,
+          "right": 1324,
+          "bottom": 195.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1332,
+          "y": 161.796875,
+          "right": 1360,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1368,
+          "y": 161.796875,
+          "right": 1396,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1404,
+          "y": 161.796875,
+          "right": 1432,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/1180",
+      "box": {
+        "x": 248,
+        "y": 155.796875,
+        "right": 1180,
+        "bottom": 202.796875,
+        "width": 932,
+        "height": 47
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 257,
+          "y": 164.796875,
+          "right": 327.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 329.53125,
+          "y": 164.796875,
+          "right": 430.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 439.296875,
+          "y": 161.796875,
+          "right": 741.765625,
+          "bottom": 195.796875,
+          "width": 302.46875,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 749.765625,
+          "y": 161.796875,
+          "right": 929.765625,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 937.765625,
+          "y": 161.796875,
+          "right": 965.765625,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 973.765625,
+          "y": 161.796875,
+          "right": 1064,
+          "bottom": 195.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1072,
+          "y": 161.796875,
+          "right": 1100,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1108,
+          "y": 161.796875,
+          "right": 1136,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1144,
+          "y": 161.796875,
+          "right": 1172,
+          "bottom": 195.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/1024",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 1024,
+        "bottom": 244.796875,
+        "width": 796,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 828,
+          "bottom": 195.796875,
+          "width": 408.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 836,
+          "y": 161.796875,
+          "right": 1016,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 781.765625,
+          "y": 203.796875,
+          "right": 809.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 817.765625,
+          "y": 203.796875,
+          "right": 908,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 916,
+          "y": 203.796875,
+          "right": 944,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 952,
+          "y": 203.796875,
+          "right": 980,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 988,
+          "y": 203.796875,
+          "right": 1016,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/980",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 980,
+        "bottom": 244.796875,
+        "width": 752,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 784,
+          "bottom": 195.796875,
+          "width": 364.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 792,
+          "y": 161.796875,
+          "right": 972,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 737.765625,
+          "y": 203.796875,
+          "right": 765.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 773.765625,
+          "y": 203.796875,
+          "right": 864,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 872,
+          "y": 203.796875,
+          "right": 900,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 908,
+          "y": 203.796875,
+          "right": 936,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 944,
+          "y": 203.796875,
+          "right": 972,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/950",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 950,
+        "bottom": 244.796875,
+        "width": 722,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 754,
+          "bottom": 195.796875,
+          "width": 334.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 762,
+          "y": 161.796875,
+          "right": 942,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 707.765625,
+          "y": 203.796875,
+          "right": 735.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 743.765625,
+          "y": 203.796875,
+          "right": 834,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 842,
+          "y": 203.796875,
+          "right": 870,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 878,
+          "y": 203.796875,
+          "right": 906,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 914,
+          "y": 203.796875,
+          "right": 942,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/920",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 920,
+        "bottom": 244.796875,
+        "width": 692,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 724,
+          "bottom": 195.796875,
+          "width": 304.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 732,
+          "y": 161.796875,
+          "right": 912,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 677.765625,
+          "y": 203.796875,
+          "right": 705.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 713.765625,
+          "y": 203.796875,
+          "right": 804,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 812,
+          "y": 203.796875,
+          "right": 840,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 848,
+          "y": 203.796875,
+          "right": 876,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 884,
+          "y": 203.796875,
+          "right": 912,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/901",
+      "box": {
+        "x": 228,
+        "y": 155.796875,
+        "right": 901,
+        "bottom": 244.796875,
+        "width": 673,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 237,
+          "y": 164.796875,
+          "right": 307.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 309.53125,
+          "y": 164.796875,
+          "right": 410.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 419.296875,
+          "y": 161.796875,
+          "right": 705,
+          "bottom": 195.796875,
+          "width": 285.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 713,
+          "y": 161.796875,
+          "right": 893,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 658.765625,
+          "y": 203.796875,
+          "right": 686.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 694.765625,
+          "y": 203.796875,
+          "right": 785,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 793,
+          "y": 203.796875,
+          "right": 821,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 829,
+          "y": 203.796875,
+          "right": 857,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 865,
+          "y": 203.796875,
+          "right": 893,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    },
+    {
+      "label": "light/900",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 900,
+        "bottom": 248.796875,
+        "width": 900,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 300.65625,
+          "bottom": 138.796875,
+          "width": 291.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 302.65625,
+          "y": 94.796875,
+          "right": 594.328125,
+          "bottom": 138.796875,
+          "width": 291.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 595.328125,
+          "bottom": 189.796875,
+          "width": 587.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 595.328125,
+          "bottom": 239.796875,
+          "width": 587.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 601.328125,
+          "y": 94.796875,
+          "right": 743.65625,
+          "bottom": 138.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 601.328125,
+          "y": 145.796875,
+          "right": 891.984375,
+          "bottom": 189.796875,
+          "width": 290.65625,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 601.328125,
+          "y": 195.796875,
+          "right": 743.65625,
+          "bottom": 239.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 749.65625,
+          "y": 195.796875,
+          "right": 891.984375,
+          "bottom": 239.796875,
+          "width": 142.328125,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 749.65625,
+          "y": 94.796875,
+          "right": 891.984375,
+          "bottom": 138.796875,
+          "width": 142.328125,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/844",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 844,
+        "bottom": 248.796875,
+        "width": 844,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 282,
+          "bottom": 138.796875,
+          "width": 273,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 284,
+          "y": 94.796875,
+          "right": 557,
+          "bottom": 138.796875,
+          "width": 273,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 558,
+          "bottom": 189.796875,
+          "width": 550,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 558,
+          "bottom": 239.796875,
+          "width": 550,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 564,
+          "y": 94.796875,
+          "right": 697,
+          "bottom": 138.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 564,
+          "y": 145.796875,
+          "right": 836,
+          "bottom": 189.796875,
+          "width": 272,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 564,
+          "y": 195.796875,
+          "right": 697,
+          "bottom": 239.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 703,
+          "y": 195.796875,
+          "right": 836,
+          "bottom": 239.796875,
+          "width": 133,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 703,
+          "y": 94.796875,
+          "right": 836,
+          "bottom": 138.796875,
+          "width": 133,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/768",
+      "box": {
+        "x": 0,
+        "y": 85.796875,
+        "right": 768,
+        "bottom": 248.796875,
+        "width": 768,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 94.796875,
+          "right": 256.65625,
+          "bottom": 138.796875,
+          "width": 247.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 258.65625,
+          "y": 94.796875,
+          "right": 506.328125,
+          "bottom": 138.796875,
+          "width": 247.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 145.796875,
+          "right": 507.328125,
+          "bottom": 189.796875,
+          "width": 499.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 195.796875,
+          "right": 507.328125,
+          "bottom": 239.796875,
+          "width": 499.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 513.328125,
+          "y": 94.796875,
+          "right": 633.65625,
+          "bottom": 138.796875,
+          "width": 120.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 513.328125,
+          "y": 145.796875,
+          "right": 760,
+          "bottom": 189.796875,
+          "width": 246.671875,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 513.328125,
+          "y": 195.796875,
+          "right": 633.65625,
+          "bottom": 239.796875,
+          "width": 120.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 639.65625,
+          "y": 195.796875,
+          "right": 760,
+          "bottom": 239.796875,
+          "width": 120.34375,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 639.65625,
+          "y": 94.796875,
+          "right": 760,
+          "bottom": 138.796875,
+          "width": 120.34375,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/600",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 600,
+        "bottom": 262,
+        "width": 600,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 200.65625,
+          "bottom": 152,
+          "width": 191.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 202.65625,
+          "y": 108,
+          "right": 394.328125,
+          "bottom": 152,
+          "width": 191.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 395.328125,
+          "bottom": 203,
+          "width": 387.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 395.328125,
+          "bottom": 253,
+          "width": 387.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 401.328125,
+          "y": 108,
+          "right": 493.65625,
+          "bottom": 152,
+          "width": 92.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 401.328125,
+          "y": 159,
+          "right": 592,
+          "bottom": 203,
+          "width": 190.671875,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 401.328125,
+          "y": 209,
+          "right": 493.65625,
+          "bottom": 253,
+          "width": 92.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 499.65625,
+          "y": 209,
+          "right": 592,
+          "bottom": 253,
+          "width": 92.34375,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 499.65625,
+          "y": 108,
+          "right": 592,
+          "bottom": 152,
+          "width": 92.34375,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/390",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 390,
+        "bottom": 262,
+        "width": 390,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 130.65625,
+          "bottom": 152,
+          "width": 121.65625,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 132.65625,
+          "y": 108,
+          "right": 254.328125,
+          "bottom": 152,
+          "width": 121.671875,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 255.328125,
+          "bottom": 203,
+          "width": 247.328125,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 255.328125,
+          "bottom": 253,
+          "width": 247.328125,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 261.328125,
+          "y": 108,
+          "right": 318.65625,
+          "bottom": 152,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 261.328125,
+          "y": 159,
+          "right": 381.984375,
+          "bottom": 203,
+          "width": 120.65625,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 261.328125,
+          "y": 209,
+          "right": 318.65625,
+          "bottom": 253,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 324.65625,
+          "y": 209,
+          "right": 381.984375,
+          "bottom": 253,
+          "width": 57.328125,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 324.65625,
+          "y": 108,
+          "right": 381.984375,
+          "bottom": 152,
+          "width": 57.328125,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "light/320",
+      "box": {
+        "x": 0,
+        "y": 99,
+        "right": 320,
+        "bottom": 262,
+        "width": 320,
+        "height": 163
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 9,
+          "y": 108,
+          "right": 107.328125,
+          "bottom": 152,
+          "width": 98.328125,
+          "height": 44
+        },
+        {
+          "id": "condizione",
+          "x": 109.328125,
+          "y": 108,
+          "right": 207.65625,
+          "bottom": 152,
+          "width": 98.328125,
+          "height": 44
+        },
+        {
+          "id": "filter-input",
+          "x": 8,
+          "y": 159,
+          "right": 208.65625,
+          "bottom": 203,
+          "width": 200.65625,
+          "height": 44
+        },
+        {
+          "id": "sort-input",
+          "x": 8,
+          "y": 209,
+          "right": 208.65625,
+          "bottom": 253,
+          "width": 200.65625,
+          "height": 44
+        },
+        {
+          "id": "query-history-btn",
+          "x": 214.65625,
+          "y": 108,
+          "right": 260.328125,
+          "bottom": 152,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "run-btn",
+          "x": 214.65625,
+          "y": 159,
+          "right": 312,
+          "bottom": 203,
+          "width": 97.34375,
+          "height": 44
+        },
+        {
+          "id": "insert-btn",
+          "x": 214.65625,
+          "y": 209,
+          "right": 260.328125,
+          "bottom": 253,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "refresh-btn",
+          "x": 266.328125,
+          "y": 209,
+          "right": 312,
+          "bottom": 253,
+          "width": 45.671875,
+          "height": 44
+        },
+        {
+          "id": "data-more-btn",
+          "x": 266.328125,
+          "y": 108,
+          "right": 312,
+          "bottom": 152,
+          "width": 45.671875,
+          "height": 44
+        }
+      ],
+      "overlaps": [],
+      "mobile": true,
+      "overflow": false
+    },
+    {
+      "label": "desktop/navigatore-allargato",
+      "box": {
+        "x": 654,
+        "y": 155.796875,
+        "right": 1440,
+        "bottom": 244.796875,
+        "width": 786,
+        "height": 89
+      },
+      "controls": [
+        {
+          "id": "rapido",
+          "x": 663,
+          "y": 164.796875,
+          "right": 733.53125,
+          "bottom": 192.796875,
+          "width": 70.53125,
+          "height": 28
+        },
+        {
+          "id": "condizione",
+          "x": 735.53125,
+          "y": 164.796875,
+          "right": 836.296875,
+          "bottom": 192.796875,
+          "width": 100.765625,
+          "height": 28
+        },
+        {
+          "id": "filter-input",
+          "x": 845.296875,
+          "y": 161.796875,
+          "right": 1244,
+          "bottom": 195.796875,
+          "width": 398.703125,
+          "height": 34
+        },
+        {
+          "id": "sort-input",
+          "x": 1252,
+          "y": 161.796875,
+          "right": 1432,
+          "bottom": 195.796875,
+          "width": 180,
+          "height": 34
+        },
+        {
+          "id": "query-history-btn",
+          "x": 1197.765625,
+          "y": 203.796875,
+          "right": 1225.765625,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "run-btn",
+          "x": 1233.765625,
+          "y": 203.796875,
+          "right": 1324,
+          "bottom": 237.796875,
+          "width": 90.234375,
+          "height": 34
+        },
+        {
+          "id": "insert-btn",
+          "x": 1332,
+          "y": 203.796875,
+          "right": 1360,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "refresh-btn",
+          "x": 1368,
+          "y": 203.796875,
+          "right": 1396,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        },
+        {
+          "id": "data-more-btn",
+          "x": 1404,
+          "y": 203.796875,
+          "right": 1432,
+          "bottom": 237.796875,
+          "width": 28,
+          "height": 34
+        }
+      ],
+      "overlaps": [],
+      "mobile": false,
+      "overflow": false
+    }
+  ],
+  "checks": [
+    "27 layout: due temi, 320–1440px, soglia desktop/mobile, landscape e navigatore allargato",
+    "Filtro, ordinamento, esecuzione, cronologia, autocomplete da tastiera e menu funzionanti; testi conservati al resize"
+  ],
+  "errors": [],
+  "ok": true
+}

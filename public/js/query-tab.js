@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
@@ -653,6 +654,9 @@ function allargaRisultatiPerDisegno() {
 // Aggiorna badge e metriche
 export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg = null) {
   currentMetrics = [status, timeMs, count, errorMsg];
+  if (status === 'running') {
+    for (const id of ['query-table-view', 'query-json-view', 'chart-empty']) renderDataEmpty($('#' + id), null);
+  }
   const statusBadge = $('#query-status-badge');
   const timeMetric = $('#query-time-metric');
   const timeVal = $('#query-time-val');
@@ -702,9 +706,28 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
       errorBox.classList.add('hidden');
     }
   }
+  // Gli script possono consegnare le righe prima dello stato finale.
+  if (status !== 'running' && !currentResults.length) renderResults(currentResults, currentColumns);
 }
 
 // Renderizza i risultati nella vista attiva
+function queryEmptyOptions() {
+  const status = currentMetrics[0];
+  if (status === 'running') return null;
+  const idle = status === 'idle';
+  const error = status === 'error';
+  return {
+    title: idle ? 'I risultati iniziano qui' : error ? 'La query non è riuscita' : status === 'cancelled' ? 'Query annullata' : 'Nessun risultato',
+    description: idle ? 'Scrivi una query nell’editor. Le righe restituite appariranno in questo spazio.'
+      : error ? 'Controlla il messaggio di errore e correggi la query nell’editor.'
+        : status === 'cancelled' ? 'L’esecuzione è stata interrotta. Puoi modificare la query e riprovare.'
+          : 'La query non ha restituito righe. Prova a modificare le condizioni di ricerca.',
+    kind: idle ? 'query' : error ? 'error' : 'search',
+    actionLabel: idle ? 'Vai all’editor' : 'Modifica query',
+    onAction: () => { setQuerySurface('editor'); $('#query-editor-input')?.focus(); },
+  };
+}
+
 export function renderResults(data, colonneDichiarate) {
   currentResults = Array.isArray(data) ? data : (data ? [data] : []);
   currentColumns = Array.isArray(colonneDichiarate) ? colonneDichiarate : [];
@@ -736,6 +759,10 @@ export function renderResults(data, colonneDichiarate) {
       console.error('[QueryTab] Errore nel rendering del grafico:', err);
       toast(`Impossibile disegnare il grafico: ${err.message}`, true);
     });
+    if (!currentResults.length) {
+      $('#chart-empty')?.replaceChildren();
+      renderDataEmpty($('#chart-empty'), queryEmptyOptions());
+    }
   } else {
     renderResultsJsonTree(currentResults);
   }
@@ -764,6 +791,7 @@ export function renderResults(data, colonneDichiarate) {
  * staccato e questi id semplicemente non esistono.
  */
 export function resetQueryView() {
+  currentMetrics = ['idle'];
   currentResults = [];
   currentColumns = [];
   queryTableRows = [];
@@ -1106,6 +1134,7 @@ function renderResultsTable(rows, colonneDichiarate) {
   const thead = table.querySelector('thead');
   const tbody = table.querySelector('tbody');
   const righe = Array.isArray(rows) ? rows : [];
+  renderDataEmpty(container, righe.length ? null : queryEmptyOptions());
   const cols = colonneRisultato(colonneDichiarate, righe);
   if (rows === queryRigheRef && cols.join('\u0000') === queryColsSig) {
     renderQueryVirtualWindow();
@@ -1124,7 +1153,6 @@ function renderResultsTable(rows, colonneDichiarate) {
     queryTableCols = [];
     queryColsSig = '';
     queryRigheRef = rows;
-    tbody.innerHTML = '<tr><td style="color: var(--fg-dim); text-align: center;">Nessun risultato da mostrare</td></tr>';
     return;
   }
 
@@ -1259,6 +1287,7 @@ function attachJsonVScroll() {
 function renderResultsJsonTree(data) {
   const container = $('#query-json-tree');
   if (!container) return;
+  renderDataEmpty($('#query-json-view'), !data || (Array.isArray(data) && !data.length) ? queryEmptyOptions() : null);
   // Come nella tabella, gli stessi risultati mantengono nodi, espansioni e scroll.
   if (queryJsonRigheRef === data && container.firstElementChild) {
     renderJsonVirtualWindow();
@@ -1274,7 +1303,6 @@ function renderResultsJsonTree(data) {
   if (view) view.scrollTop = 0;
 
   if (!data || (Array.isArray(data) && data.length === 0)) {
-    container.innerHTML = '<span style="color: var(--fg-dim);">Nessun risultato da mostrare</span>';
     return;
   }
 

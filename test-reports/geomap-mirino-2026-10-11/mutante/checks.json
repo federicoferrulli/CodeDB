@@ -1,0 +1,44 @@
+{
+  "layouts": [
+    {
+      "width": 390,
+      "height": 844,
+      "map": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 599.90625,
+        "width": 364,
+        "height": 299.265625
+      },
+      "rail": {
+        "x": 13,
+        "y": 605.90625,
+        "right": 377,
+        "bottom": 649.90625,
+        "width": 364,
+        "height": 44
+      },
+      "vertices": {
+        "x": 13,
+        "y": 655.90625,
+        "right": 377,
+        "bottom": 724.625,
+        "width": 364,
+        "height": 68.71875
+      },
+      "body": {
+        "x": 13,
+        "y": 300.640625,
+        "right": 377,
+        "bottom": 724.625,
+        "width": 364,
+        "height": 423.984375
+      },
+      "overflow": false
+    }
+  ],
+  "checks": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Il primo vertice si sposta al mirino\n+ actual - expected\n\n  [\n+   12.9,\n+   42.3\n-   13.1011963,\n-   42.1001699\n  ]\n\n    at C:\\repository\\CodeDB\\test\\e2e-geomap-mobile.js:123:16"
+}

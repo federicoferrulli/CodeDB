@@ -1,3 +1,4 @@
+import { chiediConferma } from './conferma.js';
 'use strict';
 
 import { state } from './state.js';
@@ -884,7 +885,7 @@ export function coercePasted(current, text, metadata = {}) {
 
 // Incolla una griglia TSV (formato appunti di Excel) a partire dall'angolo in
 // alto a sinistra della selezione, aggiornando i documenti sottostanti.
-function pasteIntoGrid(A, text) {
+async function pasteIntoGrid(A, text) {
   const grid = parseClipboardGrid(text || '');
   if (!grid.length) return;
   // Perché una griglia non si può scrivere lo sa la vista, non questo modulo:
@@ -944,20 +945,20 @@ function pasteIntoGrid(A, text) {
   const docWord = isSqlType(A.bersaglio().dbType) ? 'righe' : 'documenti';
   let msg = `Incollare ${cellsCount} celle in ${updates.length} ${docWord}?`;
   if (skipped) msg += `\n(${skipped} celle verranno ignorate: fuori pagina o non modificabili)`;
-  if (!confirm(msg)) return;
+  const origin = A.contesto();
+  const { tabId, st } = origin;
+  const bersaglio = { tabId, db: st.db, coll: st.coll };
+  if (!await chiediConferma(msg)) return;
 
   // L'incolla può durare a lungo: il contesto (tab + coll-tab) va catturato ora,
   // non alla risposta, o la selezione e il refresh finirebbero su un'altra
   // tabella se l'utente si sposta nel frattempo.
-  const origin = A.contesto();
   // Il BERSAGLIO va congelato insieme al contesto, non riletto a ogni richiesta
   // (CDB-A18). `state` è un Proxy sul tab ATTIVO e `emit()` inietta il tab
   // attivo al momento della chiamata: siccome le ondate distribuiscono le
   // scritture nel tempo, cambiare tab a metà incolla dirottava le rimanenti su
   // un'altra connessione, con gli id presi però dalle righe di questa. È lo
   // stesso motivo per cui exportimport.js passa un tabId esplicito a ogni blocco.
-  const { tabId, st } = origin;
-  const bersaglio = { tabId, db: st.db, coll: st.coll };
   // Le scritture partono a ONDATE, non tutte insieme (CDB-51): incollare da un
   // foglio di calcolo può produrre centinaia di `doc:update`, e mandarli in un
   // colpo solo riempie la coda del socket e satura il pool di connessioni della

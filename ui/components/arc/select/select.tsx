@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useId, useState } from "react";
+import { forwardRef, useId, useRef, useState } from "react";
 import type { ComponentPropsWithoutRef } from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -8,6 +8,7 @@ import type { Variants } from "motion/react";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import { motionTokens } from "../lib/motion-tokens";
 import styles from "./select.module.css";
+import { useInlineEditOffset } from "../lib/use-anchored-popover";
 
 export interface SelectProps extends Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Root>, "children"> {
   label: string;
@@ -38,6 +39,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const controlId = id ?? generatedId;
   const hintId = description ? `${controlId}-description` : undefined;
   const reduceMotion = useReducedMotion();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(rootProps.defaultOpen ?? false);
+  const { gap, bottomPadding } = useInlineEditOffset(rootProps.open ?? uncontrolledOpen, triggerRef);
   const [uncontrolledValue, setUncontrolledValue] = useState(rootProps.defaultValue ?? "");
   const currentValue = rootProps.value ?? uncontrolledValue;
   const index = options.findIndex((option) => option.value === currentValue);
@@ -49,9 +53,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   return (
     <div className={bare ? "arc-select-field" : styles.field}>
       {!bare && <label htmlFor={controlId}>{label}</label>}
-      <SelectPrimitive.Root {...rootProps} disabled={disabled} onValueChange={(next) => { setUncontrolledValue(next); onValueChange?.(next); }}>
+      <SelectPrimitive.Root {...rootProps} disabled={disabled} onOpenChange={next => { setUncontrolledOpen(next); rootProps.onOpenChange?.(next); }} onValueChange={(next) => { setUncontrolledValue(next); onValueChange?.(next); }}>
         <SelectPrimitive.Trigger
-          ref={ref}
+          ref={node => { triggerRef.current = node; if (typeof ref === 'function') ref(node); else if (ref) ref.current = node; }}
           id={controlId}
           aria-label={bare ? label : undefined}
           data-arc-component="select"
@@ -70,7 +74,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal container={portalContainer}>
-          <SelectPrimitive.Content data-arc-select-popup="" className={styles.content} position="popper" sideOffset={4} collisionPadding={12}>
+          <SelectPrimitive.Content data-arc-select-popup="" className={styles.content} position="popper" sideOffset={gap} collisionPadding={{ top: 12, left: 12, right: 12, bottom: bottomPadding }}>
             <SelectPrimitive.ScrollUpButton className={styles.scrollButton}>
               <ChevronUp size={16} strokeWidth={1.75} aria-hidden="true" />
             </SelectPrimitive.ScrollUpButton>
