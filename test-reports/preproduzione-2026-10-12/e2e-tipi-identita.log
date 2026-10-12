@@ -1,0 +1,2 @@
+OK mysql: backup incrementale con PK binarie ed ENUM, vuoti, Unicode, upsert e cancellazioni.
+OK postgresql: backup incrementale con PK binarie ed ENUM, vuoti, Unicode, upsert e cancellazioni.

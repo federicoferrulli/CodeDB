@@ -6,7 +6,7 @@ import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import {
   $, emit, esc, showToast, showContextMenu, refreshLucideIcons, displayValueBreve,
-  initToolbarDropdown, buildJsonNode,
+  initToolbarDropdown, buildJsonNode, scaricaFile,
 } from './utils.js';
 import { congelaContesto, contestoCorrente } from './coerenza-richieste.js';
 import {
@@ -39,7 +39,7 @@ function chiudiPannelloMobile() {
 
 function apriPannelloMobile(pannello, titolo, pulsante) {
   if (!mobile.matches) return;
-  closeDrawers();
+  closeDrawers({ immediate: true });
   pannelloMobile = pannello;
   if (pannello.id === 'uml-dati') pannello.classList.remove('hidden');
   pulsante?.setAttribute('aria-expanded', 'true');
@@ -926,12 +926,7 @@ function apriCollegati(idLink) {
 
 function scarica(nomeFile, contenuto, tipo) {
   const blob = contenuto instanceof Blob ? contenuto : new Blob([contenuto], { type: tipo });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nomeFile;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return scaricaFile(blob, nomeFile);
 }
 
 function nomeFile(estensione) {

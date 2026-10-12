@@ -55,6 +55,7 @@ const apriPalette = (page) => page.evaluate(() => document.dispatchEvent(
     const page = await browser.newPage();
     const erroriJs = [];
     page.on('pageerror', (err) => erroriJs.push(String(err && (err.stack || err.message) || err)));
+    await page.addInitScript(versione => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: versione, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
 
@@ -205,10 +206,9 @@ const apriPalette = (page) => page.evaluate(() => document.dispatchEvent(
       'un carattere qualunque in testa non viene scambiato per un richiamo',
       JSON.stringify(nonRichiamo));
 
-    const legenda = await conRichiamo('');
-    ok(/> comandi/.test(legenda.legenda) && /# database/.test(legenda.legenda)
-      && /@ tabelle/.test(legenda.legenda),
-      'il piede insegna i richiami finche\' non se ne usa uno', legenda.legenda);
+    await conRichiamo('');
+    const richiami = await page.$$eval('.palette-filtro[data-prefix]', buttons => buttons.map(b => b.dataset.prefix).filter(Boolean));
+    ok(richiami.join() === '>,#,@', 'le schede espongono tutti i richiami della ricerca', richiami.join());
 
     /* --- Scorrimento e frecce ------------------------------------------- */
     /* --- Scorrimento e frecce ------------------------------------------- */
@@ -284,7 +284,7 @@ const apriPalette = (page) => page.evaluate(() => document.dispatchEvent(
     await page.fill('#palette-input', 'beta_tab_0500');
     await page.waitForTimeout(50);
     await page.click('#palette-lista .palette-voce');
-    await page.waitForTimeout(200);
+    await page.waitForSelector('#palette-overlay', { state: 'detached' });
     const aperta = await page.evaluate(async () => {
       const { tabs } = await import('/js/tabs.js');
       const t = tabs.list.find((x) => x.id === 'palette-test');

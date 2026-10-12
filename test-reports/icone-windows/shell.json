@@ -1,0 +1,17 @@
+[
+    {
+        "Nome":  "eseguibile-shell",
+        "Caricata":  true,
+        "IndiceCache":  55
+    },
+    {
+        "Nome":  "collegamento-start",
+        "Caricata":  true,
+        "IndiceCache":  55
+    },
+    {
+        "Nome":  "collegamento-barra",
+        "Caricata":  true,
+        "IndiceCache":  55
+    }
+]

@@ -25,8 +25,10 @@ import { $, toast } from './utils.js';
 import { tileAttive, impostaTile } from './geo-leaflet.js';
 import { creaVistaGeo, copia, scaricaGeoJson } from './geo-vista.js';
 import { haGeometrie, vociGeometriche, notaTroncamento, MAX_CELLE } from './geo-risultati.js';
+import { creaIspettoreGeo } from './geo-inspector.js';
 
 let vista = null;
+let ispettore;
 // Righe già mappate: ricalcolare statistiche e disegno a ogni cambio di vista
 // su decine di migliaia di geometrie costerebbe secondi per rimostrare la
 // stessa identica mappa.
@@ -44,6 +46,8 @@ function creaVista() {
       notaElenco: '#qmap-list-note',
       avvisi: '#qmap-warning',
       etichettaRiga: 'Riga',
+      elencoCompatto: true,
+      onSelezione: g => ispettore?.selezione(g),
     });
   }
   return vista;
@@ -57,6 +61,14 @@ function mostraVuoto(testo) {
     vuoto.classList.toggle('hidden', !testo);
   }
   if (corpo) corpo.classList.toggle('hidden', !!testo);
+  $('#query-map-view').classList.toggle('qmap-vuota', !!testo);
+  for (const id of ['qmap-fit', 'qmap-copy', 'qmap-export']) $('#' + id).disabled = !!testo;
+  if (testo) {
+    ispettore?.ferma();
+    $('#qmap-conta').textContent = '';
+    $('#qmap-count').textContent = '';
+    $('#qmap-nota').classList.add('hidden');
+  }
 }
 
 /**
@@ -89,6 +101,7 @@ export async function renderQueryMap(righe) {
   // Stessi risultati di prima: la mappa è già quella giusta, va solo rimisurata
   // (il contenitore era nascosto mentre si guardava un'altra vista).
   if (righeMostrate === lista) {
+    ispettore?.aggiorna();
     creaVista().invalidateSize();
     return;
   }
@@ -109,10 +122,18 @@ export async function renderQueryMap(righe) {
     st = await v.mostra(voci, { isCurrent: () => token === renderToken });
   } catch (err) {
     if (token !== renderToken) return;
+    righeMostrate = null;
+    v.pulisci();
     mostraVuoto(err.message);
     return;
   }
   if (token !== renderToken) return;
+  if (!st) {
+    righeMostrate = null;
+    v.pulisci();
+    mostraVuoto('Nessuna geometria valida da mostrare in questi risultati.');
+    return;
+  }
   righeMostrate = lista;
 
   const nota = $('#qmap-nota');
@@ -124,8 +145,12 @@ export async function renderQueryMap(righe) {
   const conta = $('#qmap-conta');
   if (conta && st) {
     const dove = colonne.length === 1 ? colonne[0] : `${colonne.length} campi`;
-    conta.textContent = `${st.totale.toLocaleString('it-IT')} geometrie · ${dove}`;
+    conta.textContent = `${st.totale.toLocaleString('it-IT')} ${st.totale === 1 ? 'geometria' : 'geometrie'} · ${dove}`;
+    conta.title = conta.textContent;
+    $('#qmap-count').textContent = st.totale.toLocaleString('it-IT');
   }
+  ispettore?.selezione(null);
+  ispettore?.aggiorna(true);
 
   // Il contenitore è visibile solo quando questa vista è attiva: si disegna qui,
   // dopo che `setResultsViewMode` l'ha scoperto (Leaflet su un div 0×0 disegna
@@ -135,6 +160,7 @@ export async function renderQueryMap(righe) {
 
 /** Il pannello era nascosto: al ritorno la mappa va rimisurata. */
 export function resizeQueryMap() {
+  ispettore?.aggiorna();
   if (vista) vista.invalidateSize();
 }
 
@@ -142,6 +168,7 @@ export function resizeQueryMap() {
 export function clearQueryMap() {
   renderToken++;
   righeMostrate = null;
+  if (document.fullscreenElement === $('#query-map-view')) document.exitFullscreen().catch(() => {});
   if (vista) vista.pulisci();
   const nota = $('#qmap-nota');
   if (nota) { nota.textContent = ''; nota.classList.add('hidden'); }
@@ -155,6 +182,22 @@ export function clearQueryMap() {
 export function initQueryMap() {
   const canvas = $('#qmap-canvas');
   if (!canvas) return;
+  ispettore = creaIspettoreGeo('qmap', () => vista?.invalidateSize());
+  mostraVuoto('Esegui una query: le geometrie contenute nei risultati compaiono qui sulla mappa.');
+  const expand = $('#qmap-expand'), view = $('#query-map-view');
+  expand.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement === view) await document.exitFullscreen();
+      else await view.requestFullscreen();
+    } catch { toast('Impossibile espandere la mappa in questo browser.', true); }
+  });
+  document.addEventListener('fullscreenchange', () => {
+    const espansa = document.fullscreenElement === view;
+    expand.setAttribute('aria-pressed', String(espansa));
+    expand.title = espansa ? 'Riduci mappa' : 'Espandi mappa';
+    expand.setAttribute('aria-label', expand.title);
+    resizeQueryMap();
+  });
 
   const tiles = $('#qmap-tiles');
   if (tiles) {

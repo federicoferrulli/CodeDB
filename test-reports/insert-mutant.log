@@ -1,0 +1,24 @@
+AssertionError [ERR_ASSERTION]: mysql: valore e tipo salvati per ogni colonna
++ actual - expected
+
+  {
+    c0: '-128',
+    c10: '1',
++   c11: '12345678901234570000000000000000000.000000000000000000000000000000',
+-   c11: '12345678901234567890123456789012345.123456789012345678901234567890',
+    c12: 1.2345677614212036,
+    c13: '1.2345678901234567',
+    c14: '1.7976931348623157e308',
+    c15: '5e-324',
+    c16: '01',
+
+    at sql (C:\repository\CodeDB\test\e2e-insert-types.js:56:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-insert-types.js:125:16 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Object],
+  expected: [Object],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

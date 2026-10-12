@@ -88,6 +88,12 @@ const cases = [
           collections.set(name, { options: EJSON.serialize(options), docs: [] });
         },
         async command(command) {
+          if (command.hello || command.isMaster) return { isWritablePrimary: true };
+          if (command.insert) {
+            const docs = command.documents.chunks.slice(1).map(b => require('bson').deserialize(b));
+            collections.get(command.insert).docs.push(...docs);
+            return { ok: 1, n: docs.length };
+          }
           assert(!command.collation && !command.capped && !command.size && !command.max,
             'collMod non accetta le opzioni immutabili di creazione');
           const { collMod, ...changes } = command;
@@ -219,6 +225,7 @@ const cases = [
       let writes = 0;
       const fail = async () => { writes++; throw error; };
       strategy.pool = { query: fail };
+      if (file === 'MySqlStrategy') require('./mysql-session-fixture')(strategy.pool);
       strategy.tableColumnsInfo = async () => ({ columns: [{ name: 'x' }], geo: new Map() });
       strategy.colonneScrivibili = async () => new Set(['x']);
       strategy.client = { db: () => ({ collection: () => ({ insertMany: fail }) }) };

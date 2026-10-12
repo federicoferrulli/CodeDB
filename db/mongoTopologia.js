@@ -34,17 +34,23 @@ async function leggiTopologia(client) {
     risposta = null;
   }
   const topologia = classificaTopologia(risposta);
+  const snapshot = ['replica', 'sharded'].includes(topologia) && Number(risposta?.maxWireVersion) >= 13;
   return {
     motore: 'mongodb',
     topologia,
-    // Il motore incorporato legge con un cursore ordinario: nessuna snapshot
-    // globale su nessuna topologia. Se un giorno si certifica un percorso
-    // snapshot, sarà QUESTO campo a dirlo, non un commento.
-    snapshot: false,
-    avviso: topologia === 'sconosciuta'
+    snapshot,
+    avviso: snapshot
+      ? `MongoDB ${topologia}: snapshot unica dei documenti. Mantenere stabile la struttura durante il trasferimento.`
+      : topologia === 'sconosciuta'
       ? 'Topologia MongoDB non rilevata: nessuna garanzia di consistenza globale.'
       : `MongoDB ${topologia}: lettura con cursore ordinario, senza snapshot globale.`,
   };
 }
 
-module.exports = { classificaTopologia, leggiTopologia };
+async function apriLettura(client) {
+  const coerenza = await leggiTopologia(client);
+  const session = coerenza.snapshot ? client.startSession({snapshot:true}) : null;
+  return { coerenza, options: session ? {session} : {}, close: () => session?.endSession() };
+}
+
+module.exports = { classificaTopologia, leggiTopologia, apriLettura };

@@ -1,141 +1,83 @@
 import { state } from './state.js';
-import { socket } from './socket.js';
 import { $, emit, esc, toast, openModal, closeModal, isSqlType, showError, conCaricamento, captureContext, marcaDatiSporchi, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
-import { isGeometry, geometryLabel, openGeoEditor } from './geomap.js';
+import { openGeoEditor } from './geomap.js';
 import { tipoGeoJsonDaTipoColonna, colonnaGeometrica } from './geojson.js';
 import { runQuery } from './grid.js';
 import { agganciaLint, aggiornaLint, collegaStrumentiJson } from './json-lint.js';
-import { decodificaNumeroEsatto, richiedePrecisioneEsatta, testoNumeroEsatto } from './valori-esatti.js';
+import { testoNumeroEsatto } from './valori-esatti.js';
 import { caricaRelazioni } from './fk-cache.js';
 import { apriPannelloFk, chiudiPannelloFk, pannelloFkAperto, pannelloFkMobile } from './fk-vista.js';
 import { setDaRelazione, bersaglioRelazione, VINCOLO } from './fk-relazioni.js';
-import { createArcInput, createArcButton, createArcSelect, controlElement } from '../arc/ui.js';
+import { createArcInput, createArcTextarea, createArcButton, createArcSelect, updateArcSelect, controlElement } from '../arc/ui.js';
 import { proteggiModifiche } from './utils.js';
 import { tabs } from './tabs.js';
+import { tipiBson, guidaTipo, valoreInserimento } from './insert-types.js';
+import { campiJson, leggiJsonEsatto } from './insert-json.mjs';
 
 let insertRows = [];
 let insertJsonTouched = false;
 
-// I tipi arrivano da `collection:stats` nei nomi di ciascun motore: MySQL manda
-// COLUMN_TYPE ("point", "geometry"), PostgreSQL il tipo con i modificatori
-// ("geometry(MultiPolygon,4326)"), MongoDB il tipo dedotto dal campione
-// ("geojson", vedi bsonTypeOf in MongoDbStrategy). Riconoscerli e' una regola
-// sola (`colonnaGeometrica`), condivisa con la modifica in griglia: qui c'era
-// un elenco parallelo di nomi, che i tipi con modificatore non contiene.
 export function insertKindOf(typeName, dbType = state.dbType) {
   const t = String(typeName || '').toLowerCase();
-  if (colonnaGeometrica({ type: t })) return 'geo';
   if (isSqlType(dbType)) {
-    if (/^tinyint\(1\)|^bool/.test(t)) return 'bool';
-    if (/^decimal|^numeric/.test(t)) return 'decimal';
-    if (/^(?:tinyint|smallint|mediumint|int|integer|bigint|float|double|double precision|real|year|smallserial|serial|bigserial)(?:\b|\()/.test(t)) return 'number';
-    if (/^datetime|^timestamp/.test(t)) return 'datetime';
-    if (/^date$/.test(t)) return 'date';
-    if (/^json/.test(t)) return 'json';
-    return 'text';
+    if (/\[\]$/.test(t)) return 'native';
+    if (dbType === 'postgresql' && /^(point|line|lseg|box|path|polygon|circle)$/.test(t)) return 'pggeo';
+    if (colonnaGeometrica({ type: t })) return 'geo';
+    if (/^bool/.test(t)) return 'bool';
+    if (/^(?:bytea|(?:tiny|medium|long)?blob|(?:var)?binary)\b/.test(t)) return 'bytes';
+    if (/^(?:bit|varbit)\b/.test(t)) return 'bits';
+    if (/^(decimal|numeric)/.test(t)) return 'decimal';
+    if (/^(tinyint|smallint|mediumint|int|integer|bigint|float|double|real|year|smallserial|serial|bigserial)(?:\b|\()/.test(t)) return 'number';
+    if (/^(datetime|timestamp|time|interval)/.test(t)) return 'temporal';
+    if (t === 'date') return 'date';
+    if (/^jsonb?$/.test(t)) return 'json';
+    return /^(char|varchar|text|tinytext|mediumtext|longtext|enum|set|citext)\b/.test(t) ? 'text' : 'native';
   }
-  if (t === 'int' || t === 'double' || t === 'long') return 'number';
-  if (t === 'decimal') return 'decimal';
+  if (colonnaGeometrica({ type: t })) return 'geo';
   if (t === 'date') return 'datetime';
   if (t === 'boolean') return 'bool';
   if (t === 'objectid') return 'oid';
   if (t === 'array' || t === 'object') return 'json';
-  return 'text';
+  if (t === 'bsonregexp' || t === 'regexp') return 'regex';
+  if (t === 'bsonsymbol') return 'symbol';
+  return tipiBson.some(([kind]) => kind === t) ? t : 'text';
 }
 
-// Etichetta del pulsante-geometria: dice cosa c'è dentro senza aprire la mappa.
-function etichettaGeo(btn) {
-  let geo = null;
-  try { geo = btn.value ? JSON.parse(btn.value) : null; } catch { /* testo non valido */ }
-  btn.innerHTML = isGeometry(geo)
-    ? `${ICO('map')} ${esc(geometryLabel(geo).replace(/^▦ /, ''))}`
-    : `${ICO('map')} Disegna sulla mappa…`;
-  refreshLucideIcons(btn);
-}
-
-export function insertInputFor(kind, { typeName = '', numericMeta = null } = {}) {
-  // Geometria: il "campo" è un pulsante che apre la mappa e custodisce il
-  // GeoJSON in `value` — così il resto del form (lettura, cambio tipo,
-  // rimozione riga) continua a trattarlo come un input qualsiasi.
-  if (kind === 'geo') {
-    const btn = createArcButton({ className: 'ghost geo-pick' });
-    btn.value = '';
-    btn.dataset.geoType = tipoGeoJsonDaTipoColonna(typeName) || '';
-    etichettaGeo(btn);
-    btn.addEventListener('click', () => {
-      let corrente = null;
-      try { corrente = btn.value ? JSON.parse(btn.value) : null; } catch { /* si riparte da zero */ }
-      openGeoEditor({
-        value: corrente,
-        campo: insertNomeCampo(btn),
-        tipoSuggerito: btn.dataset.geoType || null,
-        onSave: (geo) => {
-          btn.value = JSON.stringify(geo);
-          etichettaGeo(btn);
-        },
-      });
-    });
-    return btn;
-  }
-
-  if (kind === 'bool') {
-    return createArcSelect({ label: 'Valore booleano', options: ['', 'true', 'false'].map(value => ({ value, label: value === '' ? '(vuoto)' : value })) });
-  }
-  const esatto = kind === 'number' && richiedePrecisioneEsatta(numericMeta || { type: typeName });
-  const i = createArcInput({ type: kind === 'number' ? (esatto ? 'text' : 'number')
-    : kind === 'datetime' ? 'datetime-local' : kind === 'date' ? 'date' : 'text' });
-  if (kind === 'number') {
-    // BIGINT e BSON Long non stanno in un double senza perdere cifre: come
-    // l'editing inline (buildEditor in inlineEdit.js), qui la casella diventa
-    // testo, altrimenti le frecce del controllo nativo — che calcolano su
-    // `valueAsNumber`, un double — arrotonderebbero un valore oltre 2^53 al
-    // primo clic, prima ancora di inviarlo.
-    if (!esatto) i.step = 'any';
-  }
-  else if (kind === 'datetime') {
-    i.step = '0.001';
-    // L'ora si scrive e si legge in UTC, come nella griglia (CDB-15): il
-    // controllo del browser suggerisce l'ora locale, quindi va detto.
-    i.title = 'Ora UTC, come nella griglia (non l\'ora locale del computer)';
-    i.setAttribute('aria-label', 'Data e ora in UTC');
-    i.classList.add('input-utc');
-  }
-  else {
-    if (kind === 'oid') i.placeholder = '24 caratteri esadecimali';
-    if (kind === 'json') i.placeholder = 'JSON, es. {"a": 1} oppure [1, 2]';
-  }
-  i.spellcheck = false;
-  return i;
+export function insertInputFor(kind, { typeName = '', enumValues = null } = {}) {
+  if (kind === 'bool') return createArcSelect({ label: 'Valore booleano', options: [
+    { value: '', label: 'Scegli un valore' }, { value: 'true', label: 'true' }, { value: 'false', label: 'false' },
+  ] });
+  if (enumValues?.length) return createArcSelect({ label: 'Valore enumerato', options: [
+    { value: '', label: 'Scegli un valore' }, ...enumValues.map((label, i) => ({ value: String(i), label: label === '' ? '(testo vuoto)' : label })),
+  ] });
+  const [placeholder, hint] = guidaTipo(kind, typeName);
+  const integer = kind === 'number' && /^(tinyint|smallint|mediumint|int|integer|year)(?:\b|\()/i.test(typeName);
+  const multiline = ['text', 'native', 'pggeo', 'geo', 'json', 'code', 'scope', 'symbol', 'binary', 'regex', 'timestamp', 'dbpointer', 'bytes'].includes(kind);
+  const input = multiline ? createArcTextarea({ rows: 1, placeholder }) : createArcInput({ type: integer ? 'number' : 'text', placeholder });
+  if (integer) input.step = '1';
+  input.spellcheck = false;
+  input.title = hint;
+  if (kind === 'datetime' || kind === 'date' || (kind === 'temporal' && /^(?:datetime|timestamp)/i.test(typeName))) input.dataset.arcDateNative = kind === 'date' ? 'date' : 'datetime';
+  if (kind === 'geo') input.dataset.geoType = tipoGeoJsonDaTipoColonna(typeName) || '';
+  if (['undefined', 'minkey', 'maxkey'].includes(kind)) { input.readOnly = true; input.placeholder = hint; }
+  return input;
 }
 
 export function addInsertRow(opts) {
   const tr = document.createElement('tr');
   const row = {
-    tr,
-    kind: opts.kind || 'text',
-    input: null,
-    nameInput: null,
-    fixedName: opts.name || null,
-    auto: !!opts.auto,
-    required: !!opts.required,
-    numericMeta: opts.numericMeta || {},
-    // Stato FK (piano inserimento-foreign-key): la relazione collegata, il
-    // valore EJSON esatto scelto dal pannello e il flag che dice se usarlo.
-    // Finché l'utente non digita a mano, il documento usa la copia esatta —
-    // il controllo testuale non rappresenta fedelmente BIGINT oltre 2^53,
-    // ObjectId, date, null e stringa vuota.
-    fkRelazione: null,
-    fkCollegato: false,
-    fkValore: undefined,
-    haFkScelto: false,
-    saltaProssimoFocus: false,
+    tr, kind: opts.kind || 'text', input: null, nameInput: null, fixedName: opts.name ?? null,
+    auto: !!opts.auto, required: !!opts.required, numericMeta: opts.numericMeta || {},
+    dbType: opts.dbType || insertContext?.dbType || state.dbType,
+    typeName: opts.typeName || '', nullable: opts.nullable !== false, mode: 'pristine',
+    autoIncrement: !!opts.autoIncrement,
+    enumValues: opts.enumValues || null,
+    fkRelazione: null, fkCollegato: false, fkValore: undefined, haFkScelto: false, saltaProssimoFocus: false,
   };
-
   const nameTd = document.createElement('td');
+  nameTd.className = 'insert-name';
   if (opts.nameEditable) {
-    row.nameInput = createArcInput({ 'aria-label': 'Nome del campo' });
-    row.nameInput.type = 'text';
-    row.nameInput.placeholder = 'nome campo';
+    row.nameInput = createArcInput({ 'aria-label': 'Nome del campo', placeholder: 'nome campo' });
     row.nameInput.spellcheck = false;
     nameTd.appendChild(controlElement(row.nameInput));
   } else {
@@ -143,118 +85,114 @@ export function addInsertRow(opts) {
       (opts.required ? '<span class="req" title="Obbligatorio: NOT NULL senza default"> *</span>' : '');
   }
   tr.appendChild(nameTd);
-
   const typeTd = document.createElement('td');
   typeTd.className = 'insert-type';
-  if (opts.nameEditable) {
-    const kinds = [['text', 'testo'], ['number', 'numero'], ['bool', 'booleano'],
-                   ['datetime', 'data (UTC)'], ['oid', 'ObjectId'], ['json', 'JSON'],
-                   // Su MongoDB il tipo di un campo NUOVO non è deducibile da
-                   // nessuno schema: la geometria va potuta scegliere a mano.
-                   ['geo', 'geometria (mappa)']];
-    const sel = createArcSelect({ label: 'Tipo del campo', value: row.kind, options: kinds.map(([value, label]) => ({ value, label })) });
-    sel.addEventListener('change', () => {
-      row.kind = sel.value;
+  if (opts.nameEditable || !isSqlType(row.dbType)) {
+    const kinds = isSqlType(row.dbType) ? [['text', 'Testo / formato nativo'], ['json', 'JSON'], ['bytes', 'Binario'], ['bool', 'Booleano']] : tipiBson;
+    row.typeSelect = createArcSelect({ label: 'Tipo del campo', value: row.kind, options: kinds.map(([value, label]) => ({ value, label })) });
+    row.typeSelect.addEventListener('change', () => {
+      const previous = row.input.value;
+      row.kind = row.typeSelect.value;
       const fresh = insertInputFor(row.kind);
-      fresh.setAttribute('aria-label', 'Valore del campo');
+      fresh.value = previous;
+      fresh.setAttribute('aria-label', `Valore ${nomeCampoRiga(row) || 'del campo'}`);
+      fresh.setAttribute('aria-describedby', row.hint.id);
       controlElement(row.input).replaceWith(controlElement(fresh));
       row.input = fresh;
+      row.input.disabled = row.mode === 'null';
+      row.haFkScelto = false;
+      collegaValoreRiga(row);
+      row.hint.textContent = guidaTipo(row.kind)[1];
+      row.mapButton?.classList.toggle('hidden', row.kind !== 'geo');
     });
-    typeTd.appendChild(controlElement(sel));
+    typeTd.appendChild(controlElement(row.typeSelect));
   } else {
-    typeTd.innerHTML = `<span class="dim">${esc(opts.typeLabel || '')}</span>`;
+    typeTd.innerHTML = `<span class="insert-type-label">${esc(opts.typeLabel || '')}</span>`;
   }
   tr.appendChild(typeTd);
-
   const valTd = document.createElement('td');
   valTd.className = 'insert-value';
-  if (row.auto) {
-    const i = createArcInput();
-    i.type = 'text';
-    i.disabled = true;
-    i.placeholder = '(auto)';
-    row.input = i;
-  } else {
-    row.input = insertInputFor(row.kind, { typeName: opts.typeName, numericMeta: row.numericMeta });
-  }
-  if (!row.input.hasAttribute('aria-label')) row.input.setAttribute('aria-label', `Valore ${opts.name || 'del campo'}`);
+  row.input = insertInputFor(row.kind, { typeName: row.typeName, enumValues: row.enumValues });
+  row.input.disabled = row.auto;
+  if (row.auto) row.input.placeholder = 'Calcolato dal database';
+  row.input.setAttribute('aria-label', `Valore ${opts.name || 'del campo'}`);
   valTd.appendChild(controlElement(row.input));
+  if (row.kind === 'geo' || (row.kind === 'pggeo' && tipoGeoJsonDaTipoColonna(row.typeName)) || !isSqlType(row.dbType)) {
+    const map = createArcButton({ className: 'ghost insert-map', 'aria-label': `Disegna ${opts.name || 'il campo'} sulla mappa` });
+    map.innerHTML = `${ICO('map')} Mappa`;
+    map.classList.toggle('hidden', !['geo', 'pggeo'].includes(row.kind));
+    map.addEventListener('click', () => {
+      let value = null;
+      try { value = JSON.parse(row.input.value); } catch { /* il testo nativo resta nel campo */ }
+      openGeoEditor({ value, campo: nomeCampoRiga(row), tipoSuggerito: tipoGeoJsonDaTipoColonna(row.typeName), onSave: geo => {
+        row.input.value = JSON.stringify(geo);
+        row.input.dispatchEvent(new Event('input', { bubbles: true }));
+      } });
+    });
+    row.mapButton = controlElement(map);
+    valTd.appendChild(row.mapButton);
+  }
+  row.hint = document.createElement('small');
+  row.hint.className = 'insert-hint';
+  row.hint.textContent = row.auto ? 'Valore calcolato dal database.' : opts.autoIncrement ? 'Generato automaticamente; puoi anche specificare un valore.' : opts.default != null ? `Predefinito: ${opts.default}` : guidaTipo(row.kind, row.typeName)[1];
+  row.hint.id = `insert-hint-${insertAperture}-${insertRows.length}-${Date.now()}`;
+  row.input.setAttribute('aria-describedby', row.hint.id);
+  valTd.appendChild(row.hint);
   tr.appendChild(valTd);
-
-  const delTd = document.createElement('td');
-  delTd.className = 'row-actions';
+  const actions = document.createElement('td');
+  actions.className = 'row-actions';
+  row.modeSelect = createArcSelect({ label: `Stato ${opts.name || 'del campo'}`, value: 'omit', disabled: row.auto,
+    options: [{ value: 'omit', label: isSqlType(row.dbType) ? 'Predefinito' : 'Ometti' }, { value: 'value', label: 'Valore' }, ...(row.nullable ? [{ value: 'null', label: 'NULL' }] : [])] });
+  if (row.auto) updateArcSelect(row.modeSelect, { disabled: true });
+  row.modeSelect.addEventListener('change', () => {
+    row.mode = row.modeSelect.value;
+    row.haFkScelto = false;
+    row.input.disabled = row.auto || row.mode === 'null';
+    tr.dataset.mode = row.mode;
+    if (row.mapButton) row.mapButton.inert = row.mode === 'null';
+  });
+  actions.appendChild(controlElement(row.modeSelect));
   if (opts.removable) {
     const del = createArcButton({ className: 'del-btn', 'aria-label': 'Rimuovi campo' });
-    del.textContent = '✕';
-    del.title = 'Rimuovi campo';
+    del.innerHTML = ICO('x');
     del.addEventListener('click', () => {
-      tr.remove();
-      insertRows = insertRows.filter((r) => r !== row);
+      if (pannelloFkAperto(row.input)) chiudiPannelloFk();
+      tr.remove(); insertRows = insertRows.filter(r => r !== row);
     });
-    delTd.appendChild(controlElement(del));
+    actions.appendChild(controlElement(del));
   }
-  tr.appendChild(delTd);
-
+  tr.appendChild(actions);
   $('#insert-form tbody').appendChild(tr);
   insertRows.push(row);
+  collegaValoreRiga(row);
+  refreshLucideIcons(tr);
   return row;
 }
 
-// Nome del campo a cui appartiene un controllo del form: serve solo per il
-// titolo dell'editor geografico.
-function insertNomeCampo(el) {
-  const row = insertRows.find((r) => r.input === el);
-  if (!row) return '';
-  return row.nameInput ? row.nameInput.value.trim() : (row.fixedName || '');
+function collegaValoreRiga(row) {
+  const change = () => {
+    row.mode = 'value'; row.modeSelect.value = 'value'; row.tr.dataset.mode = 'value';
+    row.haFkScelto = false; row.input.removeAttribute('aria-invalid');
+    row.tr.classList.remove('insert-invalid');
+  };
+  row.input.addEventListener('input', change);
+  row.input.addEventListener('change', change);
 }
 
-export function insertRowValue(row, dbType = insertContext ? insertContext.dbType : state.dbType) {
-  // Valore scelto dal pannello FK: passa senza perdite, senza ripassare dal
-  // parser del controllo (che arrotonderebbe un BIGINT o scambierebbe un
-  // ObjectId per una stringa). Una digitazione manuale invalida la copia e
-  // torna qui sotto.
-  if (row.haFkScelto) return row.fkValore === undefined ? undefined : row.fkValore;
-  if (['date', 'datetime'].includes(row.kind) && row.input.validity && !row.input.validity.valid) {
-    throw new Error(row.input.validationMessage);
+export function insertRowValue(row, dbType = insertContext?.dbType || state.dbType) {
+  if (row.haFkScelto) return row.fkValore;
+  if (row.mode === 'null') return null;
+  if (row.mode === 'omit') return undefined;
+  const raw = String(row.input.value ?? '');
+  if ((row.mode === 'pristine' || row.mode == null) && raw === '') return undefined;
+  if (row.enumValues) {
+    if (raw === '' || !Object.hasOwn(row.enumValues, raw)) throw new Error('Scegli un valore enumerato.');
+    return row.enumValues[Number(raw)];
   }
-  const raw = row.input.value;
-  const t = String(raw == null ? '' : raw).trim();
-  if (t === '') return undefined;
-  switch (row.kind) {
-    case 'number': {
-      return decodificaNumeroEsatto(t, row.numericMeta);
-    }
-    case 'decimal':
-      return decodificaNumeroEsatto(t, { ...row.numericMeta, wrapper: '$numberDecimal' });
-    case 'bool':
-      return t === 'true';
-    case 'datetime': {
-      const d = new Date(t + 'Z');
-      if (Number.isNaN(d.getTime())) throw new Error('data non valida');
-      return { $date: d.toISOString() };
-    }
-    case 'date':
-      return t;
-    case 'oid':
-      if (!/^[0-9a-fA-F]{24}$/.test(t)) throw new Error('ObjectId non valido (24 caratteri esadecimali)');
-      return { $oid: t };
-    case 'geo': {
-      let geo;
-      try { geo = JSON.parse(t); } catch { throw new Error('geometria non valida (JSON illeggibile)'); }
-      if (!isGeometry(geo)) throw new Error('geometria non valida: serve un GeoJSON { type, coordinates }');
-      return geo;
-    }
-    case 'json':
-      // Il motivo del parser va riportato: su un JSON scritto a mano "non
-      // valido" da solo non dice dove guardare, mentre il messaggio nativo
-      // indica la posizione del carattere che ha fatto fallire la lettura.
-      try { return JSON.parse(t); } catch (e) { throw new Error(`JSON non valido: ${e.message}`); }
-    default:
-      return raw;
-  }
+  return valoreInserimento(raw, row.kind, { ...row.numericMeta, dbType: row.dbType || dbType }, isSqlType(row.dbType || dbType));
 }
 
-export function buildInsertDoc() {
+export function buildInsertDoc({ validateRequired = true } = {}) {
   const doc = Object.create(null);
   for (const row of insertRows) {
     if (row.auto) continue;
@@ -267,10 +205,13 @@ export function buildInsertDoc() {
     try {
       value = insertRowValue(row);
     } catch (err) {
+      row.input.setAttribute('aria-invalid', 'true');
+      row.tr.classList.add('insert-invalid');
+      row.input.focus();
       throw new Error(`Campo "${name}": ${err.message}`);
     }
     if (value === undefined) {
-      if (row.required) throw new Error(`Il campo "${name}" è obbligatorio (NOT NULL senza default).`);
+      if (row.required && validateRequired) { row.input.setAttribute('aria-invalid', 'true'); row.input.focus(); throw new Error(`Il campo "${name}" è obbligatorio (NOT NULL senza default).`); }
       continue;
     }
     if (Object.hasOwn(doc, name)) throw new Error(`Campo duplicato: "${name}".`);
@@ -279,20 +220,46 @@ export function buildInsertDoc() {
   return doc;
 }
 
-export function selectInsertTab(name) {
+export function selectInsertTab(name, sync = true) {
+  try {
+    const formVisible = !$('#insert-tab-form').classList.contains('hidden');
+    if (sync && name === 'json' && formVisible) {
+      $('#insert-json').value = JSON.stringify(buildInsertDoc({ validateRequired: false }), null, 2);
+      insertJsonTouched = false;
+    }
+    if (sync && name === 'form' && !formVisible && insertJsonTouched) {
+      const fields = campiJson($('#insert-json').value);
+      const sql = isSqlType(insertContext?.dbType);
+      const assignments = [...fields].map(([field, raw]) => {
+        let row = rigaPerCampo(field);
+        if (row?.auto) throw new Error(`Il campo "${field}" è calcolato: omettilo dal JSON.`);
+        const value = sql && row?.kind === 'json' && raw !== 'null' ? (raw[0] === '"' ? JSON.parse(raw) : raw)
+          : sql && /^-?\d/.test(raw) ? raw : leggiJsonEsatto(raw);
+        return { field, row, value };
+      });
+      for (const row of insertRows) { row.mode = 'omit'; row.modeSelect.value = 'omit'; row.haFkScelto = false; row.input.value = ''; row.input.disabled = row.auto; }
+      for (const item of assignments) {
+        if (!item.row) {
+          item.row = addInsertRow({ name: item.field, nameEditable: true, removable: true, kind: typeof item.value === 'object' ? 'json' : 'text' });
+          item.row.nameInput.value = item.field;
+        }
+        impostaValoreFk(item.row, item.value);
+      }
+      insertJsonTouched = false;
+    }
+  } catch (err) {
+    showError('#insert-error', err.message);
+    return false;
+  }
   if (name === 'json') {
     // Il pannello appartiene a un campo del modulo: sulla scheda JSON sarebbe
     // orfano sopra un editor libero. La bozza resta, il pannello no.
     if (pannelloApertoDaInsert()) chiudiPannelloFk();
-    if (!insertJsonTouched && !$('#insert-tab-form').classList.contains('hidden')) {
-      try {
-        $('#insert-json').value = JSON.stringify(buildInsertDoc(), null, 2);
-      } catch { /* ignore */ }
-    }
   }
   document.querySelectorAll('[data-instab]').forEach((t) => t.classList.toggle('active', t.dataset.instab === name));
   $('#insert-tab-form').classList.toggle('hidden', name !== 'form');
   $('#insert-tab-json').classList.toggle('hidden', name !== 'json');
+  return true;
 }
 
 /* ---------------- Chiavi esterne nel form di inserimento ----------------
@@ -335,12 +302,21 @@ function testoPerControllo(row, v) {
   if (typeof v === 'string') return v;
   if (typeof v === 'number' || typeof v === 'boolean') return String(v);
   if (typeof v === 'object') {
+    const inner = { binary: '$binary', regex: '$regularExpression', timestamp: '$timestamp', dbpointer: '$dbPointer' }[row.kind];
+    if (inner && Object.hasOwn(v, inner)) return JSON.stringify(v[inner]);
+    if (row.kind === 'code' && typeof v.$code === 'string') return v.$code;
+    if (row.kind === 'symbol' && typeof v.$symbol === 'string') return v.$symbol;
+    if (row.kind === 'uuid' && v.$uuid) return v.$uuid;
+    if (row.kind === 'bytes' && v.$binary) return [...atob(v.$binary.base64)].map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('');
+    if (row.kind === 'bits' && row.dbType === 'mysql') return BigInt(testoNumeroEsatto(v)).toString(2);
     if (typeof v.$oid === 'string') return v.$oid;
     if (v.$numberLong !== undefined || v.$numberDecimal !== undefined
       || v.$numberInt !== undefined || v.$numberDouble !== undefined) {
       return testoNumeroEsatto(v);
     }
     if (v.$date !== undefined) {
+      if (v.$date && typeof v.$date === 'object' && v.$date.$numberLong !== undefined) return String(v.$date.$numberLong);
+      if (typeof v.$date === 'string') return v.$date;
       const grezzo = (v.$date && typeof v.$date === 'object' && v.$date.$numberLong !== undefined)
         ? Number(v.$date.$numberLong) : v.$date;
       const d = new Date(grezzo);
@@ -358,8 +334,12 @@ function testoPerControllo(row, v) {
 function impostaValoreFk(row, valore) {
   row.fkValore = valore;
   row.haFkScelto = true;
+  row.mode = valore === null ? 'null' : 'value';
+  row.modeSelect.value = row.mode;
+  row.tr.dataset.mode = row.mode;
+  row.input.disabled = valore === null;
   try {
-    row.input.value = testoPerControllo(row, valore);
+    row.input.value = row.enumValues ? String(row.enumValues.indexOf(valore)) : row.kind === 'json' && !isSqlType(row.dbType) ? JSON.stringify(valore) : testoPerControllo(row, valore);
   } catch { /* il payload resta esatto anche se la vista è vuota */ }
 }
 
@@ -412,7 +392,7 @@ function apriPannelloPerRiga(row, apertura) {
       const obiettivi = [];
       for (const [campo, valore] of Object.entries(assegnazione)) {
         const destino = rigaPerCampo(campo);
-        if (!destino || destino.auto || !document.contains(destino.input) || destino.input.disabled) {
+        if (!destino || destino.auto || !document.contains(destino.input) || (destino.input.disabled && destino.mode !== 'null')) {
           toast(`Campo "${campo}" non disponibile: nessuna colonna è stata modificata.`, true);
           return;
         }
@@ -563,7 +543,9 @@ export function openInsertDocForContext(ctx = null) {
   const isSql = isSqlType(dbType);
 
   const target = `${tabs.list.find(t => t.id === tabId)?.label || 'Connessione'} / ${db} / ${coll}`;
-  $('#insert-title').textContent = `${isSql ? 'Nuova riga' : 'Nuovo documento'} · ${target}`;
+  $('#insert-title').textContent = isSql ? 'Nuova riga' : 'Nuovo documento';
+  $('#insert-target').textContent = target;
+  $('#insert-description').textContent = isSql ? 'Dai forma ai tuoi dati. I campi omessi usano il valore predefinito del database.' : 'Dai forma ai tuoi dati. Scegli il tipo BSON per ogni campo, anche per quelli nuovi.';
   proteggiModifiche('#insert-overlay', tabId, target);
   $('#insert-json').value = '{\n  \n}';
   // La barra del linting appartiene al documento precedente: si riparte muti.
@@ -577,7 +559,9 @@ export function openInsertDocForContext(ctx = null) {
   $('#insert-error').classList.add('hidden');
   insertRelazioni = null;
   nascondiErroreFk();
-  selectInsertTab('form');
+  selectInsertTab('form', false);
+  $('#insert-schema-state').textContent = 'Lettura dei campi…';
+  $('#insert-save').disabled = true;
   openModal('#insert-overlay');
 
   // Le relazioni viaggiano in parallelo alle colonne: il form resta disponibile
@@ -586,26 +570,34 @@ export function openInsertDocForContext(ctx = null) {
   caricaRelazioniInsert(apertura, { tabId, dbType, db, coll });
 
   emit('collection:stats', { tabId, db, coll }).then((res) => {
-    if (apertura !== insertAperture) return; // modale riaperta nel frattempo (CDB-14)
+    if (!overlayInsertAperta(apertura)) return;
     for (const f of (res.fields || [])) {
-      if (f.name === '_id' && !isSql) continue;
       const mainType = (f.types || []).find((t) => t !== 'null') || 'null';
       addInsertRow({
         name: f.name,
         typeLabel: (f.types || []).join(', '),
-        kind: insertKindOf(mainType, dbType),
+        kind: insertKindOf(f.baseType || mainType, dbType),
         typeName: mainType,
-        numericMeta: { type: mainType },
-        auto: !!f.autoIncrement || !!f.generated,
+        numericMeta: { type: f.baseType || mainType },
+        auto: !!f.generated,
+        autoIncrement: !!f.autoIncrement || (f.name === '_id' && !isSql),
+        default: f.default,
+        enumValues: f.enumValues,
+        nullable: !isSql || f.nullable,
+        dbType,
         required: isSql && !f.nullable && f.default == null && !f.autoIncrement && !f.generated,
       });
     }
     if (!insertRows.length) $('#insert-form-empty').classList.remove('hidden');
+    $('#insert-schema-state').textContent = `${insertRows.length} ${insertRows.length === 1 ? 'campo disponibile' : 'campi disponibili'}`;
+    $('#insert-save').disabled = false;
     collegaFkAlForm(apertura);
-    const first = insertRows.find((r) => !r.auto);
-    if (first) first.input.focus();
+    const first = insertRows.find((r) => !r.auto && !r.autoIncrement) || insertRows.find(r => !r.auto);
+    if (first && !$('#insert-tab-form').classList.contains('hidden')) first.input.focus();
   }).catch((err) => {
-    if (apertura !== insertAperture) return;
+    if (!overlayInsertAperta(apertura)) return;
+    $('#insert-schema-state').textContent = 'Schema non disponibile · compilazione manuale';
+    $('#insert-save').disabled = false;
     // Lo schema non è arrivato (CDB-13). Prima qui c'era solo un toast: la
     // modale restava aperta e VUOTA e, su SQL, senza nemmeno il pulsante
     // "aggiungi campo" — quindi inserire una riga diventava impossibile, con la
@@ -684,9 +676,15 @@ export function initInsert() {
         return;
       }
       docText = $('#insert-json').value;
+      try {
+        const parsed = JSON.parse(docText);
+        if (!parsed || typeof parsed !== 'object' || (isSqlType(insertContext?.dbType) && Array.isArray(parsed))) throw new Error('Serve un oggetto JSON con i nomi dei campi.');
+        if (!Array.isArray(parsed)) campiJson(docText);
+      } catch (err) { showError('#insert-error', `JSON non valido: ${err.message}`); return; }
     }
     // Bersaglio congelato all'apertura della modale, mai riletto da `state`.
     const ctx = insertContext;
+    const apertura = insertAperture;
     const { tabId, db, coll, dbType } = ctx || {};
 
     // Un inserimento premuto due volte sono due documenti: qui lo stato di
@@ -697,7 +695,7 @@ export function initInsert() {
       coll,
       doc: docText,
     }), 'Inserisco…').then(() => {
-      closeModal('#insert-overlay', { saved: true });
+      if (apertura === insertAperture) closeModal('#insert-overlay', { saved: true });
       toast(isSqlType(dbType) ? 'Riga inserita' : 'Documento inserito');
       if (ctx && ctx.onSaveSuccess) {
         ctx.onSaveSuccess();
@@ -709,6 +707,7 @@ export function initInsert() {
         marcaDatiSporchi(ctx, db, coll);
       }
     }).catch((err) => {
+      if (apertura !== insertAperture) { toast(err.message, true); return; }
       const errorEl = $('#insert-error');
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');

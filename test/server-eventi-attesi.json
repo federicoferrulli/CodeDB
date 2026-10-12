@@ -200,6 +200,10 @@
     "famiglia": "operazioneLunga"
   },
   {
+    "evento": "database:import:upload:cancel",
+    "famiglia": "delegate"
+  },
+  {
     "evento": "database:import:upload:chunk",
     "famiglia": "delegate"
   },

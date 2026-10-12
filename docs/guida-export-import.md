@@ -3,9 +3,11 @@
 ## Export dalla sidebar
 
 «Esporta database…» permette di scegliere **Script SQL (.sql)** su MySQL e
-PostgreSQL, oppure **CodeDB EJSON (.codedb.json)** sui tre motori. La scelta di
+PostgreSQL, oppure **CodeDB (.codedb.json)** sui tre motori. La scelta di
 struttura, dati e oggetti si applica al file effettivo. SQL non rappresenta i
-documenti e gli indici MongoDB: per MongoDB resta disponibile EJSON.
+documenti e gli indici MongoDB: il formato CodeDB contiene BSON grezzo in base64,
+che conserva anche tag storici, date estreme e sottotipi binari. Il menu della
+tabella offre «Esporta CodeDB · tipi completi…» con la tabella già selezionata.
 
 Il server conserva il piano confermato, produce il file a blocchi su disco,
 verifica i conteggi e il checksum e solo allora offre il download HTTP.
@@ -29,12 +31,60 @@ tabelle transazionali; le DDL MySQL non sono annullabili come un'unica transazio
 Le viste materializzate PostgreSQL vengono definite senza dati e popolate dopo
 il caricamento delle tabelle, nell'ordine delle dipendenze. Le routine possono
 quindi riferire le viste già durante la propria creazione.
-La finestra «Importa database» continua a leggere il formato CodeDB e offre
-staging e recupero; eseguire uno script con il client SQL non usa quel percorso.
+La finestra «Importa database» legge sia CodeDB EJSON sia dump SQL testuali
+del motore della connessione. Entrambi passano da anteprima, conferma del piano,
+staging, verifica e recupero. Eseguire uno script con il client SQL esterno
+non usa questo percorso protetto.
+
+## Import dalla sidebar
+
+| Connessione | File |
+|---|---|
+| MongoDB | `.codedb.json`, BSON completo; compatibile con gli artefatti EJSON storici |
+| MySQL | `.codedb.json` o `.sql` di CodeDB, mysqldump e INSERT multipli nello stile phpMyAdmin |
+| PostgreSQL | `.codedb.json` o `.sql` di CodeDB e pg_dump in formato plain, con INSERT o COPY testuale |
+
+Il file deve essere UTF-8 e contenere un solo database/schema dello stesso
+motore della connessione. Non si tratta di una conversione tra DBMS.
+Per MySQL usare `--hex-blob --default-character-set=utf8mb4` nel dump:
+i byte binari non devono essere interpretati come testo. Per PostgreSQL usare
+`pg_dump --format=plain --schema=<schema> --no-owner --no-privileges`.
+Per MongoDB il JSON generico di una collection si importa dalla griglia;
+il comando «Importa database» richiede l'involucro CodeDB con struttura e indici.
+
+Il parser riconosce i valori senza convertirli in numeri JavaScript, conserva
+NULL, stringhe vuote, binari, geometrie, precisione decimale e microsecondi.
+Supporta DELIMITER, commenti eseguibili di mysqldump, COPY con escape e
+sequenze PostgreSQL con nome, proprietà, incremento e stato `is_called`.
+Le regole di escape seguono il dialetto: [stringhe MySQL](https://dev.mysql.com/doc/refman/8.0/en/string-literals.html)
+e [COPY PostgreSQL](https://www.postgresql.org/docs/17/sql-copy.html).
+Gli ID MySQL pari a zero e i TIMESTAMP sopravvivono anche al passaggio di
+backup/ripristino usato dalla promozione. Un fuso esplicito nel dump MySQL viene
+applicato durante il caricamento; i nuovi export CodeDB usano UTC.
+
+Proprietari, privilegi e commenti SQL non vengono trasferiti: l'interfaccia
+lo segnala prima della conferma. Comandi non riconosciuti, espressioni SQL
+arbitrarie nei valori, dump binari/compressi e COPY da filesystem o programmi
+non vengono eseguiti. Un errore di parsing interrompe la validazione prima di
+scrivere nei database. Per INSERT senza elenco colonne serve la CREATE TABLE
+nel file. Una singola istruzione o riga SQL può occupare al massimo 32 MiB.
+
+Il browser legge a blocchi, controlla UTF-8 e libera gli upload abbandonati.
+I batch SQL rispettano un budget di circa 1 MiB e il limite dei parametri;
+la validazione e l'impronta non duplicano più ripetutamente tutto l'artefatto.
+Colonne sconosciute, conversioni MySQL segnalate dal server e conflitti su
+identità diverse non vengono ignorati. Le colonne generate vengono ricalcolate
+dal DBMS. Un import incompleto non viene promosso come riuscito.
+
+La sostituzione dello schema PostgreSQL è atomica; MySQL e MongoDB usano
+staging e copia di recupero verificata. Per questi ultimi non c'è uno swap
+atomico: evitare scritture concorrenti sulla destinazione durante la promozione.
 
 MySQL/InnoDB e PostgreSQL usano una sola transazione repeatable-read per export.
-MongoDB e le tabelle MySQL non transazionali non hanno questa garanzia: per
-ottenere un file coerente occorre sospendere le scritture. Un conteggio uguale
+MongoDB usa una sessione snapshot comune alle collection su replica set e
+cluster sharded compatibili (MongoDB 5+); mantenere stabile la struttura.
+Su MongoDB standalone e tabelle MySQL non transazionali occorre sospendere
+le scritture per ottenere un file coerente. Un conteggio uguale
 non dimostra che i valori non siano cambiati, e l'anteprima lo dichiara.
 
 Il formato JSON condivide il limite configurato dell'import (64 MiB di default,
@@ -42,8 +92,10 @@ Il formato JSON condivide il limite configurato dell'import (64 MiB di default,
 mostrato prima della conferma e superarlo non produce un file dichiarato valido
 ma non reimportabile. SQL usa la quota disco degli artefatti
 (`CODEDB_ARTEFATTI_MAX_BYTES`, 10 GiB di default). Per file JSON più grandi occorre
-dimensionare e aumentare il limite di import; l'import mantiene i documenti in
-memoria durante validazione e staging.
+dimensionare e aumentare il limite di import. Anche l'import SQL dall'app è
+soggetto a questo limite: il browser legge in streaming, ma il server mantiene
+i documenti validati in memoria durante anteprima e staging. Gli export SQL
+più grandi restano eseguibili con il client nativo del DBMS.
 
 Scrittura dei blocchi e lettura per il checksum usano I/O asincrono; il checksum
 viene aggiornato a blocchi, lasciando avanzare l'event loop fra le letture.
@@ -54,7 +106,13 @@ Verifica dedicata: `test/unit-database-export.js`,
 `EXPORT_MYSQL_PORT`, `EXPORT_PG_PORT`, `EXPORT_MONGO_PORT` di server di prova;
 crea e rimuove soltanto database con nomi casuali. Se si indicano
 `EXPORT_MYSQL_CONTAINER` e `EXPORT_PG_CONTAINER`, il roundtrip usa direttamente
-mysql e psql nei container indicati.
+mysql e psql nei container indicati, oltre a dump prodotti da mysqldump e pg_dump.
+`test/e2e-import-volume.js` confronta tutti i valori di 12.000 righe per motore
+e verifica le sequenze nel restore PostgreSQL selettivo. Le misure sono in
+`test-reports/import-export-2026-10-12/volume.json`.
+`test/e2e-import-upload-ui.js` copre File.stream, UTF-8, limiti dei blocchi,
+annullamento e drawer mobile. Il trasporto di questo test UI è simulato;
+quello dei roundtrip sopra è reale.
 
 Le sezioni seguenti descrivono i moduli e le verifiche del piano originale.
 Il resto del piano resta nelle issue di
@@ -93,16 +151,23 @@ finisce in `<tenant>/artefatti/trasferimenti.log`, senza ticket né byte.
 ## Coerenza e diario: cosa dichiara ogni backup
 
 Il manifest riporta `coerenza`: snapshot `repeatable-read` su MySQL e
-PostgreSQL, topologia rilevata e assenza di snapshot globale su MongoDB.
+PostgreSQL; per MongoDB, topologia e disponibilità della sessione snapshot.
 Le operazioni di import scrivono un journal per tenant (`import-diario/`):
 dopo un crash, la prima lettura dichiara `intervento_richiesto` a esito
 incerto invece di presumere — mai completato presunto, mai cancellato da solo.
 
 ## Fedeltà dei tipi
 
-Scritture EJSON sempre canoniche (`db/codecFedele.js`): `Long`, `Double`,
-`Decimal128` e oltre-2^53 tornano distinti. I file relaxed storici restano
-leggibili. Tabelle PostgreSQL senza chiave: keyset su `ctid`, mai `OFFSET`.
+I nuovi export completi MongoDB usano BSON grezzo; quelli SQL conservano
+valori nativi, microsecondi, decimali, binari e geometrie senza conversioni
+del driver. I file storici restano leggibili, ma dati già persi non si ricreano.
+PostgreSQL usa un cursore DBMS nel backup anche senza chiave primaria.
+Il manifest v4 salva i Large Object referenziati in file binari separati;
+il restore li clona e aggiorna gli OID. Le librerie delle estensioni PostgreSQL
+devono già essere installate con versioni compatibili. Per MySQL, ENUM/SET
+con caratteri fuori BMP richiedono `CREATE TEMPORARY TABLES`.
+
+Copertura dei tipi, prove e prerequisiti: [matrice di fedeltà](matrice-fedelta-export-import.md).
 
 ## Variabili
 
@@ -116,8 +181,10 @@ leggibili. Tabelle PostgreSQL senza chiave: keyset su `ctid`, mai `OFFSET`.
 | `CODEDB_ARTEFATTI_SECRET` | effimero | Segreto HMAC dei ticket (riavvio li invalida) |
 | `CODEDB_PG_DUMP`, … | PATH | Percorso del binario nativo dedicato |
 
-## Non ancora (serve ambiente o browser)
+## Verifiche e misure
 
-Import selettivi completi sui DBMS, backend nativi di dump,
-wizard DOM con progresso e accessibilità, benchmark e gate E2E estesi. Vedi
-`gate-stato.md` per il dettaglio prova per prova.
+Test reali dei tipi, dump nativi, recupero, ripristino selettivo e misure
+su 100.000 record per motore: [benchmark](benchmark-export-import.md).
+Non verificati in questa sessione: UI/browser, cluster MongoDB sharded,
+tutte le versioni/estensioni dei DBMS e carichi multi-TB. L'app usa il proprio
+motore di trasferimento; non avvia automaticamente tool di dump nativi.

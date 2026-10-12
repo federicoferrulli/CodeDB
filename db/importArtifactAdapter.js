@@ -55,6 +55,17 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
   const type = dbType === 'postgres' ? 'postgresql' : dbType;
   const session = { strategy, dbType: type };
   let activeSignal = signal;
+  let schemaSqlVerificato = null;
+  let largeObjectMap = new Map();
+
+  async function inventarioSql(db) {
+    const objects = canonicalSchemaInventory(await readSchemaObjects(strategy, type, db), { db });
+    const tables = [];
+    for (const c of (await strategy.listCollections(db)).filter(c => c.type !== 'view')) {
+      tables.push([c.name, canonicalSqlForDb(await strategy.tableDdl(db, c.name), db)]);
+    }
+    return { ...objects, tables: tables.map(t => JSON.stringify(t)).sort() };
+  }
 
   async function databases() {
     return (await strategy.listDatabases()).map((db) => db.name);
@@ -104,6 +115,14 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     if (type !== 'mongodb' && !(await exists(db))) {
       await strategy.createDatabase(db);
     }
+    if (type === 'postgresql' && artifact.objects) {
+      await require('./pg-types').checkExtensions(strategy, artifact.objects.extensions);
+      const problems = [];
+      await restoreSchemaObjects({ strategy, targetDb: db, dbType: type,
+        oggetti: { collations: artifact.objects.collations, types: artifact.objects.types, typeRoutines: artifact.objects.routines, sequences: (artifact.objects.sequences || []).map(({ ownerTable, ownerColumn, ...s }) => s) },
+        dbOrigine: artifact.db, problems, log });
+      if (problems.length) throw new Error(problems.join('; '));
+    }
 
     // Prima si materializza TUTTO lo schema nello staging. Solo dopo che ogni
     // tabella e ogni identita sono compatibili puo partire la prima riga.
@@ -121,8 +140,18 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         pipeline: riqualificaDdl(collection.ddl, artifact.db, db, type),
       });
     }
+    if (type === 'postgresql') {
+      // I valori regproc/regprocedure possono riferirsi a routine dello schema.
+      // Le tabelle ora esistono, quindi si possono creare le routine prima dei dati.
+      for(const r of artifact.objects?.routines || []) {
+        try { await strategy.collectionAggregate(db,null,{pipeline:riqualificaDdl(r.ddl,artifact.db,db,type).replace(/^CREATE\s+(FUNCTION|PROCEDURE)\b/i,'CREATE OR REPLACE $1')}); }
+        catch { /* Le routine che dipendono da view si applicano dopo i dati. */ }
+      }
+      largeObjectMap = await require('./pg-references').importLargeObjects(strategy.pool, artifact.largeObjects);
+    }
     for (const collection of artifact.collections) {
       abortIf(activeSignal);
+      const references = type === 'postgresql' ? await require('./pg-references').columnReferences((s, p) => strategy.pool.query(s, p), db, collection.name) : {};
       const identity = collection.identity || (type === 'mongodb'
         ? { kind: 'mongodb-id', columns: ['_id'] }
         : null);
@@ -131,10 +160,14 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
       }
       for (let i = 0; i < collection.docs.length; i += BATCH) {
         abortIf(activeSignal);
-        const docs = collection.docs.slice(i, i + BATCH);
+        const docs = collection.docs.slice(i, i + BATCH).map(row => type === 'postgresql'
+          ? require('./pg-references').rowReferences(row, references, id => largeObjectMap.get(id) || id,
+            (value,node) => node.type==='regnamespace' && [artifact.db,quotaSempre(artifact.db,'postgresql')].includes(value) ? quotaSempre(db,'postgresql') : riqualificaDdl(value, artifact.db, db, type)) : row);
         if (!docs.length) continue;
         const result = await strategy.collectionImport(db, collection.name, {
           docs, upsert, conflictColumns: identity ? identity.columns : undefined,
+          timeZone: plan.artifact.sqlTimeZone,
+          encoding: collection.encoding,
         });
         if (!result || result.failed || result.inserted !== docs.length) {
           // `collectionImport` sa gia' PERCHE' ogni riga e' stata rifiutata:
@@ -180,7 +213,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     if (artifact.objects) {
       const problems = [];
       await restoreSchemaObjects({
-        strategy, targetDb: db, dbType: type, oggetti: artifact.objects,
+        strategy, targetDb: db, dbType: type, oggetti: { ...artifact.objects, types: [], collations: [] },
         dbOrigine: artifact.db, problems, log, allowUnsafeSchema: false,
       });
       if (problems.length) throw new Error(`Oggetti di schema incompleti: ${problems.join('; ')}`);
@@ -210,7 +243,11 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     }
     let schemaObjects = true;
     const objectMismatches = [];
-    if (type === 'mongodb') {
+    if (plan.artifact.origineFormato === 'sql' && schemaSqlVerificato) {
+      for (const difference of inventoryDifferences(schemaSqlVerificato, await inventarioSql(db))) {
+        objectMismatches.push(`${difference.field}: definizioni mancanti ${difference.missing.length}, inattese ${difference.extras.length}`);
+      }
+    } else if (type === 'mongodb') {
       for (const collection of plan.artifact.collections) {
         if (!collection.indexes || !collection.indexes.length) continue;
         // `continue` su un metodo assente significava saltare la verifica
@@ -242,7 +279,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
         if (differences.length) objectMismatches.push(`${collection.name}: indici/vincoli divergenti`);
       }
     }
-    if (plan.artifact.objects) {
+    if (plan.artifact.objects && !(plan.artifact.origineFormato === 'sql' && schemaSqlVerificato)) {
       const expectedObjects = canonicalSchemaInventory(
         retargetSchemaObjects(plan.artifact.objects, plan.sourceDb, db, type), { db }
       );
@@ -263,6 +300,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
     async validatePlan(plan) {
       if (plan.dbType !== type) throw new Error(`Piano ${plan.dbType} incompatibile con la strategia ${type}.`);
       if (!recoveryRoot) throw new Error('Radice delle copie di recupero mancante.');
+      if (type === 'postgresql') await require('./pg-types').checkExtensions(strategy, plan.artifact.objects?.extensions);
       for (const collection of plan.artifact.collections) {
         const identity = collection.identity || (type === 'mongodb'
           ? { kind: 'mongodb-id', columns: ['_id'] } : null);
@@ -310,19 +348,25 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
 
     async prepareStaging(plan, recovery, targetExists) {
       const db = nomeTecnico(plan.targetDb, 'staging', type === 'mysql' ? 64 : 63);
+      let copiedObjects = [];
       if (targetExists && !plan.drop && recovery && !recovery.empty) {
-        await runRestore({
+        const restored = await runRestore({
           session, backupDir: recovery.backupDir, targetDb: db,
           onlyCollections: null, drop: false, log, allowUnsafeSchema: false,
         });
+        copiedObjects = restored.largeObjects || [];
       } else if (type !== 'mongodb') {
         await strategy.createDatabase(db);
       }
-      return { db, retained: type !== 'postgresql' };
+      return { db, retained: true, ...(copiedObjects.length ? { largeObjects: copiedObjects } : {}) };
     },
 
     async apply(plan, staging) {
-      return applicaArtefatto(plan, staging.db, { upsert: !plan.drop && !!(await exists(plan.targetDb)) });
+      try { await applicaArtefatto(plan, staging.db, { upsert: !plan.drop && !!(await exists(plan.targetDb)) }); }
+      finally { if (largeObjectMap.size) staging.largeObjects = [...new Set([...(staging.largeObjects || []), ...largeObjectMap.values()])]; }
+      // Un dump esterno ha DDL semanticamente valida ma formattata diversamente
+      // dal catalogo. Dopo l'applicazione integrale confrontiamo la forma DBMS.
+      if (plan.artifact.origineFormato === 'sql') schemaSqlVerificato = await inventarioSql(staging.db);
     },
 
     async verify(plan, where, staging) {
@@ -345,6 +389,7 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
           await client.query(`ALTER SCHEMA ${q(staging.db)} RENAME TO ${q(plan.targetDb)}`);
           commitAttempted = true;
           await client.query('COMMIT');
+          staging.retained = false;
           if (renamedOld && recovery) recovery.physicalDb = old;
         } catch (err) {
           let rolledBack = false;
@@ -414,8 +459,12 @@ function createImportArtifactAdapter({ strategy, dbType, connName, recoveryRoot,
 
     async cleanup(result) {
       if (!result) return;
+      if (result.status === 'intervento_richiesto') throw new Error('Esito della promozione incerto: verificare la destinazione prima di eliminare staging, recupero o Large Objects.');
       if (result.staging && result.staging.retained && await exists(result.staging.db)) {
         await strategy.dropDatabase(result.staging.db);
+      }
+      if (type === 'postgresql' && result.status !== 'completato' && result.staging?.largeObjects?.length) {
+        await strategy.pool.query('SELECT lo_unlink(oid) FROM unnest($1::oid[]) AS oid', [result.staging.largeObjects]);
       }
       if (result.recovery && result.recovery.physicalDb && await exists(result.recovery.physicalDb)) {
         await strategy.dropDatabase(result.recovery.physicalDb);

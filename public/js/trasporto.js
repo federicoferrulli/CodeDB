@@ -88,6 +88,10 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
       if (settled) return;
       settled = true;
       cleanup();
+      if (tab && /^(doc:(insert|delete)|collection:import)$/.test(event) && typeof window !== 'undefined') {
+        const target = window.frameElement?.codedbPanel ? window.parent : window;
+        target.dispatchEvent(new target.CustomEvent('codedb:conteggi-sporchi', { detail: { tabId: tab.id, db: payload?.db } }));
+      }
       resolve(value);
     };
     const rejectOnce = (error) => {

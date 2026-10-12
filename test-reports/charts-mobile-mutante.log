@@ -1,0 +1,9 @@
+AssertionError [ERR_ASSERTION]: Selettori visibili e toccabili: {"width":366,"overflow":179,"fields":[{"x":12,"right":99.25,"width":87.25,"height":44},{"x":107.25,"right":269.734375,"width":162.484375,"height":44},{"x":277.734375,"right":448.78125,"width":171.046875,"height":44},{"x":456.78125,"right":557.390625,"width":100.609375,"height":44}]}
+    at C:\repository\CodeDB\test\e2e-charts-mobile.js:53:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

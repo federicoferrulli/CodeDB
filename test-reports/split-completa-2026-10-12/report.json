@@ -1,0 +1,12 @@
+{
+  "checks": [
+    "Dati completi e bersagli isolati fra connessione MongoDB e PostgreSQL",
+    "Ricerca e paginazione indipendenti con gli stessi comandi della scheda singola",
+    "Modifica inline sulla sessione corretta e protezione durante il salvataggio",
+    "Inserimento, Dettagli, query concorrenti, risposte invertite e annullamento isolati",
+    "Layout, espansione e cambio vista conservano bozze, filtri e pagina; snapshot aggiornato",
+    "Aggiornamento live instradato al solo pannello interessato",
+    "Su mobile resta la scheda singola; tornare allo split conserva i pannelli"
+  ],
+  "errors": []
+}

@@ -3,7 +3,7 @@ import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi } from './utils.js';
+import { $, emit, toast, openModal, closeModal, showError, esc, isSqlType, captureContext, iniziaCaricamento, marcaDatiSporchi, scaricaFile } from './utils.js';
 import { collWord, refreshDbTree } from './dbtree.js';
 import { tabs } from './tabs.js';
 import { socket } from './socket.js';
@@ -101,18 +101,6 @@ function blocchiDiImport(docs) {
  * Export
  * ------------------------------------------------------------------------- */
 
-function downloadBlob(text, filename, mime) {
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 // format: 'json' (MongoDB), 'csv' o 'sql' (MySQL).
 export async function exportCollection(db, coll, format, { csvMode = 'sicura' } = {}) {
   const lines = [];
@@ -167,8 +155,9 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
     ext = 'json';
     mime = 'application/json;charset=utf-8';
   }
-  downloadBlob(text, `${db}.${coll}.${ext}`, mime);
-  toast(`Esportati ${lines.length} ${isSqlType(dbType) ? 'righe' : 'documenti'} da "${coll}"`);
+  if (await scaricaFile(new Blob([text], { type: mime }), `${db}.${coll}.${ext}`)) {
+    toast(`Download avviato: ${lines.length} ${isSqlType(dbType) ? 'righe' : 'documenti'} da "${coll}"`);
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -177,6 +166,15 @@ export async function exportCollection(db, coll, format, { csvMode = 'sicura' } 
 
 let importTarget = null; // { db, coll, ctx } — ctx congela il tab di destinazione (vedi openImportModal)
 let importing = false;
+let importReader = null;
+
+function annullaLetturaImport() {
+  const reader = importReader;
+  importReader = null;
+  reader?.abort();
+  $('#import-text').disabled = false;
+  $('#import-run').disabled = false;
+}
 
 // Prepara i batch a partire dal testo incollato/caricato, secondo il dbType.
 function buildDocs(text, dbType = state.dbType) {
@@ -213,6 +211,7 @@ export function openImportModal(db, coll) {
     toast('Attendi il completamento dell’import già in corso.', true);
     return;
   }
+  annullaLetturaImport();
   // Il contesto (tab + coll-tab) va congelato all'apertura: l'import dura minuti
   // e la modale non blocca l'app, quindi l'utente può cambiare tab mentre i
   // blocchi partono. Senza un tabId esplicito, emit() userebbe il tab ATTIVO al
@@ -242,7 +241,7 @@ export function openImportModal(db, coll) {
 }
 
 async function runImport() {
-  if (importing || !importTarget) return;
+  if (importing || importReader || !importTarget) return;
   showError('#import-error', '');
   $('#import-report').classList.add('hidden');
 
@@ -350,15 +349,40 @@ async function runImport() {
 
 export function initExportImport() {
   $('#import-cancel').addEventListener('click', () => {
-    if (!importing) closeModal('#import-overlay');
+    if (!importing) { annullaLetturaImport(); closeModal('#import-overlay'); }
+  });
+  $('#import-overlay').addEventListener('codedb:dialog-closed', () => {
+    if (!importing) annullaLetturaImport();
   });
   $('#import-run').addEventListener('click', runImport);
   $('#import-file').addEventListener('change', (e) => {
+    if (importing) return;
     const file = e.target.files && e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => { $('#import-text').value = String(reader.result || ''); };
-    reader.onerror = () => showError('#import-error', 'Impossibile leggere il file selezionato.');
+    annullaLetturaImport();
+    // Una scelta nuova invalida il testo precedente, anche se il provider fallisce.
+    $('#import-text').value = '';
+    $('#import-text').disabled = true;
+    $('#import-run').disabled = true;
+    $('#import-report').classList.add('hidden');
+    $('#import-progress').classList.add('hidden');
+    showError('#import-error', '');
+    const reader = importReader = new FileReader();
+    reader.onload = () => {
+      if (importReader !== reader) return;
+      $('#import-text').value = String(reader.result || '');
+    };
+    reader.onerror = () => {
+      if (importReader !== reader) return;
+      e.target.value = '';
+      showError('#import-error', 'Impossibile leggere il file selezionato. Sceglilo di nuovo oppure incolla il contenuto.');
+    };
+    reader.onloadend = () => {
+      if (importReader !== reader) return;
+      importReader = null;
+      $('#import-text').disabled = false;
+      $('#import-run').disabled = false;
+    };
     reader.readAsText(file);
   });
 
@@ -421,6 +445,8 @@ export function initExportImport() {
   // --- Import di interi database ---------------------------------------------
   $('#dbimport-cancel').addEventListener('click', () => {
     if (!dbImporting) {
+      dbImportFileVersion++;
+      discardDbImportUpload();
       dbImportContext = null;
       dbImportAperture++;
       closeModal('#dbimport-overlay');
@@ -447,58 +473,68 @@ export function initExportImport() {
       showError('#dbimport-error', err.message);
     } finally { fine(); }
   });
-  $('#dbimport-file').addEventListener('change', (e) => {
+  $('#dbimport-file').addEventListener('change', async (e) => {
+    if (dbImporting) return;
     const ctx = dbImportContext;
     const apertura = dbImportAperture;
-    dbImportData = null;
-    dbImportUploadId = null;
-    showError('#dbimport-error', '');
+    const version = ++dbImportFileVersion;
     const file = e.target.files && e.target.files[0];
+    await discardDbImportUpload();
+    if (version !== dbImportFileVersion || ctx !== dbImportContext) return;
+    dbImportData = null;
+    $('#dbimport-file-notes').textContent = '';
+    $('#dbimport-progress').classList.add('hidden');
+    showError('#dbimport-error', '');
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      if (!ctx || ctx !== dbImportContext || apertura !== dbImportAperture) return;
-      try {
-        // Il file attraversa il limite Socket.IO in blocchi privi di effetti.
-        // Soltanto dopo l'ultimo blocco il server lo ricompone e lo valida; le
-        // mutazioni restano nell'unica operazione lunga avviata piu sotto.
-        const raw = String(reader.result || '');
-        const opened = await emit('database:import:upload:start', { tabId: ctx.tabId });
-        dbImportUploadId = opened.uploadId;
-        const chunkChars = 400000; // <= 1,6 MB anche con caratteri UTF-8 a quattro byte
-        let index = 0;
-        for (let offset = 0; offset < raw.length; offset += chunkChars) {
-          await emit('database:import:upload:chunk', {
-            tabId: ctx.tabId, uploadId: dbImportUploadId, index,
-            chunk: raw.slice(offset, offset + chunkChars),
-          });
-          index++;
-          setDbImportProgress(
-            (offset / Math.max(1, raw.length)) * 100,
-            'Caricamento e validazione del file...',
-          );
+    const current = () => ctx && ctx === dbImportContext && apertura === dbImportAperture && version === dbImportFileVersion;
+    let uploadId = null;
+    let reader;
+    $('#dbimport-run').disabled = true;
+    try {
+      const opened = await emit('database:import:upload:start', {
+        tabId: ctx.tabId, format: /\.sql$/i.test(file.name) ? 'sql' : 'codedb-json',
+      });
+      uploadId = opened.uploadId;
+      if (file.size > opened.maxBytes) throw new Error(`Il file supera il limite di ${Math.floor(opened.maxBytes / 1024 / 1024)} MB configurato sul server.`);
+      // Lo stream decodifica UTF-8 anche quando un carattere attraversa due
+      // blocchi. Il browser non tiene mai una copia testuale dell'intero file.
+      reader = file.stream().getReader();
+      const decoder = new TextDecoder('utf-8', { fatal: true });
+      let index = 0, bytes = 0;
+      while (current()) {
+        const { value, done } = await reader.read();
+        const blockSize = Math.max(1, Math.floor(opened.maxChunkBytes / 2));
+        for (let offset = 0; offset < (value?.byteLength || (done ? 1 : 0)); offset += blockSize) {
+          let chunk;
+          try { chunk = decoder.decode(value?.subarray(offset, offset + blockSize), { stream: !done }); }
+          catch { throw new Error('Il file non è UTF-8 valido. Esportalo in UTF-8 e usa valori esadecimali per i campi binari.'); }
+          if (chunk) await emit('database:import:upload:chunk', { tabId: ctx.tabId, uploadId, index: index++, chunk });
         }
-        const validato = await emit('database:import:upload:finish', {
-          tabId: ctx.tabId, uploadId: dbImportUploadId,
-        });
-        if (ctx !== dbImportContext || apertura !== dbImportAperture) return;
-        dbImportData = validato.artifact;
-        if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
-        const docs = dbImportData.collections.reduce((s, c) => s + c.rows, 0);
-        const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
-        $('#dbimport-subtitle').textContent =
-          `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
-          `${dbImportData.collections.length} ${entita}, ${docs} ${isSqlType(dbImportData.dbType) ? 'righe' : 'documenti'}.`;
-      } catch (err) {
-        showError('#dbimport-error', err.message);
+        bytes += value?.byteLength || 0;
+        if (current()) setDbImportProgress(bytes / Math.max(1, file.size) * 100, done ? 'Validazione del file…' : 'Caricamento del file…');
+        if (done) break;
       }
-    };
-    reader.onerror = () => {
-      if (ctx === dbImportContext && apertura === dbImportAperture) {
-        showError('#dbimport-error', 'Impossibile leggere il file selezionato.');
-      }
-    };
-    reader.readAsText(file);
+      if (!current()) return;
+      const validato = await emit('database:import:upload:finish', { tabId: ctx.tabId, uploadId });
+      if (!current()) return;
+      dbImportUploadId = uploadId;
+      uploadId = null;
+      dbImportData = validato.artifact;
+      if (!$('#dbimport-target').value.trim()) $('#dbimport-target').value = dbImportData.db || '';
+      const docs = dbImportData.collections.reduce((s, c) => s + c.rows, 0);
+      const entita = isSqlType(ctx.dbType) ? 'tabelle' : 'collection';
+      $('#dbimport-subtitle').textContent =
+        `File "${file.name}": database "${dbImportData.db}" (${dbImportData.dbType}), ` +
+        `${dbImportData.collections.length} ${entita}, ${docs} ${isSqlType(dbImportData.dbType) ? 'righe' : 'documenti'}.`;
+      $('#dbimport-file-notes').textContent = (dbImportData.avvisi || []).join(' ');
+      setDbImportProgress(100, 'File validato. Controlla la destinazione e continua con l’anteprima.');
+    } catch (err) {
+      if (current()) showError('#dbimport-error', err.message);
+    } finally {
+      await reader?.cancel().catch(() => {});
+      if (uploadId) await emit('database:import:upload:cancel', { tabId: ctx.tabId, uploadId }).catch(() => {});
+      if (current()) $('#dbimport-run').disabled = false;
+    }
   });
 }
 
@@ -615,7 +651,7 @@ async function pianoExportCorrente() {
  * subito, ma non è più l'unico: viveva SOLO nel browser, quindi chiunque
  * parlasse direttamente col socket poteva chiedere `mysql` o `pg_catalog`.
  */
-export async function exportDatabase(db) {
+export async function exportDatabase(db, selectedCollection = null) {
   if (exportWizard?.inCorso) { toast('Un export è già in corso.', true); return; }
   const origin = captureContext();
   const { tabId } = origin;
@@ -650,11 +686,19 @@ export async function exportDatabase(db) {
     ? `Motore: nativo (${risposta.motore.nativo.tool}).`
     : `Motore: incorporato. ${(risposta.motore && risposta.motore.motivo) || ''}`;
   $('#dbexport-formato').innerHTML = isSqlType(dbType)
-    ? '<option value="sql">Script SQL (.sql)</option><option value="codedb-json">CodeDB EJSON (.codedb.json)</option>'
-    : '<option value="codedb-json">CodeDB EJSON (.codedb.json)</option>';
+    ? '<option value="sql">Script SQL (.sql)</option><option value="codedb-json">CodeDB · tipi completi (.codedb.json)</option>'
+    : '<option value="codedb-json">CodeDB · BSON completo (.codedb.json)</option>';
   $('#dbexport-cerca').value = '';
   showError('#dbexport-error', '');
   applicaModalitaExport('struttura-e-dati');
+  if (selectedCollection) {
+    const id = `${isSqlType(dbType) ? 'tabella' : 'collection'}:${selectedCollection}`;
+    exportWizard.sel.deselezionaTutto();
+    exportWizard.sel.imposta(id, 'struttura', true);
+    exportWizard.sel.imposta(id, 'dati', true);
+    $('#dbexport-formato').value = 'codedb-json';
+    applicaModalitaExport('personalizzata');
+  }
   openModal('#dbexport-overlay');
 }
 
@@ -670,12 +714,7 @@ async function eseguiExportDatabase(plan, wizard) {
       if (operation.status === 'fallito') throw new Error(operation.error);
       toast(`Esportazione di "${db}"… ${operation.collection || ''}: ${operation.rows} righe/documenti`);
     } while (operation.status === 'in_corso');
-    const link = document.createElement('a');
-    link.href = operation.url;
-    link.download = operation.filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    if (!await scaricaFile(operation.url, operation.filename)) return;
     toast(`Export verificato: ${operation.collections} tabelle/collection, ${operation.rows} righe/documenti. Download avviato.`);
   } catch (err) {
     toast(`Esportazione fallita: ${err.message}`, true);
@@ -690,6 +729,13 @@ let dbImporting = false;
 let dbImportContext = null;
 let dbImportAperture = 0;
 let dbImportOperationId = null;
+let dbImportFileVersion = 0;
+
+async function discardDbImportUpload() {
+  const uploadId = dbImportUploadId, tabId = dbImportContext?.tabId;
+  dbImportUploadId = null;
+  if (uploadId && tabId) await emit('database:import:upload:cancel', { tabId, uploadId }).catch(() => {});
+}
 
 function setDbImportProgress(pct, label) {
   $('#dbimport-progress').classList.remove('hidden');
@@ -703,10 +749,14 @@ export function openDbImportModal() {
     return;
   }
   const origin = captureContext();
+  discardDbImportUpload();
   const dbType = origin.st.dbType;
   dbImportContext = { ...origin, dbType };
   dbImportAperture++;
   dbImportData = null;
+  $('#dbimport-file-notes').textContent = '';
+  $('#dbimport-run').disabled = false;
+  $('#dbimport-file').accept = isSqlType(dbType) ? '.sql,.json,application/json,text/plain' : '.json,application/json';
   dbImportUploadId = null;
   dbImporting = false;
   $('#dbimport-subtitle').textContent = isSqlType(dbImportContext.dbType)
@@ -767,7 +817,7 @@ async function mostraMappingImport(ctx, target, plan) {
   pannello.classList.add('hidden');
   let esistenti = [];
   try {
-    esistenti = (await emit('db:collections', { tabId: ctx.tabId, db: target })).collections.map((c) => c.name);
+    esistenti = (await emit('db:collections', { tabId: ctx.tabId, db: target, includeCounts: false })).collections.map((c) => c.name);
   } catch {
     // La destinazione può non esistere ancora: è il caso normale di un import
     // in un database nuovo, e non avere nulla con cui collidere non è un guasto.
@@ -793,7 +843,7 @@ async function runDbImport() {
   showError('#dbimport-error', '');
   $('#dbimport-report').classList.add('hidden');
   if (!dbImportData) {
-    showError('#dbimport-error', 'Seleziona prima un file .codedb.json valido.');
+    showError('#dbimport-error', 'Seleziona prima un file SQL o .codedb.json valido per questa connessione.');
     return;
   }
   const ctx = dbImportContext;
@@ -812,6 +862,7 @@ async function runDbImport() {
   }
   const drop = $('#dbimport-drop').checked;
   dbImporting = true;
+  $('#dbimport-file').disabled = true;
   const fineCaricamento = iniziaCaricamento($('#dbimport-run'), 'Import…');
   try {
     // Anteprima ed esecuzione attraversano lo stesso evento. L'impronta
@@ -826,6 +877,7 @@ async function runDbImport() {
     // a metà import, quando la destinazione è già stata toccata.
     await emit('database:import:selezione', {
       tabId: ctx.tabId, uploadId: dbImportUploadId, targetDb: target,
+      politicaDefault: drop ? 'sostituisci' : 'crea-se-assente',
     });
     await mostraMappingImport(ctx, target, plan);
     // Il riepilogo sostituisce un `window.confirm` con la stringa composta a
@@ -844,6 +896,7 @@ async function runDbImport() {
     showError('#dbimport-error', err.message);
   } finally {
     dbImporting = false;
+    $('#dbimport-file').disabled = false;
     fineCaricamento();
   }
 }
@@ -905,7 +958,8 @@ export function exportImportMenuItems(db, coll) {
         { label: '⤓ Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
         { label: '⤓ Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
       ]
-    : [{ label: '⤓ Esporta JSON', action: () => exportCollection(db, coll, 'json') }];
+    : [{ label: '⤓ Esporta EJSON (interoperabilità)', action: () => exportCollection(db, coll, 'json') }];
+  items.unshift({ label: '⤓ Esporta CodeDB · tipi completi…', action: () => exportDatabase(db, coll) });
   items.push({ label: `⤒ Importa nella ${collWord()}…`, action: () => openImportModal(db, coll) });
   return items;
 }

@@ -3,6 +3,7 @@
 // Una risposta del driver persa o non confermata non prova il mancato INSERT.
 // Il marcatore impedisce anche al trasporto server di ripetere l'intero blocco.
 function assertImportOutcomeKnown(err) {
+  if (err && err.importDoNotRetry) throw err;
   const text = [err && err.name, err && err.code, err && err.message].join(' ');
   const uncertain = err && (err.importOutcomeUnknown || err.writeConcernError
     || (err.writeConcernErrors && err.writeConcernErrors.length))

@@ -135,9 +135,9 @@ check('negativo con notazione esponenziale', () => {
   eq(p.filter, { a: { $gt: -150 } });
 });
 
-check("l'alias di colonna non rinomina la proiezione del find", () => {
+check("l'alias di colonna rinomina la proiezione", () => {
   const p = translate('SELECT nome AS n FROM t');
-  eq(p.projection, { nome: 1, _id: 0 });
+  eq(p.pipeline, [{ $project: { _id: 0, n: '$nome' } }]);
 });
 
 check('ORDER BY e LIMIT/OFFSET', () => {
@@ -160,7 +160,7 @@ check('COUNT(*) senza GROUP BY', () => {
   const p = translate('SELECT COUNT(*) AS n FROM users');
   eq(p.kind, 'aggregate');
   eq(p.pipeline, [
-    { _id: null, n: { $sum: 1 } },
+    { $group: { _id: null, n: { $sum: 1 } } },
     { $project: { _id: 0, n: 1 } },
   ]);
 });
@@ -169,7 +169,7 @@ check('GROUP BY con COUNT', () => {
   const p = translate('SELECT city, COUNT(*) AS n FROM users GROUP BY city');
   eq(p.kind, 'aggregate');
   eq(p.pipeline, [
-    { _id: '$city', n: { $sum: 1 } },
+    { $group: { _id: '$city', n: { $sum: 1 } } },
     { $project: { _id: 0, city: '$_id', n: 1 } },
   ]);
 });
@@ -178,7 +178,7 @@ check('GROUP BY con WHERE, SUM e ORDER BY', () => {
   const p = translate("SELECT city, SUM(amount) AS tot FROM orders WHERE status = 'paid' GROUP BY city ORDER BY tot DESC LIMIT 5");
   eq(p.pipeline, [
     { $match: { status: 'paid' } },
-    { _id: '$city', tot: { $sum: '$amount' } },
+    { $group: { _id: '$city', tot: { $sum: '$amount' } } },
     { $project: { _id: 0, city: '$_id', tot: 1 } },
     { $sort: { tot: -1 } },
     { $limit: 5 },
@@ -188,7 +188,7 @@ check('GROUP BY con WHERE, SUM e ORDER BY', () => {
 check('GROUP BY multiplo', () => {
   const p = translate('SELECT country, city, AVG(age) AS avg_age FROM users GROUP BY country, city');
   eq(p.pipeline, [
-    { _id: { country: '$country', city: '$city' }, avg_age: { $avg: '$age' } },
+    { $group: { _id: { country: '$country', city: '$city' }, avg_age: { $avg: '$age' } } },
     { $project: { _id: 0, country: '$_id.country', city: '$_id.city', avg_age: 1 } },
   ]);
 });
@@ -252,7 +252,7 @@ check('JOIN + GROUP BY con aggregato su campo unito', () => {
   eq(p.pipeline, [
     { $lookup: { from: 'customers', localField: 'cust_id', foreignField: '_id', as: 'c' } },
     { $unwind: '$c' },
-    { _id: '$c.city', tot: { $sum: '$total' } },
+    { $group: { _id: '$c.city', tot: { $sum: '$total' } } },
     { $project: { _id: 0, city: '$_id', tot: 1 } },
   ]);
 });
@@ -281,7 +281,7 @@ check('SELECT DISTINCT su una colonna', () => {
   const p = translate('SELECT DISTINCT city FROM users');
   eq(p.kind, 'aggregate');
   eq(p.pipeline, [
-    { _id: '$city' },
+    { $group: { _id: '$city' } },
     { $project: { _id: 0, city: '$_id' } },
   ]);
 });
@@ -289,7 +289,7 @@ check('SELECT DISTINCT su una colonna', () => {
 check('SELECT DISTINCT su più colonne', () => {
   const p = translate('SELECT DISTINCT country, city FROM users');
   eq(p.pipeline, [
-    { _id: { country: '$country', city: '$city' } },
+    { $group: { _id: { country: '$country', city: '$city' } } },
     { $project: { _id: 0, country: '$_id.country', city: '$_id.city' } },
   ]);
 });
@@ -297,7 +297,7 @@ check('SELECT DISTINCT su più colonne', () => {
 check('HAVING su alias di aggregato del SELECT', () => {
   const p = translate('SELECT city, COUNT(*) AS n FROM t GROUP BY city HAVING n > 5');
   eq(p.pipeline, [
-    { _id: '$city', n: { $sum: 1 } },
+    { $group: { _id: '$city', n: { $sum: 1 } } },
     { $project: { _id: 0, city: '$_id', n: 1 } },
     { $match: { n: { $gt: 5 } } },
   ]);
@@ -306,7 +306,7 @@ check('HAVING su alias di aggregato del SELECT', () => {
 check('HAVING con COUNT(*) non presente nel SELECT', () => {
   const p = translate('SELECT city FROM t GROUP BY city HAVING COUNT(*) > 1');
   eq(p.pipeline, [
-    { _id: '$city', __having_count_all: { $sum: 1 } },
+    { $group: { _id: '$city', __having_count_all: { $sum: 1 } } },
     { $project: { _id: 0, city: '$_id', __having_count_all: 1 } },
     { $match: { __having_count_all: { $gt: 1 } } },
     { $project: { __having_count_all: 0 } },
@@ -365,7 +365,7 @@ check('derived table con GROUP BY interno e WHERE esterno', () => {
   eq(p.kind, 'aggregate');
   eq(p.coll, 'users');
   eq(p.pipeline, [
-    { _id: '$city', n: { $sum: 1 } },
+    { $group: { _id: '$city', n: { $sum: 1 } } },
     { $project: { _id: 0, city: '$_id', n: 1 } },
     { $match: { n: { $gt: 5 } } },
     { $project: { _id: 0, city: '$city', n: '$n' } },

@@ -41,7 +41,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
   const reduceMotion = useReducedMotion();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(rootProps.defaultOpen ?? false);
-  const { gap, bottomPadding } = useInlineEditOffset(rootProps.open ?? uncontrolledOpen, triggerRef);
+  const { gap, collisionPadding } = useInlineEditOffset(rootProps.open ?? uncontrolledOpen, triggerRef);
   const [uncontrolledValue, setUncontrolledValue] = useState(rootProps.defaultValue ?? "");
   const currentValue = rootProps.value ?? uncontrolledValue;
   const index = options.findIndex((option) => option.value === currentValue);
@@ -74,7 +74,7 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
           </SelectPrimitive.Icon>
         </SelectPrimitive.Trigger>
         <SelectPrimitive.Portal container={portalContainer}>
-          <SelectPrimitive.Content data-arc-select-popup="" className={styles.content} position="popper" sideOffset={gap} collisionPadding={{ top: 12, left: 12, right: 12, bottom: bottomPadding }}>
+          <SelectPrimitive.Content data-arc-select-popup="" className={styles.content} position="popper" sideOffset={gap} collisionPadding={collisionPadding}>
             <SelectPrimitive.ScrollUpButton className={styles.scrollButton}>
               <ChevronUp size={16} strokeWidth={1.75} aria-hidden="true" />
             </SelectPrimitive.ScrollUpButton>

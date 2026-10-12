@@ -3,12 +3,13 @@ import { tabs, createTab } from './tabs.js';
 import { safeUUID } from './valori.js';
 import * as pending from './pending-queries.js';
 import { azioneDiEvento } from './scorciatoie.js';
+import { getCurrentUser } from './auth.js';
 
 export const contestoIncorporato = typeof window !== 'undefined' ? window.frameElement?.codedbPanel : null;
 
 // I controller vanilla conservano variabili di modulo e id DOM: un documento
 // incorporato li isola senza duplicare editor, Arc o sessioni del server.
-export function creaRuntimePane(pane, slot, onFocus, onClose) {
+export function creaRuntimePane(pane, slot, onFocus, onClose, onContext) {
   const tab = tabs.list.find(t => t.id === pane.tabId);
   if (!tab) return null;
   const frame = document.createElement('iframe');
@@ -17,11 +18,18 @@ export function creaRuntimePane(pane, slot, onFocus, onClose) {
   frame.setAttribute('aria-label', frame.title);
   const listeners = [];
   const runs = new Map();
+  let ready;
+  const loaded = new Promise(resolve => { ready = resolve; });
   let disposed = false;
+  let writes = 0;
   const bridge = {
     get connected() { return socket.connected; },
     on(event, fn) {
-      const wrapped = data => { if (!data?.tabId || data.tabId === pane.tabId) fn(data); };
+      const wrapped = data => {
+        if (data?.tabId && data.tabId !== pane.tabId) return;
+        if (['collection:changed', 'watch:unavailable'].includes(event) && data?.watchId !== pane.id) return;
+        fn(data);
+      };
       listeners.push([event, fn, wrapped]);
       socket.on(event, wrapped);
       return bridge;
@@ -33,31 +41,41 @@ export function creaRuntimePane(pane, slot, onFocus, onClose) {
       }
       return bridge;
     },
-    emit(event, payload, ack) {
+    emit(event, payload, ack, timeoutMs = 0) {
       if (disposed || !tabs.list.includes(tab)) { ack?.({ ok: false, error: 'La connessione di questo pannello è stata chiusa.' }); return bridge; }
-      if (event === 'mongo:disconnect' || event.startsWith('collection:watch') || event === 'collection:unwatch') return bridge;
-      if (payload?.runId && (event === 'query:execute' || event === 'script:execute')) runs.set(payload.runId, event);
-      const scrittura = /^doc:(insert|update|replace|delete)$/.test(event);
-      if (scrittura) tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1;
-      socket.emit(event, { ...payload, tabId: pane.tabId }, res => {
-        if (scrittura) tab.state.writesInFlight--;
-        if (event === 'query:execute' || event === 'script:abort') runs.delete(payload?.runId);
+      if (event === 'mongo:disconnect') { ack?.({ ok: false, error: 'Chiudi la connessione dalla barra delle connessioni.' }); return bridge; }
+      if (payload?.runId && ['query:execute', 'script:execute', 'collection:find', 'collection:aggregate'].includes(event)) runs.set(payload.runId, event);
+      const scrittura = /^(doc:|column:|index:|collection:(create|drop|rename)|db:(create|drop|rename)|import:)/.test(event);
+      if (scrittura) { writes++; tab.state.writesInFlight = (tab.state.writesInFlight || 0) + 1; }
+      if (event === 'collection:watch' || event === 'collection:unwatch') payload = { ...payload, watchId: pane.id };
+      const message = { ...payload, tabId: pane.tabId };
+      const done = res => {
+        if (scrittura) { writes--; tab.state.writesInFlight--; }
+        if (event !== 'script:execute') runs.delete(payload?.runId);
         if (!disposed) ack?.(res);
-      });
+      };
+      if (timeoutMs) socket.timeout(timeoutMs).emit(event, message, (err, res) => done(err ? { ok: false, error: 'Risposta non ricevuta: esito da verificare.' } : res));
+      else socket.emit(event, message, done);
       return bridge;
     },
     timeout(ms) {
       return { emit(event, payload, ack) {
-        if (disposed || !tabs.list.includes(tab)) { ack(new Error('Connessione chiusa')); return; }
-        socket.timeout(ms).emit(event, { ...payload, tabId: pane.tabId }, ack);
+        bridge.emit(event, payload, res => ack(null, res), ms);
       } };
     },
   };
   const descriptor = frame.codedbPanel = {
     id: safeUUID(), tabId: pane.tabId, db: pane.db, coll: pane.coll,
     label: tab.label, dbType: tab.dbType, databases: tab.state.databases,
-    query: pane.query || null, socket: bridge, onFocus, pending,
-    paneId: pane.id,
+    query: pane.query || null, data: pane.data || pane, socket: bridge, onFocus, pending,
+    paneId: pane.id, getUser: getCurrentUser,
+    onContext(db, coll, view) {
+      if (!descriptor.ready) return;
+      const changed = pane.db !== db || pane.coll !== coll || pane.view !== view;
+      Object.assign(pane, { db, coll, view });
+      frame.title = `${tab.label} / ${db} / ${coll || 'Query'}`;
+      if (changed) onContext();
+    },
     onKey(event) {
       const action = azioneDiEvento(event);
       const global = ['sidebarConnessioni', 'chiudiScheda', 'paletteComandi'].includes(action);
@@ -78,7 +96,7 @@ export function creaRuntimePane(pane, slot, onFocus, onClose) {
   }
   deck.append(frame);
   const allinea = () => {
-    const visible = !disposed && slot.isConnected && slot.getClientRects().length && pane.view && pane.view !== 'data';
+    const visible = !disposed && slot.isConnected && slot.getClientRects().length;
     frame.hidden = !visible;
     if (!visible) return;
     const rect = slot.getBoundingClientRect();
@@ -108,15 +126,20 @@ export function creaRuntimePane(pane, slot, onFocus, onClose) {
   const themeObserver = new MutationObserver(tema);
   themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-theme-custom', 'style'] });
   themeObserver.observe(document.head, { childList: true, subtree: true, characterData: true });
-  descriptor.onReady = () => { tema(); descriptor.setView(pane.view || 'query'); allinea(); };
+  descriptor.onReady = () => { tema(); descriptor.setView(pane.view || 'data'); allinea(); ready(true); };
   return {
     frame, allinea,
     setView(view) { pane.view = view; descriptor.setView?.(view); allinea(); },
     snapshot() { return descriptor.snapshot?.() || pane.query || null; },
-    dirty() { return !!descriptor.dirty?.(); },
+    dataSnapshot() { return descriptor.dataSnapshot?.() || pane; },
+    async refresh(opts) { if (await loaded) return descriptor.refresh?.(opts); },
+    dirty() { return descriptor.dirty ? descriptor.dirty() : !!pane.query?.dirty; },
+    writing() { return writes > 0 || !!descriptor.writing?.(); },
     dispose() {
       disposed = true;
+      ready(false);
       for (const [runId, event] of runs) socket.emit(event === 'script:execute' ? 'script:abort' : 'query:cancel', { tabId: pane.tabId, runId });
+      socket.emit('collection:unwatch', { tabId: pane.tabId, watchId: pane.id });
       for (const [event, , fn] of listeners) socket.off(event, fn);
       observer.disconnect(); mutazioni.disconnect(); themeObserver.disconnect(); frame.remove();
       document.removeEventListener('scroll', allinea, true);
@@ -130,9 +153,18 @@ export function preparaPannelloIncorporato() {
   document.documentElement.classList.add('embedded-panel');
   const tab = createTab({ id: ctx.tabId });
   tab.label = ctx.label; tab.dbType = ctx.dbType;
+  const d = ctx.data || {};
+  const data = {};
+  for (const key of ['filter', 'filterMode', 'quickSearch', 'advancedCondition', 'sort', 'skip', 'limit', 'total', 'docs', 'columns', 'columnMeta', 'pageSize', 'infiniteScroll', 'selectedDocs', 'cellSel']) {
+    if (d[key] !== undefined) data[key] = structuredClone(d[key]);
+  }
+  data.filterMode ||= 'rapido';
+  data.quickSearch ??= data.filterMode === 'rapido' ? data.filter || '' : '';
+  data.advancedCondition ??= data.filterMode === 'condizione' ? data.filter || '' : '';
+  data.pageSize ||= String(data.limit || 50);
   Object.assign(tab.state, { connected: true, connLabel: ctx.label, dbType: ctx.dbType,
-    db: ctx.db, coll: ctx.coll, databases: ctx.databases,
-    activeCollId: ctx.id, collTabs: [{ id: ctx.id, db: ctx.db, coll: ctx.coll, isDbTab: !ctx.coll, snapQuery: ctx.query || undefined }] });
+    ...data, db: ctx.db, coll: ctx.coll, databases: ctx.databases,
+    activeCollId: ctx.id, collTabs: [{ id: ctx.id, db: ctx.db, coll: ctx.coll, isDbTab: !ctx.coll, gridWidths: new Map(d.gridWidths || []), snapQuery: ctx.query || undefined }] });
   document.addEventListener('pointerdown', ctx.onFocus);
   document.addEventListener('focusin', ctx.onFocus);
   document.addEventListener('keydown', event => {

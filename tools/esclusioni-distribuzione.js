@@ -37,6 +37,11 @@ const ESCLUSIONI = [
   '!ui/**',
   '!test-reports/**',
   '!backups/**',
+  '!.scratch/**',
+  '!.agents/**',
+  '!.codex/**',
+  '!.claude/**',
+  '!.impeccable/**',
   '!.git*',
   '!Dockerfile',
   '!docker-compose.yml',
@@ -67,6 +72,11 @@ const ESCLUSIONI = [
   '!mcp-audit.log.*',
 ];
 
+// Le nuove cartelle e gli export locali non diventano automaticamente parte della release.
+const CARTELLE_RUNTIME = ['auth', 'backup', 'db', 'mcp', 'server', 'public', 'bin'];
+const FILE_RUNTIME = ['package.json', 'package-lock.json', 'server.js', 'electron-main.js', 'electron-aggiornamenti.js', 'electron-server-auth.js', 'LICENSE.md', 'EULA.md', 'MANLEVA.md'];
+const INCLUSIONI = [...FILE_RUNTIME, ...CARTELLE_RUNTIME.map(dir => `${dir}/**`)];
+
 /**
  * Le stesse esclusioni come espressioni regolari per @electron/packager, che
  * riceve percorsi con la barra iniziale (`/docs/x.md`).
@@ -95,7 +105,9 @@ function aRegex(voce) {
 }
 
 function regexPackager() {
-  return [...ESCLUSIONI.map(aRegex), ...SOLO_PACKAGER];
+  const ammessi = [...CARTELLE_RUNTIME, 'node_modules'].map(dir => `${dir}(?:/|$)`)
+    .concat(FILE_RUNTIME.map(file => file.replaceAll('.', '\\.') + '$')).join('|');
+  return [new RegExp(`^/(?!${ammessi}).+`), ...ESCLUSIONI.map(aRegex), ...SOLO_PACKAGER];
 }
 
-module.exports = { ESCLUSIONI, SOLO_PACKAGER, regexPackager, aRegex };
+module.exports = { INCLUSIONI, ESCLUSIONI, SOLO_PACKAGER, regexPackager, aRegex };

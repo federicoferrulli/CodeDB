@@ -98,6 +98,7 @@ const FABBRICA = `
     const page = await browser.newPage();
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    await require('./split-frame').install(page);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -191,7 +192,8 @@ const FABBRICA = `
       sv.addOrSplitPane(null, 'right', { tabId: tab.id, db: 'prova', coll: 'clienti' });
       sv.renderSplitView();
 
-      const tbody = document.querySelector('.split-pane .pane-grid tbody');
+      const paneDoc = await window.paneDocument(0);
+      const tbody = paneDoc.querySelector('#grid tbody');
       if (!tbody) return { assente: true };
       const coordinate = !!tbody.querySelector('td[data-r][data-c]');
 
@@ -200,7 +202,7 @@ const FABBRICA = `
       if (!partenza) return { assente: false, coordinate, senzaCelle: true };
       partenza.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
       cella(3, 1).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      paneDoc.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 
       const dipinte = tbody.querySelectorAll('td.cell-selected').length;
       const fuoco = tbody.querySelectorAll('td.cell-focus').length;
@@ -209,12 +211,12 @@ const FABBRICA = `
       // ricostruisce le righe a ogni scorrimento, e la vecchia Split-View non
       // aveva alcun punto in cui riapplicarla.
       sv.renderSplitView();
-      const dopoRidisegno = document.querySelectorAll('.split-pane .pane-grid tbody td.cell-selected').length;
+      const dopoRidisegno = paneDoc.querySelectorAll('#grid tbody td.cell-selected').length;
 
       // Il menu contestuale della selezione (copia, statistiche, duplica) deve
       // aprirsi anche qui: è la parte che nella vista Dati sta su `#grid`.
       cella(1, 0).dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 50, clientY: 50 }));
-      const menu = !!document.querySelector('.context-menu, #context-menu');
+      const menu = !!paneDoc.querySelector('.context-menu, #context-menu');
 
       // Le CLASSI da sole non bastano: le regole stavano su `#grid`, quindi in
       // un riquadro una selezione con le classi giuste sarebbe stata INVISIBILE.
@@ -260,6 +262,7 @@ const FABBRICA = `
     // riusarla farebbe provare il riquadro sbagliato.
     const pagina2 = await browser.newPage();
     pagina2.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    await require('./split-frame').install(pagina2);
     await pagina2.goto(server.url, { waitUntil: 'domcontentloaded' });
     await pagina2.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
     await pagina2.waitForTimeout(1500);
@@ -310,7 +313,8 @@ const FABBRICA = `
       const proxyDice = { db: state.db, coll: state.coll };
       // L'area ha due riquadri: quello promosso dalla collection del tab attivo
       // (vuota) e quello che ci interessa. Si prende quello che ha davvero righe.
-      const tbody = [...document.querySelectorAll('.split-pane .pane-grid tbody')]
+      const paneDoc = await window.paneDocument(-1);
+      const tbody = [...paneDoc.querySelectorAll('#grid tbody')]
         .find((t) => t.querySelector('td[data-r]'));
       const cella = tbody && tbody.querySelector('td[data-r="0"][data-c="1"]');
       if (!cella) {
@@ -324,25 +328,25 @@ const FABBRICA = `
 
       // Si tocca una cella del riquadro (il comando passa a lui) e si incolla.
       cella.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: 1, clientY: 1 }));
-      document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      paneDoc.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
 
       // L'incolla si lancia dalla voce di menu «Incolla (Ctrl+V)», che è il
       // percorso vero: un evento `paste` sintetico non porta `clipboardData` in
       // Chromium, quindi proverebbe solo che il gestore esiste.
-      const confermaVera = window.confirm;
-      window.confirm = () => true;
-      const appuntiVeri = navigator.clipboard;
-      Object.defineProperty(navigator, 'clipboard', {
+      const confermaVera = paneDoc.defaultView.confirm;
+      paneDoc.defaultView.confirm = () => true;
+      const appuntiVeri = paneDoc.defaultView.navigator.clipboard;
+      Object.defineProperty(paneDoc.defaultView.navigator, 'clipboard', {
         configurable: true,
         value: { readText: () => Promise.resolve('incollato'), writeText: () => Promise.resolve() },
       });
       cella.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 60, clientY: 60 }));
-      const voce = [...document.querySelectorAll('#context-menu li')]
+      const voce = [...paneDoc.querySelectorAll('#context-menu li')]
         .find((li) => li.textContent.startsWith('Incolla'));
       if (voce) voce.click();
       await new Promise((r) => setTimeout(r, 400));
-      window.confirm = confermaVera;
-      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: appuntiVeri });
+      paneDoc.defaultView.confirm = confermaVera;
+      Object.defineProperty(paneDoc.defaultView.navigator, 'clipboard', { configurable: true, value: appuntiVeri });
 
       impostaSocket(null);
       return {
@@ -371,7 +375,8 @@ const FABBRICA = `
     // vista Dati aveva già l'eccezione, scritta però su `#grid`. Un riquadro ha
     // `modificaInline` acceso, quindi qui l'eccezione deve valere identica.
     const modifica = await page.evaluate(async () => {
-      const tbody = [...document.querySelectorAll('.split-pane .pane-grid tbody')]
+      const paneDoc = await window.paneDocument(0);
+      const tbody = [...paneDoc.querySelectorAll('#grid tbody')]
         .find((t) => t.querySelector('td[data-r]'));
       if (!tbody) return { assente: true };
       const td = tbody.querySelector('td[data-r="0"][data-c="1"]');

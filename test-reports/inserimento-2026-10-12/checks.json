@@ -1,0 +1,258 @@
+{
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 820,
+      "left": 310,
+      "right": 1130,
+      "overflow": false,
+      "icon": 72,
+      "descriptionColor": "rgb(136, 146, 164)"
+    },
+    {
+      "theme": "dark",
+      "width": 388,
+      "left": 1,
+      "right": 389,
+      "overflow": false,
+      "icon": 56,
+      "descriptionColor": "rgb(136, 146, 164)"
+    },
+    {
+      "theme": "dark",
+      "width": 318,
+      "left": 1,
+      "right": 319,
+      "overflow": false,
+      "icon": 56,
+      "descriptionColor": "rgb(136, 146, 164)"
+    },
+    {
+      "theme": "dark",
+      "width": 842,
+      "left": 1,
+      "right": 843,
+      "overflow": false,
+      "icon": 72,
+      "descriptionColor": "rgb(136, 146, 164)"
+    },
+    {
+      "theme": "light",
+      "width": 820,
+      "left": 310,
+      "right": 1130,
+      "overflow": false,
+      "icon": 72,
+      "descriptionColor": "rgb(91, 102, 115)"
+    },
+    {
+      "theme": "light",
+      "width": 388,
+      "left": 1,
+      "right": 389,
+      "overflow": false,
+      "icon": 56,
+      "descriptionColor": "rgb(91, 102, 115)"
+    },
+    {
+      "theme": "light",
+      "width": 318,
+      "left": 1,
+      "right": 319,
+      "overflow": false,
+      "icon": 56,
+      "descriptionColor": "rgb(91, 102, 115)"
+    },
+    {
+      "theme": "light",
+      "width": 842,
+      "left": 1,
+      "right": 843,
+      "overflow": false,
+      "icon": 72,
+      "descriptionColor": "rgb(91, 102, 115)"
+    }
+  ],
+  "functional": {
+    "empty": "",
+    "nullable": null,
+    "omitted": true,
+    "spaces": "  spazi  ",
+    "fromJson": {
+      "punto": "(12345.5,9876.5)",
+      "nome": "nuovo",
+      "totale": {
+        "$numberDecimal": "123456789012345678901234567890123456789.1"
+      }
+    },
+    "roundtrip": {
+      "punto": "(12345.5,9876.5)",
+      "nome": "modificato",
+      "totale": {
+        "$numberDecimal": "123456789012345678901234567890123456789.1"
+      }
+    },
+    "blocked": true,
+    "values": {
+      "text": "",
+      "int": {
+        "$numberInt": "-2147483648"
+      },
+      "long": {
+        "$numberLong": "9223372036854775807"
+      },
+      "double": {
+        "$numberDouble": "-0"
+      },
+      "decimal": {
+        "$numberDecimal": "1234567890123456789012345678901234"
+      },
+      "bool": false,
+      "datetime": {
+        "$date": {
+          "$numberLong": "9223372036854775807"
+        }
+      },
+      "oid": {
+        "$oid": "0123456789abcdef01234567"
+      },
+      "json": {
+        "n": {
+          "$numberLong": "9007199254740993"
+        }
+      },
+      "geo": {
+        "type": "Point",
+        "coordinates": [
+          12,
+          41
+        ]
+      },
+      "binary": {
+        "$binary": {
+          "base64": "AP8=",
+          "subType": "00"
+        }
+      },
+      "uuid": {
+        "$uuid": "12345678-1234-1234-1234-123456789abc"
+      },
+      "regex": {
+        "$regularExpression": {
+          "pattern": "^a",
+          "options": "i"
+        }
+      },
+      "timestamp": {
+        "$timestamp": {
+          "t": 4294967295,
+          "i": 0
+        }
+      },
+      "code": {
+        "$code": "return 1"
+      },
+      "scope": {
+        "$code": "return x",
+        "$scope": {
+          "x": 1
+        }
+      },
+      "symbol": {
+        "$symbol": "simbolo"
+      },
+      "dbpointer": {
+        "$dbPointer": {
+          "$ref": "ns",
+          "$id": {
+            "$oid": "0123456789abcdef01234567"
+          }
+        }
+      },
+      "undefined": {
+        "$undefined": true
+      },
+      "minkey": {
+        "$minKey": 1
+      },
+      "maxkey": {
+        "$maxKey": 1
+      }
+    },
+    "bits": {
+      "$numberDecimal": "18446744073709551615"
+    },
+    "rawJson": "{ \"n\":9007199254740993, \"n\":1 }",
+    "pg": "pggeo",
+    "array": "native"
+  },
+  "bsonDraft": {
+    "expected": {
+      "bin": {
+        "$binary": {
+          "base64": "AP8=",
+          "subType": "00"
+        }
+      },
+      "re": {
+        "$regularExpression": {
+          "pattern": "^a",
+          "options": "i"
+        }
+      },
+      "ts": {
+        "$timestamp": {
+          "t": 4294967295,
+          "i": 1
+        }
+      },
+      "data": {
+        "$date": {
+          "$numberLong": "9223372036854775807"
+        }
+      },
+      "testo": "prima\nseconda",
+      "code": {
+        "$code": "return 1;\n// seconda riga"
+      }
+    },
+    "visible": {
+      "bin": "{\"base64\":\"AP8=\",\"subType\":\"00\"}",
+      "re": "{\"pattern\":\"^a\",\"options\":\"i\"}",
+      "ts": "{\"t\":4294967295,\"i\":1}",
+      "data": "9223372036854775807",
+      "testo": "prima\nseconda",
+      "code": "return 1;\n// seconda riga"
+    },
+    "actual": {
+      "bin": {
+        "$binary": {
+          "base64": "AP8=",
+          "subType": "00"
+        }
+      },
+      "re": {
+        "$regularExpression": {
+          "pattern": "^a",
+          "options": "i"
+        }
+      },
+      "ts": {
+        "$timestamp": {
+          "t": 4294967295,
+          "i": 1
+        }
+      },
+      "data": {
+        "$date": {
+          "$numberLong": "9223372036854775807"
+        }
+      },
+      "testo": "prima\nseconda",
+      "code": {
+        "$code": "return 1;\n// seconda riga"
+      }
+    }
+  },
+  "errors": []
+}

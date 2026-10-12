@@ -1,0 +1,10 @@
+  OK mysql: export HTTP, ticket, upload e import codedb-json con staging
+  OK mysql: export HTTP, ticket, upload e import sql con staging
+  OK mysql: export HTTP, ticket, upload e import sql con staging
+  OK mysql: quattro modalità, SQL reimportabile, precisione, binari, date, FK, view e identità
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+  OK postgresql: quattro modalità, SQL reimportabile, precisione, binari, date, FK, view e identità
+  OK mongodb: export HTTP, ticket, upload e import codedb-json con staging
+  OK mongodb: EJSON canonico e indici completi

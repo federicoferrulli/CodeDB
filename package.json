@@ -1,6 +1,6 @@
 {
   "name": "codedb",
-  "version": "0.1.5-beta.1",
+  "version": "0.2.0-beta.1",
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
   "author": "Federico 'Keus' Ferrulli",
@@ -121,16 +121,36 @@
       }
     ],
     "files": [
-      "**/*",
+      "package.json",
+      "package-lock.json",
+      "server.js",
+      "electron-main.js",
+      "electron-aggiornamenti.js",
+      "electron-server-auth.js",
+      "LICENSE.md",
+      "EULA.md",
+      "MANLEVA.md",
+      "auth/**",
+      "backup/**",
+      "db/**",
+      "mcp/**",
+      "server/**",
+      "public/**",
+      "bin/**",
       "!dist/**",
       "!android/**",
       "!docs/**",
       "!issue/**",
       "!test/**",
       "!tools/**",
-      "!test-reports/**",
       "!ui/**",
+      "!test-reports/**",
       "!backups/**",
+      "!.scratch/**",
+      "!.agents/**",
+      "!.codex/**",
+      "!.claude/**",
+      "!.impeccable/**",
       "!.git*",
       "!Dockerfile",
       "!docker-compose.yml",
@@ -210,6 +230,11 @@
       "maintainer": "Federico Ferrulli",
       "artifactName": "${productName}-${version}-${arch}.${ext}",
       "syncDesktopName": true
+    }
+  },
+  "overrides": {
+    "@electron/get": {
+      "global-agent": "^4.1.3"
     }
   }
 }

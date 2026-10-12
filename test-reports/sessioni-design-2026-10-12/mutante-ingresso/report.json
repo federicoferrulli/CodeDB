@@ -1,0 +1,14 @@
+{
+  "checks": [
+    "Quattro colonne, filtri locali, transazioni inattive visibili, sessioni protette senza azioni e testo escaped"
+  ],
+  "layouts": [],
+  "frames": [],
+  "errors": [],
+  "environment": "Chromium, sessioni e terminazioni sintetiche",
+  "entrance": {
+    "delay": 48,
+    "opacity": "1"
+  },
+  "failure": "AssertionError [ERR_ASSERTION]: La riga resta nascosta durante il ritardo di ingresso, senza lampeggio\n    at C:\\repository\\CodeDB\\test\\e2e-sessioni-design.js:99:5"
+}

@@ -1,0 +1,10 @@
+{
+  "environment": "Chromium, metadati e scritture simulati",
+  "checks": [],
+  "layouts": [],
+  "errors": [],
+  "reducedMotion": {
+    "reduced": true,
+    "animations": []
+  }
+}

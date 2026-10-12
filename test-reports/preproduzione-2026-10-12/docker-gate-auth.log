@@ -1,0 +1,12 @@
+[TLS] Esposizione "0.0.0.0" con CODEDB_TRUST_PROXY_TLS=1: si assume un reverse proxy che termina HTTPS.
+Avvio rifiutato: l'istanza è raggiungibile su "0.0.0.0" ma CODEDB_RBAC è spento, cioè NON c'è autenticazione.
+Chiunque raggiunga la porta otterrebbe lettura, scrittura, DDL, backup ed export del vault
+su tutte le connessioni salvate, senza credenziali e senza lasciare un attore nell'audit.
+
+Attiva l'autenticazione (control plane MongoDB dedicato, vedi .env.example):
+  CODEDB_RBAC=on  CODEDB_APP_DB_URI=...  CODEDB_OWNER_EMAIL=...  CODEDB_OWNER_PASSWORD=...
+Per un uso locale, lascia HOST=127.0.0.1 (default) — o BIND_ADDR=127.0.0.1 con Docker.
+
+Se l'accesso alla porta è già limitato da altro (rete privata, VPN, firewall) e vuoi
+assumerti il rischio, dichiaralo: CODEDB_ALLOW_UNAUTHENTICATED_NETWORK=1
+Impossibile avviare CodeDB: Avvio rifiutato: configurazione di rete non sicura.

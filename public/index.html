@@ -298,6 +298,7 @@
         </div>
 
         <!-- ================= PASSO 1: Parametri ================= -->
+        <p id="conn-edit-hint" class="hint hidden">I valori salvati sono già caricati. Password e chiavi restano protette: lascia vuoti i campi segreti per mantenerli, compilali solo per sostituirli.</p>
         <div class="wizard-panel" data-step="1">
           <div class="form-row">
             <label>Tipo di database
@@ -347,6 +348,11 @@
           </div>
 
           <div id="tab-uri" class="tab-panel hidden">
+            <div id="conn-uri-saved-info" class="hint hidden">
+              <strong>URI salvata · credenziali mascherate</strong>
+              <p id="conn-uri-saved" style="overflow-wrap: anywhere"></p>
+              <p>Lascia vuoto il campo seguente per mantenerla. Per sostituirla inserisci una nuova URI completa.</p>
+            </div>
             <div class="form-row">
               <label>Connection string
                 <input type="text" name="uri" placeholder="mongodb://user:pass@host:27017/?authSource=admin"
@@ -450,14 +456,16 @@
         <div id="connect-test-msg" class="success-msg hidden"></div>
 
         <div class="connect-actions">
-          <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
-          <button type="button" id="conn-test-btn" class="secondary btn-sm"
-            title="Tenta la connessione lato server senza aprire un tab">Testa Connessione</button>
-          <div class="wizard-nav-btns">
-            <button type="button" id="wizard-prev-btn" class="ghost hidden"><i data-lucide="arrow-left"></i> Indietro</button>
-            <button type="button" id="wizard-next-btn" class="secondary">Avanti <i data-lucide="arrow-right"></i></button>
+          <div class="connect-secondary-actions">
+            <button type="button" id="conn-test-btn" class="ghost"
+              title="Tenta la connessione lato server senza aprire un tab"><i data-lucide="activity"></i> Testa connessione</button>
             <button type="button" id="conn-save-btn" class="secondary hidden"
               title="Salva la connessione senza connetterti">Salva</button>
+            <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
+          </div>
+          <div class="wizard-nav-btns">
+            <button type="button" id="wizard-prev-btn" class="secondary hidden"><i data-lucide="arrow-left"></i> Indietro</button>
+            <button type="button" id="wizard-next-btn" class="secondary">Avanti <i data-lucide="arrow-right"></i></button>
             <button type="submit" id="connect-btn" class="primary">Connetti</button>
           </div>
         </div>
@@ -468,8 +476,16 @@
   <!-- ===================== Layout principale ===================== -->
   <div id="app">
     <header class="header">
-      <button id="menu-conns-btn" class="menu-btn" title="Connessioni salvate"
-        aria-label="Connessioni salvate"><i data-lucide="panel-left"></i><span class="menu-conns-label">Nascondi pannello</span></button>
+      <button type="button" id="menu-conns-btn" class="menu-btn" title="Nascondi pannello sinistro"
+        aria-label="Nascondi pannello sinistro" aria-controls="navigator" aria-expanded="true">
+        <svg class="panel-toggle-icon" viewBox="0 0 28 24" fill="none" aria-hidden="true">
+          <rect class="panel-toggle-frame" x="2" y="3" width="24" height="18" rx="4" />
+          <rect class="panel-toggle-pane" x="5" y="6" width="6" height="12" rx="1.5" />
+          <path class="panel-toggle-arrow" d="m18 9-3 3 3 3" />
+        </svg>
+        <span class="menu-conns-label" aria-hidden="true"><span>Nascondi pannello</span><span>Mostra pannello</span></span>
+        <kbd aria-hidden="true"></kbd>
+      </button>
       <button id="menu-dbs-btn" class="menu-btn hidden" title="Database del tab attivo"
         aria-label="Database del tab attivo"><i data-lucide="database"></i></button>
       <span class="brand"><img src="codedb.png" alt="CodeDB Logo" class="brand-logo" />CodeDB</span>
@@ -510,13 +526,13 @@
       <div id="navigator">
       <aside id="conn-sidebar">
         <div class="sidebar-title">
-          <span class="navigator-section-title">Connessioni</span>
+          <span class="navigator-section-title"><i data-lucide="network" aria-hidden="true"></i>Connessioni</span>
           <div class="navigator-actions">
             <button type="button" id="conn-add-btn" title="Aggiungi connessione" aria-label="Aggiungi connessione"><i data-lucide="plus"></i></button>
           </div>
         </div>
         <div id="conn-section-body" class="navigator-section-body">
-          <div class="sidebar-search"><input aria-label="Cerca connessioni" type="text" id="conn-search" placeholder="Cerca connessioni…" autocomplete="off" spellcheck="false" /></div>
+          <div class="sidebar-search navigator-search"><i data-lucide="search" aria-hidden="true"></i><input aria-label="Cerca connessioni" type="text" id="conn-search" placeholder="Cerca connessioni…" autocomplete="off" spellcheck="false" /></div>
           <ul id="conn-tree"></ul>
           <div id="conn-empty" class="saved-conns-empty hidden">Nessuna connessione salvata.</div>
         </div>
@@ -530,7 +546,8 @@
             </div>
             <div id="explorer-section-body" class="navigator-section-body">
             <div id="explorer-context" class="explorer-context"></div>
-            <div class="sidebar-search">
+            <div class="sidebar-search navigator-search">
+              <i data-lucide="search" aria-hidden="true"></i>
               <input aria-label="Cerca database e collezioni" type="text" id="db-search" placeholder="Cerca database o collezioni..." autocomplete="off"
                 spellcheck="false" />
             </div>
@@ -622,14 +639,14 @@
         <div id="tab-body" class="tab-body hidden">
           <main>
             <div id="placeholder" class="placeholder">
-              <div class="empty-state-card">
-                <div class="empty-state-icon">
-                  <i data-lucide="layout-grid" style="width: 48px; height: 48px; stroke-width: 1.5px;"></i>
+              <section class="explore-empty" aria-label="Esplora i dati">
+                <div aria-hidden="true">
+                  <svg class="explore-art" viewBox="0 0 192 152" focusable="false"><use href="/explore-data.svg#explore-data"></use></svg>
                 </div>
                 <h3>Esplora i dati</h3>
                 <p class="placeholder-hint">Seleziona una collection o tabella dalla barra laterale per visualizzare le
                   righe o eseguire query avanzate.</p>
-              </div>
+              </section>
             </div>
 
             <!-- Le tab della collection e le tab della vista stanno sulla STESSA
@@ -813,32 +830,43 @@
               </div>
 
               <!-- ------------------- Vista dettagli ------------------- -->
+              <!-- TESI: leggere la struttura al centro, con gli indici accanto e i dati di ingombro in una fascia compatta.
+                   MONDO: superfici CodeDB, indaco misurato, nomi tecnici monospazio e controlli Arc.
+                   PERCORSO: riconoscere la tabella, leggere campi e vincoli, intervenire tramite le azioni esistenti.
+                   PRIMA VISTA: identità, statistiche orizzontali, schema ampio e indici laterali; su mobile sezioni in sequenza.
+                   FORMA: evoluzione locale del workbench; il caricamento rivela lo schema per righe e la presenza per estensione. -->
               <div id="view-details" class="view-panel hidden">
                 <div class="details-wrap">
-                  <section>
-                    <h3>Statistiche</h3>
-                    <table class="info-table kv-table" id="stats-table">
-                      <tbody></tbody>
-                    </table>
-                  </section>
-                  <section>
-                    <h3>Indici <button type="button" id="index-add-btn" class="mini-btn" title="Nuovo indice"
-                        aria-label="Nuovo indice">＋</button></h3>
-                    <table class="info-table" id="index-table">
-                      <thead></thead>
-                      <tbody></tbody>
-                    </table>
-                  </section>
-                  <section class="full">
-                    <h3><span id="schema-title">Schema rilevato</span> <span id="schema-note" class="hint"></span>
-                      <button type="button" id="column-add-btn" class="mini-btn hidden" title="Aggiungi colonna"
-                        aria-label="Aggiungi colonna">＋</button>
-                    </h3>
-                    <table class="info-table" id="schema-table">
-                      <thead></thead>
-                      <tbody></tbody>
-                    </table>
-                  </section>
+                  <div class="details-heading">
+                    <div id="details-db-icon" aria-hidden="true"></div>
+                    <div class="details-identity"><span id="details-location"></span><h2 id="details-name">Dettagli</h2></div>
+                    <span id="details-engine"></span>
+                  </div>
+                  <div id="details-feedback" class="details-feedback hidden" role="status">
+                    <i data-lucide="scan-line" aria-hidden="true"></i><p id="details-feedback-text"></p>
+                    <button type="button" id="details-retry" class="btn btn-secondary btn-sm hidden">Riprova</button>
+                  </div>
+                  <div id="details-content" class="details-content">
+                    <section class="details-overview" aria-label="Statistiche">
+                      <table class="info-table kv-table" id="stats-table" aria-label="Statistiche della tabella o collezione"><tbody></tbody></table>
+                    </section>
+                    <div class="details-columns">
+                      <section class="details-schema" aria-labelledby="schema-title">
+                        <div class="details-section-heading">
+                          <div><h3><i data-lucide="list-tree" aria-hidden="true"></i><span id="schema-title">Schema rilevato</span><span id="schema-count" class="details-count"></span></h3><p id="schema-note"></p></div>
+                          <button type="button" id="column-add-btn" class="btn btn-secondary btn-sm" title="Aggiungi campo" aria-label="Aggiungi campo"><i data-lucide="plus" aria-hidden="true"></i><span>Campo</span></button>
+                        </div>
+                        <table class="info-table" id="schema-table" aria-labelledby="schema-title" role="table"><thead></thead><tbody></tbody></table>
+                      </section>
+                      <section class="details-indexes" aria-labelledby="details-index-title">
+                        <div class="details-section-heading">
+                          <div><h3 id="details-index-title"><i data-lucide="fingerprint" aria-hidden="true"></i>Indici</h3><p>Chiavi e vincoli di unicità</p></div>
+                          <button type="button" id="index-add-btn" class="btn btn-secondary btn-sm" title="Nuovo indice" aria-label="Nuovo indice"><i data-lucide="plus" aria-hidden="true"></i><span>Indice</span></button>
+                        </div>
+                        <table class="info-table" id="index-table" aria-labelledby="details-index-title" role="table"><thead></thead><tbody></tbody></table>
+                      </section>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -1199,7 +1227,12 @@
                 </div>
               </div>
               <!-- ------------------- Vista Query & Aggregate ------------------- -->
-              <div id="view-query" class="view-panel hidden">
+              <!-- THESIS: il codice guida, i risultati rispondono; una sola barra per gli strumenti.
+                   OWN-WORLD: superfici CodeDB, indaco, controlli Arc, codice in monospace.
+                   STORY: scegli il contesto, scrivi, segui l'esecuzione, esplora i dati.
+                   FIRST VIEWPORT: comando e bersaglio in alto, schema a sinistra, editor sopra i risultati.
+                   FORM: estensione locale Operate; composizione esistente affinata, nessun nuovo mondo. -->
+              <div id="view-query" class="view-panel hidden" data-query-state="idle">
                 <div class="query-topbar">
                   <!-- Dove e COME gira la query: una domanda sola, quindi un
                        controllo solo. Prima erano due gruppi affiancati — la
@@ -1208,13 +1241,15 @@
                        stabilmente metà barra per un'informazione che si legge
                        in un colpo d'occhio e si cambia di rado. -->
                   <div class="query-target-selector toolbar-dropdown-wrap">
+                    <span id="query-target-caption" class="query-target-caption">Esegui su</span>
                     <button type="button" id="query-target-btn" class="query-target-btn dropdown-trigger-btn"
-                      aria-haspopup="true" aria-expanded="false"
+                      aria-haspopup="true" aria-expanded="false" aria-controls="query-target-menu"
+                      aria-labelledby="query-target-caption query-target-label query-target-engine-label"
                       title="Motore e database su cui girerà la query">
-                      <span id="query-target-engine-label" class="query-target-engine-label"><i data-lucide="zap"></i> Auto</span>
-                      <span class="query-target-sep">·</span>
+                      <i data-lucide="database" class="query-target-icon" aria-hidden="true"></i>
                       <span id="query-target-label" class="query-target-label">—</span>
-                      <span class="dropdown-caret">▾</span>
+                      <span id="query-target-engine-label" class="query-target-engine-label">Auto</span>
+                      <i data-lucide="chevron-down" class="query-target-caret" aria-hidden="true"></i>
                     </button>
                     <div id="query-target-menu" class="toolbar-dropdown-menu hidden">
                       <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
@@ -1245,7 +1280,7 @@
                     </label>
                   </div>
 
-                  <div id="query-metrics" class="query-metrics">
+                  <div id="query-metrics" class="query-metrics" role="status" aria-live="polite">
                     <span id="query-status-badge" class="badge badge-idle">● In attesa</span>
                     <span id="query-time-metric" class="metric-item hidden"><i data-lucide="clock"></i> <strong id="query-time-val">0</strong>
                       ms</span>
@@ -1258,39 +1293,32 @@
                   <!-- Pannello Sinistro: Schema Browser -->
                   <aside id="query-schema-sidebar" class="query-sidebar">
                     <div class="sidebar-title">
-                      <span>Schema Browser</span>
+                      <span class="query-schema-title"><i data-lucide="folder-tree"></i> Schema</span>
                       <div class="sidebar-title-actions">
-                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema">⟳</button>
+                        <button id="query-schema-refresh" class="mini-btn" title="Ricarica schema" aria-label="Ricarica schema"><i data-lucide="refresh-cw"></i></button>
                         <button id="query-schema-close" class="mini-btn mobile-only-btn"
-                          title="Chiudi Schema Browser">✕</button>
+                          title="Chiudi schema" aria-label="Chiudi schema"><i data-lucide="x"></i></button>
                       </div>
                     </div>
-                    <div class="sidebar-search">
-
-                      <input aria-label="Filtra tabelle e campi" type="text" id="query-schema-search" placeholder="Filtra tabelle/campi..."
+                    <div class="sidebar-search query-schema-search-wrap">
+                      <i data-lucide="search" aria-hidden="true"></i>
+                      <input aria-label="Filtra tabelle e campi" type="text" id="query-schema-search" placeholder="Trova tabelle o campi…"
                         autocomplete="off" spellcheck="false" />
                     </div>
                     <div id="query-schema-tree" class="query-schema-tree"></div>
+                    <p class="query-schema-hint">Doppio clic per inserire un nome nell’editor.</p>
                   </aside>
 
                   <div class="resizer" data-resize="query-sidebar"></div>
 
                   <!-- Pannello Centrale/Destro: Editor + Risultati -->
                   <div class="query-main-panel">
-                    <div class="query-surface-switch" role="group" aria-label="Area query">
-                      <button type="button" id="query-show-editor" aria-pressed="false" aria-controls="query-editor-container">Editor</button>
-                      <button type="button" id="query-show-results" aria-pressed="false" aria-controls="query-results-container">Risultati</button>
-                      <button type="button" id="query-show-both" aria-pressed="true" aria-controls="query-editor-container query-results-container">Entrambi</button>
+                    <div class="query-studio-toolbar">
+                    <div id="query-surface-tabs" class="query-surface-switch" role="tablist" aria-label="Area query">
+                      <button type="button" id="query-show-editor" role="tab" data-tab-id="editor" aria-selected="false" tabindex="-1" aria-controls="query-surface-content"><i data-lucide="square-code"></i> Editor</button>
+                      <button type="button" id="query-show-results" role="tab" data-tab-id="results" aria-selected="false" tabindex="-1" aria-controls="query-surface-content"><i data-lucide="table-2"></i> Risultati</button>
+                      <button type="button" id="query-show-both" role="tab" data-tab-id="both" aria-selected="true" aria-controls="query-surface-content"><i data-lucide="panels-top-left"></i> Entrambi</button>
                     </div>
-                    <!-- Sezione Superiore: Editor -->
-                    <div id="query-editor-container" class="query-editor-container">
-                      <div class="editor-header">
-                        <span id="query-editor-title">Editor Query (SQL / MQL JSON)</span>
-                        <!-- Una sola azione porta un'etichetta, ed è Formatta:
-                             è l'unica che si usa MENTRE si scrive. Aprire un
-                             file, ripescare una query, incollare uno snippet e
-                             svuotare l'editor sono azioni di inizio o fine
-                             lavoro, e stanno nel menu ⋯. -->
                         <div class="editor-tools">
                           <input type="file" id="query-open-sql-input" accept=".sql,.txt,.queries" style="display: none;" />
                           <button id="query-format-btn" class="mini-btn" title="Formatta il codice (Ctrl+Shift+F)"><i data-lucide="sparkles"></i> Formatta</button>
@@ -1313,7 +1341,10 @@
                             <div id="qe-history-panel" class="hidden"></div>
                           </span>
                         </div>
-                      </div>
+                    </div>
+                    <div id="query-surface-content" class="query-surface-content" role="tabpanel" aria-labelledby="query-show-both">
+                    <!-- Sezione Superiore: Editor -->
+                    <div id="query-editor-container" class="query-editor-container">
                       <!-- Pannello Gestione Chunk File SQL Grandi -->
                       <div id="query-sql-chunk-panel" class="query-chunk-panel hidden">
                         <div class="chunk-panel-top">
@@ -1351,8 +1382,8 @@
                                runner e dell'interprete dicono "riga N". -->
                           <div id="query-editor-gutter" class="query-editor-gutter" aria-hidden="true"></div>
                           <pre id="query-editor-highlight" class="query-editor-highlight" aria-hidden="true"><code id="query-editor-code"></code></pre>
-                          <textarea id="query-editor-input" spellcheck="false"
-                            placeholder="-- SQL:   SELECT * FROM users WHERE status = 'active'&#10;-- Shell:  db.users.find({ status: 'active' }).sort({ name: 1 }).limit(20)&#10;-- MQL:    { &quot;status&quot;: &quot;active&quot; }   oppure   [ { &quot;$match&quot;: { &quot;status&quot;: &quot;active&quot; } } ]"></textarea>
+                          <textarea id="query-editor-input" spellcheck="false" aria-label="Editor della query"
+                            placeholder="Scrivi la tua query…&#10;&#10;SQL, MQL o uno script.&#10;Ctrl+Spazio per i suggerimenti."></textarea>
                         </div>
                       </div>
                       <!-- Linting in linea: compare solo quando nell'editor c'è
@@ -1361,6 +1392,7 @@
                            FUORI da .editor-body, che è un flex in riga: lì
                            dentro finirebbe di fianco al testo, non sotto. -->
                       <div id="query-lint" class="lint-bar hidden" aria-live="polite"></div>
+                      <div class="query-editor-foot"><span id="query-editor-title"><i data-lucide="code-2"></i> SQL · MQL · JSON</span><span class="query-editor-hint"><kbd>Ctrl</kbd> + <kbd>Spazio</kbd> Suggerimenti</span></div>
                     </div>
 
                     <div class="resizer-v" id="query-editor-resizer"></div>
@@ -1368,15 +1400,15 @@
                     <!-- Sezione Inferiore: Risultati -->
                     <div id="query-results-container" class="query-results-container">
                       <div class="results-header">
-                        <div class="results-view-mode">
-                          <button id="res-mode-table" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
-                          <button id="res-mode-json" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
-                          <button id="res-mode-chart" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
+                        <div id="query-results-tabs" class="results-view-mode" role="tablist" aria-label="Formato dei risultati">
+                          <button id="res-mode-table" role="tab" data-tab-id="table" aria-selected="true" tabindex="0" aria-controls="query-table-view" class="mode-btn active" title="Vista Tabella"><i data-lucide="table"></i> Tabella</button>
+                          <button id="res-mode-json" role="tab" data-tab-id="json" aria-selected="false" tabindex="-1" aria-controls="query-json-view" class="mode-btn" title="Vista JSON Tree"><i data-lucide="network"></i> JSON Tree</button>
+                          <button id="res-mode-chart" role="tab" data-tab-id="chart" aria-selected="false" tabindex="-1" aria-controls="query-chart-view" class="mode-btn" title="Grafici personalizzati (ECharts)"><i data-lucide="bar-chart-3"></i> Grafici</button>
                           <!-- Compare SOLO se nei risultati ci sono davvero
                                geometrie (query-map.js): su una query di conteggi
                                sarebbe una scheda che si apre su un riquadro
                                vuoto, cioè una funzione che sembra rotta. -->
-                          <button id="res-mode-map" class="mode-btn hidden" title="Nessuna geometria nei risultati"><i data-lucide="map"></i> Mappa</button>
+                          <button id="res-mode-map" role="tab" data-tab-id="map" aria-selected="false" tabindex="-1" aria-controls="query-map-view" class="mode-btn hidden" title="Nessuna geometria nei risultati"><i data-lucide="map"></i> Mappa</button>
                         </div>
                         <!-- Un solo ingresso all'esportazione. Prima erano sei
                              pulsanti per tre azioni: tre nella barra su desktop
@@ -1385,7 +1417,7 @@
                         <div class="results-actions">
                           <div class="toolbar-dropdown-wrap">
                             <button type="button" id="query-export-menu-btn" class="mini-btn dropdown-trigger-btn"
-                              aria-haspopup="true" aria-expanded="false" title="Esporta i risultati"><i data-lucide="download"></i> Esporta ▾</button>
+                              aria-label="Esporta i risultati" aria-haspopup="true" aria-expanded="false" title="Esporta i risultati"><i data-lucide="download"></i> Esporta ▾</button>
                             <div id="query-export-menu" class="toolbar-dropdown-menu hidden">
                               <button id="query-export-csv" class="dropdown-item" type="button"><i data-lucide="download"></i> Esporta CSV</button>
                               <button id="query-export-json" class="dropdown-item" type="button"><i data-lucide="download"></i> Esporta JSON</button>
@@ -1428,14 +1460,14 @@
 
                       <div id="query-results-body" class="query-results-body">
                         <!-- Vista Tabella -->
-                        <div id="query-table-view" class="results-panel-view">
+                        <div id="query-table-view" role="tabpanel" aria-labelledby="res-mode-table" class="results-panel-view">
                           <table id="query-result-table" class="query-table">
                             <thead></thead>
                             <tbody></tbody>
                           </table>
                         </div>
                         <!-- Vista JSON Tree -->
-                        <div id="query-json-view" class="results-panel-view hidden">
+                        <div id="query-json-view" role="tabpanel" aria-labelledby="res-mode-json" class="results-panel-view hidden">
                           <div id="query-json-tree" class="json-tree-container"></div>
                         </div>
                         <!-- Vista Grafici personalizzati (ECharts, caricato su
@@ -1443,7 +1475,7 @@
                              destra si genera da charts.js: i controlli dipendono
                              dal tipo di grafico e dalle colonne del result set,
                              che non si conoscono a priori. -->
-                        <div id="query-chart-view" class="results-panel-view hidden">
+                        <div id="query-chart-view" role="tabpanel" aria-labelledby="res-mode-chart" class="results-panel-view hidden">
                           <div class="chart-layout">
                             <div class="chart-main">
                               <!-- Barra rapida: le quattro decisioni che fanno
@@ -1477,7 +1509,7 @@
                               <div id="chart-notes" class="chart-notes hidden"></div>
                             </div>
                             <div id="chart-builder-panel" class="chart-builder-panel">
-                              <div class="chart-builder-head">Personalizzazione</div>
+                              <div class="chart-builder-head"><span>Personalizzazione</span><button type="button" id="chart-close-builder" class="mini-btn ghost chart-builder-close">Torna al grafico</button></div>
                               <div id="chart-builder" class="chart-builder"></div>
                             </div>
                           </div>
@@ -1487,30 +1519,45 @@
                              selezione di celle (geo-vista.js), con i dati presi
                              dalle righe invece che dalle celle evidenziate.
                              Leaflet è vendorizzato e caricato su richiesta. -->
-                        <div id="query-map-view" class="results-panel-view hidden">
+                        <div id="query-map-view" role="tabpanel" aria-labelledby="res-mode-map" class="results-panel-view hidden">
                           <div class="qmap-toolbar">
-                            <button type="button" id="qmap-fit" class="mini-btn" title="Inquadra tutte le geometrie">⤢ Inquadra tutto</button>
+                            <button type="button" id="qmap-fit" class="mini-btn" title="Inquadra tutte le geometrie"><i data-lucide="scan"></i> Inquadra tutto</button>
                             <label class="qmap-check" title="Le tile arrivano da OpenStreetMap: richiede rete">
                               <input type="checkbox" id="qmap-tiles" /> Sfondo mappa
                             </label>
-                            <span id="qmap-conta" class="qmap-conta"></span>
-                            <button type="button" id="qmap-copy" class="mini-btn" title="Copia il riepilogo in TSV">Copia riepilogo</button>
-                            <button type="button" id="qmap-export" class="mini-btn" title="Scarica tutte le geometrie come FeatureCollection"><i data-lucide="download"></i> GeoJSON</button>
+                            <button type="button" id="qmap-expand" class="ghost" title="Espandi mappa" aria-label="Espandi mappa" aria-pressed="false"><i data-lucide="maximize"></i></button>
                           </div>
                           <div id="qmap-nota" class="qmap-nota hidden"></div>
-                          <div id="qmap-warning" class="warning hidden"></div>
-                          <div id="qmap-body" class="qmap-body">
-                            <div id="qmap-canvas" class="geomap-canvas"></div>
-                            <div class="qmap-side">
-                              <div id="qmap-summary"></div>
+                          <div id="qmap-warning" class="warning hidden" role="status"></div>
+                          <div id="qmap-body" class="qmap-body" data-mode="elenco">
+                            <section id="qmap-map-panel" class="geomulti-map-panel" aria-label="Mappa dei risultati">
+                              <div id="qmap-canvas" class="geomap-canvas"></div>
+                              <p id="qmap-selection" class="geomulti-selection" aria-live="polite"></p>
+                            </section>
+                            <nav id="qmap-tabs" class="geomulti-tabs" role="tablist" aria-label="Esplora le geometrie dei risultati">
+                              <button type="button" id="qmap-tab-mappa" class="geomulti-tab-mappa" role="tab" data-tab-id="mappa" aria-controls="qmap-map-panel" aria-selected="false" tabindex="-1"><i data-lucide="map"></i> Mappa</button>
+                              <button type="button" id="qmap-tab-elenco" role="tab" data-tab-id="elenco" aria-controls="qmap-list-panel" aria-selected="true"><i data-lucide="list"></i> Elenco <span id="qmap-count"></span></button>
+                              <button type="button" id="qmap-tab-riepilogo" role="tab" data-tab-id="riepilogo" aria-controls="qmap-summary-panel" aria-selected="false" tabindex="-1"><i data-lucide="chart-no-axes-column"></i> Riepilogo</button>
+                            </nav>
+                            <div id="qmap-list-panel" class="geomulti-panel" role="tabpanel" aria-labelledby="qmap-tab-elenco">
                               <div id="qmap-list" class="geomulti-list"></div>
                               <div id="qmap-list-note" class="dim geomap-note hidden"></div>
                             </div>
+                            <div id="qmap-summary-panel" class="geomulti-panel hidden" role="tabpanel" aria-labelledby="qmap-tab-riepilogo" tabindex="0">
+                              <div id="qmap-summary"></div>
+                              <p class="geomulti-method">Lunghezze e aree sono calcolate sulla sfera WGS84. Per misure esatte usa le funzioni spaziali del database.</p>
+                            </div>
                           </div>
-                          <div id="qmap-empty" class="chart-empty">Esegui una query: le geometrie contenute nei risultati compaiono qui sulla mappa.</div>
+                          <div class="qmap-footer">
+                            <span id="qmap-conta" class="qmap-conta"></span>
+                            <button type="button" id="qmap-copy" class="ghost" title="Copia il riepilogo in TSV"><i data-lucide="copy"></i> Copia riepilogo</button>
+                            <button type="button" id="qmap-export" class="secondary" title="Scarica tutte le geometrie come FeatureCollection"><i data-lucide="download"></i> GeoJSON</button>
+                          </div>
+                          <div id="qmap-empty" class="chart-empty" role="status">Esegui una query: le geometrie contenute nei risultati compaiono qui sulla mappa.</div>
                         </div>
                       </div>
                     </div>
+                    </div><!-- /#query-surface-content -->
                   </div>
                 </div>
               </div>
@@ -1523,12 +1570,25 @@
 
   <!-- ===================== Modale inserimento documento ===================== -->
   <div id="insert-overlay" class="overlay hidden">
-    <div class="modal wide">
-      <h2 id="insert-title">Nuovo documento</h2>
+    <div class="modal wide insert-studio">
+      <header class="insert-heading">
+        <svg class="insert-emblem" viewBox="0 0 72 72" aria-hidden="true">
+          <path class="insert-emblem-back" d="M16 13h36a6 6 0 0 1 6 6v34H16a6 6 0 0 1-6-6V19a6 6 0 0 1 6-6Z"/>
+          <path class="insert-emblem-frame" d="M16 13h36a6 6 0 0 1 6 6v34H16a6 6 0 0 1-6-6V19a6 6 0 0 1 6-6Z M10 27h48 M25 27v26"/>
+          <path class="insert-emblem-lines" d="M33 36h16 M33 44h8 M17 35v2 M17 43v2"/>
+          <g class="insert-emblem-row"><rect x="18" y="51" width="40" height="12" rx="4"/><path d="M27 55v4 M35 57h14"/></g>
+          <g class="insert-emblem-plus"><circle cx="56" cy="23" r="12"/><path d="M56 18v10 M51 23h10"/></g>
+        </svg>
+        <div class="insert-heading-copy"><h2 id="insert-title">Nuovo documento</h2>
+          <p id="insert-target" class="insert-target"></p>
+        </div>
+      </header>
+      <p id="insert-description" class="insert-description">Dai forma ai tuoi dati.</p>
 
-      <div class="tabs">
-        <button type="button" class="tab active" data-instab="form">Modulo</button>
-        <button type="button" class="tab" data-instab="json">JSON</button>
+      <div class="insert-modebar"><div class="tabs" aria-label="Modalità di inserimento">
+        <button type="button" class="tab active" data-instab="form"><i data-lucide="list-plus"></i> Campi</button>
+        <button type="button" class="tab" data-instab="json"><i data-lucide="braces"></i> JSON</button>
+      </div><span id="insert-schema-state" role="status"></span>
       </div>
 
       <div id="insert-tab-form" class="tab-panel">
@@ -1555,24 +1615,18 @@
         <div id="insert-json-lint" class="lint-bar hidden" aria-live="polite"></div>
       </div>
 
-      <div id="insert-error" class="error hidden"></div>
+      <div id="insert-error" class="error hidden" role="alert"></div>
       <div class="modal-actions">
+        <span class="insert-save-hint"><i data-lucide="corner-down-left"></i> Scrivi nel database con Inserisci</span>
         <button id="insert-cancel" class="ghost">Annulla</button>
-        <button id="insert-save" class="primary">Inserisci</button>
+        <button id="insert-save" class="primary"><i data-lucide="plus"></i> Inserisci</button>
       </div>
     </div>
   </div>
 
   <!-- ===================== Modale editor geografico (GEOMETRY / GeoJSON) ===================== -->
-  <!-- Impianto: la MAPPA è il documento, gli strumenti le stanno sopra.
-       Prima ogni comando viveva in due barre di testo sopra la mappa, che
-       occupavano due righe intere e allontanavano il comando dal punto in cui
-       si guarda — mentre la mappa, che è ciò che si sta modificando, aveva
-       poco più di metà finestra. Ora: una barra sola con le scelte che
-       riguardano l'intera geometria (tipo, modalità del clic, pannelli), e
-       sulla mappa due gruppi FLUTTUANTI, come negli editor cartografici: la
-       colonna a destra per la forma (annulla, inquadra, parti) e la barra in
-       basso per il vertice scelto, che è dove l'occhio sta già guardando. -->
+  <!-- Mappa libera, strumenti sotto il disegno e GeoJSON affiancato su desktop;
+       il drawer mobile conserva mirino e viste alternative senza coprire i dati. -->
   <div id="geomap-overlay" class="overlay hidden">
     <div class="modal wide geomap-modal">
       <!-- Icone: un solo sprite SVG per tutta la modale. Un simbolo si riusa con
@@ -1594,8 +1648,11 @@
       </svg>
 
       <div class="geomap-intestazione">
-        <h2 id="geomap-title">Geometria</h2>
-        <span id="geomap-info" class="geomap-chip"></span>
+        <div class="geomap-heading">
+          <div class="geomap-heading-line"><svg class="ico" aria-hidden="true"><use href="#ico-sfondo"/></svg><h2 id="geomap-title">Geometria</h2></div>
+          <span id="geomap-info" class="geomap-chip"></span>
+        </div>
+        <button type="button" id="geomap-close" class="ghost" aria-label="Chiudi editor geometrico"><i data-lucide="x"></i></button>
       </div>
 
       <div class="geomap-toolbar">
@@ -1614,7 +1671,8 @@
              controllo segmentato lo mostra tutto: un unico bottone che cambia
              etichetta costringe a chiedersi se l'etichetta descriva lo stato di
              adesso o quello che si otterrebbe premendolo. -->
-        <div class="geomap-segmentato" id="geomap-mode" role="group" aria-label="Cosa fa il clic sulla mappa">
+        <div class="geomap-segmentato" id="geomap-mode" role="group" aria-label="Cosa fa il clic sulla mappa" data-mode="aggiungi">
+          <span class="geomap-mode-indicator" aria-hidden="true"></span>
           <button type="button" id="geomap-mode-draw" aria-pressed="true"
                   title="Il clic sulla mappa aggiunge un vertice alla parte attiva">
             <svg class="ico" aria-hidden="true"><use href="#ico-disegna"/></svg>Disegna
@@ -1633,7 +1691,7 @@
         </button>
         <input type="checkbox" id="geomap-tiles" class="visually-hidden" tabindex="-1" aria-hidden="true" />
         <button type="button" id="geomap-json-btn" class="geomap-interruttore" aria-pressed="true" aria-label="GeoJSON"
-                aria-controls="geomap-json" title="Mostra o nasconde il GeoJSON">
+                aria-controls="geomap-code-panel" title="Mostra o nasconde il GeoJSON">
           <svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg><span class="geomap-control-label">GeoJSON</span>
         </button>
       </div>
@@ -1649,8 +1707,7 @@
             </svg>
           </div>
 
-          <!-- Strumenti della FORMA: stanno sulla mappa, come in un editor
-               cartografico, perché è lì che si guarda mentre si lavora. -->
+          <!-- I comandi occupano una riga propria, senza coprire la geometria. -->
           <div class="geomap-rail" id="geomap-azioni-forma">
             <button type="button" id="geomap-undo" class="geomap-tool" title="Annulla l’ultima modifica (Ctrl+Z)" aria-label="Annulla l’ultima modifica">
               <svg class="ico" aria-hidden="true"><use href="#ico-annulla"/></svg>
@@ -1674,10 +1731,7 @@
             </button>
           </div>
 
-          <!-- Strumenti del VERTICE scelto: in basso, larghi, con l'etichetta
-               che dice su cosa stanno per agire. Restano visibili e disattivati
-               finché non c'è una scelta: un comando che appare solo quando è
-               possibile è un comando che nessuno scopre. -->
+          <!-- La selezione resta vicina alle azioni che operano sul vertice. -->
           <div class="geomap-azioni-vertice" id="geomap-azioni">
             <span id="geomap-selezione" class="geomap-selezione">nessun vertice scelto</span>
             <button type="button" id="geomap-mirino-apply" class="primary hidden" aria-describedby="geomap-note">Seleziona</button>
@@ -1695,12 +1749,17 @@
           <div id="geomap-handles-note" class="geomap-avviso-mappa hidden"></div>
         </div>
 
-        <textarea id="geomap-json" class="geomap-json" spellcheck="false" aria-label="GeoJSON della geometria"></textarea>
+        <section id="geomap-code-panel" class="geomap-code-panel" aria-label="Editor GeoJSON">
+          <div class="geomap-code-heading"><span><svg class="ico" aria-hidden="true"><use href="#ico-json"/></svg> GeoJSON</span><small id="geomap-code-mode">Modifica diretta</small></div>
+          <textarea id="geomap-json" class="geomap-json" spellcheck="false" aria-label="GeoJSON della geometria" aria-describedby="geomap-code-note geomap-error"></textarea>
+          <p id="geomap-code-note">Coordinate: longitudine, latitudine e quota facoltativa.</p>
+        </section>
       </div>
 
       <div id="geomap-note" class="dim geomap-note hidden"></div>
-      <div id="geomap-error" class="error hidden"></div>
+      <div id="geomap-error" class="error hidden" role="alert"></div>
       <div class="modal-actions">
+        <span id="geomap-state" class="dim">Le modifiche si applicano alla conferma.</span>
         <button id="geomap-cancel" class="ghost">Annulla</button>
         <button id="geomap-save" class="primary">Applica geometria</button>
       </div>
@@ -1709,37 +1768,45 @@
 
   <!-- ============ Modale mappa di una selezione di celle geometriche ============ -->
   <div id="geomulti-overlay" class="overlay hidden">
-    <div class="modal wide geomap-modal">
-      <h2 id="geomulti-title">Geometrie sulla mappa</h2>
-
-      <div class="geomap-toolbar">
-        <button type="button" id="geomulti-fit" class="ghost">⤢ Inquadra tutto</button>
+    <div class="modal wide geomulti-modal">
+      <div class="geomulti-header">
+        <div><h2 id="geomulti-title"><i data-lucide="map"></i> Geometrie selezionate</h2>
+          <p id="geomulti-context" class="dim"></p></div>
+        <button type="button" id="geomulti-close" class="ghost" aria-label="Chiudi mappa"><i data-lucide="x"></i></button>
+      </div>
+      <div class="geomulti-tools">
+        <button type="button" id="geomulti-fit" class="secondary"><i data-lucide="scan"></i> Inquadra tutto</button>
         <label class="geomap-check" title="Le tile OpenStreetMap sono l'unica richiesta a un server esterno: senza, la mappa funziona su sfondo neutro">
-          <input type="checkbox" id="geomulti-tiles" /> Sfondo mappa (OpenStreetMap)
+          <input type="checkbox" id="geomulti-tiles" /> Sfondo mappa
         </label>
-        <span class="dim">Clic su una riga dell'elenco per inquadrarla · clic su una forma per trovarla nell'elenco</span>
       </div>
-
-      <div id="geomulti-warning" class="warning hidden"></div>
-
-      <div class="geomap-body">
-        <div id="geomulti-canvas" class="geomap-canvas"></div>
-        <div class="geomulti-side">
-          <div id="geomulti-summary"></div>
+      <div id="geomulti-warning" class="warning hidden" role="status"></div>
+      <div id="geomulti-body" class="geomulti-content" data-mode="elenco">
+        <section id="geomulti-map-panel" class="geomulti-map-panel" aria-label="Mappa delle geometrie">
+          <div id="geomulti-canvas" class="geomap-canvas"></div>
+          <p id="geomulti-selection" class="geomulti-selection" aria-live="polite">Scegli una geometria sulla mappa o nell’elenco.</p>
+        </section>
+        <nav id="geomulti-tabs" class="geomulti-tabs" role="tablist" aria-label="Esplora la selezione">
+          <button type="button" id="geomulti-tab-mappa" class="geomulti-tab-mappa" role="tab" data-tab-id="mappa" aria-controls="geomulti-map-panel" aria-selected="false" tabindex="-1"><i data-lucide="map"></i> Mappa</button>
+          <button type="button" id="geomulti-tab-elenco" role="tab" data-tab-id="elenco" aria-controls="geomulti-list-panel" aria-selected="true"><i data-lucide="list"></i> Elenco <span id="geomulti-count"></span></button>
+          <button type="button" id="geomulti-tab-riepilogo" role="tab" data-tab-id="riepilogo" aria-controls="geomulti-summary-panel" aria-selected="false" tabindex="-1"><i data-lucide="chart-no-axes-column"></i> Riepilogo</button>
+        </nav>
+        <section id="geomulti-list-panel" class="geomulti-panel" role="tabpanel" aria-labelledby="geomulti-tab-elenco">
           <div id="geomulti-list" class="geomulti-list"></div>
-          <div id="geomulti-list-note" class="dim geomap-note hidden"></div>
-        </div>
+          <p id="geomulti-list-note" class="dim geomap-note hidden"></p>
+        </section>
+        <section id="geomulti-summary-panel" class="geomulti-panel hidden" role="tabpanel" aria-labelledby="geomulti-tab-riepilogo" tabindex="0">
+          <div id="geomulti-summary"></div>
+          <p class="geomulti-method">Lunghezze e aree sono calcolate sulla sfera (raggio medio WGS84):
+            l'approssimazione rispetto all'ellissoide è sotto lo 0,5%. Per un calcolo esatto usa le funzioni
+            spaziali del database (<span class="mono">ST_Length</span>, <span class="mono">ST_Area</span>).</p>
+        </section>
       </div>
-
-      <p class="hint" style="margin:8px 0 0">Lunghezze e aree sono calcolate sulla sfera (raggio medio WGS84):
-        l'approssimazione rispetto all'ellissoide è sotto lo 0,5%. Per un calcolo esatto usa le funzioni
-        spaziali del database (<span class="mono">ST_Length</span>, <span class="mono">ST_Area</span>).</p>
-
-      <div class="modal-actions">
-        <button id="geomulti-copy" class="ghost">Copia riepilogo</button>
-        <button id="geomulti-export" class="ghost">Esporta GeoJSON</button>
-        <button id="geomulti-close" class="primary">Chiudi</button>
-      </div>
+      <footer class="geomulti-footer">
+        <span class="dim">Solo lettura</span>
+        <button type="button" id="geomulti-copy" class="ghost"><i data-lucide="copy"></i> Copia riepilogo</button>
+        <button type="button" id="geomulti-export" class="primary"><i data-lucide="download"></i> Esporta GeoJSON</button>
+      </footer>
     </div>
   </div>
 
@@ -1983,8 +2050,8 @@
       <h2>Importa database</h2>
       <p class="subtitle" id="dbimport-subtitle"></p>
       <div class="form-row">
-        <label>File esportato (.codedb.json)
-          <input type="file" id="dbimport-file" accept=".json,application/json" />
+          <label>File SQL o CodeDB JSON
+            <input type="file" id="dbimport-file" accept=".sql,.json,application/json,text/plain" />
         </label>
       </div>
       <div class="form-row">
@@ -2002,6 +2069,7 @@
            finiscono sullo stesso nome, o un nome che su PostgreSQL collide con
            uno esistente perché il motore abbassa gli identificatori non
            quotati, sono differenze che dopo non si distinguono più. -->
+      <p class="hint" id="dbimport-file-notes" role="status"></p>
       <ul class="piano-avvisi hidden" id="dbimport-mapping"></ul>
       <div id="dbimport-progress" class="import-progress hidden">
         <div class="import-progress-track">
@@ -2345,86 +2413,114 @@
 
   <!-- ===================== Modale Backup & Restore ===================== -->
   <div id="modal-backup-manager" class="overlay hidden">
-    <div class="modal modal-lg">
+    <div class="modal modal-lg backup-manager-modal">
+      <!-- THESIS: una copia nasce da origine e tipo; i dettagli restano disponibili senza occupare il primo piano.
+           OWN-WORLD: superfici CodeDB, indaco funzionale, stessi controlli Arc e indicatore delle schede del workspace.
+           STORY: scegli cosa copiare, controlla il riepilogo e avvia; ritrova ultimo backup e storico nel catalogo.
+           FIRST VIEWPORT: testata compatta, due schede, origine/tipo, ambito, opzioni espandibili e azione finale.
+           FORM: componente Operate nel sistema esistente; nessun nuovo mondo o concept roll. -->
       <div class="modal-header">
-        <h2><i data-lucide="hard-drive"></i> Gestione Backup & Ripristino</h2>
+        <h2><i data-lucide="hard-drive"></i> Backup &amp; Ripristino</h2>
         <button type="button" id="btn-close-backup-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
-      <div class="modal-tabs">
-        <button type="button" id="tab-btn-backup-new" class="tab-btn active">＋ Nuovo Backup</button>
-        <button type="button" id="tab-btn-backup-catalog" class="tab-btn"><i data-lucide="folder-open"></i> Catalogo & Ripristino</button>
+      <p class="modal-hint backup-intro">Crea una copia del database o ritrova un backup da ripristinare.</p>
+      <div class="modal-tabs backup-tabs" role="tablist" aria-label="Gestione backup">
+        <button type="button" id="tab-btn-backup-new" class="tab-btn active" role="tab" data-tab-id="new" aria-selected="true" aria-controls="section-backup-new"><i data-lucide="archive"></i> Nuovo backup</button>
+        <button type="button" id="tab-btn-backup-catalog" class="tab-btn" role="tab" data-tab-id="catalog" aria-selected="false" aria-controls="section-backup-catalog" tabindex="-1"><i data-lucide="folder-open"></i> Catalogo</button>
       </div>
 
       <!-- Scheda 1: Nuovo Backup -->
-      <div id="section-backup-new" class="modal-tab-content">
+      <div id="section-backup-new" class="modal-tab-content" role="tabpanel" aria-labelledby="tab-btn-backup-new">
         <form id="form-run-backup">
           <div class="form-grid">
             <div class="form-group">
-              <label for="backup-db">Database originario *</label>
-              <select id="backup-db" required></select>
+              <label for="backup-db">Database di origine <span aria-hidden="true">*</span></label>
+              <select id="backup-db" required aria-describedby="backup-source-hint"></select>
+              <small id="backup-source-hint" class="backup-field-hint"></small>
             </div>
             <div class="form-group">
-              <label for="backup-type">Tipo di Backup *</label>
-              <select id="backup-type">
-                <option value="full">FULL (Dump completo del database)</option>
-                <option value="incremental">INCREMENTALE (Solo modifiche dall'ultimo backup)</option>
-                <option value="differential">DIFFERENZIALE (Solo modifiche dall'ultimo FULL)</option>
+              <label for="backup-type">Tipo di backup</label>
+              <select id="backup-type" aria-describedby="backup-type-hint">
+                <option value="full">Completo · FULL</option>
+                <option value="incremental">Incrementale</option>
+                <option value="differential">Differenziale</option>
               </select>
+              <small id="backup-type-hint" class="backup-field-hint"></small>
             </div>
           </div>
 
-          <div class="form-grid">
-            <div class="form-group">
-              <label for="backup-collections">Collection / Tabelle selettive (opzionale)</label>
-              <input type="text" id="backup-collections" placeholder="es. utenti, ordini (separate da virgola)" />
-            </div>
-            <div class="form-group">
-              <label for="backup-since">Campo data per modifiche (opzionale)</label>
-              <input type="text" id="backup-since" placeholder="es. updatedAt, created_at" />
-            </div>
+          <div class="form-group backup-scope">
+            <label id="backup-scope-label">Tabelle o collezioni <span class="backup-optional">Facoltativo</span></label>
+            <details id="backup-collections" class="backup-multiselect" data-escape-close>
+              <summary aria-labelledby="backup-scope-label backup-scope-selection" aria-describedby="backup-scope-hint"><i data-lucide="list-checks"></i><span id="backup-scope-selection">Tutto il database</span><i data-lucide="chevron-down"></i></summary>
+              <div class="backup-multiselect-body">
+                <div class="backup-scope-tools">
+                  <input type="search" id="backup-scope-search" placeholder="Cerca tabelle o collezioni…" aria-label="Cerca tabelle o collezioni" autocomplete="off" />
+                  <button type="button" id="backup-scope-clear" class="btn btn-ghost btn-sm" disabled>Azzera</button>
+                </div>
+                <div id="backup-scope-list" role="group" aria-labelledby="backup-scope-label"></div>
+                <p id="backup-scope-status" class="backup-field-hint" role="status"></p>
+                <button type="button" id="backup-scope-retry" class="btn btn-secondary btn-sm hidden">Riprova</button>
+              </div>
+            </details>
+            <small id="backup-scope-hint" class="backup-field-hint">Nessuna selezione: includi tutto il database.</small>
           </div>
 
-          <div class="form-grid">
+          <details id="backup-options" class="backup-options">
+            <summary><i data-lucide="sliders-horizontal"></i><span><strong>Opzioni avanzate</strong><small>Compressione, campo data, cloud e notifiche</small></span><i data-lucide="chevron-down" class="backup-options-chevron"></i></summary>
+            <div class="backup-options-body">
+            <div class="backup-compression">
+              <label class="backup-compression-toggle"><input type="checkbox" id="backup-no-compress" /> Senza compressione gzip</label>
+              <label class="backup-compression-level" for="backup-compress-level">Livello gzip
+                <input type="number" id="backup-compress-level" class="number-input-narrow" min="1" max="9" value="1" title="Da 1 a 9. Livello 1: velocità massima." />
+              </label>
+            </div>
+            <div class="form-grid">
+              <div class="form-group">
+                <label for="backup-since">Campo data delle modifiche</label>
+                <input type="text" id="backup-since" placeholder="es. updatedAt, created_at" />
+                <small class="backup-field-hint">Facoltativo, per copie incrementali o differenziali.</small>
+              </div>
             <div class="form-group">
-              <label for="backup-storage">Destinazione cloud (opzionale)</label>
+              <label for="backup-storage">Destinazione cloud</label>
               <input type="text" id="backup-storage" placeholder="alias configurato sul server (CODEDB_BACKUP_STORAGE)" title="Nome di una destinazione cloud pre-approvata dall'amministratore. Gli URI arbitrari non sono accettati dall'interfaccia: usa la CLI." />
+              <small class="backup-field-hint">Facoltativa. Senza alias, la copia resta sul server.</small>
+            </div>
             </div>
             <div class="form-group">
-              <label for="backup-slack">Slack Webhook URL (opzionale)</label>
+              <label for="backup-slack">Notifica Slack <span class="backup-optional">Facoltativa</span></label>
               <input type="url" id="backup-slack" placeholder="https://hooks.slack.com/services/..." />
             </div>
-          </div>
+            </div>
+          </details>
 
-          <div class="form-row checkbox-row">
-            <label class="cursor-pointer">
-              <input type="checkbox" id="backup-no-compress" /> Disabilita compressione gzip
-            </label>
-            <label>Livello gzip (1-9):
-              <input type="number" id="backup-compress-level" class="number-input-narrow" min="1" max="9" value="1"
-                title="Livello 1 = velocità massima (consigliato)" />
-            </label>
-          </div>
+          <div id="backup-status-msg" class="status-box hidden" role="status" aria-live="polite"></div>
 
-
-          <div id="backup-status-msg" class="status-box hidden"></div>
-
-          <div class="modal-actions">
-            <button type="submit" id="btn-submit-backup" class="primary"><i data-lucide="rocket"></i> Avvia Backup</button>
+          <div class="modal-actions backup-submit-row">
+            <span id="backup-summary" class="backup-field-hint" aria-live="polite"></span>
+            <button type="submit" id="btn-submit-backup" class="primary"><i data-lucide="archive"></i> Avvia backup<i data-lucide="arrow-right" class="backup-submit-arrow"></i></button>
           </div>
         </form>
       </div>
 
       <!-- Scheda 2: Catalogo & Ripristino -->
-      <div id="section-backup-catalog" class="modal-tab-content hidden">
+      <div id="section-backup-catalog" class="modal-tab-content hidden" role="tabpanel" aria-labelledby="tab-btn-backup-catalog">
+        <!-- THESIS: database e data prima degli identificativi tecnici, storico vicino alla copia più recente.
+             OWN-WORLD: superfici CodeDB, icone dei motori, date tabulari, accenti indaco.
+             STORY: trova il database, confronta le copie, verifica e conferma la destinazione del ripristino.
+             FIRST VIEWPORT: ricerca, origini dei gruppi, righe con database, ultima copia e azioni separate.
+             FORM: estensione locale Operate; storico in linea con apertura e chiusura animate. -->
         <div class="catalog-toolbar">
           <input aria-label="Filtra backup per gruppo o database" type="search" id="backup-catalog-filter" class="hidden"
                  placeholder="Filtra per gruppo o database…" spellcheck="false" autocomplete="off" />
-          <span id="backup-catalog-hint">Cataloghi dei backup presenti nel server:</span>
-          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna Lista</button>
+          <span id="backup-catalog-hint">Le copie disponibili sul server</span>
+          <button type="button" id="btn-refresh-backups" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
         </div>
         <!-- Avanzamento del ripristino: alimentato dai push `backup:progress`. -->
         <div id="restore-progress" class="hidden" aria-label="Attività di ripristino"></div>
+        <div id="backup-catalog-status" class="visually-hidden" role="status"></div>
+        <div id="backup-catalog-error" class="error-box hidden" role="alert"></div>
         <div id="backup-catalog-list" class="catalog-list-container"></div>
       </div>
     </div>
@@ -2554,21 +2650,31 @@
 
   <!-- ===================== Salute delle connessioni ===================== -->
   <div id="modal-health" class="overlay hidden">
-    <div class="modal modal-lg">
+    <div class="modal modal-lg health-modal">
+      <!-- THESIS: riconoscere subito la connessione e ciò che richiede attenzione, senza inseguire colonne lontane.
+           OWN-WORLD: superfici CodeDB, indaco nei controlli, colori semantici e dati allineati.
+           STORY: leggi lo stato, confronta il ping, approfondisci SSH e pool; aggiorna senza perdere il punto.
+           FIRST VIEWPORT: titolo, esito e ultima verifica, controlli compatti, righe diagnostiche adattive.
+           FORM: componente Operate nel sistema esistente; estensione locale senza concept roll. -->
       <div class="modal-header">
-        <h2><i data-lucide="activity"></i> Salute delle Connessioni</h2>
+        <h2><i data-lucide="activity"></i> Salute delle connessioni</h2>
         <button type="button" id="btn-close-health-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
-      <p class="modal-hint">Stato in tempo reale delle connessioni attive (una per tab aperto): latenza del ping, stato
-        del tunnel SSH e pool di connessioni.</p>
+      <p class="modal-hint health-intro">Ping, tunnel SSH e pool delle connessioni aperte.</p>
+
+      <div class="health-overview">
+        <span id="health-summary" role="status" aria-live="polite">In attesa della verifica</span>
+        <span id="health-checked" class="health-checked">Nessuna verifica eseguita</span>
+      </div>
 
       <div class="catalog-toolbar health-toolbar">
         <label class="health-auto">
-          <input type="checkbox" id="health-auto-refresh" checked> Auto-refresh (4s)
+          <input type="checkbox" id="health-auto-refresh" checked> Automatico <span class="health-interval" title="Nuova verifica quattro secondi dopo la risposta">4 s</span>
         </label>
         <button type="button" id="btn-refresh-health" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
+      <div id="health-error" class="error-box hidden" role="alert"></div>
       <div id="health-list" class="catalog-list-container"></div>
     </div>
   </div>
@@ -2585,26 +2691,32 @@
        Nessun `backdrop-filter` da disattivare qui: il pannello si ridisegna
        ogni 5 s, non a ogni fotogramma come la mappa. -->
   <div id="modal-sessions" class="overlay hidden">
-    <div class="modal modal-lg">
+    <div class="modal modal-lg sessions-modal">
+      <!-- THESIS: chi occupa il server, cosa esegue e quale intervento è possibile si leggono nella stessa riga.
+           OWN-WORLD: superfici CodeDB, codice monospaziato, indaco per la lettura e colori semantici per i blocchi.
+           STORY: scegli il server, leggi la diagnosi, ispeziona la query e conferma l'eventuale intervento.
+           FIRST VIEWPORT: testata compatta, connessione e filtri, diagnosi, quattro colonne con spazio alla query.
+           FORM: componente Operate nel sistema esistente; estensione locale senza concept roll. -->
       <div class="modal-header">
         <h2><i data-lucide="stethoscope"></i> Sessioni &amp; Query attive</h2>
         <button type="button" id="btn-close-sessions-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
-      <p class="modal-hint">Cosa sta girando adesso sul server di database, di chiunque sia. Le connessioni
-        aperte da CodeDB e i processi di servizio del server non sono terminabili.</p>
+      <p class="modal-hint sessions-intro">Attività sul server selezionato: query, attese e transazioni.</p>
 
       <div class="catalog-toolbar sessions-toolbar">
         <label class="sessions-conn">
           Connessione
           <select id="sessions-conn-select"></select>
         </label>
-        <label class="health-auto">
-          <input type="checkbox" id="sessions-only-active" checked> Solo attive
-        </label>
-        <label class="health-auto">
-          <input type="checkbox" id="sessions-auto-refresh" checked> Auto-refresh (5s)
-        </label>
+        <div class="sessions-filters">
+          <label class="health-auto">
+            <input type="checkbox" id="sessions-only-active" checked> Solo attive
+          </label>
+          <label class="health-auto">
+            <input type="checkbox" id="sessions-auto-refresh" checked> Automatico <span class="health-interval">5 s</span>
+          </label>
+        </div>
         <button type="button" id="btn-refresh-sessions" class="btn btn-sm btn-secondary"><i data-lucide="refresh-cw"></i> Aggiorna</button>
       </div>
 
@@ -2613,7 +2725,7 @@
            SOPRA la tabella perché nel caso che conta — qualcuno è bloccato —
            la riga da colpire non è quella che salta all'occhio: la vittima è
            ferma e visibile, chi tiene il lock spesso non sta eseguendo nulla. -->
-      <div id="sessions-verdict" class="sessions-verdict"></div>
+      <div id="sessions-verdict" class="sessions-verdict" aria-live="polite"></div>
 
       <div id="sessions-note" class="sessions-note hidden"></div>
       <div id="sessions-list" class="catalog-list-container"></div>
@@ -2633,21 +2745,26 @@
        modale — un riquadro di anteprima mostrerebbe quattro colori su un
        fondo finto, cioè la cosa che non serve sapere. -->
   <div id="modal-theme" class="overlay hidden">
-    <div class="modal modal-lg">
+    <div class="modal modal-lg tema-modal">
+      <!-- THESIS: scegliere i colori vedendoli sul workspace, con una selezione che conserva continuità.
+           OWN-WORLD: superfici CodeDB, tipografia e token esistenti; anteprime derivate dalle palette reali.
+           STORY: confronta i temi, applica subito, personalizza una copia e salva soltanto quando è pronta.
+           FIRST VIEWPORT: tre anteprime affiancate, temi personali in righe, creazione e import in fondo.
+           FORM: estensione locale Operate; stessa identità, righe compatte su mobile, nessun concept roll. -->
       <div class="modal-header">
         <h2><i data-lucide="palette"></i> Tema</h2>
         <button type="button" id="btn-close-theme-modal" class="btn-close" aria-label="Chiudi">✕</button>
       </div>
 
-      <p class="modal-hint">Scegli un tema o creane uno tuo. Le modifiche si vedono subito
-        sull'applicazione dietro questa finestra; chiudendo senza salvare torna quello in uso.</p>
+      <p class="modal-hint">Il tuo workspace, nei tuoi colori. Scegli un tema per applicarlo e ricordarlo subito.</p>
+
+      <div id="theme-list" class="theme-list" aria-label="Temi disponibili"></div>
 
       <div class="catalog-toolbar">
-        <button type="button" id="btn-tema-nuovo" class="btn btn-sm btn-secondary">＋ Nuovo tema</button>
+        <button type="button" id="btn-tema-nuovo" class="btn btn-sm btn-secondary"><i data-lucide="plus"></i> Nuovo tema</button>
         <button type="button" id="btn-tema-importa" class="btn btn-sm btn-secondary"><i data-lucide="upload"></i> Importa da file</button>
       </div>
 
-      <div id="theme-list" class="theme-list"></div>
       <div id="theme-editor" class="theme-editor hidden"></div>
 
       <input type="file" id="tema-import-file" accept=".json,application/json" class="hidden" />
@@ -2755,25 +2872,52 @@
   </div>
 
   <!-- ===================== Query in Sospeso ===================== -->
+  <!-- THESIS: un registro compatto porta a una query leggibile, con una sola area di azione.
+       OWN-WORLD: superfici CodeDB, indaco funzionale, controlli Arc e codice monospaziato.
+       STORY: ritrovare il contesto, leggere l'interruzione, riprendere consapevolmente.
+       FIRST VIEWPORT: clessidra animata nella testata, registro a sinistra, dettaglio e azioni a destra.
+       FORM: estensione locale Operate; registro e ispettore, impilati su mobile; nessun nuovo mondo visivo. -->
   <div id="modal-pending" class="overlay hidden">
-    <div class="modal modal-lg">
-      <div class="modal-header">
-        <h2><i data-lucide="hourglass"></i> Query in Sospeso</h2>
-        <button type="button" id="btn-close-pending-modal" class="btn-close" aria-label="Chiudi">✕</button>
-      </div>
-
-      <p class="modal-hint">Registro delle query avviate dalla tab Query & Aggregate non completate o nello storico recente. La prima voce non completata indica il punto in cui ci si è fermati.</p>
-
-      <div class="catalog-toolbar pending-toolbar">
-        <div class="pending-search-wrap">
-          <input aria-label="Cerca query sospese" type="text" id="pending-search-input" class="form-control form-control-sm" placeholder="Cerca per testo query, db, collezione o stato...">
+    <div class="modal modal-lg pending-studio">
+      <div class="modal-header pending-heading">
+        <svg class="pending-emblem" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+          <circle class="pending-orbit" cx="36" cy="36" r="31" pathLength="100" stroke="currentColor" stroke-width="1.5" stroke-dasharray="76 24" transform="rotate(-90 36 36)" />
+          <g class="pending-hourglass" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M25 19h22M25 53h22M27 20v6c0 5 5 8 9 10-4 2-9 5-9 10v6M45 20v6c0 5-5 8-9 10 4 2 9 5 9 10v6" />
+            <path class="pending-sand" d="m31 26 5 4 5-4M31 47l5-4 5 4" />
+          </g>
+          <circle cx="59" cy="53" r="11" fill="var(--accent)" />
+          <path class="pending-play" d="m57 48 6 5-6 5V48Z" fill="var(--on-accent)" />
+        </svg>
+        <div class="pending-heading-copy">
+          <h2 id="pending-title">Query in sospeso</h2>
+          <p>Ritrova il contesto. Riparti dal punto giusto.</p>
         </div>
-        <div class="pending-toolbar-btns">
-          <button type="button" id="btn-clear-resolved-pending" class="btn btn-sm btn-secondary"><i data-lucide="eraser"></i> Pulisci completate</button>
-          <button type="button" id="btn-clear-all-pending" class="btn btn-sm btn-danger"><i data-lucide="trash-2"></i> Pulisci TUTTE</button>
-        </div>
+        <span id="pending-count" class="pending-count"></span>
+        <button type="button" id="btn-close-pending-modal" class="btn-close" aria-label="Chiudi query in sospeso"><i data-lucide="x"></i></button>
       </div>
-      <div id="pending-queries-list" class="catalog-list-container"></div>
+      <div class="pending-workspace">
+        <aside class="pending-register" aria-label="Registro delle query">
+          <div class="pending-search-wrap">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input aria-label="Cerca query sospese" type="search" id="pending-search-input" placeholder="Cerca query, database o errore…" autocomplete="off">
+          </div>
+          <div class="pending-filters" role="group" aria-label="Filtra stato delle query">
+            <button type="button" data-pending-filter="all" aria-pressed="true">Tutte <span data-pending-count="all">0</span></button>
+            <button type="button" data-pending-filter="review" aria-pressed="false">Da rivedere <span data-pending-count="review">0</span></button>
+            <button type="button" data-pending-filter="running" aria-pressed="false">In corso <span data-pending-count="running">0</span></button>
+          </div>
+          <div id="pending-queries-list" role="listbox" aria-label="Query registrate" tabindex="0"></div>
+          <div class="pending-register-footer">
+            <span id="pending-list-count" aria-live="polite"></span>
+            <div class="pending-clean-actions">
+              <button type="button" id="btn-clear-resolved-pending" class="ghost btn-sm" title="Rimuovi dal registro le query non più in esecuzione"><i data-lucide="eraser"></i> Pulisci inattive</button>
+              <button type="button" id="btn-clear-all-pending" class="ghost btn-icon" aria-label="Svuota registro" title="Svuota registro"><i data-lucide="trash-2"></i></button>
+            </div>
+          </div>
+        </aside>
+        <section id="pending-detail" class="pending-detail" aria-label="Dettaglio della query"></section>
+      </div>
     </div>
   </div>
 

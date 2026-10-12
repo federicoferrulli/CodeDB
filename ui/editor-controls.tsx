@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom';
 import { useRef, type ReactNode } from 'react';
 import { Button, type ButtonProps } from './components/arc/button/button';
 import { Input, type InputProps } from './components/arc/input/input';
+import { Textarea, type TextareaProps } from './components/arc/textarea/textarea';
 import { Select, type SelectProps } from './components/arc/select/select';
 import { Checkbox } from './components/arc/checkbox/checkbox';
 import { mountFields } from './fields';
@@ -47,6 +48,10 @@ export function createArcInput(props: Omit<InputProps, 'label'> = {}) {
   const control = mount<HTMLInputElement>(ref => <Input label="" bare data-arc-component="input" {...props} ref={ref} />).control;
   if (props.type === 'date' || props.type === 'datetime-local') mountFields(control);
   return control;
+}
+
+export function createArcTextarea(props: Omit<TextareaProps, 'label'> = {}) {
+  return mount<HTMLTextAreaElement>(ref => <Textarea label="" bare data-arc-component="textarea" {...props} ref={ref} />).control;
 }
 
 export function createArcButton(props: ButtonProps = {}) {

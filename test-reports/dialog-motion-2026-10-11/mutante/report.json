@@ -1,0 +1,6 @@
+{
+  "checks": [],
+  "motion": [],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Il pannello resta visibile durante l’uscita\n    at C:\\repository\\CodeDB\\test\\e2e-dialog-motion.js:66:7"
+}

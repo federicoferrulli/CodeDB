@@ -10,7 +10,7 @@
     if (result !== 'ok') throw new Error(result);
   };
   async function download(url, name) {
-    if (busy) { alert('Completa prima il salvataggio in corso.'); return; }
+    if (busy) { alert('Completa prima il salvataggio in corso.'); return false; }
     busy = true;
     let reader;
     try {
@@ -28,9 +28,11 @@
         }
       }
       await send({ op: 'end' });
+      return true;
     } catch (error) {
       await send({ op: 'abort' }).catch(() => {});
       if (error.message !== 'annullato') alert('Salvataggio non riuscito: ' + error.message + '. Il file scelto potrebbe essere incompleto.');
+      return false;
     } finally {
       if (reader) await reader.cancel().catch(() => {});
       busy = false;

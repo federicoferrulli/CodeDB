@@ -1,9 +1,10 @@
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, closeNavigationSheet, renderDataEmpty } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
-import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons, safeUUID } from './utils.js';
-import { activeTab, tabs } from './tabs.js';
+import { $, emit, toast, openModal, closeModal, esc, fmtBytes, iniziaCaricamento, captureContext, refreshLucideIcons, safeUUID, dbTypeIcon } from './utils.js';
+import { activeTab, tabs, onTabChange } from './tabs.js';
+import { preparaTransizioneTab } from './tab-motion.js';
 import { socket } from './socket.js';
 import { refreshDbTree } from './dbtree.js';
 import { segnaTraguardo } from './onboarding-stato.js';
@@ -15,6 +16,14 @@ const ripristini = new Map();
 // ridisegna dai dati già in mano invece di richiedere di nuovo l'elenco.
 let catalogoGruppi = {};
 const storiciAperti = new Set();
+const movimentoRidotto = window.matchMedia('(prefers-reduced-motion: reduce)');
+let richiestaCatalogo = 0;
+let catalogoCaricato = false;
+let fineCaricamentoCatalogo = null;
+let origineSelezione = '';
+let richiestaCollezioni = 0;
+let elencoCaricato = false;
+const collezioniSelezionate = new Set();
 
 // Sotto questa soglia il campo di filtro sarebbe solo un controllo in più da
 // leggere: con tre gruppi si trova a occhio.
@@ -35,26 +44,69 @@ export function initBackupManager() {
   if (tabNew && tabCatalog) {
     tabNew.addEventListener('click', () => switchBackupTab('new'));
     tabCatalog.addEventListener('click', () => switchBackupTab('catalog'));
+    $('.backup-tabs').addEventListener('keydown', e => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const mode = e.key === 'Home' ? 'new' : e.key === 'End' ? 'catalog' : currentTabMode === 'new' ? 'catalog' : 'new';
+      switchBackupTab(mode);
+      $(`#tab-btn-backup-${mode}`).focus();
+    });
   }
 
   // Form invio backup
   const formBackup = $('#form-run-backup');
   if (formBackup) {
+    formBackup.addEventListener('input', aggiornaRiepilogoBackup);
+    formBackup.addEventListener('change', aggiornaRiepilogoBackup);
+    formBackup.addEventListener('invalid', e => {
+      const details = e.target.closest('details');
+      if (details) details.open = true;
+    }, true);
     formBackup.addEventListener('submit', async (e) => {
       e.preventDefault();
       await executeBackup();
     });
   }
 
+  $('#backup-db').addEventListener('change', () => caricaCollezioniBackup());
+  $('#backup-scope-search').addEventListener('input', filtraCollezioniBackup);
+  $('#backup-scope-retry').addEventListener('click', () => caricaCollezioniBackup());
+  $('#backup-scope-list').addEventListener('change', e => {
+    if (!e.target.matches('input[type="checkbox"]')) return;
+    if (e.target.checked) collezioniSelezionate.add(e.target.value);
+    else collezioniSelezionate.delete(e.target.value);
+    aggiornaSelezioneBackup();
+  });
+  $('#backup-scope-clear').addEventListener('click', () => {
+    collezioniSelezionate.clear();
+    $('#backup-scope-list').querySelectorAll('input').forEach(input => { input.checked = false; });
+    aggiornaSelezioneBackup();
+  });
+  $('#backup-collections').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.id === 'backup-scope-search') e.preventDefault();
+    if (e.key !== 'Escape' || !e.currentTarget.open) return;
+    e.preventDefault(); e.stopPropagation();
+    e.currentTarget.open = false;
+    e.currentTarget.querySelector('summary').focus();
+  });
+
+  onTabChange(() => {
+    if (!$('#modal-backup-manager').classList.contains('hidden')) {
+      populateDatabaseDropdown();
+      renderCatalogo();
+    }
+  });
+  $('#modal-backup-manager').addEventListener('codedb:dialog-closed', () => {
+    $('#modal-backup-manager').getAnimations({ subtree: true }).forEach(a => a.cancel());
+  });
+  movimentoRidotto.addEventListener('change', () => {
+    if (movimentoRidotto.matches) $('#backup-catalog-list').getAnimations({ subtree: true }).filter(a => a.effect?.getTiming().iterations !== Infinity).forEach(a => a.finish());
+  });
+
   // Refresh catalogo
   const btnRefresh = $('#btn-refresh-backups');
   if (btnRefresh) {
-    btnRefresh.addEventListener('click', () => {
-      // Il catalogo ha già il suo segnaposto nella lista, ma il pulsante deve
-      // dire che il clic è arrivato — ed è quello che si ripreme.
-      const fine = iniziaCaricamento(btnRefresh, '');
-      fetchBackupCatalog().finally(fine);
-    });
+    btnRefresh.addEventListener('click', fetchBackupCatalog);
   }
 
   const filtro = $('#backup-catalog-filter');
@@ -107,18 +159,27 @@ function chiudiProgresso(progresso, titolo, ok) {
 }
 
 export function openBackupModal() {
+  closeNavigationSheet(true);
   populateDatabaseDropdown();
+  aggiornaRiepilogoBackup();
   openModal('#modal-backup-manager');
   switchBackupTab(currentTabMode);
-  fetchBackupCatalog();
 }
 
 function switchBackupTab(mode) {
+  const cambiata = currentTabMode !== mode;
+  const completaTransizione = preparaTransizioneTab($('.backup-tabs'));
   currentTabMode = mode;
   const tabNew = $('#tab-btn-backup-new');
   const tabCatalog = $('#tab-btn-backup-catalog');
   const secNew = $('#section-backup-new');
   const secCatalog = $('#section-backup-catalog');
+  for (const button of [tabNew, tabCatalog]) {
+    const attiva = button.dataset.tabId === mode;
+    button.setAttribute('aria-selected', String(attiva));
+    button.tabIndex = attiva ? 0 : -1;
+  }
+  for (const panel of [secNew, secCatalog]) panel.getAnimations().forEach(a => a.cancel());
 
   if (mode === 'new') {
     tabNew.classList.add('active');
@@ -132,15 +193,39 @@ function switchBackupTab(mode) {
     secNew.classList.add('hidden');
     fetchBackupCatalog();
   }
+  completaTransizione();
+  if (cambiata && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const panel = mode === 'new' ? secNew : secCatalog;
+    const movimento = panel.animate([{ opacity: .5, transform: `translateX(${mode === 'new' ? -8 : 8}px)` }, { opacity: 1, transform: 'none' }],
+      { duration: 200, easing: 'cubic-bezier(.16,1,.3,1)' });
+    movimento.finished.then(() => movimento.cancel(), () => {});
+  }
+}
+
+function aggiornaRiepilogoBackup() {
+  const type = $('#backup-type').value;
+  const descrizioni = {
+    full: ['Completo', 'Una copia completa dei dati selezionati.'],
+    incremental: ['Incrementale', 'Le modifiche successive all’ultimo backup.'],
+    differential: ['Differenziale', 'Le modifiche successive all’ultimo backup completo.'],
+  };
+  const [nome, descrizione] = descrizioni[type] || descrizioni.full;
+  $('#backup-type-hint').textContent = descrizione;
+  const senzaCompressione = $('#backup-no-compress').checked;
+  $('#backup-compress-level').disabled = senzaCompressione;
+  const destinazione = $('#backup-storage').value.trim();
+  $('#backup-summary').textContent = `${nome} · ${senzaCompressione ? 'Senza compressione' : `gzip ${$('#backup-compress-level').value}`} · ${destinazione ? `Cloud: ${destinazione}` : 'Sul server'}`;
 }
 
 function populateDatabaseDropdown() {
   const select = $('#backup-db');
   if (!select) return;
+  const precedente = select.value;
   select.innerHTML = '';
 
   const tab = activeTab();
-  const dbs = tab && tab.databases ? tab.databases : (state.databases || []);
+  const dbs = [...(tab && tab.databases ? tab.databases : (state.databases || []))];
+  $('#backup-source-hint').textContent = tab?.dbType ? `Connessione: ${tab.label || tab.savedName || tab.dbType}` : 'Apri una connessione per scegliere il database.';
   if (!dbs.length && tab && tab.db) dbs.push({ name: tab.db });
 
   if (!dbs.length) {
@@ -148,6 +233,7 @@ function populateDatabaseDropdown() {
     opt.value = '';
     opt.textContent = '-- Connettiti prima a un database --';
     select.appendChild(opt);
+    caricaCollezioniBackup();
     return;
   }
 
@@ -156,9 +242,63 @@ function populateDatabaseDropdown() {
     const opt = document.createElement('option');
     opt.value = dbName;
     opt.textContent = dbName;
-    if (tab && tab.db === dbName) opt.selected = true;
+    const mantenuta = origineSelezione === JSON.stringify([tab?.id, precedente]);
+    if (dbName === (mantenuta ? precedente : tab?.db)) opt.selected = true;
     select.appendChild(opt);
   });
+  caricaCollezioniBackup();
+}
+
+function aggiornaSelezioneBackup() {
+  const nomi = [...collezioniSelezionate];
+  const summary = $('#backup-scope-selection');
+  summary.textContent = nomi.length === 1 ? nomi[0] : nomi.length ? `${nomi.length} selezionate` : 'Tutto il database';
+  summary.title = nomi.join(', ');
+  $('#backup-scope-clear').disabled = !nomi.length;
+  $('#backup-scope-hint').textContent = nomi.length ? 'Il backup includerà solo le voci selezionate.' : 'Nessuna selezione: includi tutto il database.';
+}
+
+function filtraCollezioniBackup() {
+  const ricerca = $('#backup-scope-search').value.trim().toLocaleLowerCase();
+  let visibili = 0;
+  const scelte = $('#backup-scope-list').querySelectorAll('.backup-scope-choice');
+  for (const scelta of scelte) {
+    scelta.hidden = !scelta.querySelector('input').value.toLocaleLowerCase().includes(ricerca);
+    if (!scelta.hidden) visibili++;
+  }
+  if (elencoCaricato) $('#backup-scope-status').textContent = !scelte.length ? 'Questo database non contiene tabelle o collezioni.' : !visibili ? 'Nessuna corrispondenza. Prova un altro nome.' : '';
+}
+
+async function caricaCollezioniBackup() {
+  const tab = activeTab(), db = $('#backup-db').value;
+  const origine = JSON.stringify([tab?.id, db]);
+  if (origine === origineSelezione && elencoCaricato) return;
+  const richiesta = ++richiestaCollezioni;
+  origineSelezione = origine;
+  elencoCaricato = false;
+  collezioniSelezionate.clear();
+  aggiornaSelezioneBackup();
+  $('#backup-scope-list').replaceChildren();
+  $('#backup-scope-search').value = '';
+  $('#backup-scope-search').disabled = true;
+  $('#backup-scope-retry').classList.add('hidden');
+  const status = $('#backup-scope-status');
+  status.textContent = !tab?.dbType || !db ? 'Scegli prima un database.' : 'Caricamento delle tabelle e collezioni…';
+  if (!tab?.dbType || !db) return;
+  try {
+    const res = await emit('db:collections', { tabId: tab.id, db, includeCounts: false, _bg: true });
+    if (richiesta !== richiestaCollezioni) return;
+    const nomi = [...new Set(res.collections.map(c => typeof c === 'string' ? c : c.name))].sort((a, b) => a.localeCompare(b));
+    $('#backup-scope-list').innerHTML = nomi.map(nome => `<label class="backup-scope-choice"><input type="checkbox" value="${esc(nome)}"><span>${esc(nome)}</span></label>`).join('');
+    mountArcControls($('#backup-scope-list'));
+    elencoCaricato = true;
+    $('#backup-scope-search').disabled = !nomi.length;
+    filtraCollezioniBackup();
+  } catch (err) {
+    if (richiesta !== richiestaCollezioni) return;
+    status.textContent = `Impossibile caricare l’elenco: ${err.message}`;
+    $('#backup-scope-retry').classList.remove('hidden');
+  }
 }
 
 async function executeBackup() {
@@ -175,7 +315,7 @@ async function executeBackup() {
   }
 
   const type = $('#backup-type').value;
-  const collections = $('#backup-collections').value.trim();
+  const collections = [...collezioniSelezionate];
   const sinceField = $('#backup-since').value.trim();
   const noCompress = $('#backup-no-compress').checked;
   const compressLevel = parseInt($('#backup-compress-level').value, 10) || 6;
@@ -197,7 +337,7 @@ async function executeBackup() {
       tabId: tab.id,
       db,
       type,
-      collections: collections || undefined,
+      collections: collections.length ? collections : undefined,
       sinceField: sinceField || undefined,
       noCompress,
       compressLevel,
@@ -228,16 +368,42 @@ async function executeBackup() {
 async function fetchBackupCatalog() {
   const container = $('#backup-catalog-list');
   if (!container) return;
-
-  container.innerHTML = '<div class="loading-spinner">Caricamento catalogo backup in corso...</div>';
+  const richiesta = ++richiestaCatalogo;
+  fineCaricamentoCatalogo ||= iniziaCaricamento($('#btn-refresh-backups'), 'Aggiorna');
+  $('#backup-catalog-error').classList.add('hidden');
+  $('#backup-catalog-status').textContent = 'Caricamento del catalogo…';
+  // Le righe restano montate: lo skeleton ne conserva misure, scroll e storici aperti.
+  container.setAttribute('aria-busy', 'true');
+  container.inert = true;
+  if (!container.childElementCount) {
+    container.innerHTML = Array.from({ length: 3 }, () => `
+      <section class="backup-group-card" aria-hidden="true"><div class="backup-group-main">
+        <div class="backup-group-title"><div><strong style="width: 12ch">&nbsp;</strong><span class="backup-group-meta" style="width: 18ch">&nbsp;</span><span class="backup-group-name" style="width: 15ch">&nbsp;</span></div></div>
+        <div class="backup-latest-info"><span class="backup-copy-label" style="width: 10ch">&nbsp;</span><span class="backup-copy-date" style="width: 20ch">&nbsp;</span><code class="backup-id" style="width: 24ch">&nbsp;</code></div>
+        <div class="backup-actions"><span class="backup-copy-date" style="width: 14ch">&nbsp;</span></div>
+      </div></section>`).join('');
+  }
 
   try {
     const res = await emit('backup:list', {});
+    if (richiesta !== richiestaCatalogo) return;
     catalogoGruppi = res.groups || {};
-    renderCatalogo();
+    catalogoCaricato = true;
   } catch (err) {
-    catalogoGruppi = {};
-    container.innerHTML = `<div class="error-box">Errore nel caricamento del catalogo: ${esc(err.message)}</div>`;
+    if (richiesta !== richiestaCatalogo) return;
+    const error = $('#backup-catalog-error');
+    error.textContent = `Errore nel caricamento del catalogo: ${err.message}`;
+    error.classList.remove('hidden');
+  } finally {
+    if (richiesta === richiestaCatalogo) {
+      container.setAttribute('aria-busy', 'false');
+      container.inert = false;
+      $('#backup-catalog-status').textContent = '';
+      if (catalogoCaricato) renderCatalogo();
+      else container.replaceChildren();
+      fineCaricamentoCatalogo?.();
+      fineCaricamentoCatalogo = null;
+    }
   }
 }
 
@@ -254,9 +420,10 @@ async function fetchBackupCatalog() {
  */
 function renderCatalogo() {
   const container = $('#backup-catalog-list');
-  if (!container) return;
+  if (!container || container.getAttribute('aria-busy') === 'true') return;
+  renderDataEmpty(container, null);
 
-  const nomi = Object.keys(catalogoGruppi).sort((a, b) => a.localeCompare(b));
+  const nomi = Object.keys(catalogoGruppi).filter(g => catalogoGruppi[g]?.length).sort((a, b) => a.localeCompare(b));
 
   // Il filtro compare solo quando c'è davvero qualcosa da filtrare.
   const campoFiltro = $('#backup-catalog-filter');
@@ -267,7 +434,8 @@ function renderCatalogo() {
   const q = (filtroUtile && campoFiltro ? campoFiltro.value : '').trim().toLowerCase();
 
   if (!nomi.length) {
-    container.innerHTML = '<div class="empty-state">Nessun backup trovato nella cartella del server.</div>';
+    container.innerHTML = '';
+    renderDataEmpty(container, { title: 'La prima copia parte da qui', description: 'Non ci sono ancora backup nel catalogo del server.', actionLabel: 'Crea un backup', onAction: () => switchBackupTab('new') });
     return;
   }
 
@@ -278,7 +446,8 @@ function renderCatalogo() {
   });
 
   if (!visibili.length) {
-    container.innerHTML = `<div class="empty-state">Nessun gruppo corrisponde a "${esc(q)}".</div>`;
+    container.innerHTML = '';
+    renderDataEmpty(container, { kind: 'search', title: 'Nessuna copia corrispondente', description: `Nessun gruppo corrisponde a “${q}”.`, actionLabel: 'Azzera filtro', onAction: () => { campoFiltro.value = ''; renderCatalogo(); campoFiltro.focus(); } });
     return;
   }
 
@@ -291,10 +460,10 @@ function renderCatalogo() {
   const miei = visibili.filter((g) => gruppoDellaConnessione(g, conn));
   const altri = visibili.filter((g) => !gruppoDellaConnessione(g, conn));
 
-  let html = miei.map((g) => schedaGruppo(g, false)).join('');
+  let html = miei.length ? `<div class="backup-catalog-section"><span>Connessione attiva</span><strong>${esc(conn)}</strong></div>${miei.map((g) => schedaGruppo(g, false)).join('')}` : '';
   if (altri.length) {
     if (miei.length || conn) {
-      html += `<div class="backup-altri-sep">Backup di altre connessioni${conn ? ` (sei connesso a <strong>${esc(conn)}</strong>)` : ''}</div>`;
+      html += `<div class="backup-altri-sep backup-catalog-section"><span>Altre origini</span>${conn ? `<span>Connessione attiva: <strong>${esc(conn)}</strong></span>` : ''}</div>`;
     }
     html += altri.map((g) => schedaGruppo(g, Boolean(conn))).join('');
   }
@@ -322,13 +491,57 @@ function renderCatalogo() {
   });
 
   container.querySelectorAll('.backup-history-toggle').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const g = e.currentTarget.getAttribute('data-group');
-      if (storiciAperti.has(g)) storiciAperti.delete(g);
-      else storiciAperti.add(g);
-      renderCatalogo();
-    });
+    btn.addEventListener('click', () => alternaStorico(btn));
   });
+}
+
+function posizioniCatalogo() {
+  const limite = $('#modal-backup-manager .modal').getBoundingClientRect();
+  return new Map([...$('#backup-catalog-list').children].map(el => [el, el.getBoundingClientRect()])
+    .filter(([, r]) => r.bottom > limite.top && r.top < limite.bottom));
+}
+
+function animaCatalogo(el, fotogrammi, durata) {
+  const animazione = el.animate(fotogrammi, { duration: durata, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' });
+  animazione.finished.then(() => animazione.cancel(), () => {});
+  return animazione;
+}
+
+function ricomponiCatalogo(prima) {
+  if (movimentoRidotto.matches) return;
+  const spostamenti = [...prima].map(([el, r]) => [el, r.top - el.getBoundingClientRect().top]);
+  for (const [el, dy] of spostamenti) {
+    el.getAnimations().forEach(a => a.cancel());
+    if (Math.abs(dy) > 1) animaCatalogo(el, [{ transform: `translateY(${dy}px)` }, { transform: 'none' }], 240);
+  }
+}
+
+function alternaStorico(btn) {
+  const gruppo = btn.dataset.group, storico = document.getElementById(btn.getAttribute('aria-controls'));
+  const apri = !storiciAperti.has(gruppo);
+  const nascosto = storico.classList.contains('hidden');
+  const corrente = getComputedStyle(storico);
+  const da = { opacity: corrente.opacity, clipPath: corrente.clipPath, transform: corrente.transform };
+  storico.getAnimations().forEach(a => a.cancel());
+  if (apri) storiciAperti.add(gruppo); else storiciAperti.delete(gruppo);
+  btn.setAttribute('aria-expanded', String(apri));
+  storico.inert = !apri;
+  if (apri) {
+    const prima = posizioniCatalogo();
+    storico.classList.remove('hidden');
+    ricomponiCatalogo(prima);
+    if (!movimentoRidotto.matches) animaCatalogo(storico, [nascosto ? { opacity: 0, clipPath: 'inset(0 0 100% 0)', transform: 'translateY(-6px)' } : da,
+      { opacity: 1, clipPath: 'inset(0 0 0% 0)', transform: 'none' }], 280);
+  } else {
+    const chiudi = () => {
+      if (storiciAperti.has(gruppo) || !storico.isConnected) return;
+      const prima = posizioniCatalogo();
+      storico.classList.add('hidden');
+      ricomponiCatalogo(prima);
+    };
+    if (movimentoRidotto.matches) chiudi();
+    else animaCatalogo(storico, [da, { opacity: 0, clipPath: 'inset(0 0 100% 0)', transform: 'translateY(-4px)' }], 150).finished.then(chiudi, () => {});
+  }
 }
 
 function schedaGruppo(gName, estranea) {
@@ -343,67 +556,72 @@ function schedaGruppo(gName, estranea) {
 
   const testata = `
     <div class="backup-group-title">
-      <i data-lucide="folder-open"></i> <strong>${esc(gName)}</strong>
-      <span class="sub-text">${esc(ultimo.db || '')} (${esc(ultimo.dbType || '')}) · ${list.length} backup</span>
+      ${dbTypeIcon(ultimo.dbType)}<div><strong>${esc(ultimo.db || gName)}</strong>
+      <span class="backup-group-meta">${esc({ mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL' }[ultimo.dbType] || ultimo.dbType || 'Database')} · ${list.length} ${list.length === 1 ? 'copia' : 'copie'}</span>
+      <span class="backup-group-name" title="${esc(gName)}">${esc(gName)}</span></div>
     </div>`;
 
   const evidenza = `
-    <div class="backup-latest">
+    <div class="backup-group-main">
+      ${testata}
       <div class="backup-latest-info">
-        ${badgeTipo(ultimo)}
-        <span class="backup-latest-when" title="${esc(ultimo.startedAt || '')}">${esc(daQuando(ultimo.startedAt))}</span>
-        <span class="backup-id">${esc(ultimo.id)}</span>
+        <span class="backup-copy-label">Ultima copia</span>
+        ${dataBackup(ultimo)}
+        <div class="backup-copy-meta">${badgeTipo(ultimo)}<span>${esc(daQuando(ultimo.startedAt))}</span></div>
+        <code class="backup-id" title="${esc(ultimo.id)}">${esc(ultimo.id)}</code>
         ${notaCatena(gName, ultimo)}
       </div>
       <div class="backup-actions">
         <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(ultimo.id)}"><i data-lucide="file-search"></i> Verifica</button>
-        ${bottoneRipristino(gName, ultimo, 'btn-primary')}
+        ${bottoneRipristino(gName, ultimo, 'btn-secondary')}
       </div>
     </div>
-    <div id="${idVerifica(gName, ultimo.id)}" class="verify-result-cell ${esitoDi(gName, ultimo.id) ? '' : 'hidden'}">${esitoDi(gName, ultimo.id)}</div>`;
+    <div id="${esc(idVerifica(gName, ultimo.id))}" role="status" class="verify-result-cell ${esitoDi(gName, ultimo.id) ? '' : 'hidden'}">${esitoDi(gName, ultimo.id)}</div>`;
 
   const cls = `backup-group-card${estranea ? ' backup-group-estranea' : ''}`;
   if (!storico.length) {
-    return `<div class="${cls}">${testata}${evidenza}</div>`;
+    return `<section class="${cls}">${evidenza}</section>`;
   }
 
   const righe = storico.map((b) => `
-    <tr data-group="${esc(gName)}" data-id="${esc(b.id)}">
-      <td>
-        <div class="backup-id">${esc(b.id)}</div>
-        <div class="backup-date">${esc(daQuando(b.startedAt))} · ${esc(b.startedAt || '')}</div>
-      </td>
-      <td>${badgeTipo(b)}${notaCatena(gName, b)}</td>
-      <td class="backup-actions">
+    <li class="backup-history-entry" data-group="${esc(gName)}" data-id="${esc(b.id)}">
+      <div class="backup-history-info">
+        ${dataBackup(b)}
+        <div class="backup-copy-meta">${badgeTipo(b)}<span>${esc(daQuando(b.startedAt))}</span>${notaCatena(gName, b)}</div>
+        <code class="backup-id">${esc(b.id)}</code>
+      </div>
+      <div class="backup-actions">
         <button class="btn btn-sm btn-ghost btn-verify-backup" data-group="${esc(gName)}" data-id="${esc(b.id)}"><i data-lucide="file-search"></i> Verifica</button>
         ${bottoneRipristino(gName, b, 'btn-secondary')}
-      </td>
-    </tr>
-    <tr class="verify-result-row ${esitoDi(gName, b.id) ? '' : 'hidden'}">
-      <td colspan="3" id="${idVerifica(gName, b.id)}" class="verify-result-cell">${esitoDi(gName, b.id)}</td>
-    </tr>
+      </div>
+      <div role="status" id="${esc(idVerifica(gName, b.id))}" class="verify-result-cell ${esitoDi(gName, b.id) ? '' : 'hidden'}">${esitoDi(gName, b.id)}</div>
+    </li>
   `).join('');
 
   return `
-    <div class="${cls}">
-      ${testata}
+    <section class="${cls}">
       ${evidenza}
-      <button type="button" class="backup-history-toggle" data-group="${esc(gName)}" aria-expanded="${aperto}">
-        ${aperto ? '▾' : '▸'} Altri ${storico.length} backup
+      <button type="button" class="backup-history-toggle" data-group="${esc(gName)}" aria-expanded="${aperto}" aria-controls="${esc(`history-${encodeURIComponent(gName)}`)}">
+        <i data-lucide="chevron-right"></i> Versioni precedenti <span class="backup-history-count">${storico.length}</span>
       </button>
-      <div class="backup-history ${aperto ? '' : 'hidden'}">
-        <table class="backup-table">
-          <thead><tr><th>ID / Data</th><th>Tipo</th><th>Azioni</th></tr></thead>
-          <tbody>${righe}</tbody>
-        </table>
+      <div id="${esc(`history-${encodeURIComponent(gName)}`)}" class="backup-history ${aperto ? '' : 'hidden'}" ${aperto ? '' : 'inert'}>
+        <ol aria-label="Versioni precedenti di ${esc(ultimo.db || gName)}">${righe}</ol>
       </div>
-    </div>`;
+    </section>`;
+}
+
+const dataCopia = new Intl.DateTimeFormat('it-IT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+function dataBackup(b) {
+  const data = new Date(b.startedAt || '');
+  return Number.isFinite(data.getTime())
+    ? `<time class="backup-copy-date" datetime="${esc(data.toISOString())}" title="${esc(b.startedAt)}">${esc(dataCopia.format(data))}</time>`
+    : '<span class="backup-copy-date">Data non disponibile</span>';
 }
 
 function badgeTipo(b) {
   const tipo = String(b.type || '');
   const cls = tipo === 'full' ? 'badge-full' : (tipo === 'incremental' ? 'badge-inc' : 'badge-diff');
-  return `<span class="backup-badge ${cls}">${esc(tipo.toUpperCase())}</span>`;
+  return `<span class="backup-badge ${cls}">${esc({ full: 'Completo', incremental: 'Incrementale', differential: 'Differenziale' }[tipo] || tipo || 'Tipo non indicato')}</span>`;
 }
 
 function notaCatena(gName, b) {
@@ -482,9 +700,7 @@ function gruppoDellaConnessione(gName, conn) {
 
 const idVerifica = (group, backupId) => `verify-res-${group}-${backupId}`;
 
-// Gli esiti delle verifiche sopravvivono al ridisegno: aprire lo storico di un
-// gruppo ricostruisce l'intero catalogo, e senza questa memoria cancellerebbe
-// il risultato di un checksum appena calcolato altrove.
+// Gli esiti delle verifiche sopravvivono ai filtri e al ricaricamento del catalogo.
 const esitiVerifica = new Map();
 const chiaveVerifica = (group, backupId) => `${group}\u0000${backupId}`;
 const esitoDi = (group, backupId) => esitiVerifica.get(chiaveVerifica(group, backupId)) || '';
@@ -543,7 +759,12 @@ async function verifyBackupIntegrity(group, backupId, bottone) {
     fineCaricamento();
   }
   esitiVerifica.set(chiaveVerifica(group, backupId), esito);
-  cell.innerHTML = esito;
+  const attuale = document.getElementById(idVerifica(group, backupId));
+  if (attuale) {
+    attuale.innerHTML = esito;
+    attuale.classList.remove('hidden');
+    refreshLucideIcons(attuale);
+  }
 }
 
 async function promptRestoreBackup(group, backupId, origDb, bottone) {

@@ -1,0 +1,89 @@
+{
+  "checks": [
+    "Selezione persistente, tastiera/focus, movimento misurato e cambi rapidi",
+    "Anteprima annullata, duplicazione/salvataggio, export/import senza sovrascrittura, eliminazione e Automatico dal sistema",
+    "Temi chiaro/scuro, desktop e drawer Arc a 320/390px e landscape, cornice allineata e nessun overflow",
+    "Percorso reale mobile, editor/annulla, movimento ridotto e tema conservato al riavvio"
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "theme": "dark",
+      "overflow": false,
+      "ring": true,
+      "actionsSeparate": true,
+      "touch": false,
+      "labels": true,
+      "contrast": 4.7274163868256585
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "overflow": false,
+      "ring": true,
+      "actionsSeparate": true,
+      "touch": false,
+      "labels": true,
+      "contrast": 5.011146164818143
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "overflow": false,
+      "ring": true,
+      "actionsSeparate": true,
+      "touch": true,
+      "labels": true,
+      "contrast": 4.7274163868256585
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "overflow": false,
+      "ring": true,
+      "actionsSeparate": true,
+      "touch": true,
+      "labels": true,
+      "contrast": 5.011146164818143
+    },
+    {
+      "width": 844,
+      "theme": "dark",
+      "overflow": false,
+      "ring": true,
+      "actionsSeparate": true,
+      "touch": true,
+      "labels": true,
+      "contrast": 4.7274163868256585
+    }
+  ],
+  "motion": [
+    "matrix(1, 0, 0, 1.00008, -294, 0)",
+    "matrix(1, 0, 0, 1.00006, -208.57, 0)",
+    "matrix(1, 0, 0, 1.00004, -144.015, 0)",
+    "matrix(1, 0, 0, 1.00003, -99.3783, 0)",
+    "matrix(1, 0, 0, 1.00002, -68.6324, 0)",
+    "matrix(1, 0, 0, 1.00001, -47.6726, 0)",
+    "matrix(1, 0, 0, 1.00001, -33.0606, 0)",
+    "matrix(1, 0, 0, 1.00001, -22.8929, 0)",
+    "matrix(1, 0, 0, 1, -15.6812, 0)",
+    "matrix(1, 0, 0, 1, -10.5898, 0)",
+    "matrix(1, 0, 0, 1, -7.02341, 0)",
+    "matrix(1, 0, 0, 1, -4.51638, 0)",
+    "matrix(1, 0, 0, 1, -2.79371, 0)",
+    "matrix(1, 0, 0, 1, -1.63863, 0)",
+    "matrix(1, 0, 0, 1, -0.895531, 0)",
+    "matrix(1, 0, 0, 1, -0.43732, 0)",
+    "matrix(1, 0, 0, 1, -0.180893, 0)",
+    "matrix(1, 0, 0, 1, -0.0548656, 0)",
+    "matrix(1, 0, 0, 1, -0.00844438, 0)",
+    "matrix(1, 0, 0, 1, -3.46233e-05, 0)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": []
+}

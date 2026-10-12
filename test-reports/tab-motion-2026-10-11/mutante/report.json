@@ -1,0 +1,10 @@
+{
+  "checks": [],
+  "motion": [
+    {
+      "selector": "#tab-bar",
+      "animated": false
+    }
+  ],
+  "errors": []
+}

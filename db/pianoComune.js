@@ -24,7 +24,35 @@ function canonical(value) {
 }
 
 function fingerprint(value) {
-  return crypto.createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
+  const hash = crypto.createHash('sha256');
+  let buffer = '';
+  const write = text => {
+    buffer += text;
+    if (buffer.length >= 65536) { hash.update(buffer); buffer = ''; }
+  };
+  // Stessa serializzazione canonica, senza duplicare tutti i documenti e poi
+  // materializzare una seconda stringa grande quanto l'intero database.
+  function visit(item) {
+    if (Array.isArray(item)) {
+      write('[');
+      for (let i = 0; i < item.length; i++) { if (i) write(','); visit(item[i] === undefined ? null : item[i]); }
+      write(']');
+    } else if (item && typeof item === 'object') {
+      write('{');
+      let first = true;
+      // Object.keys riordina le chiavi intere come JSON.stringify(canonical).
+      const keys = Object.keys(Object.fromEntries(Object.keys(item).sort().map(k => [k, null])));
+      for (const key of keys) {
+        if (item[key] === undefined) continue;
+        if (!first) write(','); first = false;
+        write(JSON.stringify(key) + ':'); visit(item[key]);
+      }
+      write('}');
+    } else write(JSON.stringify(item));
+  }
+  visit(value);
+  if (buffer) hash.update(buffer);
+  return hash.digest('hex');
 }
 
 function congela(value) {

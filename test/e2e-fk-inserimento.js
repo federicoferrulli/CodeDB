@@ -101,13 +101,13 @@ async function attesaFn(page, fn, ...args) {
       const { buildInsertDoc } = await import('/js/insert.js');
       const input = [...document.querySelectorAll('#insert-form tbody tr')]
         .find((tr) => tr.querySelector('td').textContent.includes('cliente_id'))
-        .querySelector('td.insert-value input');
+        .querySelector('td.insert-value :is(input, textarea)');
       const fuocoPrima = document.activeElement;
       // Il campo potrebbe essere già focalizzato dall'apertura: si esce e si
       // rientra per provare davvero l'apertura all'ingresso.
       const altra = [...document.querySelectorAll('#insert-form tbody tr')]
         .find((tr) => tr.querySelector('td').textContent.includes('nota'))
-        .querySelector('td.insert-value input');
+        .querySelector('td.insert-value :is(input, textarea)');
       altra.focus();
       await new Promise((r) => setTimeout(r, 60));
       const { chiudiPannelloFk } = await import('/js/fk-vista.js');
@@ -242,7 +242,7 @@ async function attesaFn(page, fn, ...args) {
       const { buildInsertDoc } = await import('/js/insert.js');
       const perNome = (nome) => [...document.querySelectorAll('#insert-form tbody tr')]
         .find((tr) => tr.querySelector('td').textContent.includes(nome))
-        .querySelector('td.insert-value input');
+        .querySelector('td.insert-value :is(input, textarea)');
       // Apertura dal SECONDO componente: compila comunque entrambe le colonne.
       perNome('codice2').focus();
       await new Promise((r) => setTimeout(r, 120));
@@ -305,7 +305,7 @@ async function attesaFn(page, fn, ...args) {
       await new Promise((r) => setTimeout(r, 200));
       const perNome = (nome) => [...document.querySelectorAll('#insert-form tbody tr')]
         .find((tr) => tr.querySelector('td').textContent.includes(nome))
-        .querySelector('td.insert-value input');
+        .querySelector('td.insert-value :is(input, textarea)');
       perNome('tenant_id').value = 'X';
       perNome('tenant_id').dispatchEvent(new Event('input', { bubbles: true }));
       perNome('tenant_id').focus();
@@ -367,7 +367,7 @@ async function attesaFn(page, fn, ...args) {
       await new Promise((r) => setTimeout(r, 200));
       const perNome = (nome) => [...document.querySelectorAll('#insert-form tbody tr')]
         .find((tr) => tr.firstChild.textContent.includes(nome))
-        .querySelector('td.insert-value input');
+        .querySelector('td.insert-value :is(input, textarea)');
       // BIGINT oltre 2^53
       perNome('big_id').focus();
       await new Promise((r) => setTimeout(r, 150));
@@ -488,7 +488,7 @@ async function attesaFn(page, fn, ...args) {
       const bannerVisibile = !document.querySelector('#insert-fk-error').classList.contains('hidden');
       const senzaPulsanti = document.querySelectorAll('#insert-form .fk-apri-btn').length === 0;
       // Inserimento manuale resta possibile.
-      const input = document.querySelector('#insert-form tbody tr td.insert-value input');
+      const input = document.querySelector('#insert-form tbody tr td.insert-value :is(input, textarea)');
       input.value = '5';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       let manuale = null;
@@ -544,7 +544,7 @@ async function attesaFn(page, fn, ...args) {
     });
     await attesaFn(page, () => !!document.querySelector('#insert-form .fk-apri-btn'));
     await page.evaluate(() => {
-      document.querySelector('#insert-form td.insert-value input').focus();
+      document.querySelector('#insert-form td.insert-value :is(input, textarea)').focus();
     });
     await attesaFn(page, () => !document.querySelector('#fk-pannello').classList.contains('hidden'));
     await page.keyboard.press('Escape');
@@ -560,7 +560,7 @@ async function attesaFn(page, fn, ...args) {
       document.querySelector('#insert-cancel').focus();
     });
     await page.evaluate(() => {
-      document.querySelector('#insert-form td.insert-value input').focus();
+      document.querySelector('#insert-form td.insert-value :is(input, textarea)').focus();
     });
     await attesaFn(page, () => !document.querySelector('#fk-pannello').classList.contains('hidden'));
     await page.evaluate(() => document.querySelector('#insert-cancel').click());
@@ -616,7 +616,7 @@ async function attesaFn(page, fn, ...args) {
     });
     await mobile.waitForFunction(
       () => !!document.querySelector('#insert-form .fk-apri-btn'), null, { timeout: ATTESA });
-    await mobile.evaluate(() => document.querySelector('#insert-form td.insert-value input').focus());
+    await mobile.evaluate(() => document.querySelector('#insert-form td.insert-value :is(input, textarea)').focus());
     await mobile.waitForTimeout(300);
     const mobAuto = await mobile.evaluate(() => !document.querySelector('#fk-pannello').classList.contains('hidden'));
     await mobile.evaluate(() => document.querySelector('#insert-form .fk-apri-btn').click());
@@ -627,7 +627,7 @@ async function attesaFn(page, fn, ...args) {
       document.querySelector('#fk-elenco .fk-voce').click();
       document.querySelector('#fk-usa').click();
       await new Promise((r) => setTimeout(r, 80));
-      return { valore: document.querySelector('#insert-form td.insert-value input').value, doc: buildInsertDoc() };
+      return { valore: document.querySelector('#insert-form td.insert-value :is(input, textarea)').value, doc: buildInsertDoc() };
     });
     ok(!mobAuto, 'su mobile il focus non apre il pannello da solo');
     ok(mobBtn.valore === '3' && mobBtn.doc.cliente_id === 3,

@@ -14,7 +14,7 @@ import { renderTabBar } from './tabbar.js';
 import { renderWorkspace } from './workspace.js';
 import { initDbTree } from './dbtree.js';
 import { initSchemaOps } from './schema-ops.js';
-import { initGrid } from './grid.js';
+import { initGrid, runQuery as runDataQuery, leggiStatoFiltro } from './grid.js';
 import { initCellSelect } from './cellselect.js';
 import { initInlineEdit } from './inlineEdit.js';
 import { initFkVista } from './fk-vista.js';
@@ -22,7 +22,7 @@ import { initInsert } from './insert.js';
 import { initGeoMap } from './geomap.js';
 import { initGeoMulti } from './geomulti.js';
 import { initDetails, loadDetails } from './details.js';
-import { initLive } from './live.js';
+import { initLive, startWatch } from './live.js';
 import { initResponsive } from './responsive.js';
 import { initExportImport } from './exportimport.js';
 import { initVault } from './vault.js';
@@ -112,6 +112,7 @@ export function setView(view) {
   if (view === 'uml') loadUml(false);
   if (view === 'graph3d') loadGraph3d(false);
   if (view === 'query') loadQueryTab();
+  contestoIncorporato?.onContext(state.db, state.coll, view);
 }
 
 document.addEventListener('click', (e) => {
@@ -200,7 +201,7 @@ initInsert();
 initGeoMap();
 initGeoMulti();
 initDetails();
-if (!contestoIncorporato) initLive();
+initLive();
 initResizers();
 if (!contestoIncorporato) initDocumentSwitcher();
 initResponsive();
@@ -237,6 +238,7 @@ renderTabBar();
 renderWorkspace();
 refreshLucideIcons();
 if (contestoIncorporato) {
+  $('#view-data > .toolbar').append($('#live-badge'), $('#polling-toggle'));
   contestoIncorporato.riprendi = async item => {
     const script = await import('./script-run.js');
       if (item.kind === 'script' && script.knowsScriptRun(item.runId)) {
@@ -256,7 +258,19 @@ if (contestoIncorporato) {
   contestoIncorporato.setView = setView;
   contestoIncorporato.snapshot = () => ({ ...queryDocument(), ...snapshotQueryView(),
     code: $('#query-editor-input').value, engine: $('#query-target-engine').value });
-  contestoIncorporato.dirty = () => !!queryDocument()?.dirty || !!document.querySelector('td.editing, .overlay:not(.hidden):has(textarea)');
+  contestoIncorporato.dataSnapshot = () => {
+    const filtro = leggiStatoFiltro();
+    return { ...state, filter: $('#filter-input').value, filterMode: filtro.modo,
+      quickSearch: filtro.rapido, advancedCondition: filtro.condizione, sort: $('#sort-input').value,
+      pageSize: $('#page-size').value, infiniteScroll: $('#infinite-toggle').checked };
+  };
+  contestoIncorporato.refresh = runDataQuery;
+  contestoIncorporato.dirty = () => !!queryDocument()?.dirty || !!state.editDrafts?.size || !!document.querySelector('td.editing, .overlay:not(.hidden)[data-unsaved]');
+  contestoIncorporato.writing = () => !!state.writesInFlight;
   contestoIncorporato.ready = true;
   contestoIncorporato.onReady();
+  if (state.coll) {
+    if (!contestoIncorporato.data?.caricato) runDataQuery({ auto: true });
+    startWatch();
+  }
 }

@@ -80,7 +80,6 @@ lucide-react/dist/esm/icons/circle-x.mjs:
 lucide-react/dist/esm/icons/database.mjs:
 lucide-react/dist/esm/icons/folder.mjs:
 lucide-react/dist/esm/icons/info.mjs:
-lucide-react/dist/esm/icons/layout-grid.mjs:
 lucide-react/dist/esm/icons/pipette.mjs:
 lucide-react/dist/esm/icons/plus.mjs:
 lucide-react/dist/esm/icons/search.mjs:

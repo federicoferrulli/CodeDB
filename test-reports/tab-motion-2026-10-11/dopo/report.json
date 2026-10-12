@@ -1,0 +1,63 @@
+{
+  "checks": [
+    "Selezione immediata e indicatore continuo per connessioni e documenti",
+    "Cambi rapidi e interruzioni senza salti o animazioni residue",
+    "Tastiera, bozze, anteprime, riordino e chiusura di una connessione inattiva",
+    "Due temi, resize, movimento ridotto e passaggio mobile/desktop con drawer Schede"
+  ],
+  "motion": [
+    {
+      "selector": "#tab-bar",
+      "animated": true,
+      "before": 256,
+      "start": 255.546875,
+      "middle": 431.10870361328125,
+      "end": 455,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "postgres",
+      "expected": "postgres"
+    },
+    {
+      "selector": "#coll-tab-bar",
+      "animated": true,
+      "before": 589,
+      "start": 589,
+      "middle": 295.8880615234375,
+      "end": 256,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "0c016444-7824-44fa-bab3-4c6dd170c20c",
+      "expected": "0c016444-7824-44fa-bab3-4c6dd170c20c"
+    }
+  ],
+  "errors": []
+}

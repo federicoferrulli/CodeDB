@@ -41,7 +41,7 @@ module.exports = (async () => {
     assert.strictEqual(f.reads(), mode === 'solo-struttura' ? 0 : 1, 'solo struttura non legge i documenti');
     assert.strictEqual(artifact.objects.views.length, mode === 'solo-struttura' ? 1 : 0);
     assert.strictEqual(artifact.collections[0].indexes === null, mode === 'solo-dati');
-    if (mode !== 'solo-struttura') assert.strictEqual(EJSON.deserialize(artifact.collections[0].docs[0], { relaxed: false }).n.toString(), '9007199254740993');
+    if (mode !== 'solo-struttura') assert.strictEqual(require('bson').deserialize(require('../db/mongoBson').decode(artifact.collections[0].docs[0]), { promoteLongs: false }).n.toString(), '9007199254740993');
   }
   const broken = fixture('struttura-e-dati');
   broken.collection.indexes = async () => { throw new Error('listIndexes negato'); };

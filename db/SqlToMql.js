@@ -636,7 +636,7 @@ function translateStatement(tokens, { defaultLimit = null } = {}) {
     throw new Error('DISTINCT combinato con GROUP BY o funzioni aggregate non è supportato dal traduttore SQL→MQL.');
   }
 
-  const useAggregate = hasAgg || effectiveGroupBy.length > 0 || hasJoins || !!fromPipeline;
+  const useAggregate = hasAgg || effectiveGroupBy.length > 0 || hasJoins || !!fromPipeline || select.some(it => it.alias);
 
   if (having && !(hasAgg || effectiveGroupBy.length > 0)) {
     throw new Error('HAVING richiede GROUP BY o una funzione aggregata.');
@@ -850,9 +850,6 @@ function buildFind({ coll, select, filter, orderBy, limit, skip, resolve = (x) =
     let selectsId = false;
     for (const it of select) {
       const name = resolve(it.name);
-      // Nota: il find di MongoDB non può rinominare i campi, quindi un
-      // eventuale alias (SELECT col AS x) non viene applicato alla proiezione:
-      // si proietta sempre il nome reale della colonna.
       projection[name] = 1;
       if (name === '_id') selectsId = true;
     }
@@ -899,7 +896,7 @@ function pushSortSkipLimit(pipeline, orderBy, skip, limit) {
 // oppure '*' per COUNT). COUNT(col) conta solo i valori non nulli, come in SQL.
 function aggExpr(func, argPath) {
   if (func === 'COUNT') {
-    return argPath === '*' ? { $sum: 1 } : { $sum: { $cond: [{ $ne: [`$${argPath}`, null] }, 1, 0] } };
+    return argPath === '*' ? { $sum: 1 } : { $sum: { $cond: [{ $ne: [{ $ifNull: [`$${argPath}`, null] }, null] }, 1, 0] } };
   }
   const op = { SUM: '$sum', AVG: '$avg', MIN: '$min', MAX: '$max' }[func];
   return { [op]: `$${argPath}` };
@@ -919,19 +916,18 @@ function buildAggregate({ coll, select, filter, groupBy, orderBy, limit, skip, j
   // JOIN senza aggregazione: proiezione semplice (o passthrough per SELECT *).
   if (!grouping) {
     const isStar = select.some((it) => it.kind === 'star');
+    // Ordina sui campi sorgente prima della proiezione, risolvendo gli alias.
+    const ordine = orderBy.map(o => ({ ...o, field: resolve(select.find(it => it.alias === o.field)?.name || o.field) }));
+    pushSortSkipLimit(pipeline, ordine, skip, limit);
     if (!isStar) {
       const projectStage = { _id: 0 };
-      let selectsId = false;
       for (const it of select) {
         const path = resolve(it.name);
         const out = it.alias || lastSegment(it.name);
         projectStage[out] = `$${path}`;
-        if (out === '_id') selectsId = true;
       }
-      if (selectsId) delete projectStage._id;
       pipeline.push({ $project: projectStage });
     }
-    pushSortSkipLimit(pipeline, orderBy, skip, limit);
     return { kind: 'aggregate', coll, pipeline };
   }
 
@@ -985,7 +981,7 @@ function buildAggregate({ coll, select, filter, groupBy, orderBy, limit, skip, j
     }
   }
 
-  pipeline.push(groupStage);
+  pipeline.push({ $group: groupStage });
   pipeline.push({ $project: projectStage });
 
   if (having) {

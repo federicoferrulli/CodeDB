@@ -1,0 +1,84 @@
+{
+  "checks": [
+    "Nessuna sovrapposizione delle etichette in sei fotogrammi del riordino",
+    "Selezione immediata e indicatore continuo per connessioni e documenti",
+    "Cambi rapidi e interruzioni senza salti o animazioni residue",
+    "Sedici tab, scroll automatico e riordino con spazio reale, tab opaca e payload split conservato",
+    "Riordino in entrambe le direzioni, inversione, annullamento, auto-scroll e ri-render durante il gesto",
+    "Tastiera, bozze, anteprime, riordino e chiusura di una connessione inattiva",
+    "Misurati dodici cambi con 2.000 righe per documento",
+    "Due temi, resize, movimento ridotto e passaggio mobile/desktop con drawer Schede",
+    "Escape durante un trascinamento reale e movimento ridotto senza transizioni residue",
+    "Trascinamento reale fuori dalla barra: tabella aperta nella split view"
+  ],
+  "motion": [
+    {
+      "selector": "#tab-bar",
+      "animated": true,
+      "before": 256,
+      "start": 255.546875,
+      "middle": 428.46807861328125,
+      "end": 452,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "postgres",
+      "expected": "postgres"
+    },
+    {
+      "selector": "#coll-tab-bar",
+      "animated": true,
+      "before": 585,
+      "start": 585,
+      "middle": 295.408935546875,
+      "end": 256,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "6fb1a591-1d05-4e03-b48d-18c676c71565",
+      "expected": "6fb1a591-1d05-4e03-b48d-18c676c71565"
+    },
+    {
+      "interrupted": {
+        "before": 290.17803955078125,
+        "after": 290.44366455078125
+      }
+    }
+  ],
+  "errors": [],
+  "performance": {
+    "switches": 12,
+    "rowsPerDocument": 2000,
+    "clickMedianMs": 19.40000009536743,
+    "clickP95Ms": 21.40000009536743,
+    "frameMedianMs": 16.69999999999891,
+    "frameP95Ms": 16.700000000000728,
+    "framesOver50Ms": 0
+  }
+}

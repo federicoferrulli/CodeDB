@@ -1,0 +1,39 @@
+{
+  "checks": [
+    "Chiusura coordinata e inversione continua, senza animare il layout",
+    "Tastiera, focus, inert, stato persistente e ricerca conservata",
+    "Scorciatoia rimappata e movimento ridotto anche durante la transizione",
+    "Temi, larghezze desktop e passaggio al mobile durante la chiusura"
+  ],
+  "motion": {
+    "before": 248,
+    "start": 248,
+    "middle": 24.088151931762695,
+    "restart": 24.088150024414062,
+    "navMiddle": -220.3003692626953,
+    "navRestart": -220.3003692626953,
+    "keys": [
+      "offset",
+      "easing",
+      "composite",
+      "transform",
+      "computedOffset",
+      "offset",
+      "easing",
+      "composite",
+      "transform",
+      "computedOffset",
+      "offset",
+      "easing",
+      "composite",
+      "transform",
+      "computedOffset",
+      "offset",
+      "easing",
+      "composite",
+      "transform",
+      "computedOffset"
+    ]
+  },
+  "errors": []
+}

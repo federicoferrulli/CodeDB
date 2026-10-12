@@ -13,6 +13,7 @@ import {
 } from './colltabs.js';
 import { deactivateSplitView, renderSplitView, discardSplitViewIfOrphan } from './splitview.js';
 import { setView } from './main.js';
+import { aggiornaConnessioneAttiva } from './connmanager.js';
 
 // Il DOM del workspace è unico e condiviso: al cambio tab viene ri-renderizzato
 // dallo stato del tab attivo. Mentre un tab è attivo la verità per gli input è
@@ -53,6 +54,7 @@ export function saveWorkspaceInputs() {
 export function renderWorkspace() {
   const tab = activeTab();
   const connected = !!(tab && tab.state.connected);
+  aggiornaConnessioneAttiva();
 
   // Il tab che ospitava l'area affiancata è stato chiuso: lo stato dei pannelli
   // è orfano, va buttato (altrimenti resterebbe agganciato a sessioni morte).
@@ -79,7 +81,8 @@ export function renderWorkspace() {
   $('#conn-info').innerHTML = connected ? `${dbTypeIcon(state.dbType)} <span>${esc(state.connLabel)}</span>` : '';
   refreshLucideIcons($('#conn-info'));
   $('#explorer-title').textContent = state.dbType === 'postgresql' ? 'Schemi' : 'Database';
-  $('#explorer-context').textContent = connected ? tab.label : '';
+  $('#explorer-context').innerHTML = connected ? `${dbTypeIcon(state.dbType)}<span>${esc(tab.label)}</span>` : '';
+  refreshLucideIcons($('#explorer-context'));
   $('#explorer-context').title = connected ? state.connLabel : '';
   if (!connected) {
     $('#live-badge').classList.add('hidden');

@@ -1,0 +1,93 @@
+{
+  "checks": [
+    "Aggiornamento animato solo dei dati cambiati, nodi stabili, nomi escaped e dettagli SSH/pool",
+    "Ping lento senza sovrapposizioni, risposta obsoleta scartata, riapertura fresca e polling fermo a finestra chiusa",
+    "Errori recuperabili senza perdere gli ultimi dati, stato vuoto, ping sconosciuto/lento e pool in coda",
+    "Desktop/mobile/landscape, temi, chiusura Arc, percorso Strumenti, movimento ridotto e nessun errore JS"
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "x": 240,
+      "y": 189.921875,
+      "panelWidth": 960,
+      "panelHeight": 520.140625,
+      "scrollWidth": 958,
+      "clientWidth": 958,
+      "shellWidth": 1440
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "x": 240,
+      "y": 189.921875,
+      "panelWidth": 960,
+      "panelHeight": 520.140625,
+      "scrollWidth": 958,
+      "clientWidth": 958,
+      "shellWidth": 1440
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "x": 1,
+      "y": 120.640625,
+      "panelWidth": 388,
+      "panelHeight": 847.640625,
+      "scrollWidth": 388,
+      "clientWidth": 388,
+      "shellWidth": 390
+    },
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "light",
+      "x": 1,
+      "y": 113.203125,
+      "panelWidth": 318,
+      "panelHeight": 929.78125,
+      "scrollWidth": 318,
+      "clientWidth": 318,
+      "shellWidth": 320
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "x": 1,
+      "y": 93.40625,
+      "panelWidth": 842,
+      "panelHeight": 548.140625,
+      "scrollWidth": 842,
+      "clientWidth": 842,
+      "shellWidth": 844
+    }
+  ],
+  "frames": [
+    "matrix(1, 0, 0, 1, 0, 4)",
+    "matrix(1, 0, 0, 1, 0, 2.27858)",
+    "matrix(1, 0, 0, 1, 0, 1.25967)",
+    "matrix(1, 0, 0, 1, 0, 0.698759)",
+    "matrix(1, 0, 0, 1, 0, 0.388761)",
+    "matrix(1, 0, 0, 1, 0, 0.213156)",
+    "matrix(1, 0, 0, 1, 0, 0.113113)",
+    "matrix(1, 0, 0, 1, 0, 0.0560465)",
+    "matrix(1, 0, 0, 1, 0, 0.0249497)",
+    "matrix(1, 0, 0, 1, 0, 0.00932361)",
+    "matrix(1, 0, 0, 1, 0, 0.00245825)",
+    "matrix(1, 0, 0, 1, 0, 0.000280217)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "environment": "Chromium, risposte diagnostiche sintetiche"
+}

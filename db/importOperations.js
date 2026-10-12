@@ -13,6 +13,7 @@ function sanitizeImportResult(result) {
     } : null,
     staging: result.staging ? {
       db: result.staging.db || null, retained: result.staging.retained === true,
+      ...(result.staging.largeObjects?.length ? { largeObjects: result.staging.largeObjects.slice() } : {}),
     } : null,
     error: result.error || null, recoveryError: result.recoveryError || null,
     originalError: result.originalError || null, promotion: result.promotion || null,

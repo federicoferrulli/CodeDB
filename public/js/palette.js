@@ -1,4 +1,4 @@
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, removeDialog } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -27,29 +27,26 @@ import { connectAndOpenTab } from './connection.js';
 import { azioneDiEvento, etichettaCombo, mappaAttiva } from './scorciatoie.js';
 import { filtra, interpreta, RICHIAMI } from './palette-ricerca.js';
 import { finestraVirtuale, scorrimentoPerRiga } from './griglia.js';
+import { preparaTransizioneTab, fermaTransizioniTab } from './tab-motion.js';
+import { preparaTransizioneAlbero, fermaTransizioniAlbero } from './navigator-motion.js';
 
 /** Le azioni che QUESTO modulo esegue globalmente. */
 const GLOBALI = new Set(['sidebarConnessioni', 'chiudiScheda', 'paletteComandi']);
 
 /* Le tabelle di TUTTI i database del tab, non dei primi dodici: una palette che
  * cerca in mezzo elenco è peggio di una che dichiara di non cercare. Ciò che
- * resta limitato è il PARALLELISMO — sei richieste in volo insieme: `listCollections`
- * conta i documenti di ogni collection, e centocinquanta richieste simultanee
- * sarebbero un piccolo attacco al proprio server. */
+ * resta limitato è il PARALLELISMO — sei richieste in volo insieme, chiedendo
+ * solo i nomi: la ricerca non deve avviare conteggi sulle tabelle. */
 const PARALLELE = 6;
 
-/* Come si legge un richiamo nel piede («solo database»), e la legenda che li
- * insegna. I caratteri vengono da RICHIAMI: aggiungerne uno di là senza dirlo
- * qui lo lascerebbe muto, quindi la legenda si COMPONE dal catalogo. */
+// Schede e richiami testuali condividono il catalogo della ricerca.
 const ETICHETTA_RICHIAMO = { '>': 'comandi', '#': 'database', '@': 'tabelle' };
-const LEGENDA = Object.keys(RICHIAMI)
-  .map((c) => `${c} ${ETICHETTA_RICHIAMO[c] || RICHIAMI[c].toLowerCase()}`)
-  .join(' · ');
+const ICONE_TIPO = { Comando: 'command', Connessione: 'plug', Database: 'database', Tabella: 'table-2' };
 
-/* Altezza di una riga in px: deve combaciare con `.palette-voce` in style.css.
+/* Altezza desktop in px: combacia con `.palette-voce` in workbench.css.
  * È il valore di partenza della finestra virtuale, che poi si MISURA sul primo
  * disegno — un tema con un font più grande sposterebbe tutto di qualche pixel. */
-const ALTEZZA_RIGA = 34;
+const ALTEZZA_RIGA = 48;
 
 /* ------------------------------ Azioni globali ---------------------------- */
 
@@ -145,7 +142,7 @@ function caricaTabelle(dbs, token) {
   const prossimo = () => {
     if (!vivo() || i >= dbs.length) return;
     const db = dbs[i++];
-    emit('db:collections', { db })
+    emit('db:collections', { db, includeCounts: false })
       .then((res) => {
         if (!vivo()) return;
         const elenco = (res && Array.isArray(res.collections)) ? res.collections : [];
@@ -180,26 +177,49 @@ function creaRiga() {
   nome.className = 'palette-nome';
   const nota = document.createElement('span');
   nota.className = 'palette-nota';
-  li.append(tipo, nome, nota);
-  li._parti = { tipo, nome, nota };
+  const icona = document.createElement('span');
+  icona.className = 'palette-icona';
+  icona.setAttribute('aria-hidden', 'true');
+  const testo = document.createElement('span');
+  testo.className = 'palette-testo';
+  const meta = document.createElement('span');
+  meta.className = 'palette-meta';
+  meta.append(tipo, nota);
+  testo.append(nome, meta);
+  const apri = document.createElement('span');
+  apri.className = 'palette-invio';
+  apri.setAttribute('aria-hidden', 'true');
+  apri.innerHTML = lucideIconHtml('corner-down-left');
+  li.append(icona, testo, apri);
+  refreshLucideIcons(apri);
+  li._parti = { tipo, nome, nota, icona };
   return li;
 }
 
 /** Testo e stato di una riga riusata. `textContent` e non `innerHTML`: i nomi
  *  di database e tabella sono dati non fidati (vedi la nota in dbtree.js). */
 function aggiornaRiga(li, voce, indice) {
-  const { tipo, nome, nota } = li._parti;
-  if (tipo.textContent !== voce.tipo) tipo.textContent = voce.tipo;
+  const { tipo, nome, nota, icona } = li._parti;
+  if (tipo.textContent !== voce.tipo) {
+    tipo.textContent = voce.tipo;
+    icona.innerHTML = lucideIconHtml(ICONE_TIPO[voce.tipo] || 'search');
+    refreshLucideIcons(icona);
+  }
   if (nome.textContent !== voce.etichetta) nome.textContent = voce.etichetta;
   const testoNota = voce.nota || '';
   if (nota.textContent !== testoNota) nota.textContent = testoNota;
   nota.hidden = !testoNota;
   li.dataset.i = String(indice);
+  li.id = `palette-option-${palette.token}-${indice}`;
+  li.title = `${voce.etichetta}${testoNota ? ` — ${testoNota}` : ''}`;
+  li.setAttribute('aria-posinset', String(indice + 1));
+  li.setAttribute('aria-setsize', String(palette.viste.length));
   li.classList.toggle('attiva', indice === palette.selezione);
   li.setAttribute('aria-selected', indice === palette.selezione ? 'true' : 'false');
 }
 
 function apriPalette() {
+  document.querySelector('#palette-overlay.hidden')?.remove();
   if (palette) { chiudiPalette(); return; } // Ctrl+P di nuovo: si chiude, come in VS Code
 
   const overlay = document.createElement('div');
@@ -207,25 +227,37 @@ function apriPalette() {
   overlay.className = 'palette-overlay';
   overlay.innerHTML = `
     <div class="palette">
-      <div class="palette-search">
-        <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
-          placeholder="Cerca tutto, oppure &gt; comandi &nbsp;# database &nbsp;@ tabelle" />
+      <div class="palette-heading">
+        <h2>Ricerca rapida</h2>
+        <span class="palette-contesto"></span>
         <button type="button" id="palette-close" class="ghost palette-close" aria-label="Chiudi ricerca" title="Chiudi ricerca (Esc)">${lucideIconHtml('x')}</button>
       </div>
-      <ul id="palette-lista" role="listbox">
+      <div class="palette-search">
+        ${lucideIconHtml('search')}
+        <input id="palette-input" type="text" spellcheck="false" autocomplete="off" aria-label="Cerca database, tabelle e comandi"
+          role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="palette-lista" placeholder="Nome, database o comando…" />
+      </div>
+      <div class="palette-filtri" role="tablist" aria-label="Categorie di ricerca">
+        <button type="button" class="ghost palette-filtro" role="tab" data-tab-id="tutto" data-prefix="" id="palette-filtro-tutto" aria-controls="palette-risultati">Tutto</button>
+        ${Object.keys(RICHIAMI).map(c => `<button type="button" class="ghost palette-filtro" role="tab" data-tab-id="${RICHIAMI[c]}" data-prefix="${c}" id="palette-filtro-${RICHIAMI[c]}" aria-controls="palette-risultati"><span>${ETICHETTA_RICHIAMO[c]}</span><kbd>${c === '>' ? '&gt;' : c}</kbd></button>`).join('')}
+      </div>
+      <div id="palette-risultati" class="palette-risultati" role="tabpanel">
+      <ul id="palette-lista" role="listbox" aria-label="Risultati della ricerca">
         <li class="palette-spazio" aria-hidden="true"></li>
         <li class="palette-spazio" aria-hidden="true"></li>
-        <li class="palette-vuota" hidden>Nessun risultato</li>
+        <li class="palette-vuota" role="presentation" hidden>${lucideIconHtml('search-x')}<strong>Nessun risultato</strong><span>Prova un altro nome o cambia categoria.</span></li>
       </ul>
+      </div>
       <div class="palette-piede">
-        <span class="palette-stato"></span>
-        <span class="palette-legenda"></span>
+        <span class="palette-stato" role="status"></span>
+        <span class="palette-legenda"><span><kbd>↑↓</kbd> scegli</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></span>
       </div>
     </div>`;
   mountArcControls(overlay);
   refreshLucideIcons(overlay);
   overlay.querySelector('#palette-close').addEventListener('click', chiudiPalette);
   document.body.appendChild(overlay);
+  overlay.querySelector('.palette-contesto').textContent = activeTab()?.label || 'CodeDB';
 
   const lista = overlay.querySelector('#palette-lista');
   const spazi = lista.querySelectorAll('.palette-spazio');
@@ -235,7 +267,8 @@ function apriPalette() {
     input: overlay.querySelector('#palette-input'),
     lista,
     stato: overlay.querySelector('.palette-stato'),
-    legenda: overlay.querySelector('.palette-legenda'),
+    filtri: overlay.querySelector('.palette-filtri'),
+    risultati: overlay.querySelector('#palette-risultati'),
     sopra: spazi[0],
     sotto: spazi[1],
     vuoto: lista.querySelector('.palette-vuota'),
@@ -250,19 +283,50 @@ function apriPalette() {
     daLeggere: dbs.length,
     ridisegnoInCorso: false,
   };
+  const corrente = palette;
 
   /** Ricalcola l'elenco filtrato e ridisegna. Da chiamare quando cambia il
    *  CONTENUTO (termine scritto, tabelle arrivate), non quando si scorre. */
   const disegna = () => {
     if (!palette) return;
-    palette.viste = filtra(raccogliVoci(), palette.input.value);
+    const query = palette.input.value;
+    const precedente = palette.query === query ? palette.viste[palette.selezione] : null;
+    const indicePrecedente = palette.selezione;
+    const y = indicePrecedente * palette.altezzaRiga - palette.lista.scrollTop;
+    const inVista = y >= 0 && y + palette.altezzaRiga <= palette.lista.clientHeight + 1;
+    palette.viste = filtra(raccogliVoci(), query);
+    palette.query = query;
+    // Le risposte in ritardo non devono spostare Invio su una voce diversa.
+    if (precedente) {
+      const indice = palette.viste.findIndex(v => v.tipo === precedente.tipo && v.etichetta === precedente.etichetta && v.nota === precedente.nota);
+      if (indice >= 0) palette.selezione = indice;
+    }
     if (palette.selezione > palette.viste.length - 1) {
       palette.selezione = Math.max(0, palette.viste.length - 1);
     }
     disegnaFinestra();
+    if (precedente && inVista && indicePrecedente !== palette.selezione) muoviSelezione(0);
     aggiornaPiede();
   };
   palette.disegna = disegna;
+
+  const scegliFiltro = button => {
+    const { termine } = interpreta(palette.input.value);
+    palette.input.value = button.dataset.prefix ? `${button.dataset.prefix} ${termine}` : termine;
+    palette.input.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  palette.filtri.addEventListener('click', e => {
+    const button = e.target.closest('[role="tab"]');
+    if (button) { scegliFiltro(button); palette.input.focus(); }
+  });
+  palette.filtri.addEventListener('keydown', e => {
+    const buttons = [...palette.filtri.querySelectorAll('[role="tab"]')];
+    const index = buttons.indexOf(e.target);
+    if (index < 0) return;
+    const next = e.key === 'ArrowRight' ? (index + 1) % buttons.length : e.key === 'ArrowLeft' ? (index + buttons.length - 1) % buttons.length : e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : null;
+    if (next !== null) { e.preventDefault(); scegliFiltro(buttons[next]); buttons[next].focus(); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); palette.input.focus(); }
+  });
 
   palette.input.addEventListener('input', () => {
     palette.selezione = 0;
@@ -270,6 +334,7 @@ function apriPalette() {
     disegna();
   });
   palette.input.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); muoviSelezione(+1); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); muoviSelezione(-1); }
     else if (e.key === 'PageDown') { e.preventDefault(); muoviSelezione(+righePerSchermata()); }
@@ -283,10 +348,11 @@ function apriPalette() {
   // Scorrere non ricalcola l'elenco: ridisegna solo la finestra, e al massimo
   // una volta per frame (un `wheel` ne genera molti di più).
   palette.lista.addEventListener('scroll', () => {
+    if (palette !== corrente) return;
     if (palette.ridisegnoInCorso) return;
     palette.ridisegnoInCorso = true;
     requestAnimationFrame(() => {
-      if (!palette) return;
+      if (palette !== corrente) return;
       palette.ridisegnoInCorso = false;
       disegnaFinestra();
     });
@@ -301,11 +367,28 @@ function apriPalette() {
   overlay.addEventListener('mousedown', (e) => {
     if (e.target === overlay) chiudiPalette(); // click fuori: si chiude, come le modali
   });
+  palette.lista.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || (!e.movementX && !e.movementY)) return;
+    const li = e.target.closest('[data-i]');
+    if (!li || Number(li.dataset.i) === palette.selezione) return;
+    palette.selezione = Number(li.dataset.i);
+    disegnaFinestra();
+  });
+  palette.lista.addEventListener('mousedown', e => {
+    if (e.target.closest('[data-i]')) e.preventDefault();
+  });
   overlay.addEventListener('codedb:close-dialog', chiudiPalette);
 
   overlay.classList.add('aperta');
   disegna();
   palette.input.focus();
+
+  palette.observer = new ResizeObserver(() => {
+    if (palette !== corrente) return;
+    const h = palette.righe[0]?.offsetHeight;
+    if (h && h !== palette.altezzaRiga) { palette.altezzaRiga = h; muoviSelezione(0); }
+  });
+  palette.observer.observe(lista);
 
   caricaTabelle(dbs, palette.token);
 }
@@ -348,8 +431,10 @@ function muoviSelezione(passo) {
  */
 function disegnaFinestra() {
   if (!palette) return;
+  const completaTransizione = preparaTransizioneAlbero(palette.lista, '', { selettore: '.palette-voce.attiva', durata: 160 });
   const n = palette.viste.length;
   palette.vuoto.hidden = n > 0;
+  palette.vuoto.querySelector('strong').textContent = palette.letti < palette.daLeggere ? 'Ricerca nelle tabelle…' : 'Nessun risultato';
 
   const f = finestraVirtuale({
     scrollTop: palette.lista.scrollTop,
@@ -375,8 +460,12 @@ function disegnaFinestra() {
   if (!palette.misurata && palette.righe.length) {
     const h = palette.righe[0].offsetHeight;
     palette.misurata = true;
-    if (h > 0 && h !== palette.altezzaRiga) { palette.altezzaRiga = h; disegnaFinestra(); }
+    if (h > 0 && h !== palette.altezzaRiga) { palette.altezzaRiga = h; disegnaFinestra(); return; }
   }
+  const attiva = palette.righe.find(li => li.classList.contains('attiva'));
+  if (attiva) palette.input.setAttribute('aria-activedescendant', attiva.id);
+  else palette.input.removeAttribute('aria-activedescendant');
+  completaTransizione();
 }
 
 /**
@@ -388,8 +477,7 @@ function disegnaFinestra() {
  *  - **quale richiamo è attivo**: con `#` scritto in testa si sta cercando fra
  *    i soli database, e non vederlo scritto significa credere che le tabelle
  *    siano sparite;
- *  - **i richiami disponibili**, finché non se ne usa uno. Una scorciatoia che
- *    nessuno sa che esiste non esiste.
+ *  Le schede espongono gli stessi richiami e seguono il prefisso digitato.
  */
 function aggiornaPiede() {
   const n = palette.viste.length;
@@ -399,10 +487,17 @@ function aggiornaPiede() {
     : '';
   const solo = tipo ? ` · solo ${ETICHETTA_RICHIAMO[richiamo]}` : '';
   palette.stato.textContent = `${n} risultat${n === 1 ? 'o' : 'i'}${solo}${attesa}`;
-  palette.legenda.textContent = tipo
-    ? '↑↓ scegli · Invio esegui · Esc chiudi'
-    : LEGENDA;
-  palette.legenda.classList.toggle('palette-richiami', !tipo);
+  if (palette.filtro !== richiamo) {
+    const completaTransizione = preparaTransizioneTab(palette.filtri);
+    for (const button of palette.filtri.querySelectorAll('[role="tab"]')) {
+      const selected = button.dataset.prefix === richiamo;
+      button.setAttribute('aria-selected', String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      if (selected) palette.risultati.setAttribute('aria-labelledby', button.id);
+    }
+    palette.filtro = richiamo;
+    completaTransizione();
+  }
 }
 
 /** I NOMI dei database del tab attivo. L'albero li tiene in cache come oggetti
@@ -417,7 +512,10 @@ function dbsDelTab() {
 
 function chiudiPalette() {
   if (!palette) return;
-  palette.overlay.remove();
+  palette.observer?.disconnect();
+  fermaTransizioniAlbero(palette.lista);
+  fermaTransizioniTab(palette.filtri);
+  removeDialog(palette.overlay);
   palette = null; // le risposte in volo lo vedono e si scartano da sole
 }
 

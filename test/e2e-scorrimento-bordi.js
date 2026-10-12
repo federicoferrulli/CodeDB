@@ -52,6 +52,7 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
     const page = await context.newPage();
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    await require('./split-frame').install(page);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(1200);
@@ -61,7 +62,7 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
     await page.addStyleTag({ content: `
       #workspace { position: fixed !important; inset: 0 !important; height: 700px !important;
         display: flex !important; z-index: 10000 !important; }
-      .pane-grid-wrap { height: 260px !important; min-height: 260px !important; }
+      .grid-wrap { height: 260px !important; min-height: 260px !important; }
     ` });
 
     await page.evaluate(async () => {
@@ -87,21 +88,23 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
       sv.addOrSplitPane(null, 'right', { tabId: tab.id, db: 'prova', coll: 'grande' });
       sv.renderSplitView();
 
-      const tbody = document.querySelector('.split-pane .pane-grid tbody');
-      window.__conteggiToccoPane = { move: 0, up: 0, cancel: 0 };
-      window.__scrollVisti = [];
-      tbody.closest('.pane-grid-wrap').addEventListener('scroll', (e) => {
-        window.__scrollVisti.push({ x: e.currentTarget.scrollLeft, y: e.currentTarget.scrollTop });
+      const paneDoc = await window.paneDocument(0);
+      const tbody = paneDoc.querySelector('#grid tbody');
+      paneDoc.defaultView.__conteggiToccoPane = { move: 0, up: 0, cancel: 0 };
+      paneDoc.defaultView.__scrollVisti = [];
+      tbody.closest('.grid-wrap').addEventListener('scroll', (e) => {
+        paneDoc.defaultView.__scrollVisti.push({ x: e.currentTarget.scrollLeft, y: e.currentTarget.scrollTop });
       });
       tbody.addEventListener('pointermove', (e) => {
-        window.__conteggiToccoPane.move++;
-        window.__conteggiToccoPane.ultimaY = e.clientY;
+        paneDoc.defaultView.__conteggiToccoPane.move++;
+        paneDoc.defaultView.__conteggiToccoPane.ultimaY = e.clientY;
       });
-      tbody.addEventListener('pointerup', () => window.__conteggiToccoPane.up++);
-      tbody.addEventListener('pointercancel', () => window.__conteggiToccoPane.cancel++);
+      tbody.addEventListener('pointerup', () => paneDoc.defaultView.__conteggiToccoPane.up++);
+      tbody.addEventListener('pointercancel', () => paneDoc.defaultView.__conteggiToccoPane.cancel++);
     });
 
-    const contenitore = page.locator('.split-pane .pane-grid-wrap').first();
+    const pane = await require('./split-frame').frame(page);
+    const contenitore = pane.locator('.grid-wrap');
     const prima = contenitore.locator('tbody td[data-r="0"][data-c="0"]');
     await prima.waitFor({ state: 'visible' });
 
@@ -110,7 +113,7 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
     await prima.click();
     const selezionata = await prima.evaluate((td) => td.classList.contains('cell-selected'));
     ok(selezionata, 'la cella iniziale del riquadro è selezionata prima del trascinamento');
-    await page.evaluate(() => { window.__conteggiToccoPane = { move: 0, up: 0, cancel: 0 }; });
+    await page.evaluate(async () => { const paneDoc = await window.paneDocument(); paneDoc.defaultView.__conteggiToccoPane = { move: 0, up: 0, cancel: 0 }; });
 
     const cellaBox = await prima.boundingBox();
     const wrapBox = await contenitore.boundingBox();
@@ -120,8 +123,9 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
     const cdp = await context.newCDPSession(page);
     await trascinaColDito(cdp, page, x, y0, yBordo);
 
-    const durante = await page.evaluate(() => {
-      const pane = document.querySelector('.split-pane .pane-grid-wrap');
+    const durante = await page.evaluate(async () => {
+      const paneDoc = await window.paneDocument(0);
+      const pane = paneDoc.querySelector('.grid-wrap');
       const focus = pane.querySelector('tbody td.cell-focus');
       return {
         scrollPane: pane.scrollTop,
@@ -129,17 +133,17 @@ async function trascinaColDito(cdp, page, x, y0, y1) {
         scrollHeight: pane.scrollHeight,
         clientHeight: pane.clientHeight,
         rettangolo: pane.getBoundingClientRect().toJSON(),
-        scrollTutti: [...document.querySelectorAll('.split-pane .pane-grid-wrap')].map((el) => el.scrollTop),
-        scrollVisti: window.__scrollVisti.slice(),
+        scrollTutti: [...paneDoc.querySelectorAll('.grid-wrap')].map((el) => el.scrollTop),
+        scrollVisti: paneDoc.defaultView.__scrollVisti.slice(),
         scrollDati: document.querySelector('.grid-wrap').scrollTop,
         rigaFuoco: focus ? Number(focus.dataset.r) : -1,
-        ...window.__conteggiToccoPane,
+        ...paneDoc.defaultView.__conteggiToccoPane,
       };
     });
 
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(80);
-    const dopo = await page.evaluate(() => ({ ...window.__conteggiToccoPane }));
+    const dopo = await page.evaluate(async () => ({ ...(await window.paneDocument()).defaultView.__conteggiToccoPane }));
 
     ok(durante.cancel === 0,
       'lo scorrimento programmato del riquadro non annulla il gesto tattile',

@@ -36,6 +36,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
     const page = await browser.newPage();
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    await require('./split-frame').install(page);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(1500);
@@ -84,6 +85,10 @@ const ok = (cond, etichetta, dettaglio = '') => {
     /* --- Tab ⚡: la stessa griglia, capacità diverse --------------------- */
 
     const risultati = await page.evaluate(async () => {
+      const { createTab } = await import('/js/tabs.js');
+      createTab({ id: 'risultati-griglia' });
+      for (const id of ['tab-body', 'workspace', 'view-query']) document.getElementById(id).classList.remove('hidden');
+      for (const panel of document.querySelectorAll('#workspace .view-panel')) panel.classList.toggle('hidden', panel.id !== 'view-query');
       const { renderResults, setResultsViewMode } = await import('/js/query-tab.js');
       // `renderResults` riceve l'ARRAY delle righe, non l'esito del server.
       setResultsViewMode('table');
@@ -198,7 +203,8 @@ const ok = (cond, etichetta, dettaglio = '') => {
       sv.addOrSplitPane(null, 'right', { tabId: tab.id, db: 'prova', coll: 'grande' });
       sv.renderSplitView();
 
-      const tbody = document.querySelector('.split-pane .pane-grid tbody');
+      const paneDoc = await window.paneDocument(0);
+      const tbody = paneDoc.querySelector('#grid tbody');
       if (!tbody) return { assente: true };
       const spaziatori = [...tbody.querySelectorAll('tr.v-spacer')];
       const righe = [...tbody.querySelectorAll('tr')].filter((tr) => !tr.classList.contains('v-spacer'));
@@ -243,9 +249,10 @@ const ok = (cond, etichetta, dettaglio = '') => {
       sv.renderSplitView();
       await new Promise((r) => requestAnimationFrame(r));
 
-      const contenitore = document.querySelector('.split-pane .pane-grid-wrap');
-      const tbody = document.querySelector('.split-pane .pane-grid tbody');
-      const thead = document.querySelector('.split-pane .pane-grid thead');
+      const paneDoc = await window.paneDocument(0);
+      const contenitore = paneDoc.querySelector('.grid-wrap');
+      const tbody = paneDoc.querySelector('#grid tbody');
+      const thead = paneDoc.querySelector('#grid thead');
       if (!contenitore || !tbody || !thead) return { assente: true };
       if (!contenitore.clientHeight) return { nonScorre: true };
 

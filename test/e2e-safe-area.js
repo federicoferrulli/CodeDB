@@ -45,6 +45,9 @@ const { startTestServer } = require('./e2e-harness');
       await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets: { top, right, bottom, left } });
       const area = { left, top, right: width - right, bottom: height - bottom };
       dentro(await page.locator('#app > header').boundingBox(), area, 'Header');
+      await page.evaluate(async () => (await import('/js/utils.js')).toast('Verifica download e safe area'));
+      await page.locator('#toast-container > *').waitFor();
+      dentro(await page.locator('#toast-container').boundingBox(), area, 'Notifiche');
       if (width <= 900) {
         dentro(await page.locator('.mobile-bottom-nav').boundingBox(), area, 'Navigazione inferiore');
         for (const selector of ['#conn-sidebar', '#sidebar']) {
@@ -105,6 +108,9 @@ const { startTestServer } = require('./e2e-harness');
       }, { height, offsetTop });
       const area = { left: 0, top: offsetTop + 59, right: 390, bottom: Math.min(height + offsetTop, 810) };
       dentro(await page.locator('.mobile-bottom-nav').boundingBox(), area, 'Navigazione con tastiera');
+      await page.evaluate(async () => (await import('/js/utils.js')).toast('Verifica download con tastiera'));
+      await page.locator('#toast-container > *').waitFor();
+      dentro(await page.locator('#toast-container').boundingBox(), area, 'Notifiche con tastiera');
       await page.locator('#mobile-nav-conns').click();
       await page.locator('.arc-navigation-sheet [data-grabber]').press('Home');
       await page.waitForTimeout(400);

@@ -70,17 +70,25 @@ const REGISTRANTE = `
   window.__reg = [];
   window.__controls = {
     autoRotate: false, autoRotateSpeed: 0,
+    target: { x: 0, y: 0, z: 0 },
     enableRotate: true, enablePan: false, enableZoom: false,
     screenSpacePanning: false, mouseButtons: null, touches: null,
   };
   window.__opts = null;
   window.__dati = { nodes: [], links: [] };
+  window.__camera = { x: 0, y: 0, z: 300 };
   const forma = (a) => (typeof a === 'function' ? 'fn' : (a && typeof a === 'object' ? 'obj' : a));
   const crea = () => {
     const g = new Proxy(function () {}, {
       apply: () => g,
       get(_t, prop) {
         if (prop === 'controls') return () => window.__controls;
+        if (prop === 'cameraPosition') return (pos, target) => {
+          if (pos === undefined) return { ...window.__camera };
+          window.__camera = { ...pos };
+          window.__controls.target = { ...target };
+          return g;
+        };
         if (prop === 'graphData') return (d) => {
           if (d === undefined) return window.__dati;
           window.__dati = d; window.__reg.push(['graphData', ['obj']]); return g;

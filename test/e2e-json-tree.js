@@ -124,7 +124,10 @@ const { startTestServer } = require('./e2e-harness');
         && view.scrollWidth > view.clientWidth;
       resetQueryView();
       await attendi();
-      esiti.reset = tree.textContent === 'Nessun risultato da mostrare';
+      // Lo stato vuoto vive nel pannello risultati; l'albero deve perdere i vecchi nodi.
+      esiti.reset = tree.childElementCount === 0
+        && document.getElementById('res-mode-table').getAttribute('aria-selected') === 'true'
+        && !!document.querySelector('#query-table-view .data-empty');
       setResultsViewMode('json');
       renderResults([dati]);
       esiti.ripristino = nodi().length === 2 && JSON.stringify(dati) === originale;

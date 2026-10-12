@@ -1,0 +1,8 @@
+{
+  "checks": [
+    "Geometrie SQL JSON, annidate e multipart; nomi arbitrari trattati come testo",
+    "Editor/Risultati/Entrambi: vere schede, focus da tastiera, transizione e bozza conservata"
+  ],
+  "layouts": [],
+  "errors": []
+}

@@ -1,0 +1,9 @@
+{
+  "environment": "Chromium, risposte simulate",
+  "checks": [
+    "Skeleton iniziale e refresh stabile desktop/mobile, storici e scroll conservati, filtro, errore e movimento ridotto"
+  ],
+  "layouts": [],
+  "motion": [],
+  "errors": []
+}

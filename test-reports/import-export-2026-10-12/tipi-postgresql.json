@@ -1,0 +1,423 @@
+{
+  "type": "postgresql",
+  "casi": [
+    {
+      "tipo": "smallint",
+      "valore": "-32768"
+    },
+    {
+      "tipo": "integer",
+      "valore": "-2147483648"
+    },
+    {
+      "tipo": "bigint",
+      "valore": "-9223372036854775808"
+    },
+    {
+      "tipo": "numeric",
+      "valore": "12345678901234567890123456789012345.123456789012345678901234567890"
+    },
+    {
+      "tipo": "numeric",
+      "valore": "'NaN'"
+    },
+    {
+      "tipo": "numeric",
+      "valore": "'Infinity'"
+    },
+    {
+      "tipo": "real",
+      "valore": "1.2345678"
+    },
+    {
+      "tipo": "double precision",
+      "valore": "1.2345678901234567"
+    },
+    {
+      "tipo": "double precision",
+      "valore": "'Infinity'"
+    },
+    {
+      "tipo": "double precision",
+      "valore": "'-Infinity'"
+    },
+    {
+      "tipo": "double precision",
+      "valore": "'NaN'"
+    },
+    {
+      "tipo": "double precision",
+      "valore": "4.9406564584124654e-324"
+    },
+    {
+      "tipo": "money",
+      "valore": "'12345678.90'"
+    },
+    {
+      "tipo": "boolean",
+      "valore": "true"
+    },
+    {
+      "tipo": "char(8)",
+      "valore": "'à 🦊'"
+    },
+    {
+      "tipo": "varchar(20)",
+      "valore": "'  à 🦊  '"
+    },
+    {
+      "tipo": "text",
+      "valore": "E'apice '' \\n 🦊'"
+    },
+    {
+      "tipo": "bytea",
+      "valore": "decode('0001ff005c2722','hex')"
+    },
+    {
+      "tipo": "bit(8)",
+      "valore": "B'10101010'"
+    },
+    {
+      "tipo": "bit varying",
+      "valore": "B'101'"
+    },
+    {
+      "tipo": "date",
+      "valore": "'4713-01-01 BC'"
+    },
+    {
+      "tipo": "date",
+      "valore": "'infinity'"
+    },
+    {
+      "tipo": "timestamp(6)",
+      "valore": "'294276-12-31 23:59:59.999999'"
+    },
+    {
+      "tipo": "timestamptz(6)",
+      "valore": "'2026-10-12 12:34:56.123456+05:30'"
+    },
+    {
+      "tipo": "time(6)",
+      "valore": "'24:00:00'"
+    },
+    {
+      "tipo": "timetz(6)",
+      "valore": "'12:34:56.123456-07:30'"
+    },
+    {
+      "tipo": "interval",
+      "valore": "'123 years 3 mons -2 days 12:34:56.123456'"
+    },
+    {
+      "tipo": "uuid",
+      "valore": "'12345678-1234-1234-1234-123456789abc'"
+    },
+    {
+      "tipo": "inet",
+      "valore": "'2001:db8::1/64'"
+    },
+    {
+      "tipo": "cidr",
+      "valore": "'192.168.0.0/16'"
+    },
+    {
+      "tipo": "macaddr",
+      "valore": "'08:00:2b:01:02:03'"
+    },
+    {
+      "tipo": "macaddr8",
+      "valore": "'08:00:2b:ff:fe:01:02:03'"
+    },
+    {
+      "tipo": "json",
+      "valore": "'{ \"n\": 9007199254740993, \"n\": 1, \"x\": [null,true] }'"
+    },
+    {
+      "tipo": "jsonb",
+      "valore": "'{\"n\":12345678901234567890.12345678901234567890}'"
+    },
+    {
+      "tipo": "jsonpath",
+      "valore": "'$[*] ? (@ > 3)'"
+    },
+    {
+      "tipo": "xml",
+      "valore": "'<root a=\"🦊\">à &amp; b</root>'"
+    },
+    {
+      "tipo": "tsvector",
+      "valore": "'''a'':1A,3B ''b'':2'"
+    },
+    {
+      "tipo": "tsquery",
+      "valore": "'''a'' & !''b'''"
+    },
+    {
+      "tipo": "point",
+      "valore": "'(1.2345678901234567,2)'"
+    },
+    {
+      "tipo": "line",
+      "valore": "'{1,2,3}'"
+    },
+    {
+      "tipo": "lseg",
+      "valore": "'[(0,0),(1,2)]'"
+    },
+    {
+      "tipo": "box",
+      "valore": "'(3,4),(1,2)'"
+    },
+    {
+      "tipo": "path",
+      "valore": "'[(0,0),(1,2),(3,4)]'"
+    },
+    {
+      "tipo": "polygon",
+      "valore": "'((0,0),(1,2),(3,4))'"
+    },
+    {
+      "tipo": "circle",
+      "valore": "'<(1,2),3.123456789012345>'"
+    },
+    {
+      "tipo": "int4range",
+      "valore": "'[1,9)'"
+    },
+    {
+      "tipo": "int8range",
+      "valore": "'[9007199254740993,)'"
+    },
+    {
+      "tipo": "numrange",
+      "valore": "'(1.1234567890123456789,9.9876543210987654321]'"
+    },
+    {
+      "tipo": "daterange",
+      "valore": "'[2020-01-01,infinity)'"
+    },
+    {
+      "tipo": "tsrange",
+      "valore": "'[2020-01-01,2026-10-12)'"
+    },
+    {
+      "tipo": "tstzrange",
+      "valore": "'[2020-01-01+03,2026-10-12+05)'"
+    },
+    {
+      "tipo": "int4multirange",
+      "valore": "'{[1,2),[5,9)}'"
+    },
+    {
+      "tipo": "int8multirange",
+      "valore": "'{[9007199254740993,)}'"
+    },
+    {
+      "tipo": "nummultirange",
+      "valore": "'{(1.123456789,9.987654321]}'"
+    },
+    {
+      "tipo": "datemultirange",
+      "valore": "'{[2020-01-01,infinity)}'"
+    },
+    {
+      "tipo": "tsmultirange",
+      "valore": "'{[2020-01-01,2026-10-12)}'"
+    },
+    {
+      "tipo": "tstzmultirange",
+      "valore": "'{[2020-01-01+03,2026-10-12+05)}'"
+    },
+    {
+      "tipo": "numeric[]",
+      "valore": "'[0:1][3:4]={{12345678901234567890.123456789,NULL},{NaN,0}}'"
+    },
+    {
+      "tipo": "text[]",
+      "valore": "ARRAY['a,b','NULL',NULL,'🦊']"
+    },
+    {
+      "tipo": "bytea[]",
+      "valore": "ARRAY[decode('00ff','hex'),NULL]"
+    },
+    {
+      "tipo": "jsonb[]",
+      "valore": "ARRAY['{\"n\":9007199254740993}'::jsonb]"
+    },
+    {
+      "tipo": "mood",
+      "valore": "'b,🦊'"
+    },
+    {
+      "tipo": "amount",
+      "valore": "12345678901234567890.123456789"
+    },
+    {
+      "tipo": "pair",
+      "valore": "ROW('b,🦊',12345678901234567890.123456789)"
+    },
+    {
+      "tipo": "pair[]",
+      "valore": "ARRAY[ROW('a',1)::pair,NULL]"
+    },
+    {
+      "tipo": "price_range",
+      "valore": "'[1.1234567890123456789,9.9876543210987654321)'"
+    },
+    {
+      "tipo": "price_multirange",
+      "valore": "'{[1.123456789,9.987654321)}'"
+    },
+    {
+      "tipo": "hstore",
+      "valore": "'a=>b, c=>NULL'"
+    },
+    {
+      "tipo": "citext",
+      "valore": "'MiXeD à 🦊'"
+    },
+    {
+      "tipo": "geometry",
+      "valore": "ST_GeomFromEWKT('SRID=4326;POINT ZM(1.123456789012345 2.123456789012345 3 4)')"
+    },
+    {
+      "tipo": "geometry",
+      "valore": "ST_GeomFromEWKT('SRID=4326;CIRCULARSTRING(0 0,1 1,2 0)')"
+    },
+    {
+      "tipo": "geometry",
+      "valore": "ST_GeomFromEWKT('SRID=4326;POLYGON EMPTY')"
+    },
+    {
+      "tipo": "geometry",
+      "valore": "ST_GeomFromEWKT('SRID=4326;GEOMETRYCOLLECTION(POINT(1 2),LINESTRING(0 0,1 1))')"
+    },
+    {
+      "tipo": "geometry",
+      "valore": "ST_GeomFromEWKT('SRID=4326;TIN Z(((0 0 0,0 1 0,1 1 0,0 0 0)))')"
+    },
+    {
+      "tipo": "geography",
+      "valore": "ST_GeogFromText('SRID=4326;POINT(12.123456789012345 41.123456789012345)')"
+    },
+    {
+      "tipo": "myint",
+      "valore": "'-2147483648'"
+    },
+    {
+      "tipo": "myint[]",
+      "valore": "'{1,-2147483648,NULL}'"
+    },
+    {
+      "tipo": "normalized_range",
+      "valore": "'(1,9]'"
+    },
+    {
+      "tipo": "collated_text",
+      "valore": "'École 🦊'"
+    },
+    {
+      "tipo": "xid8",
+      "valore": "'18446744073709551615'"
+    },
+    {
+      "tipo": "name",
+      "valore": "'nome 🦊'"
+    },
+    {
+      "tipo": "\"char\"",
+      "valore": "'x'"
+    },
+    {
+      "tipo": "oid",
+      "valore": "4294967295"
+    },
+    {
+      "tipo": "xid",
+      "valore": "'4294967295'"
+    },
+    {
+      "tipo": "cid",
+      "valore": "'4294967295'"
+    },
+    {
+      "tipo": "tid",
+      "valore": "'(4294967295,65535)'"
+    },
+    {
+      "tipo": "pg_lsn",
+      "valore": "'FFFFFFFF/FFFFFFFF'"
+    },
+    {
+      "tipo": "pg_snapshot",
+      "valore": "'10:20:10,15,19'"
+    },
+    {
+      "tipo": "txid_snapshot",
+      "valore": "'10:20:10,15,19'"
+    },
+    {
+      "tipo": "regclass",
+      "valore": "'tipi'"
+    },
+    {
+      "tipo": "regcollation",
+      "valore": "'locale_test'"
+    },
+    {
+      "tipo": "regconfig",
+      "valore": "'english'"
+    },
+    {
+      "tipo": "regdictionary",
+      "valore": "'simple'"
+    },
+    {
+      "tipo": "regnamespace",
+      "valore": "'pg_catalog'"
+    },
+    {
+      "tipo": "regrole",
+      "valore": "'postgres'"
+    },
+    {
+      "tipo": "regtype",
+      "valore": "'mood'"
+    },
+    {
+      "tipo": "regproc",
+      "valore": "'canonicalize(integer)'::regprocedure::oid"
+    },
+    {
+      "tipo": "regprocedure",
+      "valore": "'canonicalize(integer)'"
+    },
+    {
+      "tipo": "regoper",
+      "valore": "'+(integer,integer)'::regoperator::oid"
+    },
+    {
+      "tipo": "regoperator",
+      "valore": "'+(integer,integer)'"
+    },
+    {
+      "tipo": "aclitem[]",
+      "valore": "'{postgres=arwdDxt/postgres}'"
+    },
+    {
+      "tipo": "regproc[]",
+      "valore": "ARRAY[ARRAY['canonicalize(integer)'::regprocedure::oid,NULL],ARRAY['abs(integer)'::regprocedure::oid,0]]::oid[]::regproc[]"
+    },
+    {
+      "tipo": "regoper[]",
+      "valore": "ARRAY['+(integer,integer)'::regoperator::oid,NULL]::oid[]::regoper[]"
+    }
+  ],
+  "percorsi": [
+    "codedb-json",
+    "sql",
+    "backup"
+  ],
+  "valoriIdentici": true
+}

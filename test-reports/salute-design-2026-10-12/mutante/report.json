@@ -1,0 +1,28 @@
+{
+  "checks": [],
+  "layouts": [],
+  "frames": [
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "environment": "Chromium, risposte diagnostiche sintetiche",
+  "failure": "AssertionError [ERR_ASSERTION]: Il nuovo valore attraversa fotogrammi intermedi\n    at C:\\repository\\CodeDB\\test\\e2e-salute-design.js:66:5"
+}

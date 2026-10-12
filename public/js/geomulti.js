@@ -21,8 +21,11 @@
 import { $, toast, openModal, closeModal } from './utils.js';
 import { tileAttive, impostaTile } from './geo-leaflet.js';
 import { creaVistaGeo, copia, scaricaGeoJson } from './geo-vista.js';
+import { creaIspettoreGeo } from './geo-inspector.js';
 
 let vista = null;
+let apertura = 0;
+let ispettore;
 
 function creaVista() {
   if (!vista) {
@@ -32,6 +35,8 @@ function creaVista() {
       elenco: '#geomulti-list',
       notaElenco: '#geomulti-list-note',
       avvisi: '#geomulti-warning',
+      elencoCompatto: true,
+      onSelezione: g => ispettore?.selezione(g),
     });
   }
   return vista;
@@ -46,14 +51,16 @@ function creaVista() {
  * @param {string} opts.titolo intestazione della finestra
  */
 export async function apriMappaSelezione({ voci, titolo = '' }) {
+  const token = ++apertura;
   const v = creaVista();
   let st;
   try {
-    st = await v.mostra(voci);
+    st = await v.mostra(voci, { isCurrent: () => token === apertura });
   } catch (err) {
-    toast(err.message, true);
+    if (token === apertura) toast(err.message, true);
     return;
   }
+  if (token !== apertura) return;
   // La modale si apre solo se c'è qualcosa da vedere: una finestra vuota da
   // chiudere per scoprire che non c'era nulla è peggio di un avviso. `mostra`
   // torna null proprio per questo, così le geometrie si contano una volta sola.
@@ -62,13 +69,19 @@ export async function apriMappaSelezione({ voci, titolo = '' }) {
     return;
   }
 
-  $('#geomulti-title').textContent = titolo ? `Geometrie — ${titolo}` : 'Geometrie sulla mappa';
+  $('#geomulti-context').textContent = [titolo, `${st.totale.toLocaleString('it-IT')} ${st.totale === 1 ? 'geometria' : 'geometrie'} · ${st.vertici.toLocaleString('it-IT')} vertici`].filter(Boolean).join(' — ');
+  $('#geomulti-count').textContent = st.totale.toLocaleString('it-IT');
+  ispettore.selezione(null);
   $('#geomulti-tiles').checked = tileAttive();
 
   openModal('#geomulti-overlay');
   // Leaflet legge le dimensioni del contenitore: su un div ancora nascosto
   // (0×0) disegnerebbe una mappa grigia che non si riprende.
-  setTimeout(() => v.aggiorna(), 30);
+  requestAnimationFrame(() => {
+    if (token !== apertura) return;
+    ispettore.aggiorna(true);
+    v.aggiorna();
+  });
 }
 
 export function initGeoMulti() {
@@ -76,6 +89,8 @@ export function initGeoMulti() {
   if (!overlay) return;
 
   $('#geomulti-close').addEventListener('click', () => closeModal('#geomulti-overlay'));
+  ispettore = creaIspettoreGeo('geomulti', () => vista?.invalidateSize());
+  overlay.addEventListener('codedb:dialog-closed', () => ispettore.ferma());
   $('#geomulti-fit').addEventListener('click', () => creaVista().inquadraTutto());
   $('#geomulti-tiles').addEventListener('change', (e) => {
     impostaTile(e.target.checked);

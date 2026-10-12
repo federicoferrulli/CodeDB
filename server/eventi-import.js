@@ -98,6 +98,7 @@ function createModule({ operazioni, lock, identita, audit }) {
       const catalogo = await leggiCatalogoExport(strategy, dbType, db);
       const motore = { backend: 'incorporato', motivo: 'File prodotto sul server e scaricato via HTTP.' };
       const formato = payload.formato || 'codedb-json';
+      const mongoRead = dbType === 'mongodb' ? await require('../db/mongoTopologia').leggiTopologia(strategy.client) : null;
       if (!['codedb-json', 'sql'].includes(formato) || (dbType === 'mongodb' && formato === 'sql')) {
         throw new Error('Formato non disponibile per questo database.');
       }
@@ -110,7 +111,7 @@ function createModule({ operazioni, lock, identita, audit }) {
         formato,
         limiteByte: formato === 'codedb-json' ? operazioni.maxImportBytes : null,
         compressione: false,
-        consistenza: dbType === 'mongodb' ? 'nessuno snapshot globale; conteggi verificati' : 'snapshot repeatable-read; tabelle non transazionali escluse dalla garanzia',
+        consistenza: mongoRead ? mongoRead.avviso : 'snapshot repeatable-read; tabelle non transazionali escluse dalla garanzia',
       });
       sess.exportPlan = plan;
       // Il catalogo viaggia accanto al piano: il wizard deve poter mostrare
@@ -198,9 +199,11 @@ function createModule({ operazioni, lock, identita, audit }) {
       };
     });
 
-    lifecycle.delegate('database:import:upload:start', async () => {
+    lifecycle.delegate('database:import:upload:start', async (strategy, payload) => {
       const registry = socketContext.importUploads || operazioni.importUploads;
-      return registry.start(socketContext.principal.ownerId, socketContext.principal.id);
+      return registry.start(socketContext.principal.ownerId, socketContext.principal.id, {
+        format: payload.format || 'codedb-json', dbType: strategy.type,
+      });
     });
 
     lifecycle.delegate('database:import:upload:chunk', async (_strategy, payload) => {
@@ -211,16 +214,23 @@ function createModule({ operazioni, lock, identita, audit }) {
     lifecycle.delegate('database:import:upload:finish', async (strategy, payload) => {
       const registry = socketContext.importUploads || operazioni.importUploads;
       const artifact = registry.finish(payload.uploadId, socketContext.principal.ownerId, (raw) => (
-        normalizzaExportDatabase(raw, { expectedDbType: strategy.type })
+        normalizzaExportDatabase(raw, { expectedDbType: strategy.type, owned: true })
       ), socketContext.principal.id);
       return {
         artifact: {
           db: artifact.db, dbType: artifact.dbType,
+          avvisi: artifact.avvisi || [],
           collections: artifact.collections.map((collection) => ({
             name: collection.name, rows: collection.docs.length, identity: collection.identity || null,
           })),
         },
       };
+    });
+
+    lifecycle.delegate('database:import:upload:cancel', async (_strategy, payload) => {
+      const registry = socketContext.importUploads || operazioni.importUploads;
+      registry.remove(payload.uploadId, socketContext.principal.ownerId, socketContext.principal.id);
+      return {};
     });
 
     // --- Import database come operazione lunga ---------------------------------

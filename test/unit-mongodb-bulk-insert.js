@@ -1,102 +1,45 @@
 'use strict';
 
-// Seam pubblico della strategia MongoDB: docInsert accetta sia il documento
-// usato dalla griglia sia un array EJSON usato da execute_write. Il client
-// finto registra quale primitiva del driver riceve i dati, senza richiedere un
-// database locale.
-
-const assert = require('assert');
-const { ObjectId } = require('mongodb');
+// Il seam registra i byte effettivamente consegnati al comando ordinato del driver.
+const assert = require('node:assert/strict');
+const B = require('bson');
 const MongoDbStrategy = require('../db/MongoDbStrategy');
 
-console.log('--- Test insert MongoDB singolo e multiplo ---');
-
 module.exports = (async () => {
-  const chiamate = [];
-  const collection = {
-    async insertOne(doc) {
-      chiamate.push({ metodo: 'insertOne', docs: [doc] });
-      return { insertedId: new ObjectId('64b64c0f0000000000000001') };
-    },
-    async insertMany(docs) {
-      chiamate.push({ metodo: 'insertMany', docs });
-      return {
-        insertedCount: docs.length,
-        insertedIds: {
-          0: new ObjectId('64b64c0f0000000000000002'),
-          1: new ObjectId('64b64c0f0000000000000003'),
-        },
-      };
-    },
-  };
+  console.log('--- Test insert MongoDB singolo e multiplo ---');
+  const calls = [];
   const strategy = new MongoDbStrategy();
-  strategy.client = { db: () => ({ collection: () => collection }) };
-
-  const risultato = await strategy.docInsert('catalogo', 'eventi', {
-    doc: '[{"_id":{"$oid":"64b64c0f0000000000000011"},"quando":{"$date":"2026-08-29T00:00:00.000Z"}},'
-      + '{"_id":{"$oid":"64b64c0f0000000000000012"},"totale":{"$numberLong":"9007199254740993"}}]',
-  });
-
-  assert.strictEqual(chiamate.length, 1, 'l\'array deve produrre una sola chiamata al driver');
-  assert.strictEqual(chiamate[0].metodo, 'insertMany', 'l\'array deve usare insertMany');
-  assert.strictEqual(chiamate[0].docs.length, 2, 'insertMany deve ricevere tutti i documenti');
-  assert(chiamate[0].docs[0]._id instanceof ObjectId, 'gli ObjectId EJSON devono restare BSON');
-  assert(chiamate[0].docs[0].quando instanceof Date, 'le date EJSON devono restare Date');
-  assert.strictEqual(chiamate[0].docs[1].totale.toString(), '9007199254740993', 'i Long EJSON non devono perdere precisione');
-  assert.strictEqual(risultato.insertedCount, 2, 'il risultato deve riportare quanti documenti sono stati inseriti');
-  assert.deepStrictEqual(
-    risultato.insertedIds.map((id) => JSON.parse(id).$oid),
-    ['64b64c0f0000000000000002', '64b64c0f0000000000000003'],
-    'il risultato deve esporre tutti gli _id inseriti in EJSON',
-  );
-
-  console.log('  OK   array EJSON -> una insertMany con risultato completo');
-
-  const singolo = await strategy.docInsert('catalogo', 'eventi', { doc: '{"nome":"Ada"}' });
-  assert.strictEqual(chiamate[1].metodo, 'insertOne', 'il documento singolo deve continuare a usare insertOne');
-  assert.deepStrictEqual(chiamate[1].docs, [{ nome: 'Ada' }], 'insertOne deve ricevere il documento originale');
-  assert.strictEqual(
-    JSON.parse(singolo.insertedId).$oid,
-    '64b64c0f0000000000000001',
-    'il risultato storico insertedId deve restare invariato',
-  );
-
-  const chiamatePrimaDegliErrori = chiamate.length;
-  await assert.rejects(
-    () => strategy.docInsert('catalogo', 'eventi', { doc: '[]' }),
-    /elenco non vuoto di documenti/,
-    'un array vuoto non rappresenta un inserimento valido',
-  );
-  await assert.rejects(
-    () => strategy.docInsert('catalogo', 'eventi', { doc: '[{"nome":"Ada"},42]' }),
-    /elenco non vuoto di documenti/,
-    'ogni elemento dell\'array deve essere un documento',
-  );
-  await assert.rejects(
-    () => strategy.docInsert('catalogo', 'eventi', { doc: '[{"$date":"2026-08-29T00:00:00.000Z"}]' }),
-    /elenco non vuoto di documenti/,
-    'un valore BSON scalare non deve essere scambiato per un documento',
-  );
-  assert.strictEqual(chiamate.length, chiamatePrimaDegliErrori, 'gli array non validi non devono raggiungere il driver');
-
-  console.log('  OK   insert singolo compatibile e array malformati rifiutati prima del driver');
-
-  const erroreParziale = new Error('E11000 duplicate key');
-  erroreParziale.result = {
-    insertedCount: 1,
-    insertedIds: { 0: new ObjectId('64b64c0f0000000000000004') },
-  };
-  const strategiaParziale = new MongoDbStrategy();
-  strategiaParziale.client = {
-    db: () => ({ collection: () => ({ insertMany: async () => { throw erroreParziale; } }) }),
-  };
-  await assert.rejects(
-    () => strategiaParziale.docInsert('catalogo', 'eventi', { doc: '[{"n":1},{"n":2}]' }),
-    (err) => err === erroreParziale
-      && err.auditResult.insertedCount === 1
-      && JSON.parse(err.auditResult.insertedIds[0]).$oid === '64b64c0f0000000000000004',
-    'un errore parziale deve conservare il risultato auditabile del driver',
-  );
-
-  console.log('  OK   un fallimento parziale conserva conteggio e _id per l\'audit');
+  strategy.client = { db: () => ({ command: async cmd => {
+    const docs = cmd.documents.chunks.slice(1).map(bytes => B.deserialize(bytes, { promoteValues: false }));
+    calls.push({ cmd, docs });
+    return { ok: 1, n: docs.length };
+  } }) };
+  const first = '64b64c0f0000000000000011', second = '64b64c0f0000000000000012';
+  const result = await strategy.docInsert('catalogo', 'eventi', { doc: JSON.stringify([
+    { _id: { $oid: first }, quando: { $date: '2026-08-29T00:00:00.000Z' } },
+    { _id: { $oid: second }, totale: { $numberLong: '9007199254740993' } },
+  ]) });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].cmd.insert, 'eventi');
+  assert.equal(calls[0].cmd.ordered, true);
+  assert(calls[0].docs[0]._id instanceof B.ObjectId);
+  assert(calls[0].docs[0].quando instanceof Date);
+  assert.equal(calls[0].docs[1].totale.toString(), '9007199254740993');
+  assert.equal(result.insertedCount, 2);
+  assert.deepEqual(result.insertedIds.map(id => JSON.parse(id).$oid), [first, second]);
+  const single = await strategy.docInsert('catalogo', 'eventi', { doc: '{"nome":"Ada"}' });
+  assert.equal(calls[1].docs[0].nome, 'Ada');
+  assert.equal(JSON.parse(single.insertedId).$oid, calls[1].docs[0]._id.toHexString());
+  const before = calls.length;
+  for (const doc of ['[]', '[{"nome":"Ada"},42]', '[{"$date":"2026-08-29T00:00:00.000Z"}]']) {
+    await assert.rejects(strategy.docInsert('catalogo', 'eventi', { doc }), /elenco non vuoto di documenti/);
+  }
+  for (const value of [{ $numberInt: '2147483648' }, { $numberLong: '9223372036854775808' }, { $numberInt: '1e3' }, { $binary: { base64: '???', subType: '00' } }, { $timestamp: { t: -1, i: 0 } }]) {
+    await assert.rejects(strategy.docInsert('catalogo', 'eventi', { doc: JSON.stringify({ value }) }));
+  }
+  assert.equal(calls.length, before, 'nessuna richiesta per input malformati');
+  strategy.client = { db: () => ({ command: async () => ({ n: 1, writeErrors: [{ errmsg: 'E11000 duplicate key' }] }) }) };
+  await assert.rejects(strategy.docInsert('catalogo', 'eventi', { doc: '[{"_id":1},{"_id":1}]' }),
+    e => e.auditResult.insertedCount === 1 && JSON.parse(e.auditResult.insertedIds[0]) === 1);
+  console.log('  OK   BSON esatto, risultato singolo/bulk, validazione prima della scrittura e audit parziale');
 })();

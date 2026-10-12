@@ -1,0 +1,7 @@
+  OK   SSH: vault, riuso, cambio modalità e CLI
+  OK   SSH: percorso sul server
+  OK   SSH: percorso copiato con virgolette
+  OK   SSH: file caricato dal dispositivo
+  OK   SSH: file caricato con passphrase
+  OK   SSH: chiave PEM PKCS8
+  OK   SSH: home, errori file/passphrase e host key prima delle credenziali

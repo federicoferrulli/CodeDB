@@ -1,0 +1,2 @@
+npm notice run codedb@0.1.5-beta.1 typecheck:ui
+npm notice run tsc -p ui/tsconfig.json

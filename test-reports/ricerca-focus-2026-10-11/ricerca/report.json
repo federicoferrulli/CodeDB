@@ -1,13 +1,25 @@
 {
   "checks": [
     "1440×900, Escape: scrittura immediata, chiusura e focus restituito",
-    "1440×900, Control+p: scrittura immediata, chiusura e focus restituito"
+    "1440×900, Control+p: scrittura immediata, chiusura e focus restituito",
+    "1440×900, esterno: scrittura immediata, chiusura e focus restituito",
+    "1440×900, pulsante: scrittura immediata, chiusura e focus restituito",
+    "390×844, Escape: scrittura immediata, chiusura e focus restituito",
+    "390×844, Control+p: scrittura immediata, chiusura e focus restituito",
+    "390×844, esterno: scrittura immediata, chiusura e focus restituito",
+    "390×844, pulsante: scrittura immediata, chiusura e focus restituito",
+    "320×650, Escape: scrittura immediata, chiusura e focus restituito",
+    "320×650, Control+p: scrittura immediata, chiusura e focus restituito",
+    "320×650, esterno: scrittura immediata, chiusura e focus restituito",
+    "320×650, pulsante: scrittura immediata, chiusura e focus restituito",
+    "844×390, Escape: scrittura immediata, chiusura e focus restituito",
+    "844×390, Control+p: scrittura immediata, chiusura e focus restituito",
+    "844×390, esterno: scrittura immediata, chiusura e focus restituito",
+    "844×390, pulsante: scrittura immediata, chiusura e focus restituito",
+    "1440px: ricerca annidata, clic esterno chiude solo la ricerca e restituisce il focus alla bozza",
+    "390px: ricerca annidata, clic esterno chiude solo la ricerca e restituisce il focus alla bozza",
+    "Richiamo nella testata aggiornato al salvataggio, al ricaricamento e al ripristino delle scorciatoie"
   ],
   "errors": [],
-  "phase": "1440×900, esterno",
-  "failure": "locator.waitFor: Timeout 5000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('#palette-overlay') to be detached\u001b[22m\n\u001b[2m    14 × locator resolved to visible <div id=\"palette-overlay\" data-arc-dialog=\"open\" class=\"palette-overlay aperta\">…</div>\u001b[22m\n\n    at C:\\repository\\CodeDB\\test\\e2e-ricerca-focus.js:30:48",
-  "focus": {
-    "id": "",
-    "role": null
-  }
+  "phase": "844×390, pulsante"
 }

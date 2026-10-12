@@ -117,7 +117,7 @@ npm run backup -- help    # Full usage guide
 | Deletion | Single row delete (✕ icon) or bulk delete on multiple selection |
 | Cell Selection | Excel-like cell selection, multi-format copy (TSV/JSON/CSV/Markdown/SQL), paste, and CSV export |
 | Import/Export Collection | Export to EJSON/CSV/SQL INSERT; batch import with progress bar and error reporting |
-| Full DB Import/Export | Right-click database to export into self-contained `.codedb.json` file and import into target database |
+| Full DB Import/Export | Export SQL or `.codedb.json`; import CodeDB files and supported MySQL/PostgreSQL text dumps with preview, staging and recovery. [Format details and limits](docs/guida-export-import.md) |
 | DB & Collection Management | Right-click tree menu: create, rename, drop databases and collections |
 | Column Management (SQL) | Add, alter, or drop columns (DDL) |
 | Collection Details | "Details" tab with statistics, indexes, and schema/column definitions |

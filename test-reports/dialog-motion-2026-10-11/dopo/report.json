@@ -1,0 +1,1931 @@
+{
+  "checks": [
+    "1440, no-preference: entrata/uscita, interruzione, bozza e focus conservati",
+    "1440, no-preference: cambio breakpoint durante la chiusura",
+    "1440, reduce: entrata/uscita, interruzione, bozza e focus conservati",
+    "1440, reduce: cambio breakpoint durante la chiusura",
+    "390, no-preference: entrata/uscita, interruzione, bozza e focus conservati",
+    "390, no-preference: cambio breakpoint durante la chiusura",
+    "Drawer di navigazione: uscita, restituzione dei nodi e cambio rapido",
+    "Drawer laterale schema: uscita nella direzione corretta e sfondo rimosso",
+    "390, reduce: entrata/uscita, interruzione, bozza e focus conservati",
+    "390, reduce: cambio breakpoint durante la chiusura",
+    "Drawer di navigazione: uscita, restituzione dei nodi e cambio rapido",
+    "Drawer laterale schema: uscita nella direzione corretta e sfondo rimosso"
+  ],
+  "motion": [
+    {
+      "width": 1440,
+      "reducedMotion": "no-preference",
+      "entry": [
+        {
+          "ms": 4.799999904632614,
+          "y": 99.04757690429688,
+          "opacity": "1",
+          "ownerOpacity": "0",
+          "transform": "matrix(0.99, 0, 0, 0.99, 0, 8)"
+        },
+        {
+          "ms": 21.399999904632523,
+          "y": 99.04757690429688,
+          "opacity": "1",
+          "ownerOpacity": "0",
+          "transform": "matrix(0.99, 0, 0, 0.99, 0, 8)"
+        },
+        {
+          "ms": 38.09999990463257,
+          "y": 94.72808837890625,
+          "opacity": "1",
+          "ownerOpacity": "0.371549",
+          "transform": "matrix(0.993715, 0, 0, 0.993715, 0, 5.02761)"
+        },
+        {
+          "ms": 54.799999904632614,
+          "y": 91.87164306640625,
+          "opacity": "1",
+          "ownerOpacity": "0.61725",
+          "transform": "matrix(0.996172, 0, 0, 0.996172, 0, 3.062)"
+        },
+        {
+          "ms": 71.49999990463255,
+          "y": 90.13583374023438,
+          "opacity": "1",
+          "ownerOpacity": "0.766555",
+          "transform": "matrix(0.997666, 0, 0, 0.997666, 0, 1.86756)"
+        },
+        {
+          "ms": 88.09999990463257,
+          "y": 89.09194946289062,
+          "opacity": "1",
+          "ownerOpacity": "0.856348",
+          "transform": "matrix(0.998563, 0, 0, 0.998563, 0, 1.14922)"
+        },
+        {
+          "ms": 104.79999990463261,
+          "y": 88.445068359375,
+          "opacity": "1",
+          "ownerOpacity": "0.911988",
+          "transform": "matrix(0.99912, 0, 0, 0.99912, 0, 0.704098)"
+        },
+        {
+          "ms": 121.39999990463252,
+          "y": 88.04290771484375,
+          "opacity": "1",
+          "ownerOpacity": "0.94658",
+          "transform": "matrix(0.999466, 0, 0, 0.999466, 0, 0.427357)"
+        },
+        {
+          "ms": 138.09999990463257,
+          "y": 87.788330078125,
+          "opacity": "1",
+          "ownerOpacity": "0.96848",
+          "transform": "matrix(0.999685, 0, 0, 0.999685, 0, 0.252161)"
+        },
+        {
+          "ms": 154.7999999046326,
+          "y": 87.62936401367188,
+          "opacity": "1",
+          "ownerOpacity": "0.982151",
+          "transform": "matrix(0.999822, 0, 0, 0.999822, 0, 0.142788)"
+        },
+        {
+          "ms": 171.49999990463266,
+          "y": 87.53225708007812,
+          "opacity": "1",
+          "ownerOpacity": "0.990507",
+          "transform": "matrix(0.999905, 0, 0, 0.999905, 0, 0.0759437)"
+        },
+        {
+          "ms": 188.19999990463248,
+          "y": 87.4752197265625,
+          "opacity": "1",
+          "ownerOpacity": "0.99541",
+          "transform": "matrix(0.999954, 0, 0, 0.999954, 0, 0.0367173)"
+        },
+        {
+          "ms": 204.7999999046326,
+          "y": 87.44418334960938,
+          "opacity": "1",
+          "ownerOpacity": "0.998082",
+          "transform": "matrix(0.999981, 0, 0, 0.999981, 0, 0.0153424)"
+        },
+        {
+          "ms": 221.39999990463252,
+          "y": 87.42904663085938,
+          "opacity": "1",
+          "ownerOpacity": "0.999383",
+          "transform": "matrix(0.999994, 0, 0, 0.999994, 0, 0.00493226)"
+        },
+        {
+          "ms": 238.09999990463257,
+          "y": 87.42315673828125,
+          "opacity": "1",
+          "ownerOpacity": "0.999888",
+          "transform": "matrix(0.999999, 0, 0, 0.999999, 0, 0.000894567)"
+        },
+        {
+          "ms": 254.7999999046326,
+          "y": 87.42190551757812,
+          "opacity": "1",
+          "ownerOpacity": "0.999998",
+          "transform": "matrix(1, 0, 0, 1, 0, 1.907e-05)"
+        },
+        {
+          "ms": 271.3999999046325,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 288.09999990463257,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 304.7999999046326,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 321.3999999046325,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 338.09999990463257,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 354.6999999046325,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 371.49999990463266,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 388.09999990463257,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 404.7999999046326,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 421.3999999046325,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 438.09999990463257,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 454.7999999046326,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 471.3999999046325,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 488.09999990463257,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 504.7999999046326,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "exit": [
+        {
+          "ms": 2.900000000000091,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 19.5,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 36.09999999999991,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 52.799999999999955,
+          "y": 87.54544067382812,
+          "opacity": "1",
+          "ownerOpacity": "0.984185",
+          "transform": "matrix(0.999921, 0, 0, 0.999921, 0, 0.0948898)"
+        },
+        {
+          "ms": 69.5,
+          "y": 87.871337890625,
+          "opacity": "1",
+          "ownerOpacity": "0.942474",
+          "transform": "matrix(0.999712, 0, 0, 0.999712, 0, 0.345157)"
+        },
+        {
+          "ms": 86.20000000000005,
+          "y": 88.35089111328125,
+          "opacity": "1",
+          "ownerOpacity": "0.881094",
+          "transform": "matrix(0.999405, 0, 0, 0.999405, 0, 0.713437)"
+        },
+        {
+          "ms": 102.90000000000009,
+          "y": 88.9532470703125,
+          "opacity": "1",
+          "ownerOpacity": "0.803992",
+          "transform": "matrix(0.99902, 0, 0, 0.99902, 0, 1.17605)"
+        },
+        {
+          "ms": 119.5,
+          "y": 89.65322875976562,
+          "opacity": "1",
+          "ownerOpacity": "0.714404",
+          "transform": "matrix(0.998572, 0, 0, 0.998572, 0, 1.71358)"
+        },
+        {
+          "ms": 136.20000000000005,
+          "y": 90.4447021484375,
+          "opacity": "1",
+          "ownerOpacity": "0.613099",
+          "transform": "matrix(0.998065, 0, 0, 0.998065, 0, 2.32141)"
+        },
+        {
+          "ms": 152.9000000000001,
+          "y": 91.31350708007812,
+          "opacity": "1",
+          "ownerOpacity": "0.501895",
+          "transform": "matrix(0.997509, 0, 0, 0.997509, 0, 2.98863)"
+        },
+        {
+          "ms": 169.5,
+          "y": 92.24688720703125,
+          "opacity": "1",
+          "ownerOpacity": "0.382426",
+          "transform": "matrix(0.996912, 0, 0, 0.996912, 0, 3.70544)"
+        },
+        {
+          "ms": 186.0999999999999,
+          "y": 93.24603271484375,
+          "opacity": "1",
+          "ownerOpacity": "0.254542",
+          "transform": "matrix(0.996273, 0, 0, 0.996273, 0, 4.47275)"
+        },
+        {
+          "ms": 202.9000000000001,
+          "y": 94.32467651367188,
+          "opacity": "1",
+          "ownerOpacity": "0.116483",
+          "transform": "matrix(0.995582, 0, 0, 0.995582, 0, 5.3011)"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "reducedMotion": "reduce",
+      "entry": [
+        {
+          "ms": 4.500000190734909,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 21.100000190734818,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 37.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.767014",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 54.400000190734886,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.946526",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 71.10000019073482,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.990494",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 87.70000019073484,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.999377",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 104.40000019073489,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 121.10000019073482,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 137.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 154.40000019073477,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 171.10000019073482,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 187.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 204.40000019073477,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 221.10000019073482,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 237.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 254.40000019073477,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 271.1000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 287.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 304.5000001907349,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 321.1000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 337.70000019073495,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 354.4000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 371.1000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 387.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 404.4000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 421.1000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 437.80000019073486,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 454.5000001907349,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 471.1000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 487.70000019073495,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 504.4000001907348,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "exit": [
+        {
+          "ms": 6.7999999999999545,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 23.5,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.928371",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 40.09999999999991,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.760966",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 56.799999999999955,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.530586",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "ms": 73.5,
+          "y": 87.421875,
+          "opacity": "1",
+          "ownerOpacity": "0.252971",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reducedMotion": "no-preference",
+      "entry": [
+        {
+          "ms": 13.600000095367477,
+          "y": 777.78564453125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 723.786)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 30.200000095367386,
+          "y": 638.160888671875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 584.161)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 46.80000009536741,
+          "y": 404.5533752441406,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 350.553)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 63.500000095367454,
+          "y": 283.49566650390625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 229.496)",
+          "bodyHeight": 747.9999389648438
+        },
+        {
+          "ms": 80.20000009536739,
+          "y": 226.28485107421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 172.285)",
+          "bodyHeight": 748.0000610351562
+        },
+        {
+          "ms": 96.80000009536752,
+          "y": 178.0670166015625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 124.067)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 113.50000009536734,
+          "y": 139.53311157226562,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 85.5331)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 130.2000000953674,
+          "y": 113.72561645507812,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 59.7256)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 146.90000009536743,
+          "y": 94.53841400146484,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 40.5384)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 163.50000009536734,
+          "y": 81.6129379272461,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 27.6129)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 180.2000000953674,
+          "y": 71.96856689453125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 17.9686)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 196.90000009536743,
+          "y": 65.5860595703125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 11.5861)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 213.50000009536734,
+          "y": 60.97953796386719,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 6.97954)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 230.2000000953674,
+          "y": 58.10786437988281,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 4.10786)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 246.80000009536752,
+          "y": 56.228023529052734,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 2.22802)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 263.6000000953675,
+          "y": 55.03225326538086,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 1.03225)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 280.2000000953674,
+          "y": 54.41070556640625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0.410706)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 296.90000009536743,
+          "y": 54.10785675048828,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0.107855)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 313.50000009536734,
+          "y": 54.012508392333984,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 0.01251)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 330.2000000953674,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 346.8000000953675,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 363.50000009536734,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 380.2000000953674,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 396.8000000953675,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 413.50000009536734,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 430.2000000953674,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 446.8000000953675,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 463.50000009536734,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 480.2000000953674,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 496.90000009536743,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 513.5000000953673,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        }
+      ],
+      "exit": [
+        {
+          "ms": 0.7999999999999545,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 17.5,
+          "y": 61.86207580566406,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 7.86207)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 34.09999999999991,
+          "y": 64.02638244628906,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 10.0264)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 50.700000000000045,
+          "y": 103.3742446899414,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 49.3742)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 67.5,
+          "y": 141.58116149902344,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 87.5812)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 84.09999999999991,
+          "y": 190.7379608154297,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 136.738)",
+          "bodyHeight": 747.9999389648438
+        },
+        {
+          "ms": 100.79999999999995,
+          "y": 251.45753479003906,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 197.458)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 117.5,
+          "y": 303.453369140625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 249.453)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 134.20000000000005,
+          "y": 372.92742919921875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 318.927)",
+          "bodyHeight": 748.0000610351562
+        },
+        {
+          "ms": 150.70000000000005,
+          "y": 452.6148986816406,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 398.615)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 167.4000000000001,
+          "y": 574.8345947265625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 520.835)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 184.0999999999999,
+          "y": 667.84765625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 613.848)",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 200.79999999999995,
+          "y": 753.9954223632812,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 699.995)",
+          "bodyHeight": 747.9999389648438
+        },
+        {
+          "ms": 217.4000000000001,
+          "y": 856.8464965820312,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 802.846)",
+          "bodyHeight": 747.9999389648438
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reducedMotion": "no-preference",
+      "navEntry": [
+        {
+          "ms": 10.199999809265137,
+          "y": 773.1228637695312,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 719.123)",
+          "bodyHeight": 531.9999389648438
+        },
+        {
+          "ms": 26.899999809264955,
+          "y": 632.2960205078125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 578.296)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 43.59999980926523,
+          "y": 523.1104736328125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 469.111)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 60.19999980926514,
+          "y": 425.46929931640625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 371.469)",
+          "bodyHeight": 531.9999389648438
+        },
+        {
+          "ms": 76.99999980926532,
+          "y": 377.10589599609375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 323.106)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 93.59999980926523,
+          "y": 345.3381652832031,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 291.338)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 110.29999980926505,
+          "y": 324.156494140625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 270.156)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 126.89999980926495,
+          "y": 313.2421875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 259.242)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 143.59999980926523,
+          "y": 295.90264892578125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 241.903)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 160.19999980926514,
+          "y": 289.3642578125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 235.364)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 176.89999980926495,
+          "y": 280.37701416015625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 226.377)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 193.49999980926532,
+          "y": 276.57647705078125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 222.576)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 210.19999980926514,
+          "y": 273.9668884277344,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 219.967)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 226.89999980926495,
+          "y": 272.1590576171875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 218.159)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 243.59999980926523,
+          "y": 271.1400451660156,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 217.14)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 260.19999980926514,
+          "y": 270.48193359375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216.482)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 276.89999980926495,
+          "y": 270.1505126953125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216.151)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 293.5999998092652,
+          "y": 270.02508544921875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216.025)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 310.29999980926505,
+          "y": 270.00048828125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 326.89999980926495,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 343.5999998092652,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 360.19999980926514,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 376.89999980926495,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 393.5999998092652,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 410.19999980926514,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 426.89999980926495,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 443.4999998092653,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 460.19999980926514,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 476.89999980926495,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 493.5999998092652,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 510.19999980926514,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        }
+      ],
+      "navExit": [
+        {
+          "ms": 1.566000095367599,
+          "y": 272.73468017578125,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 218.735)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 18.300000095367523,
+          "y": 279.27978515625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 225.28)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 35.00000009536734,
+          "y": 299.1119079589844,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 245.112)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 51.50000009536734,
+          "y": 329.9000244140625,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 275.9)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 68.20000009536761,
+          "y": 383.8460693359375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 329.846)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 85.00000009536734,
+          "y": 431.12103271484375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 377.121)",
+          "bodyHeight": 532.0000610351562
+        },
+        {
+          "ms": 101.60000009536725,
+          "y": 484.52606201171875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 430.526)",
+          "bodyHeight": 532.0000610351562
+        },
+        {
+          "ms": 118.20000009536761,
+          "y": 535.5234375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 481.523)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 134.90000009536743,
+          "y": 597.3944091796875,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 543.394)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 151.60000009536725,
+          "y": 663.859130859375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 609.859)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 168.30000009536752,
+          "y": 729.6165161132812,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 675.617)",
+          "bodyHeight": 531.9999389648438
+        },
+        {
+          "ms": 184.90000009536743,
+          "y": 803.8099975585938,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 749.81)",
+          "bodyHeight": 532.0000610351562
+        },
+        {
+          "ms": 201.60000009536725,
+          "y": 877.11865234375,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 823.119)",
+          "bodyHeight": 532
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reducedMotion": "reduce",
+      "entry": [
+        {
+          "ms": -1.4000000953674316,
+          "y": 54,
+          "opacity": "0",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 15.299999904632614,
+          "y": 54,
+          "opacity": "0.722705",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 31.899999904632523,
+          "y": 54,
+          "opacity": "0.801089",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 48.59999990463257,
+          "y": 54,
+          "opacity": "0.81711",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 65.19999990463259,
+          "y": 54,
+          "opacity": "0.957358",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 81.99999990463255,
+          "y": 54,
+          "opacity": "0.996904",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 98.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 115.29999990463261,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 131.89999990463252,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 148.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 165.19999990463248,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 181.89999990463252,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 198.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 215.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 231.99999990463266,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 248.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 265.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 281.8999999046325,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 298.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 315.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 331.99999990463266,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 348.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 365.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 381.99999990463266,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 398.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 415.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 431.8999999046325,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 448.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 465.2999999046326,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 481.8999999046325,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 498.59999990463257,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 515.1999999046325,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        }
+      ],
+      "exit": [
+        {
+          "ms": 4.099999809265228,
+          "y": 54,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 20.699999809265137,
+          "y": 54,
+          "opacity": "0.325991",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 37.299999809265046,
+          "y": 54,
+          "opacity": "0.0993395",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 53.99999980926509,
+          "y": 54,
+          "opacity": "0.0283536",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 70.69999980926514,
+          "y": 54,
+          "opacity": "0.0030963",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        },
+        {
+          "ms": 87.39999980926518,
+          "y": 54,
+          "opacity": "0.000230113",
+          "ownerOpacity": "1",
+          "transform": "none",
+          "bodyHeight": 748
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "reducedMotion": "reduce",
+      "navEntry": [
+        {
+          "ms": 9.099999904632568,
+          "y": 270,
+          "opacity": "0.646926",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 25.699999904632477,
+          "y": 270,
+          "opacity": "0.90066",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 42.39999990463275,
+          "y": 270,
+          "opacity": "0.988632",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 58.99999990463266,
+          "y": 270,
+          "opacity": "0.998192",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 75.69999990463248,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 92.39999990463275,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 108.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 125.59999990463257,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 142.2999999046324,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 158.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 175.59999990463257,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 192.39999990463275,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 208.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 225.69999990463248,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 242.2999999046324,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 258.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 275.6999999046325,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 292.39999990463275,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 308.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 325.6999999046325,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 342.39999990463275,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 358.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 375.6999999046325,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 392.39999990463275,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 408.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 425.6999999046325,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 442.2999999046324,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 458.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 475.59999990463257,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 492.2999999046324,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 508.99999990463266,
+          "y": 270,
+          "opacity": "1",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        }
+      ],
+      "navExit": [
+        {
+          "ms": 1.3999997138976141,
+          "y": 270,
+          "opacity": "0.445797",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 18.099999713897887,
+          "y": 270,
+          "opacity": "0.255469",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 34.699999713897796,
+          "y": 270,
+          "opacity": "0.057071",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 51.299999713897705,
+          "y": 270,
+          "opacity": "0.00877991",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        },
+        {
+          "ms": 67.99999971389752,
+          "y": 270,
+          "opacity": "0.000437725",
+          "ownerOpacity": "1",
+          "transform": "matrix(1, 0, 0, 1, 0, 216)",
+          "bodyHeight": 532
+        }
+      ]
+    }
+  ],
+  "errors": []
+}

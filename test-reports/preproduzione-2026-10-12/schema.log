@@ -1,0 +1,12 @@
+--- Test budget schema progressivo ---
+  OK   payload iniziale limitato, metadati, continuazione e schema piccolo completo
+  OK   cursore dei campi: si raggiungono tutte le colonne, una volta ciascuna
+  OK   cursore delle relazioni: indipendente da quello del catalogo
+  OK   paginare il catalogo non lascia indietro le relazioni delle pagine successive
+  OK   i tre cursori non si spostano a vicenda
+  OK   revisione: un catalogo cambiato non fonde due mezze letture
+  OK   il campionamento è dichiarato, e non si inventa dove non c’è
+  OK   drenaggio completo: 250 tabelle, 250 colonne, 1100 relazioni in 25 pagine
+  OK   snapshot: riuso, refresh, database, invalidazione, principal, scadenza
+--- Schema progressivo: tutti i test passati ---
+

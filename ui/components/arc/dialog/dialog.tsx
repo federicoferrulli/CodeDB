@@ -54,8 +54,8 @@ export function DialogContent({ title, description, children, className, onPoint
     if (open !== null && (!change.current.open || event.detail.originalEvent.timeStamp < change.current.at)) event.preventDefault();
   };
   const classes = [styles.content, className].filter(Boolean).join(" ");
-  if (embedded) return <DialogPrimitive.Portal container={container}>
-    <DialogPrimitive.Content {...props} onPointerDownOutside={pressOutside} className={className} aria-describedby={undefined}>
+  if (embedded) return <DialogPrimitive.Portal container={container} forceMount>
+    <DialogPrimitive.Content {...props} forceMount onPointerDownOutside={pressOutside} className={className} aria-describedby={undefined}>
       <DialogPrimitive.Title className="visually-hidden">{title}</DialogPrimitive.Title>
       {children}
     </DialogPrimitive.Content>

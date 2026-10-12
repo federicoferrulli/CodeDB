@@ -25,6 +25,7 @@ module.exports = (async () => {
       query.push({ sql, params });
       return Strategy === MySqlStrategy ? [{ affectedRows: 1 }, []] : { rows: [], rowCount: 1 };
     } };
+    if (Strategy === MySqlStrategy) require('./mysql-session-fixture')(strategy.pool);
     const result = await strategy.collectionImport('db', 'righe', {
       docs: [{ id: { $numberLong: '9007199254740993' } }],
     });

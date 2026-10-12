@@ -3,7 +3,9 @@ import { chiediConferma } from './conferma.js';
 
 import { state } from './state.js';
 import { activeTab, primaDellaChiusura, allaChiusura } from './tabs.js';
-import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType, showQueryError, toast } from './utils.js';
+import { $, emitFireAndForget, showContextMenu, makeDraggable, reorderById, safeUUID, isSqlType, showQueryError, toast, lucideIconHtml, refreshLucideIcons } from './utils.js';
+import { preparaTransizioneTab } from './tab-motion.js';
+import { preparaTransizioneAlbero } from './navigator-motion.js';
 import { exportImportMenuItems } from './exportimport.js';
 import {
   runQuery, renderGrid, applyQueryPlaceholders, leggiStatoFiltro, applicaStatoFiltro,
@@ -149,10 +151,14 @@ function saveActiveSnapshot() {
 
 // Evidenzia nel tree la collection attiva (la selezione segue il coll-tab).
 function markTreeSelection() {
+  const completaTransizione = preparaTransizioneAlbero(document.getElementById('db-tree'), activeTab()?.id);
   document.querySelectorAll('#db-tree .node-label.selected').forEach((el) => el.classList.remove('selected'));
   for (const el of document.querySelectorAll('#db-tree .coll > .node-label')) {
-    if (el.dataset.db === state.db && el.dataset.coll === state.coll) el.classList.add('selected');
+    const selected = el.dataset.db === state.db && el.dataset.coll === state.coll;
+    el.classList.toggle('selected', selected);
+    el.setAttribute('aria-current', selected ? 'true' : 'false');
   }
+  completaTransizione();
 }
 
 function activate(ct, { fresh }) {
@@ -505,6 +511,7 @@ function clearCollWorkspace() {
 
 export function renderCollTabBar() {
   const bar = $('#coll-tab-bar');
+  const completaTransizione = preparaTransizioneTab(bar, activeTab()?.id);
   bar.innerHTML = '';
   bar.setAttribute('role', 'tablist');
   bar.setAttribute('aria-label', 'Documenti aperti');
@@ -530,6 +537,7 @@ export function renderCollTabBar() {
   for (const ct of list) {
     const el = document.createElement('div');
     el.className = 'coll-tab' + (t && ct.id === t.state.activeCollId ? ' active' : '') + (ct.preview ? ' preview' : '');
+    el.dataset.tabId = ct.id;
     el.setAttribute('role', 'tab');
     el.setAttribute('aria-selected', String(ct.id === t.state.activeCollId));
     el.tabIndex = ct.id === t.state.activeCollId ? 0 : -1;
@@ -557,7 +565,7 @@ export function renderCollTabBar() {
     if (mostraDb && !ct.isDbTab && !ct.isSplitTab) {
       dbEl = document.createElement('span');
       dbEl.className = 'coll-tab-db';
-      dbEl.textContent = `${ct.db} ▸`;
+      dbEl.textContent = ct.db;
     }
 
     const name = document.createElement('span');
@@ -569,7 +577,7 @@ export function renderCollTabBar() {
     close.className = 'coll-tab-close';
     close.title = 'Chiudi';
     close.setAttribute('aria-label', `Chiudi ${ct.coll || ct.db}`);
-    close.textContent = '✕';
+    close.innerHTML = lucideIconHtml('x');
     close.addEventListener('click', (e) => {
       e.stopPropagation();
       closeCollTab(ct.id);
@@ -625,6 +633,7 @@ export function renderCollTabBar() {
       }
     );
 
+    el.insertAdjacentHTML('beforeend', lucideIconHtml(ct.isSplitTab ? 'panels-top-left' : ct.isDbTab ? 'database' : 'table-2', 'coll-tab-icon'));
     if (dbEl) el.append(dbEl);
     el.append(name);
     if (ct.preview) {
@@ -637,4 +646,6 @@ export function renderCollTabBar() {
     el.append(close);
     bar.appendChild(el);
   }
+  refreshLucideIcons(bar);
+  completaTransizione();
 }

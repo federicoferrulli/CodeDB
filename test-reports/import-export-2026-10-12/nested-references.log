@@ -1,0 +1,5 @@
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+OK riferimenti annidati codedb-json: domini, array di domini, compositi, domini su array di compositi, NULL e overload.
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK riferimenti annidati sql: domini, array di domini, compositi, domini su array di compositi, NULL e overload.
+OK riferimenti annidati backup: domini, array di domini, compositi, domini su array di compositi, NULL e overload.

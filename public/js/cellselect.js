@@ -3,7 +3,7 @@ import { chiediConferma } from './conferma.js';
 
 import { state } from './state.js';
 import { campoScrivibile } from './righe.js';
-import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons } from './utils.js';
+import { $, emit, displayValue, toast, showContextMenu, showError, idOf, parseEdited, valueType, isPlainObject, isSqlType, captureContext, eseguiAOndate, marcaDatiSporchi, refreshLucideIcons, scaricaFile } from './utils.js';
 import { mountArcControls, createArcCheckbox, controlElement } from '../arc/ui.js';
 import { runQuery, ensureRowRendered, deleteDoc, deleteDocs } from './grid.js';
 import { openEditDoc } from './inlineEdit.js';
@@ -561,12 +561,7 @@ function buildSqlInsert(A) {
 }
 
 function downloadFile(name, text, mime) {
-  const url = URL.createObjectURL(new Blob([text], { type: mime }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+  return scaricaFile(new Blob([text], { type: mime }), name);
 }
 
 // --- Duplica riga -----------------------------------------------------------

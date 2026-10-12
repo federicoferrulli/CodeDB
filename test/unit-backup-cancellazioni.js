@@ -43,6 +43,18 @@ module.exports = (async () => {
   const client = {
     db(db) {
       return {
+        async command(cmd) {
+          if (cmd.hello || cmd.isMaster) return { isWritablePrimary: true };
+          const kind = cmd.insert ? 'documents' : cmd.update ? 'updates' : 'deletes';
+          const rows = cmd[kind].chunks.slice(1).map(b => require('bson').deserialize(b));
+          const coll = cmd.insert || cmd.update || cmd.delete;
+          for (const row of rows) {
+            if (cmd.insert) docsDi(db, coll).set(String(row._id), row);
+            else if (cmd.update) docsDi(db, coll).set(String(row.q._id), row.u);
+            else docsDi(db, coll).delete(String(row.q._id));
+          }
+          return { ok: 1, n: rows.length };
+        },
         collection(coll) { return collection(db, coll); },
         listCollections() {
           const names = [...database.keys()].filter((key) => key.startsWith(`${db}\0`))

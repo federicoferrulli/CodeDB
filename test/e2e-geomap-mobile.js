@@ -7,12 +7,12 @@ const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const mutantMirino = process.argv.includes('--mutant-mirino');
 const checksOnly = process.argv.includes('--checks-only');
-const dir = `test-reports/geomap-mirino-2026-10-11/${mutant || mutantMirino ? 'mutante' : 'dopo'}`;
+const dir = `test-reports/geomap-design-2026-10-12/${mutant || mutantMirino ? 'mutante' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 const polygon = { type: 'Polygon', coordinates: [[[12.9, 42.3], [14.1, 42.5], [13.8, 41.7], [12.9, 42.3]]] };
 
 (async () => {
-  const server = await startTestServer({ port: 3199 });
+  const server = await startTestServer({ port: mutant || mutantMirino ? 3218 : 3199 });
   const browser = await chromium.launch();
   const report = { layouts: [], checks: [], errors: [] };
   let page;
@@ -54,7 +54,7 @@ const polygon = { type: 'Polygon', coordinates: [[[12.9, 42.3], [14.1, 42.5], [1
       });
       assert(!geometry.overflow, 'Nessun overflow orizzontale');
       if (width <= 900) {
-        assert(geometry.map.height >= (height < 600 ? 180 : width < 360 ? 200 : 280), 'Mappa sufficientemente alta');
+        assert(geometry.map.height >= (height < 600 ? 180 : width < 360 ? 200 : 280), `Mappa sufficientemente alta: ${JSON.stringify(geometry)}`);
         assert(geometry.map.bottom <= Math.min(geometry.body.bottom, height) + 1, 'Mappa interamente visibile all’apertura');
         assert(geometry.rail.y >= geometry.map.bottom - 1, 'Gli strumenti non coprono la mappa');
         assert(geometry.vertices.y >= geometry.rail.bottom - 1 || geometry.vertices.x >= geometry.map.right - 1, 'I comandi dei vertici non coprono mappa o strumenti');
@@ -74,6 +74,38 @@ const polygon = { type: 'Polygon', coordinates: [[[12.9, 42.3], [14.1, 42.5], [1
         await page.screenshot({ path: `${dir}/${theme}-${width}.png`, animations: 'disabled' });
       }
       report.layouts.push({ width, height, ...geometry });
+
+      if (width > 900) {
+        assert(geometry.rail.y >= geometry.map.bottom - 1, 'Anche su desktop gli strumenti lasciano libera la mappa');
+        assert(geometry.vertices.y >= geometry.rail.bottom - 1, 'Azioni del vertice in una riga dedicata');
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const movimento = await page.evaluate(() => {
+          const indicator = document.querySelector('.geomap-mode-indicator');
+          const prima = new DOMMatrix(getComputedStyle(indicator).transform).m41;
+          document.querySelector('#geomap-mode-draw').click();
+          getComputedStyle(indicator).transform;
+          const animazione = indicator.getAnimations()[0];
+          if (!animazione) return { prima, assente: true };
+          animazione.pause(); animazione.currentTime = 130;
+          const meta = new DOMMatrix(getComputedStyle(indicator).transform).m41;
+          animazione.finish();
+          return { prima, meta, dopo: new DOMMatrix(getComputedStyle(indicator).transform).m41 };
+        });
+        assert(!movimento.assente && movimento.meta > 0 && movimento.meta < movimento.prima && movimento.dopo === 0, 'Il selettore scorre in modo continuo tra le due modalità');
+        await page.locator('#geomap-json-btn').click();
+        const aperturaCodice = await page.evaluate(() => {
+          document.querySelector('#geomap-json-btn').click();
+          return document.querySelector('#geomap-code-panel').getAnimations().length;
+        });
+        assert.equal(aperturaCodice, 1, 'Il GeoJSON entra con una rivelazione dedicata');
+        await page.emulateMedia({ reducedMotion: 'reduce' });
+        assert.equal(await page.locator('#geomap-code-panel').evaluate(el => el.getAnimations().length), 0, 'Movimento ridotto interrompe la rivelazione');
+        await page.locator('#geomap-json').fill(JSON.stringify({ type: 'Point', coordinates: [12.5, 41.9, 180] }));
+        await page.locator('#geomap-json-btn').click();
+        await page.locator('#geomap-json-btn').click();
+        assert.deepEqual(await page.locator('#geomap-json').evaluate(el => JSON.parse(el.value)), { type: 'Point', coordinates: [12.5, 41.9, 180] }, 'Chiudere il pannello mantiene la bozza');
+        report.checks.push('Desktop: mappa libera, selettore animato, rivelazione GeoJSON, movimento ridotto e bozza conservata');
+      }
 
       if (width <= 900) {
         const leggi = () => page.locator('#geomap-json').evaluate(el => JSON.parse(el.value));

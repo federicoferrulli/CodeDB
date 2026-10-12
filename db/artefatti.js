@@ -16,6 +16,7 @@ const { validaIdentity, chiaveIdentita } = require('../backup/lib/identity');
 
 const FORMATO_EXPORT = 'codedb-database';
 const TIPI_SQL = new Set(['mysql', 'postgresql']);
+const normalizzati = new WeakSet();
 
 function tipoDb(value) {
   const valueNorm = String(value || '').toLowerCase();
@@ -175,7 +176,7 @@ function estraiBersaglio(sql) {
   }
 
   if (first !== 'CREATE') errore(`Istruzione ${first || 'sconosciuta'} non ammessa`, sql);
-  const tipi = new Set(['TABLE', 'INDEX', 'VIEW', 'PROCEDURE', 'FUNCTION', 'TRIGGER', 'EVENT', 'SEQUENCE']);
+  const tipi = new Set(['TABLE', 'INDEX', 'VIEW', 'PROCEDURE', 'FUNCTION', 'TRIGGER', 'EVENT', 'SEQUENCE', 'TYPE', 'DOMAIN', 'COLLATION']);
   let typeIndex = -1;
   for (let k = 1; k < tokens.length; k++) {
     if (tokens[k].type === 'identifier' && tipi.has(tokens[k].value.toUpperCase())) { typeIndex = k; break; }
@@ -205,6 +206,9 @@ function estraiBersaglio(sql) {
 function validaRiferimentiCrossDatabase(target, database, dbType, sql) {
   const keywords = new Set(['FROM', 'JOIN', 'REFERENCES', 'UPDATE', 'INTO', 'LIKE']);
   for (let i = 0; i < target.tokens.length; i++) {
+    if (keyword(target.tokens[i], 'SEQUENCE') && keyword(target.tokens[i + 1], 'NAME')) {
+      validaQualificatore(leggiNome(target.tokens, i + 2), database, dbType, sql);
+    }
     if (!target.tokens[i] || !keywords.has(target.tokens[i].value.toUpperCase())) continue;
     const nome = leggiNome(target.tokens, salta(target.tokens, i + 1, new Set(['ONLY'])));
     if (nome) validaQualificatore(nome, database, dbType, sql);
@@ -305,14 +309,22 @@ function fiduciaBackup(integrity = {}) {
   };
 }
 
-function normalizzaExportDatabase(input, { expectedDbType = null } = {}) {
+function normalizzaExportDatabase(input, { expectedDbType = null, owned = false } = {}) {
+  if (input && normalizzati.has(input) && Object.isFrozen(input)) {
+    if (expectedDbType && input.dbType !== tipoDb(expectedDbType)) throw new Error('Motore del file diverso dalla connessione.');
+    return input;
+  }
   let parsed;
-  try { parsed = typeof input === 'string' ? JSON.parse(input) : copiaJson(input, 'L\'export'); }
+  try { parsed = typeof input === 'string' ? JSON.parse(input) : owned ? input : copiaJson(input, 'L\'export'); }
   catch (err) { throw new Error(`JSON non valido: ${err.message}`); }
   if (!parsed || parsed.formato !== FORMATO_EXPORT || !Array.isArray(parsed.collections)) {
     throw new Error(`Il file non e' un export di database di CodeDB (atteso "formato": "${FORMATO_EXPORT}").`);
   }
   const motore = tipoDb(parsed.dbType);
+  if (parsed.sqlTimeZone != null && (motore !== 'mysql' || typeof parsed.sqlTimeZone !== 'string'
+      || !/^(?:[+-]\d{2}:\d{2}|[A-Za-z_]+(?:\/[A-Za-z_+-]+)+|UTC)$/.test(parsed.sqlTimeZone))) {
+    throw new Error('Fuso orario SQL non valido: indicare un offset o un nome esplicito.');
+  }
   if (!['mongodb', 'mysql', 'postgresql'].includes(motore)) throw new Error(`Tipo di database "${parsed.dbType}" non valido.`);
   if (expectedDbType && motore !== tipoDb(expectedDbType)) {
     throw new Error(`Il file e' un export ${motore}, ma questa connessione e' ${tipoDb(expectedDbType)}.`);
@@ -325,6 +337,10 @@ function normalizzaExportDatabase(input, { expectedDbType = null } = {}) {
     }
     if (names.has(collection.name)) throw new Error(`File malformato: la collection "${collection.name}" e' dichiarata piu' volte.`);
     names.add(collection.name);
+    if (collection.encoding != null) {
+      if (motore !== 'mongodb' || collection.encoding !== require('./mongoBson').ENCODING) throw new Error('Codifica della collection non supportata.');
+      for (const row of collection.docs) require('./mongoBson').decode(row);
+    }
     const identity = collection.identity || (motore === 'mongodb'
       ? { kind: 'mongodb-id', columns: ['_id'] } : null);
     if (motore === 'mongodb' && collection.identity
@@ -373,7 +389,12 @@ function normalizzaExportDatabase(input, { expectedDbType = null } = {}) {
   parsed.objects = normalizzaOggetti(parsed.objects, {
     dbType: motore, database: parsed.db, collections: names, allowUnsafeSchema: false,
   });
+  if (parsed.largeObjects != null) {
+    if (motore !== 'postgresql') throw new Error('Large Objects ammessi soltanto per PostgreSQL.');
+    require('./pg-references').validateLargeObjects(parsed.largeObjects);
+  }
   parsed.fiducia = fiduciaExport(parsed);
+  normalizzati.add(parsed);
   return parsed;
 }
 
@@ -397,8 +418,15 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
   }
   const gruppi = [
     ['views', 'view'], ['routines', 'routine'], ['triggers', 'trigger'],
-    ['events', 'event'], ['sequences', 'sequence'],
+    ['events', 'event'], ['sequences', 'sequence'], ['typeRoutines', 'routine'], ['collations', 'collation'],
   ];
+  for (const item of elencoOggetti(out, 'types')) {
+    if (tipoDb(dbType) !== 'postgresql' || !item || !['type', 'domain'].includes(item.kind) || typeof item.name !== 'string' || !item.name) throw new Error('Tipo PostgreSQL non valido.');
+    if (!allowUnsafeSchema) validaOggetto(item.ddl, item.name, { dbType, database, kind: item.kind });
+  }
+  for (const item of elencoOggetti(out, 'extensions')) {
+    if (tipoDb(dbType) !== 'postgresql' || !item || ['name', 'version', 'schema'].some(k => typeof item[k] !== 'string' || !item[k])) throw new Error('Dipendenza di estensione PostgreSQL non valida.');
+  }
   for (const [field, kind] of gruppi) {
     for (const item of elencoOggetti(out, field)) {
       if (!item || typeof item.name !== 'string' || !item.name || typeof item.ddl !== 'string' || !item.ddl.trim()) {
@@ -406,6 +434,10 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
       }
       if (kind === 'trigger' && (typeof item.table !== 'string' || !item.table)) {
         throw new Error('triggers: tabella bersaglio mancante.');
+      }
+      if (kind === 'sequence' && item.ownerTable != null &&
+          (typeof item.ownerTable !== 'string' || !item.ownerTable || typeof item.ownerColumn !== 'string' || !item.ownerColumn)) {
+        throw new Error('Sequenza: tabella o colonna proprietaria non valida.');
       }
       if (!allowUnsafeSchema) validaOggetto(item.ddl, item.name, {
         dbType, database, kind, table: kind === 'trigger' ? item.table : null,
@@ -426,8 +458,10 @@ function normalizzaOggetti(objects, { dbType, database, collections, allowUnsafe
   for (const item of elencoOggetti(out, 'sequenceValues')) {
     if (allowUnsafeSchema) continue;
     const match = /^\s*SELECT\s+(?:pg_catalog\.)?setval\s*\(\s*'((?:[^']|'')+)'\s*,\s*-?\d+\s*(?:,\s*(?:true|false)\s*)?\)\s*;?\s*$/i.exec(String(item.sql || ''));
-    const actual = match && match[1].replace(/''/g, "'").split('.').pop();
-    if (!match || actual !== item.name) errore(`Valore di sequenza non valido per "${item.name}"`, item.sql);
+    const tokens = match ? tokenizza(match[1].replace(/''/g, "'")) : [];
+    const actual = leggiNome(tokens, 0);
+    if (!match || !actual || actual.next !== tokens.length || actual.name !== item.name) errore(`Valore di sequenza non valido per "${item.name}"`, item.sql);
+    validaQualificatore(actual, database, tipoDb(dbType), item.sql);
   }
   return out;
 }

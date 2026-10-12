@@ -20,7 +20,7 @@
  * il canvas, i controlli e l'export.
  * ------------------------------------------------------------------------- */
 
-import { $, esc, toast, openModal, closeModal, refreshLucideIcons } from './utils.js';
+import { $, esc, toast, openModal, closeModal, refreshLucideIcons, scaricaFile } from './utils.js';
 import {
   TIPI, AGGREGAZIONI, AGG_GREZZO, INK, applicaInk, costruisciOption, azzeraAvvisi, prendiAvvisi,
   famigliaDi, serieDefault, CATEGORICA,
@@ -316,14 +316,10 @@ async function disegna() {
   mostraNote(noteBase.concat(prendiAvvisi()));
 }
 
-function esportaPng() {
+async function esportaPng() {
   if (!grafico || grafico.isDisposed()) { toast('Nessun grafico da esportare.', true); return; }
   // Fondo pieno, non trasparente: un PNG trasparente incollato in un documento
   // chiaro mostra assi ed etichette chiari su bianco, cioè illeggibili.
   const url = grafico.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: INK.fondo });
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `selezione_${Date.now()}.png`;
-  a.click();
-  toast('Grafico esportato in PNG.');
+  if (await scaricaFile(url, `selezione_${Date.now()}.png`)) toast('Download del grafico PNG avviato.');
 }

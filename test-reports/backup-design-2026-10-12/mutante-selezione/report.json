@@ -1,0 +1,35 @@
+{
+  "environment": "Chromium, risposte simulate",
+  "checks": [
+    "Schede animate, tastiera e bozza conservata"
+  ],
+  "layouts": [],
+  "motion": [
+    "matrix(1.30045, 0, 0, 1, -149.281, 0)",
+    "matrix(1.30045, 0, 0, 1, -149.281, 0)",
+    "matrix(1.30045, 0, 0, 1, -149.281, 0)",
+    "matrix(1.20209, 0, 0, 1, -100.412, 0)",
+    "matrix(1.13271, 0, 0, 1, -65.9365, 0)",
+    "matrix(1.0867, 0, 0, 1, -43.0757, 0)",
+    "matrix(1.05692, 0, 0, 1, -28.2805, 0)",
+    "matrix(1.03756, 0, 0, 1, -18.6639, 0)",
+    "matrix(1.02465, 0, 0, 1, -12.2477, 0)",
+    "matrix(1.01605, 0, 0, 1, -7.97528, 0)",
+    "matrix(1.01023, 0, 0, 1, -5.08486, 0)",
+    "matrix(1.00634, 0, 0, 1, -3.15155, 0)",
+    "matrix(1.00377, 0, 0, 1, -1.87526, 0)",
+    "matrix(1.00213, 0, 0, 1, -1.05673, 0)",
+    "matrix(1.0011, 0, 0, 1, -0.545656, 0)",
+    "matrix(1.0005, 0, 0, 1, -0.247953, 0)",
+    "matrix(1.00018, 0, 0, 1, -0.0912158, 0)",
+    "matrix(1.00005, 0, 0, 1, -0.0225554, 0)",
+    "matrix(1, 0, 0, 1, -0.00187158, 0)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n\n  {\n+   collections: undefined,\n-   collections: [\n-     'utenti',\n-     'ordini'\n-   ],\n    compressLevel: 3,\n    connName: 'Collaudo',\n    db: 'contabilita',\n    noCompress: false,\n    sinceField: 'updated_at',\n\n    at C:\\repository\\CodeDB\\test\\e2e-backup-design.js:141:12"
+}

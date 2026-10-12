@@ -1,12 +1,14 @@
 'use strict';
 
 import { tabs, switchTab, closeTab } from './tabs.js';
-import { $, makeDraggable, reorderById } from './utils.js';
-import { saveWorkspaceInputs, renderWorkspace } from './workspace.js';
+import { $, makeDraggable, reorderById, lucideIconHtml, refreshLucideIcons } from './utils.js';
+import { preparaTransizioneTab } from './tab-motion.js';
+import { saveWorkspaceInputs } from './workspace.js';
 import { openConnModal } from './connection.js';
 
 export function renderTabBar() {
   const bar = $('#tab-bar');
+  const completaTransizione = preparaTransizioneTab(bar);
   bar.innerHTML = '';
   bar.setAttribute('role', 'tablist');
   bar.setAttribute('aria-label', 'Connessioni attive');
@@ -15,6 +17,7 @@ export function renderTabBar() {
     if (!tab.state.connected) continue; // i tab compaiono a connessione riuscita
     const el = document.createElement('div');
     el.className = 'conn-tab' + (tab.id === tabs.activeId ? ' active' : '');
+    el.dataset.tabId = tab.id;
     el.title = tab.state.connLabel;
     el.setAttribute('role', 'tab');
     el.setAttribute('aria-selected', String(tab.id === tabs.activeId));
@@ -43,14 +46,13 @@ export function renderTabBar() {
     close.className = 'conn-tab-close';
     close.title = 'Chiudi tab (disconnette)';
     close.setAttribute('aria-label', `Disconnetti ${tab.label}`);
-    close.textContent = '✕';
-    close.addEventListener('click', (e) => {
+    close.innerHTML = lucideIconHtml('x');
+    close.addEventListener('click', async (e) => {
       e.stopPropagation();
       // closeTab notifica i listener solo se era il tab attivo: il ri-render
       // della barra va fatto comunque.
-      closeTab(tab.id);
+      if (await closeTab(tab.id) === false) return;
       renderTabBar();
-      renderWorkspace();
     });
 
     el.addEventListener('click', () => {
@@ -58,11 +60,10 @@ export function renderTabBar() {
       saveWorkspaceInputs(); // snapshot degli input del tab che si lascia
       switchTab(tab.id);
     });
-    el.addEventListener('auxclick', (e) => {
+    el.addEventListener('auxclick', async (e) => {
       if (e.button !== 1) return; // click centrale = chiudi, come nei browser
-      closeTab(tab.id);
+      if (await closeTab(tab.id) === false) return;
       renderTabBar();
-      renderWorkspace();
     });
 
     makeDraggable(el, tab.id, (fromId, toId) => {
@@ -77,7 +78,10 @@ export function renderTabBar() {
   add.type = 'button';
   add.id = 'tab-add-btn';
   add.title = 'Nuova connessione';
-  add.textContent = '＋';
+  add.innerHTML = lucideIconHtml('plus');
+  add.setAttribute('aria-label', 'Nuova connessione');
   add.addEventListener('click', () => openConnModal());
   bar.appendChild(add);
+  refreshLucideIcons(bar);
+  completaTransizione();
 }

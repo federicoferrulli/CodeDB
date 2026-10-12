@@ -5,8 +5,50 @@ import { selectCollection } from './grid.js';
 import { openCreateColl, openCreateDb, renameDb, dropDb, renameColl, dropColl } from './schema-ops.js';
 import { exportImportMenuItems, dbExportImportMenuItems, openDbImportModal } from './exportimport.js';
 import { addOrSplitPane, splitDisponibile } from './splitview.js';
-import { activeTab } from './tabs.js';
+import { activeTab, tabs } from './tabs.js';
 import { openDbTab } from './colltabs.js';
+import { preparaTransizioneAlbero } from './navigator-motion.js';
+
+function renderCount(label, coll) {
+  if (coll.type === 'view') { label.querySelector('.count')?.remove(); return; }
+  const count = label.querySelector('.count') || document.createElement('span');
+  count.className = 'count';
+  const noto = coll.count != null && Number.isFinite(Number(coll.count)) && Number(coll.count) >= 0;
+  const numero = noto ? Number(coll.count).toLocaleString('it-IT') : '';
+  const breve = noto && coll.countApprox ? Number(coll.count).toLocaleString('it-IT', { notation: 'compact', maximumSignificantDigits: 3 }) : numero;
+  const prefisso = coll.countLowerBound ? '≥ ' : coll.countApprox ? '≈ ' : '';
+  count.textContent = noto ? prefisso + breve : '—';
+  count.title = !noto ? 'Conteggio non disponibile entro il limite di tempo'
+    : coll.countLowerBound ? `Almeno ${numero} righe; statistiche non disponibili`
+      : coll.countApprox ? `Circa ${numero} righe · stima del database` : `${numero} righe · conteggio esatto`;
+  count.setAttribute('aria-label', count.title);
+  if (!count.parentNode) label.appendChild(count);
+}
+
+const refreshConteggi = new Map();
+export function aggiornaConteggiNavigatore(db, tabId) {
+  const tab = tabs.list.find(t => t.id === tabId);
+  if (!tab || !db || window.frameElement?.codedbPanel) return;
+  const key = JSON.stringify([tabId, db]);
+  clearTimeout(refreshConteggi.get(key)?.timer);
+  const job = {};
+  refreshConteggi.set(key, job);
+  job.timer = setTimeout(async () => {
+    try {
+      if (activeTab()?.id !== tabId || !tab.state.expandedDbs.has(db)) return;
+      const res = await emit('db:collections', { db, tabId, _bg: true });
+      if (refreshConteggi.get(key) !== job || !tabs.list.includes(tab)) return;
+      const cached = tab.state.databases.find(d => d.name === db);
+      if (cached) cached.collections = res.collections;
+      if (activeTab()?.id !== tabId) return;
+      const counts = new Map(res.collections.map(c => [c.name, c]));
+      for (const label of document.querySelectorAll('#db-tree .node-label[data-coll]')) {
+        if (label.dataset.db === db && counts.has(label.dataset.coll)) renderCount(label, counts.get(label.dataset.coll));
+      }
+    } catch { /* Il refresh dei numeri non interrompe il lavoro sulla griglia. */ }
+    finally { if (refreshConteggi.get(key) === job) refreshConteggi.delete(key); }
+  }, 300);
+}
 
 export function collWord(capital) {
   const w = isSqlType(state.dbType) ? 'tabella' : 'collection';
@@ -26,12 +68,14 @@ export function dbWord(capital) {
 export function renderDbTree(databases) {
   state.databases = databases; // cache per il ri-render al cambio tab
   const tree = $('#db-tree');
+  const completaTransizione = preparaTransizioneAlbero(tree, activeTab()?.id);
   tree.innerHTML = '';
   if (!databases || databases.length === 0) {
     const emptyLi = document.createElement('li');
     emptyLi.className = 'node-label loading';
     emptyLi.textContent = `Nessuno ${dbWord()} trovato.`;
     tree.appendChild(emptyLi);
+    completaTransizione();
     return;
   }
   for (const db of databases) {
@@ -52,7 +96,10 @@ export function renderDbTree(databases) {
     dbIcon.className = 'icon-db';
     const dbName = document.createElement('span');
     dbName.textContent = db.name;
-    label.append(dbIcon, ' ', dbName);
+    const chevron = document.createElement('i');
+    chevron.dataset.lucide = 'chevron-right';
+    chevron.className = 'node-chevron';
+    label.append(chevron, dbIcon, dbName);
     // Il nodo del database si deve poter RITROVARE da fuori (la palette Ctrl+P
     // porta l'utente qui): senza questo attributo l'unico `[data-db]` in pagina
     // era quello delle collection, e cercare il database ne apriva una a caso.
@@ -67,16 +114,19 @@ export function renderDbTree(databases) {
     li.appendChild(sub);
 
     label.addEventListener('click', () => {
+      const completaTransizione = preparaTransizioneAlbero(tree, activeTab()?.id);
       if (!sub.classList.contains('hidden')) {
         sub.classList.add('hidden');
         state.expandedDbs.delete(db.name);
         label.setAttribute('aria-expanded', 'false');
+        completaTransizione();
         return;
       }
       sub.classList.remove('hidden');
       state.expandedDbs.add(db.name);
       label.setAttribute('aria-expanded', 'true');
       if (sub.childElementCount === 0) loadCollections(db.name, sub);
+      completaTransizione();
     });
 
     label.addEventListener('contextmenu', (e) => {
@@ -120,9 +170,11 @@ export function renderDbTree(databases) {
     tree.appendChild(li);
   }
   refreshLucideIcons(tree);
+  completaTransizione();
 }
 
 export function renderCollectionsList(dbName, container, collections) {
+  const completaTransizione = preparaTransizioneAlbero($('#db-tree'), activeTab()?.id);
   container.innerHTML = '';
   // Database vuoto: prima non compariva NULLA sotto il nodo espanso, quindi non
   // si distingueva un database senza tabelle da uno ancora in caricamento, e
@@ -153,6 +205,7 @@ export function renderCollectionsList(dbName, container, collections) {
     li.appendChild(crea);
 
     container.appendChild(li);
+    completaTransizione();
     return;
   }
 
@@ -176,14 +229,11 @@ export function renderCollectionsList(dbName, container, collections) {
     label.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); label.click(); }
     });
-    if (dbName === state.db && coll.name === state.coll) label.classList.add('selected');
+    const selected = dbName === state.db && coll.name === state.coll;
+    label.classList.toggle('selected', selected);
+    label.setAttribute('aria-current', selected ? 'true' : 'false');
 
-    if (coll.count !== null && coll.count !== undefined) {
-      const count = document.createElement('span');
-      count.className = 'count';
-      count.textContent = coll.count;
-      label.appendChild(count);
-    }
+    renderCount(label, coll);
 
     label.addEventListener('dragstart', (e) => {
       e.stopPropagation();
@@ -225,6 +275,7 @@ export function renderCollectionsList(dbName, container, collections) {
   }
   container.appendChild(frag);
   refreshLucideIcons(container);
+  completaTransizione();
 }
 
 export function loadCollections(dbName, container) {
@@ -253,6 +304,7 @@ export function refreshDbTree() {
 }
 
 export function initDbTree() {
+  window.addEventListener('codedb:conteggi-sporchi', e => aggiornaConteggiNavigatore(e.detail.db, e.detail.tabId));
   $('#sidebar').addEventListener('contextmenu', (e) => {
     if (e.target.closest('.node-label') || e.target.closest('.sidebar-search')) return;
     e.preventDefault();

@@ -43,6 +43,7 @@ function esecutore(risposte) {
   const eseguite = [];
   const q = async (sql, params) => {
     eseguite.push(String(sql));
+    if (/SELECT t\.oid, t\.typname AS name|SELECT t\.oid, t\.typtype|SELECT a\.attname, a\.atttypid|WITH RECURSIVE used\(oid\)|SELECT c\.collname AS name/.test(sql)) return { rows: [] };
     for (const [riconosce, rows] of risposte) {
       if (riconosce.test(String(sql))) return { rows, rowCount: rows.length };
     }
@@ -64,6 +65,10 @@ const COLONNE = [
 ];
 
 const CATALOGO = [
+  [/pg_catalog\.pg_sequence p/, [
+    { colonna: 'id', nome: 'ordini_id_seq', inizio: '1', passo: '1', minimo: '1', massimo: '2147483647', cache: '1', ciclo: false },
+    { colonna: 'num', nome: 'Contatore', inizio: '100', passo: '7', minimo: '1', massimo: '9223372036854775807', cache: '1', ciclo: false },
+  ]],
   [/pg_catalog\.pg_attribute/, COLONNE],
   [/pg_get_constraintdef[\s\S]*contype IN/, [
     { def: 'PRIMARY KEY (id)' },
@@ -83,8 +88,9 @@ async function main() {
     const ddl = await pgCreateTable(q, 'vendite', 'ordini');
 
     // 1 + 2. Il default espressione non va quotato, e la seriale diventa serial.
-    assert.ok(/"id"\s+serial/i.test(ddl), `nextval deve diventare serial:\n${ddl}`);
-    assert.ok(!/nextval/i.test(ddl), `il DDL non deve puntare alla sequenza di origine:\n${ddl}`);
+    assert.ok(/"id"\s+integer.*nextval\('"ordini_id_seq"'/i.test(ddl), `default della sequenza esplicita:\n${ddl}`);
+    assert.ok(!/vendite\.ordini_id_seq/i.test(ddl), `il DDL non deve puntare alla sequenza di origine:\n${ddl}`);
+    assert.ok(/SEQUENCE NAME "Contatore" INCREMENT BY 7/.test(ddl), 'nome e incremento identity conservati');
     assert.ok(/DEFAULT now\(\)/i.test(ddl), `now() va riprodotto verbatim, non quotato:\n${ddl}`);
     assert.ok(!/DEFAULT '/.test(ddl), `nessun default deve diventare un letterale di testo:\n${ddl}`);
 
@@ -134,8 +140,7 @@ async function main() {
     assert.ok(/"creato"::text AS "creato"/.test(select),
       `i temporali vanno letti come testo, o il Date del driver tronca i microsecondi:\n${select}`);
 
-    // Le colonne ordinarie restano nude: nessun costo inutile.
-    assert.ok(/(^|, )"codice"(,|$)/.test(select), `colonna ordinaria non alterata:\n${select}`);
+    assert.ok(select.includes('"codice"::text AS "codice"'), `anche i tipi ordinari usano il formato testuale esatto del server:\n${select}`);
 
     console.log('  OK   Lettura PostgreSQL: generate escluse, bytea in hex, temporali come testo (CDB-A87)');
   }
@@ -170,13 +175,16 @@ async function main() {
         },
         {
           name: 'ordini_id_seq', start_value: '1', min_value: '1', max_value: '2147483647',
-          increment_by: '1', cycle: false, cache_size: '1', last_value: '1000', posseduta: 1,
+          increment_by: '1', cycle: false, cache_size: '1', last_value: '1000', posseduta: 'a', ownerTable: 'ordini', ownerColumn: 'id',
         },
         {
           name: 'mai_usata', start_value: '1', min_value: '1', max_value: '100',
           increment_by: '1', cycle: true, cache_size: '1', last_value: null, posseduta: null,
         },
       ]],
+      [/SELECT last_value.*"seq_libera"/, [{ valore: '41', chiamata: true }]],
+      [/SELECT last_value.*"ordini_id_seq"/, [{ valore: '1000', chiamata: true }]],
+      [/SELECT last_value.*"mai_usata"/, [{ valore: '1', chiamata: false }]],
     ]);
     const o = await pgSchemaObjects(q, 'vendite');
     assert.strictEqual(o.views.length, 2, 'due view attese');
@@ -188,9 +196,8 @@ async function main() {
     // Solo le sequenze INDIPENDENTI vanno ricreate: quella di una serial la
     // ricrea il tipo `serial` della CREATE TABLE, e ricrearla qui sarebbe un
     // duplicato.
-    assert.strictEqual(o.sequences.length, 2, 'due sequenze indipendenti attese (non quella posseduta)');
-    assert.ok(!o.sequences.some((s) => s.name === 'ordini_id_seq'),
-      'la sequenza posseduta da una colonna serial NON va ricreata');
+    assert.strictEqual(o.sequences.length, 3, 'anche le sequenze SERIAL conservano nome e proprietà');
+    assert.strictEqual(o.sequences.find(s => s.name === 'ordini_id_seq').ownerColumn, 'id');
 
     // I PARAMETRI vanno riprodotti: una sequenza ricreata con i default non è
     // la stessa sequenza — cambiano passo, limiti e comportamento al giro.
@@ -204,13 +211,13 @@ async function main() {
     // --- Il pezzo che mancava del tutto: il VALORE corrente ----------------
     // Senza, una tabella con id 1..1000 si ripristina con i dati giusti ma la
     // sequenza riparte da 1 e il primo INSERT sbatte contro la chiave primaria.
-    assert.strictEqual(o.sequenceValues.length, 2,
+    assert.strictEqual(o.sequenceValues.length, 3,
       'il valore va ripristinato per TUTTE le sequenze usate, anche quelle possedute da una serial');
     const valPosseduta = o.sequenceValues.find((s) => s.name === 'ordini_id_seq');
     assert.ok(valPosseduta, 'manca il valore della sequenza di una colonna serial: è il caso che rompe di più');
-    assert.ok(/setval\('ordini_id_seq', 1000, true\)/.test(valPosseduta.sql), valPosseduta.sql);
-    assert.ok(!o.sequenceValues.some((s) => s.name === 'mai_usata'),
-      'una sequenza mai usata non ha un valore da riportare: va lasciata al suo START WITH');
+    assert.ok(/setval\('"ordini_id_seq"', 1000, true\)/.test(valPosseduta.sql), valPosseduta.sql);
+    assert.ok(/, 1, false\)/.test(o.sequenceValues.find(s => s.name === 'mai_usata').sql),
+      'is_called=false conserva esattamente il prossimo valore');
 
     console.log('  OK   Oggetti PostgreSQL: view, funzioni, trigger, sequenze con parametri e VALORE (CDB-A87)');
   }

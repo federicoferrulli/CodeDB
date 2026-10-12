@@ -62,8 +62,8 @@ module.exports = (async () => {
       format: 'json', limit: 1, skip: 1,
     });
 
-    assert.deepStrictEqual(JSON.parse(prima.lines[0]), { id: 1 });
-    assert.deepStrictEqual(JSON.parse(seconda.lines[0]), { id: 1 });
+    assert.deepStrictEqual(require('bson').EJSON.parse(prima.lines[0]), { id: 1 });
+    assert.deepStrictEqual(require('bson').EJSON.parse(seconda.lines[0]), { id: 1 });
     assert.strictEqual(
       lettureMetadati(), 1,
       `${Strategy.name}: i blocchi dello stesso export devono condividere i metadati della tabella`,

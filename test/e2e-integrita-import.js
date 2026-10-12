@@ -152,6 +152,20 @@ async function mysqlUpsertSenzaDelete() {
     assert.strictEqual(Number(figli[0].n), 1, 'la FK ON DELETE CASCADE non deve attivarsi');
     assert.strictEqual(Number(audit[0].n), 0, 'il trigger DELETE non deve attivarsi');
 
+    await strategy.pool.query(`ALTER TABLE \`${db}\`.padri ADD UNIQUE KEY valore_unico (valore)`);
+    const collision = await strategy.collectionImport(db, 'padri', {
+      docs: [{ id: 2, valore: 'dopo' }], upsert: true, conflictColumns: ['id'],
+    });
+    assert.strictEqual(collision.inserted, 0, 'una UNIQUE secondaria non autorizza a cambiare identità');
+    assert.strictEqual(collision.failed, 1);
+    const unknown = await strategy.collectionImport(db, 'padri', { docs: [{ id: 3, valore: 'tre', campo_nuovo: 'da conservare' }] });
+    assert.strictEqual(unknown.inserted, 0);
+    assert.strictEqual(unknown.failed, 1);
+    const truncated = await strategy.collectionImport(db, 'padri', { docs: [{ id: 4, valore: 'lungo'.repeat(50) }] });
+    assert.strictEqual(truncated.inserted, 0, 'il testo troppo lungo non viene troncato');
+    const [unchanged] = await strategy.pool.query(`SELECT id, valore FROM \`${db}\`.padri ORDER BY id`);
+    assert.deepStrictEqual(unchanged, [{ id: 1, valore: 'dopo' }]);
+
     await strategy.pool.query(`CREATE TABLE \`${db}\`.senza_identita (codice INT, valore VARCHAR(30))`);
     await assert.rejects(
       strategy.collectionImport(db, 'senza_identita', {
@@ -764,9 +778,9 @@ async function colonneNonScrivibili() {
     const docs = esportate.lines.map((l) => JSON.parse(l));
     assert.ok(!('somma' in docs[0]),
       `una colonna generata non deve finire nell'export: ${esportate.lines[0]}`);
-    assert.strictEqual(docs[0].area && docs[0].area.type, 'Polygon',
-      `la geometria deve uscire come GeoJSON: ${esportate.lines[0]}`);
-    console.log('  OK   MySQL reale: export senza colonne generate e con geometrie GeoJSON');
+    const sourceBytes=(await strategy.pool.query(`SELECT HEX(CAST(area AS BINARY)) AS bytes FROM ${q(origine)}.Pippo ORDER BY id`))[0][0].bytes;
+    assert.equal(Buffer.from(docs[0].area.$binary.base64,'base64').toString('hex').toUpperCase(),sourceBytes,'geometria esportata identica byte per byte, con SRID');
+    console.log('  OK   MySQL reale: export senza colonne generate e con geometrie binarie fedeli');
 
     const ddl = await strategy.tableDdl(origine, 'Pippo');
     const info = await strategy.tableColumnsInfo(origine, 'Pippo');

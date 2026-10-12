@@ -59,6 +59,11 @@ async function sql(type, port) {
     await q(`ALTER TABLE t ADD COLUMN j ${mysql ? 'JSON' : 'JSONB'}`);
     await q(`UPDATE t SET g=${mysql ? "ST_GeomFromText('POINT(12 41)',0)" : "'(12,41)'::point"}, j='{"n":9007199254740993}'`);
     await q('CREATE VIEW v AS SELECT parent_id FROM t');
+    if (mysql) {
+      await q("SET SESSION time_zone='+05:30'");
+      await q('ALTER TABLE t ADD COLUMN istante TIMESTAMP(6) NULL');
+      await q("UPDATE t SET id=0, istante='2026-10-12 12:34:56.123456'");
+    }
     if (!mysql) {
       await q('CREATE MATERIALIZED VIEW mv AS SELECT parent_id FROM t');
       await q('CREATE VIEW v_mv AS SELECT * FROM mv');
@@ -80,6 +85,11 @@ async function sql(type, port) {
       }), /istruzioni SQL|ambito|Permesso negato/i);
     } else {
       await q('ALTER TABLE t ADD COLUMN numeri NUMERIC[]');
+      await q('ALTER TABLE t ADD COLUMN seriale BIGSERIAL');
+      await q('ALTER SEQUENCE t_seriale_seq RENAME TO "Seq prova"');
+      await q('ALTER SEQUENCE "Seq prova" INCREMENT BY 7 START WITH 100');
+      await q('ALTER SEQUENCE t_id_seq INCREMENT BY 5');
+      await q("SELECT setval('\"Seq prova\"',41,false)");
       await q("UPDATE t SET numeri=ARRAY[12345678901234567890.1234567890::numeric]");
       const { pgColonneDaSalvare } = require('../db/pg-ddl');
       const { select } = await pgColonneDaSalvare((s, p) => conn.query(s, p), db, 't');
@@ -88,7 +98,7 @@ async function sql(type, port) {
       assert.strictEqual(saved.numeri, '{12345678901234567890.1234567890}', 'backup PG: array senza arrotondamenti');
     }
     const compare = mysql
-      ? 'SELECT id,parent_id,CAST(n AS CHAR) AS n,testo,HEX(bin) AS bin,CAST(dt AS CHAR) AS dt,calcolata,ST_AsText(g) AS g,CAST(j AS CHAR) AS j FROM t'
+      ? 'SELECT id,parent_id,CAST(n AS CHAR) AS n,testo,HEX(bin) AS bin,CAST(dt AS CHAR) AS dt,calcolata,ST_AsText(g) AS g,CAST(j AS CHAR) AS j,CAST(istante AS CHAR) AS istante FROM t'
       : "SELECT id,parent_id,n::text AS n,testo,encode(bin,'hex') AS bin,dt::text AS dt,calcolata,g::text AS g,j::text AS j,numeri::text AS numeri FROM t";
     const expected = await q(compare);
     const copy = db + '_copy';
@@ -97,8 +107,30 @@ async function sql(type, port) {
       await q(mysql ? `USE ${copy}` : `SET search_path TO ${copy}, public`);
       assert.deepStrictEqual(await q(compare), expected, 'roundtrip CodeDB: valori esatti e tipi');
       assert.strictEqual((await q('SELECT * FROM v')).length, 1);
+      if (!mysql) assert.strictEqual((await q('SELECT nextval(\'"Seq prova"\')::text AS n'))[0].n, '41');
       if (mysql) await q('CALL p()');
       await q('INSERT INTO t(parent_id) VALUES(1)');
+      await q(mysql ? `DROP DATABASE ${copy}` : `DROP SCHEMA ${copy} CASCADE`);
+      await q(mysql ? `USE ${db}` : `SET search_path TO ${db}, public`);
+      await roundtripJson(type, port, db, copy, 'sql');
+      await q(mysql ? `USE ${copy}` : `SET search_path TO ${copy}, public`);
+      assert.deepStrictEqual(await q(compare), expected, 'import SQL CodeDB: valori esatti e tipi');
+      const externalContainer = process.env[mysql ? 'EXPORT_MYSQL_CONTAINER' : 'EXPORT_PG_CONTAINER'];
+      if (externalContainer) {
+        const args = mysql ? ['mysqldump', '-uroot', '--default-character-set=utf8mb4', '--hex-blob', '--no-tablespaces', '--set-gtid-purged=OFF', '--routines', '--databases', db]
+          : ['pg_dump', '-U', 'postgres', '--no-owner', '--no-privileges', '--schema=' + db, 'postgres'];
+        const dump = spawnSync('docker', ['exec', externalContainer, ...args], { encoding: 'utf8', windowsHide: true });
+        assert.strictEqual(dump.status, 0, dump.stderr || dump.error?.message);
+        require('fs').mkdirSync('test-reports/import-export-2026-10-12', { recursive: true });
+        require('fs').writeFileSync(`test-reports/import-export-2026-10-12/${type}.sql`, dump.stdout);
+        await q(mysql ? `DROP DATABASE ${copy}` : `DROP SCHEMA ${copy} CASCADE`);
+        await q(mysql ? `USE ${db}` : `SET search_path TO ${db}, public`);
+        const externalSql = mysql ? dump.stdout.replace("TIME_ZONE='+00:00'", "TIME_ZONE='+05:30'")
+          .replace('2026-10-12 07:04:56.123456', '2026-10-12 12:34:56.123456') : dump.stdout;
+        await roundtripJson(type, port, db, copy, 'sql', externalSql);
+        await q(mysql ? `USE ${copy}` : `SET search_path TO ${copy}, public`);
+        assert.deepStrictEqual(await q(compare), expected, 'dump nativo esterno: tutti i valori conservati');
+      }
     } finally {
       await q(mysql ? `USE ${db}` : `SET search_path TO ${db}, public`);
       await q(mysql ? `DROP DATABASE IF EXISTS ${copy}` : `DROP SCHEMA IF EXISTS ${copy} CASCADE`);
@@ -160,7 +192,7 @@ async function mongo(port) {
     await collection.createIndex({ n: 1 }, { unique: true, name: 'n_unico' });
     const artifact = JSON.parse((await exportFile(strategy, db, 'struttura-e-dati', 'codedb-json')).text);
     normalizzaExportDatabase(artifact);
-    assert.strictEqual(artifact.collections[0].docs[0].n.$numberLong, '9007199254740993');
+    assert.strictEqual(require('bson').deserialize(require('../db/mongoBson').decode(artifact.collections[0].docs[0]), { promoteLongs: false }).n.toString(), '9007199254740993');
     assert(artifact.collections[0].indexes.some(i => i.name === 'n_unico' && i.unique));
     const copy = db + '_copy';
     try {
@@ -173,7 +205,7 @@ async function mongo(port) {
   } finally { await strategy.client.db(db).dropDatabase(); await strategy.disconnect(); }
 }
 
-async function roundtripJson(type, port, db, targetDb) {
+async function roundtripJson(type, port, db, targetDb, formato = 'codedb-json', externalSql = null, physicalDb = 'postgres') {
     const { startTestServer } = require('./e2e-harness');
     const { io } = require('socket.io-client');
     const server = await startTestServer({ port: 3159 });
@@ -184,8 +216,8 @@ async function roundtripJson(type, port, db, targetDb) {
     try {
       await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
       await emit('mongo:connect', { tabId: 'export', host: '127.0.0.1', port, dbType: type,
-        username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '', password: '', database: type === 'postgresql' ? 'postgres' : undefined });
-      const { plan } = await emit('database:export:plan', { tabId: 'export', db, formato: 'codedb-json' });
+        username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '', password: '', database: type === 'postgresql' ? physicalDb : undefined });
+      const { plan } = await emit('database:export:plan', { tabId: 'export', db, formato });
       await assert.rejects(emit('database:export:start', { tabId: 'export', fingerprint: 'diversa' }), /piano.*cambiato/i);
       const { operation: start } = await emit('database:export:start', { tabId: 'export', fingerprint: plan.fingerprint });
       let operation;
@@ -197,12 +229,14 @@ async function roundtripJson(type, port, db, targetDb) {
       const download = await fetch(server.url + operation.url);
       assert.strictEqual(download.status, 200);
       assert(download.headers.get('etag'));
-      const content = await download.text();
-      normalizzaExportDatabase(JSON.parse(content));
+      const content = externalSql ?? await download.text();
+      if (formato === 'codedb-json') normalizzaExportDatabase(JSON.parse(content));
       const denied = await fetch(server.url + operation.url.split('?')[0]);
       assert.strictEqual(denied.status, 403, 'il download richiede il ticket');
-      const { uploadId } = await emit('database:import:upload:start', { tabId: 'export' });
-      await emit('database:import:upload:chunk', { tabId: 'export', uploadId, index: 0, chunk: content });
+      const { uploadId } = await emit('database:import:upload:start', { tabId: 'export', format: formato });
+      for (let offset = 0, index = 0; offset < content.length; offset += 65536) {
+        await emit('database:import:upload:chunk', { tabId: 'export', uploadId, index: index++, chunk: content.slice(offset, offset + 65536) });
+      }
       await emit('database:import:upload:finish', { tabId: 'export', uploadId });
       const request = { tabId: 'export', uploadId, targetDb, drop: true };
       const preview = await emit('database:import:start', { ...request, previewOnly: true });
@@ -215,13 +249,15 @@ async function roundtripJson(type, port, db, targetDb) {
       } while (operation.status === 'in_corso');
       assert.strictEqual(operation.status, 'completato', JSON.stringify(operation));
       await emit('database:import:cleanup', { tabId: 'export', operationId: accepted.operationId });
-      console.log(`  OK ${type}: export HTTP, ticket, upload e import CodeDB con staging`);
+      console.log(`  OK ${type}: export HTTP, ticket, upload e import ${formato} con staging`);
     } finally { socket.close(); await server.stop(); }
 }
 
-(async () => {
+if (require.main === module) (async () => {
   assert(process.env.EXPORT_MYSQL_PORT && process.env.EXPORT_PG_PORT && process.env.EXPORT_MONGO_PORT, 'Indicare le tre porte dei database usa-e-getta.');
   await sql('mysql', Number(process.env.EXPORT_MYSQL_PORT));
   await sql('postgresql', Number(process.env.EXPORT_PG_PORT));
   await mongo(Number(process.env.EXPORT_MONGO_PORT));
 })().catch(err => { console.error(err); process.exitCode = 1; });
+
+module.exports = { roundtripJson };

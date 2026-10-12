@@ -1,27 +1,16 @@
 import { chiediConferma } from './conferma.js';
-import { mountArcControls, createArcButton, controlElement, renderDataEmpty } from '../arc/ui.js';
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 import { state } from './state.js';
-import { campoScrivibile, identitaRiga } from './righe.js';
 import { colonneRisultato } from './table-cols.js';
-import { configuraColonne } from './table-resize.js';
 import { activeTab, tabs, switchTab, primaDellaChiusura, allaChiusura } from './tabs.js';
 import { creaRuntimePane } from './pane-runtime.js';
 import { queryDocument, copiaQuery } from './query-document.js';
-import { payloadFiltro } from './filtro-rapido.js';
 import { leggiStatoFiltro } from './grid.js';
 import { snapshotQueryView } from './query-tab.js';
-import { $, emit, displayValue, displayValueBreve, esc, isSqlType, dbTypeIcon, idOf, toast, safeUUID, refreshLucideIcons, eseguiAOndate, showContextMenu, hideContextMenu, conCaricamento, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
-import { startEdit, openEditDoc, segnalaBozza } from './inlineEdit.js';
-import { relazioniPer, caricaRelazioni } from './fk-cache.js';
-import { VINCOLO } from './fk-relazioni.js';
-import { rendiCellaGeometrica, aperturaCella } from './cella-geometria.js';
-// Il modulo unico della griglia, lo stesso della vista Dati e della tab ⚡.
-import { capacita, finestraVirtuale, vaVirtualizzata, disegnaCorpo, scorrimentoPerRiga, altezzaRigaGriglia } from './griglia.js';
-import { creaSelezioneCelle } from './cellselect.js';
-import { openInsertDocForContext } from './insert.js';
-import { congelaContesto, contestoCorrente } from './coerenza-richieste.js';
+import { $, emit, esc, isSqlType, dbTypeIcon, toast, safeUUID, refreshLucideIcons, showContextMenu, hideContextMenu, openModal, closeModal, chiediTesto, lucideIconHtml as ICO } from './utils.js';
+import { contestoCorrente } from './coerenza-richieste.js';
 import {
   creaAlbero, inserisci, rimuovi, trascina, pareggia as pareggiaAlbero,
   scambia, ruotaOrientamento as ruotaAlbero, elencoPane, contaPane, valida,
@@ -229,15 +218,16 @@ export function getSplitStateSnapshot(collTabId) {
         tabId: p.tabId,
         db: p.db,
         coll: p.coll,
-        filter: p.filter || '',
-        filterMode: p.filterMode || 'condizione',
-        sort: p.sort || '',
+        ...datiPersistentiPane(p),
+        filter: (p.runtime?.dataSnapshot() || p).filter || '',
+        filterMode: (p.runtime?.dataSnapshot() || p).filterMode || 'condizione',
+        sort: (p.runtime?.dataSnapshot() || p).sort || '',
         queryMode: p.queryMode || 'find',
         // Senza skip/limit il refresh riportava ogni pannello alla prima
         // pagina: chi stava guardando la pagina 12 non aveva modo di capire
         // perché i dati fossero cambiati.
-        skip: p.skip || 0,
-        limit: p.limit || 50,
+        skip: (p.runtime?.dataSnapshot() || p).skip || 0,
+        limit: (p.runtime?.dataSnapshot() || p).limit || 50,
         view: p.view || 'data',
         query: (() => { const q = p.runtime?.snapshot() || p.query; return q ? { code: q.code, engine: q.engine, dirty: q.dirty } : null; })(),
       },
@@ -268,6 +258,7 @@ export function restoreSplitStateSnapshot(snap, collTabId) {
       query: p.query || null,
       db: p.db,
       coll: p.coll,
+      ...datiPersistentiPane(p),
       filter: p.filter || '',
       filterMode: p.filterMode || 'condizione',
       sort: p.sort || '',
@@ -333,11 +324,36 @@ export function setPaneView(paneId, view) {
   const el = areaDiPane(paneId)?.elementi.get(paneId);
   if (!p || !el) return;
   p.view = view;
-  el.classList.toggle('pane-specialized', view !== 'data');
   el.querySelectorAll('[data-pane-view]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.paneView === view)));
-  if (view !== 'data' && !p.runtime) p.runtime = creaRuntimePane(p, el.querySelector('.pane-surface-slot'), () => setFocusedPane(paneId), () => closePane(paneId));
+  if (!p.runtime) p.runtime = creaRuntimePane(p, el.querySelector('.pane-surface-slot'), () => setFocusedPane(paneId), () => closePane(paneId), () => aggiornaContestoPane(paneId));
   p.runtime?.setView(view);
+  aggiornaContestoPane(paneId);
   setFocusedPane(paneId);
+}
+
+function datiPersistentiPane(p) {
+  const d = p.runtime?.dataSnapshot() || p;
+  return { quickSearch: d.quickSearch, advancedCondition: d.advancedCondition, pageSize: d.pageSize, infiniteScroll: d.infiniteScroll };
+}
+
+function aggiornaContestoPane(paneId) {
+  const p = paneById(paneId), el = areaDiPane(paneId)?.elementi.get(paneId);
+  if (!p || !el) return;
+  aggiornaEtichettaPane(el, p);
+  el.querySelector('.pane-db-select').value = p.db;
+  const db = p.db, coll = p.coll;
+  fetchCollectionsForPane(paneId, db).then(colls => {
+    if (p.db === db && p.coll === coll) popolaSelectColl(el.querySelector('.pane-coll-select'), colls, coll);
+  });
+  el.querySelectorAll('[data-pane-view]').forEach(button => {
+    button.hidden = !p.coll && ['data', 'details'].includes(button.dataset.paneView);
+    button.setAttribute('aria-pressed', String(button.dataset.paneView === p.view));
+  });
+  const visual = el.querySelector('.pane-visualize-btn');
+  visual.setAttribute('aria-pressed', String(['uml', 'graph3d'].includes(p.view)));
+  visual.querySelector('span').textContent = p.view === 'uml' ? 'UML' : p.view === 'graph3d' ? 'Grafo 3D' : 'Visualizza';
+  aggiornaEtichettaCollTab(areaDiPane(paneId));
+  import('./colltabs.js').then(m => m.renderCollTabBar());
 }
 
 export function scegliPannelloDaAffiancare(button) {
@@ -350,6 +366,7 @@ export function scegliPannelloDaAffiancare(button) {
       voci.push({ icona: ct.isDbTab ? 'code' : 'table', label: `${tab.label} / ${ct.db} / ${ct.coll || 'Query'}`,
         action: () => addOrSplitPane(getFocusedPaneId(), 'right', { tabId: tab.id, db: ct.db, coll: ct.coll,
           view: ct.isDbTab ? 'query' : view || 'data', query: ct.snapQuery,
+          data: tab.state.activeCollId === ct.id ? { ...tab.state } : ct.snap,
           filter: ct.snap?.filter, filterMode: ct.snap?.filterMode, sort: ct.snap?.sort }) });
     }
   }
@@ -376,11 +393,10 @@ export function initSplitView() {
   if (!ws) return;
 
   document.addEventListener('keydown', handleSplitKeys);
-  const aggiornaDensita = () => {
-    for (const area of aree.values()) for (const pane of area.panes.values()) pane.ridisegnaFinestra?.();
-  };
-  window.matchMedia('(pointer: coarse), (max-width: 600px)').addEventListener('change', aggiornaDensita);
-  document.addEventListener('codedb:tema', aggiornaDensita);
+  document.addEventListener('dragstart', e => {
+    if (e.dataTransfer?.types.includes('application/codedb-tab')) document.body.classList.add('split-dragging');
+  });
+  for (const event of ['dragend', 'drop']) document.addEventListener(event, () => document.body.classList.remove('split-dragging'));
 
   const tabContainer = $('#coll-tab-bar') || $('#tab-bar');
   if (tabContainer) {
@@ -530,8 +546,20 @@ export function deactivateSplitView() {
   const ws = $('#workspace');
   if (!ws || !ws.classList.contains('split-active')) return;
   ws.classList.remove('split-active', 'split-mostra-pannelli');
+  conservaPannelliMontati();
   ws.querySelector('.split-container')?.remove();
   for (const a of aree.values()) for (const p of a.panes.values()) p.runtime?.allinea();
+}
+
+// Arc smonta i controlli scollegati: anche le testate, come i runtime, restano montate.
+function conservaPannelliMontati() {
+  const ws = $('#workspace');
+  let cache = $('#pane-layout-cache');
+  if (!cache) { cache = document.createElement('div'); cache.id = 'pane-layout-cache'; cache.hidden = true; ws.append(cache); }
+  for (const el of ws.querySelectorAll('.split-container .split-pane')) cache.append(el);
+  for (const el of [...cache.children]) {
+    if (areaDiPane(el.dataset.paneId)?.elementi.get(el.dataset.paneId) !== el) el.remove();
+  }
 }
 
 // Un'area vive nello stato di UN tab di connessione: se quel tab (o il suo
@@ -717,6 +745,8 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
         coll: state.coll,
         filter: $('#filter-input')?.value || '',
         filterMode: leggiStatoFiltro().modo,
+        quickSearch: leggiStatoFiltro().rapido, advancedCondition: leggiStatoFiltro().condizione,
+        pageSize: $('#page-size').value, infiniteScroll: state.infiniteScroll,
         sort: $('#sort-input')?.value || '',
         queryMode: $('#query-mode')?.value || 'find',
         skip: state.skip || 0,
@@ -725,6 +755,9 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
         docs: state.docs || [],
         columns: state.columns || [],
         columnMeta: state.columnMeta || {},
+        selectedDocs: new Set(state.selectedDocs),
+        cellSel: structuredClone(state.cellSel),
+        gridWidths: new Map(corrente?.gridWidths || []),
         view: state.view || 'data',
         query: copiaQuery(queryDocument(t)),
       }
@@ -740,10 +773,11 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
     tabId,
     view: item.view || (item.coll ? 'data' : 'query'),
     query: copiaQuery(item.query),
+    data: item.data || null,
     db: item.db,
     coll: item.coll,
     filter: item.filter || '',
-    filterMode: item.filterMode || 'condizione',
+    filterMode: item.filterMode || 'rapido',
     sort: item.sort || '',
     queryMode: item.queryMode || 'find',
     skip: 0,
@@ -771,7 +805,6 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
         loading: false,
         error: null,
         caricato: true,
-        selectedDocs: new Set(),
       };
 
 
@@ -800,7 +833,6 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
       // non aggiornata.
       a.elementi.delete(targetPaneId);
       a.focusedPaneId = targetPaneId;
-      runPaneQuery(targetPaneId);
       renderSplitView();
       aggiornaEtichettaCollTab(a);
       import('./colltabs.js').then((m) => m.renderCollTabBar());
@@ -818,7 +850,6 @@ export async function addOrSplitPane(targetPaneId, dir, item, opts = {}) {
   a.active = a.panes.size >= 1;
   aggiornaEtichettaCollTab(a);
 
-  runPaneQuery(newPane.id);
   renderSplitView();
 
   import('./colltabs.js').then((m) => m.renderCollTabBar());
@@ -855,10 +886,12 @@ function disposePane(p) {
   if (!p) return;
   if (p.runId) emit('query:cancel', { tabId: p.tabId, runId: p.runId }).catch(() => {});
   p.runtime?.dispose();
-  p.gridResize?.disconnect();
+  const el = areaDiPane(p.id)?.elementi.get(p.id);
+  if (el?.parentElement?.id === 'pane-layout-cache') el.remove();
 }
 
 async function confermaChiusuraPane(p) {
+  if (p?.runtime?.writing()) { toast('Salvataggio in corso: attendi l’esito prima di cambiare o chiudere il pannello.', true); return false; }
   return !p || !((p.runtime ? p.runtime.dirty() : p.query?.dirty)) || await chiediConferma(`Chiudere ${p.db} / ${p.coll || 'Query'} e scartare il testo non salvato?`);
 }
 
@@ -934,7 +967,9 @@ export function aggiornaPaneDove(fn, st) {
       fn(p);
       if (`${p.db}${p.coll}` !== prima) {
         p.query = p.runtime?.snapshot() || p.query;
+        p.data = p.runtime?.dataSnapshot() || null;
         disposePane(p); p.runtime = null;
+        a.elementi.delete(p.id);
         cambiata = true;
       }
     }
@@ -942,7 +977,6 @@ export function aggiornaPaneDove(fn, st) {
     toccati = true;
     // La testata mostra database e tabella con due select popolate dal vecchio
     // elenco: vanno ricostruite, non aggiornate.
-    a.elementi.clear();
     cacheCollections.clear();
     aggiornaEtichettaCollTab(a);
     if (areaAttiva() === a) renderSplitView();
@@ -972,7 +1006,11 @@ function applicaMassimizzato() {
   container.classList.toggle('has-maximized', !!max);
   document.querySelectorAll('.split-pane').forEach((el) => {
     el.classList.toggle('maximized', !!max && el.dataset.paneId === max);
+    const button = el.querySelector('.pane-maximize-btn');
+    button?.setAttribute('aria-label', el.classList.contains('maximized') ? 'Ripristina il layout' : 'Espandi il pannello');
+    if (button) button.innerHTML = ICO(el.classList.contains('maximized') ? 'minimize-2' : 'maximize-2');
   });
+  refreshLucideIcons(container);
 }
 
 /**
@@ -1058,6 +1096,7 @@ export function notificaCambioLarghezza() {
 export async function closeSplitView({ riapri = false, collTabId = null } = {}) {
   const a = collTabId ? aree.get(collTabId) : areaAttiva();
   if (!a) return;
+  if ([...a.panes.values()].some(p => p.runtime?.writing())) { toast('Salvataggio in corso: attendi l’esito prima di chiudere l’area.', true); return; }
   if ([...a.panes.values()].some(p => (p.runtime ? p.runtime.dirty() : p.query?.dirty))
       && !await chiediConferma('Chiudere l’area e scartare il testo non salvato dei suoi pannelli?')) return;
   for (const p of a.panes.values()) disposePane(p);
@@ -1117,85 +1156,11 @@ export async function closeSplitView({ riapri = false, collTabId = null } = {}) 
 
 /** Esegue la query di un pannello. Restituisce la promessa, così i pulsanti che
  *  la avviano possono restare in attesa con `conCaricamento`. */
-export function runPaneQuery(paneId, opts = {}) {
+export async function runPaneQuery(paneId, opts = {}) {
   const p = paneById(paneId);
-  if (!p || !p.db || !p.coll) return Promise.resolve();
-
-  const generazione = (p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1);
-  if (p.runId) emitPaneQuery(p.tabId, 'query:cancel', { runId: p.runId }).catch(() => {});
-  p.runId = safeUUID();
-  const richiesta = congelaContesto({
-    paneId, tabId: p.tabId, db: p.db, coll: p.coll,
-    filter: p.filter, sort: p.sort, limit: p.limit, skip: p.skip, generazione,
-  });
-
-  p.loading = true;
-  p.error = null;
-  updatePaneUI(paneId);
-
-  p.queryMode = 'find';
-  const payload = {
-    db: richiesta.db, coll: richiesta.coll,
-    ...payloadFiltro(p.filterMode || 'condizione', richiesta.filter),
-    sort: richiesta.sort,
-    limit: richiesta.limit, skip: richiesta.skip,
-    runId: p.runId,
-  };
-
-  if (opts.auto) payload._bg = true;
-
-  // Stessa guardia di `runQuery` (grid.js): identità del riquadro (un pannello
-  // può essere SOSTITUITO allo stesso id, vedi il ramo `dir === 'center'` di
-  // `addOrSplitPane`) più il contesto congelato alla chiamata, letto da
-  // `contestoCorrente` invece di confronti a mano ripetuti in ogni guardia.
-  const attesa = { generazioneRichiesta: richiesta.generazione, db: richiesta.db, coll: richiesta.coll };
-  return emitPaneQuery(richiesta.tabId, 'collection:find', payload)
-    .then((res) => {
-      if (paneById(paneId) !== p || !contestoCorrente(p, attesa)) return;
-      p.docs = res.docs || [];
-      p.columns = res.columns || [];
-      p.columnMeta = res.columnMeta || {};
-      p.total = res.total || 0;
-      p.skip = res.skip || 0;
-      p.limit = res.limit || 50;
-      p.loading = false;
-      p.runId = null;
-      p.caricato = true;
-      updatePaneUI(paneId);
-      caricaRelazioniPane(paneId, p);
-    })
-    .catch((err) => {
-      if (paneById(paneId) !== p || !contestoCorrente(p, attesa)) return;
-      p.loading = false;
-      p.runId = null;
-      // Caricato = "ci ho provato": senza questo, un pannello in errore
-      // rilancerebbe la stessa query fallita a ogni rimontaggio del layout.
-      p.caricato = true;
-      p.error = err.message;
-      updatePaneUI(paneId);
-    });
-}
-
-function contestoRelazioniPane(p) {
-  const tab = tabs.list.find((t) => t.id === p.tabId);
-  return {
-    tabId: p.tabId,
-    dbType: tab ? tab.dbType : 'mongodb',
-    db: p.db,
-    coll: p.coll,
-  };
-}
-
-// Il metadato FK arriva dopo i dati e non ne ritarda il disegno. Quando è
-// pronto si ridisegna soltanto se il riquadro esiste ancora e punta allo stesso
-// oggetto: una risposta vecchia non può decorare una tabella subentrata.
-function caricaRelazioniPane(paneId, p) {
-  const contesto = contestoRelazioniPane(p);
-  const attesa = { generazioneRichiesta: p.generazioneRichiesta, db: contesto.db, coll: contesto.coll };
-  if (relazioniPer(contesto) !== null) return;
-  caricaRelazioni(contesto).then(() => {
-    if (paneById(paneId) === p && contestoCorrente(p, attesa)) updatePaneUI(paneId);
-  });
+  if (!p) return;
+  if (!p.runtime) setPaneView(paneId, p.view || 'data');
+  await p.runtime?.refresh(opts);
 }
 
 function emitPaneQuery(tabId, event, payload) {
@@ -1227,12 +1192,13 @@ export function renderSplitView() {
   state.view = 'split';
   document.querySelectorAll('.view-tab').forEach(button => {
     const view = button.dataset.view;
-    button.classList.toggle('hidden', view === 'data');
+    button.classList.toggle('hidden', view !== 'split');
     button.classList.toggle('active', view === 'split');
     button.setAttribute('aria-pressed', String(view === 'split'));
   });
   $('#placeholder')?.classList.add('hidden');
   ws.classList.remove('hidden');
+  conservaPannelliMontati();
   ws.querySelector('.split-container')?.remove();
 
   // NESSUNA barra d'intestazione per l'area.
@@ -1271,12 +1237,6 @@ export function renderSplitView() {
 
   const focus = a.focusedPaneId;
   a.panes.forEach((p, pId) => {
-    updatePaneUI(pId);
-    // Idratazione: un pannello mai caricato (ripristino di sessione, rientro
-    // sul coll-tab dopo un F5) chiede i propri dati. `auto` lo marca `_bg`,
-    // quindi non finisce nello Storico Azioni: è una lettura che l'utente non
-    // ha chiesto, l'ha chiesta il ripristino.
-    if (!p.caricato && !p.loading) runPaneQuery(pId, { auto: true });
     setPaneView(pId, p.view || 'data');
   });
   setFocusedPane(focus);
@@ -1357,100 +1317,6 @@ function aggiornaValoriResizer(el, sizes) {
   });
 }
 
-function startPaneEdit(td, paneId, doc, field) {
-  const p = paneById(paneId);
-  if (!p || td.classList.contains('editing')) return;
-  const connTab = tabs.list.find((t) => t.id === p.tabId);
-  const dbType = connTab ? connTab.dbType : 'mongodb';
-  const relazioni = relazioniPer({ tabId: p.tabId, dbType, db: p.db, coll: p.coll });
-
-  startEdit(td, doc, field, {
-    metadato: p.columnMeta && p.columnMeta[field],
-    ctx: {
-      tabId: p.tabId,
-      db: p.db,
-      coll: p.coll,
-      tab: connTab || null,
-      st: { db: p.db, coll: p.coll, dbType },
-      isStillActive: () => paneById(paneId) === p,
-      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
-      onSaveError: () => updatePaneUI(paneId),
-    },
-    relazione: relazioni && relazioni.get(field),
-    sorgente: td,
-    contenitore: () => document.querySelector(
-      `.split-pane[data-pane-id="${paneId}"] .pane-grid-wrap`,
-    ),
-    onRender: () => updatePaneUI(paneId),
-  });
-}
-
-async function deletePaneDoc(paneId, doc) {
-  const p = paneById(paneId);
-  if (!p) return;
-  const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
-  const { text } = displayValue(identitaRiga(doc));
-  if (!await chiediConferma(`Eliminare il documento con _id = ${text} da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}?`)) return;
-
-  emitPaneQuery(bersaglio.tabId, 'doc:delete', {
-    db: bersaglio.db,
-    coll: bersaglio.coll,
-    id: idOf(doc),
-  }).then(() => {
-    toast('Documento eliminato');
-    if (paneById(paneId) === p && contestoCorrente(p, bersaglio)) {
-      runPaneQuery(paneId, { auto: true });
-    }
-  }).catch((err) => toast(err.message, true));
-}
-
-/**
- * Elimina un elenco di righe del riquadro: UNA conferma e UNA rilettura.
- *
- * È il percorso comune del pulsante 🗑 della selezione di righe e della voce
- * «Elimina» del menu contestuale della selezione di CELLE. Chiamare la
- * eliminazione singola in un ciclo darebbe una conferma e una rilettura PER
- * RIGA: su venti righe selezionate, venti finestre di dialogo.
- */
-async function eliminaRigheRiquadro(paneId, ids) {
-  const p = paneById(paneId);
-  if (!p) return Promise.resolve();
-  const bersaglio = congelaContesto({ tabId: p.tabId, db: p.db, coll: p.coll });
-  if (ids.length === 0) {
-    toast('Nessun documento selezionato', true);
-    return Promise.resolve();
-  }
-  if (!await chiediConferma(`Eliminare i ${ids.length} documenti selezionati da ${tabs.list.find(t => t.id === p.tabId)?.label} / ${p.db} / ${p.coll}? Questa azione non si può annullare.`)) return Promise.resolve();
-
-  // A ondate, non tutte insieme (CDB-72): stesso limite già applicato alla
-  // griglia principale e all'incolla di celle. Mandare centinaia di doc:delete
-  // in un colpo riempie la coda del socket e mette in attesa dietro di sé ogni
-  // altra operazione, compreso l'altro pannello della Split-View.
-  return eseguiAOndate(ids, 8, (id) =>
-    emitPaneQuery(bersaglio.tabId, 'doc:delete', {
-      db: bersaglio.db,
-      coll: bersaglio.coll,
-      id,
-    })
-  ).then((results) => {
-    const failed = results.filter((r) => r.status === 'rejected');
-    const ok = results.length - failed.length;
-    if (p.selectedDocs) p.selectedDocs.clear();
-    if (failed.length) toast(`${ok} eliminati, ${failed.length} non eliminati: ${failed[0].reason.message}`, true);
-    else toast(`${ok} documenti eliminati`);
-    if (paneById(paneId) === p && contestoCorrente(p, bersaglio)) {
-      runPaneQuery(paneId, { auto: true });
-    }
-  });
-}
-
-function deletePaneSelectedDocs(paneId) {
-  const p = paneById(paneId);
-  if (!p || !p.selectedDocs) return Promise.resolve();
-  const visible = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
-  return eliminaRigheRiquadro(paneId, [...p.selectedDocs].filter((id) => visible.has(id)));
-}
-
 function createPaneElement(paneId) {
   const p = paneById(paneId);
   const connTab = tabs.list.find((t) => t.id === p.tabId);
@@ -1473,65 +1339,36 @@ function createPaneElement(paneId) {
 
   paneEl.innerHTML = `
     <div class="split-pane-head">
-      <div class="split-pane-title">
+      <div class="split-pane-identity">
         <span class="db-icon">${dbTypeIcon(dbType)}</span>
         <span class="conn-name" title="${esc(connLabel)}">${esc(connLabel)}</span>
-        <span class="sep sep-conn">▸</span>
+      </div>
+      <div class="split-pane-title">
         <select class="pane-db-select" title="${dbType === 'postgresql' ? 'Schema PostgreSQL' : 'Database'}" aria-label="${dbType === 'postgresql' ? 'Schema' : 'Database'} del pannello"></select>
-        <span class="sep">▸</span>
+        <span class="sep">/</span>
         <select class="pane-coll-select" title="Seleziona Tabella/Collezione" aria-label="${isSql ? 'Tabella del pannello' : 'Collection del pannello'}"></select>
       </div>
       <div class="split-pane-tools">
-        <button type="button" class="pane-refresh-btn ghost" title="Ricarica" aria-label="Ricarica il pannello">⟳</button>
-        <button type="button" class="pane-menu-btn ghost" title="Azioni su pannello e area affiancata" aria-label="Azioni su pannello e area affiancata" aria-haspopup="true">⋯</button>
-        <button type="button" class="pane-close-btn ghost" title="Chiudi pannello" aria-label="Chiudi il pannello">✕</button>
+        <button type="button" class="pane-maximize-btn ghost" title="Espandi il pannello (Alt+M)" aria-label="Espandi il pannello"><i data-lucide="maximize-2"></i></button>
+        <button type="button" class="pane-menu-btn ghost" title="Azioni su pannello e area affiancata" aria-label="Azioni su pannello e area affiancata" aria-haspopup="true"><i data-lucide="ellipsis"></i></button>
+        <button type="button" class="pane-close-btn ghost" title="Chiudi pannello" aria-label="Chiudi il pannello"><i data-lucide="x"></i></button>
       </div>
     </div>
 
     <div class="pane-viewbar">
-      <span class="pane-focus-label">Attivo</span>
       <button type="button" class="ghost" data-pane-view="data" aria-pressed="true"><i data-lucide="table"></i> Dati</button>
       <button type="button" class="ghost" data-pane-view="query" aria-pressed="false"><i data-lucide="code"></i> Query</button>
-      <span class="spacer"></span>
+      <button type="button" class="ghost" data-pane-view="details" aria-pressed="false"><i data-lucide="info"></i> Dettagli</button>
+      <button type="button" class="ghost pane-visualize-btn" aria-haspopup="true"><i data-lucide="network"></i> <span>Visualizza</span><i data-lucide="chevron-down"></i></button>
     </div>
     <div class="pane-surface-slot"></div>
 
-    <div class="split-pane-toolbar">
-      <select class="pane-filter-mode" aria-label="Modalità filtro"><option value="rapido">Ricerca</option><option value="condizione">Condizione</option></select>
-      <input type="text" class="pane-filter-input" placeholder="${isSql ? 'Clausola WHERE...' : 'Filtro JSON...'}" value="${esc(p.filter)}" spellcheck="false" aria-label="Filtro" />
-      <input type="text" class="pane-sort-input" placeholder="Sort..." value="${esc(p.sort)}" spellcheck="false" aria-label="Ordinamento" />
-      <button type="button" class="pane-run-btn primary"><i data-lucide="play"></i> Esegui</button>
-      <button type="button" class="pane-insert-btn ghost" title="${isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento'}">${isSql ? '+ Riga' : '+ Documento'}</button>
-      <button type="button" class="pane-bulk-delete-btn danger hidden" title="Elimina elementi selezionati"><i data-lucide="trash-2"></i> Elimina (0)</button>
-    </div>
-
-    <div class="pane-error-banner hidden" role="alert" aria-live="polite">
-      <span class="pane-error-text"></span>
-      <button type="button" class="pane-retry-btn ghost">Riprova</button>
-    </div>
-
-    <div class="split-pane-body">
-      <div class="pane-grid-wrap">
-        <table class="pane-grid">
-          <thead></thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="split-pane-statusbar">
-      <span class="pane-result-info">0 righe</span>
-      <span class="spacer"></span>
-      <button type="button" class="pane-prev-btn ghost" aria-label="Pagina precedente">‹ Prec</button>
-      <span class="pane-page-info">1</span>
-      <button type="button" class="pane-next-btn ghost" aria-label="Pagina successiva">Succ ›</button>
-    </div>
   `;
 
   mountArcControls(paneEl);
   paneEl.querySelectorAll('[data-pane-view]').forEach(button => {
     button.addEventListener('click', () => setPaneView(paneId, button.dataset.paneView));
-    if (!p.coll && button.dataset.paneView === 'data') button.hidden = true;
+    if (!p.coll && ['data', 'details'].includes(button.dataset.paneView)) button.hidden = true;
   });
   const dbSelect = paneEl.querySelector('.pane-db-select');
   const collSelect = paneEl.querySelector('.pane-coll-select');
@@ -1543,7 +1380,8 @@ function createPaneElement(paneId) {
 
   dbSelect.addEventListener('change', async () => {
     if (!await confermaChiusuraPane(p)) { dbSelect.value = p.db; return; }
-    disposePane(p); p.runtime = null; p.query = null;
+    disposePane(p); p.runtime = null; p.query = null; p.data = null;
+    p.filter = ''; p.sort = ''; p.quickSearch = ''; p.advancedCondition = '';
     const generazione = (p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1);
     const dbRichiesto = dbSelect.value;
     p.db = dbRichiesto;
@@ -1562,7 +1400,6 @@ function createPaneElement(paneId) {
       if (colls.length > 0) {
         p.coll = colls[0];
         aggiornaEtichettaPane(paneEl, p);
-        runPaneQuery(paneId);
       }
       setPaneView(paneId, p.coll ? (p.view || 'data') : 'query');
     });
@@ -1577,7 +1414,8 @@ function createPaneElement(paneId) {
 
   collSelect.addEventListener('change', async () => {
     if (!await confermaChiusuraPane(p)) { collSelect.value = p.coll; return; }
-    disposePane(p); p.runtime = null; p.query = null;
+    disposePane(p); p.runtime = null; p.query = null; p.data = null;
+    p.filter = ''; p.sort = ''; p.quickSearch = ''; p.advancedCondition = '';
     p.generazioneRichiesta = (p.generazioneRichiesta || 0) + 1;
     p.coll = collSelect.value;
     p.skip = 0;
@@ -1586,13 +1424,18 @@ function createPaneElement(paneId) {
     p.total = 0;
     p.caricato = false;
     aggiornaEtichettaPane(paneEl, p);
-    runPaneQuery(paneId);
     setPaneView(paneId, p.view || 'data');
   });
 
-  const refreshBtn = paneEl.querySelector('.pane-refresh-btn');
-  refreshBtn.addEventListener('click', () => conCaricamento(refreshBtn, () => runPaneQuery(paneId), ''));
-  paneEl.querySelector('.pane-close-btn').addEventListener('click', () => closePane(paneId));
+  paneEl.querySelector('.pane-maximize-btn').addEventListener('click', () => massimizzaPane(paneId));
+  paneEl.querySelector('.pane-visualize-btn').addEventListener('click', e => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    showContextMenu(rect.left, rect.bottom, [
+      { icona: 'network', label: 'Diagramma UML', action: () => setPaneView(paneId, 'uml') },
+      { icona: 'boxes', label: 'Grafo 3D', action: () => setPaneView(paneId, 'graph3d') },
+    ]);
+  });
+  paneEl.querySelector('.pane-close-btn').addEventListener('click', () => closePane(paneId), () => aggiornaContestoPane(paneId));
   // Massimizza: doppio clic sulla testata invece di un quarto pulsante. È il
   // gesto delle finestre di ogni sistema operativo, non toglie spazio ai nomi
   // di database e tabella (che su un pannello stretto sono la prima cosa a
@@ -1607,80 +1450,6 @@ function createPaneElement(paneId) {
     const r = e.currentTarget.getBoundingClientRect();
     apriMenuPane(paneId, r.left, r.bottom + 4);
   });
-  paneEl.querySelector('.pane-retry-btn').addEventListener('click', () => runPaneQuery(paneId));
-
-  const filterInput = paneEl.querySelector('.pane-filter-input');
-  const sortInput = paneEl.querySelector('.pane-sort-input');
-  const filterMode = paneEl.querySelector('.pane-filter-mode');
-  filterMode.value = p.filterMode || 'condizione';
-  const aggiornaFiltro = () => {
-    filterInput.placeholder = p.filterMode === 'rapido' ? 'Cerca nei dati…' : isSql ? 'Condizione WHERE…' : 'Filtro MQL…';
-  };
-  aggiornaFiltro();
-  filterMode.addEventListener('change', () => { p.filterMode = filterMode.value; aggiornaFiltro(); });
-  filterInput.addEventListener('input', () => { p.filter = filterInput.value; });
-  sortInput.addEventListener('input', () => { p.sort = sortInput.value; });
-  p.queryMode = 'find';
-
-  filterInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      p.filter = filterInput.value;
-      p.sort = sortInput.value;
-      p.skip = 0;
-      runPaneQuery(paneId);
-    }
-  });
-
-  sortInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      p.filter = filterInput.value;
-      p.sort = sortInput.value;
-      p.skip = 0;
-      runPaneQuery(paneId);
-    }
-  });
-
-  const runBtn = paneEl.querySelector('.pane-run-btn');
-  runBtn.addEventListener('click', () => conCaricamento(runBtn, () => {
-    p.filter = filterInput.value;
-    p.sort = sortInput.value;
-    p.skip = 0;
-    return runPaneQuery(paneId);
-  }, 'Eseguo…'));
-
-  paneEl.querySelector('.pane-insert-btn').addEventListener('click', () => {
-    const curConnTab = tabs.list.find((t) => t.id === p.tabId);
-    const curDbType = curConnTab ? curConnTab.dbType : 'mongodb';
-    openInsertDocForContext({
-      tabId: p.tabId,
-      db: p.db,
-      coll: p.coll,
-      dbType: curDbType,
-      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
-    });
-  });
-
-  const bulkDelBtn = paneEl.querySelector('.pane-bulk-delete-btn');
-  if (bulkDelBtn) {
-    // In attesa il pulsante è disabilitato: su un'azione distruttiva non è
-    // cortesia ma protezione dal doppio invio (vedi conCaricamento in utils.js).
-    bulkDelBtn.addEventListener('click', () => conCaricamento(bulkDelBtn, () => deletePaneSelectedDocs(paneId), 'Elimino…'));
-  }
-
-  paneEl.querySelector('.pane-prev-btn').addEventListener('click', () => {
-    if (p.skip >= p.limit) {
-      p.skip -= p.limit;
-      runPaneQuery(paneId);
-    }
-  });
-
-  paneEl.querySelector('.pane-next-btn').addEventListener('click', () => {
-    if (p.skip + p.limit < p.total) {
-      p.skip += p.limit;
-      runPaneQuery(paneId);
-    }
-  });
-
   refreshLucideIcons(paneEl);
   areaDiPane(paneId)?.elementi.set(paneId, paneEl);
   return paneEl;
@@ -1760,7 +1529,7 @@ function fetchCollectionsForPane(paneId, dbName) {
   const chiave = `${p.tabId}|${dbName}`;
   if (cacheCollections.has(chiave)) return cacheCollections.get(chiave);
 
-  const pr = emitPaneQuery(p.tabId, 'db:collections', { db: dbName })
+  const pr = emitPaneQuery(p.tabId, 'db:collections', { db: dbName, includeCounts: false })
     .then((res) => (res.collections || []).map((c) => (typeof c === 'string' ? c : c.name)))
     .catch(() => {
       // Un errore non va memorizzato: al prossimo tentativo si richiede.
@@ -1769,525 +1538,6 @@ function fetchCollectionsForPane(paneId, dbName) {
     });
   cacheCollections.set(chiave, pr);
   return pr;
-}
-
-/* ---------------------------------------------------------------------------
- * La griglia di un riquadro.
- *
- * Era la TERZA copia della griglia, ed era quella che faceva MENO delle altre
- * due: disegnava tutte le righe in una volta, quante che fossero, e chi apriva
- * una Split-View su una tabella grande non veniva avvisato di cio' a cui stava
- * rinunciando. Ora il corpo lo scrive il modulo comune (griglia.js) e la
- * virtualizzazione c'e'.
- *
- * Le capacita' sono DICHIARATE, ed e' il punto: quelle spente qui sotto sono
- * l'inventario di cio' che un riquadro ancora non sa fare, non un silenzio.
- * ------------------------------------------------------------------------- */
-
-/* L'altezza di riga di un riquadro non e' piu' una costante scritta qui: era 34
-   mentre il CSS ne produceva un'altra, e la finestra virtuale calcolava gli
-   spaziatori sul numero sbagliato. La fonte unica e' il token `--grid-row-h`
-   (vedi `altezzaRigaGriglia` in griglia.js), lo stesso che il CSS impone. */
-const OVERSCAN_RIQUADRO = 6;
-
-const CAPACITA_RIQUADRO = capacita({
-  virtualizzazione: true,
-  selezioneRighe: true,
-  modificaInline: true,
-  // Accesa: `cellselect.js` non cerca più `#grid` né legge `state`, riceve un
-  // AMBITO (`aggancioRiquadro` qui sotto) con il contenitore, le righe e lo stato
-  // di QUESTO riquadro.
-  selezioneCelle: true,
-  // Accesa: il ciclo di `cellselect.js` riceve il contenitore del riquadro e il
-  // ridisegno virtuale ne preserva la posizione mentre il dito resta al bordo.
-  scorrimentoAiBordi: true,
-  chiaviEsterne: true,
-  geometrie: true,
-  paginazioneAChiave: false,
-});
-
-/**
- * L'aggancio della selezione di celle per un riquadro: il contenitore che scorre,
- * le righe e lo stato sono quelli del riquadro, non del tab attivo.
- *
- * Si costruisce una volta per riquadro e si tiene sul riquadro stesso: `tbody` e
- * `thead` di un riquadro sono elementi STABILI (vengono svuotati, mai
- * sostituiti), quindi gli ascoltatori si agganciano una volta sola — come già
- * fa l'ascoltatore dello scorrimento qui sotto.
- */
-function aggancioRiquadro(paneId, paneEl, p) {
-  const connTab = tabs.list.find((t) => t.id === p.tabId);
-  const dbType = connTab ? connTab.dbType : 'mongodb';
-  const vivo = () => paneById(paneId) === p;
-  return {
-    nome: `riquadro ${paneId}`,
-    tbody: paneEl.querySelector('.pane-grid tbody'),
-    thead: () => paneEl.querySelector('.pane-grid thead'),
-    contenitore: () => paneEl.querySelector('.pane-grid-wrap'),
-    // Un riquadro non ha barra di stato: il riassunto della selezione non ha
-    // dove andare. Il modulo lo sa e non lo calcola nemmeno.
-    info: () => null,
-    righe: () => p.docs || [],
-    // Le colonne sono quelle che il riquadro ha DISEGNATO (`p.colonneMostrate`,
-    // scritta da `updatePaneUI`), non ricalcolate qui: `data-c` è un indice in
-    // quell'elenco, e un secondo calcolo che ne producesse uno diverso farebbe
-    // leggere alla selezione la colonna sbagliata. È anche l'unico modo di non
-    // riscansionare tutte le righe a ogni cella selezionata.
-    colonne: () => p.colonneMostrate || p.columns || [],
-    metadati: () => p.columnMeta || {},
-    bersaglio: () => ({ db: p.db, coll: p.coll, dbType }),
-    stato: () => {
-      if (!p.cellSel) p.cellSel = { anchor: null, focus: null, cells: new Set() };
-      return p.cellSel;
-    },
-    // `offsetParent` nullo = il riquadro non è a schermo: la tastiera non deve
-    // arrivargli, altrimenti un Ctrl+A scritto altrove selezionerebbe righe che
-    // nessuno sta guardando. La misura funziona perché il workspace nasconde le
-    // viste con `display: none` (`.hidden` su `#view-data` e sul contenitore
-    // della Split-View), che è ciò che azzera `offsetParent`: con una
-    // `visibility: hidden` o un'opacità zero questa lettura direbbe «visibile».
-    visibile: () => !!(paneEl.isConnected && paneEl.offsetParent && (p.docs || []).length),
-    // Il bersaglio di una scrittura è il riquadro, non il tab attivo (CDB-A18):
-    // in una Split-View su due connessioni i due non coincidono affatto.
-    // `marcaDatiSporchi` non ha nulla da segnare qui — un riquadro chiuso non ha
-    // dati da ridipingere — quindi `st` porta solo il bersaglio.
-    contesto: () => ({
-      tab: connTab || null,
-      tabId: p.tabId,
-      st: { db: p.db, coll: p.coll, dbType },
-      isStillActive: vivo,
-    }),
-    // La riga può essere fuori dalla finestra virtuale: si porta lo scorrimento
-    // dove serve e si ridisegna, come fa `ensureRowRendered` nella vista Dati.
-    assicuraRiga: (r) => {
-      const box = paneEl.querySelector('.pane-grid-wrap');
-      if (!box) return;
-      const dove = scorrimentoPerRiga({
-        indice: r,
-        altezzaRiga: altezzaRigaGriglia(box),
-        scrollTop: box.scrollTop,
-        altezzaViewport: box.clientHeight,
-      });
-      if (dove !== null) box.scrollTop = dove;
-      p.ridisegnaFinestra?.();
-    },
-    ricarica: () => { if (vivo()) runPaneQuery(paneId, { auto: true }); },
-    modificaRiga: (doc) => openEditDoc(doc, {
-      tabId: p.tabId,
-      db: p.db,
-      coll: p.coll,
-      onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
-    }),
-    eliminaRighe: (docs) => eliminaRigheRiquadro(paneId, docs.filter((d) => d && '_id' in d).map(idOf)),
-    // Un riquadro mostra sempre una collection vera: non ha la modalità
-    // aggregate/SQL Raw che nella vista Dati rende l'incolla impossibile.
-    motivoNoScrittura: () => null,
-  };
-}
-
-function updatePaneUI(paneId) {
-  const paneEl = document.querySelector(`.split-pane[data-pane-id="${paneId}"]`);
-  if (!paneEl) return;
-
-  const p = paneById(paneId);
-  if (!p) return;
-
-  if (!p.selectedDocs) p.selectedDocs = new Set();
-
-  const connTab = tabs.list.find((t) => t.id === p.tabId);
-  const dbType = connTab ? connTab.dbType : 'mongodb';
-  const isSql = isSqlType(dbType);
-  const relazioni = relazioniPer({ tabId: p.tabId, dbType, db: p.db, coll: p.coll });
-
-  const insertBtn = paneEl.querySelector('.pane-insert-btn');
-  if (insertBtn) {
-    insertBtn.title = isSql ? 'Inserisci una nuova riga' : 'Inserisci un nuovo documento';
-    insertBtn.textContent = isSql ? '+ Riga' : '+ Documento';
-  }
-
-  aggiornaEtichettaPane(paneEl, p);
-
-  const errBanner = paneEl.querySelector('.pane-error-banner');
-  if (p.error) {
-    // Solo il testo: il banner contiene anche il pulsante "Riprova", e
-    // riscriverne il contenuto lo cancellerebbe.
-    errBanner.querySelector('.pane-error-text').textContent = p.error;
-    errBanner.classList.remove('hidden');
-  } else {
-    errBanner.classList.add('hidden');
-  }
-
-  const thead = paneEl.querySelector('.pane-grid thead');
-  const tbody = paneEl.querySelector('.pane-grid tbody');
-  const contenitore = paneEl.querySelector('.pane-grid-wrap');
-  // Svuotare il `tbody` accorcia per un istante la tabella e Chromium riporta
-  // lo scroll a zero. La finestra virtuale va quindi calcolata dalla posizione
-  // letta PRIMA del ridisegno e la stessa posizione va ripristinata dopo: vale
-  // per lo scroll normale e, soprattutto, per ogni fotogramma del gesto ai
-  // bordi, che altrimenti avanzerebbe di pochi pixel e rimbalzerebbe a zero.
-  const posizioneScroll = contenitore
-    ? { top: contenitore.scrollTop, left: contenitore.scrollLeft }
-    : { top: 0, left: 0 };
-
-  thead.innerHTML = '';
-  tbody.innerHTML = '';
-  // La chiusura di ridisegno appartiene alle righe che stavano qui. Con il
-  // riquadro in caricamento o vuoto non ce ne sono, e lasciarla lì
-  // significherebbe che uno scorrimento cancella «Nessuna riga trovata» per
-  // ridisegnare una pagina che non c'è più. Viene rimessa in fondo.
-  p.ridisegnaFinestra = null;
-  renderDataEmpty(contenitore, null);
-
-  if (p.loading) {
-    tbody.innerHTML = '<tr><td colspan="100" class="pane-loading">Caricamento in corso...</td></tr>';
-    return;
-  }
-
-  if (!p.docs || p.docs.length === 0) {
-    // "documento o riga" era una scorciatoia: il tipo di database è noto, e
-    // scriverli entrambi fa sembrare che il programma non sappia dove sta.
-    if (!p.error) renderDataEmpty(contenitore, {
-      title: 'Nessun risultato',
-      description: p.filter && p.filter !== '{}' ? 'Prova un’altra ricerca o modifica la condizione applicata.' : 'Non ci sono righe da mostrare in questo pannello.',
-      kind: 'search', actionLabel: p.filter && p.filter !== '{}' ? 'Modifica filtro' : 'Aggiorna',
-      onAction: () => {
-        if (p.filter && p.filter !== '{}') paneEl.querySelector('.pane-filter-input')?.focus();
-        else paneEl.querySelector('.pane-refresh-btn')?.click();
-      },
-    });
-  } else {
-    // Stessa regola della tabella ⚡: le dichiarate prima e nel loro ordine,
-    // poi i campi che compaiono solo nei documenti. Su MongoDB `p.columns` è un
-    // catalogo CAMPIONATO: un documento con un campo in più aveva quel valore
-    // invisibile, perché le dichiarate vincevano da sole.
-    const cols = colonneRisultato(p.columns, p.docs);
-    // Le colonne davvero disegnate: la selezione di celle indicizza `data-c` su
-    // questo elenco e deve leggere lo stesso, non un secondo calcolo.
-    p.colonneMostrate = cols;
-    let currentSort = {};
-    try { currentSort = JSON.parse(p.sort || '{}'); } catch { /* ignore */ }
-
-    const canSelect = true;
-    const hasIdDocs = p.docs.some((d) => '_id' in d);
-
-    const visibleIds = new Set(p.docs.filter((d) => '_id' in d).map(idOf));
-    for (const id of [...p.selectedDocs]) {
-      if (!visibleIds.has(id)) p.selectedDocs.delete(id);
-    }
-
-    const trHead = document.createElement('tr');
-
-    const thNum = document.createElement('th');
-    thNum.className = 'row-num-col';
-    thNum.textContent = '#';
-    trHead.appendChild(thNum);
-
-    if (canSelect && hasIdDocs) {
-      const thSel = document.createElement('th');
-      thSel.className = 'grid-select-col';
-      const checkAll = document.createElement('input');
-      checkAll.type = 'checkbox';
-      checkAll.className = 'pane-select-all';
-      checkAll.title = 'Seleziona/deseleziona tutti';
-
-      const docsWithId = p.docs.filter((d) => '_id' in d);
-      checkAll.checked = docsWithId.length > 0 && docsWithId.every((d) => p.selectedDocs.has(idOf(d)));
-      checkAll.indeterminate = !checkAll.checked && docsWithId.some((d) => p.selectedDocs.has(idOf(d)));
-
-      checkAll.addEventListener('change', () => {
-        if (checkAll.checked) {
-          docsWithId.forEach((d) => p.selectedDocs.add(idOf(d)));
-        } else {
-          docsWithId.forEach((d) => p.selectedDocs.delete(idOf(d)));
-        }
-        updatePaneUI(paneId);
-      });
-      thSel.appendChild(checkAll);
-      trHead.appendChild(thSel);
-    }
-
-    if (hasIdDocs) {
-      const thActions = document.createElement('th');
-      thActions.className = 'grid-actions-col';
-      thActions.textContent = '';
-      trHead.appendChild(thActions);
-    }
-
-    cols.forEach((col, colIdx) => {
-      const th = document.createElement('th');
-      th.className = 'pane-col-header';
-      th.dataset.c = colIdx; // per la selezione di colonna (cellselect.js)
-      const dir = currentSort[col];
-      const arrow = dir === 1 ? ' ▲' : dir === -1 ? ' ▼' : '';
-      th.textContent = col + arrow;
-      th.title = 'Clicca per ordinare';
-      th.addEventListener('click', () => {
-        const nextDir = dir === 1 ? -1 : 1;
-        p.sort = JSON.stringify({ [col]: nextDir });
-        const sortInput = paneEl.querySelector('.pane-sort-input');
-        if (sortInput) sortInput.value = p.sort;
-        p.skip = 0;
-        runPaneQuery(paneId);
-      });
-      trHead.appendChild(th);
-    });
-
-    thead.appendChild(trHead);
-    const contestoColonne = JSON.stringify([p.tabId, p.db, p.coll]);
-    if (p.columnWidthsFor !== contestoColonne) { p.columnWidths = new Map(); p.columnWidthsFor = contestoColonne; }
-    configuraColonne(thead.closest('table'), {
-      nomi: [...Array(trHead.cells.length - cols.length).fill(null), ...cols], righe: p.docs, larghezze: p.columnWidths,
-    });
-
-    // Il disegno di UNA riga. La finestra visibile e gli spaziatori li mette il
-    // modulo comune (griglia.js), lo stesso della vista Dati e della tab ⚡:
-    // qui c'era la TERZA copia della griglia, ed era quella che faceva meno di
-    // tutte — disegnava tutte le righe in una volta, quante che fossero.
-    const disegnaRigaRiquadro = (doc, idx) => {
-      const tr = document.createElement('tr');
-      tr.className = idx % 2 ? 'grid-row-even' : '';
-
-      const numTd = document.createElement('td');
-      numTd.className = 'row-num-col';
-      numTd.textContent = p.skip + idx + 1;
-      tr.appendChild(numTd);
-
-      const docId = '_id' in doc ? idOf(doc) : null;
-
-      if (canSelect && hasIdDocs) {
-        const selectTd = document.createElement('td');
-        selectTd.className = 'grid-select-col';
-        if (docId) {
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.setAttribute('aria-label', `Seleziona documento ${docId}`);
-          cb.checked = p.selectedDocs.has(docId);
-          cb.addEventListener('change', () => {
-            if (cb.checked) p.selectedDocs.add(docId);
-            else p.selectedDocs.delete(docId);
-            updatePaneUI(paneId);
-          });
-          selectTd.appendChild(cb);
-        }
-        tr.appendChild(selectTd);
-      }
-
-      if (hasIdDocs) {
-        const actionsTd = document.createElement('td');
-        actionsTd.className = 'row-actions';
-        if (docId) {
-          const editBtn = createArcButton({ 'aria-label': 'Modifica documento' });
-          editBtn.className = 'edit-btn';
-          editBtn.textContent = '✎';
-          editBtn.title = 'Modifica documento (riga intera)';
-          editBtn.addEventListener('click', () => {
-            openEditDoc(doc, {
-              tabId: p.tabId,
-              db: p.db,
-              coll: p.coll,
-              onSaveSuccess: () => runPaneQuery(paneId, { auto: true }),
-            });
-          });
-          actionsTd.appendChild(controlElement(editBtn));
-
-          const delBtn = createArcButton({ variant: 'danger', 'aria-label': 'Elimina documento' });
-          delBtn.className = 'del-btn';
-          delBtn.textContent = '✕';
-          delBtn.title = 'Elimina documento';
-          delBtn.addEventListener('click', () => deletePaneDoc(paneId, doc));
-          actionsTd.appendChild(controlElement(delBtn));
-        }
-        tr.appendChild(actionsTd);
-      }
-
-      cols.forEach((col, colIdx) => {
-        const td = document.createElement('td');
-        // Coordinate per la selezione di celle stile Excel (cellselect.js): la
-        // riga e' l'indice ASSOLUTO in `p.docs`, non quello della finestra
-        // virtuale, perche' la selezione sopravvive al ridisegno.
-        td.dataset.r = idx;
-        td.dataset.c = colIdx;
-        const val = doc[col];
-        // Testo limitato, come nella griglia principale: qui si disegna, non si
-        // copia (vedi displayValueBreve in utils.js).
-        const disp = displayValueBreve(val);
-        // Un riquadro e' scrivibile alle sue condizioni: identita' della riga e
-        // permesso di selezione. Su una vista SQL non ce n'e', e la geometria
-        // si apre lo stesso — in sola lettura, invece di offrire un
-        // salvataggio che partirebbe senza bersaglio.
-        const modificabile = campoScrivibile(doc, col, p.columnMeta?.[col]) && !!docId && canSelect;
-        const geometrica = CAPACITA_RIQUADRO.geometrie
-          && rendiCellaGeometrica(td, val, aperturaCella({
-            valore: val,
-            campo: col,
-            modificabile,
-            onModifica: () => startPaneEdit(td, paneId, doc, col),
-          }));
-        if (!geometrica) {
-          const span = document.createElement('span');
-          if (disp.cls) span.className = disp.cls;
-          if (disp.dataVal !== undefined) span.dataset.val = disp.dataVal;
-          span.textContent = disp.text;
-          td.title = disp.text;
-          td.appendChild(span);
-        }
-
-        if (modificabile) {
-          td.classList.add('editable');
-          if (!geometrica) td.addEventListener('dblclick', () => startPaneEdit(td, paneId, doc, col));
-        }
-        const relazione = CAPACITA_RIQUADRO.chiaviEsterne && relazioni && relazioni.get(col);
-        if (relazione) {
-          td.classList.add('fk-cella');
-          if (relazione.origine !== VINCOLO) td.classList.add('fk-ipotesi');
-          td.title = `${disp.text}\nCollegata a ${relazione.tabella}.${relazione.colonna}`;
-        }
-        segnalaBozza(td, doc, col, p);
-        tr.appendChild(td);
-      });
-
-      return tr;
-    };
-
-    // Colonne dello spaziatore: numero di riga + eventuale casella + eventuali
-    // azioni + le colonne dei dati.
-    const colonneTotali = 1 + (canSelect && hasIdDocs ? 1 : 0) + (hasIdDocs ? 1 : 0) + cols.length;
-    const virtualizza = vaVirtualizzata(p.docs.length, CAPACITA_RIQUADRO);
-
-    /*
-     * Il ridisegno della SOLA finestra visibile.
-     *
-     * Lo scorrimento passava da `updatePaneUI`, cioè rifaceva tutto il riquadro
-     * a ogni fotogramma: intestazione ricostruita con i suoi ascoltatori, e
-     * `p.docs` riscorso quattro volte — le colonne dichiarate
-     * (`colonneRisultato`), quali righe hanno un `_id`, l'insieme degli id
-     * visibili, e di nuovo quelle con `_id` per la casella «seleziona tutti» —
-     * per riscrivere le venti righe che si vedono. Su una pagina di mille righe
-     * è lavoro proporzionale ai DATI dentro un ciclo che dipende dai PIXEL
-     * scorsi: è la ragione per cui scorrere una tabella scattava.
-     *
-     * Niente di tutto questo cambia scorrendo: le colonne, l'intestazione e la
-     * selezione sono gli stessi. Cambia solo quali righe stanno in DOM, che è
-     * appunto ciò che fa `disegnaCorpo`.
-     */
-    let ultimoInizio = -1, ultimaFine = -1, ultimaAltezza = altezzaRigaGriglia(contenitore);
-    const ridisegnaFinestra = (pos) => {
-      const altezza = altezzaRigaGriglia(contenitore);
-      if (tbody.querySelector('td.editing')) {
-        for (const spacer of tbody.querySelectorAll('.v-spacer td')) {
-          spacer.style.height = `${parseFloat(spacer.style.height) * altezza / ultimaAltezza}px`;
-        }
-        ultimaAltezza = altezza;
-        return;
-      }
-      // Svuotare il `tbody` accorcia per un istante la tabella e Chromium
-      // riporta lo scroll a zero: la posizione si legge prima e si rimette
-      // dopo. Alla prima chiamata arriva da fuori, perché `updatePaneUI` ha
-      // già svuotato `thead` e `tbody` più sopra.
-      const top = pos ? pos.top : (contenitore ? contenitore.scrollTop : 0);
-      const left = pos ? pos.left : (contenitore ? contenitore.scrollLeft : 0);
-      const finestra = virtualizza
-        ? finestraVirtuale({
-          scrollTop: top,
-          altezzaViewport: (contenitore && contenitore.clientHeight) || 400,
-          altezzaRiga: altezzaRigaGriglia(contenitore),
-          righeTotali: p.docs.length,
-          overscan: OVERSCAN_RIQUADRO,
-        })
-        : null;
-      // Scorrere dentro l'overscan non cambia le righe da disegnare: rifarle
-      // sarebbe ricostruire lo stesso DOM. `pos` è la chiamata di
-      // `updatePaneUI`, che ridisegna sempre perché lì i dati possono essere
-      // cambiati.
-      if (!pos && finestra && finestra.inizio === ultimoInizio && finestra.fine === ultimaFine && altezza === ultimaAltezza) return;
-      ultimoInizio = finestra ? finestra.inizio : -1;
-      ultimaFine = finestra?.fine ?? -1;
-      ultimaAltezza = altezza;
-
-      disegnaCorpo({
-        tbody,
-        righe: p.docs,
-        disegnaRiga: disegnaRigaRiquadro,
-        finestra,
-        colonneTotali,
-        conservaRighe: !pos,
-      });
-
-      if (contenitore) {
-        contenitore.scrollTop = top;
-        contenitore.scrollLeft = left;
-      }
-
-      // La selezione di celle si aggancia una volta sola per riquadro (`tbody`
-      // e `thead` sono stabili), ma le CLASSI vanno riapplicate a ogni disegno:
-      // la finestra virtuale ricostruisce le righe, e senza questo la selezione
-      // sparirebbe da sotto il dito mentre la griglia scorre.
-      if (CAPACITA_RIQUADRO.selezioneCelle) {
-        // Il confronto è sul `tbody` e non su «esiste già»: `renderSplitView`
-        // ricostruisce il DOM dei riquadri, e un'istanza agganciata al `tbody`
-        // di prima resterebbe viva puntando a un elemento staccato — cioè una
-        // selezione che non risponde più e che nulla segnala.
-        if (!p.selezioneCelle || p.selezioneCelle.aggancio.tbody !== tbody) {
-          p.selezioneCelle = creaSelezioneCelle(aggancioRiquadro(paneId, paneEl, p));
-        }
-        p.selezioneCelle.applica();
-      }
-    };
-
-    // La chiusura è nuova a ogni `updatePaneUI` e chiude sopra le righe, le
-    // colonne e le relazioni di ADESSO: viene riposta sul riquadro, che è
-    // stabile, così l'ascoltatore dello scorrimento — agganciato una volta
-    // sola — trova sempre l'ultima.
-    p.ridisegnaFinestra = ridisegnaFinestra;
-    p.gridResize?.disconnect();
-    if (virtualizza && contenitore) {
-      p.gridResize = new ResizeObserver(() => p.ridisegnaFinestra?.());
-      p.gridResize.observe(contenitore);
-    }
-    ridisegnaFinestra(posizioneScroll);
-
-    // Lo scorrimento ridisegna la finestra. Si aggancia una volta sola per
-    // riquadro: `updatePaneUI` viene richiamata a ogni pagina e a ogni
-    // modifica, e un secondo ascoltatore raddoppierebbe il lavoro a ogni giro.
-    if (virtualizza && contenitore && !contenitore.dataset.vscroll) {
-      contenitore.dataset.vscroll = '1';
-      let raf = 0;
-      contenitore.addEventListener('scroll', () => {
-        cancelAnimationFrame(raf);
-        raf = requestAnimationFrame(() => {
-          const attuale = paneById(paneId);
-          if (attuale && attuale.ridisegnaFinestra) attuale.ridisegnaFinestra();
-          else updatePaneUI(paneId);
-        });
-      });
-    }
-  }
-
-  const pageInfo = paneEl.querySelector('.pane-page-info');
-  const resultInfo = paneEl.querySelector('.pane-result-info');
-  const prevBtn = paneEl.querySelector('.pane-prev-btn');
-  const nextBtn = paneEl.querySelector('.pane-next-btn');
-
-  const bulkDelBtn = paneEl.querySelector('.pane-bulk-delete-btn');
-  if (bulkDelBtn) {
-    const selCount = p.selectedDocs ? p.selectedDocs.size : 0;
-    bulkDelBtn.classList.toggle('hidden', selCount === 0);
-    bulkDelBtn.innerHTML = `${ICO('trash-2')} Elimina (${selCount})`;
-    refreshLucideIcons(bulkDelBtn);
-  }
-
-  const currPage = Math.floor(p.skip / p.limit) + 1;
-  const totalPages = Math.ceil(p.total / p.limit) || 1;
-
-  if (pageInfo) pageInfo.textContent = `${currPage} / ${totalPages}`;
-  if (resultInfo) {
-    const parolaRighe = isSql
-      ? (p.total === 1 ? 'riga' : 'righe')
-      : (p.total === 1 ? 'documento' : 'documenti');
-    resultInfo.textContent = `${p.total} ${parolaRighe}`;
-  }
-  if (prevBtn) prevBtn.disabled = p.skip <= 0;
-  if (nextBtn) nextBtn.disabled = p.skip + p.limit >= p.total;
 }
 
 /**
@@ -2432,8 +1682,10 @@ function comparePaneSchemas() {
   const p1 = panes[0];
   const p2 = panes[1];
 
-  const cols1 = colonneRisultato(p1.columns, p1.docs);
-  const cols2 = colonneRisultato(p2.columns, p2.docs);
+  const d1 = p1.runtime?.dataSnapshot() || p1;
+  const d2 = p2.runtime?.dataSnapshot() || p2;
+  const cols1 = colonneRisultato(d1.columns, d1.docs);
+  const cols2 = colonneRisultato(d2.columns, d2.docs);
 
   const set1 = new Set(cols1);
   const set2 = new Set(cols2);

@@ -147,8 +147,7 @@ async function infoColonne(dialetto, strategia, db, coll) {
   const rows = await eseguiTentativi(dialetto, strategia, d.tentativi(db, coll));
   const visibile = d.visibile || (() => true);
   const classi = d.classi || [];
-  const info = {
-    columns: rows.filter(visibile).map((r) => ({
+  const tutte = rows.map((r) => ({
       name: r.name,
       type: r.type,
       declaredType: r.declaredType || r.type,
@@ -163,13 +162,14 @@ async function infoColonne(dialetto, strategia, db, coll) {
       // quali colonne si possono SCRIVERE non costa una lettura di catalogo in
       // piu' — e questa lettura e' in cache, mentre l'elenco dei campi no.
       generated: d.generato ? !!d.generato(r) : false,
-    })),
-  };
+    }));
+  const info = { columns: tutte.filter((_c, i) => visibile(rows[i])) };
   // Le classi sono dichiarate dal dialetto e valutate NELL'ORDINE dichiarato:
   // su PostgreSQL un tipo geometrico nativo (point, polygon) non è una
   // geometria PostGIS, e la prima classe che riconosce il tipo se lo prende.
   for (const classe of classi) info[classe.nome] = new Map();
-  for (const c of info.columns) {
+  // Anche una colonna INVISIBLE può essere nominata esplicitamente in INSERT.
+  for (const c of tutte) {
     for (const classe of classi) {
       if (classe.riconosce(c.type)) { info[classe.nome].set(c.name, c); break; }
     }
@@ -208,6 +208,7 @@ async function elencoCampi(dialetto, strategia, db, table) {
     autoIncrement: d.autoIncrement(c),
     generated: d.generato(c),
     key: d.chiave(c, pkSet),
+    ...(d.dettagli ? d.dettagli(c) : {}),
   }));
 }
 

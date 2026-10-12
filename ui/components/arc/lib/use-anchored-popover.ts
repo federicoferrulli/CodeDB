@@ -57,20 +57,25 @@ export function useAnchoredPopover(open: boolean, anchor: RefObject<HTMLElement 
 // I menu della cella lasciano libera la fascia di Applica/Annulla su entrambi i lati.
 export function useInlineEditOffset(open: boolean, anchor: RefObject<HTMLElement | null>) {
   const [gap, setGap] = useState(4);
-  const [bottomPadding, setBottomPadding] = useState(12);
+  const [collisionPadding, setCollisionPadding] = useState({ top: 12, left: 12, right: 12, bottom: 12 });
   useLayoutEffect(() => {
     if (!open) return;
     const trigger = anchor.current, cell = trigger?.closest('td.editing');
     const actions = cell?.querySelector<HTMLElement>('.inline-edit-actions');
-    if (!trigger || !cell || !actions) { setGap(4); setBottomPadding(12); return; }
+    if (!trigger) return;
     const update = () => {
-      const field = trigger.getBoundingClientRect(), box = cell.getBoundingClientRect();
-      setGap(Math.ceil(actions.offsetHeight + Math.max(box.bottom - field.bottom, field.top - box.top, 0) + 8));
-      setBottomPadding(Math.max(12, window.innerHeight - editorBottom(trigger, limitiViewport().bottom) + 8));
+      const bounds = limitiViewport();
+      if (cell && actions) {
+        const field = trigger.getBoundingClientRect(), box = cell.getBoundingClientRect();
+        setGap(Math.ceil(actions.offsetHeight + Math.max(box.bottom - field.bottom, field.top - box.top, 0) + 8));
+      } else setGap(4);
+      setCollisionPadding({ top: Math.max(12, bounds.top + 8), left: Math.max(12, bounds.left + 8),
+        right: Math.max(12, window.innerWidth - bounds.right + 8),
+        bottom: Math.max(12, window.innerHeight - editorBottom(trigger, bounds.bottom) + 8) });
     };
     update();
     const observer = new ResizeObserver(update);
-    [trigger, cell, actions].forEach(element => observer.observe(element));
+    [trigger, cell, actions].forEach(element => { if (element) observer.observe(element); });
     window.addEventListener('resize', update);
     window.visualViewport?.addEventListener('resize', update);
     window.visualViewport?.addEventListener('scroll', update);
@@ -80,5 +85,5 @@ export function useInlineEditOffset(open: boolean, anchor: RefObject<HTMLElement
       window.visualViewport?.removeEventListener('scroll', update);
     };
   }, [open, anchor]);
-  return { gap, bottomPadding };
+  return { gap, collisionPadding };
 }

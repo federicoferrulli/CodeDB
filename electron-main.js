@@ -268,6 +268,22 @@ function createWindow() {
     }
   });
 
+  const contents = mainWindow.webContents;
+  // Stesso passo dei comandi nativi del menu, anche con tastiere italiane e tastierino.
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.alt || (!input.control && !input.meta)) return;
+    let passo;
+    if (['+', '=', 'Add'].includes(input.key) || input.code === 'NumpadAdd') passo = 0.5;
+    else if (['-', '_', 'Subtract'].includes(input.key) || input.code === 'NumpadSubtract') passo = -0.5;
+    else if (input.key === '0') passo = 0;
+    else return;
+    event.preventDefault(); // Evita che anche l'acceleratore del menu esegua lo stesso comando.
+    contents.zoomLevel = passo ? contents.zoomLevel + passo : 0;
+  });
+  contents.on('zoom-changed', (_event, direzione) => {
+    contents.zoomLevel += direzione === 'in' ? 0.5 : -0.5;
+  });
+
   mainWindow.loadURL(`http://${HOST}:${PORT}`);
 
   // Evita il lampo bianco mostrando la finestra solo a caricamento avvenuto.

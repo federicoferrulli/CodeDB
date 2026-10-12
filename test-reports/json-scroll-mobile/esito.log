@@ -1,0 +1,10 @@
+[]
+AssertionError [ERR_ASSERTION]: Elenco 10, salto: {"requested":225,"actual":0,"height":484}
+    at C:\repository\CodeDB\test\e2e-json-scroll-mobile.js:82:30 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

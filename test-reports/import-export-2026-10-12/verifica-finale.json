@@ -1,0 +1,70 @@
+{
+  "data": "2026-10-12",
+  "motori": {
+    "postgis": "3.4.3",
+    "mongodb": "8.0.29",
+    "postgresql": "16.4",
+    "mysql": "8.4.11"
+  },
+  "unit": "PASS",
+  "tipi": {
+    "annidati": "Domini, array, compositi e overload",
+    "bson": "Tutti i tag, confronto byte, documento vicino a 16 MiB, GridFS",
+    "postgresql": 103,
+    "largeObjects": "JSON, SQL, pg_dump, backup, incrementale, selettivo e pulizia dopo errore",
+    "mysql": 50
+  },
+  "regressioni": [
+    "formati esterni",
+    "integrità e recupero",
+    "1601 righe per tabella con PK numerica/binaria e senza PK",
+    "snapshot MongoDB replica set"
+  ],
+  "mutantiRilevati": [
+    "precisione SQL",
+    "ENUM zero",
+    "BSON",
+    "byte Large Object",
+    "snapshot",
+    "cancellazioni incrementali",
+    "overload annidati",
+    "warning conversioni",
+    "pagina troncata prima della pubblicazione del backup"
+  ],
+  "volume": [
+    {
+      "motore": "mysql",
+      "righe": 100000,
+      "roundtripMs": 13428,
+      "hashIdentico": true
+    },
+    {
+      "motore": "postgresql",
+      "righe": 100000,
+      "roundtripMs": 7895,
+      "hashIdentico": true
+    },
+    {
+      "motore": "mongodb",
+      "righe": 100000,
+      "roundtripMs": 19790,
+      "hashIdentico": true
+    }
+  ],
+  "largeObjectVolume": {
+    "bytes": 134217728,
+    "elapsedMs": 8481,
+    "rssBaseline": 78114816,
+    "rssPeak": 142983168,
+    "rssIncrement": 64868352,
+    "sha256Identico": true
+  },
+  "nonVerificati": [
+    "UI/browser",
+    "MongoDB sharded reale",
+    "MySQL non transazionale",
+    "tutte le versioni e le estensioni",
+    "multi-TB",
+    "variante autenticata MongoDB drop negato"
+  ]
+}

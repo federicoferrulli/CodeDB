@@ -1,74 +1,56 @@
-# Benchmark di export e import — dataset e ambiente
+# Misure di import/export — 12 ottobre 2026
 
-Deliverable della **Fase 0** di `piano-export-import-database.md` (§12, «Benchmark
-riproducibile»). Fissa *che cosa* si misura e *su cosa*, perché i numeri delle fasi
-successive siano confrontabili fra loro. Non contiene misure: in questo ambiente non c'è
-alcun motore di database, quindi non è stata eseguita nessuna prova prestazionale.
+Misure locali riproducibili, non una garanzia di throughput in produzione. Node **26.2.0**, Windows, Intel Core Ultra 7 155H (16 core, 22 processori logici), motori in Docker raggiunti su loopback: MySQL 8.4.11, PostgreSQL 16.4/PostGIS 3.4.3, MongoDB 8.0.29. Cache non svuotata; altre attività di test erano presenti. RAM totale, modello del disco, limiti delle risorse Docker e RTT non sono stati misurati.
 
-## Ambiente dichiarato
+## Roundtrip completo
 
-Ogni esecuzione registra, e nessun numero vale senza:
+`test/e2e-import-volume.js`, `EXPORT_VOLUME_ROWS=100000`. Ogni record contiene un identificatore oltre 2^53, un decimale esatto rappresentato in modo appropriato al motore e testo Unicode. Il tempo comprende export HTTP, ticket, upload, piano, staging, import e verifica applicativa. Dopo la misura il test confronta anche cardinalità e SHA-256 di **ogni valore** sorgente/destinazione; il tempo di questo hash aggiuntivo non è incluso.
 
-* CPU (modello, core fisici), RAM, tipo di disco (NVMe/SATA/rete) e filesystem;
-* versione di Node, versione del motore e sua configurazione rilevante
-  (`innodb_buffer_pool_size`, `shared_buffers`, `wiredTiger.engineConfig.cacheSizeGB`);
-* se il motore è locale o remoto; banda e RTT misurati, non nominali;
-* cache **fredda** o **calda**, dichiarata — non dedotta dalla posizione nella sequenza;
-* se i tre motori girano in container, i limiti di CPU e memoria del container.
+| Motore | Record | Primo passaggio | Passaggio finale | Hash identico |
+|---|---:|---:|---:|---|
+| MySQL | 100.000 | 16,058 s | **13,428 s** | sì |
+| PostgreSQL | 100.000 | 10,393 s | **7,895 s** | sì |
+| MongoDB | 100.000 | 17,624 s | **19,790 s** | sì |
 
-Tre esecuzioni per caso, riportate con mediana e scarto. Percentili solo con un numero di
-campioni che li giustifichi.
+Sono due osservazioni, non percentili o un confronto controllato prima/dopo. Non dimostrano che un motore sia intrinsecamente più veloce degli altri. Report finale: `test-reports/import-export-2026-10-12/volume.json`; log: `volume-final.log`.
 
-## I cinque profili di dataset
+## Large Object PostgreSQL
 
-Le dimensioni sono del **volume logico**, prima della compressione. Ogni profilo esiste
-nelle tre taglie 1 GB, 10 GB e 100 GB; la prova di durata su 1 TB si esegue solo dove c'è
-lo spazio, e usa il profilo `misto`.
+`node --expose-gc test/e2e-lo-volume.js`: binario poco comprimibile da **128 MiB**, backup, restore e verifica integrale SHA-256.
 
-| Profilo | Forma | Che cosa mette sotto stress |
-|---|---|---|
-| `molte-piccole` | 2.000 tabelle/collection da poche migliaia di righe | Costo per **oggetto**: catalogo, DDL, apertura file, voci di manifest. È il profilo in cui l'overhead di orchestrazione si vede, e il throughput dei byte non conta |
-| `una-enorme` | Una sola tabella con l'intero volume, PK intera | Throughput puro e paginazione keyset. È il profilo di riferimento per il confronto con il tool nativo |
-| `senza-chiave` | Come `una-enorme` ma **senza** PK né UNIQUE `NOT NULL`, con righe duplicate identiche | Il percorso `OFFSET` su PostgreSQL e la verifica dei dati senza chiave stabile (ordinamento esterno, molteplicità preservata) |
-| `binario` | 60% del volume in BLOB/`bytea` **poco comprimibili** (byte casuali), documenti grandi su MongoDB | Compressione che non guadagna nulla, memoria per record singolo, tetto del record |
-| `misto` | Un quarto di ciascuno dei precedenti, più geometrie, indici costosi (compositi, parziali, GIN/fulltext), view, routine e trigger | Il caso realistico, e l'unico su cui si misura la durata a 1 TB |
+| Misura | Risultato |
+|---|---:|
+| Tempo | **8,481 s** |
+| RSS iniziale del processo Node | 74,5 MiB |
+| Picco RSS osservato | 136,4 MiB |
+| Incremento RSS osservato | **61,9 MiB** |
+| SHA-256 | identico |
 
-Ogni profilo esiste nelle tre varianti di motore (MySQL, PostgreSQL, MongoDB) con lo
-stesso **volume logico**, non con lo stesso numero di righe: confrontare i tre motori a
-parità di righe confronterebbe la larghezza delle righe, non i motori.
+Il contenuto viaggia in blocchi da 1 MiB: la prova non carica tutto il binario in memoria. La RSS riguarda il processo Node del test, non Docker, il browser o tutta la macchina; il campionamento può non vedere picchi molto brevi. Report: `large-object-volume.json`.
 
-Il contenuto dei dati è generato da un seme dichiarato, così due esecuzioni sullo stesso
-profilo contengono gli stessi byte.
+## Altre prove di volume e coerenza
 
-## Che cosa si misura, separato
+- Documento MongoDB vicino al limite BSON di 16 MiB, con confronto dei byte, più GridFS.
+- 1.601 righe per tabella, chiavi numeriche/binarie e righe duplicate senza chiave: export paginato e backup completo verificati su entrambi i motori SQL.
+- Aggiornamenti concorrenti durante lettura MongoDB in replica set: tutti i documenti appartengono allo stesso snapshot.
+- Incrementali con chiavi binarie/ENUM: aggiornamenti, cancellazioni e valori Unicode conservati.
 
-§2 del piano distingue i tempi, e la misura deve tenerli distinti o non serve a nulla:
+## Riproduzione
 
-1. **accettazione** del lavoro (ack della richiesta), che non include catalogo e snapshot;
-2. **estrazione**: byte letti dalla sorgente, righe lette, tempo, e impatto sulla latenza
-   della sorgente misurato con un carico concorrente;
-3. **serializzazione e compressione**, separate dall'I/O di rete;
-4. **scrittura dell'artefatto** e calcolo delle impronte;
-5. **trasferimento** (download o upload), confrontato con lo stesso server che serve
-   staticamente lo stesso file nelle stesse condizioni;
-6. **caricamento** nella destinazione, **costruzione degli indici** e **verifica**, come
-   tre voci distinte — un benchmark senza indici e senza verifica non si confronta con un
-   ripristino che li esegue.
+Usare soltanto server di test vuoti. Indicare esplicitamente `EXPORT_MYSQL_PORT`, `EXPORT_PG_PORT`, `EXPORT_MONGO_PORT`; per il test snapshot anche `EXPORT_MONGO_RS_PORT`. Eseguire i test che usano l'harness HTTP **in sequenza**, perché condividono la porta 3159.
 
-Si registrano anche i processi figli, i byte letti e scritti in più rispetto al volume
-logico, e lo spazio occupato da staging e copia di recupero.
+```powershell
+$env:EXPORT_VOLUME_ROWS='100000'
+node test/e2e-import-volume.js
+node --expose-gc test/e2e-lo-volume.js
+node test/e2e-tipi-pagine.js
+node test/e2e-mongo-snapshot-types.js
+```
 
-## Memoria
+Per il test LO servono privilegi di creazione/lettura dei Large Object. I test generano nomi casuali e rimuovono i propri dati.
 
-I budget di §7 (RSS del server ≤256 MiB per lavoro incorporato, renderer ≤64 MiB) si
-misurano come **incremento** rispetto al processo a riposo, campionato durante il lavoro e
-non alla fine. Il criterio che conta non è il valore assoluto ma la **forma**: passando da
-10 GB a 100 GB l'incremento non deve crescere. Un budget rispettato a 1 GB e lineare non è
-un budget rispettato.
+## Limiti prestazionali attuali
 
-## Che cosa manca
+Il backup è a blocchi; il piano d'importazione dall'app mantiene invece i documenti validati in memoria e ha un limite configurabile di 64 MiB per file. Aumentarlo non rende automaticamente l'import adatto a file multi-GB. Non sono stati provati dataset da 1/10/100 GB o TB, migliaia di tabelle, reti remote, carico concorrente di produzione o confronti prestazionali con pg_restore/mongorestore/mysql.
 
-Il generatore dei dataset non è scritto. Scriverlo ora significherebbe consegnare un
-programma che non è mai stato eseguito contro un motore vero — in questo ambiente non ce
-n'è nessuno, e il demone Docker non è attivo. Va scritto insieme alla prima misura, che è
-l'unica cosa che può dimostrare che genera davvero ciò che questo documento dichiara.
+Per valutare quei carichi servono profili e risorse dichiarati, almeno tre ripetizioni, cache controllata, RSS aggregata e tempi separati di lettura, trasferimento, scrittura e verifica. Le misure sopra non vanno estrapolate linearmente.

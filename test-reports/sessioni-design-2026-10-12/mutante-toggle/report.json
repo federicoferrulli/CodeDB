@@ -1,0 +1,8 @@
+{
+  "checks": [],
+  "layouts": [],
+  "frames": [],
+  "errors": [],
+  "environment": "Chromium, sessioni e terminazioni sintetiche",
+  "failure": "AssertionError [ERR_ASSERTION]: Mostra include CodeDB e servizi inattivi anche con Solo attive\n\n2 !== 4\n\n    at C:\\repository\\CodeDB\\test\\e2e-sessioni-design.js:75:12"
+}

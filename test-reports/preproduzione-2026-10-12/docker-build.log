@@ -1,0 +1,128 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.85kB 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node:24-alpine
+#2 DONE 6.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 374B done
+#3 DONE 0.0s
+
+#4 [1/6] FROM docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 resolve docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 0.0s done
+#4 sha256:7ce7dcbafb7f750cf0c6be3c30e34372b06dd1182fa67f6ae30782c8150c5444 0B / 444B 0.2s
+#4 sha256:7ce7dcbafb7f750cf0c6be3c30e34372b06dd1182fa67f6ae30782c8150c5444 444B / 444B 0.3s done
+#4 sha256:02f40d53b06f6b91fec0cd6a6719656da99270bff8ee54ed8dcdf4c157763fc1 0B / 1.26MB 0.3s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 0B / 56.52MB 0.2s
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 0B / 3.85MB 0.2s
+#4 sha256:02f40d53b06f6b91fec0cd6a6719656da99270bff8ee54ed8dcdf4c157763fc1 1.26MB / 1.26MB 0.8s done
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 1.05MB / 3.85MB 1.2s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 3.15MB / 56.52MB 1.4s
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 2.10MB / 3.85MB 1.4s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 7.34MB / 56.52MB 1.7s
+#4 sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 3.85MB / 3.85MB 1.7s done
+#4 extracting sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5
+#4 extracting sha256:e2de96513ba9eb53b431787ec8a65cdde380ac4772a3e4c4b714dcfde2a102b5 0.2s done
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 10.49MB / 56.52MB 2.0s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 13.63MB / 56.52MB 2.3s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 17.83MB / 56.52MB 2.6s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 20.97MB / 56.52MB 2.9s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 25.17MB / 56.52MB 3.2s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 28.31MB / 56.52MB 3.3s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 32.51MB / 56.52MB 3.6s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 36.70MB / 56.52MB 3.9s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 39.85MB / 56.52MB 4.1s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 42.99MB / 56.52MB 4.4s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 46.14MB / 56.52MB 4.5s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 53.48MB / 56.52MB 5.0s
+#4 sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 56.52MB / 56.52MB 5.2s done
+#4 extracting sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0
+#4 extracting sha256:3c504d5a797be28f9de43147d49cd8ecb2eea46dfaf7beb8715db695d5f0a7f0 2.5s done
+#4 DONE 7.9s
+
+#5 [internal] load build context
+#5 transferring context: 135.54MB 7.8s
+#5 ...
+
+#4 [1/6] FROM docker.io/library/node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+#4 extracting sha256:02f40d53b06f6b91fec0cd6a6719656da99270bff8ee54ed8dcdf4c157763fc1
+#4 extracting sha256:02f40d53b06f6b91fec0cd6a6719656da99270bff8ee54ed8dcdf4c157763fc1 0.2s done
+#4 extracting sha256:7ce7dcbafb7f750cf0c6be3c30e34372b06dd1182fa67f6ae30782c8150c5444 0.1s done
+#4 DONE 8.1s
+
+#5 [internal] load build context
+#5 ...
+
+#6 [2/6] WORKDIR /app
+#6 DONE 0.5s
+
+#5 [internal] load build context
+#5 transferring context: 179.65MB 12.8s
+#5 transferring context: 231.26MB 17.9s
+#5 transferring context: 296.69MB 23.0s
+#5 transferring context: 356.09MB 28.0s
+#5 transferring context: 418.24MB 33.1s
+#5 transferring context: 480.59MB 38.3s
+#5 transferring context: 542.93MB 43.3s
+#5 transferring context: 602.27MB 48.4s
+#5 transferring context: 669.90MB 53.5s
+#5 transferring context: 741.85MB 58.5s
+#5 transferring context: 827.82MB 63.6s
+#5 transferring context: 921.38MB 68.7s
+#5 transferring context: 991.58MB 73.8s
+#5 transferring context: 1.05GB 78.9s
+#5 transferring context: 1.12GB 84.0s
+#5 transferring context: 1.19GB 89.0s
+#5 transferring context: 1.27GB 94.1s
+#5 transferring context: 1.33GB 99.3s
+#5 transferring context: 1.40GB 104.3s
+#5 transferring context: 1.47GB 109.4s
+#5 transferring context: 1.55GB 114.5s
+#5 transferring context: 1.63GB 119.5s
+#5 transferring context: 1.70GB 124.6s
+#5 transferring context: 1.77GB 129.8s
+#5 transferring context: 1.83GB 134.8s
+#5 transferring context: 1.89GB 139.9s
+#5 transferring context: 1.96GB 145.1s
+#5 transferring context: 2.03GB 150.2s
+#5 transferring context: 2.13GB 155.2s
+#5 transferring context: 2.24GB 160.3s
+#5 transferring context: 2.35GB 165.3s
+#5 transferring context: 2.46GB 170.3s
+#5 transferring context: 2.58GB 175.4s
+#5 transferring context: 2.69GB 180.4s
+#5 transferring context: 2.80GB 185.5s
+#5 transferring context: 2.91GB 190.6s
+#5 transferring context: 3.01GB 195.7s
+#5 transferring context: 3.09GB 200.8s
+#5 transferring context: 3.18GB 205.8s
+#5 transferring context: 3.26GB 210.9s
+#5 transferring context: 3.34GB 215.9s
+#5 transferring context: 3.42GB 221.0s
+#5 transferring context: 3.51GB 226.1s
+#5 transferring context: 3.59GB 231.1s
+#5 transferring context: 3.67GB 236.2s
+#5 transferring context: 3.76GB 241.2s
+#5 transferring context: 3.88GB 246.3s
+#5 transferring context: 3.99GB 251.3s
+#5 transferring context: 4.10GB 256.3s
+#5 transferring context: 4.21GB 261.4s
+#5 transferring context: 4.30GB 266.4s
+#5 transferring context: 4.41GB 271.5s
+#5 transferring context: 4.49GB 276.6s
+#5 transferring context: 4.55GB 281.7s
+#5 transferring context: 4.63GB 286.7s
+#5 transferring context: 4.71GB 291.8s
+#5 transferring context: 4.83GB 296.8s
+#5 transferring context: 4.94GB 301.9s
+#5 transferring context: 5.06GB 306.9s
+#5 transferring context: 5.18GB 311.9s
+#5 transferring context: 5.30GB 317.0s
+#5 transferring context: 5.41GB 322.0s
+#5 transferring context: 5.53GB 327.1s
+#5 transferring context: 5.65GB 332.1s
+#5 transferring context: 5.76GB 337.2s
+#5 transferring context: 5.87GB 342.2s

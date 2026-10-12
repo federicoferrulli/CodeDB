@@ -1,6 +1,8 @@
 'use strict';
 
-const EJSON = require('bson').EJSON;
+const DbStrategy = require('./DbStrategy');
+const { isWriteSql, isWriteMongoPipeline } = require('../auth/capabilities');
+const { splitStatementsDetailed } = require('./sqlText');
 // La quotatura degli identificatori è una regola sola per tutto il repo: vedi
 // db/identificatori.js.
 const { quotaSempre } = require('./identificatori');
@@ -21,6 +23,7 @@ function keyToString(val) {
       const d = val.$date;
       return String(d && typeof d === 'object' && d.$numberLong ? d.$numberLong : d);
     }
+    return JSON.stringify(val);
   }
   return String(val);
 }
@@ -65,16 +68,33 @@ class VirtualJoinEngine {
 
     // Fetching dati Sorgente A (SQL o MongoDB)
     let rowsA = [];
-    const typeA = sourceA.dbType || strategyA.type;
+    const typeA = strategyA.type;
+    const typeB = strategyB.type;
+    for (const [source, type] of [[sourceA, typeA], [sourceB, typeB]]) {
+      if (source.dbType && source.dbType !== type && !(source.dbType === 'postgres' && type === 'postgresql')) {
+        throw new Error('Il tipo della sorgente Virtual JOIN non corrisponde alla connessione selezionata.');
+      }
+      if (source.query && (isSql(type)
+        ? splitStatementsDetailed(String(source.query)).length !== 1 || isWriteSql(source.query)
+        : isWriteMongoPipeline(typeof source.query === 'string' ? JSON.parse(source.query) : source.query))) {
+        throw new Error('Le sorgenti di un Virtual JOIN devono essere query di sola lettura.');
+      }
+    }
+    const leggi = async (strategy, source, pipeline, params) => {
+      const res = await strategy.collectionAggregate(source.db, source.table || source.collection,
+        { pipeline, params, maxRows: maxPayloadSize + 1, readOnly: true });
+      if (res.truncated || res.docs?.length > maxPayloadSize) {
+        throw new Error(`Virtual JOIN incompleto: una sorgente supera il budget di ${maxPayloadSize} righe o di byte. Restringi le sorgenti o aumenta il budget.`);
+      }
+      return res.docs || [];
+    };
     if (isSql(typeA)) {
       const tableName = sourceA.table || sourceA.collection;
-      const sql = sourceA.query || `SELECT * FROM ${qid(typeA, tableName)} LIMIT ${maxPayloadSize}`;
-      const resA = await strategyA.collectionAggregate(sourceA.db, tableName, { pipeline: sql });
-      rowsA = resA.docs || [];
+      const sql = sourceA.query || `SELECT * FROM ${qid(typeA, tableName)} LIMIT ${maxPayloadSize + 1}`;
+      rowsA = await leggi(strategyA, sourceA, sql);
     } else {
       const pipelineStr = typeof sourceA.query === 'string' ? sourceA.query : JSON.stringify(sourceA.query || []);
-      const resA = await strategyA.collectionAggregate(sourceA.db, sourceA.collection, { pipeline: pipelineStr });
-      rowsA = resA.docs || [];
+      rowsA = await leggi(strategyA, sourceA, pipelineStr);
     }
 
     if (!rowsA.length) return [];
@@ -92,54 +112,62 @@ class VirtualJoinEngine {
       if (key !== null && !joinKeys.has(key)) joinKeys.set(key, raw);
     });
 
-    if (joinKeys.size === 0) return rowsA;
+    if (joinKeys.size === 0) return rowsA.map(row => ({ ...row, [as]: null }));
 
     // Fetching dati Sorgente B
     let rowsB = [];
     const keysArray = Array.from(joinKeys.keys());
-    const typeB = sourceB.dbType || strategyB.type;
 
     if (!isSql(typeB)) {
       // Per MongoDB: pipeline $match $in. Usa il valore originale (già tipizzato
       // in forma EJSON); per le stringhe di 24 esadecimali applica l'euristica
       // hex→ObjectId, utile ai JOIN cross-tipo (stringa su un lato, ObjectId
       // sull'altro).
-      const oidsOrKeys = keysArray.map((k) => {
+      const oidsOrKeys = keysArray.flatMap((k) => {
         const raw = joinKeys.get(k);
-        if (typeof raw === 'string' && /^[0-9a-fA-F]{24}$/.test(raw)) return { $oid: raw };
-        return raw;
+        if (typeof raw === 'string' && /^[0-9a-fA-F]{24}$/.test(raw)) return [raw, { $oid: raw }];
+        return [raw];
       });
       const matchPipeline = [
+        ...(typeof sourceB.query === 'string' ? JSON.parse(sourceB.query) : sourceB.query || []),
         { $match: { [on.rightKey]: { $in: oidsOrKeys } } },
-        { $limit: maxPayloadSize }
+        { $limit: maxPayloadSize + 1 }
       ];
-      const resB = await strategyB.collectionAggregate(sourceB.db, sourceB.collection, { pipeline: JSON.stringify(matchPipeline) });
-      rowsB = resB.docs || [];
+      rowsB = await leggi(strategyB, sourceB, JSON.stringify(matchPipeline));
     } else {
       // Per SQL (MySQL / PostgreSQL): WHERE rightKey IN (...)
       const tableName = sourceB.table || sourceB.collection;
-      const escapedKeys = keysArray.map((k) => `'${String(k).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`).join(',');
-      const sql = `SELECT * FROM ${qid(typeB, tableName)} WHERE ${qid(typeB, on.rightKey)} IN (${escapedKeys}) LIMIT ${maxPayloadSize}`;
-      const resB = await strategyB.collectionAggregate(sourceB.db, tableName, { pipeline: sql });
-      rowsB = resB.docs || [];
+      const parametri = keysArray.map((_, i) => typeB === 'mysql' ? '?' : `$${i + 1}`).join(',');
+      const from = sourceB.query ? `(${String(sourceB.query).trim().replace(/;$/, '')}) AS codedb_join` : qid(typeB, tableName);
+      const sql = `SELECT * FROM ${from} WHERE ${qid(typeB, on.rightKey)} IN (${parametri}) LIMIT ${maxPayloadSize + 1}`;
+      rowsB = await leggi(strategyB, sourceB, sql, keysArray);
     }
 
     // Indicizzazione Sorgente B in una Map in-memory per O(1) lookup
     const mapB = new Map();
     rowsB.forEach((bDoc) => {
       const bKeyStr = keyToString(bDoc[on.rightKey]);
-      if (bKeyStr !== null) mapB.set(bKeyStr, bDoc);
+      if (bKeyStr !== null) {
+        if (!mapB.has(bKeyStr)) mapB.set(bKeyStr, []);
+        mapB.get(bKeyStr).push(bDoc);
+      }
     });
 
     // Merge in memoria
-    const mergedResults = rowsA.map((aDoc) => {
+    const mergedResults = [];
+    let bytes = 2;
+    const budget = DbStrategy.maxResultBytes(strategyA.env);
+    for (const aDoc of rowsA) {
       const aKeyStr = keyToString(aDoc[on.leftKey]);
-      const matchB = (aKeyStr !== null && mapB.get(aKeyStr)) || null;
-      return {
-        ...aDoc,
-        [as]: matchB
-      };
-    });
+      for (const matchB of (aKeyStr !== null && mapB.get(aKeyStr)) || [null]) {
+        const row = { ...aDoc, [as]: matchB };
+        bytes += Buffer.byteLength(JSON.stringify(row)) + (mergedResults.length ? 1 : 0);
+        if (mergedResults.length >= maxPayloadSize || (budget > 0 && bytes > budget)) {
+          throw new Error('Virtual JOIN incompleto: il risultato supera il budget. Restringi le sorgenti o aumenta il budget.');
+        }
+        mergedResults.push(row);
+      }
+    }
 
     return mergedResults;
   }

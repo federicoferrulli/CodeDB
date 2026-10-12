@@ -42,6 +42,7 @@ module.exports = (async () => {
   );
   assert.strictEqual(mysqlQuery.length, 0, 'MySQL deve rifiutare il piano prima della prima query');
 
+  require('./mysql-session-fixture')(mysql.pool);
   const mysqlResult = await mysql.collectionImport('negozio', 'clienti', {
     docs: [
       { id: 1, nome: 'Ada' },

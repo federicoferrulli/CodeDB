@@ -1,11 +1,14 @@
 'use strict';
 
+const { prendiConnessioneSql, chiudiStrategiaSql } = require('./sqlSessione');
+
 const { assertImportOutcomeKnown } = require('./importFailure');
 
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
 const { eseguiBatchScritture, conRighe } = require('./sqlWriteBatch');
@@ -229,7 +232,11 @@ const DIALETTO_METADATI = {
                    c.is_nullable AS nullable,
                    c.column_default AS cdefault,
                    c.is_identity AS identity,
-                   c.is_generated AS generated
+                   c.identity_generation,
+                   c.is_generated AS generated,
+                   pg_catalog.format_type(COALESCE(NULLIF(ty.typbasetype, 0), ty.oid), NULL) AS base_type,
+                   (SELECT json_agg(e.enumlabel ORDER BY e.enumsortorder) FROM pg_catalog.pg_enum e
+                     WHERE e.enumtypid = COALESCE(NULLIF(ty.typbasetype, 0), ty.oid)) AS enum_values
               FROM information_schema.columns c
               JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
               JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
@@ -237,11 +244,13 @@ const DIALETTO_METADATI = {
                                             AND a.attname = c.column_name
                                             AND a.attnum > 0
                                             AND NOT a.attisdropped
+              JOIN pg_catalog.pg_type ty ON ty.oid = a.atttypid
              WHERE c.table_schema = $2 AND c.table_name = $1
           ORDER BY c.ordinal_position`,
       params: [table, schemaOf(db)],
     }),
     tipo: (c) => String(c.ctype || 'varchar'),
+    dettagli: (c) => ({ baseType: c.base_type, enumValues: c.enum_values, identityGeneration: c.identity_generation }),
     // `serial` (nextval) e `GENERATED … AS IDENTITY` sono la stessa promessa:
     // se la colonna non viene scritta, il database produce un valore nuovo.
     autoIncrement: (c) => /nextval/i.test(String(c.cdefault || '')) || String(c.identity || '') === 'YES',
@@ -420,6 +429,7 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   async disconnect() {
+    await chiudiStrategiaSql(this);
     if (this.pool) {
       const p = this.pool;
       this.pool = null;
@@ -527,7 +537,7 @@ class PostgreSqlStrategy extends DbStrategy {
     await pool.query(`DROP SCHEMA ${qid(name)} CASCADE`);
   }
 
-  async listCollections(db) {
+  async listCollections(db, { includeCounts = true } = {}) {
     const pool = this.requirePool();
     // Filtrata sullo schema richiesto: prima l'argomento veniva ignorato e sotto
     // OGNI voce della sidebar comparivano le tabelle di tutti gli schemi.
@@ -537,21 +547,31 @@ class PostgreSqlStrategy extends DbStrategy {
       // compariva più volte nella sidebar e il conteggio righe poteva arrivare
       // da un'altra tabella. Prima non si notava perché la query restituiva
       // comunque le tabelle di ogni schema.
-      `SELECT t.table_name AS name, t.table_type AS ttype, COALESCE(c.reltuples::bigint, 0) AS cnt
+      `SELECT t.table_name AS name, t.table_type AS ttype,
+              CASE WHEN s.n_live_tup > 0 THEN s.n_live_tup
+                   WHEN c.reltuples > 0 THEN c.reltuples::bigint END AS cnt
          FROM information_schema.tables t
     LEFT JOIN pg_namespace n ON n.nspname = t.table_schema
     LEFT JOIN pg_class c ON c.relname = t.table_name AND c.relnamespace = n.oid
+    LEFT JOIN pg_stat_all_tables s ON s.relid = c.oid
         WHERE t.table_schema = $1
      ORDER BY t.table_name`,
       [schemaOf(db)]
     );
-    return res.rows.map((r) => {
+    const collections = res.rows.map((r) => {
       const isView = String(r.ttype || '').toUpperCase().includes('VIEW');
       return {
         name: r.name,
         type: isView ? 'view' : 'collection',
-        count: isView ? null : Math.max(0, Number(r.cnt) || 0),
+        ...stimaConteggio(isView || !includeCounts ? null : r.cnt),
       };
+    });
+    if (!includeCounts) return collections;
+    return completaConteggi(collections, async (coll, limit, ms) => {
+      const result = await this.queryConTimeout(
+        `SELECT COUNT(*) AS n FROM (SELECT 1 FROM ${qtable(db, coll.name)} LIMIT ${limit}) AS campione`, [], ms
+      );
+      return conteggioLimitato(result.rows[0]?.n, coll.count);
     });
   }
 
@@ -845,9 +865,8 @@ class PostgreSqlStrategy extends DbStrategy {
   // lenta degrada con errore invece di tenere occupata una connessione del pool.
   // È il ramo "senza opHandle" di collectionFind estratto per riuso — qui non
   // c'è un runId da annullare, sono letture brevi avviate da un pannello.
-  async queryConTimeout(sql, params) {
+  async queryConTimeout(sql, params, ms = DbStrategy.queryTimeoutMs(this.env)) {
     const pool = this.requirePool();
-    const ms = DbStrategy.queryTimeoutMs(this.env);
     if (ms <= 0) return pool.query(sql, params);
     const client = await pool.connect();
     try {
@@ -882,7 +901,10 @@ class PostgreSqlStrategy extends DbStrategy {
     // (`DbStrategy.aggregateTimeoutMs`, env CODEDB_AGGREGATE_TIMEOUT_MS);
     // <= 0 disattiva il limite.
     const ms = DbStrategy.aggregateTimeoutMs(this.env);
-    const client = await pool.connect();
+    const lease = await prendiConnessioneSql(this, sql, () => pool.connect());
+    const client = lease.conn;
+    let eseguita = false;
+    const letturaIsolata = readOnly && !lease.transazione;
     // SQL Raw: la query la scrive l'utente, quindi puo' qualificare gli schemi
     // come vuole. I nomi NON qualificati devono pero' risolversi nello schema
     // che sta guardando, non in quello che capita dal search_path del server.
@@ -893,10 +915,13 @@ class PostgreSqlStrategy extends DbStrategy {
     let timeoutSet = false;
     let readTxOpen = false;
     try {
+      if (readOnly && lease.transazione && !lease.solaLettura) {
+        throw new Error('La lettura protetta non può aprire una seconda transazione: usa BEGIN READ ONLY o completa prima la transazione di scrittura.');
+      }
       if (payload && payload.opHandle && client.processID) {
         payload.opHandle.processID = client.processID;
       }
-      if (readOnly) {
+      if (letturaIsolata) {
         await client.query('BEGIN READ ONLY');
         // Segnare la transazione subito dopo BEGIN: anche un errore nel primo
         // SET LOCAL deve fare ROLLBACK prima di restituire il client al pool.
@@ -919,19 +944,18 @@ class PostgreSqlStrategy extends DbStrategy {
       }
       try {
         const cap = DbStrategy.resultCap(payload);
-        const res = await client.query(sql);
+        const res = await client.query(sql, payload.params);
+        eseguita = true;
         if (Array.isArray(res)) {
           const lastRes = res[res.length - 1];
           const rows = (lastRes.rows || []).slice(0, cap);
           const columns = lastRes.fields ? lastRes.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: rows.length, skip: 0, limit: cap, resultSet: true };
-          return { docs: rows.map((r) => serializeRow(r, lastRes.fields || [])), columns, total: rows.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, lastRes.fields || [])), columns, total: lastRes.rows?.length || 0, skip: 0, limit: cap, resultSet: true, truncated: lastRes.rows?.length > cap };
         }
         if (res.rows && (res.rows.length > 0 || res.fields)) {
           const rows = res.rows.slice(0, cap);
           const columns = res.fields ? res.fields.map((f) => f.name) : [];
-          return { docs: rows.map(serializeRow), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true };
-          return { docs: rows.map((r) => serializeRow(r, res.fields || [])), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, res.fields || [])), columns, total: res.rows.length, skip: 0, limit: cap, resultSet: true, truncated: res.rows.length > cap };
         }
 
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
@@ -941,15 +965,15 @@ class PostgreSqlStrategy extends DbStrategy {
           await client.query('ROLLBACK').catch(() => {});
           readTxOpen = false;
         }
-        if (pathSet) await client.query('RESET search_path').catch(() => {});
-        if (timeoutSet) await client.query('RESET statement_timeout').catch(() => {});
+        if (pathSet && !lease.transazione) await client.query('RESET search_path').catch(() => {});
+        if (timeoutSet && !lease.transazione) await client.query('RESET statement_timeout').catch(() => {});
       }
     } finally {
       // Rete di sicurezza per errori avvenuti durante i SET LOCAL, prima di
       // entrare nel blocco che esegue la query. Un client con una transazione
       // READ ONLY rimasta aperta avvelenerebbe la richiesta successiva del pool.
       if (readTxOpen) await client.query('ROLLBACK').catch(() => {});
-      client.release();
+      await lease.termina(eseguita);
     }
   }
 
@@ -978,7 +1002,6 @@ class PostgreSqlStrategy extends DbStrategy {
         const summary = { comando: res.command, righeCoinvolte: res.rowCount || 0 };
         return conRighe(
           summary,
-          Array.isArray(res.rows) ? res.rows.map(serializeRow) : [],
           Array.isArray(res.rows) ? res.rows.map((r) => serializeRow(r, res.fields || [])) : [],
           Array.isArray(res.fields) ? res.fields.map((field) => field.name) : [],
         );
@@ -1160,11 +1183,8 @@ class PostgreSqlStrategy extends DbStrategy {
 
   async docInsert(db, coll, payload) {
     const pool = this.requirePool();
-    const doc = parseClientValue(payload.doc);
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-      throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
-    }
-    await this.rimuoviIdVirtuale(db, coll, doc);
+    const fields = await this.tableFields(db, coll);
+    const doc = await require('./insertValues').parseSqlInsert(payload.doc, fields);
     const cols = Object.keys(doc);
     const table = qtable(db, coll);
     let res;
@@ -1175,7 +1195,8 @@ class PostgreSqlStrategy extends DbStrategy {
       // ST_GeomFromGeoJSON col SRID della colonna (vedi geoBinding).
       const { geo, geoNativo } = await this.tableColumnsInfo(db, coll);
       const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`, geoNativo));
-      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING *`;
+      const override = fields.some(f => f.identityGeneration === 'ALWAYS' && Object.hasOwn(doc, f.name)) ? ' OVERRIDING SYSTEM VALUE' : '';
+      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')})${override} VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING *`;
       res = await pool.query(sql, bind.map((b) => b.param));
     }
     const insertedRow = res.rows[0] || {};
@@ -1567,22 +1588,20 @@ class PostgreSqlStrategy extends DbStrategy {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const table = qtable(db, coll);
     const pk = await this.primaryKey(db, coll);
-    // Il formato JSON e' anche il trasporto dell'export di un intero database:
-    // le geometrie devono quindi uscire nella lingua comune GeoJSON, non nella
-    // rappresentazione privata del driver (`point` diventerebbe `{ x, y }`).
+    // Il trasferimento usa il formato nativo testuale, senza conversioni del driver.
     const primaPagina = !payload.after && !(Number(payload.skip) > 0);
     const metadati = format !== 'csv'
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
-    const selezione = format === 'json' ? await this.selectListFor(db, coll, metadati.info) : null;
-    const selectList = selezione ? selezione.list : '*';
+    if(metadati && primaPagina)require('./pg-alias').attach(metadati.info.columns,await require('./pg-references').columnReferences((s,p)=>pool.query(s,p),schemaOf(db),coll));
+    const selectList = metadati ? require('./sqlTransfer').projection(metadati.info, false) : '*';
 
     let rows;
     let fields;
     let nextAfter = null;
 
     if (pk.length) {
-      const pkCols = pk.map(qid).join(', ');
+      const pkCols = pk.map(c=>`${table}.${qid(c)}`).join(', ');
       let whereSql = '';
       let params = [];
       if (payload.after != null && payload.after !== '') {
@@ -1608,7 +1627,7 @@ class PostgreSqlStrategy extends DbStrategy {
       fields = res.fields;
       if (rows.length) {
         const last = rows[rows.length - 1];
-        nextAfter = EJSON.stringify(pk.map((c) => last[c]), { relaxed: true });
+        nextAfter = EJSON.stringify(pk.map((c) => last[c]), { relaxed: false });
       }
     } else {
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
@@ -1617,9 +1636,6 @@ class PostgreSqlStrategy extends DbStrategy {
       fields = res.fields;
     }
 
-    if (selezione) {
-      PostgreSqlStrategy.geoRowsToJson(rows, selezione.geo, selezione.geoNativo);
-    }
 
     // Il conteggio (COUNT(*), una scansione dell'intera tabella) si calcola
     // solo alla PRIMA pagina — vedi db/sqlMetadati.js: totaleEsportazione.
@@ -1639,22 +1655,9 @@ class PostgreSqlStrategy extends DbStrategy {
 
     let lines;
     if (format === 'sql') {
-      lines = rows.map((r) => {
-        if (!columns.length) return `INSERT INTO ${table} DEFAULT VALUES;`;
-        const vals = columns.map((c) => {
-          const v = r[c];
-          if (v === null || v === undefined) return 'NULL';
-          if (typeof v === 'number' || typeof v === 'boolean') return String(v);
-          if (v instanceof Date) return isNaN(v.getTime()) ? 'NULL' : `'${v.toISOString()}'`;
-          if (typeof v === 'object' || Buffer.isBuffer(v)) {
-            return `'${JSON.stringify(v).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
-          }
-          return `'${String(v).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
-        });
-        return `INSERT INTO ${table} (${columns.map(qid).join(', ')}) VALUES (${vals.join(', ')});`;
-      });
+      lines = rows.map(r => require('./databaseExport').insertSql('postgresql', table, require('./sqlTransfer').encodeRow(r,metadati.info.columns,false), metadati.info).trim());
     } else if (format === 'json') {
-      lines = rows.map((r) => EJSON.stringify(r, { relaxed: true }));
+      lines = rows.map(r => require('./sqlTransfer').encodeRow(r,metadati.info.columns,false));
     } else {
       lines = rows.map((r) => rigaCsv(columns.map((c) => r[c]), { modalita: payload.csvMode }));
     }
@@ -1700,14 +1703,20 @@ class PostgreSqlStrategy extends DbStrategy {
     let geo = new Map();
     let geoNativo = new Map();
     let scrivibili = new Set();
+    let importColumnTypes = new Map();
     try {
       const info = await this.tableColumnsInfo(db, coll);
+      importColumnTypes = new Map(info.columns.map(c=>[c.name,String(c.type || c.ctype || '').toLowerCase().replace(/^_(regproc|regoper)$/,'$1[]')]));
       colonneReali = new Set(info.columns.map((c) => c.name));
       geo = info.geo || geo;
       geoNativo = info.geoNativo || geoNativo;
-      scrivibili = await this.colonneScrivibili(db, coll);
+      scrivibili = new Set(info.columns.filter(c => !c.generated).map(c => c.name));
     } catch { /* metadati non leggibili: vale il comportamento storico */ }
 
+    if(raw.some(row=>Object.values(row).some(v=>v?.$pgReference?.kind==='nested'))) {
+      const shapes=await require('./pg-references').columnReferences((s,p)=>pool.query(s,p),schemaOf(db),coll);
+      await require('./pg-alias').resolveNested((s,p)=>pool.query(s,p),raw,shapes);
+    }
     const parsed = [];
     for (let i = 0; i < raw.length; i++) {
       try {
@@ -1723,10 +1732,9 @@ class PostgreSqlStrategy extends DbStrategy {
         // OGNI riga. Si scarta qui, cosi' i file gia' prodotti restano
         // importabili invece di richiedere un nuovo export.
         for (const nome of Object.keys(row)) {
-          if (scrivibili && scrivibili.size && !scrivibili.has(nome)) delete row[nome];
+          if (colonneReali.has(nome) && !scrivibili.has(nome)) delete row[nome];
         }
         const cols = Object.keys(row);
-        if (!cols.length) throw new Error('riga vuota');
         parsed.push({ i, cols, values: cols.map((c) => row[c]) });
       } catch (err) {
         if (errors.length < 10) errors.push(`Riga ${i + 1}: ${(err && err.message) || err}`);
@@ -1747,11 +1755,13 @@ class PostgreSqlStrategy extends DbStrategy {
     // gruppo di righe che condividono le STESSE colonne. `righe` è un array di
     // array di valori; i placeholder scorrono su tutte le righe.
     const sqlPerGruppo = (cols, righe) => {
+      if (!cols.length) return { sql: `INSERT INTO ${table} DEFAULT VALUES`, valori: [] };
       const valori = [];
       const tuple = righe.map((vals) => {
         const ph = vals.map((v, indice) => {
           const placeholder = `$${valori.length + 1}`;
-          const bind = PostgreSqlStrategy.geoBinding(
+          const reference = v?.$pgReference && importColumnTypes.get(cols[indice]) === v.$pgReference.kind ? require('./pg-alias').binding(v) : null;
+          const bind = reference ? {...reference,sql:reference.sql.replace('$1',placeholder)} : PostgreSqlStrategy.geoBinding(
             cols[indice], v, geo, placeholder, geoNativo
           );
           valori.push(bind.param);
@@ -1803,8 +1813,16 @@ class PostgreSqlStrategy extends DbStrategy {
     };
 
     for (const { cols, elementi } of gruppi.values()) {
-      for (let i = 0; i < elementi.length; i += BLOCCO) {
-        const blocco = elementi.slice(i, i + BLOCCO);
+      const limite = cols.length ? Math.max(1, Math.min(BLOCCO, Math.floor(60000 / cols.length))) : 1;
+      for (let i = 0; i < elementi.length;) {
+        const blocco = [];
+        let bytes = 0;
+        while (i < elementi.length && blocco.length < limite) {
+          const size = Buffer.byteLength(JSON.stringify(elementi[i].values), 'utf8');
+          if (blocco.length && bytes + size > 1024 * 1024) break;
+          bytes += size;
+          blocco.push(elementi[i++]);
+        }
         try {
           const { sql, valori } = sqlPerGruppo(cols, blocco.map((p) => p.values));
           await pool.query(sql, valori);

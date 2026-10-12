@@ -1,0 +1,31 @@
+{
+  "environment": "Chromium, risposte simulate",
+  "checks": [],
+  "layouts": [],
+  "motion": [
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "failure": "AssertionError [ERR_ASSERTION]: L’indicatore deve attraversare posizioni intermedie reali\n    at C:\\repository\\CodeDB\\test\\e2e-backup-design.js:80:5"
+}

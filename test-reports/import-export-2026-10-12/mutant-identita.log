@@ -1,0 +1,20 @@
+Error: Ripristino incompleto: cardinalita finale 6 di 4 documenti/righe attesi (9 scritture applicate). bin: cardinalita finale 2, attese 1 righe/documenti distinti; bin: 2 righe/documenti ma 2 identita distinte (attese 1); enums: cardinalita finale 4, attese 3 righe/documenti distinti; enums: 4 righe/documenti ma 4 identita distinte (attese 3)
+    at runRestore (C:\repository\CodeDB\backup\lib\restore.js:1448:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-tipi-identita.js:40:7 {
+  summary: {
+    targetDb: 'codedb_keys_09dae86d3c60_copy',
+    layers: 2,
+    totalDocs: 6,
+    expectedDocs: 4,
+    totalWrites: 9,
+    collections: [ [Object], [Object] ],
+    problems: [
+      'bin: cardinalita finale 2, attese 1 righe/documenti distinti',
+      'bin: 2 righe/documenti ma 2 identita distinte (attese 1)',
+      'enums: cardinalita finale 4, attese 3 righe/documenti distinti',
+      'enums: 4 righe/documenti ma 4 identita distinte (attese 3)'
+    ],
+    equivalenza: { completa: true, motivo: null }
+  }
+}

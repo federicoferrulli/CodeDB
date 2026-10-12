@@ -1,0 +1,45 @@
+OK Input inline: Escape annulla, Enter e blur salvano valore esatto e contesto
+OK Select booleano: tastiera, popup, Escape e scelta senza salvataggio al blur interno
+OK Data e ora inline: precisione UTC, Invio/blur, Escape, validazione correggibile, tastiera e due temi a tre larghezze
+OK Griglia virtualizzata: ora modificabile e non tagliata, altezza riga invariata
+OK Date UTC e ObjectId: conversione conservata, valore invalido non inviato
+OK Textarea documento: lint, formattazione, minificazione e payload doc:replace
+locator.click: Timeout 30000ms exceeded.
+Call log:
+  - waiting for locator('#context-menu li').filter({ hasText: 'Duplica riga' })
+    - locator resolved to <li tabindex="-1" role="menuitem">⧉ Duplica riga ▸</li>
+  - attempting click action
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+    - waiting 20ms
+    2 × waiting for element to be visible, enabled and stable
+      - element is not visible
+    - retrying click action
+      - waiting 100ms
+    57 × waiting for element to be visible, enabled and stable
+       - element is not visible
+     - retrying click action
+       - waiting 500ms
+
+    at openDuplicate (C:\repository\CodeDB\test\e2e-arc-griglia.js:251:82)
+    at async C:\repository\CodeDB\test\e2e-arc-griglia.js:267:5 {
+  log: [
+    "  - waiting for locator('#context-menu li').filter({ hasText: 'Duplica riga' })",
+    '    - locator resolved to <li tabindex="-1" role="menuitem">⧉ Duplica riga ▸</li>',
+    '  - attempting click action',
+    '    2 × waiting for element to be visible, enabled and stable',
+    '      - element is not visible',
+    '    - retrying click action',
+    '    - waiting 20ms',
+    '    2 × waiting for element to be visible, enabled and stable',
+    '      - element is not visible',
+    '    - retrying click action',
+    '      - waiting 100ms',
+    '    57 × waiting for element to be visible, enabled and stable',
+    '       - element is not visible',
+    '     - retrying click action',
+    '       - waiting 500ms'
+  ],
+  name: 'TimeoutError'
+}

@@ -5,6 +5,7 @@ import { $, emit, toast, dbTypeIcon, esc, showContextMenu, refreshLucideIcons, m
 import { connectAndOpenTab, startEditConn, openConnModal } from './connection.js';
 import { tabs, switchTab, activeTab } from './tabs.js';
 import { saveWorkspaceInputs } from './workspace.js';
+import { preparaTransizioneAlbero } from './navigator-motion.js';
 
 // Sidebar sinistra: elenco delle connessioni salvate, raggruppate per cartella
 // (campo `folder` in connections.ini). Il clic riprende una sessione già aperta.
@@ -78,6 +79,7 @@ function connMenu(e, conn) {
 function connItem(conn) {
   const li = document.createElement('li');
   li.className = 'conn-item';
+  li.dataset.connName = conn.name;
   const label = document.createElement('div');
   label.className = 'node-label';
   label.tabIndex = 0;
@@ -86,12 +88,21 @@ function connItem(conn) {
 
   const name = document.createElement('span');
   name.className = 'conn-name';
-  name.innerHTML = `${dbTypeIcon(conn.dbType)} <span>${esc(conn.name)}</span>`;
+  name.textContent = conn.name;
   const detail = document.createElement('span');
   detail.className = 'conn-detail';
   detail.textContent = conn.label;
 
-  label.append(name, detail);
+  const icon = document.createElement('span');
+  icon.className = 'conn-engine-icon';
+  icon.innerHTML = dbTypeIcon(conn.dbType);
+  const text = document.createElement('span');
+  text.className = 'conn-text';
+  text.append(name, detail);
+  const status = document.createElement('span');
+  status.className = 'conn-status';
+  status.setAttribute('aria-hidden', 'true');
+  label.append(icon, text, status);
   label.addEventListener('click', () => openConn(conn));
   label.addEventListener('contextmenu', (e) => connMenu(e, conn));
   label.addEventListener('keydown', e => {
@@ -104,6 +115,7 @@ function connItem(conn) {
 
 function renderConnTree() {
   const tree = $('#conn-tree');
+  const completaTransizione = preparaTransizioneAlbero(tree);
   tree.innerHTML = '';
   const searchInput = $('#conn-search');
   const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
@@ -169,6 +181,31 @@ function renderConnTree() {
   }
   for (const conn of groups.get('') || []) tree.appendChild(connItem(conn));
   refreshLucideIcons(tree);
+  marcaConnessioneAttiva();
+  completaTransizione();
+}
+
+function marcaConnessioneAttiva() {
+  const attiva = activeTab();
+  const aperte = new Set(tabs.list.filter(tab => tab.state.connected).map(tab => tab.connName));
+  for (const item of document.querySelectorAll('#conn-tree .conn-item')) {
+    const nome = item.dataset.connName;
+    const selected = !!attiva?.state.connected && attiva.connName === nome;
+    const aperta = aperte.has(nome);
+    const label = item.querySelector('.node-label');
+    label.classList.toggle('selected', selected);
+    label.setAttribute('aria-current', selected ? 'true' : 'false');
+    const stato = selected ? 'Connessione attiva' : aperta ? 'Connessione aperta' : 'Connessione salvata';
+    label.setAttribute('aria-label', `${nome}, ${item.querySelector('.conn-detail').textContent}. ${stato}`);
+    item.classList.toggle('connected', aperta);
+    item.querySelector('.conn-status').title = stato;
+  }
+}
+
+export function aggiornaConnessioneAttiva() {
+  const completaTransizione = preparaTransizioneAlbero($('#conn-tree'));
+  marcaConnessioneAttiva();
+  completaTransizione();
 }
 
 // Suggerisce le cartelle esistenti nel campo "Cartella" del form.
@@ -189,6 +226,7 @@ function impostaSezione(sidebar, button, collapse) {
 }
 
 export function initConnManager() {
+  window.addEventListener('codedb:tab-closed', () => queueMicrotask(aggiornaConnessioneAttiva));
   $('#conn-add-btn').addEventListener('click', () => openConnModal());
   const searchInput = $('#conn-search');
   if (searchInput) {

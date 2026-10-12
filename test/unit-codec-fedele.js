@@ -110,25 +110,8 @@ function tipoDi(v) {
   assert.ok(!/relaxed:\s*true/.test(restore), 'restore.js non deve leggere relaxed');
   console.log('  OK   guardia statica: relaxed distruttivo assente da engine e restore');
 
-  /* --- Paginazione senza chiave: keyset su ctid, mai OFFSET ------------------------------ */
-
-  const { paginaSenzaChiave } = require('../backup/lib/engine');
-  const prima = paginaSenzaChiave({ qualified: '"pubblico"."ordini"', listaSelect: '"id", "tot"', batch: 1000 });
-  assert.ok(!/OFFSET/i.test(prima.sql), 'niente OFFSET');
-  assert.match(prima.sql, /ctid > \$1/, 'la prima pagina parte da un ctid minimo');
-  assert.deepStrictEqual(prima.params, ['(0,0)', 1000]);
-  assert.match(prima.sql, /ORDER BY ctid LIMIT \$2/, 'ordine stabile e limite parametrizzato');
-  assert.match(prima.sql, /ctid AS __ctid/, 'il ctid viaggia nella riga per la pagina dopo');
-  const dopo = paginaSenzaChiave({
-    qualified: '"pubblico"."ordini"', listaSelect: '"id"', batch: 1000,
-    sinceColumn: 'aggiornato', sinceParam: '2026-01-01', ultimoCtid: '(12,34)',
-  });
-  assert.deepStrictEqual(dopo.params, ['2026-01-01', '(12,34)', 1000], 'since prima, ctid dopo, limite ultimo');
-  assert.match(dopo.sql, /"aggiornato" > \$1 AND ctid > \$2/, 'filtro e keyset composti');
-  assert.ok(!/OFFSET/i.test(dopo.sql));
-  console.log('  OK   pagine senza chiave: keyset ctid senza OFFSET');
-
-  console.log('  OK   Codec fedele e paginazione senza chiave passed');
+  // La scansione ora usa un cursore DBMS: copertura reale in e2e-tipi-pagine.js.
+  console.log('  OK   Codec fedele passed');
 })().catch((err) => {
   console.error('  FAIL Codec fedele:', err.stack || err);
   process.exitCode = 1;

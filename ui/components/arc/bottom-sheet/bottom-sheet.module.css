@@ -1,4 +1,5 @@
 .overlay { position: fixed; inset: 0; z-index: var(--z-drawer-backdrop); background: var(--sh-550); }
+.overlay[data-state="closed"], .sheet[data-state="closed"] { pointer-events: none !important; }
 .sheet {
   position: fixed; z-index: var(--z-drawer); inset-inline: var(--sal) var(--sar);
   bottom: calc(var(--area-bottom, 0px) - var(--sheet-extension));

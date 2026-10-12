@@ -1,0 +1,410 @@
+{
+  "checks": [
+    "Desktop: mappa ed elenco visibili, nomi arbitrari trattati come testo",
+    "Selezione bidirezionale e deselezione senza ricreare layer, anche MultiPoint",
+    "Navigazione da tastiera, riepilogo, copia ed export con quota Z e geometrie originali",
+    "Layout scuro/chiaro su 1440, 1024, 390, 320 e 844×390; drawer Arc e focus al ritorno sulla mappa",
+    "Movimento ridotto rispettato e chiusura completata",
+    "1601 geometrie: disegno limitato e dichiarato, selezione senza ricostruzioni, esportazione completa (220 ms apertura)",
+    "Motore condiviso: elenco tabellare ancora funzionante, istanze indipendenti, selezione vuota gestita e nessun errore JavaScript"
+  ],
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "map": {
+        "x": 105,
+        "y": 183.796875,
+        "width": 894,
+        "height": 544.203125,
+        "right": 999,
+        "bottom": 728
+      },
+      "footer": {
+        "x": 105,
+        "y": 784,
+        "width": 1230,
+        "height": 41,
+        "right": 1335,
+        "bottom": 825
+      },
+      "tabs": {
+        "x": 1015,
+        "y": 183.796875,
+        "width": 320,
+        "height": 38,
+        "right": 1335,
+        "bottom": 221.796875
+      },
+      "modal": {
+        "x": 80,
+        "y": 50,
+        "width": 1280,
+        "height": 800,
+        "right": 1360,
+        "bottom": 850
+      },
+      "sheet": false,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 1024,
+      "height": 768,
+      "map": {
+        "x": 49,
+        "y": 165.796875,
+        "width": 590,
+        "height": 448.203125,
+        "right": 639,
+        "bottom": 614
+      },
+      "footer": {
+        "x": 49,
+        "y": 670,
+        "width": 926,
+        "height": 41,
+        "right": 975,
+        "bottom": 711
+      },
+      "tabs": {
+        "x": 655,
+        "y": 165.796875,
+        "width": 320,
+        "height": 38,
+        "right": 975,
+        "bottom": 203.796875
+      },
+      "modal": {
+        "x": 24,
+        "y": 32,
+        "width": 976,
+        "height": 704,
+        "right": 1000,
+        "bottom": 736
+      },
+      "sheet": false,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "height": 844,
+      "map": {
+        "x": 13,
+        "y": 290.640625,
+        "width": 364,
+        "height": 432.359375,
+        "right": 377,
+        "bottom": 723
+      },
+      "footer": {
+        "x": 13,
+        "y": 775,
+        "width": 364,
+        "height": 57,
+        "right": 377,
+        "bottom": 832
+      },
+      "tabs": {
+        "x": 13,
+        "y": 238.640625,
+        "width": 364,
+        "height": 44,
+        "right": 377,
+        "bottom": 282.640625
+      },
+      "modal": {
+        "x": 1,
+        "y": 148.640625,
+        "width": 388,
+        "height": 695.359375,
+        "right": 389,
+        "bottom": 844
+      },
+      "sheet": true,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "height": 740,
+      "map": {
+        "x": 13,
+        "y": 284.40625,
+        "width": 294,
+        "height": 334.59375,
+        "right": 307,
+        "bottom": 619
+      },
+      "footer": {
+        "x": 13,
+        "y": 671,
+        "width": 294,
+        "height": 57,
+        "right": 307,
+        "bottom": 728
+      },
+      "tabs": {
+        "x": 13,
+        "y": 232.40625,
+        "width": 294,
+        "height": 44,
+        "right": 307,
+        "bottom": 276.40625
+      },
+      "modal": {
+        "x": 1,
+        "y": 142.40625,
+        "width": 318,
+        "height": 597.59375,
+        "right": 319,
+        "bottom": 740
+      },
+      "sheet": true,
+      "overflow": false
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "height": 390,
+      "map": {
+        "x": 209,
+        "y": 185.40625,
+        "width": 622,
+        "height": 166.59375,
+        "right": 831,
+        "bottom": 352
+      },
+      "footer": {
+        "x": 13,
+        "y": 277,
+        "width": 188,
+        "height": 101,
+        "right": 201,
+        "bottom": 378
+      },
+      "tabs": {
+        "x": 209,
+        "y": 133.40625,
+        "width": 622,
+        "height": 44,
+        "right": 831,
+        "bottom": 177.40625
+      },
+      "modal": {
+        "x": 1,
+        "y": 121.40625,
+        "width": 842,
+        "height": 268.59375,
+        "right": 843,
+        "bottom": 390
+      },
+      "sheet": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "map": {
+        "x": 105,
+        "y": 183.796875,
+        "width": 894,
+        "height": 544.203125,
+        "right": 999,
+        "bottom": 728
+      },
+      "footer": {
+        "x": 105,
+        "y": 784,
+        "width": 1230,
+        "height": 41,
+        "right": 1335,
+        "bottom": 825
+      },
+      "tabs": {
+        "x": 1015,
+        "y": 183.796875,
+        "width": 320,
+        "height": 38,
+        "right": 1335,
+        "bottom": 221.796875
+      },
+      "modal": {
+        "x": 80,
+        "y": 50,
+        "width": 1280,
+        "height": 800,
+        "right": 1360,
+        "bottom": 850
+      },
+      "sheet": false,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 1024,
+      "height": 768,
+      "map": {
+        "x": 49,
+        "y": 165.796875,
+        "width": 590,
+        "height": 448.203125,
+        "right": 639,
+        "bottom": 614
+      },
+      "footer": {
+        "x": 49,
+        "y": 670,
+        "width": 926,
+        "height": 41,
+        "right": 975,
+        "bottom": 711
+      },
+      "tabs": {
+        "x": 655,
+        "y": 165.796875,
+        "width": 320,
+        "height": 38,
+        "right": 975,
+        "bottom": 203.796875
+      },
+      "modal": {
+        "x": 24,
+        "y": 32,
+        "width": 976,
+        "height": 704,
+        "right": 1000,
+        "bottom": 736
+      },
+      "sheet": false,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "height": 844,
+      "map": {
+        "x": 13,
+        "y": 290.640625,
+        "width": 364,
+        "height": 432.359375,
+        "right": 377,
+        "bottom": 723
+      },
+      "footer": {
+        "x": 13,
+        "y": 775,
+        "width": 364,
+        "height": 57,
+        "right": 377,
+        "bottom": 832
+      },
+      "tabs": {
+        "x": 13,
+        "y": 238.640625,
+        "width": 364,
+        "height": 44,
+        "right": 377,
+        "bottom": 282.640625
+      },
+      "modal": {
+        "x": 1,
+        "y": 148.640625,
+        "width": 388,
+        "height": 695.359375,
+        "right": 389,
+        "bottom": 844
+      },
+      "sheet": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "height": 740,
+      "map": {
+        "x": 13,
+        "y": 284.40625,
+        "width": 294,
+        "height": 334.59375,
+        "right": 307,
+        "bottom": 619
+      },
+      "footer": {
+        "x": 13,
+        "y": 671,
+        "width": 294,
+        "height": 57,
+        "right": 307,
+        "bottom": 728
+      },
+      "tabs": {
+        "x": 13,
+        "y": 232.40625,
+        "width": 294,
+        "height": 44,
+        "right": 307,
+        "bottom": 276.40625
+      },
+      "modal": {
+        "x": 1,
+        "y": 142.40625,
+        "width": 318,
+        "height": 597.59375,
+        "right": 319,
+        "bottom": 740
+      },
+      "sheet": true,
+      "overflow": false
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "height": 390,
+      "map": {
+        "x": 209,
+        "y": 185.40625,
+        "width": 622,
+        "height": 166.59375,
+        "right": 831,
+        "bottom": 352
+      },
+      "footer": {
+        "x": 13,
+        "y": 277,
+        "width": 188,
+        "height": 101,
+        "right": 201,
+        "bottom": 378
+      },
+      "tabs": {
+        "x": 209,
+        "y": 133.40625,
+        "width": 622,
+        "height": 44,
+        "right": 831,
+        "bottom": 177.40625
+      },
+      "modal": {
+        "x": 1,
+        "y": 121.40625,
+        "width": 842,
+        "height": 268.59375,
+        "right": 843,
+        "bottom": 390
+      },
+      "sheet": true,
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "volume": {
+    "ms": 220.09999990463257,
+    "builds": 1506,
+    "rows": 500,
+    "warning": "Disegnate 1500 geometrie su 1601 (oltre 1500 geometrie): il riepilogo e l'esportazione le riguardano invece tutte.1 geometrie hanno coordinate fuori dall'intervallo longitudine/latitudine (probabilmente PROIETTATE, es. metri EPSG:3857): non sono disegnate né misurate, perché sulla mappa finirebbero in un punto a caso."
+  }
+}

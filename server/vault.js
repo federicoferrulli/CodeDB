@@ -549,17 +549,22 @@ function createModule({ config, errori, dependencies }) {
   }
 
   // Tiene solo i campi noti e non vuoti di una configurazione di connessione.
-  function sanitizeConnCfg(cfg) {
+  function sanitizeConnCfg(cfg, previous = null) {
     if (cfg.sshPrivateKey != null && (typeof cfg.sshPrivateKey !== 'string' || Buffer.byteLength(cfg.sshPrivateKey) > MAX_SSH_KEY_BYTES)) {
       throw new Error('La chiave privata SSH deve essere un file di testo di massimo 64 KB.');
     }
+    // I parametri omessi dal form restano salvati; un vuoto esplicito li rimuove.
+    const fields = { ...Object.fromEntries(CONN_FIELDS.filter(f => !SECRET_FIELDS.includes(f) && previous?.[f] != null)
+      .map(f => [f, previous[f]])), ...cfg };
+    if (previous && !Object.hasOwn(cfg, 'connectionMode') && cfg.uri) fields.connectionMode = connMode(cfg);
+    if (connMode(fields) === 'uri' && connMode(previous || {}) !== 'uri' && !Object.hasOwn(cfg, 'ssh')) delete fields.ssh;
     const clean = Object.fromEntries(
       CONN_FIELDS
-        .filter((f) => cfg[f] != null && (SECRET_FIELDS.includes(f) ? String(cfg[f]) !== '' : String(cfg[f]).trim() !== ''))
-        .map((f) => [f, SECRET_FIELDS.includes(f) ? String(cfg[f]) : String(cfg[f]).trim()])
+        .filter((f) => fields[f] != null && (SECRET_FIELDS.includes(f) ? String(fields[f]) !== '' : String(fields[f]).trim() !== ''))
+        .map((f) => [f, SECRET_FIELDS.includes(f) ? String(fields[f]) : String(fields[f]).trim()])
     );
     if (clean.sshKeyName) clean.sshKeyName = clean.sshKeyName.replace(/[\r\n]/g, ' ');
-    return preserveConnSecrets(clean, null);
+    return preserveConnSecrets(clean, previous);
   }
 
   // dbType assente nelle connessioni salvate prima del supporto multi-db.

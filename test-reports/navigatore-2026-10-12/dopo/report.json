@@ -1,0 +1,31 @@
+{
+  "checks": [
+    "Cambio connessione immediato, indicatore continuo e contesto coerente",
+    "Interruzioni, tastiera, ricerca, stato vuoto e menu azioni",
+    "Cambi ripetuti con CPU rallentata e preferenza movimento ridotto",
+    "Temi chiaro/scuro, desktop, drawer mobile e ritorno senza perdere la selezione"
+  ],
+  "motion": [
+    {
+      "animated": true,
+      "before": 166.046875,
+      "start": 166.296875,
+      "middle": 265.082763671875,
+      "end": 282.84375,
+      "keys": [
+        "offset",
+        "easing",
+        "composite",
+        "transform",
+        "computedOffset",
+        "offset",
+        "easing",
+        "composite",
+        "transform",
+        "computedOffset"
+      ],
+      "active": "postgresql"
+    }
+  ],
+  "errors": []
+}

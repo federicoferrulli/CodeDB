@@ -366,7 +366,7 @@ async function disegnaTreVertici(page, dx = 0) {
     await page.click('#geomap-cancel');
     await page.waitForTimeout(100);
 
-    /* --- In sola lettura non ci sono strumenti da mostrare -------------- */
+    /* --- In sola lettura resta l'inquadratura, senza strumenti di modifica --- */
 
     await page.evaluate(async () => {
       const { openGeoEditor } = await import('/js/geomap.js');
@@ -381,15 +381,16 @@ async function disegnaTreVertici(page, dx = 0) {
     const lettura = await page.evaluate(() => {
       const nascosto = (sel) => document.querySelector(sel).classList.contains('hidden');
       return {
-        rail: nascosto('#geomap-azioni-forma'),
+        inquadra: !nascosto('#geomap-azioni-forma') && !nascosto('#geomap-fit'),
+        modifica: ['#geomap-undo', '#geomap-redo', '#geomap-redraw'].every(nascosto),
         vertice: nascosto('#geomap-azioni'),
         modo: nascosto('#geomap-mode'),
         salva: nascosto('#geomap-save'),
         json: document.querySelector('#geomap-json').readOnly,
       };
     });
-    ok(lettura.rail && lettura.vertice && lettura.modo && lettura.salva && lettura.json,
-      'in sola lettura spariscono strumenti, modalità e salvataggio', JSON.stringify(lettura));
+    ok(lettura.inquadra && lettura.modifica && lettura.vertice && lettura.modo && lettura.salva && lettura.json,
+      'in sola lettura resta Inquadra senza strumenti di modifica o salvataggio', JSON.stringify(lettura));
     await page.click('#geomap-cancel');
     await page.waitForTimeout(100);
 

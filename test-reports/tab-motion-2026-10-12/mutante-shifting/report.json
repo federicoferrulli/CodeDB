@@ -1,0 +1,68 @@
+{
+  "checks": [
+    "Nessuna sovrapposizione delle etichette in sei fotogrammi del riordino",
+    "Selezione immediata e indicatore continuo per connessioni e documenti",
+    "Cambi rapidi e interruzioni senza salti o animazioni residue"
+  ],
+  "motion": [
+    {
+      "selector": "#tab-bar",
+      "animated": true,
+      "before": 256,
+      "start": 255.546875,
+      "middle": 428.46807861328125,
+      "end": 452,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "postgres",
+      "expected": "postgres"
+    },
+    {
+      "selector": "#coll-tab-bar",
+      "animated": true,
+      "before": 585,
+      "start": 585,
+      "middle": 295.408935546875,
+      "end": 256,
+      "keys": [
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ],
+        [
+          "offset",
+          "easing",
+          "composite",
+          "transform",
+          "computedOffset"
+        ]
+      ],
+      "active": "72499b70-1b25-4ae1-a755-6f391d746a7c",
+      "expected": "72499b70-1b25-4ae1-a755-6f391d746a7c"
+    },
+    {
+      "interrupted": {
+        "before": 290.17803955078125,
+        "after": 290.44366455078125
+      }
+    }
+  ],
+  "errors": []
+}

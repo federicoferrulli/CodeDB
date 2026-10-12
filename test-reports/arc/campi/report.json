@@ -14,86 +14,86 @@
   "coverage": [
     {
       "name": "Tutti i form statici, file e textarea compresi",
-      "total": 118,
-      "models": 36,
+      "total": 122,
+      "models": 37,
       "missing": []
     },
     {
       "name": "Griglia con checkbox di riga e selezione parziale",
-      "total": 123,
-      "models": 39,
+      "total": 127,
+      "models": 40,
       "missing": []
     },
     {
       "name": "DDL: righe dinamiche, datalist, default, NULL e chiavi",
-      "total": 129,
-      "models": 42,
+      "total": 133,
+      "models": 43,
       "missing": []
     },
     {
       "name": "Editor tema: nome, base, colori, valori esadecimali",
-      "total": 145,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema light, 390px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema light, 768px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema light, 1440px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema dark, 390px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema dark, 768px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Tema dark, 1440px",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Palette dinamica",
-      "total": 146,
-      "models": 50,
-      "missing": []
-    },
-    {
-      "name": "Snippet: Select e Textarea readonly",
-      "total": 147,
+      "total": 149,
       "models": 51,
       "missing": []
     },
     {
+      "name": "Tema light, 390px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Tema light, 768px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Tema light, 1440px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 390px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 768px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Tema dark, 1440px",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Palette dinamica",
+      "total": 150,
+      "models": 51,
+      "missing": []
+    },
+    {
+      "name": "Snippet: Select e Textarea readonly",
+      "total": 151,
+      "models": 52,
+      "missing": []
+    },
+    {
       "name": "Grafici: barra rapida e configuratore completo",
-      "total": 192,
-      "models": 79,
+      "total": 196,
+      "models": 80,
       "missing": []
     },
     {
       "name": "Grafici ricostruiti dopo cambio tipo",
-      "total": 195,
-      "models": 81,
+      "total": 199,
+      "models": 82,
       "missing": []
     }
   ],
@@ -102,8 +102,8 @@
       "theme": "light",
       "width": 390,
       "rect": {
-        "x": 29,
-        "y": 536,
+        "x": 17,
+        "y": 116.28125,
         "width": 304,
         "height": 416
       }
@@ -113,7 +113,7 @@
       "width": 768,
       "rect": {
         "x": 456,
-        "y": 502.3125,
+        "y": 85.578125,
         "width": 304,
         "height": 416
       }
@@ -123,7 +123,7 @@
       "width": 1440,
       "rect": {
         "x": 923,
-        "y": 502.3125,
+        "y": 498.3125,
         "width": 304,
         "height": 404
       }
@@ -132,8 +132,8 @@
       "theme": "dark",
       "width": 390,
       "rect": {
-        "x": 29,
-        "y": 536,
+        "x": 17,
+        "y": 116.28125,
         "width": 304,
         "height": 416
       }
@@ -143,7 +143,7 @@
       "width": 768,
       "rect": {
         "x": 456,
-        "y": 502.3125,
+        "y": 85.578125,
         "width": 304,
         "height": 416
       }
@@ -153,7 +153,7 @@
       "width": 1440,
       "rect": {
         "x": 923,
-        "y": 502.3125,
+        "y": 498.3125,
         "width": 304,
         "height": 404
       }

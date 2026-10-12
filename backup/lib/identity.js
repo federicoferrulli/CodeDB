@@ -2,7 +2,7 @@
 
 const { EJSON } = require('bson');
 
-const MANIFEST_VERSION = 3;
+const MANIFEST_VERSION = 4;
 const IDENTITY_VERSION = 2;
 const SQL_IDENTITY_KINDS = new Set(['primary-key', 'unique']);
 const IDENTITY_KINDS = new Set(['mongodb-id', ...SQL_IDENTITY_KINDS]);
@@ -162,6 +162,9 @@ function validaManifestIdentita(manifest) {
     }
     if (Number.isSafeInteger(file.count) && file.count > file.sourceCardinality) {
       throw new Error(`Il layer di "${file.collection || '?'}" contiene piu righe della sorgente dichiarata.`);
+    }
+    if(file.mode === 'full' && file.count !== file.sourceCardinality) {
+      throw new Error(`Il backup completo di "${file.collection || '?'}" non contiene tutte le righe della snapshot sorgente.`);
     }
     if (file.identity) {
       if (!Number.isSafeInteger(file.sourceDistinctIdentities)

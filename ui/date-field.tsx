@@ -51,6 +51,26 @@ export function DateField({ model, label }: { model: HTMLInputElement; label: st
     event.preventDefault(); event.stopPropagation();
     model.dispatchEvent(new KeyboardEvent('keydown', { key: event.key, bubbles: true }));
   };
+  if (model.hasAttribute('data-arc-date-native')) {
+    const write = (text: string) => {
+      model.value = text;
+      model.dispatchEvent(new Event('input', { bubbles: true }));
+      model.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    return <div className="arc-date-control insert-native-date" data-arc-component="date-field">
+      <Input bare label={label} aria-label={label} value={model.value} placeholder={model.placeholder}
+        disabled={model.disabled} readOnly={model.readOnly} aria-describedby={model.getAttribute('aria-describedby') || undefined}
+        aria-invalid={model.getAttribute('aria-invalid') === 'true' || undefined}
+        onChange={event => write(event.target.value)} />
+      <DatePicker label={`Calendario ${label}`} locale="it-IT" placeholder="Calendario" value={date(model.value.slice(0, 10))}
+        showToday disabled={model.disabled || model.readOnly} onChange={value => {
+          if (!value) return;
+          const day = `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+          const suffix = /^\d{4}-\d{2}-\d{2}/.test(model.value) ? model.value.slice(10) : '';
+          write(day + (model.dataset.arcDateNative === 'date' ? '' : suffix || 'T00:00:00'));
+        }} />
+    </div>;
+  }
   return <div className={`arc-date-control${inline ? ' arc-date-inline' : ''}`} data-arc-component="date-field" onBlur={blur} onKeyDown={key}>
     <DatePicker label={label} locale="it-IT" showToday value={date(parts[0])} minDate={date(model.min.slice(0, 10))}
       className={inline ? 'arc-date-cell' : undefined}

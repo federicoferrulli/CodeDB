@@ -30,6 +30,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
     const page = await browser.newPage();
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    await require('./split-frame').install(page);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#query-result-table', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(1200);
@@ -134,7 +135,8 @@ const ok = (cond, etichetta, dettaglio = '') => {
       });
       await new Promise((r) => setTimeout(r, 100));
 
-      const cella = document.querySelector('.split-pane .pane-grid tbody td[data-r="0"][data-c="1"]');
+      const paneDoc = await window.paneDocument(0);
+      const cella = paneDoc.querySelector('#grid tbody td[data-r="0"][data-c="1"]');
       if (!cella) return { assente: true };
       const resa = {
         assente: false,
@@ -157,18 +159,20 @@ const ok = (cond, etichetta, dettaglio = '') => {
       'Split-View: la cella geometrica non passa dal ripiego `displayValueBreve`');
     ok(splitPreparata.title.includes('Doppio clic per'),
       'Split-View: il title spiega come aprire la geometria');
-    await page.waitForSelector('#geomap-overlay:not(.hidden)', { timeout: 10000 });
-    const splitEditor = await page.evaluate(() => ({
+    let geoFrame = await require('./split-frame').frame(page);
+    await geoFrame.locator('#geomap-overlay:not(.hidden)').waitFor({ timeout: 10000 });
+    const splitEditor = await page.locator('.pane-runtime').first().evaluate(frame => { const document = frame.contentDocument; return ({
       salvaVisibile: !document.querySelector('#geomap-save').classList.contains('hidden'),
       jsonModificabile: !document.querySelector('#geomap-json').readOnly,
       titolo: document.querySelector('#geomap-title').textContent,
-    }));
+    }); });
     ok(splitEditor.salvaVisibile && splitEditor.jsonModificabile,
       'Split-View: il doppio clic apre la geometria in modifica');
     ok(splitEditor.titolo === 'Geometria — posizione',
       `Split-View: il titolo conserva il campo (${splitEditor.titolo})`);
-    await page.fill('#geomap-json', JSON.stringify({ type: 'Point', coordinates: [12, 45] }, null, 2));
-    await page.click('#geomap-save');
+    if (!await geoFrame.locator('#geomap-json').isVisible()) await geoFrame.locator('#geomap-json-btn').click();
+    await geoFrame.locator('#geomap-json').fill( JSON.stringify({ type: 'Point', coordinates: [12, 45] }, null, 2));
+    await geoFrame.locator('#geomap-save').click();
     await page.waitForFunction(() => window.__geoSplitSpediti.some((x) => x.evento === 'doc:update'));
     const scritturaSplit = await page.evaluate(() => {
       const invio = window.__geoSplitSpediti.find((x) => x.evento === 'doc:update');
@@ -209,7 +213,8 @@ const ok = (cond, etichetta, dettaglio = '') => {
       });
       await new Promise((r) => setTimeout(r, 150));
 
-      const cella = [...document.querySelectorAll('.split-pane .pane-grid tbody td')]
+      const paneDoc = await window.paneDocument(-1);
+      const cella = [...paneDoc.querySelectorAll('#grid tbody td')]
         .find((td) => td.textContent.includes('Polygon'));
       if (!cella) return { assente: true };
       const resa = {
@@ -226,17 +231,18 @@ const ok = (cond, etichetta, dettaglio = '') => {
       'riquadro senza `_id`: la geometria e’ comunque riconosciuta e disegnata');
     ok(!senzaId.assente && senzaId.editabile === false,
       'riquadro senza `_id`: la cella non si dichiara modificabile');
-    await page.waitForSelector('#geomap-overlay:not(.hidden)', { timeout: 10000 });
-    const soloGuardare = await page.evaluate(() => ({
+    geoFrame = await require('./split-frame').frame(page, -1);
+    await geoFrame.locator('#geomap-overlay:not(.hidden)').waitFor({ timeout: 10000 });
+    const soloGuardare = await page.locator('.pane-runtime').last().evaluate(frame => { const document = frame.contentDocument; return ({
       salvaNascosto: document.querySelector('#geomap-save').classList.contains('hidden'),
       jsonReadOnly: document.querySelector('#geomap-json').readOnly,
       contenuto: document.querySelector('#geomap-json').value,
-    }));
+    }); });
     ok(soloGuardare.salvaNascosto,
       'riquadro senza `_id`: la mappa si apre SENZA il pulsante Applica geometria');
     ok(soloGuardare.jsonReadOnly && soloGuardare.contenuto.includes('Polygon'),
       'riquadro senza `_id`: il GeoJSON si legge ma non si scrive');
-    await page.click('#geomap-cancel');
+    await geoFrame.locator('#geomap-cancel').click();
     await page.evaluate(() => {
       const spediti = window.__geoSplitSpediti;
       window.__geoScrittureDopoSolaLettura = spediti.filter((x) => x.evento === 'doc:update').length;

@@ -18,12 +18,13 @@ let currentUser = null;
 
 /** Utente autenticato (null finché non si è connessi). */
 export function getCurrentUser() {
-  return currentUser;
+  return window.frameElement?.codedbPanel?.getUser?.() || currentUser;
 }
 
 /** true se l'utente corrente possiede la capability indicata (fuori scope). */
 export function hasCapability(cap) {
-  return !!(currentUser && Array.isArray(currentUser.capabilities) && currentUser.capabilities.includes(cap));
+  const user = getCurrentUser();
+  return !!(user && Array.isArray(user.capabilities) && user.capabilities.includes(cap));
 }
 
 function showLogin() {

@@ -87,11 +87,11 @@ const mongoPort = Number(process.env.WORKBENCH_MONGO_PORT || 27017);
       const { setPaneView } = await import('/js/splitview.js');
       setPaneView(window.realWb.panes.find(p => p.tabId === window.realWb.mongoId).id, 'data');
     });
-    const mongoPane = page.locator('.split-pane').filter({ has: page.locator('.conn-name', { hasText: 'Sviluppo' }) });
-    await mongoPane.locator('.pane-filter-input').fill('Acme');
-    await mongoPane.locator('.pane-filter-input').press('Enter');
-    await page.waitForFunction(() => document.querySelector('.split-pane:not(.pane-specialized) .pane-grid tbody')?.textContent.includes('Acme'));
-    assert(!(await mongoPane.locator('.pane-grid tbody').textContent()).includes('Beta'));
+    const mongoPane = m;
+    await mongoPane.locator('#filter-input').fill('Acme');
+    await mongoPane.locator('#filter-input').press('Enter');
+    await m.waitForFunction(() => document.querySelector('#grid tbody')?.textContent.includes('Acme'));
+    assert(!(await mongoPane.locator('#grid tbody').textContent()).includes('Beta'));
     // Modifica reale tramite il controller, poi focus sull'altra sessione prima dell'ack.
     await page.evaluate(async () => {
       const { emit } = await import('/js/utils.js');

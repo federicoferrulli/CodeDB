@@ -1,5 +1,5 @@
 'use strict';
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, closeNavigationSheet } from '../arc/ui.js';
 
 /* ---------------------------------------------------------------------------
  * Guida introduttiva (onboarding): benvenuto, tour guidato, primi passi.
@@ -45,6 +45,8 @@ let tour = null; // { passi, i, elSpot, elFumetto, onReflow }
 const PASSI = [
   {
     sel: '#conn-sidebar',
+    mobile: { sel: '#mobile-nav-conns', titolo: 'Le tue connessioni',
+      testo: 'Tocca Connessioni per aprire quelle salvate o aggiungerne una nuova. In fondo al pannello trovi Strumenti: backup, impostazioni e questa guida.' },
     titolo: 'Le tue connessioni',
     testo: 'Qui stanno le connessioni salvate, raggruppabili in cartelle. Le credenziali non passano mai dal browser: '
       + 'restano sul server, cifrate nel vault.',
@@ -56,12 +58,16 @@ const PASSI = [
   },
   {
     sel: '#tab-bar',
+    mobile: { sel: '#documents-open', titolo: 'Le tue schede',
+      testo: 'Tocca Schede per passare tra le connessioni e i documenti aperti. Ogni connessione conserva la propria sessione e il proprio lavoro.' },
     opzionale: true,
     titolo: 'Un tab per connessione',
     testo: 'Ogni tab ha la propria sessione sul server: puoi lavorare su più database insieme senza che si disturbino.',
   },
   {
     sel: '#sidebar',
+    mobile: { sel: '#mobile-nav-dbs', titolo: 'Database e tabelle',
+      testo: 'Tocca Database per esplorare tabelle e collezioni della connessione attiva. Su PostgreSQL questo livello corrisponde agli schemi.' },
     opzionale: true,
     titolo: 'Database e tabelle',
     testo: 'L\'albero dei database della connessione aperta. Tasto destro per creare, rinominare, eliminare. '
@@ -94,6 +100,8 @@ const PASSI = [
   },
   {
     sel: '#filter-input',
+    mobile: { sel: '#command-palette-open', titolo: 'Trova quello che ti serve',
+      testo: 'La lente apre la ricerca globale: trova connessioni, database e tabelle, oppure cerca un comando da eseguire.' },
     opzionale: true,
     titolo: 'Le scorciatoie sono tue',
     testo: 'Ctrl+B mostra/nasconde la barra connessioni, Ctrl+P apre la palette (cerca connessioni, database e '
@@ -260,6 +268,8 @@ function apriModale(html) {
   const overlay = $('#onboarding-overlay');
   const corpo = $('#onboarding-body');
   if (!overlay || !corpo) return;
+  // Il passaggio dalla navigazione alla guida deve liberare la focus trap precedente.
+  closeNavigationSheet(true);
   corpo.innerHTML = html;
   mountArcControls(corpo);
   overlay.classList.remove('hidden');
@@ -291,7 +301,15 @@ function eseguiAzione(azione) {
     openConnModal();
     return;
   }
-  if (azione === 'tour') { segnaVista(); chiudiModale(); avviaTour(); return; }
+  if (azione === 'tour') {
+    segnaVista();
+    const overlay = $('#onboarding-overlay');
+    // Lo spotlight appartiene al workspace: attendi che Arc liberi focus e tastiera.
+    if (overlay?.dataset.arcDialog) overlay.addEventListener('codedb:dialog-closed', () => avviaTour(), { once: true });
+    else queueMicrotask(() => avviaTour());
+    chiudiModale();
+    return;
+  }
   if (azione === 'checklist') {
     segnaVista();
     chiudiModale();
@@ -338,28 +356,55 @@ function apriBenvenuto() {
 function apriHub() {
   const stato = leggiStato();
   const fatti = completati(stato);
+  const percorso = {
+    connessione: ['plug-zap', 'Connetti'], tabella: ['table-2', 'Esplora'],
+    query: ['square-terminal', 'Query'], grafico: ['chart-no-axes-combined', 'Grafici'], backup: ['archive', 'Backup'],
+  };
   apriModale(`
-    <div class="onb-hero compatto">
-      <i data-lucide="life-buoy"></i>
-      <h2>Guida introduttiva</h2>
-      <p>Primi passi completati: <strong>${fatti} di ${TRAGUARDI.length}</strong>${versioneApp ? ` · CodeDB ${esc(versioneApp)}` : ''}</p>
-    </div>
-    <div class="onb-scelte">
-      <button type="button" class="onb-scelta primaria" data-azione="tour">
-        <i data-lucide="compass"></i>
-        <span class="onb-scelta-titolo">Rifai il giro guidato</span>
-        <span class="onb-scelta-nota">Il tour si adatta a ciò che è aperto adesso.</span>
+    <!-- THESIS: una mappa dei primi passi, con il giro guidato come azione principale.
+         OWN-WORLD: superfici CodeDB, indaco funzionale, icone Lucide, spaziatura compatta.
+         STORY: riconosci i traguardi reali e scegli come riprendere l’esplorazione.
+         FIRST VIEWPORT: titolo, percorso a cinque tappe, invito al tour, due righe operative.
+         FORM: componente locale del sistema esistente; nessuna nuova identità o concept roll. -->
+    <div class="onb-hub">
+      <div class="onb-hub-head">
+        <h2>Guida introduttiva</h2>
+        <p>Ritrova gli strumenti, riparti da dove vuoi.</p>
+      </div>
+      <section class="onb-hub-journey" aria-label="I tuoi primi passi">
+        <div class="onb-hub-status">
+          <span>Il tuo percorso</span>
+          <span class="onb-hub-completion">${fatti === TRAGUARDI.length ? '<i data-lucide="check" aria-hidden="true"></i>' : ''}<strong>${fatti} di ${TRAGUARDI.length}</strong> completati</span>
+        </div>
+        <ol class="onb-hub-route">
+          ${TRAGUARDI.map((t, i) => {
+            const fatto = Boolean(stato.traguardi[t.id]);
+            const [icona, nome] = percorso[t.id];
+            return `<li class="onb-hub-step${fatto ? ' is-complete' : ''}" style="--step:${i}" title="${esc(t.etichetta)}" aria-label="${esc(t.etichetta)}: ${fatto ? 'completato' : 'da completare'}">
+              <i data-lucide="${icona}" aria-hidden="true"></i>
+              <span>${nome}</span><span class="onb-hub-track" aria-hidden="true"><span></span></span>
+            </li>`;
+          }).join('')}
+        </ol>
+      </section>
+      <button type="button" class="onb-hub-tour" data-azione="tour">
+        <span class="onb-hub-compass" aria-hidden="true"><i data-lucide="compass"></i></span>
+        <span class="onb-hub-action-copy"><strong>Rifai il giro guidato</strong><span>Un percorso nell’interfaccia che hai aperto.</span></span>
+        <i data-lucide="arrow-right" class="onb-hub-arrow" aria-hidden="true"></i>
       </button>
-      <button type="button" class="onb-scelta" data-azione="checklist">
-        <i data-lucide="list-checks"></i>
-        <span class="onb-scelta-titolo">Mostra i primi passi</span>
-        <span class="onb-scelta-nota">Il pannello con gli obiettivi ancora aperti.</span>
-      </button>
-      <button type="button" class="onb-scelta" data-azione="connessione">
-        <i data-lucide="plug-zap"></i>
-        <span class="onb-scelta-titolo">Nuova connessione</span>
-        <span class="onb-scelta-nota">Apre il form di connessione.</span>
-      </button>
+      <div class="onb-hub-actions">
+        <button type="button" class="onb-hub-action" data-azione="checklist">
+          <i data-lucide="list-checks" aria-hidden="true"></i>
+          <span class="onb-hub-action-copy"><strong>Mostra i primi passi</strong><span>${fatti === TRAGUARDI.length ? 'Rivedi i cinque traguardi completati.' : 'Tieni a portata di mano i prossimi obiettivi.'}</span></span>
+          <i data-lucide="chevron-right" class="onb-hub-arrow" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="onb-hub-action" data-azione="connessione">
+          <i data-lucide="plug-zap" aria-hidden="true"></i>
+          <span class="onb-hub-action-copy"><strong>Nuova connessione</strong><span>Collega un altro database al tuo workspace.</span></span>
+          <i data-lucide="plus" class="onb-hub-arrow" aria-hidden="true"></i>
+        </button>
+      </div>
+      <footer class="onb-hub-footer"><span>CodeDB${versioneApp ? ` <span>${esc(versioneApp)}</span>` : ''}</span><span class="onb-hub-key"><kbd>Esc</kbd> per chiudere</span></footer>
     </div>
   `);
 }
@@ -405,7 +450,8 @@ function visibile(el) {
 
 /** Passi effettivamente mostrabili ADESSO (vedi nota in testa al file). */
 function passiDisponibili() {
-  return PASSI.filter((p) => {
+  const mobile = window.matchMedia('(max-width: 900px)').matches;
+  return PASSI.map(p => mobile && p.mobile ? p.mobile : p).filter((p) => {
     const el = document.querySelector(p.sel);
     if (visibile(el)) return true;
     return false; // sia gli opzionali sia gli altri: indicare il nulla non aiuta

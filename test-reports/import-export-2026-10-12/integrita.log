@@ -1,0 +1,18 @@
+  SKIP MongoDB drop negato: imposta CODEDB_E2E_MONGO_AUTH=1 con un MONGO_ADMIN_URI autenticato
+  OK   MongoDB reale: una collection VUOTA sopravvive al ripristino
+  OK   MongoDB reale: gli indici di una collection vuota sono ricreati e verificati
+  OK   MongoDB reale: indexList non aggiunge campi che il backup non ha
+  OK   MongoDB reale: import di un file STORICO con `unique: false` esplicito
+  OK   MongoDB reale: l indice TTL conserva expireAfterSeconds
+  OK   MySQL reale: una view non e piu mancante da se stessa
+  OK   PostgreSQL reale: la view dipende dal search_path ma la forma canonica no
+  OK   PostgreSQL reale: import di un artefatto con una view
+  OK   MySQL reale: export senza colonne generate e con geometrie GeoJSON
+  OK   MySQL reale: import applica le righe e la geometria torna identica
+  OK   MySQL reale: un file esportato dalla versione difettosa resta importabile
+  OK   MySQL reale: errore dopo promozione ripristina dati e oggetti originali
+  OK   MySQL reale: upsert incrementale senza DELETE/cascade/trigger
+  OK   PostgreSQL reale: swap schema atomico per lettore concorrente
+  OK   PostgreSQL reale: restore backup usa piano comune e conserva gli oggetti
+  OK   PostgreSQL reale: errore dopo promozione esegue il recupero full
+  OK   PostgreSQL reale: recupero di schema vuoto e con soli oggetti

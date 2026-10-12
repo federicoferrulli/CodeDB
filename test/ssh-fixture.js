@@ -7,8 +7,17 @@ const { hostKeyFingerprint } = require('../db/SshTunnel');
 
 // Chiavi usa-e-getta e solo traffico loopback: nessuna credenziale dell'utente.
 async function sshFixture() {
-  const host = utils.generateKeyPairSync('ed25519');
-  const key = utils.generateKeyPairSync('ed25519');
+  // ssh2 1.17 tronca gli zeri iniziali della chiave pubblica Ed25519 generata.
+  // Si rigenera solo la fixture malformata, senza cambiare la validazione dell'app.
+  const generaEd25519 = () => {
+    for (let i = 0; i < 8; i++) {
+      const candidate = utils.generateKeyPairSync('ed25519');
+      if (!(utils.parseKey(candidate.private) instanceof Error)) return candidate;
+    }
+    throw new Error('Il generatore SSH non ha prodotto una fixture Ed25519 valida.');
+  };
+  const host = generaEd25519();
+  const key = generaEd25519();
   const encrypted = utils.generateKeyPairSync('rsa', { bits: 2048, passphrase: 'passphrase-fixture', cipher: 'aes256-cbc' });
   const pem = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1', privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
   const allowed = [key, encrypted].map(value => utils.parseKey(value.public));

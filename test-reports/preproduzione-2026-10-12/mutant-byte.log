@@ -1,0 +1,32 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
++   rows: [
++     {
++       testo: '🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊🦊'
++     }
++   ],
++   truncated: false
+-   rows: [],
+-   truncated: true
+  }
+
+    at C:\repository\CodeDB\test\unit-preproduzione.js:16:10
+    at Object.<anonymous> (C:\repository\CodeDB\test\unit-preproduzione.js:92:3)
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1873:14)
+    at Module._compile (C:\repository\CodeDB\test\fault-preproduzione.cjs:19:20)
+    at Object..js (node:internal/modules/cjs/loader:2013:10)
+    at Module.load (node:internal/modules/cjs/loader:1596:32)
+    at Module._load (node:internal/modules/cjs/loader:1398:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Object],
+  expected: [Object],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}
+FAIL: prova di preproduzione rimasta sospesa

@@ -98,7 +98,7 @@ export function initDocumentSwitcher() {
   };
   opener.addEventListener('click', () => {
     if (open) { close(); return; }
-    closeDrawers();
+    closeDrawers({ immediate: true });
     saveWorkspaceInputs(); render();
     open = true;
     opener.setAttribute('aria-expanded', 'true');

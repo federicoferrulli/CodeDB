@@ -294,6 +294,16 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
     const objects = objectsFile
       ? EJSON.parse(fs.readFileSync(fileDelBackup(layer.dir, objectsFile.path, 'file di oggetti'), 'utf8'))
       : null;
+    for (const file of layer.manifest.files.filter(f=>f.kind==='large-objects')) {
+      if (!['postgresql','postgres'].includes(layer.manifest.dbType)) throw new Error('Large Objects in un backup non PostgreSQL.');
+      require('../../db/pg-references').validateLargeObjects(JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'Large Objects'),'utf8')));
+    }
+    const largeFiles=layer.manifest.files.filter(f=>f.kind==='large-object');
+    if (largeFiles.length) {
+      if (!['postgresql','postgres'].includes(layer.manifest.dbType)) throw new Error('Large Objects in un backup non PostgreSQL.');
+      require('../../db/pg-references').validateLargeObjects(largeFiles.map(f=>({oid:f.oid,size:0,chunks:[]})));
+      for(const file of largeFiles) if (!Number.isSafeInteger(file.size) || file.size<0 || file.size!==file.bytes) throw new Error('Dimensione Large Object non valida nel manifest.');
+    }
     normalizzaLayerBackup({
       dbType: layer.manifest.dbType,
       database: layer.manifest.db,
@@ -309,14 +319,16 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
     // chiave assente non puo arrivare fino all'INSERT/UPSERT.
     if (Number(layer.manifest.version) >= 2) {
       for (const file of layer.manifest.files.filter((f) => f.kind === 'data')) {
+        if (file.encoding && (file.encoding !== 'bson-base64' || !['mongo', 'mongodb'].includes(layer.manifest.dbType))) throw new Error('Codifica dei dati di backup non supportata.');
         const declared = new Set(file.columns);
         let rows = 0;
         for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'file di dati'))) {
-          const row = EJSON.parse(line, { relaxed: false });
+          const row = file.encoding === 'bson-base64' ? JSON.parse(line) : EJSON.parse(line, { relaxed: false });
           if (!row || typeof row !== 'object' || Array.isArray(row)) {
             throw new Error(`Il file dati di "${file.collection}" contiene una riga non strutturata.`);
           }
-          const rowColumns = Object.keys(row);
+          const rowColumns = file.encoding === 'bson-base64'
+            ? require('../../db/mongoBson').inspect(require('../../db/mongoBson').decode(row)).columns : Object.keys(row);
           for (const column of rowColumns) {
             if (!declared.has(column)) {
               throw new Error(`Il file dati di "${file.collection}" contiene la colonna non dichiarata "${column}".`);
@@ -340,9 +352,11 @@ async function preflightChain(chain, log, { allowUnsafeSchema = false } = {}) {
         }
       }
       for (const file of layer.manifest.files.filter((f) => f.kind === 'tombstones')) {
+        if (file.encoding && (file.encoding !== 'bson-base64' || !['mongo', 'mongodb'].includes(layer.manifest.dbType))) throw new Error('Codifica delle cancellazioni non supportata.');
         let rows = 0;
         for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'file di cancellazioni'))) {
-          const row = EJSON.parse(line, { relaxed: false });
+          const row = file.encoding === 'bson-base64' ? JSON.parse(line) : EJSON.parse(line, { relaxed: false });
+          if (file.encoding) require('../../db/mongoBson').decodeId(row);
           if (!row || typeof row !== 'object' || Array.isArray(row)) {
             throw new Error(`Il file di cancellazioni di "${file.collection}" contiene una riga non strutturata.`);
           }
@@ -584,7 +598,8 @@ async function restoreSchemaObjects({
 
   // --- SQL -----------------------------------------------------------------
   const esegui = async (sql, cosa) => {
-    const pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb, dbType);
+    let pulito = riqualificaDdl(senzaDefiner(String(sql).trim()), dbOrigine, targetDb, dbType);
+    if (dbType === 'postgresql') pulito = pulito.replace(/^CREATE\s+(FUNCTION|PROCEDURE)\b/i,'CREATE OR REPLACE $1');
     await strategy.collectionAggregate(targetDb, null, { pipeline: pulito });
     if (log) log.info(`  ${cosa} applicato/a`);
   };
@@ -597,6 +612,41 @@ async function restoreSchemaObjects({
         problems.push(`chiave esterna: ${err.message}`);
       }
     }
+  }
+
+  if (oggetti.collations?.length) {
+    const existing = await require('../../db/pg-types').readCollations((s,p)=>strategy.pool.query(s,p), targetDb);
+    for (const c of oggetti.collations) {
+      const found = existing.find(x=>x.name===c.name);
+      if (found) {
+        if (require('../../db/schemaObjects').canonicalSqlForDb(c.ddl,dbOrigine) !== require('../../db/schemaObjects').canonicalSqlForDb(found.ddl,targetDb)) throw new Error(`Collation "${c.name}" incompatibile con la destinazione.`);
+      } else await esegui(c.ddl, `collation "${c.name}"`);
+    }
+  }
+  let types = [...(oggetti.types || [])];
+  if (types.length) {
+    const existing=await require('../../db/pg-types').readTypes((s,p)=>strategy.pool.query(s,p),targetDb);
+    const canonical=require('../../db/schemaObjects').canonicalSqlForDb;
+    types=types.filter(t=>{
+      const found=existing.find(x=>x.name===t.name);if(!found)return true;
+      if(canonical(t.ddl,dbOrigine)!==canonical(found.ddl,targetDb))throw new Error(`Il tipo PostgreSQL "${t.name}" esiste con una definizione diversa.`);
+      return false;
+    });
+  }
+  for(const t of types.filter(t=>t.shell)) await esegui(`CREATE TYPE ${pgQid(t.name)}`,`tipo shell "${t.name}"`);
+  let routines = [...(oggetti.typeRoutines || [])];
+  while (types.length) {
+    let routineProgress=false;
+    const deferred=[];
+    for(const r of routines){try{await esegui(r.ddl,`routine del tipo "${r.name}"`);routineProgress=true;}catch{deferred.push(r);}}
+    routines=deferred;
+    const failed = [];
+    for (const t of types) {
+      try { await esegui(t.ddl, `tipo "${t.name}"`); }
+      catch (err) { failed.push({ ...t, error: err.message }); }
+    }
+    if (failed.length === types.length && !routineProgress) { problems.push(...failed.map(t => `tipo "${t.name}": ${t.error}`)); break; }
+    types = failed;
   }
 
   // Le view possono dipendere da altre view: invece di indovinare un ordine, si
@@ -630,6 +680,10 @@ async function restoreSchemaObjects({
     for (const voce of gruppo.voci) {
       try {
         await esegui(voce.ddl, gruppo.etichetta(voce));
+        if (dbType === 'postgresql' && voce.ownerTable) {
+          await strategy.collectionAggregate(targetDb, null, { pipeline:
+            `ALTER SEQUENCE ${pgQid(targetDb)}.${pgQid(voce.name)} OWNED BY ${pgQid(targetDb)}.${pgQid(voce.ownerTable)}.${pgQid(voce.ownerColumn)}` });
+        }
       } catch (err) {
         problems.push(`${gruppo.etichetta(voce)}: ${err.message}`);
       }
@@ -692,14 +746,15 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
       let batchDelete = [];
       const flushDelete = async () => {
         if (!batchDelete.length) return;
-        await collection.bulkWrite(
+        if (eliminazioni.encoding === 'bson-base64') await require('../../db/mongoBson').deleteRows(client, targetDb, f.collection, batchDelete);
+        else await collection.bulkWrite(
           batchDelete.map((id) => ({ deleteOne: { filter: id } })),
           { ordered: true }
         );
         batchDelete = [];
       };
       for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
-        batchDelete.push(EJSON.parse(line, { relaxed: false }));
+        batchDelete.push(eliminazioni.encoding === 'bson-base64' ? JSON.parse(line) : EJSON.parse(line, { relaxed: false }));
         if (batchDelete.length >= BATCH_SIZE) await flushDelete();
       }
       await flushDelete();
@@ -709,7 +764,10 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
     let applied = 0;
     const flush = async () => {
       if (!batch.length) return;
-      if (isFirst) {
+      if (f.encoding === 'bson-base64') {
+        const result = await require('../../db/mongoBson').importRows(client, targetDb, f.collection, batch, !isFirst);
+        if (result.failed) throw new Error(result.errors.join('; '));
+      } else if (isFirst) {
         await collection.insertMany(batch, { ordered: false });
       } else {
         await collection.bulkWrite(
@@ -720,7 +778,7 @@ async function restoreLayerMongo({ strategy, targetDb, layer, isFirst, onlyColle
       batch = [];
     };
     for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
-      const row = EJSON.parse(line, { relaxed: false });
+      const row = f.encoding === 'bson-base64' ? JSON.parse(line) : EJSON.parse(line, { relaxed: false });
       registraAttesa(tracker, f);
       batch.push(row);
       applied += 1;
@@ -784,7 +842,10 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
   const pool = strategy.pool;
   const conn = await pool.getConnection();
   let total = 0;
+  let originalSession;
   try {
+    [[originalSession]] = await conn.query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS mode');
+    await conn.query("SET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES'");
     await conn.query(`CREATE DATABASE IF NOT EXISTS ${myQid(targetDb)}`);
     await conn.query(`USE ${myQid(targetDb)}`);
     const dataFiles = layer.manifest.files.filter(
@@ -801,6 +862,7 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
     }
 
     for (const f of dataFiles) {
+      await conn.query('SET SESSION time_zone = ?', [f.timezone === 'UTC' ? '+00:00' : originalSession.timezone]);
       registraFileAtteso(tracker, f);
       const tableId = myQid(f.collection);
       if (isFirst) {
@@ -832,7 +894,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
 
       const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
       if (!isFirst && eliminazioni) {
-        const whereDelete = f.identity.columns.map((c) => `${myQid(c)} = ?`).join(' AND ');
+        const binary = new Set((f.columnSchema || []).filter(c=>/^(?:binary|varbinary|tinyblob|blob|mediumblob|longblob|bit)\b/i.test(c.type)).map(c=>c.name));
+        const whereDelete = f.identity.columns.map((c) => `${myQid(c)} = ${binary.has(c)?'UNHEX(?)':(f.ordinalColumns||[]).includes(c)?'CAST(? AS UNSIGNED)':'?'}`).join(' AND ');
         for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
           const id = EJSON.parse(line, { relaxed: false });
           await conn.query(
@@ -874,23 +937,37 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
               : [`${myQid(conflictColumns[0])} = ${myQid(conflictColumns[0])}`]
           ).join(', ')}`
           : '';
-        const geoNelBatch = columns.some((c) => geoTarget.has(c));
+        const ordinalColumns = new Set(f.ordinalColumns || []);
+        const enumColumns = new Set((f.columnSchema || []).filter(require('../../db/mysql-ordinal').isEnum).map(c=>c.name));
+        const zeroColumns = [];
+        const geoNelBatch = columns.some((c) => geoTarget.has(c) || ordinalColumns.has(c));
         if (!geoNelBatch) {
           // Percorso veloce, invariato: nessuna geometria, insert multiplo.
-          await conn.query(`INSERT INTO ${tableId} (${listaColonne}) VALUES ?${upsertSql}`, [batch]);
+          await require('../../db/mysql-ordinal').write(conn, `INSERT INTO ${tableId} (${listaColonne}) VALUES ?${upsertSql}`, [batch]);
         } else {
           // Con le geometrie ogni riga ha bisogno delle proprie espressioni,
           // quindi la clausola VALUES si costruisce esplicitamente.
           const params = [];
-          const tuple = batch.map((riga) => {
+          const tuple = batch.map((riga, rowIndex) => {
             const segnaposti = columns.map((c, i) => {
               const info = geoTarget.get(c);
               const v = riga[i];
+              if (ordinalColumns.has(c) && v != null) {
+                const bind = require('../../db/mysql-ordinal').binding(require('bson').Decimal128.fromString(String(v)), {type:enumColumns.has(c)?'enum':'set'});
+                if (bind.zero) zeroColumns.push({column:c,row:rowIndex+1});
+                params.push(bind.param); return bind.sql;
+              }
               if (!info || v == null) { params.push(v); return '?'; }
               // WKB esadecimale (formato del dump). I backup prodotti prima di
               // questa correzione non contengono geometrie utilizzabili — il
               // loro ripristino falliva — quindi non c'è un formato precedente
               // da riconoscere qui.
+              if (info.kind !== 'bin' && f.geometryEncoding === 'mysql-internal-hex') {
+                const bytes = Buffer.from(String(v), 'hex');
+                if (bytes.length < 9 || bytes.length * 2 !== String(v).length) throw new Error('Geometria binaria del backup non valida.');
+                params.push(bytes.subarray(4).toString('hex'));
+                return `ST_GeomFromWKB(UNHEX(?), ${bytes.readUInt32LE(0)}, 'axis-order=long-lat')`;
+              }
               params.push(String(v));
               // Binari (BLOB, BINARY, BIT…): esadecimale nel dump, UNHEX qui.
               if (info.kind === 'bin') return 'UNHEX(?)';
@@ -905,8 +982,8 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
             });
             return `(${segnaposti.join(', ')})`;
           });
-          await conn.query(
-            `INSERT INTO ${tableId} (${listaColonne}) VALUES ${tuple.join(', ')}${upsertSql}`, params,
+          await require('../../db/mysql-ordinal').write(
+            conn, `INSERT INTO ${tableId} (${listaColonne}) VALUES ${tuple.join(', ')}${upsertSql}`, params, zeroColumns,
           );
         }
         applied += batch.length;
@@ -945,7 +1022,10 @@ async function restoreLayerMySql({ strategy, targetDb, layer, isFirst, onlyColle
       checkApplied(problems, layer, f, applied);
     }
   } finally {
-    conn.release();
+    try {
+      if (originalSession) await conn.query('SET SESSION time_zone = ?, SESSION sql_mode = ?', [originalSession.timezone, originalSession.mode]);
+      conn.release();
+    } catch (err) { conn.destroy(); throw err; }
   }
   return total;
 }
@@ -965,21 +1045,10 @@ async function pgExistingTables(strategy, targetSchema) {
 
 async function pgTargetIdentity(strategy, schema, table, expectedIdentity = null) {
   const pool = strategy.pool;
-  const columnsRes = await pool.query(
-    `SELECT a.attname AS name, pg_catalog.format_type(a.atttypid, a.atttypmod) AS type,
-            NOT a.attnotnull AS nullable
-       FROM pg_catalog.pg_attribute a
-       JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
-       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = $2 AND c.relname = $1
-        AND a.attnum > 0 AND NOT a.attisdropped
-   ORDER BY a.attnum`,
-    [table, schema],
-  );
-  const columns = columnsRes.rows.map((c) => ({
+  const columns = (await require('../../db/pg-ddl').pgColonne((s, p) => pool.query(s, p), schema, table)).map((c) => ({
     name: c.name,
-    type: String(c.type).toLowerCase(),
-    nullable: c.nullable === true || String(c.nullable).toLowerCase() === 'true',
+    type: c.ctype.toLowerCase(),
+    nullable: !c.notnull,
   }));
   const identities = await leggiIdentitaPostgres(
     (sql, params) => pool.query(sql, params), schema, table, columns,
@@ -1014,6 +1083,24 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
   );
   // Schema effettivo di destinazione (retro-compatibile con i backup vecchi).
   targetDb = pgTargetSchema(targetDb, layer, explicitTarget);
+  if (isFirst) {
+    await strategy.pool.query(`CREATE SCHEMA IF NOT EXISTS ${pgQid(targetDb)}`);
+    // DROP elimina anche le sequenze possedute: i prerequisiti vanno ricreati dopo.
+    if (drop) for (const f of dataFiles) {
+      await eliminaSePresente(() => strategy.dropCollection(targetDb, f.collection), {
+        dbType: 'postgresql', target: `${targetDb}.${f.collection}`,
+      });
+    }
+    for (const file of layer.manifest.files.filter(f => f.kind === 'objects')) {
+      const objects = JSON.parse(fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8'));
+      const sequences = (objects.sequences || []).filter(s => !onlyCollections || onlyCollections.includes(s.ownerTable));
+      await require('../../db/pg-types').checkExtensions(strategy, objects.extensions);
+      await restoreSchemaObjects({ strategy, targetDb, dbType: 'postgresql',
+        oggetti: { collations: objects.collations, types: objects.types, typeRoutines: objects.routines, sequences: sequences.map(({ ownerTable, ownerColumn, ...s }) => s) },
+        dbOrigine: layer.manifest.db, problems, log, allowUnsafeSchema: opts.allowUnsafeSchema });
+      if (problems.length) throw new Error(problems.join('; '));
+    }
+  }
   log.info(`  Schema di destinazione PostgreSQL: ${targetDb}`);
   let total = 0;
   // L'elenco delle tabelle esistenti si legge una volta sola, come già fa il
@@ -1026,14 +1113,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     });
   }
   for (const f of dataFiles) {
-    registraFileAtteso(tracker, f);
     if (isFirst) {
-      if (drop) {
-        await eliminaSePresente(() => strategy.dropCollection(targetDb, f.collection), {
-          dbType: 'postgresql', target: `${targetDb}.${f.collection}`,
-        });
-        if (existingTables) existingTables.delete(f.collection);
-      }
       const schemaFile = layer.manifest.files.find((x) => x.kind === 'schema' && x.collection === f.collection);
       // Se non sappiamo cosa esiste, si prova comunque a creare: una CREATE su
       // tabella già presente fallisce in modo innocuo ed è l'unico errore che
@@ -1055,6 +1135,40 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
         }
       }
     }
+  }
+  if(isFirst)for(const file of layer.manifest.files.filter(f=>f.kind==='objects')){
+    const objects=JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'file di oggetti'),'utf8'));
+    // Regproc può riferire routine senza tipi custom: servono prima dei dati.
+    // Quelle che dipendono da view vengono riprovate nella fase finale.
+    await restoreSchemaObjects({strategy,targetDb,dbType:'postgresql',oggetti:{routines:objects.routines},dbOrigine:layer.manifest.db,problems:[],log,allowUnsafeSchema:opts.allowUnsafeSchema});
+  }
+  const referenceShapes=new Map();
+  let wantedLargeObjects=null;
+  if (onlyCollections && layer.manifest.files.some(f=>['large-object','large-objects'].includes(f.kind))) {
+    wantedLargeObjects=new Set();
+    for(const f of dataFiles) {
+      const shape=await require('../../db/pg-references').columnReferences((s,p)=>strategy.pool.query(s,p),targetDb,f.collection);
+      referenceShapes.set(f.collection,shape);
+      for await (const line of readLines(fileDelBackup(layer.dir,f.path,'riferimenti Large Objects'))) {
+        require('../../db/pg-references').rowReferences(parseClientValue(line),shape,id=>{wantedLargeObjects.add(id);return id;});
+      }
+    }
+  }
+  for (const file of layer.manifest.files.filter(f=>f.kind==='large-objects')) {
+    const objects=JSON.parse(fs.readFileSync(fileDelBackup(layer.dir,file.path,'Large Objects'),'utf8'));
+    const map=await require('../../db/pg-references').importLargeObjects(strategy.pool,objects.filter(o=>!wantedLargeObjects||wantedLargeObjects.has(o.oid)),opts.largeObjectMap);
+    for(const [id,value]of map)opts.largeObjectMap.set(id,value);
+  }
+  const largeFiles=layer.manifest.files.filter(f=>f.kind==='large-object' && (!wantedLargeObjects||wantedLargeObjects.has(f.oid))).map(f=>({...f,path:fileDelBackup(layer.dir,f.path,'Large Object')}));
+  if (largeFiles.length) {
+    const map=await require('../../db/pg-references').importLargeObjectFiles(strategy.pool,largeFiles,opts.largeObjectMap);
+    for(const [id,value]of map)opts.largeObjectMap.set(id,value);
+  }
+  for (const f of dataFiles) {
+    registraFileAtteso(tracker, f);
+    const references=referenceShapes.get(f.collection)||await require('../../db/pg-references').columnReferences((s,p)=>strategy.pool.query(s,p),targetDb,f.collection);
+    const rewrite = row => require('../../db/pg-references').rowReferences(row,references,id=>opts.largeObjectMap.get(id)||id,
+      (value,node)=>node.type==='regnamespace' && [layer.manifest.db,pgQid(layer.manifest.db)].includes(value) ? pgQid(targetDb) : riqualificaDdl(value,layer.manifest.db,targetDb,'postgresql'));
     const targetMeta = await pgTargetIdentity(strategy, targetDb, f.collection, f.identity);
     let empty = false;
     if (!f.identity) {
@@ -1063,15 +1177,16 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
       );
       empty = !!res.rows[0].empty;
     }
-    assertColumnsAndIdentity(f, targetMeta.columnSchema, targetMeta.identity, { empty });
+    const expectedMeta = { ...f, columnSchema: f.columnSchema?.map(c => ({ ...c, type: riqualificaDdl(c.type, layer.manifest.db, targetDb, 'postgresql') })) };
+    assertColumnsAndIdentity(expectedMeta, targetMeta.columnSchema, targetMeta.identity, { empty });
     const eliminazioni = layer.manifest.files.find((x) => x.kind === 'tombstones' && x.collection === f.collection);
     if (!isFirst && eliminazioni) {
       const whereDelete = f.identity.columns.map((c, i) => `${pgQid(c)} = $${i + 1}`).join(' AND ');
       for await (const line of readLines(fileDelBackup(layer.dir, eliminazioni.path, 'file di cancellazioni'))) {
-        const id = EJSON.parse(line, { relaxed: false });
+        const id = rewrite(EJSON.parse(line, { relaxed: false }));
         await strategy.pool.query(
           `DELETE FROM ${pgQid(targetDb)}.${pgQid(f.collection)} WHERE ${whereDelete}`,
-          f.identity.columns.map((c) => toSqlValue(id[c]))
+          f.identity.columns.map((c) => (f.binarie || []).includes(c) && typeof id[c] === 'string' ? Buffer.from(id[c], 'hex') : toSqlValue(id[c]))
         );
       }
     }
@@ -1106,7 +1221,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
     for await (const line of readLines(fileDelBackup(layer.dir, f.path, 'file di dati'))) {
       let riga;
       try {
-        riga = parseClientValue(line); // vedi la nota sul ramo MySQL
+        riga = rewrite(parseClientValue(line)); // vedi la nota sul ramo MySQL
       } catch (err) {
         failed += 1;
         if (firstErrors.length < 3) firstErrors.push(`riga non leggibile: ${err.message}`);
@@ -1116,7 +1231,7 @@ async function restoreLayerPostgreSql({ strategy, targetDb, layer, isFirst, only
         // `encode(col,'hex')` nel dump: senza riconvertirlo, PostgreSQL
         // scriverebbe in bytea i CARATTERI della stringa esadecimale invece
         // dei byte che rappresentano.
-        if (typeof riga[col] === 'string') riga[col] = Buffer.from(riga[col], 'hex');
+        if (typeof riga[col] === 'string') riga[col] = { $binary: { base64: Buffer.from(riga[col], 'hex').toString('base64'), subType: '00' } };
       }
       registraAttesa(tracker, f);
       batch.push(riga);
@@ -1257,8 +1372,9 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   let totalWrites = 0;
   const problems = [];
   const tracker = new Map();
+  const largeObjectMap = new Map();
   for (let i = 0; i < chain.length; i++) {
-    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema }, explicitTarget, tracker, mongoOptions };
+    const args = { strategy, targetDb: db, layer: chain[i], isFirst: i === 0, onlyCollections, drop, log, problems, opts: { allowUnsafeSchema, largeObjectMap }, explicitTarget, tracker, mongoOptions };
     totalWrites += dbType === 'mysql'
       ? await restoreLayerMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
@@ -1281,14 +1397,28 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
   // creata fallisce, e una FK già attiva impone alle righe un ordine di
   // caricamento che il backup non descrive. Un ripristino selettivo
   // (onlyCollections) non li tocca: gli oggetti descrivono l'intero database.
-  const oggetti = onlyCollections ? [] : chain
+  const pg = dbType === 'postgresql' || dbType === 'postgres';
+  const oggetti = onlyCollections && !pg ? [] : chain
     .map((l) => ({ layer: l, file: l.manifest.files.find((f) => f.kind === 'objects') }))
     .filter((x) => x.file);
   for (const { layer, file } of oggetti) {
     try {
       const testo = fs.readFileSync(fileDelBackup(layer.dir, file.path, 'file di oggetti'), 'utf8');
+      let schemaObjects = EJSON.parse(testo);
+      if (pg) schemaObjects.types = [];
+      if (onlyCollections) {
+        // Nel ripristino selettivo si aggiornano solo i contatori delle tabelle scelte.
+        const owned = await strategy.pool.query(`SELECT s.relname AS name FROM pg_catalog.pg_class s
+          JOIN pg_catalog.pg_namespace n ON n.oid=s.relnamespace
+          JOIN pg_catalog.pg_depend d ON d.objid=s.oid AND d.deptype IN ('a','i')
+          JOIN pg_catalog.pg_class t ON t.oid=d.refobjid
+          WHERE s.relkind='S' AND n.nspname=$1 AND t.relname=ANY($2::text[])`, [db, onlyCollections]);
+        const sequences = (schemaObjects.sequences || []).filter(s => onlyCollections.includes(s.ownerTable));
+        const names = new Set([...owned.rows.map(s => s.name), ...sequences.map(s => s.name)]);
+        schemaObjects = { sequences, sequenceValues: (schemaObjects.sequenceValues || []).filter(s => names.has(s.name)) };
+      }
       await restoreSchemaObjects({
-        strategy, targetDb: db, dbType, oggetti: EJSON.parse(testo),
+        strategy, targetDb: db, dbType, oggetti: schemaObjects,
         // Il database in cui il backup è stato PRESO: serve a riqualificare le
         // DDL che nominano lo schema di origine (view e trigger di MySQL).
         dbOrigine: layer.manifest.db, problems, log, allowUnsafeSchema,
@@ -1314,6 +1444,7 @@ async function runRestore({ session, backupDir, targetDb, onlyCollections, drop,
     collections: verified.collections,
     problems,
     equivalenza: equivalenzaCatena(chain),
+    ...(largeObjectMap.size ? { largeObjects: [...largeObjectMap.values()] } : {}),
   };
 
   // Un ripristino incompleto non deve mai risultare "riuscito": né in UI, né

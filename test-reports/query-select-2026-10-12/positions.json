@@ -1,0 +1,19 @@
+{
+  "trigger": {
+    "x": 122.984375,
+    "y": 133.265625,
+    "width": 218,
+    "height": 28,
+    "right": 340.984375,
+    "bottom": 161.265625
+  },
+  "popup": {
+    "x": 122.984375,
+    "y": 165,
+    "width": 218,
+    "height": 207,
+    "right": 340.984375,
+    "bottom": 372
+  },
+  "parentVisible": true
+}

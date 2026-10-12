@@ -1,0 +1,20 @@
+[
+  {
+    "motore": "mysql",
+    "righe": 100000,
+    "roundtripMs": 13428,
+    "hashIdentico": true
+  },
+  {
+    "motore": "postgresql",
+    "righe": 100000,
+    "roundtripMs": 7895,
+    "hashIdentico": true
+  },
+  {
+    "motore": "mongodb",
+    "righe": 100000,
+    "roundtripMs": 19790,
+    "hashIdentico": true
+  }
+]

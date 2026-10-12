@@ -1,0 +1,42 @@
+{
+  "commitLocali": 307,
+  "blobTestuali": 3261,
+  "byteAnalizzati": 86052207,
+  "fileCheckout": 685,
+  "risultati": [
+    {
+      "ambito": "cronologia",
+      "file": "test-reports/revisione-2026-10-09/verifica-attuale/contenitori/android-ime.txt",
+      "blob": "91d78c2a2e40c791bc939f70e2016637d776e088",
+      "regola": "api-key-google",
+      "riga": 5218
+    },
+    {
+      "ambito": "cronologia",
+      "file": "test-reports/revisione-2026-10-09/verifica-attuale/contenitori/android-ime.txt",
+      "blob": "91d78c2a2e40c791bc939f70e2016637d776e088",
+      "regola": "api-key-google",
+      "riga": 5218
+    }
+  ],
+  "verificaManuale": {
+    "firmaWindows": "NotSigned",
+    "certificatiFirmaTracciati": 0,
+    "variabiliFirmaNelProcesso": [],
+    "chiaveGoogle": {
+      "file": "test-reports/revisione-2026-10-09/verifica-attuale/contenitori/android-ime.txt",
+      "contesto": "Gboard expressive_stickers_api_key",
+      "proprietaUtente": "non dimostrata; contesto Google/Gboard",
+      "validita": "non provata e non utilizzata",
+      "blobPubblicamenteAccessibile": true,
+      "commit": "5e745b94c7aeabb13c930af976d8ac589c9c020c"
+    },
+    "passwordOwnerLocale": "Sequenza numerica, da sostituire prima della produzione; nessun valore registrato",
+    "pacchettoLocale": "Nessun percorso .env/vault/connections/certificati nei file applicativi ASAR",
+    "limiti": [
+      "Scansione per pattern, non prova di assenza di ogni segreto",
+      "Non letti GitHub Secrets e account dei provider",
+      "Non estratti gli installer storici pubblicati"
+    ]
+  }
+}

@@ -143,7 +143,7 @@ function createModule({ vault, identita, config }) {
 
     // Campi di una connessione salvata per popolarne il form di modifica.
     // I segreti non vengono mai rimandati al browser: si segnala solo se esistono.
-    lifecycle.amministrativo('connections:get', ({ name }, cb) => {
+    lifecycle.amministrativo('connections:get', async ({ name }, cb) => {
       if (!canUseConnection(socketContext.principal, String(name || ''))) {
         throw new Error(`Permesso negato: nessun accesso alla connessione "${name}".`);
       }
@@ -159,7 +159,8 @@ function createModule({ vault, identita, config }) {
         hasSshPrivateKey: has('sshPrivateKey'),
       };
       for (const f of vault.SECRET_FIELDS) delete fields[f];
-      cb({ ok: true, fields, ...flags });
+      const uriPreview = has('uri') ? (await import('../public/js/riepilogo-uri.mjs')).riepilogoUri(conn.uri) : '';
+      cb({ ok: true, fields, ...flags, uriPreview });
     });
 
     // Crea o aggiorna una connessione salvata senza connettersi. oldName, se
@@ -179,8 +180,7 @@ function createModule({ vault, identita, config }) {
       if (conns[name] && name !== oldName) {
         throw new Error(`Esiste già una connessione chiamata "${name}". Scegli un nome diverso.`);
       }
-      let next = vault.sanitizeConnCfg(cfg || {});
-      if (previous) next = vault.preserveConnSecrets(next, previous);
+      const next = vault.sanitizeConnCfg(cfg || {}, previous);
       if (vault.connMode(next) === 'uri' && !next.uri) {
         throw new Error('Inserisci la URI MongoDB completa.');
       }

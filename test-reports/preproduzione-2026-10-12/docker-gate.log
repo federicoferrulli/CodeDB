@@ -1,0 +1,8 @@
+Avvio rifiutato: l'istanza è raggiungibile su "0.0.0.0", oltre il loopback, ma il server parla solo HTTP.
+Su HTTP viaggiano in chiaro password di accesso, token di sessione, passphrase del vault e credenziali dei database.
+
+Mettilo dietro un reverse proxy che termina HTTPS (nginx, Caddy, Traefik) e poi riavvia con:
+  CODEDB_TRUST_PROXY_TLS=1
+Esempio minimo con Caddy:   codedb.example.com { reverse_proxy 127.0.0.1:3030 }
+Per un uso locale, lascia HOST=127.0.0.1 (default).
+Impossibile avviare CodeDB: Avvio rifiutato: configurazione di rete non sicura.

@@ -47,7 +47,9 @@ function createModule({ query, lock, identita, operazioni, audit }) {
 
     lifecycle.delegate('db:search', async (strategy, { query }) => ({ databases: await strategy.search(query) }));
 
-    lifecycle.delegate('db:collections', async (strategy, { db }) => ({ collections: await strategy.listCollections(db) }));
+    lifecycle.delegate('db:collections', async (strategy, { db, includeCounts }) => ({
+      collections: await strategy.listCollections(db, { includeCounts: includeCounts !== false }),
+    }));
 
     lifecycle.delegate('db:create', async (strategy, { db, coll }) => { await strategy.createDatabase(db, coll); return {}; });
 
@@ -247,15 +249,17 @@ function createModule({ query, lock, identita, operazioni, audit }) {
     lifecycle.delegate('collection:watch', (strategy, p) => {
       // Gli eventi push sono taggati col tabId: il frontend li instrada al tab.
       const tab = lock.normTabId(p.tabId);
+      const watchId = typeof p.watchId === 'string' && p.watchId.length <= 200 ? p.watchId : 'default';
       strategy.watch(p.db, p.coll, {
-        onChange: (change) => socketContext.socket.emit('collection:changed', { tabId: tab, db: p.db, coll: p.coll, ...change }),
-        onUnavailable: () => socketContext.socket.emit('watch:unavailable', { tabId: tab, db: p.db, coll: p.coll }),
+        watchId,
+        onChange: (change) => socketContext.socket.emit('collection:changed', { tabId: tab, db: p.db, coll: p.coll, watchId, ...change }),
+        onUnavailable: () => socketContext.socket.emit('watch:unavailable', { tabId: tab, db: p.db, coll: p.coll, watchId }),
       });
       return {};
     });
 
-    lifecycle.delegate('collection:unwatch', (strategy) => {
-      strategy.unwatch();
+    lifecycle.delegate('collection:unwatch', (strategy, p) => {
+      strategy.unwatch(typeof p.watchId === 'string' && p.watchId.length <= 200 ? p.watchId : 'default');
       return {};
     });
 

@@ -22,7 +22,7 @@
  * la libreria va caricata una volta sola.
  * ------------------------------------------------------------------------- */
 
-import { toast } from './utils.js';
+import { toast, lucideIconHtml, refreshLucideIcons, scaricaFile } from './utils.js';
 import { geometryLabel } from './geojson.js';
 import { caricaLeaflet, tileAttive, TILE_URL, TILE_ATTR } from './geo-leaflet.js';
 import {
@@ -50,7 +50,6 @@ export const COLORI = {
   Polygon: '#007acc', MultiPolygon: '#007acc',
   GeometryCollection: '#c586c0',
 };
-const COLORE_EVIDENZA = '#ff6b6b';
 
 export const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
 
@@ -97,6 +96,8 @@ export function riepilogoTsv(st) {
  * @param {HTMLElement|string} [el.notaElenco] nota sotto l'elenco (troncamento)
  * @param {HTMLElement|string} [el.avvisi]    riquadro degli avvisi
  * @param {string} [el.etichettaRiga]        intestazione della colonna "riga"
+ * @param {boolean} [el.elencoCompatto]     righe a pulsante per l'ispettore della selezione
+ * @param {function} [el.onSelezione]       notifica la geometria evidenziata, senza modificare i dati
  */
 export function creaVistaGeo(el = {}) {
   const nodo = (x) => (typeof x === 'string' ? document.querySelector(x) : x) || null;
@@ -113,11 +114,12 @@ export function creaVistaGeo(el = {}) {
   let gruppo = null;
   let renderer = null;
   let stato = null; // { st, disegnate, evidenziato }
+  const layers = new Map();
 
   /* ------------------------------ Disegno -------------------------------- */
 
   function stileDi(tipo, evidenziato) {
-    const colore = evidenziato ? COLORE_EVIDENZA : (COLORI[tipo] || '#8b949e');
+    const colore = evidenziato ? getComputedStyle(canvas).getPropertyValue('--accent-fg').trim() || '#818cf8' : (COLORI[tipo] || '#8b949e');
     return {
       color: colore,
       weight: evidenziato ? 4 : 2,
@@ -133,13 +135,23 @@ export function creaVistaGeo(el = {}) {
   function creaLayer(geo, tipo, evidenziato) {
     const stile = stileDi(tipo, evidenziato);
     try {
-      return L.geoJSON(geo, {
+      const layer = L.geoJSON(geo, {
         style: () => stile,
-        pointToLayer: (_f, ll) => L.circleMarker(ll, { ...stile, radius: evidenziato ? 8 : 5, fillOpacity: 1 }),
+        pointToLayer: (_f, ll) => L.circleMarker(ll, { ...stile, color: '#fff', weight: 2, radius: evidenziato ? 9 : 6, fillOpacity: 1 }),
       });
+      stilePunti(layer, evidenziato);
+      return layer;
     } catch {
       return null;
     }
+  }
+
+  // GeoJSON riapplica lo stile del gruppo anche ai punti delle geometrie composte.
+  function stilePunti(layer, attiva) {
+    if (layer.setRadius) {
+      layer.setRadius(attiva ? 9 : 6);
+      layer.setStyle({ color: '#fff', weight: 2, fillOpacity: 1 });
+    } else layer.eachLayer?.(l => stilePunti(l, attiva));
   }
 
   function etichettaGeo(g) {
@@ -160,10 +172,12 @@ export function creaVistaGeo(el = {}) {
   function disegna() {
     if (!mappa || !stato) return;
     gruppo.clearLayers();
+    layers.clear();
     stato.disegnate.forEach((g) => {
       const layer = creaLayer(g.geo, g.tipo, g.indice === stato.evidenziato);
       if (!layer) return;
       layer.addTo(gruppo);
+      layers.set(g.indice, layer);
       layer.bindTooltip(etichettaGeo(g), { sticky: true });
       // Clic sulla mappa → si evidenzia la voce corrispondente nell'elenco: è il
       // verso opposto del clic sull'elenco, e serve per il caso normale ("questa
@@ -181,34 +195,49 @@ export function creaVistaGeo(el = {}) {
     }
     if (!punti.length) return;
     const b = L.latLngBounds(punti);
+    const opzioni = { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, duration: .35 };
+    mappa.stop();
     if (b.getNorth() === b.getSouth() && b.getEast() === b.getWest()) {
-      mappa.setView(b.getCenter(), Math.max(mappa.getZoom(), 13));
+      mappa.setView(b.getCenter(), Math.max(mappa.getZoom(), 13), opzioni);
     } else {
-      mappa.fitBounds(b, { padding: [30, 30] });
+      mappa.fitBounds(b, { padding: [30, 30], ...opzioni });
     }
   }
 
   function inquadraGeometria(g) {
     if (!g || !g.bbox || !mappa) return;
     const b = L.latLngBounds([[g.bbox[1], g.bbox[0]], [g.bbox[3], g.bbox[2]]]);
+    const opzioni = { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, duration: .35 };
+    mappa.stop();
     if (g.bbox[0] === g.bbox[2] && g.bbox[1] === g.bbox[3]) {
-      mappa.setView([g.bbox[1], g.bbox[0]], Math.max(mappa.getZoom(), 14));
+      mappa.setView([g.bbox[1], g.bbox[0]], Math.max(mappa.getZoom(), 14), opzioni);
     } else {
-      mappa.fitBounds(b, { padding: [40, 40] });
+      mappa.fitBounds(b, { padding: [40, 40], ...opzioni });
     }
   }
 
   function evidenzia(indice, { inquadra = true } = {}) {
     if (!stato) return;
+    const precedente = stato.evidenziato;
     stato.evidenziato = stato.evidenziato === indice && !inquadra ? null : indice;
-    disegna();
+    // Una selezione aggiorna solo le due forme coinvolte, senza ricostruire migliaia di layer.
+    for (const i of new Set([precedente, stato.evidenziato])) {
+      const layer = layers.get(i), voce = stato.disegnate.find(g => g.indice === i);
+      if (!layer || !voce) continue;
+      const attiva = i === stato.evidenziato;
+      layer.setStyle(stileDi(voce.tipo, attiva));
+      stilePunti(layer, attiva);
+      if (attiva) layer.bringToFront();
+    }
     const g = stato.disegnate.find((x) => x.indice === stato.evidenziato);
+    el.onSelezione?.(g || null);
     if (inquadra && g) inquadraGeometria(g);
     if (!elenco) return;
-    elenco.querySelectorAll('tr[data-i]').forEach((tr) => {
+    elenco.querySelectorAll('[data-i]').forEach((tr) => {
       tr.classList.toggle('attiva', Number(tr.dataset.i) === stato.evidenziato);
+      if (tr.tagName === 'BUTTON') tr.setAttribute('aria-pressed', String(Number(tr.dataset.i) === stato.evidenziato));
     });
-    const attiva = elenco.querySelector('tr.attiva');
+    const attiva = elenco.querySelector('.attiva');
     if (attiva) attiva.scrollIntoView({ block: 'nearest' });
   }
 
@@ -226,7 +255,19 @@ export function creaVistaGeo(el = {}) {
   function renderElenco(st) {
     if (!elenco) return;
     const mostrate = st.geometrie.slice(0, MAX_ELENCO);
-    elenco.innerHTML = '<table class="info-table"><thead><tr>'
+    if (el.elencoCompatto) {
+      elenco.innerHTML = mostrate.map(g => {
+        const icona = g.tipo.includes('Point') ? 'map-pin' : g.tipo.includes('Line') ? 'route' : g.tipo.includes('Polygon') ? 'pentagon' : 'shapes';
+        const dove = g.riga === null ? '' : `${etichettaRiga} ${g.riga + 1} · `;
+        const misura = g.proiettata ? 'Coordinate proiettate' : g.areaM2 !== null ? formattaArea(g.areaM2) : g.lunghezzaM !== null ? formattaDistanza(g.lunghezzaM) : '';
+        return `<button type="button" class="geomulti-geo-row" data-i="${g.indice}" aria-pressed="false" title="Inquadra ${esc(g.colonna || g.tipo)} · ${esc(dove)}${esc(g.tipo)}">`
+          + `<span class="geomulti-geo-symbol" style="--geo-color:${COLORI[g.tipo] || '#8b949e'}">${lucideIconHtml(icona)}<small>${g.indice + 1}</small></span>`
+          + `<span class="geomulti-geo-text"><strong>${esc(g.colonna || g.tipo)}</strong><small>${esc(dove)}${esc(g.tipo)}</small>`
+          + `<small>${g.vertici.toLocaleString('it-IT')} ${g.vertici === 1 ? 'vertice' : 'vertici'}${misura ? ` · ${esc(misura)}` : ''}</small></span>`
+          + lucideIconHtml('locate-fixed', 'geomulti-geo-locate') + '</button>';
+      }).join('');
+      refreshLucideIcons(elenco);
+    } else elenco.innerHTML = '<table class="info-table"><thead><tr>'
       + ['#', 'Colonna', etichettaRiga, 'Tipo', 'Vertici', 'Misura'].map((h) => `<th>${esc(h)}</th>`).join('')
       + '</tr></thead><tbody>'
       + mostrate.map((g) => {
@@ -245,7 +286,7 @@ export function creaVistaGeo(el = {}) {
       + '</tbody></table>';
     if (!notaElenco) return;
     notaElenco.textContent = st.geometrie.length > MAX_ELENCO
-      ? `Elencate le prime ${MAX_ELENCO} geometrie di ${st.geometrie.length}: il riepilogo qui sopra le considera tutte.`
+      ? `Elencate le prime ${MAX_ELENCO} geometrie di ${st.geometrie.length}: il riepilogo le considera tutte.`
       : '';
     notaElenco.classList.toggle('hidden', !notaElenco.textContent);
   }
@@ -331,7 +372,7 @@ export function creaVistaGeo(el = {}) {
   }
   if (elenco) {
     elenco.addEventListener('click', (e) => {
-      const tr = e.target.closest('tr[data-i]');
+      const tr = e.target.closest('[data-i]');
       if (!tr || !stato) return;
       const indice = Number(tr.dataset.i);
       if (!stato.disegnate.some((x) => x.indice === indice)) {
@@ -357,6 +398,7 @@ export function creaVistaGeo(el = {}) {
       if (!st.totale) {
         stato = null;
         if (gruppo) gruppo.clearLayers();
+        layers.clear();
         return null;
       }
       try {
@@ -422,6 +464,7 @@ export function creaVistaGeo(el = {}) {
     pulisci() {
       stato = null;
       if (gruppo) gruppo.clearLayers();
+      layers.clear();
       if (riepilogo) riepilogo.innerHTML = '';
       if (elenco) elenco.innerHTML = '';
       if (notaElenco) { notaElenco.textContent = ''; notaElenco.classList.add('hidden'); }
@@ -457,10 +500,5 @@ export function copia(testo, messaggio) {
 export function scaricaGeoJson(fc, nome) {
   if (!fc) return;
   const testo = JSON.stringify(fc, null, 2);
-  const url = URL.createObjectURL(new Blob([testo], { type: 'application/geo+json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = nome;
-  a.click();
-  URL.revokeObjectURL(url);
+  return scaricaFile(new Blob([testo], { type: 'application/geo+json' }), nome);
 }

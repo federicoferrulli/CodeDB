@@ -86,6 +86,11 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
   });
 
   return {
+    writeChunk(chunk) {
+      if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
+      if (failure) throw failure;
+      if (!entry.write(chunk)) return attendiDrain();
+    },
     writeLine(line) {
       if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
       // Se la catena è già saltata, fermarsi subito invece di accodare dati che
@@ -531,6 +536,16 @@ async function verifyBackupDir(backupDir) {
   };
 }
 
+// Gli array mantengono i nomi letterali; le stringhe restano compatibili con i vecchi client.
+function parseCollectionSelection(value) {
+  if (value == null || value === '') return null;
+  const names = typeof value === 'string' ? value.split(',').map(s => s.trim()).filter(Boolean) : value;
+  if (!Array.isArray(names) || names.some(name => typeof name !== 'string' || !name.length || name.includes('\0'))) {
+    throw new Error('Selezione di tabelle o collezioni non valida.');
+  }
+  return names.length ? [...new Set(names)] : null;
+}
+
 function formatBytes(n) {
   if (n < 1024) return `${n} B`;
   const units = ['KB', 'MB', 'GB', 'TB'];
@@ -554,4 +569,5 @@ module.exports = {
   fileDelBackup,
   verifyBackupDir,
   formatBytes,
+  parseCollectionSelection,
 };

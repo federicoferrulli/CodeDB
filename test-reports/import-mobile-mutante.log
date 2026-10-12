@@ -1,0 +1,14 @@
+AssertionError [ERR_ASSERTION]: Una lettura sorpassata non sostituisce l’ultima scelta
++ actual - expected
+
++ ''
+- 'id,nome\n1,città 🦊\n'
+
+    at C:\repository\CodeDB\test\e2e-import-upload-ui.js:111:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '',
+  expected: 'id,nome\n1,città 🦊\n',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

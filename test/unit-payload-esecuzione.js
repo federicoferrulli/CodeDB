@@ -80,7 +80,8 @@ const CODICE_SCRITTURA = "INSERT INTO clienti (nome) VALUES ('Keus')";
 
 // --- 2. L'elenco dei campi riservati è uno solo ed è chiuso ----------------
 {
-  assert.deepStrictEqual([...CAMPI_IMPOSTI_DAL_SERVER], ['runId', 'opHandle', 'run']);
+  assert.deepStrictEqual([...CAMPI_IMPOSTI_DAL_SERVER], ['runId', 'opHandle', 'run', 'sessions']);
+  assert.equal('sessions' in payloadEsecuzione({ sessions: { rubata: true } }), false);
   assert.strictEqual(Object.isFrozen(CAMPI_IMPOSTI_DAL_SERVER), true,
     "L'elenco dev'essere congelato dal modulo, non dal test");
   assert.throws(() => CAMPI_IMPOSTI_DAL_SERVER.push('altro'), TypeError,

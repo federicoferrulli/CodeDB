@@ -1,0 +1,999 @@
+{
+  "add": [],
+  "added": 0,
+  "audited": 571,
+  "change": [
+    {
+      "from": {
+        "name": "undici",
+        "version": "7.29.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\undici"
+      },
+      "to": {
+        "name": "undici",
+        "version": "7.30.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\undici"
+      }
+    },
+    {
+      "from": {
+        "name": "sql-escaper",
+        "version": "1.3.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\sql-escaper"
+      },
+      "to": {
+        "name": "sql-escaper",
+        "version": "1.5.2",
+        "path": "C:\\repository\\CodeDB\\node_modules\\sql-escaper"
+      }
+    },
+    {
+      "from": {
+        "name": "socket.io-parser",
+        "version": "4.2.6",
+        "path": "C:\\repository\\CodeDB\\node_modules\\socket.io-parser"
+      },
+      "to": {
+        "name": "socket.io-parser",
+        "version": "4.2.7",
+        "path": "C:\\repository\\CodeDB\\node_modules\\socket.io-parser"
+      }
+    },
+    {
+      "from": {
+        "name": "qs",
+        "version": "6.15.2",
+        "path": "C:\\repository\\CodeDB\\node_modules\\qs"
+      },
+      "to": {
+        "name": "qs",
+        "version": "6.16.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\qs"
+      }
+    },
+    {
+      "from": {
+        "name": "pvutils",
+        "version": "1.1.5",
+        "path": "C:\\repository\\CodeDB\\node_modules\\pvutils"
+      },
+      "to": {
+        "name": "pvutils",
+        "version": "1.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\pvutils"
+      }
+    },
+    {
+      "from": {
+        "name": "proxy-addr",
+        "version": "2.0.7",
+        "path": "C:\\repository\\CodeDB\\node_modules\\proxy-addr"
+      },
+      "to": {
+        "name": "proxy-addr",
+        "version": "2.0.8",
+        "path": "C:\\repository\\CodeDB\\node_modules\\proxy-addr"
+      }
+    },
+    {
+      "from": {
+        "name": "pkijs",
+        "version": "3.4.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\pkijs"
+      },
+      "to": {
+        "name": "pkijs",
+        "version": "3.4.1",
+        "path": "C:\\repository\\CodeDB\\node_modules\\pkijs"
+      }
+    },
+    {
+      "from": {
+        "name": "picomatch",
+        "version": "4.0.5",
+        "path": "C:\\repository\\CodeDB\\node_modules\\picomatch"
+      },
+      "to": {
+        "name": "picomatch",
+        "version": "4.0.7",
+        "path": "C:\\repository\\CodeDB\\node_modules\\picomatch"
+      }
+    },
+    {
+      "from": {
+        "name": "undici",
+        "version": "6.28.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\node-gyp\\node_modules\\undici"
+      },
+      "to": {
+        "name": "undici",
+        "version": "6.29.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\node-gyp\\node_modules\\undici"
+      }
+    },
+    {
+      "from": {
+        "name": "node-abi",
+        "version": "4.33.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\node-abi"
+      },
+      "to": {
+        "name": "node-abi",
+        "version": "4.37.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\node-abi"
+      }
+    },
+    {
+      "from": {
+        "name": "mysql2",
+        "version": "3.22.5",
+        "path": "C:\\repository\\CodeDB\\node_modules\\mysql2"
+      },
+      "to": {
+        "name": "mysql2",
+        "version": "3.24.5",
+        "path": "C:\\repository\\CodeDB\\node_modules\\mysql2"
+      }
+    },
+    {
+      "from": {
+        "name": "iconv-lite",
+        "version": "0.7.2",
+        "path": "C:\\repository\\CodeDB\\node_modules\\mysql2\\node_modules\\iconv-lite"
+      },
+      "to": {
+        "name": "iconv-lite",
+        "version": "0.7.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\mysql2\\node_modules\\iconv-lite"
+      }
+    },
+    {
+      "from": {
+        "name": "js-yaml",
+        "version": "4.3.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\js-yaml"
+      },
+      "to": {
+        "name": "js-yaml",
+        "version": "4.3.2",
+        "path": "C:\\repository\\CodeDB\\node_modules\\js-yaml"
+      }
+    },
+    {
+      "from": {
+        "name": "ip-address",
+        "version": "10.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\ip-address"
+      },
+      "to": {
+        "name": "ip-address",
+        "version": "10.7.4",
+        "path": "C:\\repository\\CodeDB\\node_modules\\ip-address"
+      }
+    },
+    {
+      "from": {
+        "name": "http-cache-semantics",
+        "version": "4.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\http-cache-semantics"
+      },
+      "to": {
+        "name": "http-cache-semantics",
+        "version": "4.3.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\http-cache-semantics"
+      }
+    },
+    {
+      "from": {
+        "name": "hono",
+        "version": "4.12.32",
+        "path": "C:\\repository\\CodeDB\\node_modules\\hono"
+      },
+      "to": {
+        "name": "hono",
+        "version": "4.13.13",
+        "path": "C:\\repository\\CodeDB\\node_modules\\hono"
+      }
+    },
+    {
+      "from": {
+        "name": "brace-expansion",
+        "version": "1.1.18",
+        "path": "C:\\repository\\CodeDB\\node_modules\\glob\\node_modules\\brace-expansion"
+      },
+      "to": {
+        "name": "brace-expansion",
+        "version": "1.1.21",
+        "path": "C:\\repository\\CodeDB\\node_modules\\glob\\node_modules\\brace-expansion"
+      }
+    },
+    {
+      "from": {
+        "name": "brace-expansion",
+        "version": "2.1.4",
+        "path": "C:\\repository\\CodeDB\\node_modules\\filelist\\node_modules\\brace-expansion"
+      },
+      "to": {
+        "name": "brace-expansion",
+        "version": "2.1.7",
+        "path": "C:\\repository\\CodeDB\\node_modules\\filelist\\node_modules\\brace-expansion"
+      }
+    },
+    {
+      "from": {
+        "name": "fast-uri",
+        "version": "3.1.4",
+        "path": "C:\\repository\\CodeDB\\node_modules\\fast-uri"
+      },
+      "to": {
+        "name": "fast-uri",
+        "version": "3.1.8",
+        "path": "C:\\repository\\CodeDB\\node_modules\\fast-uri"
+      }
+    },
+    {
+      "from": {
+        "name": "express",
+        "version": "4.22.2",
+        "path": "C:\\repository\\CodeDB\\node_modules\\express"
+      },
+      "to": {
+        "name": "express",
+        "version": "4.22.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\express"
+      }
+    },
+    {
+      "from": {
+        "name": "engine.io",
+        "version": "6.6.9",
+        "path": "C:\\repository\\CodeDB\\node_modules\\engine.io"
+      },
+      "to": {
+        "name": "engine.io",
+        "version": "6.6.11",
+        "path": "C:\\repository\\CodeDB\\node_modules\\engine.io"
+      }
+    },
+    {
+      "from": {
+        "name": "fs-extra",
+        "version": "11.4.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-winstaller\\node_modules\\@electron\\windows-sign\\node_modules\\fs-extra"
+      },
+      "to": {
+        "name": "fs-extra",
+        "version": "11.4.1",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-winstaller\\node_modules\\@electron\\windows-sign\\node_modules\\fs-extra"
+      }
+    },
+    {
+      "from": {
+        "name": "electron-publish",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-publish"
+      },
+      "to": {
+        "name": "electron-publish",
+        "version": "26.16.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-publish"
+      }
+    },
+    {
+      "from": {
+        "name": "electron-builder-squirrel-windows",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-builder-squirrel-windows"
+      },
+      "to": {
+        "name": "electron-builder-squirrel-windows",
+        "version": "26.17.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-builder-squirrel-windows"
+      }
+    },
+    {
+      "from": {
+        "name": "electron-builder",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-builder"
+      },
+      "to": {
+        "name": "electron-builder",
+        "version": "26.17.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron-builder"
+      }
+    },
+    {
+      "from": {
+        "name": "electron",
+        "version": "43.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron"
+      },
+      "to": {
+        "name": "electron",
+        "version": "43.7.9",
+        "path": "C:\\repository\\CodeDB\\node_modules\\electron"
+      }
+    },
+    {
+      "from": {
+        "name": "dmg-builder",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\dmg-builder"
+      },
+      "to": {
+        "name": "dmg-builder",
+        "version": "26.17.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\dmg-builder"
+      }
+    },
+    {
+      "from": {
+        "name": "brace-expansion",
+        "version": "1.1.18",
+        "path": "C:\\repository\\CodeDB\\node_modules\\dir-compare\\node_modules\\brace-expansion"
+      },
+      "to": {
+        "name": "brace-expansion",
+        "version": "1.1.21",
+        "path": "C:\\repository\\CodeDB\\node_modules\\dir-compare\\node_modules\\brace-expansion"
+      }
+    },
+    {
+      "from": {
+        "name": "builder-util",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\builder-util"
+      },
+      "to": {
+        "name": "builder-util",
+        "version": "26.16.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\builder-util"
+      }
+    },
+    {
+      "from": {
+        "name": "body-parser",
+        "version": "1.20.6",
+        "path": "C:\\repository\\CodeDB\\node_modules\\body-parser"
+      },
+      "to": {
+        "name": "body-parser",
+        "version": "1.20.8",
+        "path": "C:\\repository\\CodeDB\\node_modules\\body-parser"
+      }
+    },
+    {
+      "from": {
+        "name": "app-builder-lib",
+        "version": "26.15.3",
+        "path": "C:\\repository\\CodeDB\\node_modules\\app-builder-lib"
+      },
+      "to": {
+        "name": "app-builder-lib",
+        "version": "26.17.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\app-builder-lib"
+      }
+    },
+    {
+      "from": {
+        "name": "@xmldom/xmldom",
+        "version": "0.8.13",
+        "path": "C:\\repository\\CodeDB\\node_modules\\app-builder-lib\\node_modules\\@xmldom\\xmldom"
+      },
+      "to": {
+        "name": "@xmldom/xmldom",
+        "version": "0.8.15",
+        "path": "C:\\repository\\CodeDB\\node_modules\\app-builder-lib\\node_modules\\@xmldom\\xmldom"
+      }
+    },
+    {
+      "from": {
+        "name": "@peculiar/asn1-schema",
+        "version": "2.8.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@peculiar\\asn1-schema"
+      },
+      "to": {
+        "name": "@peculiar/asn1-schema",
+        "version": "2.10.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@peculiar\\asn1-schema"
+      }
+    },
+    {
+      "from": {
+        "name": "@noble/hashes",
+        "version": "2.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@noble\\hashes"
+      },
+      "to": {
+        "name": "@noble/hashes",
+        "version": "1.8.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@noble\\hashes"
+      }
+    },
+    {
+      "from": {
+        "name": "@modelcontextprotocol/sdk",
+        "version": "1.29.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@modelcontextprotocol\\sdk"
+      },
+      "to": {
+        "name": "@modelcontextprotocol/sdk",
+        "version": "1.32.1",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@modelcontextprotocol\\sdk"
+      }
+    },
+    {
+      "from": {
+        "name": "fs-extra",
+        "version": "11.4.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\universal\\node_modules\\fs-extra"
+      },
+      "to": {
+        "name": "fs-extra",
+        "version": "11.4.1",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\universal\\node_modules\\fs-extra"
+      }
+    },
+    {
+      "from": {
+        "name": "brace-expansion",
+        "version": "2.1.4",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\universal\\node_modules\\brace-expansion"
+      },
+      "to": {
+        "name": "brace-expansion",
+        "version": "2.1.7",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\universal\\node_modules\\brace-expansion"
+      }
+    },
+    {
+      "from": {
+        "name": "@electron/rebuild",
+        "version": "4.2.0",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\rebuild"
+      },
+      "to": {
+        "name": "@electron/rebuild",
+        "version": "4.2.1",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\rebuild"
+      }
+    },
+    {
+      "from": {
+        "name": "brace-expansion",
+        "version": "1.1.18",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\asar\\node_modules\\brace-expansion"
+      },
+      "to": {
+        "name": "brace-expansion",
+        "version": "1.1.21",
+        "path": "C:\\repository\\CodeDB\\node_modules\\@electron\\asar\\node_modules\\brace-expansion"
+      }
+    }
+  ],
+  "changed": 39,
+  "funding": 85,
+  "remove": [
+    {
+      "name": "@noble/hashes",
+      "version": "1.4.0",
+      "path": "C:\\repository\\CodeDB\\node_modules\\pkijs\\node_modules\\@noble\\hashes"
+    },
+    {
+      "name": "denque",
+      "version": "2.1.0",
+      "path": "C:\\repository\\CodeDB\\node_modules\\denque"
+    }
+  ],
+  "removed": 2,
+  "audit": {
+    "auditReportVersion": 2,
+    "vulnerabilities": {
+      "@electron/get": {
+        "name": "@electron/get",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "global-agent"
+        ],
+        "effects": [
+          "app-builder-lib"
+        ],
+        "range": "1.6.0 - 4.0.3",
+        "nodes": [
+          "node_modules/app-builder-lib/node_modules/@electron/get"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "@xmldom/xmldom": {
+        "name": "@xmldom/xmldom",
+        "severity": "high",
+        "isDirect": false,
+        "via": [
+          {
+            "source": 1158517,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: XML fragment injection via invalid EntityReference.nodeName during requireWellFormed serialization",
+            "url": "https://github.com/advisories/GHSA-6gmq-8vp8-gcm6",
+            "severity": "moderate",
+            "cwe": [
+              "CWE-116"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193671,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: HTML raw-text closing-tag case mismatch causes output amplification",
+            "url": "https://github.com/advisories/GHSA-6mj3-qw4j-hgrw",
+            "severity": "high",
+            "cwe": [
+              "CWE-178",
+              "CWE-400"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0-beta.1 <=0.9.11"
+          },
+          {
+            "source": 1193687,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom PI grammar regex ReDoS: quadratic backtracking on unterminated processing instructions",
+            "url": "https://github.com/advisories/GHSA-g53g-w8rj-fmg7",
+            "severity": "high",
+            "cwe": [
+              "CWE-400",
+              "CWE-1333"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0-beta.9 <=0.9.10"
+          },
+          {
+            "source": 1193690,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Element name injection via createElement() bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-w2rr-34g9-rvrj",
+            "severity": "high",
+            "cwe": [
+              "CWE-91"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.10"
+          },
+          {
+            "source": 1193693,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Attribute name injection via setAttribute() bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-4w3w-2rp5-g8jm",
+            "severity": "high",
+            "cwe": [
+              "CWE-91"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.10"
+          },
+          {
+            "source": 1193695,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Processing Instruction Target Injection Bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-c7q8-3ch8-vqpv",
+            "severity": "high",
+            "cwe": [
+              "CWE-91"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193699,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: DocType `name` Injection Bypasses requireWellFormed",
+            "url": "https://github.com/advisories/GHSA-27p8-2357-5qqv",
+            "severity": "high",
+            "cwe": [
+              "CWE-91"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193701,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Creation-time XML Name/QName validation is bypassable via an embedded line terminator, allowing injection on the default serialization path",
+            "url": "https://github.com/advisories/GHSA-3px3-54cx-rmw9",
+            "severity": "high",
+            "cwe": [
+              "CWE-91",
+              "CWE-625"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193702,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: requireWellFormed DocType publicId/systemId validation is bypassable via an embedded line terminator",
+            "url": "https://github.com/advisories/GHSA-vr34-hp96-76pp",
+            "severity": "high",
+            "cwe": [
+              "CWE-91",
+              "CWE-625"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.10 <=0.9.11"
+          },
+          {
+            "source": 1193704,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Parser silently accepts a not-well-formed end tag whose name is followed by a line break and trailing content",
+            "url": "https://github.com/advisories/GHSA-6h8r-xr42-gp59",
+            "severity": "moderate",
+            "cwe": [
+              "CWE-1286"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193707,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Quadratic-time attribute deduplication",
+            "url": "https://github.com/advisories/GHSA-8344-3jmq-59r6",
+            "severity": "high",
+            "cwe": [
+              "CWE-407"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193711,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Quadratic-memory consumption",
+            "url": "https://github.com/advisories/GHSA-965w-775f-mr7g",
+            "severity": "high",
+            "cwe": [
+              "CWE-770"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          },
+          {
+            "source": 1193714,
+            "name": "@xmldom/xmldom",
+            "dependency": "@xmldom/xmldom",
+            "title": "xmldom: Quadratic-time parsing via the malformed-input recovery path — `parseElementStartPart` re-scan and `normalize()` adjacent-text merge",
+            "url": "https://github.com/advisories/GHSA-93r5-fhx6-vmg9",
+            "severity": "high",
+            "cwe": [
+              "CWE-400",
+              "CWE-407"
+            ],
+            "cvss": {
+              "score": 0,
+              "vectorString": null
+            },
+            "range": ">=0.9.0 <=0.9.11"
+          }
+        ],
+        "effects": [],
+        "range": "0.9.0-beta.1 - 0.9.11",
+        "nodes": [
+          "node_modules/@xmldom/xmldom"
+        ],
+        "fixAvailable": true
+      },
+      "app-builder-lib": {
+        "name": "app-builder-lib",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "@electron/get",
+          "dmg-builder",
+          "electron-builder-squirrel-windows"
+        ],
+        "effects": [
+          "dmg-builder",
+          "electron-builder",
+          "electron-builder-squirrel-windows"
+        ],
+        "range": "26.6.0 - 27.0.0-alpha.2",
+        "nodes": [
+          "node_modules/app-builder-lib"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "brace-expansion": {
+        "name": "brace-expansion",
+        "severity": "high",
+        "isDirect": false,
+        "via": [
+          {
+            "source": 1130734,
+            "name": "brace-expansion",
+            "dependency": "brace-expansion",
+            "title": "brace-expansion: DoS via unbounded intermediate arrays, bypassing the CVE-2026-14257 mitigation",
+            "url": "https://github.com/advisories/GHSA-rgw5-rvv9-x895",
+            "severity": "high",
+            "cwe": [
+              "CWE-400",
+              "CWE-770"
+            ],
+            "cvss": {
+              "score": 7.5,
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+            },
+            "range": ">=4.0.0 <5.0.9"
+          },
+          {
+            "source": 1240103,
+            "name": "brace-expansion",
+            "dependency": "brace-expansion",
+            "title": "brace-expansion: Quadratic-time expansion of the `{a},b}` rewrite causes CPU denial of service",
+            "url": "https://github.com/advisories/GHSA-q2hr-2g5m-vwhr",
+            "severity": "moderate",
+            "cwe": [
+              "CWE-400",
+              "CWE-407"
+            ],
+            "cvss": {
+              "score": 5.3,
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+            },
+            "range": ">=4.0.0 <5.0.12"
+          },
+          {
+            "source": 1240107,
+            "name": "brace-expansion",
+            "dependency": "brace-expansion",
+            "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+            "severity": "high",
+            "cwe": [
+              "CWE-400",
+              "CWE-674"
+            ],
+            "cvss": {
+              "score": 7.5,
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+            },
+            "range": ">=4.0.0 <5.0.11"
+          },
+          {
+            "source": 1240111,
+            "name": "brace-expansion",
+            "dependency": "brace-expansion",
+            "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+            "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+            "severity": "high",
+            "cwe": [
+              "CWE-400",
+              "CWE-674"
+            ],
+            "cvss": {
+              "score": 7.5,
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+            },
+            "range": ">=4.0.0 <5.0.10"
+          }
+        ],
+        "effects": [],
+        "range": "4.0.0 - 5.0.11",
+        "nodes": [
+          "node_modules/brace-expansion"
+        ],
+        "fixAvailable": true
+      },
+      "dmg-builder": {
+        "name": "dmg-builder",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "app-builder-lib"
+        ],
+        "effects": [
+          "app-builder-lib",
+          "electron-builder"
+        ],
+        "range": "26.6.0 - 27.0.0-alpha.2",
+        "nodes": [
+          "node_modules/dmg-builder"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "electron-builder": {
+        "name": "electron-builder",
+        "severity": "moderate",
+        "isDirect": true,
+        "via": [
+          "app-builder-lib",
+          "dmg-builder"
+        ],
+        "effects": [],
+        "range": "19.25.0 || 26.6.0 - 27.0.0-alpha.2",
+        "nodes": [
+          "node_modules/electron-builder"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "electron-builder-squirrel-windows": {
+        "name": "electron-builder-squirrel-windows",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "app-builder-lib"
+        ],
+        "effects": [
+          "app-builder-lib"
+        ],
+        "range": "26.6.0 - 27.0.0-alpha.2",
+        "nodes": [
+          "node_modules/electron-builder-squirrel-windows"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "global-agent": {
+        "name": "global-agent",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "roarr"
+        ],
+        "effects": [
+          "@electron/get"
+        ],
+        "range": "<=3.0.0",
+        "nodes": [
+          "node_modules/global-agent"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "roarr": {
+        "name": "roarr",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          "sprintf-js"
+        ],
+        "effects": [
+          "global-agent"
+        ],
+        "range": "<=2.15.4",
+        "nodes": [
+          "node_modules/roarr"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      },
+      "sprintf-js": {
+        "name": "sprintf-js",
+        "severity": "moderate",
+        "isDirect": false,
+        "via": [
+          {
+            "source": 1241202,
+            "name": "sprintf-js",
+            "dependency": "sprintf-js",
+            "title": "sprintf-js vulnerable to denial of service through unbounded precision specifiers",
+            "url": "https://github.com/advisories/GHSA-hp3w-g68c-fv3c",
+            "severity": "moderate",
+            "cwe": [
+              "CWE-1284"
+            ],
+            "cvss": {
+              "score": 5.3,
+              "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"
+            },
+            "range": "<=1.1.3"
+          }
+        ],
+        "effects": [
+          "roarr"
+        ],
+        "range": "*",
+        "nodes": [
+          "node_modules/sprintf-js"
+        ],
+        "fixAvailable": {
+          "name": "electron-builder",
+          "version": "26.5.0",
+          "isSemVerMajor": true
+        }
+      }
+    },
+    "metadata": {
+      "vulnerabilities": {
+        "info": 0,
+        "low": 0,
+        "moderate": 8,
+        "high": 2,
+        "critical": 0,
+        "total": 10
+      },
+      "dependencies": {
+        "prod": 199,
+        "dev": 368,
+        "optional": 27,
+        "peer": 13,
+        "peerOptional": 0,
+        "total": 570
+      }
+    }
+  }
+}

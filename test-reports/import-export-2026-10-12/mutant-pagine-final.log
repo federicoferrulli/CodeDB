@@ -1,0 +1,6 @@
+OK mysql: 1601 righe con chiavi numeriche/binarie e senza chiave, export paginato e backup.
+Error: Il backup completo di "bin" non contiene tutte le righe della snapshot sorgente.
+    at validaManifestIdentita (C:\repository\CodeDB\backup\lib\identity.js:167:13)
+    at runBackup (C:\repository\CodeDB\backup\lib\engine.js:1236:5)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-tipi-pagine.js:26:15

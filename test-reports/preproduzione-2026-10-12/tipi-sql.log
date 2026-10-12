@@ -1,0 +1,28 @@
+  OK mysql: export HTTP, ticket, upload e import codedb-json con staging
+OK mysql codedb-json: 50 casi con valori estremi e NULL
+  OK mysql: export HTTP, ticket, upload e import sql con staging
+OK mysql sql: 50 casi con valori estremi e NULL
+OK mysql backup: 50 casi
+error: extension "postgis" is not available
+    at C:\repository\CodeDB\node_modules\pg\lib\client.js:652:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-tipi-sql.js:76:44)
+    at async C:\repository\CodeDB\test\e2e-tipi-sql.js:91:9 {
+  length: 194,
+  severity: 'ERROR',
+  code: '0A000',
+  detail: undefined,
+  hint: 'The extension must first be installed on the system where PostgreSQL is running.',
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'extension.c',
+  line: '670',
+  routine: 'parse_extension_control_file'
+}

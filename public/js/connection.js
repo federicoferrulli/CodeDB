@@ -1,18 +1,20 @@
 import { socket } from './socket.js';
 import { tabs, activeTab, createTab, closeAllTabs } from './tabs.js';
-import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto } from './utils.js';
+import { $, emit, toast, safeUUID, openModal, closeModal, showError, conCaricamento, esc, dbTypeIcon, lucideIconHtml as ICO, refreshLucideIcons, chiediTesto, scaricaFile } from './utils.js';
 import { loadSavedConnections, elencoConnessioni } from './connmanager.js';
 import { renderTabBar } from './tabbar.js';
 import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
 import { startSchemaWatch } from './live.js';
 import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
 import { segnaTraguardo } from './onboarding-stato.js';
+import { riepilogoUri } from './riepilogo-uri.mjs';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
 
 let editingConn = null;
 let savedSecrets = {};
+let savedUriPreview = '';
 let savedSshKeyName = '';
 let savedSshAuth = '';
 let savedSshKeyFile = '';
@@ -61,19 +63,6 @@ export function setWizardStep(step) {
   }
 }
 
-function riepilogoUri(uri) {
-  const parts = uri.trim().match(/^(mongodb(?:\+srv)?:\/\/)([^/?#]+)([^?#]*)(?:\?([^#]*))?$/i);
-  if (!parts) return 'URI inserita (contenuto nascosto: formato non riconosciuto)';
-  const [, protocol, authority, path, query] = parts;
-  const at = authority.lastIndexOf('@');
-  const user = at < 0 ? '' : authority.slice(0, at).split(':')[0];
-  // Solo le opzioni note e non segrete sono riportate in chiaro.
-  const visible = /^(authSource|authMechanism|replicaSet|tls|ssl|retryWrites|retryReads|readPreference|directConnection|loadBalanced|appName|connectTimeoutMS|serverSelectionTimeoutMS|socketTimeoutMS|maxPoolSize|minPoolSize|w|wtimeoutMS|compressors)$/i;
-  const options = [...new URLSearchParams(query)].map(([key, value]) =>
-    `${key}=${visible.test(key) ? value : '••••••'}`).join('&');
-  return `${protocol}${at < 0 ? authority : `${user}:••••••@${authority.slice(at + 1)}`}${path}${query === undefined ? '' : `?${options}`}`;
-}
-
 function updateWizardSummary() {
   const cfg = readConnForm();
   const summaryBox = $('#wizard-summary-box');
@@ -86,7 +75,7 @@ function updateWizardSummary() {
   };
   const rows = [];
   if (cfg.connectionMode === 'uri') {
-    rows.push(['Modalità', 'URI completa'], ['URI', cfg.uri.trim() ? riepilogoUri(cfg.uri) : secret('uri')]);
+    rows.push(['Modalità', 'URI completa'], ['URI', cfg.uri.trim() ? riepilogoUri(cfg.uri) : savedUriPreview || secret('uri')]);
   } else {
     rows.push(['Host', cfg.host.trim() || 'localhost'],
       ['Porta', cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]],
@@ -119,7 +108,7 @@ function selectConnTab(name) {
   $('#tab-uri').classList.toggle('hidden', name !== 'uri');
 }
 
-export function syncConnForm() {
+export function syncConnForm(updatePort = false) {
   const form = $('#connect-form');
   const type = form.elements.dbType.value;
   const isSql = type === 'mysql' || type === 'postgresql' || type === 'postgres';
@@ -138,11 +127,11 @@ export function syncConnForm() {
   }
 
   const port = form.elements.port;
-  if (type === 'postgresql' || type === 'postgres') {
+  if (updatePort && (type === 'postgresql' || type === 'postgres')) {
     if (port.value === '27017' || port.value === '3306') port.value = '5432';
-  } else if (type === 'mysql') {
+  } else if (updatePort && type === 'mysql') {
     if (port.value === '27017' || port.value === '5432') port.value = '3306';
-  } else {
+  } else if (updatePort) {
     if (port.value === '3306' || port.value === '5432') port.value = '27017';
   }
   syncSshAuth();
@@ -329,9 +318,12 @@ export function startEditConn(name) {
     const f = res.fields;
     clearSshKey();
     savedSecrets = { password: res.hasPassword, uri: res.hasUri, sshPassword: res.hasSshPassword, sshPassphrase: res.hasSshPassphrase, sshPrivateKey: res.hasSshPrivateKey };
+    savedUriPreview = res.uriPreview || '';
+    $('#conn-uri-saved').textContent = savedUriPreview;
+    $('#conn-uri-saved-info').classList.toggle('hidden', !savedUriPreview);
     savedSshKeyName = f.sshKeyName || '';
     const form = $('#connect-form');
-    const dbType = f.dbType || 'mongodb';
+    const dbType = (f.dbType || 'mongodb').trim().toLowerCase().replace(/^postgres$/, 'postgresql');
     const isSql = dbType === 'mysql' || dbType === 'postgresql' || dbType.includes('postgres');
     const defaultPort = dbType === 'mysql' ? '3306' : (dbType.includes('postgres') ? '5432' : '27017');
     form.elements.dbType.value = dbType;
@@ -365,6 +357,7 @@ export function startEditConn(name) {
     setWizardStep(1);
     $('#conn-edit-name').textContent = name;
     $('#conn-edit-banner').classList.remove('hidden');
+    $('#conn-edit-hint').classList.remove('hidden');
     $('#conn-save-btn').classList.remove('hidden');
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');
@@ -386,6 +379,10 @@ function clearSshKey() {
 function cancelEditConn() {
   editingConn = null;
   savedSecrets = {};
+  savedUriPreview = '';
+  $('#conn-uri-saved').textContent = '';
+  $('#conn-uri-saved-info').classList.add('hidden');
+  $('#conn-edit-hint').classList.add('hidden');
   clearSshKey();
   const form = $('#connect-form');
   form.reset();
@@ -414,8 +411,8 @@ export function initConnection() {
   $('#wizard-prev-btn')?.addEventListener('click', () => setWizardStep(currentStep - 1));
   $('#wizard-next-btn')?.addEventListener('click', () => setWizardStep(currentStep + 1));
 
-  $('#conn-dbtype').addEventListener('change', syncConnForm);
-  $('#conn-ssh-toggle').addEventListener('change', syncConnForm);
+  $('#conn-dbtype').addEventListener('change', () => syncConnForm(true));
+  $('#conn-ssh-toggle').addEventListener('change', () => syncConnForm());
   $('#conn-ssh-auth').addEventListener('change', syncSshAuth);
   $('#conn-ssh-key-select').addEventListener('click', () => $('#conn-ssh-key-upload').click());
   $('#conn-ssh-key-upload').addEventListener('change', readSshKeyFile);
@@ -519,17 +516,13 @@ export function initConnection() {
 
   $('#connexport-run').addEventListener('click', () => {
     const passphrase = $('#connexport-pass').value;
-    conCaricamento($('#connexport-run'), () => emit('connections:export', { passphrase }), 'Esporto…').then((res) => {
+    conCaricamento($('#connexport-run'), () => emit('connections:export', { passphrase }), 'Esporto…').then(async (res) => {
       const blob = new Blob([res.ini], { type: 'text/plain' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'connections.ini';
-      a.click();
-      URL.revokeObjectURL(a.href);
+      if (!await scaricaFile(blob, 'connections.ini')) return;
       closeModal('connexport-overlay');
       toast(passphrase
-        ? 'Connessioni esportate (segreti cifrati con la passphrase indicata)'
-        : 'Connessioni esportate (segreti cifrati)');
+        ? 'Download connessioni avviato (segreti cifrati con la passphrase indicata)'
+        : 'Download connessioni avviato (segreti cifrati)');
     }).catch((err) => showError('#connexport-error', err.message));
   });
 
@@ -560,7 +553,7 @@ export function initConnection() {
         toast(`Connessioni: ${parts.join(', ')}`);
         loadSavedConnections();
       }).catch((err) => toast(err.message, true));
-    }), 'Importo…');
+    }), 'Importo…').catch(err => toast(`Impossibile importare il file: ${err.message}`, true));
   });
 
   // Nessun pulsante "Disconnetti": chiudere la connessione significa chiudere

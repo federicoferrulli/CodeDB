@@ -17,6 +17,7 @@ import {
   normalizzaCombo, etichettaCombo, mappaEffettiva, impostaMappaAttiva,
 } from './scorciatoie.js';
 import { $, emit, esc, toast, refreshLucideIcons } from './utils.js';
+import { removeDialog } from '../arc/ui.js';
 
 /** Le personalizzazioni correnti SOLO come testi ("Ctrl+K"), non forme normalizzate. */
 let personali = leggiLocali();
@@ -72,6 +73,7 @@ async function salvaScorciatoie(p) {
  * registra la combinazione (si preme il pulsante, si digita la combinazione).
  */
 export function apriPannelloScorciatoie() {
+  document.querySelector('#scorciatoie-overlay.hidden')?.remove();
   if ($('#scorciatoie-overlay')) return;
 
   const overlay = document.createElement('div');
@@ -160,7 +162,7 @@ export function apriPannelloScorciatoie() {
 
   function chiudi() {
     document.removeEventListener('keydown', onKeyDown, true);
-    overlay.remove();
+    removeDialog(overlay);
   }
 
   // CHIUDI PRIMA, SALVA DOPO: la chiusura è un gesto dell'interfaccia e non può

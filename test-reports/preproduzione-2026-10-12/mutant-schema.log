@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Expected "actual" to be strictly unequal to:
+
+'88f16eedd0f80bd2'
+    at C:\repository\CodeDB\test\unit-preproduzione.js:25:12 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '88f16eedd0f80bd2',
+  expected: '88f16eedd0f80bd2',
+  operator: 'notStrictEqual',
+  diff: 'simple'
+}
+FAIL: prova di preproduzione rimasta sospesa

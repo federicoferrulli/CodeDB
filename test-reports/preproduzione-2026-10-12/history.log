@@ -1,0 +1,16 @@
+
+--- Storico query della tab Query & Aggregate ---
+  OK   registra e rilegge una voce
+  OK   codice vuoto o solo spazi non viene registrato
+  OK   dedup globale: la stessa query risale in testa senza duplicarsi
+  OK   la dedup conserva il testo e distingue bersaglio e motore
+  OK   tetto MAX_VOCI rispettato, si pota dalla coda
+  OK   codice oltre MAX_CODE non viene registrato (blocchi del chunker SQL)
+  OK   aggiornaEsito completa la voce; su id ignoto è un no-op
+  OK   filtra per testo, per connessione e per entrambi
+  OK   connessioniPresenti elenca le connessioni distinte, ordinate
+  OK   storage manomesso: nessuna eccezione, cronologia vuota
+  OK   storage che rifiuta la scrittura (quota): registra non lancia
+  OK   storage assente del tutto: nessuna eccezione
+  OK   svuota cancella la chiave
+  OK   la chiave segue il prefisso codedb: (ripulita al logout)

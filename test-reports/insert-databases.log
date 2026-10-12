@@ -1,0 +1,3 @@
+OK mysql: 50 tipi/valori estremi, NULL, default, stringhe vuote, identità e JSON esatto.
+OK postgresql: 103 tipi/valori estremi, NULL, default, stringhe vuote, identità e JSON esatto.
+OK mongodb: tutti i 21 tag BSON memorizzabili, sottotipi binari, date 64 bit, _id testuale, bulk e errori parziali.

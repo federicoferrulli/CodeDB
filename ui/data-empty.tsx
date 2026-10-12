@@ -35,7 +35,22 @@ export function renderDataEmpty(container: HTMLElement | null, options: EmptyOpt
   }
   const Icon = { data: Table2, search: Search, query: Terminal, error: CircleAlert, connection: Database }[options.kind || 'data'];
   flushSync(() => entry!.root.render(<EmptyState className="data-empty" title={options.title} description={options.description} label={options.title}
-    icon={<div className="data-empty-art"><div className="data-empty-table"><div className="data-empty-table-head"><i /><i /><i /></div>
+    icon={options.kind === 'query' ? <svg className="query-empty-art" width="248" height="112" viewBox="0 0 248 112" fill="none" aria-hidden="true">
+      <g className="query-art-source">
+        <rect x="9" y="13" width="94" height="74" rx="9" fill="var(--surface)" stroke="var(--border-strong)" />
+        <path d="M9 33h94" stroke="var(--border)" /><circle cx="21" cy="23" r="2" fill="var(--accent-fg)" /><path d="M29 23h22" stroke="var(--text-secondary)" strokeLinecap="round" />
+        <path d="m23 46 7 6-7 6m14 0h16" stroke="var(--accent-fg)" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M23 71h40m7 0h17" stroke="var(--border-strong)" strokeWidth="2" strokeLinecap="round" />
+      </g>
+      <path className="query-art-flow" d="M108 52h29m-5-5 5 5-5 5" pathLength="1" stroke="var(--accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <g className="query-art-result">
+        <rect x="145" y="25" width="94" height="74" rx="9" fill="var(--surface)" stroke="var(--accent-line)" />
+        <path d="M154 25h76a9 9 0 0 1 9 9v13h-94V34a9 9 0 0 1 9-9Z" fill="var(--accent-soft)" />
+        <path d="M145 47h94m-65 0v52m33-52v52" stroke="var(--border)" />
+        <path d="M156 36h9m19 0h14m18 0h12" stroke="var(--accent-fg)" strokeWidth="2" strokeLinecap="round" />
+        <g className="query-art-rows" stroke="var(--text-secondary)" strokeLinecap="round"><path d="M156 61h7m21 0h13m19 0h11" /><path d="M156 75h7m21 0h13m19 0h11" /><path d="M156 89h7m21 0h13m19 0h11" /></g>
+      </g>
+    </svg> : <div className="data-empty-art"><div className="data-empty-table"><div className="data-empty-table-head"><i /><i /><i /></div>
       <div className="data-empty-table-rows">{Array.from({ length: 9 }, (_, i) => <span key={i} />)}</div></div>
       <span className="data-empty-symbol"><Icon size={22} strokeWidth={1.6} /></span></div>}
     action={options.onAction && options.actionLabel ? <Button type="button" variant={options.kind === 'connection' ? 'primary' : 'secondary'} size={options.kind === 'connection' ? 'md' : 'sm'} onClick={options.onAction}>

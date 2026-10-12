@@ -31,14 +31,6 @@ function qid(name) {
   return quotaSempre(name, 'postgresql');
 }
 
-// Tipo seriale equivalente per una colonna con default `nextval(...)`. I nomi a
-// sinistra sono quelli restituiti da `format_type`, non gli alias SQL.
-const SERIAL_PER_TIPO = {
-  smallint: 'smallserial',
-  integer: 'serial',
-  bigint: 'bigserial',
-};
-
 // Tipi che il driver `pg` consegna come Buffer: come su MySQL, un Buffer non
 // sopravvive al giro EJSON del file NDJSON e va letto in esadecimale.
 const TIPI_BINARI_PG = new Set(['bytea']);
@@ -64,10 +56,15 @@ async function pgColonne(q, schema, table) {
             a.attnotnull AS notnull,
             pg_catalog.pg_get_expr(d.adbin, d.adrelid) AS cdefault,
             a.attidentity AS identity,
-            a.attgenerated AS generated
+            a.attgenerated AS generated,
+            tn.nspname AS "typeSchema", COALESCE(et.typname, typ.typname) AS "typeName",
+            CASE WHEN a.attcollation<>typ.typcollation THEN a.attcollation::regcollation::text END AS collation
        FROM pg_catalog.pg_attribute a
        JOIN pg_catalog.pg_class c ON c.oid = a.attrelid
        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_catalog.pg_type typ ON typ.oid=a.atttypid
+       LEFT JOIN pg_catalog.pg_type et ON typ.typelem=et.oid AND typ.typlen=-1
+       JOIN pg_catalog.pg_namespace tn ON tn.oid=COALESCE(et.typnamespace,typ.typnamespace)
        LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
       WHERE n.nspname = $1 AND c.relname = $2
         AND a.attnum > 0 AND NOT a.attisdropped
@@ -76,7 +73,8 @@ async function pgColonne(q, schema, table) {
   );
   return res.rows.map((r) => ({
     name: r.name,
-    ctype: String(r.ctype || 'text'),
+    ctype: qualifyType(r),
+    ...(r.collation ? { collation: r.collation } : {}),
     notnull: r.notnull === true || r.notnull === 't',
     cdefault: r.cdefault == null ? null : String(r.cdefault),
     // 'a' = GENERATED ALWAYS AS IDENTITY, 'd' = BY DEFAULT, '' = non identità
@@ -84,6 +82,15 @@ async function pgColonne(q, schema, table) {
     // 's' = STORED generated. PostgreSQL non ha ancora colonne VIRTUAL.
     generated: r.generated === 's',
   }));
+}
+
+function qualifyType(r) {
+  const type = String(r.ctype || 'text');
+  if (!r.typeSchema || r.typeSchema === 'pg_catalog') return type;
+  const names = [qid(r.typeName), r.typeName];
+  const prefix = [...[qid(r.typeSchema), r.typeSchema].flatMap(s => names.map(n => s + '.' + n)), ...names]
+    .find(n => type === n || type.startsWith(n + '(') || type.startsWith(n + '['));
+  return prefix ? `${qid(r.typeSchema)}.${qid(r.typeName)}${type.slice(prefix.length)}` : type;
 }
 
 /**
@@ -94,15 +101,18 @@ async function pgColonne(q, schema, table) {
  *
  * @returns {Promise<{nomi: string[], columnSchema: object[], binarie: Set<string>, select: string}>}
  */
-async function pgColonneDaSalvare(q, schema, table) {
+async function pgColonneDaSalvare(q, schema, table, onlyColumns = null) {
   const colonne = await pgColonne(q, schema, table);
-  const salvabili = colonne.filter((c) => !c.generated);
+  require('./pg-alias').attach(colonne,await require('./pg-references').columnReferences(q,schema,table));
+  const salvabili = colonne.filter((c) => !c.generated && (!onlyColumns || onlyColumns.includes(c.name)));
   const binarie = new Set();
   const pezzi = [];
   for (const c of salvabili) {
     const id = qid(c.name);
     const base = String(c.ctype).replace(/\(.*$/, '').trim().toLowerCase();
-    if (TIPI_BINARI_PG.has(base)) {
+    const alias = require('./pg-alias').projection(id,c);
+    if (alias) pezzi.push(`${alias} AS ${id}`);
+    else if (TIPI_BINARI_PG.has(base)) {
       binarie.add(c.name);
       pezzi.push(`encode(${id}, 'hex') AS ${id}`);
     } else if (base === 'json' || base === 'jsonb' || String(c.ctype).endsWith('[]')
@@ -118,7 +128,8 @@ async function pgColonneDaSalvare(q, schema, table) {
       // perché PostgreSQL la accetta in scrittura con un cast implicito.
       pezzi.push(`${id}::text AS ${id}`);
     } else {
-      pezzi.push(id);
+      // Il formato di I/O del server preserva anche tipi custom, range e PostGIS.
+      pezzi.push(`${id}::text AS ${id}`);
     }
   }
   return {
@@ -127,6 +138,7 @@ async function pgColonneDaSalvare(q, schema, table) {
       name: c.name,
       type: String(c.ctype).toLowerCase(),
       nullable: !c.notnull,
+        ...(c.references?{references:c.references}:{}),
     })),
     binarie,
     select: pezzi.join(', '),
@@ -147,29 +159,40 @@ async function pgCreateTable(q, schema, table, { qualificato = false } = {}) {
   const colonne = await pgColonne(q, schema, table);
   if (!colonne.length) return null;
 
+  const owned = (await q(`SELECT a.attname AS colonna, s.relname AS nome,
+      p.seqstart::text AS inizio, p.seqincrement::text AS passo,
+      p.seqmin::text AS minimo, p.seqmax::text AS massimo, p.seqcache::text AS cache, p.seqcycle AS ciclo
+    FROM pg_catalog.pg_class t JOIN pg_catalog.pg_namespace n ON n.oid=t.relnamespace
+    JOIN pg_catalog.pg_attribute a ON a.attrelid=t.oid AND a.attnum>0
+    JOIN pg_catalog.pg_depend d ON d.refobjid=t.oid AND d.refobjsubid=a.attnum AND d.deptype IN ('a','i')
+    JOIN pg_catalog.pg_class s ON s.oid=d.objid AND s.relkind='S'
+    JOIN pg_catalog.pg_sequence p ON p.seqrelid=s.oid
+    WHERE n.nspname=$1 AND t.relname=$2`, [schema, table])).rows;
+  const sequenceOptions = seq => `INCREMENT BY ${seq.passo} MINVALUE ${seq.minimo} MAXVALUE ${seq.massimo} START WITH ${seq.inizio} CACHE ${seq.cache} ${seq.ciclo ? 'CYCLE' : 'NO CYCLE'}`;
+
   const defs = colonne.map((c) => {
     if (c.generated) {
       // L'espressione della colonna generata sta nel default del catalogo.
       return `${qid(c.name)} ${c.ctype} GENERATED ALWAYS AS (${c.cdefault || 'NULL'}) STORED`;
     }
     if (c.identity) {
-      return `${qid(c.name)} ${c.ctype} GENERATED ${c.identity} AS IDENTITY`;
+      const seq = owned.find(s => s.colonna === c.name);
+      if (!seq) throw new Error(`Sequenza di identità di "${table}.${c.name}" non leggibile.`);
+      return `${qid(c.name)} ${c.ctype} GENERATED ${c.identity} AS IDENTITY (SEQUENCE NAME ${qid(seq.nome)} ${sequenceOptions(seq)})`;
     }
-    // `DEFAULT nextval('<tabella>_<col>_seq')` è una colonna seriale: la
-    // sequenza vive nello schema di ORIGINE, quindi riprodurre il default
-    // verbatim creerebbe una tabella che punta altrove. I tipi `serial` la
-    // ricreano da soli, col nome giusto, nello schema di destinazione.
-    const seriale = c.cdefault && /\bnextval\s*\(/i.test(c.cdefault)
-      ? SERIAL_PER_TIPO[String(c.ctype).toLowerCase()]
-      : null;
-    let def = `${qid(c.name)} ${seriale || c.ctype}`;
+    // Le sequenze SERIAL si creano prima delle tabelle: così conservano anche
+    // nomi, incrementi e limiti personalizzati, senza convertirle in identity.
+    let def = `${qid(c.name)} ${c.ctype}`;
+    if (c.collation) def += ` COLLATE ${c.collation}`;
     if (c.notnull) def += ' NOT NULL';
     // Il default del catalogo è già un'ESPRESSIONE SQL (`now()`, `'x'::text`,
     // `(a + b)`): va riprodotto verbatim. Quotarlo come letterale — che è ciò
     // che faceva `pgDefaultSql` nel motore di backup — trasformava
     // `nextval('s'::regclass)` nella stringa "nextval('s'::regclass)" e
     // rendeva la DDL del backup inservibile.
-    if (!seriale && c.cdefault != null) def += ` DEFAULT ${c.cdefault}`;
+    const seq = owned.find(s => s.colonna === c.name);
+    if (seq && c.cdefault && /^nextval\(/i.test(c.cdefault)) def += ` DEFAULT nextval('${qid(seq.nome).replace(/'/g, "''")}'::regclass)`;
+    else if (c.cdefault != null) def += ` DEFAULT ${c.cdefault}`;
     return def;
   });
 
@@ -239,6 +262,10 @@ async function pgAuxDdl(q, schema, table, { qualificato = false } = {}) {
  */
 async function pgSchemaObjects(q, schema) {
   const out = { views: [], routines: [], triggers: [], sequences: [], sequenceValues: [] };
+  const { readTypes, readCollations, readExtensions } = require('./pg-types');
+  out.types = await readTypes(q, schema);
+  out.collations = await readCollations(q, schema);
+  out.extensions = await readExtensions(q, schema);
 
   const views = await q(
     `SELECT c.relname AS name, c.relkind AS kind,
@@ -267,11 +294,18 @@ async function pgSchemaObjects(q, schema) {
        FROM pg_catalog.pg_proc p
        JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = $1 AND p.prokind IN ('f', 'p')
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype IN ('i','e'))
    ORDER BY p.proname`,
     [schema],
   );
   for (const r of routines.rows) {
-    if (r.def) out.routines.push({ name: r.name, ddl: String(r.def) });
+    if (r.def) {
+      const dependencies = out.types.length ? (await q(`SELECT DISTINCT 'type:'||COALESCE(parent.typname,t.typname) AS name
+        FROM pg_depend d JOIN pg_type t ON d.refclassid='pg_type'::regclass AND t.oid=d.refobjid
+        LEFT JOIN pg_type parent ON parent.typarray=t.oid
+        WHERE d.classid='pg_proc'::regclass AND d.objid=$1 AND t.typnamespace=(SELECT oid FROM pg_namespace WHERE nspname=$2)`,[r.oid,schema])).rows.map(d=>d.name).sort() : [];
+      out.routines.push({ name: r.name, ddl: String(r.def), ...(dependencies.length ? { dependencies } : {}) });
+    }
   }
 
   const triggers = await q(
@@ -292,9 +326,8 @@ async function pgSchemaObjects(q, schema) {
   //
   // Due cose distinte, e la seconda è quella che veniva dimenticata:
   //
-  //  1. la DEFINIZIONE delle sequenze indipendenti. Quelle possedute da una
-  //     colonna (`serial`) le ricrea il tipo `serial` della CREATE TABLE, e
-  //     ricrearle qui darebbe un duplicato;
+  //  1. la DEFINIZIONE delle sequenze libere e SERIAL. Le identity sono già
+  //     complete dentro la CREATE TABLE.
   //
   //  2. il VALORE CORRENTE di TUTTE le sequenze, possedute comprese. Senza,
   //     una tabella con id 1..1000 si ripristina con i dati giusti ma la
@@ -307,18 +340,24 @@ async function pgSchemaObjects(q, schema) {
   const seqs = await q(
     `SELECT s.sequencename AS name, s.start_value, s.min_value, s.max_value,
             s.increment_by, s.cycle, s.cache_size, s.last_value,
-            (SELECT 1 FROM pg_catalog.pg_depend d
+            (SELECT d.deptype FROM pg_catalog.pg_depend d
                JOIN pg_catalog.pg_class c ON c.oid = d.objid
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE n.nspname = s.schemaname AND c.relname = s.sequencename
-                AND c.relkind = 'S' AND d.deptype = 'a' LIMIT 1) AS posseduta
+                AND c.relkind = 'S' AND d.deptype IN ('a','i') LIMIT 1) AS posseduta,
+            (SELECT t.relname FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class c ON c.oid=d.objid
+              JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_class t ON t.oid=d.refobjid
+              WHERE n.nspname=s.schemaname AND c.relname=s.sequencename AND d.deptype='a' LIMIT 1) AS "ownerTable",
+            (SELECT a.attname FROM pg_catalog.pg_depend d JOIN pg_catalog.pg_class c ON c.oid=d.objid
+              JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace JOIN pg_catalog.pg_attribute a ON a.attrelid=d.refobjid AND a.attnum=d.refobjsubid
+              WHERE n.nspname=s.schemaname AND c.relname=s.sequencename AND d.deptype='a' LIMIT 1) AS "ownerColumn"
        FROM pg_catalog.pg_sequences s
       WHERE s.schemaname = $1
    ORDER BY s.sequencename`,
     [schema],
   );
   for (const r of seqs.rows) {
-    if (!r.posseduta) {
+    if (r.posseduta !== 'i') {
       // Parametri riprodotti: una sequenza ricreata con i default non è la
       // stessa sequenza — cambiano passo, limiti e comportamento al giro.
       const parti = [`CREATE SEQUENCE IF NOT EXISTS ${qid(r.name)}`];
@@ -328,17 +367,15 @@ async function pgSchemaObjects(q, schema) {
       if (r.start_value != null) parti.push(`START WITH ${r.start_value}`);
       if (r.cache_size != null) parti.push(`CACHE ${r.cache_size}`);
       parti.push(r.cycle ? 'CYCLE' : 'NO CYCLE');
-      out.sequences.push({ name: r.name, ddl: parti.join(' ') });
+      out.sequences.push({ name: r.name, ddl: parti.join(' '), ...(r.ownerTable ? { ownerTable: r.ownerTable, ownerColumn: r.ownerColumn } : {}) });
     }
-    // Il valore corrente vale per TUTTE, possedute comprese. `last_value` è
-    // null se la sequenza non è mai stata usata: in quel caso non c'è nulla da
-    // riportare e lasciarla al suo START WITH è la cosa giusta.
-    if (r.last_value != null) {
+    // pg_sequences non distingue una sequenza mai usata da setval(...,false).
+    // La relazione della sequenza conserva anche il flag is_called.
+    const current = (await q(`SELECT last_value::text AS valore, is_called AS chiamata FROM ${qid(schema)}.${qid(r.name)}`)).rows[0];
+    if (current) {
       out.sequenceValues.push({
         name: r.name,
-        // `true` come terzo argomento: il PROSSIMO nextval restituirà
-        // last_value + 1, che è esattamente lo stato in cui era l'originale.
-        sql: `SELECT pg_catalog.setval('${String(r.name).replace(/'/g, "''")}', ${r.last_value}, true)`,
+        sql: `SELECT pg_catalog.setval('${qid(r.name).replace(/'/g, "''")}', ${current.valore}, ${current.chiamata ? 'true' : 'false'})`,
       });
     }
   }
@@ -353,7 +390,6 @@ module.exports = {
   pgCreateTable,
   pgAuxDdl,
   pgSchemaObjects,
-  SERIAL_PER_TIPO,
   TIPI_BINARI_PG,
   TIPI_TEMPORALI_PG,
 };

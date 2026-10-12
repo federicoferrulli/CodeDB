@@ -1,0 +1,26 @@
+  OK mysql: export HTTP, ticket, upload e import codedb-json con staging
+AssertionError [ERR_ASSERTION]: ENUM vuoto valido e indice zero restano distinti
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      id: 1,
+      ordinal: 1
+    },
+...
+      id: 3,
++     ordinal: 1
+-     ordinal: 0
+    }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-tipi-sql.js:123:18
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

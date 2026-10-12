@@ -32,7 +32,8 @@
 const { StringDecoder } = require('string_decoder');
 
 const LIMITE_INVOLUCRO = Number(process.env.CODEDB_MAX_ARTIFACT_ENVELOPE_BYTES) || 64 * 1024 * 1024;
-const LIMITE_DOCUMENTO = Number(process.env.CODEDB_MAX_ARTIFACT_DOC_BYTES) || 16 * 1024 * 1024;
+// BSON da 16 MiB più identità e base64 può occupare fino a circa 43 MiB.
+const LIMITE_DOCUMENTO = Number(process.env.CODEDB_MAX_ARTIFACT_DOC_BYTES) || 48 * 1024 * 1024;
 
 /**
  * @param {object} eventi

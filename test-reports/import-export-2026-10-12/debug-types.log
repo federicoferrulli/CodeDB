@@ -1,0 +1,68 @@
+CREATE TABLE `tipi` (
+  `id` int NOT NULL,
+  `c0` tinyint DEFAULT NULL,
+  `c1` tinyint unsigned DEFAULT NULL,
+  `c2` smallint DEFAULT NULL,
+  `c3` smallint unsigned DEFAULT NULL,
+  `c4` mediumint DEFAULT NULL,
+  `c5` mediumint unsigned DEFAULT NULL,
+  `c6` int DEFAULT NULL,
+  `c7` int unsigned DEFAULT NULL,
+  `c8` bigint DEFAULT NULL,
+  `c9` bigint unsigned DEFAULT NULL,
+  `c10` tinyint(1) DEFAULT NULL,
+  `c11` decimal(65,30) DEFAULT NULL,
+  `c12` float DEFAULT NULL,
+  `c13` double DEFAULT NULL,
+  `c14` double DEFAULT NULL,
+  `c15` double DEFAULT NULL,
+  `c16` bit(1) DEFAULT NULL,
+  `c17` bit(64) DEFAULT NULL,
+  `c18` date DEFAULT NULL,
+  `c19` date DEFAULT NULL,
+  `c20` datetime(6) DEFAULT NULL,
+  `c21` timestamp(6) NULL DEFAULT NULL,
+  `c22` time(6) DEFAULT NULL,
+  `c23` year DEFAULT NULL,
+  `c24` char(8) DEFAULT NULL,
+  `c25` varchar(20) DEFAULT NULL,
+  `c26` binary(8) DEFAULT NULL,
+  `c27` varbinary(32) DEFAULT NULL,
+  `c28` tinyblob,
+  `c29` blob,
+  `c30` mediumblob,
+  `c31` longblob,
+  `c32` tinytext,
+  `c33` text,
+  `c34` mediumtext,
+  `c35` longtext,
+  `c36` enum('a','b,à','?') DEFAULT NULL,
+  `c37` set('a','b à','?') DEFAULT NULL,
+  `c38` json DEFAULT NULL,
+  `c39` geometry DEFAULT NULL,
+  `c40` geometry DEFAULT NULL,
+  `c41` geometry DEFAULT NULL,
+  `c42` geometry DEFAULT NULL,
+  `c43` geometry DEFAULT NULL,
+  `c44` geometry DEFAULT NULL,
+  `c45` geometry DEFAULT NULL,
+  `c46` geometry DEFAULT NULL,
+  `c47` geometry DEFAULT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci 🦊 [ { v: '656E756D282761272C27622CC3A0272C273F2729' } ]
+AssertionError [ERR_ASSERTION]: {"operationId":"8b0f3d88-88f1-4f3e-8952-8cefa9e5ea1a","tabId":"export","connection":"127.0.0.1:31306","targetDb":"codedb_types_d8da2c6031_copy","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","status":"ripristinato_dopo_errore","phase":"terminata","progress":[{"phase":"validazione","status":"in_corso","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.657Z"},{"phase":"validazione","status":"completata","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.662Z"},{"phase":"destinazione","status":"in_corso","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.663Z"},{"phase":"destinazione","status":"completata","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.668Z"},{"phase":"staging","status":"in_corso","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.668Z"},{"phase":"staging","status":"completata","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.681Z"},{"phase":"applicazione","status":"in_corso","fingerprint":"77da0f6f18ea313366e9f33da4d10e9f2c1e63bf7843ddb912f0cf6210017ebf","at":"2026-10-12T13:31:12.681Z"}],"startedAt":"2026-10-12T13:31:12.653Z","endedAt":"2026-10-12T13:31:12.748Z","recovery":null,"staging":{"db":"codedb_types_d8da2c6031_copy__codedb_staging_745b91a60b","retained":true},"error":"Import incompleto di \"tipi\": applicate 1 di 2 righe/documenti. Motivo: Riga 1: Data truncated for column 'c36' at row 1.","recoveryError":null,"originalError":{"code":null,"codeName":null,"target":null},"cleanupAt":null,"promotion":null,"verification":null}
++ actual - expected
+
++ 'ripristinato_dopo_errore'
+- 'completato'
+
+    at roundtripJson (C:\repository\CodeDB\test\e2e-export-formati.js:250:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-tipi-sql.js:85:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'ripristinato_dopo_errore',
+  expected: 'completato',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

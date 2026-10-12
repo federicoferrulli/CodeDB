@@ -1,0 +1,31 @@
+npm notice run codedb@0.1.5-beta.1 build:dir
+npm notice run npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder --dir --publish never --config.directories.output=test-reports/preproduzione-2026-10-12/desktop
+npm notice run codedb@0.1.5-beta.1 build:ui
+npm notice run node tools/build-ui.mjs
+
+  public\arc\ui.js            586.0kb
+  public\arc\ui.css            49.7kb
+  public\arc\ui.js.LEGAL.txt    3.3kb
+
+Done in 595ms
+npm notice run codedb@0.1.5-beta.1 electron:icons
+npm notice run node tools/genera-icona.js
+Generato public/logo.png con sfondo TRASPARENTE.
+Generati public/codedb.ico e public/codedb.png
+Generato build/icon.ico (16..256px, per electron-builder)
+Generato build/icon.png (512x512, per Linux/macOS)
+npm notice run codedb@0.1.5-beta.1 electron:licenza
+npm notice run node tools/genera-licenza.js
+Generato build\license.txt da MANLEVA.md + EULA.md
+  • electron-builder  version=26.17.0 os=10.0.26200
+  • loaded configuration  file=package.json ("build" field)
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=win32 arch=x64 electron=43.7.9 appOutDir=test-reports\preproduzione-2026-10-12\desktop\win-unpacked
+  • downloaded      label=electron progress=100%
+
+  • downloaded electron zip extracted successfully  output=C:\repository\CodeDB\test-reports\preproduzione-2026-10-12\desktop\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\repository\CodeDB
+  • duplicate dependency references  dependencies=["ajv@8.20.0","express@4.22.3","mime-types@3.0.2","debug@4.4.3","http-errors@2.0.1","iconv-lite@0.7.3","on-finished@2.4.1","qs@6.16.0","raw-body@3.0.2","type-is@2.1.0","debug@4.4.3","on-finished@2.4.1","http-errors@2.0.1","on-finished@2.4.1","proxy-addr@2.0.8","qs@6.16.0","debug@4.4.3","http-errors@2.0.1","mime-types@3.0.2","on-finished@2.4.1","send@1.2.1","mime-types@3.0.2","http-errors@2.0.1","debug@2.6.9","http-errors@2.0.1","on-finished@2.4.1","qs@6.16.0","http-errors@2.0.1","iconv-lite@0.4.24","type-is@1.6.18","debug@2.6.9","on-finished@2.4.1","get-intrinsic@1.3.0","call-bind-apply-helpers@1.0.2","call-bind-apply-helpers@1.0.2","es-object-atoms@1.1.2","call-bound@1.0.4","get-intrinsic@1.3.0","side-channel-map@1.0.1","debug@2.6.9","http-errors@2.0.1","on-finished@2.4.1","send@0.19.2","mime-types@2.1.35","pg@8.22.0","accepts@1.3.8","cors@2.8.6","@types/node@25.9.2","@types/node@25.9.2","@types/node@25.9.2","accepts@1.3.8","cors@2.8.6"]
+  • updating asar integrity executable resource  executablePath=test-reports\preproduzione-2026-10-12\desktop\win-unpacked\CodeDB.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\preproduzione-2026-10-12\desktop\win-unpacked\CodeDB.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\preproduzione-2026-10-12\desktop\win-unpacked\resources\app.asar.unpacked\node_modules\ssh2\util\pagent.exe

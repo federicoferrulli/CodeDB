@@ -30,6 +30,7 @@ function toSqlValue(v) {
   if (v === null || v === undefined) return null;
   if (v instanceof Date || Buffer.isBuffer(v)) return v;
   if (typeof v === 'object') {
+    if (Object.keys(v).length === 1 && typeof v.$numberDecimal === 'string') return v.$numberDecimal;
     if (v._bsontype === 'Binary') return v.buffer;
     if (v._bsontype === 'Long' || v._bsontype === 'Decimal128') return v.toString();
     if (v._bsontype === 'Int32' || v._bsontype === 'Double') return v.value;
@@ -46,11 +47,26 @@ function toSqlValue(v) {
 // intero oltre 2^53 venga prima arrotondato dal runtime JavaScript.
 function parseClientValue(text) {
   const originale = JSON.parse(String(text));
-  return numeriNativi(EJSON.deserialize(originale, { relaxed: false }), originale);
+  return deserializeClientObject(originale);
 }
 
 function deserializeClientObject(obj) {
-  return numeriNativi(EJSON.deserialize(obj ?? {}, { relaxed: false }), obj);
+  // NUMERIC SQL non ha il limite di 34 cifre di Decimal128 BSON.
+  function leggi(value) {
+    if (!value || typeof value !== 'object') return value;
+    if (Object.keys(value).length === 1 && typeof value.$numberDecimal === 'string') {
+      const text = value.$numberDecimal;
+      if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$|^(?:NaN|[+-]?Infinity)$/.test(text)) throw new Error('Numero EJSON non valido.');
+      try { return EJSON.deserialize(value, { relaxed: false }); }
+      catch { return { $numberDecimal: text }; }
+    }
+    if (Object.keys(value).some(k => k.startsWith('$'))) {
+      return numeriNativi(EJSON.deserialize(value, { relaxed: false }), value);
+    }
+    return Array.isArray(value) ? value.map(leggi) : Object.fromEntries(Object.entries(value).map(([k, v]) => [k, leggi(v)]));
+  }
+  // Gli oggetti JSON annidati mantengono i wrapper, come prima della conversione SQL.
+  return leggi(obj);
 }
 
 // La lettura canonica protegge Long, ma incapsula anche le coordinate e i

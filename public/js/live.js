@@ -3,7 +3,7 @@ import { socket } from './socket.js';
 import { tabs } from './tabs.js';
 import { $, emit } from './utils.js';
 import { runQuery, svuotaRelazioni } from './grid.js';
-import { renderDbTree } from './dbtree.js';
+import { renderDbTree, aggiornaConteggiNavigatore } from './dbtree.js';
 import { invalidaSchemaIntellisense } from './autocomplete.js';
 
 export function togglePolling() {
@@ -36,8 +36,8 @@ export function startWatch() {
   emit('collection:watch', { db: state.db, coll: state.coll }).then((res) => {
     const targetTab = (res && res._tab) || tab;
     if (targetTab && targetTab.state) {
-      targetTab.state.watching = true;
-      if (targetTab.id === tabs.activeId) $('#live-badge').classList.remove('hidden');
+      targetTab.state.watching = !targetTab.state.pollingShown;
+      if (targetTab.id === tabs.activeId) $('#live-badge').classList.toggle('hidden', !targetTab.state.watching);
     }
   }).catch(() => {
     // Watch rifiutato subito (MySQL non lo supporta, o errore lato server):
@@ -96,10 +96,12 @@ export function initLive() {
   $('#polling-checkbox').addEventListener('change', togglePolling);
 
   socket.on('collection:changed', (change) => {
+    if (!window.frameElement?.codedbPanel && change.watchId && change.watchId !== 'default') return;
     const tab = change.tabId
       ? tabs.list.find((t) => t.id === change.tabId)
       : tabs.list.find((t) => t.id === tabs.activeId);
     if (!tab) return;
+    if (change.operationType !== 'update' && change.operationType !== 'replace') aggiornaConteggiNavigatore(change.db, tab.id);
     const collTab = tab.state.collTabs.find((ct) =>
       !ct.isDbTab && !ct.isSplitTab && ct.db === change.db && ct.coll === change.coll
     );
@@ -181,6 +183,7 @@ export function initLive() {
   }, 10000);
 
   socket.on('watch:unavailable', (info) => {
+    if (!window.frameElement?.codedbPanel && info?.watchId && info.watchId !== 'default') return;
     const tab = info && info.tabId
       ? tabs.list.find((t) => t.id === info.tabId)
       : tabs.list.find((t) => t.id === tabs.activeId);

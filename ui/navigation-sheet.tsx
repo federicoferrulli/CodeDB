@@ -1,7 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { useLayoutEffect, useRef } from 'react';
-import { BottomSheet } from './components/arc/bottom-sheet/bottom-sheet';
+import { cloneElement, useLayoutEffect, useRef, type ReactElement } from 'react';
+import { BottomSheet, type BottomSheetProps } from './components/arc/bottom-sheet/bottom-sheet';
 
 function Navigatore({ panel, tools, navigation }: { panel: HTMLElement; tools: boolean; navigation: boolean }) {
   const slot = useRef<HTMLDivElement>(null);
@@ -30,23 +30,30 @@ function Navigatore({ panel, tools, navigation }: { panel: HTMLElement; tools: b
 }
 
 let root: ReturnType<typeof createRoot> | undefined;
-let notifyClose: (() => void) | undefined;
-export function closeNavigationSheet() {
-  const notify = notifyClose;
-  if (!notify) return;
-  notifyClose = undefined;
-  flushSync(() => root!.render(null));
-  notify();
+let current: { element: ReactElement<BottomSheetProps>; notify: () => void; closing: boolean } | undefined;
+export function closeNavigationSheet(immediate = false) {
+  const entry = current;
+  if (!entry) return;
+  const finish = () => {
+    if (current !== entry) return;
+    current = undefined;
+    flushSync(() => root!.render(null));
+    entry.notify();
+  };
+  if (immediate) { finish(); return; }
+  if (entry.closing) return;
+  entry.closing = true;
+  flushSync(() => root!.render(cloneElement(entry.element, { open: false, onExitComplete: () => queueMicrotask(finish) })));
 }
 export function openNavigationSheet(panel: HTMLElement, onClose: () => void, options: { title?: string; description?: string; tools?: boolean; navigation?: boolean; fitContent?: boolean } = {}) {
+  closeNavigationSheet(true);
   if (!root) {
     const host = document.createElement('div');
     document.body.append(host);
     root = createRoot(host);
   }
-  notifyClose = onClose;
   const connections = panel.id === 'conn-sidebar';
-  flushSync(() => root!.render(<BottomSheet open title={options.title ?? (connections ? 'Connessioni' : document.getElementById('explorer-title')!.textContent!.trim())}
+  const element = <BottomSheet open title={options.title ?? (connections ? 'Connessioni' : document.getElementById('explorer-title')!.textContent!.trim())}
     description={options.description ?? (connections ? 'Scegli una connessione o aggiungine una nuova.' : document.getElementById('explorer-context')?.textContent?.trim())}
     fitContent={options.fitContent} detents={[.7, .94]} initialDetent={(window.visualViewport?.height ?? window.innerHeight) < 600 ? 1 : 0} className="arc-navigation-sheet"
     onOpenChange={open => { if (!open) closeNavigationSheet(); }}
@@ -56,5 +63,7 @@ export function openNavigationSheet(panel: HTMLElement, onClose: () => void, opt
       else event.stopImmediatePropagation(); // Escape appartiene al drawer, non alla selezione sul canvas sottostante.
     }}>
     <Navigatore panel={panel} tools={options.tools !== false} navigation={options.navigation !== false} />
-  </BottomSheet>));
+  </BottomSheet>;
+  current = { element, notify: onClose, closing: false };
+  flushSync(() => root!.render(element));
 }

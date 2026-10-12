@@ -1,0 +1,22 @@
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+AssertionError [ERR_ASSERTION]: contenuto binario completo del Large Object
++ actual - expected
+
+  Buffer(1048713) [Uint8Array] [
++   159,
+-   158,
+    92,
+    46,
+    42,
+    78,
+    120,
+
+    at C:\repository\CodeDB\test\e2e-tipi-large-objects.js:31:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Buffer [Uint8Array]],
+  expected: [Buffer [Uint8Array]],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

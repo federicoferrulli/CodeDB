@@ -1,5 +1,6 @@
 {
   "checks": [
+    "Nessuna connessione: azione accessibile da tastiera e touch, apertura e chiusura del form desktop/drawer mobile",
     "Griglia: vuota, filtrata, Aggiorna invia la richiesta e Modifica filtro porta il focus al campo",
     "Query: stato iniziale e zero risultati distinti, colonne conservate, azione editor funzionante da tabella/JSON/grafico",
     "Transizioni: vuoto → caricamento → dati → errore → reset, senza messaggi residui o duplicati",

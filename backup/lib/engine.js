@@ -2,14 +2,15 @@
 const { colonnaGenerata } = require('../../db/mysqlColonne');
 
 /* ---------------------------------------------------------------------------
- * Motore di backup: dump in streaming di un database (MongoDB o MySQL) in una
+ * Motore di backup: dump in streaming di MongoDB, MySQL e PostgreSQL in una
  * cartella auto-descritta:
  *
  *   <dest>/<connessione>_<db>/<id>/            id = timestamp_tipo
  *     manifest.json                            metadati + checksum SHA-256
  *     data/<collection>.ndjson[.gz]            una riga EJSON per documento
  *     indexes/<collection>.json                indici (solo MongoDB, solo full)
- *     schema/<tabella>.sql                     CREATE TABLE (solo MySQL)
+ *     schema/<tabella>.sql                     CREATE TABLE (SQL)
+ *     large-objects/<oid>.bin                  binari PostgreSQL referenziati
  *   <dest>/<connessione>_<db>/catalog.json     catalogo dei backup del gruppo
  *
  * Tipi di backup:
@@ -18,8 +19,8 @@ const { colonnaGenerata } = require('../../db/mysqlColonne');
  *   differential  — solo le modifiche dall'ultimo backup FULL.
  *
  * Le modifiche sono individuate da un campo data (--since-field, es.
- * updatedAt); senza campo: MongoDB usa il timestamp degli ObjectId (cattura
- * solo i nuovi inserimenti), MySQL e PostgreSQL cercano colonne canoniche
+ * updatedAt); senza campo MongoDB rilegge tutti i documenti,
+ * MySQL e PostgreSQL cercano colonne canoniche
  * (updated_at, ...) e in mancanza eseguono il dump completo della tabella.
  * Dalla versione 3 le cancellazioni sono tombstone d'identità calcolati
  * confrontando lo stato risolto della base con la snapshot corrente.
@@ -30,8 +31,6 @@ const path = require('path');
 // Tutte le scritture EJSON del motore passano dal codec fedele (`db/codecFedele`):
 // canonico in scrittura, mai relaxed distruttivo. Vedi il modulo per il perché.
 const { stringifyRiga, parseRiga, serializeConservativo } = require('../../db/codecFedele');
-const { ObjectId } = require('mongodb');
-const { classificaTopologia, leggiTopologia } = require('../../db/mongoTopologia');
 const {
   createFileSink, readLines, fileDelBackup, safeName, makeBackupId, readCatalog, appendToCatalog, readManifest, formatBytes, backupPathKey,
 } = require('./util');
@@ -173,19 +172,62 @@ async function statoIdentitaDellaCatena(backupDir) {
       if (!file.identity) continue;
       if (!stati.has(file.collection)) stati.set(file.collection, new Map());
       const stato = stati.get(file.collection);
-      const righe = [];
       for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'layer identità'))) {
-        righe.push(parseRiga(line));
+        const row = file.encoding === 'bson-base64' ? JSON.parse(line) : parseRiga(line);
+        const riga = ['mongo', 'mongodb'].includes(layer.manifest.dbType) && !file.encoding
+          ? { _id: require('../../db/mongoBson').encode({ _id: row._id })._id } : row;
+        if (file.kind === 'tombstones') applicaTombstone(stato, [riga], file.identity);
+        else stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
       }
-      if (file.kind === 'tombstones') applicaTombstone(stato, righe, file.identity);
-      else for (const riga of righe) stato.set(chiaveIdentita(riga, file.identity), identitaDellaRiga(riga, file.identity));
     }
   }
   return stati;
 }
 
+async function identitaSqlNellaSnapshot(conn, mysql, db, file) {
+  const stato = new Map();
+  const add = row => stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
+  if (mysql) {
+    const meta = await mysqlColumnMeta(conn, db, file.collection, file.identity.columns);
+    const stream = conn.connection.query(`SELECT ${meta.select} FROM ${myQid(db)}.${myQid(file.collection)}`).stream();
+    try { for await (const row of stream) add(parseRiga(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema)))); }
+    finally { stream.destroy(); }
+  } else {
+    const meta = await pgColonneDaSalvare((s,p)=>conn.query(s,p), db, file.collection, file.identity.columns);
+    await conn.query(`DECLARE codedb_ids NO SCROLL CURSOR FOR SELECT ${meta.select} FROM ${pgQid(db)}.${pgQid(file.collection)}`);
+    try {
+      for (;;) { const page=await conn.query('FETCH FORWARD 1000 FROM codedb_ids'); for(const row of page.rows)add(parseRiga(stringifyRiga(require('../../db/pg-alias').encode(row,meta.columnSchema))));if(!page.rows.length)break; }
+    } finally { await conn.query('CLOSE codedb_ids'); }
+  }
+  return stato;
+}
+
 async function identitaCorrenti(strategy, db, file) {
   const stato = new Map();
+  if (['mysql', 'postgresql'].includes(strategy.type)) {
+    const mysql = strategy.type === 'mysql';
+    const conn = mysql ? await strategy.pool.getConnection() : await strategy.pool.connect();
+    try {
+      if (!mysql) {
+        await conn.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+        await conn.query("SET LOCAL TimeZone='UTC'; SET LOCAL DateStyle='ISO,YMD'; SET LOCAL IntervalStyle='postgres'; SET LOCAL extra_float_digits=3; SET LOCAL search_path TO pg_catalog");
+      }
+      const result = await identitaSqlNellaSnapshot(conn, mysql, db, file);
+      if (!mysql) await conn.query('COMMIT');
+      return result;
+    } catch (e) { if (!mysql) await conn.query('ROLLBACK').catch(()=>{}); throw e; }
+    finally { conn.release(); }
+  }
+  if (file.encoding === 'bson-base64') {
+    const cursor = strategy.client.db(db).collection(file.collection).find({}, { raw: true, projection: { _id: 1 } }).batchSize(1000);
+    try {
+      for await (const raw of cursor) {
+        const row = require('../../db/mongoBson').encode(raw);
+        stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
+      }
+    } finally { await cursor.close(); }
+    return stato;
+  }
   let skip = 0;
   let after = null;
   // collectionExport calcola il totale solo sul primo blocco (costa una
@@ -212,7 +254,7 @@ async function aggiungiTombstones({ strategy, db, base, groupDir, result, backup
   const precedenti = await statoIdentitaDellaCatena(path.join(groupDir, base.id));
   for (const file of result.files.filter((f) => f.kind === 'data')) {
     if (!file.identity) throw new Error(`Impossibile rappresentare le cancellazioni di "${file.collection}": identità stabile assente.`);
-    const correnti = await identitaCorrenti(strategy, db, file);
+    const correnti = result.identityStates?.get(file.collection) || await identitaCorrenti(strategy, db, file);
     if (correnti.size !== file.sourceCardinality) {
       throw new Error(
         `La sorgente "${file.collection}" è cambiata durante il backup: `
@@ -232,6 +274,7 @@ async function aggiungiTombstones({ strategy, db, base, groupDir, result, backup
     }
     result.files.push({
       path: rel, collection: file.collection, kind: 'tombstones', identity: file.identity,
+      ...(file.encoding ? { encoding: file.encoding } : {}),
       count: rimossi.length, bytes: digest.bytes, sha256: digest.sha256,
     });
   }
@@ -244,8 +287,7 @@ async function aggiungiTombstones({ strategy, db, base, groupDir, result, backup
  *
  * Un incrementale seleziona le righe con "campo data > istante dell'ultimo
  * backup". Il confronto però avviene con la precisione del campo e del DBMS:
- * al SECONDO su MySQL (FROM_UNIXTIME di un intero) e sui timestamp degli
- * ObjectId di MongoDB. Le righe scritte NELLO STESSO SECONDO del backup
+ * al SECONDO sui campi SQL senza frazioni. Le righe scritte NELLO STESSO SECONDO del backup
  * precedente, ma dopo il suo passaggio, cadono quindi nel buco fra i due
  * backup: non sono nel primo perché non c'erano ancora, e non sono nel secondo
  * perché non superano il confronto. Il dato manca senza alcun errore, e ci si
@@ -277,9 +319,11 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
   // Istante e modalità di lettura nel manifest (§5 del piano): il dump legge
   // collection per collection con un cursore ordinario, quindi dichiara la
   // topologia rilevata e l'assenza di snapshot globale invece di tacerle.
-  const coerenza = await leggiTopologia(client);
+  const lettura = await require('../../db/mongoTopologia').apriLettura(client);
+  const {coerenza} = lettura;
+  const identityStates = new Map();
   notes.push(coerenza.avviso);
-
+  try {
   for (const coll of collections) {
     const collection = client.db(db).collection(coll);
     let filter = {};
@@ -291,9 +335,8 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
         sinceColumn = sinceField;
         filter = { [sinceField]: { $gt: confineIncrementale(since) } };
       } else {
-        sinceColumn = '_id';
-        filter = { _id: { $gt: ObjectId.createFromTime(Math.floor(confineIncrementale(since).getTime() / 1000)) } };
-        notes.push(`"${coll}": modifiche individuate dal timestamp degli ObjectId — solo i nuovi inserimenti, non gli aggiornamenti (usa --since-field per un campo data).`);
+        mode = 'full';
+        notes.push(`"${coll}": senza un campo di modifica affidabile si rileggono tutti i documenti; il timestamp dell'ObjectId non rileva aggiornamenti né altri tipi di _id.`);
       }
     }
 
@@ -301,12 +344,13 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
     const columns = new Set(['_id']);
-    const cursor = collection.find(filter).batchSize(1000);
+    const cursor = collection.find(filter, { raw: true, ...lettura.options }).batchSize(1000);
     let digest;
     try {
       for await (const doc of cursor) {
-        for (const column of Object.keys(doc)) columns.add(column);
-        await sink.writeLine(stringifyRiga(doc));
+        const bson = require('../../db/mongoBson');
+        for (const column of bson.inspect(Buffer.isBuffer(doc) ? doc : require('bson').serialize(doc)).columns) columns.add(column);
+        await sink.writeLine(JSON.stringify(bson.encode(doc)));
         count += 1;
       }
       digest = await sink.close();
@@ -316,10 +360,20 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       throw err;
     }
     const { bytes, sha256 } = digest;
-    const sourceCardinality = await collection.countDocuments({});
+    const sourceCardinality = await collection.countDocuments({}, lettura.options);
+    if (since) {
+      const ids = new Map();
+      const idCursor = collection.find({}, {raw:true, projection:{_id:1}, ...lettura.options}).batchSize(1000);
+      try { for await (const raw of idCursor) {
+        const row = require('../../db/mongoBson').encode(raw), identity={kind:'mongodb-id',columns:['_id']};
+        ids.set(chiaveIdentita(row,identity),identitaDellaRiga(row,identity));
+      }} finally { await idCursor.close(); }
+      identityStates.set(coll,ids);
+    }
     files.push({
       path: rel, collection: coll, kind: 'data', mode, sinceColumn, count, bytes, sha256,
       columns: [...columns], identity: { kind: 'mongodb-id', columns: ['_id'] },
+      encoding: require('../../db/mongoBson').ENCODING,
       sourceCardinality, sourceDistinctIdentities: sourceCardinality,
     });
     log.info(`  ${coll}: ${count} documenti → ${rel} (${formatBytes(bytes)})`);
@@ -373,7 +427,8 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     }
   }
   const { avviso: _avviso, ...coerenzaManifest } = coerenza;
-  return { files, notes, coerenza: coerenzaManifest };
+  return { files, notes, coerenza: coerenzaManifest, identityStates };
+  } finally { await lettura.close(); }
 }
 
 /* --- Dump MySQL ----------------------------------------------------------- */
@@ -558,7 +613,7 @@ const TIPI_BINARI_MYSQL = new Set([
 // che tronca i microsecondi e reinterpreta i TIMESTAMP nel fuso del client.
 const TIPI_TEMPORALI_MYSQL = new Set(['date', 'datetime', 'timestamp', 'time']);
 
-async function mysqlColumnMeta(conn, db, table) {
+async function mysqlColumnMeta(conn, db, table, onlyColumns = null) {
   const mysql = require('mysql2');
   const [rows] = await conn.query(
     `SELECT COLUMN_NAME AS name, DATA_TYPE AS dtype, COLUMN_TYPE AS ctype, EXTRA AS extra, SRS_ID AS srid,
@@ -567,7 +622,7 @@ async function mysqlColumnMeta(conn, db, table) {
       WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION`,
     [db, table],
   );
-  const salvabili = rows.filter((r) => !colonnaGenerata(r.extra));
+  const salvabili = rows.filter((r) => !colonnaGenerata(r.extra) && (!onlyColumns || onlyColumns.includes(r.name)));
   const geo = new Map();
   const pezzi = [];
   for (const r of salvabili) {
@@ -575,12 +630,16 @@ async function mysqlColumnMeta(conn, db, table) {
     const tipo = String(r.dtype || '').toLowerCase();
     if (isSqlGeometryType(r.dtype)) {
       geo.set(r.name, { srid: r.srid == null ? null : Number(r.srid) });
-      pezzi.push(`HEX(ST_AsBinary(${id})) AS ${id}`);
+      pezzi.push(`HEX(CAST(${id} AS BINARY)) AS ${id}`);
     } else if (TIPI_BINARI_MYSQL.has(tipo)) {
       // I binari il driver li consegna come Buffer, che NON sopravvive al
       // giro EJSON del file NDJSON: torna come oggetto e MySQL lo rifiuta
       // ("Data too long"). In esadecimale sono testo puro ed esatti.
       pezzi.push(`HEX(${id}) AS ${id}`);
+    } else if (tipo === 'float') {
+      pezzi.push(`CAST(CAST(${id} AS DOUBLE) AS CHAR) AS ${id}`);
+    } else if (tipo === 'enum' || tipo === 'set') {
+      pezzi.push(`CAST(CAST(${id} AS UNSIGNED) AS CHAR) AS ${id}`);
     } else if (tipo === 'bigint' || tipo === 'json' || TIPI_TEMPORALI_MYSQL.has(tipo)) {
       // JSON resta testo: JSON.parse nel driver arrotonda gli interi grandi
       // e il successivo EJSON ne cambia anche la rappresentazione.
@@ -590,7 +649,7 @@ async function mysqlColumnMeta(conn, db, table) {
       // orario del client. Come testo restano esattamente ciò che erano.
       pezzi.push(`CAST(${id} AS CHAR) AS ${id}`);
     } else {
-      pezzi.push(id);
+      pezzi.push(`CAST(${id} AS CHAR CHARACTER SET utf8mb4) AS ${id}`);
     }
   }
   return {
@@ -617,7 +676,11 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
   const files = [];
   const notes = [];
   let inTransaction = false;
+  let originalTimezone;
   try {
+    const [[session]] = await conn.query('SELECT @@SESSION.time_zone AS timezone');
+    originalTimezone = session.timezone;
+    await conn.query("SET SESSION time_zone = '+00:00'");
     // Un'unica snapshot per tutte le tabelle: senza, ogni SELECT vedeva un
     // istante diverso e il backup poteva contenere riferimenti orfani pur
     // completandosi senza errori. La transazione mantiene inoltre i metadata
@@ -630,7 +693,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     for (const table of collections) {
       // Definizione della tabella, per ricrearla al restore. Le chiavi esterne
       // vengono estratte e applicate alla fine: vedi splitMySqlForeignKeys.
-      const [[create]] = await conn.query(`SHOW CREATE TABLE ${myQid(db)}.${myQid(table)}`);
+      const create = { 'Create Table': await require('../../db/mysql-ddl').mysqlTableDdl(conn, db, table, pool) };
       // Le FK si tolgono dal testo della CREATE TABLE, ma il loro numero viene
       // confrontato con il CATALOGO: se la rimozione testuale non corrisponde a
       // ciò che il database dichiara, il backup si ferma invece di produrre uno
@@ -715,7 +778,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // HEX() restituisce già una stringa esadecimale: va nel file così
           // com'è, e il restore la riconosce dal tipo della colonna di
           // destinazione (vedi mysqlGeoTargetColumns).
-          await sink.writeLine(stringifyRiga(row));
+          await sink.writeLine(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema)));
           count += 1;
         }
         digest = await sink.close();
@@ -744,6 +807,9 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
         path: rel, collection: table, kind: 'data', mode, sinceColumn, count, bytes, sha256, geoSrid,
         columns: meta.nomi, columnSchema: meta.columnSchema, identity,
         sourceCardinality, sourceDistinctIdentities,
+        timezone: 'UTC',
+        geometryEncoding: 'mysql-internal-hex',
+        ordinalColumns: meta.columnSchema.filter(require('../../db/mysql-ordinal').isOrdinal).map(c=>c.name),
       });
       log.info(`  ${table}: ${count} righe → ${rel} (${formatBytes(bytes)})`);
     }
@@ -765,10 +831,12 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       );
     }
 
+    const identityStates = new Map();
+    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(conn,true,db,file));
     await conn.query('COMMIT');
     inTransaction = false;
     return {
-      files, notes,
+      files, notes, identityStates,
       coerenza: {
         motore: 'mysql', snapshot: 'repeatable-read',
         transazione: 'consistent-snapshot, read-only',
@@ -779,7 +847,10 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     if (inTransaction) await conn.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
-    conn.release();
+    try {
+      if (originalTimezone != null) await conn.query('SET SESSION time_zone = ?', [originalTimezone]);
+      conn.release();
+    } catch (err) { conn.destroy(); throw err; }
   }
 }
 
@@ -787,38 +858,6 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
 // in db/identificatori.js insieme a quella degli altri motori.
 function pgQid(name) {
   return quotaSempre(name, 'postgresql');
-}
-
-/**
- * Una pagina di una tabella SENZA identità stabile, senza OFFSET.
- *
- * `ORDER BY ctid ... OFFSET n` rilegge dall'inizio a ogni pagina (costo
- * quadratico) e, peggio, può saltare o duplicare righe: fra due query
- * l'ordine fisico può cambiare e l'OFFSET conta posizioni, non righe. Il
- * keyset su `ctid` — l'identificatore fisico di riga, sempre presente sulle
- * tabelle base — riprende esattamente da dove si è fermato: `ctid > ultimo`.
- *
- * Vale dentro la snapshot REPEATABLE READ del dump, dove le versioni visibili
- * non cambiano; non vale contro `VACUUM FULL`/`CLUSTER` concorrenti, che
- * spostano fisicamente le righe (stesso limite di qualunque cursore).
- * Funzione pura così la forma della query si prova senza database.
- */
-function paginaSenzaChiave({ qualified, listaSelect, batch, sinceColumn = null, sinceParam = null, ultimoCtid = null }) {
-  const conds = [];
-  const params = [];
-  if (sinceParam) {
-    conds.push(`${pgQid(sinceColumn)} > $1`);
-    params.push(sinceParam);
-  }
-  // `(0,0)` precede qualunque riga reale (la prima è `(0,1)`): la prima pagina
-  // non ha bisogno di un ramo diverso, e ogni pagina riprende dall'ultima riga.
-  conds.push(`ctid > $${params.length + 1}`);
-  params.push(ultimoCtid || '(0,0)');
-  params.push(batch);
-  return {
-    sql: `SELECT ${listaSelect}, ctid AS __ctid FROM ${qualified} WHERE ${conds.join(' AND ')} ORDER BY ctid LIMIT $${params.length}`,
-    params,
-  };
 }
 
 /**
@@ -918,9 +957,11 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
   // Indici e chiavi esterne di TUTTE le tabelle, raccolti qui e applicati dal
   // restore dopo tabelle e dati (terza fase).
   const indiciEFk = [];
+  const largeObjectIds = new Set();
 
   try {
     await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await client.query("SET LOCAL search_path TO pg_catalog; SET LOCAL TimeZone='UTC'; SET LOCAL DateStyle='ISO,YMD'; SET LOCAL IntervalStyle='postgres'; SET LOCAL extra_float_digits=3");
     inTransaction = true;
 
     // db è lo schema nel modello PostgreSQL di CodeDB. I nomi sono quindi già
@@ -988,6 +1029,8 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       (sql, p) => client.query(sql, p), resolved.schema || schema, table,
     );
     if (!listaSelect) throw new Error(`La tabella PostgreSQL "${table}" non ha colonne salvabili.`);
+    const references = await require('../../db/pg-references').columnReferences((s,p)=>client.query(s,p), resolved.schema || schema, table);
+    const captureReferences = row => require('../../db/pg-references').rowReferences(row, references, id => { largeObjectIds.add(id); return id; });
 
     let mode = 'full';
     let sinceColumn = null;
@@ -1011,61 +1054,29 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
         + 'backup incrementale/differenziale rifiutato.'
       );
     }
-    const orderIdentity = identity ? identity.columns : [];
     const rel = `data/${safeName(table)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
 
     let digest;
     try {
-    if (orderIdentity.length) {
-      const pkCols = orderIdentity.map(pgQid).join(', ');
-      let after = null;
+    // Il cursore mantiene i tipi e l'ordine del server: nessun alias testuale
+    // nella paginazione, né ctid ripetuti fra partizioni della stessa tabella.
+    const where = sinceParam ? ` WHERE ${pgQid(sinceColumn)} > $1` : '';
+    await client.query(`DECLARE codedb_backup_rows NO SCROLL CURSOR FOR SELECT ${listaSelect} FROM ${qualified}${where}`,sinceParam?[sinceParam]:[]);
+    try {
       for (;;) {
-        const conds = [];
-        const params = [];
-        if (sinceParam) {
-          conds.push(`${pgQid(sinceColumn)} > $${params.length + 1}`);
-          params.push(sinceParam);
-        }
-        if (after) {
-          conds.push(`(${pkCols}) > (${orderIdentity.map((_, i) => `$${params.length + i + 1}`).join(', ')})`);
-          params.push(...after);
-        }
-        const where = conds.length ? ` WHERE ${conds.join(' AND ')}` : '';
-        params.push(BATCH);
-        const res = await client.query(
-          `SELECT ${listaSelect} FROM ${qualified}${where} ORDER BY ${pkCols} LIMIT $${params.length}`,
-          params
-        );
+        const res = await client.query(`FETCH FORWARD ${BATCH} FROM codedb_backup_rows`);
         if (!res.rows.length) break;
         for (const row of res.rows) {
-          await sink.writeLine(stringifyRiga(row));
-          count += 1;
-        }
-        after = orderIdentity.map((c) => res.rows[res.rows.length - 1][c]);
-        if (res.rows.length < BATCH) break;
-      }
-    } else {
-      // Nessuna identità stabile: keyset su ctid, mai OFFSET. Vedi
-      // paginaSenzaChiave per il perché l'OFFSET qui perde o duplica righe.
-      let ultimoCtid = null;
-      for (;;) {
-        const { sql, params } = paginaSenzaChiave({
-          qualified, listaSelect, batch: BATCH,
-          sinceColumn, sinceParam, ultimoCtid,
-        });
-        const res = await client.query(sql, params);
-        if (!res.rows.length) break;
-        for (const row of res.rows) {
-          ultimoCtid = row.__ctid;
-          delete row.__ctid;
-          await sink.writeLine(stringifyRiga(row));
+          const encoded=require('../../db/pg-alias').encode(row,columnSchema);
+          captureReferences(encoded);
+          await sink.writeLine(stringifyRiga(encoded));
           count += 1;
         }
         if (res.rows.length < BATCH) break;
       }
-    }
+    } finally {await client.query('CLOSE codedb_backup_rows');}
 
       digest = await sink.close();
     } catch (err) {
@@ -1103,7 +1114,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     const oggetti = await pgSchemaObjects((sql, p) => client.query(sql, p), schema);
     oggetti.foreignKeys = indiciEFk;
     const totaleOggetti = oggetti.views.length + oggetti.routines.length
-      + oggetti.triggers.length + oggetti.sequences.length + indiciEFk.length;
+      + oggetti.triggers.length + oggetti.sequences.length + indiciEFk.length + oggetti.types.length + oggetti.extensions.length + oggetti.collations.length;
     if (totaleOggetti) {
       const relOgg = 'objects/schema.json';
       fs.mkdirSync(path.join(backupDir, 'objects'), { recursive: true });
@@ -1115,10 +1126,20 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       );
     }
 
+    for await (const object of require('../../db/pg-references').streamLargeObjects((s,p)=>client.query(s,p),largeObjectIds)) {
+      const rel=`large-objects/${object.oid}.bin`;
+      const sink=createFileSink(path.join(backupDir,rel),{compress:false});
+      try {
+        for await (const chunk of object.chunks) await sink.writeChunk(chunk);
+        files.push({path:rel,collection:null,kind:'large-object',oid:object.oid,size:object.size,...await sink.close()});
+      } catch(e) {await sink.abort(e);throw e;}
+    }
+    const identityStates = new Map();
+    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(client,false,schema,file));
     await client.query('COMMIT');
     inTransaction = false;
     return {
-      files, notes,
+      files, notes, identityStates,
       coerenza: {
         motore: 'postgresql', snapshot: 'repeatable-read',
         transazione: 'read-only', lock: 'access-share',
@@ -1231,4 +1252,4 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   return { backupDir, id, collections: dataFiles.length, totalDocs, totalBytes };
 }
 
-module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects, paginaSenzaChiave };
+module.exports = { runBackup, splitMySqlForeignKeys, mysqlSchemaObjects };

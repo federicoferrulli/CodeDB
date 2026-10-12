@@ -1,0 +1,12 @@
+{
+  "failures": [],
+  "errors": [],
+  "checks": [
+    "Cinque configurazioni salvate senza perdita di parametri o segreti",
+    "Porte personalizzate e alias postgres",
+    "URI leggibile e mascherata",
+    "Aggiornamenti parziali e cancellazioni esplicite",
+    "Cambio password e chiave SSH",
+    "Screenshot desktop e mobile, salvataggio raggiungibile dopo scorrimento"
+  ]
+}

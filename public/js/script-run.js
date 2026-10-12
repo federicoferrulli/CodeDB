@@ -50,7 +50,7 @@ function nuovoRunId() {
  * Avvia uno script. Ritorna una promise che si risolve all'AVVIO (non alla
  * fine): la fine arriva con gli eventi di progresso.
  */
-export function runScript({ code, engine, db, coll, stopOnError = false, tab = activeTab(), collTabId = tab?.state.activeCollId } = {}) {
+export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId } = {}) {
   const testo = String(code || '').trim();
   if (!testo) return Promise.resolve(null);
 
@@ -104,6 +104,8 @@ export function runScript({ code, engine, db, coll, stopOnError = false, tab = a
     tabId,
     runId,
     stopOnError,
+    previousRunId,
+    keepSqlSession,
   })
     .then((res) => {
       const r = runs.get(runId);
@@ -208,6 +210,7 @@ function onProgress(ev) {
   if (!ev || !ev.runId) return;
   const r = runs.get(ev.runId);
   if (!r) return; // run di un'altra scheda del browser o già dimenticato
+  if (ev.avviso) { toast(ev.avviso, true); return; }
 
   const stato = ev.stato || {};
   r.stato = stato;

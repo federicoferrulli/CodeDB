@@ -60,18 +60,14 @@ function cursore(value) {
  *
  * Non è un checksum del contenuto (due letture dello stesso database possono
  * differire su un conteggio stimato senza che nulla di strutturale sia
- * cambiato): è la FORMA — quali oggetti esistono, quante colonne ha ciascuno,
- * quante relazioni ci sono. È questo che rende valido o non valido un cursore.
+ * cambiato). Identità, definizioni e ordine devono restare uguali fra le pagine.
  */
 function revisioneSchema(schema) {
   const collections = Array.isArray(schema && schema.collections) ? schema.collections : [];
   const relations = Array.isArray(schema && schema.relations) ? schema.relations : [];
-  const forma = collections
-    .map((c) => `${c.name}:${(c.fields || []).length}`)
-    .sort()
-    .join('|');
+  const forma = collections.map((c) => ({ name: c.name, fields: c.fields || [] }));
   return crypto.createHash('sha256')
-    .update(`${forma}#${relations.length}`)
+    .update(JSON.stringify({ collections: forma, relations }))
     .digest('hex')
     .slice(0, 16);
 }

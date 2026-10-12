@@ -1,0 +1,20 @@
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+OK postgresql codedb-json: 84 casi con valori estremi e NULL
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK postgresql sql: 84 casi con valori estremi e NULL
+AssertionError [ERR_ASSERTION]: {"operationId":"0d7c3987-031b-4929-9b32-47d0983831b3","tabId":"export","connection":"127.0.0.1:31432","targetDb":"codedb_types_4073bb16a1_copy","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","status":"ripristinato_dopo_errore","phase":"terminata","progress":[{"phase":"validazione","status":"in_corso","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.970Z"},{"phase":"validazione","status":"completata","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.977Z"},{"phase":"destinazione","status":"in_corso","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.977Z"},{"phase":"destinazione","status":"completata","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.982Z"},{"phase":"staging","status":"in_corso","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.982Z"},{"phase":"staging","status":"completata","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.992Z"},{"phase":"applicazione","status":"in_corso","fingerprint":"795de31d5e4b5f3de4d54ff58e15041f629d4bb7cf13a040a68ba105b9789204","at":"2026-10-12T14:03:28.992Z"}],"startedAt":"2026-10-12T14:03:28.959Z","endedAt":"2026-10-12T14:03:29.097Z","recovery":null,"staging":{"db":"codedb_types_4073bb16a1_copy__codedb_staging_a6e8e95c3d","retained":false},"error":"Oggetti di schema incompleti: routine \"myint_in\": function \"myint_in\" already exists with same argument types; routine \"myint_out\": function \"myint_out\" already exists with same argument types","recoveryError":null,"originalError":{"code":null,"codeName":null,"target":null},"cleanupAt":null,"promotion":null,"verification":null}
++ actual - expected
+
++ 'ripristinato_dopo_errore'
+- 'completato'
+
+    at roundtripJson (C:\repository\CodeDB\test\e2e-export-formati.js:250:14)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-tipi-sql.js:95:9 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'ripristinato_dopo_errore',
+  expected: 'completato',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

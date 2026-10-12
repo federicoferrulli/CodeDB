@@ -12,11 +12,19 @@ const SshTunnel = require('../db/SshTunnel');
 console.log('--- Test Unitari CodeDB ---');
 
 (async () => {
+  await require('./unit-preproduzione');
+  require('./sql-to-mql');
   await require('./unit-database-export');
+  await require('./unit-import-sql');
+  await require('./unit-import-limiti');
+  await require('./unit-transfer-types');
   await require('./unit-query-senza-limite');
   await require('./unit-sql-integrita-righe');
+  await require('./unit-insert-values');
   await require('./unit-server-modulare');
+  await require('./unit-conteggi-navigatore');
   await require('./unit-ssh-keys');
+  await require('./unit-conn-config');
   await require('./unit-mcp-auth');
   // Test 1: DbFactory instanziamento e helper
   const mongoStrategy = DbFactory.getStrategy('mongodb');
@@ -1071,9 +1079,10 @@ console.log('--- Test Unitari CodeDB ---');
 
   // Test 8: VirtualJoinEngine escaping backslashes nelle chiavi SQL IN
   let vjCapturedSql = '';
+  let vjParams;
   const stratVjSql = {
     type: 'mysql',
-    async collectionAggregate(db, table, payload) { vjCapturedSql = payload.pipeline; return { docs: [] }; }
+    async collectionAggregate(db, table, payload) { vjCapturedSql = payload.pipeline; vjParams = payload.params; return { docs: [] }; }
   };
   await VirtualJoinEngine.execute({
     virtualJoin: {
@@ -1085,8 +1094,9 @@ console.log('--- Test Unitari CodeDB ---');
     type: 'mysql',
     async collectionAggregate() { return { docs: [{ user_id: 'val\\with\'quotes' }] }; }
   }, stratVjSql);
-  assert.ok(vjCapturedSql.includes("'val\\\\with''quotes'"), 'VirtualJoinEngine deve fuggire backslash e apici nelle chiavi SQL');
-  console.log('  OK   VirtualJoinEngine backslash escaping in SQL IN passed');
+  assert.ok(vjCapturedSql.includes('IN (?)'), 'le chiavi SQL devono essere parametri');
+  assert.deepEqual(vjParams, ["val\\with'quotes"], 'nessuna alterazione del valore della chiave');
+  console.log('  OK   VirtualJoinEngine parametri SQL IN passed');
 
   // Test 9: Interfaccia cancelQuery sulle strategie DB
   const baseStrat = new DbStrategy();
@@ -1378,6 +1388,7 @@ console.log('--- Test Unitari CodeDB ---');
   require('./unit-ssh-pinning');
   await require('./unit-electron-server-auth');
   require('./unit-tombstone-backup');
+  await require('./unit-backup-selection');
   await require('./unit-backup-cancellazioni');
   await require('./unit-rinomina-sicura');
   await require('./unit-valori-esatti');
@@ -1475,6 +1486,7 @@ console.log('--- Test Unitari CodeDB ---');
   // aggiunta o chiusura; sbagliata, questa matematica non lancia errori — dà
   // proporzioni storte o un pannello vivo che nessuno disegna. Nessun browser.
   require('./unit-split-layout');
+  require('./unit-watch-pannelli');
 
   // Test 27-octies-bis: velocità dello scorrimento automatico ai bordi mentre
   // si trascina una selezione sulla griglia. Sbagliata non lancia: fa scappare

@@ -40,10 +40,11 @@ function ora() {
 /** Testo normalizzato per il confronto di due esecuzioni "uguali". */
 function chiaveDedup(v) {
   return [
-    String(v.code || '').trim().replace(/\s+/g, ' '),
+    String(v.code || '').trim(),
     v.engine || 'auto',
     v.conn || '',
     v.db || '',
+    v.coll || '',
   ].join('\0');
 }
 

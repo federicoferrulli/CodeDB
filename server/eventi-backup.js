@@ -7,7 +7,7 @@ const { createLogger, formatDuration } = require('../backup/lib/logger');
 const path = require('path');
 const { runBackup } = require('../backup/lib/engine');
 const { notifySlack } = require('../backup/lib/notify');
-const { readCatalog, verifyBackupDir, formatBytes } = require('../backup/lib/util');
+const { readCatalog, verifyBackupDir, formatBytes, parseCollectionSelection } = require('../backup/lib/util');
 const fs = require('fs');
 const { runRestoreViaPlan } = require('../db/backupRestoreAdapter');
 const { sanitizeImportResult } = require('../db/importOperations');
@@ -30,9 +30,7 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       if (!['full', 'incremental', 'differential'].includes(type)) {
         throw new Error(`Tipo backup non valido: ${type}`);
       }
-      const onlyCollections = payload.collections
-        ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
-        : null;
+      const onlyCollections = parseCollectionSelection(payload.collections);
       const destRoot = operazioni.resolveBackupPath(socketContext.principal, payload.dest, 'destinazione');
       // La destinazione cloud non arriva mai dal client: solo alias pre-approvati.
       const storageUrl = resolveStorageAlias(payload.storage, config.env);
@@ -125,9 +123,7 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       const destRoot = operazioni.resolveBackupPath(socketContext.principal, payload.dest, 'destinazione');
       const webhook = resolveSlackWebhook(payload.slackWebhook, config.env);
       const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
-      const onlyCollections = payload.collections
-        ? String(payload.collections).split(',').map((s) => s.trim()).filter(Boolean)
-        : null;
+      const onlyCollections = parseCollectionSelection(payload.collections);
 
       const t0 = Date.now();
       // Solo etichetta per il log: il bersaglio del ripristino è `backupDir`, già

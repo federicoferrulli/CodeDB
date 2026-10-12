@@ -1,6 +1,16 @@
 // Un solo rettangolo utile per layout, modali e menu. Il pinch zoom resta al
 // browser: non ridimensioniamo l'app mentre l'utente la sta ingrandendo.
 export function initViewport() {
+  // Lo zoom nativo deve raggiungere il browser anche sopra mappe, grafici e iframe.
+  window.addEventListener('wheel', event => {
+    if (event.ctrlKey && !event.altKey) event.stopImmediatePropagation();
+  }, { capture: true, passive: true });
+  window.addEventListener('keydown', event => {
+    if ((event.ctrlKey || event.metaKey) && !event.altKey
+      && (['+', '=', '-', '_', '0', 'Add', 'Subtract'].includes(event.key)
+        || ['NumpadAdd', 'NumpadSubtract'].includes(event.code))) event.stopImmediatePropagation();
+  }, true);
+
   const root = document.documentElement;
   const vv = window.visualViewport;
   const aggiorna = () => {

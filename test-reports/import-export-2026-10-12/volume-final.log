@@ -1,0 +1,7 @@
+  OK mysql: export HTTP, ticket, upload e import codedb-json con staging
+  OK mysql: 100000 righe identiche, export/upload/import/verifica 13428 ms
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+  OK postgresql: 100000 righe identiche, export/upload/import/verifica 7895 ms
+  OK PostgreSQL: restore selettivo, DROP, ownership, passo e is_called; sequenze estranee intatte
+  OK mongodb: export HTTP, ticket, upload e import codedb-json con staging
+  OK mongodb: 100000 righe identiche, export/upload/import/verifica 19790 ms

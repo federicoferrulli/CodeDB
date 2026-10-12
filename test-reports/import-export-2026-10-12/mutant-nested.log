@@ -1,0 +1,49 @@
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+AssertionError [ERR_ASSERTION]: domini e compositi: firma esatta degli overload, NULL, array e testo
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      id: '1',
++     p: 'codedb_refs_dccf07832c52ea95.f(text)',
+-     p: 'codedb_refs_dccf07832c52ea95.f(integer)',
+      ps: {
+        refs: [
+          {
+            kind: 'regproc',
++           value: 'codedb_refs_dccf07832c52ea95.f(text)'
+-           value: 'codedb_refs_dccf07832c52ea95.f(integer)'
+          },
+          {
+            kind: 'regproc',
+            value: 'abs(bigint)'
+          }
+...
+            kind: 'regproc',
++           value: 'codedb_refs_dccf07832c52ea95.f(text)'
+-           value: 'codedb_refs_dccf07832c52ea95.f(integer)'
+          },
+          {
+            kind: 'regoper',
+            value: '+(integer,integer)'
+          },
+...
+            kind: 'regproc',
++           value: 'codedb_refs_dccf07832c52ea95.f(text)'
+-           value: 'codedb_refs_dccf07832c52ea95.f(integer)'
+          },
+          {
+            kind: 'regoper',
+            value: '+(integer,integer)'
+          },
+
+    at C:\repository\CodeDB\test\e2e-tipi-riferimenti.js:28:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,170 @@
+{
+  "checks": [
+    "Geometrie SQL JSON, annidate e multipart; nomi arbitrari trattati come testo",
+    "Editor/Risultati/Entrambi: vere schede, focus da tastiera, transizione e bozza conservata",
+    "Cambio JSON/Mappa e selezione bidirezionale senza ricostruire il canvas o perdere zoom",
+    "Navigazione a tastiera, transizione da 240ms, copia riepilogo ed export preservano i dati",
+    "Scuro/chiaro, desktop, mobile 320/390 e orizzontale: mappa libera, focus corretto, controlli touch",
+    "Layout segue la larghezza del pannello; movimento ridotto senza animazioni residue",
+    "Istanze indipendenti, risposta superata scartata e azzeramento del contesto senza dati residui",
+    "1600 geometrie: disegno/elenco limitati, export completo e ritorno in cache senza ricostruzioni"
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 960,
+      "theme": "dark",
+      "map": {
+        "x": 488,
+        "y": 298,
+        "width": 624,
+        "height": 565,
+        "right": 1112,
+        "bottom": 863
+      },
+      "view": {
+        "x": 476,
+        "y": 246,
+        "width": 964,
+        "height": 714,
+        "right": 1440,
+        "bottom": 960
+      },
+      "export": {
+        "x": 1322.640625,
+        "y": 920,
+        "width": 105.359375,
+        "height": 28,
+        "right": 1428,
+        "bottom": 948
+      },
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "height": 960,
+      "theme": "light",
+      "map": {
+        "x": 488,
+        "y": 298,
+        "width": 624,
+        "height": 565,
+        "right": 1112,
+        "bottom": 863
+      },
+      "view": {
+        "x": 476,
+        "y": 246,
+        "width": 964,
+        "height": 714,
+        "right": 1440,
+        "bottom": 960
+      },
+      "export": {
+        "x": 1322.640625,
+        "y": 920,
+        "width": 105.359375,
+        "height": 28,
+        "right": 1428,
+        "bottom": 948
+      },
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "map": {
+        "x": 12,
+        "y": 419.5,
+        "width": 366,
+        "height": 243.5,
+        "right": 378,
+        "bottom": 663
+      },
+      "view": {
+        "x": 0,
+        "y": 303.5,
+        "width": 390,
+        "height": 476.5,
+        "right": 390,
+        "bottom": 780
+      },
+      "export": {
+        "x": 280.640625,
+        "y": 724,
+        "width": 97.359375,
+        "height": 44,
+        "right": 378,
+        "bottom": 768
+      },
+      "overflow": false
+    },
+    {
+      "width": 320,
+      "height": 740,
+      "theme": "light",
+      "map": {
+        "x": 12,
+        "y": 419.5,
+        "width": 296,
+        "height": 144,
+        "right": 308,
+        "bottom": 563.5
+      },
+      "view": {
+        "x": 0,
+        "y": 303.5,
+        "width": 320,
+        "height": 372.5,
+        "right": 320,
+        "bottom": 676
+      },
+      "export": {
+        "x": 210.640625,
+        "y": 624.5,
+        "width": 97.359375,
+        "height": 44,
+        "right": 308,
+        "bottom": 668.5
+      },
+      "overflow": false
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "map": {
+        "x": 12,
+        "y": 64,
+        "width": 504,
+        "height": 227,
+        "right": 516,
+        "bottom": 291
+      },
+      "view": {
+        "x": 0,
+        "y": 0,
+        "width": 844,
+        "height": 390,
+        "right": 844,
+        "bottom": 390
+      },
+      "export": {
+        "x": 726.640625,
+        "y": 334,
+        "width": 105.359375,
+        "height": 44,
+        "right": 832,
+        "bottom": 378
+      },
+      "overflow": false
+    }
+  ],
+  "errors": [],
+  "volume": {
+    "drawMs": 401.59999990463257,
+    "cachedMs": 1.0999999046325684,
+    "builds": 1500
+  }
+}

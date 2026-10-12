@@ -25,7 +25,8 @@ function createModule({ vault, dependencies, errori }) {
     }
     if (cfg.keepPasswordFrom) {
       const prev = conns[cfg.keepPasswordFrom];
-      if (prev) effective = vault.preserveConnSecrets(effective, prev);
+      if (!prev) throw new Error(`Connessione salvata "${cfg.keepPasswordFrom}" non trovata.`);
+      effective = vault.sanitizeConnCfg(effective, prev);
     }
     return vault.preserveConnSecrets(effective, null);
   }
@@ -236,7 +237,10 @@ function createModule({ vault, dependencies, errori }) {
         console.warn(`[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...`);
         await reconnectSession(sess);
         if (sess.closed) throw new Error('Sessione chiusa durante la riconnessione.');
-        return await actionFn(sess.strategy);
+        // Una risposta persa non prova che il DB non abbia già eseguito la scrittura.
+        err.operationOutcomeUnknown = true;
+        err.message = `Connessione ripristinata. L'operazione non è stata ripetuta: verifica il suo esito prima di rilanciarla. ${err.message}`;
+        throw err;
       }
       throw err;
     }

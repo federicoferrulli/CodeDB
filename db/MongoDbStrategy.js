@@ -5,6 +5,7 @@ const { assertImportOutcomeKnown } = require('./importFailure');
 const { MongoClient, ObjectId } = require('mongodb');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { LIMITE_RIGHE, stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
 const { isGeoJson } = require('./geometry');
 // Il filtro come DATO, accanto al documento MQL storico: vedi db/filtro.js.
 const { normalizzaFiltro, rendiMongo } = require('./filtro');
@@ -13,7 +14,6 @@ const {
   catalogoValido, filtroMongo,
 } = require('./ricercaGlobale');
 const sessioni = require('./sessioni');
-const { normalizzaDocumentiInsert, risultatoInsertMany } = require('./mongoInsert');
 
 // Quanti documenti si guardano per DEDURRE i campi di una collection. È una
 // costante dichiarata e non un numero scritto nella chiamata, perché viaggia
@@ -315,7 +315,7 @@ class MongoDbStrategy extends DbStrategy {
     // Cache dei probe "campo → è ObjectId?" (chiave db.coll.campo, con TTL).
     this.oidFieldCache = new Map();
     this._cacheRicerca = new Map();
-    this.changeStream = null;
+    this.changeStreams = new Map();
     this.schemaStream = null;
   }
 
@@ -474,21 +474,23 @@ class MongoDbStrategy extends DbStrategy {
     await client.db(name).dropDatabase();
   }
 
-  async listCollections(db) {
+  async listCollections(db, { includeCounts = true } = {}) {
     const client = this.requireClient();
     const database = client.db(db);
     const collections = await database.listCollections({}, { nameOnly: true }).toArray();
-    const result = await Promise.all(
-      collections.map(async (c) => {
-        let count = null;
-        try {
-          count = await database.collection(c.name).estimatedDocumentCount();
-        } catch { /* views don't support estimatedDocumentCount */ }
-        return { name: c.name, type: c.type, count };
-      })
-    );
+    const result = collections.map(c => ({ name: c.name, type: c.type, ...stimaConteggio(null) }));
     result.sort((a, b) => a.name.localeCompare(b.name));
-    return result;
+    if (!includeCounts) return result;
+    return completaConteggi(result, async (coll, limit, ms) => {
+      const collection = database.collection(coll.name);
+      const inizio = performance.now();
+      const estimate = await collection.estimatedDocumentCount({ maxTimeMS: ms });
+      Object.assign(coll, stimaConteggio(estimate));
+      const restante = Math.floor(ms - (performance.now() - inizio));
+      if (estimate > LIMITE_RIGHE || restante <= 0) return stimaConteggio(estimate);
+      const n = await collection.countDocuments({}, { limit, maxTimeMS: restante });
+      return conteggioLimitato(n, estimate);
+    });
   }
 
   async createCollection(db, name) {
@@ -1166,20 +1168,7 @@ class MongoDbStrategy extends DbStrategy {
 
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
-    const doc = parseQueryObject(payload.doc, null);
-    const { documenti, multiplo } = normalizzaDocumentiInsert(doc);
-    if (multiplo) {
-      try {
-        const res = await client.db(db).collection(coll).insertMany(documenti);
-        return risultatoInsertMany(res);
-      } catch (err) {
-        const auditResult = risultatoInsertMany(err && err.result, err && err.insertedDocs);
-        if (auditResult) err.auditResult = auditResult;
-        throw err;
-      }
-    }
-    const res = await client.db(db).collection(coll).insertOne(documenti[0]);
-    return { insertedId: EJSON.stringify(res.insertedId) };
+    return require('./insertBson').inserisciBson(client, db, coll, payload.doc);
   }
 
   // Aggiornamento di massa per il gateway MCP: $set su tutti i documenti che
@@ -1378,10 +1367,10 @@ class MongoDbStrategy extends DbStrategy {
       }
       filter._id = { $gt: afterId };
     }
-    const docs = await collection.find(filter).sort({ _id: 1 }).limit(limit).toArray();
-    // relaxed: i numeri restano numeri, ObjectId/Date restano $oid/$date,
-    // così il file riesportato si può reimportare senza perdita di tipi.
-    const lines = docs.map((d) => EJSON.stringify(d, { relaxed: true }));
+    const docs = await collection.find(filter, {promoteValues:false}).sort({ _id: 1 }).limit(limit).toArray();
+    // EJSON canonico è il formato interoperabile. Per fedeltà BSON byte per
+    // byte (anche tag storici e date fuori dal range JS) usare CodeDB completo.
+    const lines = docs.map((d) => EJSON.stringify(d, { relaxed: false }));
     const total = primaPagina ? await collection.countDocuments() : undefined;
     const nextAfter = docs.length ? EJSON.stringify(docs[docs.length - 1]._id, { relaxed: false }) : null;
     return { lines, count: docs.length, total, format: 'json', nextAfter };
@@ -1391,6 +1380,7 @@ class MongoDbStrategy extends DbStrategy {
   // JSON serializzati). relaxed: false preserva i tipi BSON ($oid, $date...).
   async collectionImport(db, coll, payload) {
     const client = this.requireClient();
+    if (payload.encoding === require('./mongoBson').ENCODING) return require('./mongoBson').importRows(client, db, coll, payload.docs, payload.upsert);
     const raw = Array.isArray(payload.docs) ? payload.docs : [];
     if (!raw.length) throw new Error('Nessun documento da importare nel blocco.');
     const errors = [];
@@ -1437,32 +1427,31 @@ class MongoDbStrategy extends DbStrategy {
     return { inserted, failed: raw.length - inserted, errors: errors.slice(0, 10) };
   }
 
-  // Change stream: richiede un replica set; su server standalone degrada
-  // segnalando onUnavailable. Un solo stream per sessione: aprirne uno nuovo
-  // chiude il precedente (this.unwatch()), quindi con più coll-tab aperti
-  // nella stessa connessione solo l'ultimo watch avviato risulta "LIVE".
-  // Scelta deliberata per limitare i change stream aperti per sessione
-  // (ognuno è una connessione persistente lato server Mongo), non un bug.
-  watch(db, coll, { onChange, onUnavailable }) {
+  // Ogni superficie possiede il suo stream: cambiare un pannello non spegne gli altri.
+  watch(db, coll, { onChange, onUnavailable, watchId = 'default' }) {
     const client = this.requireClient();
-    this.unwatch();
-    this.changeStream = client.db(db).collection(coll).watch([], { fullDocument: 'updateLookup' });
-    this.changeStream.on('change', (change) => {
+    this.unwatch(watchId);
+    const stream = client.db(db).collection(coll).watch([], { fullDocument: 'updateLookup' });
+    this.changeStreams.set(watchId, stream);
+    stream.on('change', (change) => {
+      if (this.changeStreams.get(watchId) !== stream) return;
       onChange({
         operationType: change.operationType,
         documentKey: change.documentKey ? serialize(change.documentKey) : null,
       });
     });
-    this.changeStream.on('error', () => {
-      this.unwatch();
+    stream.on('error', () => {
+      if (this.changeStreams.get(watchId) !== stream) return;
+      this.unwatch(watchId);
       onUnavailable();
     });
   }
 
-  unwatch() {
-    if (this.changeStream) {
-      this.changeStream.close().catch(() => {});
-      this.changeStream = null;
+  unwatch(watchId) {
+    const ids = watchId === undefined ? [...this.changeStreams.keys()] : [watchId];
+    for (const id of ids) {
+      this.changeStreams.get(id)?.close().catch(() => {});
+      this.changeStreams.delete(id);
     }
   }
 

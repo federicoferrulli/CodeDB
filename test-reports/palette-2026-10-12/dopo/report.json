@@ -1,0 +1,40 @@
+{
+  "checks": [
+    "Schede e richiami sincronizzati, tastiera, selezione animata, ARIA e nomi non fidati",
+    "Paginazione della lista, chiusura e risposte tardive senza cambiare il bersaglio",
+    "Contrasto, nomi lunghi, desktop/mobile, stato vuoto e movimento ridotto"
+  ],
+  "contrast": [
+    {
+      "width": 1440,
+      "theme": "dark",
+      "value": 5.277859263011128
+    },
+    {
+      "width": 1440,
+      "theme": "light",
+      "value": 5.011146164818143
+    },
+    {
+      "width": 390,
+      "theme": "dark",
+      "value": 5.277859263011128
+    },
+    {
+      "width": 390,
+      "theme": "light",
+      "value": 5.011146164818143
+    },
+    {
+      "width": 320,
+      "theme": "dark",
+      "value": 5.277859263011128
+    },
+    {
+      "width": 320,
+      "theme": "light",
+      "value": 5.011146164818143
+    }
+  ],
+  "errors": []
+}

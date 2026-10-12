@@ -1,5 +1,5 @@
 import { chiediConferma } from './conferma.js';
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, closeNavigationSheet } from '../arc/ui.js';
 'use strict';
 
 /**
@@ -33,7 +33,7 @@ import { mountArcControls } from '../arc/ui.js';
  *     da file, cioè è un dato che arriva da fuori.
  */
 
-import { $, esc, toast, chiaveStorage, conCaricamento, refreshLucideIcons } from './utils.js';
+import { $, esc, toast, chiaveStorage, conCaricamento, refreshLucideIcons, scaricaFile } from './utils.js';
 import {
   CAMPI, TEMI_BASE, eBase, scelteIniziali, derivaTokens, diagnostica,
   validaTema, cssDelTema, nomeFile, leggiHex, scriviHex, SOGLIA_TESTO,
@@ -148,7 +148,10 @@ export function initTheme() {
   // "Automatico" segue il sistema anche a finestra aperta.
   if (window.matchMedia) {
     mediaScuro = window.matchMedia('(prefers-color-scheme: dark)');
-    const seSistemaCambia = () => { if (temaCorrente() === 'auto') applicaTema('auto'); };
+    const seSistemaCambia = () => {
+      if (temaCorrente() === 'auto' && !inModifica) applicaTema('auto');
+      if (!$('#modal-theme')?.classList.contains('hidden')) disegnaElenco();
+    };
     if (mediaScuro.addEventListener) mediaScuro.addEventListener('change', seSistemaCambia);
     else if (mediaScuro.addListener) mediaScuro.addListener(seSistemaCambia);   // Safari vecchi
   }
@@ -162,6 +165,9 @@ export function initTheme() {
   const overlay = $('#modal-theme');
   if (overlay) {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) chiudiModale(); });
+    overlay.addEventListener('codedb:dialog-closed', () => {
+      if (overlay.classList.contains('hidden')) chiudiEditor();
+    });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && overlay && !overlay.classList.contains('hidden')) chiudiModale();
@@ -181,7 +187,11 @@ export function initTheme() {
   // apertura e riattaccare i gestori ogni volta è il modo classico di
   // accumularne dieci copie.
   const elenco = $('#theme-list');
-  if (elenco) elenco.addEventListener('click', suClicElenco);
+  if (elenco) {
+    elenco.addEventListener('click', suClicElenco);
+    new ResizeObserver(() => aggiornaSelezione()).observe(elenco);
+    window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', () => aggiornaSelezione());
+  }
 
   const pannello = $('#theme-editor');
   if (pannello) {
@@ -198,41 +208,42 @@ export function initTheme() {
 function apriModale() {
   const m = $('#modal-theme');
   if (!m) return;
+  closeNavigationSheet(true);
   chiudiEditor();
   disegnaElenco();
   m.classList.remove('hidden');
+  requestAnimationFrame(() => aggiornaSelezione());
 }
 
 function chiudiModale() {
   const m = $('#modal-theme');
   if (!m) return;
   m.classList.add('hidden');
+  $('#theme-list')?.getAnimations({ subtree: true }).forEach(a => a.cancel());
   // Uscire senza salvare rimette il tema che era in uso: l'anteprima dal vivo
   // ha cambiato l'aspetto dell'applicazione, e lasciarcela sarebbe una
   // modifica mai confermata.
-  if (inModifica) { inModifica = null; applicaTema(temaCorrente()); }
+  const ripristina = Boolean(inModifica);
+  // Ferma i colori subito, ma conserva contenuto e geometria fino alla fine dell'uscita Arc.
+  fermaAnteprima();
+  inModifica = null;
+  if (ripristina) applicaTema(temaCorrente());
 }
 
 function anteprimaTema(tema) {
-  // Il quadratino dell'elenco mostra i colori VERI del tema, derivati come
-  // farebbe l'applicazione: un campione dipinto a mano mentirebbe.
+  // Il workspace in miniatura usa gli stessi colori derivati dell'applicazione.
   const t = derivaTokens(tema.scelte, tema.base);
-  return `<span class="tema-campione" style="background:${t['--bg']};border-color:${t['--border-2'] || 'transparent'}">
-      <i style="background:${t['--accent']}"></i>
-      <i style="background:${t['--success']}"></i>
-      <i style="background:${t['--warning']}"></i>
-      <i style="background:${t['--danger']}"></i>
-    </span>`;
+  const colori = ['bg', 'bg-2', 'bg-3', 'fg', 'accent', 'success', 'warning', 'border'];
+  return `<span class="tema-preview" aria-hidden="true" style="${colori.map(c => `--sample-${c}:${t[`--${c}`]}`).join(';')}">
+    <span class="tema-preview-top"><i></i><i></i><i></i></span>
+    <span class="tema-preview-side"><i></i><i></i><i></i></span>
+    <span class="tema-preview-code"><span><b>SELECT</b> *</span><span><b>FROM</b> dati;</span></span>
+    <span class="tema-preview-grid">${Array.from({ length: 9 }, () => '<i></i>').join('')}</span>
+  </span>`;
 }
 
 function campioneBase(base) {
-  const t = derivaTokens(scelteIniziali(base), base);
-  return `<span class="tema-campione" style="background:${t['--bg']}">
-      <i style="background:${t['--accent']}"></i>
-      <i style="background:${t['--success']}"></i>
-      <i style="background:${t['--warning']}"></i>
-      <i style="background:${t['--danger']}"></i>
-    </span>`;
+  return anteprimaTema({ base, scelte: scelteIniziali(base) });
 }
 
 function disegnaElenco() {
@@ -242,41 +253,67 @@ function disegnaElenco() {
   const temi = temiSalvati();
 
   const carta = (id, nome, nota, campione, azioni) => `
-    <div class="tema-card ${id === scelto ? 'attiva' : ''}" data-tema="${esc(id)}" role="button" tabindex="0">
-      ${campione}
-      <div class="tema-card-testo">
-        <strong>${esc(nome)}</strong>
-        <small>${esc(nota)}</small>
-      </div>
+    <div class="tema-card ${id === scelto ? 'attiva' : ''}" data-tema-card="${esc(id)}">
+      <button type="button" class="tema-choice ghost" data-tema="${esc(id)}" aria-pressed="${id === scelto}" aria-label="${esc(nome)}: ${esc(nota)}">
+        ${campione}
+        <span class="tema-card-testo"><span class="tema-check" aria-hidden="true"><i data-lucide="check"></i></span>
+          <span><strong>${esc(nome)}</strong><small>${esc(nota)}</small></span>
+        </span>
+      </button>
       <div class="tema-card-azioni">${azioni}</div>
     </div>`;
 
   const base = TEMI_BASE.map((t) => {
     const nota = t.id === 'auto'
-      ? `Segue il sistema (ora: ${sistemaPreferisceScuro() ? 'scuro' : 'chiaro'})`
+      ? `Sistema · ${sistemaPreferisceScuro() ? 'scuro' : 'chiaro'}`
       : 'Tema predefinito';
     const campione = t.id === 'auto'
-      ? campioneBase(sistemaPreferisceScuro() ? 'dark' : 'light')
+      ? `<span class="tema-preview-auto" aria-hidden="true">${campioneBase('dark')}${campioneBase('light')}</span>`
       : campioneBase(t.base);
     // Da un predefinito si può PARTIRE: è il modo più naturale di farsi un
     // tema, e senza questo bottone bisognerebbe ricostruirlo da zero.
     return carta(t.id, t.nome, nota, campione,
-      t.id === 'auto' ? '' : `<button type="button" class="btn-icona" data-azione="duplica" data-id="${esc(t.id)}" title="Crea un tema partendo da questo">⧉</button>`);
+      t.id === 'auto' ? '' : `<button type="button" class="btn-icona ghost" data-azione="duplica" data-id="${esc(t.id)}" title="Personalizza ${esc(t.nome)}" aria-label="Personalizza ${esc(t.nome)}"><i data-lucide="copy-plus"></i></button>`);
   }).join('');
 
   const miei = Object.values(temi).map((t) => carta(
     t.id, t.nome, `Personalizzato · base ${t.base === 'light' ? 'chiara' : 'scura'}`,
     anteprimaTema(t),
-    `<button type="button" class="btn-icona" data-azione="modifica" data-id="${esc(t.id)}" title="Modifica">✎</button>
-     <button type="button" class="btn-icona" data-azione="duplica" data-id="${esc(t.id)}" title="Duplica">⧉</button>
-     <button type="button" class="btn-icona" data-azione="esporta" data-id="${esc(t.id)}" title="Esporta in un file"><i data-lucide="download"></i></button>
-     <button type="button" class="btn-icona pericolo" data-azione="elimina" data-id="${esc(t.id)}" title="Elimina"><i data-lucide="trash-2"></i></button>`,
+    [['modifica', 'Modifica', 'pencil'], ['duplica', 'Duplica', 'copy-plus'], ['esporta', 'Esporta', 'download'], ['elimina', 'Elimina', 'trash-2']].map(([azione, label, icon]) =>
+      `<button type="button" class="btn-icona ghost ${azione === 'elimina' ? 'pericolo' : ''}" data-azione="${azione}" data-id="${esc(t.id)}" title="${label}" aria-label="${label} ${esc(t.nome)}"><i data-lucide="${icon}"></i></button>`).join(''),
   )).join('');
 
-  el.innerHTML = base
-    + (miei ? `<div class="tema-sezione">I tuoi temi</div>${miei}` : '');
+  el.innerHTML = `<div class="tema-presets">${base}</div>`
+    + (miei ? `<h3 class="tema-sezione">I tuoi temi</h3><div class="tema-personali">${miei}</div>` : '')
+    + '<span class="tema-selezione" aria-hidden="true" hidden></span>';
   mountArcControls(el);
   refreshLucideIcons(el);
+  aggiornaSelezione();
+}
+
+function aggiornaSelezione(anima = false) {
+  const elenco = $('#theme-list'), indicatore = elenco?.querySelector('.tema-selezione');
+  if (!indicatore || !elenco.getClientRects().length) return;
+  const prima = indicatore.hidden ? null : indicatore.getBoundingClientRect();
+  indicatore.getAnimations().forEach(a => a.cancel());
+  const id = temaCorrente();
+  elenco.querySelectorAll('[data-tema]').forEach(button => {
+    const attiva = button.dataset.tema === id;
+    button.setAttribute('aria-pressed', String(attiva));
+    button.closest('.tema-card').classList.toggle('attiva', attiva);
+  });
+  const carta = elenco.querySelector('.tema-card.attiva');
+  indicatore.hidden = !carta;
+  if (!carta) return;
+  const r = carta.getBoundingClientRect();
+  Object.assign(indicatore.style, { left: `${carta.offsetLeft}px`, top: `${carta.offsetTop}px`, width: `${carta.offsetWidth}px`, height: `${carta.offsetHeight}px` });
+  if (!anima || !prima?.width || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  // Riparte dal fotogramma corrente anche durante una selezione rapida.
+  const movimento = indicatore.animate([
+    { transform: `translate(${prima.left - r.left}px, ${prima.top - r.top}px) scale(${prima.width / r.width}, ${prima.height / r.height})` },
+    { transform: 'none' },
+  ], { duration: 320, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+  movimento.finished.then(() => movimento.cancel(), () => {});
 }
 
 function suClicElenco(e) {
@@ -293,7 +330,7 @@ function suClicElenco(e) {
   const carta = e.target.closest('[data-tema]');
   if (!carta) return;
   scegliTema(carta.dataset.tema);
-  disegnaElenco();
+  aggiornaSelezione(true);
 }
 
 /* ==========================================================================
@@ -335,13 +372,7 @@ function esporta(id) {
   if (!tema) return;
   const blob = new Blob([JSON.stringify({ codedb: 'tema', versione: 1, ...tema }, null, 2)],
     { type: 'application/json' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = nomeFile(tema);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  return scaricaFile(blob, nomeFile(tema));
 }
 
 function importaDaFile(input) {
@@ -412,8 +443,8 @@ function disegnaEditor() {
   p.innerHTML = `
     <div class="tema-editor-head">
       <h3>${esc(t.nome)}</h3>
-      <p class="modal-hint">I colori che non scegli qui restano quelli del tema di base: un tema
-        personalizzato è un insieme di scarti, non una palette da riempire.</p>
+      <p class="modal-hint">Anteprima dal vivo sul workspace. Salva e applica per conservare i colori;
+        con Annulla o chiudendo la finestra torni al tema in uso.</p>
     </div>
 
     <div class="tema-editor-riga">

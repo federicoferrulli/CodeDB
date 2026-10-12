@@ -78,14 +78,14 @@ function storageFinto(iniziale) {
     assert.strictEqual(voci[0].code, 'SELECT 1', 'la riesecuzione va in testa');
   });
 
-  prova('la dedup normalizza gli spazi ma distingue bersaglio e motore', () => {
+  prova('la dedup conserva il testo e distingue bersaglio e motore', () => {
     const s = storageFinto();
     registra(s, { code: 'SELECT  1', engine: 'sql', conn: 'a', db: 'd' });
     registra(s, { code: 'SELECT\n1', engine: 'sql', conn: 'a', db: 'd' });
-    assert.strictEqual(leggiVoci(s).length, 1, 'stesso testo a meno di spazi');
+    assert.strictEqual(leggiVoci(s).length, 2, 'gli spazi interni possono cambiare la query');
     registra(s, { code: 'SELECT 1', engine: 'sql', conn: 'a', db: 'ALTRO' });
     registra(s, { code: 'SELECT 1', engine: 'sql', conn: 'ALTRA', db: 'd' });
-    assert.strictEqual(leggiVoci(s).length, 3, 'db e connessione diversi = voci diverse');
+    assert.strictEqual(leggiVoci(s).length, 4, 'db e connessione diversi = voci diverse');
   });
 
   prova('tetto MAX_VOCI rispettato, si pota dalla coda', () => {

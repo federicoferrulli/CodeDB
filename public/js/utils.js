@@ -18,6 +18,35 @@ export const $ = (sel) => document.querySelector(sel);
 export { isPlainObject, ejsonKind, fmtBytes, safeUUID };
 export { toast };
 
+// Sul browser conferma l'avvio; su Android attende anche la scrittura del file.
+export async function scaricaFile(contenuto, nome) {
+  const blob = contenuto instanceof Blob;
+  const url = blob ? URL.createObjectURL(contenuto) : contenuto;
+  // I pannelli incorporati condividono il ponte, autorizzato solo nel frame principale.
+  const host = window.frameElement?.codedbPanel ? window.parent : window;
+  const nativo = typeof host.__codedbDownload === 'function';
+  let link;
+  try {
+    if (nativo) return await host.__codedbDownload(url, nome);
+    link = document.createElement('a');
+    link.href = url;
+    link.download = nome;
+    document.body.appendChild(link);
+    link.click();
+    return true;
+  } catch (error) {
+    toast(`Download non riuscito: ${error.message}`, true);
+    return false;
+  } finally {
+    link?.remove();
+    // Il browser non espone la fine del download: lascia tempo al suo gestore.
+    if (blob) {
+      if (nativo) URL.revokeObjectURL(url);
+      else setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  }
+}
+
 export function displayValue(v) {
   if (v === null || v === undefined) return { text: '–', cls: 'type-null' };
   if (Array.isArray(v)) return { text: JSON.stringify(v.map(simplify)), cls: 'type-obj' };
@@ -475,63 +504,7 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// Riordino via drag & drop di una barra di tab. `el` è l'elemento tab, `id` la
-// sua chiave stabile (il tabId o l'id del coll-tab) e `onReorder(fromId, toId)`
-// riordina l'array sottostante e ri-renderizza. Si lavora per id, non per
-// indice: la barra di connessione salta i tab non connessi, quindi la posizione
-// visiva non coincide con l'indice nell'array.
-// Classi che descrivono il bersaglio del trascinamento: `drag-over` è la tab
-// sotto il cursore, `drag-slide-*` il verso in cui si sposta per aprire il
-// varco (vedi "Riordino tab" in style.css). Si ripuliscono sempre TUTTE
-// insieme: la tab che scivola non è quella che riceve `dragend`, e una classe
-// dimenticata lascia una tab spostata di 12px per il resto della sessione.
-const CLASSI_DRAG = ['drag-over', 'drag-slide-left', 'drag-slide-right'];
-function pulisciSegniDrag() {
-  CLASSI_DRAG.forEach((c) => {
-    document.querySelectorAll('.' + c).forEach((n) => n.classList.remove(...CLASSI_DRAG));
-  });
-}
-
-export function makeDraggable(el, id, onReorder, getPayload) {
-  el.draggable = true;
-  el.addEventListener('dragstart', (e) => {
-    e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData('text/plain', typeof id === 'string' ? id : JSON.stringify(id));
-    if (getPayload) {
-      const payload = typeof getPayload === 'function' ? getPayload() : getPayload;
-      if (payload) {
-        e.dataTransfer.setData('application/codedb-tab', JSON.stringify(payload));
-      }
-    }
-    el.classList.add('dragging');
-  });
-  el.addEventListener('dragend', () => {
-    el.classList.remove('dragging');
-    pulisciSegniDrag();
-  });
-  el.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (el.classList.contains('dragging')) return;
-    // Da che parte far scivolare la tab per aprire il varco: se quella in mano
-    // sta PRIMA di questa nella barra, la scavalcherà da sinistra e il posto va
-    // aperto a destra — quindi questa arretra a sinistra. Con un verso fisso
-    // metà dei trascinamenti indicherebbe il lato sbagliato.
-    const inMano = document.querySelector('.dragging');
-    const daSinistra = !!inMano
-      && !!(inMano.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
-    el.classList.add('drag-over');
-    el.classList.toggle('drag-slide-left', daSinistra);
-    el.classList.toggle('drag-slide-right', !daSinistra);
-  });
-  el.addEventListener('dragleave', () => el.classList.remove(...CLASSI_DRAG));
-  el.addEventListener('drop', (e) => {
-    e.preventDefault();
-    pulisciSegniDrag();
-    const fromId = e.dataTransfer.getData('text/plain');
-    if (fromId && fromId !== id) onReorder(fromId, id);
-  });
-}
+export { makeDraggable } from './tab-drag.js';
 
 // Sposta l'elemento con `fromId` nella posizione di quello con `toId`.
 // Ritorna true se qualcosa è cambiato.
@@ -638,7 +611,7 @@ export function positionFixedDropdown(btn, menu) {
   const area = limitiViewport();
 
   menu.style.position = 'fixed';
-  menu.style.zIndex = '100000';
+  menu.style.zIndex = 'var(--z-dropdown)';
 
   // Posizionamento verticale: sotto il bottone, oppure sopra se in basso non c'è spazio sufficiente
   let top = rect.bottom + 6;
@@ -686,13 +659,21 @@ export function initToolbarDropdown(btnSel, menuSel) {
     if (e.target.closest('.dropdown-item')) chiudi();
   });
 
-  document.addEventListener('click', (e) => {
-    if (e.target.closest(`#${menu.id}`) || e.target === btn || btn.contains(e.target)) return;
+  // Radix apre al pointerdown: il successivo click può finire su <html> dopo il blocco del puntatore fuori dalla select.
+  document.addEventListener('pointerdown', (e) => {
+    if (e.target.closest(`#${menu.id}, [data-arc-select-popup], [data-arc-calendar-popup], [data-arc-color-popup]`) || e.target === btn || btn.contains(e.target)) return;
     chiudi();
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') chiudi(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented || menu.classList.contains('hidden')) return;
+    e.preventDefault(); chiudi(); btn.focus();
+  });
   window.addEventListener('resize', chiudi);
-  window.addEventListener('scroll', chiudi, true);
+  window.addEventListener('scroll', (e) => {
+    if (e.target instanceof Node && menu.contains(e.target)) return;
+    if (e.target instanceof Element && e.target.closest('[data-arc-select-popup], [data-arc-calendar-popup], [data-arc-color-popup]')) return;
+    chiudi();
+  }, true);
 }
 
 // Con onToggle il chiamante dispone i figli nella propria finestra virtuale.

@@ -2,7 +2,6 @@
 
 // Un solo esecutore per i due formati: il piano decide il perimetro, il sink
 // riceve piccoli blocchi e pubblica il file soltanto dopo tutte le verifiche.
-const { Binary } = require('bson');
 const { randomUUID } = require('crypto');
 const { quotaSempre } = require('./identificatori');
 const { readSchemaObjects } = require('./schemaObjects');
@@ -11,10 +10,10 @@ const { splitMySqlForeignKeys } = require('../backup/lib/engine');
 const { pgCreateTable, pgAuxDdl, pgColonne } = require('./pg-ddl');
 const { scegliIdentitaSql } = require('../backup/lib/identity');
 const { riferimentiChiaveEsterna } = require('./artefatti');
-const { stringifyRiga } = require('./codecFedele');
 const { deserializeClientObject } = require('./sqlValori');
 const MySqlStrategy = require('./MySqlStrategy');
 const PostgreSqlStrategy = require('./PostgreSqlStrategy');
+const mongoBson = require('./mongoBson');
 
 const TIPI_OGGETTO = { views: 'vista', routines: 'routine', triggers: 'trigger', events: 'evento', sequences: 'sequenza', collectionOptions: 'collection' };
 
@@ -47,6 +46,13 @@ function insertSql(dbType, table, line, info) {
   const cols = Object.keys(row);
   if (!cols.length) return mysql ? `INSERT INTO ${table} () VALUES ();\n` : `INSERT INTO ${table} DEFAULT VALUES;\n`;
   const vals = cols.map(c => {
+    if(!mysql && row[c]?.$pgReference) {
+      if(row[c].$pgReference.kind==='nested')return require('./pg-alias').sqlNested(row[c],v=>letterale(v,false));
+      const bind=require('./pg-alias').binding(row[c]);
+      return bind.sql.replace('$1',()=>letterale(bind.param,false));
+    }
+    const ordinal = mysql && require('./mysql-ordinal').binding(row[c], info.columns.find(column => column.name === c));
+    if (ordinal) return `CAST('${ordinal.param}' AS UNSIGNED)`;
     const b = mysql
       ? MySqlStrategy.geoBinding(c, row[c], info.geo, { importazione: true })
       : PostgreSqlStrategy.geoBinding(c, row[c], info.geo, '$1', info.geoNativo);
@@ -54,14 +60,16 @@ function insertSql(dbType, table, line, info) {
     return b.sql.replace(mysql ? /\?/ : /\$1\b/, () => letterale(b.param, mysql));
   });
   const overriding = !mysql && info.columns.some(c => c.identity === 'ALWAYS' || c.identity === 'a') ? ' OVERRIDING SYSTEM VALUE' : '';
-  return `INSERT INTO ${table} (${cols.map(c => quotaSempre(c, dbType)).join(', ')})${overriding} VALUES (${vals.join(', ')});\n`;
+  const insert = `INSERT INTO ${table} (${cols.map(c => quotaSempre(c, dbType)).join(', ')})${overriding} VALUES (${vals.join(', ')});\n`;
+  const zeroEnum = mysql && cols.some(c => require('./mysql-ordinal').binding(row[c], info.columns.find(column => column.name === c))?.zero);
+  return zeroEnum ? `SET @codedb_enum_mode = @@SESSION.sql_mode;\nSET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO';\n${insert}SET SESSION sql_mode = @codedb_enum_mode;\n` : insert;
 }
 
 async function esportaDatabase({ strategy, plan, write, progress = () => {}, check = () => {} }) {
   verificaImpronta(plan);
   if (!['codedb-json', 'sql'].includes(plan.formato)) throw new Error('Formato di export non supportato.');
   const mongo = plan.dbType === 'mongodb';
-  if (mongo && plan.formato === 'sql') throw new Error('Un database MongoDB richiede il formato EJSON; SQL non ne conserva documenti e indici.');
+  if (mongo && plan.formato === 'sql') throw new Error('Un database MongoDB richiede il formato CodeDB; SQL non ne conserva documenti e indici.');
   if (plan.oggetti.some(o => o.filtro)) throw new Error('Il piano contiene filtri non eseguibili da questo export.');
   const sql = plan.formato === 'sql';
   const db = plan.sourceDb;
@@ -71,23 +79,25 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
   const guard = q(`codedb_verifica_fk_${randomUUID().replace(/-/g, '')}`);
   let conn;
   let mysqlSession;
+  let mongoRead;
   let st = strategy;
   let started = false;
   let rows = 0;
+  const largeObjectIds = new Set();
   const send = async text => { check(); await write(text); };
   try {
+    if (mongo) mongoRead = await require('./mongoTopologia').apriLettura(strategy.client);
     if (!mongo) {
       const mysql = plan.dbType === 'mysql';
       conn = mysql ? await strategy.pool.getConnection() : await strategy.pool.connect();
       st = mysql ? new MySqlStrategy() : new PostgreSqlStrategy();
+      if (mysql) st.metadataPool = strategy.pool;
       const borrowed = { query: (...args) => conn.query(...args), release() {} };
       st.pool = { ...borrowed, getConnection: async () => borrowed, connect: async () => borrowed };
       if (mysql) {
-        if (sql) {
-          const [[session]] = await conn.query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS mode');
-          mysqlSession = session;
-          await conn.query("SET SESSION time_zone = '+00:00', SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES'");
-        }
+        const [[session]] = await conn.query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS mode');
+        mysqlSession = session;
+        await conn.query("SET SESSION time_zone = '+00:00', SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES'");
         await conn.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
         await conn.query('START TRANSACTION WITH CONSISTENT SNAPSHOT, READ ONLY');
       } else {
@@ -104,6 +114,13 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
     }
     const allObjects = await readSchemaObjects(st, plan.dbType, db);
     const objects = oggettiSelezionati(allObjects, plan);
+    if (plan.dbType === 'postgresql') {
+      objects.types = tables.some(t => t.struttura) ? allObjects.types || [] : [];
+      objects.collations = tables.some(t => t.struttura) ? allObjects.collations || [] : [];
+      objects.extensions = allObjects.extensions || [];
+      objects.sequences = (allObjects.sequences || []).filter(s =>
+        s.ownerTable ? tables.some(t => t.struttura && t.nome === s.ownerTable) : objects.sequences.includes(s));
+    }
     for (const o of plan.oggetti.filter(o => o.struttura && !['tabella', 'collection'].includes(o.tipo))) {
       const field = Object.keys(TIPI_OGGETTO).find(k => TIPI_OGGETTO[k] === o.tipo);
       if (!field || !objects[field].some(item => item.name === o.nome)) {
@@ -181,10 +198,19 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       if (plan.dbType === 'postgresql') await send(`BEGIN;\n${struttura ? `CREATE SCHEMA IF NOT EXISTS ${q(db)};\n` : ''}SET LOCAL search_path TO ${q(db)}, public;\nSET LOCAL standard_conforming_strings = on;\nSET LOCAL DateStyle = 'ISO, YMD';\nSET LOCAL IntervalStyle = 'postgres';\nSET LOCAL TimeZone = 'UTC';\n`);
       else await send(`${struttura ? `CREATE DATABASE IF NOT EXISTS ${q(db)};\n` : ''}USE ${q(db)};\nSET NAMES utf8mb4;\nSET @codedb_sql_mode = @@SESSION.sql_mode, @codedb_time_zone = @@SESSION.time_zone, @codedb_fk_checks = @@SESSION.foreign_key_checks;\nSET SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES', SESSION time_zone = '+00:00', SESSION foreign_key_checks = 1;\n`);
       const statements = new Map();
+      for (const c of objects.collations || []) await send(statement(c.ddl, plan.dbType));
+      if (objects.types?.length) {
+        await send('SET LOCAL check_function_bodies = false;\n');
+        for (const ddl of require('./pg-types').prelude(objects)) await send(statement(ddl, plan.dbType));
+      }
+      for (const s of objects.sequences.filter(s => s.ownerTable)) await send(statement(s.ddl, plan.dbType));
       for (const [id, m] of meta) if (m.ddl) statements.set(id, m.ddl);
       for (const [field, type] of Object.entries(TIPI_OGGETTO)) {
         for (const o of objects[field] || []) if (o.ddl) {
-          statements.set(`${type}:${o.name}`, o.materialized ? o.ddl.trim().replace(/;+$/, '') + ' WITH NO DATA' : o.ddl);
+          const key = `${type}:${o.name}`;
+          const ddl = o.materialized ? o.ddl.trim().replace(/;+$/, '') + ' WITH NO DATA' : o.ddl;
+          if (type === 'routine') statements.set(key, [...(statements.get(key) || []), ddl]);
+          else statements.set(key, ddl);
         }
       }
       // Le viste esistono già per le routine che le riferiscono; quelle
@@ -192,7 +218,10 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       for (const id of plan.ordine.creazione) {
         if (/^(trigger|evento):/.test(id)) continue;
         const ddl = statements.get(id);
-        if (ddl) await send(statement(ddl, plan.dbType));
+        if (ddl) for (const part of Array.isArray(ddl) ? ddl : [ddl]) await send(statement(part, plan.dbType));
+      }
+      for (const s of objects.sequences.filter(s => s.ownerTable)) {
+        await send(`ALTER SEQUENCE ${q(s.name)} OWNED BY ${q(s.ownerTable)}.${q(s.ownerColumn)};\n`);
       }
       if (plan.dbType === 'mysql') {
         await send('START TRANSACTION;\n');
@@ -210,49 +239,43 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
         await send('SET CONSTRAINTS ALL DEFERRED;\n');
       }
     } else {
-      await send(JSON.stringify({ formato: 'codedb-database', versione: 1, generatore: 'CodeDB', dbType: plan.dbType, db,
-        creato: new Date().toISOString(), consistenza: plan.consistenza, objects }).slice(0, -1) + ',"collections":[\n');
+      await send(JSON.stringify({ formato: 'codedb-database', versione: mongo ? 2 : 1, generatore: 'CodeDB', dbType: plan.dbType, db,
+        creato: new Date().toISOString(), consistenza: mongoRead?.coerenza.avviso || plan.consistenza, objects }).slice(0, -1) + ',"collections":[\n');
     }
     for (let i = 0; i < tables.length; i++) {
       const t = tables[i], m = meta.get(t.id);
       if (!sql) {
         const { info: _info, ...header } = m;
+        if (mongo) header.encoding = mongoBson.ENCODING;
         await send((i ? ',\n' : '') + JSON.stringify(header).slice(0, -1) + ',"docs":[');
       }
       let count = 0;
       if (t.dati) {
         if (mongo) {
           const collection = st.client.db(db).collection(t.nome);
-          const expected = await collection.countDocuments({});
-          const cursor = collection.find({}, { promoteValues: false }).batchSize(100);
+          const expected = await collection.countDocuments({}, mongoRead.options);
+          const cursor = collection.find({}, { raw: true, ...mongoRead.options }).batchSize(100);
           try {
             for await (const doc of cursor) {
-              await send((count ? ',\n' : '') + stringifyRiga(doc));
+              await send((count ? ',\n' : '') + JSON.stringify(mongoBson.encode(doc)));
               count++;
               if (count % 100 === 0) progress({ collection: t.nome, rows: rows + count });
             }
           } finally { await cursor.close(); }
-          if (count !== expected || count !== await collection.countDocuments({})) throw new Error(`"${t.nome}": conteggio cambiato durante l'export. Ripetere senza scritture concorrenti.`);
+          if (count !== expected || count !== await collection.countDocuments({}, mongoRead.options)) throw new Error(`"${t.nome}": conteggio cambiato durante l'export. Ripetere senza scritture concorrenti.`);
         } else {
           const mysql = plan.dbType === 'mysql';
           const table = `${q(db)}.${q(t.nome)}`;
           const counts = await conn.query(`SELECT COUNT(*) AS total FROM ${table}`);
           const total = Number(mysql ? counts[0][0].total : counts.rows[0].total);
           const columns = m.info.columns.filter(c => !c.generated);
-          const projection = columns.map(c => {
-            const id = q(c.name);
-            const type = String(c.type || c.ctype || '').toLowerCase();
-            if (m.info.geo.has(c.name)) return `ST_AsGeoJSON(${id}${mysql ? ', 17, 2' : ''}) AS ${id}`;
-            if (mysql && /^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit)\b/.test(type)) return id;
-            // Il testo prodotto dal DBMS conserva precisione, microsecondi,
-            // array e JSON: non passa dalle conversioni lossy del driver.
-            return mysql ? `CAST(${id} AS CHAR CHARACTER SET utf8mb4) AS ${id}` : `${id}::text AS ${id}`;
-          }).join(', ') || '1 AS __codedb_vuota';
+          const references = mysql ? {} : await require('./pg-references').columnReferences((s, p) => conn.query(s, p), db, t.nome);
+          if(!mysql)require('./pg-alias').attach(m.info.columns,references);
+          const projection = require('./sqlTransfer').projection(m.info, mysql);
           const consume = async row => {
+            if (!mysql) require('./pg-references').rowReferences(require('./pg-alias').encode(row,m.info.columns), references, id => { largeObjectIds.add(id); return id; });
             if (!columns.length) delete row.__codedb_vuota;
-            (mysql ? MySqlStrategy : PostgreSqlStrategy).geoRowsToJson([row], m.info.geo, m.info.geoNativo);
-            for (const c of columns) if (Buffer.isBuffer(row[c.name])) row[c.name] = new Binary(row[c.name]);
-            const line = stringifyRiga(row);
+            const line = require('./sqlTransfer').encodeRow(row, m.info.columns, mysql);
             await send(sql ? insertSql(plan.dbType, q(t.nome), line, m.info) : (count ? ',\n' : '') + line);
             count++;
             if (count % 100 === 0) progress({ collection: t.nome, rows: rows + count });
@@ -262,6 +285,7 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
             try { for await (const row of stream) await consume(row); }
             finally { stream.destroy(); }
           } else {
+            await conn.query('SET LOCAL search_path TO pg_catalog');
             await conn.query(`DECLARE codedb_export NO SCROLL CURSOR FOR SELECT ${projection} FROM ${table}`);
             try {
               for (;;) {
@@ -279,6 +303,16 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       if (!sql) await send(']}');
     }
     if (sql) {
+      if (!mongo && plan.dbType === 'postgresql') {
+        for await (const object of require('./pg-references').streamLargeObjects((s, p) => conn.query(s, p), largeObjectIds)) {
+          await send(`SELECT pg_catalog.lo_create(${object.oid});\n`);
+          let offset = 0;
+          for await (const bytes of object.chunks) {
+            await send(`SELECT pg_catalog.lo_put(${object.oid}, ${offset}, decode('${bytes.toString('hex')}', 'hex'));\n`);
+            offset += bytes.length;
+          }
+        }
+      }
       if (plan.dbType === 'mysql') {
         for (const fk of existingFks) {
           const present = fk.coppie.map(p => `c.${q(p.campo)} IS NOT NULL`).join(' AND ');
@@ -299,10 +333,24 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       await send(plan.dbType === 'mysql'
         ? 'SET SESSION sql_mode = @codedb_sql_mode, SESSION time_zone = @codedb_time_zone, SESSION foreign_key_checks = @codedb_fk_checks;\n'
         : 'COMMIT;\n');
-    } else await send('\n]}\n');
+    } else {
+      await send('\n]');
+      if (plan.dbType === 'postgresql') {
+        await send(',"largeObjects":['); let first=true;
+        for await (const object of require('./pg-references').streamLargeObjects((s,p)=>conn.query(s,p),largeObjectIds)) {
+          await send((first?'':',')+JSON.stringify({oid:object.oid,size:object.size}).slice(0,-1)+',"chunks":[');first=false;
+          let firstChunk=true;
+          for await (const bytes of object.chunks) { await send((firstChunk?'':',')+JSON.stringify(bytes.toString('base64')));firstChunk=false; }
+          await send(']}');
+        }
+        await send(']');
+      }
+      await send('}\n');
+    }
     if (started) { await conn.query('COMMIT'); started = false; }
     return { rows, collections: tables.length };
   } finally {
+    await mongoRead?.close();
     if (started) await conn.query('ROLLBACK').catch(() => {});
     if (conn) {
       try {

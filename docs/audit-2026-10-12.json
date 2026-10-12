@@ -1,0 +1,198 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-10-12",
+  "versione_analizzata": "0.1.5-beta.1",
+  "commit": "8f4b0803f6358b49bfd3c618943bad1267f5a4a1",
+  "tipo": "Verifica preproduzione su checkout con modifiche locali, correzioni del prodotto e test isolati reali",
+  "conclusione": "14 rilievi confermati corretti e verificati; nessun rilievo di questo rapporto lasciato aperto. Il risultato non certifica l'assenza di vulnerabilità fuori dall'ambito analizzato.",
+  "riepilogo": { "totale": 14, "critica": 0, "alta": 5, "media": 8, "bassa": 1, "risolti": 14, "aperti": 0 },
+  "metodo": [
+    "Lettura dei confini di fiducia e dei percorsi critici; ripresa degli otto rilievi del 6 ottobre senza modificare il rapporto storico.",
+    "Correzioni condivise nei motori e nei chiamanti; test di contratto, integrazione su DBMS dedicati e controllo dei pacchetti reali.",
+    "Sei mutazioni soltanto in memoria per dimostrare la sensibilità delle nuove regressioni."
+  ],
+  "ambito_analizzato": [
+    "Trasporto, gate Host/Origin/TLS/RBAC, identità, revoca, proxy autorizzante e API key MCP",
+    "Strategie SQL/MongoDB, query/script, transazioni, riconnessione, Virtual JOIN, limiti risultati",
+    "Trasferimenti HTTP, ticket, upload, isolamento tenant, vault e SSH tramite lettura mirata e suite",
+    "Import/export e backup tramite matrici reali dei tipi, riferimenti, identità, Large Object e paginazione",
+    "Cronologia e revisione schema; rendering frontend sensibile tramite lettura mirata",
+    "Dipendenze npm, packaging Windows/portatile, immagine Docker e runtime del server distribuito"
+  ],
+  "ambito_non_analizzato": [
+    "Penetration test su infrastruttura esposta e configurazione effettiva del reverse proxy",
+    "Integrazioni cloud, webhook e SSH remoto; audit completo delle librerie vendorizzate e dei pacchetti Alpine",
+    "Firma, installer, aggiornamento installato, notarizzazione, macOS, Android e hardware mobile",
+    "Ogni combinazione di versioni DBMS, estensioni, trigger, tipi e dati; carico concorrente e RAM di picco",
+    "Interazione completa nella finestra Electron e revisione visuale di tutte le schermate"
+  ],
+  "finding": [
+    {
+      "id": "CDB-F08", "severita": "alta", "titolo": "Transazioni e script senza connessione fisica stabile", "categoria": "integrità dati", "modulo": "db/sqlSessione.js; server/query.js; server/eventi-script.js",
+      "riferimenti": ["db/sqlSessione.js:8", "server/query.js:278", "server/eventi-script.js:201", "server/eventi-script.js:321"],
+      "problema": "Le istruzioni potevano cambiare connessione del pool, lasciando scritture fuori dalla transazione prevista.",
+      "scenario": "BEGIN, INSERT e ROLLBACK intervallati da uno script concorrente o separati in blocchi di un file SQL.",
+      "fix": "Lease per sessione/script, mantenimento fra blocchi, rollback e distruzione del client residuo; notifica per COMMIT mancante.",
+      "verifica": "Pool alternato simulato, mutazione del lease e prove reali MySQL/PostgreSQL: concorrenza, rollback, interruzione, tabella temporanea e avviso correlato al run.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P01", "severita": "alta", "titolo": "Dipendenze con advisory noti", "categoria": "dipendenze", "modulo": "package.json; package-lock.json",
+      "riferimenti": ["package.json:235", "package-lock.json:1"],
+      "problema": "25 advisory npm: 1 critical, 11 high, 13 moderate. La gravità del registry non dimostra la raggiungibilità di ogni difetto nell'app.",
+      "scenario": "Installazione e distribuzione del precedente lockfile con versioni segnalate.",
+      "fix": "Aggiornamenti compatibili e override di global-agent limitato alla catena @electron/get.",
+      "verifica": "npm audit finale con zero advisory, suite ordinaria, rebuild Windows/Docker e smoke runtime.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P02", "severita": "alta", "titolo": "Riconnessione con possibile duplicazione di scritture", "categoria": "integrità dati", "modulo": "server/connessioni.js",
+      "riferimenti": ["server/connessioni.js:241"],
+      "problema": "Ripetere automaticamente l'operazione dopo una risposta persa può duplicare un effetto già confermato dal database.",
+      "scenario": "INSERT confermato dal server DB, socket interrotto prima della risposta, riconnessione automatica.",
+      "fix": "Ripristino della connessione senza replay; esito dichiarato incerto e richiesta di verifica prima del rilancio.",
+      "verifica": "Test che impone una sola chiamata dell'operazione e mutazione che reintroduce la seconda chiamata.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P04", "severita": "alta", "titolo": "Inclusione di file locali nei pacchetti", "categoria": "distribuzione", "modulo": "tools/esclusioni-distribuzione.js; package.json; Dockerfile",
+      "riferimenti": ["tools/esclusioni-distribuzione.js:77", "tools/esclusioni-distribuzione.js:107", "package.json:123", "Dockerfile:9", ".dockerignore:1"],
+      "problema": "Il glob globale includeva export locali e dipendenze della landing, con rischio di pubblicazione di dati privati.",
+      "scenario": "Build eseguito con un export JSON alla radice e landing/node_modules presenti.",
+      "fix": "Allowlist dei file e delle directory runtime; contesto Docker e COPY espliciti.",
+      "verifica": "Test su percorsi esclusi, ASAR finale con 4783 percorsi ammessi e 34267177 byte contro 1917622636 iniziali; smoke degli asset distribuiti.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P06", "severita": "alta", "titolo": "Docker assumeva esposizione locale senza conoscerla", "categoria": "sicurezza trasporto", "modulo": "Dockerfile",
+      "riferimenti": ["Dockerfile:39"],
+      "problema": "Il default CODEDB_PUBLIC_BIND locale poteva escludere i gate di rete anche con porta pubblicata su tutte le interfacce.",
+      "scenario": "docker run -p 3030:3030 senza override di sicurezza.",
+      "fix": "Default esposto per l'immagine; configurazione loopback esplicita per uso esclusivamente locale. Compose mantiene il bind configurato.",
+      "verifica": "Container finale rifiutato senza TLS e poi rifiutato con solo TLS e RBAC spento; smoke locale superato.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F01", "severita": "media", "titolo": "Stage di raggruppamento SQL su MongoDB non valido", "categoria": "query", "modulo": "db/SqlToMql.js",
+      "riferimenti": ["db/SqlToMql.js:950", "db/SqlToMql.js:984"],
+      "problema": "Lo stage di aggregazione non era avvolto in $group.",
+      "scenario": "SELECT city, COUNT(*) AS n FROM t GROUP BY city.",
+      "fix": "Stage $group corretto; COUNT(colonna) tratta i mancanti come null.",
+      "verifica": "75 casi del traduttore, MongoDB reale e mutazione dello stage.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F02", "severita": "media", "titolo": "Virtual JOIN senza risoluzione delle connessioni aperte", "categoria": "query cross database", "modulo": "server/query.js; db/payloadEsecuzione.js",
+      "riferimenti": ["server/query.js:324", "db/payloadEsecuzione.js:1"],
+      "problema": "Il percorso UI non collegava due strategie delle sessioni aperte.",
+      "scenario": "JOIN fra una tabella MySQL/PostgreSQL e una collezione MongoDB aperte in tab distinti.",
+      "fix": "Map delle sessioni esclusivamente server-side e risoluzione non ambigua tramite tabId, connection o motore; strategie autorizzate.",
+      "verifica": "Payload protetto nei test e JOIN SQL/MongoDB reali via socket.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F03", "severita": "media", "titolo": "Virtual JOIN perdeva corrispondenze e troncamento", "categoria": "correttezza risultati", "modulo": "db/VirtualJoinEngine.js",
+      "riferimenti": ["db/VirtualJoinEngine.js:83", "db/VirtualJoinEngine.js:131", "db/VirtualJoinEngine.js:141", "db/VirtualJoinEngine.js:162"],
+      "problema": "Una sola riga destra per chiave e mancata segnalazione dei budget; query della seconda sorgente ignorata.",
+      "scenario": "Due record destri per la stessa chiave o sorgente troncata.",
+      "fix": "Espansione delle corrispondenze, query B rispettata, parametri SQL e sorgenti read-only; errore esplicito sui risultati incompleti.",
+      "verifica": "Test unitari, mutazione della cardinalità e JOIN reali SQL/MongoDB.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F04", "severita": "media", "titolo": "Alias SQL semplici su MongoDB ignorati", "categoria": "query", "modulo": "db/SqlToMql.js",
+      "riferimenti": ["db/SqlToMql.js:919"],
+      "problema": "SELECT con alias restituiva i campi originali.",
+      "scenario": "SELECT _id, nome AS n FROM t ORDER BY n.",
+      "fix": "Proiezione degli alias e ordinamento sui campi sorgenti; _id esplicito conservato.",
+      "verifica": "Pipeline attesa e query reale con ordinamento discendente.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F05", "severita": "media", "titolo": "Revisioni schema non sensibili alla struttura", "categoria": "cache schema", "modulo": "db/schemaProgressivo.js",
+      "riferimenti": ["db/schemaProgressivo.js:65"],
+      "problema": "L'impronta considerava cardinalità invece delle definizioni effettive.",
+      "scenario": "Rinomina di un campo, cambio tipo o relazione con uguale numero di elementi.",
+      "fix": "Digest delle collezioni, dei campi e delle relazioni, esclusi i conteggi dei record.",
+      "verifica": "Tre variazioni strutturali e mutazione del digest rilevate.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F07", "severita": "media", "titolo": "Budget risultati non rispettato in byte", "categoria": "limiti risorse", "modulo": "db/DbStrategy.js",
+      "riferimenti": ["db/DbStrategy.js:653", "db/DbStrategy.js:676"],
+      "problema": "Caratteri multibyte sottostimati e prima riga troppo grande ammessa.",
+      "scenario": "Riga con testo Unicode che supera il budget UTF-8 pur avendo meno caratteri.",
+      "fix": "Misura EJSON UTF-8 comprensiva dei delimitatori e chiusura del cursore al superamento.",
+      "verifica": "Soglia esatta e un byte sotto, prima riga, finally del cursore e mutazione. Il driver SQL può allocare prima del taglio: non è un limite RAM assoluto.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P03", "severita": "media", "titolo": "Serializzazione SQL con return e argomenti errati", "categoria": "tipi e metadati", "modulo": "db/MySqlStrategy.js; db/PostgreSqlStrategy.js",
+      "riferimenti": ["db/MySqlStrategy.js:918", "db/PostgreSqlStrategy.js:947", "db/PostgreSqlStrategy.js:997"],
+      "problema": "Return anticipati duplicati saltavano i metadati; conRighe PostgreSQL riceveva righe al posto delle colonne.",
+      "scenario": "Result set SQL tipizzato o batch di scrittura con righe restituite.",
+      "fix": "Un solo percorso di serializzazione e argomenti conRighe corretti.",
+      "verifica": "Suite batch/serializzazione e matrici reali MySQL/PostgreSQL.",
+      "fonti": [], "stato": "risolto"
+    },
+    {
+      "id": "CDB-P05", "severita": "media", "titolo": "Runtime Docker fuori supporto", "categoria": "runtime", "modulo": "Dockerfile",
+      "riferimenti": ["Dockerfile:1"],
+      "problema": "Node 20 è fuori supporto alla data della verifica.",
+      "scenario": "Nuova immagine costruita dalla precedente base node:20-alpine.",
+      "fix": "Base node:24-alpine.",
+      "verifica": "Build e smoke runtime su Node 24.21.0.",
+      "fonti": ["https://nodejs.org/en/about/previous-releases"], "stato": "risolto"
+    },
+    {
+      "id": "CDB-F06", "severita": "bassa", "titolo": "Cronologia deduplicava query semanticamente diverse", "categoria": "cronologia", "modulo": "public/js/query-history-store.js",
+      "riferimenti": ["public/js/query-history-store.js:41"],
+      "problema": "Spazi interni normalizzati anche nei letterali e collezione esclusa dalla chiave.",
+      "scenario": "SELECT 'a  b' e SELECT 'a b', oppure stessa query su collezioni diverse.",
+      "fix": "Trim esterno soltanto e collezione nella chiave di deduplica.",
+      "verifica": "Tre voci distinte conservate; test cronologia aggiornati.",
+      "fonti": [], "stato": "risolto"
+    }
+  ],
+  "verifiche": [
+    { "comando": "npm test", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/unit-finale.log" },
+    { "comando": "npm run typecheck:ui", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/typecheck.log" },
+    { "comando": "npm audit --json", "esito": "0 advisory", "log": "test-reports/preproduzione-2026-10-12/npm-audit-dopo.json" },
+    { "comando": "node test/e2e-preproduzione.js", "esito": "PASS su MongoDB/MySQL/PostgreSQL isolati", "log": "test-reports/preproduzione-2026-10-12/e2e.log" },
+    { "comando": "node test/e2e-tipi-sql.js", "esito": "MySQL: 50 casi x JSON/SQL/backup; PG senza PostGIS non adatto alla matrice, rieseguita su PostGIS", "log": "test-reports/preproduzione-2026-10-12/tipi-sql.log" },
+    { "comando": "node test/e2e-tipi-sql.js con PostGIS", "esito": "PASS: 103 casi x JSON/SQL/backup", "log": "test-reports/preproduzione-2026-10-12/tipi-postgis.log" },
+    { "comando": "node test/e2e-tipi-bson.js", "esito": "PASS: tag BSON memorizzabili, byte esatti, GridFS, full/incrementale", "log": "test-reports/preproduzione-2026-10-12/tipi-bson.log" },
+    { "comando": "node test/e2e-tipi-riferimenti.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/e2e-tipi-riferimenti.log" },
+    { "comando": "node test/e2e-tipi-large-objects.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/e2e-tipi-large-objects.log" },
+    { "comando": "node test/e2e-tipi-identita.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/e2e-tipi-identita.log" },
+    { "comando": "node test/e2e-tipi-pagine.js", "esito": "PASS: 1601 righe per motore SQL", "log": "test-reports/preproduzione-2026-10-12/e2e-tipi-pagine.log" },
+    { "comando": "node test/e2e-rbac.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/rbac.log" },
+    { "comando": "node test/e2e-rbac-mcp.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/rbac-mcp.log" },
+    { "comando": "node test/e2e-vault-passphrase.js", "esito": "PASS", "log": "test-reports/preproduzione-2026-10-12/vault.log" },
+    { "comando": "node -r ./test/fault-preproduzione.cjs test/unit-preproduzione.js (sei mutazioni)", "esito": "Tutte rilevate con ERR_ASSERTION", "log": "test-reports/preproduzione-2026-10-12/mutant-transazione.log" },
+    { "comando": "electron-builder --dir --publish never e smoke ASAR", "esito": "PASS: Electron 43.7.9 / Node 24.21.0; firma non configurata", "log": "test-reports/preproduzione-2026-10-12/desktop-smoke.stdout.log" },
+    { "comando": "docker build e smoke/gate su immagine finale", "esito": "PASS: TLS e RBAC rifiutati separatamente; HTTP locale, asset, Origin e shutdown corretti", "log": "test-reports/preproduzione-2026-10-12/docker-smoke.log" }
+  ],
+  "funzionalita": [
+    { "area": "Transazioni e script SQL", "esito": "Verificati i contratti di sessione e rollback; letture protette dentro transazioni scrivibili rifiutate per evitare commit impliciti." },
+    { "area": "Risultati", "esito": "Budget del payload corretto; RAM prima della materializzazione del driver non limitata da questo intervento." },
+    { "area": "Distribuzione", "esito": "ASAR e container provati; installer firmati e aggiornamento installato fuori ambito." }
+  ],
+  "priorita_intervento": [],
+  "interventi_successivi": [
+    "Prima dell'esposizione pubblica: verificare configurazione reale di proxy TLS, autenticazione, segreti e backup dell'ambiente di destinazione.",
+    "Prima della release installabile: firma, prova installer/aggiornamento e sistemi operativi di destinazione.",
+    "Per imporre un limite RAM rigido alle query libere: streaming end-to-end dei driver SQL e benchmark dedicato."
+  ],
+  "note_documentazione": [
+    "Patch notes aggiornate in public/js/onboarding-stato.js, sezione 0.1.5-beta.1; nessun cambio versione o pubblicazione.",
+    "Report leggibile in docs/audit-preproduzione-2026-10-12.md.",
+    "reference/report-schema.md e scripts/validate-audit.mjs della skill non presenti: validazione locale di campi, riferimenti, ID e conteggi."
+  ],
+  "note_revisione": [
+    "Conservati il rapporto del 6 ottobre e le modifiche preesistenti nel checkout; nessun reset o commit.",
+    "Fixture SSH resa stabile rispetto alle chiavi Ed25519 malformate emesse occasionalmente dal generatore della dipendenza; nessun allentamento della validazione prodotto.",
+    "Le prove di packaging hanno rilevato un modulo runtime mancante nell'elenco Docker: electron-server-auth.js aggiunto e avvio ricontrollato con successo.",
+    "Rimossi i quattro container dedicati e l'immagine temporanea dopo le prove; conservati log e pacchetto Windows per la revisione."
+  ]
+}

@@ -29,7 +29,7 @@ import { mountArcControls } from '../arc/ui.js';
  * senza toccare questo file.
  * ------------------------------------------------------------------------- */
 
-import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, toast, esc, safeUUID, positionFixedDropdown, chiediTesto, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
 import { state } from './state.js';
 import {
   CATEGORICA, TAVOLOZZE, TIPI, AGGREGAZIONI, AGG_GREZZO, famigliaDi, serieDefault, cfgDefault,
@@ -728,16 +728,12 @@ function salvaPreset(nome, c) {
 
 /* ================================ Export ================================= */
 
-function esportaPng() {
+async function esportaPng() {
   if (!grafico || grafico.isDisposed()) { toast('Nessun grafico da esportare.', true); return; }
   // Fondo pieno, non trasparente: un PNG trasparente incollato in un documento
   // chiaro mostra assi ed etichette chiari su bianco, cioè illeggibili.
   const url = grafico.getDataURL({ type: 'png', pixelRatio: 2, backgroundColor: INK.fondo });
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `grafico_${Date.now()}.png`;
-  a.click();
-  toast('Grafico esportato in PNG.');
+  if (await scaricaFile(url, `grafico_${Date.now()}.png`)) toast('Download del grafico PNG avviato.');
 }
 
 function esportaOption() {
@@ -746,12 +742,7 @@ function esportaOption() {
   // invece di sparire in silenzio lasciando un JSON che sembra completo.
   const testo = JSON.stringify(ultimoOption, (k, v) => (typeof v === 'function' ? '[funzione: formattatore]' : v), 2);
   const blob = new Blob([testo], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `echarts_option_${Date.now()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
+  return scaricaFile(blob, `echarts_option_${Date.now()}.json`);
 }
 
 /* ============================ Inizializzazione =========================== */
@@ -971,6 +962,9 @@ export function initCharts() {
       const chiuso = pannello.classList.contains('collassato');
       btnPannello.textContent = chiuso ? 'Personalizza' : 'Chiudi pannello';
       btnPannello.classList.toggle('attivo', !chiuso);
+      btnPannello.setAttribute('aria-controls', pannello.id);
+      btnPannello.setAttribute('aria-expanded', String(!chiuso));
+      pannello.inert = chiuso;
     };
     // Il pannello parte CHIUSO: la barra rapida copre il caso comune e il
     // grafico prende tutta la larghezza (288 px in più, che in un riquadro da
@@ -987,7 +981,18 @@ export function initCharts() {
       } catch { /* spazio esaurito: la preferenza non si ricorda, pazienza */ }
       // Il riquadro ha cambiato larghezza: `disegna` e non `resizeChart`, perché
       // margini e zoom dipendono dalle dimensioni (vedi grigliaAdattata).
-      requestAnimationFrame(() => disegna());
+      requestAnimationFrame(() => {
+        disegna();
+        if (matchMedia('(max-width: 900px)').matches && !pannello.classList.contains('collassato')) {
+          pannello.scrollIntoView({ block: 'start' });
+          pannello.querySelector('summary')?.focus({ preventScroll: true });
+        }
+      });
+    });
+    $('#chart-close-builder')?.addEventListener('click', () => {
+      btnPannello.click();
+      btnPannello.scrollIntoView({ block: 'nearest' });
+      btnPannello.focus({ preventScroll: true });
     });
   }
 }

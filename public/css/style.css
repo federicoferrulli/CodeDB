@@ -364,17 +364,6 @@
   transform: translateZ(0);
 }
 .geomap-json { flex: 1 1 0; min-width: 0; height: 420px; resize: none; font-family: monospace; font-size: 0.8rem; }
-/* Colonna destra della mappa di selezione (geomulti.js): riepilogo sopra,
-   elenco scorrevole sotto. L'altezza è quella della mappa accanto, così le due
-   viste restano allineate come nell'editor. */
-/* Un po' più larga della colonna JSON dell'editor: qui accanto alla mappa non
-   c'è un testo che va a capo ma una tabella di sei colonne. */
-.geomulti-side { flex: 1.4 1 0; min-width: 0; height: 420px; display: flex; flex-direction: column; gap: 8px; }
-/* Il riepilogo è alto quanto le righe che ha (con poligoni e proiettate arriva a
-   una dozzina): senza un tetto si prendeva l'intera colonna e l'elenco delle
-   geometrie — che è la parte con cui si INTERAGISCE — restava schiacciato a
-   una striscia di pochi pixel. Metà colonna per uno. */
-#geomulti-summary { flex: 0 1 auto; min-height: 0; max-height: 52%; overflow: auto; font-size: 0.8rem; }
 .geomulti-list { flex: 1 1 auto; min-height: 96px; overflow: auto; font-size: 0.8rem; }
 /* Sei colonne strette in una barra laterale: senza `nowrap` "476,89 km" andava
    a capo in mezzo al numero. Va invece a capo la colonna, scorrendo. */
@@ -385,7 +374,7 @@
 .geomulti-list thead th { position: sticky; top: 0; z-index: 1; background: var(--bg-surface, #161b22); }
 .geomulti-list tr[data-i] { cursor: pointer; }
 .geomulti-list tr[data-i]:hover td { background: var(--accent-soft); }
-.geomulti-list tr.attiva td { background: var(--status-err-bg); }
+.geomulti-list tr.attiva td { background: var(--accent-subtle); }
 /* Pallino del colore con cui la geometria è disegnata: la legenda sta dove
    serve, accanto alla riga, invece che in un riquadro a parte da consultare. */
 .geomulti-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
@@ -421,7 +410,6 @@
      stretto è anche la posizione più comoda per il pollice. */
   .geomap-azioni-vertice { left: 8px; right: 8px; transform: none; max-width: none; justify-content: center; flex-wrap: wrap; }
   .geomap-avviso-mappa { bottom: 64px; right: 60px; }
-  .geomulti-side { height: auto; max-height: 320px; }
 }
 
 /* --------- Grafico della selezione di celle (cellgrafico.js) --------------
@@ -478,57 +466,6 @@
 @media (max-width: 860px) {
   .cellchart-canvas { height: 46vh; }
   .cellchart-conta { display: none; }
-}
-
-/* ---------- Vista 🗺 Mappa dei risultati (query-map.js) --------------------
-   Stessa mappa della selezione di celle, ma incassata nel pannello dei
-   risultati invece che in una modale: l'altezza non è quindi fissa come lì, la
-   detta il pannello (che l'utente ridimensiona col divisorio). Da qui i
-   `min-height: 0` su tutta la catena flex — senza, il contenuto impone la sua
-   altezza naturale e la mappa sfora sotto il bordo del pannello. */
-#query-map-view {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  /* `position: relative` per il messaggio di vuoto, che è sovrapposto (come nei
-     Grafici: comparendo e sparendo non deve spostare la mappa); `overflow:
-     hidden` perché la colonna qui dentro si ripartisce lo spazio del pannello e
-     non deve produrre una seconda barra di scorrimento sopra quella dell'elenco. */
-  position: relative;
-  overflow: hidden;
-}
-#query-map-view.hidden { display: none; }
-.qmap-toolbar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.8rem;
-}
-.qmap-check { display: inline-flex; align-items: center; gap: 4px; color: var(--fg-dim); }
-/* Il conteggio spinge le due esportazioni a destra: sono azioni finali, non
-   controlli della mappa. */
-.qmap-conta { color: var(--fg-dim); font-size: 0.76rem; margin-left: auto; }
-.qmap-nota { flex: 0 0 auto; padding: 4px 6px; font-size: 0.78rem; color: var(--warning); }
-.qmap-nota::before { content: '⚠ '; }
-.qmap-body { flex: 1 1 auto; display: flex; gap: 8px; min-height: 0; padding: 6px; }
-#query-map-view .geomap-canvas { flex: 2 1 0; min-width: 0; height: auto; min-height: 160px; }
-/* Colonna destra: riepilogo sopra, elenco scorrevole sotto — come nella modale
-   della selezione, di cui questa vista è la gemella. */
-.qmap-side { flex: 1.1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-#qmap-summary { flex: 0 1 auto; min-height: 0; max-height: 46%; overflow: auto; font-size: 0.78rem; }
-#qmap-list { flex: 1 1 auto; min-height: 60px; overflow: auto; font-size: 0.78rem; }
-#query-map-view .warning { flex: 0 0 auto; margin: 4px 6px; }
-
-@media (max-width: 900px) {
-  /* In verticale la mappa resta sopra e l'elenco sotto: affiancarli su schermo
-     stretto lascerebbe a entrambi una colonna inutilizzabile. */
-  .qmap-body { flex-direction: column; }
-  #query-map-view .geomap-canvas { flex: 1 1 auto; min-height: 200px; }
-  .qmap-side { flex: 0 0 auto; max-height: 40%; }
 }
 
 .modal h1 { margin: 0 0 6px; font-size: 1.35rem; font-weight: 700; color: var(--fg-bright); letter-spacing: -0.015em; }
@@ -973,8 +910,8 @@ button.ghost:hover, .btn-ghost:hover {
    `auto` il browser le ricalcolerebbe sulle sole righe nel DOM, cioè a ogni
    scroll), e `max-content` lascia che la tabella sia PIÙ LARGA del pannello —
    da cui la barra orizzontale. Con `width: 100%` non poteva esserlo, e venti
-   colonne diventavano venti strisce illeggibili. Anche poche colonne rispettano
-   la larghezza scelta, lasciando libero lo spazio rimanente. */
+   colonne diventavano venti strisce illeggibili. table-resize.js distribuisce
+   l'eventuale spazio libero alle sole colonne automatiche. */
 #query-result-table {
   width: max-content;
   min-width: 0;
@@ -1410,13 +1347,13 @@ header {
 }
 
 .conn-tab.active, .coll-tab.active {
-  background: var(--tab-merge) !important;
-  color: var(--fg) !important;
-  font-weight: 600 !important;
-  border: 0 !important;
+  background: var(--tab-merge);
+  color: var(--fg);
+  font-weight: 600;
+  border: 0;
   /* L'accento passa SOPRA la tab: sotto sarebbe una linea di separazione dal
      pannello, esattamente ciò che la forma sta togliendo. */
-  box-shadow: inset 0 2px 0 var(--accent) !important;
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .conn-tab .dot {
@@ -3003,38 +2940,19 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 .resizer:hover, .resizer.dragging { background: var(--accent-2); }
 
-/* ---------- Riordino tab via drag & drop (conn-tab e coll-tab) ----------------
-   La tab in mano si SOLLEVA dalla barra: perde le spallucce (sollevata non è
-   fusa con niente), chiude il raggio su tutti e quattro gli angoli e diventa
-   una pastiglia in ombra. È la stessa transizione del morph, quindi la si vede
-   trasformarsi invece di cambiare aspetto di colpo.
-
-   Le tab che restano non si accendono di una riga colorata: si SPOSTANO per
-   fare posto, così si vede dove finirà quella trascinata invece di doverlo
-   dedurre da un bordo. Da che parte scivolano lo decide makeDraggable
-   (utils.js) confrontando le posizioni: chi verrà scavalcato da sinistra apre
-   il varco a destra, e viceversa. Con un verso fisso, metà dei trascinamenti
-   indicherebbe il punto sbagliato. */
+/* Fuori dalla barra resta riconoscibile l'origine del trascinamento verso la split view. */
 
 .conn-tab[draggable="true"], .coll-tab[draggable="true"] { cursor: grab; }
 
 .conn-tab.dragging, .coll-tab.dragging {
   cursor: grabbing;
   opacity: 0.55;
-  border-radius: var(--tab-radius) !important;
-  background: var(--bg-elevated) !important;
-  color: var(--fg) !important;
-  box-shadow: 0 10px 24px var(--sh-550) !important;
-  transform: translateY(-2px) scale(0.97);
 }
 
 .conn-tab.dragging::before, .conn-tab.dragging::after,
 .coll-tab.dragging::before, .coll-tab.dragging::after {
   width: 0 !important;
 }
-
-.conn-tab.drag-slide-left, .coll-tab.drag-slide-left { transform: translateX(-12px); }
-.conn-tab.drag-slide-right, .coll-tab.drag-slide-right { transform: translateX(12px); }
 
 /* ---------- Selezione multipla e bulk delete ---------- */
 
@@ -4039,8 +3957,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 
 .query-target-btn:hover { border-color: var(--accent); }
-.query-target-sep { color: var(--fg-dim); opacity: 0.6; }
-.query-target-btn .dropdown-caret { color: var(--fg-dim); font-size: 0.75em; }
 
 .query-target-engine-label { white-space: nowrap; }
 .query-target-engine-label.query-engine-explicit {
@@ -7152,6 +7068,7 @@ button.linklike:hover {
   color: var(--fg-dim);
   border-bottom: 1px solid var(--border);
 }
+.chart-builder-close { display: none; }
 
 .chart-builder {
   flex: 1;
@@ -7374,18 +7291,28 @@ button.linklike:hover {
   gap: var(--space-xs);
 }
 
-/* Viewport strette: il pannello passa sotto il grafico invece di strizzarlo. */
+/* Su mobile controlli, grafico e personalizzazione scorrono nello stesso pannello. */
 @media (max-width: 900px) {
-  .chart-layout { flex-direction: column; }
+  #query-chart-view { overflow-y: auto; overscroll-behavior: contain; }
+  .chart-layout { flex-direction: column; height: auto; min-height: 100%; }
+  .chart-main { flex: 0 0 auto; min-height: 0; overflow: visible; }
+  .chart-canvas { flex: none; height: clamp(240px, 44dvh, 420px); }
   .chart-builder-panel {
     flex: 0 0 auto;
     width: 100%;
-    max-height: 45%;
+    max-height: none;
     border-left: none;
     border-top: 1px solid var(--border-2);
   }
-  .chart-builder-panel.collassato { max-height: 0; border-top: none; }
-  .chart-main { min-height: 240px; }
+  .chart-builder-panel.collassato { display: none; }
+  .chart-builder { flex: none; overflow: visible; }
+  .chart-builder-head {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm);
+    font-size: 0.875rem; letter-spacing: normal; text-transform: none;
+  }
+  .chart-builder-close { display: inline-flex; }
+  #chart-builder-panel :is(summary, .mini-btn, [data-arc-component="select"], input:not([type="checkbox"]):not([type="color"]), textarea) { min-height: var(--touch-target-min); }
+  #chart-builder-panel [data-arc-component="select"] { width: 100%; }
 }
 
 /* -------- Barra rapida dei grafici (le quattro decisioni, in vista) ------- */
@@ -7464,9 +7391,26 @@ button.linklike:hover {
   color: var(--accent-fg);
 }
 
-/* Viewport strette: la barra rapida va a capo e il grafico resta usabile. */
+/* I quattro campi principali hanno spazio proprio, senza scorrimento laterale. */
 @media (max-width: 900px) {
-  .chart-quick-field select { max-width: 104px; }
+  .chart-toolbar {
+    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+    align-items: end; gap: var(--space-sm); padding: var(--space-md);
+  }
+  .chart-toolbar > .toolbar-dropdown-wrap { min-width: 0; }
+  .chart-toolbar > .mini-btn, .chart-toolbar > .toolbar-dropdown-wrap > .mini-btn {
+    width: 100%; min-width: 0; min-height: var(--touch-target-min);
+    padding: var(--space-xs); font-size: 0.75rem; white-space: normal;
+  }
+  #chart-quickbar {
+    grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start; gap: var(--space-sm); overflow: visible;
+  }
+  .chart-quick-field { flex-direction: column; align-items: stretch; min-width: 0; white-space: normal; }
+  #chart-quickbar :is(select, [data-arc-component="select"]) {
+    width: 100%; max-width: none; min-width: 0; min-height: var(--touch-target-min);
+  }
+  .chart-quick-nota { grid-column: 1 / -1; justify-self: start; }
 }
 
 /* ===========================================================================
@@ -7758,62 +7702,108 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
 }
 
 .theme-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
-  max-height: 46vh;
-  overflow-y: auto;
-  padding-right: var(--space-2xs);
+  position: relative;
+  isolation: isolate;
 }
-
 .tema-sezione {
-  margin: var(--space-md) 0 var(--space-2xs);
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-muted);
+  margin: var(--space-xl) 0 var(--space-sm);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg);
 }
-
+.tema-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md); }
+.tema-personali { display: grid; gap: var(--space-sm); }
 .tema-card {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  background: var(--bg-surface);
+  position: relative;
+  min-width: 0;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  border-radius: var(--radius-surface);
+  background: var(--bg-1);
+  transition: background var(--transition-fast);
 }
-
-.tema-card:hover { background: var(--btn-hover); border-color: var(--border-2); }
-.tema-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-
-.tema-card.attiva {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+.tema-card:hover { background: var(--btn-hover); }
+.tema-card.attiva { background: var(--accent-subtle); }
+#modal-theme .tema-choice {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  padding: var(--space-md);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--fg);
+  text-align: left;
+  justify-content: flex-start;
+  white-space: normal;
+  box-shadow: none;
 }
-
-/* Il segno di spunta sta sul bordo sinistro invece che accanto al nome: la
-   riga attiva si riconosce senza leggere. */
-.tema-card.attiva { box-shadow: inset 3px 0 0 var(--accent); }
-
-.tema-card-testo { flex: 1; min-width: 0; }
-.tema-card-testo strong { display: block; font-size: 0.9rem; font-weight: 600; color: var(--fg); }
-.tema-card-testo small { display: block; font-size: 0.76rem; color: var(--fg-dim); }
-
-.tema-card-azioni {
-  display: flex;
-  gap: var(--space-3xs);
-  flex: 0 0 auto;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
+.tema-choice:focus-visible { outline: 2px solid var(--accent-fg); outline-offset: 3px; }
+.tema-card-testo { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; margin-top: var(--space-md); padding-right: 32px; }
+.tema-card-testo > span:last-child { min-width: 0; }
+.tema-card-testo strong { display: block; font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+.tema-card-testo small { display: block; margin-top: var(--space-2xs); font-size: var(--text-xs); font-weight: 400; color: var(--text-secondary); line-height: 1.4; }
+.tema-check { display: grid; place-items: center; flex: 0 0 18px; width: 18px; height: 18px; border: 1px solid var(--border-2); border-radius: var(--radius-full); color: var(--on-accent); }
+.tema-check svg { width: 12px; height: 12px; opacity: 0; transform: scale(.5); transition: opacity 160ms, transform 240ms cubic-bezier(.16,1,.3,1); }
+.attiva .tema-check { background: var(--accent); border-color: var(--accent); }
+.attiva .tema-check svg { opacity: 1; transform: none; }
+.tema-card-azioni { position: absolute; bottom: var(--space-md); right: var(--space-sm); display: flex; align-items: center; gap: var(--space-2xs); }
+.tema-selezione { position: absolute; z-index: 1; pointer-events: none; border: 1px solid var(--accent-fg); border-radius: var(--radius-surface); transform-origin: top left; }
+.tema-selezione[hidden] { display: none; }
+#modal-theme .tema-card-azioni button { width: 32px; height: 32px; min-height: 32px; padding: 0; border: 0; }
+.tema-card-azioni svg { width: 15px; height: 15px; }
+.tema-personali .tema-card { display: flex; align-items: center; }
+#modal-theme .tema-personali .tema-choice { display: flex; align-items: center; gap: var(--space-lg); flex: 1; width: auto; }
+.tema-personali .tema-card-testo { margin: 0; padding: 0; }
+.tema-personali .tema-card-azioni { position: static; padding-right: var(--space-md); }
+.tema-personali .tema-preview { width: 100px; height: 64px; flex-shrink: 0; }
+.tema-preview, .tema-preview-auto { display: block; position: relative; height: 120px; overflow: hidden; border-radius: var(--radius-control); }
+.tema-preview { background: var(--sample-bg); color: var(--sample-fg); border: 1px solid var(--sample-border); text-align: left; }
+.tema-preview-auto { display: grid; grid-template-columns: 1fr 1fr; }
+.tema-preview-auto .tema-preview { border-radius: 0; height: 100%; }
+.tema-preview-top { position: absolute; display: flex; gap: 4px; align-items: center; top: 0; left: 0; right: 0; height: 16%; padding-inline: 8%; background: var(--sample-bg-3); border-bottom: 1px solid var(--sample-border); }
+.tema-preview-top i { width: 4px; height: 4px; border-radius: var(--radius-full); background: var(--sample-fg); opacity: .45; }
+.tema-preview-side { position: absolute; top: 16%; bottom: 0; left: 0; width: 23%; padding: 8% 5%; background: var(--sample-bg-2); border-right: 1px solid var(--sample-border); }
+.tema-preview-side i { display: block; height: 3px; margin-bottom: 8px; background: var(--sample-fg); opacity: .25; }
+.tema-preview-side i:first-child { background: var(--sample-accent); opacity: 1; }
+.tema-preview-code { position: absolute; top: 23%; left: 30%; right: 6%; font: 10px/1.6 var(--font-mono); font-weight: 400; white-space: nowrap; }
+.tema-preview-code > span { display: block; }
+.tema-preview-code b { color: var(--sample-accent); font-weight: 500; }
+.tema-preview-grid { position: absolute; display: grid; grid-template-columns: .65fr 1fr 1fr; gap: 6px 8px; left: 30%; right: 8%; bottom: 11%; }
+.tema-preview-grid i { height: 3px; background: var(--sample-fg); opacity: .3; }
+.tema-preview-grid i:nth-child(3n + 1) { background: var(--sample-success); opacity: .9; }
+.tema-preview-grid i:nth-child(3n) { background: var(--sample-warning); opacity: .8; }
+.tema-personali .tema-preview-code { font-size: 7px; }
+.tema-personali .tema-preview-grid { gap: 3px; }
+.tema-personali .tema-preview-grid i { height: 2px; }
+.tema-personali .tema-preview-top i { width: 3px; height: 3px; }
+#modal-theme .catalog-toolbar { margin-top: var(--space-xl); margin-bottom: 0; padding-top: var(--space-lg); border-top: 1px solid var(--border); gap: var(--space-sm); }
+#modal-theme .modal-hint { max-width: 65ch; }
+#modal-theme #btn-close-theme-modal { width: 32px; height: 32px; min-height: 32px; flex: 0 0 32px; padding: 0; }
+@media (max-width: 900px) { #modal-theme .modal-header { display: none; } }
+@media (max-width: 900px), (pointer: coarse) {
+  #modal-theme .tema-card-azioni button { width: 44px; height: 44px; min-height: 44px; }
+  .tema-presets .tema-card-testo { padding-right: 44px; }
 }
-/* I comandi compaiono al passaggio, ma restano sempre visibili da tastiera:
-   nasconderli a `:focus-within` li renderebbe irraggiungibile senza mouse. */
-.tema-card:hover .tema-card-azioni,
-.tema-card:focus-within .tema-card-azioni { opacity: 1; }
+@media (max-width: 600px) {
+  .tema-presets { grid-template-columns: 1fr; gap: var(--space-sm); }
+  #modal-theme .tema-choice { display: flex; align-items: center; gap: var(--space-md); padding: var(--space-md); }
+  .tema-card-testo { flex: 1; margin: 0; padding-right: 32px; gap: var(--space-xs); }
+  .tema-preview, .tema-preview-auto, .tema-personali .tema-preview { width: 80px; height: 64px; flex-shrink: 0; }
+  .tema-preview-auto .tema-preview { width: auto; }
+  .tema-preview-code { font-size: 7px; }
+  .tema-preview-auto .tema-preview-code { display: none; }
+  .tema-preview-grid { gap: 4px; }
+  .tema-preview-side i { margin-bottom: 6px; }
+  .tema-preview-grid i { height: 2px; }
+  .tema-card-azioni { bottom: 50%; right: var(--space-2xs); transform: translateY(50%); }
+  .tema-personali .tema-card { flex-wrap: wrap; }
+  #modal-theme .tema-personali .tema-choice { width: 100%; flex-basis: 100%; gap: var(--space-md); }
+  .tema-personali .tema-card-azioni { width: 100%; justify-content: flex-end; padding: 0 var(--space-sm) var(--space-2xs); transform: none; }
+  #modal-theme .catalog-toolbar { flex-wrap: wrap; }
+  #modal-theme .catalog-toolbar button { flex: 1; min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .tema-check svg, .tema-card { transition: none; } }
 
 .btn-icona {
   background: transparent;
@@ -7827,21 +7817,6 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
 }
 .btn-icona:hover { background: var(--ov-80); color: var(--fg); border-color: var(--border-2); }
 .btn-icona.pericolo:hover { background: var(--danger-bg); color: var(--danger); border-color: var(--danger-line); }
-
-/* Campione: lo sfondo del tema con quattro pastiglie dei suoi colori. Sono i
-   valori VERI, derivati come li deriverebbe l'applicazione. */
-.tema-campione {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  width: 74px;
-  height: 34px;
-  padding: 0 var(--space-xs);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-2);
-}
-.tema-campione i { display: block; width: 11px; height: 11px; border-radius: var(--radius-full); }
 
 /* ---------- Editor ---------- */
 
@@ -7926,7 +7901,6 @@ body:has(.overlay:not(.hidden)) #onb-checklist { display: none; }
 
 @media (max-width: 900px) {
   .tema-campi { grid-template-columns: 1fr; }
-  .theme-list { max-height: 40vh; }
   /* Su schermo stretto i comandi della riga non hanno un "passaggio del
      mouse": restano sempre visibili, altrimenti sono irraggiungibili. */
   .tema-card-azioni { opacity: 1; }

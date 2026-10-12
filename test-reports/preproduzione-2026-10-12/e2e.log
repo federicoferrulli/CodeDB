@@ -1,0 +1,1 @@
+PASS: MongoDB reale (GROUP BY, COUNT, alias); MySQL/PostgreSQL reali (rollback interattivo, script concorrenti, JOIN cross-DB).

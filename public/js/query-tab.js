@@ -3,7 +3,7 @@ import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
-import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
@@ -34,6 +34,7 @@ import {
 import { ordinaRigheMultiple, larghezzeColonne, colonneRisultato, LARGH_MIN } from './table-cols.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 import { rendiCellaGeometrica, aperturaSolaLettura } from './cella-geometria.js';
+import { preparaTransizioneTab } from './tab-motion.js';
 
 const escapeHtml = esc;
 
@@ -45,6 +46,7 @@ let currentResults = [];
 // zero.
 let currentColumns = [];
 let currentMetrics = ['idle'];
+const movimentoRidotto = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 export function snapshotQueryView() {
   const editor = $('#query-editor-input');
@@ -64,7 +66,7 @@ export function snapshotQueryView() {
 
 export function restoreQueryView(q) {
   if (!q) return;
-  setQuerySurface(q.surface || 'both');
+  setQuerySurface(q.surface || 'both', false);
   activeSqlFile = q.file || null;
   renderSqlFile();
   state.queryDb = q.targetDb || null;
@@ -208,6 +210,24 @@ export function initQueryTab() {
   for (const surface of ['editor', 'results', 'both']) {
     $(`#query-show-${surface}`)?.addEventListener('click', () => setQuerySurface(surface));
   }
+  for (const selector of ['#query-surface-tabs', '#query-results-tabs']) $(selector)?.addEventListener('keydown', e => {
+    const tabs = [...e.currentTarget.querySelectorAll('[role="tab"]')].filter(tab => !tab.classList.contains('hidden'));
+    const index = tabs.indexOf(e.target.closest('[role="tab"]'));
+    if (index < 0) return;
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1
+      : e.key === 'ArrowRight' ? (index + 1) % tabs.length
+        : e.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : -1;
+    if (next >= 0) {
+      e.preventDefault();
+      if (selector === '#query-surface-tabs') setQuerySurface(tabs[next].dataset.tabId);
+      else setResultsViewMode(tabs[next].dataset.tabId);
+      tabs[next].focus();
+    }
+  });
+  movimentoRidotto.addEventListener('change', () => {
+    if (movimentoRidotto.matches) $('#query-surface-content')?.getAnimations().forEach(a => a.cancel());
+  });
+  setQuerySurface('both', false);
   initSnippetManager();
   initSqlChunking();
   $('#query-save-sql-btn')?.addEventListener('click', salvaQueryFile);
@@ -419,16 +439,13 @@ export function initQueryTab() {
 }
 
 // Inizializza ed aggancia la gestione del Chunking per File SQL Grandi
-function salvaQueryFile() {
+async function salvaQueryFile() {
   const code = $('#query-editor-input')?.value || '';
-  const url = URL.createObjectURL(new Blob([code], { type: 'text/plain;charset=utf-8' }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `${(state.db || 'query').replace(/[^\w.-]/g, '_')}.sql`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
   const q = queryDocument();
-  if (q) { q.savedCode = code; q.dirty = false; }
+  const blob = new Blob([code], { type: 'text/plain;charset=utf-8' });
+  const nome = `${(state.db || 'query').replace(/[^\w.-]/g, '_')}.sql`;
+  if (!await scaricaFile(blob, nome)) return;
+  if (q) { q.savedCode = code; q.dirty = q.code !== code; }
 }
 
 function initSqlChunking() {
@@ -515,6 +532,7 @@ function initSqlChunking() {
     file.running = true; file.cancelled = false;
     const total = file.chunker.getChunkCount();
     let rows = 0;
+    let previousRunId;
     try {
       for (let i = file.index; i < total && !file.cancelled; i++) {
         if (!file.tab.state.collTabs.some(c => c.id === file.collTabId)) { file.cancelled = true; break; }
@@ -522,14 +540,19 @@ function initSqlChunking() {
         file.message = `Blocco ${i + 1}/${total} ? ${rows} istruzioni eseguite`;
         const code = await preview(file, i);
         if (file.cancelled) break;
-        const result = await runScriptAndWait({ code, engine, ...target, stopOnError, tab: file.tab, collTabId: file.collTabId });
+        const result = await runScriptAndWait({ code, engine, ...target, stopOnError, previousRunId,
+          keepSqlSession: i < total - 1, tab: file.tab, collTabId: file.collTabId });
+        if (isSqlType(file.tab.dbType)) previousRunId = result?.id;
         rows += result?.eseguiti || 0;
         if (result?.status === 'aborted' || result?.status === 'paused' || result?.status === 'error') file.cancelled = true;
       }
       file.message = file.cancelled ? 'Sequenza interrotta' : `Completato ? ${rows} istruzioni eseguite`;
       if (!file.cancelled) file.percent = 100;
     } catch (err) { file.message = `Interrotto: ${err.message}`; }
-    finally { file.running = false; if (activeSqlFile === file) renderSqlFile(); }
+    finally {
+      if (previousRunId) await emit('script:abort', { runId: previousRunId, tabId: file.tab.id }).catch(() => {});
+      file.running = false; if (activeSqlFile === file) renderSqlFile();
+    }
   });
 }
 
@@ -540,11 +563,25 @@ export function loadQueryTab() {
 }
 
 // Resizer verticale tra editor e pannello risultati
-function setQuerySurface(surface) {
+function setQuerySurface(surface, anima = true) {
   const panel = $('.query-main-panel');
   if (!panel) return;
+  const tabs = $('#query-surface-tabs'), content = $('#query-surface-content');
+  const completa = preparaTransizioneTab(tabs);
+  const precedente = panel.dataset.surface;
   panel.dataset.surface = surface;
-  for (const name of ['editor', 'results', 'both']) $(`#query-show-${name}`)?.setAttribute('aria-pressed', String(name === surface));
+  for (const tab of tabs.querySelectorAll('[role="tab"]')) {
+    const attiva = tab.dataset.tabId === surface;
+    tab.setAttribute('aria-selected', String(attiva));
+    tab.tabIndex = attiva ? 0 : -1;
+  }
+  content.setAttribute('aria-labelledby', `query-show-${surface}`);
+  content.getAnimations().forEach(a => a.cancel());
+  if (anima && precedente !== surface && !movimentoRidotto.matches) content.animate([
+    { opacity: .55, clipPath: 'inset(0 0 8px 0)' },
+    { opacity: 1, clipPath: 'inset(0)' },
+  ], { duration: 240, easing: 'cubic-bezier(.16, 1, .3, 1)' });
+  completa();
   requestAnimationFrame(() => { resizeChart(); resizeQueryMap(); });
 }
 
@@ -595,15 +632,26 @@ const VISTE_RISULTATI = {
 };
 
 // Gestione modalità vista risultati (Tabella / JSON / Grafici / Mappa)
-export function setResultsViewMode(mode) {
-  activeViewMode = mode;
+function selezionaSchedaRisultati(mode) {
+  const bar = $('#query-results-tabs');
+  const completa = bar && preparaTransizioneTab(bar);
   const viste = VISTE_RISULTATI;
   for (const [nome, sel] of Object.entries(viste)) {
     const btn = $(sel.btn);
     const view = $(sel.view);
-    if (btn) btn.classList.toggle('active', nome === mode);
+    if (btn) {
+      btn.classList.toggle('active', nome === mode);
+      btn.setAttribute('aria-selected', String(nome === mode));
+      btn.tabIndex = nome === mode ? 0 : -1;
+    }
     if (view) view.classList.toggle('hidden', nome !== mode);
   }
+  completa?.();
+}
+
+export function setResultsViewMode(mode) {
+  activeViewMode = mode;
+  selezionaSchedaRisultati(mode);
 
   // Il traguardo è "disegna un grafico DAI RISULTATI": aprire la vista con il
   // pannello vuoto non è averlo fatto, ed è proprio il caso in cui la guida
@@ -654,6 +702,8 @@ function allargaRisultatiPerDisegno() {
 // Aggiorna badge e metriche
 export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg = null) {
   currentMetrics = [status, timeMs, count, errorMsg];
+  const view = $('#view-query');
+  if (view) view.dataset.queryState = status;
   if (status === 'running') {
     for (const id of ['query-table-view', 'query-json-view', 'chart-empty']) renderDataEmpty($('#' + id), null);
   }
@@ -810,13 +860,7 @@ export function resetQueryView() {
   // La modalità vista appartiene a risultati che non ci sono più. Non si passa
   // da `setResultsViewMode`, che ridisegnerebbe e sposterebbe il divisorio.
   activeViewMode = 'table';
-  const viste = VISTE_RISULTATI;
-  for (const [nome, sel] of Object.entries(viste)) {
-    const btn = $(sel.btn);
-    const view = $(sel.view);
-    if (btn) btn.classList.toggle('active', nome === 'table');
-    if (view) view.classList.toggle('hidden', nome !== 'table');
-  }
+  selezionaSchedaRisultati('table');
 
   updateQueryMetrics('idle');
   segnalaRigaErrore(0);
@@ -937,6 +981,7 @@ function costruisciIntestazione(thead) {
   const manuali = queryLarghezzeManuali;
   configuraColonne(thead.closest('table'), {
     nomi: queryTableCols, righe: queryTableRows, larghezze: queryLarghezze,
+    manuali,
     modificata: nome => manuali.add(nome),
   });
 }
@@ -1238,15 +1283,13 @@ function renderJsonVirtualWindow() {
   if (queryJsonWindow?.righe === queryJsonRows && queryJsonWindow.inizio === inizio
       && queryJsonWindow.fine === fine && queryJsonWindow.altezzaRiga === altezzaRiga) return;
 
-  const focus = container.contains(document.activeElement) ? document.activeElement : null;
-  const frammento = document.createDocumentFragment();
-  const aggiungiSpazio = altezza => {
+  const creaSpazio = () => {
     const spazio = document.createElement('div');
-    spazio.style.height = `${altezza}px`;
     spazio.setAttribute('aria-hidden', 'true');
-    frammento.appendChild(spazio);
+    return spazio;
   };
-  aggiungiSpazio(spazioSopra);
+  const prima = queryJsonWindow?.prima || creaSpazio();
+  const dopo = queryJsonWindow?.dopo || creaSpazio();
   const nodi = new Map();
   for (let i = inizio; i < fine; i++) {
     const riga = queryJsonRows[i];
@@ -1259,13 +1302,23 @@ function renderJsonVirtualWindow() {
     nodo.style.marginLeft = `${(riga.livello + 1) * 16}px`;
     nodo.dataset.jsonIndex = i;
     nodi.set(riga, nodo);
-    frammento.appendChild(nodo);
   }
-  aggiungiSpazio(spazioSotto);
-  container.replaceChildren(frammento);
+  // Come nella griglia, le righe ancora visibili restano collegate: staccarle
+  // e rifocalizzarle accorciava il contenitore e riportava Chrome mobile in cima.
+  if (!queryJsonWindow) container.replaceChildren(prima, dopo);
+  for (const [riga, nodo] of queryJsonNodes) {
+    if (!nodi.has(riga)) nodo.remove();
+  }
+  prima.style.height = `${spazioSopra}px`;
+  dopo.style.height = `${spazioSotto}px`;
+  let successivo = dopo;
+  for (let i = fine - 1; i >= inizio; i--) {
+    const nodo = nodi.get(queryJsonRows[i]);
+    if (nodo.parentNode !== container) container.insertBefore(nodo, successivo);
+    successivo = nodo;
+  }
   queryJsonNodes = nodi;
-  queryJsonWindow = { righe: queryJsonRows, inizio, fine, altezzaRiga };
-  if (focus?.isConnected) focus.focus({ preventScroll: true });
+  queryJsonWindow = { righe: queryJsonRows, inizio, fine, altezzaRiga, prima, dopo };
 }
 
 function attachJsonVScroll() {
@@ -1390,7 +1443,7 @@ function fetchCollectionsForSchemaBrowser(dbName, container) {
     .catch((schemaErr) => {
       if (container.isConnected === false || !isForActiveTab(schemaErr)) return;
       // Fallback su db:collections in caso di errore
-      return emit('db:collections', { tabId, db: dbName })
+      return emit('db:collections', { tabId, db: dbName, includeCounts: false })
         .then((res) => {
           if (container.isConnected === false || !isForActiveTab(res)) return;
           renderSchemaTreeForDb(dbName, container, res.collections);
@@ -1730,11 +1783,11 @@ export function queryTarget() {
 // a cosa serve ciascun motore, e servono l\u00ec dentro (si sceglie una volta); nella
 // barra deve restare leggibile il bersaglio, che \u00e8 l'informazione che cambia.
 const ETICHETTA_MOTORE = {
-  auto: '\u26a1 Auto',
-  mysql: '\ud83d\uddc4 MySQL',
-  postgresql: '\ud83d\uddc4 PostgreSQL',
-  mongodb: '\ud83c\udf43 MongoDB',
-  crossdb: '\ud83d\udd00 Cross-DB',
+  auto: 'Auto',
+  mysql: 'MySQL',
+  postgresql: 'PostgreSQL',
+  mongodb: 'MongoDB',
+  crossdb: 'Cross-DB',
 };
 
 // Indicatore sempre visibile nella barra della tab: prima non c'era modo di
@@ -1746,7 +1799,12 @@ export function renderQueryTarget() {
   if (!el) return;
   const { db, coll } = queryTarget();
   const explicit = !!state.queryDb;
-  el.textContent = db ? `${db}${coll ? ' \u25b8 ' + coll : ''}` : 'nessun database selezionato';
+  // Il database si accorcia prima della collection; i nomi restano dati, anche se contengono HTML.
+  el.innerHTML = db
+    ? `<span class="query-target-db${coll ? '' : ' query-target-current'}">${esc(db)}</span>`
+      + (coll ? ` ${ICO('chevron-right')} <span class="query-target-current">${esc(coll)}</span>` : '')
+    : '<span class="query-target-empty">nessun database selezionato</span>';
+  refreshLucideIcons(el);
   el.classList.toggle('query-target-explicit', explicit);
 
   const motore = $('#query-target-engine')?.value || 'auto';
@@ -1762,6 +1820,7 @@ export function renderQueryTarget() {
   const btn = $('#query-target-btn');
   if (btn) {
     btn.title = [
+      db ? `Esegui su: ${db}${coll ? ' / ' + coll : ''}` : 'Nessun database selezionato.',
       motore === 'auto'
         ? 'Motore: deciso dal tipo del database corrente.'
         : `Motore forzato: ${ETICHETTA_MOTORE[motore] || motore}.`,
@@ -2047,10 +2106,5 @@ export function exportQueryResults(format) {
   }
 
   const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+  return scaricaFile(blob, filename);
 }

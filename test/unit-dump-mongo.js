@@ -78,7 +78,8 @@ function clientFinto({ documenti, hello = { isWritablePrimary: true } }) {
     assert.ok(manifest.notes.some((n) => /cursore ordinario/.test(n)), 'e lo dice anche nelle note');
     const dati = manifest.files.find((f) => f.kind === 'data');
     assert.ok(dati.sha256 && dati.bytes > 0);
-    const righe = fs.readFileSync(path.join(esito.backupDir, dati.path), 'utf8').trim().split('\n').map(parseRiga);
+    const righe = fs.readFileSync(path.join(esito.backupDir, dati.path), 'utf8').trim().split('\n').map(line =>
+      require('bson').deserialize(require('../db/mongoBson').decode(JSON.parse(line)), { promoteValues: false }));
     assert.strictEqual(righe.length, 2);
     assert.strictEqual(righe[0].lungo._bsontype, 'Long', 'Long(5) resta Long sul disco');
     assert.strictEqual(righe[0].doppio._bsontype, 'Double', 'Double(3) resta Double sul disco');

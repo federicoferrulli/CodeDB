@@ -1,0 +1,10 @@
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+OK Large Objects codedb-json: byte, OID nuovi, array, domini, compositi e riferimenti regclass.
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK Large Objects sql: byte, OID nuovi, array, domini, compositi e riferimenti regclass.
+OK Large Objects backup: byte, OID nuovi, array, domini, compositi e riferimenti regclass.
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK Large Objects pg_dump: byte, OID nuovi, array, domini, compositi e riferimenti regclass.
+OK Large Objects incrementale: aggiornamento binario senza modificare la riga referente.
+OK Large Objects selettivo: copiati soltanto i binari delle tabelle richieste.
+OK Large Objects errore: rifiuto del vincolo, journal e pulizia dei soli binari dello staging.

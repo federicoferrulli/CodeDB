@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
+import { $, emit, esc, toast, positionFixedDropdown, isForActiveTab, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
 import { openCollTab } from './colltabs.js';
 import { activeTab } from './tabs.js';
 // Le euristiche di analisi dello schema stanno in un modulo condiviso col
@@ -26,6 +26,71 @@ import { tabellaVuota, contaVuote, statoComandi, cercaNodo, messaggioRicerca } f
 
 let graphInstance = null;
 let graphResizeObserver = null;
+let movimentoCamera = null;
+let cameraManovrata = false;
+
+function fermaMovimentoCamera() {
+  if (movimentoCamera !== null) cancelAnimationFrame(movimentoCamera);
+  movimentoCamera = null;
+  if (graphInstance) graphInstance.controls().autoRotate = autoRotateActive;
+}
+
+function prendiControlloCamera() {
+  cameraManovrata = true;
+  fermaMovimentoCamera();
+}
+
+function muoviCamera(posizione, bersaglio, durata = 1200) {
+  fermaMovimentoCamera();
+  const grafo = graphInstance;
+  const da = grafo.cameraPosition();
+  const mira = { ...grafo.controls().target };
+  const inizio = performance.now();
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) durata = 0;
+  grafo.controls().autoRotate = false;
+  const interpola = (a, b, t) => ({
+    x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t,
+  });
+  // I tween della libreria non si annullano: un solo RAF governa posizione e bersaglio insieme.
+  const avanza = (ora) => {
+    const t = durata ? Math.min(1, (ora - inizio) / durata) : 1;
+    const morbido = t * t * (3 - 2 * t);
+    grafo.cameraPosition(interpola(da, posizione, morbido), interpola(mira, bersaglio, morbido), 0);
+    if (t < 1) movimentoCamera = requestAnimationFrame(avanza);
+    else fermaMovimentoCamera();
+  };
+  avanza(inizio);
+}
+
+function centraNodo(node, distanza = 120) {
+  const bersaglio = { x: node.x, y: node.y, z: is2DMode ? 0 : (node.z ?? 0) };
+  if (!Object.values(bersaglio).every(Number.isFinite)) return;
+  prendiControlloCamera();
+  const camera = graphInstance.cameraPosition();
+  const direzione = { x: camera.x - bersaglio.x, y: camera.y - bersaglio.y, z: camera.z - bersaglio.z };
+  let lunghezza = Math.hypot(direzione.x, direzione.y, direzione.z);
+  if (lunghezza < 1e-6) {
+    Object.assign(direzione, { x: 0, y: 0, z: 1 });
+    lunghezza = 1;
+  }
+  muoviCamera(is2DMode ? { ...bersaglio, z: 300 } : {
+    x: bersaglio.x + direzione.x / lunghezza * distanza,
+    y: bersaglio.y + direzione.y / lunghezza * distanza,
+    z: bersaglio.z + direzione.z / lunghezza * distanza,
+  }, bersaglio);
+}
+
+function inquadraGrafo(durata, margine) {
+  fermaMovimentoCamera();
+  const da = graphInstance.cameraPosition();
+  const mira = { ...graphInstance.controls().target };
+  // Riusa i limiti della scena della libreria, senza avviare un suo tween concorrente.
+  graphInstance.zoomToFit(0, margine);
+  const a = graphInstance.cameraPosition();
+  const bersaglio = { ...graphInstance.controls().target };
+  graphInstance.cameraPosition(da, mira, 0);
+  muoviCamera(a, bersaglio, durata);
+}
 // Le texture delle etichette sono identiche a parità di nome del nodo e vengono
 // ricreate a ogni ridisegno: su uno schema da 60 tabelle sono 60 canvas 256×128
 // per volta, mai liberati. Si memoizzano per nome e si liberano con l'istanza.
@@ -37,6 +102,9 @@ let textTextureCache = new Map();
 // oltre il tetto del browser (~16 in Chrome) il canvas diventa nero fino a un
 // ricaricamento della pagina.
 function distruggiGrafo() {
+  fermaMovimentoCamera();
+  graphInstance?.controls().removeEventListener?.('start', prendiControlloCamera);
+  cameraManovrata = false;
   const vecchia = graphInstance;
   graphInstance = null;
   if (vecchia) {
@@ -510,13 +578,7 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     })
     .onNodeClick((node) => {
       selectedNodeId = node.id;
-      const distance = is2DMode ? 200 : 120;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, (is2DMode ? 0 : node.z) || 1);
-      graphInstance.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: is2DMode ? 300 : (node.z || 0) * distRatio },
-        { x: node.x, y: node.y, z: is2DMode ? 0 : node.z || 0 },
-        1200
-      );
+      centraNodo(node);
 
       showTableDetailsPanel(node.name, currentSearchQuery);
       // Con una tabella scelta il filtro dei vicini diventa esprimibile.
@@ -525,16 +587,19 @@ export function renderGraph3d({ preserveInstance = false } = {}) {
     });
 
   const controlli = graphInstance.controls && graphInstance.controls();
-  if (is2DMode) {
-    graphInstance.cameraPosition({ x: 0, y: 0, z: 350 }, { x: 0, y: 0, z: 0 }, 500);
+  if (!aggiornaInPosto) {
+    controlli?.addEventListener?.('start', prendiControlloCamera);
+    if (is2DMode) muoviCamera({ x: 0, y: 0, z: 350 }, { x: 0, y: 0, z: 0 }, 500);
   }
   applicaNavigazione(controlli);
-  // Quando la disposizione si ferma si inquadra tutto: passando a 2D il grafo
-  // si distende sul piano e occupa un'area diversa da quella di prima.
+  // L'inquadratura iniziale non deve sostituire una selezione o un gesto dell'utente.
   if (typeof graphInstance.onEngineStop === 'function') {
     const mia = graphInstance;
+    let primaDisposizione = true;
     graphInstance.onEngineStop(() => {
-      if (graphInstance === mia && typeof mia.zoomToFit === 'function') mia.zoomToFit(600, 60);
+      if (graphInstance !== mia || !primaDisposizione) return;
+      primaDisposizione = false;
+      if (!cameraManovrata) inquadraGrafo(600, 60);
     });
   }
 
@@ -762,13 +827,7 @@ function showTableDetailsPanel(tableName, highlightQuery) {
       if (!graphInstance) return;
       const targetNode = graphInstance.graphData().nodes.find((n) => n.name === targetName);
       if (targetNode && targetNode.x != null) {
-        const distance = 120;
-        const distRatio = 1 + distance / Math.hypot(targetNode.x, targetNode.y, targetNode.z || 1);
-        graphInstance.cameraPosition(
-          { x: targetNode.x * distRatio, y: targetNode.y * distRatio, z: (targetNode.z || 0) * distRatio },
-          { x: targetNode.x, y: targetNode.y, z: targetNode.z || 0 },
-          1200
-        );
+        centraNodo(targetNode);
         showTableDetailsPanel(targetName, currentSearchQuery);
       }
     });
@@ -980,7 +1039,7 @@ function runSchemaAudit() {
   }
 }
 
-function saveSchemaSnapshotLocal() {
+async function saveSchemaSnapshotLocal() {
   const schema = state.dbSchema || currentSchemaData;
   if (!schema) {
     toast('Nessuno schema disponibile da salvare.', true);
@@ -996,15 +1055,8 @@ function saveSchemaSnapshotLocal() {
 
   const jsonText = JSON.stringify(payload, null, 2);
   const blob = new Blob([jsonText], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `schema-snapshot-${state.db || 'db'}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  toast(`File snapshot "schema-snapshot-${state.db || 'db'}.json" salvato sul tuo computer!`);
+  const nome = `schema-snapshot-${state.db || 'db'}.json`;
+  if (await scaricaFile(blob, nome)) toast(`Download dello snapshot "${nome}" avviato.`);
 }
 
 function renderDiffReport(snapshot) {
@@ -1160,13 +1212,7 @@ export function initGraph3d() {
     const targetNode = risultato.nodo;
     if (targetNode && targetNode.x != null) {
       selectedNodeId = targetNode.id;
-      const distance = 100;
-      const distRatio = 1 + distance / Math.hypot(targetNode.x, targetNode.y, targetNode.z || 1);
-      graphInstance.cameraPosition(
-        { x: targetNode.x * distRatio, y: targetNode.y * distRatio, z: (targetNode.z || 0) * distRatio },
-        { x: targetNode.x, y: targetNode.y, z: targetNode.z || 0 },
-        1200
-      );
+      centraNodo(targetNode, 100);
       showTableDetailsPanel(targetNode.name, currentSearchQuery);
       aggiornaComandi();
     }
@@ -1299,11 +1345,11 @@ export function initGraph3d() {
   setupToolbarDropdown('#graph3d-hop-btn', '#graph3d-hop-menu');
 
   const chiudiMenu = () => {
-    document.querySelectorAll('.toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
-    document.querySelectorAll('.dropdown-trigger-btn[aria-expanded]').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+    document.querySelectorAll('.graph3d-bar .toolbar-dropdown-menu').forEach((m) => m.classList.add('hidden'));
+    document.querySelectorAll('.graph3d-bar .dropdown-trigger-btn[aria-expanded]').forEach((t) => t.setAttribute('aria-expanded', 'false'));
   };
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('pointerdown', (e) => {
     if (!e.target.closest('.toolbar-dropdown-wrap') && !e.target.closest('.toolbar-dropdown-menu')) {
       chiudiMenu();
     }
@@ -1315,7 +1361,10 @@ export function initGraph3d() {
   });
 
   window.addEventListener('resize', chiudiMenu);
-  window.addEventListener('scroll', chiudiMenu, true);
+  window.addEventListener('scroll', (e) => {
+    if (e.target instanceof Element && e.target.closest('.toolbar-dropdown-menu')) return;
+    chiudiMenu();
+  }, true);
 
   // 1. Shortest Path Modal Trigger & Handler
   const pathBtn = $('#graph3d-find-path');
@@ -1508,6 +1557,7 @@ export function initGraph3d() {
   if (diffFileInput) {
     diffFileInput.addEventListener('change', (e) => {
       const file = e.target.files[0];
+      e.target.value = '';
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (evt) => {
@@ -1518,6 +1568,7 @@ export function initGraph3d() {
           toast('Impossibile leggere il file JSON: ' + err.message, true);
         }
       };
+      reader.onerror = () => toast('Impossibile leggere il file selezionato. Sceglilo di nuovo.', true);
       reader.readAsText(file);
     });
   }
@@ -1582,7 +1633,7 @@ export function initGraph3d() {
       clearShortestPath(true);
       aggiornaComandi();
       if (graphInstance) {
-        graphInstance.zoomToFit(1000, 50);
+        inquadraGrafo(1000, 50);
         graphInstance.nodeColor(graphInstance.nodeColor()).linkWidth(graphInstance.linkWidth());
       }
     });
@@ -1595,7 +1646,7 @@ export function initGraph3d() {
 
   const exportPngBtn = $('#graph3d-export-png');
   if (exportPngBtn) {
-    exportPngBtn.addEventListener('click', () => {
+    exportPngBtn.addEventListener('click', async () => {
       if (!graphInstance) return;
       try {
         const renderer = graphInstance.renderer();
@@ -1603,13 +1654,7 @@ export function initGraph3d() {
         const camera = graphInstance.camera();
         renderer.render(scene, camera);
         const dataUrl = renderer.domElement.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.download = `schema-${state.db || 'db'}-3d.png`;
-        link.href = dataUrl;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        toast('Immagine PNG esportata con successo!');
+        if (await scaricaFile(dataUrl, `schema-${state.db || 'db'}-3d.png`)) toast('Download dell’immagine PNG avviato.');
       } catch (err) {
         console.error('Errore export PNG:', err);
         toast('Impossibile esportare l\'immagine PNG.', true);

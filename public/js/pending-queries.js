@@ -1,4 +1,5 @@
 import { chiediConferma } from './conferma.js';
+import { mountArcControls } from '../arc/ui.js';
 import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
@@ -352,12 +353,12 @@ let yPositions = [];
 let pendingVScrollAttached = false;
 let lastRenderedStart = -1;
 let lastRenderedEnd = -1;
+let selectedPendingId = null;
+let pendingFilter = 'all';
 
-function getItemHeight(item) {
-  // Se la scheda contiene un banner di errore, richiede maggiore altezza (185px vs 145px);
-  // gli script aggiungono la riga di avanzamento (barra + contatori).
-  const base = item && item.error ? 185 : 145;
-  return base + (item && item.kind === 'script' ? 34 : 0);
+function getItemHeight() {
+  // Il registro mostra solo il riepilogo; codice ed errori hanno spazio nel dettaglio.
+  return 106;
 }
 
 function computeYPositions(items) {
@@ -426,62 +427,82 @@ function buildScriptProgressHtml(item) {
     : '';
   return `
       <div class="pending-script-progress">
-        <div class="pending-progress-track"><div class="pending-progress-fill" style="width:${pct}%"></div></div>
+        <div class="pending-progress-track" role="progressbar" aria-label="Avanzamento script" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><div class="pending-progress-fill" style="width:${pct}%"></div></div>
         <span class="pending-progress-text">${ICO('scroll-text')} ${eseguiti}/${total} istruzioni${item.falliti ? ` · ${item.falliti} errori` : ''}${daDove}</span>
       </div>`;
 }
 
 function buildPendingCard(item, index) {
-  const isStopPoint = index === 0 && !$('#pending-search-input')?.value.trim();
-  const dateStr = item.startedAt ? new Date(item.startedAt).toLocaleTimeString() : '';
-  const durationStr = item.elapsedMs != null
-    ? `${item.elapsedMs} ms`
-    : item.status === 'running'
-      ? `in esecuzione da ${Math.round((Date.now() - item.startedAt) / 1000)}s`
-      : '-';
-
   const itemH = getItemHeight(item);
-  const topY = yPositions[index] || (index * 150);
-
   const card = document.createElement('div');
-  card.className = `pending-item ${isStopPoint ? 'pending-stop-point' : ''}`;
+  card.className = 'pending-item';
+  card.id = `pending-row-${index}`;
+  card.setAttribute('role', 'option');
+  card.setAttribute('aria-selected', String(item.id === selectedPendingId));
+  card.setAttribute('data-id', item.id);
   card.style.position = 'absolute';
-  card.style.top = `${topY}px`;
+  card.style.top = `${yPositions[index]}px`;
   card.style.left = '0';
   card.style.right = '0';
-  card.style.height = `${itemH - 10}px`;
-  card.setAttribute('data-id', item.id);
-
+  card.style.height = `${itemH - 6}px`;
   card.innerHTML = `
-      <div class="pending-item-header">
-        <div class="pending-item-title">
-          ${isStopPoint ? `<span class="badge-stop-point" title="Punto in cui l'esecuzione si è fermata">${ICO('map-pin')} DA QUI CI SI È FERMATI</span>` : ''}
-          <span class="pending-engine">${esc((item.engine || 'auto').toUpperCase())}</span>
-          <span class="pending-target">${esc(item.connName || 'Connessione')} → ${esc(item.db || '-')}${item.coll ? '.' + esc(item.coll) : ''}</span>
-        </div>
-        <div class="pending-item-meta">
-          ${getStatusBadgeHtml(item.status)}
-          <span class="pending-time">${ICO('clock')} ${dateStr} (${durationStr})</span>
-        </div>
-      </div>
-
-      ${item.error ? `<div class="pending-error" title="${esc(item.error)}">${ICO('triangle-alert')} ${esc(item.error)}</div>` : ''}
-
-      ${item.kind === 'script' ? buildScriptProgressHtml(item) : ''}
-
-      <div class="pending-code-wrap">
-        <pre class="pending-code"><code>${esc(item.code)}</code></pre>
-      </div>
-
-      <div class="pending-actions">
-        <button type="button" class="btn btn-sm btn-primary btn-resume-pending" data-id="${esc(item.id)}">${ICO('play')} ${item.kind === 'script' && item.status === 'paused' ? 'Riprendi da dov\'era' : 'Riprendi'}</button>
-        <button type="button" class="btn btn-sm btn-secondary btn-copy-pending" data-id="${esc(item.id)}">${ICO('copy')} Copia</button>
-        <button type="button" class="btn btn-sm btn-secondary btn-resolve-pending" data-id="${esc(item.id)}">${ICO('check')} Segna risolta</button>
-        <button type="button" class="btn btn-sm btn-danger btn-remove-pending" data-id="${esc(item.id)}">${ICO('trash-2')} Rimuovi</button>
-      </div>
-    `;
-
+      <div class="pending-row-top"><span class="pending-row-connection" title="${esc(item.connName || 'Connessione')}">${esc(item.connName || 'Connessione')}</span><time>${item.startedAt ? new Date(item.startedAt).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }) : '—'}</time></div>
+      <strong class="pending-row-target" title="${esc([item.db, item.coll].filter(Boolean).join(' / '))}">${esc([item.db, item.coll].filter(Boolean).join(' / ') || 'Query senza database')}</strong>
+      <span class="pending-row-code">${esc(item.code || 'Query vuota')}</span>
+      <div class="pending-row-status">${getStatusBadgeHtml(item.status)}${item.kind === 'script' ? '<span>Script</span>' : ''}</div>`;
   return card;
+}
+
+function renderPendingDetail(animate = false) {
+  const detail = $('#pending-detail');
+  if (!detail) return;
+  const restoreFocus = detail.contains(document.activeElement);
+  const item = activeFilteredItems.find(q => q.id === selectedPendingId);
+  if (!item) {
+    const empty = !currentPendingItems.length;
+    detail.innerHTML = `<div class="pending-empty">${ICO(empty ? 'circle-check' : 'search')}<h3 tabindex="-1">${empty ? 'Tutto in ordine' : 'Nessuna corrispondenza'}</h3><p>${empty ? 'Le query completate escono dal registro. Qui ritroverai quelle in corso o da riprendere.' : 'Prova un altro termine o scegli un filtro diverso.'}</p></div>`;
+  } else {
+    const latest = currentPendingItems.find(q => q.status !== 'running')?.id === item.id;
+    const editorOnly = item.status === 'running' || (item.kind === 'script' && !knowsScriptRun(item.runId));
+    const date = item.startedAt ? new Date(item.startedAt).toLocaleString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—';
+    const duration = item.elapsedMs != null ? ` · ${item.elapsedMs} ms` : '';
+    detail.innerHTML = `
+      <div class="pending-detail-heading">
+        <button type="button" class="ghost pending-back">${ICO('arrow-left')} Registro</button>
+        <div class="pending-detail-status">${getStatusBadgeHtml(item.status)}${latest ? `<span class="pending-latest">${ICO('map-pin')} Ultima interruzione</span>` : ''}</div>
+        <h3 tabindex="-1">${esc(item.coll || item.db || 'Query senza database')}</h3>
+        <div class="pending-detail-context">${ICO('database')}<span>${esc(item.connName || 'Connessione')}<span aria-hidden="true"> / </span>${esc(item.db || '—')}</span><span class="pending-engine">${esc((item.engine || 'auto').toUpperCase())}</span></div>
+        <p class="pending-time">${ICO('clock')} ${esc(date + duration)}</p>
+      </div>
+      ${item.error ? `<div class="pending-error">${ICO('circle-alert')}<div><strong>Da correggere prima di ripartire</strong><p>${esc(item.error)}</p></div></div>` : ''}
+      ${item.kind === 'script' ? buildScriptProgressHtml(item) : ''}
+      <div class="pending-code-panel">
+        <div class="pending-code-label">${ICO(item.kind === 'script' ? 'scroll-text' : 'terminal')} ${item.kind === 'script' ? 'Script' : 'Query'}<span>${String(item.code || '').split('\n').length} righe</span></div>
+        <pre class="pending-code" tabindex="0" aria-label="Codice della query"><code>${esc(item.code)}</code></pre>
+      </div>
+      <p class="pending-resume-hint">${editorOnly ? 'Il codice viene aperto nell’editor, senza avviare una nuova esecuzione.' : item.kind === 'script' ? 'Lo script riparte dal cursore conservato nella sessione.' : 'Riprendi esegue la query sulla connessione di origine.'}</p>
+      <div class="pending-actions">
+        <button type="button" class="ghost btn-sm btn-copy-pending" data-id="${esc(item.id)}">${ICO('copy')} Copia</button>
+        <button type="button" class="ghost btn-sm btn-resolve-pending" data-id="${esc(item.id)}">${ICO('check')} Segna risolta</button>
+        <button type="button" class="ghost btn-icon btn-remove-pending" data-id="${esc(item.id)}" aria-label="Rimuovi query dal registro" title="Rimuovi query dal registro">${ICO('trash-2')}</button>
+        <button type="button" class="primary btn-resume-pending" data-id="${esc(item.id)}">${ICO(editorOnly ? 'arrow-up-right' : 'play')} ${editorOnly ? 'Apri nell’editor' : item.kind === 'script' && item.status === 'paused' ? 'Riprendi script' : 'Riprendi'}</button>
+      </div>`;
+  }
+  mountArcControls(detail);
+  refreshLucideIcons(detail);
+  if (restoreFocus) detail.querySelector('h3')?.focus({ preventScroll: true });
+  if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) detail.animate(
+    [{ opacity: .55, transform: 'translateX(6px)' }, { opacity: 1, transform: 'none' }],
+    { duration: 220, easing: 'cubic-bezier(.16,1,.3,1)' });
+}
+
+function selectPending(id, animate = true) {
+  if (id === selectedPendingId) return;
+  selectedPendingId = id;
+  for (const card of renderedCards.values()) card.setAttribute('aria-selected', String(card.dataset.id === id));
+  const selected = [...renderedCards.values()].find(card => card.dataset.id === id);
+  if (selected) $('#pending-queries-list')?.setAttribute('aria-activedescendant', selected.id);
+  renderPendingDetail(animate);
 }
 
 export function renderPendingVirtualWindow() {
@@ -496,11 +517,8 @@ export function renderPendingVirtualWindow() {
     lastRenderedEnd = -1;
     vContentEl = null;
     renderedCards.clear();
-    listEl.innerHTML = `
-      <div class="empty-state">
-        <p class="sub-text">Nessuna query in sospeso o corrispondente alla ricerca.</p>
-      </div>
-    `;
+    listEl.innerHTML = '<p class="pending-list-empty">Nessuna query da mostrare.</p>';
+    listEl.removeAttribute('aria-activedescendant');
     return;
   }
 
@@ -550,6 +568,9 @@ export function renderPendingVirtualWindow() {
     vContentEl.appendChild(card);
     refreshLucideIcons(card);
   }
+  const selected = [...renderedCards.values()].find(card => card.dataset.id === selectedPendingId);
+  if (selected) listEl.setAttribute('aria-activedescendant', selected.id);
+  else listEl.removeAttribute('aria-activedescendant');
 }
 
 export function filterPendingModalList() {
@@ -571,9 +592,14 @@ export function filterPendingModalList() {
     });
   }
 
+  activeFilteredItems = activeFilteredItems.filter(item => pendingFilter === 'all' || (pendingFilter === 'running' ? item.status === 'running' : item.status !== 'running'));
+  if (!activeFilteredItems.some(item => item.id === selectedPendingId)) selectedPendingId = activeFilteredItems[0]?.id || null;
+  const count = activeFilteredItems.length;
+  $('#pending-list-count').textContent = `${count} query${term || pendingFilter !== 'all' ? ' corrispondenti' : ' nel registro'}`;
   computeYPositions(activeFilteredItems);
   forceResetVScroll();
   renderPendingVirtualWindow();
+  renderPendingDetail();
 }
 
 function attachPendingVScroll() {
@@ -586,9 +612,34 @@ function attachPendingVScroll() {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(renderPendingVirtualWindow);
   });
+  new ResizeObserver(() => renderPendingVirtualWindow()).observe(listEl);
+  listEl.addEventListener('click', e => {
+    const row = e.target.closest('.pending-item');
+    if (!row) return;
+    selectPending(row.dataset.id);
+    if (matchMedia('(max-width: 650px)').matches) {
+      $('#pending-detail').scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+      $('#pending-detail h3')?.focus({ preventScroll: true });
+    } else listEl.focus({ preventScroll: true });
+  });
+  listEl.addEventListener('keydown', e => {
+    if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key) || !activeFilteredItems.length) return;
+    e.preventDefault();
+    const current = Math.max(0, activeFilteredItems.findIndex(item => item.id === selectedPendingId));
+    const index = e.key === 'Home' ? 0 : e.key === 'End' ? activeFilteredItems.length - 1 : Math.max(0, Math.min(activeFilteredItems.length - 1, current + (e.key === 'ArrowDown' ? 1 : -1)));
+    const top = yPositions[index], bottom = yPositions[index + 1];
+    if (top < listEl.scrollTop) listEl.scrollTop = top;
+    else if (bottom > listEl.scrollTop + listEl.clientHeight) listEl.scrollTop = bottom - listEl.clientHeight;
+    renderPendingVirtualWindow(); selectPending(activeFilteredItems[index].id);
+  });
 
-  // Event Delegation per i pulsanti di azione nella lista virtualizzata
-  listEl.addEventListener('click', (e) => {
+  // Le azioni appartengono alla query selezionata, anche dopo un aggiornamento live.
+  $('#pending-detail').addEventListener('click', (e) => {
+    if (e.target.closest('.pending-back')) {
+      listEl.scrollIntoView({ block: 'start' });
+      listEl.focus({ preventScroll: true });
+      return;
+    }
     const resumeBtn = e.target.closest('.btn-resume-pending');
     if (resumeBtn) {
       const id = resumeBtn.getAttribute('data-id');
@@ -633,6 +684,12 @@ export function renderPendingModalList() {
   if (!listEl) return;
 
   currentPendingItems = listPending();
+  const counts = { all: currentPendingItems.length, running: currentPendingItems.filter(item => item.status === 'running').length };
+  counts.review = counts.all - counts.running;
+  $('#pending-count').textContent = `${counts.all} query`;
+  document.querySelectorAll('[data-pending-count]').forEach(el => { el.textContent = counts[el.dataset.pendingCount]; });
+  $('#btn-clear-resolved-pending').disabled = !counts.review;
+  $('#btn-clear-all-pending').disabled = !counts.all;
   filterPendingModalList();
   attachPendingVScroll();
 }
@@ -751,11 +808,20 @@ export function initPendingQueries() {
       filterPendingModalList();
     });
   }
+  document.querySelectorAll('[data-pending-filter]').forEach(button => {
+    button.addEventListener('click', () => {
+      pendingFilter = button.dataset.pendingFilter;
+      document.querySelectorAll('[data-pending-filter]').forEach(el => el.setAttribute('aria-pressed', String(el === button)));
+      $('#pending-queries-list').scrollTop = 0;
+      filterPendingModalList();
+    });
+  });
 
   if (btnTop && modal) {
     btnTop.addEventListener('click', () => {
       renderPendingModalList();
       modal.classList.remove('hidden');
+      requestAnimationFrame(() => searchInput?.focus({ preventScroll: true }));
     });
   }
 
@@ -774,16 +840,18 @@ export function initPendingQueries() {
   }
 
   if (clearResolvedBtn) {
-    clearResolvedBtn.addEventListener('click', () => {
+    clearResolvedBtn.addEventListener('click', async () => {
+      if (!await chiediConferma('Rimuovere dal registro le query inattive, comprese quelle in pausa o in errore? Le query in esecuzione restano nel registro.')) return;
       clearResolvedPending();
-      toast('Query completate rimosse dallo storico recente');
+      toast('Query inattive rimosse dal registro');
     });
   }
 
   if (clearAllBtn) {
-    clearAllBtn.addEventListener('click', () => {
+    clearAllBtn.addEventListener('click', async () => {
+      if (!await chiediConferma('Svuotare il registro delle query? Le query in esecuzione continueranno a lavorare.')) return;
       clearAllPending();
-      toast('Tutte le query in sospeso e lo storico sono stati svuotati');
+      toast('Registro delle query svuotato');
     });
   }
 

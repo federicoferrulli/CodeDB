@@ -1,0 +1,21 @@
+{
+  "failures": [
+    "PostgreSQL SSH chiave: port non caricato",
+    "PostgreSQL SSH chiave: port cambiato senza modifica",
+    "PostgreSQL SSH chiave: readOnly cambiato senza modifica",
+    "MySQL SSH password: port non caricato",
+    "MySQL SSH password: port cambiato senza modifica",
+    "MySQL SSH password: readOnly cambiato senza modifica",
+    "MongoDB SSH file: readOnly cambiato senza modifica",
+    "MongoDB URI: readOnly cambiato senza modifica",
+    "Postgres alias: dbType cambiato senza modifica",
+    "Postgres alias: database cambiato senza modifica",
+    "Postgres alias: readOnly cambiato senza modifica",
+    "Postgres alias: sshHost cambiato senza modifica",
+    "Postgres alias: sshPort cambiato senza modifica",
+    "Postgres alias: sshUser cambiato senza modifica",
+    "Postgres alias: sshAuth cambiato senza modifica",
+    "Postgres alias: sshKeyFile cambiato senza modifica",
+    "Postgres alias: sshHostKey cambiato senza modifica"
+  ]
+}

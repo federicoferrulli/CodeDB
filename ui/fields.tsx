@@ -7,7 +7,7 @@ import { DateField } from './date-field';
 
 type Model = HTMLInputElement | HTMLSelectElement;
 const entries = new Map<Model, { host: HTMLElement; root: Root; sync: () => void; dispose: () => void }>();
-const selector = 'select, input[type="checkbox"], input[type="color"], input[type="date"], input[type="datetime-local"]';
+const selector = 'select, input[type="checkbox"], input[type="color"], input[type="date"], input[type="datetime-local"], input[data-arc-date-native]';
 
 function labelOf(model: Model) {
   const label = model.labels?.[0]?.cloneNode(true) as HTMLElement | undefined;
@@ -30,7 +30,7 @@ function watchProperty(model: Model, property: string, sync: () => void) {
  * Arc è l'unica superficie interattiva; gli eventi utente passano dal modello.
  */
 function mountField(model: Model) {
-  const calendar = model instanceof HTMLInputElement && ['date', 'datetime-local'].includes(model.type);
+  const calendar = model instanceof HTMLInputElement && (['date', 'datetime-local'].includes(model.type) || model.hasAttribute('data-arc-date-native'));
   if (entries.has(model) || (model.closest('[data-arc-owned]') && !(calendar && model.dataset.arcComponent === 'input')) || model.dataset.arcModel !== undefined) return;
   const host = document.createElement('span');
   host.className = calendar ? 'arc-field-host arc-date-field' : 'arc-field-host';
@@ -98,8 +98,10 @@ function mountField(model: Model) {
   const focus = model.focus;
   model.focus = options => host.querySelector<HTMLElement>('button, input, [tabindex="0"]')?.focus(options);
   const onLabel = (event: MouseEvent) => {
-    if (event.target === model || host.contains(event.target as Node) || (event.target as HTMLElement).closest('button, a, input, select')) return;
-    event.preventDefault(); host.querySelector<HTMLButtonElement>('button')?.click();
+    if (event.target === model || (event.target as HTMLElement).closest('button, a, input, select, textarea')) return;
+    // I cursori Arc dentro una label non devono attivare anche il modello nativo nascosto.
+    event.preventDefault();
+    if (!host.contains(event.target as Node)) host.querySelector<HTMLButtonElement>('button')?.click();
   };
   const labels = [...model.labels || []];
   labels.forEach(label => label.addEventListener('click', onLabel));

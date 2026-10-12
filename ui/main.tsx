@@ -1,7 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { useState } from 'react';
-import { LayoutGrid } from 'lucide-react';
 import { EmptyState } from './components/arc/empty-state/empty-state';
 import Toast from './components/arc/toast/toast';
 import { initDialogs } from './dialogs';
@@ -10,9 +9,10 @@ import { initPrompt } from './prompt';
 import { initControls } from './controls';
 import { initErrors } from './errors';
 import './components/arc/foundation.css';
-export { createArcInput, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect, mountArcEditActions } from './editor-controls';
+export { createArcInput, createArcTextarea, createArcButton, createArcSelect, createArcCheckbox, controlElement, updateArcSelect, mountArcEditActions } from './editor-controls';
 export { initControls as mountArcControls } from './controls';
 export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
+export { removeDialog } from './dialogs';
 import { renderDataEmpty } from './data-empty';
 export { renderDataEmpty };
 import { initGridFields } from './editor-controls';
@@ -36,9 +36,9 @@ if (welcome) {
   });
 }
 const placeholder = document.getElementById('placeholder');
-if (placeholder) flushSync(() => createRoot(placeholder).render(<EmptyState title="Esplora i dati"
+if (placeholder) flushSync(() => createRoot(placeholder).render(<EmptyState className="explore-empty" title="Esplora i dati"
   description="Seleziona una collection o tabella dalla barra laterale per visualizzare le righe o eseguire query avanzate."
-  icon={<LayoutGrid size={28} strokeWidth={1.75} />} label="Esplora i dati" />));
+  icon={<svg className="explore-art" viewBox="0 0 192 152" aria-hidden="true" focusable="false"><use href="/explore-data.svg#explore-data" /></svg>} label="Esplora i dati" />));
 
 initPrompt();
 

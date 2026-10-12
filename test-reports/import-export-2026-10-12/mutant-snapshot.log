@@ -1,0 +1,15 @@
+AssertionError [ERR_ASSERTION]: tutte le collection leggono lo stesso istante
++ actual - expected
+
++ 'durante export'
+- 'prima'
+
+    at C:\repository\CodeDB\test\e2e-mongo-snapshot-types.js:30:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'durante export',
+  expected: 'prima',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

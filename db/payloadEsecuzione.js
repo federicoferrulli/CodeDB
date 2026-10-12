@@ -50,7 +50,7 @@
  * server, dopo averlo registrato fra le operazioni in corso. Ciò che arriva a
  * `executeQueryCode` è quindi sempre il valore che il server ha registrato.
  */
-const CAMPI_IMPOSTI_DAL_SERVER = Object.freeze(['runId', 'opHandle', 'run']);
+const CAMPI_IMPOSTI_DAL_SERVER = Object.freeze(['runId', 'opHandle', 'run', 'sessions']);
 
 // Marcatura non enumerabile: uno spread (`{ ...richiesta }`) la perde, e questo
 // è voluto. Chi ricompone il payload a mano deve ripassare dalla regola.

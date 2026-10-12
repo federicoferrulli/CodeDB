@@ -5,6 +5,7 @@ const { isWriteSql, isWriteMongoPipeline, assertNoMongoServerJs } = require('../
 const { payloadEsecuzione, assertPayloadEsecuzione } = require('../db/payloadEsecuzione');
 const SqlToMql = require('../db/SqlToMql');
 const VirtualJoinEngine = require('../db/VirtualJoinEngine');
+const { conSessioneSql } = require('../db/sqlSessione');
 const MongoScriptRunner = require('../db/MongoScriptRunner');
 const MongoShell = require('../db/MongoShell');
 
@@ -274,6 +275,10 @@ function createModule({ config, connessioni, dependencies }) {
   }
 
   async function executeQueryCode(session, payload) {
+    return conSessioneSql(payload.run?.sqlScope || payload.run || session, () => eseguiQueryNelContesto(session, payload), !!payload.run);
+  }
+
+  async function eseguiQueryNelContesto(session, payload) {
     // Dentro questa funzione l'origine di una chiave non è più distinguibile:
     // che i campi imposti dal server non vengano dal client lo garantisce la
     // regola dichiarata in db/payloadEsecuzione.js, e qui si pretende che ci sia
@@ -316,7 +321,17 @@ function createModule({ config, connessioni, dependencies }) {
       // registrare sempre "lettura", cioè a non lasciare traccia della modifica.
       const catJoin = categoriaVirtualJoin(spec) || 'read';
       try {
-        const docs = await connessioni.executeWithReconnect(session, (strat) => VirtualJoinEngine.execute(spec, strat, strat));
+        const sorgente = (source) => {
+          if (!source) throw new Error('Sorgente Virtual JOIN mancante.');
+          const sessions = payload.sessions || new Map([['default', session]]);
+          const candidati = [...sessions.entries()].filter(([id, s]) => !s.closed && s.strategy
+            && (!source.tabId || id === source.tabId)
+            && (!source.connection || s.connName === source.connection)
+            && (!source.dbType || s.strategy.type === source.dbType || (source.dbType === 'postgres' && s.strategy.type === 'postgresql')));
+          if (candidati.length !== 1) throw new Error('Sorgente Virtual JOIN assente o ambigua: indica connection (nome salvato) oppure tabId di una connessione aperta.');
+          return candidati[0][1].strategy;
+        };
+        const docs = await VirtualJoinEngine.execute(spec, sorgente(spec.virtualJoin?.sourceA), sorgente(spec.virtualJoin?.sourceB));
         return fatto({ docs }, catJoin, 'Virtual JOIN Cross-DB', db, coll);
       } catch (err) {
         throw conContesto(err, catJoin, 'Virtual JOIN Cross-DB', db, coll);

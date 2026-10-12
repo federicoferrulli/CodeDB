@@ -1,0 +1,263 @@
+{
+  "checks": [
+    "Quattro colonne, filtri locali, transazioni inattive visibili, sessioni protette senza azioni e testo escaped",
+    "Aggiornamenti animati solo nelle celle cambiate, identità e focus stabili, query integrale e chiusura del solo lettore",
+    "Conferma annullabile e bersaglio esplicito con identità, indipendente dalla scheda attiva",
+    "Cambio server immediato senza vecchie azioni e risposta tardiva scartata",
+    "Errore senza dati azionabili obsoleti, riprova, e stato vuoto fedele ai filtri",
+    "Layout desktop/mobile/landscape e temi, lettore mobile, conferma mobile annullabile, polling senza sovrapposizioni, movimento ridotto, recupero connessioni e zero errori JS"
+  ],
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "x": 130,
+      "y": 12,
+      "panelWidth": 1180,
+      "scrollWidth": 1178,
+      "clientWidth": 1178,
+      "shellWidth": 1440,
+      "contrast": [
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 4.939961155200591
+        },
+        {
+          "text": "blocca 1 sessione",
+          "ratio": 5.58410083263821
+        },
+        {
+          "text": "UPDATE ordini\nSET stato = 'verificato'\nWHERE id IN (SELECT o",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " In attesa",
+          "ratio": 6.01050796432803
+        },
+        {
+          "text": "SELECT o.id, o.stato, c.ragione_sociale\nFROM ordini AS o\nJOI",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "Il tuo ruolo permette di annullare la query, ma non di termi",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Non mostrate: 1 connessione di CodeDB e 1 processo di serviz",
+          "ratio": 5.317181182198748
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "x": 130,
+      "y": 12,
+      "panelWidth": 1180,
+      "scrollWidth": 1178,
+      "clientWidth": 1178,
+      "shellWidth": 1440,
+      "contrast": [
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.3576494564187565
+        },
+        {
+          "text": "blocca 1 sessione",
+          "ratio": 5.002365548603874
+        },
+        {
+          "text": "UPDATE ordini\nSET stato = 'verificato'\nWHERE id IN (SELECT o",
+          "ratio": 13.652524228926875
+        },
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " In attesa",
+          "ratio": 5.457209361605109
+        },
+        {
+          "text": "SELECT o.id, o.stato, c.ragione_sociale\nFROM ordini AS o\nJOI",
+          "ratio": 13.652524228926875
+        },
+        {
+          "text": "Il tuo ruolo permette di annullare la query, ma non di termi",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "Non mostrate: 1 connessione di CodeDB e 1 processo di serviz",
+          "ratio": 5.844797723334521
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "theme": "dark",
+      "x": 1,
+      "y": 148.640625,
+      "panelWidth": 388,
+      "scrollWidth": 388,
+      "clientWidth": 388,
+      "shellWidth": 390,
+      "contrast": [
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 4.939961155200591
+        },
+        {
+          "text": "blocca 1 sessione",
+          "ratio": 5.58410083263821
+        },
+        {
+          "text": "UPDATE ordini\nSET stato = 'verificato'\nWHERE id IN (SELECT o",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " In attesa",
+          "ratio": 6.01050796432803
+        },
+        {
+          "text": "SELECT o.id, o.stato, c.ragione_sociale\nFROM ordini AS o\nJOI",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "Il tuo ruolo permette di annullare la query, ma non di termi",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Non mostrate: 1 connessione di CodeDB e 1 processo di serviz",
+          "ratio": 5.317181182198748
+        }
+      ]
+    },
+    {
+      "width": 320,
+      "height": 720,
+      "theme": "light",
+      "x": 1,
+      "y": 141.203125,
+      "panelWidth": 318,
+      "scrollWidth": 318,
+      "clientWidth": 318,
+      "shellWidth": 320,
+      "contrast": [
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.3576494564187565
+        },
+        {
+          "text": "blocca 1 sessione",
+          "ratio": 5.002365548603874
+        },
+        {
+          "text": "UPDATE ordini\nSET stato = 'verificato'\nWHERE id IN (SELECT o",
+          "ratio": 13.652524228926875
+        },
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " In attesa",
+          "ratio": 5.457209361605109
+        },
+        {
+          "text": "SELECT o.id, o.stato, c.ragione_sociale\nFROM ordini AS o\nJOI",
+          "ratio": 13.652524228926875
+        },
+        {
+          "text": "Il tuo ruolo permette di annullare la query, ma non di termi",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "Non mostrate: 1 connessione di CodeDB e 1 processo di serviz",
+          "ratio": 5.844797723334521
+        }
+      ]
+    },
+    {
+      "width": 844,
+      "height": 390,
+      "theme": "dark",
+      "x": 1,
+      "y": 121.40625,
+      "panelWidth": 842,
+      "scrollWidth": 842,
+      "clientWidth": 842,
+      "shellWidth": 844,
+      "contrast": [
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 4.939961155200591
+        },
+        {
+          "text": "blocca 1 sessione",
+          "ratio": 5.58410083263821
+        },
+        {
+          "text": "UPDATE ordini\nSET stato = 'verificato'\nWHERE id IN (SELECT o",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "reporting.interno.example:5432",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " In attesa",
+          "ratio": 6.01050796432803
+        },
+        {
+          "text": "SELECT o.id, o.stato, c.ragione_sociale\nFROM ordini AS o\nJOI",
+          "ratio": 15.196934429460859
+        },
+        {
+          "text": "Il tuo ruolo permette di annullare la query, ma non di termi",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Non mostrate: 1 connessione di CodeDB e 1 processo di serviz",
+          "ratio": 5.317181182198748
+        }
+      ]
+    }
+  ],
+  "frames": [
+    "matrix(1, 0, 0, 1, 0, 3)",
+    "matrix(1, 0, 0, 1, 0, 1.80542)",
+    "matrix(1, 0, 0, 1, 0, 1.05029)",
+    "matrix(1, 0, 0, 1, 0, 0.613493)",
+    "matrix(1, 0, 0, 1, 0, 0.361419)",
+    "matrix(1, 0, 0, 1, 0, 0.210242)",
+    "matrix(1, 0, 0, 1, 0, 0.120485)",
+    "matrix(1, 0, 0, 1, 0, 0.0661277)",
+    "matrix(1, 0, 0, 1, 0, 0.0341741)",
+    "matrix(1, 0, 0, 1, 0, 0.0159021)",
+    "matrix(1, 0, 0, 1, 0, 0.00627015)",
+    "matrix(1, 0, 0, 1, 0, 0.00184496)",
+    "matrix(1, 0, 0, 1, 0, 0.000270872)",
+    "matrix(1, 0, 0, 1, 0, 1.10622e-06)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "environment": "Chromium, sessioni e terminazioni sintetiche"
+}

@@ -14,13 +14,13 @@ function createModule({ config }) {
   /* ---------------------------------------------------------------------------
    * Dati della schermata "Informazioni & Licenza" (evento `app:license`).
    *
-   * Le librerie vendorizzate in `public/vendor/` non compaiono in package.json
-   * (non passano da npm), quindi vanno dichiarate: sono le uniche due voci
-   * scritte a mano, con la licenza letta dall'intestazione dei file distribuiti.
+   * Le librerie copiate nel progetto non compaiono in package.json come
+   * dipendenze npm, quindi vanno dichiarate con la loro licenza originale.
    * ------------------------------------------------------------------------- */
   const VENDORIZZATE = [
     { nome: 'echarts', versione: '6.1.0', licenza: 'Apache-2.0', nota: 'grafici (public/vendor/echarts)' },
     { nome: 'leaflet', versione: '1.9.4', licenza: 'BSD-2-Clause', nota: 'mappe delle geometrie (public/vendor/leaflet)' },
+    { nome: 'Arc UI Components', versione: 'Sorgenti locali', licenza: 'MIT', nota: 'componenti Free adattati per CodeDB (public/arc)' },
   ];
 
   /* ---------------------------------------------------------------------------

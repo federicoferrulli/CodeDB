@@ -6,6 +6,7 @@ const MongoScriptRunner = require('../db/MongoScriptRunner');
 const { splitStatementsDetailed, stripSqlNoise } = require('../db/sqlText');
 const { createScriptRun } = require('../db/ScriptRunner');
 const { isWriteSql } = require('../auth/capabilities');
+const { chiudiSessioneSql } = require('../db/sqlSessione');
 
 function createModule({ lock, query, audit, dependencies, errori }) {
   function registra(socketContext, lifecycle) {
@@ -24,7 +25,7 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       if (runId) session.inflight.set(runId, opHandle);
 
       try {
-        const esito = await query.executeQueryCode(session, payloadEsecuzione(payload, { runId, opHandle }));
+        const esito = await query.executeQueryCode(session, payloadEsecuzione(payload, { runId, opHandle, sessions: socketContext.sessions }));
         audit.auditQuery(session, esito.db, esito.coll, esito.code, esito.category, esito.op, 'ok', esito.res, null);
         return cb({ ok: true, ...esito.res, data: esito.res.docs });
       } catch (err) {
@@ -130,7 +131,7 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         // legge quel segno per dire il vero sulla categoria (CDB-69).
         const esito = await query.executeQueryCode(session, payloadEsecuzione(
           { code: stmt.sql, engine: ctx.engine, db: ctx.db, coll: ctx.coll },
-          { opHandle, run }
+          { opHandle, run, sessions: socketContext.sessions }
         ));
         // Il bersaglio può cambiare in corsa (`USE altro_db`): le istruzioni
         // successive devono seguirlo, come farebbe un client SQL.
@@ -197,14 +198,23 @@ function createModule({ lock, query, audit, dependencies, errori }) {
 
       const runId = String(payload.runId || '').trim();
       if (!runId) throw new Error('runId mancante: impossibile seguire e mettere in pausa lo script.');
+      if (runId.length > 100) throw new Error('runId troppo lungo.');
 
       const runs = scriptsOf(session);
+      const precedente = payload.previousRunId ? runs.get(String(payload.previousRunId)) : null;
+      if (payload.previousRunId) {
+        if (!precedente || precedente.status !== 'done' || !precedente.keepSqlSession || precedente.claimed) {
+          throw new Error('La sessione del blocco SQL precedente non è disponibile.');
+        }
+        await precedente.completion;
+        if (precedente.claimed) throw new Error('Il blocco SQL precedente ha già una continuazione.');
+      }
       if (runs.has(runId)) throw new Error('Uno script con questo identificativo è già in corso.');
       // I run terminati restano consultabili, ma non all'infinito.
       for (const [id, r] of runs) {
-        if (r.status === 'done' || r.status === 'aborted') runs.delete(id);
+        if ((r.status === 'done' || r.status === 'aborted') && !r.keepSqlSession) runs.delete(id);
       }
-      if (runs.size >= query.MAX_SCRIPTS_PER_SESSION) {
+      if (runs.size - (precedente ? 1 : 0) >= query.MAX_SCRIPTS_PER_SESSION) {
         throw new Error(`Troppi script attivi su questa connessione (max ${query.MAX_SCRIPTS_PER_SESSION}): mettine in pausa o chiudine uno.`);
       }
 
@@ -242,6 +252,9 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         statements,
         stopOnError: !!payload.stopOnError,
       });
+      run.sqlScope = precedente?.sqlScope || run;
+      run.keepSqlSession = payload.keepSqlSession === true && session.dbType !== 'mongodb';
+      if (precedente) { precedente.claimed = true; precedente.keepSqlSession = false; runs.delete(precedente.id); }
       // Deposito dei result set su file. Se non si riesce ad aprirlo (cartella
       // temporanea non scrivibile) lo script parte lo stesso: si perdono le
       // schede, non l'esecuzione.
@@ -293,11 +306,11 @@ function createModule({ lock, query, audit, dependencies, errori }) {
      * `script:execute` e `script:resume` — e la correzione era stata applicata a
      * uno solo: alla ripresa il run restava `running` per sempre.
      */
-    function chiudiRunInErrore(session, run, err, dove) {
+    async function chiudiRunInErrore(session, run, err, dove) {
       console.error(`[script] errore imprevisto ${dove}:`, err && err.message);
       try {
         const stato = run.fail(err);
-        finalizzaScript(session, run, stato);
+        await finalizzaScript(session, run, stato);
       } catch (e2) {
         console.error('[script] impossibile chiudere il run:', e2 && e2.message);
       }
@@ -305,8 +318,13 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       try { scriptsOf(session).delete(run.id); } catch { /* sessione già chiusa */ }
     }
 
-    function finalizzaScript(session, run, stato) {
+    async function finalizzaScript(session, run, stato) {
       if (stato.status !== 'done' && stato.status !== 'aborted') return;
+      if (!run.keepSqlSession || stato.status === 'aborted' || stato.falliti) {
+        run.keepSqlSession = false;
+        const annullate = await chiudiSessioneSql(run.sqlScope || run);
+        if (annullate && stato.status === 'done') run.onProgress({ runId: run.id, tipo: 'avviso', avviso: 'Script concluso senza COMMIT: la transazione rimasta aperta è stata annullata.' });
+      }
       audit.auditQuery(
         session,
         (run.ctx && run.ctx.db) || null,
@@ -412,6 +430,7 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         try { await session.strategy.cancelQuery(corrente.opHandle); } catch (_) {}
       }
       runs.delete(run.id);
+      await chiudiSessioneSql(run.sqlScope || run);
       cb({ ok: true, aborted: true });
     });
 

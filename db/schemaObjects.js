@@ -41,7 +41,7 @@ async function readSchemaObjects(strategy, dbType, db) {
 
 function objectInventory(objects) {
   const out = {};
-  for (const field of ['views', 'collectionOptions', 'routines', 'triggers', 'events', 'sequences']) {
+  for (const field of ['views', 'collectionOptions', 'routines', 'triggers', 'events', 'sequences', 'types', 'collations', 'extensions']) {
     out[field] = (objects && objects[field] || []).map((item) => String(item.name)).sort();
   }
   return out;
@@ -143,7 +143,7 @@ function canonicalMongoIndex(index) {
 
 function canonicalSchemaInventory(objects, { db = null } = {}) {
   const result = {};
-  for (const field of ['views', 'collectionOptions', 'routines', 'triggers', 'events', 'sequences', 'sequenceValues']) {
+  for (const field of ['views', 'collectionOptions', 'routines', 'triggers', 'events', 'sequences', 'sequenceValues', 'types', 'collations', 'extensions']) {
     result[field] = (objects && objects[field] || []).map((item) => {
       const normalized = { ...item };
       if (normalized.ddl != null) normalized.ddl = canonicalSqlForDb(normalized.ddl, db);

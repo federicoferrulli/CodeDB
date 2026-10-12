@@ -20,6 +20,7 @@ export interface BottomSheetProps {
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  onExitComplete?: () => void;
   title: string;
   description?: string;
   fitContent?: boolean;
@@ -50,8 +51,9 @@ const LOW_DIM = .78;
 
 const settle = motionTokens.spring.smooth;
 
-const leave = { ...motionTokens.spring.smooth, visualDuration: .3 };
-const fade = { duration: motionTokens.duration.fast, ease: [...motionTokens.ease.standard] as [number, number, number, number] };
+const enter = { duration: motionTokens.surface.sheetEnter, ease: [...motionTokens.ease.enter] as [number, number, number, number] };
+const leave = { duration: motionTokens.surface.sheetExit, ease: [.4, 0, 1, 1] as [number, number, number, number] };
+const fade = { duration: motionTokens.surface.reduced, ease: [...motionTokens.ease.standard] as [number, number, number, number] };
 
 const rubber = (distance: number) => (1 - 1 / (distance * .55 / STRETCH + 1)) * STRETCH;
 const unrubber = (stretch: number) => (1 / (1 - Math.min(stretch, STRETCH - 1) / STRETCH) - 1) * STRETCH / .55;
@@ -65,7 +67,7 @@ function velocityOf(samples: Drag["samples"], now: number) {
   return (last.y - first.y) / ((last.t - first.t) / 1000);
 }
 
-export function BottomSheet({ trigger, container, open: openProp, defaultOpen = false, onOpenChange, ...props }: BottomSheetProps) {
+export function BottomSheet({ trigger, container, open: openProp, defaultOpen = false, onOpenChange, onExitComplete, ...props }: BottomSheetProps) {
   const [uncontrolled, setUncontrolled] = useState(defaultOpen);
   const open = openProp ?? uncontrolled;
   const setOpen = useCallback((next: boolean) => {
@@ -76,7 +78,7 @@ export function BottomSheet({ trigger, container, open: openProp, defaultOpen = 
   return <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
     {trigger ? <DialogPrimitive.Trigger asChild>{trigger}</DialogPrimitive.Trigger> : null}
     
-    <AnimatePresence>{open && <DialogPrimitive.Portal key="sheet" container={container} forceMount><Sheet {...props} onDismiss={dismiss} /></DialogPrimitive.Portal>}</AnimatePresence>
+    <AnimatePresence onExitComplete={onExitComplete}>{open && <DialogPrimitive.Portal key="sheet" container={container} forceMount><Sheet {...props} onDismiss={dismiss} /></DialogPrimitive.Portal>}</AnimatePresence>
   </DialogPrimitive.Root>;
 }
 
@@ -122,7 +124,7 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
     const target = offset(stop);
     const done = () => { const callback = arrive.current; arrive.current = undefined; callback?.(); };
     if (reduced) { y.jump(target); done(); return; }
-    animate(y, target, { ...(stop === "closed" ? leave : settle), ...(velocity === undefined ? {} : { velocity }), onComplete: done });
+    animate(y, target, { ...(stop === "closed" ? leave : velocity === undefined ? enter : settle), ...(velocity === undefined ? {} : { velocity }), onComplete: done });
   }, [offset, reduced, y]);
 
   const rest = useCallback((stop: number, velocity?: number) => {
@@ -296,8 +298,8 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
     body.scrollBy({ top: down ? step : -step, behavior: reduced ? "auto" : "smooth" });
   }
 
-  // La parte traslata sotto lo schermo non sottrae spazio allo scroll dei contenuti.
-  const hiddenBody = useTransform(y, value => Math.max(0, value));
+  // Lo spazio utile cambia solo al cambio detent o viewport, mai a ogni frame del movimento.
+  const hiddenBody = useTransform(height, full => full * (1 - stops[detent]! / stops[top]!));
   const expanded = detent === top;
   const style = { y, opacity: presence, "--sheet-max": stops[top], "--sheet-extension": `${EXTENSION}px` } as unknown as CSSProperties;
 

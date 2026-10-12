@@ -3,6 +3,8 @@
 const { randomUUID } = require('crypto');
 
 const { creaLettoreCodedbJson } = require('./artefattoStreaming');
+const { creaLettoreSql } = require('./importSql');
+const { congela } = require('./pianoComune');
 
 function createImportUploadRegistry({
   id = randomUUID,
@@ -59,14 +61,16 @@ function createImportUploadRegistry({
     close() {
       for (const key of uploads.keys()) discard(key);
     },
-    start(ownerId, actorId = null) {
+    start(ownerId, actorId = null, { format = 'codedb-json', dbType = null } = {}) {
+      if (!['codedb-json', 'sql'].includes(format)) throw new Error('Formato di import non supportato.');
+      if (format === 'sql' && !['mysql', 'postgresql'].includes(dbType)) throw new Error('Il dump SQL richiede una connessione SQL.');
       purge();
       if (uploads.size >= maxActive) throw new Error('Troppi caricamenti di import contemporanei.');
       const ownerUploads = [...uploads.values()].filter((upload) => upload.ownerId === ownerId).length;
       if (ownerUploads >= maxPerOwner) throw new Error('Troppi caricamenti di import contemporanei per questo account.');
       const uploadId = String(id());
       const upload = {
-        ownerId, actorId, chunks: [], nextIndex: 0, bytes: 0, artifact: null, touchedAt: now(), timer: null,
+        ownerId, actorId, format, dbType, chunks: [], nextIndex: 0, bytes: 0, artifact: null, touchedAt: now(), timer: null,
       };
       uploads.set(uploadId, upload);
       arm(uploadId, upload);
@@ -111,7 +115,7 @@ function createImportUploadRegistry({
       if (!upload.artifact) {
         try {
           const gruppi = [];
-          const lettore = creaLettoreCodedbJson({
+          const lettore = upload.format === 'sql' ? creaLettoreSql({ dbType: upload.dbType }) : creaLettoreCodedbJson({
             // I documenti si raccolgono per POSIZIONE, nell'ordine in cui i
             // rispettivi `docs` si aprono: è lo stesso ordine dell'involucro.
             // Per nome non si potrebbe — un nome può mancare o ripetersi.
@@ -125,11 +129,11 @@ function createImportUploadRegistry({
           upload.chunks = [];
           const parsed = lettore.fine();
           const collections = Array.isArray(parsed.collections) ? parsed.collections : [];
-          for (let i = 0; i < collections.length; i += 1) collections[i].docs = gruppi[i] || [];
-          upload.artifact = normalize ? normalize(parsed) : parsed;
+          if (upload.format !== 'sql') for (let i = 0; i < collections.length; i += 1) collections[i].docs = gruppi[i] || [];
+          upload.artifact = congela(normalize ? normalize(parsed) : parsed);
         } catch (err) {
           discard(uploadId);
-          throw new Error(`File .codedb.json non valido: ${err.message}`);
+          throw new Error(`File di import non valido: ${err.message}`);
         }
         upload.chunks = [];
       }

@@ -1,12 +1,19 @@
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-COPY . .
+COPY server.js electron-server-auth.js LICENSE.md EULA.md MANLEVA.md ./
+COPY auth ./auth
+COPY backup ./backup
+COPY db ./db
+COPY mcp ./mcp
+COPY server ./server
+COPY public ./public
+COPY bin ./bin
 
 # connections.ini e backups/ vivono fuori dall'immagine (montati come volumi
 # in docker-compose.yml) cosi' sopravvivono alla ricreazione del container.
@@ -23,17 +30,13 @@ ENV PORT=3030
 ENV HOST=0.0.0.0
 # Dove la porta è PUBBLICATA: è questo, non HOST, che decide chi può raggiungere
 # CodeDB, ed è ciò che il server controlla prima di partire (bindEsposto in
-# server.js). Il default vale "pubblicata su loopback", che è quello che fa
-# docker-compose.yml salvo scelta contraria; il compose la ricava da BIND_ADDR,
+# server.js). Il compose la ricava da BIND_ADDR (loopback salvo scelta esplicita),
 # così una sola variabile in .env resta la fonte di verità.
 #
-# ATTENZIONE per chi usa `docker run` a mano: pubblicando la porta su un
-# indirizzo raggiungibile dalla rete (`-p 0.0.0.0:3030:3030`) va dichiarato
-# anche qui `-e CODEDB_PUBLIC_BIND=0.0.0.0`, altrimenti il server crede di
-# essere su loopback e non applica né il controllo su HTTPS né quello
-# sull'autenticazione. Prima questa immagine impostava CODEDB_TRUST_PROXY_TLS=1
-# in modo fisso, che li disattivava entrambi in ogni caso.
-ENV CODEDB_PUBLIC_BIND=127.0.0.1
+# Senza compose si presume esposizione in rete: avvio consentito solo con TLS
+# e autenticazione dichiarati. Per un docker run esclusivamente locale servono
+# sia -p 127.0.0.1:3030:3030 sia -e CODEDB_PUBLIC_BIND=127.0.0.1.
+ENV CODEDB_PUBLIC_BIND=0.0.0.0
 ENV CODEDB_CONNECTIONS_FILE=/app/data/connections.ini
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

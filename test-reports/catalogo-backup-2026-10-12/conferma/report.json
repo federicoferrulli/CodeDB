@@ -1,0 +1,628 @@
+{
+  "environment": "Chromium, risposte simulate",
+  "checks": [
+    "Schede animate, tastiera e bozza conservata",
+    "Validazione, tutti i parametri, errore/riprova e origine dell’operazione dopo cambio connessione",
+    "Verifica, storico e conferma del ripristino: destinazione esplicita, annullamento senza scritture",
+    "Storico animato e interrompibile, focus e nodi stabili, esiti conservati, date sconosciute e catene incomplete esplicite",
+    "Catalogo vuoto, filtro senza corrispondenze, errore e ricaricamento",
+    "Risposta del catalogo superata scartata e verifica in corso recuperata dopo il filtro",
+    "Chiaro/scuro, 320–1440px, landscape, drawer Arc, touch, moto ridotto e chiusura senza animazioni residue"
+  ],
+  "layouts": [
+    {
+      "width": 880,
+      "height": 876,
+      "theme": "dark",
+      "view": "catalog",
+      "x": 280,
+      "y": 12,
+      "scrollWidth": 878,
+      "clientWidth": 878,
+      "shellWidth": 1440,
+      "contrast": [
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "PostgreSQL · 5 copie",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "12 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261012-inc",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena di 2",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "09 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261009-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "08 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261008-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "07 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261007-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MongoDB · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Data non disponibile",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "copia-senza-data",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena incompleta",
+          "ratio": 9.29292998535924
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        }
+      ]
+    },
+    {
+      "width": 880,
+      "height": 876,
+      "theme": "light",
+      "view": "catalog",
+      "x": 280,
+      "y": 12,
+      "scrollWidth": 878,
+      "clientWidth": 878,
+      "shellWidth": 1440,
+      "contrast": [
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "PostgreSQL · 5 copie",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "12 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261012-inc",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " catena di 2",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "09 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261009-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "08 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261008-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "07 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261007-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "MongoDB · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "Data non disponibile",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "copia-senza-data",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " catena incompleta",
+          "ratio": 5.2699325244181665
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        }
+      ]
+    },
+    {
+      "width": 388,
+      "height": 695.359375,
+      "theme": "dark",
+      "view": "catalog",
+      "x": 1,
+      "y": 148.640625,
+      "scrollWidth": 388,
+      "clientWidth": 388,
+      "shellWidth": 390,
+      "contrast": [
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "PostgreSQL · 5 copie",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "12 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261012-inc",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena di 2",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "09 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261009-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "08 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261008-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "07 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261007-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MongoDB · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Data non disponibile",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "copia-senza-data",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena incompleta",
+          "ratio": 9.29292998535924
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        }
+      ]
+    },
+    {
+      "width": 318,
+      "height": 578.796875,
+      "theme": "light",
+      "view": "catalog",
+      "x": 1,
+      "y": 141.203125,
+      "scrollWidth": 318,
+      "clientWidth": 318,
+      "shellWidth": 320,
+      "contrast": [
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "PostgreSQL · 5 copie",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "12 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261012-inc",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " catena di 2",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "09 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261009-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "08 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261008-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "07 ott 2026, 12:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261007-full",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "MongoDB · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "Data non disponibile",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "copia-senza-data",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": " catena incompleta",
+          "ratio": 5.2699325244181665
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.844797723334521
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 14.67911847763172
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.844797723334521
+        }
+      ]
+    },
+    {
+      "width": 842,
+      "height": 268.59375,
+      "theme": "dark",
+      "view": "catalog",
+      "x": 1,
+      "y": 121.40625,
+      "scrollWidth": 842,
+      "clientWidth": 842,
+      "shellWidth": 844,
+      "contrast": [
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "PostgreSQL · 5 copie",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "12 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261012-inc",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena di 2",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "09 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261009-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "08 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261008-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "07 ott 2026, 12:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261007-full",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "MongoDB · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "Data non disponibile",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "copia-senza-data",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": " catena incompleta",
+          "ratio": 9.29292998535924
+        },
+        {
+          "text": "MySQL · 1 copia",
+          "ratio": 5.317181182198748
+        },
+        {
+          "text": "11 ott 2026, 11:00",
+          "ratio": 13.530022672282197
+        },
+        {
+          "text": "20261011-full",
+          "ratio": 5.317181182198748
+        }
+      ]
+    }
+  ],
+  "motion": [
+    "matrix(1.30045, 0, 0, 1, -149.281, 0)",
+    "matrix(1.20246, 0, 0, 1, -100.592, 0)",
+    "matrix(1.13227, 0, 0, 1, -65.721, 0)",
+    "matrix(1.08663, 0, 0, 1, -43.0451, 0)",
+    "matrix(1.05688, 0, 0, 1, -28.2607, 0)",
+    "matrix(1.03754, 0, 0, 1, -18.6508, 0)",
+    "matrix(1.0247, 0, 0, 1, -12.2702, 0)",
+    "matrix(1.016, 0, 0, 1, -7.94847, 0)",
+    "matrix(1.01023, 0, 0, 1, -5.08092, 0)",
+    "matrix(1.00634, 0, 0, 1, -3.14893, 0)",
+    "matrix(1.00377, 0, 0, 1, -1.87355, 0)",
+    "matrix(1.00212, 0, 0, 1, -1.05564, 0)",
+    "matrix(1.0011, 0, 0, 1, -0.545002, 0)",
+    "matrix(1.0005, 0, 0, 1, -0.247589, 0)",
+    "matrix(1.00018, 0, 0, 1, -0.0916704, 0)",
+    "matrix(1.00005, 0, 0, 1, -0.0224895, 0)",
+    "matrix(1, 0, 0, 1, -0.00185966, 0)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ],
+  "errors": [],
+  "historyMotion": [
+    "inset(0px 0px 100%)",
+    "inset(0px 0px 67.3374%)",
+    "inset(0px 0px 44.1061%)",
+    "inset(0px 0px 28.8876%)",
+    "inset(0px 0px 18.9654%)",
+    "inset(0px 0px 12.485%)",
+    "inset(0px 0px 8.21367%)",
+    "inset(0px 0px 5.33459%)",
+    "inset(0px 0px 3.40095%)",
+    "inset(0px 0px 2.11391%)",
+    "inset(0px 0px 1.258%)",
+    "inset(0px 0px 0.709022%)",
+    "inset(0px 0px 0.366211%)",
+    "inset(0px 0px 0.166481%)",
+    "inset(0px 0px 0.0612893%)",
+    "inset(0px 0px 0.0151789%)",
+    "inset(0px 0px 0.00123779%)",
+    "none",
+    "none",
+    "none",
+    "none",
+    "none"
+  ]
+}

@@ -1,0 +1,211 @@
+{
+  "type": "mysql",
+  "casi": [
+    {
+      "tipo": "TINYINT",
+      "valore": "-128"
+    },
+    {
+      "tipo": "TINYINT UNSIGNED",
+      "valore": "255"
+    },
+    {
+      "tipo": "SMALLINT",
+      "valore": "-32768"
+    },
+    {
+      "tipo": "SMALLINT UNSIGNED",
+      "valore": "65535"
+    },
+    {
+      "tipo": "MEDIUMINT",
+      "valore": "-8388608"
+    },
+    {
+      "tipo": "MEDIUMINT UNSIGNED",
+      "valore": "16777215"
+    },
+    {
+      "tipo": "INT",
+      "valore": "-2147483648"
+    },
+    {
+      "tipo": "INT UNSIGNED",
+      "valore": "4294967295"
+    },
+    {
+      "tipo": "BIGINT",
+      "valore": "-9223372036854775808"
+    },
+    {
+      "tipo": "BIGINT UNSIGNED",
+      "valore": "18446744073709551615"
+    },
+    {
+      "tipo": "BOOLEAN",
+      "valore": "1"
+    },
+    {
+      "tipo": "DECIMAL(65,30)",
+      "valore": "12345678901234567890123456789012345.123456789012345678901234567890"
+    },
+    {
+      "tipo": "FLOAT",
+      "valore": "1.2345678"
+    },
+    {
+      "tipo": "DOUBLE",
+      "valore": "1.2345678901234567"
+    },
+    {
+      "tipo": "DOUBLE",
+      "valore": "1.7976931348623157e308"
+    },
+    {
+      "tipo": "DOUBLE",
+      "valore": "4.9406564584124654e-324"
+    },
+    {
+      "tipo": "BIT(1)",
+      "valore": "b'1'"
+    },
+    {
+      "tipo": "BIT(64)",
+      "valore": "b'1111111111111111111111111111111111111111111111111111111111111111'"
+    },
+    {
+      "tipo": "DATE",
+      "valore": "'0000-00-00'"
+    },
+    {
+      "tipo": "DATE",
+      "valore": "'1000-01-01'"
+    },
+    {
+      "tipo": "DATETIME(6)",
+      "valore": "'9999-12-31 23:59:59.999999'"
+    },
+    {
+      "tipo": "TIMESTAMP(6)",
+      "valore": "'2038-01-19 03:14:07.999999'"
+    },
+    {
+      "tipo": "TIME(6)",
+      "valore": "'-838:59:58.123456'"
+    },
+    {
+      "tipo": "YEAR",
+      "valore": "2155"
+    },
+    {
+      "tipo": "CHAR(8)",
+      "valore": "'à 🦊'"
+    },
+    {
+      "tipo": "VARCHAR(20)",
+      "valore": "'  à 🦊  '"
+    },
+    {
+      "tipo": "BINARY(8)",
+      "valore": "X'0001FF'"
+    },
+    {
+      "tipo": "VARBINARY(32)",
+      "valore": "X'00FF005C2722'"
+    },
+    {
+      "tipo": "TINYBLOB",
+      "valore": "X'000102FF005C2722'"
+    },
+    {
+      "tipo": "BLOB",
+      "valore": "X'000102FF005C2722'"
+    },
+    {
+      "tipo": "MEDIUMBLOB",
+      "valore": "X'000102FF005C2722'"
+    },
+    {
+      "tipo": "LONGBLOB",
+      "valore": "X'000102FF005C2722'"
+    },
+    {
+      "tipo": "TINYTEXT",
+      "valore": "CONVERT(X'61C3A0F09FA68A00270A5C' USING utf8mb4)"
+    },
+    {
+      "tipo": "TEXT",
+      "valore": "CONVERT(X'61C3A0F09FA68A00270A5C' USING utf8mb4)"
+    },
+    {
+      "tipo": "MEDIUMTEXT",
+      "valore": "CONVERT(X'61C3A0F09FA68A00270A5C' USING utf8mb4)"
+    },
+    {
+      "tipo": "LONGTEXT",
+      "valore": "CONVERT(X'61C3A0F09FA68A00270A5C' USING utf8mb4)"
+    },
+    {
+      "tipo": "ENUM('a','b,à','🦊')",
+      "valore": "'🦊'"
+    },
+    {
+      "tipo": "SET('a','b à','🦊')",
+      "valore": "'a,🦊'"
+    },
+    {
+      "tipo": "JSON",
+      "valore": "'{\"large\":18446744073709551615,\"decimal\":1.2345678901234567,\"a\":[null,true,\"🦊\"]}'"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('POINT(12.123456789012345 41.12345678901234)',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('LINESTRING(0 0,1.123456789012345 2)',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('POLYGON((0 0,1 0,1 1,0 0))',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('MULTIPOINT((1 2),(3 4))',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('MULTILINESTRING((1 2,3 4))',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('MULTIPOLYGON(((0 0,1 0,1 1,0 0)))',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('GEOMETRYCOLLECTION(POINT(1 2),LINESTRING(0 0,1 1))',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('GEOMETRYCOLLECTION EMPTY',0)"
+    },
+    {
+      "tipo": "GEOMETRY",
+      "valore": "ST_GeomFromText('POINT(41.12345678901234 12.123456789012345)',4326)"
+    },
+    {
+      "tipo": "ENUM('','1','2','🦊')",
+      "valore": "1"
+    },
+    {
+      "tipo": "SET('v0','v1','v2','v3','v4','v5','v6','v7','v8','v9','v10','v11','v12','v13','v14','v15','v16','v17','v18','v19','v20','v21','v22','v23','v24','v25','v26','v27','v28','v29','v30','v31','v32','v33','v34','v35','v36','v37','v38','v39','v40','v41','v42','v43','v44','v45','v46','v47','v48','v49','v50','v51','v52','v53','v54','v55','v56','v57','v58','v59','v60','v61','v62','v63')",
+      "valore": "18446744073709551615"
+    }
+  ],
+  "percorsi": [
+    "codedb-json",
+    "sql",
+    "backup"
+  ],
+  "valoriIdentici": true
+}

@@ -1,5 +1,6 @@
 import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
+import { safeUUID } from './valori.js';
 import { campoScrivibile, identitaRiga } from './righe.js';
 import { $, emit, displayValue, displayValueBreve, idOf, toast, showQueryError, isSqlType, buildJsonNode, showSkeletonGrid, isForActiveTab, captureContext, marcaDatiSporchi, emitFireAndForget, eseguiAOndate, initToolbarDropdown, conCaricamento, refreshLucideIcons } from './utils.js';
 import { openCollTab, pinActiveCollTab, currentCollTab } from './colltabs.js';
@@ -197,7 +198,7 @@ export function runQuery(opts = {}) {
     showSkeletonGrid('#grid');
   }
 
-  emit('collection:find', payload).then((res) => {
+  return emit('collection:find', payload).then((res) => {
     // `st` = stato del tab CHE HA FATTO la richiesta, non di quello attivo ora
     // (vedi emit in utils.js): scrivere sul Proxy `state` significherebbe
     // riversare i risultati di questo tab in un altro.
@@ -332,9 +333,8 @@ function hasExactTotal(st = state) {
 
 // Identificatore univoco di una find/aggregate della griglia, usato per il
 // single-flight (superamento) e per l'annullamento lato server via query:cancel.
-let _gridRunSeq = 0;
 function newRunId() {
-  return `grid-${Date.now().toString(36)}-${++_gridRunSeq}`;
+  return `grid-${safeUUID()}`;
 }
 
 // Annulla la find/aggregate corrente ancora in volo (se presente) e ne dimentica
@@ -1391,7 +1391,7 @@ export function initGrid() {
 
   $('#pager-options-open').addEventListener('click', () => {
     if (!window.matchMedia('(max-width: 900px)').matches) return;
-    closeDrawers();
+    closeDrawers({ immediate: true });
     const panel = $('#pager-options'), opener = $('#pager-options-open');
     // Sposta i controlli originali: Arc, valori e listener restano gli stessi.
     const controls = [$('.pager-size'), $('#infinite-toggle-label')].map(node => ({ node, parent: node.parentNode, next: node.nextSibling }));

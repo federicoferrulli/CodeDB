@@ -1,5 +1,7 @@
 'use strict';
 
+const { EJSON } = require('bson');
+
 /* ---------------------------------------------------------------------------
  * Strategy Pattern: interfaccia comune a tutti i DBMS supportati.
  *
@@ -49,8 +51,9 @@ class DbStrategy {
   supportsNativeRename() { return false; }
   async dropDatabase(_db) { throw unsupported(); }
 
-  /** @returns {Promise<Array<{name: string, type: string, count: number|null}>>} */
-  async listCollections(_db) { throw unsupported(); }
+  /** Conteggi limitati: countApprox indica una stima, countLowerBound un minimo verificato.
+   * @returns {Promise<Array<{name: string, type: string, count: number|null, countApprox: boolean, countLowerBound?: boolean}>>} */
+  async listCollections(_db, _options = {}) { throw unsupported(); }
 
   /** payload.columns (solo SQL): [{ name, type, nullable, default, autoIncrement, primaryKey }] */
   async createCollection(_db, _name, _payload) { throw unsupported(); }
@@ -649,15 +652,13 @@ DbStrategy.maxResultBytes = maxResultBytes;
  */
 async function collectCapped(cursor, cap, budget = maxResultBytes()) {
   const docs = [];
-  let bytes = 0;
+  let bytes = 2;
   let truncated = false;
   for await (const doc of cursor) {
     if (docs.length >= cap) { truncated = true; break; }
     if (budget > 0) {
-      // Stima grossolana ma sufficiente: l'ordine di grandezza è quello che
-      // conta, e il costo è lo stesso della serializzazione che seguirebbe.
-      try { bytes += JSON.stringify(doc).length; } catch { bytes += 1024; }
-      if (bytes > budget && docs.length) { truncated = true; break; }
+      bytes += Buffer.byteLength(EJSON.stringify(doc, { relaxed: true }), 'utf8') + (docs.length ? 1 : 0);
+      if (bytes > budget) { truncated = true; break; }
     }
     docs.push(doc);
   }
@@ -674,10 +675,10 @@ DbStrategy.collectCapped = collectCapped;
  */
 function truncateBySize(rows, budget = maxResultBytes()) {
   if (!budget || !Array.isArray(rows) || !rows.length) return { rows, truncated: false };
-  let bytes = 0;
+  let bytes = 2;
   for (let i = 0; i < rows.length; i++) {
-    try { bytes += JSON.stringify(rows[i]).length; } catch { bytes += 1024; }
-    if (bytes > budget && i > 0) return { rows: rows.slice(0, i), truncated: true };
+    bytes += Buffer.byteLength(EJSON.stringify(rows[i], { relaxed: true }), 'utf8') + (i ? 1 : 0);
+    if (bytes > budget) return { rows: rows.slice(0, i), truncated: true };
   }
   return { rows, truncated: false };
 }

@@ -171,9 +171,8 @@ async function catalogoPostgres(q, schema) {
     });
   }
 
-  // Sequenze INDIPENDENTI possedute da nessuno: quelle possedute da una colonna
-  // le ricrea il tipo `serial`/identity della CREATE TABLE, quindi non sono
-  // oggetti a sé e non generano un arco.
+  // Le sequenze possedute seguono la tabella; quelle indipendenti sono
+  // selezionabili e partecipano alle dipendenze del piano.
   const seq = await q(
     `SELECT s.relname AS seq, t.relname AS tabella
        FROM pg_catalog.pg_class s
@@ -276,6 +275,9 @@ async function leggiCatalogoExport(strategy, dbType, db) {
     }
   }
   for (const routine of oggettiSchema.routines || []) {
+    // Gli overload PostgreSQL condividono la selezione, ma il file conserva
+    // ogni firma: una voce duplicata rendeva il catalogo non esportabile.
+    if (oggetti.some(o => o.tipo === 'routine' && o.nome === routine.name)) continue;
     oggetti.push({ tipo: 'routine', nome: routine.name });
     // Il corpo di una routine può comporre SQL a runtime: quelle dipendenze
     // nessun catalogo le conosce, e darle per assenti è la scorciatoia che
@@ -295,7 +297,7 @@ async function leggiCatalogoExport(strategy, dbType, db) {
     oggetti.push({ tipo: 'evento', nome: evento.name });
   }
   for (const sequenza of oggettiSchema.sequences || []) {
-    oggetti.push({ tipo: 'sequenza', nome: sequenza.name });
+    if (!sequenza.ownerTable) oggetti.push({ tipo: 'sequenza', nome: sequenza.name });
   }
 
   return {
@@ -307,7 +309,7 @@ async function leggiCatalogoExport(strategy, dbType, db) {
     // che scoperto dall'errore del motore al ripristino. La matrice di fedeltà
     // tiene l'elenco completo; qui c'è la parte che riguarda il perimetro.
     fuoriCopertura: tipo === 'postgresql'
-      ? ['tipi definiti dall utente', 'estensioni', 'policy RLS', 'owner e ACL', 'large object']
+      ? ['librerie delle estensioni (richieste già installate)', 'policy RLS', 'owner e ACL', 'Large Objects globali non riferiti da colonne OID']
       : (tipo === 'mongodb' ? ['sharding', 'indici di servizi esterni'] : []),
   };
 }

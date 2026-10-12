@@ -1,0 +1,24 @@
+OK mysql: 1601 righe con chiavi numeriche/binarie e senza chiave, export paginato e backup.
+Error: Ripristino incompleto: cardinalita finale 2997 di 4804 documenti/righe attesi (2997 scritture applicate). bin: cardinalita finale 999, attese 1601 righe/documenti distinti; bin: 999 righe/documenti ma 999 identita distinte (attese 1601); duplicates: cardinalita finale 999, attese 1601 righe/documenti distinti; num: cardinalita finale 999, attese 1601 righe/documenti distinti; num: 999 righe/documenti ma 999 identita distinte (attese 1601) (e altri 2)
+    at runRestore (C:\repository\CodeDB\backup\lib\restore.js:1454:17)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-tipi-pagine.js:27:7 {
+  summary: {
+    targetDb: 'codedb_pages_54b2fc4aa7d60012_copy',
+    layers: 1,
+    totalDocs: 2997,
+    expectedDocs: 4804,
+    totalWrites: 2997,
+    collections: [ [Object], [Object], [Object], [Object] ],
+    problems: [
+      'bin: cardinalita finale 999, attese 1601 righe/documenti distinti',
+      'bin: 999 righe/documenti ma 999 identita distinte (attese 1601)',
+      'duplicates: cardinalita finale 999, attese 1601 righe/documenti distinti',
+      'num: cardinalita finale 999, attese 1601 righe/documenti distinti',
+      'num: 999 righe/documenti ma 999 identita distinte (attese 1601)',
+      'refs: cardinalita finale 0, attese 1 righe/documenti distinti',
+      'refs: 0 righe/documenti ma 0 identita distinte (attese 1)'
+    ],
+    equivalenza: { completa: true, motivo: null }
+  }
+}

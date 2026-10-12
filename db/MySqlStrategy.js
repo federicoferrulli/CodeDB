@@ -1,13 +1,16 @@
 'use strict';
 
+const { prendiConnessioneSql, chiudiStrategiaSql } = require('./sqlSessione');
+
 const { assertImportOutcomeKnown } = require('./importFailure');
 
 const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 
 const mysql = require('mysql2');
 const { colonnaGenerata, defaultDaCreate } = require('./mysqlColonne');
-const { EJSON } = require('bson');
+const { EJSON, Binary } = require('bson');
 const DbStrategy = require('./DbStrategy');
+const { stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
 const { splitStatements } = require('./sqlText');
 const { tabellare } = require('./sqlTabellare');
 const { eseguiBatchScritture } = require('./sqlWriteBatch');
@@ -426,6 +429,7 @@ class MySqlStrategy extends DbStrategy {
   }
 
   async disconnect() {
+    await chiudiStrategiaSql(this);
     if (this.pool) {
       const p = this.pool;
       this.pool = null;
@@ -534,7 +538,7 @@ class MySqlStrategy extends DbStrategy {
     await pool.query(`DROP DATABASE ${qid(name)}`);
   }
 
-  async listCollections(db) {
+  async listCollections(db, { includeCounts = true } = {}) {
     const pool = this.requirePool();
     const [rows] = await pool.query(
       `SELECT TABLE_NAME AS name, TABLE_TYPE AS ttype, TABLE_ROWS AS cnt
@@ -544,13 +548,34 @@ class MySqlStrategy extends DbStrategy {
       [db]
     );
     // TABLE_TYPE: 'BASE TABLE', 'VIEW' oppure 'SYSTEM VIEW' (information_schema).
-    return rows.map((r) => {
+    const collections = rows.map((r) => {
       const isView = String(r.ttype || '').toUpperCase().includes('VIEW');
       return {
         name: r.name,
         type: isView ? 'view' : 'collection',
-        count: isView ? null : Number(r.cnt) || 0, // stima InnoDB
+        ...stimaConteggio(isView || !includeCounts ? null : r.cnt),
       };
+    });
+    if (!includeCounts) return collections;
+    return completaConteggi(collections, async (coll, limit, ms) => {
+      const conn = await pool.getConnection();
+      let avvelenata = false;
+      try {
+        const [[row]] = await conn.query({
+          sql: `SELECT /*+ MAX_EXECUTION_TIME(${ms}) */ COUNT(*) AS n FROM (SELECT 1 FROM ${qtable(db, coll.name)} LIMIT ${limit}) AS campione`,
+          timeout: ms,
+        });
+        return conteggioLimitato(row?.n, coll.count);
+      } catch (err) {
+        avvelenata = MySqlStrategy.isDriverTimeout(err);
+        if (avvelenata) {
+          await this.uccidiSulServer(conn.threadId);
+          conn.destroy();
+        }
+        throw err;
+      } finally {
+        if (!avvelenata) conn.release();
+      }
     });
   }
 
@@ -617,6 +642,19 @@ class MySqlStrategy extends DbStrategy {
   static geoBinding(col, value, geo, { importazione = false } = {}) {
     let colInfo = geo && geo.get(col);
     if (colInfo) {
+      if (typeof value === 'string') {
+        const match = /^(?:SRID=(\d+);)?\s*([A-Z]+\s*(?:\(|EMPTY\b)[\s\S]*)$/i.exec(value.trim());
+        if (!match) throw new Error(`Colonna "${col}": usa WKT, SRID=…;WKT oppure GeoJSON.`);
+        const srid = Number(match[1] ?? colInfo.srid ?? 0);
+        if (!Number.isInteger(srid) || srid < 0 || srid > 4294967295) throw new Error('SRID fuori intervallo.');
+        if (colInfo.srid != null && srid !== colInfo.srid) throw new Error(`Colonna "${col}": richiede SRID ${colInfo.srid}.`);
+        return { sql: `ST_GeomFromText(?, ${srid}, 'axis-order=long-lat')`, param: match[2] };
+      }
+      const bytes = toSqlValue(value);
+      if (Buffer.isBuffer(bytes)) {
+        if (bytes.length < 9) throw new Error(`Colonna "${col}": geometria binaria incompleta.`);
+        return { sql: `ST_GeomFromWKB(?, ${bytes.readUInt32LE(0)}, 'axis-order=long-lat')`, param: bytes.subarray(4) };
+      }
       // I file esportati prima della correzione portano la forma grezza del
       // driver (`{ x, y }` per un punto) invece del GeoJSON: si recupera,
       // invece di chiedere all'utente di rifare l'export.
@@ -823,7 +861,10 @@ class MySqlStrategy extends DbStrategy {
     const tetto = DbStrategy.aggregateTimeoutMs(this.env);
     const richiesta = { sql };
     if (tetto > 0) richiesta.timeout = tetto;
-    const conn = await pool.getConnection();
+    const lease = await prendiConnessioneSql(this, sql, () => pool.getConnection());
+    const conn = lease.conn;
+    let eseguita = false;
+    const letturaIsolata = readOnly && !lease.transazione;
     // Il timeout di mysql2 è lato CLIENT: allo scadere il driver smette di
     // aspettare, ma il server continua a eseguire e il result set arriverà
     // comunque, fuori sincrono con la richiesta successiva. Una connessione
@@ -831,6 +872,9 @@ class MySqlStrategy extends DbStrategy {
     // la connessione.
     let avvelenata = false;
     try {
+      if (readOnly && lease.transazione && !lease.solaLettura) {
+        throw new Error('La lettura protetta non può aprire una seconda transazione: usa BEGIN READ ONLY o completa prima la transazione di scrittura.');
+      }
       if (payload && payload.opHandle) {
         try {
           const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
@@ -838,12 +882,13 @@ class MySqlStrategy extends DbStrategy {
         } catch (_) {}
       }
       await this.usaDatabase(conn, db);
-      if (readOnly) await conn.query('START TRANSACTION READ ONLY');
+      if (letturaIsolata) await conn.query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
         let result, fields;
         try {
-          [result, fields] = await conn.query(richiesta);
+          [result, fields] = await conn.query(richiesta, payload.params);
+          eseguita = true;
         } catch (err) {
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
           avvelenata = true;
@@ -878,8 +923,7 @@ class MySqlStrategy extends DbStrategy {
             if (selectRes) {
               const rows = selectRes.slice(0, cap);
               const columns = (selectFields || []).map((f) => f.name || f);
-              return { docs: rows.map(serializeRow), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true };
-              return { docs: rows.map((r) => serializeRow(r, selectFields || [])), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true };
+              return { docs: rows.map((r) => serializeRow(r, selectFields || [])), columns, total: selectRes.length, skip: 0, limit: cap, resultSet: true, truncated: selectRes.length > cap };
             }
 
             // Soltanto statement di scrittura/DDL (INSERT, UPDATE, CREATE, ecc.)
@@ -890,8 +934,7 @@ class MySqlStrategy extends DbStrategy {
           // Singola SELECT
           const rows = result.slice(0, cap);
           const columns = (fields || []).map((f) => f.name);
-          return { docs: rows.map(serializeRow), columns, total: result.length, skip: 0, limit: cap, resultSet: true };
-          return { docs: rows.map((r) => serializeRow(r, fields || [])), columns, total: result.length, skip: 0, limit: cap, resultSet: true };
+          return { docs: rows.map((r) => serializeRow(r, fields || [])), columns, total: result.length, skip: 0, limit: cap, resultSet: true, truncated: result.length > cap };
         }
 
         // Statement senza result set (UPDATE, DELETE, DDL...): riepilogo.
@@ -902,11 +945,10 @@ class MySqlStrategy extends DbStrategy {
       } finally {
         // Su una connessione avvelenata non si parla più: il ROLLBACK finirebbe
         // per leggere il result set arretrato della query uccisa.
-        if (readOnly && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
+        if (letturaIsolata && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
       }
     } finally {
-      if (avvelenata) { try { conn.destroy(); } catch (_) {} }
-      else conn.release();
+      await lease.termina(eseguita, avvelenata);
     }
   }
 
@@ -1223,24 +1265,33 @@ class MySqlStrategy extends DbStrategy {
 
   async docInsert(db, coll, payload) {
     const pool = this.requirePool();
-    const doc = parseClientValue(payload.doc);
-    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
-      throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
-    }
+    const fields = await this.tableFields(db, coll);
+    const doc = await require('./insertValues').parseSqlInsert(payload.doc, fields);
     const cols = Object.keys(doc);
     const table = qtable(db, coll);
-    let res;
-    if (!cols.length) {
-      [res] = await pool.query(`INSERT INTO ${table} () VALUES ()`);
-    } else {
-      // Una geometria non è un parametro come gli altri: il segnaposto diventa
-      // ST_GeomFromGeoJSON(?) col SRID della colonna (vedi geoBinding).
-      const { geo } = await this.tableColumnsInfo(db, coll);
-      const bind = cols.map((c) => MySqlStrategy.geoBinding(c, doc[c], geo));
-      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map((b) => b.sql).join(', ')})`;
-      [res] = await pool.query(sql, bind.map((b) => b.param));
+    const { geo } = await this.tableColumnsInfo(db, coll);
+    const bind = cols.map(c => MySqlStrategy.geoBinding(c, doc[c], geo, { importazione: true }));
+    const sql = cols.length
+      ? `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES (${bind.map(b => b.sql).join(', ')})`
+      : `INSERT INTO ${table} () VALUES ()`;
+    const conn = await pool.getConnection();
+    let mode;
+    let restored = false;
+    try {
+      const [[session]] = await conn.query('SELECT @@SESSION.sql_mode AS mode');
+      mode = session.mode;
+      const strict = [...new Set([...String(mode).split(',').filter(Boolean), 'STRICT_ALL_TABLES', 'NO_AUTO_VALUE_ON_ZERO'])].join(',');
+      await conn.query('SET SESSION sql_mode = ?', [strict]);
+      // I parametri binari restano byte e NO_BACKSLASH_ESCAPES non cambia la quotatura.
+      const [res] = await conn.execute(sql, bind.map(b => b.param));
+      return { insertedId: JSON.stringify(res.insertId ?? null) };
+    } finally {
+      if (mode != null) {
+        try { await conn.query('SET SESSION sql_mode = ?', [mode]); restored = true; }
+        catch { /* una sessione non ripristinata non torna al pool */ }
+      }
+      if (restored) conn.release(); else conn.destroy();
     }
-    return { insertedId: JSON.stringify(res.insertId || null) };
   }
 
   async docUpdate(db, coll, payload) {
@@ -1326,11 +1377,7 @@ class MySqlStrategy extends DbStrategy {
   // ricreare lo schema all'import.
   async tableDdl(db, coll) {
     const pool = this.requirePool();
-    const [[row]] = await pool.query(`SHOW CREATE TABLE ${qtable(db, coll)}`);
-    // Le view (anche di sistema) restituiscono 'Create View': niente DDL da
-    // esportare, il chiamante le tratta come le collection senza schema.
-    const ddl = row && row['Create Table'];
-    return ddl == null ? null : String(ddl);
+    return require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
   }
 
   async dbSchema(db) {
@@ -1462,23 +1509,19 @@ class MySqlStrategy extends DbStrategy {
     const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 500, 1), 1000);
     const table = qtable(db, coll);
     const pk = await this.primaryKey(db, coll);
-    // Il formato JSON e' anche il trasporto dell'export di un intero database:
-    // le geometrie devono uscire nella lingua comune GeoJSON, non nella
-    // rappresentazione privata del driver (un POINT diventerebbe `{ x, y }`,
-    // che all'import MySQL rifiuta con «Cannot get geometry object»). E' la
-    // stessa scelta gia' fatta su PostgreSQL: qui mancava e basta.
+    // Geometrie e binari viaggiano nei byte nativi, numerici e temporali come testo esatto.
     const primaPagina = !payload.after && !(Number(payload.skip) > 0);
     const metadati = format !== 'csv'
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
-    const selezione = format === 'json' ? await this.selectListFor(db, coll, metadati.info, { preservaSrid: true }) : null;
-    const selectList = selezione ? selezione.list : '*';
+    const selectList = metadati ? require('./sqlTransfer').projection(metadati.info, true) : '*';
 
     let rows;
     let fields;
     let nextAfter = null;
     if (pk.length) {
-      const pkCols = pk.map(qid).join(', ');
+      const pkCols = pk.map(c=>`${table}.${qid(c)}`).join(', ');
+      const ordinalPk = new Set((metadati?.info.columns || []).filter(require('./mysql-ordinal').isOrdinal).map(c=>c.name));
       let whereSql = '';
       let params = [];
       if (payload.after != null && payload.after !== '') {
@@ -1491,7 +1534,8 @@ class MySqlStrategy extends DbStrategy {
         if (!Array.isArray(afterVals) || afterVals.length !== pk.length) {
           throw new Error('Cursore di paginazione non valido.');
         }
-        whereSql = ` WHERE (${pkCols}) > (${pk.map(() => '?').join(', ')})`;
+        const keys = pk.map(c=>ordinalPk.has(c)?`CAST(${qid(c)} AS UNSIGNED)`:qid(c));
+        whereSql = ` WHERE (${keys.join(', ')}) > (${pk.map(c=>ordinalPk.has(c)?'CAST(? AS UNSIGNED)':'?').join(', ')})`;
         params = afterVals.map(toSqlValue);
       }
       [rows, fields] = await pool.query(
@@ -1500,7 +1544,7 @@ class MySqlStrategy extends DbStrategy {
       );
       if (rows.length) {
         const last = rows[rows.length - 1];
-        nextAfter = EJSON.stringify(pk.map((c) => last[c]), { relaxed: true });
+        nextAfter = EJSON.stringify(pk.map((c) => Buffer.isBuffer(last[c]) ? new Binary(last[c]) : last[c]), { relaxed: false });
       }
     } else {
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
@@ -1512,11 +1556,6 @@ class MySqlStrategy extends DbStrategy {
     const total = await this.totaleEsportazione(table, primaPagina);
     let columns = (fields || []).map((f) => f.name);
 
-    if (format === 'json') {
-      // Le geometriche tornano come TESTO GeoJSON: qui diventano oggetti, la
-      // stessa forma che la griglia riceve e che l'import sa riscrivere.
-      MySqlStrategy.geoRowsToJson(rows, selezione ? selezione.geo : null);
-    }
     if (metadati) {
       // Una colonna GENERATA non si puo' nominare in un INSERT: esportarla
       // rendeva il file non reimportabile riga per riga. Il suo valore lo
@@ -1531,14 +1570,10 @@ class MySqlStrategy extends DbStrategy {
 
     let lines;
     if (format === 'sql') {
-      lines = rows.map((r) => {
-        const vals = columns.map((c) => mysql.escape(r[c]));
-        return `INSERT INTO ${table} (${columns.map(qid).join(', ')}) VALUES (${vals.join(', ')});`;
-      });
+      lines = rows.map(r => require('./databaseExport').insertSql('mysql', table, require('./sqlTransfer').encodeRow(r, metadati.info.columns), metadati.info).trim());
     } else if (format === 'json') {
-      // EJSON relaxed: le DATETIME diventano { $date } e il roundtrip
-      // export → import preserva i tipi (vedi collectionImport).
-      lines = rows.map((r) => EJSON.stringify(r, { relaxed: true }));
+      // EJSON canonico per i binari/ordinali; date e decimali restano testo nativo.
+      lines = rows.map(r => require('./sqlTransfer').encodeRow(r, metadati.info.columns));
     } else {
       lines = rows.map((r) => rigaCsv(columns.map((c) => r[c]), { modalita: payload.csvMode }));
     }
@@ -1552,9 +1587,8 @@ class MySqlStrategy extends DbStrategy {
     };
   }
 
-  // Importa un blocco di righe (payload.docs = array di oggetti Extended JSON
-  // serializzati: relaxed = true produce i tipi JS nativi per i parametri
-  // SQL). Le righe con lo stesso insieme di colonne (stesso ordine, il caso
+  // Importa un blocco di righe Extended JSON senza arrotondare i valori numerici.
+  // Le righe con lo stesso insieme di colonne (stesso ordine, il caso
   // comune quando arrivano da un export della stessa tabella) vengono
   // raggruppate in un unico INSERT multi-VALUES, come già fa il restore dei
   // backup; un batch che fallisce viene ripetuto riga per riga per isolare
@@ -1577,10 +1611,14 @@ class MySqlStrategy extends DbStrategy {
     // DESTINAZIONE: e' lei a dire come va scritto un valore, non il file.
     let geo = new Map();
     let scrivibili = new Set();
+    let colonneReali = new Set();
+    let columnTypes = new Map();
     try {
       const info = await this.tableColumnsInfo(db, coll);
+      columnTypes = new Map(info.columns.map(c => [c.name, c]));
+      colonneReali = new Set(info.columns.map(c => c.name));
       geo = info.geo || geo;
-      scrivibili = await this.colonneScrivibili(db, coll);
+      scrivibili = new Set(info.columns.filter(c => !c.generated).map(c => c.name));
     } catch { /* metadati non leggibili: vale il comportamento storico */ }
 
     const parsed = [];
@@ -1595,10 +1633,9 @@ class MySqlStrategy extends DbStrategy {
         // OGNI riga. Si scarta qui, cosi' i file gia' prodotti restano
         // importabili invece di richiedere un nuovo export.
         for (const nome of Object.keys(row)) {
-          if (scrivibili.size && !scrivibili.has(nome)) delete row[nome];
+          if (colonneReali.has(nome) && !scrivibili.has(nome)) delete row[nome];
         }
         const cols = Object.keys(row);
-        if (!cols.length) throw new Error('riga vuota');
         // I valori NON vengono piu' convertiti qui: `geoBinding` decide per
         // ciascuna colonna se serve un segnaposto normale o
         // ST_GeomFromGeoJSON, ed e' lui a chiamare `toSqlValue`.
@@ -1624,7 +1661,10 @@ class MySqlStrategy extends DbStrategy {
       const assegnazioni = aggiornabili.length
         ? aggiornabili.map((c) => `${qid(c)} = VALUES(${qid(c)})`)
         : [`${qid(conflictColumns[0])} = ${qid(conflictColumns[0])}`];
-      return ` ON DUPLICATE KEY UPDATE ${assegnazioni.join(', ')}`;
+      const stessaIdentita = conflictColumns.map(c => `${qid(c)} <=> VALUES(${qid(c)})`).join(' AND ');
+      // Una UNIQUE secondaria non deve aggiornare una riga con un'altra PK.
+      const guardia = `${qid(conflictColumns[0])} = IF(${stessaIdentita}, ${qid(conflictColumns[0])}, NULL)`;
+      return ` ON DUPLICATE KEY UPDATE ${[guardia, ...assegnazioni].join(', ')}`;
     };
 
     // Una tupla per riga con i suoi parametri: le colonne geometriche prendono
@@ -1634,9 +1674,12 @@ class MySqlStrategy extends DbStrategy {
     // MySQL risponde «Cannot get geometry object» su OGNI riga.
     const inserimento = (cols, righe) => {
       const params = [];
-      const tuple = righe.map((r) => {
+      const zeroColumns = [];
+      const tuple = righe.map((r, rowIndex) => {
         const ph = r.values.map((valore, indice) => {
-          const bind = MySqlStrategy.geoBinding(cols[indice], valore, geo, { importazione: true });
+          const ordinal = require('./mysql-ordinal').binding(valore, columnTypes.get(cols[indice]));
+          const bind = ordinal || MySqlStrategy.geoBinding(cols[indice], valore, geo, { importazione: true });
+          if (ordinal?.zero) zeroColumns.push({column:cols[indice],row:rowIndex+1});
           params.push(bind.param);
           return bind.sql;
         });
@@ -1644,7 +1687,7 @@ class MySqlStrategy extends DbStrategy {
       });
       return {
         sql: `INSERT INTO ${table} (${cols.map(qid).join(', ')}) VALUES ${tuple.join(', ')}${coda(cols)}`,
-        params,
+        params, zeroColumns,
       };
     };
 
@@ -1653,38 +1696,51 @@ class MySqlStrategy extends DbStrategy {
     let cur = null;
     for (const p of parsed) {
       const sig = p.cols.join('\u0000');
-      if (cur && cur.sig === sig && cur.rows.length < BATCH_SIZE) {
+      const bytes = Buffer.byteLength(JSON.stringify(p.values), 'utf8');
+      if (cur && cur.sig === sig && cur.rows.length < BATCH_SIZE && cur.bytes + bytes <= 1024 * 1024) {
         cur.rows.push(p);
+        cur.bytes += bytes;
       } else {
-        cur = { sig, cols: p.cols, rows: [p] };
+        cur = { sig, cols: p.cols, rows: [p], bytes };
         groups.push(cur);
       }
     }
 
-    for (const g of groups) {
-      try {
-        const q = inserimento(g.cols, g.rows);
-        await pool.query(q.sql, q.params);
-        // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
-        // il conteggio applicato misura righe sorgente, non effetti interni.
-        inserted += g.rows.length;
-      } catch (err) {
-        assertImportOutcomeKnown(err);
-        // Un vincolo violato da una sola riga fa fallire tutto il batch:
-        // si ripete riga per riga per isolare quale e non perdere le altre.
-        for (const r of g.rows) {
-          try {
-            const q = inserimento(g.cols, [r]);
-            await pool.query(q.sql, q.params);
-            inserted += 1;
-          } catch (err) {
-            assertImportOutcomeKnown(err);
-            if (errors.length < 10) errors.push(`Riga ${r.i + 1}: ${(err && err.message) || err}`);
+    const conn = await pool.getConnection();
+    let session;
+    try {
+      [[session]] = await conn.query('SELECT @@SESSION.time_zone AS timezone, @@SESSION.sql_mode AS mode');
+      await conn.query("SET SESSION time_zone = ?, SESSION sql_mode = 'NO_AUTO_VALUE_ON_ZERO,STRICT_ALL_TABLES'", [payload.timeZone || '+00:00']);
+      const write = (sql, params, zeroColumns) => require('./mysql-ordinal').write(conn, sql, params, zeroColumns);
+      for (const g of groups) {
+        try {
+          const q = inserimento(g.cols, g.rows);
+          await write(q.sql, q.params, q.zeroColumns);
+          // affectedRows vale 2 per una riga aggiornata da ON DUPLICATE KEY:
+          // il conteggio applicato misura righe sorgente, non effetti interni.
+          inserted += g.rows.length;
+        } catch (err) {
+          assertImportOutcomeKnown(err);
+          // Un vincolo violato da una sola riga fa fallire tutto il batch:
+          // si ripete riga per riga per isolare quale e non perdere le altre.
+          for (const r of g.rows) {
+            try {
+              const q = inserimento(g.cols, [r]);
+              await write(q.sql, q.params, q.zeroColumns);
+              inserted += 1;
+            } catch (err) {
+              assertImportOutcomeKnown(err);
+              if (errors.length < 10) errors.push(`Riga ${r.i + 1}: ${(err && err.message) || err}`);
+            }
           }
         }
       }
+    } finally {
+      try {
+        if (session) await conn.query('SET SESSION time_zone = ?, SESSION sql_mode = ?', [session.timezone, session.mode]);
+        conn.release();
+      } catch (err) { conn.destroy(); throw err; }
     }
-
     return { inserted, failed: raw.length - inserted, errors };
   }
 

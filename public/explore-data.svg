@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" id="explore-data" viewBox="0 0 192 152" fill="none">
+  <!-- Dall'archivio alla cella: i colori sono ereditati dal tema tramite use. -->
+  <g stroke="var(--border-3, #454b59)" stroke-width="1.5">
+    <path d="M20 42v53c0 7.7 15.2 14 34 14s34-6.3 34-14V42" fill="var(--bg-2, #17191f)"/>
+    <path d="M20 60c0 7.7 15.2 14 34 14s34-6.3 34-14M20 78c0 7.7 15.2 14 34 14s34-6.3 34-14"/>
+    <ellipse cx="54" cy="42" rx="34" ry="14" fill="var(--bg-elevated, #252932)"/>
+    <ellipse cx="54" cy="42" rx="21" ry="7" fill="var(--accent-soft, rgba(99,102,241,.12))" stroke="var(--accent-fg, #818cf8)"/>
+  </g>
+  <g transform="rotate(-6 117 74)">
+    <rect x="61" y="28" width="112" height="84" rx="10" fill="var(--bg-surface, #1b1e25)" stroke="var(--border-3, #454b59)" stroke-width="1.5"/>
+    <path d="M72 28h90a10 10 0 0 1 11 10v12H61V38a10 10 0 0 1 11-10Z" fill="var(--accent-soft, rgba(99,102,241,.12))"/>
+    <path d="M61 50h112M94 50v62M133 50v62M61 70h112M61 91h112" stroke="var(--border-3, #454b59)"/>
+    <rect x="94" y="70" width="39" height="21" fill="var(--accent-soft, rgba(99,102,241,.12))"/>
+    <g stroke="var(--accent-fg, #818cf8)" stroke-width="2.5" stroke-linecap="round">
+      <path d="M72 39h12m20 0h17m22 0h17"/>
+      <path d="M104 80h17"/>
+    </g>
+    <g stroke="var(--fg-dim, #8892a4)" stroke-width="2" stroke-linecap="round" opacity=".55">
+      <path d="M72 60h11m21 0h17m22 0h17M72 80h11M72 101h11m21 0h17"/>
+    </g>
+  </g>
+  <path d="m157 121 16 16" stroke="var(--bg, #121419)" stroke-width="12" stroke-linecap="round"/>
+  <path d="m157 121 16 16" stroke="var(--accent-fg, #818cf8)" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="142" cy="106" r="25" fill="var(--bg, #121419)"/>
+  <circle cx="142" cy="106" r="21" fill="var(--bg-surface, #1b1e25)" stroke="var(--accent-fg, #818cf8)" stroke-width="2.5"/>
+  <path d="M123 99h38m-38 14h38m-26-27v40m14-40v40" stroke="var(--border-3, #454b59)"/>
+  <rect x="135" y="99" width="14" height="14" rx="3" fill="var(--accent-fg, #818cf8)"/>
+  <path d="m139 106 2 2 4-4" stroke="var(--bg, #121419)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

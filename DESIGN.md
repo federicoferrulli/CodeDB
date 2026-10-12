@@ -174,7 +174,7 @@ Le regole descrivono il sistema nel codice; copertura dei flussi, prove e limiti
 - Superfici neutre e indaco funzionale.
 - Densità compatta senza ridurre la radice tipografica.
 - Codice e dati monospaziati, comandi in Inter.
-- Contesto esplicito in ogni pannello e indicazione testuale del pannello attivo.
+- Contesto esplicito in ogni pannello, bordo superiore e stato accessibile del pannello attivo.
 - Connessioni salvate, sessioni, documenti e viste riconoscibili come livelli distinti.
 - Un navigatore desktop a sezioni; gli stessi alberi nei pannelli di navigazione mobile.
 - Strumenti sotto l'esploratore, ancorato al fondo del navigatore anche quando le sezioni sono collassate.
@@ -261,9 +261,15 @@ La profondità ordinaria nasce da superfici tonali e bordi sottili. Testata, too
 - **Sollevato:** `--shadow-raised` rimanda a `--shadow-md` del tema.
 - **Fluttuante:** `--shadow-floating` rimanda a `--shadow-lg` del tema, usato per finestre e menu.
 
-Le definizioni complete di ombre, transizioni e breakpoint sono nel [sidecar](.impeccable/design.json), fuori dallo schema dei token primitivi. Le transizioni brevi rispondono allo stato dei controlli; i componenti Arc conservano il proprio feedback di pressione. La preferenza di movimento ridotto abbrevia le transizioni e disattiva i movimenti non necessari.
+Ombre, transizioni dei controlli e breakpoint sono nel [sidecar](.impeccable/design.json), fuori dallo schema dei token primitivi; i preset di entrata e uscita delle superfici sono in [motion-tokens.ts](ui/components/arc/motion-tokens.ts). Le transizioni brevi rispondono allo stato dei controlli; i componenti Arc conservano il proprio feedback di pressione. La preferenza di movimento ridotto abbrevia le transizioni e disattiva i movimenti non necessari.
 
-Le righe virtualizzate non animano il fondo durante lo scorrimento: l'alternanza segue l'indice del record, non la posizione momentanea nel DOM. Drawer, BottomSheet e backdrop usano livelli condivisi. Il BottomSheet segue il trascinamento e torna a una delle sue altezze con la molla `smooth` Arc; il movimento ridotto elimina la traslazione animata, mantenendo una breve dissolvenza. Menu e selettori restano sopra il contenitore di apertura senza introdurre valori locali arbitrari.
+Le righe virtualizzate non animano il fondo durante lo scorrimento: l'alternanza segue l'indice del record, non la posizione momentanea nel DOM. Drawer, BottomSheet e backdrop usano livelli condivisi. Al rilascio del trascinamento il BottomSheet torna a una delle sue altezze con la molla `smooth` Arc, senza rimbalzo. Menu e selettori restano sopra il contenitore di apertura senza introdurre valori locali arbitrari.
+
+Le finestre desktop animano soltanto l'opacità dell'overlay e la trasformazione del pannello: entrata decelerata in 240ms da 8px più in basso e scala .99, uscita accelerata in 180ms verso 6px e scala .995. Il BottomSheet entra in 320ms con decelerazione ed esce in 220ms con accelerazione, senza rimbalzo; lo spazio utile del contenuto cambia solo al cambio di altezza scelta o viewport, non a ogni fotogramma. Con movimento ridotto entrambe le superfici usano una dissolvenza di 80ms senza traslazione o scala animate.
+
+Il drawer laterale dello schema mantiene gli stessi tempi di 320/220ms, scorrendo orizzontalmente; lo sfondo sfuma e perde visibilità solo a fine uscita. Con movimento ridotto lo scorrimento è immediato. Un cambio fra desktop e mobile durante la chiusura completa la rimozione del contenitore, senza lasciare overlay attivi.
+
+Le barre delle connessioni e dei documenti condividono un indicatore di selezione persistente: superficie e sottolineatura scorrono in 280ms con curva `cubic-bezier(0.16,1,0.3,1)`. Durante il cambio di selezione i nomi restano nel flusso. Una nuova scheda compare con dissolvenza di 180ms. Il riordino segue il comportamento delle tab di Chrome: la scheda originale, opaca, segue il puntatore; le vicine scorrono in 180ms della sua larghezza più il distacco, aprendo un varco reale. Ai bordi la barra scorre automaticamente. Il rilascio conferma l'ordine una sola volta e assesta le tab, mentre annullamento o ri-render ripristinano la barra. Il payload nativo resta disponibile per trascinare le tabelle verso la split view. Un cambio rapido riparte dal fotogramma corrente. I dati e lo stato attivo cambiano subito, senza animare la griglia o attendere il movimento della barra. Con movimento ridotto selezione, spostamento delle vicine e assestamento sono immediati; la scheda in mano continua a seguire il gesto.
 
 **The Profondità di servizio Rule.** Usa l'elevazione per distinguere un livello temporaneo; non aggiungerla a ogni regione del workspace.
 
@@ -271,7 +277,7 @@ Le righe virtualizzate non animano il fondo durante lo scorrimento: l'alternanza
 
 Gli angoli sono contenuti: `control` per pulsanti e campi, `panel` per menu e pannelli, `surface` per finestre. Il raggio `sm` serve alle etichette compatte dei valori. Bordi sottili e allineamenti definiscono le regioni; le impostazioni privilegiano righe separate, non una card per etichetta.
 
-Le schede di connessione e documento sono piatte, senza spalle o raccordi sagomati. La scheda attiva usa peso maggiore e una sottolineatura d'accento; i pannelli affiancati hanno angoli retti. Le forme circolari di indicatori, checkbox e controlli colore restano funzionali; non estendere il linguaggio delle pillole a ogni contenitore.
+Le schede di connessione e documento sono piatte, senza spalle o raccordi sagomati, con angoli `sm`. La connessione attiva usa una superficie neutra tinta d'accento; il documento attivo un velo più leggero, aperto verso il contenuto. Entrambi hanno una sottolineatura d'accento e nomi di peso stabile, così il cambio non sposta le etichette. I pannelli affiancati hanno angoli retti. Le forme circolari di indicatori, checkbox e controlli colore restano funzionali; non estendere il linguaggio delle pillole a ogni contenitore.
 
 ## Components
 
@@ -287,15 +293,25 @@ Campi neutri con bordo marcato, raggio `control`, etichetta e messaggio vicini. 
 
 ### Navigation
 
-Connessioni, database o schemi, documenti e viste restano riconoscibili senza intestazioni decorative. La selezione degli alberi usa un velo indaco e un segno laterale; la vista attiva usa velo e testo d'accento. Gli stati inattivi sono secondari, l'hover li rende più leggibili. Le schede delle connessioni esplicitano il motore; quelle dei documenti mantengono prefisso del database o schema, nome e chiusura. Il contatore indica le sessioni aperte rispetto al limite di otto. Le schede hanno semantica e navigazione da tastiera; i nomi lunghi mantengono il testo completo nei tooltip. Su mobile la navigazione si adatta e offre bersagli touch adeguati.
+Connessioni, database o schemi, documenti e viste restano riconoscibili senza intestazioni decorative. La selezione degli alberi usa un velo indaco e un segno laterale; la vista attiva usa velo e testo d'accento. Gli stati inattivi sono secondari, l'hover li rende più leggibili. Le schede delle connessioni esplicitano il motore in un'etichetta compatta; quelle dei documenti mantengono icona del tipo, prefisso del database o schema, nome e chiusura. Non viene mostrato un contatore delle connessioni. Le schede hanno semantica e navigazione da tastiera; i nomi lunghi mantengono il testo completo nei tooltip e la selezione viene portata nella parte visibile della barra. Su mobile le due barre sono nascoste: la selezione resta nel drawer «Schede».
 
 Aprire una connessione salvata già connessa riprende la sessione esistente. «Apri un'altra sessione» nel suo menu crea esplicitamente una sessione aggiuntiva. L'esploratore mostra il nome della connessione corrente; su PostgreSQL il livello database del prodotto è presentato come «Schemi». Ricerca delle connessioni, ricerca di database/oggetti e filtro dei dati rimangono separati.
+
+Nel navigatore le connessioni hanno icona del motore, nome e indirizzo su due righe; cartelle e oggetti usano una gerarchia più densa con guide sottili. La connessione attiva e la tabella selezionata condividono un indicatore che scorre in 260 ms, ripartendo dal fotogramma corrente se interrotto. Il cambio di connessione introduce il relativo albero in 180 ms, senza ritardare le azioni. Il movimento usa solo trasformazioni e opacità e si disattiva con movimento ridotto. Gli stati di connessione hanno anche un nome accessibile. Sul touch azioni e righe mantengono almeno 44 px; il pannello resta richiudibile e la sezione Connessioni rimane sempre aperta.
+
+La ricerca rapida usa le schede Tutto, Comandi, Database e Tabelle, sincronizzate con i richiami testuali `>`, `#` e `@`. Il risultato mette il nome in primo piano, tipo e database nella seconda riga; il contesto della connessione rimane nella testata desktop. Campo e icona condividono un solo contorno di focus. La selezione delle categorie riusa il movimento delle tab; quella dei risultati scorre in 160 ms e segue tastiera e mouse. La lista resta virtualizzata e conserva il bersaglio quando arrivano altre tabelle. Su mobile rimane nel BottomSheet Arc, con righe da 56 px e filtri da 44 px. Chiusura, movimento ridotto e ritorno del focus seguono il contratto delle finestre.
 
 Le anteprime espongono «Mantieni» per fissare la scheda senza doppio clic. Una bozza di cella, una query modificata o un'esecuzione in corso impediscono che l'apertura di un'altra anteprima sostituisca quel documento. Il selettore «Schede» mostra appartenenza, anteprima e modifiche non salvate; la selezione è separata dal menu con riordino, copia del nome e chiusura. I menu degli alberi hanno un pulsante visibile e accesso da tastiera.
 
 Il [BottomSheet locale](ui/components/arc/bottom-sheet/bottom-sheet.tsx) usa Radix per modalità, focus ed Escape. L'[adattatore di navigazione](ui/navigation-sheet.tsx) sposta gli stessi nodi e controller degli alberi nel pannello e li riporta alla posizione originale alla chiusura: non clona i controlli e conserva lo scroll. La sezione è visibile nello sheet anche se collassata sul desktop; al ritorno recupera quello stato. Il comando sulla presa espande o riduce il pannello con clic, Invio o frecce; il pulsante «Chiudi» resta distinto. La testata mostra il titolo e, per database o schemi, la connessione corrente. Il ritorno al controllo di apertura è coordinato da `responsive.js`; menu e finestre annidati hanno precedenza nella gestione di Escape. Questo contratto non presume che le prove della tastiera virtuale Android siano complete: stato e limiti delle verifiche restano nella matrice.
 
 Anche il footer «Strumenti» entra nel BottomSheet insieme all'albero, usando lo stesso nodo e lo stesso menu del desktop. Rimane sotto il contenuto di navigazione e torna nel navigatore alla chiusura, senza duplicare comandi o stato.
+
+### Pannelli affiancati
+
+Ogni pannello desktop ospita gli stessi controller della scheda singola: Dati, Query, Dettagli, UML e Grafo 3D. Connessione, database/schema e tabella rimangono nella testata; le viste agiscono sul proprio riquadro. Il pulsante Espandi restituisce temporaneamente tutto lo spazio al pannello senza perdere il layout. Toolbar e intestazioni si ricompongono quando il riquadro si restringe, mantenendo densità desktop con un puntatore preciso e dialog desktop. Il numero di pixel del riquadro non lo trasforma in un dispositivo mobile.
+
+Runtime e controlli Arc restano montati anche cambiando area o passando alla scheda singola mobile: bozze, selezioni, larghezze, risultati e scorrimento appartengono al documento. Trasporto, annullamento e aggiornamenti live restano isolati per connessione e pannello. Il backend rilascia soltanto lo stream del pannello chiuso.
 
 ### Chips
 
@@ -309,6 +325,8 @@ I riepiloghi statistici e di stato sono contenitori funzionali con superficie ne
 
 Finestre con raggio `surface`, superficie del tema, bordo marcato e ombra fluttuante. Titolo, contenuto e azioni hanno una gerarchia distinta; i form hanno più spazio della griglia. I componenti Arc/Radix gestiscono focus e sovrapposizione entro gli overlay dell'app. Menu e selettori aperti rimangono sopra la finestra che li ospita.
 
+Il contenuto resta montato fino al completamento dell'uscita. Anche palette e finestre dinamiche delle scorciatoie passano da `removeDialog`, senza rimuovere prima il pannello. Il drawer di navigazione restituisce nodi e callback alla chiusura conclusa; il passaggio diretto a un altro pannello è immediato e conserva i controller esistenti.
+
 Fino a 900px tutte le finestre modali, incluse quelle dinamiche, la palette e le conferme, usano il BottomSheet Arc. Il pannello mantiene gli stessi nodi del form passando da desktop a mobile: valori, selezione e focus restano nel documento aperto. Il drawer offre le altezze 70% e 94% dell'area utile, parte espanso su schermi bassi e rispetta safe area e tastiera. La chiusura passa dal controller originale; scartare una bozza richiede conferma. Login e sblocco del vault restano barriere non annullabili. Le conferme mobile sono asincrone e le operazioni mantengono il bersaglio scelto prima dell'attesa.
 
 Nel wizard di connessione il primo «Connetti» dai parametri o dal tunnel SSH apre il terzo passo «Riepilogo e conferma» e porta il focus al titolo; solo «Conferma e connetti» richiede l'apertura della sessione. Il riepilogo usa righe chiave-valore compatte per motore, parametri e SSH, con segreti mascherati e stato esplicito delle credenziali già salvate. Nome e cartella rimangono modificabili nello stesso passo; il messaggio accanto alle azioni distingue nuova connessione salvata, aggiornamento di una esistente e uso senza salvataggio, precisando che il salvataggio associato al collegamento avviene solo se riesce. «Indietro» permette di correggere i parametri e «Annulla» di uscire. Desktop e mobile riusano lo stesso form nelle superfici Arc: il riepilogo scorre nel drawer senza aprire una seconda conferma annidata.
@@ -319,6 +337,48 @@ Le finestre di inserimento e modifica esplicitano connessione, database o schema
 
 Un'attività lunga mantiene il proprio contesto e lo stato reale anche se cambia la vista. Il restore raggruppa messaggi e avanzamento per singola operazione. Nel monitor delle sessioni «Leggi query» apre il testo completo in una finestra copiabile, anche quando la tabella lo abbrevia.
 
+### Salute delle connessioni
+
+Il pannello avvicina nome, motore, stato ed eventuale problema della connessione. Esito e orario dell'ultima verifica precedono i controlli; ping, tunnel SSH e pool completano la lettura in quattro colonne su desktop. Il ping usa cifre tabulari e unità distinte, mentre colori semantici, icone e testo rendono leggibili gli stati. Fino a 600px ogni riga si ricompone su due colonne; fino a 900px la finestra usa il BottomSheet Arc ad altezza naturale e controlli di almeno 44px. L'assenza di connessioni riusa lo stato vuoto Arc.
+
+Gli aggiornamenti conservano i nodi e il punto di lettura: le nuove righe entrano in breve sequenza e solo i valori cambiati ricevono riscontro animato. La linea di verifica si muove soltanto durante una richiesta; il movimento ridotto elimina questi effetti. Un errore conserva valori e orario dell'ultima risposta riuscita, affiancandoli a un avviso esplicito. L'aggiornamento automatico attende quattro secondi dalla risposta, mantiene una sola richiesta in corso, si sospende a pannello chiuso o pagina in background e scarta le risposte delle aperture precedenti.
+
+### Sessioni & Query attive
+
+Il monitor presenta server e filtri, diagnosi e quattro colonne: sessione, attività, query e azioni. Il codice mostra un'anteprima di tre righe; «Leggi query» conserva il testo restituito al momento dell'apertura, copiabile e con avviso se il database lo ha troncato. Fino a 600px identità e attività restano affiancate, seguite da query e azioni a tutta larghezza. Fino a 900px monitor e lettore usano il BottomSheet Arc al 94%, con comandi di almeno 44px. La conferma di un intervento conserva connessione e identità della sessione scelta anche durante gli aggiornamenti.
+
+«Mostra» include le sessioni CodeDB e i processi di servizio anche inattivi, indipendentemente da «Solo attive»; «Nascondi» li esclude. Scelta e focus del comando persistono al refresh, senza modificare le protezioni decise dal server. Lo stato vuoto Arc distingue assenza di attività e filtri senza risultati, offrendo «Mostra tutte» nel secondo caso. Un errore rimuove i dati su cui non è più affidabile agire e propone «Riprova».
+
+Gli aggiornamenti conservano i nodi: entrano in breve sequenza solo le nuove righe e ricevono riscontro solo le celle cambiate. Le righe restano nello stato iniziale durante il ritardo dell'animazione, evitando lampeggi; la preferenza di movimento ridotto elimina questi effetti. Il refresh automatico attende cinque secondi dalla risposta, non sovrappone richieste, si sospende a pannello chiuso o pagina in background e scarta le risposte superate.
+
+### Backup & Ripristino
+
+Il pannello mette origine e tipo di backup al primo piano, seguiti dall'ambito facoltativo. Compressione, campo data, cloud e notifiche restano in «Opzioni avanzate», espandibili con un controllo nativo `details`; un campo non valido apre la sezione che lo contiene. Accanto ad «Avvia backup», il riepilogo segue tipo, gzip e destinazione scelti. Il catalogo distingue ultima copia e storico, riusando gli stati vuoti Arc per assenza di backup o di corrispondenze al filtro.
+
+L'ambito usa una multiselezione ricercabile con checkbox Arc, espandibile dentro il form senza sovrapporre altri comandi. Il riepilogo mostra il nome scelto o il numero di selezioni; nessuna selezione include tutto il database. Filtrare e riaprire conserva le scelte, cambiare origine le azzera. L'elenco carica soltanto i nomi, senza conteggi, con stato vuoto ed errore riprovabile. Escape richiude prima la selezione e riporta il focus al riepilogo; su mobile le righe mantengono 44px e la lista scorre dentro il drawer.
+
+Le due schede riusano l'indicatore animato del workspace; il contenuto entra con una breve dissolvenza e traslazione, disattivate con movimento ridotto. La finestra desktop arriva a 880px e dispone i campi su due colonne, ridotte a una fino a 600px. Fino a 900px apre il BottomSheet Arc al 94%, dopo aver chiuso l'eventuale drawer di navigazione; campi e comandi principali mantengono bersagli di almeno 44px anche in orizzontale. Superfici, indaco e controlli restano quelli CodeDB.
+
+Nel catalogo database e data precedono gli identificativi tecnici. Icona del motore, origine e numero di copie completano l'identità; data assoluta e tempo trascorso rendono riconoscibile ogni versione. «Completo», «Incrementale» e «Differenziale» usano etichette neutre: il tipo non indica l'esito della verifica. «Verifica» è un'azione discreta senza fondo, «Ripristina» un pulsante con bordo; gli esiti rimangono accanto alla copia interessata. Fino a 600px database e ultima copia restano affiancati, con azioni sotto; le versioni precedenti scorrono verticalmente senza richiedere scorrimento orizzontale.
+
+«Versioni precedenti» apre un elenco ordinato dentro lo stesso gruppo, con nome accessibile e stato espanso esplicito; quando è chiuso, i suoi controlli sono inerti. Apertura e chiusura conservano nodi, focus ed esiti. Lo storico si rivela tramite ritaglio, dissolvenza e breve traslazione (280ms in apertura, 150ms in chiusura); i gruppi vicini si ricompongono con trasformazioni FLIP (240ms). Invertire il gesto riparte dall'aspetto corrente; con movimento ridotto il cambiamento è immediato.
+
+Durante «Aggiorna» il catalogo conserva le righe montate, l'altezza e lo scorrimento: uno skeleton segue le misure dei contenuti, compresi gli storici aperti. Al primo caricamento anticipa tre righe. Le azioni restano inerti fino alla risposta più recente; il filtro digitato durante l'attesa si applica ai nuovi dati. La pulsazione usa solo l'opacità ed è assente con movimento ridotto. Un errore compare sopra il catalogo senza cancellare le copie già lette.
+
+### Temi
+
+Il selettore confronta i temi con miniature del workspace nei colori derivati delle palette reali. Automatico, Scuro e Chiaro sono affiancati; Automatico mostra insieme base scura e chiara. I temi personali occupano righe con azioni separate dalla scelta; creazione e importazione rimangono in fondo. Sotto 600px anche i predefiniti diventano righe compatte; su mobile la finestra apre il BottomSheet Arc al 94%. Le azioni delle miniature hanno bersagli di 44px fino a 900px o con puntatore grossolano.
+
+Ogni scelta è un pulsante con stato `aria-pressed`, utilizzabile anche con Spazio: spunta, superficie e cornice persistente identificano il tema attivo. La cornice passa fra le scelte con trasformazioni FLIP (320ms), ripartendo dalla posizione visibile se arriva una nuova selezione; con movimento ridotto si aggiorna senza animazione. Il tema scelto si applica e si memorizza subito; nell'editor le modifiche restano un'anteprima fino a «Salva». Chiudere senza salvare interrompe subito l'anteprima e ripristina i colori in uso, mantenendo visibile il contenuto dell'editor fino al termine dell'uscita Arc.
+
+### Guida introduttiva
+
+La guida presenta i cinque traguardi reali — connessione, esplorazione, query, grafico e backup — con stato esplicito e conteggio dei completati. Il giro guidato è l'azione principale, in una riga con superficie indaco; checklist e nuova connessione restano azioni secondarie compatte. Tipografia, icone e superfici appartengono al sistema CodeDB.
+
+Aprendo la guida da Strumenti, il drawer di navigazione si chiude e rilascia il focus. Su mobile il tour indica Connessioni, Schede, Database e ricerca nei loro controlli effettivi; resta disponibile anche senza connessioni aperte.
+
+Su desktop la finestra conserva una larghezza contenuta (560px); su mobile il solo hub usa il BottomSheet Arc ad altezza naturale, con azioni visibili insieme in ritratto e scorrimento verticale quando lo schermo è basso in orientamento orizzontale. La bussola si orienta all'apertura e i segmenti già completati si rivelano in sequenza mediante trasformazioni, senza animare la geometria del layout; hover e focus danno un piccolo riscontro su bussola e frecce. La preferenza di movimento ridotto disattiva questi effetti. Il tour parte dopo la chiusura completa della guida, quando il dialogo ha rilasciato focus e tastiera al workspace.
+
 ### Griglie e intestazioni
 
 Griglia principale, risultati query, pannelli affiancati e campione dati UML condividono il ridimensionamento in [table-resize.js](public/js/table-resize.js). Le intestazioni usano il ruolo `column-header`, una superficie neutra distinta e un bordo inferiore leggibile; con puntatore grossolano o viewport fino a 600px diventano alte 44px. Il nome completo resta accessibile nel tooltip e nel menu della colonna.
@@ -328,6 +388,14 @@ Il bordo destro espone una presa visibile con area interattiva larga 24px. Trasc
 Le righe trattenute nella finestra virtuale conservano i propri nodi durante lo scorrimento. L'altezza effettiva e gli spaziatori seguono la densità condivisa; tema, viewport e puntatore non devono creare una geometria diversa da quella del motore virtuale. Hover, selezione, cella attiva e bozza restano distinguibili: selezione con fondo tenue, cella attiva contornata, bozza con segno e asterisco. L'abbreviazione di un valore è soltanto visiva e non cambia il contenuto copiato o inviato.
 
 L'editor inline presenta «Applica» e «Annulla» vicino alla cella, con nomi accessibili espliciti. Sono uscite visibili aggiuntive: Invio ed Escape restano disponibili, e uscire dal campo continua a salvare secondo il comportamento esistente. Il passaggio ai pulsanti, al selettore Arc aperto, al calendario o al pannello FK non deve salvare prematuramente. «Annulla» scarta la bozza; un errore di validazione o salvataggio la conserva nel contesto originario.
+
+### Dettagli della tabella o collezione
+
+La vista mette lo schema al centro: database, nome e motore identificano l'oggetto, seguiti da una fascia di sei statistiche compatte e dagli indici laterali. Nomi di campi, tipi e chiavi usano il monospaziato; superfici e separatori restano neutri, con indaco nelle icone e nelle barre di presenza. SQL espone tipi e ammissibilità dei valori nulli; MongoDB distingue schema campionato e percentuale di presenza, riportata anche in testo. Chiavi degli indici, ordine e unicità restano leggibili accanto alle azioni Arc; i campi e gli indici di sistema protetti hanno un nome accessibile.
+
+La disposizione segue il contenitore: fino a 960px schema e indici si susseguono e le statistiche formano tre colonne; fino a 600px ciascun campo dispone nome sopra tipo e presenza, mantenendo le azioni a lato. Con viewport fino a 900px o puntatore grossolano i comandi hanno bersagli di almeno 44px, anche in orizzontale. Caricamento, errore con «Riprova» e assenza di campi o indici hanno messaggi distinti; le azioni conservano il proprio bersaglio e una risposta superata non sostituisce i dettagli dell'oggetto corrente.
+
+La comparsa anima soltanto le prime quattordici righe visibili, con dissolvenza e breve traslazione (320ms, ritardo massimo 108ms). Le barre di presenza si estendono mediante `scaleX` (440ms), mentre il riepilogo si rivela con dissolvenza e ritaglio (360ms). Un nuovo caricamento cancella il movimento precedente; la preferenza di movimento ridotto interrompe gli effetti in corso e salta quelli successivi.
 
 ### Workspace dati e query
 
@@ -343,9 +411,17 @@ I controlli riusano i componenti reali in `ui/components/arc`, con CSS Modules e
 
 Su mobile l'UML dedica tutta la larghezza al canvas. Tabelle, dettagli, dati e strumenti si aprono nei BottomSheet Arc, spostando i pannelli esistenti. I comandi di zoom stanno in una riga separata dal disegno; la vista si può espandere a schermo intero. Un dito sposta la vista anche partendo da un nodo, due dita ingrandiscono: questi gesti non modificano il diagramma. Nel contesto di una tabella l'inquadratura iniziale privilegia la sua leggibilità; «Adatta alla vista» mostra l'insieme delle relazioni.
 
-L'editor geometrico mobile apre il BottomSheet Arc all'altezza massima (94%). In ritratto gli strumenti di forma e vertice occupano righe sotto il canvas; in orizzontale basso i comandi principali stanno a lato, senza coprire la geometria. Mappa e GeoJSON sono viste alternative su mobile e rimangono affiancabili su desktop. I controlli touch hanno bersagli di almeno 44px; un `ResizeObserver` aggiorna le dimensioni Leaflet quando cambiano drawer, orientamento o vista.
+L'editor geometrico dedica al disegno uno spazio libero da strumenti sovrapposti, anche su desktop. Tipo e modalità stanno sopra la mappa; cronologia e comandi del vertice occupano righe separate sotto il canvas. Il GeoJSON ha un pannello richiudibile con intestazione e stato di modifica, preservando il testo passando da una vista all'altra. Il selettore Disegna/Modifica usa un indicatore che scorre in 260ms; il pannello si rivela in 240ms con ritaglio e opacità, senza animare dimensioni o coordinate dei vertici. Entrambi rispettano il movimento ridotto. In sola lettura rimane disponibile Inquadra, senza comandi di scrittura.
+
+Su mobile l'editor apre il BottomSheet Arc all'altezza massima (94%). In ritratto gli strumenti di forma e vertice occupano righe sotto il canvas; in orizzontale basso i comandi principali stanno a lato, senza coprire la geometria. Mappa e GeoJSON sono viste alternative su mobile e rimangono affiancabili su desktop. I controlli touch hanno bersagli di almeno 44px; un `ResizeObserver` aggiorna le dimensioni Leaflet quando cambiano drawer, orientamento o vista.
 
 Per le geometrie modificabili, fino a 900px un mirino fisso al centro del canvas guida l'editing: spostare o ingrandire la mappa non modifica i vertici. L'azione esplicita è «Posiziona qui» per Point, «Aggiungi qui» in Disegna, «Seleziona» e poi «Sposta qui» in Modifica. Selezione di un altro vertice, inserimento ed eliminazione usano controlli compatti accanto all'azione principale; l'inserimento prende le coordinate del mirino. Le modifiche riusano Annulla e Ripeti; su desktop rimangono clic e trascinamento dei vertici.
+
+La mappa della selezione multipla resta di sola lettura. Su desktop il canvas affianca un ispettore con Elenco e Riepilogo: le righe espongono campo, record, tipo e misura con il simbolo del colore della forma. Su mobile il drawer Arc apre al 94%, con Mappa, Elenco e Riepilogo alternativi; scegliere un record riporta alla mappa e trasferisce il focus alla relativa scheda. In orizzontale basso strumenti ed export stanno a lato. L'indicatore delle schede scorre con il motore condiviso; l'ispettore compare in 240ms, l'inquadratura dura 350ms e il movimento ridotto esclude entrambi. La selezione aggiorna solo i layer precedente e corrente. Riepilogo ed export includono tutte le geometrie, anche oltre i limiti dichiarati di disegno ed elenco.
+
+La Mappa dei risultati Query riusa lo stesso ispettore e le stesse righe, con istanze indipendenti. La composizione segue la larghezza del contenitore: fino a 720px Mappa, Elenco e Riepilogo diventano viste alternative anche nei pannelli affiancati. Inquadra e sfondo stanno sopra il disegno; conteggio, copia ed export sotto. Espandi mappa usa lo schermo intero del browser per lavorare anche con risultati molto bassi. Il ritorno alla Mappa conserva layer, selezione e zoom; ingresso e schede usano rivelazioni di 240–280ms, senza animare dimensioni o ricostruire le geometrie. I dati non validi, l'assenza di risultati e gli errori cancellano i riferimenti precedenti.
+
+Editor, Risultati ed Entrambi sono schede in tutte le dimensioni del workspace. Icona, testo e indicatore indaco identificano la vista; l'indicatore scorre in 280ms e il contenuto si rivela in 240ms. Frecce, Home ed End spostano il focus fra le schede. Editor e risultati restano montati, conservando testo, selezione e stato delle viste; Entrambi ripristina il divisorio ridimensionabile. Su mobile ogni scheda ha un bersaglio di almeno 44px. Il movimento ridotto interrompe gli effetti e mantiene il cambio immediato.
 
 ## Do's and Don'ts
 
