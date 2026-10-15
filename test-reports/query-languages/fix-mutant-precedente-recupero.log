@@ -1,0 +1,14 @@
+Motori reali: { postgresql: '18.6 (Debian 18.6-1.pgdg13+2)', mysql: '8.4.11' }
+AssertionError [ERR_ASSERTION]: current transaction is aborted, commands ignored until end of transaction block
+
+false !== true
+
+    at C:\repository\CodeDB\test\e2e-sql-native.js:91:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

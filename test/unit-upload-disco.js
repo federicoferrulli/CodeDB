@@ -99,6 +99,37 @@ module.exports = (async () => {
     console.log('  OK   tetti di blocco, artefatto e concorrenza');
   }
 
+  /* --- Export senza tetto per file e con stato di dimensione costante ------- */
+
+  {
+    const { tmp, radicePer } = radice();
+    const store = createArchivioUpload({ radicePer, maxBytes: 10, maxChunkBytes: 8 });
+    try {
+      const { uploadId, maxBytes } = store.avvia('ada', 'a1', { esportazione: true });
+      assert.strictEqual(maxBytes, Infinity);
+      const dati = Buffer.from('01234567');
+      for (let i = 0; i < 20; i++) await store.aggiungi(uploadId, 'ada', { offset: i * 8, contenuto: dati, attore: 'a1' });
+      const stato = JSON.parse(fs.readFileSync(path.join(radicePer('ada'), 'caricamenti', uploadId, 'stato.json'), 'utf8'));
+      assert.strictEqual(Object.keys(stato.impronte).length, 1, 'l’indice dei blocchi non cresce con l’export');
+      const dopo = createArchivioUpload({ radicePer, maxBytes: 10, maxChunkBytes: 8 });
+      assert.strictEqual(dopo.stato(uploadId, 'ada', 'a1').maxBytes, Infinity, 'la rilettura dello stato non ripristina il limite');
+      const retry = await dopo.aggiungi(uploadId, 'ada', { offset: 19 * 8, contenuto: dati, attore: 'a1' });
+      assert.strictEqual(retry.ripetuto, true);
+      await dopo.aggiungi(uploadId, 'ada', { offset: 20 * 8, contenuto: dati, attore: 'a1' });
+      await assert.rejects(dopo.aggiungi(uploadId, 'ada', { offset: 21 * 8, contenuto: Buffer.alloc(9), attore: 'a1' }), /troppo grande/i);
+      const contenuto = Buffer.from(dati.toString().repeat(21));
+      const manifest = await dopo.finalizza(uploadId, 'ada', { dimensioneAttesa: contenuto.length, digestAtteso: sha(contenuto), attore: 'a1' });
+      assert.deepStrictEqual(fs.readFileSync(dopo.percorsoDati(manifest.id, 'ada').file), contenuto);
+
+      const limitato = createArchivioUpload({ radicePer, maxBytes: 10, quotaTenantBytes: contenuto.length + 5 });
+      const aperto = limitato.avvia('ada', 'a1', { esportazione: true });
+      await limitato.aggiungi(aperto.uploadId, 'ada', { offset: 0, contenuto: Buffer.alloc(5), attore: 'a1' });
+      await assert.rejects(limitato.aggiungi(aperto.uploadId, 'ada', { offset: 5, contenuto: dati, attore: 'a1' }), /Quota disco/);
+      limitato.scarta(aperto.uploadId, 'ada', 'a1');
+    } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+    console.log('  OK   export senza limite per file, indice costante, checksum e quota tenant esplicita');
+  }
+
   /* --- Finalizzazione fail-closed ------------------------------------------ */
 
   {

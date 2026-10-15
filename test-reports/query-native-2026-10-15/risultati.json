@@ -1,0 +1,156 @@
+{
+  "data": "2026-10-15",
+  "perimetro": "Linguaggi sui rispettivi database; non completamento del traduttore SQL→MongoDB.",
+  "motori": {
+    "mysql": "8.4.11",
+    "postgresql": "18.6",
+    "mongodb": "8.0.29"
+  },
+  "esito": "Tutte le suite elencate superate; non certificazione universale di ogni API mongosh o estensione.",
+  "suite": [
+    {
+      "comando": "node test/unit.js",
+      "esito": "superata",
+      "log": "unit-finale.log"
+    },
+    {
+      "comando": "node test/e2e-query-nativo-completo.js",
+      "gruppi": 20,
+      "falliti": 0,
+      "log": "e2e-query-nativo-completo-finale.log"
+    },
+    {
+      "comando": "node test/e2e-sql-native.js",
+      "istruzioni": 117,
+      "log": "e2e-sql-native.log"
+    },
+    {
+      "comando": "node test/e2e-sql-native-sessioni.js",
+      "regressioni": 12,
+      "log": "e2e-sql-native-sessioni.log"
+    },
+    {
+      "comando": "node test/e2e-query-dialetti-nativi.js",
+      "keyword": {
+        "mysql": 734,
+        "postgresql": 494
+      },
+      "log": "e2e-query-dialetti-nativi.log"
+    },
+    {
+      "comando": "node test/e2e-mongo-script.js",
+      "esito": "superata",
+      "log": "e2e-mongo-script-finale.log"
+    },
+    {
+      "comando": "node test/e2e-rbac.js",
+      "esito": "superata",
+      "log": "e2e-rbac-finale.log"
+    },
+    {
+      "comando": "node test/e2e-query-copertura.js",
+      "esito": "superata",
+      "log": "e2e-query-copertura-finale.log"
+    },
+    {
+      "comando": "node test/e2e-query-audit.js",
+      "esito": "superata",
+      "log": "e2e-query-audit-finale.log"
+    },
+    {
+      "comando": "node test/e2e-sql-mongo-integrita.js",
+      "esito": "superata",
+      "log": "e2e-sql-mongo-integrita-finale.log"
+    },
+    {
+      "comando": "node test/e2e-sql-mongo-eventi.js",
+      "esito": "superata",
+      "log": "e2e-sql-mongo-eventi-finale.log"
+    },
+    {
+      "comando": "node test/e2e-query-languages.js",
+      "esito": "superata",
+      "log": "e2e-query-languages-finale.log"
+    }
+  ],
+  "mutazioni": [
+    {
+      "nome": "sessione",
+      "rilevata": true,
+      "log": "mutante-sessione.log"
+    },
+    {
+      "nome": "scope",
+      "rilevata": true,
+      "log": "mutante-scope.log"
+    },
+    {
+      "nome": "opzioni",
+      "rilevata": true,
+      "log": "mutante-opzioni.log"
+    },
+    {
+      "nome": "precisione",
+      "rilevata": true,
+      "log": "mutante-precisione.log"
+    },
+    {
+      "nome": "bson",
+      "rilevata": true,
+      "log": "mutante-bson.log"
+    },
+    {
+      "nome": "errori",
+      "rilevata": true,
+      "log": "mutante-errori.log"
+    },
+    {
+      "nome": "comandi",
+      "rilevata": true,
+      "log": "mutante-comandi.log"
+    },
+    {
+      "nome": "ddl",
+      "rilevata": true,
+      "log": "mutante-ddl.log"
+    },
+    {
+      "nome": "indici",
+      "rilevata": true,
+      "log": "mutante-indici.log"
+    },
+    {
+      "nome": "chiavi",
+      "rilevata": true,
+      "log": "mutante-chiavi.log"
+    }
+  ],
+  "note": [
+    "Le mutazioni sono applicate in memoria, senza modificare i sorgenti sul disco.",
+    "Le prove UI usano Chromium e controllori reali con trasporto DB simulato; le prove DB usano server reali tramite socket/driver.",
+    "Due tentativi iniziali UI hanno superato il timeout di caricamento di 8 secondi; il caricamento iniziale dispone ora di 30 secondi, i gesti restano a 8. La suite finale è passata.",
+    "Le fixture Docker sono isolate; database e schemi usa-e-getta registrati e casuali. Nessun dato o vault personale usato.",
+    "Le modifiche preesistenti nel checkout sono state preservate. Nessun commit o push."
+  ],
+  "limiti": [
+    "Interprete mongosh controllato: non runtime Node.js completo, niente import/FS/OS e non ogni helper mongosh.",
+    "Sessioni e variabili durano una singola esecuzione dell'editor; change stream persistenti non implementati.",
+    "Comandi nativi generici richiedono manage sull'intera connessione; JavaScript remoto e I/O SQL restano soggetti alle protezioni.",
+    "Atlas/Search, sharding, versioni diverse e installer Electron non verificati in questa sessione."
+  ],
+  "riproduzione": {
+    "fixture": "docker compose -f test/fixtures/sql-native-databases.yml up -d --wait",
+    "inizializzazione": "node test/fixtures/sql-native-init.cjs",
+    "env": {
+      "CODEDB_E2E_DESTRUCTIVE": "1",
+      "NODE_OPTIONS": "--require=./test/fixtures/sql-native-dns.cjs",
+      "MONGO_PORT": "27039",
+      "MONGO_URI": "mongodb://127.0.0.1:27039/",
+      "PGPORT": "55439",
+      "PG_PORT": "55439",
+      "MYSQL_PORT": "33339"
+    },
+    "prova": "node test/e2e-query-nativo-completo.js",
+    "pulizia": "docker compose -f test/fixtures/sql-native-databases.yml down --volumes"
+  }
+}

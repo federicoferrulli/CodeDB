@@ -34,6 +34,7 @@ const IGNORE = regexPackager();
 
 
 async function main() {
+  createRequire(import.meta.url)('./verifica-mongosh-nativi.cjs')();
   console.log(`Pacchettizzazione CodeDB per ${platform}...`);
   const appPaths = await packager({
     dir: ROOT,

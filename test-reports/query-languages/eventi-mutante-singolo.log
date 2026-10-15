@@ -1,0 +1,28 @@
+  OK   MQL insertMany
+AssertionError [ERR_ASSERTION]: MQL updateOne sort: solo la riga scelta
++ actual - expected
+
+  [
+    {
++     dopo: 10,
++     evento: 'UPDATE',
++     id: 1,
++     prima: 10
++   },
++   {
+      dopo: 21,
+      evento: 'UPDATE',
+      id: 2,
+      prima: 20
+    }
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:51:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:55:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,7 @@
+OK instradamento: virtualJoin dentro SQL e MQL resta un dato
+OK MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie
+OK PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB
+OK MySQL: DDL con commit implicito libera la lettura protetta
+OK MySQL: autocommit qualificato non lascia committare una lettura protetta
+OK USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo
+{"casi":6,"falliti":0,"esiti":[{"nome":"instradamento: virtualJoin dentro SQL e MQL resta un dato","ok":true},{"nome":"MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie","ok":true},{"nome":"PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB","ok":true},{"nome":"MySQL: DDL con commit implicito libera la lettura protetta","ok":true},{"nome":"MySQL: autocommit qualificato non lascia committare una lettura protetta","ok":true},{"nome":"USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo","ok":true}]}

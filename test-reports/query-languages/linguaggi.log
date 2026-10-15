@@ -1,0 +1,19 @@
+(node:4156) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/intellisense.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  OK   PostgreSQL non eredita funzioni di data MySQL
+  OK   Cataloghi estesi: finestre, JSON, DDL e amministrazione
+  OK   SQL→MQL non promette costrutti non traducibili
+  OK   Punto e virgola nei valori e nei commenti non cambia linguaggio
+  OK   Alias limitati alla propria istruzione, ignorando stringhe e commenti
+  OK   Completamento silenzioso nei commenti e nei valori SQL
+  OK   MongoDB: stadi, espressioni, aggiornamenti e variabili
+  OK   Sostituzione al centro del token e nome quotato
+  OK   Operatori, parametri e numeri restano unità indivisibili
+  OK   Script: operatori PostgreSQL e stringhe MySQL non nascondono separatori
+  OK   Commenti eseguibili e hint MySQL sopravvivono
+  OK   Il commento di riga non inghiotte il codice successivo
+  OK   La shell MongoDB non subisce mai la riscrittura SQL
+  OK   Evidenziatore: dialetti, commenti e stringhe PostgreSQL
+Tutte le regressioni dei linguaggi Query & Aggregate superate.

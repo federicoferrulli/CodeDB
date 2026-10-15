@@ -1,0 +1,115 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 1.75kB 0.0s done
+#1 DONE 0.1s
+
+#2 [internal] load metadata for docker.io/library/node:24-alpine
+#2 DONE 6.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 356B 0.0s done
+#3 DONE 0.1s
+
+#4 [ 1/13] FROM docker.io/library/node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+#4 resolve docker.io/library/node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f 0.0s done
+#4 sha256:2af284e0bab394dd343f480c97a8438422f4a8f3aaae795457c6de5dfa89b3dd 0B / 1.26MB 0.2s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 0B / 57.33MB 0.2s
+#4 sha256:862c5dc468d45e2429239f43ada1e4e4bba2fa8e215f39c3f2dcc558c65007b1 0B / 441B 0.2s
+#4 sha256:2af284e0bab394dd343f480c97a8438422f4a8f3aaae795457c6de5dfa89b3dd 1.26MB / 1.26MB 0.7s done
+#4 ...
+
+#5 [internal] load build context
+#5 transferring context: 9.65MB 1.0s done
+#5 DONE 1.1s
+
+#4 [ 1/13] FROM docker.io/library/node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+#4 sha256:862c5dc468d45e2429239f43ada1e4e4bba2fa8e215f39c3f2dcc558c65007b1 441B / 441B 0.7s done
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 5.24MB / 57.33MB 1.2s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 10.49MB / 57.33MB 1.5s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 15.73MB / 57.33MB 1.8s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 20.97MB / 57.33MB 2.1s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 26.21MB / 57.33MB 2.4s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 30.41MB / 57.33MB 2.7s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 33.55MB / 57.33MB 2.9s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 38.80MB / 57.33MB 3.2s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 44.04MB / 57.33MB 3.5s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 49.28MB / 57.33MB 3.8s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 52.43MB / 57.33MB 3.9s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 55.57MB / 57.33MB 4.1s
+#4 sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 57.33MB / 57.33MB 4.2s done
+#4 extracting sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608
+#4 extracting sha256:c3fb422c2ba38fa35c8cca2a7872ca59ca302e4394e8edc96434c39b282b8608 1.7s done
+#4 DONE 6.2s
+
+#4 [ 1/13] FROM docker.io/library/node:24-alpine@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f
+#4 extracting sha256:2af284e0bab394dd343f480c97a8438422f4a8f3aaae795457c6de5dfa89b3dd 0.1s done
+#4 extracting sha256:862c5dc468d45e2429239f43ada1e4e4bba2fa8e215f39c3f2dcc558c65007b1 0.0s done
+#4 DONE 6.3s
+
+#6 [ 2/13] WORKDIR /app
+#6 DONE 0.2s
+
+#7 [ 3/13] COPY package*.json ./
+#7 DONE 0.1s
+
+#8 [ 4/13] RUN npm ci --omit=dev
+#8 3.537 npm warn deprecated lodash.isequal@4.5.0: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
+#8 6.719 
+#8 6.719 added 200 packages, and audited 201 packages in 6s
+#8 6.719 
+#8 6.719 37 packages are looking for funding
+#8 6.720   run `npm fund` for details
+#8 6.721 
+#8 6.721 found 0 vulnerabilities
+#8 6.723 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
+#8 6.723 npm warn install-scripts   ssh2@1.17.0 (install: node install.js)
+#8 6.723 npm warn install-scripts
+#8 6.723 npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
+#8 6.727 npm notice
+#8 6.727 npm notice New major version of npm available! 11.19.1 -> 12.2.0
+#8 6.727 npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.2.0
+#8 6.727 npm notice To update run: npm install -g npm@12.2.0
+#8 6.727 npm notice
+#8 DONE 6.9s
+
+#9 [ 5/13] COPY server.js electron-server-auth.js LICENSE.md EULA.md MANLEVA.md ./
+#9 DONE 0.1s
+
+#10 [ 6/13] COPY auth ./auth
+#10 DONE 0.1s
+
+#11 [ 7/13] COPY backup ./backup
+#11 DONE 0.1s
+
+#12 [ 8/13] COPY db ./db
+#12 DONE 0.1s
+
+#13 [ 9/13] COPY mcp ./mcp
+#13 DONE 0.1s
+
+#14 [10/13] COPY server ./server
+#14 DONE 0.1s
+
+#15 [11/13] COPY public ./public
+#15 DONE 0.1s
+
+#16 [12/13] COPY bin ./bin
+#16 DONE 0.1s
+
+#17 [13/13] RUN mkdir -p /app/data /app/backups && chown -R node:node /app
+#17 DONE 19.3s
+
+#18 exporting to image
+#18 exporting layers
+#18 exporting layers 2.3s done
+#18 exporting manifest sha256:5643bfc930dfc5a9eeefab0bcc4542c406f1d68d5f331e6a5d079353df702aa3 0.0s done
+#18 exporting config sha256:4673998c21ecc24f23b2284933fdb62b3d00e889c3bf1fbaff759eb8f9896d93 0.0s done
+#18 exporting attestation manifest sha256:5ba3996c8db398af20719b8f11cf7a2280182611a72aa8abe16fa50559018b98 0.0s done
+#18 exporting manifest list sha256:edaae88ea87cfe1f3c519e6b38d3b3bc393db6d206c9767716525729a01d0e77 0.0s done
+#18 naming to docker.io/library/codedb:0.2.1-beta.1-verifica done
+#18 unpacking to docker.io/library/codedb:0.2.1-beta.1-verifica
+#18 unpacking to docker.io/library/codedb:0.2.1-beta.1-verifica 1.9s done
+#18 DONE 4.3s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/xp3c4aoubyql9f2zts29dpk49

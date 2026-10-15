@@ -18,8 +18,8 @@
  *    spostamento di gruppo: trascinando un nodo selezionato si muovono tutti
  *    quelli selezionati, con UNA sola voce nella storia.
  *
- * 2. LA MINIMAPPA. `ui.Navigator` è JointJS+. Qui è un secondo Paper in sola
- *    lettura sullo stesso Graph, scalato per stare nel riquadro.
+ * 2. LA MINIMAPPA. `ui.Navigator` è JointJS+. Qui è un SVG di sagome e
+ *    collegamenti, senza duplicare i campi e le porte del Paper principale.
  *
  * 3. L'EXPORT. `format.toSVG` è JointJS+. Qui l'SVG si serializza a mano
  *    incorporando lo stile che lo riguarda — un SVG che rimanda a un foglio
@@ -44,11 +44,15 @@ export const ZOOM_MAX = 3;
 // pittura — geometria, porte e posizioni non cambiano, quindi nessun arco si
 // sposta e l'export ritrova il dettaglio (vedi `esportaSvg`).
 export const SOGLIA_SAGOMA = 0.5;
+// Anche `async: true` disegna tutto in un fotogramma senza un batch esplicito.
+const LOTTO_VISTE = 4;
+const cedi = () => new Promise(resolve => setTimeout(resolve, 0));
 
 let joint = null;
 let caricamento = null;
 let FormaNodo = null;
 let FormaNota = null;
+let VistaLink = null;
 
 /** Carica (una volta sola) JointJS vendorizzato e restituisce il globale. */
 export function caricaJoint() {
@@ -84,6 +88,22 @@ function definisciForme() {
   FormaNota = joint.dia.Element.define('codedb.Nota', {}, {
     markup: [{ tagName: 'rect', selector: 'corpo' }, { tagName: 'text', selector: 'testo' }],
   });
+  // Anche il router chiede i riquadri delle porte. Sono cerchi di raggio
+  // noto: misurarli nel DOM costerebbe un layout per ogni coppia di estremi.
+  const riquadroCapo = (link, estremo) => {
+    const capo = link.get(estremo);
+    const cella = estremo === 'source' ? link.getSourceCell() : link.getTargetCell();
+    if (!cella) return new joint.g.Rect(capo.x || 0, capo.y || 0, 0, 0);
+    if (capo.port && cella.hasPort(capo.port)) {
+      const p = cella.getPortCenter(capo.port);
+      return new joint.g.Rect(p.x - 4.5, p.y - 4.5, 9, 9);
+    }
+    return cella.getBBox();
+  };
+  VistaLink = class extends joint.dia.LinkView {
+    get sourceBBox() { return riquadroCapo(this.model, 'source'); }
+    get targetBBox() { return riquadroCapo(this.model, 'target'); }
+  };
 }
 
 /** Altezza resa da un nodo con `n` campi visibili più l'eventuale riga «altri N». */
@@ -164,14 +184,21 @@ export class Tavola {
       drawGrid: { name: 'dot', args: { color: col.bordo, thickness: 1 } },
       background: { color: col.bg1 },
       async: true,
+      frozen: true,
+      viewport: vista => !this._virtuale || this._esportaTutto || !this._areaVisibile
+        || !!this._areaVisibile.intersect(vista.model.getBBox()),
       sorting: joint.dia.Paper.sorting.APPROX,
       cellViewNamespace: joint.shapes,
+      linkView: VistaLink,
       // In «Esplora» il canvas è un documento da leggere: nulla si sposta.
       // Lo sfondo di un gruppo non si trascina mai: è una cornice, e
       // trascinarla senza i membri mentirebbe su che cosa si sta spostando.
       interactive: (vista) => this.modifica
         && !(vista.model && vista.model.get('gruppoSfondo')),
-      defaultConnectionPoint: { name: 'boundary' },
+      // Le porte sono assolute: il modello ne conosce già il centro. Misurare
+      // il cerchietto SVG per ogni FK forza migliaia di layout del browser.
+      defaultAnchor: { name: 'modelCenter' },
+      defaultConnectionPoint: { name: 'anchor' },
       defaultRouter: { name: 'manhattan', args: { padding: 18, step: 10 } },
       defaultConnector: { name: 'rounded', args: { radius: 6 } },
       markAvailable: true,
@@ -204,15 +231,19 @@ export class Tavola {
 
   distruggi() {
     this.smontato = true;
+    this._generazione = (this._generazione || 0) + 1;
+    this._fineDisegno?.(false);
+    this._fineExport?.();
     for (const stacca of this._scollegamenti) stacca();
     this._scollegamenti.length = 0;
     clearTimeout(this._timerDettaglio);
+    cancelAnimationFrame(this._miniFrame);
     this._nascondiVertici();
     this._osservatore.disconnect();
     if (this.minimappa) { this.minimappa.remove(); this.minimappa = null; }
     if (this._rettEl) { this._rettEl.remove(); this._rettEl = null; }
     this.paper.remove();
-    this.graph.clear();
+    this.graph.resetCells([]);
     this.perChiave.clear();
     this.perGruppo = null;
     this._dipinta = null;
@@ -625,11 +656,27 @@ export class Tavola {
    * collegamento che puntasse a una cella non disegnata sparirebbe, e per
    * questo `uml.js` riscrive gli archi sul segnaposto prima di chiamare qui.
    */
-  monta({ nodi = [], links = [], note = [], entita = [], logiche = [], irrisolti = new Set(), gruppi = [], instradamenti = {} }) {
+  monta(modello) {
+    const generazione = this._generazione = (this._generazione || 0) + 1;
+    this._fineDisegno?.(false);
+    this._fineExport?.();
+    this._esportaTutto = false;
+    this.pronta = this._monta(modello, generazione);
+    return this.pronta;
+  }
+
+  async _monta(modello, generazione) {
+    const { nodi = [], entita = [], irrisolti = new Set(), gruppi = [] } = modello;
+    this._virtuale = nodi.length + entita.length > 150;
+    this.paper.freeze();
+    // Cercare un percorso fra tutti gli ostacoli per ogni FK cresce troppo
+    // sui cataloghi grandi; l'ortogonale conserva porte e vertici manuali.
+    this.paper.options.defaultRouter = nodi.length + entita.length > 100
+      ? { name: 'orthogonal', args: { padding: 18 } }
+      : { name: 'manhattan', args: { padding: 18, step: 10 } };
     const col = palette();
     this.paper.drawBackground({ color: col.bg1 });
     this.paper.setGrid({ name: 'dot', args: { color: col.bordo, thickness: 1 } });
-    this.minimappa?.drawBackground({ color: col.bg1 });
     this._nascondiVertici();
     this._gestoVertici = null;
     this._costruzione = true;
@@ -639,12 +686,53 @@ export class Tavola {
     this.graph.resetCells([]);
     this.perChiave.clear();
     this.perGruppo = new Map(gruppi.map((g) => [g.id, g.membri || []]));
-    const celle = [];
+    let lotto = [];
+    let inizio = performance.now();
+    for (const cella of this._creaCelle(modello, col)) {
+      if (cella) lotto.push(cella);
+      if (lotto.length >= 12 || performance.now() - inizio >= 8) {
+        this.graph.addCells(lotto);
+        lotto = [];
+        if (performance.now() - inizio >= 8) {
+          this.eventi.onCaricamento?.(`Preparazione… ${this.perChiave.size} elementi`);
+          await cedi();
+          if (this.smontato || generazione !== this._generazione) return false;
+          inizio = performance.now();
+        }
+      }
+    }
+    this.graph.addCells(lotto);
+    this._costruzione = false;
+    this._dipingiSelezione();
+    this._aggiornaMinimappa();
+    // La vista si inquadra prima di disegnare: evita una seconda pittura di
+    // tutti i campi subito dopo il primo fotogramma.
+    this.eventi.onPreparata?.();
+    this._aggiornaVisibilita();
+    this.applicaDettaglio();
+    return new Promise(resolve => {
+      const fine = completata => {
+        this.paper.off('render:done', disegnata);
+        if (this._fineDisegno === fine) this._fineDisegno = null;
+        resolve(completata);
+      };
+      const disegnata = () => fine(true);
+      this._fineDisegno = fine;
+      this.paper.once('render:done', disegnata);
+      this.paper.unfreeze({ batchSize: LOTTO_VISTE, progress: (finito, fatti, totale) => {
+        if (!finito && generazione === this._generazione) this.eventi.onCaricamento?.(`Disegno… ${fatti} di ${totale} elementi`);
+      } });
+      if (!this.paper.hasScheduledUpdates()) fine(true);
+    });
+  }
+
+  *_creaCelle({ nodi = [], links = [], note = [], entita = [], logiche = [],
+    irrisolti = new Set(), gruppi = [], instradamenti = {} }, col) {
 
     for (const nodo of nodi) {
       const el = this._creaNodo(nodo, col, irrisolti.has(nodo.chiave));
       this.perChiave.set(nodo.chiave, el);
-      celle.push(el);
+      yield el;
     }
     for (const ent of entita) {
       const el = this._creaNodo({
@@ -655,17 +743,16 @@ export class Tavola {
         x: ent.x, y: ent.y, compresso: false, bloccato: ent.bloccato, progetto: true,
       }, col, false);
       this.perChiave.set(ent.id, el);
-      celle.push(el);
+      yield el;
     }
     for (const nota of note) {
       const el = this._creaNota(nota, col);
       this.perChiave.set(nota.id, el);
-      celle.push(el);
+      yield el;
     }
     // Le cornici degli espansi stanno SOTTO i membri — e quelle esterne sotto
     // le interne: si aggiungono in testa in ordine di profondità crescente,
     // che nello stesso `addCells` vale come «dietro».
-    const sfondi = [];
     const espansi = gruppi
       .filter((g) => !g.compresso)
       .slice()
@@ -680,22 +767,20 @@ export class Tavola {
           x: gruppo.x, y: gruppo.y, compresso: true, gruppo: true,
         }, col, false);
         this.perChiave.set(gruppo.id, el);
-        celle.push(el);
+        yield el;
       }
     }
     for (const gruppo of espansi) {
       const el = this._creaSfondoGruppo(gruppo, col);
       if (el) {
         this.perChiave.set(gruppo.id, el);
-        sfondi.push(el);
+        el.set('z', (gruppo.profondita || 0) - espansi.length - 1);
+        yield el;
       }
     }
-    this.graph.addCells([...sfondi, ...celle]);
-
-    const archi = [];
-    for (const link of links) archi.push(this._creaLink(link, col, instradamenti));
+    for (const link of links) yield this._creaLink(link, col, instradamenti);
     for (const log of logiche) {
-      archi.push(this._creaLink({
+      yield this._creaLink({
         id: log.id,
         origine: 'logica',
         da: log.da,
@@ -703,12 +788,8 @@ export class Tavola {
         etichetta: [log.etichetta, log.cardinalita].filter(Boolean).join(' · '),
         coppie: log.campoDa ? [{ campo: log.campoDa, colonna: log.campoA }] : [],
         auto: log.da === log.a,
-      }, col, instradamenti));
+      }, col, instradamenti);
     }
-    this.graph.addCells(archi.filter(Boolean));
-    this._costruzione = false;
-    this._dipingiSelezione();
-    this._aggiornaMinimappa();
   }
 
   _creaNodo(nodo, col, irrisolto) {
@@ -1060,6 +1141,8 @@ export class Tavola {
       link.composta ? `(${link.coppie.length} colonne)` : '',
       link.etichetta || '',
     ].filter(Boolean).join(' ');
+    const testo = taglia(etichetta, 44);
+    const larghezza = testo.length * 6.4 + 10;
 
     const arco = new joint.shapes.standard.Link({
       source: { id: da.id, port: portaEsistente(da, `o:${prima.campo}`) },
@@ -1073,10 +1156,13 @@ export class Tavola {
         },
       },
       labels: [{
+        // Testo monospace con sfondo di misura nota: `ref: text` misurava
+        // l'SVG dopo ogni inserimento, forzando un layout per relazione.
+        markup: [{ tagName: 'rect', selector: 'sfondo' }, { tagName: 'text', selector: 'testo' }],
         position: { distance: 0.5, offset: -8 },
         attrs: {
-          text: { text: taglia(etichetta, 44), fill: stile.colore, fontSize: 10.5, fontFamily: 'Consolas, monospace' },
-          rect: { fill: col.bg1, stroke: 'none', rx: 3, ry: 3 },
+          testo: { text: testo, textAnchor: 'middle', y: 4, fill: stile.colore, fontSize: 10.5, fontFamily: 'Consolas, monospace' },
+          sfondo: { x: -larghezza / 2, y: -8, width: larghezza, height: 16, fill: col.bg1, stroke: 'none', rx: 3, ry: 3 },
         },
       }],
     });
@@ -1159,11 +1245,13 @@ export class Tavola {
     for (const [, cella] of this.perChiave) {
       if (!cella.attr || (cella.isLink && cella.isLink())) continue;
       const righe = Number(cella.get('righeCampo')) || 0;
+      const attrs = {};
       for (let i = 0; i < righe; i++) {
-        cella.attr(`campo${i}/display`, mostra);
-        cella.attr(`tipo${i}/display`, mostra);
+        attrs[`campo${i}`] = { display: mostra };
+        attrs[`tipo${i}`] = { display: mostra };
       }
-      if (cella.get('haResto')) cella.attr('resto/display', mostra);
+      if (cella.get('haResto')) attrs.resto = { display: mostra };
+      if (Object.keys(attrs).length) cella.attr(attrs);
     }
     return true;
   }
@@ -1176,16 +1264,11 @@ export class Tavola {
   }
 
   /**
-   * Congela o scongela la minimappa. Il secondo Paper condivide il grafo:
-   * senza questo, ogni mossa del trascinamento ridipinge due volte.
+   * Durante un trascinamento la minimappa si aggiorna alla fine del gesto.
    */
   _congelaMinimappa(congela) {
-    const mini = this.minimappa;
-    if (!mini) return;
-    try {
-      if (congela && typeof mini.freeze === 'function') mini.freeze();
-      else if (!congela && typeof mini.unfreeze === 'function') mini.unfreeze();
-    } catch { /* una minimappa guasta non ferma il gesto */ }
+    this._miniCongelata = congela;
+    if (!congela) this._aggiornaMinimappa();
   }
 
   _dipingiSelezione() {
@@ -1205,6 +1288,7 @@ export class Tavola {
       const prima = this._dipinta.get(chiave);
       if (prima && prima.scelta === scelta && prima.bloccato === bloccato) continue;
       this._dipinta.set(chiave, { scelta, bloccato });
+      if (!prima && !scelta && !bloccato) continue;
       if (cella.isLink && cella.isLink()) {
         const base = cella.get('stileBase') || { colore: col.fgDim, larghezza: 1.3 };
         cella.attr('line/stroke', scelta ? col.accentoFg : base.colore);
@@ -1230,27 +1314,17 @@ export class Tavola {
 
   montaMinimappa(contenitore) {
     if (this.minimappa) this.minimappa.remove();
-    // Il Paper scrive `position: relative` INLINE sul proprio elemento, e un
-    // inline batte la regola CSS: montandolo direttamente sul riquadro della
-    // minimappa gli toglieva il `position: absolute` e la minimappa tornava in
-    // flusso, mangiandosi la larghezza del canvas. Si monta quindi su un figlio.
     contenitore.innerHTML = '';
-    const dentro = document.createElement('div');
-    dentro.style.width = '100%';
-    dentro.style.height = '100%';
-    contenitore.appendChild(dentro);
-    this.minimappa = new joint.dia.Paper({
-      el: dentro,
-      model: this.graph,
-      width: '100%',
-      height: '100%',
-      interactive: false,
-      background: { color: palette().bg1 },
-      async: true,
-      sorting: joint.dia.Paper.sorting.APPROX,
-    });
+    const ns = 'http://www.w3.org/2000/svg';
+    this.minimappa = document.createElementNS(ns, 'svg');
+    this.minimappa.setAttribute('width', '100%');
+    this.minimappa.setAttribute('height', '100%');
+    for (let i = 0; i < 2; i++) this.minimappa.appendChild(document.createElementNS(ns, 'path'));
+    contenitore.appendChild(this.minimappa);
     this._ascolta(contenitore, 'click', (evt) => {
-      const punto = this.minimappa.clientToLocalPoint({ x: evt.clientX, y: evt.clientY });
+      const matrice = this.minimappa.getScreenCTM();
+      if (!matrice) return;
+      const punto = new DOMPoint(evt.clientX, evt.clientY).matrixTransform(matrice.inverse());
       const riquadro = this.contenitore.getBoundingClientRect();
       const s = this.paper.scale().sx;
       this.paper.translate(riquadro.width / 2 - punto.x * s, riquadro.height / 2 - punto.y * s);
@@ -1261,14 +1335,43 @@ export class Tavola {
 
   _aggiornaMinimappa() {
     if (this.smontato) return;
+    this._aggiornaVisibilita();
     this.eventi.onVista?.(this.vistaCorrente());
-    if (!this.minimappa) return;
-    const area = this.graph.getCellsBBox(this.graph.getElements());
-    const riquadro = this.minimappa.el.getBoundingClientRect();
-    if (!area || !riquadro.width) return;
-    const scala = Math.min(riquadro.width / (area.width + 80), riquadro.height / (area.height + 80), 1);
-    this.minimappa.scale(scala, scala);
-    this.minimappa.translate(40 * scala - area.x * scala, 40 * scala - area.y * scala);
+    if (!this.minimappa || this._miniCongelata || this._miniFrame) return;
+    this._miniFrame = requestAnimationFrame(() => {
+      this._miniFrame = null;
+      if (this.smontato || this._miniCongelata || this._costruzione) return;
+      const elementi = this.graph.getElements();
+      const area = this.graph.getCellsBBox(elementi);
+      if (!area) return;
+      const col = palette();
+      const mini = this.minimappa;
+      mini.style.background = col.bg1;
+      mini.setAttribute('viewBox', `${area.x - 40} ${area.y - 40} ${area.width + 80} ${area.height + 80}`);
+      const [archi, nodi] = mini.children;
+      archi.setAttribute('fill', 'none');
+      archi.setAttribute('stroke', col.fgDim);
+      archi.setAttribute('d', this.graph.getLinks().map(link => {
+        const da = link.getSourcePoint(), a = link.getTargetPoint();
+        return `M${da.x},${da.y}L${a.x},${a.y}`;
+      }).join(''));
+      nodi.setAttribute('fill', col.bg2);
+      nodi.setAttribute('stroke', col.fgDim);
+      nodi.setAttribute('d', elementi.map(el => {
+        const { x, y, width: w, height: h } = el.getBBox();
+        return `M${x},${y}h${w}v${h}h${-w}Z`;
+      }).join(''));
+    });
+  }
+
+  /** Il documento resta intero; il DOM contiene solo la porzione inquadrata. */
+  _aggiornaVisibilita() {
+    if (!this._virtuale || this._costruzione || this.smontato) return;
+    const { w, h } = this._dimensioni || {};
+    if (!w || !h) return;
+    const s = this.paper.scale().sx, t = this.paper.translate();
+    this._areaVisibile = new joint.g.Rect(-t.tx / s, -t.ty / s, w / s, h / s).inflate(150);
+    this.paper.checkViewport({ mountBatchSize: LOTTO_VISTE, unmountBatchSize: LOTTO_VISTE });
   }
 
   /** Rettangolo della porzione visibile, in coordinate del grafo. */
@@ -1307,7 +1410,36 @@ export class Tavola {
    * dell'app, aperto altrove, è un disegno senza colori. Nessuno script
    * sopravvive alla serializzazione.
    */
-  esportaSvg({ soloSelezione = false } = {}) {
+  esportaSvg(opzioni = {}) {
+    // Due download ravvicinati non devono alternare montaggio completo e
+    // smontaggio delle viste mentre l'altro sta ancora serializzando.
+    const lavoro = (this._codaExport || Promise.resolve()).then(() => this._esportaSvg(opzioni));
+    this._codaExport = lavoro.then(() => {}, () => {});
+    return lavoro;
+  }
+
+  async _esportaSvg({ soloSelezione = false } = {}) {
+    const generazione = this._generazione;
+    await this.pronta;
+    if (this.smontato || generazione !== this._generazione) throw new Error('Il diagramma è cambiato. Riprova a esportarlo.');
+    if (this._virtuale) {
+      this._esportaTutto = true;
+      this.paper.freeze();
+      this.paper.checkViewport({ mountBatchSize: Infinity });
+      await new Promise(resolve => {
+        const fine = () => { this.paper.off('render:done', fine); this._fineExport = null; resolve(); };
+        this._fineExport = fine;
+        this.paper.once('render:done', fine);
+        this.paper.unfreeze({ batchSize: LOTTO_VISTE });
+        if (!this.paper.hasScheduledUpdates()) fine();
+      });
+      if (this.smontato || generazione !== this._generazione) throw new Error('Il diagramma è cambiato durante l’esportazione. Riprova.');
+    }
+    try { return this._serializzaSvg({ soloSelezione }); }
+    finally { this._esportaTutto = false; this._aggiornaVisibilita(); }
+  }
+
+  _serializzaSvg({ soloSelezione = false } = {}) {
     const elementi = soloSelezione && this.selezione.size
       ? [...this.selezione].map((k) => this.perChiave.get(k)).filter((c) => c && c.position && !(c.isLink && c.isLink()))
       : this.graph.getElements();
@@ -1342,7 +1474,7 @@ export class Tavola {
   }
 
   async esportaPng(opzioni = {}) {
-    const testo = this.esportaSvg(opzioni);
+    const testo = await this.esportaSvg(opzioni);
     const blob = new Blob([testo], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     try {

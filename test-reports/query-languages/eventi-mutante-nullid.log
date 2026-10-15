@@ -1,0 +1,31 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+  OK   Opzioni della scrittura non possono nascondere OLD/NEW
+  OK   MQL updateMany senza modifiche
+  OK   MQL pipeline e variabili let
+  OK   findOneAndUpdate: OLD proiettato e sort
+  OK   findOneAndUpdate upsert: identità anche con OLD null
+  OK   findOneAndUpdate upsert con metadati
+AssertionError [ERR_ASSERTION]: Upsert con identità BSON null
++ actual - expected
+
++ []
+- [
+-   {
+-     dopo: 90,
+-     evento: 'INSERT',
+-     id: 9,
+-     prima: null
+-   }
+- ]
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:53:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:66:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

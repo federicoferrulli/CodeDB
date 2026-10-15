@@ -28,7 +28,7 @@ fs.mkdirSync(dir, { recursive: true });
     await scegliArc(page, '#conn-dbtype', 'mongodb');
     await page.locator('[name="host"]').fill('127.0.0.1');
     await page.locator('[name="port"]').fill(String(port));
-    await page.locator('#wizard-next-btn').click();
+    await page.locator('#connect-btn').click();
     await page.locator('#connect-btn').click();
     await page.locator('#connect-overlay').waitFor({ state: 'hidden' });
     await page.evaluate(async db => {

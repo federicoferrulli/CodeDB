@@ -1,6 +1,7 @@
 'use strict';
 
 const { prendiConnessioneSql, chiudiStrategiaSql } = require('./sqlSessione');
+const { tipoMysqlNativo } = require('./sqlRisultatiNativi');
 
 const { assertImportOutcomeKnown } = require('./importFailure');
 
@@ -859,10 +860,13 @@ class MySqlStrategy extends DbStrategy {
     if (!sql) throw new Error('Inserisci una query SQL da eseguire.');
     const readOnly = !!payload.readOnly || !!payload.expectRead;
     const tetto = DbStrategy.aggregateTimeoutMs(this.env);
-    const richiesta = { sql };
+    const richiesta = { sql, typeCast: tipoMysqlNativo };
     if (tetto > 0) richiesta.timeout = tetto;
     const lease = await prendiConnessioneSql(this, sql, () => pool.getConnection());
     const conn = lease.conn;
+    const { queryMysql, statoMysql } = require('./mysqlSessioneNativa');
+    const query = (sql, params) => queryMysql(conn, sql, params);
+    const statoNativo = statoMysql(conn);
     let eseguita = false;
     const letturaIsolata = readOnly && !lease.transazione;
     // Il timeout di mysql2 è lato CLIENT: allo scadere il driver smette di
@@ -876,18 +880,21 @@ class MySqlStrategy extends DbStrategy {
         throw new Error('La lettura protetta non può aprire una seconda transazione: usa BEGIN READ ONLY o completa prima la transazione di scrittura.');
       }
       if (payload && payload.opHandle) {
-        try {
-          const [[row]] = await conn.query('SELECT CONNECTION_ID() AS cid');
-          if (row && row.cid) payload.opHandle.connectionId = row.cid;
-        } catch (_) {}
+        payload.opHandle.connectionId = conn.threadId;
       }
-      await this.usaDatabase(conn, db);
-      if (letturaIsolata) await conn.query('START TRANSACTION READ ONLY');
+      // Il database osservato nel protocollo cambia anche dopo un USE libero.
+      // Evitare USE/SET ridondanti preserva la diagnostica fra due query.
+      if (db && statoNativo.database !== db) {
+        statoNativo.database = undefined;
+        await this.usaDatabase(conn, db);
+        statoNativo.database = db;
+      }
+      if (letturaIsolata) await query('START TRANSACTION READ ONLY');
       try {
         const cap = DbStrategy.resultCap(payload);
         let result, fields;
         try {
-          [result, fields] = await conn.query(richiesta, payload.params);
+          [result, fields] = await query(richiesta, payload.params);
           eseguita = true;
         } catch (err) {
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
@@ -900,8 +907,8 @@ class MySqlStrategy extends DbStrategy {
         }
 
         if (Array.isArray(result)) {
-          // Se la prima voce è un array o un oggetto con affectedRows, abbiamo multipleStatements
-          const isMulti = result.length > 0 && (Array.isArray(result[0]) || (typeof result[0] === 'object' && result[0] !== null && 'affectedRows' in result[0]));
+          // I metadati distinguono più result set dai normali nomi di colonna.
+          const isMulti = result.length > 0 && (Array.isArray(result[0]) || Array.isArray(fields?.[0]));
 
           if (isMulti) {
             // Cerchiamo l'ultimo result set che ha righe di dati (SELECT)
@@ -941,14 +948,39 @@ class MySqlStrategy extends DbStrategy {
         const summary = { righeCoinvolte: result ? (result.affectedRows || 0) : 0 };
         if (result && result.insertId) summary.insertId = result.insertId;
         if (result && result.info) summary.info = result.info;
-        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap };
+        let activeDb;
+        if (/^USE\b/i.test(require('./sqlText').stripSqlNoise(sql, { dbms: 'mysql', backslashEscape: true }).trim())) {
+          // È MySQL a decodificare identificatori, escape e commenti. Il cambio
+          // diventa visibile alla UI solo dopo che il comando è riuscito.
+          activeDb = result.stateChanges?.schema;
+          if (activeDb == null) {
+            const [[row]] = await query('SELECT DATABASE() AS db');
+            activeDb = row.db;
+            statoNativo.database = activeDb;
+          }
+        }
+        return { docs: [summary], columns: Object.keys(summary), total: 1, skip: 0, limit: cap, ...(activeDb ? { activeDb } : {}) };
       } finally {
         // Su una connessione avvelenata non si parla più: il ROLLBACK finirebbe
         // per leggere il result set arretrato della query uccisa.
-        if (letturaIsolata && !avvelenata) await conn.query('ROLLBACK').catch(() => {});
+        if (letturaIsolata && !avvelenata) await query('ROLLBACK').catch(() => {});
       }
     } finally {
-      await lease.termina(eseguita, avvelenata);
+      let statoServer;
+      try {
+        if (!avvelenata) {
+          // Un errore non include flag. La lettura diagnostica li recupera
+          // senza cancellare l'errore precedente da SHOW WARNINGS.
+          if (conn.connection && statoNativo.status == null) await query('SHOW COUNT(*) WARNINGS');
+          if (Number.isInteger(statoNativo.status)) statoServer = {
+            transazione: !!(statoNativo.status & 1) || !(statoNativo.status & 2),
+            solaLettura: !!(statoNativo.status & 0x2000),
+          };
+        }
+      } catch (err) {
+        avvelenata = true;
+        if (eseguita) throw err;
+      } finally { await lease.termina(eseguita, avvelenata, statoServer); }
     }
   }
 
@@ -1226,7 +1258,7 @@ class MySqlStrategy extends DbStrategy {
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
-      if (splitStatements(sql, { backslashEscape: true }).length !== 1) {
+      if (splitStatements(sql, { dbms: 'mysql', backslashEscape: true }).length !== 1) {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
     } else {

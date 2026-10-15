@@ -1,0 +1,14 @@
+  OK   indice: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27040:27040
+AssertionError [ERR_ASSERTION]: Migrazione senza progressi per oltre 20 secondi o durata oltre 120 secondi con un nodo offline.
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-failover.js:206:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

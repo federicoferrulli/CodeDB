@@ -1,0 +1,88 @@
+[
+    {
+        "Id": "sha256:edaae88ea87cfe1f3c519e6b38d3b3bc393db6d206c9767716525729a01d0e77",
+        "RepoTags": [
+            "codedb:0.2.1-beta.1",
+            "codedb:0.2.1-beta.1-verifica"
+        ],
+        "RepoDigests": [
+            "codedb@sha256:edaae88ea87cfe1f3c519e6b38d3b3bc393db6d206c9767716525729a01d0e77"
+        ],
+        "Comment": "buildkit.dockerfile.v0",
+        "Created": "2026-10-14T23:54:32.607696817Z",
+        "Config": {
+            "User": "node",
+            "ExposedPorts": {
+                "3030/tcp": {}
+            },
+            "Env": [
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=24.22.0",
+                "YARN_VERSION=1.22.22",
+                "PORT=3030",
+                "HOST=0.0.0.0",
+                "CODEDB_PUBLIC_BIND=0.0.0.0",
+                "CODEDB_CONNECTIONS_FILE=/app/data/connections.ini"
+            ],
+            "Entrypoint": [
+                "docker-entrypoint.sh"
+            ],
+            "Cmd": [
+                "node",
+                "server.js"
+            ],
+            "WorkingDir": "/app",
+            "ArgsEscaped": true,
+            "Healthcheck": {
+                "Test": [
+                    "CMD-SHELL",
+                    "node -e \"require('http').get('http://127.0.0.1:'+(process.env.PORT||3030)+'/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))\""
+                ],
+                "Interval": 30000000000,
+                "Timeout": 5000000000,
+                "StartPeriod": 10000000000,
+                "Retries": 3
+            }
+        },
+        "Architecture": "amd64",
+        "Os": "linux",
+        "Size": 412835955,
+        "RootFS": {
+            "Type": "layers",
+            "Layers": [
+                "sha256:74d97c428c51a828f9051a7a40a53ff1fc99e54fc30323ce36760701b0b7f711",
+                "sha256:097adc8e8de750358e0bc505a53d7f3055534238d0d4a0b9e3092b720de39b51",
+                "sha256:2ea56cd9a304c4091b108300290afb99cc0d4568f3d3ca9fabe095080a1d898c",
+                "sha256:88d9dfe7274031e3ec59d86af7044d33b0e0fefbfff973941722387fa39ff914",
+                "sha256:0ce31311e1f5868041a06cdd812e2c64c5d19bd2d8560e8b4397998bb63b5b46",
+                "sha256:9ba46292c2a96ef381737fef8c0f071c90c67b2074d38b148267c93e5c803546",
+                "sha256:356ab7209fffd000c03523749074b23765c3caee8dfd5175ed8f97b54d4174a3",
+                "sha256:3016c6e1e7e9598fc7c8b98816d17294c6874d7b26e6bdb17bb645b1dedd8b22",
+                "sha256:fdf4b023814dd86aefe702bab056bcc2ee2b579fd35c5a73624116cad42cf157",
+                "sha256:c675a3353a1f77794bed225d8bd97f507066f4ad8dad5ac5b2f6b526ff1fcb7c",
+                "sha256:74bc3a52c9475d38531b4bc7822c2f1a2dba9ec34e2f9d2b87455b35dc34e582",
+                "sha256:1761221a5f4d7581ecf4e2cf093ea8f0366ee0a9357a7204c640df605d30e66f",
+                "sha256:6ef09b557b55ae5ad429ae24c138650044dadf11f18350cae64e424d220ea822",
+                "sha256:08b4a4b972aa9aa05228c0768d2e36faab5889f77c6fbd9df46ede01bf90877b",
+                "sha256:5e1e4bbdc678cabbc9bba21c381b2a1a88aa2311a42c9b037f56223e032977e0",
+                "sha256:0edac1886ef4df397e82696e6461f8daf267ba72696a651132812338eba69070"
+            ]
+        },
+        "Metadata": {
+            "LastTagTime": "2026-10-15T00:10:55.418192011Z"
+        },
+        "Descriptor": {
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "digest": "sha256:edaae88ea87cfe1f3c519e6b38d3b3bc393db6d206c9767716525729a01d0e77",
+            "size": 856
+        },
+        "Identity": {
+            "Build": [
+                {
+                    "Ref": "xp3c4aoubyql9f2zts29dpk49",
+                    "CreatedAt": "2026-10-14T23:54:36.842903532Z"
+                }
+            ]
+        }
+    }
+]

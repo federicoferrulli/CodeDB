@@ -84,7 +84,7 @@ function poolPg() {
         chiamate: [],
         rilasciato: false,
         async query(sql, params) {
-          client.chiamate.push({ sql: String(sql), params });
+            client.chiamate.push({ sql: typeof sql === 'string' ? sql : sql.text, params });
           return { rows: [], command: 'UPDATE', rowCount: 3 };
         },
         release() { client.rilasciato = true; },

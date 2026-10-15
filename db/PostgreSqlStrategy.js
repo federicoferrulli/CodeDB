@@ -9,7 +9,8 @@ const { modificaConSrid, ERRORE_SRID } = require('./sridModifica');
 const { EJSON } = require('bson');
 const DbStrategy = require('./DbStrategy');
 const { stimaConteggio, conteggioLimitato, completaConteggi } = require('./conteggiNavigatore');
-const { splitStatements } = require('./sqlText');
+const { splitStatements, stripSqlNoise } = require('./sqlText');
+const { tipiPostgresNativi } = require('./sqlRisultatiNativi');
 const { tabellare } = require('./sqlTabellare');
 const { eseguiBatchScritture, conRighe } = require('./sqlWriteBatch');
 // Metadati comuni ai due motori SQL (chiave primaria, colonne, campi, indici
@@ -908,9 +909,11 @@ class PostgreSqlStrategy extends DbStrategy {
     // SQL Raw: la query la scrive l'utente, quindi puo' qualificare gli schemi
     // come vuole. I nomi NON qualificati devono pero' risolversi nello schema
     // che sta guardando, non in quello che capita dal search_path del server.
-    // `SET LOCAL` dentro la transazione, `RESET` fuori: la connessione torna
-    // sempre pulita al pool.
+    // Le letture protette usano SET LOCAL; le sessioni persistenti conservano
+    // il client, mentre i prestiti brevi ripuliscono il contesto prima del rilascio.
     const schema = schemaOf(db);
+    // In una transazione abortita PostgreSQL accetta il recupero, ma rifiuta SET.
+    const recupero = /^(?:ROLLBACK|ABORT|COMMIT|END)\b/i.test(stripSqlNoise(sql, { dbms: 'postgresql' }).trim());
     let pathSet = false;
     let timeoutSet = false;
     let readTxOpen = false;
@@ -931,11 +934,12 @@ class PostgreSqlStrategy extends DbStrategy {
         // un nome non qualificato fuori dal database/schema autorizzato quando
         // la tabella non esiste nello schema selezionato.
         await client.query(`SET LOCAL search_path TO ${qid(schema)}`);
-      } else {
+      } else if (!recupero) {
+        // Rollback, SET LOCAL e routine possono cambiare il contesto sul server.
         await client.query(`SET search_path TO ${qid(schema)}`);
         pathSet = true;
         // Fuori da una transazione non c'è `SET LOCAL`: il valore resta sulla
-        // connessione, quindi va riazzerato nel `finally` come il search_path,
+        // connessione, quindi nei prestiti brevi va riazzerato nel `finally`,
         // altrimenti lo eredita chi prende questo client dal pool.
         if (ms > 0) {
           await client.query(`SET statement_timeout = ${ms}`);
@@ -944,7 +948,7 @@ class PostgreSqlStrategy extends DbStrategy {
       }
       try {
         const cap = DbStrategy.resultCap(payload);
-        const res = await client.query(sql, payload.params);
+        const res = await client.query({ text: sql, values: payload.params, types: tipiPostgresNativi });
         eseguita = true;
         if (Array.isArray(res)) {
           const lastRes = res[res.length - 1];
@@ -965,15 +969,29 @@ class PostgreSqlStrategy extends DbStrategy {
           await client.query('ROLLBACK').catch(() => {});
           readTxOpen = false;
         }
-        if (pathSet && !lease.transazione) await client.query('RESET search_path').catch(() => {});
-        if (timeoutSet && !lease.transazione) await client.query('RESET statement_timeout').catch(() => {});
+        if (pathSet && !lease.transazione && !lease.persistente) await client.query('RESET search_path').catch(() => {});
+        if (timeoutSet && !lease.transazione && !lease.persistente) await client.query('RESET statement_timeout').catch(() => {});
       }
     } finally {
       // Rete di sicurezza per errori avvenuti durante i SET LOCAL, prima di
       // entrare nel blocco che esegue la query. Un client con una transazione
       // READ ONLY rimasta aperta avvelenerebbe la richiesta successiva del pool.
       if (readTxOpen) await client.query('ROLLBACK').catch(() => {});
-      await lease.termina(eseguita);
+      // In caso di errore pg rigetta prima di ReadyForQuery. Una richiesta
+      // vuota attende quel messaggio senza alterare la transazione abortita.
+      let statoServer, guasta = false;
+      try {
+        if (!eseguita) await client.query('').catch(() => {});
+        const status = client.getTransactionStatus?.();
+        if (status) statoServer = { transazione: status !== 'I', solaLettura: lease.solaLettura };
+        if (status === 'T') {
+          const stato = await client.query('SHOW transaction_read_only');
+          statoServer.solaLettura = stato.rows[0].transaction_read_only === 'on';
+        }
+      } catch (err) {
+        guasta = true;
+        if (eseguita) throw err;
+      } finally { await lease.termina(eseguita, guasta, statoServer); }
     }
   }
 
@@ -1148,7 +1166,7 @@ class PostgreSqlStrategy extends DbStrategy {
     if (payload.mode === 'aggregate') {
       sql = String(payload.pipeline || '').trim();
       if (!sql) throw new Error('Inserisci una query SQL di cui mostrare il piano.');
-      if (splitStatements(sql).length !== 1) {
+      if (splitStatements(sql, { dbms: 'postgresql' }).length !== 1) {
         throw new Error('Il piano di esecuzione accetta una sola istruzione SQL.');
       }
     } else {

@@ -12,6 +12,32 @@ function document(elements) {
   return Buffer.concat([head, ...elements, Buffer.from([0])], size);
 }
 
+// Sostituisce solo i campi assegnati dal trigger: gli altri byte BSON,
+// compresi i tag storici e le date fuori dal range JavaScript, restano intatti.
+function sostituisciCampi(raw, changed) {
+  const remaining = new Set(Object.keys(changed)), elements = [];
+  for (const e of BSON.onDemand.parseToElements(raw)) {
+    const name = raw.toString('utf8', e[1], e[1] + e[2]);
+    if (remaining.delete(name)) elements.push(BSON.serialize({ [name]: changed[name] }).subarray(4, -1));
+    else elements.push(raw.subarray(e[1] - 1, e[3] + e[4]));
+  }
+  for (const name of remaining) elements.push(BSON.serialize({ [name]: changed[name] }).subarray(4, -1));
+  return document(elements);
+}
+
+async function scriviRaw(database, coll, raw, options, replace = false) {
+  const sequence = new DocumentSequence(replace ? 'updates' : 'documents');
+  const encoded = replace ? document([
+    Buffer.concat([Buffer.from([3, 113, 0]), inspect(raw).id]),
+    Buffer.concat([Buffer.from([3, 117, 0]), raw]),
+  ]) : raw;
+  sequence.push({}, encoded);
+  const result = await database.command({ [replace ? 'update' : 'insert']: coll, [sequence.field]: sequence, ordered: true }, options);
+  checkWrite(result);
+  if (result.writeErrors?.length) throw Object.assign(new Error(result.writeErrors[0].errmsg), { code: result.writeErrors[0].code });
+  return result;
+}
+
 function inspect(raw) {
   if (!Buffer.isBuffer(raw) || raw.length < 5 || raw.length > 16 * 1024 * 1024 || raw.readInt32LE() !== raw.length) throw new Error('Documento BSON non valido.');
   const elements = BSON.onDemand.parseToElements(raw);
@@ -65,29 +91,43 @@ async function deleteRows(client, db, coll, rows) {
   if (response.writeErrors?.length) throw new Error(response.writeErrors.map(e => e.errmsg).join('; '));
 }
 
-async function importRows(client, db, coll, rows, upsert = false) {
+async function importRows(client, db, coll, rows, upsert = false, options = {}, triggers = null) {
   if (!Array.isArray(rows)) throw new Error('Documenti BSON non validi.');
   let inserted = 0;
   const errors = [];
+  if (triggers) { await triggers.statement('BEFORE', 'INSERT'); if (upsert) await triggers.statement('BEFORE', 'UPDATE'); }
   for (let offset = 0; offset < rows.length;) {
     const sequence = new DocumentSequence(upsert ? 'updates' : 'documents');
+    const ids = [];
     let count = 0, bytes = 0;
     while (offset < rows.length && count < 500) {
-      const raw = decode(rows[offset]);
+      let raw = decode(rows[offset]);
       if (count && bytes + raw.length > 8 * 1024 * 1024) break;
+      if (triggers) {
+        const id = BSON.deserialize(inspect(raw).id, { promoteValues: false })._id;
+        const old = upsert ? (await triggers.prima({ _id: id }, options))[0] : null;
+        if (triggers.hasBefore(old ? 'UPDATE' : 'INSERT')) raw = await triggers.beforeRaw(old ? 'UPDATE' : 'INSERT', old, raw);
+      }
+      if (triggers) ids.push(BSON.deserialize(inspect(raw).id, { promoteValues: false })._id);
       const encoded = upsert ? document([
         Buffer.concat([Buffer.from([3, 113, 0]), inspect(raw).id]),
         Buffer.concat([Buffer.from([3, 117, 0]), raw]),
         Buffer.from([8, ...Buffer.from('upsert\0'), 1]),
       ]) : raw;
       sequence.push({}, encoded); bytes += encoded.length; count++; offset++;
+      // Gli upsert ripetuti sulla stessa identità devono esporre ogni OLD/NEW.
+      if (triggers) break;
     }
-    const response = await client.db(db).command({ [upsert ? 'update' : 'insert']: coll, [sequence.field]: sequence, ordered: false });
+    const previous = triggers && upsert ? await triggers.prima({ _id: { $in: ids } }, options) : [];
+    const response = await client.db(db).command({ [upsert ? 'update' : 'insert']: coll, [sequence.field]: sequence, ordered: false }, options);
     checkWrite(response);
+    if (options.session && response.writeErrors?.length) throw new Error(response.writeErrors[0].errmsg);
     inserted += response.n || 0;
     for (const error of response.writeErrors || []) if (errors.length < 10) errors.push(`Documento ${offset - count + error.index + 1}: ${error.errmsg}`);
+    if (triggers) await triggers.dopo(previous, ids);
   }
+  if (triggers) { if (upsert) await triggers.statement('AFTER', 'UPDATE'); await triggers.statement('AFTER', 'INSERT'); }
   return { inserted, failed: rows.length - inserted, errors };
 }
 
-module.exports = { ENCODING, encode, decode, decodeId, inspect, importRows, deleteRows };
+module.exports = { ENCODING, encode, decode, decodeId, inspect, importRows, deleteRows, sostituisciCampi, scriviRaw };

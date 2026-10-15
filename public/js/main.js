@@ -127,16 +127,12 @@ document.addEventListener('click', (e) => {
 function initResizers() {
   const navigator = $('#navigator');
   const connections = $('#conn-sidebar');
-  const keyHeight = migraChiave('navigator-connections-height', 'gui-db:navigator-connections-height');
   const maximum = () => Math.max(100, navigator.clientHeight - 100);
   const setHeight = value => navigator.style.setProperty('--connections-height', `${Math.min(maximum(), Math.max(100, value))}px`);
-  const savedHeight = Number(localStorage.getItem(keyHeight));
-  if (savedHeight > 0 && Number.isFinite(savedHeight)) navigator.style.setProperty('--connections-height', `${Math.max(100, savedHeight)}px`);
   rendiTrascinabile($('#navigator-divider'), {
     asse: 'y', etichetta: 'Spazio delle connessioni nel navigatore', controllato: connections,
     minimo: () => 100, massimo: maximum, inizio: () => connections.getBoundingClientRect().height,
     sposta: (delta, height) => setHeight(height + delta),
-    fine: () => localStorage.setItem(keyHeight, String(connections.getBoundingClientRect().height)),
   });
   document.querySelectorAll('.resizer[data-resize]').forEach((rz) => {
     const el = rz.dataset.resize === 'conn-sidebar' ? navigator : document.getElementById(rz.dataset.resize) || (rz.dataset.resize === 'query-sidebar' ? $('#query-schema-sidebar') : null);

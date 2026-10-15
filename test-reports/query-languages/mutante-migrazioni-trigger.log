@@ -1,0 +1,22 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+  OK   Interruzione prima/dopo il commit: recupero durabile e nessuna doppia applicazione
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
++ []
+- [
+-   {
+-     id: 1,
+-     n: 1
+-   }
+- ]
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:87:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

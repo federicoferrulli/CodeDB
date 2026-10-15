@@ -51,6 +51,7 @@ function createModule({ lock, budget, identita, connessioni, vault }) {
         socketContext.sessions.set(tabId, {
           releaseGlobalSession() { if (!released) { released = true; budget.releaseGlobalSession(); } },
           tabId,
+          emitMongosh(event) { socketContext.socket.emit('mongosh:event', { ...event, tabId }); },
           strategy: conn.strategy,
           tunnel: conn.tunnel,
           dbType: conn.dbType,

@@ -1,0 +1,16 @@
+  OK   Varianti ALTER: rinomina vincoli/indici, collisioni, recupero, IF NOT EXISTS, SET DATA TYPE, DROP CHECK
+  OK   WHEN, NULL, NEW modificato dal trigger precedente, eventi multipli e IS DISTINCT FROM
+  OK   Ordine FOLLOWS/PRECEDES confrontato con MySQL e conservato dopo DROP del riferimento
+AssertionError [ERR_ASSERTION]: Missing expected rejection: CALL errore_atomico()
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-varianti.js:51:16)
+    at async invalid (C:\repository\CodeDB\test\sql-mongo-varianti.js:16:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-varianti.js:126:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-varianti.js:65:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /rifiuto riga/,
+  operator: 'rejects',
+  diff: 'simple'
+}

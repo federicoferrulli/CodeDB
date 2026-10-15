@@ -1,0 +1,190 @@
+0. guardie di sola lettura (unit, senza server)
+  OK   statement di lettura ammessi
+  OK   statement di scrittura rifiutati
+  OK   pipeline di lettura ammessa
+  OK   pipeline con $merge rifiutata
+1. seed dei dati di test (driver MongoDB)
+1b. istanza CodeDB di test (porta dedicata, vault temporaneo)
+  OK   istanza di test avviata su http://127.0.0.1:3142
+2. connessione salvata di test (via socket, come farebbe la UI)
+  OK   connections:save "e2e-mcp"
+3. handshake MCP e tools/list
+  OK   tool "list_saved_connections" esposto
+  OK   tool "connect_database" esposto
+  OK   tool "disconnect_database" esposto
+  OK   tool "get_databases_and_collections" esposto
+  OK   tool "get_schema" esposto
+  OK   tool "execute_query" esposto
+  OK   tool "execute_write" esposto
+  OK   tool "execute_ddl" esposto
+  OK   tool "set_connection_read_only" esposto
+  OK   tool "get_shortest_path" esposto
+  OK   tool "analyze_dependencies" esposto
+  OK   tool "analyze_pii" esposto
+  OK   tool "audit_schema" esposto
+  OK   tool "filter_empty_tables" esposto
+  OK   tool "get_graph" esposto
+4. list_saved_connections
+  OK   connessione di test elencata
+  OK   nessun campo password nel risultato
+5. connect_database
+  OK   connessione aperta
+  OK   connessione salvata inesistente rifiutata
+6. get_databases_and_collections
+  OK   elenco database contiene il db di test
+  OK   collection "people" e "orders" elencate
+7. get_schema
+  OK   schema campionato di "people"
+  OK   relazione orders.people_id -> people rilevata
+8. execute_query: find con filtro e sort (EJSON)
+  OK   find: total = 2
+  OK   _id in Extended JSON ($oid)
+9. execute_query: pipeline di aggregazione
+  OK   aggregazione: totale = 77
+9b. Strumenti analitici ed architetturali MCP
+  OK   get_shortest_path trova il cammino tra orders e people
+[server-e2e] (node:34744) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/schema-analisi.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  OK   analyze_dependencies: {
+  "root_tables": [
+    "people"
+  ],
+  "leaf_tables": [
+    "orders"
+  ],
+  "seeding_order": [
+    "people",
+    "orders"
+  ],
+  "cyclic_tables": [],
+  "strongly_connected_components": [],
+  "blocked_by_cycles": [],
+  "external_dependencies": [],
+  "total_tables": 2
+}
+  OK   analyze_dependencies elenca entrambe le collezioni
+  OK   seeding order: people (0) deve precedere orders (1)
+  OK   people non ha FK uscenti: è una tabella ROOT
+  OK   nessun ciclo in questo schema
+  OK   analyze_pii: {
+  "total_pii_fields": 1,
+  "affected_tables_count": 1,
+  "pii_by_table": {
+    "people": [
+      {
+        "field": "email",
+        "types": [
+          "string"
+        ],
+        "presence": 100,
+        "matched_term": "email"
+      }
+    ]
+  }
+}
+  OK   analyze_pii deve riconoscere "email"
+  OK   analyze_pii non deve marcare "descrizione"/"tipo" come dati personali (visti: email)
+  OK   analyze_pii: un solo campo sensibile, non 1
+  OK   ogni corrispondenza deve dire QUALE termine l'ha prodotta
+  OK   audit_schema: {
+  "health_score": 100,
+  "total_tables": 2,
+  "issues": [],
+  "metric_summary": {
+    "orphan_tables": [],
+    "oversized_tables": [],
+    "missing_pk_tables": [],
+    "orphan_ratio": 0,
+    "oversized_ratio": 0,
+    "missing_pk_ratio": 0
+  }
+}
+  OK   health_score fuori intervallo: 100
+  OK   schema sano: atteso 100, ottenuto 100 ([])
+  OK   entrambe le collezioni hanno _id
+  OK   filter_empty_tables: {
+  "empty_tables": [],
+  "non_empty_tables": [
+    "orders",
+    "people"
+  ],
+  "empty_count": 0,
+  "total_count": 2
+}
+  OK   people contiene documenti: deve risultare popolata
+  OK   get_graph restituisce nodi ed archi per la visualizzazione 3D/2D
+10. guardie e parametri errati
+  OK   pipeline con $out rifiutata
+  OK   parametro "sql" rifiutato su MongoDB
+  OK   connection_id sconosciuto rifiutato
+  OK   filtro con sintassi errata: errore riportato
+10b. Prompts MCP
+  OK   prompts esposti (genera-report, esplora-database, analizza-gdpr, diagnostica-schema)
+  OK   prompt analizza-gdpr parametrizzato
+10c. Risorse schema:// e graph://
+  OK   template schema:// e graph:// pubblicati
+  OK   risorsa markdown con diagramma Mermaid
+  OK   dizionario dati con relazione orders.people_id -> people
+  OK   risorsa graph:// JSON con nodi ed archi
+  OK   risorsa con connection_id sconosciuto rifiutata
+11. isolamento tra sessioni MCP
+  OK   connection_id di un'altra sessione MCP rifiutato
+12. disconnect_database
+  OK   disconnessione riuscita
+  OK   query dopo la disconnessione rifiutata
+13. Fase 3: execute_write rifiutata su connessione read-only (default)
+  OK   connessione di default non scrivibile
+  OK   scrittura rifiutata con messaggio esplicativo
+14. Fase 3: scritture con conferma su connessione readOnly=false
+  OK   connections:save "e2e-mcp-rw" con readOnly=false
+  OK   flag readOnly esposto in list_saved_connections
+  OK   connessione scrivibile aperta
+  OK   primo passo: anteprima + confirm_token
+  OK   secondo passo: insert eseguito col token
+  OK   documento inserito e rileggibile
+  OK   confirm_token monouso: riuso rifiutato
+  OK   confirm_token inventato rifiutato
+14a. execute_write: insert multiplo MongoDB in Extended JSON
+  OK   anteprima bulk con 2200 documenti = {"dbType":"mongodb","db":"gui_mongodb_mcp_data_795a3aae7f47","collection":"people","operation":"insert","documentCount":2200}
+  OK   una conferma inserisce l'intero array = 2200 documenti / 2200 id
+  OK   tutti i documenti bulk sono rileggibili
+  OK   la data Extended JSON resta un tipo Date BSON
+  OK   il Long Extended JSON non perde precisione
+  OK   un errore a metà insertMany viene riportato come fallimento
+  OK   i documenti inseriti prima del duplicate key restano osservabili
+  OK   stima documenti interessati = 1
+  OK   update confermato ed eseguito
+14b. execute_write: upsert MongoDB esplicito e default disattivato
+  OK   senza upsert un update senza corrispondenze non inserisce
+  OK   l'anteprima dichiara chiaramente upsert=true = {"dbType":"mongodb","db":"gui_mongodb_mcp_data_795a3aae7f47","collection":"people","operation":"update","filter":"{ \"name\": \"Creato con upsert\" }","set":"{ \"age\": 32 }","upsert":true}
+  OK   upsert confermato inserisce il documento quando il filtro non trova corrispondenze
+  OK   delete con filtro vuoto rifiutata subito
+  OK   delete confermata ed eseguita
+14c. Fase 3: drop_collection e drop_database con conferma
+  OK   drop_collection: anteprima con stima = 1
+  OK   drop_collection confermato ed eseguito
+  OK   collection "scratch" eliminata
+  OK   drop_collection senza "collection" rifiutato
+  OK   drop_database: anteprima con numero di collection
+  OK   drop_database confermato ed eseguito
+  OK   database "gui_mongodb_mcp_drop_795a3aae7f47" eliminato
+  OK   drop_database su db di sistema bloccato dalla strategia
+  OK   execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)
+  OK   audit log con eventi requested/executed
+  OK   audit bulk con conteggio richiesto e inserito
+  OK   audit del bulk parziale con numero di documenti realmente inseriti
+15. set_connection_read_only: flag readOnly con doppia conferma
+  OK   primo passo: anteprima + confirm_token
+  OK   confirm_token inventato rifiutato
+  OK   token di set_connection_read_only non spendibile su execute_write
+  OK   secondo passo: flag aggiornato col token
+  OK   readOnly=false visibile in list_saved_connections
+  OK   nuova connessione scrivibile dopo il cambio flag
+  OK   anche il ritorno a sola lettura richiede conferma
+  OK   flag riportato a sola lettura
+  OK   valore già impostato: nessun token, nessuna modifica
+  OK   connessione inesistente rifiutata
+
+TUTTI I TEST SUPERATI

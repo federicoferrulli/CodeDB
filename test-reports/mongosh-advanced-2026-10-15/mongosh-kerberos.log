@@ -1,0 +1,38 @@
+Loading random data
+Initializing database '/var/lib/krb5kdc/principal' for realm 'CODEDB.TEST',
+master key name 'K/M@CODEDB.TEST'
+No policy specified for mongodb/mongo.kerberos.test@CODEDB.TEST; defaulting to no policy
+Authenticating as principal root/admin@CODEDB.TEST with password.
+Principal "mongodb/mongo.kerberos.test@CODEDB.TEST" created.
+Authenticating as principal root/admin@CODEDB.TEST with password.
+Entry for principal mongodb/mongo.kerberos.test@CODEDB.TEST with kvno 2, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/tmp/mongodb.keytab.
+Entry for principal mongodb/mongo.kerberos.test@CODEDB.TEST with kvno 2, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/tmp/mongodb.keytab.
+No policy specified for codedb@CODEDB.TEST; defaulting to no policy
+Authenticating as principal root/admin@CODEDB.TEST with password.
+Principal "codedb@CODEDB.TEST" created.
+Authenticating as principal root/admin@CODEDB.TEST with password.
+Entry for principal codedb@CODEDB.TEST with kvno 2, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/tmp/client.keytab.
+Entry for principal codedb@CODEDB.TEST with kvno 2, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/tmp/client.keytab.
+about to fork child process, waiting until server is ready for connections.
+forked process: 19
+child process started successfully, parent exiting
+{ ok: 1 }
+{"t":{"$date":"2026-10-15T18:55:25.777+00:00"},"s":"I",  "c":"CONTROL",  "id":23285,   "ctx":"main","msg":"Automatically disabling TLS 1.0, to force-enable TLS 1.0 specify --sslDisabledProtocols 'none'"}
+{"t":{"$date":"2026-10-15T18:55:25.778+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"parallel execution pool","numThreads":0,"minThreads":0,"maxThreads":128}}
+{"t":{"$date":"2026-10-15T18:55:25.780+00:00"},"s":"I",  "c":"CONTROL",  "id":5945603, "ctx":"main","msg":"Multi threading initialized"}
+{"t":{"$date":"2026-10-15T18:55:25.781+00:00"},"s":"I",  "c":"NETWORK",  "id":4648601, "ctx":"main","msg":"Implicit TCP FastOpen unavailable. If TCP FastOpen is required, set at least one of the related parameters","attr":{"relatedParameters":["tcpFastOpenServer","tcpFastOpenClient","tcpFastOpenQueueSize"]}}
+{"t":{"$date":"2026-10-15T18:55:25.781+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"AuthorizationManager","numThreads":0,"minThreads":0,"maxThreads":1000000000}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"ThreadPool3","numThreads":0,"minThreads":0,"maxThreads":1}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"ThreadPool2","numThreads":0,"minThreads":0,"maxThreads":1}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"ThreadPool1","numThreads":0,"minThreads":0,"maxThreads":1}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"NETWORK",  "id":4915701, "ctx":"main","msg":"Initialized wire specification","attr":{"spec":{"incomingExternalClient":{"minWireVersion":0,"maxWireVersion":25},"incomingInternalClient":{"minWireVersion":0,"maxWireVersion":25},"outgoing":{"minWireVersion":6,"maxWireVersion":25},"isInternalClient":true}}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"OCSPCache","numThreads":0,"minThreads":0,"maxThreads":8}}
+{"t":{"$date":"2026-10-15T18:55:25.783+00:00"},"s":"I",  "c":"EXECUTOR", "id":11280000,"ctx":"main","msg":"Starting thread pool","attr":{"poolName":"IndexBuildsCoordinatorMongod","numThreads":0,"minThreads":0,"maxThreads":1000000000}}
+Killing process with pid: 19
+{"t":{"$date":"2026-10-15T18:55:26.834Z"},"s":"I",  "c":"CONTROL",  "id":5760901, "ctx":"main","msg":"Applied --setParameter options","attr":{"serverParameters":{"authenticationMechanisms":{"default":["MONGODB-X509","SCRAM-SHA-1","SCRAM-SHA-256"],"value":["GSSAPI"]}}}}
+about to fork child process, waiting until server is ready for connections.
+forked process: 98
+child process started successfully, parent exiting
+OK connessione iniziale CodeDB con ticket MIT Kerberos reale
+OK runtime mongosh autenticato GSSAPI, identità verificata e CRUD
+OK nuova connessione rifiutata senza ticket Kerberos

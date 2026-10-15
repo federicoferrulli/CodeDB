@@ -1,0 +1,27 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+AssertionError [ERR_ASSERTION]: Opzioni della scrittura non possono nascondere OLD/NEW
++ actual - expected
+
+  [
+    {
++     dopo: null,
++     evento: 'DELETE',
+-     dopo: 10,
+-     evento: 'UPDATE',
+      id: 1,
++     prima: null
+-     prima: 10
+    }
+  ]
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:52:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:57:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

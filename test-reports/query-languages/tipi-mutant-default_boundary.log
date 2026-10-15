@@ -1,0 +1,12 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+Error: NOT deve precedere IN, LIKE, ILIKE o BETWEEN.
+    at leggiEspressione (C:\repository\CodeDB\db\sqlEspressioni.js:49:20)
+    at Object.parse (C:\repository\CodeDB\db\sqlDominiMongo.js:22:51)
+    at traduciCreate (C:\repository\CodeDB\db\SqlToMql.js:1318:63)
+    at Object.translateWrite (C:\repository\CodeDB\db\SqlToMql.js:1151:45)
+    at execute (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:53:60)
+    at query (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:60:10)
+    at all (C:\repository\CodeDB\test\sql-mongo-tipi.js:6:11)
+    at module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:192:9)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:73:18

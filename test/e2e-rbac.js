@@ -91,6 +91,10 @@ function connect(token) {
 
     const conn = await emit(viewerSock, 'mongo:connect', { saved: CONN_NAME, tabId: 't1' });
     assert(conn.ok, `connessione concessa aperta (${conn.ok ? conn.dbType : conn.error})`);
+    for (const event of ['query:execute', 'mongosh:state', 'mongosh:reset', 'mongosh:closeStream', 'mongosh:answer']) {
+      const native = await emit(viewerSock, event, { tabId: 't1', db: DATA_DB, engine: 'mongosh', code: 'process.cwd()' });
+      assert(!native.ok && /amministratore dell.installazione/.test(native.error), `${event}: runtime Node negato al sottoutente`);
+    }
 
     console.log('7. permessi su database e collezioni');
     const dbs = await emit(viewerSock, 'db:list', { tabId: 't1' });

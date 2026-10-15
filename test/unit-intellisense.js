@@ -182,7 +182,7 @@ function conCursore(sorgente) {
   prova('Dopo db.collezione. servono i metodi', () => {
     const { testo, cursore } = conCursore('db.utenti.fin|');
     const s = testi(suggerisci({ testo, cursore, motore: 'mongo', schema }));
-    assert.deepStrictEqual(s, ['find', 'findOne']);
+    assert.deepStrictEqual(s, ['find', 'findOne', 'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete']);
   });
 
   prova('Dentro find() servono i campi di QUELLA collezione', () => {
@@ -285,7 +285,7 @@ function conCursore(sorgente) {
     const { testo, cursore } = conCursore('SELECT GROUP_C| FROM utenti');
     const s = suggerisci({ testo, cursore, motore: 'sql', schema, dbms: 'mysql' });
     assert.strictEqual(s[0].testo, 'GROUP_CONCAT');
-    assert.strictEqual(s[0].dettaglio, 'MySQL', 'il suggerimento dice da quale motore viene');
+    assert.strictEqual(s[0].dettaglio, 'MySQL 8.4', 'il suggerimento dice da quale motore e catalogo viene');
   });
 
   prova('Le funzioni di un altro motore non compaiono', () => {
@@ -316,11 +316,9 @@ function conCursore(sorgente) {
     assert.deepStrictEqual(suggerisci({ testo, cursore, motore: 'sql', schema }), []);
   });
 
-  prova('SQL su MongoDB: solo gli aggregati che SqlToMql sa tradurre', () => {
-    // `UPPER` non arriva a destinazione su MongoDB: proporla farebbe scrivere
-    // una query che fallisce solo dopo aver premuto Esegui.
+  prova('SQL su MongoDB: aggregati e funzioni del registro condiviso', () => {
     const su = conCursore('SELECT UPP| FROM utenti');
-    assert.deepStrictEqual(suggerisci({ ...su, motore: 'auto', ripiego: 'mongo', schema, dbms: 'mongodb' }), []);
+    assert.strictEqual(suggerisci({ ...su, motore: 'auto', ripiego: 'mongo', schema, dbms: 'mongodb' })[0].testo, 'UPPER');
     const agg = conCursore('SELECT COU| FROM utenti');
     const s = suggerisci({ ...agg, motore: 'auto', ripiego: 'mongo', schema, dbms: 'mongodb' });
     assert.strictEqual(s[0].testo, 'COUNT');
@@ -338,6 +336,9 @@ function conCursore(sorgente) {
     const { testo, cursore } = conCursore('ALTER TABLE utenti ADD COLUMN nato TIMEST|');
     const s = testi(suggerisci({ testo, cursore, motore: 'sql', schema, dbms: 'postgresql' }));
     assert.ok(s.includes('timestamp') || s.includes('timestamptz'), s.join(','));
+    const cambio = conCursore('ALTER TABLE utenti CHANGE COLUMN prima dopo ENU|');
+    const tipi = testi(suggerisci({ ...cambio, motore: 'sql', schema, dbms: 'mongodb' }));
+    assert.ok(tipi.includes("ENUM('valore')"), tipi.join(','));
   });
 
   prova('L\'identificatore SQL riconosce le tre forme di virgolette', () => {

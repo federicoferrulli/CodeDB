@@ -1,0 +1,14 @@
+  OK   Commenti iniziali SQL→MQL
+  OK   Filtro MongoDB nativo
+  OK   Pipeline MongoDB nativa con commento
+  OK   Costruttore BSON nativo
+  OK   Intero nativo oltre 53 bit intatto
+  OK   Costruttore BSON con argomento numerico
+  OK   Intero EJSON originale intatto
+  OK   Cursore shell toArray
+  FAIL Letterale SQL binario conservato nel piano: The expression evaluated to a falsy value:
+
+  assert.ok(pipeline.includes('"$binary"'))
+
+  OK   mysql: SQL trasmesso intatto alla strategia
+  OK   postgresql: SQL trasmesso intatto alla strategia

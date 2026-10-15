@@ -32,7 +32,10 @@
 
 import {
   vocabolarioSql, METODI_DB_MONGO, quotaIdentificatore, ID_SQL, smarca, ultimoSegmento,
+  FUNZIONI_COMUNI, OPERATORI_MQL, METODI_COLLEZIONE_MONGO, METODI_CURSORE_MONGO, METODI_SESSIONE_MONGO, VARIABILI_MONGO, dettaglioMongo,
 } from './sql-dialetti.js';
+import { tokenizzaQuery, linguaQuery, intervalloIstruzione, mascheraQuery } from './query-lexer.js';
+import catalogoMongosh from './mongosh-catalogo.mjs';
 
 /* ==========================================================================
  * Vocabolari
@@ -47,11 +50,7 @@ export const PAROLE_SQL = [
   'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'EXISTS', 'WITH',
 ];
 
-export const FUNZIONI_SQL = [
-  'COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'COALESCE', 'NULLIF', 'CAST',
-  'UPPER', 'LOWER', 'TRIM', 'LENGTH', 'SUBSTRING', 'CONCAT', 'ROUND',
-  'NOW', 'DATE', 'YEAR', 'MONTH', 'DAY',
-];
+export const FUNZIONI_SQL = FUNZIONI_COMUNI;
 
 // Parole ammesse nel filtro/ordinamento della griglia: lì non si scrive una
 // query intera, solo il pezzo dopo WHERE / ORDER BY.
@@ -59,32 +58,9 @@ export const PAROLE_SQL_WHERE = [
   'AND', 'OR', 'NOT', 'NULL', 'LIKE', 'IN', 'BETWEEN', 'IS', 'ASC', 'DESC',
 ];
 
-export const OPERATORI_MONGO = [
-  '$eq', '$ne', '$gt', '$gte', '$lt', '$lte', '$in', '$nin',
-  '$and', '$or', '$not', '$nor', '$exists', '$type', '$regex', '$expr',
-  '$elemMatch', '$size', '$all', '$text',
-  '$match', '$group', '$sort', '$project', '$limit', '$skip', '$lookup',
-  '$unwind', '$addFields', '$set', '$unset', '$count', '$facet', '$sample',
-  '$sum', '$avg', '$min', '$max', '$first', '$last', '$push', '$addToSet',
-  '$concat', '$toUpper', '$toLower', '$dateToString', '$cond', '$ifNull',
-  // Stadi e operatori meno comuni, ma che sono esattamente quelli che non si
-  // ricordano a memoria — cioè quelli per cui un completamento serve davvero.
-  '$graphLookup', '$bucket', '$bucketAuto', '$replaceRoot', '$replaceWith',
-  '$sortByCount', '$setWindowFields', '$merge', '$out', '$geoNear', '$densify',
-  '$switch', '$let', '$map', '$filter', '$reduce', '$arrayElemAt', '$slice',
-  '$mergeObjects', '$objectToArray', '$arrayToObject', '$regexMatch',
-  '$dateFromString', '$dateDiff', '$toString', '$toInt', '$toDouble',
-  '$toObjectId', '$toDate', '$round', '$abs', '$multiply', '$divide',
-  '$subtract', '$add', '$strLenCP', '$split', '$trim', '$literal',
-  '$geoWithin', '$geoIntersects', '$near', '$nearSphere',
-];
+export const OPERATORI_MONGO = OPERATORI_MQL;
 
-export const METODI_MONGO = [
-  'find', 'findOne', 'aggregate', 'countDocuments', 'estimatedDocumentCount',
-  'distinct', 'insertOne', 'insertMany', 'updateOne', 'updateMany',
-  'replaceOne', 'deleteOne', 'deleteMany', 'createIndex', 'dropIndex',
-  'getIndexes', 'drop', 'stats',
-];
+export const METODI_MONGO = METODI_COLLEZIONE_MONGO;
 
 // Parole che non possono essere l'alias di una tabella: senza questo elenco
 // `FROM utenti WHERE` registrerebbe `WHERE` come alias di `utenti`.
@@ -111,10 +87,9 @@ export const INIZI_SQL = [
 // tasto premuto, e costruirne tre nuove a ogni battuta è lavoro puro.
 const RE_DDL_TABELLA = /\b(CREATE|ALTER)\s+(TEMPORARY\s+)?TABLE\b/i;
 const RE_DOPO_ADD_COLONNA = new RegExp(
-  `\\b(?:ADD|MODIFY|CHANGE|ALTER)\\s+(?:COLUMN\\s+)?${ID_SQL}\\s+(?:TYPE\\s+)?$`, 'i');
+  `\\b(?:(?:ADD|MODIFY|ALTER)\\s+(?:COLUMN\\s+)?${ID_SQL}\\s+(?:TYPE\\s+)?|CHANGE\\s+(?:COLUMN\\s+)?${ID_SQL}\\s+${ID_SQL}\\s+)$`, 'i');
 const RE_DOPO_NOME_COLONNA = new RegExp(`[(,]\\s*${ID_SQL}\\s+$`);
 
-const RE_INIZIO_SQL = /^(?:\s|--[^\n]*\n|#[^\n]*\n|\/\*[\s\S]*?\*\/)*\b(SELECT|INSERT|UPDATE|DELETE|REPLACE|WITH|CREATE|ALTER|DROP|TRUNCATE|SHOW|DESCRIBE|DESC|EXPLAIN|USE|GRANT|REVOKE|SET)\b/i;
 
 /* ==========================================================================
  * Lettura del contesto
@@ -127,10 +102,10 @@ const RE_INIZIO_SQL = /^(?:\s|--[^\n]*\n|#[^\n]*\n|\/\*[\s\S]*?\*\/)*\b(SELECT|I
  * quella della prima riga del file: `SELECT 1; db.utenti.find({ …` sono due
  * lingue diverse nello stesso editor, ed è normale.
  */
-function istruzioneCorrente(testo, cursore) {
-  const prima = String(testo == null ? '' : testo).slice(0, Math.max(0, cursore));
-  const puntoEVirgola = prima.lastIndexOf(';');
-  return puntoEVirgola >= 0 ? prima.slice(puntoEVirgola + 1) : prima;
+function istruzioneCorrente(testo, cursore, dbms = '') {
+  const s = String(testo ?? '');
+  const { inizio } = intervalloIstruzione(s, cursore, { dbms });
+  return s.slice(inizio, cursore);
 }
 
 /**
@@ -186,15 +161,8 @@ function contaFuoriDaStringhe(testo, carattere) {
  *
  * @returns {'sql'|'mongo'|''}  stringa vuota = non si capisce ancora
  */
-export function motoreDalTesto(testo, cursore) {
-  const istruzione = istruzioneCorrente(testo, cursore);
-  if (!istruzione.trim()) return '';
-  // La parola iniziale decide: `SELECT * FROM db.utenti` resta SQL anche se
-  // contiene un `db.`.
-  if (RE_INIZIO_SQL.test(istruzione)) return 'sql';
-  if (/^\s*[[{]/.test(istruzione)) return 'mongo';          // filtro o pipeline MQL
-  if (/\bdb\s*\.\s*[\w$(]/.test(istruzione)) return 'mongo'; // sintassi shell
-  return '';
+export function motoreDalTesto(testo, cursore, dbms = '') {
+  return linguaQuery(istruzioneCorrente(testo, cursore, dbms), '');
 }
 
 /**
@@ -238,8 +206,8 @@ const RE_TABELLA_CITATA = new RegExp(
  * Tabelle citate nella query, con il loro alias.
  * @returns {Array<{nome: string, alias: string}>}
  */
-export function tabelleCitate(sql) {
-  const s = String(sql == null ? '' : sql);
+export function tabelleCitate(sql, dbms = 'postgresql') {
+  const s = mascheraQuery(String(sql ?? ''), { dbms, lingua: 'sql' });
   const out = [];
   const visti = new Set();
   let m;
@@ -254,6 +222,8 @@ export function tabelleCitate(sql) {
     if (!nome) continue;
     const aliasGrezzo = smarca(m[3] || '');
     const alias = NON_ALIAS.has(aliasGrezzo.toLowerCase()) ? '' : aliasGrezzo;
+    // JOIN/WHERE appartengono alla clausola seguente, non all'alias opzionale.
+    if (m[3] && !alias) RE_TABELLA_CITATA.lastIndex -= m[3].length;
     const chiave = `${nome} ${alias}`;
     if (visti.has(chiave)) continue;
     visti.add(chiave);
@@ -282,11 +252,11 @@ export function collezioneAlCursore(testo, cursore) {
  * @returns {{tipo: string, prefisso: string, qualificatore: string, tabella: string}}
  *   tipo ∈ 'tabella' | 'colonna' | 'collezione' | 'metodo' | 'campo' | 'operatore'
  */
-export function contestoQuery({ testo = '', cursore = 0, motore = 'sql', ripiego = 'sql' } = {}) {
+export function contestoQuery({ testo = '', cursore = 0, motore = 'sql', ripiego = 'sql', dbms = '' } = {}) {
   const { prefisso, qualificatore, inizio } = tokenAlCursore(testo, cursore);
   // 'auto': la lingua la dice il testo; il tipo di connessione serve solo
   // finché il testo non dice niente.
-  const rilevato = motore === 'auto' ? motoreDalTesto(testo, cursore) : motore;
+  const rilevato = motore === 'auto' ? motoreDalTesto(testo, cursore, dbms) : motore;
   const base = { prefisso, qualificatore, tabella: '', motore: rilevato || ripiego, incerto: !rilevato && motore === 'auto' };
 
   if ((rilevato || ripiego) === 'mongo') {
@@ -294,9 +264,15 @@ export function contestoQuery({ testo = '', cursore = 0, motore = 'sql', ripiego
     // Il `$` fa parte del token (è in [\w$]): un prefisso che comincia con il
     // dollaro è per definizione un operatore in scrittura.
     if (prefisso.startsWith('$')) return { ...base, tipo: 'operatore' };
+    if (/\.getMongo\(\s*\)\s*\.\s*$/.test(prima)) return { ...base, tipo: 'connessioneMongo' };
+    const sessioni = [...prima.matchAll(/\b([\w$]+)\s*=\s*db\.getMongo\(\s*\)\.startSession\s*\(/g)].map(m => m[1]);
+    if (sessioni.includes(qualificatore) || /\.startSession\([^)]*\)\s*\.\s*$/.test(prima)) return { ...base, tipo: 'sessioneMongo' };
     if (qualificatore === 'db') return { ...base, tipo: 'collezione' };
-    if (qualificatore && /\bdb\.[\w$]+\.$/.test(prima)) {
+    if (/\bdb\.(?:[\w$]+|getCollection\(\s*['"][^'"]+['"]\s*\))\.$/.test(prima)) {
       return { ...base, tipo: 'metodo', tabella: qualificatore };
+    }
+    if (/\)\s*\.\s*$/.test(prima) && /\b(?:find|aggregate|watch)\s*\(/.test(prima)) {
+      return { ...base, tipo: 'cursore' };
     }
     const coll = collezioneAlCursore(testo, cursore);
     return { ...base, tipo: 'campo', tabella: coll };
@@ -322,7 +298,8 @@ export function contestoQuery({ testo = '', cursore = 0, motore = 'sql', ripiego
 function campiDi(schema, nomeTabella) {
   if (!schema || !Array.isArray(schema.tabelle) || !nomeTabella) return [];
   const cercato = String(nomeTabella).toLowerCase();
-  const t = schema.tabelle.find((x) => String(x.nome).toLowerCase() === cercato);
+  const t = schema.tabelle.find(x => x.nome === nomeTabella)
+    || schema.tabelle.find((x) => String(x.nome).toLowerCase() === cercato);
   return t && Array.isArray(t.campi) ? t.campi : [];
 }
 
@@ -401,10 +378,16 @@ export function suggerisci(opts = {}) {
   // toglie mai niente a chi c'era prima.
   const dialetto = vocabolarioSql(dbms);
 
-  const ctx = contestoQuery({ testo, cursore, motore, ripiego });
+  const ctx = contestoQuery({ testo, cursore, motore, ripiego, dbms });
   // Da qui in poi conta la lingua RISOLTA, non quella chiesta: con 'auto' è
   // il testo ad averla decisa.
   const lingua = ctx.motore;
+  const lessico = { dbms, lingua };
+  const token = tokenizzaQuery(testo, lessico).find(t => t.inizio < cursore
+    && (t.fine > cursore || t.fine === cursore && !t.chiuso));
+  if (token?.tipo === 'commento' || token?.tipo === 'hint') return [];
+  if (lingua === 'sql' && token?.tipo === 'stringa') return [];
+  const istruzione = intervalloIstruzione(testo, cursore, lessico).testo;
   const tabelle = Array.isArray(schema && schema.tabelle) ? schema.tabelle : [];
   const nomiTabella = tabelle.map((t) => ({
     tipo: 'tabella',
@@ -426,13 +409,23 @@ export function suggerisci(opts = {}) {
     // Dopo `db.` non ci sono solo le collezioni: `db.getCollection(…)`,
     // `db.runCommand(…)` e compagnia stanno lì e prima non comparivano.
     candidati = nomiTabella
-      .concat(METODI_DB_MONGO.map((m) => ({ testo: m, tipo: 'metodo', dettaglio: 'db' })));
+      .concat((opts.mongosh ? catalogoMongosh.Database : METODI_DB_MONGO).map((m) => ({ testo: m, tipo: 'metodo', dettaglio: 'db' })));
+  } else if (ctx.tipo === 'sessioneMongo' || ctx.tipo === 'connessioneMongo') {
+    candidati = (ctx.tipo === 'sessioneMongo' ? (opts.mongosh ? catalogoMongosh.Session : METODI_SESSIONE_MONGO) : (opts.mongosh ? catalogoMongosh.Mongo : ['startSession']))
+      .map(testo => ({ testo, tipo: 'metodo', dettaglio: ctx.tipo === 'sessioneMongo' ? 'Sessione MongoDB' : 'Connessione MongoDB' }));
   } else if (ctx.tipo === 'tipo') {
     candidati = dialetto.tipi.map((t) => ({ testo: t, tipo: 'tipo', dettaglio: dialetto.nome }));
-  } else if (ctx.tipo === 'metodo') {
-    candidati = METODI_MONGO.map((m) => ({ testo: m, tipo: 'metodo', dettaglio: '' }));
+  } else if (ctx.tipo === 'metodo' || ctx.tipo === 'cursore') {
+    candidati = (ctx.tipo === 'cursore' ? (opts.mongosh ? [...catalogoMongosh.Cursor, ...catalogoMongosh.AggregationCursor, ...catalogoMongosh.ChangeStreamCursor] : METODI_CURSORE_MONGO) : (opts.mongosh ? catalogoMongosh.Collection : METODI_MONGO))
+      .map((m) => ({ testo: m, tipo: 'metodo', dettaglio: ctx.tipo === 'cursore' ? 'Cursore' : 'Collezione' }));
   } else if (ctx.tipo === 'operatore') {
-    candidati = OPERATORI_MONGO.map((o) => ({ testo: o, tipo: 'operatore', dettaglio: '' }));
+    const chiave = token?.tipo === 'stringa' && /^\s*:/.test(testo.slice(token.fine));
+    const riferimento = token?.tipo === 'stringa' && !chiave;
+    const nome = collezioneAlCursore(testo, cursore) || collezione;
+    candidati = riferimento && !ctx.prefisso.startsWith('$$')
+      ? vociCampi(campiDi(schema, nome), nome).map(c => ({ ...c, testo: `$${c.testo}` }))
+      : OPERATORI_MONGO.map(o => ({ testo: o, tipo: 'operatore', dettaglio: dettaglioMongo(o) }));
+    candidati.push(...VARIABILI_MONGO.map(o => ({ testo: o, tipo: 'operatore', dettaglio: dettaglioMongo(o) })));
   } else if (lingua === 'mongo') {
     // Campi della collezione su cui si sta scrivendo; se non se ne riconosce
     // una, quelli della collezione aperta.
@@ -442,7 +435,7 @@ export function suggerisci(opts = {}) {
       ? vociCampi(daSchema, nome)
       : (colonne || []).map((c) => ({ testo: String(c), tipo: 'campo', dettaglio: collezione }));
     if (parole) {
-      candidati = candidati.concat(OPERATORI_MONGO.map((o) => ({ testo: o, tipo: 'operatore', dettaglio: '' })));
+      candidati = candidati.concat(OPERATORI_MONGO.map(o => ({ testo: o, tipo: 'operatore', dettaglio: dettaglioMongo(o) })));
       // Riga ancora ambigua su una connessione MongoDB: si propongono anche i
       // nomi delle collezioni e le parole con cui comincia un'istruzione SQL.
       // Su MongoDB l'SQL si può scrivere (viene tradotto), e chi digita "SEL"
@@ -451,14 +444,15 @@ export function suggerisci(opts = {}) {
       if (ctx.incerto) {
         candidati = candidati
           .concat(nomiTabella)
-          .concat(INIZI_SQL.map((k) => ({ testo: k, tipo: 'parola', dettaglio: 'SQL' })));
+          .concat(INIZI_SQL.filter(k => !dialetto.soloQueste || dialetto.parole.includes(k))
+            .map((k) => ({ testo: k, tipo: 'parola', dettaglio: 'SQL→MQL' })));
       }
     }
   } else if (ctx.qualificatore) {
     // `u.` → solo le colonne di ciò a cui `u` si riferisce. Se il nome non è
     // riconducibile a nessuna tabella non si propone nulla: proporre le
     // colonne "di qualcos'altro" sarebbe peggio del silenzio.
-    const citate = tabelleCitate(testo);
+    const citate = tabelleCitate(istruzione, dbms || 'postgresql');
     const trovata = citate.find((t) => t.alias && t.alias.toLowerCase() === ctx.qualificatore.toLowerCase())
       || citate.find((t) => t.nome.toLowerCase() === ctx.qualificatore.toLowerCase());
     const nome = trovata ? trovata.nome : ctx.qualificatore;
@@ -466,7 +460,7 @@ export function suggerisci(opts = {}) {
   } else {
     // Colonne delle tabelle citate nella query, poi quelle della tabella
     // aperta, poi tabelle e vocabolario.
-    const citate = tabelleCitate(testo);
+    const citate = tabelleCitate(istruzione, dbms || 'postgresql');
     for (const t of citate) candidati = candidati.concat(vociCampi(campiDi(schema, t.nome), t.alias || t.nome));
     if (!candidati.length && colonne && colonne.length) {
       candidati = (colonne || []).map((c) => ({ testo: String(c), tipo: 'campo', dettaglio: collezione }));
@@ -481,13 +475,23 @@ export function suggerisci(opts = {}) {
       const funzioniComuni = dialetto.soloQueste ? [] : FUNZIONI_SQL;
       candidati = candidati
         .concat(nomiTabella)
-        .concat((vocabolario || PAROLE_SQL).map((k) => ({ testo: k, tipo: 'parola', dettaglio: '' })))
+        .concat((vocabolario || (dialetto.soloQueste ? [] : PAROLE_SQL)).map((k) => ({ testo: k, tipo: 'parola', dettaglio: '' })))
         .concat(vocabolario ? [] : dialetto.parole.map((k) => ({ testo: k, tipo: 'parola', dettaglio: dialetto.nome })))
         .concat(funzioniComuni.map((k) => ({ testo: k, tipo: 'funzione', dettaglio: '' })))
-        .concat(dialetto.funzioni.map((k) => ({ testo: k, tipo: 'funzione', dettaglio: dialetto.nome })));
+        .concat(dialetto.funzioni.map((k) => ({ testo: k, tipo: 'funzione', dettaglio: dialetto.nome })))
+        .concat(dialetto.estensioni.map(k => ({ testo: k, tipo: 'funzione', dettaglio: 'Richiede PostGIS' })));
     }
   }
 
+  if (opts.mongosh) {
+    const prima = testo.slice(0, cursore);
+    const root = prima.match(/\b(rs|sh|config|sp)\.\w*$/)?.[1];
+    const name = { rs: 'ReplicaSet', sh: 'Shard', config: 'ShellConfig', sp: 'Streams' }[root];
+    if (name) candidati = catalogoMongosh[name].map(testo => ({ testo, tipo: 'metodo', dettaglio: root }));
+    else if (!ctx.qualificatore && !['metodo', 'cursore', 'collezione', 'sessioneMongo', 'connessioneMongo'].includes(ctx.tipo)) {
+      candidati = candidati.concat(catalogoMongosh.ShellApi.map(testo => ({ testo, tipo: 'funzione', dettaglio: 'mongosh' })));
+    }
+  }
   return filtraCandidati(candidati, ctx.prefisso, limite);
 }
 
@@ -500,6 +504,7 @@ export function suggerisci(opts = {}) {
 export function applicaSuggerimento(testo, cursore, suggerimento, opts = {}) {
   const s = String(testo == null ? '' : testo);
   let { inizio, pos } = tokenAlCursore(s, cursore);
+  while (pos < s.length && /[\p{L}\p{N}_$]/u.test(s[pos])) pos++;
   let scelto = String(suggerimento || '');
 
   // Nomi di tabella, collezione e colonna: si scrivono quotati quando il

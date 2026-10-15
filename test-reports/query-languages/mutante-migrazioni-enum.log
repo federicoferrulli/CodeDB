@@ -1,0 +1,13 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+  OK   Interruzione prima/dopo il commit: recupero durabile e nessuna doppia applicazione
+  OK   Trigger e CALL annidate rispettano gli scope e non elevano i privilegi
+AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:96:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: [Function (anonymous)],
+  operator: 'rejects',
+  diff: 'simple'
+}

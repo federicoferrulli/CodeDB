@@ -1,0 +1,11 @@
+FAIL MongoDB: createIndexes accetta le chiavi della shell e le opzioni comuni
+AssertionError [ERR_ASSERTION]: db.indici_multipli.createIndexes([{a:1},{b:-1}],{sparse:true},"majority")
+Cannot convert undefined or null to object
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:16:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:155:5
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:154:3

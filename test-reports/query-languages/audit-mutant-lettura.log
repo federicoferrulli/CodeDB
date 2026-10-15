@@ -1,0 +1,58 @@
+OK instradamento: virtualJoin dentro SQL e MQL resta un dato
+OK MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie
+OK PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB
+OK MySQL: DDL con commit implicito libera la lettura protetta
+OK MySQL: autocommit qualificato non lascia committare una lettura protetta
+OK USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo
+OK MySQL: diagnostica, conteggi e warning sopravvivono fra query consecutive
+OK MySQL: errore DDL dopo commit implicito riallinea lo stato
+OK PostgreSQL: cambio nativo READ WRITE non eredita la lettura protetta
+OK PostgreSQL: il guard rifiuta batch raw senza effetti parziali
+OK Virtual JOIN: automatico ed esplicito mantengono le sorgenti reali
+OK MQL: i nomi interni dell’interprete restano normali campi BSON
+OK MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script
+FAIL MQL: find nello script legge oltre 50 righe e rifiuta risultati parziali
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   '50'
+-   '101'
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:160:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:158:3
+FAIL MQL: cursori consumabili, next, count e interruzione del ciclo
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    'true',
+    '1',
+    '2',
+    'false',
+...
+    'true',
++   '3',
+-   '1',
+    'false'
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:177:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:171:3
+{"casi":15,"falliti":2,"esiti":[{"nome":"instradamento: virtualJoin dentro SQL e MQL resta un dato","ok":true},{"nome":"MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie","ok":true},{"nome":"PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB","ok":true},{"nome":"MySQL: DDL con commit implicito libera la lettura protetta","ok":true},{"nome":"MySQL: autocommit qualificato non lascia committare una lettura protetta","ok":true},{"nome":"USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo","ok":true},{"nome":"MySQL: diagnostica, conteggi e warning sopravvivono fra query consecutive","ok":true},{"nome":"MySQL: errore DDL dopo commit implicito riallinea lo stato","ok":true},{"nome":"PostgreSQL: cambio nativo READ WRITE non eredita la lettura protetta","ok":true},{"nome":"PostgreSQL: il guard rifiuta batch raw senza effetti parziali","ok":true},{"nome":"Virtual JOIN: automatico ed esplicito mantengono le sorgenti reali","ok":true},{"nome":"MQL: i nomi interni dell’interprete restano normali campi BSON","ok":true},{"nome":"MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script","ok":true},{"nome":"MQL: find nello script legge oltre 50 righe e rifiuta risultati parziali","ok":false},{"nome":"MQL: cursori consumabili, next, count e interruzione del ciclo","ok":false}]}
+AssertionError [ERR_ASSERTION]: Tutte le regressioni SQL/MQL devono passare
+    at C:\repository\CodeDB\test\e2e-query-audit.js:181:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

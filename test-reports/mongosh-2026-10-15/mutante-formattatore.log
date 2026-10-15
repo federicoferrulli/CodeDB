@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+'SELECT' !== 'select'
+
+    at C:\repository\CodeDB\test\e2e-mongosh-ui.js:54:10 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'SELECT',
+  expected: 'select',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

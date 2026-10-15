@@ -1,0 +1,11 @@
+  OK   Risultati reali: finestre, ramo anti-join e deduplicazione ricorsiva
+AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-atomicita.js:36:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /Sottoquery scalare/,
+  operator: 'rejects',
+  diff: 'simple'
+}

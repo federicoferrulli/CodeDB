@@ -23,7 +23,7 @@ async function sshFixture() {
   const allowed = [key, encrypted].map(value => utils.parseKey(value.public));
   allowed.push(utils.parseKey(crypto.createPrivateKey(pem.privateKey).export({ format: 'pem', type: 'sec1' })));
   const clients = new Set(), sockets = new Set();
-  const stats = { authentications: 0, forwarded: 0 };
+  const stats = { authenticationRequests: 0, authentications: 0, forwarded: 0 };
   const echo = net.createServer(socket => {
     sockets.add(socket);
     socket.on('close', () => sockets.delete(socket));
@@ -36,6 +36,7 @@ async function sshFixture() {
     client.on('error', () => {});
     client.on('close', () => clients.delete(client));
     client.on('authentication', ctx => {
+      stats.authenticationRequests++;
       if (ctx.method !== 'publickey' || ctx.username !== 'fixture') return ctx.reject();
       const match = allowed.find(k => k.getPublicSSH().equals(ctx.key.data));
       if (!match || (ctx.signature && match.verify(ctx.blob, ctx.signature, ctx.hashAlgo) !== true)) return ctx.reject();

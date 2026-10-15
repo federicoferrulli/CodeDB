@@ -1,0 +1,53 @@
+1. avvio del server con RBAC attivo (maxSubUsers=1)
+2. handshake senza token
+  OK   socket senza token rifiutato con "auth_required"
+3. login owner
+  OK   password errata → 401
+  OK   owner autenticato, token emesso
+  OK   l'owner è riconosciuto come amministratore
+  OK   socket dell'owner connesso col token
+4. creazione sottoutente e assegnazione permessi
+  OK   sottoutente creato (viewer@e2e.local)
+  OK   grant viewer su "e2e-rbac" con scope orders* (ok)
+  OK   grant su una connessione inesistente rifiutato
+5. limite del piano
+  OK   secondo sottoutente rifiutato (Il tuo piano consente al massimo 1 sottoutenti: elimina un utente esistente o passa a un piano superiore.)
+6. accesso del sottoutente
+  OK   sottoutente autenticato
+  OK   connections:list mostra solo la connessione concessa (e2e-rbac)
+  OK   connessione senza grant rifiutata (Permesso negato: nessun accesso alla connessione "e2e-rbac-negata". Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+  OK   connessione concessa aperta (mongodb)
+  OK   query:execute: runtime Node negato al sottoutente
+  OK   mongosh:state: runtime Node negato al sottoutente
+  OK   mongosh:reset: runtime Node negato al sottoutente
+  OK   mongosh:closeStream: runtime Node negato al sottoutente
+  OK   mongosh:answer: runtime Node negato al sottoutente
+7. permessi su database e collezioni
+  OK   db:list filtrato dallo scope (gui_mongodb_e2e_rbac)
+  OK   db:collections mostra orders ma non customers (orders)
+  OK   lettura di orders consentita (2 doc)
+  OK   lettura fuori scope negata (Permesso negato: non hai i privilegi per l'operazione "collection:find" su questa connessione.)
+  OK   scrittura negata al viewer (Permesso negato: non hai i privilegi per l'operazione "doc:insert" su questa connessione.)
+  OK   DDL negato al viewer (Permesso negato: non hai i privilegi per l'operazione "collection:drop" su questa connessione.)
+  OK   Query Engine fuori scope negato (Permesso negato: operazione di lettura su "gui_mongodb_e2e_rbac.customers" nella connessione "e2e-rbac". Contatta l'amministratore del tuo account. Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+8. operazioni riservate all'amministratore
+  OK   salvataggio connessione negato al viewer (Permesso negato: operazione riservata all'owner del tenant. Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+  OK   gestione utenti negata al viewer (Permesso negato: operazione riservata all'amministratore del tenant. Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+9. l'owner non è soggetto agli scope
+  OK   owner connesso
+  OK   l'owner legge anche customers (ok)
+  OK   l'owner può scrivere (ok)
+10. revoca
+  OK   grant revocato
+  OK   dopo la revoca il sottoutente non vede più connessioni
+11. sospensione: il socket GIÀ aperto viene chiuso (CDB-A13)
+  OK   il sottoutente ha di nuovo un socket aperto
+  OK   sottoutente sospeso
+  OK   la sospensione chiude subito il socket già connesso
+  OK   dopo la sospensione il token non apre più alcun socket
+12. revoca che NON passa da questa istanza: la ri-validazione la coglie
+  OK   il socket funziona finché la sessione esiste
+  OK   sessione cancellata nel control plane, senza toccare i socket
+  OK   l'evento successivo è rifiutato: {"ok":false,"error":"Sessione non più valida: accedi di nuovo."}
+
+Test RBAC completati.

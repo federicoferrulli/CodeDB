@@ -1,0 +1,15 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+  OK   Interruzione prima/dopo il commit: recupero durabile e nessuna doppia applicazione
+  OK   Trigger e CALL annidate rispettano gli scope e non elevano i privilegi
+  OK   Interi senza segno esatti, annullamento e ALTER concorrente con sei scritture senza perdite
+Error: Espressione SQL non valida: ")".
+    at primaria (C:\repository\CodeDB\db\sqlEspressioni.js:84:11)
+    at leggiEspressione (C:\repository\CodeDB\db\sqlEspressioni.js:12:11)
+    at primaria (C:\repository\CodeDB\db\sqlEspressioni.js:60:15)
+    at leggiEspressione (C:\repository\CodeDB\db\sqlEspressioni.js:12:11)
+    at Object.definizione (C:\repository\CodeDB\db\sqlSchemaMongo.js:81:23)
+    at frammento (C:\repository\CodeDB\db\sqlAlterMongo.js:19:20)
+    at Object.parse (C:\repository\CodeDB\db\sqlAlterMongo.js:24:82)
+    at Object.translateWrite (C:\repository\CodeDB\db\SqlToMql.js:1147:71)
+    at execute (C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:43:67)
+    at C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:137:9

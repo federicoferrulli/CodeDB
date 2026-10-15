@@ -1,0 +1,19 @@
+Versioni: 18.6 (Debian 18.6-1.pgdg13+2) 8.4.11
+OK PostgreSQL: rollback al savepoint ripristina il bersaglio richiesto
+OK PostgreSQL: rollback completo e errore nativo mantengono il bersaglio
+OK PostgreSQL: savepoint annidati e SET LOCAL con COMMIT
+OK PostgreSQL: set_config, RESET ALL e DISCARD ALL non deviano le scritture
+OK MySQL: USE seguito da ritorno al database iniziale
+OK MySQL: USE con commento passa attraverso SQL diretto
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+OK PostgreSQL: perdita inattiva, riconnessione e nessuna ripetizione automatica
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+OK PostgreSQL: la transazione persa è segnalata e non viene confermata
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+OK PostgreSQL: connessione interrotta durante una scrittura, senza replay
+[server-e2e] [Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+OK MySQL: perdita inattiva della connessione e recupero senza replay
+OK Disconnessione: rollback e rilascio delle sessioni persistenti attraverso i proxy
+OK 11 regressioni di sessione sui motori reali

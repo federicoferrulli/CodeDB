@@ -1,0 +1,14 @@
+OK installazione NSIS reale con identità e cartella dedicate
+(node:34740) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.
+(Use `CodeDBMongoshTest --trace-deprecation ...` to show where the warning was created)
+OK Electron installato 43.7.9 Node incorporato 24.21.0
+Atlas Local MongoDB 8.0.34
+OK Atlas Local: indici Search/Vector, ricerca testuale, similarità, aggiornamento e rimozione
+OK sharding: due shard, split/migrazione reale, stream su entrambi, resume e transazione distribuita
+OK libreria crypt_shared effettivamente caricata: mongo_crypt_v1-dev-8.2.12
+OK CSFLE: key vault, cifratura esplicita/automatica, query cifrata, dati BSON cifrati sul server, chiave errata rifiutata
+PASS 27 esecuzioni reali avanzate
+Debugger ending on ws://127.0.0.1:59345/986afd5e-1cc1-4b60-b9c9-5788561e7c19
+For help, see: https://nodejs.org/learn/getting-started/debugging
+OK runtime, moduli nativi e test DB reali dall’app installata in ASAR
+OK disinstallazione NSIS e conservazione del profilo

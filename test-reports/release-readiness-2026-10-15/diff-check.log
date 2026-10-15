@@ -1,0 +1,14 @@
+warning: in the working copy of 'db/MongoScript.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'db/MongoScriptRunner.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'db/SqlToMql.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'public/arc/ui.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'public/js/intellisense.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'public/js/query-formatter.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'public/js/query-highlighter.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'server/query.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test-reports/query-studio-2026-10-12/dopo/funzioni.json', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/e2e-mcp.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/e2e-mongo-script.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/e2e-query-cancel.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/e2e-uml-prestazioni.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'test/sql-to-mql.js', LF will be replaced by CRLF the next time Git touches it

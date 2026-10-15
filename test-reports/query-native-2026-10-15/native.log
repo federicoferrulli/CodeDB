@@ -1,0 +1,29 @@
+OK MongoDB: runCommand conserva il risultato nativo
+OK MongoDB: database fratello e risultato scalare
+OK MongoDB: distinct nativo espande gli array
+OK MongoDB: metadati, opzioni di creazione e indici
+OK MongoDB: risultati CRUD compatibili con mongosh
+OK MongoDB: sessione commit con lettura delle proprie scritture
+OK MongoDB: abort e chiusura automatica su errore
+OK MongoDB: await e callback transazionale
+FAIL MongoDB: tipi BSON, _id testuale e comando singolo
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
++     valore: 2
+-     valore: 1
+    }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:100:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:93:3
+OK MongoDB: getMore, cursori chiusi e metadati oltre un batch
+OK MongoDB: errore nativo conserva codice e transazione aperta viene annullata
+OK MongoDB: indici nativi, opzioni e isolamento di due sessioni
+OK MongoDB: bulkWrite conserva identificativi, conteggi ed errori parziali
+OK MySQL: commenti eseguibili nativi per il gestore
+OK PostgreSQL: CTE di scrittura, MERGE e routine native

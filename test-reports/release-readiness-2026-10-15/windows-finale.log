@@ -1,0 +1,4 @@
+OK ASAR: 340 file runtime confrontati con i sorgenti, nessun percorso estraneo
+CodeDB in ascolto su http://127.0.0.1:50708
+{"runtime":"v24.21.0","electron":"43.7.9","http":"ok","assets":"ok","origin":"rifiutata"}
+OK app Windows pacchettizzata: finestra, UI senza errori, profilo isolato e sandbox renderer attiva

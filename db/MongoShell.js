@@ -1,4 +1,6 @@
 'use strict';
+const { opzioniLettura } = require('./mongoOpzioni');
+const { escapeMongo } = require('./mongoStringhe');
 
 /**
  * CodeDB — Parser della sintassi nativa "mongosh" (shell MongoDB)
@@ -24,9 +26,8 @@
  *   { kind: 'aggregate', coll, pipeline }
  * così `query:execute` può instradare i due motori sullo stesso codice.
  *
- * Le operazioni di scrittura shell (insertOne/updateMany/deleteMany...) vengono
- * riconosciute e **rifiutate con un messaggio esplicito**: le scritture si fanno
- * dalla vista Dati o con una pipeline $out/$merge.
+ * Le operazioni di scrittura sono riconosciute e affidate dal chiamante
+ * all'interprete MongoScriptRunner, attraverso lo stesso host autorizzante.
  */
 
 const READ_METHODS = new Set([
@@ -39,11 +40,10 @@ const WRITE_METHODS = new Set([
   'findOneAndUpdate', 'findOneAndReplace', 'findOneAndDelete', 'drop',
   'createIndex', 'dropIndex', 'renameCollection',
 ]);
-// Metodi di cursore no-op ai fini della query (li ignoriamo se in catena).
-const IGNORED_CHAIN = new Set([
-  'toArray', 'pretty', 'allowDiskUse', 'hint', 'collation', 'batchSize',
-  'maxTimeMS', 'readPref', 'readConcern', 'comment', 'explain',
-]);
+// La presentazione non modifica i dati; le altre opzioni arrivano al driver.
+const IGNORED_CHAIN = new Set(['toArray', 'pretty']);
+const OPZIONI_CATENA = new Set(['allowDiskUse', 'hint', 'collation', 'batchSize',
+  'maxTimeMS', 'readPref', 'readConcern', 'comment', 'min', 'max', 'returnKey', 'showRecordId']);
 
 /* --------------------------------------------------------------------------
  * Tokenizer (valori JavaScript + accesso ai membri con ".")
@@ -71,10 +71,8 @@ function tokenize(src) {
       const q = c; let val = ''; let chiusa = false; i++;
       while (i < n) {
         if (s[i] === '\\' && i + 1 < n) {
-          const nx = s[i + 1];
-          const map = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', '0': '\0' };
-          val += map[nx] != null ? map[nx] : nx;
-          i += 2; continue;
+          const escaped = escapeMongo(s, i, q === '`');
+          val += escaped.valore; i = escaped.fine; continue;
         }
         if (s[i] === q) { i++; chiusa = true; break; }
         val += s[i]; i++;
@@ -114,7 +112,8 @@ function tokenize(src) {
       let val = c; i++;
       while (i < n && /[0-9.eE]/.test(s[i])) { val += s[i]; i++; }
       if ((s[i] === '+' || s[i] === '-') && /[eE]/.test(s[i - 1])) { val += s[i]; i++; while (i < n && /[0-9]/.test(s[i])) { val += s[i]; i++; } }
-      tokens.push({ type: 'num', value: Number(val) });
+      if (!Number.isFinite(Number(val))) throw new Error(`Numero non valido: "${val}".`);
+      tokens.push({ type: 'num', value: Number(val), raw: val });
       continue;
     }
 
@@ -177,7 +176,15 @@ function parseValue(p) {
   const t = p.peek();
   if (!t) throw new Error('Valore atteso, trovato fine query.');
 
-  if (t.type === 'num') { p.next(); return t.value; }
+  if (t.type === 'num') {
+    p.next();
+    if (p.conservaInteri && /^[+-]?\d+$/.test(t.raw) && !Number.isSafeInteger(t.value)) {
+      const intero = BigInt(t.raw);
+      return intero >= -9223372036854775808n && intero <= 9223372036854775807n
+        ? { $numberLong: String(intero) } : { $numberDecimal: String(intero) };
+    }
+    return t.value;
+  }
   if (t.type === 'str') { p.next(); return t.value; }
   if (t.type === 'regex') { p.next(); return { $regularExpression: { pattern: t.value.pattern, options: t.value.flags || '' } }; }
   if (t.type === 'punct' && t.value === '{') return parseObject(p);
@@ -247,7 +254,12 @@ function parseConstructor(p, name) {
   p.expectPunct('(');
   const args = [];
   if (!p.isPunct(')')) {
-    do { args.push(parseValue(p)); } while (p.eatPunct(','));
+    do {
+      const t = p.peek();
+      if (['NumberLong', 'NumberDecimal'].includes(name) && t?.type === 'num') {
+        p.next(); args.push(t.raw);
+      } else args.push(parseValue(p));
+    } while (p.eatPunct(','));
   }
   p.expectPunct(')');
 
@@ -343,21 +355,21 @@ function asObject(v, label) {
 function buildBaseOp(method, args, coll) {
   switch (method) {
     case 'find':
-      return { type: 'find', coll, filter: asObject(args[0], 'Il filtro'), projection: asObject(args[1], 'La proiezione'), sort: {}, limit: null, skip: 0 };
+      return { type: 'find', coll, filter: asObject(args[0], 'Il filtro'), projection: asObject(args[1], 'La proiezione'), sort: {}, limit: null, skip: 0, ...(args[2] ? { options: opzioniLettura(args[2]) } : {}) };
     case 'findOne':
-      return { type: 'find', coll, filter: asObject(args[0], 'Il filtro'), projection: asObject(args[1], 'La proiezione'), sort: {}, limit: 1, skip: 0 };
+      return { type: 'find', coll, filter: asObject(args[0], 'Il filtro'), projection: asObject(args[1], 'La proiezione'), sort: {}, limit: 1, skip: 0, ...(args[2] ? { options: opzioniLettura(args[2]) } : {}) };
     case 'aggregate': {
       if (!Array.isArray(args[0])) throw new Error('aggregate() richiede un array di stadi (pipeline).');
-      return { type: 'aggregate', coll, pipeline: args[0], extra: [] };
+      return { type: 'aggregate', coll, pipeline: args[0], extra: [], ...(args[1] ? { options: opzioniLettura(args[1], true) } : {}) };
     }
     case 'count':
     case 'countDocuments':
     case 'estimatedDocumentCount':
-      return { type: 'count', coll, filter: asObject(args[0], 'Il filtro') };
+      throw Object.assign(new Error('Il conteggio richiede il metodo nativo.'), { metodoSconosciuto: true });
     case 'distinct': {
-      const field = args[0];
-      if (typeof field !== 'string' || !field) throw new Error('distinct() richiede il nome del campo come stringa.');
-      return { type: 'distinct', coll, field, filter: asObject(args[1], 'Il filtro') };
+      // La semantica nativa espande gli array; $group sul campo non equivale
+      // a distinct. Il medesimo metodo dell'interprete serve anche la shell singola.
+      throw Object.assign(new Error('distinct richiede il metodo nativo.'), { metodoSconosciuto: true });
     }
     default:
       throw new Error(`Metodo "${method}()" non supportato.`);
@@ -366,12 +378,22 @@ function buildBaseOp(method, args, coll) {
 
 function applyChain(op, method, args) {
   if (IGNORED_CHAIN.has(method)) return;
+  if (method === 'explain') { op.explain = args[0] || 'queryPlanner'; return; }
+  if (OPZIONI_CATENA.has(method)) {
+    op.options ||= {};
+    const key = method === 'readPref' ? 'readPreference' : method;
+    const val = method === 'readPref' ? { mode: args[0], ...(args[1] ? { tags: args[1] } : {}), ...asObject(args[2], 'readPref()') }
+      : method === 'readConcern' ? { level: args[0] }
+      : ['allowDiskUse', 'returnKey', 'showRecordId'].includes(method) ? args[0] ?? true : args[0];
+    op.options = opzioniLettura({ ...op.options, [key]: val }, op.type !== 'find');
+    return;
+  }
 
   if (method === 'count') {
-    // cursor.count() → trasforma un find in un conteggio
-    if (op.type !== 'find') throw new Error('.count() è applicabile solo a find().');
-    op.type = 'count';
-    return;
+    throw Object.assign(new Error('Il conteggio richiede il cursore dell’interprete.'), { metodoSconosciuto: true });
+  }
+  if (['next', 'tryNext', 'hasNext', 'itcount'].includes(method)) {
+    throw Object.assign(new Error(`Il metodo ${method} richiede il cursore dell'interprete.`), { metodoSconosciuto: true });
   }
 
   if (op.type === 'find') {
@@ -414,28 +436,13 @@ function finalizeOp(op) {
       // In MongoDB limit(0) equivale a nessun limite.
       limit: op.limit || null,
       skip: op.skip || 0,
+      ...(op.options ? { options: op.options } : {}),
+      ...(op.explain ? { explain: op.explain } : {}),
     };
   }
   if (op.type === 'aggregate') {
-    return { kind: 'aggregate', coll: op.coll, pipeline: [...op.pipeline, ...(op.extra || [])] };
-  }
-  if (op.type === 'count') {
-    const pipeline = [];
-    if (op.filter && Object.keys(op.filter).length) pipeline.push({ $match: op.filter });
-    pipeline.push({ $count: 'count' });
-    return { kind: 'aggregate', coll: op.coll, pipeline };
-  }
-  if (op.type === 'distinct') {
-    // La colonna di output usa un nome piatto: un campo annidato (es. "a.b")
-    // come chiave di $project creerebbe un oggetto nidificato { a: { b: ... } }
-    // invece di una colonna singola. Si appiattisce il punto in underscore.
-    const outKey = op.field.includes('.') ? op.field.replace(/\./g, '_') : op.field;
-    const pipeline = [];
-    if (op.filter && Object.keys(op.filter).length) pipeline.push({ $match: op.filter });
-    pipeline.push({ $group: { _id: `$${op.field}` } });
-    pipeline.push({ $project: { _id: 0, [outKey]: '$_id' } });
-    pipeline.push({ $sort: { [outKey]: 1 } });
-    return { kind: 'aggregate', coll: op.coll, pipeline };
+    return { kind: 'aggregate', coll: op.coll, pipeline: [...op.pipeline, ...(op.extra || [])],
+      ...(op.options ? { options: op.options } : {}), ...(op.explain ? { explain: op.explain } : {}) };
   }
   throw new Error('Operazione non riconosciuta.');
 }
@@ -445,4 +452,14 @@ function looksLikeShell(code) {
   return /^\s*db\s*\.\s*[A-Za-z_$][\w$]*\s*\.\s*[A-Za-z_$]/.test(String(code || ''));
 }
 
-module.exports = { translate, looksLikeShell, tokenize };
+/** Documento/pipeline della shell, convertito in EJSON senza eval. */
+function parseDocument(code) {
+  const p = new Parser(tokenize(String(code).trim().replace(/;\s*$/, '')));
+  p.conservaInteri = true;
+  const valore = parseValue(p);
+  if (!p.eof()) throw new Error('Testo inatteso dopo il documento MongoDB.');
+  if (!valore || typeof valore !== 'object') throw new Error('Inserisci un documento o un array di stadi MongoDB.');
+  return valore;
+}
+
+module.exports = { translate, looksLikeShell, tokenize, parseDocument };

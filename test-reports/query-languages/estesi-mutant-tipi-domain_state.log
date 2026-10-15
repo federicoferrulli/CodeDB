@@ -1,0 +1,16 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+Error: La riga viola il vincolo CHECK invalid_default_check_1 del dominio invalid_default.
+    at errore (C:\repository\CodeDB\db\sqlSavepointMongo.js:8:114)
+    at validate (C:\repository\CodeDB\db\sqlSavepointMongo.js:82:65)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Proxy.<anonymous> (C:\repository\CodeDB\db\sqlSavepointMongo.js:128:15)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:213:53)
+    at async Object.scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:365:40)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:375:29)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\sqlProcedureMongo.js:457:7)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30) {
+  sqlState: '22000',
+  mysqlState: 'HY000',
+  Symbol(condizione SQL recuperabile): Set(0) {}
+}

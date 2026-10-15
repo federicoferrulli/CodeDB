@@ -1,0 +1,3 @@
+OK MQL: i nomi interni dell’interprete restano normali campi BSON
+OK MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script
+{"casi":2,"falliti":0,"esiti":[{"nome":"MQL: i nomi interni dell’interprete restano normali campi BSON","ok":true},{"nome":"MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script","ok":true}]}

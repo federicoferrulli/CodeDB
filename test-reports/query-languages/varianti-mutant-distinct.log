@@ -1,0 +1,29 @@
+  OK   Varianti ALTER: rinomina vincoli/indici, collisioni, recupero, IF NOT EXISTS, SET DATA TYPE, DROP CHECK
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   {
++     dopo: 4,
++     id: 1,
++     prima: 4
++   },
++   {
++     dopo: null,
++     id: 2,
++     prima: null
++   }
++ ]
+- []
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-varianti.js:11:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-varianti.js:63:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-varianti.js:65:18 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

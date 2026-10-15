@@ -1,0 +1,29 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+MongoServerError: Document failed validation
+    at UpdateManyOperation.handleOk (C:\repository\CodeDB\node_modules\mongodb\lib\operations\update.js:97:19)
+    at tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.updateMany (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:262:16)
+    at async applyUpdate (C:\repository\CodeDB\db\MongoSqlRuntime.js:183:28)
+    at async Object.inserisciConConflitti (C:\repository\CodeDB\db\sqlConflitti.js:42:23)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:203:17)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+    at async Object.scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 121,
+    errmsg: 'Document failed validation',
+    errInfo: {
+      failingDocumentId: new ObjectId('6acf95ad8e3eb303f0f4e7e9'),
+      details: [Object]
+    }
+  },
+  index: 0,
+  code: 121,
+  errInfo: {
+    failingDocumentId: new ObjectId('6acf95ad8e3eb303f0f4e7e9'),
+    details: { operatorName: '$and', clausesNotSatisfied: [Array] }
+  }
+}

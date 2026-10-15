@@ -1,0 +1,43 @@
+Versioni: 18.6 (Debian 18.6-1.pgdg13+2) 8.4.11
+{"id":"postgresql-savepoint-destinazione","expected":{"A":[],"B":[{"id":2}]},"actual":{"A":[{"id":2}],"B":[]}}
+{"id":"postgresql-rollback-destinazione","expected":{"A":[{"id":2}],"B":[{"id":3}]},"actual":{"A":[{"id":2},{"id":3}],"B":[]}}
+{"id":"mysql-use-destinazione","expected":{"A":[{"id":4}],"B":[]},"actual":{"A":[],"B":[{"id":4}]}}
+[server-e2e] [Process] Uncaught Exception (uncaughtException): error: terminating connection due to administrator command
+    at parseErrorMessage (C:\repository\CodeDB\node_modules\pg-protocol\dist\parser.js:305:11)
+    at Parser.handlePacket (C:\repository\CodeDB\node_modules\pg-protocol\dist\parser.js:143:27)
+    at Parser.parse (C:\repository\CodeDB\node_modules\pg-protocol\dist\parser.js:37:38)
+    at Socket.<anonymous> (C:\repository\CodeDB\node_modules\pg-protocol\dist\index.js:12:42)
+    at Socket.emit (node:events:509:20)
+    at addChunk (node:internal/streams/readable:568:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:519:3)
+    at Readable.push (node:internal/streams/readable:399:5)
+    at TCP.onStreamRead (node:internal/stream_base_commons:189:23) {
+  length: 116,
+  severity: 'FATAL',
+  code: '57P01',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: undefined,
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'postgres.c',
+  line: '3354',
+  routine: 'ProcessInterrupts'
+}
+[server-e2e] [Process] Errore considerato recuperabile: il server resta in esecuzione.
+[server-e2e] [Process] Uncaught Exception (uncaughtException): Error: Connection terminated unexpectedly
+    at Connection.<anonymous> (C:\repository\CodeDB\node_modules\pg\lib\client.js:199:73)
+    at Object.onceWrapper (node:events:630:28)
+    at Connection.emit (node:events:509:20)
+    at Socket.<anonymous> (C:\repository\CodeDB\node_modules\pg\lib\connection.js:63:12)
+    at Socket.emit (node:events:509:20)
+    at TCP.<anonymous> (node:net:350:12)
+[server-e2e] [Process] Errore considerato recuperabile: il server resta in esecuzione.
+{"id":"postgresql-connessione-inattiva-interrotta","expected":{"serverDisponibile":true},"actual":{"serverDisponibile":true,"socketConnesso":true}}
+{"id":"postgresql-recupero-connessione","expected":{"secondoTentativo":{"ok":true,"data":[{"n":1}]}},"actual":{"tentativi":[{"ok":false,"error":"Client has encountered a connection error and is not queryable"},{"ok":false,"error":"Client has encountered a connection error and is not queryable"}]}}

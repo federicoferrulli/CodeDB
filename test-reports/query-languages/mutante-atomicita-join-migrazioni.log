@@ -1,0 +1,23 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      l: 1,
+      r: 1
+    },
+-   {
+-     l: null,
+-     r: 2
+-   }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-atomicita.js:31:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

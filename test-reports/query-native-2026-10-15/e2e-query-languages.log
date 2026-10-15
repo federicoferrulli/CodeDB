@@ -1,0 +1,10 @@
+page.goto: Timeout 8000ms exceeded.
+Call log:
+  - navigating to "http://127.0.0.1:3247/", waiting until "domcontentloaded"
+
+    at C:\repository\CodeDB\test\e2e-query-languages.js:22:16 {
+  log: [
+    '  - navigating to "http://127.0.0.1:3247/", waiting until "domcontentloaded"'
+  ],
+  name: 'TimeoutError'
+}

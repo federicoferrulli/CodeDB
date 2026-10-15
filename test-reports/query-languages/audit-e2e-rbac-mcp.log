@@ -1,0 +1,24 @@
+1. avvio del server con RBAC attivo
+2. /mcp senza API key
+  OK   richiesta senza API key respinta con 401 (ricevuto 401)
+  OK   API key inesistente respinta con 401 (ricevuto 401)
+3. preparazione: sottoutente viewer + API key
+  OK   owner autenticato
+  OK   sottoutente creato (ok)
+  OK   grant viewer con scope orders*
+  OK   API key generata e mostrata una sola volta
+4. sessione MCP con la API key del viewer
+  OK   list_saved_connections limitata al connScope (e2e-rbac
+  OK   connessione senza grant negata (Errore: Permesso negato: la API key usata non ha accesso alla connessione "e2e-rbac-negata". Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+  OK   connessione consentita aperta (4b8653da-f75d-4835-8918-cf366c1217ac)
+5. permessi sui tool
+  OK   execute_query su orders consentita (ok)
+  OK   execute_query fuori scope negata (Errore: Permesso negato: operazione di lettura su "gui_mongodb_e2e_rbac.customers" nella connessione "e2e-rbac". Contatta l'amministratore del tuo account. Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+  OK   execute_write negata al viewer (Errore: Permesso negato: la API key usata non ha i privilegi di scrittura sulla connessione "e2e-rbac". Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+  OK   set_connection_read_only negato al viewer (Errore: Permesso negato: la API key usata non può modificare la configurazione della connessione "e2e-rbac". Cosa fare: chiedi a chi amministra l'installazione un permesso più ampio su questa connessione.)
+6. revoca della API key
+  OK   la chiave compare nell'elenco (senza il valore in chiaro)
+  OK   API key revocata
+  OK   dopo la revoca la chiave non è più valida (401)
+
+Test RBAC su MCP completati.

@@ -40,6 +40,7 @@ const { creaPianoImport } = require('../db/importPlan');
   assert.strictEqual(riepilogo.titolo, 'Export negozio');
   assert.strictEqual(riepilogo.fingerprint, exportPlan.fingerprint, 'l impronta viaggia con l anteprima');
   const voce = (etichetta) => riepilogo.voci.find((v) => v.etichetta === etichetta).valore;
+  assert.strictEqual(voce('Dimensione file'), 'Senza limite');
   assert.strictEqual(voce('Con dati'), '1');
   assert.strictEqual(voce('Solo struttura'), '0');
   assert.strictEqual(voce('Esclusi'), '2', 'clienti e vista restano fuori e si vedono');

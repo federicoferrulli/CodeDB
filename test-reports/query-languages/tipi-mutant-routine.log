@@ -1,0 +1,13 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER TABLE dep_routine ALTER COLUMN n TYPE BIGINT
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:57:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:230:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:71:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /dipendenza/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

@@ -1,4 +1,5 @@
 'use strict';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 /* ---------------------------------------------------------------------------
  * Test E2E dell'interprete di script MongoDB (Fase C) contro un MongoDB vero.
@@ -61,7 +62,7 @@ async function runTests() {
     console.log('--- Test E2E interprete script MongoDB ---');
 
     console.log('1. Connessione');
-    const conn = await emit('mongo:connect', { host: 'localhost', port: 27017 });
+    const conn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT });
     assert(conn.ok, 'Connessione a MongoDB riuscita');
     if (!conn.ok) return socket.close();
 
@@ -185,8 +186,10 @@ async function runTests() {
     assert(dopoDelete.total === 1, `Un documento rimasto (${dopoDelete.total})`);
 
     const sqlAlter = await script('ALTER TABLE script_nuova ADD COLUMN x INT');
-    assert(!sqlAlter.ok && /schema fisso|ALTER/i.test(sqlAlter.error || ''),
-      `ALTER rifiutato spiegando perché (${sqlAlter.error})`);
+    assert(sqlAlter.ok, `ALTER eseguito (${sqlAlter.error || ''})`);
+    const nuovaColonna = await script('SELECT x FROM script_nuova WHERE id=1');
+    assert(nuovaColonna.ok && nuovaColonna.data.length === 1 && nuovaColonna.data[0].x === null,
+      'La colonna aggiunta è leggibile e inizializzata a NULL');
 
     console.log('13. Pulizia');
     for (const c of ['script_src', 'script_dst', 'script_nuova']) {

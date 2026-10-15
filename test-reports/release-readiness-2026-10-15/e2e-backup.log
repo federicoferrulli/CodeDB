@@ -1,0 +1,3 @@
+[2026-10-14T23:58:11.635Z] ERRORE FINE restore conn=e2e-backup da=20261014-235806472Z_full — stato=FALLITO durata=88ms errore=Collection/tabella "inesistente" non presente nel backup.
+Errore: Collection/tabella "inesistente" non presente nel backup.
+e2e-backup: tutti i test superati.

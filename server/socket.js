@@ -20,6 +20,7 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
     inChiusura = true;
     for (const ctx of contesti) for (const sess of ctx.sessions.values()) {
       if (sess.scripts) for (const run of sess.scripts.values()) run.abort();
+      if (sess.mongosh) track(sess.mongosh.close());
       sess.cancelReconnectWait?.();
     }
   }
@@ -111,6 +112,7 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
         for (const sess of sessions.values()) {
           sess.principal = fresco;
           if (sess.guardCtx) sess.guardCtx.principal = fresco;
+          if (sess.mongosh && !require('../auth/permissions').isInstallAdmin(fresco, config.env)) await sess.mongosh.close();
         }
         ultimaRivalida = now();
         return true;
@@ -132,6 +134,7 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
 
     async function finalizzaSessione(sess) {
       try {
+        await sess.mongosh?.close();
         if (sess.scripts) {
           for (const run of sess.scripts.values()) run.abort();
           await Promise.allSettled([...sess.scripts.values()].map(run => run.completion));
@@ -206,7 +209,10 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
           }
           await fn(payload || {}, cb, ctx);
         } catch (err) {
-          cb({ ok: false, error: errori.errMsg(err) });
+          // Solo la prima impronta SSH è approvabile: mai una chiave cambiata.
+          const ssh = ['mongo:connect', 'connections:test'].includes(event) && err?.code === 'SSH_HOST_KEY_UNKNOWN'
+            ? { code: err.code, sshHostKey: err.sshHostKey } : {};
+          cb({ ok: false, error: errori.errMsg(err), ...ssh });
         }
       })()));
     }

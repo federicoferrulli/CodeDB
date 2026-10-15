@@ -1,0 +1,14 @@
+FAIL MongoDB: sessione commit con lettura delle proprie scritture
+AssertionError [ERR_ASSERTION]: const s=db.getMongo().startSession(); s.startTransaction();
+      const c=s.getDatabase("codedb_nativo_completo_dati_2b27ba977058").transazioni;
+      c.insertOne({_id:1,n:10}); print(c.countDocuments({}));
+      print(c.findOne({_id:1}).n); s.commitTransaction(); s.endSession();
+Impossibile leggere "n" da null
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:16:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:70:15
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:69:3

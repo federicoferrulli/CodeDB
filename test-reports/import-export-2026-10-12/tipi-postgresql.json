@@ -417,7 +417,8 @@
   "percorsi": [
     "codedb-json",
     "sql",
-    "backup"
+    "backup",
+    "pg_dump"
   ],
   "valoriIdentici": true
 }

@@ -1,0 +1,12 @@
+--- Test E2E Query Cancel (Socket query:cancel) ---
+  OK   Connessione a MongoDB riuscita
+1. Annullamento query:cancel su runId non presente in inflight (idempotente)
+  OK   query:cancel su runId inesistente ritorna ok: true, cancelled: false
+2. Esecuzione query ed invio query:cancel
+  OK   Risposta query:cancel ok
+  OK   Esecuzione completata/gestita correttamente
+3. Test cancelQuery unitario per tutte le strategie
+  OK   MongoDbStrategy.cancelQuery senza client attivo degrada a cancelled: false
+  OK   MySqlStrategy.cancelQuery con id non esistente degrada a cancelled: false
+  OK   PostgreSqlStrategy.cancelQuery con pid non esistente degrada a cancelled: false
+--- Tutti i test E2E Query Cancel superati con successo! ---

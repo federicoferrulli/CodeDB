@@ -1,0 +1,19 @@
+Motori reali: { postgresql: '18.6 (Debian 18.6-1.pgdg13+2)', mysql: '8.4.11' }
+OK sessione, tabelle temporanee, errore nativo, savepoint e rollback PostgreSQL
+OK CAST, domini, precisione, array, multirange, compositi e dipendenze ALTER native
+OK trigger RETURN NULL, transizioni, INSTEAD OF, FK differite, procedure dinamiche, diagnostica, cursori e SQL relazionale
+OK tipi MySQL, trigger ordinati, handler numerico, OUT, cursore, SQL dinamico, scritture JOIN e savepoint
+AssertionError [ERR_ASSERTION]: {"tabId":"mysql","runId":"native-mysql-112","total":3,"tipo":"done","stato":{"id":"native-mysql-112","status":"done","cursor":3,"total":3,"eseguiti":3,"falliti":3,"omessi":0,"startedAt":1791995465895,"endedAt":1791995465918,"results":[{"index":0,"line":1,"sql":"DELIMITER $$\nCREATE PROCEDURE script_prova() BEGIN INSERT INTO copia VALUES(9)","ok":false,"ms":15,"error":"You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'DELIMITER $$\nCREATE PROCEDURE script_prova() BEGIN INSERT INTO copia VALUES(9)' at line 1"},{"index":1,"line":2,"sql":"END$$\nDELIMITER","ok":false,"ms":4,"error":"You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'END$$\nDELIMITER' at line 1"},{"index":2,"line":4,"sql":"CALL script_prova()","ok":false,"ms":4,"error":"PROCEDURE codedb_native_my_35b1b180de15.script_prova does not exist"}]},"ultimoRisultato":null,"risultati":{"id":"REVMSU1JVE-1791995465893","schede":[],"scartati":0}}
+
+3 !== 0
+
+    at script (C:\repository\CodeDB\test\e2e-sql-native.js:44:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-native.js:173:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 3,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

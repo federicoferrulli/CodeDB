@@ -1,0 +1,12 @@
+  OK   avvio, blocchi, ripresa idempotente e finalizzazione verificata
+  OK   conflitti e buchi rifiutati, sessione intatta
+  OK   tetti di blocco, artefatto e concorrenza
+  OK   export senza limite per file, indice costante, checksum e quota tenant esplicita
+  OK   finalizzazione solo a dimensione e impronta esatte
+  OK   crash a metà upload: si riprende dallo stato su disco
+  OK   incompleti scaduti rimossi, mai pubblicati
+  OK   isolamento tenant/attore e id validati
+  OK   scarto esplicito di un upload abortito
+  OK   quota all avvio, retention configurata, uso misurato
+  OK   checksum non bloccante e mutazioni concorrenti escluse sullo stesso upload
+  OK   Archivio upload su disco passed

@@ -1,0 +1,70 @@
+(node:14064) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/sql-dialetti.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+--- Test unitari IntelliSense schema-aware ---
+  OK   Il token al cursore separa prefisso e qualificatore
+  OK   Senza punto non c'è qualificatore
+  OK   Le tabelle citate arrivano con i loro alias
+  OK   Una parola chiave non viene scambiata per un alias
+  OK   Il nome qualificato dallo schema perde il prefisso
+  OK   Un nome quotato e qualificato viene riconosciuto (PostgreSQL)
+  OK   Le colonne di una tabella quotata si trovano dall'alias
+  OK   Dopo FROM servono tabelle
+  OK   Dopo JOIN servono tabelle
+  OK   Dopo un alias servono SOLO le colonne di quella tabella
+  OK   Il qualificatore può essere il nome della tabella, non solo l'alias
+  OK   Un alias sconosciuto non propone le colonne di qualcun altro
+  OK   Nella SELECT compaiono le colonne delle tabelle citate
+  OK   Le colonne vengono prima delle parole chiave
+  OK   Chi comincia col prefisso batte chi lo contiene soltanto
+  OK   Quello che si è già scritto per intero non viene riproposto
+  OK   Senza schema si ripiega sulle colonne della tabella aperta
+  OK   Il vocabolario ristretto della griglia non propone SELECT
+  OK   Dopo db. servono le collezioni
+  OK   Dopo db.collezione. servono i metodi
+  OK   Dentro find() servono i campi di QUELLA collezione
+  OK   In uno script vale l'ultima collezione prima del cursore
+  OK   Il $ apre gli operatori
+  OK   db.getCollection("x") viene riconosciuto
+  OK   motoreDalTesto riconosce SQL, MQL e sintassi shell
+  OK   Su MongoDB una SELECT propone le COLLEZIONI dopo FROM
+  OK   Su MongoDB una SELECT propone i campi delle collezioni citate
+  OK   Su MySQL un filtro MQL resta trattato come MQL
+  OK   In uno script ogni istruzione ha la sua lingua
+  OK   Finché il testo tace, su MongoDB si propongono anche gli inizi SQL
+  OK   Nel dubbio, su MongoDB compaiono anche le collezioni
+  OK   Il motore esplicito continua a comandare (nessuna rilevazione)
+  OK   dialettoDi normalizza i nomi dei motori
+  OK   Su MySQL compaiono le funzioni MySQL
+  OK   Le funzioni di un altro motore non compaiono
+  OK   Le clausole proprie del motore sono suggerite
+  OK   Le funzioni comuni restano per tutti i motori SQL
+  OK   Senza DBMS il completamento è quello di prima (nessun dialetto)
+  OK   SQL su MongoDB: aggregati e funzioni del registro condiviso
+  OK   I tipi di colonna si propongono nella CREATE TABLE
+  FAIL I tipi si propongono anche dopo ALTER TABLE … ADD
+       
+  OK   L'identificatore SQL riconosce le tre forme di virgolette
+  OK   Le parentesi dentro le stringhe non contano nel DDL
+  OK   Fuori dal DDL i tipi NON compaiono
+  OK   Dopo `db.` compaiono anche i metodi dell'oggetto db
+  OK   Le collezioni restano prima dei metodi di db
+  OK   Gli stadi di aggregazione meno comuni ci sono
+  OK   Dopo FROM il punto separa lo SCHEMA dalla tabella
+  OK   Uno schema diverso da quello aperto non propone nomi altrui
+  OK   Il JOIN qualificato si comporta allo stesso modo
+  OK   L'alias dopo il FROM resta un alias (non diventa uno schema)
+  OK   PostgreSQL: un nome con una maiuscola va quotato
+  OK   MySQL non abbassa i nomi: si quota solo se serve davvero
+  OK   Su MongoDB si usa il backtick, non il doppio apice
+  OK   Motore sconosciuto: nessuna virgoletta inventata
+  OK   Accettando la tabella su PostgreSQL il nome esce quotato
+  OK   Le virgolette già aperte dall'utente non si raddoppiano
+  OK   Anche le colonne escono quotate quando serve
+  OK   In MQL i nomi NON si quotano (la chiave è già una stringa JSON)
+  OK   Parole chiave e funzioni non vengono mai quotate
+  OK   Accettare un suggerimento sostituisce solo il token in scrittura
+  OK   Accettare un operatore non raddoppia il $
+  OK   Il testo dopo il cursore non viene mangiato
+  1 test IntelliSense FALLITI.

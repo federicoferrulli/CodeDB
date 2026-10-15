@@ -1,0 +1,45 @@
+1. seed dei dati di test (driver MySQL)
+1b. istanza CodeDB di test (porta dedicata, vault temporaneo)
+  OK   istanza di test avviata su http://127.0.0.1:3143
+2. connessione salvata di test (via socket, come farebbe la UI)
+  OK   connections:save "e2e-mcp-mysql"
+3. MCP: connect_database su MySQL
+  OK   connessione aperta (dbType = mysql)
+4. get_databases_and_collections e get_schema
+  OK   tabella "people" elencata
+  OK   schema con le colonne reali
+5. execute_query: SELECT
+  OK   SELECT: total = 2
+  OK   DATETIME nativo conserva i microsecondi senza conversione di fuso
+6. guardie di sola lettura
+  OK   UPDATE bloccato dalla whitelist
+  OK   DML annidato in CTE bloccato dall analisi strutturata o dal motore READ ONLY
+  OK   INTO OUTFILE bloccato
+  OK   parametri MongoDB su MySQL: errore che indirizza a "sql"
+  OK   dati intatti dopo i tentativi di scrittura
+7. percorso UI invariato (SQL Raw senza readOnly scrive ancora)
+  OK   mongo:connect mysql (tab UI)
+  OK   UPDATE dalla UI eseguito (nessuna regressione)
+7b. Fase 3: execute_write con conferma
+  OK   scrittura rifiutata su connessione read-only (default)
+  OK   connections:save "e2e-mcp-mysql-rw" con readOnly=false
+  OK   connessione scrivibile aperta
+  OK   DELETE senza WHERE rifiutata
+  OK   DDL rifiutato da execute_write
+  OK   primo passo: anteprima + confirm_token
+  OK   UPDATE confermato ed eseguito
+  OK   modifica persistita
+  OK   execute_query resta di sola lettura anche su connessione scrivibile (policy per-tool)
+7c. execute_ddl con conferma sul motore reale
+  OK   DDL rifiutata sulla connessione read-only
+  OK   DML rifiutato da execute_ddl
+  OK   CREATE TABLE: anteprima con conferma
+  OK   la preview non crea la tabella
+  OK   CREATE TABLE confermata ed eseguita
+  OK   ALTER TABLE confermata ed eseguita
+  OK   ALTER TABLE persistita nel catalogo
+  OK   DROP TABLE confermata ed eseguita
+8. disconnect_database
+  OK   disconnessione riuscita
+
+TUTTI I TEST SUPERATI

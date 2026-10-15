@@ -108,5 +108,19 @@ module.exports = (async () => {
   assert.notStrictEqual(m.azioneDiEvento(evento('f', { ctrlKey: true, shiftKey: true }), base.mappa), 'chiudiScheda');
   console.log('  ✓ scorciatoie globali: Ctrl+B / Ctrl+W / Ctrl+P nel catalogo, senza collisioni');
 
+  for (const [id, shiftKey] of [['tabellaSuccessiva', false], ['databaseSuccessivo', true]]) {
+    const tasti = evento('Tab', { ctrlKey: true, shiftKey });
+    assert.strictEqual(m.azioneDi(tasti, base.mappa), id);
+    assert.strictEqual(m.etichettaCombo(base.mappa[id]), shiftKey ? 'Ctrl+Shift+Tab' : 'Ctrl+Tab');
+    const personalizzata = m.mappaEffettiva({ [id]: 'Ctrl+Alt+K' });
+    assert.deepStrictEqual(personalizzata.errori, []);
+    assert.strictEqual(m.azioneDi(tasti, personalizzata.mappa), null, 'il vecchio tasto non cambia più scheda');
+    assert.strictEqual(m.azioneDi(evento('k', { ctrlKey: true, altKey: true }), personalizzata.mappa), id);
+  }
+  assert.strictEqual(m.azioneDi(evento('Tab'), base.mappa), null, 'Tab semplice resta al controllo a fuoco');
+  assert.strictEqual(m.azioneDi(evento('Tab', { shiftKey: true }), base.mappa), null);
+  assert.ok(m.mappaEffettiva({ databaseSuccessivo: 'Ctrl+Tab' }).errori.some(e => /Conflitto/.test(e)));
+  console.log('  ✓ navigazione schede: Ctrl+Tab / Ctrl+Shift+Tab distinti, rimappabili e senza collisioni');
+
   console.log('  --- Scorciatoie da tastiera: tutti i test superati ---');
 })();

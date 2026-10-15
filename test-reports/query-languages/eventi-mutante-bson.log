@@ -1,0 +1,42 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+  OK   MQL updateMany senza modifiche
+  OK   MQL pipeline e variabili let
+  OK   findOneAndUpdate: OLD proiettato e sort
+  OK   findOneAndUpdate upsert: identità anche con OLD null
+  OK   findOneAndUpdate upsert con metadati
+  OK   replaceOne con upsert
+  OK   Griglia: inserimento BSON esatto
+  OK   Griglia: modifica
+  OK   Griglia: sostituzione
+  OK   MCP: aggiornamento di massa
+  OK   Import EJSON: upsert ripetuti conservano ogni OLD/NEW
+AssertionError [ERR_ASSERTION]: Import BSON: upsert ripetuti conservano ogni OLD/NEW
++ actual - expected
+
++ []
+- [
+-   {
+-     dopo: 66,
+-     evento: 'UPDATE',
+-     id: 6,
+-     prima: 65
+-   },
+-   {
+-     dopo: 67,
+-     evento: 'UPDATE',
+-     id: 6,
+-     prima: 66
+-   }
+- ]
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:51:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:70:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -1,221 +1,194 @@
 'use strict';
 
-/* ---------------------------------------------------------------------------
- * Misure di prestazione UML: i numeri che il piano chiede di FISSARE, non di
- * presumere (fase 1: hardware, browser e fixture dichiarati qui sotto).
- *
- * Fixture: 100 tabelle da 8 campi, 200 relazioni, socket finto istantaneo.
- * Si misurano tre cose, separate:
- *   1. apertura (schema finto -> diagramma inquadrato);
- *   2. trascinamento di un nodo: p50/p95/max dei fotogrammi durante il gesto;
- *   3. inserimenti incrementali: doppio clic da catalogo, uno alla volta.
- *
- * I budget sono gate di regressione tarati su QUESTO ambiente (headless,
- * raster software), non gli obiettivi del piano (p95 sotto 33 ms su hardware
- * reale): i valori misurati sono stampati e trascritti nel piano. Su una
- * macchina diversa questi numeri vanno rifissati, non inseguiti.
- *
- * Uso: node test/e2e-uml-prestazioni.js
- * ------------------------------------------------------------------------- */
-
-const os = require('os');
+// Chromium e JointJS reali; lo schema simulato isola il costo del diagramma dal DB.
+// E2E_UML_TABELLE=1000 estende la prova; UML_LOAD_MUTATION=sincrono o piatti deve fallire.
+const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 
-let falliti = 0;
-const ok = (cond, etichetta, dettaglio = '') => {
-  if (cond) console.log(`  \x1b[32m✔ OK\x1b[0m   ${etichetta}`);
-  else {
-    console.error(`  \x1b[31m✖ FAIL\x1b[0m ${etichetta}${dettaglio ? `\n         ${dettaglio}` : ''}`);
-    falliti++;
-  }
-};
-const info = (s) => console.log(`      ${s}`);
-
-function fixture() {
-  const nomi = Array.from({ length: 100 }, (_, i) => `tab_${String(i).padStart(3, '0')}`);
+const TABELLE = Number(process.env.E2E_UML_TABELLE) || 400;
+function schemaGrande(n) {
   return {
-    collections: nomi.map((name) => ({
-      name,
-      rowsApprox: 100,
-      fields: Array.from({ length: 8 }, (_, j) => ({ name: `c${j}`, types: ['int'] })),
+    collections: Array.from({ length: n }, (_, i) => ({
+      name: `tab_${i}`, fields: Array.from({ length: 12 }, (_, j) => ({ name: `c${j}`, types: ['int'] })),
     })),
-    relations: Array.from({ length: 200 }, (_, i) => ({
-      from: nomi[i % 100],
-      field: `f${i}`,
-      to: nomi[(i * 7 + 13) % 100],
-      toField: 'id',
-      constraint: `fk_${i}`,
-      ordine: 1,
-      origine: 'vincolo',
+    relations: Array.from({ length: n * 2 }, (_, i) => ({
+      from: `tab_${i % n}`, to: `tab_${(i * 7 + 13) % n}`,
+      field: i % 2 ? 'c1' : 'c0', toField: 'c0', constraint: `fk_${i}`, origine: 'vincolo',
     })),
     schemaPage: { complete: true },
   };
 }
 
 (async () => {
-  console.log('--- Prestazioni UML (misura, non presunzione) ---');
-  console.log(`      macchina: ${os.cpus()[0].model} x${os.cpus().length}, ${(os.totalmem() / 2 ** 30).toFixed(1)} GB`);
-  const server = await startTestServer({ port: parseInt(process.env.E2E_UML_PERF_PORT, 10) || 3153 });
+  const server = await startTestServer({ port: Number(process.env.E2E_UML_PERF_PORT) || 3153 });
   const browser = await chromium.launch();
-  console.log(`      browser: Chromium ${browser.version()}`);
   try {
     const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
     const errori = [];
-    page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
-    const t0 = Date.now();
+    page.on('pageerror', e => errori.push(e.message));
+    if (process.env.UML_LOAD_MUTATION) {
+      await page.route('**/js/uml-paper.js', async route => {
+        const response = await route.fetch();
+        const source = await response.text();
+        assert(source.includes('const LOTTO_VISTE = 4;'));
+        const body = process.env.UML_LOAD_MUTATION === 'piatti'
+          ? source.replace('|| !!this._areaVisibile.intersect(vista.model.getBBox())',
+            '|| (vista.model.getBBox().height > 0 && !!this._areaVisibile.intersect(vista.model.getBBox()))')
+          : source.replace('const LOTTO_VISTE = 4;', 'const LOTTO_VISTE = Infinity;')
+            .replace('await cedi();', 'await Promise.resolve();');
+        await route.fulfill({ response, body });
+      });
+    }
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
-    await page.waitForSelector('#uml-canvas', { state: 'attached', timeout: 15000 });
-    await page.waitForTimeout(500);
-    await page.evaluate(async (schema) => {
+    await page.waitForSelector('#uml-canvas', { state: 'attached' });
+    await page.waitForSelector('html[data-arc-ready="true"]');
+    await page.evaluate(async schema => {
       const { impostaSocket } = await import('/js/socket.js');
       const { createTab, tabs } = await import('/js/tabs.js');
-      impostaSocket({
-        emit: (evento, msg, cb) => {
-          if (!cb) return;
-          if (evento === 'db:schema') { cb({ ok: true, ...JSON.parse(JSON.stringify(schema)) }); return; }
-          if (evento === 'collection:stats') { cb({ ok: true, fields: [], indexes: [], stats: null }); return; }
-          cb({ ok: true });
-        },
-        on: () => {}, off: () => {},
-      });
-      const guida = document.getElementById('onboarding-overlay');
-      if (guida) guida.remove();
-      const tab = createTab({ id: 'tab-uml', connName: null });
-      tab.state.connected = true;
-      tab.state.db = 'perf';
-      tab.state.coll = null;
-      tab.state.connId = 'conn-prova';
-      tab.state.view = 'uml';
+      const { caricaJoint, Tavola } = await import('/js/uml-paper.js');
+      await caricaJoint();
+      impostaSocket({ emit(evento, msg, cb) {
+        cb?.(evento === 'db:schema' ? { ok: true, ...schema } : { ok: true, fields: [], indexes: [] });
+      }, on() {}, off() {} });
+      document.getElementById('onboarding-overlay')?.remove();
+      const tab = createTab({ id: 'uml-prestazioni', connName: null });
+      window.__tabUml = tab;
+      Object.assign(tab.state, { connected: true, db: 'grande', coll: null, connId: 'prova', view: 'uml',
+        dbSchema: schema, dbSchemaFor: 'grande' });
       tabs.activeId = tab.id;
+      for (const id of ['tab-body', 'workspace', 'view-uml']) document.getElementById(id).classList.remove('hidden');
       document.getElementById('welcome').classList.add('hidden');
-      document.getElementById('tab-body').classList.remove('hidden');
-      document.getElementById('workspace').classList.remove('hidden');
-      for (const v of document.querySelectorAll('#workspace .view-panel')) v.classList.add('hidden');
-      document.getElementById('view-uml').classList.remove('hidden');
-      const uml = await import('/js/uml.js');
-      window.__uml = uml;
-      uml.loadUml(true);
-    }, fixture());
-    await page.waitForFunction(
-      () => document.querySelectorAll('#uml-canvas .joint-element').length >= 100
-        && document.querySelectorAll('#uml-canvas .joint-link').length >= 150,
-      { timeout: 60000 });
-    await page.waitForTimeout(800);
-    const apertura = await page.evaluate(() => ({
-      nodi: document.querySelectorAll('#uml-canvas .joint-element').length,
-      archi: document.querySelectorAll('#uml-canvas .joint-link').length,
-    }));
-    info(`apertura: ${apertura.nodi} nodi, ${apertura.archi} archi in ${Date.now() - t0} ms (parete, fixture inclusa)`);
-    ok(apertura.nodi === 100 && apertura.archi >= 150, 'la fixture è quella dichiarata', JSON.stringify(apertura));
-
-    /* --- Trascinamento: fotogrammi durante un gesto vero ------------------ */
-    await page.click('#uml-mode-modifica');
-    await page.waitForTimeout(200);
-    const da = await page.evaluate(() => {
-      const el = [...document.querySelectorAll('#uml-canvas .joint-element')][10];
-      const r = el.getBoundingClientRect();
-      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + 8) };
-    });
-    const xPrima = await page.evaluate(() => {
-      const doc = window.__uml.statoUml().doc;
-      return Object.values(doc.nodi)[10].x;
-    });
-    // Il campionatore gira INSIEME al gesto: lo si avvia senza attenderlo,
-    // si trascina, poi si alza la bandierina e si attende la fine.
-    const campionatura = page.evaluate(() => new Promise((resolve) => {
-      const tempi = [];
-      let ultimo = performance.now();
-      let conta = 0;
-      window.__tempi = tempi;
-      const giro = () => {
-        const ora = performance.now();
-        if (conta++ > 5) tempi.push(ora - ultimo);
-        ultimo = ora;
-        if (!window.__stopFrame) requestAnimationFrame(giro);
-        else resolve();
-      };
-      requestAnimationFrame(giro);
-      // Sicura: anche se il gesto non partisse, il campionatore finisce.
-      setTimeout(() => { window.__stopFrame = true; }, 15000);
-    }));
-    await page.mouse.move(da.x, da.y);
-    await page.mouse.down();
-    for (let i = 1; i <= 40; i++) {
-      await page.mouse.move(da.x + i * 9, da.y + i * 6);
-      await page.waitForTimeout(25);
-    }
-    await page.mouse.up();
-    await page.evaluate(() => { window.__stopFrame = true; });
-    await campionatura;
-    const xDopo = await page.evaluate(() => Object.values(window.__uml.statoUml().doc.nodi)[10].x);
-    ok(Math.abs(xDopo - xPrima) > 50, 'il trascinamento misurato è reale', `${xPrima} → ${xDopo}`);
-    const fotogrammi = await page.evaluate(() => {
-      const t = (window.__tempi || []).filter((d) => d < 1000);
-      const ord = t.slice().sort((a, b) => a - b);
-      const pct = (p) => (ord.length ? ord[Math.min(ord.length - 1, Math.floor((p / 100) * ord.length))] : 0);
-      return { n: t.length, p50: pct(50).toFixed(1), p95: pct(95).toFixed(1), max: (ord.length ? ord[ord.length - 1] : 0).toFixed(1) };
-    });
-    info(`trascinamento su 100 nodi/200 archi: ${fotogrammi.n} fotogrammi, p50 ${fotogrammi.p50} ms, p95 ${fotogrammi.p95} ms, max ${fotogrammi.max} ms`);
-    // Il gate è 100 ms, NON i 33 del piano: su 5 nodi questo stesso ambiente
-    // misura p95 ~68 ms contro ~64 di 100 nodi, quindi la coda è il pavimento
-    // dell'headless (raster software + input via CDP), non la scala. Il gate
-    // cattura le regressioni vere (una pittura da 130 ms o un rebuild da
-    // secondi lo sfondano); i 33 ms restano l'obiettivo su hardware reale.
-    ok(Number(fotogrammi.p95) < 100, 'p95 dei fotogrammi sotto il budget di regressione (100 ms)', `p95=${fotogrammi.p95} ms`);
-
-    /* --- Sagoma: dettaglio proporzionato allo zoom ------------------------- */
-    const scalaFit = await page.evaluate(() => window.__uml.statoUml().tavola.scala);
-    const nascosteFit = await page.evaluate(() =>
-      document.querySelectorAll('#uml-canvas .joint-element text[display="none"]').length);
-    ok(scalaFit < 0.5 && nascosteFit > 100,
-      'a vista intera i campi si nascondono (sagoma)', `scala=${scalaFit.toFixed(2)}, testi nascosti=${nascosteFit}`);
-    for (let i = 0; i < 8; i++) await page.click('#uml-zoom-piu');
-    await page.waitForTimeout(500);
-    const scalaVicino = await page.evaluate(() => window.__uml.statoUml().tavola.scala);
-    const nascosteVicino = await page.evaluate(() =>
-      document.querySelectorAll('#uml-canvas .joint-element text[display="none"]').length);
-    ok(scalaVicino >= 0.5 && nascosteVicino === 0,
-      'da vicino i campi tornano', `scala=${scalaVicino.toFixed(2)}, nascosti=${nascosteVicino}`);
-    for (let i = 0; i < 8; i++) await page.click('#uml-zoom-meno');
-    await page.waitForTimeout(500);
-    const svgSagoma = await page.evaluate(() => window.__uml.statoUml().tavola.esportaSvg({}));
-    ok(/c0/.test(svgSagoma) && !/display="none"/.test(svgSagoma),
-      'l’export dalla sagoma porta tutti i campi', `byte=${svgSagoma.length}`);
-
-    /* --- Inserimenti incrementali: un doppio clic alla volta -------------- */
-    await page.evaluate(() => {
-      const st = window.__uml.statoUml();
-      for (const k of Object.keys(st.doc.nodi).slice(0, 10)) delete st.doc.nodi[k];
-      st.selezione = [];
-    });
-    const durate = [];
-    for (let i = 0; i < 10; i++) {
-      const punto = await page.evaluate(() => {
-        const st = window.__uml.statoUml();
-        const voce = [...document.querySelectorAll('#uml-catalogo-lista [data-chiave]')]
-          .find((v) => !st.doc.nodi[v.dataset.chiave]);
-        if (!voce) return null;
-        const r = voce.getBoundingClientRect();
-        return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+      for (const el of document.querySelectorAll('#workspace .view-panel:not(#view-uml)')) el.classList.add('hidden');
+      window.__uml = await import('/js/uml.js');
+      window.__misure = { metodi: {}, blocchi: [], battiti: 0, inizio: performance.now() };
+      for (const nome of ['monta', 'montaMinimappa', 'applicaDettaglio']) {
+        const originale = Tavola.prototype[nome];
+        Tavola.prototype[nome] = function (...args) {
+          const t = performance.now();
+          const risultato = originale.apply(this, args);
+          window.__misure.metodi[nome] = performance.now() - t;
+          if (nome === 'monta' && window.__dopoAvvio) window.__dopoAvvio(this);
+          return risultato;
+        };
+      }
+      window.__osservatore = new PerformanceObserver(lista => {
+        window.__misure.blocchi.push(...lista.getEntries().map(e => Math.round(e.duration)));
       });
-      const t = Date.now();
-      const attesi = await page.evaluate(() => Object.keys(window.__uml.statoUml().doc.nodi).length + 1);
-      await page.mouse.dblclick(punto.x, punto.y);
-      await page.waitForFunction(
-        (n) => Object.keys(window.__uml.statoUml().doc.nodi).length === n,
-        attesi, { timeout: 15000 });
-      durate.push(Date.now() - t);
-    }
-    const maxIns = Math.max(...durate);
-    info(`10 inserimenti: max ${maxIns} ms, media ${(durate.reduce((a, b) => a + b, 0) / durate.length).toFixed(0)} ms`);
-    ok(maxIns < 500, 'nessun inserimento blocca oltre il budget (500 ms)', `max=${maxIns} ms`);
-    ok(errori.length === 0, 'nessun errore durante le misure', errori.join(' | '));
-    await page.close();
+      window.__osservatore.observe({ type: 'longtask' });
+      window.__battito = setInterval(() => window.__misure.battiti++, 16);
+      window.__uml.loadUml(false);
+    }, schemaGrande(TABELLE));
+    await page.waitForFunction(n => {
+      const t = window.__uml.statoUml().tavola;
+      return t && t.graph.getElements().length === n
+        && t.graph.getLinks().length === n * 2
+        && !t.paper.hasScheduledUpdates() && !t._miniFrame
+        && document.getElementById('uml-canvas').getAttribute('aria-busy') === 'false';
+    }, TABELLE, { timeout: 120000 });
+    await page.waitForTimeout(350);
+    const misure = await page.evaluate(() => {
+      clearInterval(window.__battito);
+      window.__osservatore.disconnect();
+      return { ...window.__misure, durata: Math.round(performance.now() - window.__misure.inizio) };
+    });
+    console.log(`${TABELLE} tabelle / ${TABELLE * 2} relazioni: ${JSON.stringify({
+      durata: misure.durata, bloccoMassimo: Math.max(0, ...misure.blocchi),
+      battiti: misure.battiti, metodi: misure.metodi,
+    })}`);
+    assert.equal(await page.locator('#uml-catalogo-lista [data-chiave]').count(), TABELLE);
+    assert.deepEqual(errori, [], 'nessun errore di pagina');
+    assert.ok(Math.max(0, ...misure.blocchi) < 200,
+      `caricamento non bloccante: lavoro più lungo ${Math.max(...misure.blocchi)} ms (budget 200 ms)`);
+    console.log('OK: schema completo e caricamento senza blocchi prolungati.');
+
+    const geometria = await page.evaluate(() => {
+      const t = window.__uml.statoUml().tavola;
+      const visibili = t.graph.getLinks().filter(link => t.paper.findViewByModel(link)?.el.isConnected).slice(0, 30);
+      return visibili.length > 0 && visibili.every(link => {
+        const vista = t.paper.findViewByModel(link);
+        const da = link.getSourceCell().getPortCenter(link.source().port);
+        const a = link.getTargetCell().getPortCenter(link.target().port);
+        return da.distance(vista.sourcePoint) < 1 && a.distance(vista.targetPoint) < 1;
+      });
+    });
+    assert(geometria, 'le frecce rimangono ancorate alle colonne corrette');
+    assert(await page.evaluate(() => {
+      const t = window.__uml.statoUml().tavola;
+      const { x, y, w, h } = t.vistaCorrente();
+      const dentro = p => p.x > x && p.x < x + w && p.y > y && p.y < y + h;
+      const orizzontali = t.graph.getLinks().filter(link => {
+        const da = link.getSourcePoint(), a = link.getTargetPoint();
+        return da.y === a.y && dentro(da) && dentro(a);
+      });
+      return orizzontali.length > 0 && orizzontali.every(link => t.paper.findViewByModel(link)?.el.isConnected);
+    }), 'gli archi orizzontali nell’area visibile non spariscono');
+    assert(await page.locator('#uml-canvas .joint-element').count() < TABELLE,
+      'il DOM non disegna inutilmente tutte le tabelle fuori schermo');
+    await page.locator('#uml-cerca').fill(`tab_${TABELLE - 1}`);
+    await page.locator('#uml-catalogo-lista [data-chiave]').first().click();
+    await page.waitForFunction(nome => [...document.querySelectorAll('#uml-canvas .joint-element')]
+      .some(el => el.textContent.includes(nome)), `tab_${TABELLE - 1}`);
+    await page.locator('#uml-cerca').fill('');
+    await page.locator('#uml-adatta').click();
+    const svg = await page.evaluate(() => window.__uml.statoUml().tavola.esportaSvg());
+    assert.equal((svg.match(/class="[^"]*joint-element\b/g) || []).length, TABELLE, 'export completo');
+    assert(svg.includes('c11') && !svg.includes('display="none"'), 'export con campi anche dalla sagoma');
+    const prima = await page.evaluate(() => window.__uml.statoUml().tavola.paper.translate());
+    await page.locator('#uml-minimap').click({ position: { x: 10, y: 10 } });
+    const dopo = await page.evaluate(() => window.__uml.statoUml().tavola.paper.translate());
+    assert.notDeepEqual(dopo, prima, 'la minimappa continua a navigare il diagramma');
+
+    await page.evaluate(() => {
+      window.__dopoAvvio = tavola => {
+        window.__dopoAvvio = null;
+        window.__vecchia = tavola;
+        setTimeout(() => {
+          window.__annullataDurante = tavola._costruzione;
+          Object.assign(window.__tabUml.state, { db: 'piccolo', dbSchemaFor: 'piccolo', dbSchema: {
+            collections: [{ name: 'unica', fields: [{ name: 'id', types: ['int'] }] }],
+            relations: [], schemaPage: { complete: true },
+          } });
+          window.__uml.loadUml(false);
+        }, 0);
+      };
+      window.__uml.loadUml(true);
+    });
+    await page.waitForFunction(() => window.__uml.statoUml().contesto?.db === 'piccolo'
+      && document.querySelectorAll('#uml-canvas .joint-element').length === 1
+      && document.getElementById('uml-canvas').getAttribute('aria-busy') === 'false');
+    assert(await page.evaluate(() => window.__annullataDurante && window.__vecchia.smontato),
+      'cambiare database interrompe la preparazione in corso');
+    assert.equal(await page.locator('#uml-canvas .joint-link').count(), 0, 'nessun arco del vecchio database');
+
+    await page.evaluate(() => {
+      window.__dopoAvvio = () => {
+        window.__dopoAvvio = null;
+        setTimeout(() => document.getElementById('view-uml').classList.add('hidden'), 0);
+      };
+      window.__uml.loadUml(true);
+    });
+    await page.waitForFunction(() => !window.__uml.statoUml().tavola && !window.__uml.statoUml().caricamento);
+    await page.evaluate(() => {
+      document.getElementById('view-uml').classList.remove('hidden');
+      window.__uml.loadUml(false);
+    });
+    await page.waitForFunction(() => window.__uml.statoUml().tavola
+      && document.getElementById('uml-canvas').getAttribute('aria-busy') === 'false');
+    await page.evaluate(async () => {
+      window.__dopoAvvio = () => {
+        window.__dopoAvvio = null;
+        setTimeout(() => document.dispatchEvent(new CustomEvent('codedb:tema')), 0);
+      };
+      await window.__uml.loadUml(true);
+      await window.__uml.statoUml().tavola.pronta;
+    });
+    assert.equal(await page.locator('#uml-canvas').getAttribute('aria-busy'), 'false',
+      'cambiare tema durante la preparazione non lascia il caricamento appeso');
+    assert.deepEqual(errori, [], 'nessun errore dopo interruzione e riapertura');
+    console.log('OK: porte, export, minimappa, cambio database, uscita e tema durante il caricamento.');
   } finally {
     await browser.close();
     await server.stop();
   }
-  console.log(falliti === 0 ? '\n--- Prestazioni UML: misure registrate ---' : `\n--- Prestazioni UML: ${falliti} controlli falliti ---`);
-  process.exit(falliti === 0 ? 0 : 1);
-})();
+})().catch(err => { console.error(err); process.exitCode = 1; });

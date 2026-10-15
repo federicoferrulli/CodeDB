@@ -1,0 +1,66 @@
+FAIL instradamento: virtualJoin dentro SQL e MQL resta un dato
+AssertionError [ERR_ASSERTION]: SELECT '"virtualJoin"' AS testo
+La query Virtual Join deve essere un oggetto JSON valido: Unexpected token 'S', "SELECT '"v"... is not valid JSON
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-audit.js:27:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:58:67
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:57:3
+FAIL MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
++     istruzioniEseguite: 1,
++     righeCoinvolteTotali: 7
+-     affectedRows: 7,
+-     insertId: 8,
+-     serverStatus: 9
+    }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:66:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:63:3
+FAIL PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB
+Error: La lettura protetta non può aprire una seconda transazione: usa BEGIN READ ONLY o completa prima la transazione di scrittura.
+    at PostgreSqlStrategy.collectionAggregate (C:\repository\CodeDB\db\PostgreSqlStrategy.js:922:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+FAIL MySQL: DDL con commit implicito libera la lettura protetta
+Error: La lettura protetta non può aprire una seconda transazione: usa BEGIN READ ONLY o completa prima la transazione di scrittura.
+    at MySqlStrategy.collectionAggregate (C:\repository\CodeDB\db\MySqlStrategy.js:877:15)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+FAIL MySQL: autocommit qualificato non lascia committare una lettura protetta
+AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:84:5
+    at async diretta (C:\repository\CodeDB\test\e2e-query-audit.js:35:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:82:3
+FAIL USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ undefined
+- 'codedb_query_audit_b_22efba7402c1'
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:90:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:88:3
+{"casi":6,"falliti":6,"esiti":[{"nome":"instradamento: virtualJoin dentro SQL e MQL resta un dato","ok":false},{"nome":"MySQL: affectedRows e altri nomi di protocollo sono colonne ordinarie","ok":false},{"nome":"PostgreSQL: COMMIT fallito chiude la transazione anche per CodeDB","ok":false},{"nome":"MySQL: DDL con commit implicito libera la lettura protetta","ok":false},{"nome":"MySQL: autocommit qualificato non lascia committare una lettura protetta","ok":false},{"nome":"USE: nomi quotati e commenti aggiornano il bersaglio solo dopo il successo","ok":false}]}
+AssertionError [ERR_ASSERTION]: Tutte le regressioni SQL/MQL devono passare
+    at C:\repository\CodeDB\test\e2e-query-audit.js:98:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

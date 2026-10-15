@@ -1,5 +1,19 @@
 # Guida operativa — export e import (parti verificate)
 
+## Export JSON da Query e Aggregate
+
+«Esporta JSON» scarica un array JSON standard con tutte le righe caricate,
+nell'ordine mostrato. La conversione vale anche dentro oggetti e array:
+ObjectId diventano stringhe, date diventano stringhe ISO e interi rappresentabili
+senza arrotondamento diventano numeri. Decimali e interi oltre la precisione
+sicura di JavaScript restano stringhe per conservare tutte le cifre.
+
+I binari diventano stringhe base64, le espressioni regolari oggetti
+`{ "pattern": "…", "options": "…" }` e i timestamp BSON oggetti `{ "t": …, "i": … }`.
+NaN e infinito restano stringhe; le date fuori dall'intervallo ISO conservano
+i millisecondi originali come stringa. I tag BSON non vengono conservati:
+per un ripristino con i tipi completi usare l'export CodeDB dalla sidebar.
+
 ## Export dalla sidebar
 
 «Esporta database…» permette di scegliere **Script SQL (.sql)** su MySQL e
@@ -87,15 +101,19 @@ Su MongoDB standalone e tabelle MySQL non transazionali occorre sospendere
 le scritture per ottenere un file coerente. Un conteggio uguale
 non dimostra che i valori non siano cambiati, e l'anteprima lo dichiara.
 
-Il formato JSON condivide il limite configurato dell'import (64 MiB di default,
-`CODEDB_MAX_IMPORT_BYTES` e quota `CODEDB_MAX_IMPORT_TOTAL_BYTES`): il limite è
-mostrato prima della conferma e superarlo non produce un file dichiarato valido
-ma non reimportabile. SQL usa la quota disco degli artefatti
-(`CODEDB_ARTEFATTI_MAX_BYTES`, 10 GiB di default). Per file JSON più grandi occorre
-dimensionare e aumentare il limite di import. Anche l'import SQL dall'app è
-soggetto a questo limite: il browser legge in streaming, ma il server mantiene
-i documenti validati in memoria durante anteprima e staging. Gli export SQL
-più grandi restano eseguibili con il client nativo del DBMS.
+Gli export JSON e SQL **non hanno un limite alla dimensione del file**:
+non ereditano `CODEDB_MAX_IMPORT_BYTES`, `CODEDB_MAX_IMPORT_TOTAL_BYTES` né
+`CODEDB_ARTEFATTI_MAX_BYTES`. La scrittura procede a blocchi su disco e il
+registro dei blocchi dell'export conserva solo l'ultimo, senza crescere con
+il file. Servono spazio libero e, se l'operatore ha configurato una quota
+disco del tenant, spazio disponibile in quella quota.
+
+L'import dall'app mantiene il proprio limite (64 MiB di default,
+`CODEDB_MAX_IMPORT_BYTES` e `CODEDB_MAX_IMPORT_TOTAL_BYTES`), sia per JSON sia
+per SQL: il server conserva i documenti validati in memoria durante anteprima
+e staging. Per reimportare dall'app un export più grande occorre dimensionare
+e aumentare questi limiti. Gli script SQL restano eseguibili anche con il client
+nativo del DBMS.
 
 Scrittura dei blocchi e lettura per il checksum usano I/O asincrono; il checksum
 viene aggiornato a blocchi, lasciando avanzare l'event loop fra le letture.
@@ -173,9 +191,9 @@ Copertura dei tipi, prove e prerequisiti: [matrice di fedeltà](matrice-fedelta-
 
 | Variabile | Default | Effetto |
 |---|---|---|
-| `CODEDB_ARTEFATTI_MAX_BYTES` | 10 GiB | Tetto del singolo artefatto |
+| `CODEDB_ARTEFATTI_MAX_BYTES` | 10 GiB | Tetto del singolo upload; non limita gli export |
 | `CODEDB_ARTEFATTI_MAX_BLOCCO` | 4 MiB | Tetto del blocco (anche limite HTTP) |
-| `CODEDB_ARTEFATTI_QUOTA_BYTES` | illimitata | Quota disco del tenant, controllo all'avvio |
+| `CODEDB_ARTEFATTI_QUOTA_BYTES` | illimitata | Quota disco del tenant, controllo all'avvio e durante gli export |
 | `CODEDB_ARTEFATTI_TTL_MS` | 24 h | Scadenza degli upload incompleti |
 | `CODEDB_ARTEFATTI_RETENTION_MS` | mai | Scadenza dei finalizzati (opt-in) |
 | `CODEDB_ARTEFATTI_SECRET` | effimero | Segreto HMAC dei ticket (riavvio li invalida) |

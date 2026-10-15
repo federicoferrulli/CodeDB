@@ -10,6 +10,21 @@ const { chiudiSessioneSql } = require('../db/sqlSessione');
 
 function createModule({ lock, query, audit, dependencies, errori }) {
   function registra(socketContext, lifecycle) {
+    for (const action of ['state', 'reset', 'closeStream', 'answer']) {
+      lifecycle.operazioneLunga(`mongosh:${action}`, async (payload, cb) => {
+        const session = socketContext.sessions.get(lock.normTabId(payload.tabId));
+        if (!session) throw new Error('Nessuna sessione attiva per questo tab.');
+        query.mongoshAccess(session);
+        const runtime = session.mongosh;
+        if (action === 'reset') await runtime?.close();
+        if (action === 'closeStream' && runtime && !runtime.closed) await runtime.request('closeStream', { streamId: payload.streamId });
+        if (action === 'answer') {
+          if (!runtime || runtime.closed) throw new Error('Runtime mongosh chiuso.');
+          runtime.answer(payload.promptId, payload.value);
+        }
+        cb({ ok: true, running: !!runtime && !runtime.closed, streams: [...(runtime?.streams.values() || [])] });
+      });
+    }
     // --- Esecutore dinamico Query & Virtual JOINs -------------------------------
     lifecycle.operazioneLunga('query:execute', async (payload, cb) => {
       const tabId = lock.normTabId(payload.tabId);
@@ -226,7 +241,7 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       // produrrebbe frammenti privi di senso. Lo si tratta come un'unica unità e
       // sarà l'interprete ad analizzarlo (executeQueryCode → MongoScriptRunner).
       const jsMongo = session.strategy.type === 'mongodb'
-        && MongoScriptRunner.sembraScriptJs(codeStr);
+        && (payload.engine === 'mongosh' || MongoScriptRunner.sembraScriptJs(codeStr));
 
       // Le porzioni fatte di soli commenti non sono istruzioni: un file .sql
       // finisce spesso con un commento di chiusura, e mandarlo al database
@@ -236,7 +251,7 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       // le istruzioni dell'utente, quindi vale il dialetto vero della connessione
       // (su MySQL la barra rovesciata dentro un literal è un escape, su
       // PostgreSQL no — vedi la nota in db/sqlText.js).
-      const dialetto = { backslashEscape: (session.dbType || '') === 'mysql' };
+      const dialetto = { dbms: session.strategy.type, backslashEscape: session.strategy.type === 'mysql' };
       const statements = jsMongo
         ? [{ sql: codeStr, line: 1 }]
         : splitStatementsDetailed(codeStr, dialetto).filter((st) => stripSqlNoise(st.sql, dialetto).trim().length > 0);
@@ -361,7 +376,9 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         run.markCurrentInterrupted();
         corrente.opHandle.interrotto = true; // ferma anche uno script interpretato
         try {
-          const res = await session.strategy.cancelQuery(corrente.opHandle);
+          const res = corrente.opHandle.cancelMongosh
+            ? (await corrente.opHandle.cancelMongosh(), { cancelled: true })
+            : await session.strategy.cancelQuery(corrente.opHandle);
           cancelled = !!(res && res.cancelled);
         } catch (_) { /* annullamento best-effort */ }
       }
@@ -427,7 +444,10 @@ function createModule({ lock, query, audit, dependencies, errori }) {
       const corrente = run.currentStatement;
       if (corrente && corrente.opHandle && session.strategy) {
         corrente.opHandle.interrotto = true;
-        try { await session.strategy.cancelQuery(corrente.opHandle); } catch (_) {}
+        try {
+          if (corrente.opHandle.cancelMongosh) await corrente.opHandle.cancelMongosh();
+          else await session.strategy.cancelQuery(corrente.opHandle);
+        } catch (_) {}
       }
       runs.delete(run.id);
       await chiudiSessioneSql(run.sqlScope || run);
@@ -459,7 +479,9 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         // si possa uccidere con killOp: gira nel processo CodeDB. Il flag è il
         // suo canale di interruzione, controllato insieme agli altri budget.
         opHandle.interrotto = true;
-        const res = await session.strategy.cancelQuery(opHandle);
+        const res = opHandle.cancelMongosh
+          ? (await opHandle.cancelMongosh(), { cancelled: true })
+          : await session.strategy.cancelQuery(opHandle);
         // Gli annullamenti del single-flight della griglia (superamento di una
         // pagina da parte della successiva) sono marcati `_bg`: sono housekeeping
         // interno, non un'azione utente, e intaserebbero lo Storico Azioni

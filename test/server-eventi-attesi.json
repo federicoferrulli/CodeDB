@@ -308,6 +308,22 @@
     "famiglia": "safeOn"
   },
   {
+    "evento": "mongosh:answer",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "mongosh:closeStream",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "mongosh:reset",
+    "famiglia": "operazioneLunga"
+  },
+  {
+    "evento": "mongosh:state",
+    "famiglia": "operazioneLunga"
+  },
+  {
     "evento": "prefs:get",
     "famiglia": "amministrativo"
   },

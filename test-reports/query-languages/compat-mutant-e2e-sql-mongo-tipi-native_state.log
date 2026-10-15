@@ -1,0 +1,46 @@
+Error: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'bad' in $convert with no onError value: Failed to parse string to decimal
+    at errore (C:\repository\CodeDB\db\sqlSavepointMongo.js:8:114)
+    at erroreEspressione (C:\repository\CodeDB\db\sqlSavepointMongo.js:17:32)
+    at invoke (C:\repository\CodeDB\db\sqlSnapshotEspressioni.js:63:27)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async [Symbol.asyncIterator] (C:\repository\CodeDB\db\sqlSnapshotEspressioni.js:68:68)
+    at async DbStrategy.collectCapped (C:\repository\CodeDB\db\DbStrategy.js:668:20)
+    at async raccogli (C:\repository\CodeDB\db\MongoSqlRuntime.js:24:20)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:160:38)
+    at async scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:365:40) {
+  sqlState: '22018',
+  mysqlState: '22018',
+  cause: MongoServerError: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'bad' in $convert with no onError value: Failed to parse string to decimal
+      at Connection.sendCommand (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:306:27)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Connection.command (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:334:26)
+      at async Server.command (C:\repository\CodeDB\node_modules\mongodb\lib\sdam\server.js:194:29)
+      at async tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:213:32)
+      at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+      at async AggregationCursor._initialize (C:\repository\CodeDB\node_modules\mongodb\lib\cursor\aggregation_cursor.js:57:26)
+      at async AggregationCursor.cursorInit (C:\repository\CodeDB\node_modules\mongodb\lib\cursor\abstract_cursor.js:632:27)
+      at async AggregationCursor.fetchBatch (C:\repository\CodeDB\node_modules\mongodb\lib\cursor\abstract_cursor.js:666:13)
+      at async AggregationCursor.next (C:\repository\CodeDB\node_modules\mongodb\lib\cursor\abstract_cursor.js:342:17) {
+    errorLabelSet: Set(0) {},
+    errorResponse: {
+      ok: 0,
+      errmsg: "PlanExecutor error during aggregation :: caused by :: Failed to parse number 'bad' in $convert with no onError value: Failed to parse string to decimal",
+      code: 241,
+      codeName: 'ConversionFailure',
+      '$clusterTime': [Object],
+      operationTime: new Timestamp({ t: 1791992539, i: 7 })
+    },
+    ok: 0,
+    code: 241,
+    codeName: 'ConversionFailure',
+    '$clusterTime': {
+      clusterTime: new Timestamp({ t: 1791992539, i: 7 }),
+      signature: [Object]
+    },
+    operationTime: new Timestamp({ t: 1791992539, i: 7 })
+  },
+  code: 241,
+  codeName: 'ConversionFailure',
+  Symbol(condizione SQL recuperabile): Set(0) {}
+}

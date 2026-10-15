@@ -1,0 +1,13 @@
+Versioni: 18.6 (Debian 18.6-1.pgdg13+2) 8.4.11
+OK PostgreSQL: rollback al savepoint ripristina il bersaglio richiesto
+OK PostgreSQL: rollback completo e errore nativo mantengono il bersaglio
+OK PostgreSQL: savepoint annidati e SET LOCAL con COMMIT
+OK PostgreSQL: set_config, RESET ALL e DISCARD ALL non deviano le scritture
+OK MySQL: USE seguito da ritorno al database iniziale
+OK MySQL: USE con commento passa attraverso SQL diretto
+AssertionError [ERR_ASSERTION]: Got unwanted rejection: Il recupero con commenti annidati deve raggiungere il server anche dopo un errore nativo
+Actual message: "current transaction is aborted, commands ignored until end of transaction block"
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:111:7
+    at async prova (C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:26:34)
+    at async C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:102:3

@@ -49,8 +49,8 @@ prova('INSERT con più righe', () => {
   assert.deepStrictEqual(r.docs, [{ nome: 'Ada', attivo: true }, { nome: 'Bob', attivo: false }]);
 });
 
-prova('INSERT senza colonne rifiutato con spiegazione', () => {
-  deveFallire("INSERT INTO utenti VALUES ('Ada', 36)", /elenco di colonne/);
+prova('INSERT senza colonne conserva i valori da associare allo schema', () => {
+  assert.deepEqual(translateWrite("INSERT INTO utenti VALUES ('Ada', 36)").values, [['Ada', 36]]);
 });
 
 prova('INSERT con conteggio valori sbagliato', () => {
@@ -95,12 +95,15 @@ prova('TRUNCATE', () => {
   assert.deepStrictEqual(r.filter, {});
 });
 
-prova('CREATE TABLE crea la collezione e avvisa sui tipi', () => {
+prova('CREATE TABLE conserva tipi e chiave primaria', () => {
   const r = translateWrite('CREATE TABLE prodotti (id INT PRIMARY KEY, nome VARCHAR(50))');
   assert.strictEqual(r.kind, 'ddl');
   assert.strictEqual(r.op, 'createCollection');
   assert.strictEqual(r.coll, 'prodotti');
-  assert.ok(/schema fisso/.test(r.note), 'deve dire che i tipi sono ignorati');
+  assert.equal(r.schema.columns[0].nullable, false);
+  assert.equal(r.schema.columns[1].type, 'VARCHAR');
+  assert.deepEqual(r.schema.columns[1].args, [50]);
+  assert.equal(r.schema.constraints[0].kind, 'PRIMARY');
 });
 
 prova('CREATE TABLE IF NOT EXISTS senza definizioni', () => {
@@ -127,9 +130,10 @@ prova('DROP TABLE', () => {
 });
 
 prova('Comandi senza equivalente rifiutati con spiegazione', () => {
-  deveFallire('ALTER TABLE t ADD COLUMN x INT', /schema fisso|ALTER/);
+  assert.strictEqual(translateWrite('ALTER TABLE t ADD COLUMN x INT').op, 'alterTable');
+  deveFallire('ALTER TABLE t CLUSTER ON x', /ALTER TABLE/);
   deveFallire('REPLACE INTO t (a) VALUES (1)', /REPLACE/);
-  deveFallire('CREATE INDEX i ON t (a)', /createIndex/);
+  assert.strictEqual(translateWrite('CREATE INDEX i ON t (a)').op, 'createIndex');
   deveFallire('GRANT ALL ON t TO x', /non riconosciuto/);
 });
 

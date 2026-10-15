@@ -1,0 +1,15 @@
+  OK   Semantica insiemi, sorgenti INSERT, validatore nativo e FK verificate con dati reali
+  OK   Procedure e cascata rispettano rollback, capability e scope di tutte le tabelle
+  OK   Una procedura senza termine scade e annulla le scritture precedenti
+  OK   BIGINT resta esatto nel database e nel protocollo EJSON
+  OK   Dieci competizioni DELETE genitore / INSERT figlio non producono orfani
+AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-integrita.js:117:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /FOREIGN KEY/,
+  operator: 'rejects',
+  diff: 'simple'
+}

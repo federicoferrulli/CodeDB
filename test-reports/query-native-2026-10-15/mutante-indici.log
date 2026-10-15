@@ -1,0 +1,13 @@
+FAIL MongoDB: dropIndexes selettivo conserva gli altri indici
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    '_id_',
+-   'c_1'
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:163:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:159:3

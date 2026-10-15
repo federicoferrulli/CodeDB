@@ -122,6 +122,7 @@ function createModule({ vault, dependencies, errori }) {
     const msg = (err.message || String(err)).toLowerCase();
     const name = (err.name || '').toLowerCase();
     const code = String(err.code || '').toLowerCase();
+    if (err.sqlConnectionLost || /^(08\w{3}|57p0[123])$/.test(code)) return true;
 
     const connTerms = [
       'nessuna connessione attiva',
@@ -138,6 +139,8 @@ function createModule({ vault, dependencies, errori }) {
       'connection lost',
       'tunnel ssh caduto',
       'client has already been dismantled',
+      'client has encountered a connection error',
+      "can't add new command when connection is in closed state",
       'server shutdown',
       'econnreset',
       'econnrefused',
@@ -239,7 +242,9 @@ function createModule({ vault, dependencies, errori }) {
         if (sess.closed) throw new Error('Sessione chiusa durante la riconnessione.');
         // Una risposta persa non prova che il DB non abbia già eseguito la scrittura.
         err.operationOutcomeUnknown = true;
-        err.message = `Connessione ripristinata. L'operazione non è stata ripetuta: verifica il suo esito prima di rilanciarla. ${err.message}`;
+        const statoSql = ['mysql', 'postgresql'].includes(sess.strategy.type)
+          ? ' Lo stato della precedente sessione SQL, incluse eventuali transazioni, non è stato ripristinato.' : '';
+        err.message = `Connessione ripristinata.${statoSql} L'operazione non è stata ripetuta: verifica il suo esito prima di rilanciarla. ${err.message}`;
         throw err;
       }
       throw err;

@@ -5,8 +5,8 @@ const { esportaDatabase } = require('./databaseExport');
 
 // Riusa l'archivio HTTP: quote, checksum, pubblicazione atomica e download con
 // Range restano gli stessi. Nessun file parziale viene offerto al browser.
-async function creaFileExport({ archivio, ownerId, actorId, maxBytes = Infinity, ...options }) {
-  const opened = archivio.avvia(ownerId, actorId);
+async function creaFileExport({ archivio, ownerId, actorId, ...options }) {
+  const opened = archivio.avvia(ownerId, actorId, { esportazione: true });
   const hash = crypto.createHash('sha256');
   const size = Math.min(opened.maxChunkBytes, 1024 * 1024);
   let pending = [], buffered = 0, offset = 0;
@@ -22,9 +22,6 @@ async function creaFileExport({ archivio, ownerId, actorId, maxBytes = Infinity,
   try {
     const result = await esportaDatabase({ ...options, write: async text => {
       const bytes = Buffer.from(text);
-      if (offset + buffered + bytes.length > Math.min(maxBytes, opened.maxBytes)) {
-        throw new Error(`Export oltre il limite configurato di ${Math.min(maxBytes, opened.maxBytes)} byte. Aumentare il limite di import/export o scegliere SQL per un database SQL.`);
-      }
       for (let start = 0; start < bytes.length;) {
         const part = bytes.subarray(start, start + Math.min(size - buffered, bytes.length - start));
         pending.push(part); buffered += part.length; start += part.length;

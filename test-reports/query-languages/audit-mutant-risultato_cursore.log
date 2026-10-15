@@ -1,0 +1,20 @@
+{"casi":1,"falliti":1,"esiti":[{"nome":"MQL: cursori consumabili, next, count e interruzione del ciclo","ok":false}]}
+FAIL MQL: cursori consumabili, next, count e interruzione del ciclo
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+3 !== 1
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:180:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:171:3
+AssertionError [ERR_ASSERTION]: Tutte le regressioni SQL/MQL devono passare
+    at C:\repository\CodeDB\test\e2e-query-audit.js:185:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

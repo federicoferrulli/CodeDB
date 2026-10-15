@@ -1,0 +1,134 @@
+[
+  {
+    "nome": "e2e-preproduzione",
+    "codice": 0,
+    "secondi": 3,
+    "log": "e2e-preproduzione.log"
+  },
+  {
+    "nome": "e2e-sql-native",
+    "codice": 0,
+    "secondi": 3,
+    "log": "e2e-sql-native.log"
+  },
+  {
+    "nome": "e2e-sql-native-sessioni",
+    "codice": 0,
+    "secondi": 3,
+    "log": "e2e-sql-native-sessioni.log"
+  },
+  {
+    "nome": "e2e-query-audit",
+    "codice": 0,
+    "secondi": 3,
+    "log": "e2e-query-audit.log"
+  },
+  {
+    "nome": "e2e-sql-native-ui",
+    "codice": 0,
+    "secondi": 36,
+    "log": "e2e-sql-native-ui.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-avanzato",
+    "codice": 0,
+    "secondi": 25,
+    "log": "e2e-sql-mongo-avanzato.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-completamento",
+    "codice": 0,
+    "secondi": 6,
+    "log": "e2e-sql-mongo-completamento.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-tipi",
+    "codice": 0,
+    "secondi": 19,
+    "log": "e2e-sql-mongo-tipi.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-estesi",
+    "codice": 0,
+    "secondi": 9,
+    "log": "e2e-sql-mongo-estesi.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-varianti",
+    "codice": 0,
+    "secondi": 5,
+    "log": "e2e-sql-mongo-varianti.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-eventi",
+    "codice": 0,
+    "secondi": 5,
+    "log": "e2e-sql-mongo-eventi.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-atomicita",
+    "codice": 0,
+    "secondi": 1,
+    "log": "e2e-sql-mongo-atomicita.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-integrita",
+    "codice": 0,
+    "secondi": 6,
+    "log": "e2e-sql-mongo-integrita.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-migrazioni",
+    "codice": 0,
+    "secondi": 4,
+    "log": "e2e-sql-mongo-migrazioni.log"
+  },
+  {
+    "nome": "e2e-backup",
+    "codice": 0,
+    "secondi": 8,
+    "log": "e2e-backup.log"
+  },
+  {
+    "nome": "e2e-backup-mysql",
+    "codice": 0,
+    "secondi": 5,
+    "log": "e2e-backup-mysql.log"
+  },
+  {
+    "nome": "e2e-dbexport",
+    "codice": 0,
+    "secondi": 2,
+    "log": "e2e-dbexport.log"
+  },
+  {
+    "nome": "e2e-tipi-bson",
+    "codice": 0,
+    "secondi": 18,
+    "log": "e2e-tipi-bson.log"
+  },
+  {
+    "nome": "e2e-tipi-sql",
+    "codice": 0,
+    "secondi": 14,
+    "log": "e2e-tipi-sql.log"
+  },
+  {
+    "nome": "e2e-rbac",
+    "codice": 0,
+    "secondi": 10,
+    "log": "e2e-rbac.log"
+  },
+  {
+    "nome": "e2e-rbac-mcp",
+    "codice": 0,
+    "secondi": 9,
+    "log": "e2e-rbac-mcp.log"
+  },
+  {
+    "nome": "e2e-sql-mongo-failover",
+    "codice": 1,
+    "secondi": 47,
+    "log": "e2e-sql-mongo-failover.log"
+  }
+]

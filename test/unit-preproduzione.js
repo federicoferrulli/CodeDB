@@ -31,9 +31,11 @@ module.exports = (async () => {
   for (const meta of [{ code: "SELECT 'a  b'", coll: 'a' }, { code: "SELECT 'a b'", coll: 'a' }, { code: "SELECT 'a b'", coll: 'b' }]) registra(storage, meta);
   assert.equal(leggiVoci(storage).length, 3, 'letterali e collezioni diverse non devono sparire');
 
-  assert(SqlToMql.translate('SELECT COUNT(*) AS n FROM t').pipeline[0].$group);
+  assert(SqlToMql.translate('SELECT COUNT(*) AS n FROM t').pipeline[0].$facet.gruppo[0].$group);
   const alias = SqlToMql.translate('SELECT _id, nome AS n FROM t ORDER BY n');
-  assert.deepEqual(alias.pipeline, [{ $sort: { nome: 1 } }, { $project: { _id: '$_id', n: '$nome' } }]);
+  assert.deepEqual(alias.pipeline.find(s => s.$sort), { $sort: { 'chiavi.k0': 1 } });
+  assert.deepEqual(alias.pipeline.at(-1), { $project: { _id: '$_id', n: '$nome' } });
+  assert.equal(alias.pipeline[0].$replaceWith.chiavi.k0.valore.$let.vars.valoreSql.$ifNull[0], '$nome');
 
   const spec = { virtualJoin: { sourceA: { db: 'a', collection: 'x' }, sourceB: { db: 'b', collection: 'y' }, on: { leftKey: 'id', rightKey: 'id' } } };
   const strategy = docs => ({ type: 'mongodb', async collectionAggregate() { return { docs }; } });
@@ -65,7 +67,7 @@ module.exports = (async () => {
     const apri = async () => {
       const id = ++numero;
       return { query: async query => {
-        const sql = typeof query === 'string' ? query : query.sql;
+        const sql = typeof query === 'string' ? query : query.sql || query.text;
         chiamate.push({ id, sql });
         return tipo === 'MySql' ? [[], []] : { rows: [], fields: [], command: 'SELECT' };
       }, release() {}, destroy() {} };

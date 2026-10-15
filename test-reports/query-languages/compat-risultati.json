@@ -1,0 +1,325 @@
+{
+  "data": "2026-10-14T16:03:04.865Z",
+  "versione": "0.2.1-beta.1",
+  "compatibilitaCompleta": false,
+  "motori": {
+    "mongodb": "8.0.29",
+    "postgresql": "18.6",
+    "mysql": "8.4.11"
+  },
+  "conteggi": {
+    "avanzato": {
+      "mongo": 378,
+      "postgres": 270,
+      "mysql": 273
+    },
+    "completamento": {
+      "mongo": 112,
+      "postgres": 30,
+      "mysql": 45
+    },
+    "tipi": {
+      "mongo": 218,
+      "postgres": 178,
+      "mysql": 1
+    },
+    "estesi": {
+      "mongo": 116,
+      "postgres": 104,
+      "mysql": 0
+    },
+    "compatibilita": {
+      "mongo": 169,
+      "postgres": 133,
+      "mysql": 0
+    },
+    "totale": {
+      "mongo": 993,
+      "postgres": 715,
+      "mysql": 319
+    }
+  },
+  "unitari": "pass",
+  "socket": {
+    "esito": "pass",
+    "funzioniScalari": 83
+  },
+  "keyword": {
+    "mysql": 734,
+    "postgresql": 494
+  },
+  "altreSuite": [
+    "eventi (32 gruppi)",
+    "atomicita",
+    "integrita",
+    "migrazioni",
+    "dialetti nativi e SQL comune"
+  ],
+  "ui": {
+    "esito": "pass",
+    "browser": "Chromium",
+    "trasportoDB": "simulato",
+    "primoTentativo": "timeout page.goto; DOM e app pronta verificati nel test finale"
+  },
+  "failover": {
+    "esito": "pass",
+    "arresti": 18,
+    "topologia": "tre container, processi e volumi distinti sullo stesso host",
+    "primoTentativo": "errore 11602 in DROP del preflight; retry idempotente corretto e intera suite rieseguita",
+    "diagnostica": [
+      "compat-failover-prima-correzione.log",
+      "compat-failover-diagnostica.log"
+    ]
+  },
+  "mutazioni": [
+    {
+      "file": "compat-mutant-array_index_cast.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: $arrayElemAt's second argument must be representable as a 32-bit integer: 0.5"
+    },
+    {
+      "file": "compat-mutant-array_text.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'Array SQL [22P02]: letterale array non valido' in $convert with no onError value: Did not consume whole string."
+    },
+    {
+      "file": "compat-mutant-array_text_output.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ('[-2:0]={1,NULL,3}'::INT[])::TEXT AS t,ARRAY[true,false,NULL]::TEXT AS b,ARRAY[[1,2],[3,4]]::TEXT AS m"
+    },
+    {
+      "file": "compat-mutant-bson.log",
+      "failure": "  FAIL SQL inviato intatto al runtime con catalogo: The expression evaluated to a falsy value:"
+    },
+    {
+      "file": "compat-mutant-cascade_check.log",
+      "failure": "MongoBulkWriteError: Document failed validation"
+    },
+    {
+      "file": "compat-mutant-cascade_default.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    },
+    {
+      "file": "compat-mutant-cascade_domain.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    },
+    {
+      "file": "compat-mutant-cascade_recovery.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO rollback_domain_b VALUES(2,3)"
+    },
+    {
+      "file": "compat-mutant-cascade_trigger.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: DROP DOMAIN trigger_domain"
+    },
+    {
+      "file": "compat-mutant-cascade_types.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:"
+    },
+    {
+      "file": "compat-mutant-cast_domain.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: SELECT CAST(0 AS positive_cast)"
+    },
+    {
+      "file": "compat-mutant-cast_domain_array.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: SELECT CAST(ARRAY[1,NULL] AS small_cast[])"
+    },
+    {
+      "file": "compat-mutant-domain_recompile.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO dynamic_check VALUES(12)"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-exception.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-fk_rename.log",
+      "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Permesso negato/. Input:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-hex.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-indice.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-padding.log",
+      "failure": "MongoBulkWriteError: Document failed validation"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-rollback.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-completamento-trigger_of.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-array_bounds.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ARRAY_DIMS(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0])) AS d,ARRAY_LOWER(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0]),1) AS lo,ARRAY_UPPER(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0]),2) AS hi"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-array_native.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-array_slice.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT (ARRAY[1,2,3])[2:3] AS a,(ARRAY[1,2,3])[:2] AS b,(ARRAY[1,2,3])[20:] AS c"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-array_write.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT a[:] AS a FROM array_write WHERE id=1"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-domain_conversion.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER TABLE domain_conversion ALTER COLUMN n TYPE bounded"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-domain_not_valid.log",
+      "failure": "Error: I dati esistenti violano il nuovo schema SQL."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-domain_validate.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN bounded VALIDATE CONSTRAINT high"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-multirange_difference.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ('{[1,3),[5,8)}'::INT4MULTIRANGE - '{[2,6)}'::INT4MULTIRANGE) = '{[1,2),[6,8)}'::INT4MULTIRANGE AS d,('{[1,3),[5,8)}'::INT4MULTIRANGE * '{[2,6)}'::INT4MULTIRANGE) = '{[2,3),[5,6)}'::INT4MULTIRANGE AS i"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-multirange_merge.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ('{[1,3),[5,8)}'::INT4MULTIRANGE + '{[3,5)}'::INT4MULTIRANGE) = '{[1,8)}'::INT4MULTIRANGE AS u,LOWER(RANGE_MERGE('{[1,3),[5,8)}'::INT4MULTIRANGE)) AS lo,UPPER(RANGE_MERGE(INT4RANGE(1,3),INT4RANGE(5,8))) AS hi"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-native_probe.log",
+      "failure": "MongoServerError: E11000 duplicate key error collection: codedb_sql_estesi_mongo_97d37d94a260.native_keys index: native_multikey dup key: { a: 2 }"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-nested_alias.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT n FROM nested_log ORDER BY n"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-nested_scope.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT n FROM nested_log ORDER BY n"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-estesi-trigger_state.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT id,d FROM trigger_bounds_log ORDER BY id"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-array_cat.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'Array SQL [2202E]: dimensioni incompatibili per la concatenazione' in $convert with no onError value: Did not consume whole string."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-array_fk.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-array_index.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-array_replace.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-array_shape.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-cast_binary.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-cast_null.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-cast_overflow.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: SELECT CAST(32768 AS SMALLINT) AS invalid_number"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-default_boundary.log",
+      "failure": "Error: NOT deve precedere IN, LIKE, ILIKE o BETWEEN."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-domain_array.log",
+      "failure": "Error: DEFAULT non compatibile con il tipo della colonna a."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-domain_rollback.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN positive_int ADD CONSTRAINT no_three CHECK(VALUE<>3)"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-domain_state.log",
+      "failure": "Error: La riga viola il vincolo CHECK invalid_default_check_1 del dominio invalid_default."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-domains.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO dom_a VALUES(2,-1)"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-duplicate_condition.log",
+      "failure": "Error: Condizione SQL 39004."
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-excluded_case.log",
+      "failure": "MongoServerError: Document failed validation"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-native_state.log",
+      "failure": "Error: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'bad' in $convert with no onError value: Failed to parse string to decimal"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-range.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-routine.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER TABLE dep_routine ALTER COLUMN n TYPE BIGINT"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-snapshot.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: can't $divide by zero"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-statement.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-e2e-sql-mongo-tipi-statement_columns.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "compat-mutant-native_cleanup.log",
+      "failure": "MongoServerError: Cambio primario dopo DROP applicato"
+    },
+    {
+      "file": "compat-mutant-native_geo.log",
+      "failure": "MongoServerError: Can't extract geo keys: { _id: ObjectId('6acfa0bd67670ff3ea808c92'), id: 2, g: { type: \"Point\", coordinates: [ 300, 300 ] } }  Longitude/latitude is out of bounds, lng: 300 lat: 300"
+    },
+    {
+      "file": "compat-mutant-native_immutable.log",
+      "failure": "MongoServerError: After applying the update, the (immutable) field '_id' was found to have been altered to _id: 2"
+    },
+    {
+      "file": "compat-mutant-native_parallel.log",
+      "failure": "MongoServerError: cannot index parallel arrays [b] [a]"
+    },
+    {
+      "file": "compat-mutant-range_aggregate.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT RANGE_AGG(r) = '{[1,8)}'::INT4MULTIRANGE AS u, RANGE_INTERSECT_AGG(r) = '[3,5)'::INT4RANGE AS i FROM intervals WHERE g=1"
+    },
+    {
+      "file": "compat-mutant-range_intersection.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT RANGE_AGG(r) = '{[1,8)}'::INT4MULTIRANGE AS u, RANGE_INTERSECT_AGG(r) = '[3,5)'::INT4RANGE AS i FROM intervals WHERE g=1"
+    },
+    {
+      "file": "compat-mutant-sort_sql.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT id FROM sort_arrays ORDER BY a ASC NULLS LAST"
+    },
+    {
+      "file": "compat-mutant-trigger_rename.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT id FROM trigger_rename_log"
+    }
+  ],
+  "limiti": "docs/copertura-linguaggi-query.md"
+}

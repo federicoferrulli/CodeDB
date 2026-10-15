@@ -11,6 +11,13 @@
  * ------------------------------------------------------------------------- */
 
 const assert = require('assert');
+if (process.argv.includes('--mutant=handler')) require('node:module').registerHooks({ load(url, context, next) {
+  const result = next(url, context);
+  if (!url.endsWith('/sql-blocchi.mjs')) return result;
+  const from = "if (handler && ['IF'";
+  assert.ok(String(result.source).includes(from), 'Mutazione handler non applicata');
+  return { ...result, source: String(result.source).replace(from, "if (false && ['IF'") };
+} });
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { splitStatementsDetailed } = require('../db/sqlText');
@@ -55,6 +62,17 @@ function prova(nome, fn) {
     assert.deepStrictEqual(st.map((x) => x.line), [1, 2, 4]);
   });
 
+  prova('Le procedure restano intere prima della CALL successiva', () => {
+    for (const body of ['UPDATE t SET n=1; INSERT INTO t(n) VALUES(2);',
+      'DECLARE i INT DEFAULT 0; WHILE i<2 DO IF (i=0) THEN UPDATE t SET n=1; ELSE UPDATE t SET n=2; END IF; SET i=i+1; END WHILE;',
+      'SELECT CASE WHEN n=1 THEN 2 ELSE 3 END FROM t;']) {
+      const code = `CREATE PROCEDURE p() BEGIN ${body} END; CALL p();`;
+      const server = splitStatementsDetailed(code).map(x => x.sql);
+      const client = splitStatements(code).map(x => x.sql);
+      assert.equal(server.length, 2); assert.deepEqual(client, server);
+    }
+  });
+
   prova('Coerenza con il gemello server su un ventaglio di casi', () => {
     const casi = [
       'SELECT 1',
@@ -86,6 +104,49 @@ function prova(nome, fn) {
     const client = splitStatements(src).map((x) => x.line);
     const server = splitStatementsDetailed(src).map((x) => x.line);
     assert.deepStrictEqual(client, server);
+  });
+  prova('REPEAT, ELSEIF e trigger conservano i punti e virgola interni', () => {
+    const source = 'CREATE PROCEDURE p() BEGIN DECLARE i INT DEFAULT 0; REPEAT SET i=i+1; IF i=1 THEN CALL a(); ELSEIF i=2 THEN CALL b(); END IF; UNTIL i=2 END REPEAT; END; CREATE TRIGGER t AFTER INSERT ON c FOR EACH ROW BEGIN INSERT INTO log VALUES(NEW.id); END; CALL p();';
+    const client = splitStatements(source).map(x => x.sql);
+    assert.strictEqual(client.length, 3);
+    assert.deepStrictEqual(client, splitStatementsDetailed(source).map(x => x.sql));
+  });
+  prova('Handler con IF e cursore restano nella stessa procedura', () => {
+    const source = 'CREATE PROCEDURE p() BEGIN DECLARE v INT; DECLARE c CURSOR FOR SELECT n FROM t; DECLARE CONTINUE HANDLER FOR NOT FOUND IF v IS NULL THEN SET v=0; END IF; OPEN c; FETCH c INTO v; CLOSE c; END; CALL p();';
+    const client = splitStatements(source).map(x => x.sql);
+    assert.strictEqual(client.length, 2);
+    assert.deepStrictEqual(client, splitStatementsDetailed(source).map(x => x.sql));
+  });
+  prova('Handler SQLSTATE, classi e condizioni nominate conservano il corpo IF', () => {
+    for (const condition of ["SQLSTATE '45001'", 'SQLWARNING', 'SQLEXCEPTION', 'errore_locale', "SQLSTATE '45001', SQLSTATE '45002'"]) {
+      const source = `CREATE PROCEDURE p() BEGIN DECLARE v INT; DECLARE CONTINUE HANDLER FOR ${condition} IF v IS NULL THEN SET v=0; END IF; SET v=1; END; CALL p();`;
+      const client = splitStatements(source).map(x => x.sql);
+      assert.strictEqual(client.length, 2, condition);
+      assert.deepStrictEqual(client, splitStatementsDetailed(source).map(x => x.sql));
+    }
+  });
+
+  prova('DELIMITER MySQL conserva routine, stringhe, commenti e righe', () => {
+    for (const delimiter of ['$$', '//', ';;', 'fine']) {
+      const source = `-- inizio\nDELIMITER ${delimiter}\nCREATE PROCEDURE p() BEGIN SELECT '${delimiter};'; /* ${delimiter} */ SELECT 2; END${delimiter}\nDELIMITER ;\nCALL p();`;
+      const opts = { dbms: 'mysql', backslashEscape: true };
+      const server = splitStatementsDetailed(source, opts);
+      const client = splitStatements(source, opts);
+      assert.equal(client.length, 2);
+      assert.deepEqual(client, server.map(({ sql, line }) => ({ sql, line })));
+      assert.deepEqual(client.map(s => s.line), [3, 5]);
+      assert.match(client[0].sql, /^CREATE PROCEDURE.*END$/);
+      assert.equal(client[1].sql, 'CALL p()');
+      assert.equal(isScript(`DELIMITER ${delimiter}\nSELECT 1${delimiter}`, opts), true);
+    }
+  });
+
+  prova('Le stringhe MySQL con doppi apici conservano gli escape', () => {
+    const source = String.raw`SELECT "a\";b"; SELECT 2;`;
+    const opts = { dbms: 'mysql', backslashEscape: true };
+    const server = splitStatementsDetailed(source, opts).map(s => s.sql);
+    assert.equal(server.length, 2);
+    assert.deepEqual(splitStatements(source, opts).map(s => s.sql), server);
   });
 
   if (falliti) {

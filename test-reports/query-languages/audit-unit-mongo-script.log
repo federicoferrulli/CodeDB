@@ -1,0 +1,43 @@
+--- Test unitari interprete script MongoDB ---
+  OK   Variabili, aritmetica e print
+  OK   Stringhe, template literal e interpolazione
+  OK   if / else
+  OK   Ciclo for classico con break e continue
+  OK   for…of e for…in
+  OK   while e do…while
+  OK   Funzioni, chiusure, ricorsione e hoisting
+  OK   Arrow function e metodi di array
+  OK   Oggetti, array, accesso e assegnamento
+  OK   try / catch / finally e throw
+  OK   typeof, operatori logici e ternario
+  OK   JSON, Math e Date
+  OK   SANDBOX: non si risale a Function dai valori nativi
+  OK   SANDBOX: __proto__ e prototype negati
+  OK   SANDBOX: le globali del processo non esistono
+  OK   SANDBOX: call/apply/bind non raggiungibili
+  OK   SANDBOX: metodi nativi fuori whitelist non esistono
+  OK   SANDBOX: gli oggetti del database non sono modificabili
+  OK   BUDGET: ciclo infinito interrotto
+  OK   BUDGET: un try/catch NON neutralizza il limite
+  OK   BUDGET: ricorsione senza uscita interrotta
+  OK   BUDGET: tetto alle operazioni sul database
+  OK   BUDGET: la memoria di un singolo valore è limitata (CDB-65)
+  OK   find/toArray: filtro convertito in EJSON e documenti restituiti
+  OK   Catena sort/limit/skip trasmessa alla strategia
+  OK   for…of su un cursore lo materializza
+  OK   Scritture: insertOne/updateMany/deleteMany raggiungono l'host
+  OK   Costruttori BSON convertiti in Extended JSON
+  OK   DDL: createCollection, drop, createIndex, dropDatabase
+  OK   getSiblingDB cambia database senza toccare gli altri
+  OK   countDocuments e distinct
+  OK   Senza database selezionato l'errore è comprensibile
+  OK   reduce() rispetta il valore iniziale
+  OK   BUDGET: un quantificatore annidato è rifiutato prima di eseguire
+  OK   Le regex normali continuano a funzionare
+  OK   BUDGET: una regex costosa sfuggita all’euristica viene terminata nel worker
+  OK   BUDGET: una regex non si applica a un testo smisurato
+  OK   deleteMany/updateMany senza filtro non diventano "tutti i documenti"
+  OK   sembraScriptJs distingue script e comandi singoli
+  OK   Errori di sintassi indicano la riga
+
+Tutti i test dell'interprete superati!

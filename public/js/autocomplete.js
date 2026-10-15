@@ -38,6 +38,7 @@ function linguaCorrente(campo, ctx) {
     cursore: campo.selectionStart ?? 0,
     motore: ctx.motore || 'sql',
     ripiego: ctx.ripiego || 'sql',
+    dbms: ctx.dbms || '',
   }).motore;
 }
 
@@ -139,13 +140,16 @@ export function invalidaSchemaIntellisense(db) {
 // candidati non si allineavano fra una riga e l'altra.
 const ICONE = {
   campo: 'dot', tabella: 'table-2', parola: 'type', funzione: 'function-square',
-  operatore: 'dollar-sign', metodo: 'chevron-right',
+  operatore: 'dollar-sign', metodo: 'chevron-right', tipo: 'braces',
 };
+let numeroLista = 0;
 
 function creaLista(dentro, flottante) {
   const list = document.createElement('ul');
   list.className = `ac-list hidden${flottante ? ' ac-flottante' : ''}`;
   list.setAttribute('role', 'listbox');
+  list.id = `query-completamento-${++numeroLista}`;
+  list.setAttribute('aria-label', 'Suggerimenti di completamento');
   dentro.appendChild(list);
   return list;
 }
@@ -155,6 +159,8 @@ function disegnaVoci(list, voci, onScegli) {
   voci.forEach((voce, idx) => {
     const li = document.createElement('li');
     li.setAttribute('role', 'option');
+    li.id = `${list.id}-${idx}`;
+    li.setAttribute('aria-selected', 'false');
     li.dataset.i = String(idx);
 
     const icona = document.createElement('i');
@@ -168,6 +174,7 @@ function disegnaVoci(list, voci, onScegli) {
     refreshLucideIcons(li);
 
     if (voce.dettaglio) {
+      li.title = `${voce.testo} — ${voce.dettaglio}`;
       const det = document.createElement('span');
       det.className = 'ac-dettaglio';
       det.textContent = voce.dettaglio;
@@ -229,7 +236,10 @@ function coordinateCursore(textarea) {
 /* Il dropdown flottante non deve uscire dalla finestra: se sotto non c'è
    spazio si apre verso l'alto. */
 function posizionaFlottante(list, { x, y, alto }) {
-  list.style.left = `${Math.max(4, Math.min(x, window.innerWidth - 260))}px`;
+  const disponibile = Math.max(0, window.innerWidth - 8);
+  list.style.minWidth = `${Math.min(260, disponibile)}px`;
+  list.style.maxWidth = `${Math.min(480, disponibile)}px`;
+  list.style.left = `${Math.max(4, Math.min(x, window.innerWidth - list.offsetWidth - 4))}px`;
   const altezza = list.offsetHeight || 200;
   const sotto = window.innerHeight - y;
   list.style.top = sotto < altezza + 8 ? `${Math.max(4, y - alto - altezza)}px` : `${y}px`;
@@ -263,6 +273,8 @@ function finestraAnalisi(valore, cursore) {
  */
 function agganciaMotore(campo, opts) {
   const list = creaLista(opts.contenitore, !!opts.flottante);
+  campo.setAttribute('aria-autocomplete', 'list');
+  campo.setAttribute('aria-controls', list.id);
   let voci = [];
   let attivo = -1;
   let ultimaRichiesta = false; // l'ultima apertura è stata chiesta con Ctrl+Spazio?
@@ -297,7 +309,11 @@ function agganciaMotore(campo, opts) {
   }
 
   function evidenzia() {
-    [...list.children].forEach((li, i) => li.classList.toggle('active', i === attivo));
+    [...list.children].forEach((li, i) => {
+      li.classList.toggle('active', i === attivo);
+      li.setAttribute('aria-selected', String(i === attivo));
+    });
+    if (list.children[attivo]) campo.setAttribute('aria-activedescendant', list.children[attivo].id);
     if (attivo >= 0 && list.children[attivo]) list.children[attivo].scrollIntoView({ block: 'nearest' });
   }
 
@@ -310,6 +326,7 @@ function agganciaMotore(campo, opts) {
       motore: ctx.motore || 'sql',
       ripiego: ctx.ripiego || 'sql',
       dbms: ctx.dbms || '',
+      mongosh: ctx.mongosh === true,
       database: ctx.database || '',
       schema: ctx.schema || null,
       colonne: ctx.colonne || [],
@@ -404,6 +421,9 @@ function agganciaMotore(campo, opts) {
       posizionaFlottante(list, coordinateCursore(campo));
     }
   });
+  if (opts.flottante) window.addEventListener('resize', () => {
+    if (!list.classList.contains('hidden')) posizionaFlottante(list, coordinateCursore(campo));
+  });
 
   const ridisegna = () => { if (!list.classList.contains('hidden')) apriDopo(ultimaRichiesta); };
   inAscolto.add(ridisegna);
@@ -462,7 +482,7 @@ export function attachAutocomplete(input, opts = {}) {
  */
 export function ripiegoLingua(sceltaMotore) {
   if (sceltaMotore === 'mysql' || sceltaMotore === 'postgresql' || sceltaMotore === 'crossdb') return 'sql';
-  if (sceltaMotore === 'mongodb') return 'mongo';
+  if (sceltaMotore === 'mongodb' || sceltaMotore === 'mongosh') return 'mongo';
   return isSqlType(state.dbType) ? 'sql' : 'mongo';
 }
 
@@ -472,6 +492,7 @@ export function ripiegoLingua(sceltaMotore) {
  * "Cross-DB" non se ne sceglie nessuno, perché la query ne tocca due.
  */
 export function dbmsCorrente(sceltaMotore) {
+  if (sceltaMotore === 'mongosh') return 'mongodb';
   if (sceltaMotore === 'mysql' || sceltaMotore === 'postgresql' || sceltaMotore === 'mongodb') return sceltaMotore;
   if (sceltaMotore === 'crossdb') return '';
   return state.dbType || '';
@@ -496,9 +517,10 @@ export function attachEditorAutocomplete(textarea, opts = {}) {
         // La lingua la decide il testo sotto il cursore (vedi motoreDalTesto):
         // uno script può contenere un `SELECT` e un `db.coll.find()`, e ogni
         // istruzione va completata nella sua lingua.
-        motore: 'auto',
+        motore: scelto === 'mongosh' ? 'mongo' : 'auto',
         ripiego: ripiegoLingua(scelto),
         dbms: dbmsCorrente(scelto),
+        mongosh: scelto === 'mongosh',
         // Il database (su PostgreSQL: lo schema) a cui appartengono le tabelle
         // in cache: serve a capire se un nome qualificato parla di questo o di
         // un altro schema.

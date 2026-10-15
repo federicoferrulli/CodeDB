@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN bounded VALIDATE CONSTRAINT high
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:119:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:54:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /violano/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

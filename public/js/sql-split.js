@@ -16,7 +16,10 @@
  * Percorre il testo e restituisce le istruzioni con la riga di partenza.
  * @returns {Array<{sql: string, line: number}>}
  */
-export function splitStatements(code) {
+import { blocchiSql } from './sql-blocchi.mjs';
+
+export function splitStatements(code, { dbms = '', backslashEscape = false } = {}) {
+  let blocchi = blocchiSql();
   const s = String(code == null ? '' : code);
   const out = [];
   let i = 0;
@@ -24,6 +27,7 @@ export function splitStatements(code) {
   let line = 1;
   let stmtLine = 1;
   let visto = false; // c'è del contenuto non bianco nell'istruzione corrente?
+  let delimitatore = ';', haCodice = false;
 
   const avanza = (fino) => {
     while (i < fino && i < s.length) {
@@ -42,20 +46,35 @@ export function splitStatements(code) {
     const c = s[i];
     const next = s[i + 1];
 
+    if (dbms === 'mysql' && !haCodice && (i === 0 || s[i - 1] === '\n')) {
+      const direttiva = /^[ \t]*DELIMITER[ \t]+(\S+)[ \t]*(?:\r?\n|$)/i.exec(s.slice(i));
+      if (direttiva) { delimitatore = direttiva[1]; avanza(i + direttiva[0].length); stmtStart = i; visto = false; continue; }
+    }
+    if (delimitatore !== ';' && s.startsWith(delimitatore, i)) {
+      chiudi(i); avanza(i + delimitatore.length); stmtStart = i; haCodice = false; blocchi = blocchiSql(); continue;
+    }
+
     if (!visto && !/\s/.test(c)) {
       visto = true;
       stmtLine = line;
     }
 
-    if (c === '-' && next === '-') { avanza(indexOrEnd(s, '\n', i)); continue; }
-    if (c === '#') { avanza(indexOrEnd(s, '\n', i)); continue; }
+    if (c === '-' && next === '-' && (dbms !== 'mysql' || !s[i + 2] || /\s/.test(s[i + 2]))) { avanza(indexOrEnd(s, '\n', i)); continue; }
+    if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') { avanza(indexOrEnd(s, '\n', i)); continue; }
     if (c === '/' && next === '*') {
-      const end = s.indexOf('*/', i + 2);
-      avanza(end < 0 ? s.length : end + 2);
+      if (s[i + 2] === '!') haCodice = true;
+      avanza(i + 2);
+      let profondita = 1;
+      while (i < s.length && profondita) {
+        if (dbms === 'postgresql' && s.slice(i, i + 2) === '/*') { profondita++; avanza(i + 2); }
+        else if (s.slice(i, i + 2) === '*/') { profondita--; avanza(i + 2); }
+        else avanza(i + 1);
+      }
       continue;
     }
+    if (!/\s/.test(c)) haCodice = true;
 
-    if (c === '$') {
+    if (c === '$' && dbms !== 'mysql') {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));
       if (m) {
         const tag = m[0];
@@ -70,9 +89,9 @@ export function splitStatements(code) {
       // PostgreSQL: altrove è un carattere ordinario. Deve valere
       // esattamente la regola di db/sqlText.js — i due splitter non
       // possono divergere (test/unit-sql-split-client.js).
-      const conEscape = s[i - 1] === 'E' || s[i - 1] === 'e'
+      const conEscape = backslashEscape || (s[i - 1] === 'E' || s[i - 1] === 'e'
         ? (s[i - 2] === undefined || !/[A-Za-z0-9_$]/.test(s[i - 2]))
-        : false;
+        : false);
       i++;
       while (i < s.length) {
         if (conEscape && s[i] === '\\') { avanza(i + 2); continue; }
@@ -86,16 +105,23 @@ export function splitStatements(code) {
       const close = c === '[' ? ']' : c;
       avanza(i + 1);
       while (i < s.length) {
+        if (c === '"' && backslashEscape && s[i] === '\\') { avanza(i + 2); continue; }
         if (s[i] === close) { if (s[i + 1] === close) { avanza(i + 2); continue; } avanza(i + 1); break; }
         avanza(i + 1);
       }
       continue;
     }
 
-    if (c === ';') {
+    if (/[A-Za-z_]/.test(c)) {
+      let token = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(s.slice(i))[0];
+      if (delimitatore !== ';' && token.includes(delimitatore)) token = token.slice(0, token.indexOf(delimitatore));
+      blocchi.parola(token); avanza(i + token.length); continue;
+    }
+    if (c === ';' && delimitatore === ';' && blocchi.separa()) {
       chiudi(i);
       avanza(i + 1);
       stmtStart = i;
+      haCodice = false;
       continue;
     }
 
@@ -112,11 +138,11 @@ function indexOrEnd(s, needle, from) {
 }
 
 /** Il testo contiene più di un'istruzione? (è quindi uno "script") */
-export function isScript(code) {
-  return splitStatements(code).length > 1;
+export function isScript(code, opts) {
+  return splitStatements(code, opts).length > 1 || (opts?.dbms === 'mysql' && /^\s*DELIMITER\s+/im.test(code));
 }
 
 /** Numero di istruzioni, per l'anteprima nella UI ("Esegui script (N)"). */
-export function countStatements(code) {
-  return splitStatements(code).length;
+export function countStatements(code, opts) {
+  return splitStatements(code, opts).length;
 }

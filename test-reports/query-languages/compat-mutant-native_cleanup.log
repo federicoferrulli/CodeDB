@@ -1,0 +1,16 @@
+MongoServerError: Cambio primario dopo DROP applicato
+    at c.drop (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:228:63)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Object.verifica (C:\repository\CodeDB\db\sqlPreflightIndici.js:32:12)
+    at async validate (C:\repository\CodeDB\db\sqlSavepointMongo.js:87:149)
+    at async Proxy.<anonymous> (C:\repository\CodeDB\db\sqlSavepointMongo.js:128:15)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:213:53)
+    at async scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:365:40)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\sqlProcedureMongo.js:457:7)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30) {
+  errorLabelSet: Set(0) {},
+  errorResponse: { code: 11602, errmsg: 'Cambio primario dopo DROP applicato' },
+  code: 11602,
+  Symbol(istruzione SQL da annullare): true
+}

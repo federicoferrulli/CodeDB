@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Missing expected rejection: SELECT CAST(ARRAY[1,NULL] AS small_cast[])
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:119:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:42:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /dominio|CHECK|NULL/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

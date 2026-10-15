@@ -6,19 +6,25 @@ const MongoDbStrategy = require('../db/MongoDbStrategy');
 const { payloadEsecuzione } = require('../db/payloadEsecuzione');
 const righe = Array.from({ length: 100123 }, (_, _id) => ({ _id }));
 
-function cursore() {
+function cursore(pipeline = []) {
   let salto = 0, limite = Infinity;
+  if (Array.isArray(pipeline)) for (const stage of pipeline) {
+    if(stage.$skip) salto=stage.$skip;
+    if(stage.$limit!==undefined) limite=stage.$limit;
+    if(stage.$match?.$expr===false) limite=0;
+  }
   return {
     sort() { return this; },
     skip(n) { salto = n; return this; },
     limit(n) { assert(Number.isFinite(n)); limite = Math.abs(n) || Infinity; return this; },
+    async close() {},
     async *[Symbol.asyncIterator]() { yield* righe.slice(salto, salto + limite); },
   };
 }
 
 module.exports = (async () => {
   const strategy = require('../db/tetti').conTetti(new MongoDbStrategy({ env: {} }));
-  strategy.client = { db: () => ({ collection: () => ({
+  strategy.client = { db: () => ({ collection: name => name==='_codedb_sql_domains' ? {find:()=>({toArray:async()=>[]})} : ({
     find: cursore,
     aggregate: cursore,
     estimatedDocumentCount: async () => righe.length,
@@ -47,6 +53,6 @@ module.exports = (async () => {
   assert.equal((await strategy.collectionFind('prova', 'meteo', {})).docs.length, 50);
   assert.equal((await strategy.collectionFind('prova', 'meteo', { limit: 1000 })).docs.length, 500);
   strategy.env = { CODEDB_MAX_RESULT_BYTES: '100' };
-  await assert.rejects(esegui('SELECT * FROM meteo'), /Risultato incompleto.*memoria/);
+  await assert.rejects(esegui('SELECT * FROM meteo'), /Risultato SQL oltre il limite di righe o byte/);
   console.log('OK: query senza limiti impliciti, LIMIT/OFFSET espliciti e griglia paginata.');
 })().catch(err => { process.exitCode = 1; console.error(err); });

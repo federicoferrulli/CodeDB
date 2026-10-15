@@ -1,0 +1,21 @@
+AssertionError [ERR_ASSERTION]: SELECT id FROM trigger_rename_log
++ actual - expected
+
++ [
++   {
++     id: 1
++   }
++ ]
+- []
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:7:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:96:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

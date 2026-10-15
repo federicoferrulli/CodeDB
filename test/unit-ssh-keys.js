@@ -17,13 +17,17 @@ module.exports = (async () => {
       config: require('../server/configurazione').configurazione({ env: { CODEDB_CONNECTIONS_FILE: path.join(dir, 'connections.ini'), CODEDB_CONNECTIONS_DIR: path.join(dir, 'conns'), GUI_MONGO_PASSPHRASE: 'vault-fixture' } }),
       errori: { errMsg: e => e.message }, dependencies: { DbFactory: require('../db/DbFactory') },
     });
-    const previous = vault.sanitizeConnCfg({ ...fixture.ssh, connectionMode: 'fields', sshAuth: 'upload', sshPrivateKey: fixture.key.private, sshKeyName: 'id_ed25519', sshPassphrase: ' con spazi ' });
+    const previous = vault.sanitizeConnCfg({ ...fixture.ssh, connectionMode: 'fields', sshAuth: 'upload', sshPrivateKey: fixture.key.private, sshKeyName: 'id_ed25519', sshPassphrase: ' con spazi ', sshLocalPort: '15432' });
     assert.equal(previous.sshPrivateKey === fixture.key.private, true, 'La chiave deve restare integra');
     assert.equal(previous.sshPassphrase, ' con spazi ');
     vault.saveConnections({ prova: previous });
     assert(!fs.readFileSync(path.join(dir, 'connections.ini'), 'utf8').includes('BEGIN OPENSSH'));
     assert.equal(vault.loadConnections().prova.sshPrivateKey === fixture.key.private, true, 'Chiave cifrata rileggibile');
     assert.equal(vault.loadConnections().prova.sshPassphrase, ' con spazi ');
+    assert.equal(vault.loadConnections().prova.sshLocalPort, '15432', 'La porta locale si salva insieme alla connessione');
+    assert.equal(vault.sanitizeConnCfg({}, previous).sshLocalPort, '15432', 'Gli aggiornamenti parziali conservano la porta');
+    assert.equal(vault.sanitizeConnCfg({ sshLocalPort: '' }, previous).sshLocalPort, undefined, 'Svuotare rimuove la porta salvata');
+    assert.throws(() => vault.sanitizeConnCfg({ sshLocalPort: '123x' }), /porta locale/);
     assert.equal(vault.sanitizeConnCfg({ ...previous, sshKeyName: 'nome\nsshHost=altro' }).sshKeyName, 'nome sshHost=altro');
     const next = { ...fixture.ssh, sshAuth: 'upload' };
     assert.equal(vault.preserveConnSecrets(next, previous).sshPrivateKey === fixture.key.private, true);

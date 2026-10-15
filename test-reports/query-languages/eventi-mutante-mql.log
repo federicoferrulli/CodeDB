@@ -1,0 +1,29 @@
+AssertionError [ERR_ASSERTION]: MQL insertMany
++ actual - expected
+
++ []
+- [
+-   {
+-     dopo: 10,
+-     evento: 'INSERT',
+-     id: 1,
+-     prima: null
+-   },
+-   {
+-     dopo: 20,
+-     evento: 'INSERT',
+-     id: 2,
+-     prima: null
+-   }
+- ]
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:51:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:54:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

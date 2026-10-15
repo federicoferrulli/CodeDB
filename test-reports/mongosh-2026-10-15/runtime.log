@@ -1,0 +1,12 @@
+OK runtime JavaScript ufficiale e variabili persistenti isolate per tab
+OK load, require, import e contesto Node.js ufficiale
+OK helper ufficiali bulk, viste, rinomina, validate, rs, plan cache e BSON
+OK transazione reale mantenuta fra due esecuzioni
+OK ripresa automatica dello stream dopo cambio del primario reale
+OK stream vivo fra query, eventi insert/update, isolamento, chiusura e resumeAfter
+OK cursore change stream conservato come variabile senza consumo automatico
+OK cronologia limitata a 200 eventi, omissioni dichiarate e token conservato
+OK prompt per tab, cancellazione del ciclo infinito e server ancora utilizzabile
+OK pausa forzata e arresto del runner script chiudono anche il processo mongosh
+OK tetto byte, recupero dopo risultato eccessivo e timeout del processo
+OK reset e disconnessione chiudono transazioni e stream; 56 esecuzioni reali

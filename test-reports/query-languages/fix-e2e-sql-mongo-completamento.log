@@ -1,0 +1,6 @@
+  OK savepoint, vincoli, handler, trigger, cascate e istruzioni precedenti
+  OK blocchi EXCEPTION PostgreSQL, variabili preservate, RAISE annidato e divisione per zero
+  OK dipendenze ALTER, rinomina FK/indici, RESTRICT e CASCADE
+  OK trigger UPDATE OF, assegnazione invariata e dipendenza da colonna rinominata/eliminata
+  OK tipi binari, zero byte, padding, parametri, default, ALTER e validatore nativo
+PASS completamento { count: 112, pg: 30, mysql: 45 }

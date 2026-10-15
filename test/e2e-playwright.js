@@ -367,7 +367,7 @@ async function main() {
     assert(testResultText.length > 0, 'Feedback del comando "Testa Connessione" visualizzato correttamente', testResultText);
 
     // 3.4 Navigazione wizard Passo 3 (Salva & Connetti)
-    await page.click('#wizard-next-btn');
+    await page.click('#connect-btn');
     const summaryBox = await page.locator('#wizard-summary-box').innerText();
     assert(summaryBox.length > 0, 'Riepilogo parametri generato nel Passo 3 del Wizard', summaryBox.replace(/\n/g, ' '));
 

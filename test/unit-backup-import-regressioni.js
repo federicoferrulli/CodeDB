@@ -228,7 +228,7 @@ const cases = [
       if (file === 'MySqlStrategy') require('./mysql-session-fixture')(strategy.pool);
       strategy.tableColumnsInfo = async () => ({ columns: [{ name: 'x' }], geo: new Map() });
       strategy.colonneScrivibili = async () => new Set(['x']);
-      strategy.client = { db: () => ({ collection: () => ({ insertMany: fail }) }) };
+      strategy.client = { db: () => ({ listCollections: () => ({ toArray: async () => [] }), collection: () => ({ insertMany: fail }) }) };
       await assert.rejects(strategy.collectionImport('db', 'coll', { docs: [{ x: 1 }, { x: 2 }] }),
         (err) => err.importOutcomeUnknown === true, file);
       assert.strictEqual(writes, 1, file);

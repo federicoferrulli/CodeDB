@@ -1,0 +1,23 @@
+AssertionError [ERR_ASSERTION]: SELECT ('[-2:0]={1,NULL,3}'::INT[])::TEXT AS t,ARRAY[true,false,NULL]::TEXT AS b,ARRAY[[1,2],[3,4]]::TEXT AS m
++ actual - expected
+
+  [
+    {
+      b: '{t,f,NULL}',
+      m: '{{1,2},{3,4}}',
++     t: '{1,NULL,3}'
+-     t: '[-2:0]={1,NULL,3}'
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:7:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:127:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,28 @@
+  OK   Risultati reali: finestre, ramo anti-join e deduplicazione ricorsiva
+  OK   DISTINCT, FILTER e cardinalità delle sottoquery su dati reali
+  OK   RETURNING: rollback per errore, limite righe e limite byte
+  OK   Annullamento dopo UPDATE: rollback prima di restituire o confermare
+  OK   CTE: limite byte e annullamento fra iterazioni senza risultato parziale
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
++     _id: 1,
++     n: 2
++   },
++   {
+      _id: 2,
+      n: 3
+    }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-atomicita.js:60:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

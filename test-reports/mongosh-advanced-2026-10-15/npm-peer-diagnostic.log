@@ -1,0 +1,24 @@
+codedb@0.2.1-beta.1 C:\repository\CodeDB\.scratch\mongosh-lock-test
+├─┬ @mongosh/service-provider-node-driver@5.6.2
+│ ├─┬ @mongodb-js/devtools-connect@3.17.15
+│ │ ├── kerberos@2.2.2 deduped
+│ │ └── mongodb-client-encryption@6.5.0 deduped
+│ ├─┬ @mongosh/service-provider-core@5.6.0
+│ │ └─┬ mongodb@7.7.0
+│ │   ├── kerberos@2.2.2 deduped invalid: "^7.0.0" from node_modules/@mongosh/service-provider-core/node_modules/mongodb
+│ │   └── mongodb-client-encryption@6.5.0 deduped invalid: "^7.2.0" from node_modules/@mongosh/service-provider-core/node_modules/mongodb
+│ ├── kerberos@7.0.0
+│ ├── mongodb-client-encryption@7.2.1
+│ └─┬ mongodb@7.7.0
+│   ├── kerberos@7.0.0 deduped
+│   └── mongodb-client-encryption@7.2.1 deduped
+├── kerberos@2.2.2
+├── mongodb-client-encryption@6.5.0
+└─┬ mongodb@6.21.0
+  ├── kerberos@2.2.2 deduped
+  └── mongodb-client-encryption@6.5.0 deduped
+
+npm error code ELSPROBLEMS
+npm error invalid: kerberos@2.2.2 C:\repository\CodeDB\.scratch\mongosh-lock-test\node_modules\kerberos
+npm error invalid: mongodb-client-encryption@6.5.0 C:\repository\CodeDB\.scratch\mongosh-lock-test\node_modules\mongodb-client-encryption
+npm error A complete log of this run can be found in: C:\Users\Keus\AppData\Local\Packages\sandbox.{***}\AC\npm-cache\_logs\2026-10-15T19_16_30_523Z-debug-0.log

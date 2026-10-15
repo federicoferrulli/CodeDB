@@ -43,6 +43,10 @@ function hostFinto(risposte = {}) {
       chiamate.push({ op: 'count', db, coll, payload });
       return { total: risposte.total != null ? risposte.total : 0 };
     },
+    async distinct(db, coll, payload) {
+      chiamate.push({ op: 'distinct', db, coll, payload });
+      return (risposte.aggregate || []).map(d => d._id);
+    },
     async write(db, coll, payload) {
       chiamate.push({ op: 'write', db, coll, payload });
       return { ok: 1, inserted: 1 };
@@ -52,6 +56,7 @@ function hostFinto(risposte = {}) {
     async dropCollection(db, coll) { chiamate.push({ op: 'dropCollection', db, coll }); },
     async dropDatabase(db) { chiamate.push({ op: 'dropDatabase', db }); },
     async createIndex(db, coll, payload) { chiamate.push({ op: 'createIndex', db, coll, payload }); },
+    async index(db, coll, payload) { chiamate.push({ op: payload.method, db, coll, payload }); return 'indice'; },
     async dropIndex(db, coll, nome) { chiamate.push({ op: 'dropIndex', db, coll, nome }); },
   };
 }
@@ -358,8 +363,7 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
     assert.ok(host.chiamate.some((c) => c.op === 'createCollection' && c.nome === 'nuova'));
     assert.ok(host.chiamate.some((c) => c.op === 'dropCollection' && c.coll === 'vecchia'));
     const idx = host.chiamate.find((c) => c.op === 'createIndex');
-    assert.deepStrictEqual(idx.payload.keys, { nome: 1 });
-    assert.deepStrictEqual(idx.payload.options, { unique: true });
+    assert.deepStrictEqual(JSON.parse(idx.payload.args), [{ nome: 1 }, { unique: true }]);
   });
 
   await prova('getSiblingDB cambia database senza toccare gli altri', async () => {
@@ -461,7 +465,7 @@ async function deveFallire(code, atteso, host = hostFinto(), opz = {}) {
         updateMany: async () => { arrivate++; return { matchedCount: 0, modifiedCount: 0 }; },
       };
       const s = Object.create(MongoDbStrategy.prototype);
-      s.requireClient = () => ({ db: () => ({ collection: () => collFinta }) });
+      s.requireClient = () => ({ db: () => ({ listCollections: () => ({ toArray: async () => [] }), collection: () => collFinta }) });
 
       await assert.rejects(
         () => s.shellWrite('db', 'c', { op: 'deleteMany' }),

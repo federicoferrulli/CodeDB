@@ -65,6 +65,7 @@ const V = {
   dati: null,          // { chiave, db, coll, docs, columns, skip, rigaScelta }
   filtroCatalogo: '',
   generazione: 0,
+  caricamento: null,
 };
 
 /* ============================ Identità e contesto ========================= */
@@ -115,8 +116,14 @@ export function loadUml(force) {
     || V.contesto.connId !== ctx.connId || V.contesto.db !== ctx.db
     || V.contesto.modalita !== ctx.modalita || V.contesto.coll !== ctx.coll;
   // Tornare sulla stessa vista conserva zoom e selezione.
+  if (!cambiato && !force && V.caricamento) return V.caricamento;
   if (!cambiato && !force && V.tavola && V.schema) return;
-  avvia(ctx, force);
+  const caricamento = avvia(ctx, force);
+  const generazione = V.generazione;
+  V.caricamento = caricamento.catch(err => {
+    if (generazione === V.generazione && ancoraQui(ctx)) messaggio(`<span class="error">${esc(err.message)}</span>`);
+  }).finally(() => { if (generazione === V.generazione) V.caricamento = null; });
+  return V.caricamento;
 }
 
 async function avvia(ctx, force) {
@@ -156,7 +163,7 @@ async function avvia(ctx, force) {
   if (semplice()) preparaTabella();
   else await ripristinaDiagramma(congelato);
   if (mia !== V.generazione || !ancoraQui(congelato)) return;
-  monta();
+  await monta();
 }
 
 /** La tabella selezionata e le relazioni dirette, in entrata e in uscita. */
@@ -334,30 +341,45 @@ function thisPresente(chiave) {
     || V.doc.note.some((n) => n.id === chiave);
 }
 
-function monta() {
+async function monta() {
   const canvas = $('#uml-canvas');
   $('#uml-nome').textContent = V.doc.nome;
-  canvas.setAttribute('aria-busy', 'false');
+  canvas.setAttribute('aria-busy', 'true');
   canvas.innerHTML = '';
   canvas.classList.remove('uml-vuoto');
-  V.tavola = new Tavola(canvas, {
+  const avanzamento = document.createElement('div');
+  avanzamento.className = 'uml-progresso';
+  avanzamento.setAttribute('role', 'status');
+  avanzamento.textContent = 'Preparazione del diagramma…';
+  canvas.appendChild(avanzamento);
+  let inquadrata = false;
+  const tavola = V.tavola = new Tavola(canvas, {
+    onCaricamento: testo => { avanzamento.textContent = testo; },
+    onPreparata: () => {
+      if (mobile.matches && semplice()) tavola.centraSu(V.selezione);
+      else tavola.adatta();
+      inquadrata = canvas.clientWidth > 0 && canvas.clientHeight > 0;
+      avanzamento.textContent = 'Disegno del diagramma…';
+    },
     onSelezione: (chiavi) => { V.selezione = chiavi; aggiornaIspettore(); aggiornaComandi(); aggiornaCatalogo(); },
     onApriDati: (chiave) => apriDati(chiave),
     onZoom: (s) => { const el = $('#uml-zoom-valore'); if (el) el.textContent = `${Math.round(s * 100)}%`; },
     onMenu: (x, y, chiavi) => menuNodo(x, y, chiavi),
     onMenuVuoto: (x, y) => menuCanvas(x, y),
-    onVista: () => { /* la minimappa si aggiorna da sé */ },
   });
   V.tavola.modifica = false;
-  V.tavola.monta(modelloDisegno());
-  V.tavola.imposta(V.selezione);
+  tavola.selezione = new Set(V.selezione);
+  aggiornaCatalogo();
+  if (!await tavola.monta(modelloDisegno()) || V.tavola !== tavola) return;
+  tavola.eventi.onPreparata = null;
+  avanzamento.remove();
+  canvas.setAttribute('aria-busy', 'false');
   const mini = $('#uml-minimap');
   if (mini) { mini.innerHTML = ''; V.tavola.montaMinimappa(mini); }
   // «Adatta alla vista» ha bisogno della MISURA del canvas, e il canvas può
   // non averla ancora: la vista UML viene mostrata nello stesso giro in cui la
   // si monta, e un contenitore largo zero fa uscire `adatta` senza fare nulla —
   // il diagramma resta allora dov'è caduto, spesso mezzo fuori dallo schermo.
-  const tavola = V.tavola;
   const adattaAppenaMisurabile = () => {
     if (V.tavola !== tavola || tavola.smontato) return;
     if (canvas.clientWidth > 0 && canvas.clientHeight > 0) {
@@ -367,21 +389,28 @@ function monta() {
     }
     requestAnimationFrame(adattaAppenaMisurabile);
   };
-  requestAnimationFrame(adattaAppenaMisurabile);
-  aggiornaCatalogo();
+  if (!inquadrata) requestAnimationFrame(adattaAppenaMisurabile);
   aggiornaIspettore();
   aggiornaComandi();
 }
 
 /** Ridisegna il canvas dal documento, conservando vista e selezione. */
-function ridisegna() {
+async function ridisegna() {
+  // Un cambio tema durante l'apertura non deve sostituire il montaggio che
+  // possiede l'indicatore di avanzamento, lasciandolo acceso per sempre.
+  if (V.caricamento) {
+    const contesto = V.contesto;
+    await V.caricamento;
+    if (!contesto || !ancoraQui(contesto)) return;
+  }
   if (!V.tavola) return;
   const scala = V.tavola.scala;
   const t = V.tavola.paper.translate();
-  V.tavola.monta(modelloDisegno());
-  V.tavola.paper.scale(scala, scala);
-  V.tavola.paper.translate(t.tx, t.ty);
-  V.tavola.imposta(V.selezione);
+  const tavola = V.tavola;
+  if (!await tavola.monta(modelloDisegno()) || V.tavola !== tavola) return;
+  tavola.paper.scale(scala, scala);
+  tavola.paper.translate(t.tx, t.ty);
+  tavola.imposta(V.selezione);
   sincronizzaPannelli();
 }
 
@@ -568,6 +597,13 @@ async function completaSchema({ maxGiri = 40, ridisegno = true } = {}) {
       }
       if (next._state) { next._state.dbSchema = V.schema; next._state.dbSchemaFor = congelato.db; }
       if (ridisegno) { aggiornaCatalogo(); disegnaPiedeCatalogo(`Caricamento… ${V.schema.collections.length} oggetti`); }
+      else {
+        const stato = $('#uml-canvas [role="status"]');
+        if (stato) stato.textContent = `Lettura schema… ${V.schema.collections.length} oggetti`;
+      }
+      // Anche una cache/socket che risponde subito deve lasciare respirare la UI.
+      await new Promise(resolve => setTimeout(resolve, 0));
+      if (!ancoraQui(congelato)) return;
       // Un cursore che non avanza è un contratto rotto, non una pagina vuota:
       // fermarsi e dirlo è meglio che ripetere la stessa richiesta.
       if (!avanzato(page, V.schema.schemaPage)) break;
@@ -580,7 +616,7 @@ async function completaSchema({ maxGiri = 40, ridisegno = true } = {}) {
         }
         disponi();
       }
-      ridisegna();
+      await ridisegna();
       disegnaPiedeCatalogo();
     }
   } catch (err) {
@@ -935,12 +971,18 @@ function nomeFile(estensione) {
 
 async function esporta(formato, soloSelezione = false) {
   try {
+    const generazione = V.generazione;
+    await V.caricamento;
+    if (generazione !== V.generazione || !V.tavola) return;
+    const tavola = V.tavola;
+    await tavola.pronta;
+    if (V.tavola !== tavola) return;
     if (formato === 'json') {
       scarica(nomeFile('codedb-uml.json'), JSON.stringify(V.doc, null, 2), 'application/json');
       return;
     }
     if (formato === 'svg') {
-      scarica(nomeFile('svg'), V.tavola.esportaSvg({ soloSelezione }), 'image/svg+xml');
+      scarica(nomeFile('svg'), await V.tavola.esportaSvg({ soloSelezione }), 'image/svg+xml');
       return;
     }
     const png = await V.tavola.esportaPng({ soloSelezione });
@@ -961,7 +1003,8 @@ function aggiornaElencoDiagrammi(lista) {
 
 function apriDiagramma(id) {
   diagrammiDatabase.set(V.ambito, id);
-  avvia(contestoOra(), false);
+  V.contesto = null;
+  loadUml(false);
 }
 
 function aggiornaComandi() {
@@ -1024,7 +1067,15 @@ export function initUml() {
   espandi.addEventListener('click', () => espandiDiagramma(!bar.classList.contains('uml-schermo-intero')));
   mobile.addEventListener('change', () => { chiudiPannelloMobile(); espandiDiagramma(false); });
   new MutationObserver(() => {
-    if (bar.classList.contains('hidden')) { chiudiPannelloMobile(); espandiDiagramma(false); }
+    if (bar.classList.contains('hidden')) {
+      chiudiPannelloMobile(); espandiDiagramma(false);
+      if (V.caricamento) {
+        ++V.generazione;
+        V.caricamento = null;
+        V.contesto = null;
+        smonta();
+      }
+    }
   }).observe(bar, { attributes: true, attributeFilter: ['class'] });
   document.addEventListener('codedb:tema', ridisegna);
   $('#uml-adatta')?.addEventListener('click', () => V.tavola && V.tavola.adatta());

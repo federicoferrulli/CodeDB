@@ -7,7 +7,8 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const { scegliArc, spuntaArc } = require('./arc-controls');
 const mutant = process.argv.includes('--mutant');
-const dir = `test-reports/conferma-connessione-2026-10-11/${mutant ? 'mutante' : 'dopo'}`;
+const mutantActions = process.argv.includes('--mutant-actions');
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/conferma-connessione-2026-10-11/${mutant ? 'mutante' : mutantActions ? 'mutante-azioni' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
@@ -23,11 +24,13 @@ fs.mkdirSync(dir, { recursive: true });
     await page.locator('#connect-overlay[data-arc-dialog="open"]').waitFor();
   };
   try {
-    if (mutant) await page.route('**/js/connection.js', async route => {
+    if (mutant || mutantActions) await page.route('**/js/connection.js', async route => {
       const response = await route.fetch();
       const source = await response.text();
-      const body = source.replace(/    if \(currentStep !== 3\) \{[\s\S]*?      return;\n    \}/, '');
-      assert.notEqual(body, source, 'Il mutante deve togliere il passaggio obbligatorio');
+      const body = mutantActions
+        ? source.replace("currentStep !== 1 || !$('#conn-ssh-toggle').checked", 'currentStep === 3')
+        : source.replace(/    if \(currentStep !== 3\) \{[\s\S]*?      return;\n    \}/, '');
+      assert.notEqual(body, source, 'Il mutante deve alterare il percorso del wizard');
       await route.fulfill({ response, body });
     });
     await page.goto(server.url);
@@ -40,6 +43,11 @@ fs.mkdirSync(dir, { recursive: true });
         timeout() { return { emit(name, payload, ack) { fake.emit(name, payload, res => ack(null, res)); } }; },
         emit(name, payload, ack) {
           const test = window.connectionTest;
+          if (name === 'connections:test') {
+            test.answerTest = () => ack(test.failTest ? { ok: false, error: 'Host di prova non raggiungibile.' }
+              : { ok: true, dbType: payload.dbType, databases: 3 });
+            return;
+          }
           if (name === 'mongo:connect') {
             test.requests.push(payload);
             const answer = () => ack(test.fail ? { ok: false, error: 'Errore di prova: verifica i parametri.' }
@@ -61,12 +69,49 @@ fs.mkdirSync(dir, { recursive: true });
     });
 
     await open();
+    assert.equal(await page.locator('#connect-btn').textContent(), 'Rivedi connessione');
+    assert.equal(await page.locator('#wizard-next-btn').isVisible(), false, 'Senza SSH un solo comando porta al riepilogo');
+    await spuntaArc(page, '#conn-ssh-toggle', true);
+    assert(await page.getByRole('button', { name: 'Configura SSH' }).isVisible());
+    await page.locator('#wizard-next-btn').click();
+    assert.equal(await page.locator('#wizard-next-btn').isVisible(), false, 'Dal tunnel il riepilogo ha un solo comando');
+    await page.locator('#wizard-prev-btn').click();
+    await spuntaArc(page, '#conn-ssh-toggle', false);
+    assert.equal(await page.locator('#wizard-next-btn').isVisible(), false);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(value => document.documentElement.dataset.theme = value, theme);
+      for (const width of [1440, 390, 320]) {
+        await page.setViewportSize({ width, height: 1000 });
+        await page.locator('#connect-btn').scrollIntoViewIfNeeded();
+        await page.locator('.connect-actions').screenshot({ path: `${dir}/azioni-${theme}-${width}.png` });
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    assert(await page.getByRole('button', { name: 'Testa connessione', exact: true }).isVisible());
+    const testButton = page.locator('#conn-test-btn');
+    const beforeTest = await testButton.boundingBox();
+    await testButton.click();
+    assert(await testButton.isDisabled());
+    assert.equal(await testButton.getAttribute('aria-busy'), 'true');
+    const duringTest = await page.locator('#conn-test-btn').boundingBox();
+    assert(Math.abs(beforeTest.height - duringTest.height) < 1, 'La verifica non deve far saltare il footer');
+    await page.evaluate(() => window.connectionTest.answerTest());
+    await page.locator('#connect-test-msg:not(.hidden)').waitFor();
+    assert(await testButton.isEnabled());
+    assert.match(await page.locator('#connect-test-msg[role="status"]').textContent(), /3 DB trovati/);
+    await page.evaluate(() => { window.connectionTest.failTest = true; });
+    await testButton.click();
+    await page.evaluate(() => window.connectionTest.answerTest());
+    await page.locator('#connect-error:not(.hidden)').waitFor();
+    assert(await testButton.isEnabled());
+    assert.match(await page.locator('#connect-error').textContent(), /Host di prova non raggiungibile/);
+    report.checks.push('Verifica distinta, attesa senza salti, esito annunciato e ripristino del pulsante dopo errore');
     await field('host').fill('db.interno');
     await field('username').fill('analista');
     await field('password').fill('segreto-da-non-mostrare');
     await field('authSource').fill('autenticazione');
     await page.locator('#connect-btn').click();
-    assert.equal((await requests()).length, 0, 'Il primo Connetti non deve aprire né salvare la connessione');
+    assert.equal((await requests()).length, 0, 'Rivedi connessione non deve aprire né salvare la connessione');
     assert.equal(await page.locator('#connect-btn').textContent(), 'Conferma e connetti');
     assert(await page.locator('#wizard-summary-title').evaluate(el => el === document.activeElement));
     const summary = await page.locator('#wizard-summary-box').textContent();

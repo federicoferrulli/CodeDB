@@ -1,0 +1,235 @@
+{
+  "data": "2026-10-14T14:55:39.037Z",
+  "compatibilitaCompleta": false,
+  "versione": "0.2.1-beta.1",
+  "motori": {
+    "mongodb": "8.0.29",
+    "postgresql": "18.6",
+    "mysql": "8.4.11"
+  },
+  "conteggi": {
+    "avanzato": {
+      "mongo": 378,
+      "postgres": 270,
+      "mysql": 273
+    },
+    "completamento": {
+      "mongo": 112,
+      "postgres": 30,
+      "mysql": 45
+    },
+    "tipi": {
+      "mongo": 218,
+      "postgres": 178,
+      "mysql": 1
+    },
+    "estesi": {
+      "mongo": 116,
+      "postgres": 104,
+      "mysql": 0
+    },
+    "totale": {
+      "mongo": 824,
+      "postgres": 582,
+      "mysql": 319
+    }
+  },
+  "unitari": "pass",
+  "socket": {
+    "esito": "pass",
+    "funzioniScalari": 83
+  },
+  "keyword": {
+    "mysql": 734,
+    "postgresql": 494
+  },
+  "altreSuite": [
+    "eventi (32 gruppi)",
+    "atomicita",
+    "integrita",
+    "migrazioni",
+    "dialetti nativi e SQL comune"
+  ],
+  "ui": {
+    "esito": "pass nella ripetizione isolata",
+    "primoTentativo": "timeout durante page.goto",
+    "browser": "Chromium",
+    "trasportoDB": "simulato"
+  },
+  "failover": {
+    "esito": "pass",
+    "arresti": 16,
+    "topologia": "tre container, processi e volumi distinti sullo stesso host"
+  },
+  "mutazioni": [
+    {
+      "file": "estesi-mutant-array_bounds.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ARRAY_DIMS(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0])) AS d,ARRAY_LOWER(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0]),1) AS lo,ARRAY_UPPER(ARRAY_FILL(7,ARRAY[2,3],ARRAY[-2,0]),2) AS hi"
+    },
+    {
+      "file": "estesi-mutant-array_native.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection."
+    },
+    {
+      "file": "estesi-mutant-array_slice.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT (ARRAY[1,2,3])[2:3] AS a,(ARRAY[1,2,3])[:2] AS b,(ARRAY[1,2,3])[20:] AS c"
+    },
+    {
+      "file": "estesi-mutant-array_write.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT a[:] AS a FROM array_write WHERE id=1"
+    },
+    {
+      "file": "estesi-mutant-completamento-exception.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-completamento-fk_rename.log",
+      "failure": "AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Permesso negato/. Input:"
+    },
+    {
+      "file": "estesi-mutant-completamento-hex.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-completamento-indice.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-completamento-padding.log",
+      "failure": "MongoBulkWriteError: Document failed validation"
+    },
+    {
+      "file": "estesi-mutant-completamento-rollback.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-completamento-trigger_of.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-domain_conversion.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER TABLE domain_conversion ALTER COLUMN n TYPE bounded"
+    },
+    {
+      "file": "estesi-mutant-domain_not_valid.log",
+      "failure": "Error: I dati esistenti violano il nuovo schema SQL."
+    },
+    {
+      "file": "estesi-mutant-domain_validate.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN bounded VALIDATE CONSTRAINT high"
+    },
+    {
+      "file": "estesi-mutant-multirange_difference.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ('{[1,3),[5,8)}'::INT4MULTIRANGE - '{[2,6)}'::INT4MULTIRANGE) = '{[1,2),[6,8)}'::INT4MULTIRANGE AS d,('{[1,3),[5,8)}'::INT4MULTIRANGE * '{[2,6)}'::INT4MULTIRANGE) = '{[2,3),[5,6)}'::INT4MULTIRANGE AS i"
+    },
+    {
+      "file": "estesi-mutant-multirange_merge.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT ('{[1,3),[5,8)}'::INT4MULTIRANGE + '{[3,5)}'::INT4MULTIRANGE) = '{[1,8)}'::INT4MULTIRANGE AS u,LOWER(RANGE_MERGE('{[1,3),[5,8)}'::INT4MULTIRANGE)) AS lo,UPPER(RANGE_MERGE(INT4RANGE(1,3),INT4RANGE(5,8))) AS hi"
+    },
+    {
+      "file": "estesi-mutant-native_probe.log",
+      "failure": "MongoServerError: E11000 duplicate key error collection: codedb_sql_estesi_mongo_514509cde709.native_keys index: native_multikey dup key: { a: 2 }"
+    },
+    {
+      "file": "estesi-mutant-nested_alias.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT n FROM nested_log ORDER BY n"
+    },
+    {
+      "file": "estesi-mutant-nested_scope.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT n FROM nested_log ORDER BY n"
+    },
+    {
+      "file": "estesi-mutant-server-bson.log",
+      "failure": "  FAIL Letterale SQL binario conservato nel piano: The expression evaluated to a falsy value:"
+    },
+    {
+      "file": "estesi-mutant-tipi-array_cat.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'Array SQL [2202E]: dimensioni incompatibili per la concatenazione' in $convert with no onError value: Did not consume whole string."
+    },
+    {
+      "file": "estesi-mutant-tipi-array_fk.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-array_index.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-array_replace.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-array_shape.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-cast_binary.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-cast_null.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-cast_overflow.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: SELECT CAST(32768 AS SMALLINT) AS invalid_number"
+    },
+    {
+      "file": "estesi-mutant-tipi-default_boundary.log",
+      "failure": "Error: NOT deve precedere IN, LIKE, ILIKE o BETWEEN."
+    },
+    {
+      "file": "estesi-mutant-tipi-domains.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO dom_a VALUES(2,-1)"
+    },
+    {
+      "file": "estesi-mutant-tipi-domain_array.log",
+      "failure": "Error: DEFAULT non compatibile con il tipo della colonna a."
+    },
+    {
+      "file": "estesi-mutant-tipi-domain_rollback.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN positive_int ADD CONSTRAINT no_three CHECK(VALUE<>3)"
+    },
+    {
+      "file": "estesi-mutant-tipi-domain_state.log",
+      "failure": "Error: La riga viola il vincolo CHECK invalid_default_check_1 del dominio invalid_default."
+    },
+    {
+      "file": "estesi-mutant-tipi-duplicate_condition.log",
+      "failure": "Error: Condizione SQL 39004."
+    },
+    {
+      "file": "estesi-mutant-tipi-excluded_case.log",
+      "failure": "MongoServerError: Document failed validation"
+    },
+    {
+      "file": "estesi-mutant-tipi-native_state.log",
+      "failure": "Error: PlanExecutor error during aggregation :: caused by :: Failed to parse number 'bad' in $convert with no onError value: Failed to parse string to decimal"
+    },
+    {
+      "file": "estesi-mutant-tipi-range.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-routine.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER TABLE dep_routine ALTER COLUMN n TYPE BIGINT"
+    },
+    {
+      "file": "estesi-mutant-tipi-snapshot.log",
+      "failure": "MongoServerError: PlanExecutor error during aggregation :: caused by :: can't $divide by zero"
+    },
+    {
+      "file": "estesi-mutant-tipi-statement.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-tipi-statement_columns.log",
+      "failure": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:"
+    },
+    {
+      "file": "estesi-mutant-trigger_state.log",
+      "failure": "AssertionError [ERR_ASSERTION]: SELECT id,d FROM trigger_bounds_log ORDER BY id"
+    }
+  ],
+  "limiti": "docs/copertura-linguaggi-query.md"
+}

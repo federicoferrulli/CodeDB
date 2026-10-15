@@ -52,6 +52,10 @@ globalThis.__codedbDesktop = {
 // Il nome nel package.json ("mongo-web-gui", storico) determinerebbe altrimenti
 // il nome della cartella dati utente (%APPDATA%/mongo-web-gui): forziamo "CodeDB".
 app.setName(APP_NAME);
+// Consente profili desktop isolati, anche per collaudare un installer reale.
+if (process.env.CODEDB_ELECTRON_USER_DATA_DIR) {
+  app.setPath('userData', path.resolve(process.env.CODEDB_ELECTRON_USER_DATA_DIR));
+}
 
 /* ---------------------------------------------------------------------------
  * AppUserModelID (solo Windows)

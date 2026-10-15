@@ -1,0 +1,6 @@
+  OK   Risultati reali: finestre, ramo anti-join e deduplicazione ricorsiva
+  OK   DISTINCT, FILTER e cardinalità delle sottoquery su dati reali
+  OK   RETURNING: rollback per errore, limite righe e limite byte
+  OK   Annullamento dopo UPDATE: rollback prima di restituire o confermare
+  OK   CTE: limite byte e annullamento fra iterazioni senza risultato parziale
+  OK   Scritture limitate e dieci conflitti concorrenti, senza perdita di aggiornamenti

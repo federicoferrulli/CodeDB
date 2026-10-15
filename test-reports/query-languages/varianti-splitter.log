@@ -1,0 +1,17 @@
+(node:25688) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/sql-split.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+--- Test unitari splitter client ---
+  OK   Query singola: non è uno script
+  OK   Due istruzioni: è uno script
+  OK   Punto e virgola dentro stringhe e commenti non conta
+  OK   Righe corrette
+  OK   Le procedure restano intere prima della CALL successiva
+  OK   Coerenza con il gemello server su un ventaglio di casi
+  OK   Coerenza anche sui numeri di riga
+  OK   REPEAT, ELSEIF e trigger conservano i punti e virgola interni
+  OK   Handler con IF e cursore restano nella stessa procedura
+  OK   Handler SQLSTATE, classi e condizioni nominate conservano il corpo IF
+
+Tutti i test dello splitter client superati!

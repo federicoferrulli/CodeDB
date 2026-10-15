@@ -1,0 +1,28 @@
+AssertionError [ERR_ASSERTION]: SELECT n FROM nested_log ORDER BY n
++ actual - expected
+
+  [
+    {
++     n: null
+-     n: 8
+    },
+    {
++     n: null
+-     n: 8
+    },
+-   {
+-     n: 9
+-   }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-estesi.js:6:59)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:116:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

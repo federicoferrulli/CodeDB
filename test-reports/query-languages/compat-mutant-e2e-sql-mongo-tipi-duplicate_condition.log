@@ -1,0 +1,15 @@
+Error: Condizione SQL 39004.
+    at run (C:\repository\CodeDB\db\sqlProcedureMongo.js:430:33)
+    at run (C:\repository\CodeDB\db\sqlProcedureMongo.js:375:35)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\sqlProcedureMongo.js:457:7)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+    at async esegui (C:\repository\CodeDB\db\sqlProcedureMongo.js:324:5)
+    at async execute (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:58:20)
+    at async all (C:\repository\CodeDB\test\sql-mongo-tipi.js:6:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:58:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:75:18 {
+  sqlState: '39004',
+  mysqlState: '39004',
+  Symbol(condizione SQL recuperabile): Set(0) {}
+}

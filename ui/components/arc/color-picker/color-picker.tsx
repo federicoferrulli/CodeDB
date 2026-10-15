@@ -28,6 +28,8 @@ export interface ColorPickerProps {
   defaultValue?: string;
   /** Receives the color as hex, with two alpha digits when it is not opaque. */
   onValueChange?: (hex: string) => void;
+  /** Conferma il gesto una sola volta: al rilascio, oppure dopo una scelta da tastiera o testo. */
+  onValueCommit?: (hex: string) => void;
   /** The background the color will sit on, for the contrast readout. */
   background?: string;
   /** Name shown on the swatch, such as "Accent". */
@@ -53,8 +55,6 @@ const physical = (visualDuration: number, bounce: number): Transition => {
 };
 /** Thumbs chase the pointer on a quick spring with a little life, so a click lands with a soft settle and a drag trails by a hair. */
 const thumbSpring = physical(.26, .22);
-/** Under a finger or mouse drag the thumb stays glued to the pointer: a stiff spring with no bounce, so it never trails or wobbles. */
-const dragSpring = physical(.1, 0);
 const openSpring = physical(spring.morph.visualDuration, .1), closeSpring = physical(.3, 0);
 const instant: Transition = { duration: 0 };
 
@@ -173,12 +173,12 @@ function useHydrated() { return useSyncExternalStore(subscribe, () => true, () =
 function useEyeDropper() { return useSyncExternalStore(subscribe, () => "EyeDropper" in window, () => false); }
 type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
 
-/** Springs a motion value to a new target, or jumps under reduced motion. Retargeting keeps the current velocity. */
+/** Durante il trascinamento segue subito il puntatore; anima solo le altre variazioni. */
 function useFollow(target: number, reduced: boolean, dragging = false) {
   const value = useMotionValue(target);
   useEffect(() => {
-    if (reduced) { value.jump(target); return; }
-    const controls = animate(value, target, dragging ? dragSpring : thumbSpring);
+    if (reduced || dragging) { value.jump(target); return; }
+    const controls = animate(value, target, thumbSpring);
     return () => controls.stop();
   }, [dragging, reduced, target, value]);
   return value;
@@ -191,6 +191,12 @@ function usePad(onMove: (x: number, y: number) => void, onActive: (active: boole
     const box = event.currentTarget.getBoundingClientRect();
     onMove(clamp((event.clientX - box.left) / box.width), clamp((event.clientY - box.top) / box.height));
   };
+  const finish = (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.pointerId !== pointer.current) return;
+    if (event.type === 'pointerup') read(event);
+    pointer.current = null;
+    onActive(false);
+  };
   return {
     onPointerDown(event: ReactPointerEvent<HTMLElement>) {
       if (event.button !== 0 || pointer.current !== null) return;
@@ -200,8 +206,9 @@ function usePad(onMove: (x: number, y: number) => void, onActive: (active: boole
       read(event);
     },
     onPointerMove(event: ReactPointerEvent<HTMLElement>) { if (event.pointerId === pointer.current) read(event); },
-    onPointerUp(event: ReactPointerEvent<HTMLElement>) { if (event.pointerId !== pointer.current) return; pointer.current = null; onActive(false); },
-    onPointerCancel(event: ReactPointerEvent<HTMLElement>) { if (event.pointerId !== pointer.current) return; pointer.current = null; onActive(false); },
+    onPointerUp: finish,
+    onPointerCancel: finish,
+    onLostPointerCapture: finish,
   };
 }
 
@@ -242,7 +249,7 @@ let swatchCount = 0;
 const newId = () => `swatch-${Date.now().toString(36)}-${swatchCount++}`;
 
 export function ColorPicker({
-  value, defaultValue = "#2F6BFF", onValueChange, background = "#FFFFFF", label = "Colore", swatches: swatchesProp, defaultSwatches, onSwatchesChange,
+  value, defaultValue = "#2F6BFF", onValueChange, onValueCommit, background = "#FFFFFF", label = "Colore", swatches: swatchesProp, defaultSwatches, onSwatchesChange,
   maxSwatches = 7, defaultFormat = "hex", className, disabled, allowAlpha = true, compact,
 }: ColorPickerProps) {
   const uid = useId().replace(/[^a-zA-Z0-9-]/g, "");
@@ -265,6 +272,8 @@ export function ColorPicker({
   const [invalid, setInvalid] = useState(false);
   const [morph, setMorph] = useState<{ id: number; from: string; to: string; phase: 0 | 1 } | null>(null);
   const [active, setActive] = useState<"area" | "hue" | "alpha" | null>(null);
+  const pointerActive = useRef(false);
+  const pendingCommit = useRef<string | null>(null);
   const [focusSwatch, setFocusSwatch] = useState<string | null>(null);
 
   const rootRef = useRef<HTMLDivElement>(null);
@@ -293,7 +302,20 @@ export function ColorPicker({
     if (!allowAlpha) next = { ...next, a: 1 };
     setHsva(next);
     const nextHex = toHex(next);
-    if (nextHex !== hex) onValueChange?.(nextHex);
+    if (nextHex !== hex) {
+      onValueChange?.(nextHex);
+      if (pointerActive.current) pendingCommit.current = nextHex;
+      else onValueCommit?.(nextHex);
+    }
+  }
+  function changeActive(part: "area" | "hue" | "alpha", on: boolean) {
+    pointerActive.current = on;
+    setActive(on ? part : null);
+    if (!on && pendingCommit.current !== null) {
+      const value = pendingCommit.current;
+      pendingCommit.current = null;
+      onValueCommit?.(value);
+    }
   }
   function setSwatches(next: ColorSwatch[]) { if (!swatchesProp) setOwnSwatches(next); onSwatchesChange?.(next); }
 
@@ -345,8 +367,12 @@ export function ColorPicker({
 
   const dismiss = useEffectEvent((event: Event) => {
     if (event instanceof KeyboardEvent) {
-      if (event.key !== "Escape") return;
-      hide(!!rootRef.current?.contains(document.activeElement));
+      // Dentro il campo decide il gestore React (anche per annullare il testo).
+      // Fuori, Escape deve fermarsi prima dei gestori della finestra contenitrice.
+      if (event.key !== "Escape" || rootRef.current?.contains(event.target as Node)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      hide(false);
       return;
     }
     if (!rootRef.current?.contains(event.target as Node)) hide(false);
@@ -355,14 +381,14 @@ export function ColorPicker({
     if (!open) return;
     const listener = (event: Event) => dismiss(event);
     document.addEventListener("pointerdown", listener, true);
-    document.addEventListener("keydown", listener);
-    return () => { document.removeEventListener("pointerdown", listener, true); document.removeEventListener("keydown", listener); };
+    document.addEventListener("keydown", listener, true);
+    return () => { document.removeEventListener("pointerdown", listener, true); document.removeEventListener("keydown", listener, true); };
   }, [open]);
 
   // The saturation and brightness area.
   const areaX = useFollow(hsva.s, reduced, active === "area"), areaY = useFollow(1 - hsva.v, reduced, active === "area");
   const areaLeft = useTransform(areaX, v => `${v * 100}%`), areaTop = useTransform(areaY, v => `${v * 100}%`);
-  const areaPad = usePad((x, y) => commit({ ...hsva, s: x, v: 1 - y }), on => setActive(on ? "area" : null));
+  const areaPad = usePad((x, y) => commit({ ...hsva, s: x, v: 1 - y }), on => changeActive("area", on));
 
   // Format morph: the new text mounts showing the old string, then morphs to the new one, and the live field returns once it settles.
   useEffect(() => {
@@ -474,9 +500,9 @@ export function ColorPicker({
           </div>
 
           <Slider label="Tonalità" value={hsva.h} valueText={`${Math.round(hsva.h)} gradi`} max={360} unit={1} className={styles.hue} reduced={reduced} fill={pure}
-            onChange={h => commit({ ...hsva, h: clamp(h, 0, 359.9) })} active={active === "hue"} onActive={on => setActive(on ? "hue" : null)} />
+            onChange={h => commit({ ...hsva, h: clamp(h, 0, 359.9) })} active={active === "hue"} onActive={on => changeActive("hue", on)} />
           {allowAlpha && <Slider label="Opacità" value={hsva.a * 100} valueText={`${Math.round(hsva.a * 100)}%`} max={100} unit={1} className={styles.alpha} reduced={reduced} fill={css}
-            onChange={a => commit({ ...hsva, a: clamp(a / 100) })} active={active === "alpha"} onActive={on => setActive(on ? "alpha" : null)} />}
+            onChange={a => commit({ ...hsva, a: clamp(a / 100) })} active={active === "alpha"} onActive={on => changeActive("alpha", on)} />}
 
           <motion.div className={styles.field} data-invalid={invalid || undefined} style={{ x: fieldX }}>
             <button type="button" className={styles.format} onClick={cycleFormat} aria-label={`Formato: ${formatNames[kind]}. Cambia formato`}>

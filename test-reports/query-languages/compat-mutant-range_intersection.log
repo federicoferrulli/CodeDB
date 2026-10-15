@@ -1,0 +1,22 @@
+AssertionError [ERR_ASSERTION]: SELECT RANGE_AGG(r) = '{[1,8)}'::INT4MULTIRANGE AS u, RANGE_INTERSECT_AGG(r) = '[3,5)'::INT4RANGE AS i FROM intervals WHERE g=1
++ actual - expected
+
+  [
+    {
++     i: false,
+-     i: true,
+      u: true
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:7:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:26:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

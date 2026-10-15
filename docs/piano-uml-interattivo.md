@@ -314,6 +314,38 @@ qui non disponibile. Il dettaglio proporzionato allo zoom c'è (sagoma sotto
 0.5, export sempre pieno e provato) e non è servito a spostare il p95:
 resta perché su cento nodi la vista intera resta leggibile come struttura.
 
+### Caricamento su cataloghi grandi — 13 ottobre 2026
+
+Il test `test/e2e-uml-prestazioni.js` ora misura apertura e reattività della
+vista di consultazione, senza cercare i precedenti comandi di modifica.
+La fixture usa 400 tabelle da 12 campi e 800 relazioni; con
+`E2E_UML_TABELLE=1000` si provano 1.000 tabelle e 2.000 relazioni. Stessa
+macchina e Chromium headless delle misure precedenti, viewport 1600×950.
+
+| Misura | Prima | Dopo |
+|---|---|---|
+| Apertura, 400 tabelle / 800 relazioni | 59,6 s | 2,7 s |
+| Blocco più lungo durante quell'apertura | 53.935 ms | nessun task da almeno 50 ms |
+| Apertura, 1.000 tabelle / 2.000 relazioni | — | 3,7 s |
+| Blocco più lungo con 1.000 tabelle | — | 94 ms |
+
+Preparazione e disegno cedono il controllo fra piccoli lotti; oltre 150 nodi
+il Paper monta soltanto le viste nell'area inquadrata, mantenendo tutto lo
+schema nel modello e nel catalogo. Oltre 100 nodi i percorsi ortogonali
+evitano la ricerca fra tutti gli ostacoli; possono attraversare altri nodi,
+ma conservano porte, auto-riferimenti e vertici manuali. Porte ed etichette
+usano misure note invece di forzare ricalcoli del layout del browser. La
+minimappa disegna sagome e relazioni senza duplicare campi e porte.
+
+Il cambio vista/database annulla il lavoro superato. L'export attende il
+disegno completo, include anche i nodi fuori schermo e poi ripristina la
+visualizzazione per area. Le prove verificano anche ricerca di una tabella
+fuori schermo, ancoraggio alle colonne, minimappa e interruzione in corsa.
+Il gate è un task massimo inferiore a 200 ms: con
+`UML_LOAD_MUTATION=sincrono` il test fallisce (1.265 ms), senza modificare i
+sorgenti sul disco. I tempi escludono il costo della lettura da un DBMS reale:
+il socket simulato risponde immediatamente.
+
 ### Consegnato per una via diversa da quella proposta
 
 * **Completezza dei metadati (fase 2).** Il piano chiedeva cursori indipendenti

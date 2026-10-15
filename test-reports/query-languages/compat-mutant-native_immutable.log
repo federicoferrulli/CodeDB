@@ -1,0 +1,21 @@
+MongoServerError: After applying the update, the (immutable) field '_id' was found to have been altered to _id: 2
+    at ReplaceOneOperation.handleOk (C:\repository\CodeDB\node_modules\mongodb\lib\operations\update.js:124:19)
+    at tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.replaceOne (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:248:16)
+    at async Object.verifica (C:\repository\CodeDB\db\sqlPreflightIndici.js:24:23)
+    at async validate (C:\repository\CodeDB\db\sqlSavepointMongo.js:87:149)
+    at async Proxy.<anonymous> (C:\repository\CodeDB\db\sqlSavepointMongo.js:140:15)
+    at async applyUpdate (C:\repository\CodeDB\db\MongoSqlRuntime.js:183:28)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:232:70) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 66,
+    errmsg: "After applying the update, the (immutable) field '_id' was found to have been altered to _id: 2"
+  },
+  index: 0,
+  code: 66,
+  Symbol(istruzione SQL da annullare): true
+}

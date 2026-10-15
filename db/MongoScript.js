@@ -1,4 +1,6 @@
 'use strict';
+const { VALORE_BSON, OGGETTO_HOST, FUNZIONE_SCRIPT, FUNZIONE_NATIVA } = require('./mongoScriptValori');
+const { escapeMongo } = require('./mongoStringhe');
 
 const VOCABOLARIO_COSTRUTTORI = require('../public/js/costruttori-bson');
 const { eseguiRegexIsolata } = require('./regexIsolata');
@@ -58,7 +60,7 @@ const PAROLE_CHIAVE = new Set([
   'var', 'let', 'const', 'if', 'else', 'for', 'of', 'in', 'while', 'do',
   'break', 'continue', 'return', 'function', 'true', 'false', 'null',
   'undefined', 'typeof', 'new', 'try', 'catch', 'finally', 'throw', 'delete',
-  'instanceof', 'void',
+  'instanceof', 'void', 'await', 'async',
 ]);
 
 // Operatori dal più lungo al più corto: l'ordine è ciò che permette di
@@ -102,7 +104,7 @@ function tokenize(src) {
       let val = '';
       i++;
       while (i < n && s[i] !== q) {
-        if (s[i] === '\\') { val += decodeEscape(s[i + 1]); i += 2; continue; }
+        if (s[i] === '\\') { const e = escapeMongo(s, i); val += e.valore; i = e.fine; line += e.righe; continue; }
         if (s[i] === '\n') line++;
         val += s[i];
         i++;
@@ -120,7 +122,7 @@ function tokenize(src) {
       let val = '';
       i++;
       while (i < n && s[i] !== '`') {
-        if (s[i] === '\\') { val += decodeEscape(s[i + 1]); i += 2; continue; }
+        if (s[i] === '\\') { const e = escapeMongo(s, i, true); val += e.valore; i = e.fine; line += e.righe; continue; }
         if (s[i] === '$' && s[i + 1] === '{') {
           parti.push(val);
           val = '';
@@ -206,11 +208,6 @@ function tokenize(src) {
   return toks;
 }
 
-function decodeEscape(ch) {
-  const mappa = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', '0': '\0' };
-  return mappa[ch] != null ? mappa[ch] : (ch == null ? '' : ch);
-}
-
 function regexAmmessa(toks) {
   const t = toks[toks.length - 1];
   if (!t) return true;
@@ -266,6 +263,7 @@ class Parser {
   }
 
   parseStatement() {
+    if (this.isKw('async') && this.isKw('function', 1)) this.i++;
     const line = this.line;
 
     if (this.isOp('{')) return this.parseBlock();
@@ -506,6 +504,7 @@ class Parser {
   }
 
   parseUnary() {
+    if (this.eatKw('await')) return { type: 'Await', arg: this.parseUnary(), line: this.line };
     const t = this.peek();
     if (t.t === 'op' && (t.v === '!' || t.v === '-' || t.v === '+')) {
       this.i++;
@@ -565,6 +564,12 @@ class Parser {
   }
 
   parsePrimary() {
+    if (this.isKw('async')) {
+      this.i++;
+      const fn = this.parsePrimary();
+      if (fn.type !== 'Func') throw errore('async deve precedere una funzione.', this.line);
+      return fn;
+    }
     const t = this.peek();
     const line = t.line;
 
@@ -842,14 +847,14 @@ function getMember(obj, name, ctx) {
   }
 
   // Oggetti dell'ambiente (db, collection, cursore): dispatch proprio.
-  if (obj && typeof obj === 'object' && obj.__host) {
+  if (obj && typeof obj === 'object' && obj[OGGETTO_HOST]) {
     return obj.__get(chiave, ctx);
   }
 
   // Funzioni dello script e dell'ambiente: non espongono NULLA. In
   // particolare niente `call`/`apply`/`bind`, con cui si cambierebbe il `this`
   // di un metodo nativo per farlo agire su un bersaglio non previsto.
-  if (obj && typeof obj === 'object' && (obj.__funzione || obj.__chiamabile)) {
+  if (obj && typeof obj === 'object' && (obj[FUNZIONE_SCRIPT] || obj[FUNZIONE_NATIVA])) {
     throw errore('Le funzioni non espongono proprietà negli script');
   }
 
@@ -929,7 +934,7 @@ function byteStimati(target, nome, args) {
 // (map/filter/forEach…) siano quelli dello script e non funzioni native.
 function legaNativo(target, nome, ctx) {
   return {
-    __chiamabile: true,
+    [FUNZIONE_NATIVA]: true,
     __nome: nome,
     async invoca(args) {
       // Budget di memoria PRIMA di allocare: dopo sarebbe inutile, perché è
@@ -1033,7 +1038,7 @@ function adattaCallback() {
 }
 
 function isFunzioneScript(v) {
-  return !!(v && typeof v === 'object' && v.__funzione);
+  return !!(v && typeof v === 'object' && v[FUNZIONE_SCRIPT]);
 }
 
 /* ==========================================================================
@@ -1041,10 +1046,10 @@ function isFunzioneScript(v) {
  * ========================================================================== */
 
 function costruisciGlobali(ctx) {
-  const fn = (nome, impl) => ({ __chiamabile: true, __nome: nome, invoca: async (args) => impl(...args) });
+  const fn = (nome, impl) => ({ [FUNZIONE_NATIVA]: true, __nome: nome, invoca: async (args) => impl(...args) });
 
   const oggetto = (nome, membri) => ({
-    __host: true,
+    [OGGETTO_HOST]: true,
     __nome: nome,
     __get(chiave) {
       if (!Object.prototype.hasOwnProperty.call(membri, chiave)) return undefined;
@@ -1093,7 +1098,7 @@ function costruisciGlobali(ctx) {
       keys: fn('keys', (o) => (o && typeof o === 'object' ? Object.keys(o) : [])),
       values: fn('values', (o) => (o && typeof o === 'object' ? Object.values(o) : [])),
       entries: fn('entries', (o) => (o && typeof o === 'object' ? Object.entries(o) : [])),
-      assign: fn('assign', (...a) => Object.assign({}, ...a.filter((x) => x && typeof x === 'object'))),
+      assign: fn('assign', (...a) => Object.fromEntries(a.filter(x => x && typeof x === 'object').flatMap(Object.entries))),
     }),
 
     Array: oggetto('Array', {
@@ -1110,7 +1115,7 @@ function costruisciGlobali(ctx) {
 }
 
 function bson(tipo, valore) {
-  return { __bson: tipo, valore };
+  return { [VALORE_BSON]: tipo, valore };
 }
 
 /* ==========================================================================
@@ -1128,8 +1133,8 @@ function aEjson(v) {
   if (v instanceof RegExp) return { $regularExpression: { pattern: v.source, options: v.flags } };
   if (Array.isArray(v)) return v.map(aEjson);
   if (typeof v === 'object') {
-    if (v.__bson) {
-      switch (v.__bson) {
+    if (v[VALORE_BSON]) {
+      switch (v[VALORE_BSON]) {
         case 'oid': return { $oid: v.valore };
         case 'long': return { $numberLong: String(v.valore) };
         case 'int': return { $numberInt: String(v.valore) };
@@ -1138,12 +1143,10 @@ function aEjson(v) {
         default: return v.valore;
       }
     }
-    if (v.__host || v.__funzione || v.__chiamabile) {
+    if (v[OGGETTO_HOST] || v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA]) {
       throw errore('Un oggetto del database o una funzione non può essere usato come valore in una query');
     }
-    const out = {};
-    for (const k of Object.keys(v)) out[k] = aEjson(v[k]);
-    return out;
+    return Object.fromEntries(Object.keys(v).map(k => [k, aEjson(v[k])]));
   }
   return v;
 }
@@ -1159,12 +1162,10 @@ function semplifica(v) {
   if (v instanceof Date) return v.toISOString();
   if (Array.isArray(v)) return v.map(semplifica);
   if (typeof v === 'object') {
-    if (v.__bson) return String(v.valore);
-    if (v.__host) return `[${v.__nome}]`;
-    if (v.__funzione || v.__chiamabile) return '[Function]';
-    const out = {};
-    for (const k of Object.keys(v)) out[k] = semplifica(v[k]);
-    return out;
+    if (v[VALORE_BSON]) return String(v.valore);
+    if (v[OGGETTO_HOST]) return `[${v.__nome}]`;
+    if (v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA]) return '[Function]';
+    return Object.fromEntries(Object.keys(v).map(k => [k, semplifica(v[k])]));
   }
   return v;
 }
@@ -1179,7 +1180,7 @@ function testo(v) {
 }
 
 function verita(v) {
-  if (v && typeof v === 'object' && v.__bson) return true;
+  if (v && typeof v === 'object' && v[VALORE_BSON]) return true;
   return !!v;
 }
 

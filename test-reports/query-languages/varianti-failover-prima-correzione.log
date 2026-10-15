@@ -1,0 +1,15 @@
+  OK   barriera: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato host.docker.internal:27040, eletto host.docker.internal:27039
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato host.docker.internal:27039, eletto host.docker.internal:27041
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato host.docker.internal:27041, eletto host.docker.internal:27040
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice: arrestato host.docker.internal:27040, eletto host.docker.internal:27039
+  OK   indice: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice_commit: arrestato host.docker.internal:27039, eletto host.docker.internal:27041
+  OK   indice_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+
+6 failover reali con arresto del container primario (tre container distinti) superati.
+PROVA DIAGNOSTICA NON VALIDA COME PASS: i due failover degli indici hanno richiesto il riavvio manuale del nodo per sbloccare il quorum votingMembers. Il runner finale ripete la prova senza interventi.

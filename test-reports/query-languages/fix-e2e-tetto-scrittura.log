@@ -1,0 +1,16 @@
+--- Tetto di tempo sulla scrittura (CODEDB_AGGREGATE_TIMEOUT_MS=2000) ---
+
+--- MySQL ---
+  OK   la scrittura lunga è stata interrotta (La query ha superato il tempo massimo consentito (2000 ms) ed è stata interrotta. Cosa fare: restringi il filtro o l'insieme di righe toccate, aggiungi un indice sulle colonne filtrate/ordinate; se l'attesa lunga è prevista (un ALTER su una tabella grande, un UPDATE massivo), alza il limite con la variabile d'ambiente CODEDB_AGGREGATE_TIMEOUT_MS. (dettaglio tecnico: Query inactivity timeout))
+  OK   interrotta entro il tetto e non alla fine degli 8 s (2039 ms)
+  OK   il messaggio dice che è scaduto il tempo massimo
+  OK   la scrittura interrotta non ha lasciato traccia (0)
+  OK   la connessione successiva è sana (ok)
+
+--- PostgreSQL ---
+  OK   la scrittura lunga è stata interrotta (Query annullata: ha superato il tempo massimo consentito (30000 ms) oppure è stata interrotta manualmente. Cosa fare: restringi il filtro, aggiungi un indice sulle colonne filtrate/ordinate, oppure alza il limite con la variabile d'ambiente CODEDB_QUERY_TIMEOUT_MS. (dettaglio tecnico: canceling statement due to statement timeout))
+  OK   interrotta entro il tetto e non alla fine degli 8 s (2019 ms)
+  OK   la scrittura interrotta non ha lasciato traccia (0)
+  OK   la connessione successiva è sana (ok)
+
+TUTTI I TEST ESEGUITI SUPERATI

@@ -1,0 +1,7 @@
+Motori reali: { postgresql: '18.6 (Debian 18.6-1.pgdg13+2)', mysql: '8.4.11' }
+OK sessione, tabelle temporanee, errore nativo, savepoint e rollback PostgreSQL
+OK CAST, domini, precisione, array, multirange, compositi e dipendenze ALTER native
+OK trigger RETURN NULL, transizioni, INSTEAD OF, FK differite, procedure dinamiche, diagnostica, cursori e SQL relazionale
+OK tipi MySQL, trigger ordinati, handler numerico, OUT, cursore, SQL dinamico, scritture JOIN e savepoint
+OK script reali PostgreSQL e DELIMITER MySQL
+OK 117 istruzioni native verificate attraverso Socket.IO

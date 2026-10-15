@@ -1,0 +1,4 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+  OK   Interruzione prima/dopo il commit: recupero durabile e nessuna doppia applicazione
+  OK   Trigger e CALL annidate rispettano gli scope e non elevano i privilegi
+PASS: migrazioni recuperabili, trigger, controllo di flusso e autorizzazione su MongoDB reale.

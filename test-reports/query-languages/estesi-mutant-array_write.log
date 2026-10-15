@@ -1,0 +1,29 @@
+AssertionError [ERR_ASSERTION]: SELECT a[:] AS a FROM array_write WHERE id=1
++ actual - expected
+
+  [
+    {
+      a: [
+        9,
+        5,
++       5,
++       5,
+-       6,
+-       7,
+        3,
+        null,
+        8
+      ]
+    }
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-estesi.js:6:59)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:83:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:114:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

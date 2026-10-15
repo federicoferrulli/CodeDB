@@ -1,0 +1,24 @@
+  OK savepoint, vincoli, handler, trigger, cascate e istruzioni precedenti
+  OK blocchi EXCEPTION PostgreSQL, variabili preservate, RAISE annidato e divisione per zero
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Permesso negato/. Input:
+
+'Error: ALTER TABLE impedito dalla FOREIGN KEY fk_dep su dep_figlio: usa CASCADE per eliminare il vincolo dipendente.'
+
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-completamento.js:105:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-completamento.js:60:18 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: Error: ALTER TABLE impedito dalla FOREIGN KEY fk_dep su dep_figlio: usa CASCADE per eliminare il vincolo dipendente.
+      at C:\repository\CodeDB\db\sqlAlterMongo.js:211:35
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+      at async Object.esegui (C:\repository\CodeDB\db\sqlAlterMongo.js:191:5)
+      at async waitForActual (node:assert:615:5)
+      at async strict.rejects (node:assert:738:25)
+      at async module.exports (C:\repository\CodeDB\test\sql-mongo-completamento.js:105:3)
+      at async C:\repository\CodeDB\test\e2e-sql-mongo-completamento.js:60:18,
+  expected: /Permesso negato/,
+  operator: 'rejects',
+  diff: 'simple'
+}

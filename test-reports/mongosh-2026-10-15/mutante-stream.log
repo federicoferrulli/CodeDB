@@ -1,0 +1,7 @@
+OK runtime JavaScript ufficiale e variabili persistenti isolate per tab
+OK load, require, import e contesto Node.js ufficiale
+OK helper ufficiali bulk, viste, rinomina, validate, rs, plan cache e BSON
+OK transazione reale mantenuta fra due esecuzioni
+Error: Evento mongosh non arrivato entro il termine
+    at attendi (C:\repository\CodeDB\test\e2e-mongosh-runtime.js:22:9)
+    at async C:\repository\CodeDB\test\e2e-mongosh-runtime.js:98:17

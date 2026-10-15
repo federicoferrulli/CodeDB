@@ -1,0 +1,14 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+  OK   Interruzione prima/dopo il commit: recupero durabile e nessuna doppia applicazione
+  OK   Trigger e CALL annidate rispettano gli scope e non elevano i privilegi
+  OK   Interi senza segno esatti, annullamento e ALTER concorrente con sei scritture senza perdite
+Error: Vincolo SQL duplicato: nomi_unique_2.
+    at C:\repository\CodeDB\db\sqlSchemaMongo.js:106:42
+    at Array.forEach (<anonymous>)
+    at Object.verifica (C:\repository\CodeDB\db\sqlSchemaMongo.js:100:22)
+    at prepara (C:\repository\CodeDB\db\sqlAlterMongo.js:118:13)
+    at C:\repository\CodeDB\db\sqlAlterMongo.js:165:21
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+    at async Object.esegui (C:\repository\CodeDB\db\sqlAlterMongo.js:160:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:141:3

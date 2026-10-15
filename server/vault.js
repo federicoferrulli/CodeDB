@@ -4,7 +4,7 @@
 const path = require('path');
 const Vault = require('../db/vault');
 const fs = require('fs');
-const { sshAuthMode, MAX_SSH_KEY_BYTES } = require('../db/SshTunnel');
+const { sshAuthMode, portaLocaleSsh, MAX_SSH_KEY_BYTES } = require('../db/SshTunnel');
 
 function createModule({ config, errori, dependencies }) {
   /* ---------------------------------------------------------------------------
@@ -30,7 +30,7 @@ function createModule({ config, errori, dependencies }) {
     // sshHostKey: impronta SHA256 della host key del bastion. NON è un segreto
     // (è un'impronta pubblica) ma va conservata: è ciò che rende rilevabile un
     // MITM sul tunnel. Registrata al primo collegamento riuscito.
-    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshAuth', 'sshPassword', 'sshKeyFile', 'sshPrivateKey', 'sshKeyName', 'sshPassphrase', 'sshHostKey',
+    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshAuth', 'sshPassword', 'sshKeyFile', 'sshPrivateKey', 'sshKeyName', 'sshPassphrase', 'sshHostKey', 'sshLocalPort',
   ];
 
   // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
@@ -564,6 +564,7 @@ function createModule({ config, errori, dependencies }) {
         .map((f) => [f, SECRET_FIELDS.includes(f) ? String(fields[f]) : String(fields[f]).trim()])
     );
     if (clean.sshKeyName) clean.sshKeyName = clean.sshKeyName.replace(/[\r\n]/g, ' ');
+    portaLocaleSsh(fields.sshLocalPort);
     return preserveConnSecrets(clean, previous);
   }
 

@@ -85,7 +85,9 @@ export function apriPannelloScorciatoie() {
     <div class="modal scorciatoie-modal" style="max-width:560px">
       <h2 id="scorciatoie-title"><i data-lucide="keyboard"></i> Scorciatoie da tastiera</h2>
       <p class="scorciatoie-nota">Clicca una combinazione per cambiarla: quando il pulsante lampeggia,
-         premi la combinazione che vuoi. Esc annulla. Le scelte appartengono solo al tuo account.</p>
+         premi la combinazione che vuoi. Esc annulla. Le scelte appartengono solo al tuo account.
+         Nel browser Ctrl+Tab e Ctrl+Shift+Tab possono essere riservati alle schede del browser:
+         in quel caso scegli altre combinazioni, oppure usa l’app desktop.</p>
       <div id="scorciatoie-lista"></div>
       <p id="scorciatoie-errori" class="scorciatoie-errori hidden"></p>
       <div class="scorciatoie-azioni">

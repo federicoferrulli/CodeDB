@@ -1,0 +1,14 @@
+  OK   Semantica insiemi, sorgenti INSERT, validatore nativo e FK verificate con dati reali
+AssertionError [ERR_ASSERTION]: Una CALL fallita deve annullare anche il primo UPDATE
+
+2 !== 1
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-integrita.js:68:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

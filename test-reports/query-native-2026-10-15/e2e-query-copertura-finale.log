@@ -1,0 +1,106 @@
+  OK   Scalari, NULL e ordine su alias
+  OK   Alias che coincide con un campo sorgente
+  OK   Proiezione star insieme a una colonna calcolata
+  OK   CTE letta dal percorso socket
+  OK   CROSS JOIN
+  OK   CASE ed espressioni
+  OK   DISTINCT * dopo UNION ALL
+  OK   Predicati ed espressioni con parentesi
+  OK   CASE con NULL e IN
+  OK   NOT non trasforma un NULL in vero
+  OK   NOT IN con NULL non restituisce righe
+  OK   Funzione scalare su colonna raggruppata
+  OK   JOIN su CTE filtrata
+  OK   JOIN con condizioni multiple
+  OK   JOIN USING
+  OK   JOIN con disuguaglianza
+  OK   Opzione collation della shell singola
+  OK   Opzione collation dello script
+  OK   Funzione ABS
+  OK   Funzione CEIL
+  OK   Funzione CEILING
+  OK   Funzione FLOOR
+  OK   Funzione SQRT
+  OK   Funzione EXP
+  OK   Funzione LN
+  OK   Funzione LOG10
+  OK   Funzione POWER
+  OK   Funzione POW
+  OK   Funzione MOD
+  OK   Funzione ROUND
+  OK   Funzione TRUNC
+  OK   Funzione TRUNCATE
+  OK   Funzione SIN
+  OK   Funzione COS
+  OK   Funzione TAN
+  OK   Funzione ASIN
+  OK   Funzione ACOS
+  OK   Funzione ATAN
+  OK   Funzione ATAN2
+  OK   Funzione DEGREES
+  OK   Funzione RADIANS
+  OK   Funzione UPPER
+  OK   Funzione LOWER
+  OK   Funzione CHAR_LENGTH
+  OK   Funzione CHARACTER_LENGTH
+  OK   Funzione OCTET_LENGTH
+  OK   Funzione LENGTH
+  OK   Funzione HEX
+  OK   Funzione CARDINALITY
+  OK   Funzione ARRAY_LENGTH
+  OK   Funzione ARRAY_LOWER
+  OK   Funzione ARRAY_UPPER
+  OK   Funzione ARRAY_NDIMS
+  OK   Funzione ARRAY_FILL
+  OK   Funzione ARRAY_DIMS
+  OK   Funzione ARRAY_POSITION
+  OK   Funzione ARRAY_REMOVE
+  OK   Funzione ARRAY_REPLACE
+  OK   Funzione ARRAY_APPEND
+  OK   Funzione ARRAY_PREPEND
+  OK   Funzione ARRAY_CAT
+  OK   Funzione INT4RANGE
+  OK   Funzione INT8RANGE
+  OK   Funzione NUMRANGE
+  OK   Funzione DATERANGE
+  OK   Funzione TSRANGE
+  OK   Funzione TSTZRANGE
+  OK   Funzione LOWER_INC
+  OK   Funzione UPPER_INC
+  OK   Funzione LOWER_INF
+  OK   Funzione UPPER_INF
+  OK   Funzione ISEMPTY
+  OK   Funzione INT4MULTIRANGE
+  OK   Funzione INT8MULTIRANGE
+  OK   Funzione NUMMULTIRANGE
+  OK   Funzione DATEMULTIRANGE
+  OK   Funzione TSMULTIRANGE
+  OK   Funzione TSTZMULTIRANGE
+  OK   Funzione MULTIRANGE
+  OK   Funzione RANGE_MERGE
+  OK   Funzione CONCAT
+  OK   Funzione COALESCE
+  OK   Funzione IFNULL
+  OK   Funzione NULLIF
+  OK   Funzione GREATEST
+  OK   Funzione LEAST
+  OK   Funzione TRIM
+  OK   Funzione LTRIM
+  OK   Funzione RTRIM
+  OK   Funzione SUBSTRING
+  OK   Funzione SUBSTR
+  OK   Funzione REPLACE
+  OK   Funzione IF
+  OK   Funzione YEAR
+  OK   Funzione MONTH
+  OK   Funzione DAY
+  OK   Funzione HOUR
+  OK   Funzione MINUTE
+  OK   Funzione SECOND
+  OK   NOW e CURRENT_TIMESTAMP
+  OK   CREATE e DROP INDEX attraverso socket
+  OK   UPDATE calcolato attraverso socket
+  OK   Array, range, domini, trigger statement ed errori nativi con savepoint attraverso socket
+  OK   bulkWrite e update pipeline attraverso socket
+  OK   findOneAndReplace attraverso interprete e socket
+  OK   explain restituisce il piano

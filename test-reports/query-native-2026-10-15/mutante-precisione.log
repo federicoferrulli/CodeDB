@@ -1,0 +1,12 @@
+FAIL MongoDB: precisione BSON anche nelle opzioni DDL
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ '9223372036854776000'
+- '9223372036854775807'
+                  ^
+
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:131:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:128:3

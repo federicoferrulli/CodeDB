@@ -9,7 +9,7 @@ module.exports = (async () => {
   console.log('--- Test insert MongoDB singolo e multiplo ---');
   const calls = [];
   const strategy = new MongoDbStrategy();
-  strategy.client = { db: () => ({ command: async cmd => {
+  strategy.client = { db: () => ({ collection: () => ({}), listCollections: () => ({ toArray: async () => [] }), command: async cmd => {
     const docs = cmd.documents.chunks.slice(1).map(bytes => B.deserialize(bytes, { promoteValues: false }));
     calls.push({ cmd, docs });
     return { ok: 1, n: docs.length };
@@ -38,7 +38,7 @@ module.exports = (async () => {
     await assert.rejects(strategy.docInsert('catalogo', 'eventi', { doc: JSON.stringify({ value }) }));
   }
   assert.equal(calls.length, before, 'nessuna richiesta per input malformati');
-  strategy.client = { db: () => ({ command: async () => ({ n: 1, writeErrors: [{ errmsg: 'E11000 duplicate key' }] }) }) };
+  strategy.client = { db: () => ({ collection: () => ({}), listCollections: () => ({ toArray: async () => [] }), command: async () => ({ n: 1, writeErrors: [{ errmsg: 'E11000 duplicate key' }] }) }) };
   await assert.rejects(strategy.docInsert('catalogo', 'eventi', { doc: '[{"_id":1},{"_id":1}]' }),
     e => e.auditResult.insertedCount === 1 && JSON.parse(e.auditResult.insertedIds[0]) === 1);
   console.log('  OK   BSON esatto, risultato singolo/bulk, validazione prima della scrittura e audit parziale');

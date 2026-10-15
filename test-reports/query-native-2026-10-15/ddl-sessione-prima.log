@@ -1,0 +1,12 @@
+FAIL MongoDB: indici nella sessione e DDL vietata nella transazione
+AssertionError [ERR_ASSERTION]: const s=db.getMongo().startSession();
+      s.getDatabase("codedb_nativo_completo_dati_5f1216135e07").ddl_sessione.createIndex({n:1},{name:"n_sessione"}); s.endSession();
+La sessione degli indici è gestita dallo script.
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:16:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:138:5
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:136:3

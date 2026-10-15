@@ -1,0 +1,33 @@
+  OK savepoint, vincoli, handler, trigger, cascate e istruzioni precedenti
+  OK blocchi EXCEPTION PostgreSQL, variabili preservate, RAISE annidato e divisione per zero
+  OK dipendenze ALTER, rinomina FK/indici, RESTRICT e CASCADE
+  OK trigger UPDATE OF, assegnazione invariata e dipendenza da colonna rinominata/eliminata
+MongoBulkWriteError: Document failed validation
+    at OrderedBulkOperation.handleWriteError (C:\repository\CodeDB\node_modules\mongodb\lib\bulk\common.js:804:19)
+    at executeCommands (C:\repository\CodeDB\node_modules\mongodb\lib\bulk\common.js:346:23)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async OrderedBulkOperation.execute (C:\repository\CodeDB\node_modules\mongodb\lib\bulk\common.js:793:16)
+    at async Collection.bulkWrite (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:224:16)
+    at async Collection.insertMany (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:171:25)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:188:53)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+    at async Object.scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:136:7)
+    at async execute (C:\repository\CodeDB\test\e2e-sql-mongo-completamento.js:43:20) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    message: 'Document failed validation',
+    code: 121,
+    writeErrors: [ [WriteError] ]
+  },
+  code: 121,
+  writeErrors: [ WriteError { err: [Object] } ],
+  result: BulkWriteResult {
+    insertedCount: 0,
+    matchedCount: 0,
+    modifiedCount: 0,
+    deletedCount: 0,
+    upsertedCount: 0,
+    upsertedIds: {},
+    insertedIds: {}
+  }
+}

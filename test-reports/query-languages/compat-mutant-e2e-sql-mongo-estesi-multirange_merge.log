@@ -1,0 +1,23 @@
+AssertionError [ERR_ASSERTION]: SELECT ('{[1,3),[5,8)}'::INT4MULTIRANGE + '{[3,5)}'::INT4MULTIRANGE) = '{[1,8)}'::INT4MULTIRANGE AS u,LOWER(RANGE_MERGE('{[1,3),[5,8)}'::INT4MULTIRANGE)) AS lo,UPPER(RANGE_MERGE(INT4RANGE(1,3),INT4RANGE(5,8))) AS hi
++ actual - expected
+
+  [
+    {
+      hi: 8,
+      lo: 1,
++     u: false
+-     u: true
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-estesi.js:6:59)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:34:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

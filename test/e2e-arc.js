@@ -50,7 +50,7 @@ function checked(name) { report.checks.push(name); console.log('OK', name); }
     await page.evaluate(() => document.getElementById('connect-form').reset());
     assert.equal(await page.locator('#connect-form [name="username"]').inputValue(), '');
     assert.equal(await page.locator('#connect-form [name="host"]').inputValue(), 'localhost');
-    await page.locator('#wizard-next-btn').click();
+    await page.locator('#connect-btn').click();
     assert.match(await page.locator('#wizard-subtitle').textContent(), /Passo 3/);
     await page.locator('#wizard-prev-btn').click();
     await page.locator('#connect-form [name="port"]').fill('1');

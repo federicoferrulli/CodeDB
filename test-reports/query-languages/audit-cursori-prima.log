@@ -1,0 +1,40 @@
+OK MQL: i nomi interni dell’interprete restano normali campi BSON
+OK MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script
+FAIL MQL: find nello script legge oltre 50 righe e rifiuta risultati parziali
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
++   '50'
+-   '101'
+  ]
+
+    at C:\repository\CodeDB\test\e2e-query-audit.js:160:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:158:3
+FAIL MQL: cursori consumabili, next, count e interruzione del ciclo
+AssertionError [ERR_ASSERTION]: const c=db.cursori.find({}).sort({id:1}); print(c.hasNext()); print(c.next().id);
+      print(c.toArray().length); print(c.hasNext()); print(c.toArray().length);
+      const d=db.cursori.find({}).sort({id:1}); for(const row of d) { print(row.id); break; } print(d.next().id);
+      const e=db.cursori.find({}).limit(1); print(e.count()); print(e.count(true)); print(e.hasNext()); print(e.itcount()); print(e.hasNext());
+Metodo non supportato sui cursori: "next"
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-audit.js:27:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:177:23
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:171:3
+{"casi":4,"falliti":2,"esiti":[{"nome":"MQL: i nomi interni dell’interprete restano normali campi BSON","ok":true},{"nome":"MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script","ok":true},{"nome":"MQL: find nello script legge oltre 50 righe e rifiuta risultati parziali","ok":false},{"nome":"MQL: cursori consumabili, next, count e interruzione del ciclo","ok":false}]}
+AssertionError [ERR_ASSERTION]: Tutte le regressioni SQL/MQL devono passare
+    at C:\repository\CodeDB\test\e2e-query-audit.js:181:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

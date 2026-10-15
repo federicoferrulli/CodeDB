@@ -1,0 +1,14 @@
+  OK   Migrazione con errore sulla seconda riga: rollback completo
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+undefined !== 7
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-migrazioni.js:75:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: 7,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

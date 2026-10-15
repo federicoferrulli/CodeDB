@@ -78,7 +78,9 @@ export function creaRuntimePane(pane, slot, onFocus, onClose, onContext) {
     },
     onKey(event) {
       const action = azioneDiEvento(event);
-      const global = ['sidebarConnessioni', 'chiudiScheda', 'paletteComandi'].includes(action);
+      const global = ['sidebarConnessioni', 'chiudiScheda', 'paletteComandi', 'tabellaSuccessiva', 'databaseSuccessivo'].includes(action);
+      if ((action === 'tabellaSuccessiva' || action === 'databaseSuccessivo')
+        && event.target?.ownerDocument?.querySelector('.overlay:not(.hidden)')) return false;
       const splitKey = event.altKey && !event.target?.closest?.('input, textarea, select, [contenteditable="true"], [role="combobox"]');
       if (!global && !splitKey) return false;
       onFocus();

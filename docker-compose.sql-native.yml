@@ -1,0 +1,40 @@
+name: codedb-sql-native
+
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: codedb
+      POSTGRES_DB: codedb
+      POSTGRES_PASSWORD: ${CODEDB_NATIVE_PG_PASSWORD:?Imposta CODEDB_NATIVE_PG_PASSWORD}
+    ports:
+      - "127.0.0.1:${CODEDB_NATIVE_PG_PORT:-55432}:5432"
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codedb -d codedb"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: codedb
+      MYSQL_USER: codedb
+      MYSQL_PASSWORD: ${CODEDB_NATIVE_MY_PASSWORD:?Imposta CODEDB_NATIVE_MY_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${CODEDB_NATIVE_MY_ROOT_PASSWORD:?Imposta CODEDB_NATIVE_MY_ROOT_PASSWORD}
+    ports:
+      - "127.0.0.1:${CODEDB_NATIVE_MY_PORT:-53306}:3306"
+    volumes:
+      - mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_PASSWORD mysql -h 127.0.0.1 -u codedb -D codedb -e 'SELECT 1'"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  postgres:
+  mysql:

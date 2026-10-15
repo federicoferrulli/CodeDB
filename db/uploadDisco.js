@@ -28,6 +28,21 @@ const crypto = require('crypto');
 const { decidiBlocco, sha256 } = require('./trasferimenti');
 
 const BLOCCO_RILETTURA = 1024 * 1024;
+const codeDiscoTenant = new Map();
+
+// La quota comprende tutti i file della radice, anche fra archivi dello stesso processo.
+async function conDiscoTenant(radice, fn) {
+  const precedente = codeDiscoTenant.get(radice) || Promise.resolve();
+  let libera;
+  const corrente = new Promise(resolve => { libera = resolve; });
+  codeDiscoTenant.set(radice, corrente);
+  await precedente;
+  try { return await fn(); }
+  finally {
+    libera();
+    if (codeDiscoTenant.get(radice) === corrente) codeDiscoTenant.delete(radice);
+  }
+}
 
 function guasto(codice, messaggio) {
   const err = new Error(messaggio);
@@ -112,8 +127,8 @@ function createArchivioUpload({
   // limite che non si applica è peggio di nessun limite. Vale quello per owner.
   maxPerOwner = Number(process.env.CODEDB_MAX_IMPORT_UPLOADS_PER_OWNER) || 2,
   // Quota disco del tenant (parti + finali): di default illimitata, la configura
-  // l'operatore. Si controlla all'avvio — il singolo upload è già vincolato
-  // da maxBytes e la finalizzazione non cresce il disco (rinomina).
+  // l'operatore. Gli export non hanno un tetto per file: la quota del tenant,
+  // se configurata, si controlla anche durante la scrittura dei blocchi.
   quotaTenantBytes = Number(process.env.CODEDB_ARTEFATTI_QUOTA_BYTES) || Infinity,
   // Conservazione dei finalizzati: di default mai (sono artefatti dell'utente,
   // come i backup), a scadenza configurata con pulisciFinalizzatiDi.
@@ -129,6 +144,7 @@ function createArchivioUpload({
   const fileStato = (ownerId, uploadId) => path.join(dirSessione(ownerId, uploadId), 'stato.json');
   const dirFinale = (ownerId, artefattoId) =>
     dentro(radiceDi(ownerId), 'finali', idSicuro(artefattoId, 'Artefatto'));
+  const limiteDi = stato => stato.esportazione === true ? Infinity : Math.min(maxBytes, stato.maxBytes || maxBytes);
 
   function sessioniAttive(root, ownerId) {
     const base = path.join(root, 'caricamenti');
@@ -242,7 +258,8 @@ function createArchivioUpload({
   }
 
   return {
-    avvia(ownerId, attore = null) {
+    // `esportazione` è riservato al produttore server, mai passato dall'HTTP.
+    avvia(ownerId, attore = null, { esportazione = false } = {}) {
       const proprietario = proprietarioSicuro(ownerId);
       const root = radiceDi(proprietario);
       pulisciScadutiDi(proprietario);
@@ -250,7 +267,7 @@ function createArchivioUpload({
       if (attive.length >= maxPerOwner) {
         throw guasto('LIMITE', 'Troppi caricamenti contemporanei per questo account.');
       }
-      if (usoTenant(proprietario).byte + maxBytes > quotaTenantBytes) {
+      if (usoTenant(proprietario).byte + (esportazione ? 0 : maxBytes) > quotaTenantBytes) {
         throw guasto('LIMITE', `Quota disco del tenant superata: massimo ${quotaTenantBytes} byte.`);
       }
       const uploadId = idSicuro(String(id()), 'Caricamento');
@@ -259,15 +276,16 @@ function createArchivioUpload({
         fs.mkdirSync(dir, { recursive: true });
         fs.writeFileSync(path.join(dir, 'dati.part'), Buffer.alloc(0), { flag: 'wx' });
       } catch (err) {
-        if (err.code === 'EEXIST') return this.avvia(ownerId, attore);
+        if (err.code === 'EEXIST') return this.avvia(ownerId, attore, { esportazione });
         throw err;
       }
       const stato = {
         v: 1, uploadId, ownerId: proprietario, attore,
-        scritti: 0, impronte: {}, creatoAl: now(), toccatoAl: now(), maxBytes,
+        scritti: 0, impronte: {}, creatoAl: now(), toccatoAl: now(),
+        esportazione, maxBytes: esportazione ? null : maxBytes,
       };
       scriviAtomico(path.join(dir, 'stato.json'), JSON.stringify(stato));
-      return { uploadId, maxChunkBytes, maxBytes };
+      return { uploadId, maxChunkBytes, maxBytes: limiteDi(stato) };
     },
 
     aggiungi(uploadId, ownerId, { offset, contenuto, attore = null } = {}) {
@@ -280,7 +298,7 @@ function createArchivioUpload({
         }
         const impronte = new Map(Object.entries(stato.impronte || {}).map(([k, v]) => [Number(k), v]));
         const decisione = decidiBlocco({
-          offset, contenuto, scritti: stato.scritti, improntePerOffset: impronte, massimo: Math.min(maxBytes, stato.maxBytes || maxBytes),
+          offset, contenuto, scritti: stato.scritti, improntePerOffset: impronte, massimo: limiteDi(stato),
         });
         if (decisione.azione === 'rifiuta') {
           const sequenza = /fuori sequenza/i.test(decisione.motivo || '');
@@ -294,8 +312,16 @@ function createArchivioUpload({
           await persiste(ownerId, stato);
           return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: true };
         }
-        await fs.promises.appendFile(fileParte(ownerId, stato.uploadId), contenuto);
+        await conDiscoTenant(radiceDi(ownerId), async () => {
+          if (Number.isFinite(quotaTenantBytes) && usoTenant(ownerId).byte + contenuto.length > quotaTenantBytes) {
+            throw guasto('LIMITE', `Quota disco del tenant superata: massimo ${quotaTenantBytes} byte.`);
+          }
+          await fs.promises.appendFile(fileParte(ownerId, stato.uploadId), contenuto);
+        });
         stato.scritti = decisione.scritti;
+        // Il produttore locale scrive in sequenza: basta l'ultimo blocco per
+        // ritentare una scrittura, senza accumulare un indice grande quanto l'export.
+        if (stato.esportazione) stato.impronte = {};
         stato.impronte[String(offset)] = { impronta: decisione.impronta, lunghezza: contenuto.length };
         await persiste(ownerId, stato);
         return { uploadId: stato.uploadId, scritti: stato.scritti, impronta: decisione.impronta, ripetuto: false };
@@ -304,7 +330,7 @@ function createArchivioUpload({
 
     stato(uploadId, ownerId, attore = null) {
       const stato = carica(ownerId, uploadId, { attore, soloLettura: true });
-      return { uploadId: stato.uploadId, scritti: stato.scritti, maxBytes: stato.maxBytes || maxBytes };
+      return { uploadId: stato.uploadId, scritti: stato.scritti, maxBytes: limiteDi(stato) };
     },
 
     finalizza(uploadId, ownerId, { dimensioneAttesa, digestAtteso, nome = null, attore = null, check = () => {} } = {}) {
@@ -330,7 +356,9 @@ function createArchivioUpload({
         const dir = dirFinale(ownerId, artefattoId);
         check();
         await fs.promises.mkdir(dir, { recursive: true });
-        await fs.promises.rename(fileParte(ownerId, stato.uploadId), path.join(dir, 'dati.bin'));
+        // La scansione della quota non deve perdere il file mentre cambia directory.
+        await conDiscoTenant(radiceDi(ownerId), () =>
+          fs.promises.rename(fileParte(ownerId, stato.uploadId), path.join(dir, 'dati.bin')));
         const manifest = {
           v: 1, id: artefattoId, algoritmo: 'sha256', digest: effettivo, dimensione,
           nome: String(nome || `${artefattoId}.bin`).replace(/["\\\r\n]/g, '').slice(0, 120) || `${artefattoId}.bin`,

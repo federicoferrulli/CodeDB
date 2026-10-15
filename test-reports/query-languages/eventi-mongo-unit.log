@@ -1,0 +1,10 @@
+  OK   Shell e script inoltrano collation, hint, tempo e batch al medesimo contratto
+  OK   Le chiavi let e return dei documenti non cambiano interprete
+  OK   Aggregate conserva l’ordine della catena e le opzioni
+  OK   Il commento utente conserva l’identità di annullamento e non amplia il timeout
+  OK   bulkWrite attraversa il controllo host per ogni operazione e rispetta ordered
+  OK   bulkWrite valida tutti i filtri prima della prima mutazione
+  OK   Il driver riceve pipeline di aggiornamento e opzioni delle cancellazioni
+  OK   Le opzioni non aggirano il divieto di JavaScript lato server
+  OK   findOneAndReplace richiede anche la lettura prima di arrivare al driver
+  OK   Lo script inoltra filtro, documento e opzioni di findOneAndReplace

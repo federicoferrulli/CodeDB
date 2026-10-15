@@ -370,65 +370,82 @@
         </div>
 
         <!-- ================= PASSO 2: Tunnel SSH ================= -->
-        <div class="wizard-panel hidden" data-step="2">
-          <p class="wizard-panel-hint">Configura i parametri del Bastion Host per la connessione sicura via SSH.</p>
+        <div class="wizard-panel ssh-panel hidden" data-step="2">
           <div class="ssh-fields-wrap">
-            <div class="form-row">
-              <label>Host SSH
-                <input type="text" name="sshHost" placeholder="es. bastion.example.com" autocomplete="off" />
-              </label>
-              <label class="small">Porta SSH
-                <input type="number" name="sshPort" value="22" />
-              </label>
-            </div>
-            <div class="form-row">
-              <label>Utente SSH
-                <input type="text" name="sshUser" autocomplete="off" />
-              </label>
-            </div>
-            <div class="form-row">
-              <label>Autenticazione SSH
-                <select name="sshAuth" id="conn-ssh-auth">
-                  <option value="password">Password</option>
-                  <option value="upload">File dal dispositivo</option>
-                  <option value="path">Percorso sul server CodeDB</option>
-                </select>
-              </label>
-            </div>
-            <div class="form-row" id="conn-ssh-password-row">
-              <label>Password SSH
-                <input type="password" name="sshPassword" placeholder="(vuoto se usi una chiave)" autocomplete="off" />
-              </label>
-            </div>
-            <div id="conn-ssh-upload-row" class="hidden">
+            <fieldset class="ssh-section">
+              <legend>Server e accesso</legend>
               <div class="form-row">
-                <label>Chiave privata dal dispositivo
-                  <button type="button" id="conn-ssh-key-select" aria-describedby="conn-ssh-key-status">Scegli file…</button>
+                <label>Host SSH
+                  <input type="text" name="sshHost" placeholder="es. bastion.example.com" autocomplete="off" />
                 </label>
-                <input type="file" id="conn-ssh-key-upload" class="hidden" tabindex="-1" />
+                <label class="small">Porta SSH
+                  <input type="number" name="sshPort" value="22" />
+                </label>
               </div>
-              <p id="conn-ssh-key-status" class="hint" role="status">Scegli la chiave privata, non il file .pub. Massimo 64 KB.</p>
-            </div>
-            <div class="form-row hidden" id="conn-ssh-path-row">
-              <label>Percorso della chiave sul server CodeDB
-                <input type="text" name="sshKeyFile" placeholder="es. ~/.ssh/id_ed25519" autocomplete="off" />
-                <span class="hint">Il file deve essere leggibile dal processo CodeDB. Per un file sul tuo dispositivo usa «File dal dispositivo».</span>
-              </label>
-            </div>
-            <div class="form-row hidden" id="conn-ssh-passphrase-row">
-              <label>Passphrase chiave
-                <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)"
-                  autocomplete="off" />
-              </label>
-            </div>
-            <div class="form-row">
-              <label>Impronta host SSH
-                <input type="text" name="sshHostKey" placeholder="SHA256:… (impronta verificata del server)"
-                  autocomplete="off" spellcheck="false"
-                  title="Impronta SHA-256 della chiave del server SSH, nel formato di OpenSSH. Viene registrata al primo collegamento riuscito; dopo, una chiave diversa fa fallire la connessione (possibile man-in-the-middle). Puoi confrontarla con: ssh-keyscan -t rsa HOST | ssh-keygen -lf -" />
-              </label>
-            </div>
-            <p class="wizard-panel-hint">Per una nuova connessione, inserisci l'impronta verificata del server SSH. Le connessioni già salvate possono registrarla al primo collegamento. Una variazione dell'impronta blocca la connessione.</p>
+              <div class="form-row">
+                <label>Utente SSH
+                  <input type="text" name="sshUser" autocomplete="off" />
+                </label>
+                <label>Autenticazione SSH
+                  <select name="sshAuth" id="conn-ssh-auth">
+                    <option value="password">Password</option>
+                    <option value="upload">File dal dispositivo</option>
+                    <option value="path">Percorso sul server CodeDB</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-row" id="conn-ssh-password-row">
+                <label>Password SSH
+                  <input type="password" name="sshPassword" autocomplete="off" />
+                </label>
+              </div>
+              <div id="conn-ssh-upload-row" class="hidden">
+                <div class="form-row">
+                  <label>Chiave privata dal dispositivo
+                    <button type="button" id="conn-ssh-key-select" aria-describedby="conn-ssh-key-status">Scegli file…</button>
+                  </label>
+                  <input type="file" id="conn-ssh-key-upload" class="hidden" tabindex="-1" />
+                </div>
+                <p id="conn-ssh-key-status" class="hint" role="status">Scegli la chiave privata, non il file .pub. Massimo 64 KB.</p>
+              </div>
+              <div class="form-row hidden" id="conn-ssh-path-row">
+                <label>Percorso della chiave sul server CodeDB
+                  <input type="text" name="sshKeyFile" placeholder="es. ~/.ssh/id_ed25519" autocomplete="off" />
+                  <span class="hint">Il file deve essere leggibile dal processo CodeDB. Per un file sul tuo dispositivo usa «File dal dispositivo».</span>
+                </label>
+              </div>
+              <div class="form-row hidden" id="conn-ssh-passphrase-row">
+                <label>Passphrase chiave
+                  <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)"
+                    autocomplete="off" />
+                </label>
+              </div>
+            </fieldset>
+            <section class="ssh-section" aria-labelledby="conn-ssh-fingerprint-label">
+              <div class="form-row">
+                <label><span id="conn-ssh-fingerprint-label" class="ssh-section-title">Impronta host SSH</span>
+                  <input type="text" name="sshHostKey" placeholder="Automatica al primo test o collegamento"
+                    autocomplete="off" spellcheck="false" aria-describedby="conn-ssh-fingerprint-hint" />
+                </label>
+              </div>
+              <p id="conn-ssh-fingerprint-hint" class="ssh-hint">Lascia vuoto per rilevarla automaticamente. Ti chiederemo conferma prima di inviare le credenziali SSH.</p>
+              <details class="ssh-verification-details">
+                <summary>Come viene verificato il server</summary>
+                <p>Puoi inserire un'impronta SHA-256 già verificata, nel formato OpenSSH. Una variazione dell'impronta blocca la connessione; in modalità rigorosa serve un'impronta verificata in anticipo.</p>
+              </details>
+            </section>
+            <section class="ssh-section" aria-labelledby="conn-ssh-local-title">
+              <h3 id="conn-ssh-local-title" class="ssh-section-title">Accesso da altri programmi <span class="ssh-optional">Opzionale</span></h3>
+              <div class="form-row">
+                <label>Porta locale
+                  <span class="ssh-local-address"><span aria-hidden="true">127.0.0.1 :</span>
+                    <input type="number" name="sshLocalPort" min="1" max="65535" step="1" inputmode="numeric"
+                      placeholder="Non attiva" aria-describedby="conn-ssh-local-hint" />
+                  </span>
+                </label>
+              </div>
+              <p id="conn-ssh-local-hint" class="ssh-hint">Il database sarà raggiungibile su <code>127.0.0.1</code> dalla macchina che esegue CodeDB, finché la connessione resta aperta. Scegli una porta libera; lascia vuoto per usare solo il tunnel interno.</p>
+            </section>
           </div>
         </div>
 
@@ -453,20 +470,20 @@
         </div>
 
         <div id="connect-error" class="error hidden"></div>
-        <div id="connect-test-msg" class="success-msg hidden"></div>
+        <div id="connect-test-msg" class="success-msg hidden" role="status"></div>
 
         <div class="connect-actions">
           <div class="connect-secondary-actions">
             <button type="button" id="conn-test-btn" class="ghost"
-              title="Tenta la connessione lato server senza aprire un tab"><i data-lucide="activity"></i> Testa connessione</button>
+              title="Verifica l’accesso al database"><i data-lucide="activity" aria-hidden="true"></i>Testa connessione</button>
             <button type="button" id="conn-save-btn" class="secondary hidden"
               title="Salva la connessione senza connetterti">Salva</button>
-            <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
           </div>
           <div class="wizard-nav-btns">
+            <button type="button" id="conn-cancel-btn" class="ghost">Annulla</button>
             <button type="button" id="wizard-prev-btn" class="secondary hidden"><i data-lucide="arrow-left"></i> Indietro</button>
-            <button type="button" id="wizard-next-btn" class="secondary">Avanti <i data-lucide="arrow-right"></i></button>
-            <button type="submit" id="connect-btn" class="primary">Connetti</button>
+            <button type="button" id="wizard-next-btn" class="secondary hidden">Configura SSH <i data-lucide="arrow-right" aria-hidden="true"></i></button>
+            <button type="submit" id="connect-btn" class="primary"><span>Rivedi connessione</span><i data-lucide="arrow-right" class="connection-action-icon" aria-hidden="true"></i></button>
           </div>
         </div>
       </form>
@@ -1255,11 +1272,19 @@
                       <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
                       <select id="query-target-engine" class="styled-select">
                         <option value="auto">Auto-detect (DB corrente)</option>
-                        <option value="mysql">MySQL (SQL Runner)</option>
-                        <option value="postgresql">PostgreSQL (SQL Runner)</option>
-                        <option value="mongodb">MongoDB (MQL / Aggregate)</option>
+                        <option value="mysql">MySQL nativo</option>
+                        <option value="postgresql">PostgreSQL nativo</option>
+                        <option value="mongodb">MongoDB (MQL / SQL tradotto)</option>
+                        <option value="mongosh">mongosh nativo (amministratore)</option>
                         <option value="crossdb">Cross-DB (Virtual JOIN)</option>
                       </select>
+                      <p>mongosh mantiene variabili e stream nel tab e può usare Node.js e i file del server.</p>
+                      <label class="dropdown-label" for="query-native-connection">Apri una copia su SQL nativo</label>
+                      <select id="query-native-connection" class="styled-select" aria-describedby="query-native-help"></select>
+                      <label class="dropdown-label" for="query-native-database">Database / schema di destinazione</label>
+                      <select id="query-native-database" class="styled-select"></select>
+                      <p id="query-native-help">Collega PostgreSQL o MySQL dal menu Connessioni. La copia usa i dati della destinazione; i dati MongoDB non vengono trasferiti.</p>
+                      <button id="query-native-open" class="dropdown-item" type="button" disabled>Apri sul motore nativo</button>
                       <button id="query-target-reset" class="dropdown-item hidden" type="button"
                         title="Torna al contesto della collection aperta"><i data-lucide="undo-2"></i> Torna alla collection aperta</button>
                     </div>

@@ -1,0 +1,9 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+Error: DEFAULT non compatibile con il tipo della colonna a.
+    at verificaDefault (C:\repository\CodeDB\db\sqlSchemaMongo.js:390:45)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async crea (C:\repository\CodeDB\db\sqlSchemaMongo.js:340:3)
+    at async execute (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:58:20)
+    at async all (C:\repository\CodeDB\test\sql-mongo-tipi.js:6:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:193:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:75:18

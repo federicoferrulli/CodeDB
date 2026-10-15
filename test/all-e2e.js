@@ -19,6 +19,8 @@ function runAllE2eTests() {
     // non un test: eseguirlo non farebbe nulla ma comparirebbe fra i risultati.
     .filter((file) => (file === 'e2e.js' || (file.startsWith('e2e-') && file.endsWith('.js')))
       && file !== 'all-e2e.js' && file !== 'e2e-harness.js')
+    // Il riavvio dello stack persistente è una prova separata, richiesta esplicitamente.
+    .filter(file => file !== 'e2e-sql-native-provisioning.js' || process.env.CODEDB_E2E_NATIVE_PROVISIONING === '1')
     .sort();
 
   let passed = 0;

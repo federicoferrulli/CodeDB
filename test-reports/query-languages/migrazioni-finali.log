@@ -1,0 +1,78 @@
+  OK   SELECT senza FROM e letterale protetto
+  OK   Stringhe con parentesi e keyword restano valori
+  OK   RIGHT JOIN: duplicati e NULL
+  OK   FULL JOIN: entrambi i lati senza corrispondenza
+  OK   FULL JOIN con predicato complesso e CTE
+  OK   RIGHT JOIN USING coalescente
+  OK   USING distingue colonna coalescente e colonne qualificate
+  OK   JOIN concatenati conservano il lato precedente completo
+  OK   Proiezione mista conserva colonne assenti come NULL
+  OK   ON con predicato soltanto sul lato sinistro
+  OK   Finestre: ranghi e peer
+  OK   ROWS e frame vuoto: SUM NULL, COUNT zero
+  OK   LAG/LEAD: default fuori partizione e NULL conservato
+  OK   FIRST/LAST/NTH_VALUE
+  OK   NTILE, PERCENT_RANK, CUME_DIST
+  OK   MIN/MAX/AVG e RANGE con offset
+  OK   Finestra dentro espressione e ordinamento esterno
+  OK   Finestre nominate, eredità e NULLS LAST
+  OK   GROUPS ed EXCLUDE GROUP
+  OK   EXCLUDE CURRENT ROW e TIES
+  OK   Aggregati, HAVING e finestre rispettano le fasi SQL
+  OK   SUM su gruppo nullo prima della finestra
+  OK   Aggregati su insieme vuoto restituiscono una riga SQL
+  OK   Ordinamento qualificato nel percorso find
+  OK   Aggregati su espressioni e DISTINCT
+  OK   Aggregati dentro espressioni e HAVING composto
+  OK   GROUP BY espressione e ORDER BY aggregato nascosto
+  OK   FILTER di aggregati, inclusi DISTINCT e insieme vuoto
+  OK   DISTINCT aggregato su insieme vuoto
+  OK   FILTER nelle finestre ROWS e RANGE
+  OK   Sottoquery scalare correlata con aggregato
+  OK   EXISTS correlata non duplica righe
+  OK   NOT EXISTS e correlazione su due livelli
+  OK   IN sottoquery e duplicati
+  OK   NOT IN rispetta NULL
+  OK   IN vuoto con operando NULL
+  OK   ANY e ALL: vuoto, NULL e corrispondenza
+  OK   Sottoquery scalare vuota produce NULL
+  OK   Alias interno nasconde alias esterno
+  OK   Sottoquery nella funzione aggregata
+  OK   Sottoquery correlata dopo GROUP BY
+  OK   Sottoquery HAVING dopo gli aggregati
+  OK   Sottoquery in WHERE e SELECT, involucri indipendenti
+  OK   Sottoquery e ordinamento esterno calcolato
+  OK   GROUP BY e ORDER BY posizionali
+  OK   GROUP BY con alias di espressione
+  OK   DISTINCT e ordinamento della stessa espressione
+  OK   Finestra presente soltanto in ORDER BY
+  OK   EXISTS non valuta la proiezione
+  OK   Aggregato confrontato con ALL
+  OK   Costante esterna nel gruppo globale correlato
+  OK   INTERSECT DISTINCT e nomi posizionali
+  OK   INTERSECT ALL conserva la molteplicità minima
+  OK   EXCEPT ALL sottrae le molteplicità
+  OK   EXCEPT DISTINCT esclude tutte le copie
+  OK   NULL coincide negli insiemi
+  OK   INTERSECT ha precedenza su UNION
+  OK   Parentesi cambiano la precedenza
+  OK   EXCEPT associa a sinistra
+  OK   Operando con limite locale
+  OK   Sorgente sinistra vuota
+  OK   Non ricorsiva dentro WITH RECURSIVE conserva i duplicati
+  OK   CTE ricorsiva numerica
+  OK   CTE ricorsiva UNION termina sui cicli
+  OK   CTE successive, UNION ALL e nomi posizionali
+  OK   RETURNING INSERT multiplo
+  OK   RETURNING UPDATE multiplo restituisce valori nuovi
+  OK   RETURNING DELETE restituisce valori precedenti
+  OK   RETURNING senza righe
+  OK   ORDER/LIMIT sulle scritture: quattro confronti con i DB SQL, limite zero, RETURNING e rollback
+  OK   Conflitti PostgreSQL/MySQL: vincoli, esclusioni, SET simultanea/sequenziale e rollback
+  OK   INSERT SELECT, insiemi nelle transazioni, UPDATE/DELETE con sorgenti e rollback
+  OK   Tipi, default, PK/UNIQUE composte e nullable, CHECK, rollback e validazione delle scritture esterne
+  OK   Procedure persistite, parametri, IF/WHILE, corpo PostgreSQL SQL, invocazione e rollback
+  OK   FOREIGN KEY, RESTRICT, CASCADE e SET NULL, con rollback delle cascata già avviate
+  OK   ALTER TABLE: dati preesistenti, default, rinomina, tipi, indici, CHECK, FK e ripristino dopo errore
+  OK   Trigger AFTER per riga: INSERT/UPDATE/DELETE, OLD/NEW, no-op, errore, rollback e limite di ricorsione
+PASS: 270 verifiche SQL avanzato su MongoDB reale, comprese prove di rollback; 214 confronti con PostgreSQL e 196 con MySQL.

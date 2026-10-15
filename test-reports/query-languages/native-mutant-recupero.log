@@ -1,0 +1,16 @@
+Motori reali: { postgresql: '18.6 (Debian 18.6-1.pgdg13+2)', mysql: '8.4.11' }
+AssertionError [ERR_ASSERTION]: postgresql: CREATE TABLE dati(id INT PRIMARY KEY,n INT NOT NULL CHECK(n>0))
+Esiste già un oggetto con questo nome. Cosa fare: scegli un altro nome, oppure elimina prima quello esistente. (dettaglio tecnico: relation "dati" already exists)
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-sql-native.js:18:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-native.js:74:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

@@ -312,9 +312,10 @@ async function apriUml(page, server, { db, schema, rispondi, pagine, guastaStora
         schema: { collections: [{ name: 't', fields: [] }], relations: [], schemaPage: { complete: true } },
         guastaStorage: true,
       });
-      await page.waitForSelector('.toast-warning', { timeout: 5000 });
+      await page.waitForSelector('[role="status"][data-tone="warning"]', { timeout: 5000 });
+      await page.waitForSelector('#uml-canvas .joint-element');
       const stato = await page.evaluate(() => ({
-        avviso: document.querySelector('.toast-warning')?.textContent || '',
+        avviso: document.querySelector('[role="status"][data-tone="warning"]')?.textContent || '',
         nodi: document.querySelectorAll('#uml-canvas .joint-element').length,
         esporta: !!document.getElementById('uml-esporta-btn'),
       }));

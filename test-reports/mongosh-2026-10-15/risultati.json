@@ -1,0 +1,51 @@
+{
+  "data": "2026-10-15",
+  "perimetro": "Query & Aggregate: linguaggi sui rispettivi motori; runtime mongosh ufficiale e stream persistenti nella sessione di connessione",
+  "versioni": {
+    "mongodb": "8.0.29",
+    "mysql": "8.4.11",
+    "postgresql": "18.6",
+    "mongosh_shell_api": "5.9.2",
+    "mongosh_shell_evaluator": "5.9.2",
+    "mongosh_service_provider": "5.6.2"
+  },
+  "verifiche_superate": [
+    { "comando": "node test/unit.js", "log": "unit.log" },
+    { "comando": "node test/e2e-mongosh-runtime.js", "log": "runtime.log", "esecuzioni_socket": 56, "altre_prove": ["limite byte e recupero", "timeout processo", "pulizia dopo errore di avvio"] },
+    { "comando": "node test/e2e-mongosh-ui.js", "log": "ui.log", "screenshot": "live-ui.png", "database_simulato": false },
+    { "comando": "node test/e2e-rbac.js", "log": "rbac.log", "include": "rifiuto dei cinque ingressi mongosh per sottoutente" },
+    { "comando": "node test/e2e-query-nativo-completo.js", "log": "e2e-query-nativo-completo.log", "gruppi": 20 },
+    { "comando": "node test/e2e-sql-native-sessioni.js", "log": "e2e-sql-native-sessioni.log", "gruppi": 12 },
+    { "comando": "node test/e2e-sql-native.js", "log": "e2e-sql-native.log", "istruzioni": 117 },
+    { "comando": "node test/e2e-query-dialetti-nativi.js", "log": "e2e-query-dialetti-nativi.log", "keyword_mysql": 734, "keyword_postgresql": 494 },
+    { "comando": "node test/e2e-query-audit.js", "log": "e2e-query-audit.log", "gruppi": 15 },
+    { "comando": "node test/e2e-query-copertura.js", "log": "e2e-query-copertura.log" }
+  ],
+  "mutazioni_rilevate": [
+    { "mutante": "persistenza", "effetto": "ricreazione del runtime a ogni query", "log": "mutante-persistenza.log" },
+    { "mutante": "stream", "effetto": "rimozione del ciclo di lettura degli eventi", "log": "mutante-stream.log" },
+    { "mutante": "permessi", "effetto": "rimozione del controllo amministratore installazione", "log": "mutante-permessi.log" },
+    { "mutante": "bson", "effetto": "conversione di NaN e Infinity in null", "log": "mutante-bson.log" },
+    { "mutante": "formattatore", "effetto": "variabile JavaScript select riscritta come SELECT", "log": "mutante-formattatore.log" }
+  ],
+  "semantica": {
+    "runtime": "processo Node separato per tab, con i privilegi OS di CodeDB; non è una sandbox",
+    "accesso": "isInstallAdmin; owner di tenant e capability manage da soli non bastano",
+    "persistenza": "variabili, sessioni, cursori e stream fra esecuzioni; chiusura con reset, quit, disconnessione, revoca o arresto",
+    "stream": "driver ufficiale, resumeAfter, cambio del primario reale, cronologia limitata e token visibile",
+    "sintassi": "semantica dell'evaluator mongosh incorporato, non ogni costrutto ECMAScript o comando CLI"
+  },
+  "prove_diagnostiche_non_conteggiate": {
+    "ui-diagnostica.log": "ripetizione diagnostica durante l'isolamento della corsa fra reset e nuova esecuzione",
+    "ui-failover-concorrente.log": "timeout di connessione della UI avviata contemporaneamente al cambio del primario; ripetizione isolata riuscita in ui.log"
+  },
+  "non_verificato": [
+    "ogni versione ed estensione dei tre DBMS",
+    "Atlas Search e Stream Processing",
+    "sharding",
+    "Kerberos e CSFLE con dipendenze native",
+    "installer Electron",
+    "guasti su host fisici distinti"
+  ],
+  "fixture": "cinque container del progetto codedb-sql-test, database casuali registrati e vault di prova isolato; nessun database utente usato"
+}

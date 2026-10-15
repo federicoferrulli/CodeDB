@@ -11,6 +11,8 @@
 // fondo insieme agli altri vocabolari, perché è da qui che i chiamanti le
 // prendono da sempre.
 import { SQL_KEYWORDS } from './identificatori.mjs';
+import { DIALETTI, FUNZIONI_COMUNI, vocabolarioSql } from './sql-dialetti.js';
+import { tokenizzaQuery, linguaQuery } from './query-lexer.js';
 
 // Tipi di dati SQL
 const SQL_TYPES = new Set([
@@ -79,143 +81,48 @@ function escHtml(str) {
  * @param {string} [engineHint='auto'] 
  * @returns {string} HTML generato
  */
+for (const d of Object.values(DIALETTI)) {
+  for (const t of d.tipi) SQL_TYPES.add(t.split(/[ (\[]/)[0].toUpperCase());
+  for (const f of [...d.funzioni, ...(d.estensioni || [])]) SQL_FUNCTIONS.add(f.toUpperCase());
+}
+
 export function highlightQueryCode(code, engineHint = 'auto') {
   if (!code) return '';
-
-  const str = String(code);
-  let html = '';
-  let i = 0;
-  const len = str.length;
-
-  while (i < len) {
-    const c = str[i];
-    const rest = str.substring(i);
-
-    // Commenti SQL a riga singola (-- comment)
-    if (c === '-' && str[i + 1] === '-') {
-      let end = str.indexOf('\n', i);
-      if (end === -1) end = len;
-      html += `<span class="hl-comment">${escHtml(str.substring(i, end))}</span>`;
-      i = end;
-      continue;
-    }
-
-    // Commenti blocco (/* comment */)
-    if (c === '/' && str[i + 1] === '*') {
-      let end = str.indexOf('*/', i + 2);
-      if (end === -1) end = len; else end += 2;
-      html += `<span class="hl-comment">${escHtml(str.substring(i, end))}</span>`;
-      i = end;
-      continue;
-    }
-
-    // Stringhe con apici singoli o doppi ('...' o "...")
-    if (c === "'" || c === '"') {
-      const quote = c;
-      let end = i + 1;
-      while (end < len) {
-        if (str[end] === quote) {
-          if (str[end - 1] !== '\\' || (str[end - 2] === '\\' && str[end - 1] === '\\')) {
-            end++;
-            break;
-          }
-        }
-        end++;
-      }
-
-      const stringVal = str.substring(i, end);
-
-      // Verifichiamo se si tratta di una chiave JSON (es. "status": ...) o di un operatore MQL (es. "$match")
-      const afterString = str.substring(end).trimStart();
-      if (quote === '"' && stringVal.startsWith('"$') && stringVal.length > 2) {
-        html += `<span class="hl-mql-op">${escHtml(stringVal)}</span>`;
-      } else if (quote === '"' && afterString.startsWith(':')) {
-        html += `<span class="hl-key">${escHtml(stringVal)}</span>`;
-      } else {
-        html += `<span class="hl-string">${escHtml(stringVal)}</span>`;
-      }
-
-      i = end;
-      continue;
-    }
-
-    // Identificatori quotati con backtick (`col` / `db`)
-    if (c === '`') {
-      let end = str.indexOf('`', i + 1);
-      if (end === -1) end = len; else end += 1;
-      html += `<span class="hl-backtick">${escHtml(str.substring(i, end))}</span>`;
-      i = end;
-      continue;
-    }
-
-    // Numeri
-    if (/\d/.test(c) && (i === 0 || /[\s,(=+\-*/<>;:[\]{}]/.test(str[i - 1]))) {
-      const numMatch = rest.match(/^-?\d+(\.\d+)?([eE][+-]?\d+)?\b/);
-      if (numMatch) {
-        html += `<span class="hl-number">${escHtml(numMatch[0])}</span>`;
-        i += numMatch[0].length;
-        continue;
-      }
-    }
-
-    // Sintassi MongoShell: db.collezione.metodo(...)
-    const shellMatch = rest.match(/^db\.([a-zA-Z0-9_\-]+)\.([a-zA-Z0-9_]+)\b/);
-    if (shellMatch) {
-      html += `<span class="hl-shell-db">db</span>.<span class="hl-shell-coll">${escHtml(shellMatch[1])}</span>.<span class="hl-shell-method">${escHtml(shellMatch[2])}</span>`;
-      i += shellMatch[0].length;
-      continue;
-    }
-
-    // Parole (Parole chiave, Tipi SQL, Funzioni, Tipi Shell, Identificatori)
-    if (/[a-zA-Z_$]/.test(c)) {
-      const wordMatch = rest.match(/^[a-zA-Z0-9_$]+/);
-      if (wordMatch) {
-        const word = wordMatch[0];
-        const upper = word.toUpperCase();
-
-        if (JS_KEYWORDS.has(word)) {
-          // Prima dei set SQL: `in`, `for` e `do` esistono in entrambi i mondi,
-          // ma il confronto JS è sul testo esatto e quindi più specifico.
-          html += `<span class="hl-keyword">${escHtml(word)}</span>`;
-        } else if (JS_GLOBALS.has(word) && word !== 'db') {
-          html += `<span class="hl-function">${escHtml(word)}</span>`;
-        } else if (SQL_KEYWORDS.has(upper)) {
-          html += `<span class="hl-keyword">${escHtml(word)}</span>`;
-        } else if (SQL_TYPES.has(upper)) {
-          html += `<span class="hl-type">${escHtml(word)}</span>`;
-        } else if (SQL_FUNCTIONS.has(upper)) {
-          html += `<span class="hl-function">${escHtml(word)}</span>`;
-        } else if (MONGO_SHELL_TYPES.has(word)) {
-          html += `<span class="hl-shell-type">${escHtml(word)}</span>`;
-        } else if (word.startsWith('$')) {
-          html += `<span class="hl-mql-op">${escHtml(word)}</span>`;
-        } else if (upper === 'TRUE' || upper === 'FALSE' || upper === 'NULL') {
-          html += `<span class="hl-bool">${escHtml(word)}</span>`;
-        } else {
-          html += escHtml(word);
-        }
-
-        i += word.length;
-        continue;
-      }
-    }
-
-    // Operatori e punteggiatura
-    if (/^[=!=><+\-*/%;,()[\]{}]/.test(c)) {
-      const opMatch = rest.match(/^(?:<=|>=|!=|<>|==|&&|\|\||=>|[=!><+\-*/%;,()[\]{}])/);
-      if (opMatch) {
-        html += `<span class="hl-operator">${escHtml(opMatch[0])}</span>`;
-        i += opMatch[0].length;
-        continue;
-      }
-    }
-
-    // Carattere generico o spazio
-    html += escHtml(c);
-    i++;
-  }
-
-  return html;
+  const lingua = engineHint === 'mongosh' ? 'mongo' : linguaQuery(code, engineHint === 'mongodb' ? 'mongo' : 'sql');
+  const mongo = lingua === 'mongo';
+  const d = vocabolarioSql(engineHint);
+  const parole = new Set(d.keywords.length ? d.keywords : SQL_KEYWORDS);
+  const funzioni = d.nome ? new Set([...d.funzioni, ...d.estensioni, ...(d.soloQueste ? [] : FUNZIONI_COMUNI)].map(f => f.toUpperCase())) : SQL_FUNCTIONS;
+  const tokens = tokenizzaQuery(code, { lingua, dbms: engineHint });
+  const visibili = tokens.filter(t => t.tipo !== 'spazio');
+  const indici = new Map(visibili.map((t, i) => [t, i]));
+  return tokens.map(t => {
+    let classe = '';
+    const v = t.testo, upper = v.toUpperCase(), j = indici.get(t);
+    const next = visibili[j + 1]?.testo, prev = visibili[j - 1]?.testo;
+    if (t.tipo === 'commento' || t.tipo === 'hint') classe = 'comment';
+    else if (t.tipo === 'identificatore') classe = 'backtick';
+    else if (t.tipo === 'stringa') {
+      classe = mongo && /^['"]\$/.test(v) ? 'mql-op' : mongo && next === ':' ? 'key' : 'string';
+    } else if (t.tipo === 'numero' || t.tipo === 'parametro') classe = 'number';
+    else if (t.tipo === 'parola') {
+      if (/^(true|false|null)$/i.test(v)) classe = 'bool';
+      else if (mongo) {
+        if (v === 'db' && next === '.') classe = 'shell-db';
+        else if (prev === '.' && next === '(') classe = 'shell-method';
+        else if (prev === '.' && visibili[j - 2]?.testo === 'db') classe = 'shell-coll';
+        else if (JS_KEYWORDS.has(v)) classe = 'keyword';
+        else if (MONGO_SHELL_TYPES.has(v)) classe = 'shell-type';
+        else if (JS_GLOBALS.has(v)) classe = 'function';
+        else if (v.startsWith('$')) classe = 'mql-op';
+        else if (next === ':') classe = 'key';
+      } else if (next === '(' && funzioni.has(upper)) classe = 'function';
+      else if (SQL_TYPES.has(upper)) classe = 'type';
+      else if (parole.has(upper)) classe = 'keyword';
+      else if (funzioni.has(upper)) classe = 'function';
+    } else if (t.tipo === 'operatore' || t.tipo === 'punteggiatura') classe = 'operator';
+    return classe ? '<span class="hl-' + classe + '">' + escHtml(v) + '</span>' : escHtml(v);
+  }).join('');
 }
 
 /* Vocabolario condiviso: il formattatore (query-formatter.js) deve mettere in

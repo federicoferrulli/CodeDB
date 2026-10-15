@@ -1,0 +1,4 @@
+  OK   native_savepoint: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   native_savepoint: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+
+1 failover reali con arresto del container primario (tre container distinti) superati.

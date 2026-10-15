@@ -1,0 +1,28 @@
+npm notice run codedb@0.2.0-beta.1 sql:native:up
+npm notice run node tools/sql-native.js up
+ Network codedb-sql-native_default Creating 
+ Network codedb-sql-native_default Creating 
+ Volume codedb-sql-native_postgres Creating 
+ Volume codedb-sql-native_postgres Creating 
+ Volume codedb-sql-native_mysql Creating 
+ Volume codedb-sql-native_mysql Creating 
+ Volume codedb-sql-native_mysql Created 
+ Volume codedb-sql-native_mysql Created 
+ Volume codedb-sql-native_postgres Created 
+ Volume codedb-sql-native_postgres Created 
+ Network codedb-sql-native_default Created 
+ Network codedb-sql-native_default Created 
+ Container codedb-sql-native-postgres-1 Creating 
+ Container codedb-sql-native-mysql-1 Creating 
+ Container codedb-sql-native-postgres-1 Created 
+ Container codedb-sql-native-mysql-1 Created 
+ Container codedb-sql-native-mysql-1 Starting 
+ Container codedb-sql-native-postgres-1 Starting 
+ Container codedb-sql-native-mysql-1 Started 
+ Container codedb-sql-native-postgres-1 Started 
+ Container codedb-sql-native-postgres-1 Waiting 
+ Container codedb-sql-native-mysql-1 Waiting 
+ Container codedb-sql-native-postgres-1 Healthy 
+ Container codedb-sql-native-mysql-1 Healthy 
+Motori pronti: PostgreSQL 127.0.0.1:55432, MySQL 127.0.0.1:53306 (porte predefinite).
+Collega utente/database codedb. Le password sono in .env.sql-native; lo stop conserva i dati.

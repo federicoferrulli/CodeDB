@@ -1,0 +1,9 @@
+FAIL MongoDB: indici nella sessione e DDL vietata nella transazione
+AssertionError [ERR_ASSERTION]: DROP deve arrivare al server nella transazione e venire rifiutato
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:143:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:136:3

@@ -2,9 +2,12 @@ import { state } from './state.js';
 import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
+import { initNativeTargets, renderNativeTargets } from './query-native.js';
+import { initMongosh, renderMongosh, risultatoMongosh } from './query-mongosh.js';
 import { queryDocument, documentoVisibile } from './query-document.js';
 import { $, emit, displayValue, displayValueBreve, ejsonKind, initToolbarDropdown, buildJsonNode, esc, showSkeletonGrid, toast, isForActiveTab, isSqlType, lucideIconHtml as ICO, refreshLucideIcons, scaricaFile } from './utils.js';
 import { initSnippetManager } from './snippet-manager.js';
+import { serializzaJsonStandard } from './export-json.js';
 import { trackPending, markPaused } from './pending-queries.js';
 import { SqlChunker, formatBytes } from './sql-chunker.js';
 import { highlightQueryCode } from './query-highlighter.js';
@@ -111,7 +114,7 @@ export function updateEditorHighlight() {
 
   const code = editorInput.value;
   const engine = $('#query-target-engine')?.value || 'auto';
-  highlightCode.innerHTML = highlightQueryCode(code, engine) + (code.endsWith('\n') ? ' ' : '');
+  highlightCode.innerHTML = highlightQueryCode(code, engine === 'mongosh' ? engine : dbmsCorrente(engine)) + (code.endsWith('\n') ? ' ' : '');
 
   if (highlightPre) {
     highlightPre.scrollTop = editorInput.scrollTop;
@@ -153,8 +156,9 @@ function aggiornaModalitaScript(code) {
   // contare (un testo così lungo non è mai una query sola) e il numero resta
   // ignoto finché non lo dice il server all'avvio.
   const troppoLungo = testo.length > 200000;
-  const n = troppoLungo ? null : countStatements(testo);
-  const script = troppoLungo || n > 1;
+  const dbms = dbmsCorrente($('#query-target-engine')?.value || 'auto');
+  const n = troppoLungo ? null : countStatements(testo, { dbms, backslashEscape: dbms === 'mysql' });
+  const script = $('#query-target-engine')?.value !== 'mongosh' && (troppoLungo || n > 1);
 
   if (label) label.textContent = script ? (n ? `Esegui Script (${n})` : 'Esegui Script') : 'Esegui Query';
   if (wrap) wrap.classList.toggle('hidden', !script);
@@ -175,7 +179,8 @@ function formattaEditor() {
   const val = editorInput.value;
   if (!val.trim()) return;
 
-  const formattato = formatCode(val);
+  const engine = $('#query-target-engine')?.value || 'auto';
+  const formattato = formatCode(val, engine === 'mongosh' ? engine : dbmsCorrente(engine));
   if (formattato === val) {
     const esito = aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
     if (!esito || esito.ok) toast('Niente da formattare (o codice non analizzabile).');
@@ -194,7 +199,8 @@ function minificaEditor() {
   const val = editorInput.value;
   if (!val.trim()) return;
 
-  const minificato = minifyCode(val);
+  const engine = $('#query-target-engine')?.value || 'auto';
+  const minificato = minifyCode(val, engine === 'mongosh' ? engine : dbmsCorrente(engine));
   if (minificato === val) {
     const esito = aggiornaLint(editorInput, $('#query-lint'), { soloSeJson: true });
     if (!esito || esito.ok) toast('Niente da minificare: gli script JavaScript non si comprimono.');
@@ -207,6 +213,7 @@ function minificaEditor() {
 }
 
 export function initQueryTab() {
+  initMongosh();
   for (const surface of ['editor', 'results', 'both']) {
     $(`#query-show-${surface}`)?.addEventListener('click', () => setQuerySurface(surface));
   }
@@ -292,6 +299,7 @@ export function initQueryTab() {
   // scelta del motore/bersaglio: stesso meccanismo.
   initToolbarDropdown('#query-editor-more-btn', '#query-editor-more-menu');
   initToolbarDropdown('#query-target-btn', '#query-target-menu');
+  initNativeTargets();
   initToolbarDropdown('#chart-export-menu-btn', '#chart-export-menu');
 
   // Switch vista risultati (Tabella / JSON Tree / Grafici / Mappa)
@@ -1787,6 +1795,7 @@ const ETICHETTA_MOTORE = {
   mysql: 'MySQL',
   postgresql: 'PostgreSQL',
   mongodb: 'MongoDB',
+  mongosh: 'mongosh',
   crossdb: 'Cross-DB',
 };
 
@@ -1795,6 +1804,8 @@ const ETICHETTA_MOTORE = {
 // MOTORE, che \u00e8 la seconda met\u00e0 della stessa domanda ("dove e come gira") e
 // prima occupava una select larga sempre a schermo.
 export function renderQueryTarget() {
+  renderMongosh();
+  renderNativeTargets();
   const el = $('#query-target-label');
   if (!el) return;
   const { db, coll } = queryTarget();
@@ -1820,7 +1831,7 @@ export function renderQueryTarget() {
   const btn = $('#query-target-btn');
   if (btn) {
     btn.title = [
-      db ? `Esegui su: ${db}${coll ? ' / ' + coll : ''}` : 'Nessun database selezionato.',
+      db ? `Esegui su: ${activeTab()?.label || ''} / ${db}${coll ? ' / ' + coll : ''}` : 'Nessun database selezionato.',
       motore === 'auto'
         ? 'Motore: deciso dal tipo del database corrente.'
         : `Motore forzato: ${ETICHETTA_MOTORE[motore] || motore}.`,
@@ -1885,6 +1896,8 @@ export function runQuery(opzioni = {}) {
   // andata in timeout o interrotta da un F5 è proprio quella che si vuole
   // ritrovare, e alla risposta non ci arriverebbe mai. L'esito si aggiunge dopo.
   const bersaglioStorico = queryTarget();
+  const dbms = dbmsCorrente(engine);
+  const script = engine !== 'mongosh' && isScript(code, { dbms, backslashEscape: dbms === 'mysql' });
   const idStorico = registraEsecuzione({
     code,
     engine,
@@ -1892,10 +1905,10 @@ export function runQuery(opzioni = {}) {
     coll: bersaglioStorico.coll,
     conn: connCorrente(),
     dbType: state.dbType,
-    script: isScript(code),
+    script,
   });
 
-  if (isScript(code)) {
+  if (script) {
     const { db: scriptDb, coll: scriptColl } = queryTarget();
     return runScript({
       code,
@@ -1966,6 +1979,7 @@ export function runQuery(opzioni = {}) {
       pendingHandle.done(res, elapsed);
       segnaTraguardo('query'); // primi passi della guida (no-op se già fatto)
       const rows = res.data || res.docs || res.rows || [];
+      if (latest && res.runtime === 'mongosh') risultatoMongosh(currentTabId, res);
       // `columns` e' la dichiarazione del motore su QUESTO result set: e'
       // l'unica cosa che descrive una SELECT senza righe.
       const colonne = Array.isArray(res.columns) ? res.columns : [];
@@ -2052,7 +2066,7 @@ export function exportQueryResults(format) {
   // leggibile, mentre l'export scriveva la forma EJSON grezza. displayValue è
   // la forma esatta e non troncata — la stessa che la griglia dati copia negli
   // appunti (cellselect.js), così due export della stessa cella coincidono.
-  // L'EJSON integrale resta nel solo formato JSON, dove è il contenuto giusto.
+  // Il JSON converte ricorsivamente i wrapper EJSON senza modificare le righe.
   const testoCella = (val) => (val === null || val === undefined ? '' : displayValue(val).text);
 
   // Letterali SQL, non stringhe infilate fra apici. Tre difetti distinti da
@@ -2094,7 +2108,7 @@ export function exportQueryResults(format) {
   } else if (format === 'json') {
     filename += '.json';
     mimeType = 'application/json';
-    content = JSON.stringify(rows, null, 2);
+    content = serializzaJsonStandard(rows);
   } else if (format === 'sql') {
     filename += '.sql';
     mimeType = 'application/sql';

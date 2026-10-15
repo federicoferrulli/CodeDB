@@ -1,4 +1,5 @@
 'use strict';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 // Test end-to-end del gateway MCP: esercita l'endpoint /mcp con il client
 // ufficiale dell'SDK contro un MongoDB locale.
@@ -95,7 +96,7 @@ let testServer = null;
     assert(rejects(() => assertReadOnlyPipeline('[{ "$merge": { "into": "x" } }]')), 'pipeline con $merge rifiutata');
 
     console.log('1. seed dei dati di test (driver MongoDB)');
-    mongo = new MongoClient('mongodb://127.0.0.1:27017', { serverSelectionTimeoutMS: 5000 });
+    mongo = new MongoClient(`mongodb://127.0.0.1:${MONGO_PORT}`, { serverSelectionTimeoutMS: 5000 });
     await mongo.connect();
     await targets.drop(DB, (name) => mongo.db(name).dropDatabase()).catch(() => {});
     // `email` è un dato personale, `descrizione` e `tipo` NO: con l'euristica a
@@ -118,7 +119,7 @@ let testServer = null;
       socket.on('connect', resolve);
       socket.on('connect_error', reject);
     });
-    const saved = await emit(socket, 'connections:save', { name: CONN_NAME, cfg: { host: '127.0.0.1', port: 27017 } });
+    const saved = await emit(socket, 'connections:save', { name: CONN_NAME, cfg: { host: '127.0.0.1', port: MONGO_PORT } });
     assert(saved.ok, `connections:save "${CONN_NAME}"${saved.ok ? '' : ' (' + saved.error + ')'}`);
 
     console.log('3. handshake MCP e tools/list');
@@ -265,7 +266,7 @@ let testServer = null;
     await call(mcp1.client, 'disconnect_database', { connection_id: roCid });
 
     console.log('14. Fase 3: scritture con conferma su connessione readOnly=false');
-    const savedRw = await emit(socket, 'connections:save', { name: RW_NAME, cfg: { host: '127.0.0.1', port: 27017, readOnly: 'false' } });
+    const savedRw = await emit(socket, 'connections:save', { name: RW_NAME, cfg: { host: '127.0.0.1', port: MONGO_PORT, readOnly: 'false' } });
     assert(savedRw.ok, `connections:save "${RW_NAME}" con readOnly=false`);
     const listRw = await call(mcp1.client, 'list_saved_connections', {});
     assert(listRw.ok && listRw.data.connections.some((c) => c.name === RW_NAME && c.readOnly === false), 'flag readOnly esposto in list_saved_connections');

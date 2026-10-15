@@ -1,0 +1,22 @@
+Motori reali: {"mongodb":"8.0.29","postgresql":"18.6 (Debian 18.6-1.pgdg13+2)","mysql":"8.4.11"}
+OK MongoDB: runCommand conserva il risultato nativo
+OK MongoDB: database fratello e risultato scalare
+OK MongoDB: distinct nativo espande gli array
+OK MongoDB: metadati, opzioni di creazione e indici
+OK MongoDB: risultati CRUD compatibili con mongosh
+OK MongoDB: sessione commit con lettura delle proprie scritture
+OK MongoDB: abort e chiusura automatica su errore
+OK MongoDB: await e callback transazionale
+OK MongoDB: tipi BSON, _id testuale e comando singolo
+OK MongoDB: getMore, cursori chiusi e metadati oltre un batch
+OK MongoDB: errore nativo conserva codice e transazione aperta viene annullata
+OK MongoDB: indici nativi, opzioni e isolamento di due sessioni
+OK MongoDB: precisione BSON anche nelle opzioni DDL
+OK MongoDB: indici nella sessione e DDL vietata nella transazione
+OK MongoDB: bulkWrite conserva identificativi, conteggi ed errori parziali
+OK MongoDB: createIndexes accetta le chiavi della shell e le opzioni comuni
+OK MongoDB: dropIndexes selettivo conserva gli altri indici
+OK MySQL: commenti eseguibili nativi per il gestore
+OK MySQL: routine native con DEFINER esplicito
+OK PostgreSQL: CTE di scrittura, MERGE e routine native
+{"eseguiti":20,"falliti":0}

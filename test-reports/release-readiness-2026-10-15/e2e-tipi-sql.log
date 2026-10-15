@@ -1,0 +1,12 @@
+  OK mysql: export HTTP, ticket, upload e import codedb-json con staging
+OK mysql codedb-json: 50 casi con valori estremi e NULL
+  OK mysql: export HTTP, ticket, upload e import sql con staging
+OK mysql sql: 50 casi con valori estremi e NULL
+OK mysql backup: 50 casi
+  OK postgresql: export HTTP, ticket, upload e import codedb-json con staging
+OK postgresql codedb-json: 103 casi con valori estremi e NULL
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK postgresql sql: 103 casi con valori estremi e NULL
+  OK postgresql: export HTTP, ticket, upload e import sql con staging
+OK postgresql pg_dump: 103 casi con valori estremi e NULL
+OK postgresql backup: 103 casi

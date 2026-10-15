@@ -55,8 +55,8 @@ let testServer = null;
     admin = await mysql.createConnection({ host: '127.0.0.1', port: MYSQL_PORT, user: 'root', password: MYSQL_PASSWORD });
     await targets.drop(DB, (name) => admin.query(`DROP DATABASE IF EXISTS \`${name}\``));
     await admin.query(`CREATE DATABASE \`${DB}\``);
-    await admin.query(`CREATE TABLE ${DB}.people (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, born DATETIME)`);
-    await admin.query(`INSERT INTO ${DB}.people (name, age, born) VALUES ('Ada', 36, '1990-01-15 10:00:00'), ('Bruno', 41, '1985-06-02 08:30:00')`);
+    await admin.query(`CREATE TABLE ${DB}.people (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, born DATETIME(6))`);
+    await admin.query(`INSERT INTO ${DB}.people (name, age, born) VALUES ('Ada', 36, '1990-01-15 10:00:00'), ('Bruno', 41, '1985-06-02 08:30:00.123456')`);
 
     console.log('1b. istanza CodeDB di test (porta dedicata, vault temporaneo)');
     testServer = await startTestServer({ port: parseInt(process.env.E2E_PORT, 10) || 3143 });
@@ -92,7 +92,7 @@ let testServer = null;
     console.log('5. execute_query: SELECT');
     const sel = await call(client, 'execute_query', { connection_id: cid, db: DB, sql: 'SELECT * FROM people ORDER BY age DESC' });
     assert(sel.ok && sel.data.total === 2 && sel.data.docs[0].name === 'Bruno', `SELECT: total = ${sel.ok ? sel.data.total : sel.text}`);
-    assert(sel.ok && sel.data.docs[0].born && sel.data.docs[0].born.$date, 'DATETIME serializzato come $date (EJSON)');
+    assert(sel.ok && sel.data.docs[0].born === '1985-06-02 08:30:00.123456', 'DATETIME nativo conserva i microsecondi senza conversione di fuso');
 
     console.log('6. guardie di sola lettura');
     const upd = await call(client, 'execute_query', { connection_id: cid, db: DB, sql: 'UPDATE people SET age = 1' });

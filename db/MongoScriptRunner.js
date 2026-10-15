@@ -1,4 +1,5 @@
 'use strict';
+const { OGGETTO_HOST, FUNZIONE_SCRIPT, FUNZIONE_NATIVA, CURSORE } = require('./mongoScriptValori');
 
 /**
  * CodeDB — Valutatore degli script MongoDB e oggetti `db` dello script
@@ -25,6 +26,7 @@ const {
   costruisciGlobali, errore, assertRegexSicura, tokenize, NOMI_VIETATI,
 } = require('./MongoScript');
 const VOCABOLARIO_COSTRUTTORI = require('../public/js/costruttori-bson');
+const { opzioniLettura } = require('./mongoOpzioni');
 const COSTRUTTORI_CON_NEW = new Set(VOCABOLARIO_COSTRUTTORI.conNew);
 
 /**
@@ -115,15 +117,27 @@ class Scope {
  */
 function creaDb(ctx, nomeDb) {
   const metodi = {
-    getName: chiamabile('getName', () => ctx.dbCorrente()),
+    getName: chiamabile('getName', () => risolviDb(ctx, nomeDb)),
+    aggregate: chiamabile('aggregate', (pipeline, options) => creaCursore(ctx, risolviDb(ctx, nomeDb), null, { pipeline, options })),
+    getMongo: chiamabile('getMongo', () => ({ [OGGETTO_HOST]: true, __get(name) {
+      if (name === 'startSession') return chiamabile(name, options => creaSessione(ctx, options));
+      throw errore(`Metodo di connessione MongoDB sconosciuto: ${name}.`);
+    } })),
+    runCommand: chiamabile('runCommand', command => ctx.host.command(risolviDb(ctx, nomeDb), aEjsonStr(command))),
+    adminCommand: chiamabile('adminCommand', command => ctx.host.command('admin', aEjsonStr(command))),
+    getCollectionInfos: chiamabile('getCollectionInfos', async (filter = {}, nameOnly = false, authorizedCollections = false) =>
+      ctx.host.collectionInfos(risolviDb(ctx, nomeDb), { filter: aEjsonStr(filter), nameOnly, authorizedCollections })),
+    stats: chiamabile('stats', (scale = 1) => ctx.host.command(risolviDb(ctx, nomeDb), aEjsonStr({ dbStats: 1, scale }))),
+    version: chiamabile('version', async () => (await ctx.host.command('admin', '{"buildInfo":1}')).version),
+    hello: chiamabile('hello', () => ctx.host.command('admin', '{"hello":1}')),
     getSiblingDB: chiamabile('getSiblingDB', (nome) => creaDb(ctx, String(nome))),
     getCollection: chiamabile('getCollection', (nome) => creaCollezione(ctx, nomeDb, String(nome))),
     getCollectionNames: chiamabile('getCollectionNames', async () => {
       const elenco = await ctx.host.listCollections(risolviDb(ctx, nomeDb));
       return (elenco || []).map((c) => (typeof c === 'string' ? c : c.name));
     }),
-    createCollection: chiamabile('createCollection', async (nome) => {
-      await ctx.host.createCollection(risolviDb(ctx, nomeDb), String(nome));
+    createCollection: chiamabile('createCollection', async (nome, options = {}) => {
+      await ctx.host.createCollection(risolviDb(ctx, nomeDb), String(nome), aEjson(options));
       return { ok: 1 };
     }),
     dropDatabase: chiamabile('dropDatabase', async () => {
@@ -133,13 +147,38 @@ function creaDb(ctx, nomeDb) {
   };
 
   return {
-    __host: true,
+    [OGGETTO_HOST]: true,
     __nome: 'db',
     __get(chiave) {
       if (Object.prototype.hasOwnProperty.call(metodi, chiave)) return metodi[chiave];
       return creaCollezione(ctx, nomeDb, chiave);
     },
   };
+}
+
+async function creaSessione(ctx, options = {}) {
+  const id = await ctx.host.startSession(aEjson(options));
+  // Le funzioni restano quelle dell'interprete; solo il contesto del driver
+  // cambia. Ogni operazione continua ad attraversare il Proxy RBAC.
+  const bound = Object.create(ctx);
+  for (const name of ['leggi', 'aggrega', 'conta', 'scrivi']) bound[name] = (...args) => ctx.host.inSession(id, () => ctx[name](...args));
+  bound.host = new Proxy(ctx.host, { get(target, name) {
+    const method = target[name];
+    return typeof method === 'function' ? (...args) => ctx.host.inSession(id, () => method(...args)) : method;
+  } });
+  let object;
+  object = { [OGGETTO_HOST]: true, __get(name) {
+    if (name === 'getDatabase') return chiamabile(name, db => creaDb(bound, String(db)));
+    if (name === 'getOptions') return chiamabile(name, () => options);
+    if (name === 'withTransaction') return chiamabile(name, (fn, opts = {}) =>
+      ctx.host.transaction(id, () => ctx.chiamaFunzione(fn, [object]), aEjson(opts)));
+    if (['startTransaction', 'commitTransaction', 'abortTransaction', 'endSession', 'hasEnded',
+      'getSessionId', 'getClusterTime', 'getOperationTime', 'advanceClusterTime', 'advanceOperationTime'].includes(name)) {
+      return chiamabile(name, (...args) => ctx.host.sessionOperation(id, name, aEjson(args)));
+    }
+    throw errore(`Metodo di sessione MongoDB sconosciuto: ${name}.`);
+  } };
+  return object;
 }
 
 // `nomeDb` null = "il database corrente", che può cambiare con `use`/`USE`.
@@ -156,55 +195,95 @@ function creaCollezione(ctx, nomeDb, nomeColl) {
 
   const metodi = {
     // --- Letture ---
-    find: chiamabile('find', (filtro, proiezione) => creaCursore(ctx, db(), nomeColl, {
-      filter: filtro, projection: proiezione,
+    find: chiamabile('find', (filtro, proiezione, options) => creaCursore(ctx, db(), nomeColl, {
+      filter: filtro, projection: proiezione, options,
     })),
-    findOne: chiamabile('findOne', async (filtro, proiezione) => {
-      const docs = await ctx.leggi(db(), nomeColl, { filter: filtro, projection: proiezione, limit: 1 });
+    findOne: chiamabile('findOne', async (filtro, proiezione, options) => {
+      const docs = await ctx.leggi(db(), nomeColl, { filter: filtro, projection: proiezione, limit: 1, options });
       return docs.length ? docs[0] : null;
     }),
-    aggregate: chiamabile('aggregate', (pipeline) => creaCursore(ctx, db(), nomeColl, { pipeline })),
-    countDocuments: chiamabile('countDocuments', (filtro) => ctx.conta(db(), nomeColl, filtro)),
-    count: chiamabile('count', (filtro) => ctx.conta(db(), nomeColl, filtro)),
-    estimatedDocumentCount: chiamabile('estimatedDocumentCount', () => ctx.conta(db(), nomeColl, {})),
-    distinct: chiamabile('distinct', async (campo, filtro) => {
-      const pipeline = [];
-      if (filtro && Object.keys(filtro).length) pipeline.push({ $match: aEjson(filtro) });
-      pipeline.push({ $group: { _id: `$${String(campo)}` } });
-      const docs = await ctx.aggrega(db(), nomeColl, pipeline);
-      return docs.map((d) => (d && '_id' in d ? d._id : null));
+    aggregate: chiamabile('aggregate', (pipeline, options) => creaCursore(ctx, db(), nomeColl, { pipeline, options })),
+    countDocuments: chiamabile('countDocuments', (filtro, options) => ctx.conta(db(), nomeColl, filtro, options)),
+    count: chiamabile('count', (filtro, options) => ctx.conta(db(), nomeColl, filtro, options)),
+    estimatedDocumentCount: chiamabile('estimatedDocumentCount', (options = {}) => ctx.host.metadata(db(), nomeColl, { method: 'estimatedDocumentCount', options: aEjsonStr(options) })),
+    distinct: chiamabile('distinct', async (campo, filtro, options = {}) => {
+      if (typeof campo !== 'string' || !campo) throw errore('distinct richiede il nome del campo.');
+      return ctx.host.distinct(db(), nomeColl, { field: campo, filter: aEjsonStr(filtro || {}), options: aEjsonStr(options) });
     }),
 
     // --- Scritture (il punto in cui cade la barriera di sola lettura della
     //     shell a comando singolo: qui uno script può creare e modificare) ---
-    insertOne: chiamabile('insertOne', (doc) => ctx.scrivi(db(), nomeColl, 'insertOne', { doc })),
-    insertMany: chiamabile('insertMany', (docs) => ctx.scrivi(db(), nomeColl, 'insertMany', { docs })),
+    insertOne: chiamabile('insertOne', (doc, options) => ctx.scrivi(db(), nomeColl, 'insertOne', { doc, options })),
+    insertMany: chiamabile('insertMany', (docs, options) => ctx.scrivi(db(), nomeColl, 'insertMany', { docs, options })),
     updateOne: chiamabile('updateOne', (f, u, o) => ctx.scrivi(db(), nomeColl, 'updateOne', { filter: f, update: u, options: o })),
     updateMany: chiamabile('updateMany', (f, u, o) => ctx.scrivi(db(), nomeColl, 'updateMany', { filter: f, update: u, options: o })),
     replaceOne: chiamabile('replaceOne', (f, d, o) => ctx.scrivi(db(), nomeColl, 'replaceOne', { filter: f, doc: d, options: o })),
-    deleteOne: chiamabile('deleteOne', (f) => ctx.scrivi(db(), nomeColl, 'deleteOne', { filter: f })),
-    deleteMany: chiamabile('deleteMany', (f) => ctx.scrivi(db(), nomeColl, 'deleteMany', { filter: f })),
+    deleteOne: chiamabile('deleteOne', (f, options) => ctx.scrivi(db(), nomeColl, 'deleteOne', { filter: f, options })),
+    deleteMany: chiamabile('deleteMany', (f, options) => ctx.scrivi(db(), nomeColl, 'deleteMany', { filter: f, options })),
     findOneAndUpdate: chiamabile('findOneAndUpdate', (f, u, o) => ctx.scrivi(db(), nomeColl, 'findOneAndUpdate', { filter: f, update: u, options: o })),
+    findOneAndReplace: chiamabile('findOneAndReplace', (f, d, o) => ctx.scrivi(db(), nomeColl, 'findOneAndReplace', { filter: f, doc: d, options: o })),
     findOneAndDelete: chiamabile('findOneAndDelete', (f, o) => ctx.scrivi(db(), nomeColl, 'findOneAndDelete', { filter: f, options: o })),
-    bulkWrite: chiamabile('bulkWrite', () => {
-      throw errore('bulkWrite non è supportato negli script: usa insertMany/updateMany o un ciclo.');
+    bulkWrite: chiamabile('bulkWrite', async (operazioni, opzioni = {}) => {
+      if (!Array.isArray(operazioni) || !operazioni.length) throw errore('bulkWrite richiede un array non vuoto.');
+      if (!opzioni || typeof opzioni !== 'object' || Array.isArray(opzioni)) throw errore('Le opzioni di bulkWrite devono essere un documento.');
+      const { ordered, ...comuni } = opzioni;
+      const validi = new Set(['insertOne', 'updateOne', 'updateMany', 'replaceOne', 'deleteOne', 'deleteMany']);
+      const piano = operazioni.map((voce, indice) => {
+        const keys = voce && typeof voce === 'object' ? Object.keys(voce) : [];
+        const op = keys[0], dati = voce?.[op];
+        if (keys.length !== 1 || !validi.has(op) || !dati || typeof dati !== 'object') throw errore(`bulkWrite: operazione ${indice + 1} non valida.`);
+        if (op !== 'insertOne' && (!dati.filter || typeof dati.filter !== 'object' || Array.isArray(dati.filter))) throw errore(`bulkWrite: filtro obbligatorio all’operazione ${indice + 1}.`);
+        const { filter, document, replacement, update, ...options } = dati;
+        return { op, args: { filter, update, doc: op === 'insertOne' ? document : replacement, options: { ...comuni, ...options } } };
+      });
+      const risultato = { acknowledged: true, insertedCount: 0, matchedCount: 0, modifiedCount: 0, deletedCount: 0, upsertedCount: 0,
+        insertedIds: {}, upsertedIds: {} };
+      const errori = [];
+      for (const [i, voce] of piano.entries()) {
+        try {
+          // Ogni voce attraversa il medesimo controllo RBAC e i medesimi
+          // budget delle scritture singole, compresa la capability delete.
+          const r = await ctx.scrivi(db(), nomeColl, voce.op, voce.args);
+          risultato.insertedCount += r.insertedCount ?? r.inserted ?? (voce.op === 'insertOne' && r.acknowledged ? 1 : 0);
+          risultato.matchedCount += r.matchedCount ?? r.matched ?? 0;
+          risultato.modifiedCount += r.modifiedCount ?? r.modified ?? 0;
+          risultato.deletedCount += r.deletedCount ?? r.deleted ?? 0;
+          risultato.upsertedCount += r.upsertedCount ?? r.upserted ?? 0;
+          if (voce.op === 'insertOne' && r.insertedId !== undefined) risultato.insertedIds[i] = r.insertedId;
+          if (r.upsertedId != null) risultato.upsertedIds[i] = r.upsertedId;
+        } catch (err) {
+          if (err.budget || err.nonCatturabile) throw err;
+          errori.push({ index: i, code: err.code, errmsg: err.message });
+          if (ordered !== false) break;
+        }
+      }
+      if (errori.length) throw Object.assign(errore(`bulkWrite incompleto (${risultato.insertedCount} inseriti, ${risultato.modifiedCount} modificati, ${risultato.deletedCount} eliminati): ${errori.map(e => `${e.index + 1}: ${e.errmsg}`).join('; ')}`),
+        { name: 'MongoBulkWriteError', code: errori[0].code, writeErrors: errori, result: risultato });
+      return risultato;
     }),
 
     // --- DDL ---
     drop: chiamabile('drop', async () => { await ctx.host.dropCollection(db(), nomeColl); return { ok: 1 }; }),
-    createIndex: chiamabile('createIndex', async (chiavi, opzioni) => {
-      await ctx.host.createIndex(db(), nomeColl, { keys: aEjson(chiavi), options: aEjson(opzioni || {}) });
-      return { ok: 1 };
+    createIndex: chiamabile('createIndex', async (chiavi, opzioni, commitQuorum) => {
+      return ctx.host.index(db(), nomeColl, { method: 'createIndex', args: aEjsonStr([chiavi, opzioni || {}, ...(commitQuorum === undefined ? [] : [commitQuorum])]) });
     }),
     dropIndex: chiamabile('dropIndex', async (nome) => {
-      await ctx.host.dropIndex(db(), nomeColl, String(nome));
-      return { ok: 1 };
+      return ctx.host.index(db(), nomeColl, { method: 'dropIndex', args: aEjsonStr([nome]) });
     }),
     getName: chiamabile('getName', () => nomeColl),
+    getFullName: chiamabile('getFullName', () => `${db()}.${nomeColl}`),
+    getDB: chiamabile('getDB', () => creaDb(ctx, nomeDb)),
+    getIndexes: chiamabile('getIndexes', () => ctx.host.metadata(db(), nomeColl, { method: 'getIndexes' })),
+    stats: chiamabile('stats', (scale = 1) => ctx.host.metadata(db(), nomeColl, { method: 'stats', scale })),
+    isCapped: chiamabile('isCapped', () => ctx.host.metadata(db(), nomeColl, { method: 'isCapped' })),
+    options: chiamabile('options', () => ctx.host.metadata(db(), nomeColl, { method: 'options' })),
   };
+  for (const method of ['createIndexes', 'dropIndexes', 'hideIndex', 'unhideIndex']) {
+    metodi[method] = chiamabile(method, (...args) => ctx.host.index(db(), nomeColl, { method, args: aEjsonStr(args) }));
+  }
 
   return {
-    __host: true,
+    [OGGETTO_HOST]: true,
     __nome: `collection ${nomeColl}`,
     __get(chiave) {
       if (Object.prototype.hasOwnProperty.call(metodi, chiave)) return metodi[chiave];
@@ -222,6 +301,7 @@ function creaCollezione(ctx, nomeDb, nomeColl) {
 function creaCursore(ctx, nomeDb, nomeColl, base) {
   const opz = { ...base };
   let materializzati = null;
+  let posizione = 0;
 
   const materializza = async () => {
     if (materializzati) return materializzati;
@@ -230,12 +310,20 @@ function creaCursore(ctx, nomeDb, nomeColl, base) {
       : await ctx.leggi(nomeDb, nomeColl, opz);
     return materializzati;
   };
+  const restanti = async () => {
+    const docs = await materializza(), result = docs.slice(posizione);
+    posizione = docs.length; ctx.ultimiDocumenti = result; return result;
+  };
 
   const cursore = {
-    __host: true,
+    [OGGETTO_HOST]: true,
     __nome: 'cursor',
-    __cursore: true,
+    [CURSORE]: true,
     materializza,
+    async itera() {
+      const docs = await materializza();
+      return (function* () { while (posizione < docs.length) yield docs[posizione++]; })();
+    },
     __get(chiave, contesto) {
       const catena = (nome, applica) => chiamabile(nome, (...args) => {
         if (materializzati) throw errore(`"${nome}" va chiamato prima di leggere il cursore`);
@@ -244,30 +332,60 @@ function creaCursore(ctx, nomeDb, nomeColl, base) {
       });
 
       switch (chiave) {
-        case 'sort': return catena('sort', (v) => { opz.sort = v; });
-        case 'limit': return catena('limit', (v) => { opz.limit = v; });
-        case 'skip': return catena('skip', (v) => { opz.skip = v; });
-        case 'projection': return catena('projection', (v) => { opz.projection = v; });
-        case 'toArray': return chiamabile('toArray', () => materializza());
-        case 'count': return chiamabile('count', async () => (await materializza()).length);
-        case 'itcount': return chiamabile('itcount', async () => (await materializza()).length);
-        case 'hasNext': return chiamabile('hasNext', async () => (await materializza()).length > 0);
+        case 'sort': return catena('sort', (v) => { if (opz.pipeline) opz.pipeline = [...opz.pipeline, { $sort: v }]; else opz.sort = v; });
+        case 'limit': return catena('limit', (v) => { if (opz.pipeline) opz.pipeline = [...opz.pipeline, { $limit: v }]; else opz.limit = v; });
+        case 'skip': return catena('skip', (v) => { if (opz.pipeline) opz.pipeline = [...opz.pipeline, { $skip: v }]; else opz.skip = v; });
+        case 'project': case 'projection': return catena(chiave, (v) => { if (opz.pipeline) opz.pipeline = [...opz.pipeline, { $project: v }]; else opz.projection = v; });
+        case 'explain': return chiamabile('explain', async (verbosity = 'queryPlanner') => {
+          const payload = { mode: opz.pipeline ? 'aggregate' : 'find', verbosity, limit: opz.limit, skip: opz.skip };
+          for (const k of ['filter', 'pipeline', 'sort', 'projection', 'options']) if (opz[k] !== undefined) payload[k] = aEjsonStr(opz[k]);
+          const result = await ctx.host.explain(nomeDb, nomeColl, payload);
+          ctx.ultimiDocumenti = [result.plan];
+          return result.plan;
+        });
+        case 'toArray': return chiamabile('toArray', restanti);
+        case 'count': return chiamabile('count', async (applySkipLimit = false) => {
+          if (opz.pipeline) throw errore('count() richiede un cursore find().');
+          const pipeline = [{ $match: opz.filter || {} }];
+          if (applySkipLimit && opz.skip) pipeline.push({ $skip: opz.skip });
+          if (applySkipLimit && opz.limit) pipeline.push({ $limit: Math.abs(opz.limit) });
+          pipeline.push({ $count: 'count' });
+          return (await ctx.aggrega(nomeDb, nomeColl, pipeline, { options: opz.options }))[0]?.count || 0;
+        });
+        case 'itcount': return chiamabile('itcount', async () => (await restanti()).length);
+        case 'hasNext': return chiamabile('hasNext', async () => posizione < (await materializza()).length);
+        case 'close': return chiamabile('close', () => { materializzati = []; posizione = 0; });
+        case 'isClosed': return chiamabile('isClosed', () => !!materializzati && posizione >= materializzati.length);
+        case 'next': case 'tryNext': return chiamabile(chiave, async () => {
+          const docs = await materializza();
+          if (posizione < docs.length) {
+            const doc = docs[posizione++]; ctx.ultimiDocumenti = [doc]; return doc;
+          }
+          if (chiave === 'tryNext') { ctx.ultimiDocumenti = []; return null; }
+          throw errore('Cursore esaurito.');
+        });
         case 'forEach': return chiamabile('forEach', async (fn) => {
           const docs = await materializza();
-          for (const d of docs) await contesto.chiamaFunzione(fn, [d]);
+          while (posizione < docs.length) await contesto.chiamaFunzione(fn, [docs[posizione++]]);
           return undefined;
         });
         case 'map': return chiamabile('map', async (fn) => {
           const docs = await materializza();
           const out = [];
-          for (const d of docs) out.push(await contesto.chiamaFunzione(fn, [d]));
+          while (posizione < docs.length) out.push(await contesto.chiamaFunzione(fn, [docs[posizione++]]));
           return out;
         });
-        // Metodi di cursore che non cambiano il risultato: accettati e ignorati,
-        // così gli script copiati dalla shell continuano a funzionare.
-        case 'pretty': case 'allowDiskUse': case 'batchSize': case 'hint':
-        case 'maxTimeMS': case 'readPref': case 'collation': case 'comment':
-          return catena(chiave, () => { /* nessun effetto */ });
+        case 'pretty': return catena(chiave, () => {});
+        case 'allowDiskUse': case 'batchSize': case 'hint': case 'maxTimeMS':
+        case 'readPref': case 'readConcern': case 'collation': case 'comment':
+        case 'min': case 'max': case 'returnKey': case 'showRecordId':
+          return catena(chiave, (v, tags, extra) => {
+            const key = chiave === 'readPref' ? 'readPreference' : chiave;
+            const val = chiave === 'readPref' ? { mode: v, ...(tags ? { tags } : {}), ...extra }
+              : chiave === 'readConcern' ? { level: v }
+              : ['allowDiskUse', 'returnKey', 'showRecordId'].includes(chiave) ? v ?? true : v;
+            opz.options = opzioniLettura({ ...opz.options, [key]: val }, !!opz.pipeline);
+          });
         default:
           throw errore(`Metodo non supportato sui cursori: "${chiave}"`);
       }
@@ -278,7 +396,7 @@ function creaCursore(ctx, nomeDb, nomeColl, base) {
 }
 
 function chiamabile(nome, impl) {
-  return { __chiamabile: true, __nome: nome, invoca: (args) => impl(...args) };
+  return { [FUNZIONE_NATIVA]: true, __nome: nome, invoca: (args) => impl(...args) };
 }
 
 /* ==========================================================================
@@ -287,7 +405,13 @@ function chiamabile(nome, impl) {
 
 class Interprete {
   constructor(host, opzioni = {}) {
-    this.host = host;
+    // Tutti gli accessi, compresi DDL, indici ed explain, consumano lo stesso
+    // budget. Contare solo nei quattro metodi CRUD lasciava percorsi esclusi.
+    this.host = new Proxy(host, { get: (target, key) => {
+      const method = target[key];
+      if (typeof method !== 'function') return method;
+      return (...args) => { this.contaChiamataDb(); return method.apply(target, args); };
+    } });
     this.limiti = { ...LIMITI_DEFAULT, memoriaBytes: limiteMemoria(), ...(opzioni.limiti || {}) };
     this.passi = 0;
     this.iterazioni = 0;
@@ -305,13 +429,13 @@ class Interprete {
 
     // Contesto passato alla sandbox dei valori e agli oggetti host.
     this.ctx = {
-      host,
+      host: this.host,
       chiamaFunzione: (fn, args) => this.chiamaFunzione(fn, args),
       dbCorrente: () => this.dbAttivo,
       stampa: (args, json) => this.stampa(args, json),
       leggi: (db, coll, opz) => this.leggi(db, coll, opz),
       aggrega: (db, coll, pipeline, opz) => this.aggrega(db, coll, pipeline, opz),
-      conta: (db, coll, filtro) => this.conta(db, coll, filtro),
+      conta: (db, coll, filtro, options) => this.conta(db, coll, filtro, options),
       scrivi: (db, coll, op, args) => this.scrivi(db, coll, op, args),
       // Budget di memoria: lo applica anche la sandbox dei valori
       // (MongoScript.legaNativo), che è dove i metodi nativi allocano.
@@ -324,6 +448,9 @@ class Interprete {
       },
     };
 
+    Object.defineProperty(this.ctx, 'ultimiDocumenti', {
+      get: () => this.ultimiDocumenti, set: docs => { this.ultimiDocumenti = docs; },
+    });
     this.globali = costruisciGlobali(this.ctx);
   }
 
@@ -352,6 +479,8 @@ class Interprete {
   }
 
   contaChiamataDb() {
+    if (Date.now() > this.scadenza) throw errBudget('Script interrotto: superato il tempo massimo.');
+    if (this.interrotto?.()) throw errBudget('Script interrotto dall’utente.');
     if (++this.chiamateDb > this.limiti.chiamateDb) {
       throw errBudget(`Script interrotto: superato il limite di ${this.limiti.chiamateDb} operazioni sul database.`);
     }
@@ -404,23 +533,26 @@ class Interprete {
   /* --- Accesso al database --- */
 
   async leggi(db, coll, opz = {}) {
-    this.contaChiamataDb();
+    const tetto = this.limiti.docPerLettura;
+    const richiesto = Number(opz.limit) || Infinity;
     const payload = {
       filter: opz.filter ? aEjsonStr(opz.filter) : '',
-      maxRows: this.limiti.docPerLettura,
+      // Una riga sentinella distingue il budget dal LIMIT voluto dall'utente.
+      maxRows: tetto + 1,
+      limit: Math.min(Math.abs(richiesto), tetto + 1) * (richiesto < 0 ? -1 : 1),
     };
     if (opz.projection) payload.projection = aEjsonStr(opz.projection);
     if (opz.sort) payload.sort = aEjsonStr(opz.sort);
-    if (opz.limit != null) payload.limit = Number(opz.limit);
     if (opz.skip != null) payload.skip = Number(opz.skip);
+    if (opz.options) payload.options = aEjsonStr(opzioniLettura(opz.options));
     const res = await this.host.find(db, coll, payload);
     const docs = (res && res.docs) || [];
+    if (res?.truncated || docs.length > tetto) throw errBudget('Lettura MQL incompleta: superato il limite di righe o byte dello script. Restringi il filtro o usa limit().');
     this.ultimiDocumenti = docs;
     return docs;
   }
 
   async aggrega(db, coll, pipeline, opz = {}) {
-    this.contaChiamataDb();
     const stadi = aEjson(pipeline);
     if (!Array.isArray(stadi)) throw errore('aggregate() richiede un array di stadi.');
     const extra = [];
@@ -429,21 +561,22 @@ class Interprete {
     if (opz.limit != null) extra.push({ $limit: Number(opz.limit) });
     const res = await this.host.aggregate(db, coll, {
       pipeline: JSON.stringify([...stadi, ...extra]),
-      maxRows: this.limiti.docPerLettura,
+      maxRows: this.limiti.docPerLettura + 1,
+      ...(opz.options ? { options: aEjsonStr(opzioniLettura(opz.options, true)) } : {}),
     });
     const docs = (res && res.docs) || [];
+    if (res?.truncated || docs.length > this.limiti.docPerLettura) throw errBudget('Aggregazione MQL incompleta: superato il limite di righe o byte dello script. Restringi la pipeline.');
     this.ultimiDocumenti = docs;
     return docs;
   }
 
-  async conta(db, coll, filtro) {
-    this.contaChiamataDb();
-    const res = await this.host.count(db, coll, { filter: filtro ? aEjsonStr(filtro) : '{}' });
+  async conta(db, coll, filtro, options) {
+    const res = await this.host.count(db, coll, { filter: filtro ? aEjsonStr(filtro) : '{}', ...(options ? { options: aEjsonStr(options) } : {}) });
+    if (res?.timedOut || res?.total == null) throw errore('Conteggio MongoDB incompleto: tempo massimo superato. Restringi il filtro.');
     return res && res.total != null ? res.total : 0;
   }
 
   async scrivi(db, coll, op, args) {
-    this.contaChiamataDb();
     const payload = { op };
     if (args.doc !== undefined) payload.doc = aEjsonStr(args.doc);
     if (args.docs !== undefined) payload.docs = aEjsonStr(args.docs);
@@ -451,14 +584,21 @@ class Interprete {
     if (args.update !== undefined) payload.update = aEjsonStr(args.update);
     if (args.options !== undefined) payload.options = aEjsonStr(args.options || {});
     const res = await this.host.write(db, coll, payload);
-    return res || { ok: 1 };
+    // Gli script salvati prima dei risultati mongosh usavano questi nomi.
+    // Restano leggibili, senza aggiungere campi al risultato JSON nativo.
+    if (res && typeof res === 'object' && !op.startsWith('findOneAnd')) {
+      for (const [old, key] of Object.entries({ inserted: 'insertedCount', matched: 'matchedCount', modified: 'modifiedCount', deleted: 'deletedCount', upserted: 'upsertedCount' })) {
+        if (res[key] !== undefined && !Object.hasOwn(res, old)) Object.defineProperty(res, old, { value: res[key] });
+      }
+    }
+    return res;
   }
 
   /* --- Chiamate --- */
 
   async chiamaFunzione(fn, args) {
-    if (fn && fn.__chiamabile) return fn.invoca(args);
-    if (!fn || !fn.__funzione) throw errore('Valore non richiamabile: non è una funzione.');
+    if (fn && fn[FUNZIONE_NATIVA]) return fn.invoca(args);
+    if (!fn || !fn[FUNZIONE_SCRIPT]) throw errore('Valore non richiamabile: non è una funzione.');
 
     if (++this.profondita > this.limiti.profondita) {
       this.profondita--;
@@ -482,10 +622,18 @@ class Interprete {
     // uno script che chiama una funzione definita più in basso deve funzionare.
     for (const st of ast.body) {
       if (st.type === 'FuncDecl') {
-        scope.dichiara(st.name, { __funzione: true, params: st.params, body: st.body, scope });
+        scope.dichiara(st.name, { [FUNZIONE_SCRIPT]: true, params: st.params, body: st.body, scope });
       }
     }
-    for (const st of ast.body) {
+    for (const [index, st] of ast.body.entries()) {
+      if (index === ast.body.length - 1 && st.type === 'ExprStmt') {
+        const value = await this.valuta(st.expr, scope);
+        if (value?.[CURSORE]) this.ultimiDocumenti = await value.__get('toArray').invoca([]);
+        else if (value !== undefined && !value?.[OGGETTO_HOST] && !value?.[FUNZIONE_SCRIPT] && !value?.[FUNZIONE_NATIVA]) {
+          this.ultimiDocumenti = (Array.isArray(value) ? value : [value]).map(v => v && typeof v === 'object' ? v : { valore: v });
+        }
+        continue;
+      }
       const esito = await this.esegui(st, scope);
       if (esito.tipo === 'return') return esito;
       if (esito.tipo !== 'normale') {
@@ -502,7 +650,7 @@ class Interprete {
         const interno = new Scope(scope);
         for (const st of nodo.body) {
           if (st.type === 'FuncDecl') {
-            interno.dichiara(st.name, { __funzione: true, params: st.params, body: st.body, scope: interno });
+            interno.dichiara(st.name, { [FUNZIONE_SCRIPT]: true, params: st.params, body: st.body, scope: interno });
           }
         }
         for (const st of nodo.body) {
@@ -581,7 +729,7 @@ class Interprete {
         const sorgente = await this.valuta(nodo.right, scope);
         const chiavi = Array.isArray(sorgente)
           ? sorgente.map((_, i) => String(i))
-          : (sorgente && typeof sorgente === 'object' && !sorgente.__host ? Object.keys(sorgente) : []);
+          : (sorgente && typeof sorgente === 'object' && !sorgente[OGGETTO_HOST] ? Object.keys(sorgente) : []);
         for (const k of chiavi) {
           this.giro();
           const interno = new Scope(scope);
@@ -644,7 +792,9 @@ class Interprete {
               // errori del motore e del driver, che non hanno altro.
               const lanciato = err && err.lanciataDalloScript && err.valore && typeof err.valore === 'object'
                 ? err.valore
-                : { message: err && err.message ? err.message : String(err) };
+                : { message: err && err.message ? err.message : String(err),
+                  ...Object.fromEntries(['name', 'code', 'codeName', 'errorLabels', 'keyPattern', 'keyValue', 'writeErrors', 'result']
+                    .filter(k => err?.[k] !== undefined).map(k => [k, aEjson(err[k])])) };
               interno.dichiara(nodo.param, lanciato);
             }
             try {
@@ -674,8 +824,8 @@ class Interprete {
   async iterabile(v, line) {
     if (Array.isArray(v)) return v;
     if (typeof v === 'string') return [...v];
-    if (v && v.__cursore) return v.materializza();
-    if (v && typeof v === 'object' && v.__host) {
+    if (v && v[CURSORE]) return v.itera();
+    if (v && typeof v === 'object' && v[OGGETTO_HOST]) {
       throw errore('Questo oggetto non è iterabile: usa .toArray() oppure .forEach().', line);
     }
     throw errore('Il valore di "for…of" non è iterabile.', line);
@@ -686,6 +836,7 @@ class Interprete {
   async valuta(nodo, scope) {
     this.passo();
     switch (nodo.type) {
+      case 'Await': return this.valuta(nodo.arg, scope);
       case 'Num': case 'Str': case 'Bool': return nodo.value;
       case 'Null': return null;
       case 'Undef': return undefined;
@@ -725,14 +876,14 @@ class Interprete {
         const out = {};
         for (const p of nodo.props) {
           const chiave = p.computed ? String(await this.valuta(p.key, scope)) : p.key.value;
-          out[chiave] = await this.valuta(p.value, scope);
+          Object.defineProperty(out, chiave, { value: await this.valuta(p.value, scope), enumerable: true, writable: true, configurable: true });
         }
         return out;
       }
 
       case 'Func':
         return {
-          __funzione: true,
+          [FUNZIONE_SCRIPT]: true,
           params: nodo.params,
           body: nodo.body,
           espressione: !!nodo.espressione,
@@ -771,6 +922,7 @@ class Interprete {
         const args = [];
         for (const a of nodo.args) args.push(await this.valuta(a, scope));
         if (nome === 'Date') return args.length ? new Date(args[0]) : new Date();
+        if (nome === 'Error') return { name: 'Error', message: String(args[0] ?? '') };
         if (nome && COSTRUTTORI_CON_NEW.has(nome) && Object.prototype.hasOwnProperty.call(this.globali, nome)) {
           return this.chiamaFunzione(this.globali[nome], args);
         }
@@ -850,7 +1002,7 @@ class Interprete {
         ? String(await this.valuta(bersaglio.prop, scope))
         : bersaglio.prop.value;
       if (obj == null) throw errore('Assegnamento su un valore nullo');
-      if (obj.__host || obj.__funzione || obj.__chiamabile) {
+      if (obj[OGGETTO_HOST] || obj[FUNZIONE_SCRIPT] || obj[FUNZIONE_NATIVA]) {
         throw errore('Gli oggetti del database non sono modificabili dallo script');
       }
       if (NOMI_VIETATI.has(chiave)) {
@@ -868,7 +1020,7 @@ class Interprete {
 function tipoDi(v) {
   if (v === null) return 'object';
   if (Array.isArray(v)) return 'object';
-  if (v && typeof v === 'object' && (v.__funzione || v.__chiamabile)) return 'function';
+  if (v && typeof v === 'object' && (v[FUNZIONE_SCRIPT] || v[FUNZIONE_NATIVA])) return 'function';
   return typeof v;
 }
 
@@ -946,7 +1098,7 @@ async function eseguiScript(code, host, opzioni = {}) {
  * l'interprete invece della divisione per `;`, che non conosce i blocchi `{}`.
  */
 const PAROLE_SCRIPT = new Set([
-  'var', 'let', 'const', 'function', 'if', 'for', 'while', 'do', 'try', 'return', 'throw',
+  'var', 'let', 'const', 'function', 'if', 'for', 'while', 'do', 'try', 'return', 'throw', 'async', 'await',
 ]);
 
 function sembraScriptJs(code) {
@@ -957,8 +1109,13 @@ function sembraScriptJs(code) {
   // shell come db.log.find({ nota: 'do not delete' }) finiva all'interprete
   // sbagliato. Il tokenizer distingue già stringhe, template e commenti.
   try {
-    for (const t of tokenize(s)) {
-      if ((t.t === 'kw' || t.t === 'ident') && PAROLE_SCRIPT.has(t.v)) return true;
+    const tokens = tokenize(s);
+    // Le keyword SQL possono essere seguite da nomi di campi come "let" o
+    // "return": questi non trasformano una SELECT in uno script JavaScript.
+    if (/^(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|REPLACE)$/i.test(tokens[0]?.v || '')) return false;
+    for (const [i, t] of tokens.entries()) {
+      const proprieta = tokens[i - 1]?.v === '.' || tokens[i + 1]?.v === ':';
+      if (!proprieta && (t.t === 'kw' || t.t === 'ident') && PAROLE_SCRIPT.has(t.v)) return true;
       if (t.t === 'op' && t.v === '=>') return true;
     }
     return false;

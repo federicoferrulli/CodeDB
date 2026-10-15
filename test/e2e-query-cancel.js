@@ -1,4 +1,5 @@
 'use strict';
+const MONGO_PORT = Number(process.env.MONGO_PORT || 27017);
 
 const { io } = require('socket.io-client');
 const { startTestServer } = require('./e2e-harness');
@@ -45,7 +46,7 @@ async function runTests() {
     console.log('--- Test E2E Query Cancel (Socket query:cancel) ---');
 
     const tabId = 'cancel-tab-1';
-    const conn = await emit('mongo:connect', { host: 'localhost', port: 27017, tabId });
+    const conn = await emit('mongo:connect', { host: 'localhost', port: MONGO_PORT, tabId });
     assert(conn.ok, 'Connessione a MongoDB riuscita');
     if (!conn.ok) return socket.close();
 

@@ -1,0 +1,46 @@
+  OK   barriera: arrestato host.docker.internal:27040, eletto host.docker.internal:27039
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato host.docker.internal:27040, eletto host.docker.internal:27039
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+MongoServerError: Transaction with { txnNumber: 41 } has been aborted.
+    at Connection.sendCommand (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:306:27)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Connection.command (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:334:26)
+    at async Server.command (C:\repository\CodeDB\node_modules\mongodb\lib\sdam\server.js:194:29)
+    at async tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:213:32)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.deleteMany (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:280:16)
+    at async recupera (C:\repository\CodeDB\db\sqlAlterMongo.js:167:3)
+    at async C:\repository\CodeDB\db\sqlAlterMongo.js:258:107
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30) {
+  errorLabelSet: Set(1) { 'TransientTransactionError' },
+  errorResponse: {
+    errorLabels: [ 'TransientTransactionError' ],
+    ok: 0,
+    errmsg: 'Transaction with { txnNumber: 41 } has been aborted.',
+    code: 251,
+    codeName: 'NoSuchTransaction',
+    '$clusterTime': {
+      clusterTime: new Timestamp({ t: 1791977170, i: 4 }),
+      signature: [Object]
+    },
+    operationTime: new Timestamp({ t: 1791977170, i: 4 })
+  },
+  ok: 0,
+  code: 251,
+  codeName: 'NoSuchTransaction',
+  '$clusterTime': {
+    clusterTime: new Timestamp({ t: 1791977170, i: 4 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: 0
+    }
+  },
+  operationTime: new Timestamp({ t: 1791977170, i: 4 })
+}
+Diagnostica: il driver ignora maxTimeMS su createIndexes; nodi ripristinati manualmente. Il runner successivo verifica il tempo con watchdog e fallimento esplicito.

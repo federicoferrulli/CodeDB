@@ -1,0 +1,6 @@
+{
+  "status": 0,
+  "signal": null,
+  "stdout": "CodeDB in ascolto su http://127.0.0.1:53067\n{\"runtime\":\"v24.21.0\",\"electron\":\"43.7.9\",\"http\":\"ok\",\"assets\":\"ok\",\"origin\":\"rifiutata\"}\n",
+  "stderr": "(node:11012) [DEP0180] DeprecationWarning: fs.Stats constructor is deprecated.\n(Use `CodeDB --trace-deprecation ...` to show where the warning was created)\n"
+}

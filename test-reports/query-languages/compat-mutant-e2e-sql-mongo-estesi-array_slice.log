@@ -1,0 +1,31 @@
+AssertionError [ERR_ASSERTION]: SELECT (ARRAY[1,2,3])[2:3] AS a,(ARRAY[1,2,3])[:2] AS b,(ARRAY[1,2,3])[20:] AS c
++ actual - expected
+
+  [
+    {
++     a: null,
++     b: null,
++     c: null
+-     a: [
+-       2,
+-       3
+-     ],
+-     b: [
+-       1,
+-       2
+-     ],
+-     c: []
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-estesi.js:6:59)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:8:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -109,7 +109,6 @@ function createModule({ operazioni, lock, identita, audit }) {
         selezione: payload.selezione || null,
         backend: motore.backend,
         formato,
-        limiteByte: formato === 'codedb-json' ? operazioni.maxImportBytes : null,
         compressione: false,
         consistenza: mongoRead ? mongoRead.avviso : 'snapshot repeatable-read; tabelle non transazionali escluse dalla garanzia',
       });
@@ -144,7 +143,6 @@ function createModule({ operazioni, lock, identita, audit }) {
         strategy: sess.strategy, plan, check,
         archivio: socketContext.archivioUpload || operazioni.archivioUpload,
         ownerId: principal.ownerId, actorId: principal.id,
-        maxBytes: plan.formato === 'codedb-json' ? operazioni.maxImportBytes : Infinity,
         progress: value => Object.assign(operation, value),
       }).then(result => {
         Object.assign(operation, result, { status: 'completato' });

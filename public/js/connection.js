@@ -8,6 +8,7 @@ import { startSchemaWatch } from './live.js';
 import { restoreSession, persistSession, restoreInProgress } from './session-restore.js';
 import { segnaTraguardo } from './onboarding-stato.js';
 import { riepilogoUri } from './riepilogo-uri.mjs';
+import { chiediConferma } from './conferma.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -51,9 +52,7 @@ export function setWizardStep(step) {
   const subtitleEl = $('#wizard-subtitle');
   if (subtitleEl) subtitleEl.textContent = subtitles[currentStep] || '';
 
-  $('#wizard-prev-btn')?.classList.toggle('hidden', currentStep === 1);
-  $('#wizard-next-btn')?.classList.toggle('hidden', currentStep === 3);
-  $('#connect-btn').textContent = currentStep === 3 ? 'Conferma e connetti' : 'Connetti';
+  updateWizardActions();
 
   $('#connect-error')?.classList.add('hidden');
   $('#connect-test-msg')?.classList.add('hidden');
@@ -61,6 +60,16 @@ export function setWizardStep(step) {
   if (currentStep === 3) {
     updateWizardSummary();
   }
+}
+
+function updateWizardActions() {
+  $('#wizard-prev-btn').classList.toggle('hidden', currentStep === 1);
+  // Il riepilogo ha già il proprio comando: il secondo percorso serve solo per configurare SSH.
+  $('#wizard-next-btn').classList.toggle('hidden', currentStep !== 1 || !$('#conn-ssh-toggle').checked);
+  const confirm = currentStep === 3;
+  const btn = $('#connect-btn');
+  btn.innerHTML = `<span>${confirm ? 'Conferma e connetti' : 'Rivedi connessione'}</span>${ICO(confirm ? 'plug-zap' : 'arrow-right', 'connection-action-icon')}`;
+  refreshLucideIcons(btn);
 }
 
 function updateWizardSummary() {
@@ -91,7 +100,8 @@ function updateWizardSummary() {
     else rows.push(['Chiave privata', cfg.sshAuth === 'path' ? cfg.sshKeyFile || 'Non impostata'
       : cfg.sshKeyName ? `${cfg.sshKeyName} · ${uploadedSshKey ? 'Caricata' : 'Già salvata'}` : savedSecrets.sshPrivateKey ? 'Già salvata' : 'Non selezionata'],
     ['Passphrase chiave', secret('sshPassphrase')]);
-    rows.push(['Impronta host SSH', cfg.sshHostKey || 'Non impostata']);
+    rows.push(['Impronta host SSH', cfg.sshHostKey || 'Da rilevare e confermare al collegamento']);
+    rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]}` : 'Disattivato']);
   }
   summaryBox.innerHTML = `<strong class="connection-summary-engine">${dbIcon} ${esc(dbTypeName)}</strong>
     <dl class="connection-summary-fields">${rows.map(([label, value]) => `<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`).join('')}</dl>`;
@@ -113,6 +123,7 @@ export function syncConnForm(updatePort = false) {
   const type = form.elements.dbType.value;
   const isSql = type === 'mysql' || type === 'postgresql' || type === 'postgres';
   const sshOn = form.elements.ssh.checked;
+  form.elements.sshLocalPort.disabled = !sshOn;
 
   $('#row-authsource').classList.toggle('hidden', isSql);
   $('#row-database').classList.toggle('hidden', !isSql);
@@ -135,6 +146,7 @@ export function syncConnForm(updatePort = false) {
     if (port.value === '3306' || port.value === '5432') port.value = '27017';
   }
   syncSshAuth();
+  updateWizardActions();
 }
 
 function sameSavedSshKey(cfg) {
@@ -218,6 +230,7 @@ function readConnForm() {
   if (sshOn) {
     cfg.sshHost = form.elements.sshHost.value;
     cfg.sshPort = form.elements.sshPort.value;
+    cfg.sshLocalPort = form.elements.sshLocalPort.value.trim();
     cfg.sshUser = form.elements.sshUser.value;
     cfg.sshAuth = form.elements.sshAuth.value;
     if (cfg.sshAuth === 'password') cfg.sshPassword = form.elements.sshPassword.value;
@@ -274,16 +287,42 @@ function senzaSegreti(cfg) {
   return copia;
 }
 
+async function conImprontaSsh(cfg, invia) {
+  try { return await invia(); }
+  catch (error) {
+    if (error.code !== 'SSH_HOST_KEY_UNKNOWN' || cfg.sshHostKey || cfg.saved) throw error;
+    const form = $('#connect-form');
+    const verificaForm = () => {
+      if ($('#connect-overlay').classList.contains('hidden')
+        || !form.elements.ssh.checked
+        || form.elements.sshHost.value !== cfg.sshHost || form.elements.sshPort.value !== cfg.sshPort
+        || form.elements.sshHostKey.value.trim()) throw new Error('Verifica SSH annullata: la connessione è stata chiusa o modificata. Riprova.');
+    };
+    verificaForm();
+    const accepted = await chiediConferma(`Prima connessione SSH a ${cfg.sshHost}:${cfg.sshPort || '22'}.\n\n`
+      + `Impronta rilevata:\n${error.sshHostKey}\n\n`
+      + 'Confrontala con quella fornita dall’amministratore del server. Nessuna credenziale è stata inviata al server SSH.\n\n'
+      + 'Vuoi fidarti di questa chiave e continuare?');
+    if (!accepted) throw new Error('Chiave SSH non approvata. Nessuna credenziale è stata inviata al server SSH.');
+    verificaForm();
+    cfg.sshHostKey = error.sshHostKey;
+    form.elements.sshHostKey.value = error.sshHostKey;
+    if (currentStep === 3) updateWizardSummary();
+    // Un solo nuovo tentativo con l’impronta approvata: una variazione resta bloccata.
+    return invia();
+  }
+}
+
 export function connectAndOpenTab(cfg) {
   const current = activeTab();
   const reuse = current && !current.state.connected ? current : null;
   const tabId = reuse ? reuse.id : safeUUID();
   saveWorkspaceInputs(); // snapshot del tab che (forse) si lascia
-  return new Promise((resolve, reject) => {
-    socket.emit('mongo:connect', { ...cfg, tabId }, (res) =>
-      res.ok ? resolve(res) : reject(new Error(res.error))
-    );
-  }).then((res) => {
+  const request = { ...cfg, tabId };
+  return conImprontaSsh(request, () => new Promise((resolve, reject) => {
+    socket.emit('mongo:connect', request, res => res.ok ? resolve(res)
+      : reject(Object.assign(new Error(res.error), { code: res.code, sshHostKey: res.sshHostKey })));
+  })).then((res) => {
     const tab = reuse || createTab({ id: tabId });
     tab.connName = cfg.saved || cfg.saveAs || null;
     // MAI i segreti in memoria nel browser (CDB-22). Prima qui restava l'intera
@@ -294,7 +333,7 @@ export function connectAndOpenTab(cfg) {
     // manda mai al client. Per una connessione non salvata la riconnessione
     // automatica non è più possibile — ed è lo stesso limite, già dichiarato,
     // del ripristino di sessione dopo un F5.
-    tab.connCfg = senzaSegreti(cfg);
+    tab.connCfg = senzaSegreti({ ...cfg, sshHostKey: res.sshHostKey || cfg.sshHostKey });
     tab.dbType = res.dbType || 'mongodb';
     tab.label = tab.connName || res.label || 'Connessione';
     Object.assign(tab.state, {
@@ -341,12 +380,13 @@ export function startEditConn(name) {
     form.elements.ssh.checked = (f.ssh || '').toLowerCase() === 'true';
     form.elements.sshHost.value = f.sshHost || '';
     form.elements.sshPort.value = f.sshPort || '22';
+    form.elements.sshLocalPort.value = f.sshLocalPort || '';
     form.elements.sshUser.value = f.sshUser || '';
     form.elements.sshAuth.value = f.sshAuth || (res.hasSshPrivateKey ? 'upload' : f.sshKeyFile ? 'path' : 'password');
     savedSshAuth = form.elements.sshAuth.value;
     savedSshKeyFile = f.sshKeyFile || '';
     form.elements.sshPassword.value = '';
-    form.elements.sshPassword.placeholder = res.hasSshPassword ? '(invariata se lasciata vuota)' : '(vuoto se usi una chiave)';
+    form.elements.sshPassword.placeholder = res.hasSshPassword ? '(invariata se lasciata vuota)' : '';
     form.elements.sshKeyFile.value = f.sshKeyFile || '';
     form.elements.sshHostKey.value = f.sshHostKey || '';
     form.elements.sshPassphrase.value = '';
@@ -388,7 +428,7 @@ function cancelEditConn() {
   form.reset();
   form.elements.password.placeholder = '';
   form.elements.uri.placeholder = '';
-  form.elements.sshPassword.placeholder = '(vuoto se usi una chiave)';
+  form.elements.sshPassword.placeholder = '';
   form.elements.sshPassphrase.placeholder = '(se la chiave è protetta)';
   syncConnForm();
   setWizardStep(1);
@@ -432,7 +472,7 @@ export function initConnection() {
     // Etichetta salvata e ripristinata da `conCaricamento`: prima "⚡ Testa
     // Connessione" era una stringa letterale ripetuta in tre punti, e bastava
     // rinominare il pulsante nell'HTML perché al primo clic cambiasse nome.
-    conCaricamento(btn, () => emit('connections:test', cfg), 'Verifica…')
+    conCaricamento(btn, () => conImprontaSsh(cfg, () => emit('connections:test', cfg)), 'Verifica…')
       .then((res) => {
         const msg = $('#connect-test-msg');
         msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;

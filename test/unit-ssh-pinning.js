@@ -28,6 +28,13 @@ try {
   const nonApprovata = creaVerificaHostKey({});
   assert.strictEqual(nonApprovata.verify(keyA, 'bastion'), false,
     'una connessione non salvata senza pin esplicito non deve fare TOFU volatile');
+  assert.strictEqual(nonApprovata.error.code, 'SSH_HOST_KEY_UNKNOWN');
+  assert.strictEqual(nonApprovata.error.sshHostKey, fpA, 'L’impronta rilevata deve essere disponibile senza estrarla dal messaggio');
+  assert.strictEqual(cambiata.error.sshHostKey, undefined, 'Una chiave diversa non deve proporre una nuova approvazione');
+  process.env.CODEDB_SSH_STRICT_HOST_KEY = 'on';
+  const strict = creaVerificaHostKey({});
+  assert.strictEqual(strict.verify(keyA, 'bastion'), false);
+  assert.strictEqual(strict.error.sshHostKey, undefined, 'La modalità rigorosa richiede una verifica esterna');
   console.log('  OK   chiave nuova, nota, cambiata e archivio non scrivibile');
 } finally {
   if (previous == null) delete process.env.CODEDB_SSH_STRICT_HOST_KEY;

@@ -1,0 +1,34 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+  OK   Opzioni della scrittura non possono nascondere OLD/NEW
+  OK   MQL updateMany senza modifiche
+  OK   MQL pipeline e variabili let
+  OK   findOneAndReplace: OLD e trigger
+  OK   findOneAndUpdate: OLD proiettato e sort
+  OK   findOneAndUpdate upsert: identità anche con OLD null
+  OK   findOneAndUpdate upsert con metadati
+  OK   Upsert con identità BSON null
+  OK   Eliminazione con identità BSON null
+  OK   replaceOne con upsert
+  OK   Griglia: inserimento BSON esatto
+  OK   Griglia: modifica
+  OK   Griglia: sostituzione
+  OK   MCP: aggiornamento di massa
+  OK   Import EJSON: upsert ripetuti conservano ogni OLD/NEW
+  OK   Import BSON: upsert ripetuti conservano ogni OLD/NEW
+  OK   Import BSON: inserimento
+  OK   Griglia: elimina
+  OK   MQL deleteOne
+  OK   MQL findOneAndDelete sort
+  OK   MQL deleteMany
+  OK   MQL nessuna corrispondenza: nessun evento
+  OK   Trigger MQL rispetta gli scope
+  OK   Trigger fallito annulla updateMany e tutti gli audit
+  OK   Trigger fallito annulla import BSON e tutti gli audit
+  OK   Eliminazione di massa della griglia
+  OK   BEFORE SQL/MQL: visibilità OLD, assegnazioni NEW, upsert, pipeline, array posizionali, BSON esatto e rollback
+  OK   Trigger sulle cascate FK SQL/MQL, compreso il rollback del padre dopo errore del figlio
+  OK   Cursori: BIGINT esatto, handler EXIT, scope, cap e budget complessivo
+  OK   WHEN ed eventi multipli su MQL/import BSON; autorizzazione anche del corpo non percorso
+
+32 verifiche reali degli eventi MQL, griglia e import superate.

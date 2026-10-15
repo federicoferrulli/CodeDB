@@ -1,0 +1,16 @@
+  • electron-builder  version=26.17.0 os=10.0.26200
+  • loaded configuration  file=package.json ("build" field)
+  • skipped dependencies rebuild  reason=npmRebuild is set to false
+  • packaging       platform=win32 arch=x64 electron=43.7.9 appOutDir=test-reports\release-readiness-2026-10-15\windows\win-unpacked
+  • downloaded      label=electron progress=100%
+  • downloaded electron zip extracted successfully  output=C:\repository\CodeDB\test-reports\release-readiness-2026-10-15\windows\win-unpacked
+  • searching for node modules  pm=npm searchDir=C:\repository\CodeDB
+  • duplicate dependency references  dependencies=["ajv@8.20.0","express@4.22.3","mime-types@3.0.2","debug@4.4.3","http-errors@2.0.1","iconv-lite@0.7.3","on-finished@2.4.1","qs@6.16.0","raw-body@3.0.2","type-is@2.1.0","debug@4.4.3","on-finished@2.4.1","http-errors@2.0.1","on-finished@2.4.1","proxy-addr@2.0.8","qs@6.16.0","debug@4.4.3","http-errors@2.0.1","mime-types@3.0.2","on-finished@2.4.1","send@1.2.1","mime-types@3.0.2","http-errors@2.0.1","debug@2.6.9","http-errors@2.0.1","on-finished@2.4.1","qs@6.16.0","http-errors@2.0.1","iconv-lite@0.4.24","type-is@1.6.18","debug@2.6.9","on-finished@2.4.1","get-intrinsic@1.3.0","call-bind-apply-helpers@1.0.2","call-bind-apply-helpers@1.0.2","es-object-atoms@1.1.2","call-bound@1.0.4","get-intrinsic@1.3.0","side-channel-map@1.0.1","debug@2.6.9","http-errors@2.0.1","on-finished@2.4.1","send@0.19.2","mime-types@2.1.35","pg@8.22.0","accepts@1.3.8","cors@2.8.6","@types/node@25.9.2","@types/node@25.9.2","@types/node@25.9.2","accepts@1.3.8","cors@2.8.6"]
+  • updating asar integrity executable resource  executablePath=test-reports\release-readiness-2026-10-15\windows\win-unpacked\CodeDB.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\release-readiness-2026-10-15\windows\win-unpacked\CodeDB.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\release-readiness-2026-10-15\windows\win-unpacked\resources\app.asar.unpacked\node_modules\ssh2\util\pagent.exe
+  • building        target=nsis file=test-reports\release-readiness-2026-10-15\windows\CodeDB-0.2.1-beta.1-setup.exe archs=x64 oneClick=false perMachine=false
+  • no code signing certificate configured, signing is skipped  path=C:\Users\Keus\AppData\Local\Temp\t-nwYdkV\elevate-staging-1\resources\elevate.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\release-readiness-2026-10-15\windows\CodeDB-0.2.1-beta.1-setup.__uninstaller.exe
+  • no code signing certificate configured, signing is skipped  path=test-reports\release-readiness-2026-10-15\windows\CodeDB-0.2.1-beta.1-setup.exe
+  • building block map  blockMapFile=test-reports\release-readiness-2026-10-15\windows\CodeDB-0.2.1-beta.1-setup.exe.blockmap

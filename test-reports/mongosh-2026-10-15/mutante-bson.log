@@ -1,0 +1,28 @@
+OK runtime JavaScript ufficiale e variabili persistenti isolate per tab
+OK load, require, import e contesto Node.js ufficiale
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  {
+    decimal: {
+      '$numberDecimal': '123456789.0000000001'
+    },
++   inf: null,
++   nan: null
+-   inf: {
+-     '$numberDouble': 'Infinity'
+-   },
+-   nan: {
+-     '$numberDouble': 'NaN'
+-   }
+  }
+
+    at C:\repository\CodeDB\test\e2e-mongosh-runtime.js:78:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Object],
+  expected: [Object],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

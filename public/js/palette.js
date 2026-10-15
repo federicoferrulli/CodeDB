@@ -3,7 +3,7 @@ import { mountArcControls, removeDialog } from '../arc/ui.js';
 
 /* ---------------------------------------------------------------------------
  * Palette di ricerca e comandi veloci (Ctrl+P) + dispatcher delle scorciatoie
- * GLOBALI (Ctrl+B pannello sinistro, Ctrl+W chiudi scheda, Ctrl+P palette).
+ * GLOBALI (pannello sinistro, chiusura e navigazione schede, palette).
  *
  * Le combinazioni vengono dal catalogo (`scorciatoie.js`), quindi sono
  * rimappabili da Impostazioni e salvate sotto al tenant. Il dispatcher esegue
@@ -15,10 +15,10 @@ import { mountArcControls, removeDialog } from '../arc/ui.js';
  * Firefox lo riservano alla scheda) — funziona nell'app desktop Electron.
  * ------------------------------------------------------------------------- */
 
-import { activeTab, tabs, closeTab } from './tabs.js';
+import { activeTab, tabs, closeTab, switchTab } from './tabs.js';
 import { renderTabBar } from './tabbar.js';
-import { renderWorkspace } from './workspace.js';
-import { closeCollTab, openCollTab } from './colltabs.js';
+import { renderWorkspace, saveWorkspaceInputs } from './workspace.js';
+import { closeCollTab, openCollTab, switchCollTab } from './colltabs.js';
 import { elencoConnessioni } from './connmanager.js';
 import { toggleDrawer } from './responsive.js';
 import { openConnModal } from './connection.js';
@@ -31,7 +31,7 @@ import { preparaTransizioneTab, fermaTransizioniTab } from './tab-motion.js';
 import { preparaTransizioneAlbero, fermaTransizioniAlbero } from './navigator-motion.js';
 
 /** Le azioni che QUESTO modulo esegue globalmente. */
-const GLOBALI = new Set(['sidebarConnessioni', 'chiudiScheda', 'paletteComandi']);
+const GLOBALI = new Set(['sidebarConnessioni', 'chiudiScheda', 'paletteComandi', 'tabellaSuccessiva', 'databaseSuccessivo']);
 
 /* Le tabelle di TUTTI i database del tab, non dei primi dodici: una palette che
  * cerca in mezzo elenco è peggio di una che dichiara di non cercare. Ciò che
@@ -66,6 +66,24 @@ function chiudiScheda() {
   closeTab(t.id); // nessuna scheda aperta: si chiude il tab di connessione
   renderTabBar();
   renderWorkspace();
+}
+
+function tabellaSuccessiva() {
+  const t = activeTab();
+  if (!t?.state.connected || t.state.collTabs.length < 2) return;
+  const lista = t.state.collTabs;
+  const indice = lista.findIndex(c => c.id === t.state.activeCollId);
+  switchCollTab(lista[(indice + 1) % lista.length].id);
+  $('#coll-tab-bar [aria-selected="true"]')?.focus();
+}
+
+function databaseSuccessivo() {
+  const lista = tabs.list.filter(t => t.state.connected);
+  if (lista.length < 2) return;
+  const indice = lista.findIndex(t => t.id === tabs.activeId);
+  saveWorkspaceInputs();
+  switchTab(lista[(indice + 1) % lista.length].id);
+  $('#tab-bar [aria-selected="true"]')?.focus();
 }
 
 /* --------------------------------- Palette -------------------------------- */
@@ -539,13 +557,18 @@ export function initPalette() {
   }
 
   document.addEventListener('keydown', (e) => {
+    if (e.defaultPrevented || e.isComposing || document.querySelector('.scorciatoie-riga.attiva')) return;
     const id = azioneDiEvento(e);
     if (!id || !GLOBALI.has(id)) return; // le altre azioni sono dei loro consumatori
+    // Una modale conserva il proprio contesto anche se si preme la scorciatoia di cambio scheda.
+    if ((id === 'tabellaSuccessiva' || id === 'databaseSuccessivo') && document.querySelector('.overlay:not(.hidden)')) return;
     // I soli modificatori non fanno nulla: il keydown di Ctrl da solo passa.
     e.preventDefault();
     e.stopPropagation();
     if (id === 'sidebarConnessioni') mostraBarraConnessioni();
     else if (id === 'chiudiScheda') chiudiScheda();
     else if (id === 'paletteComandi') apriPalette();
+    else if (id === 'tabellaSuccessiva') tabellaSuccessiva();
+    else if (id === 'databaseSuccessivo') databaseSuccessivo();
   }, true);
 }

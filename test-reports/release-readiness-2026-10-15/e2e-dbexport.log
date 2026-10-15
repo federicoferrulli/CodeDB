@@ -1,0 +1,20 @@
+MongoDB (tab "m")
+  OK   connessione (ok)
+  OK   collection:ddl → null su MongoDB
+  OK   indici presenti in collection:stats
+  OK   export json (2 documenti)
+  OK   import (2 documenti)
+  OK   indice ricreato nella destinazione
+  OK   tipi EJSON preservati dopo il roundtrip
+  OK   MongoDB: primo blocco totale=5 count=2 (totale=5 count=2)
+  OK   MongoDB: secondo blocco senza totale, count=2 (totale=undefined count=2)
+  OK   MongoDB: terzo blocco senza totale, count=1 (totale=undefined count=1)
+MySQL (tab "s")
+  OK   collection:ddl → CREATE TABLE
+  OK   export json (2 righe)
+  OK   DDL eseguito nella destinazione (ok)
+  OK   import (2 righe)
+  OK   MySQL: primo blocco totale=5 count=2 (totale=5 count=2)
+  OK   MySQL: secondo blocco senza totale, count=2 (totale=undefined count=2)
+  OK   MySQL: terzo blocco senza totale, count=1 (totale=undefined count=1)
+e2e-dbexport: tutti i test superati.

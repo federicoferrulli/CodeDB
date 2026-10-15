@@ -48,6 +48,18 @@ export const CATALOGO = [
     predefinito: 'Ctrl+W',
   },
   {
+    id: 'tabellaSuccessiva',
+    etichetta: 'Passa alla scheda tabella successiva',
+    descrizione: 'Scorre le schede aperte nella barra delle tabelle della connessione attiva, tornando alla prima dopo l’ultima. Richiede almeno due schede.',
+    predefinito: 'Ctrl+Tab',
+  },
+  {
+    id: 'databaseSuccessivo',
+    etichetta: 'Passa alla scheda database successiva',
+    descrizione: 'Scorre le connessioni/database aperti nella barra superiore, tornando al primo dopo l’ultimo. Richiede almeno due schede.',
+    predefinito: 'Ctrl+Shift+Tab',
+  },
+  {
     id: 'paletteComandi',
     etichetta: 'Ricerca e comandi veloci',
     descrizione: 'Apre la palette: cerca connessioni, database, tabelle ed esegui comandi da tastiera (Ctrl+P di default).',
@@ -137,7 +149,7 @@ export function etichettaCombo(combo) {
   if (combo.shift) parti.push('Shift');
   if (combo.meta) parti.push('Meta');
   const t = combo.tasto;
-  parti.push(t === ' ' ? 'Spazio' : t.length === 1 ? t.toUpperCase() : t);
+  parti.push(t === ' ' ? 'Spazio' : t === 'tab' ? 'Tab' : t.length === 1 ? t.toUpperCase() : t);
   return parti.join('+');
 }
 

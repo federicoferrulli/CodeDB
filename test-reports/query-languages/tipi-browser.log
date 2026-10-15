@@ -1,0 +1,11 @@
+OK postgresql: JSONB_PATH_QUERY inserito dal dropdown reale
+OK mysql: JSON_TABLE inserito dal dropdown reale
+OK mongodb: $dateTrunc inserito dal dropdown reale
+OK mongodb: aggregate inserito dal dropdown reale
+OK mongodb: sort inserito dal dropdown reale
+OK mongodb: UPPER inserito dal dropdown reale
+OK mongodb: ARRAY_POSITION inserito dal dropdown reale
+OK mongodb: INT4RANGE inserito dal dropdown reale
+OK mongodb: bulkWrite inserito dal dropdown reale
+OK mongodb: collation inserito dal dropdown reale
+OK formattazione, tastiera accessibile e dropdown desktop/mobile; nessun errore JavaScript

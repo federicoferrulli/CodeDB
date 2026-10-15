@@ -1,0 +1,21 @@
+MongoServerError: Can't extract geo keys: { _id: ObjectId('6acfa0bd67670ff3ea808c92'), id: 2, g: { type: "Point", coordinates: [ 300, 300 ] } }  Longitude/latitude is out of bounds, lng: 300 lat: 300
+    at InsertOneOperation.handleOk (C:\repository\CodeDB\node_modules\mongodb\lib\operations\insert.js:51:19)
+    at tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.insertOne (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:154:16)
+    at async Object.verifica (C:\repository\CodeDB\db\sqlPreflightIndici.js:24:76)
+    at async validate (C:\repository\CodeDB\db\sqlSavepointMongo.js:87:149)
+    at async Proxy.<anonymous> (C:\repository\CodeDB\db\sqlSavepointMongo.js:128:15)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:213:53)
+    at async scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 16755,
+    errmsg: `Can't extract geo keys: { _id: ObjectId('6acfa0bd67670ff3ea808c92'), id: 2, g: { type: "Point", coordinates: [ 300, 300 ] } }  Longitude/latitude is out of bounds, lng: 300 lat: 300`
+  },
+  index: 0,
+  code: 16755,
+  Symbol(istruzione SQL da annullare): true
+}

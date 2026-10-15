@@ -24,8 +24,8 @@
  * serve **da tutte e due le parti**. Il browser lo importa come modulo ES; il
  * server, che è CommonJS, lo raggiunge con `require()` — cosa che Node concede
  * solo a un file dichiaratamente ESM, quale `.js` in questo pacchetto non è.
- * Per questo non ha alcuna dipendenza: nessun DOM, nessun `require`, nessun
- * import. Il ponte lato server è `db/identificatori.js`.
+ * Importa soltanto cataloghi di dati, senza DOM o runtime del browser.
+ * Il ponte lato server è `db/identificatori.js`.
  */
 
 /**
@@ -36,6 +36,9 @@
  * riconosce come identificatori quotati solo `` `…` `` e `[…]`. Scriverci
  * `"Prova"` non darebbe una tabella, darebbe un testo.
  */
+import { KEYWORDS_MYSQL, RISERVATE_POSTGRESQL } from './query-cataloghi.mjs';
+const riservateMysql = new Set(KEYWORDS_MYSQL);
+const riservatePg = new Set(RISERVATE_POSTGRESQL);
 export const APICE = { mysql: '`', postgresql: '"', mongodb: '`' };
 
 /** Normalizza il nome del motore nelle tre famiglie che CodeDB conosce. */
@@ -84,6 +87,7 @@ export function serveQuoting(nome, dbType) {
   const s = String(nome == null ? '' : nome);
   if (!s) return false;
   if (SQL_KEYWORDS.has(s.toUpperCase())) return true;
+  if ((d === 'mysql' ? riservateMysql : d === 'postgresql' ? riservatePg : SQL_KEYWORDS).has(s.toUpperCase())) return true;
   return d === 'postgresql'
     ? !/^[a-z_][a-z0-9_$]*$/.test(s)   // una sola maiuscola basta
     : !/^[A-Za-z_][A-Za-z0-9_$]*$/.test(s);

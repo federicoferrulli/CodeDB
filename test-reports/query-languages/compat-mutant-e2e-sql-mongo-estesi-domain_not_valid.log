@@ -1,0 +1,9 @@
+Error: I dati esistenti violano il nuovo schema SQL.
+    at C:\repository\CodeDB\db\sqlAlterMongo.js:307:54
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+    at async Object.esegui (C:\repository\CodeDB\db\sqlAlterMongo.js:201:5)
+    at async execute (C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:116:20)
+    at async all (C:\repository\CodeDB\test\sql-mongo-estesi.js:5:42)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:45:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:133:18

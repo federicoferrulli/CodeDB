@@ -310,6 +310,7 @@ const SHELL_WRITE_CAPABILITY = {
   updateMany: 'write',
   replaceOne: 'write',
   findOneAndUpdate: 'write',
+  findOneAndReplace: 'write',
   deleteOne: 'delete',
   deleteMany: 'delete',
   findOneAndDelete: 'delete',
@@ -324,7 +325,7 @@ function shellWriteCapability(op) {
 function shellWriteCapabilities(op) {
   const operation = String(op || '');
   const mutation = shellWriteCapability(operation);
-  return operation === 'findOneAndUpdate' || operation === 'findOneAndDelete'
+  return operation === 'findOneAndUpdate' || operation === 'findOneAndReplace' || operation === 'findOneAndDelete'
     ? ['read', mutation]
     : [mutation];
 }
@@ -472,6 +473,17 @@ const METHOD_CAPABILITY = {
   // `deleteMany` dentro uno script richiede quindi `delete` esattamente come
   // dalla griglia: lo script non è una scorciatoia per i permessi.
   shellWrite:          { cap: 'dynamic', kind: 'shellWrite', db: 0, coll: 1 },
+  mongoCommand:        { cap: 'manage', whole: true, db: 0 },
+  mongoDistinct:       { cap: 'read', db: 0, coll: 1 },
+  mongoShellRead:      { cap: 'read', db: 0, coll: 1 },
+  mongoCollectionInfos: { cap: 'read', db: 0, filter: 'collections' },
+  mongoDatabaseAggregate: { cap: 'manage', whole: true, db: 0 },
+  mongoShellIndex:     { cap: 'ddl', db: 0, coll: 1 },
+  mongoSqlRead:        { cap: 'dynamic', kind: 'mongoSqlRead', db: 0 },
+  mongoSqlReturning:   { cap: 'dynamic', kind: 'mongoSqlReturning', db: 0, coll: 1 },
+  mongoSqlSchema:      { cap: 'dynamic', kind: 'mongoSqlSchema', db: 0, coll: 1 },
+  mongoSqlProcedure:   { cap: 'dynamic', kind: 'mongoSqlProcedure', db: 0, coll: 1 },
+  mongoSqlTrigger:     { cap: 'ddl', db: 0, coll: 1 },
 
   docInsert:           { cap: 'write', db: 0, coll: 1 },
   docUpdate:           { cap: 'write', db: 0, coll: 1 },

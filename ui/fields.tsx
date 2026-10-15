@@ -47,9 +47,13 @@ function mountField(model: Model) {
     queued = true;
     queueMicrotask(() => { queued = false; if (!disposed) render(); });
   };
-  const change = (value: string) => {
+  const previewColor = (value: string) => {
     model.value = value;
     model.dispatchEvent(new Event('input', { bubbles: true }));
+    sync();
+  };
+  const commitColor = () => {
+    // Come nel controllo nativo, change conclude il gesto e non ogni movimento.
     model.dispatchEvent(new Event('change', { bubbles: true }));
     sync();
   };
@@ -75,7 +79,7 @@ function mountField(model: Model) {
       root.render(<Checkbox {...fieldProps()} data-arc-component="checkbox" checked={model.indeterminate ? 'indeterminate' : model.checked}
         disabled={model.disabled} onCheckedChange={() => { model.click(); sync(); }} />);
     } else if (model.type === 'color') {
-      root.render(<ColorPicker label={label} compact value={model.value} onValueChange={change} disabled={model.disabled} allowAlpha={false}
+      root.render(<ColorPicker label={label} compact value={model.value} onValueChange={previewColor} onValueCommit={commitColor} disabled={model.disabled} allowAlpha={false}
         background={getComputedStyle(document.body).backgroundColor} />);
     } else {
       root.render(<DateField model={model} label={label} />);

@@ -1,0 +1,27 @@
+C:\repository\CodeDB\tools\verifica-mongosh-nativi.cjs:9
+        throw new Error(`Modulo nativo ${nome} non caricabile: esegui npm rebuild kerberos mongodb-client-encryption con gli script di installazione abilitati prima di creare il pacchetto.`,{cause});
+        ^
+
+Error: Modulo nativo kerberos non caricabile: esegui npm rebuild kerberos mongodb-client-encryption con gli script di installazione abilitati prima di creare il pacchetto.
+    at verifica (C:\repository\CodeDB\tools\verifica-mongosh-nativi.cjs:9:15)
+    at Object.<anonymous> (C:\repository\CodeDB\tools\verifica-mongosh-nativi.cjs:16:27)
+    ... 3 lines matching cause stack trace ...
+    at Module.<anonymous> (node:internal/modules/cjs/loader:1398:12)
+    at Module._load (C:\repository\CodeDB\test\fixtures\mongosh-mutante.cjs:18:17)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:154:5)
+    at node:internal/main/run_main_module:33:47 {
+  [cause]: Error: Modulo nativo mancante (mutazione di prova)
+      at Module._load (C:\repository\CodeDB\test\fixtures\mongosh-mutante.cjs:17:72)
+      at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+      at Module.require (node:internal/modules/cjs/loader:1619:12)
+      at require (node:internal/modules/helpers:191:16)
+      at verifica (C:\repository\CodeDB\tools\verifica-mongosh-nativi.cjs:7:13)
+      at Object.<anonymous> (C:\repository\CodeDB\tools\verifica-mongosh-nativi.cjs:16:27)
+      at Module._compile (node:internal/modules/cjs/loader:1873:14)
+      at Object..js (node:internal/modules/cjs/loader:2013:10)
+      at Module.load (node:internal/modules/cjs/loader:1596:32)
+      at Module.<anonymous> (node:internal/modules/cjs/loader:1398:12)
+}
+
+Node.js v26.2.0

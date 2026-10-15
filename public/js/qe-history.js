@@ -240,9 +240,7 @@ export function initQeHistory() {
   if (!btn || !panel) return;
 
   btn.addEventListener('click', (e) => {
-    // Serve a non far chiudere subito il pannello dal gestore su `document`
-    // qui sotto — ma impedisce anche al menu ⋯ che ospita questa voce di
-    // accorgersi del clic, quindi lo si chiude a mano.
+    // Il clic non raggiunge il menu ⋯ che ospita questa voce: lo si chiude qui.
     e.stopPropagation();
     const menu = $('#query-editor-more-menu');
     if (menu) menu.classList.add('hidden');
@@ -260,10 +258,15 @@ export function initQeHistory() {
     }
   });
 
-  document.addEventListener('click', (e) => {
-    if (!panel.classList.contains('hidden') && !panel.contains(e.target)) hidePanel();
+  // La select apre al pointerdown; il successivo click può arrivare su <html>.
+  document.addEventListener('pointerdown', (e) => {
+    if (panel.contains(e.target) || btn.contains(e.target) || e.target.closest('[data-arc-select-popup]')) return;
+    hidePanel();
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') hidePanel();
+    if (e.key !== 'Escape' || e.defaultPrevented || panel.classList.contains('hidden')) return;
+    e.preventDefault();
+    hidePanel();
+    $('#query-editor-more-btn')?.focus();
   });
 }

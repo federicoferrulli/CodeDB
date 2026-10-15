@@ -1,0 +1,9 @@
+{
+  "data": "2026-10-15T18:25:04.784Z",
+  "versions": {
+    "postgresql": "18.6 (Debian 18.6-1.pgdg13+2)",
+    "mysql": "8.4.11"
+  },
+  "queries": 117,
+  "esito": "ok"
+}

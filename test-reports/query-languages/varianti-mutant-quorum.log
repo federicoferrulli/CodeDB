@@ -1,0 +1,14 @@
+  OK   indice: arrestato host.docker.internal:27041, eletto host.docker.internal:27039
+AssertionError [ERR_ASSERTION]: Migrazione bloccata per oltre 20 secondi con un nodo offline: quorum non disponibile.
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-failover.js:136:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

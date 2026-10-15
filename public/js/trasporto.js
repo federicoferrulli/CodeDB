@@ -102,7 +102,14 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
     };
     // Anche gli errori portano l'origine: i callback di errore devono poter
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
-    const fail = (msg) => rejectOnce(stamp(new Error(msg)));
+    const fail = (msg, res) => {
+      const error = new Error(msg);
+      if (res?.code === 'SSH_HOST_KEY_UNKNOWN') {
+        error.code = res.code;
+        error.sshHostKey = res.sshHostKey;
+      }
+      rejectOnce(stamp(error));
+    };
     if (timeoutMs > 0) {
       timeout = setTimeout(() => fail('Risposta non ricevuta entro il tempo previsto: esito da verificare.'), timeoutMs);
     }
@@ -169,7 +176,7 @@ export function emit(event, payload, { timeoutMs = 0 } = {}) {
             }
           });
         } else {
-          fail(res ? res.error : 'Errore sconosciuto');
+          fail(res ? res.error : 'Errore sconosciuto', res);
         }
       }
     });

@@ -1,0 +1,6 @@
+FAIL MongoDB: tipi BSON, _id testuale e comando singolo
+TypeError: Cannot read properties of null (reading '_id')
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:96:86
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:93:3

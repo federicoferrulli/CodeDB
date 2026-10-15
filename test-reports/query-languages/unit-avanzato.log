@@ -1,0 +1,1490 @@
+npm notice run codedb@0.2.0-beta.1 test
+npm notice run node test/unit.js
+--- Test Unitari CodeDB ---
+[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+  OK   Preproduzione: byte UTF-8, cursori, cronologia, SQL→MQL, JOIN e transazioni isolate
+SQL→MQL — find semplici
+  ✓ SELECT * FROM users
+  ✓ proiezione colonne esclude _id
+  ✓ WHERE con operatori
+  ✓ WHERE uguaglianza stringa
+  ✓ WHERE != e <>
+  ✓ AND combina in $and
+  ✓ OR combina in $or
+  ✓ precedenza: AND lega più di OR
+  ✓ parentesi forzano il raggruppamento
+  ✓ IN e NOT IN
+  ✓ LIKE ancorato a un prefisso: nessun flag "i", così l'indice è usabile
+  ✓ LIKE con _ singolo carattere (ancorato)
+  ✓ LIKE non ancorato: il flag "i" resta, l'indice non era usabile comunque
+  ✓ ILIKE chiede esplicitamente il confronto insensibile
+  ✓ IS NULL / IS NOT NULL
+  ✓ BETWEEN
+  ✓ NOT su condizione
+  ✓ numeri negativi negli operatori di confronto
+  ✓ numeri negativi in BETWEEN e IN
+  ✓ negativo con notazione esponenziale
+  ✓ l'alias di colonna rinomina la proiezione
+  ✓ ORDER BY e LIMIT/OFFSET
+  ✓ LIMIT offset, count (stile MySQL)
+SQL→MQL — aggregazioni
+  ✓ COUNT(*) senza GROUP BY
+  ✓ GROUP BY con COUNT
+  ✓ GROUP BY con WHERE, SUM e ORDER BY
+  ✓ GROUP BY multiplo
+SQL→MQL — JOIN ($lookup)
+  ✓ INNER JOIN base → $lookup + $unwind
+  ✓ JOIN senza INNER equivale a INNER
+  ✓ LEFT JOIN preserva i documenti senza corrispondenza
+  ✓ LEFT OUTER JOIN accetta OUTER opzionale
+  ✓ JOIN con proiezione di colonne qualificate
+  ✓ JOIN con WHERE su campi base e uniti
+  ✓ ON con ordine invertito (foreign a sinistra)
+  ✓ JOIN + GROUP BY con aggregato su campo unito
+  ✓ due JOIN concatenate
+  ✓ RIGHT JOIN include il ramo anti-join
+  ✓ FULL JOIN conserva il lato sinistro
+  ✓ CROSS JOIN produce un lookup senza filtro
+  ✓ JOIN USING risolve la colonna condivisa
+  ✓ ON non di uguaglianza usa un lookup correlato
+  ✓ ON multi-condizione conserva entrambi i predicati
+  ✓ ON fra colonne locali usa un predicato correlato
+SQL→MQL — DISTINCT e HAVING
+  ✓ SELECT DISTINCT su una colonna
+  ✓ SELECT DISTINCT su più colonne
+  ✓ HAVING su alias di aggregato del SELECT
+  ✓ HAVING con COUNT(*) non presente nel SELECT
+  ✓ HAVING con SUM sintetizzato
+SQL→MQL — UNION ($unionWith)
+  ✓ UNION ALL non deduplica
+  ✓ UNION deduplica sull'intero documento
+  ✓ UNION a tre vie con WHERE su un operando
+  ✓ operando UNION non impone il LIMIT di default
+SQL→MQL — sotto-query (derived table nella FROM)
+  ✓ derived table con GROUP BY interno e WHERE esterno
+  ✓ derived table con ORDER BY e LIMIT esterni
+SQL→MQL — errori attesi
+  ✓ non-SELECT viene rifiutata
+  ✓ DISTINCT * deduplica i documenti
+  ✓ DISTINCT si applica dopo GROUP BY
+  ✓ HAVING senza GROUP BY/aggregato rifiutato
+  ✓ sotto-query IN (SELECT) rifiutata
+  ✓ sotto-query scalare rifiutata
+  ✓ colonna fuori da GROUP BY
+  ✓ manca FROM
+  ✓ Confronto di uguaglianza fra colonne
+  ✓ Confronto ordinato fra colonne
+  ✓ IN accetta espressioni di colonna
+  ✓ NOT IN accetta espressioni di colonna
+  ✓ pattern LIKE non quotato
+  ✓ BETWEEN con colonna come estremo basso
+  ✓ BETWEEN con colonna come estremo alto
+  ✓ Funzioni scalari nei confronti
+  ✓ Letterale a sinistra del confronto
+  ✓ TRUE/FALSE/NULL restano validi in una lista IN
+  ✓ Aritmetica fra letterali nel confronto
+  ✓ LIMIT negativo rifiutato
+  ✓ OFFSET negativo rifiutato
+
+75 test superati.
+  OK   RIGHT e FULL JOIN includono il ramo delle righe destre senza corrispondenza
+  OK   Funzioni finestra e frame ROWS vengono tradotti
+  OK   WITH RECURSIVE produce un programma iterativo senza JavaScript sul server
+  OK   RETURNING fa parte del piano di INSERT, UPDATE e DELETE
+  OK   SELECT senza FROM è indipendente dalle collezioni
+  OK   CTE: scope verificato su seed, ricorsione e query finale; FULL JOIN include entrambi i lati
+  OK   RETURNING: permessi read e mutazione cumulativi, bersaglio non falsificabile
+  OK   Standalone senza transazioni e annullamento prima della lettura non producono mutazioni
+  OK   Finestre e RETURNING invalidi vengono rifiutati prima dell’esecuzione
+(node:44776) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/query-history-store.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  OK   export server e download HTTP: 68513219 byte, 49 documenti, limiti import/upload a 10 byte
+  OK   Export: perimetro, tipi, indici, conteggi e pubblicazione verificata
+  OK   SQL MySQL/PostgreSQL: precisione, COPY, delimitatori, validazione e impronta
+  OK   Import: colonne inattese segnalate, generate escluse, batch limitati in byte e parametri
+OK codec tipi: metadati LO, cast ammessi, warning ENUM per riga e warning troncati.
+OK: query senza limiti impliciti, LIMIT/OFFSET espliciti e griglia paginata.
+  OK   default MySQL conservati fra le colonne scrivibili
+  OK   import BIGINT preserva tutte le cifre sui due motori
+  OK   modifica intera riga con colonne calcolate e BIGINT
+  OK   colonna _id reale distinta dalla chiave di scrittura
+  OK   BIGINT esatto dal driver al file di backup e ritorno
+  OK   Inserimento: sorgente JSON esatta, duplicati, multilinea, bit, binari e limiti BSON.
+  OK   Server modulare: informazioni licenza delle dipendenze installate
+  OK   Server modulare: indici RBAC su un database vuoto e propagazione degli errori reali
+  OK   Server modulare: tetti delle strategie indipendenti dalla configurazione globale
+[RBAC] Control plane pronto; owner: test@locale
+CodeDB in ascolto su http://127.0.0.1:58938
+  OK   Server modulare: stop attende il login accettato prima di chiudere il control plane
+CodeDB in ascolto su http://127.0.0.1:58940
+CodeDB in ascolto su http://127.0.0.1:58941
+  OK   Server modulare: due istanze ascoltano su porte distinte senza installare listener globali
+CodeDB in ascolto su http://127.0.0.1:56614
+CodeDB in ascolto su http://127.0.0.1:56615
+  OK   Server modulare: script reali conservano i risultati per istanza e li eliminano alla chiusura
+CodeDB in ascolto su http://127.0.0.1:56616
+  OK   Server modulare: UI e MCP superano 8 connessioni per client, condividono la quota globale e rilasciano le risorse
+CodeDB in ascolto su http://127.0.0.1:56620
+CodeDB in ascolto su http://127.0.0.1:56621
+  OK   Server modulare: connessioni salvate, passphrase, upload e audit non attraversano le istanze
+CodeDB in ascolto su http://127.0.0.1:56622
+  OK   Server modulare: porta occupata e inizializzazione fallita rigettano e rilasciano le risorse
+CodeDB in ascolto su http://127.0.0.1:56624
+  OK   Server modulare: arresto durante l’avvio attende l’inizializzazione senza lasciare un listener
+  OK   Server modulare: la rivalidazione concorrente attende una sola verifica e applica i nuovi grant
+  OK   Server modulare: errore di rivalidazione produce ack e non rende valida la cache
+  OK   Server modulare: ack monouso, payload non oggetto e handler duplicati
+  OK   Server modulare: arresto attende un handler accettato e rifiuta i nuovi
+  OK   Server modulare: chiusura driver sincrona fallita libera comunque il tunnel
+  OK   Server modulare: apertura fallita chiude driver parziale e attende il tunnel
+  OK   Server modulare: listener del processo idempotenti e rimovibili
+  OK   postgresql: piccoli esatti, grandi stimati, null/zero, viste, timeout, nomi quotati, massimo 2 query
+  OK   mysql: piccoli esatti, grandi stimati, null/zero, viste, timeout, nomi quotati, massimo 2 query
+  OK   MongoDB: letture limitate, stime esplicite, viste escluse, solo nomi senza conteggi
+  OK   2000 tabelle lente: 9 richieste, 352 ms, elenco completo
+  OK   SSH: vault, riuso, cambio modalità e CLI
+  OK   SSH: percorso sul server
+  OK   SSH: percorso copiato con virgolette
+  OK   SSH: file caricato dal dispositivo
+  OK   SSH: file caricato con passphrase
+  OK   SSH: chiave PEM PKCS8
+  OK   SSH: home, errori file/passphrase e host key prima delle credenziali
+OK Configurazioni: aggiornamenti parziali, segreti, cambi modalità, Testa/Connetti e URI mascherata
+--- Test Gate Autenticazione MCP ---
+  OK   /mcp protetto dalla API key con RBAC attivo
+  OK   /mcp invariato con RBAC spento
+  OK   arresto MCP attende la richiesta accettata
+
+Test del gate MCP superati!
+  OK   DbFactory MongoDB strategy instantiation passed
+  OK   DbFactory MySQL strategy instantiation passed
+  OK   DbFactory PostgreSQL strategy instantiation passed
+  OK   DbFactory Postgres alias passed
+  OK   DbFactory unsupported db check passed
+  OK   DbFactory defaultPort passed
+  OK   DbFactory isSqlType passed
+  OK   DbStrategy.detectRelations passed
+  OK   VirtualJoinEngine spec null check passed
+  OK   VirtualJoinEngine spec incomplete check passed
+  OK   VirtualJoinEngine in-memory cross-DB join passed
+  OK   VirtualJoinEngine join su chiavi ObjectId ($oid) passed
+  OK   VirtualJoinEngine join su chiavi $numberLong passed
+  OK   VirtualJoinEngine maxPayloadSize coercito a intero passed
+  OK   PostgreSQL connect error handled (PostgreSQL server non attivo in ambiente unit test)
+  OK   SshTunnel.openSshTunnel export passed
+  OK   AuditLog cache limitata (no memory leak) passed
+  OK   AuditLog isolamento multi-tenant (CDB-07) passed
+  OK   Restore: verifica di completezza (CDB-27) passed
+  OK   Sink di backup: errori propagati, nessun blocco (CDB-46) passed
+  OK   Integrità backup, preflight restore e redazione Slack passed
+  OK   Connstore CLI: URI cifrata decifrata passed
+  OK   Destinazioni di backup confinate (CDB-06/CDB-43) passed
+  OK   Tetto righe/byte sui risultati (CDB-11) passed
+  OK   Validazione del DDL nel backup (CDB-28) passed
+  OK   Nomi creabili senza markup/quoting (CDB-57) passed
+  OK   Electron: AppUserModelID allineato a build.appId (barra applicazioni) passed
+  OK   Distribuzione: segreti e registro di provenienza esclusi da ENTRAMBI i pacchettizzatori (CDB-A57)
+  OK   Licenza e manleva: sorgente unica per installer e app passed
+  OK   Electron: aggiornamenti (feed, versioni, note, menu) passed
+  OK   Workflow di release: runner per piattaforma e script npm coerenti passed
+  OK   Dockerfile file check passed
+  OK   docker-compose.yml file check passed
+  OK   bin/codedb.js file check passed
+  OK   electron-main.js file check passed
+  OK   server.js file check passed
+  OK   backup/cli.js file check passed
+  OK   public/js/backupmanager.js file check passed
+  OK   public/js/splitview.js file check passed
+  OK   backup/lib/engine.js file check passed
+  OK   backup/lib/restore.js file check passed
+  OK   backup/lib/storage.js file check passed
+  OK   backup/lib/util.js file check passed
+  OK   Rilevazione errori di disconnessione DB superata
+  OK   VirtualJoinEngine parametri SQL IN passed
+  OK   DbStrategy cancelQuery interface check passed
+--- Test Unitari Pending Queries (Tracker & States) ---
+  OK   Reload / F5 conversion from running to disconnected passed
+  OK   Lifecycle running -> completata passed
+  OK   Status paused superato
+  OK   Badge count calculation passed
+  OK   Clear resolved passed
+
+Tutti i test unitari di Pending Queries superati con successo!
+--- Test Unitari SqlChunker & USE Statement ---
+--- Test Unitari Query Syntax Highlighter ---
+--- Test Unitari Lifecycle & Graceful Shutdown ---
+--- Test Unitari RBAC ---
+  OK   Capability amministrativa tenant distinta da manage su connessione
+  OK   Classificazione eventi → capability
+  OK   Analisi SQL/MongoDB strutturata e fail-closed
+  OK   Gateway MCP: SQL singolo, DML granulare e pipeline senza JavaScript
+  OK   MCP: flag readOnly riletto a ogni operazione distruttiva
+  OK   Sessione MCP vincolata anche alla credenziale, non soltanto al subject
+  OK   MCP: verifica backup condivisa con categorie di integrità esplicite
+  OK   MCP: selezione backup confinata nella radice del tenant
+  OK   Match glob dello scope
+  OK   Decisione dei permessi (can)
+  OK   API key, filtri e operazioni sull'intera connessione
+--- Test unitari divisione statement SQL ---
+  OK   Istruzione singola, con e senza punto e virgola
+  OK   Il testo restituito è quello ORIGINALE, non normalizzato
+  OK   Punto e virgola dentro una stringa non divide
+  OK   Apice raddoppiato dentro una stringa
+  OK   Punto e virgola dentro i commenti non divide
+  OK   Dollar-quoting PostgreSQL: il corpo non viene diviso
+  OK   Identificatori quotati con backtick e virgolette
+  OK   Numero di riga corretto per puntare l'errore
+  OK   Gli offset ritagliano esattamente il sorgente
+  OK   Punti e virgola vuoti e commenti isolati non producono istruzioni
+  OK   splitStatements resta normalizzata (compatibilità con isWriteSql)
+  OK   hasMultipleStatements invariato sui casi storici
+  OK   ANSI (predefinito): la barra rovesciata non nasconde un'istruzione
+  OK   Il prefisso E'…' di PostgreSQL reintroduce gli escape
+  OK   Con backslashEscape: true vale la semantica MySQL
+
+Tutti i test di divisione statement superati!
+--- Test unitari ScriptRunner ---
+--- Test unitari interprete script MongoDB ---
+--- Test unitari SQL di scrittura → MongoDB ---
+  OK   Riconoscimento dei comandi di scrittura
+  OK   INSERT con una riga
+  OK   INSERT con più righe
+  OK   INSERT senza colonne rifiutato con spiegazione
+  OK   INSERT con conteggio valori sbagliato
+  OK   UPDATE con WHERE
+  OK   UPDATE senza WHERE avvisa che tocca tutto
+  OK   DELETE con e senza WHERE
+  OK   WHERE complessa riusa il parser delle SELECT
+  OK   TRUNCATE
+  OK   CREATE TABLE crea la collezione e avvisa sui tipi
+  OK   CREATE TABLE IF NOT EXISTS senza definizioni
+  OK   CREATE / DROP DATABASE
+  OK   DROP TABLE
+  OK   Comandi senza equivalente rifiutati con spiegazione
+
+Tutti i test di traduzione SQL→MongoDB in scrittura superati!
+  OK   Esecuzione completa: ordine, conteggi e stato finale
+  OK   attachMcp e shutdownMcp superato
+  OK   Registrazione globale handler eccezioni e segnali superata
+  OK   formatBytes helper superato
+--- Test unitari splitter client ---
+  OK   Query singola: non è uno script
+  OK   Due istruzioni: è uno script
+  OK   Punto e virgola dentro stringhe e commenti non conta
+  OK   Righe corrette
+  OK   Coerenza con il gemello server su un ventaglio di casi
+  OK   Coerenza anche sui numeri di riga
+
+Tutti i test dello splitter client superati!
+  OK   Continua e riporta: un errore non ferma lo script
+  OK   SqlChunker file piccolo superato
+  OK   Evidenziazione sintassi SQL DML superata
+  OK   Evidenziazione sintassi SQL DDL, Tipi e Funzioni superata
+  OK   Evidenziazione sintassi MQL (JSON) superata
+  OK   Evidenziazione sintassi MongoShell superata
+  OK   Evidenziazione sintassi script JavaScript superata
+  OK   Distinzione fra parole chiave JS e identificatori maiuscoli superata
+Tutti i test unitari di Syntax Highlighting superati con successo!
+--- Test unitari formattatore editor ---
+  OK   Le clausole vanno a capo
+  OK   AND e OR rientrano sotto la WHERE
+  OK   Le parole chiave vanno in maiuscolo, gli identificatori no
+  OK   Il contenuto delle stringhe non viene toccato
+  OK   I commenti sopravvivono
+  OK   JOIN e ON su righe proprie
+  OK   I punti dei nomi qualificati non prendono spazi
+  OK   Le funzioni restano attaccate alla parentesi
+  OK   GROUP BY e ORDER BY riconosciute come una cosa sola
+  OK   CREATE TABLE: una colonna per riga
+  OK   Più istruzioni: una riga vuota fra loro, il ";" resta
+  OK   Le parentesi non spezzano le sotto-espressioni
+  OK   Formattare due volte dà lo stesso risultato
+  OK   Filtro MQL indentato
+  OK   formatCode riconosce JSON, SQL e JS
+  OK   Un testo non analizzabile torna indietro intatto
+  OK   minifyCode comprime un documento MQL
+  OK   minifyCode comprime l'SQL su una riga
+  OK   La minificazione SQL non tocca il contenuto delle stringhe
+  OK   La minificazione SQL toglie i commenti
+  OK   Uno script JavaScript NON viene minificato
+  OK   Un testo non analizzabile torna indietro intatto anche minificando
+  OK   Rientri ricalcolati sui blocchi
+  OK   Rientri eccessivi vengono corretti
+  OK   Le graffe dentro le stringhe non contano
+  OK   Il contenuto dei template literal multilinea è intoccabile
+  OK   I commenti di blocco non alterano la profondità
+  OK   Reindentare due volte dà lo stesso risultato
+  OK   Il codice non viene riscritto, solo rientrato
+
+Tutti i test del formattatore superati!
+  OK   Variabili, aritmetica e print
+  OK   stopOnError: si ferma in pausa, riprendibile
+  OK   SqlChunker file grande (3 chunk, allineamento ';') superato
+  OK   Riconoscimento ed estrazione comando USE superato
+Tutti i test unitari SqlChunker superati!
+  OK   Pausa a metà: nessuna istruzione persa né ripetuta alla ripresa
+  OK   Stringhe, template literal e interpolazione
+  OK   Ripresa da un indice esplicito (riesecuzione mirata)
+  OK   PostgreSQL non eredita funzioni di data MySQL
+  OK   Cataloghi estesi: finestre, JSON, DDL e amministrazione
+  OK   SQL→MQL non promette costrutti non traducibili
+  OK   Punto e virgola nei valori e nei commenti non cambia linguaggio
+  OK   Alias limitati alla propria istruzione, ignorando stringhe e commenti
+  OK   Completamento silenzioso nei commenti e nei valori SQL
+  OK   MongoDB: stadi, espressioni, aggiornamenti e variabili
+  OK   Sostituzione al centro del token e nome quotato
+  OK   Operatori, parametri e numeri restano unità indivisibili
+  OK   Script: operatori PostgreSQL e stringhe MySQL non nascondono separatori
+  OK   Commenti eseguibili e hint MySQL sopravvivono
+  OK   Il commento di riga non inghiotte il codice successivo
+  OK   La shell MongoDB non subisce mai la riscrittura SQL
+  OK   Evidenziatore: dialetti, commenti e stringhe PostgreSQL
+Tutte le regressioni dei linguaggi Query & Aggregate superate.
+  OK   abort: interruzione definitiva, non riprendibile
+  OK   PostgreSQL: la minificazione conserva XOR e la seconda istruzione
+  OK   MySQL: due meno senza spazio non aprono un commento
+  OK   PostgreSQL: operatori composti e personalizzati restano indivisibili
+  OK   PostgreSQL: gli a capo fra stringhe concatenate sono significativi
+  OK   Tutte le keyword dei cataloghi hanno una classificazione nell’evidenziatore
+  OK   I nomi di funzioni usati come tabelle conservano le maiuscole originali
+  OK   Tutte le funzioni dei dialetti sono riconosciute e suggerite
+  OK   Tutti gli operatori MQL nominali del catalogo sono raggiungibili nel completamento
+Copertura lessicale e conservazione della sintassi superate.
+  OK   Funzioni scalari annidate e aritmetica nella SELECT
+  OK   WITH riusa la query della CTE senza interrogare una collezione inesistente
+  OK   CROSS JOIN costruisce il prodotto cartesiano
+  OK   DISTINCT * deduplica prima del LIMIT
+  OK   Le scritture non ignorano una clausola finale
+  OK   Predicati scalari, parentesi e NULL usano lo stesso interprete
+  OK   JOIN su CTE e derived table mantengono la pipeline della sorgente
+  OK   DDL indici con nome, ordine composto e unicità
+  OK   UPDATE calcolato usa una pipeline, le stringhe dollar restano letterali
+  OK   Stringhe e identificatori incompleti non diventano scritture
+  OK   Progresso notificato per ogni istruzione, più la fine
+  OK   if / else
+  OK   Un listener che esplode non fa fallire lo script
+  OK   Script vuoto: termina subito senza errori
+
+Tutti i test dello ScriptRunner superati!
+  OK   Shell e script inoltrano collation, hint, tempo e batch al medesimo contratto
+  OK   Le chiavi let e return dei documenti non cambiano interprete
+  OK   Proxy autorizzante sulle strategie
+  OK   Aggregate conserva l’ordine della catena e le opzioni
+  OK   Il commento utente conserva l’identità di annullamento e non amplia il timeout
+  OK   Scritture da script soggette ai permessi (Fase C)
+  OK   Scope non aggirabile con bersaglio vuoto, navigazione intatta (CDB-03)
+  OK   Classificazione SQL lettura/scrittura senza bypass (CDB-02)
+  OK   I/O su file del DBMS negato e classificato scrittura (CDB-A04)
+  OK   Barriera READ ONLY per i sottoutenti, owner invariato (CDB-02)
+  OK   SQL Raw: capability delete/ddl distinte e multi-statement negato
+  OK   bulkWrite attraversa il controllo host per ogni operazione e rispetta ordered
+  OK   Clausole libere limitate ai soli principal con scope (CDB-05)
+  OK   Delete/rename connessione revocano i grant legati al vecchio nome
+  OK   Ciclo for classico con break e continue
+  OK   Login sottoutenti: isolamento fra tenant omonimi (CDB-44)
+  OK   Backup partizionati per tenant (CDB-A01)
+  OK   bulkWrite valida tutti i filtri prima della prima mutazione
+  OK   Il driver riceve pipeline di aggiornamento e opzioni delle cancellazioni
+  OK   Le opzioni non aggirano il divieto di JavaScript lato server
+--- Test unitari vault (cifratura a busta) ---
+  OK   Cifratura e decifratura di un segreto
+  OK   Un valore già cifrato non viene cifrato due volte
+  OK   IV casuale: due cifrature dello stesso testo differiscono
+  OK   La passphrase corretta sbusta la DEK
+  OK   La passphrase sbagliata NON restituisce una chiave
+  OK   Salt diverso a ogni vault: due vault con la stessa passphrase differiscono
+  OK   CAMBIO PASSPHRASE: i segreti restano intatti
+  OK   Il cambio passphrase rigenera il salt
+  OK   Il testimone smaschera una DEK non corrispondente
+  OK   Chiave legacy (v1) riproducibile per la migrazione
+  OK   scrypt è più lento di SHA-256 (è il punto della modifica)
+  OK   Metadati: scrittura atomica e rilettura
+  OK   Metadati di versione sconosciuta vengono ignorati
+  OK   La scrittura del meta conserva la generazione precedente (CDB-68)
+  OK   Export con passphrase: scrypt + salt, e la chiave si ridervia dall'intestazione
+
+Tutti i test del vault superati!
+--- Test unitari Geometrie ---
+  OK   Riconoscimento dei tipi di colonna geometrici
+  OK   isGeoJson distingue le geometrie dagli oggetti qualsiasi
+  OK   assertGeoJson ferma le geometrie malformate con un messaggio parlante
+  OK   parseGeoJsonText non perde mai il contenuto della cella
+  OK   MySQL: ST_GeomFromGeoJSON con il SRID della colonna
+  OK   PostgreSQL: ST_SetSRID + cast geography
+  OK   Le coordinate arrivate come oggetti BSON diventano numeri prima di ogni scrittura
+  OK   Lettura: solo le colonne geometriche vengono convertite
+
+Tutti i test unitari Geometrie superati!
+--- Test unitari Editor geometrico ---
+--- Test unitari Modifica geometrie ---
+--- Test unitari Comandi del Grafo 3D ---
+--- Test Unitari Custom Charts (ECharts) ---
+--- Test Unitari Statistiche Selezione Celle ---
+--- Test Unitari Grafico della Selezione di Celle ---
+--- Test Unitari Statistiche Selezione Geometrica ---
+--- Test Unitari Geometrie nei Risultati di Query ---
+--- Test Unitari Relazioni (Chiavi Esterne) ---
+--- Test Unitari Modello UML ---
+  OK   Commenti iniziali SQL→MQL
+  OK   Filtro MongoDB nativo
+  OK   Pipeline MongoDB nativa con commento
+  OK   Il sottotipo GeoJSON viene dedotto dai tipi SQL specifici e dai typmod PostGIS
+  OK   Il metadato di colonna dichiara sottotipo e natura geometrica sui due motori SQL
+  OK   Tutte le forme, MultiPolygon compreso, hanno un modello iniziale coerente
+✔ Comandi del Grafo 3D: regole pure verificate
+  OK   Descrittori normalizzati dalle tre sorgenti, origine preservata
+  OK   Indice campo → relazione, vincolo prevalente sull'ipotesi
+  OK   FK composita: coppie ordinate e aggiornamento completo
+  OK   Bersaglio qualificato solo quando cambia database/schema
+  OK   Valori EJSON mostrati come valori, non come JSON grezzo
+  OK   Riga corrente riconosciuta anche se la chiave cambia tipo
+  OK   Etichetta scelta dai dati, colonne costanti e bucate scartate
+  OK   Righe dell'elenco leggibili, chiave sempre in testa
+Tutti i test unitari sulle relazioni superati!
+  OK   Costruttore BSON nativo
+  OK   Le operazioni restituiscono una copia e non mutano l’originale
+  OK   Un vertice nuovo entra nella parte attiva e l’anello si chiude da sé
+  OK   L’eliminazione richiude l’anello e rifiuta di scendere sotto il minimo
+  OK   Un vertice si infila a metà di un lato senza aprire l’anello
+  OK   Le parti si aggiungono e si tolgono, ma mai l’ultima
+  OK   «Ridisegna» svuota il disegno conservando il tipo della colonna
+  OK   Il vertice scelto è quello che si stava cercando di prendere, non solo quello centrato
+  OK   Annulla e rifai tengono la storia, con un tetto che scarta i più vecchi
+Tutti i test di Modifica geometrie superati!
+  OK   Tipi dei campi dedotti dai valori EJSON (decimal, date, oid)
+  OK   Percorsi annidati (a.b) fra i campi disponibili
+  OK   Aggregazione "somma" per categoria
+  OK   Aggregazioni media, conteggio, massimo, distinti
+  OK   Mediana su un numero pari di valori
+  OK   Somma di valori EJSON (decimal, long, double)
+  OK   Asse temporale: punti come coppie [istante, valore]
+  OK   Ordinamento e ripiegamento della coda in "Altro"
+  OK   "Altro" ricalcolato per le aggregazioni non additive (CDB-A24)
+  OK   Nessun doppio asse Y (né come asse, né come yAxisIndex)
+  OK   Legenda automatica (assente con una serie, presente da due)
+  OK   Il colore segue la serie: rimuoverne una non ricolora le altre
+  OK   Una serie sola usa un colore unico (colorBy: series)
+  OK   Specifiche dei segni (barra ≤24px, angoli 4px, linea 2px, simbolo ≥8px)
+  OK   Barre orizzontali: assi scambiati
+  OK   Barre impilate: vuoto di 2px del colore del fondo
+  OK   Area come velatura al 10%
+  OK   Le serie nascoste non vengono disegnate
+  OK   Torta e ciambella (categorie, valori, nessun asse)
+  OK   Mappa di calore (incrocio di due categorie + rampa sequenziale)
+  OK   Mappa di calore senza secondo campo: messaggio esplicito
+  OK   Mappa di calore: tetto di cardinalità dichiarato (CDB-A27)
+  OK   "Primo valore" convertito in numero (CDB-A26)
+  OK   aggregazioni esatte conservate accanto ai valori approssimati del renderer
+  OK   Somma, media, minimo e massimo esatti oltre 2^53 e sui decimali (issue 07)
+  OK   I suggerimenti non classificano come sicura una serie approssimata (issue 07)
+  OK   Il tooltip consegna il valore esatto che lavviso promette (issue 07)
+  OK   Etichette sul solo valore massimo, come annunciato (CDB-A36)
+  OK   Radar (indicatori dalle categorie)
+  OK   Modalità senza aggregazione (query che ha già fatto il GROUP BY)
+  OK   Misura grezza nel tempo: nessuna fusione, ordine temporale, righe senza data dichiarate
+  OK   Asse temporale ordinato per tempo (default), scelta manuale rispettata
+  OK   Punti grezzi: la coda si tronca dichiarandolo, non si somma in "Altro"
+  OK   Asse temporale su campo non temporale: ricade su categorie invece di svuotare il grafico
+  OK   Valori nulli/non numerici: buchi nella serie, non zeri inventati
+  OK   Categoria assente etichettata "(vuoto)"
+  OK   Categoria numerica/booleana etichettata col suo valore
+  OK   Titolo e attivazione del tooltip per famiglia di grafico
+  OK   Zoom, scala logaritmica, min/max dell'asse (0 incluso)
+  OK   Cromatura: griglia solida e recessiva, testo con token di testo
+  OK   Formattatori dell'asse valori
+  OK   Margini limitati allo spazio reale del riquadro
+  OK   Barra di zoom solo dove c'è spazio, con margine riservato
+  OK   Grafici suggeriti: dedotti dai tipi dei campi e tutti disegnabili
+  OK   Gli identificativi non vengono proposti come categoria
+  OK   Result set vuoto gestito senza errori
+Tutti i test unitari di Custom Charts superati con successo!
+  ✓ numeroCella: EJSON convertito, date/booleani/testo esclusi
+  ✓ somma/media/mediana/min/max/dev.std
+  ✓ selezione mista: numeri sommati, il resto solo contato
+  ✓ nessun numero: null, non zero
+  ✓ conteggio dei valori distinti
+  ✓ somma compensata, arrotondata ai decimali dei dati, precisione dichiarata
+  ✓ statistiche colonna per colonna
+  ✓ formattazione e riassunto della barra di stato
+Statistiche selezione celle: OK
+✓ Statistiche selezione geometrica: OK
+  ✓ rilevamento completo con budget, senza eccezioni sui casi vuoti
+  ✓ colonna di primo livello (il caso SQL)
+  ✓ geometria in un sottodocumento
+  ✓ array di geometrie: una voce per elemento
+  ✓ più campi geometrici sulla stessa riga
+  ✓ i valori EJSON non vengono esplorati
+  ✓ la riga stessa può essere una geometria
+  ✓ risultati senza geometrie
+  ✓ geometria come stringa GeoJSON (ST_AsGeoJSON su SQL)
+  ✓ testo non geometrico: nessun falso positivo, nessuna eccezione
+  ✓ coppia {x,y} / {lat,lon}: riconosciuta come punto
+  ✓ coppie non plausibili scartate (fuori scala, chiavi in più, non numeri)
+  ✓ tetto alle celle mappate, dichiarato
+--- Geometrie nei Risultati: tutti i test superati ---
+
+  ✓ identità: schema, punti nei nomi, andata e ritorno
+  ✓ collegamenti: FK composta unica, FK parallele distinte, auto-riferimento, ipotesi
+  ✓ unione delle pagine: accodamento dei campi, nessun declassamento, nessun duplicato
+  ✓ disposizione: livelli, nodi bloccati, cicli
+  ✓ cronologia: un gesto una voce, tetto, ramo avanti, copia profonda
+  ✓ import: campi ammessi, coordinate, riferimenti assenti, tetto, avvisi
+  ✓ riconciliazione: nulla sparisce in silenzio
+  ✓ allineamento: sei modi, bordo sui riquadri, bloccati fermi, mappa solo dei mossi
+  ✓ distribuzione: spazi uguali fra i bordi, estremi fermi, bloccati rispettati
+  ✓ gruppi compressi: archi riscritti sul gruppo, interni tolti, coppie distinte conservate
+  ✓ instradamenti: punti validati e riportati nel limite, scarti dichiarati
+  ✓ gruppi annidati: normalizzazione, nascondiglio esterno, foglie, profondità
+  ✓ stessa struttura: posizioni libere, resto vincolante
+--- Modello UML: tutti i test passati ---
+
+  OK   Intero nativo oltre 53 bit intatto
+  OK   Costruttore BSON con argomento numerico
+  OK   Intero EJSON originale intatto
+  ✓ la selezione resta una tabella (righe × colonne)
+  ✓ ordinale di riga progressivo e celle mancanti non riempite
+  ✓ una colonna chiamata "#" non viene sovrascritta
+  ✓ nomi di colonna speciali conservati senza prototype pollution
+  ✓ selezione enorme: tagliata al tetto e dichiarata
+  ✓ categoria + misure: due serie e raggruppamento
+  ✓ asse senza doppioni: nessun raggruppamento inventato
+  ✓ una sola colonna numerica: asse = ordine di riga
+  ✓ colonna data: asse temporale e linea
+  ✓ DECIMAL e NumberLong contano come misure
+  ✓ sole categorie: conteggio delle righe, dichiarato
+  ✓ troppe misure: tetto ai colori e nota
+  ✓ misure offerte all'interfaccia = misure disegnate
+  ✓ la configurazione arriva a un'option con assi e valori leggibili
+  ✓ selezione vuota: nessuna eccezione
+--- Grafico della Selezione: tutti i test superati ---
+
+  OK   Cursore shell toArray
+  OK   SQL Raw fail-closed sugli scope realmente limitati (CDB-A03)
+  OK   Vault riservato all'amministratore dell'installazione (CDB-A02)
+
+Tutti i test unitari RBAC superati!
+  OK   mysql: SQL trasmesso intatto alla strategia
+  OK   postgresql: SQL trasmesso intatto alla strategia
+  OK   for…of e for…in
+  OK   while e do…while
+  OK   Funzioni, chiusure, ricorsione e hoisting
+  OK   Arrow function e metodi di array
+✓ Progetto UML: dialetti, scope, SQL esatto, snapshot, concorrenza, errori parziali, socket e persistenza
+--- Test Unitari Valori di Cella ---
+--- Test Unitari Analisi dello Schema ---
+--- Test Unitari Generatori di Schema ---
+  OK   jsonBreve produce JSON valido quando ci sta tutto
+  OK   jsonBreve rispetta il tetto e segnala il taglio
+  OK   L'ordine dei campi è quello di Object.keys
+  OK   tronca taglia solo oltre il tetto
+  OK   Una foglia enorme non costa più di una piccola
+  OK   Una stringa enorme in cima non costa più di una piccola
+  OK   Un array enorme non costa più di uno corto
+  OK   Molte foglie grandi: il costo resta quello del tetto
+  OK   LIMITE NOTO: un documento con moltissimi CAMPI costa O(campi)
+
+Tutti i test dei valori di cella superati!
+  OK   Il seeding rispetta le dipendenze: prima chi non dipende da nessuno
+  OK   Con molte tabelle scollegate l'ordine resta valido
+  OK   Un ciclo di FK viene DICHIARATO, non accodato in silenzio
+  OK   Un autoanello è una componente ciclica esplicita
+  OK   Diamante, dipendenza esterna e nodo a valle di un ciclo restano distinti
+  OK   PII: i termini si confrontano coi token, non con le sottostringhe
+  OK   PII: i campi davvero sensibili restano riconosciuti
+  OK   PII: il risultato dice QUALE termine ha prodotto la corrispondenza
+  OK   Il punteggio usa davvero tutto l'intervallo 0-100
+  OK   Le penalità sono proporzionali alla dimensione dello schema
+  OK   Uno schema sano vale 100
+  OK   Relazioni implicite dedotte dai campi *_id
+  OK   Cammino minimo fra due tabelle
+
+Tutti i test di analisi dello schema superati!
+  OK   Chiave primaria COMPOSTA: una sola clausola PRIMARY KEY
+  OK   DDL e DBML dichiarano la STESSA colonna bersaglio
+  OK   Su MongoDB il bersaglio ripiega su _id
+  OK   Schema vuoto: stringa vuota, non uno script rotto
+  OK   Mermaid: nomi con caratteri speciali sanificati
+  OK   Import SQL: le FK sono attribuite alla tabella GIUSTA
+  OK   Import SQL: anche le ALTER TABLE … ADD CONSTRAINT
+  OK   Import SQL: la PRIMARY KEY in coda marca i campi come chiave
+  OK   Import DBML: tabelle, chiavi e Ref
+  OK   Testo senza schema: nessuna tabella, nessun errore
+
+Tutti i test dei generatori di schema superati!
+  OK   DDL PostgreSQL: retarget, serial, vincoli e FK differite (CDB-A83)
+  OK   Catalogo PostgreSQL letto con search_path sullo schema di origine (CDB-A83)
+  OK   Oggetti, array, accesso e assegnamento
+  OK   Colonne GENERATED ... AS IDENTITY conservate (CDB-A83)
+
+Tutti i test del DDL di round-trip superati!
+  OK   Chiavi esterne estratte dalla CREATE TABLE, con conto verificato sul catalogo (CDB-A85)
+  OK   DDL riqualificate, e fallimento dichiarato se non è possibile (CDB-A85)
+  OK   Clausola DEFINER rimossa senza rompere la DDL (CDB-A85)
+  OK   CREATE TABLE PostgreSQL: default verbatim, serial, identità, generate, vincoli (CDB-A87)
+  OK   try / catch / finally e throw
+  OK   Lettura PostgreSQL: generate escluse, bytea in hex, temporali come testo (CDB-A87)
+  OK   Indici e chiavi esterne PostgreSQL differiti alla terza fase (CDB-A87)
+  OK   DDL degli oggetti validate prima di eseguirle (CDB-A80, CDB-A85)
+
+Tutti i test degli oggetti di schema superati!
+  OK   Oggetti PostgreSQL: view, funzioni, trigger, sequenze con parametri e VALORE (CDB-A87)
+
+Tutti i test dello schema PostgreSQL superati!
+  OK   Lettura: letterali PostgreSQL nativi tradotti in GeoJSON (CDB-A88)
+  OK   Scrittura: GeoJSON tradotto nel letterale PostgreSQL nativo (CDB-A88)
+  OK   Geometrie non rappresentabili rifiutate con un messaggio, non troncate (CDB-A88)
+  OK   Round-trip identico su 6 letterali nativi (CDB-A88)
+
+Tutti i test delle geometrie native PostgreSQL superati!
+  OK   Import database PostgreSQL: point e polygon nativi reimportabili
+  OK   typeof, operatori logici e ternario
+  OK   JSON, Math e Date
+  OK   export JSON: metadati letti una volta per tabella sui due motori SQL
+--- Test unitari: conteggio dell'export su un solo blocco ---
+  OK   SANDBOX: non si risale a Function dai valori nativi
+  OK   mysql: COUNT(*) solo al primo blocco, con e senza chiave primaria
+  OK   SANDBOX: __proto__ e prototype negati
+  OK   postgresql: COUNT(*) solo al primo blocco, con e senza chiave primaria
+  OK   mongodb: countDocuments() solo al primo blocco
+  OK   SANDBOX: le globali del processo non esistono
+  OK   SANDBOX: call/apply/bind non raggiungibili
+  OK   SANDBOX: metodi nativi fuori whitelist non esistono
+  OK   SANDBOX: gli oggetti del database non sono modificabili
+  OK   BUDGET: ciclo infinito interrotto
+  OK   BUDGET: un try/catch NON neutralizza il limite
+  OK   BUDGET: ricorsione senza uscita interrotta
+  OK   BUDGET: tetto alle operazioni sul database
+  OK   BUDGET: la memoria di un singolo valore è limitata (CDB-65)
+  OK   find/toArray: filtro convertito in EJSON e documenti restituiti
+  OK   Catena sort/limit/skip trasmessa alla strategia
+  OK   for…of su un cursore lo materializza
+  OK   Scritture: insertOne/updateMany/deleteMany raggiungono l'host
+  OK   Costruttori BSON convertiti in Extended JSON
+  OK   DDL: createCollection, drop, createIndex, dropDatabase
+  OK   getSiblingDB cambia database senza toccare gli altri
+  OK   countDocuments e distinct
+  OK   Senza database selezionato l'errore è comprensibile
+  OK   reduce() rispetta il valore iniziale
+  OK   BUDGET: un quantificatore annidato è rifiutato prima di eseguire
+  OK   export database: massimo tre collezioni, ordine stabile e errori drenati
+--- Test Unitari: collation di connessione ---
+  OK   Ordine di specificità: database → server → predefinita utf8mb4
+  OK   Le collation di altri charset vengono scartate, non adottate
+  OK   Senza candidate utf8mb4 non si tocca la connessione
+  OK   Nomi non conformi scartati prima di comporre lo SET
+  OK   Errore 1267 spiegato in italiano, originale conservato
+Tutti i test unitari sulla collation superati!
+--- Test Unitari: deposito dei result set di uno script ---
+  OK   Identificativo: 10 caratteri di base64url + timestamp
+  OK   Marcatori di provenienza: 29 presenti nel codice (62/62)
+--- Test Errori Parlanti ---
+  OK   Timeout MongoDB: causa, rimedio e dettaglio tecnico
+  OK   Idempotenza (nessuna spiegazione annidata)
+  OK   Errori sconosciuti restituiti immutati
+  OK   Segreti nelle URI rimossi dagli errori
+  OK   Rete: destinazione citata solo quando nota
+  OK   22 errori tipici di driver riconosciuti
+  OK   "deadlock" nel nome di un oggetto non è un deadlock (CDB-A49)
+  OK   PostgreSQL: il rimedio spiega le maiuscole non quotate
+  OK   Il limite citato segue la configurazione
+  OK   Timeout interni (withTimeout) spiegati
+  OK   Messaggi CodeDB arricchiti col rimedio
+  OK   Robustezza su errori malformati
+Tutti i test sugli errori parlanti superati.
+
+--- Tetto di tempo sulle query libere (MySQL / PostgreSQL) ---
+--- Test Unitari: esito del pannello script ---
+  OK   Il resoconto finale completa il log diradato
+  OK   Senza resoconto il log raccolto resta intatto
+  OK   Un resoconto più corto non cancella righe già viste
+  OK   Il tetto tiene le istruzioni più recenti
+  OK   Il contatore conta le righe mostrate, zero incluso
+  OK   Result set vuoto distinto da "nessun risultato"
+  OK   Etichetta della linguetta: riga, istruzione normalizzata, righe
+  OK   Si accende la linguetta giusta, o nessuna
+  OK   Le schede oltre il tetto vengono dichiarate, non taciute
+Tutti i test unitari sull'esito dello script superati!
+  OK   MySQL: la SCRITTURA riceve il tetto di tempo del driver
+  OK   MySQL: la LETTURA riceve lo stesso tetto, dalla fonte configurabile
+  OK   MySQL: cambiare CODEDB_AGGREGATE_TIMEOUT_MS cambia il tetto su entrambi i rami
+  OK   MySQL: un tetto <= 0 disattiva il limite
+  OK   MySQL: allo scadere la query viene UCCISA sul server e la connessione non torna al pool
+  OK   MySQL: un lock wait timeout NON viene scambiato per il tetto
+  OK   PostgreSQL: la SCRITTURA riceve statement_timeout prima della query
+  OK   PostgreSQL: la SCRITTURA riazzera il tetto prima di restituire il client al pool
+  OK   PostgreSQL: la LETTURA usa la stessa fonte configurabile
+  OK   PostgreSQL: cambiare la configurazione cambia il tetto su entrambi i rami
+  OK   PostgreSQL: un tetto <= 0 disattiva il limite
+  OK   MongoDB: la lettura conserva maxTimeMS dalla stessa fonte
+  OK   MongoDB: $out resta senza maxTimeMS (invariato)
+--- Test payload dell'esecuzione di query ---
+  OK   Campi riservati tolti per regola, indipendentemente dall'ordine
+  OK   Elenco dei campi del server unico e chiuso
+  OK   Marcatura del payload composto dalla regola
+  OK   Il registro dell'esecuzione non è costruibile dal client
+  OK   Il registro del server segna la scrittura, quello del client no
+--- Payload dell'esecuzione: tutti i test superati ---
+--- Test Unitari Colonne della Tabella Risultati ---
+  --- Scorciatoie da tastiera (catalogo e combinazioni) ---
+--- Test Unitari Guida Introduttiva ---
+  OK   Stato assente: si parte dal benvenuto
+  OK   Contenuto illeggibile o di forma sbagliata non blocca l'avvio
+  OK   Vista la guida, al riavvio non si riapre nulla
+  OK   Dopo un aggiornamento si mostrano SOLO le novità più recenti
+  OK   Aggiornamento senza novità da raccontare: nessuna modale
+  OK   Novità di una versione non ancora installata non vengono anticipate
+  OK   Primo avvio in assoluto: benvenuto, non elenco di novità
+  OK   Traguardo segnato una volta sola
+  OK   Tutti i traguardi: la checklist si considera finita
+  OK   aggiornaStato conserva il resto dello stato
+  OK   Storage che rifiuta la scrittura (quota piena): nessuna eccezione
+  OK   Ogni traguardo ha etichetta e aiuto (la checklist li mostra entrambi)
+  OK   Le novità dichiarate sono ben formate
+  OK   Ogni modulo che segna un traguardo importa segnaTraguardo
+  OK   Confronto versioni coerente col gemello di electron-aggiornamenti.js
+
+Tutti i test della guida introduttiva superati!
+  ✓ normalizzaCombo: forme valide accettate, sensate rifiutate
+  ✓ comboDaEvento/stessaCombo: eventi e testo si incontrano al centro
+  ✓ etichettaCombo: testo canonico per l'interfaccia
+  ✓ azioneDi: testo grezzo e forma normalizzata nella stessa mappa
+  ✓ mappaEffettiva: predefiniti, scarti e conflitti dichiarati
+  ✓ mappa attiva: seminata coi predefiniti, sostituibile a caldo
+  ✓ scorciatoie globali: Ctrl+B / Ctrl+W / Ctrl+P nel catalogo, senza collisioni
+  --- Scorciatoie da tastiera: tutti i test superati ---
+  ✓ chiaveOrdinamento: EJSON, stringhe numeriche, ordine totale sui tipi misti
+  ✓ ordinaRighe: vuoti in fondo, stabile, sorgente intatta
+  ✓ ordinaRigheMultiple: priorità a cascata, vuoti in fondo, sorgente intatta
+  ✓ larghezzeColonne: minimo, tetto, intestazione inclusa, campione rispettato
+  ✓ jsonBreve: fedele, budget rispettato, costo indipendente dalla dimensione (50×=0ms vs 1 intera=7ms)
+  ✓ zero righe: le colonne dichiarate sopravvivono (era il difetto)
+  ✓ l'ordine è quello dichiarato, non quello delle chiavi della prima riga
+  ✓ i campi non dichiarati si accodano, non spariscono
+  ✓ senza dichiarazione resta l'unione delle chiavi; i valori non-oggetto non inventano colonne
+--- Colonne della Tabella Risultati: tutti i test superati ---
+  --- Ricerca della palette (public/js/palette-ricerca.js) ---
+  OK   comincia per batte contiene, che batte la sottosequenza
+  OK   la ricerca non distingue maiuscole e minuscole
+  OK   senza termine tutto resta, nell'ordine di arrivo
+  OK   una voce si cerca per nome, per database e per tipo
+  OK   chi comincia col termine viene prima di chi lo contiene
+  OK   a parità di punteggio decide l'ordine di arrivo, non la sort del motore
+  OK   cercare il database restringe alle sue tabelle
+  OK   senza termine restano tutte, nell'ordine originale
+  OK   nessun tetto sul numero di risultati: la lista è virtualizzata
+  OK   un termine che non corrisponde a nulla non lascia nulla
+  OK   un richiamo dice che cosa si sta cercando e sparisce dal termine
+  OK   lo spazio dopo il richiamo non fa parte del termine
+  OK   un richiamo da solo non cerca nulla: mostra tutto il suo tipo
+  OK   un carattere che non e' un richiamo resta parte del termine
+  OK   il richiamo restringe DAVVERO al tipo, non solo riordina
+  OK   con un richiamo il tipo esce dal testo cercato: il filtro filtra
+  OK   un richiamo con un termine che non corrisponde non lascia nulla
+  OK   il catalogo dei richiami e' chiuso e dichiarato
+  Tutti i test della ricerca della palette superati.
+  OK   Estrazione dei nomi di tabella dallo statement (CDB-A03)
+  OK   Le forme non analizzabili sono dichiarate, non ammesse
+  OK   Scope applicato a ogni tabella citata, lavoro legittimo intatto (CDB-A03)
+  --- Tabellare comune SQL (db/sqlTabellare.js) ---
+  OK   makeId: chiave primaria, ripiego, chiave composta, NULL
+  OK   parseRowId: WHERE parametrizzato, rifiuti, EJSON
+  OK   buildOrderBy: SQL libero, JSON, dialetto, JSON rotto
+  OK   buildSelect: qualificazione, filtro, tetti su limite e salto
+  OK   buildSelect: ricerca globale parametrizzata dopo la condizione
+  OK   tabellare: stesse decisioni, dialetti diversi
+  OK   MySqlStrategy e PostgreSqlStrategy usano il modulo comune
+--- Test unitari: regola unica degli identificatori ---
+  OK   le tre famiglie e i loro alias
+  OK   su MongoDB il delimitatore è il backtick, non il doppio apice
+  OK   PostgreSQL: una sola maiuscola basta a richiedere le virgolette
+  OK   MySQL e MongoDB non abbassano niente: le maiuscole passano nude
+  OK   spazi, trattini e parole chiave richiedono le virgolette ovunque
+  OK   motore sconosciuto: non si tocca niente
+  OK   il carattere di quotatura dentro il nome viene raddoppiato
+  OK   due caratteri di quotatura di fila si raddoppiano entrambi
+  OK   anche la via che quota solo se serve raddoppia
+  OK   quotaSempre non chiede se serve
+  OK   quotaSempre su un motore sconosciuto è un errore, non un tiro a caso
+  OK   nome qualificato: ogni pezzo quotato per conto suo
+  OK   nome qualificato: il pezzo mancante si salta, non lascia un punto
+  OK   nome qualificato: un punto DENTRO un pezzo resta dentro il pezzo
+  OK   nome qualificato: la via che quota solo se serve si può chiedere
+  OK   smarca e ultimoSegmento leggono le tre forme di quotatura
+  OK   il ponte CommonJS e la via ES danno lo stesso modulo
+
+--- Storico query della tab Query & Aggregate ---
+  OK   registra e rilegge una voce
+  OK   codice vuoto o solo spazi non viene registrato
+  OK   dedup globale: la stessa query risale in testa senza duplicarsi
+  OK   la dedup conserva il testo e distingue bersaglio e motore
+  OK   tetto MAX_VOCI rispettato, si pota dalla coda
+  OK   codice oltre MAX_CODE non viene registrato (blocchi del chunker SQL)
+  OK   aggiornaEsito completa la voce; su id ignoto è un no-op
+  OK   filtra per testo, per connessione e per entrambi
+  OK   connessioniPresenti elenca le connessioni distinte, ordinate
+  OK   storage manomesso: nessuna eccezione, cronologia vuota
+  OK   storage che rifiuta la scrittura (quota): registra non lancia
+  OK   storage assente del tutto: nessuna eccezione
+  OK   svuota cancella la chiave
+  OK   la chiave segue il prefisso codedb: (ripulita al logout)
+  OK   il vocabolario dei dialetti ri-esporta la stessa funzione, non una copia
+  OK   chiamante 1 — l'adattatore PostgreSQL qualifica e quota `Prova`
+  OK   chiamante 2 — il DDL di PostgreSQL scrive lo stesso nome
+  OK   chiamante 3 — i JOIN virtuali leggono da "Prova", non da prova
+  OK   chiamante 4 — l'adattatore MySQL usa il backtick, non il doppio apice
+  OK   nessuna copia della regola sopravvive nel repo
+  OK   i sette chiamanti passano dal modulo condiviso
+--- Identificatori: tutti i test superati ---
+  --- Tetti imposti dalla giuntura (db/tetti.js) ---
+  OK   righe: l'adattatore ne restituisce 5.000, la giuntura ne consegna 500
+  OK   righe: maxRows alza il tetto, ma non oltre il massimo assoluto
+  OK   righe: sotto il tetto non si tocca niente
+  OK   byte: poche righe pesanti vengono tagliate anche sotto il tetto delle righe
+  OK   byte: il budget vale anche sulla tab ⚡, non solo sulla griglia
+  OK   byte: budget <= 0 disattiva il controllo
+  OK   Le regex normali continuano a funzionare
+  OK   L'elenco è leggero, le righe arrivano solo con leggi()
+  OK   Un result set vuoto è una scheda, con le sue colonne
+  OK   Tetto sul numero: si tengono i primi, gli altri si dichiarano
+  OK   Tetto sui byte: oltre il budget non si scrive più
+  OK   Due run non condividono mai la stessa cartella
+  OK   Posizione inesistente o malformata: errore, non un file a caso
+  OK   elimina() cancella i file, ed è definitivo e ripetibile
+  OK   La pulizia rimuove i depositi vecchi e risparmia quelli vivi
+  OK   Pulizia su radice inesistente: zero, non un'eccezione
+Tutti i test unitari sul deposito dei risultati superati!
+  OK   BUDGET: una regex costosa sfuggita all’euristica viene terminata nel worker
+  OK   BUDGET: una regex non si applica a un testo smisurato
+  OK   deleteMany/updateMany senza filtro non diventano "tutti i documenti"
+  OK   sembraScriptJs distingue script e comandi singoli
+  OK   Errori di sintassi indicano la riga
+
+Tutti i test dell'interprete superati!
+  OK   Serializzazione delle aperture di connessione per tab (CDB-08) superata
+
+Tutti i test unitari di Lifecycle & Shutdown superati con successo!
+  OK   tempo: un adattatore senza alcun timeout viene interrotto lo stesso
+  OK   tempo: la scadenza lascia un margine di grazia all'adattatore
+  OK   tempo: il conteggio degrada a "totale sconosciuto", non fallisce
+  OK   tempo: tetto <= 0 disattiva il cane da guardia
+  OK   tempo: l'adattatore può dichiarare un'esecuzione fuori dal tetto
+  OK   tempo: un errore in ritardo non diventa un rifiuto non gestito
+  OK   i metodi non soggetti ai tetti passano intatti
+  OK   proprietà e scritture attraversano la giuntura
+  OK   gli argomenti arrivano all'adattatore invariati
+  OK   le tre strategie vere escono dalla fabbrica già limitate
+  OK   la classe base risponde "no" all'esclusione dal tetto
+  OK   MongoDB dichiara fuori dal tetto solo $out e $merge finali
+  Tutti i test sui tetti superati.
+  --- Tabella delle autorizzazioni (auth/capabilities.js) ---
+  OK   ogni metodo delle tre strategie ha la sua voce
+  OK   nessuna voce per un metodo che non esiste
+  OK   ogni voce dice o una capability o il motivo per cui non serve
+  OK   il test si accorge di un metodo aggiunto senza voce
+  OK   un metodo privo di voce viene rifiutato, anche a root
+  OK   il rifiuto nomina il metodo e dice dove si dichiara
+  OK   una voce che dichiara di non essere un'operazione sui dati passa
+  OK   le proprietà passano: il backup legge il driver nativo
+  OK   i metodi classificati continuano a funzionare
+  Tabella delle autorizzazioni: completa.
+  --- Divieto del JavaScript lato server MongoDB ---
+  OK   i tre operatori sono vietati, ovunque siano annidati
+  OK   una query legittima passa
+  OK   testo illeggibile: errore per chi non ha un secondo controllo
+  OK   testo illeggibile: silenzio per chi lo dichiara
+  OK   il Proxy rifiuta $where in un filtro, anche a root
+  OK   il Proxy rifiuta $function in una pipeline
+  OK   il Proxy lascia passare una pipeline legittima
+  OK   la regola è definita in un posto solo
+  Divieto del JavaScript lato server: una definizione sola.
+  --- Trasporto del frontend (public/js/trasporto.js) ---
+  OK   la richiesta porta il tabId del tab attivo
+  OK   DIFETTO 1 — un tabId esplicito ma indefinito non cancella quello iniettato
+  OK   un tabId esplicito e VALIDO ha invece la precedenza
+  OK   la risposta porta origine e stato, e sa se il tab è ancora attivo
+  OK   DIFETTO 2 — tab già chiuso alla partenza: errore attribuito all'origine
+  OK   tab chiuso MENTRE la richiesta è in volo: annullata
+  OK   connessione SALVATA: si riconnette e ritenta
+  OK   connessione NON salvata: nessuna riconnessione
+  OK   un errore che non è "connessione assente" non fa riconnettere
+  OK   riconnessione fallita: si riporta l'errore ORIGINALE
+  OK   il tab si chiude durante la riconnessione: annullata
+  OK   DIFETTO 3 — emitFireAndForget manda un EVENTO, e non attende risposta
+  OK   emitFireAndForget: un tabId indefinito non cancella quello iniettato
+  OK   importare il trasporto non apre alcun socket
+  Tutti i test del trasporto superati.
+  --- Modulo unico della griglia (public/js/griglia.js) ---
+  OK   le capacità non richieste restano spente
+  OK   una capacità scritta male è un errore, non un silenzio
+  OK   le capacità sono immutabili una volta dichiarate
+  OK   in cima: si parte da zero, mai da un indice negativo
+  OK   a metà: la finestra segue lo scorrimento con il suo margine
+  OK   in fondo: la finestra non supera il numero di righe
+  OK   gli spazi sopra e sotto coprono sempre le righe non disegnate
+  OK   nessuna riga: finestra vuota, non una divisione per zero
+  OK   sotto la soglia non si virtualizza, e senza la capacità mai
+  OK   virtualizzata: uno spaziatore, le righe, l'altro spaziatore
+  OK   non virtualizzata: tutte le righe e nessuno spaziatore
+  OK   in cima e in fondo non si scrive uno spaziatore da zero pixel
+  OK   lo spaziatore è invisibile ai lettori di schermo
+  OK   il corpo viene sostituito, non accodato
+  OK   riga già visibile: non si tocca lo scorrimento
+  OK   riga sopra: si sale fino alla sua cima; riga sotto: si scende quanto basta
+  Tutti i test del modulo griglia superati.
+--- Test unitari coerenza temporale delle richieste ---
+  OK   contesto immutabile e generazioni monotone
+--- Test unitari CSV strutturato e sicuro ---
+  OK   parser strutturato, preflight e CSV spreadsheet-safe
+--- Test unitari isolamento regex ---
+  OK   timeout terminabile, thread responsivo e budget espliciti
+--- Test unitari identità stabile delle sessioni ---
+  OK   PID/opid riutilizzati vengono rifiutati sui tre motori
+--- Test audit serializzato ---
+  OK   ordine, generazioni, errore fail-visible e ripresa
+--- Test quote conferme MCP ---
+  OK   limiti per principal/globali, byte contabilizzati e cleanup
+--- Test payload MCP di grandi dimensioni ---
+  OK   artefatto da 10485937 byte -> preview con confirm_token
+--- Test upsert MongoDB via MCP ---
+  OK   upsert visibile in anteprima e inoltrato alla strategia
+  OK   senza flag l'upsert resta disattivato
+--- Test execute_ddl via MCP ---
+  OK   DDL: validazione, anteprima, token monouso, esecuzione e audit
+  OK   RBAC: ddl/manage consentite, write negata; MongoDB escluso
+--- Test batch di execute_write via MCP ---
+  OK   SQL: anteprima, token, esecuzione e audit descrivono un solo batch
+  OK   formati vuoti, misti o incompatibili vengono rifiutati
+  OK   MongoDB applica sequenzialmente tutte le mutazioni dopo la conferma
+  OK   un errore MongoDB arresta il blocco ed e tracciato nell'audit
+--- Test transazione SQL per execute_write batch ---
+  OK   MySQL: commit unico e rollback integrale al primo errore
+  OK   MySQL: il timeout distrugge la connessione e dichiara l'annullamento
+  OK   PostgreSQL: commit unico e rollback integrale al primo errore
+  OK   il metodo batch applica capability e invarianti SQL anche alla conferma
+  OK   nessuna copia della logica del batch sopravvive nei due adattatori
+--- Test insert MongoDB singolo e multiplo ---
+  OK   BSON esatto, risultato singolo/bulk, validazione prima della scrittura e audit parziale
+--- Test preferenze personali e condivise ---
+  OK   isolamento per principal, condivisione esplicita e validazione server-side
+--- Test budget schema progressivo ---
+  OK   payload iniziale limitato, metadati, continuazione e schema piccolo completo
+  OK   cursore dei campi: si raggiungono tutte le colonne, una volta ciascuna
+  OK   cursore delle relazioni: indipendente da quello del catalogo
+  OK   paginare il catalogo non lascia indietro le relazioni delle pagine successive
+  OK   i tre cursori non si spostano a vicenda
+  OK   revisione: un catalogo cambiato non fonde due mezze letture
+  OK   il campionamento è dichiarato, e non si inventa dove non c’è
+  OK   drenaggio completo: 250 tabelle, 250 colonne, 1100 relazioni in 25 pagine
+  OK   snapshot: riuso, refresh, database, invalidazione, principal, scadenza
+--- Schema progressivo: tutti i test passati ---
+
+--- Test degradazione grafo 3D ---
+  OK   budget nodi/campi/relazioni, effetti ridotti e ampliamento puntuale
+--- Test protocollo unico pinning SSH ---
+  OK   chiave nuova, nota, cambiata e archivio non scrivibile
+--- Test autenticazione server Electron ---
+  OK   server autentico, marker estraneo, prova errata e identità diversa
+--- Test unitari tombstone dei backup ---
+  OK   identità composite, ordine delete→upsert e storico incompleto
+OK selezione backup: array, nomi letterali, compatibilità, validazione e passaggio al motore
+--- Test integrazione tombstone MongoDB ---
+  OK   full → insert/update/delete → incremental → restore esatto
+--- Test unitari rinomina sicura ---
+  OK   piano per motore e barriera sullo stato corrente
+  OK   improntaDatabase riusa il totale della prima pagina (nessun blocco vuoto superfluo)
+--- Test unitari codec dei valori esatti ---
+  OK   BIGINT, Long e Decimal non attraversano Number
+  OK   test tabellari e controprova di sensibilità superati
+  OK   parametri SQL esatti: Long e Decimal arrivano al driver come testo canonico
+--- Test unitari valori esatti SQL e MongoDB ---
+  OK   parametri SQL esatti: Long e Decimal arrivano al driver come testo canonico
+  OK   il valore riletto dal database coincide con testo e tipo confermati
+  OK   limiti 64-bit signed/unsigned e controprova di sensibilità superati
+  OK   metadata SQL: FK composita raggruppata e ordinata per vincolo
+  --- Ordinamento: il punto di estensione della strategia ---
+  OK   sovrascrivere buildOrderBy si sente anche in buildSelect
+  OK   senza sovrascrittura la SQL prodotta è quella di prima
+  OK   MySQL: collectionFind manda al server l'ordinamento della STRATEGIA
+  OK   MySQL: chi compone l'ordinamento riceve le colonne, con la nullabilità
+  OK   MySQL: la nullabilità non costa una lettura di catalogo in più
+  OK   PostgreSQL: collectionFind manda al server l'ordinamento della STRATEGIA
+  OK   PostgreSQL: chi compone l'ordinamento riceve le colonne, con la nullabilità
+  OK   PostgreSQL: la nullabilità non costa una lettura di catalogo in più
+  OK   PostgreSQL scrive il suffisso: il nullo è il più piccolo
+  OK   MySQL non scrive niente: il suo predefinito già coincide
+  OK   colonna NOT NULL: nessun suffisso, l'indice resta utilizzabile
+  OK   nullabilità sconosciuta: il suffisso si mette
+  OK   più colonne: la regola vale per ognuna, secondo la SUA nullabilità
+  OK   l'SQL scritto a mano non viene MAI riscritto
+  OK   la regola arriva fino alla query VERA della griglia
+  OK   sulla chiave primaria la griglia non paga niente
+  OK   keyset: con ordinamento di default si pagina per chiave, non per salto
+  OK   keyset: con un ordinamento scelto dall'utente si ripiega su OFFSET
+  Ordinamento: punto di estensione efficace su tutti i percorsi.
+  --- Metadati comuni SQL (db/sqlMetadati.js) ---
+  OK   keyset: stessa forma sui due motori, cambia solo il segnaposto
+  OK   keyset: conserva parametri e numerazione della ricerca globale
+  OK   keyset: casi non applicabili e prima/ultima pagina
+  OK   keyset: il valore del cursore passa da EJSON a parametro SQL
+  OK   chiave primaria: query e ordine dei parametri per motore
+  OK   colonne MySQL: INVISIBLE escluse, geometrie riconosciute, cache
+  OK   colonne MySQL: ripiego senza SRS_ID (MySQL 5.7)
+  OK   colonne PostgreSQL: PostGIS e tipi nativi in classi diverse, SRID
+  OK   colonne PostgreSQL: senza PostGIS la lettura prosegue
+  OK   campi MySQL: EXTRA e COLUMN_KEY letti come dichiara il dialetto
+  OK   campi PostgreSQL: serial e identity, chiave primaria a parte
+  OK   raggruppamento indici: ordine delle colonne e buchi tolti
+  OK   indici unici: primaria e non unici esclusi sui due motori
+  OK   stima righe: stessa firma, stesse regole, query per motore
+  OK   conteggio: la stima vale solo se > 0 e solo senza filtro
+  OK   gli adattatori non ridichiarano i metodi riconciliati
+  OK   i metodi restano invocabili sulle strategie
+  OK   Le 18 scritture del frontend congelano il bersaglio (CDB-A18)
+  OK   103 handler socket: nessuno legge una sessione non dichiarata (CDB-A70)
+  OK   Il controllo riconosce il difetto originale (controprova)
+
+Tutti i test sugli handler socket superati!
+  --- La giuntura degli eventi socket (server.js) ---
+  OK   registraEventi accetta un contesto costruito per la prova
+  OK   db:list delega alla strategia della sessione indicata dal tabId
+  OK   senza sessione per quel tab la giuntura rifiuta, e non tocca nulla
+  OK   i campi riservati al server vengono tolti dal payload del client
+  OK   con un runId il riferimento di annullamento lo mette il SERVER
+  OK   l'errore della strategia torna come messaggio, non come eccezione
+  OK   vault:status risponde senza toccare alcuna strategia
+  OK   query:cancel lavora sullo stato della sessione, non su una strategia
+  OK   query:cancel su un runId sconosciuto non inventa nulla
+  OK   due contesti hanno sessioni indipendenti
+  OK   l'identità che la giuntura usa è quella del CONTESTO
+  OK   l'handler riceve il contesto come terzo argomento
+  Giuntura socket: gli handler si invocano senza rete.
+  --- I quattro eventi di osservazione nella giuntura dei dati ---
+  OK   tutti e quattro rispondono al client
+  OK   senza sessione rispondono con il messaggio della giuntura
+  OK   gli eventi push portano il tabId, così il frontend li instrada
+  OK   lo schema: stesso trattamento, senza collezione
+  OK   i quattro hanno una capability dichiarata, ed è "read"
+  OK   un sottoutente con la sola lettura può usarli tutti e quattro
+  OK   un sottoutente SENZA lettura viene negato su tutti e quattro
+  OK   i quattro passano dalla via che riprova, e non da una propria
+  OK   nessuno dei quattro cerca più la sessione da sé
+  Osservazione: i quattro eventi passano dalla giuntura dei dati.
+  OK   tutti i 32 eventi amministrativi dichiarano audit o motivo
+  OK   un evento amministrativo non dichiarato viene rifiutato
+Errore decrittazione segreto: Unsupported state or unable to authenticate data
+Errore decrittazione segreto: Unsupported state or unable to authenticate data
+  OK   gli eventi amministrativi di lettura rispondono come prima
+  OK   un evento amministrativo che fallisce risponde con l'errore
+  Giuntura amministrativa: l'audit non si può più dimenticare.
+  OK   otto punti reali, usati da tutte le 15 operazioni lunghe
+  OK   operazioni non dichiarate e refusi nei punti vengono rifiutati
+  OK   PUNTO 8 — statoDiSessione: script:state legge il registro della sessione
+  OK   PUNTO 4 — letturaOperazioniInCorso: query:cancel legge senza registrare
+  OK   PUNTO 5 — interruzioneInProcesso: il flag ferma ciò che gira dentro CodeDB
+  OK   PUNTO 4bis — annullare ciò che non è registrato non inventa nulla
+  OK   97 eventi: registrazione reale, compatibilità completa e famiglie disgiunte
+  --- Il filtro strutturato (db/filtro.js) ---
+  OK   nessun filtro è null, e null non è un filtro vuoto
+  OK   un operatore sconosciuto è un errore che elenca quelli previsti
+  OK   un campo assente o con caratteri di controllo è un errore
+  OK   il numero dei valori è verificato per operatore
+  OK   l'unione è «e» oppure «o», e nient'altro
+  OK   un filtro può arrivare come testo JSON
+  OK   ogni valore diventa un parametro, mai testo
+  OK   PostgreSQL numera i segnaposto, e il numero è la posizione reale
+  OK   IN produce un segnaposto per valore, non una lista interpolata
+  OK   vuoto e nonVuoto non hanno parametri: NULL non è un valore
+  OK   la ricerca testuale neutralizza i metacaratteri di LIKE
+  OK   iniziaCon e finisceCon mettono il jolly da una parte sola
+  OK   l'unione «o» si vede nella clausola
+  OK   un dialetto incompleto è un errore subito
+  OK   MongoDB: il valore resta in posizione di VALORE, mai di operatore
+  OK   MongoDB: una condizione sola non si avvolge in $and
+  OK   MongoDB: più condizioni diventano $and, l'unione «o» diventa $or
+  OK   MongoDB: vuoto e nonVuoto, dentro, e la ricerca testuale
+  OK   MongoDB: la ricerca testuale neutralizza i metacaratteri di regex
+  OK   MongoDB: nessun filtro è il documento vuoto
+  OK   SQL: nessun valore ostile cambia la struttura della clausola
+  OK   MongoDB: nessun valore ostile diventa un operatore
+  OK   un nome di campo ostile viene QUOTATO, non interpolato
+  OK   gli adattatori veri rendono il filtro con il proprio dialetto
+  OK   il filtro TESTUALE continua a funzionare come prima
+  OK   i due filtri convivono, uniti da AND e con le parentesi
+  Filtro strutturato: il valore non attraversa mai il testo della query.
+  --- Il filtro rapido della griglia ---
+  OK   invia una sola intenzione server-side, senza enumerare colonne
+  OK   testo vuoto o solo spazi: nessun filtro
+  OK   il testo viene ripulito ai bordi ma non dentro
+  OK   trova anche una corrispondenza presente soltanto nella settima colonna
+  OK   modalità rapida: si manda `cercaOvunque`, mai `filter`
+  OK   modalità condizione: si manda `filter`, mai `filtro`
+  OK   le due chiavi non partono MAI insieme
+  OK   casella vuota: payload vuoto in entrambe le modalità
+  OK   il pulsante alterna fra due modalità, e solo quelle
+  OK   ogni modalità dice cosa fa: icona, titolo, segnaposto
+  Filtro rapido: una parola, tutte le colonne, nessun motore da conoscere.
+  --- Ricerca globale server-side ---
+  OK   accetta soltanto l'intenzione contieneOvunque
+  OK   il catalogo attraversa oggetti e array fino ai valori scalari
+  OK   Mongo cerca case-insensitive anche in valori annidati, array e _id
+  OK   MySQL include tutte le colonne e nei JSON estrae valori, non chiavi
+  OK   PostgreSQL attraversa JSON/array e usa confronto case-insensitive parametrizzato
+  OK   i caratteri LIKE restano letterali
+  OK   MySQL ignora il case ma non gli accenti
+  Ricerca globale: valori scalari, percorsi annidati e nessun tetto di colonne.
+  --- Filtro strutturato e scope (auth/sqlClause.js) ---
+  OK   un filtro strutturato ben formato passa la verifica di scope
+  OK   un filtro malformato viene rifiutato leggendone i campi
+  OK   un campo che prova a nominare un'altra tabella resta UN nome di colonna
+  OK   un VALORE ostile non aggiunge struttura, su nessuno dei due motori
+  OK   caratteri di controllo nel campo: rifiutati prima di arrivare al motore
+  OK   il filtro TESTUALE conserva il suo firewall
+  OK   i due filtri si verificano entrambi quando arrivano insieme
+  Filtro strutturato: uscire dallo scope non è esprimibile.
+  OK   I tipi SQL reali dei tre DBMS restano ammessi
+  OK   Nessuna istruzione aggiuntiva né uscita dallo scope (CDB-A67)
+  OK   Nessuna espressione valutabile nella posizione del tipo (CDB-A67)
+  OK   Il rifiuto spiega come procedere invece di limitarsi a negare
+
+Tutti i test sui tipi di colonna superati!
+--- Test Unitari Temi ---
+--- Test Unitari Monitor Sessioni ---
+  OK   normalizzaMongo passed
+  OK   normalizzaMysql passed
+  OK   normalizzaPostgres passed
+  OK   ordina passed
+  OK   motivoNonTerminabile passed
+  OK   collegaBlocchi passed
+  OK   ordina mette il bloccante in cima passed
+  OK   diagnosi: blocco con bloccante noto passed
+  OK   diagnosi: blocco senza bloccante noto passed
+  OK   diagnosi: query lenta passed
+  OK   diagnosi: nessun problema passed
+  OK   diagnosi: transazione aperta solo se ferma passed
+  OK   diagnosi: azione impedita passed
+  OK   diagnosi: i processi di servizio non fanno rumore passed
+  OK   troncamento del testo delle query passed
+--- Test Unitari Layout Split-View ---
+OK: watch indipendenti, cambio bersaglio, errori tardivi, fallback e rilascio completo
+--- Test Unitari Scorrimento ai Bordi ---
+--- Test Unitari Duplicazione Riga ---
+  OK   Senza chiavi: primaria omessa, uniche svuotate o ricalcolate
+  OK   Con chiavi: cambia solo la primaria, il resto resta
+  OK   Primaria senza generatore: sempre ricalcolata
+  OK   Chiave composta: cambia l'ultima componente, il contesto resta
+  OK   `_id` colonna vera distinto dalla chiave virtuale SQL
+  OK   MongoDB: _id rigenerato, campi unici trattati come non annullabili
+  OK   Tipi, lunghezze e suffissi
+  OK   Confine di fiducia unico per export e backup passed
+  OK   Identita SQL: PK prima di UNIQUE e UNIQUE solo interamente NOT NULL
+  OK   Manifest v2: incrementali senza identita e manifest storici non sono promossi
+  OK   Identita composta: valori mancanti o nulli sono rifiutati
+  OK   Duplicazione dei layer: la cardinalita finale e il numero di identita distinte non sono la somma delle scritture
+  OK   Catena: uno storico o un cambio di colonne/identita richiedono un nuovo full
+--- Test unitari JSON/BSON (validazione, formatta, minifica) ---
+  OK   Valido: {}
+  OK   Valido: []
+  OK   Valido: {"a": 1}
+  OK   Valido: { "a": [1, 2, 3], "b": { "c": null } }
+  OK   Valido: { nome: 'Anna', eta: 30 }
+  OK   Valido: { _id: ObjectId("64f0aa11bb22cc33dd44ee55") }
+  OK   Valido: { creato: ISODate("2026-01-01T00:00:00Z") }
+  OK   Valido: { quando: new Date("2026-01-01") }
+  OK   Valido: { n: NumberLong("9007199254740993") }
+  OK   Valido: { i: NumberInt("42"), d: NumberDecimal("1.25")
+  OK   Valido: { nome: /^an/i }
+  OK   Valido: { "a": 1, }
+  OK   Valido: { /* nota */ "a": 1 } // fine
+  OK   Valido: { "a": -1.5e-3, "b": 0x1f, "c": true, "d": nul
+  OK   Valido: [{ "$match": { "eta": { "$gt": 30 } } }]
+  OK   Manca la virgola fra due campi (riga e colonna giuste)
+  OK   Graffa mai chiusa
+  OK   Stringa mai chiusa
+  OK   Testo nudo al posto di una stringa
+  OK   Manca il due punti
+  OK   Spazzatura dopo la fine del documento
+  OK   Documento vuoto
+  OK   Un costruttore sconosciuto è rifiutato alla sua posizione
+  OK   Chiavi equivalenti duplicate: { a: 1, "a": 2 }
+  OK   Chiavi equivalenti duplicate: { a: 1, "\u0061": 2 }
+  OK   Il testo del frammento sbagliato compare nel messaggio
+  OK   Indentazione a due spazi, una voce per riga
+  OK   Array indentato
+  OK   Oggetto e array vuoti restano su una riga
+  OK   I costruttori BSON non vengono toccati
+  OK   Un intero oltre i 53 bit sopravvive alla formattazione
+  OK   Gli apici singoli e le chiavi nude restano come sono
+  OK   La virgola finale sparisce
+  OK   I commenti sopravvivono alla formattazione
+  OK   Un testo non valido fa lanciare (chi chiama decide)
+  OK   Minifica toglie spazi e a capo
+  OK   Minifica non tocca gli spazi DENTRO le stringhe
+  OK   Minifica toglie i commenti (su una riga sola mangerebbero tutto)
+  OK   Formatta e minifica sono l'una l'inversa dell'altra
+  OK   sembraJsonBson distingue un documento da una SELECT
+  OK   posizioneDi conta righe e colonne da 1
+  OK   Il tokenizzatore tiene insieme una chiamata con parentesi annidate
+  OK   Nessun crash su un documento profondissimo (limite di ricorsione)
+  Tutti i test JSON/BSON superati.
+  OK   leggiHex
+  OK   scriviHex
+  OK   rgba
+  OK   versoHsl / daHsl (andata e ritorno)
+  OK   contrasto (tema scuro, testo su sfondo: 15.4:1)
+  OK   contrasto (tema chiaro, testo su sfondo: 14.7:1)
+  OK   testoSu (con la tolleranza sul bianco)
+  OK   derivaTokens: verso delle superfici
+  OK   derivaTokens: verso del testo
+  OK   derivaTokens: testo sopra l'accento
+  OK   derivaTokens: la famiglia dell'accento segue
+  OK   derivaTokens: 76 token, tutti valori CSS validi
+  OK   derivaTokens: scelte parziali
+  OK   diagnostica (2 avvisi sul tema illeggibile)
+  OK   validaTema: identificativi pericolosi rifiutati
+  OK   validaTema: valori colore non esadecimali rifiutati
+  OK   validaTema: i temi predefiniti sono protetti
+  OK   validaTema: dati mancanti e corrotti
+  OK   cssDelTema
+  OK   nomeFile
+--- Test Temi superati ---
+  ✓ normalizza: quote assenti, incoerenti o spazzatura non producono NaN
+  ✓ creaAlbero: orientamento e ordine seguono la direzione del rilascio
+  ✓ inserisci: fratello a orientamento uguale, annidamento solo quando serve
+  ✓ rimuovi: ridistribuzione proporzionale e collasso dei contenitori inutili
+  ✓ trascina: somma conservata, minimo rispettato, vicini isolati
+  ✓ pareggia/scambia/ruota agiscono sul contenitore giusto
+  ✓ valida: albero coerente coi pannelli davvero vivi (scenario F5)
+  ✓ immutabilità e round-trip JSON dello snapshot
+--- Layout Split-View: tutti i test superati ---
+  ✓ nessuno scorrimento lontano dai bordi
+  ✓ il verso segue il bordo avvicinato
+  ✓ velocità crescente e saturata al massimo
+  ✓ contenitore più stretto di due fasce
+  ✓ bordo e vMax configurabili
+  ✓ ingressi degeneri non producono NaN né corse infinite
+--- Scorrimento ai bordi: tutti i test superati ---
+--- Test unitari IntelliSense schema-aware ---
+  OK   Il token al cursore separa prefisso e qualificatore
+  OK   Senza punto non c'è qualificatore
+  OK   Le tabelle citate arrivano con i loro alias
+  OK   Una parola chiave non viene scambiata per un alias
+  OK   Il nome qualificato dallo schema perde il prefisso
+  OK   Un nome quotato e qualificato viene riconosciuto (PostgreSQL)
+  OK   Le colonne di una tabella quotata si trovano dall'alias
+  OK   Dopo FROM servono tabelle
+  OK   Dopo JOIN servono tabelle
+  OK   Dopo un alias servono SOLO le colonne di quella tabella
+  OK   Il qualificatore può essere il nome della tabella, non solo l'alias
+  OK   Un alias sconosciuto non propone le colonne di qualcun altro
+  OK   Nella SELECT compaiono le colonne delle tabelle citate
+  OK   Le colonne vengono prima delle parole chiave
+  OK   Chi comincia col prefisso batte chi lo contiene soltanto
+  OK   Quello che si è già scritto per intero non viene riproposto
+  OK   Senza schema si ripiega sulle colonne della tabella aperta
+  OK   Il vocabolario ristretto della griglia non propone SELECT
+  OK   Dopo db. servono le collezioni
+  OK   Dopo db.collezione. servono i metodi
+  OK   Dentro find() servono i campi di QUELLA collezione
+  OK   In uno script vale l'ultima collezione prima del cursore
+  OK   Il $ apre gli operatori
+  OK   db.getCollection("x") viene riconosciuto
+  OK   motoreDalTesto riconosce SQL, MQL e sintassi shell
+  OK   Su MongoDB una SELECT propone le COLLEZIONI dopo FROM
+  OK   Su MongoDB una SELECT propone i campi delle collezioni citate
+  OK   Su MySQL un filtro MQL resta trattato come MQL
+  OK   In uno script ogni istruzione ha la sua lingua
+  OK   Finché il testo tace, su MongoDB si propongono anche gli inizi SQL
+  OK   Nel dubbio, su MongoDB compaiono anche le collezioni
+  OK   Il motore esplicito continua a comandare (nessuna rilevazione)
+  OK   dialettoDi normalizza i nomi dei motori
+  OK   Su MySQL compaiono le funzioni MySQL
+  OK   Le funzioni di un altro motore non compaiono
+  OK   Le clausole proprie del motore sono suggerite
+  OK   Le funzioni comuni restano per tutti i motori SQL
+  OK   Senza DBMS il completamento è quello di prima (nessun dialetto)
+  OK   SQL su MongoDB: aggregati e funzioni del registro condiviso
+  OK   I tipi di colonna si propongono nella CREATE TABLE
+  OK   I tipi si propongono anche dopo ALTER TABLE … ADD
+  OK   L'identificatore SQL riconosce le tre forme di virgolette
+  OK   Le parentesi dentro le stringhe non contano nel DDL
+  OK   Fuori dal DDL i tipi NON compaiono
+  OK   Dopo `db.` compaiono anche i metodi dell'oggetto db
+  OK   Le collezioni restano prima dei metodi di db
+  OK   Gli stadi di aggregazione meno comuni ci sono
+  OK   Dopo FROM il punto separa lo SCHEMA dalla tabella
+  OK   Uno schema diverso da quello aperto non propone nomi altrui
+  OK   Il JOIN qualificato si comporta allo stesso modo
+  OK   L'alias dopo il FROM resta un alias (non diventa uno schema)
+  OK   PostgreSQL: un nome con una maiuscola va quotato
+  OK   MySQL non abbassa i nomi: si quota solo se serve davvero
+  OK   Su MongoDB si usa il backtick, non il doppio apice
+  OK   Motore sconosciuto: nessuna virgoletta inventata
+  OK   Accettando la tabella su PostgreSQL il nome esce quotato
+  OK   Le virgolette già aperte dall'utente non si raddoppiano
+  OK   Anche le colonne escono quotate quando serve
+  OK   In MQL i nomi NON si quotano (la chiave è già una stringa JSON)
+  OK   Parole chiave e funzioni non vengono mai quotate
+  OK   Accettare un suggerimento sostituisce solo il token in scrittura
+  OK   Accettare un operatore non raddoppia il $
+  OK   Il testo dopo il cursore non viene mangiato
+  Tutti i test IntelliSense superati.
+  OK   Valore nuovo calcolato evitando quelli occupati
+  OK   Involucri EJSON conservati nel valore nuovo
+  OK   Sorgente validata ed esiti del ricalcolo riportati
+Tutti i test unitari sulla duplicazione superati!
+  OK   Upsert SQL identitario senza effetti delete passed
+--- Test unitari calcoli su Web Worker ---
+  OK   La soglia è quella dichiarata (50.000 celle)
+  OK   eseguiCompito copre i quattro compiti
+  OK   Un compito sconosciuto viene rifiutato, non ignorato
+  OK   Sotto soglia si calcola qui, e il risultato è quello di sempre
+  OK   Senza Worker disponibile anche sopra soglia si calcola qui
+  OK   Il sequenziatore riconosce il risultato sorpassato
+  OK   Drop preparatorio fail-closed passed
+  OK   Stesse righe e stessa configurazione: il precalcolo si riusa
+  OK   Con e senza precalcolo il grafico è identico
+  OK   Vale anche su un asse temporale e su una torta
+  OK   Il precalcolo sopravvive al passaggio fra thread (serializzabile)
+  OK   Il precalcolo passato viene USATO, non rifatto
+  OK   Le note del precalcolo non si perdono per strada
+  OK   Le RIGHE non attraversano mai il confine; i valori sì
+  Tutti i test dei calcoli superati.
+  OK   Motore piano, staging e recupero passed
+  OK   le quattro modalita producono le selezioni dichiarate
+  OK   il piano e immutabile, firmato e deterministico
+  OK   la chiusura dichiara aggiunte, prerequisiti esterni e dipendenze non deducibili
+  OK   l ordine separa creazione, dati e vincoli, e dichiara i cicli veri
+  OK   esclusioni con motivo e dipendenze dei dati dichiarate
+  OK   cio che non e esprimibile viene rifiutato prima di ogni lettura
+  OK   Piano di export: modalita, chiusura, ordine ed esclusioni passed
+  OK   numeri BSON: tipi e valori intatti, oltre 2^53 come testo
+  OK   temporali, ObjectId, regex, Min/MaxKey, binari, UUID, annidati
+  OK   corredo indici/oggetti intatto
+  OK   file relaxed storici ancora leggibili
+  OK   guardia statica: relaxed distruttivo assente da engine e restore
+  OK   Codec fedele passed
+  OK   diario puro: registra, fasi, esito, isolamento
+  OK   MySQL: stime, FK interne ed esterne distinte
+  OK   default fedele, contratto immutabile e firmato
+  OK   politiche per oggetto ed esclusioni con motivo
+  OK   solo-dati dichiarato, niente DDL implicita
+  OK   assenti, merge senza identità e sinonimi rifiutati
+  OK   Selezione import con politiche passed
+  OK   MySQL: una view illeggibile e dichiarata, non data per indipendente
+  OK   topologie classificate, hello assente mai fatale
+  OK   Range: suffissi, estremi, fuori file e header malformati
+  OK   If-Range: una ripresa su un file cambiato torna intera, non cucita
+  OK   blocchi: ripresa idempotente, conflitti rifiutati, nessun buco
+  OK   ticket: firmati, legati a una risorsa sola, scadenti
+  OK   Trasferimento artefatti: range, ripresa, blocchi e ticket passed
+  OK   UTF-8 a cavallo dei blocchi non si corrompe
+  OK   involucre senza dati e documenti uno per uno
+  OK   parentesi dentro le stringhe non tagliano i documenti
+  OK   troncamenti e limiti falliscono invece di indovinare
+  OK   Lettore streaming .codedb.json v1 passed
+  OK   PostgreSQL: FK, dipendenze di view da pg_depend, sequenze possedute
+  OK   MongoDB: viewOn dichiarato, $lookup dichiarato non deducibile
+  OK   il catalogo reale e accettato dal piano senza adattamenti
+  OK   Catalogo di export: oggetti e dipendenze reali dei tre motori passed
+  OK   default tutto-selezionato e propagazione a tre stati
+  OK   filtrare non deseleziona mai
+  OK   azioni globali e riepilogo per la conferma
+  OK   la mappa alimenta il piano senza adattamenti
+  OK   dati sulle view, nomi inventati e duplicati rifiutati
+  OK   cinquemila oggetti senza sforzo
+  OK   Selezione export del wizard passed
+  OK   mapping diretto e rinomina senza avvisi
+  OK   due sorgenti sullo stesso nome: avviso, non silenzio
+  OK   fold PostgreSQL dichiarato, esistenti visti
+  OK   nomi vuoti rifiutati
+  OK   Mapping nomi per l import passed
+  OK   export: conteggi, esclusioni e avvisi dall oggetto vero
+  OK   import: righe, drop e promozione dall oggetto vero
+  OK   senza impronta o con tipo ignoto non si mostra nulla
+  OK   Riepilogo piano per l anteprima passed
+  OK   spawn con array, senza shell, ambiente aggiunto
+  OK   uscita nonzero riportata, avvio fallito dichiarato
+  OK   crash: esito incerto dichiarato, mai presunto né dimenticato
+  OK   completato e pulito: diario chiuso con l operazione
+  OK   errore con recupero: la retention non cancella il diario
+  OK   Diario delle operazioni passed
+  OK   abort e timeout uccidono l intero albero
+  OK   password solo su stdin, mai negli argomenti
+  OK   redazione, file 0600 esclusivi e PGPASSFILE scappata
+  OK   versioni parsate, illeggibili rifiutate
+  OK   combinazioni vietate rifiutate prima del lavoro
+  OK   credenziali Mongo nel file, mai negli argomenti
+  OK   output dei tool con tetto dichiarato
+  OK   variabile dedicata, PATH, assenza con istruzioni
+  OK   Tool nativi: spawn sicuro, versioni e vincoli passed
+  OK   Il dump MongoDB scrive manifest v4, semantica cancellazioni e identita _id
+  OK   dump finto: manifest con coerenza, tipi intatti, conteggi
+  OK   Dump MongoDB con coerenza dichiarata passed
+  OK   Restore rifiuta l’intera catena ostile prima di ogni mutazione passed
+  OK   Restore reale della catena: 4 scritture, cardinalita finale e identita distinte 3
+  OK   La verifica finale intercetta una identita sorgente omessa, non e tautologica
+  OK   Full storico senza identita rifiutato su destinazione popolata prima di scrivere
+  OK   avvio, blocchi, ripresa idempotente e finalizzazione verificata
+  OK   conflitti e buchi rifiutati, sessione intatta
+  OK   tetti di blocco, artefatto e concorrenza
+  OK   export senza limite per file, indice costante, checksum e quota tenant esplicita
+  OK   finalizzazione solo a dimensione e impronta esatte
+  OK   crash a metà upload: si riprende dallo stato su disco
+  OK   incompleti scaduti rimossi, mai pubblicati
+  OK   isolamento tenant/attore e id validati
+  OK   scarto esplicito di un upload abortito
+  OK   quota all avvio, retention configurata, uso misurato
+  OK   checksum non bloccante e mutazioni concorrenti escluse sullo stesso upload
+  OK   Archivio upload su disco passed
+  OK   Evento artefatti:ticket: legato al tenant, risorse validate passed
+  OK   Evento artefatti:ticket: solo chi amministra il tenant passed
+  OK   RBAC: catalogo non esposto a grant limitati
+  OK   piano di export firmato, dal catalogo reale, con la connessione della sessione
+  OK   la modalità cambia il piano, non solo l etichetta
+  OK   il database di sistema è rifiutato dal server, non dal browser
+  OK   selezione di import firmata, politiche impossibili rifiutate prima di scrivere
+  OK   Eventi del piano di export e della selezione di import passed
+  OK   ogni #id del wizard esiste nel markup
+  OK   i moduli del wizard sono nella catena di import
+  OK   il wizard usa i moduli puri, non copie locali
+  OK   Wizard di export e conferma del piano passed
+  OK   Adapter import valida identita e righe prima delle mutazioni passed
+  OK   audit: import parziali e incerti non sono successi
+  OK   server: nessuna riconnessione con ripetizione di un import incerto
+  OK   ciclo di vita e rifiuti tracciati, segreti mai
+  OK   Audit del data-plane passed
+  OK   upload a blocchi con ripresa idempotente e rifiuti
+  OK   finalizzazione solo a dimensione e impronta esatte
+  OK   backup e restore MongoDB completo e selettivo conservano le opzioni
+  OK   trasporto: timeout e risposta tardiva non ripetono richieste
+  OK   evento import: ricevuta condivisa dopo riconnessione e lease rilasciato
+  OK   risposta persa: il client recupera la ricevuta senza duplicare
+  OK   ricevute: concorrenza, isolamento e dati diversi
+  OK   driver: una scrittura incerta non viene ripetuta riga per riga
+  OK   annullamento durante promozione: recupero eseguito
+  OK   annullamento prima della promozione lascia intatta la destinazione
+  OK   errori degli eventi MySQL propagati
+  OK   DDL MySQL assente non equivale a oggetto assente
+  OK   download intero, parziale, 416, If-Range e HEAD
+  OK   ticket legati a risorsa, tenant e scadenza
+  OK   la revoca dell attore invalida un ticket ancora in corso
+  OK   gate Origin applicato al data-plane
+  OK   Data-plane HTTP degli artefatti passed
+  OK   export fallito sul server non avvia il download
+  OK   opzioni MongoDB alla creazione dello staging
+  OK   import: risposta persa non significa righe fallite
+  OK   Qualificazione del database tolta in tutte e tre le quotature
+  OK   Indice MongoDB canonico: predefiniti omessi, opzioni con valore conservate
+  OK   Inventario canonico oggetti: definizioni e sequenze passed
+  OK   Upload artefatto a blocchi, limiti e isolamento owner passed
+  OK   Operazione lunga import recuperabile fuori dal tab passed
+  OK   Evento reale import: ack, lease e stato recuperabile passed
+  OK   UI import distingue i tre esiti terminali passed
+  OK   Target E2E casuali, flag e proprietà distruttiva passed
+--- Test di processo autenticazione Electron/server.js ---
+  OK   server reale, processo estraneo e riuso autenticato fra processi
+  OK   Esposizione in rete: TLS e autenticazione sono due dichiarazioni distinte (CDB-A06)
+
+Tutti i test unitari superati con successo!

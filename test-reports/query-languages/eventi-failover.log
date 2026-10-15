@@ -1,0 +1,10 @@
+  OK   barriera: arrestato 127.0.0.1:27041, eletto 127.0.0.1:27039
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato 127.0.0.1:27039, eletto 127.0.0.1:27041
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato 127.0.0.1:27041, eletto 127.0.0.1:27040
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato 127.0.0.1:27040, eletto 127.0.0.1:27041
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+
+4 failover reali del processo primario superati.

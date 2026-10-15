@@ -5,7 +5,8 @@
  *
  * `test/unit-filtro-rapido.js` prova che il filtro venga composto bene; questo
  * prova ciò che quello non può: che il controllo segmentato esponga entrambe
- * le scelte, conservi i due testi e mandi al server soltanto l'intenzione.
+ * le scelte, conservi il testo al cambio di modalità e mandi al server soltanto
+ * l'intenzione scelta.
  *
  * L'ultima è la cosa che conta: in modalità rapida il testo digitato è una
  * parola da cercare, e mandarlo come `filter` lo farebbe interpretare come una
@@ -14,6 +15,7 @@
  * Non serve un database: si intercetta ciò che parte dal socket.
  *
  * Uso: node test/e2e-filtro-rapido-ui.js
+ * Sensibilità: aggiungere --mutant ripristina lo scambio dei testi nel browser.
  * ------------------------------------------------------------------------- */
 
 const { chromium } = require('playwright');
@@ -34,6 +36,16 @@ const ok = (cond, etichetta, dettaglio = '') => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    if (process.argv.includes('--mutant')) {
+      await page.route('**/js/grid.js', async (route) => {
+        const response = await route.fetch();
+        const code = await response.text();
+        const corretto = "gruppo.dataset[chiaveDopo] = $('#filter-input').value;";
+        if (!code.includes(corretto)) throw new Error('Mutazione del cambio modalità non applicata');
+        await route.fulfill({ response, body: code.replace(corretto,
+          "$('#filter-input').value = gruppo.dataset[chiaveDopo] || '';") });
+      });
+    }
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
@@ -66,32 +78,58 @@ const ok = (cond, etichetta, dettaglio = '') => {
     ok(iniziale.queryMode === 'find' && !iniziale.queryModeVisibile,
       'Aggregate/SQL Raw non è più una modalità visibile nella vista Dati');
 
-    /* --- Le modalità conservano testi separati ------------------------ */
+    /* --- Cambiare modalità conserva ciò che si sta scrivendo ----------- */
 
     const dopoClic = await page.evaluate(async () => {
+      const { leggiStatoFiltro, applicaStatoFiltro } = await import('/js/grid.js');
       const input = document.querySelector('#filter-input');
+      const sort = document.querySelector('#sort-input');
+      sort.value = 'label ASC';
       input.value = 'Membro';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       document.querySelector('[data-filter-mode="condizione"]').click();
-      await new Promise((r) => setTimeout(r, 100));
+      const primaCondizione = input.value;
       input.value = 'label IS NOT NULL';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       document.querySelector('[data-filter-mode="rapido"]').click();
       const rapido = input.value;
       document.querySelector('[data-filter-mode="condizione"]').click();
+      const condizione = input.value;
+      const salvato = leggiStatoFiltro();
+      applicaStatoFiltro({ modo: 'rapido', rapido: 'altra scheda' });
+      applicaStatoFiltro(salvato);
+      const ripristinato = input.value;
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      document.querySelector('[data-filter-mode="rapido"]').click();
+      const vuotoRapido = input.value;
+      document.querySelector('[data-filter-mode="condizione"]').click();
       return {
         modo: document.querySelector('#filter-mode-switch').dataset.modo,
         segnaposto: input.placeholder,
+        primaCondizione,
         rapido,
-        condizione: input.value,
+        condizione,
+        ripristinato,
+        vuotoRapido,
+        vuotoCondizione: input.value,
+        sort: sort.value,
       };
     });
     ok(dopoClic.modo === 'condizione', `un clic porta alla modalità condizione (${dopoClic.modo})`);
     ok(/WHERE|MQL|Condizione/i.test(dopoClic.segnaposto),
       'il segnaposto cambia e nomina la condizione', dopoClic.segnaposto);
-    ok(dopoClic.rapido === 'Membro', 'Cerca conserva il proprio testo', dopoClic.rapido);
+    ok(dopoClic.primaCondizione === 'Membro',
+      'Cerca → Condizione mantiene il testo appena scritto', dopoClic.primaCondizione);
+    ok(dopoClic.rapido === 'label IS NOT NULL',
+      'Condizione → Cerca mantiene il testo, anche se Cerca aveva un valore precedente', dopoClic.rapido);
     ok(dopoClic.condizione === 'label IS NOT NULL',
-      'Condizione conserva il proprio testo', dopoClic.condizione);
+      'i cambi ripetuti conservano il testo corrente', dopoClic.condizione);
+    ok(dopoClic.ripristinato === 'label IS NOT NULL',
+      'lo snapshot della scheda conserva il testo dopo il cambio di modalità', dopoClic.ripristinato);
+    ok(dopoClic.vuotoRapido === '' && dopoClic.vuotoCondizione === '',
+      'svuotare il campo e cambiare modalità non recupera testi precedenti');
+    ok(dopoClic.sort === 'label ASC', 'anche l’ordinamento resta invariato');
 
     /* --- Che cosa parte davvero verso il server ------------------------ */
 
@@ -119,13 +157,10 @@ const ok = (cond, etichetta, dettaglio = '') => {
 
       const misura = (modo, testo) => {
         const gruppo = document.querySelector('#filter-mode-switch');
-        gruppo.dataset.modo = modo;
-        gruppo.querySelectorAll('[data-filter-mode]').forEach((b) => {
-          b.classList.toggle('active', b.dataset.filterMode === modo);
-        });
         const input = document.querySelector('#filter-input');
         input.value = testo;
         input.dispatchEvent(new Event('input', { bubbles: true }));
+        gruppo.querySelector(`[data-filter-mode="${modo}"]`).click();
         visti.length = 0;
         runQuery();
         const trovato = visti.find((v) => String(v.evento).startsWith('collection:find'));

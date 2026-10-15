@@ -1,0 +1,19 @@
+Versioni: 18.6 (Debian 18.6-1.pgdg13+2) 8.4.11
+OK PostgreSQL: rollback al savepoint ripristina il bersaglio richiesto
+OK PostgreSQL: rollback completo e errore nativo mantengono il bersaglio
+OK PostgreSQL: savepoint annidati e SET LOCAL con COMMIT
+OK PostgreSQL: set_config, RESET ALL e DISCARD ALL non deviano le scritture
+AssertionError [ERR_ASSERTION]: Scrittura deviata nel database B dopo USE
++ actual - expected
+
++ []
+- [
+-   {
+-     id: 8
+-   }
+- ]
+
+    at C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:94:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:26:34)
+    at async C:\repository\CodeDB\test\e2e-sql-native-sessioni.js:91:3

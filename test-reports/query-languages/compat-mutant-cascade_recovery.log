@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO rollback_domain_b VALUES(2,3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:123:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-compatibilita.js:203:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:137:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /duplic|E11000/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

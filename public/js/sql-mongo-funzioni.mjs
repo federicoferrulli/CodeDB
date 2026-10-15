@@ -1,0 +1,36 @@
+/** Funzioni SQL traducibili: lo stesso elenco alimenta editor e interprete. */
+export const AGGREGATI_SQL_MONGO = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX', 'RANGE_AGG', 'RANGE_INTERSECT_AGG'];
+export const FINESTRE_SQL_MONGO = ['ROW_NUMBER', 'RANK', 'DENSE_RANK', 'PERCENT_RANK', 'CUME_DIST', 'NTILE',
+  'LAG', 'LEAD', 'FIRST_VALUE', 'LAST_VALUE', 'NTH_VALUE', ...AGGREGATI_SQL_MONGO];
+
+export const FUNZIONI_SQL_MONGO = {
+  ABS: ['$abs', 1], CEIL: ['$ceil', 1], CEILING: ['$ceil', 1], FLOOR: ['$floor', 1],
+  SQRT: ['$sqrt', 1], EXP: ['$exp', 1], LN: ['$ln', 1], LOG10: ['$log10', 1],
+  POWER: ['$pow', 2], POW: ['$pow', 2], MOD: ['$mod', 2],
+  ROUND: ['$round', 1, 2], TRUNC: ['$trunc', 1, 2], TRUNCATE: ['$trunc', 2],
+  SIN: ['$sin', 1], COS: ['$cos', 1], TAN: ['$tan', 1],
+  ASIN: ['$asin', 1], ACOS: ['$acos', 1], ATAN: ['$atan', 1], ATAN2: ['$atan2', 2],
+  DEGREES: ['$radiansToDegrees', 1], RADIANS: ['$degreesToRadians', 1],
+  UPPER: ['$toUpper', 1], LOWER: ['$toLower', 1],
+  CHAR_LENGTH: ['$strLenCP', 1], CHARACTER_LENGTH: ['$strLenCP', 1],
+  OCTET_LENGTH: ['$strLenBytes', 1], LENGTH: ['$strLenCP', 1],
+  HEX: ['hex', 1],
+  CARDINALITY: ['array', 1], ARRAY_LENGTH: ['array', 2], ARRAY_LOWER: ['array', 2], ARRAY_UPPER: ['array', 2], ARRAY_NDIMS: ['array', 1],
+  ARRAY_POSITION: ['array', 2, 3], ARRAY_REMOVE: ['array', 2], ARRAY_REPLACE: ['array', 3],
+  ARRAY_APPEND: ['array', 2], ARRAY_PREPEND: ['array', 2], ARRAY_CAT: ['array', 2],
+  ARRAY_FILL: ['array', 2, 3], ARRAY_DIMS: ['array', 1],
+  INT4RANGE: ['range', 1, 3], INT8RANGE: ['range', 1, 3], NUMRANGE: ['range', 1, 3], DATERANGE: ['range', 1, 3], TSRANGE: ['range', 1, 3], TSTZRANGE: ['range', 1, 3],
+  LOWER_INC: ['range', 1], UPPER_INC: ['range', 1], LOWER_INF: ['range', 1], UPPER_INF: ['range', 1], ISEMPTY: ['range', 1],
+  INT4MULTIRANGE: ['multirange', 0, Infinity], INT8MULTIRANGE: ['multirange', 0, Infinity], NUMMULTIRANGE: ['multirange', 0, Infinity],
+  DATEMULTIRANGE: ['multirange', 0, Infinity], TSMULTIRANGE: ['multirange', 0, Infinity], TSTZMULTIRANGE: ['multirange', 0, Infinity],
+  MULTIRANGE: ['multirange', 1], RANGE_MERGE: ['multirange', 1, 2],
+  CONCAT: ['$concat', 1, Infinity],
+  COALESCE: ['$ifNull', 2, Infinity], IFNULL: ['$ifNull', 2],
+  NULLIF: ['nullif', 2], GREATEST: ['$max', 1, Infinity], LEAST: ['$min', 1, Infinity],
+  TRIM: ['$trim', 1, 2], LTRIM: ['$ltrim', 1, 2], RTRIM: ['$rtrim', 1, 2],
+  SUBSTRING: ['$substrCP', 2, 3], SUBSTR: ['$substrCP', 2, 3],
+  REPLACE: ['$replaceAll', 3], IF: ['$cond', 3],
+  YEAR: ['$year', 1], MONTH: ['$month', 1], DAY: ['$dayOfMonth', 1],
+  HOUR: ['$hour', 1], MINUTE: ['$minute', 1], SECOND: ['$second', 1],
+  NOW: ['now', 0], CURRENT_TIMESTAMP: ['now', 0],
+};

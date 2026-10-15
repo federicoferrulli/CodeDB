@@ -1,0 +1,2298 @@
+[
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:11.428+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:11.428+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:11.428+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:11.936+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetNoPrimary",
+      "primary": "Unknown",
+      "durationMillis": 16377
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.300+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 4615652,
+    "ctx": "ReplCoord-3",
+    "msg": "Starting an election, since we've seen no PRIMARY in election timeout period",
+    "attr": {
+      "electionTimeoutPeriodMillis": 10000
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.300+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21438,
+    "ctx": "ReplCoord-3",
+    "msg": "Conducting a dry run election to see if we could be elected",
+    "attr": {
+      "currentTerm": 1
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.305+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21444,
+    "ctx": "ReplCoord-5",
+    "msg": "Dry election run succeeded, running for election",
+    "attr": {
+      "newTerm": 2
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.306+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 6015300,
+    "ctx": "ReplCoord-5",
+    "msg": "Storing last vote document in local storage for my election",
+    "attr": {
+      "lastVote": {
+        "term": 2,
+        "candidateIndex": 0
+      }
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.353+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21450,
+    "ctx": "ReplCoord-3",
+    "msg": "Election succeeded, assuming primary role",
+    "attr": {
+      "term": 2
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.353+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-3",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "PRIMARY",
+      "oldState": "SECONDARY"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.353+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21359,
+    "ctx": "ReplCoord-3",
+    "msg": "Entering primary catch-up mode"
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.371+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21364,
+    "ctx": "ReplCoord-4",
+    "msg": "Caught up to the latest optime known via heartbeats after becoming primary",
+    "attr": {
+      "targetOpTime": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022350,
+            "i": 8
+          }
+        },
+        "t": 1
+      },
+      "myLastApplied": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022350,
+            "i": 8
+          }
+        },
+        "t": 1
+      }
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.371+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21363,
+    "ctx": "ReplCoord-4",
+    "msg": "Exited primary catch-up mode"
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.371+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21340,
+    "ctx": "RstlKillOpThread",
+    "msg": "State transition ops metrics",
+    "attr": {
+      "metrics": {
+        "lastStateTransition": "stepUp",
+        "totalOpsKilled": 0,
+        "totalOpsRunning": 6
+      }
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.377+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 6015310,
+    "ctx": "OplogApplier-0",
+    "msg": "Starting to transition to primary."
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.378+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 6015309,
+    "ctx": "OplogApplier-0",
+    "msg": "Logging transition to primary to oplog on stepup"
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.378+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 20657,
+    "ctx": "OplogApplier-0",
+    "msg": "IndexBuildsCoordinator::onStepUp - this node is stepping up to primary"
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.379+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21331,
+    "ctx": "OplogApplier-0",
+    "msg": "Transition to primary complete; database writes are now permitted",
+    "attr": {
+      "term": 2
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:21.384+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetWithPrimary",
+      "primary": "host.docker.internal:27039",
+      "durationMillis": 9450
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:56.227+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 23016,
+    "ctx": "listener",
+    "msg": "Waiting for connections",
+    "attr": {
+      "port": 27039,
+      "ssl": "off"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:56.246+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "STARTUP2",
+      "oldState": "STARTUP"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:56.247+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "RECOVERING",
+      "oldState": "STARTUP2"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:56.248+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "SECONDARY",
+      "oldState": "RECOVERING"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-14T23:59:56.248+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21783,
+    "ctx": "BackgroundSync",
+    "msg": "Waiting for pings from other members before syncing",
+    "attr": {
+      "pingsNeeded": 4
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:11.424+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:11.424+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:11.424+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:11.936+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetNoPrimary",
+      "primary": "Unknown",
+      "durationMillis": 16242
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:21.358+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 2903000,
+    "ctx": "conn11",
+    "msg": "Restarting heartbeats after learning of a new primary",
+    "attr": {
+      "myPrimaryId": "none",
+      "senderAndPrimaryId": 0,
+      "senderTerm": 2
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:21.384+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetWithPrimary",
+      "primary": "host.docker.internal:27039",
+      "durationMillis": 9450
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:23.702+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:23.702+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:23.702+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:24.206+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetNoPrimary",
+      "primary": "Unknown",
+      "durationMillis": 2822
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:25.737+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:25.737+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:25.737+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:34.153+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 2903000,
+    "ctx": "conn121",
+    "msg": "Restarting heartbeats after learning of a new primary",
+    "attr": {
+      "myPrimaryId": "none",
+      "senderAndPrimaryId": 2,
+      "senderTerm": 3
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:34.189+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 6006301,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "Replica set primary server change detected",
+    "attr": {
+      "replicaSet": "codedbtest",
+      "topologyType": "ReplicaSetWithPrimary",
+      "primary": "host.docker.internal:27041",
+      "durationMillis": 9982
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:34.549+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:34.549+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:34.550+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:35.585+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:35.585+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:35.585+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:36.089+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:36.089+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:36.089+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:37.105+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:37.105+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:37.105+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:38.118+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:38.118+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:38.118+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:39.154+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:39.154+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:39.154+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:40.167+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:40.167+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:40.167+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:41.177+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:41.177+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:41.177+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:42.189+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:42.189+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:42.189+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:43.213+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:43.213+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:43.213+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:44.251+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:44.251+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:44.251+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.368+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.368+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.368+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.876+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.876+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:45.876+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:46.883+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:46.883+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:46.883+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:47.889+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:47.889+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:47.889+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:48.913+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:48.913+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:48.913+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:49.927+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:49.927+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:49.927+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:50.948+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:50.948+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:50.948+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:51.969+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:51.969+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:51.969+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:52.981+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:52.981+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:52.981+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:54.006+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:54.006+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:54.006+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:55.697+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:55.697+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:55.697+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:56.206+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27041",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:56.206+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27039",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-14T23:59:56.206+00:00"
+    },
+    "s": "I",
+    "c": "-",
+    "id": 4333227,
+    "ctx": "ReplicaSetMonitor-TaskExecutor",
+    "msg": "RSM monitoring host in expedited mode until we detect a primary",
+    "attr": {
+      "host": "host.docker.internal:27040",
+      "replicaSet": "codedbtest"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.044+00:00"
+    },
+    "s": "I",
+    "c": "NETWORK",
+    "id": 23016,
+    "ctx": "listener",
+    "msg": "Waiting for connections",
+    "attr": {
+      "port": 27041,
+      "ssl": "off"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.058+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "STARTUP2",
+      "oldState": "STARTUP"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.058+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "RECOVERING",
+      "oldState": "STARTUP2"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.060+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21783,
+    "ctx": "BackgroundSync",
+    "msg": "Waiting for pings from other members before syncing",
+    "attr": {
+      "pingsNeeded": 4
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.060+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "SECONDARY",
+      "oldState": "RECOVERING"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:23.573+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 9649500,
+    "ctx": "BackgroundSync",
+    "msg": "Candidate sync source pings are within a threshold, indicating they are in the same data center. Prefer to select primary as sync source",
+    "attr": {
+      "syncSourceCandidate": "host.docker.internal:27040",
+      "syncSourceCandidatePing": 1,
+      "closestNode": "host.docker.internal:27039",
+      "closestPing": 1,
+      "selectedNode": 0
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.121+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 4615652,
+    "ctx": "ReplCoord-3",
+    "msg": "Starting an election, since we've seen no PRIMARY in election timeout period",
+    "attr": {
+      "electionTimeoutPeriodMillis": 10000
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.121+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21438,
+    "ctx": "ReplCoord-3",
+    "msg": "Conducting a dry run election to see if we could be elected",
+    "attr": {
+      "currentTerm": 2
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.139+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21444,
+    "ctx": "ReplCoord-4",
+    "msg": "Dry election run succeeded, running for election",
+    "attr": {
+      "newTerm": 3
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.139+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 6015300,
+    "ctx": "ReplCoord-4",
+    "msg": "Storing last vote document in local storage for my election",
+    "attr": {
+      "lastVote": {
+        "term": 3,
+        "candidateIndex": 2
+      }
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.148+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21450,
+    "ctx": "ReplCoord-4",
+    "msg": "Election succeeded, assuming primary role",
+    "attr": {
+      "term": 3
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.148+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-4",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "PRIMARY",
+      "oldState": "SECONDARY"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.149+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21359,
+    "ctx": "ReplCoord-4",
+    "msg": "Entering primary catch-up mode"
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.176+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21364,
+    "ctx": "ReplCoord-3",
+    "msg": "Caught up to the latest optime known via heartbeats after becoming primary",
+    "attr": {
+      "targetOpTime": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022363,
+            "i": 6
+          }
+        },
+        "t": 2
+      },
+      "myLastApplied": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022363,
+            "i": 6
+          }
+        },
+        "t": 2
+      }
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.176+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21363,
+    "ctx": "ReplCoord-3",
+    "msg": "Exited primary catch-up mode"
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.176+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21340,
+    "ctx": "RstlKillOpThread",
+    "msg": "State transition ops metrics",
+    "attr": {
+      "metrics": {
+        "lastStateTransition": "stepUp",
+        "totalOpsKilled": 0,
+        "totalOpsRunning": 5
+      }
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.180+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 6015310,
+    "ctx": "OplogApplier-0",
+    "msg": "Starting to transition to primary."
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.181+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 6015309,
+    "ctx": "OplogApplier-0",
+    "msg": "Logging transition to primary to oplog on stepup"
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.181+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 20657,
+    "ctx": "OplogApplier-0",
+    "msg": "IndexBuildsCoordinator::onStepUp - this node is stepping up to primary"
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:34.182+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21331,
+    "ctx": "OplogApplier-0",
+    "msg": "Transition to primary complete; database writes are now permitted",
+    "attr": {
+      "term": 3
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:44.215+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn20",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "admin.$cmd",
+      "collectionType": "admin",
+      "command": {
+        "abortTransaction": 1,
+        "writeConcern": {
+          "w": "majority",
+          "wtimeout": 10000
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "fb2d4e8c-704a-4f66-8e9a-a3fc4a8327fe"
+          }
+        },
+        "txnNumber": 14,
+        "autocommit": false,
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022374,
+              "i": 2
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "admin"
+      },
+      "totalOplogSlotDurationMicros": 41,
+      "numYields": 0,
+      "ok": 0,
+      "errMsg": "Given transaction number 14 on session fb2d4e8c-704a-4f66-8e9a-a3fc4a8327fe - 47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU= -  -  using txnRetryCounter 0 does not match any in-progress transactions. The active transaction number is 12",
+      "errName": "NoSuchTransaction",
+      "errCode": 251,
+      "reslen": 669,
+      "locks": {
+        "MultiDocumentTransactionsBarrier": {
+          "acquireCount": {
+            "w": 1
+          }
+        },
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 3
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "w": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 1
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 10000,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 10012,
+      "storage": {
+        "data": {
+          "txnBytesDirty": 209
+        }
+      },
+      "cpuNanos": 548278,
+      "remote": "172.22.0.1:44662",
+      "protocol": "op_msg",
+      "numInterruptChecks": 13,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 2
+        }
+      },
+      "workingMillis": 10012,
+      "durationMillis": 10012
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:54.274+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn20",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "admin.$cmd",
+      "collectionType": "admin",
+      "command": {
+        "commitTransaction": 1,
+        "writeConcern": {
+          "w": "majority",
+          "wtimeout": 10000
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "fb2d4e8c-704a-4f66-8e9a-a3fc4a8327fe"
+          }
+        },
+        "txnNumber": 15,
+        "autocommit": false,
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022374,
+              "i": 3
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "admin"
+      },
+      "totalOplogSlotDurationMicros": 158,
+      "numYields": 0,
+      "reslen": 381,
+      "locks": {
+        "MultiDocumentTransactionsBarrier": {
+          "acquireCount": {
+            "r": 1,
+            "w": 1
+          }
+        },
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 4
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 1,
+            "w": 1
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "w": 4
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 1
+      },
+      "readConcern": {
+        "level": "snapshot",
+        "afterClusterTime": {
+          "$timestamp": {
+            "t": 1792022374,
+            "i": 3
+          }
+        },
+        "provenance": "clientSupplied"
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 10000,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 10009,
+      "cpuNanos": 504533,
+      "remote": "172.22.0.1:44662",
+      "protocol": "op_msg",
+      "numInterruptChecks": 12,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 2
+        }
+      },
+      "workingMillis": 10009,
+      "durationMillis": 10009
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:57.284+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn20",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "admin.$cmd",
+      "collectionType": "admin",
+      "command": {
+        "commitTransaction": 1,
+        "writeConcern": {
+          "w": "majority",
+          "wtimeout": 10000
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "fb2d4e8c-704a-4f66-8e9a-a3fc4a8327fe"
+          }
+        },
+        "txnNumber": 15,
+        "autocommit": false,
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022384,
+              "i": 1
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "admin"
+      },
+      "numYields": 0,
+      "reslen": 163,
+      "locks": {
+        "MultiDocumentTransactionsBarrier": {
+          "acquireCount": {
+            "r": 1
+          }
+        },
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 3
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 10000,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 2295,
+      "storage": {},
+      "cpuNanos": 210391,
+      "remote": "172.22.0.1:44662",
+      "protocol": "op_msg",
+      "numInterruptChecks": 14,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 2
+        }
+      },
+      "workingMillis": 2295,
+      "durationMillis": 2295
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:57.309+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 20340,
+    "ctx": "conn20",
+    "msg": "dropDatabase waiting for replication and dropping collections",
+    "attr": {
+      "db": "codedb_sql_failover_mongo_5b6b99a35abc",
+      "awaitOpTime": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022397,
+            "i": 6
+          }
+        },
+        "t": 3
+      },
+      "dropDatabaseWriteConcern": {
+        "w": "majority",
+        "wtimeout": 0
+      },
+      "numCollectionsToDrop": 4,
+      "latestDropPendingOpTime": {
+        "ts": {
+          "$timestamp": {
+            "t": 0,
+            "i": 0
+          }
+        },
+        "t": -1
+      }
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-14T23:59:57.347+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 20341,
+    "ctx": "conn20",
+    "msg": "dropDatabase waiting for replication",
+    "attr": {
+      "db": "codedb_sql_failover_mongo_5b6b99a35abc",
+      "awaitOpTime": {
+        "ts": {
+          "$timestamp": {
+            "t": 1792022397,
+            "i": 6
+          }
+        },
+        "t": 3
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      }
+    }
+  }
+]

@@ -1414,8 +1414,8 @@ export function initGrid() {
   });
   for (const node of [view, workspace]) closeHiddenOptions.observe(node, { attributes: true, attributeFilter: ['class'] });
 
-  // Due scelte visibili, due testi conservati: cambiare modalità non distrugge
-  // ciò che l'utente aveva scritto nell'altra.
+  // Il cambio di modalità conserva il testo corrente, anche se è stato
+  // scritto nella modalità sbagliata.
   document.querySelectorAll('#filter-mode-switch [data-filter-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
       const gruppo = $('#filter-mode-switch');
@@ -1424,7 +1424,7 @@ export function initGrid() {
       const nuovo = btn.dataset.filterMode === 'condizione' ? 'condizione' : 'rapido';
       applicaModoFiltro(nuovo);
       const chiaveDopo = nuovo === 'rapido' ? 'testoRapido' : 'testoCondizione';
-      $('#filter-input').value = gruppo.dataset[chiaveDopo] || '';
+      gruppo.dataset[chiaveDopo] = $('#filter-input').value;
       $('#filter-input').focus();
     });
   });

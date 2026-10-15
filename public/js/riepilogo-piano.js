@@ -37,7 +37,7 @@ export function riepilogoPiano(piano) {
     voce('Modalità', piano.modalita);
     voce('Formato', piano.formato);
     voce('Consistenza', piano.consistenza);
-    if (piano.limiteByte) voce('Limite file', `${Math.floor(piano.limiteByte / 1024 / 1024)} MiB (limite configurato per l’import)`);
+    voce('Dimensione file', 'Senza limite');
     voce('Oggetti', oggetti.length);
     voce('Con dati', conDati.length);
     voce('Solo struttura', soloStruttura.length);

@@ -24,6 +24,7 @@ dist/
 .agents
 # Variabili d'ambiente per Docker Compose (puo' contenere GUI_MONGO_PASSPHRASE).
 .env
+.env.sql-native
 
 conns/
 
@@ -39,6 +40,7 @@ provenienza/
 import_*
 6acc8abe-5719-4bf5-9fb6-760e2d76a10c.json
 
-.scratch/codedb-cloud-sicuro
+# File temporanei, prove e pacchetti locali: non versionare.
+/.scratch/
 video
 /test-reports/**/win-unpacked/

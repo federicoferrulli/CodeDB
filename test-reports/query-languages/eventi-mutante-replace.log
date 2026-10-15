@@ -1,0 +1,20 @@
+  OK   Shell e script inoltrano collation, hint, tempo e batch al medesimo contratto
+  OK   Le chiavi let e return dei documenti non cambiano interprete
+  OK   Aggregate conserva l’ordine della catena e le opzioni
+  OK   Il commento utente conserva l’identità di annullamento e non amplia il timeout
+  OK   bulkWrite attraversa il controllo host per ogni operazione e rispetta ordered
+  OK   bulkWrite valida tutti i filtri prima della prima mutazione
+  OK   Il driver riceve pipeline di aggiornamento e opzioni delle cancellazioni
+  OK   Le opzioni non aggirano il divieto di JavaScript lato server
+  OK   findOneAndReplace richiede anche la lettura prima di arrivare al driver
+  FAIL Lo script inoltra filtro, documento e opzioni di findOneAndReplace: Error: Metodo non supportato sulle collezioni: "findOneAndReplace"
+    at errore (C:\repository\CodeDB\db\MongoScript.js:223:15)
+    at Object.__get (C:\repository\CodeDB\db\MongoScriptRunner.js:244:13)
+    at getMember (C:\repository\CodeDB\db\MongoScript.js:846:16)
+    at Interprete.valuta (C:\repository\CodeDB\db\MongoScriptRunner.js:805:16)
+    at async Interprete.esegui (C:\repository\CodeDB\db\MongoScriptRunner.js:573:9)
+    at async Interprete.eseguiProgramma (C:\repository\CodeDB\db\MongoScriptRunner.js:538:21)
+    at async eseguiScript (C:\repository\CodeDB\db\MongoScriptRunner.js:983:3)
+    at async C:\repository\CodeDB\test\unit-mongo-copertura.js:113:5
+    at async prova (C:\repository\CodeDB\test\unit-mongo-copertura.js:24:11)
+    at async C:\repository\CodeDB\test\unit-mongo-copertura.js:111:3

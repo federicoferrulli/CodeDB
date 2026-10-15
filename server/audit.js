@@ -165,6 +165,10 @@ function createModule({ config, dependencies, errori }) {
    * compare qui — o che non usa alcun punto — non si registra.
    */
   const OPERAZIONI_LUNGHE = {
+    'mongosh:state': ['statoDiSessione'],
+    'mongosh:reset': ['statoDiSessione', 'interruzioneInProcesso'],
+    'mongosh:closeStream': ['statoDiSessione', 'interruzioneInProcesso'],
+    'mongosh:answer': ['statoDiSessione'],
     'database:export:start': ['rispostaAnticipata', 'avanzamento', 'statoDiSessione'],
     'query:execute': [
       'annullamentoMutevole',

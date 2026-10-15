@@ -1,0 +1,13 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+AssertionError [ERR_ASSERTION]: Missing expected rejection: INSERT INTO dom_a VALUES(2,-1)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:61:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:142:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:75:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /validation/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

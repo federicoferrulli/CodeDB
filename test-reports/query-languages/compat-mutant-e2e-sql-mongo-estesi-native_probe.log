@@ -1,0 +1,25 @@
+MongoServerError: E11000 duplicate key error collection: codedb_sql_estesi_mongo_97d37d94a260.native_keys index: native_multikey dup key: { a: 2 }
+    at InsertOneOperation.handleOk (C:\repository\CodeDB\node_modules\mongodb\lib\operations\insert.js:51:19)
+    at tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:214:34)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Collection.insertOne (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:154:16)
+    at async Proxy.<anonymous> (C:\repository\CodeDB\db\sqlSavepointMongo.js:128:59)
+    at async transact.readConcern.level (C:\repository\CodeDB\db\MongoSqlRuntime.js:213:53)
+    at async scrivi (C:\repository\CodeDB\db\MongoSqlRuntime.js:137:7)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:365:40)
+    at async run (C:\repository\CodeDB\db\sqlProcedureMongo.js:375:29) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    index: 0,
+    code: 11000,
+    errmsg: 'E11000 duplicate key error collection: codedb_sql_estesi_mongo_97d37d94a260.native_keys index: native_multikey dup key: { a: 2 }',
+    keyPattern: { a: 1 },
+    keyValue: { a: 2 }
+  },
+  index: 0,
+  code: 11000,
+  keyPattern: { a: 1 },
+  keyValue: { a: 2 },
+  Symbol(istruzione SQL da annullare): true
+}

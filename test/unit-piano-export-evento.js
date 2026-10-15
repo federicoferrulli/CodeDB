@@ -77,6 +77,7 @@ module.exports = (async () => {
     assert.strictEqual(res.ok, true, res.error);
     const plan = res.plan;
     assert.strictEqual(plan.kind, 'export-database');
+    assert.strictEqual(plan.limiteByte ?? null, null, 'il piano di export non eredita il limite dell’import');
     assert.strictEqual(plan.sourceDb, 'negozio');
     assert.strictEqual(plan.connection, 'locale', 'la connessione è quella della SESSIONE, non del payload');
     // Firmato: anteprima ed esecuzione guardano lo stesso oggetto o l'esecuzione

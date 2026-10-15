@@ -396,13 +396,14 @@ export function openCollTab(db, coll, { preview = false } = {}) {
 
 // Apre (o riattiva) il tab a livello database: l'unico modo di lavorare su un
 // database senza collection, dove non c'è niente da cliccare nella sidebar.
-export function openDbTab(db) {
+export function openDbTab(db, { query } = {}) {
   const t = activeTab();
   if (!t || !t.state.connected) return;
   saveActiveSnapshot();
-  let ct = t.state.collTabs.find((c) => c.isDbTab && c.db === db);
+  let ct = !query && t.state.collTabs.find((c) => c.isDbTab && c.db === db);
   if (!ct) {
-    ct = { id: safeUUID(), db, coll: null, isDbTab: true, snap: null };
+    ct = { id: safeUUID(), db, coll: null, isDbTab: true, snap: null,
+      ...(query ? { snapQuery: { ...query, dirty: !!query.code, targetDb: db } } : {}) };
     t.state.collTabs.push(ct);
     activate(ct, { fresh: true });
   } else if (ct.id !== t.state.activeCollId) {

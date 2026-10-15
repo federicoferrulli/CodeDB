@@ -1,0 +1,5 @@
+  OK   Varianti ALTER: rinomina vincoli/indici, collisioni, recupero, IF NOT EXISTS, SET DATA TYPE, DROP CHECK
+  OK   WHEN, NULL, NEW modificato dal trigger precedente, eventi multipli e IS DISTINCT FROM
+  OK   Ordine FOLLOWS/PRECEDES confrontato con MySQL e conservato dopo DROP del riferimento
+  OK   Handler SQLSTATE/classi/nominati, precedenza, CONTINUE/EXIT, RESIGNAL annidato e rollback su trigger fallito
+PASS varianti { count: 71, pg: 34, mysql: 51 }

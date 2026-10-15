@@ -1,0 +1,26 @@
+  OK   barriera: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27040:27040
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   indice: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice_commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   indice_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dipendenza: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27039:27039
+AssertionError [ERR_ASSERTION]: Migrazione bloccata per oltre 20 secondi con un nodo offline: quorum non disponibile.
+
+true !== false
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-failover.js:198:14
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: true,
+  expected: false,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

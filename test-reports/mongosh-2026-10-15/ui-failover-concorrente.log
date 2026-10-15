@@ -1,0 +1,6 @@
+page.evaluate: Error: Nessun nodo MongoDB raggiungibile entro il tempo di attesa. Cosa fare: controlla che il server sia avviato e raggiungibile; se è un replica set dietro tunnel SSH, usa la modalità "Parametri" (CodeDB imposta directConnection) invece dell'URI completa. (dettaglio tecnico: Server selection timed out after 6000 ms)
+    at eval (eval at evaluate (:311:30), <anonymous>:4:21)
+    at async <anonymous>:337:30
+    at C:\repository\CodeDB\test\e2e-mongosh-ui.js:26:14 {
+  log: []
+}

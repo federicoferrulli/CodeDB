@@ -1,0 +1,13 @@
+PASS condizioni PostgreSQL: 247 nomi, 251 SQLSTATE eseguiti in handler su entrambi i motori disponibili
+AssertionError [ERR_ASSERTION]: Missing expected rejection: ALTER DOMAIN positive_int ADD CONSTRAINT no_three CHECK(VALUE<>3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async query (C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:61:16)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-tipi.js:151:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-tipi.js:75:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /violano/i,
+  operator: 'rejects',
+  diff: 'simple'
+}

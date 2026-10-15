@@ -15,12 +15,13 @@
  *    rompere lo script dell'utente: qui si tocca esclusivamente lo spazio a
  *    inizio riga, mai il contenuto.
  *
- * Il vocabolario SQL è importato dall'evidenziatore: le parole messe in
- * maiuscolo sono esattamente quelle che vengono colorate come parole chiave, e
- * non possono divergere.
+ * Il lessico è condiviso con l'evidenziatore; i nomi di funzioni e tipi arrivano
+ * dagli stessi cataloghi usati dal completamento.
  */
 
 import { SQL_KEYWORDS, SQL_TYPES, SQL_FUNCTIONS } from './query-highlighter.js';
+import { vocabolarioSql, dialettoDi } from './sql-dialetti.js';
+import { tokenizzaQuery, linguaQuery } from './query-lexer.js';
 import { formattaJsonBson, minificaJsonBson, sembraJsonBson } from './json-bson.js';
 
 const INDENT = '  ';
@@ -31,10 +32,8 @@ const INDENT = '  ';
 
 /** Il testo è uno script JavaScript (e non SQL o JSON)? */
 export function sembraJs(code) {
-  const s = String(code || '');
-  if (/^\s*[[{]/.test(s)) return false;
-  return /\b(var|let|const|function|return|if|else|for|while|do|try|catch|throw|new)\b/.test(s)
-    || /=>/.test(s);
+  if (/^\s*[[{]/.test(String(code))) return false;
+  return linguaQuery(code, '') === 'mongo' || (!linguaQuery(code, '') && /=>/.test(String(code)));
 }
 
 /**
@@ -43,15 +42,16 @@ export function sembraJs(code) {
  * ORIGINALE: una formattazione che corrompe il codice è molto peggio di una
  * formattazione mancata.
  */
-export function formatCode(code) {
+export function formatCode(code, dbms = '') {
   const testo = String(code == null ? '' : code);
   const trimmed = testo.trim();
   if (!trimmed) return testo;
 
   try {
+    if (dbms === 'mongosh') return reindentJs(testo);
     if (trimmed.startsWith('{') || trimmed.startsWith('[')) return formatJsonLike(trimmed);
     if (sembraJs(trimmed)) return reindentJs(testo);
-    return formatSql(trimmed);
+    return formatSql(trimmed, dbms);
   } catch (_err) {
     return testo;
   }
@@ -83,15 +83,16 @@ export function formatJsonLike(text) {
  * gli script JavaScript, dove togliere gli a capo cambia il significato (ASI,
  * commenti di riga), non vengono minificati affatto.
  */
-export function minifyCode(code) {
+export function minifyCode(code, dbms = '') {
   const testo = String(code == null ? '' : code);
   const trimmed = testo.trim();
   if (!trimmed) return testo;
+  if (dbms === 'mongosh') return testo;
 
   try {
     if (sembraJsonBson(trimmed)) return minificaJsonBson(trimmed);
     if (sembraJs(trimmed)) return testo;
-    return minifySql(trimmed);
+    return minifySql(trimmed, dbms);
   } catch (_err) {
     return testo;
   }
@@ -102,13 +103,14 @@ export function minifyCode(code) {
  * commenterebbe tutto il resto), stringhe e identificatori quotati restano
  * intatti perché il tokenizzatore li tratta come unità indivisibili.
  */
-export function minifySql(sql) {
-  const toks = tokenizzaSql(sql).filter((t) => t.t !== 'commento');
+export function minifySql(sql, dbms = '') {
+  const toks = tokenizzaSql(sql, dbms).filter((t) => t.t !== 'commento');
   let out = '';
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
     const prec = toks[i - 1];
     if (!out) { out = tok.v; continue; }
+    if (tok.saltoPrima) { out += `\n${tok.v}`; continue; }
     const attaccato = (tok.t === 'punt' && tok.v !== '(')
       || (tok.t === 'op' && (tok.v === '.' || tok.v === '::'))
       || (prec && prec.t === 'punt' && prec.v === '(')
@@ -138,107 +140,35 @@ const PREFISSI_JOIN = new Set(['INNER', 'LEFT', 'RIGHT', 'FULL', 'CROSS', 'NATUR
  * Tokenizza l'SQL conservando stringhe, commenti e identificatori quotati come
  * unità indivisibili: sono l'unica parte che non va MAI toccata.
  */
-function tokenizzaSql(sql) {
-  const s = String(sql);
-  const toks = [];
-  let i = 0;
-  const n = s.length;
-
-  while (i < n) {
-    const c = s[i];
-
-    if (/\s/.test(c)) { i++; continue; }
-
-    if (c === '-' && s[i + 1] === '-') {
-      let fine = s.indexOf('\n', i);
-      if (fine < 0) fine = n;
-      toks.push({ t: 'commento', v: s.slice(i, fine) });
-      i = fine;
-      continue;
+function tokenizzaSql(sql, dbms = '') {
+  dbms = dialettoDi(dbms);
+  const tokens = tokenizzaQuery(sql, { dbms, lingua: 'sql' }).filter(t => t.tipo !== 'spazio');
+  const dialetto = vocabolarioSql(dbms);
+  const parole = new Set(dialetto.keywords.length ? dialetto.keywords : SQL_KEYWORDS);
+  const funzioni = dialetto.nome ? new Set([...dialetto.funzioni, ...dialetto.estensioni].map(x => x.toUpperCase())) : SQL_FUNCTIONS;
+  // Un literal incompleto non va riscritto mentre l'utente lo sta componendo.
+  if (tokens.some(t => !t.chiuso && t.tipo !== 'commento')) throw new Error('Testo incompleto');
+  const tipi = { stringa: 'stringa', identificatore: 'quotato', commento: 'commento', hint: 'hint',
+    numero: 'numero', parametro: 'parametro', punteggiatura: 'punt', operatore: 'op' };
+  let ddl = false;
+  let precedenteSignificativo;
+  return tokens.map((tok, i) => {
+    const precedente = precedenteSignificativo;
+    if (tok.tipo !== 'commento') precedenteSignificativo = tok;
+    if (tok.testo === ';') ddl = false;
+    if (tok.tipo !== 'parola') {
+      const saltoPrima = dbms === 'postgresql' && tok.tipo === 'stringa' && precedente?.tipo === 'stringa'
+        && /[\r\n]/.test(sql.slice(precedente.fine, tok.inizio));
+      return { t: tipi[tok.tipo], v: tok.testo, saltoPrima };
     }
-    if (c === '#') {
-      let fine = s.indexOf('\n', i);
-      if (fine < 0) fine = n;
-      toks.push({ t: 'commento', v: s.slice(i, fine) });
-      i = fine;
-      continue;
-    }
-    if (c === '/' && s[i + 1] === '*') {
-      let fine = s.indexOf('*/', i + 2);
-      fine = fine < 0 ? n : fine + 2;
-      toks.push({ t: 'commento', v: s.slice(i, fine) });
-      i = fine;
-      continue;
-    }
-
-    if (c === "'") {
-      let j = i + 1;
-      while (j < n) {
-        if (s[j] === '\\') { j += 2; continue; }
-        if (s[j] === "'") { if (s[j + 1] === "'") { j += 2; continue; } j++; break; }
-        j++;
-      }
-      toks.push({ t: 'stringa', v: s.slice(i, j) });
-      i = j;
-      continue;
-    }
-
-    if (c === '"' || c === '`') {
-      const fineChar = c;
-      let j = i + 1;
-      while (j < n && s[j] !== fineChar) j++;
-      toks.push({ t: 'quotato', v: s.slice(i, j + 1) });
-      i = j + 1;
-      continue;
-    }
-
-    // Dollar-quoting PostgreSQL: il corpo è codice altrui, si copia com'è.
-    if (c === '$') {
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));
-      if (m) {
-        const tag = m[0];
-        const fine = s.indexOf(tag, i + tag.length);
-        const j = fine < 0 ? n : fine + tag.length;
-        toks.push({ t: 'stringa', v: s.slice(i, j) });
-        i = j;
-        continue;
-      }
-    }
-
-    if (/[0-9]/.test(c) || (c === '.' && /[0-9]/.test(s[i + 1] || ''))) {
-      let v = '';
-      while (i < n && /[0-9.]/.test(s[i])) { v += s[i]; i++; }
-      toks.push({ t: 'numero', v });
-      continue;
-    }
-
-    if (/[A-Za-z_@]/.test(c)) {
-      let v = '';
-      while (i < n && /[A-Za-z0-9_@$]/.test(s[i])) { v += s[i]; i++; }
-      const up = v.toUpperCase();
-      const tipo = SQL_KEYWORDS.has(up) ? 'kw' : (SQL_TYPES.has(up) ? 'tipo' : (SQL_FUNCTIONS.has(up) ? 'fn' : 'ident'));
-      toks.push({ t: tipo, v: tipo === 'ident' ? v : up });
-      continue;
-    }
-
-    if ('(),;'.includes(c)) {
-      toks.push({ t: 'punt', v: c });
-      i++;
-      continue;
-    }
-
-    // Operatori, anche a due caratteri (<=, >=, <>, !=, ||, ::)
-    const due = s.slice(i, i + 2);
-    if (['<=', '>=', '<>', '!=', '||', '::'].includes(due)) {
-      toks.push({ t: 'op', v: due });
-      i += 2;
-      continue;
-    }
-    toks.push({ t: 'op', v: c });
-    i++;
-  }
-
-  return toks;
+    const up = tok.testo.toUpperCase();
+    if (up === 'CREATE' || up === 'ALTER') ddl = true;
+    const tipo = funzioni.has(up) && tokens[i + 1]?.testo === '(' ? 'fn'
+      : SQL_KEYWORDS.has(up) ? 'kw' : ddl && SQL_TYPES.has(up) ? 'tipo' : parole.has(up) ? 'kw' : 'ident';
+    // Le keyword non riservate possono essere nomi di tabelle o colonne:
+    // riconoscerle non autorizza a cambiare le maiuscole dell'identificatore.
+    return { t: tipo, v: tipo === 'fn' || tipo === 'tipo' || SQL_KEYWORDS.has(up) ? up : tok.testo };
+  });
 }
 
 /**
@@ -248,8 +178,8 @@ function tokenizzaSql(sql) {
  * maiuscolo le parole riconosciute come SQL (mai gli identificatori, mai il
  * contenuto di stringhe e commenti).
  */
-export function formatSql(sql) {
-  const toks = tokenizzaSql(sql);
+export function formatSql(sql, dbms = '') {
+  const toks = tokenizzaSql(sql, dbms);
   if (!toks.length) return String(sql);
 
   const righe = [];
@@ -284,6 +214,7 @@ export function formatSql(sql) {
   for (let i = 0; i < toks.length; i++) {
     const tok = toks[i];
     const prec = toks[i - 1];
+    if (tok.saltoPrima) chiudiRiga();
 
     // Fine istruzione: `;` chiude la riga e separa i comandi con una riga vuota.
     if (tok.t === 'punt' && tok.v === ';') {
@@ -301,7 +232,8 @@ export function formatSql(sql) {
     if (tok.t === 'commento') {
       // Un commento a fine riga resta dov'è; uno isolato prende una riga sua.
       if (riga.trim()) riga += ` ${tok.v}`;
-      else { riga = tok.v; chiudiRiga(); }
+      else riga = tok.v;
+      chiudiRiga();
       continue;
     }
 

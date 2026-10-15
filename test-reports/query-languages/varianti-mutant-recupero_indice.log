@@ -1,0 +1,14 @@
+AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:
+
+  assert.ok((await database.collection('varianti').listIndexes().toArray()).some(i => i.name === 'ix_nuovo'))
+
+    at module.exports (C:\repository\CodeDB\test\sql-mongo-varianti.js:31:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-varianti.js:65:18 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

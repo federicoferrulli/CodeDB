@@ -54,6 +54,13 @@ export function saveWorkspaceInputs() {
 export function renderWorkspace() {
   const tab = activeTab();
   const connected = !!(tab && tab.state.connected);
+  const navigator = $('#navigator');
+  const navigatorTab = connected ? tab.id : '';
+  // Una nuova connessione riparte dalla fine della lista; i ri-render della stessa rispettano il trascinamento.
+  if (navigator.dataset.connectionTab !== navigatorTab) {
+    navigator.style.removeProperty('--connections-height');
+    navigator.dataset.connectionTab = navigatorTab;
+  }
   aggiornaConnessioneAttiva();
 
   // Il tab che ospitava l'area affiancata è stato chiuso: lo stato dei pannelli

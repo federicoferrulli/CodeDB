@@ -1,0 +1,13 @@
+AssertionError [ERR_ASSERTION]: La quota deve respingere uno dei due blocchi concorrenti.
+
+2 !== 1
+
+    at concorrenti (C:\repository\CodeDB\test\unit-quota-tenant.js:67:16)
+    at async C:\repository\CodeDB\test\unit-quota-tenant.js:81:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 2,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

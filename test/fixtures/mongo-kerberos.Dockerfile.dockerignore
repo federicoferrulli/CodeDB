@@ -1,0 +1,11 @@
+**
+!package.json
+!package-lock.json
+!db
+!db/**
+!auth
+!auth/**
+!test
+!test/e2e-mongosh-kerberos.cjs
+!test/fixtures
+!test/fixtures/mongo-kerberos.sh

@@ -16,14 +16,14 @@
 #
 # Il TIPO di release (stabile o pre-release) non si sceglie qui: lo decide la
 # versione in package.json, tramite `tools/pubblica.js` (invocato dagli script
-# `release:*`). Un tag `v0.2.0-beta.1` produce quindi una release marcata come
-# pre-release su GitHub, che `electron-updater` offre solo a chi ha una versione
-# di prova installata o ha impostato CODEDB_UPDATE_PRERELEASE=1.
+# `release:*`). Il job finale applica questa classificazione anche alla bozza:
+# electron-builder con EP_DRAFT ignora EP_PRE_RELEASE. Una beta rimane così
+# marcata come pre-release quando viene pubblicata manualmente.
 #
 # La release creata da electron-builder è una BOZZA: i tre job vi aggiungono i
 # propri file in momenti diversi, e pubblicarla automaticamente significherebbe
 # esporre una release incompleta a chi in quel momento cerca aggiornamenti.
-# La si pubblica a mano quando tutti e tre hanno finito.
+# La si pubblica a mano quando anche il job Android ha finito.
 # ---------------------------------------------------------------------------
 
 name: Build e release
@@ -57,12 +57,13 @@ jobs:
     outputs:
       pubblica: ${{ steps.decidi.outputs.pubblica }}
       versione: ${{ steps.versione.outputs.valore }}
+      prerelease: ${{ steps.versione.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -74,7 +75,9 @@ jobs:
 
       - name: Versione dichiarata
         id: versione
-        run: echo "valore=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "valore=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$(node -p "require('./tools/pubblica').preRelease(process.env, require('./package.json').version)")" >> "$GITHUB_OUTPUT"
 
       # Una versione non semver rende l'AGGIORNAMENTO AUTOMATICO inservibile:
       # electron-updater confronta le versioni con semver, e un valore che non
@@ -142,7 +145,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -152,6 +155,8 @@ jobs:
         run: npm run release:${{ matrix.piattaforma }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prevale sia su releaseType sia su EP_PRE_RELEASE impostato per le beta.
+          EP_DRAFT: 'true'
           # Senza certificato configurato, electron-builder cercherebbe
           # un'identità nel portachiavi del runner e fallirebbe la build invece
           # di produrre un pacchetto non firmato. Vedi la nota sulla firma in
@@ -190,7 +195,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - uses: actions/setup-java@v4
         with:
@@ -284,12 +289,19 @@ jobs:
           name: codedb-android-${{ needs.verifica.outputs.versione }}
           path: dist
       # electron-builder ha già creato la release: nessuna creazione concorrente.
-      - name: Allega APK alla stessa release
+      - name: Completa la bozza con APK e classificazione
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
           VERSIONE: ${{ needs.verifica.outputs.versione }}
-        run: gh release upload "v$VERSIONE" dist/*.apk --clobber
+          PRERELEASE: ${{ needs.verifica.outputs.prerelease }}
+        run: |
+          if [ "$(gh release view "v$VERSIONE" --json isDraft --jq .isDraft)" != "true" ]; then
+            echo 'La release deve essere ancora una bozza: nessun file aggiunto.' >&2
+            exit 1
+          fi
+          gh release upload "v$VERSIONE" dist/*.apk --clobber
+          gh release edit "v$VERSIONE" --draft=true --prerelease="$PRERELEASE"
 
 # ---------------------------------------------------------------------------
 # FIRMA — limite dichiarato, non dimenticato.

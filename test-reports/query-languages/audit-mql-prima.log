@@ -1,0 +1,31 @@
+FAIL MQL: i nomi interni dell’interprete restano normali campi BSON
+AssertionError [ERR_ASSERTION]: db.marcatori.insertOne({"id":60,"__host":true,"__funzione":true,"__chiamabile":true,"__bson":"long","valore":"dato"})
+$numberLong string "dato" is in an invalid format
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-audit.js:27:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:135:5
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:133:3
+FAIL MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+undefined !== 1
+
+{"casi":2,"falliti":2,"esiti":[{"nome":"MQL: i nomi interni dell’interprete restano normali campi BSON","ok":false},{"nome":"MQL: Unicode, esadecimali e continuazioni di riga concordano fra shell e script","ok":false}]}
+    at C:\repository\CodeDB\test\e2e-query-audit.js:145:12
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-audit.js:21:9)
+    at async C:\repository\CodeDB\test\e2e-query-audit.js:141:3
+AssertionError [ERR_ASSERTION]: Tutte le regressioni SQL/MQL devono passare
+    at C:\repository\CodeDB\test\e2e-query-audit.js:159:3
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

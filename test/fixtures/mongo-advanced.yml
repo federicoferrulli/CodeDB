@@ -1,0 +1,47 @@
+name: codedb-mongo-advanced-test
+services:
+  atlas:
+    image: mongodb/mongodb-atlas-local:8.0
+    hostname: atlas
+    labels: { codedb.test: mongo-advanced }
+    ports: ['127.0.0.1:27059:27017']
+  config:
+    image: mongo:8.0
+    hostname: config
+    labels: { codedb.test: mongo-advanced }
+    command: ['mongod', '--configsvr', '--replSet', 'config', '--bind_ip_all', '--port', '27060', '--wiredTigerCacheSizeGB', '0.25']
+    ports: ['127.0.0.1:27060:27060']
+  shard-a:
+    image: mongo:8.0
+    hostname: shard-a
+    labels: { codedb.test: mongo-advanced }
+    command: ['mongod', '--shardsvr', '--replSet', 'shardA', '--bind_ip_all', '--port', '27061', '--wiredTigerCacheSizeGB', '0.25']
+    ports: ['127.0.0.1:27061:27061']
+  shard-b:
+    image: mongo:8.0
+    hostname: shard-b
+    labels: { codedb.test: mongo-advanced }
+    command: ['mongod', '--shardsvr', '--replSet', 'shardB', '--bind_ip_all', '--port', '27062', '--wiredTigerCacheSizeGB', '0.25']
+    ports: ['127.0.0.1:27062:27062']
+  router:
+    image: mongo:8.0
+    labels: { codedb.test: mongo-advanced }
+    command: ['mongos', '--configdb', 'config/config:27060', '--bind_ip_all', '--port', '27063']
+    ports: ['127.0.0.1:27063:27063']
+  cryptd:
+    image: mongodb/mongodb-enterprise-server:8.0-ubuntu2204
+    working_dir: /tmp
+    labels: { codedb.test: mongo-advanced }
+    entrypoint: ['mongocryptd', '--port', '27020', '--idleShutdownTimeoutSecs', '3600']
+    ports: ['127.0.0.1:27065:27065']
+  cryptd-proxy:
+    image: node:24-bookworm
+    labels: { codedb.test: mongo-advanced }
+    network_mode: service:cryptd
+    # mongocryptd ascolta solo su loopback; il ponte resta esposto sul loopback dell'host.
+    command: ['node', '-e', 'const net=require("net");net.createServer(c=>{const s=net.connect(27020,"127.0.0.1");c.pipe(s).pipe(c);c.on("error",()=>s.destroy());s.on("error",()=>c.destroy());c.on("close",()=>s.destroy());}).listen(27065,"0.0.0.0");']
+  enterprise:
+    image: mongodb/mongodb-enterprise-server:8.0-ubuntu2204
+    labels: { codedb.test: mongo-advanced }
+    command: ['mongod', '--bind_ip_all', '--wiredTigerCacheSizeGB', '0.25']
+    ports: ['127.0.0.1:27066:27017']

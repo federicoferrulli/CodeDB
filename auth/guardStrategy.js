@@ -46,6 +46,46 @@ function denied(capability, connName, db, coll) {
 function resolveAuthorization(spec, strategy, args) {
   if (spec.cap !== 'dynamic') return { capabilities: [spec.cap] };
   const payload = args[2] || {};
+  if (spec.kind === 'mongoSqlSchema') {
+    const plan = require('../db/SqlToMql').translateWrite(payload.sql);
+    if (plan.kind !== 'ddl' || plan.coll !== args[1]) throw new Error('Bersaglio dello schema SQL non valido.');
+    return { capabilities: ['ddl'], mongoPipeline: { write: false, readTargets: (plan.schema?.constraints || []).filter(c => c.kind === 'FOREIGN')
+      .map(c => ({ db: null, coll: c.references.coll, operator: 'REFERENCES' })) } };
+  }
+  if (spec.kind === 'mongoSqlProcedure') {
+    const plan = require('../db/sqlProcedureMongo').parse(payload.sql);
+    if (plan.name !== args[1]) throw new Error('Bersaglio della procedura SQL non valido.');
+    return { capabilities: [plan.op === 'call' ? 'read' : 'ddl'] };
+  }
+  if (spec.kind === 'mongoSqlReturning') {
+    const plan = require('../db/SqlToMql').translateWrite(payload.sql);
+    if (plan.coll !== args[1] || plan.kind !== 'write') throw new Error('Piano SQL di scrittura non valido.');
+    assertNoMongoServerJs(plan.filter, 'Filtro SQL');
+    assertNoMongoServerJs(plan.update, 'Aggiornamento SQL');
+    assertNoMongoServerJs(plan.conflict, 'Gestione dei conflitti SQL');
+    const analysis = analyzeMongoPipeline([...(plan.selection || []), ...(plan.returning || [])]);
+    for (const source of [plan.source, plan.changes].filter(Boolean)) {
+      const extra = analyzeMongoPipeline(require('../db/SqlToMql').planToPipeline(source));
+      if (extra.write) throw new Error('Una sorgente SQL di scrittura non può modificare altre collezioni.');
+      if (source.coll) analysis.readTargets.push({ db: null, coll: source.coll, operator: 'FROM' });
+      analysis.readTargets.push(...extra.readTargets);
+    }
+    if (analysis.write) throw new Error('La selezione o RETURNING SQL non può modificare altre collezioni.');
+    return { capabilities: [...(plan.returning || plan.selection || plan.conflict || plan.source || plan.changes ? ['read'] : []), plan.op === 'deleteMany' ? 'delete' : 'write'], mongoPipeline: analysis };
+  }
+  if (spec.kind === 'mongoSqlRead') {
+    const sql = require('../db/SqlToMql');
+    const plan = sql.translate(payload.sql);
+    const plans = plan.kind === 'program' ? sql.analizzaProgramma(plan).plans : [plan];
+    const readTargets = [];
+    for (const p of plans) {
+      if (p.coll) readTargets.push({ db: null, coll: p.coll, operator: 'FROM' });
+      const analysis = analyzeMongoPipeline(sql.planToPipeline(p));
+      if (analysis.write) throw new Error('Una SELECT SQL non può modificare collezioni.');
+      readTargets.push(...analysis.readTargets);
+    }
+    return { capabilities: ['read'], mongoPipeline: { write: false, readTargets, targets: [] } };
+  }
   // Scritture della shell da uno script: findOneAndUpdate/Delete restituiscono
   // anche il documento e richiedono read oltre alla capability mutativa.
   if (spec.kind === 'shellWrite') {
@@ -105,13 +145,14 @@ function resolveAuthorization(spec, strategy, args) {
  * la superficie è questa.
  */
 const MONGO_SERVER_JS_FIELDS = {
-  collectionFind: ['filter', 'filtro'],
+  collectionFind: ['filter', 'filtro', 'options'],
   collectionCount: ['filter', 'filtro'],
-  collectionAggregate: ['pipeline', 'filtro'],
-  collectionExplain: ['filter', 'pipeline', 'filtro'],
+  collectionAggregate: ['pipeline', 'filtro', 'options'],
+  collectionExplain: ['filter', 'pipeline', 'filtro', 'options'],
   collectionUpdateMany: ['filter', 'filtro'],
   collectionDeleteMany: ['filter', 'filtro'],
-  shellWrite: ['filter', 'update'],
+  shellWrite: ['filter', 'update', 'options'],
+  mongoDistinct: ['filter', 'options'],
 };
 
 function assertSafeMongoFieldPath(value, label = 'Campo MongoDB') {
@@ -255,7 +296,7 @@ function guardStrategy(strategy, ctx) {
         let authorization;
         try {
           authorization = resolveAuthorization(spec, target, args);
-          if (authorization.sql && authorization.sql.executableComment) {
+          if (authorization.sql && authorization.sql.executableComment && !(target.type === 'mysql' && canWholeConnection(principal, connName, 'manage'))) {
             throw new Error('I commenti SQL eseguibili /*! … */ e /*M! … */ non sono consentiti in SQL Raw.');
           }
           if (authorization.sql && authorization.sql.multipleStatements) {
@@ -300,6 +341,7 @@ function guardStrategy(strategy, ctx) {
         }
 
         const capabilities = authorization.capabilities;
+        if (spec.whole && !canWholeConnection(principal, connName, spec.cap)) return refuse(spec.cap, null, null);
         let missing = capabilities.find((capability) =>
           !can(principal, { connName, capability, db, coll }));
         if (!missing && authorization.anyCapabilities
@@ -308,6 +350,31 @@ function guardStrategy(strategy, ctx) {
           missing = authorization.anyCapabilities[0];
         }
         if (missing) return refuse(missing, db, coll);
+        if (target.type === 'mongodb' && (['mongoSqlReturning', 'mongoSqlProcedure', 'mongoSqlSchema', 'shellWrite'].includes(spec.kind)
+            || ['mongoSqlTrigger', 'docInsert', 'docUpdate', 'docReplace', 'docDelete', 'collectionUpdateMany', 'collectionDeleteMany', 'collectionImport'].includes(prop))) {
+          const { ACCESS } = require('../db/sqlMongoContesto');
+          args[2] = { ...args[2], [ACCESS]: (capability, collection) => {
+            if (!ctx.principal || !can(ctx.principal, { connName, capability, db, coll: collection })) throw denied(capability, connName, db, collection);
+          } };
+        }
+        if (target.type === 'mongodb' && args[2]?.[require('../db/sqlMongoContesto').ACCESS]) {
+          // La definizione persistita viene letta dall'esecutore. Questo token
+          // gli consente esclusivamente di verificare le istruzioni, con il
+          // principal corrente, prima del batch e prima di ogni chiamata DB.
+          const { AUTHORIZE } = require('../db/sqlMongoContesto');
+          args[2] = { ...args[2], [AUTHORIZE]: text => {
+            const plan = require('../db/sqlProcedureMongo').compila(text);
+            const method = plan.kind === 'call' ? 'mongoSqlProcedure' : plan.kind === 'write' ? 'mongoSqlReturning' : 'mongoSqlRead';
+            const collection = plan.kind === 'call' ? plan.name : plan.coll;
+            const check = resolveAuthorization(METHOD_CAPABILITY[method], target, [db, collection, { sql: text }]);
+            const current = ctx.principal;
+            if (!current) throw new Error('Sessione non più autorizzata.');
+            for (const capability of check.capabilities) if (!can(current, { connName, capability, db, coll: collection || undefined })) throw denied(capability, connName, db, collection);
+            for (const source of check.mongoPipeline?.readTargets || []) {
+              if (!source.coll || !can(current, { connName, capability: 'read', db: source.db || db, coll: source.coll })) throw denied('read', connName, source.db || db, source.coll);
+            }
+          } };
+        }
         // Rename: anche la destinazione deve rientrare nello scope, altrimenti
         // si potrebbe spostare un oggetto fuori dal proprio perimetro.
         const primaryCapability = capabilities[capabilities.length - 1];

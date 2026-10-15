@@ -342,7 +342,6 @@ function creaPianoExport({
   consistenza = 'nessuna-garanzia',
   compressione = true,
   verificaDati = 'conteggi',
-  limiteByte = null,
 } = {}) {
   if (!MODALITA_VALIDE.has(modalita)) {
     throw new Error(`Modalità di export sconosciuta: "${modalita}". Ammesse: ${[...MODALITA_VALIDE].join(', ')}.`);
@@ -388,7 +387,6 @@ function creaPianoExport({
     sourceDb,
     modalita,
     formato,
-    limiteByte,
     backend,
     compressione: !!compressione,
     destinazione,

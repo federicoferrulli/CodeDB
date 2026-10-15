@@ -13,7 +13,14 @@ console.log('--- Test Unitari CodeDB ---');
 
 (async () => {
   await require('./unit-preproduzione');
+  await require('./unit-sql-sessioni');
+  await require('./unit-query-audit');
+  await require('./unit-query-export-json');
   require('./sql-to-mql');
+  require('./unit-sql-mongo-avanzato');
+  require('./unit-sql-mongo-relazionale');
+  await require('./unit-sql-mongo-runtime');
+  require('./unit-sql-mongo-schema');
   await require('./unit-database-export');
   await require('./unit-import-sql');
   await require('./unit-import-limiti');
@@ -1021,6 +1028,7 @@ console.log('--- Test Unitari CodeDB ---');
     }
     console.log('  OK   Electron: aggiornamenti (feed, versioni, note, menu) passed');
     console.log('  OK   Workflow di release: runner per piattaforma e script npm coerenti passed');
+    await require('./unit-release-bozza');
   }
 
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
@@ -1145,6 +1153,13 @@ console.log('--- Test Unitari CodeDB ---');
 
   // Test 20: Formattatore dell'editor (SQL, JSON/MQL, rientri JavaScript)
   require('./unit-query-formatter');
+  require('./unit-query-languages');
+  await require('./unit-query-copertura');
+  require('./unit-sql-mongo-copertura');
+  await require('./unit-mongo-copertura');
+  await require('./unit-mongo-nativo');
+  await require('./unit-mongosh');
+  require('./unit-query-dialetti-server');
 
   // Test 21: Vault a busta (DEK, scrypt, cambio passphrase)
   require('./unit-vault');
@@ -1568,6 +1583,7 @@ console.log('--- Test Unitari CodeDB ---');
   // Data-plane HTTP: byte su disco a blocchi con ripresa e crash-recovery,
   // finalizzazione verificata, download Range/ETag e ticket legati al tenant.
   await require('./unit-upload-disco');
+  await require('./unit-quota-tenant');
   await require('./unit-http-artefatti');
   await require('./unit-artefatti-ticket');
   // Audit del data-plane: ciclo di vita e rifiuti senza segreti.

@@ -1,0 +1,38 @@
+{
+  "date": "2026-10-14T17:25:20.453Z",
+  "engines": {
+    "postgresql": "18.6",
+    "mysql": "8.4.11",
+    "mongodb": "8.0.29"
+  },
+  "unit": "passed",
+  "nativeStatements": 117,
+  "sessionRegressions": 12,
+  "comparisonMatrices": {
+    "mongodb": 993,
+    "postgresql": 715,
+    "mysql": 319
+  },
+  "additionalVariants": {
+    "mongodb": 73,
+    "postgresql": 35,
+    "mysql": 52
+  },
+  "mongoFailovers": 18,
+  "detectedMutations": 13,
+  "mutationLogs": [
+    "fix-mutant-schema_cache.log",
+    "fix-mutant-database_cache.log",
+    "fix-mutant-riconnessione.log",
+    "fix-mutant-identita.log",
+    "fix-mutant-ascolto_errori.log",
+    "fix-mutant-dialetto_sessione.log",
+    "fix-mutant-precedente-recupero.log",
+    "fix-mutant-precedente-sessione.log",
+    "fix-mutant-precedente-precisione_pg.log",
+    "fix-mutant-precedente-precisione_my.log",
+    "fix-mutant-precedente-destinazione.log",
+    "fix-mutant-precedente-delimitatore.log",
+    "fix-mutant-precedente-copia.log"
+  ]
+}

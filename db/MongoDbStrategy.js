@@ -1,4 +1,6 @@
 'use strict';
+const { opzioniLettura, opzioniDriver } = require('./mongoOpzioni');
+const scritturaVincolata = require('./sqlScrittureMongo').esegui;
 
 const { assertImportOutcomeKnown } = require('./importFailure');
 
@@ -71,7 +73,7 @@ function buildUri(cfg) {
  * comportamento (ticket 21).
  */
 function filtroDiLettura(payload, fallback = {}) {
-  const documento = parseQueryObject(payload.filter, fallback);
+  const documento = parseQueryObject(payload.filter, fallback, !payload.shell);
   const strutturato = normalizzaFiltro(payload.filtro);
   if (!strutturato) return documento;
   // I valori arrivano in Extended JSON: qui tornano tipi BSON nativi, e le
@@ -90,10 +92,10 @@ function unisciFiltri(...filtri) {
   return presenti.length === 1 ? presenti[0] : { $and: presenti };
 }
 
-function parseQueryObject(text, fallback = {}) {
+function parseQueryObject(text, fallback = {}, promote = true) {
   if (text == null || String(text).trim() === '') return fallback;
   const parsed = EJSON.parse(String(text), { relaxed: false });
-  promoteObjectIds(parsed);
+  if (promote) promoteObjectIds(parsed);
   return parsed;
 }
 
@@ -195,7 +197,7 @@ if (Long && Long.prototype && Long.prototype.toExtendedJSON && !Long.prototype._
 }
 
 function serialize(value) {
-  return EJSON.serialize(value, { relaxed: true });
+  return require('./mongoEjson').serializza(value);
 }
 
 // Tipi ammessi da $convert per la conversione dei campi.
@@ -471,7 +473,7 @@ class MongoDbStrategy extends DbStrategy {
     const name = String(db || '').trim();
     assertDbName(name);
     if (SYSTEM_DBS.has(name)) throw new Error(`Il database di sistema "${name}" non può essere eliminato.`);
-    await client.db(name).dropDatabase();
+    await client.db(name).dropDatabase(opzioniDriver({}, {}, DbStrategy.queryTimeoutMs(this.env)));
   }
 
   async listCollections(db, { includeCounts = true } = {}) {
@@ -493,12 +495,15 @@ class MongoDbStrategy extends DbStrategy {
     });
   }
 
-  async createCollection(db, name) {
+  async createCollection(db, name, options = {}) {
     const client = this.requireClient();
     const coll = String(name || '').trim();
     if (!coll) throw new Error('Nome della collection mancante.');
     DbStrategy.assertCreatableName(coll, 'della collection');
-    await client.db(db).createCollection(coll);
+    const opts = EJSON.deserialize(options, { relaxed: false });
+    if (Object.hasOwn(opts, 'session')) throw new Error('La sessione della collezione è gestita dallo script.');
+    require('../auth/capabilities').assertNoMongoServerJs(opts, 'Opzioni della collezione');
+    await client.db(db).createCollection(coll, opzioniDriver(opts, {}, DbStrategy.queryTimeoutMs(this.env)));
   }
 
   async renameCollection(db, coll, newName) {
@@ -511,7 +516,7 @@ class MongoDbStrategy extends DbStrategy {
 
   async dropCollection(db, coll) {
     const client = this.requireClient();
-    const ok = await client.db(db).collection(coll).drop();
+    const ok = await client.db(db).collection(coll).drop(opzioniDriver({}, {}, DbStrategy.queryTimeoutMs(this.env)));
     if (!ok) throw new Error(`Impossibile eliminare la collection "${coll}".`);
   }
 
@@ -876,15 +881,13 @@ class MongoDbStrategy extends DbStrategy {
       filtroDiLettura(payload, {}),
       await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
     );
-    await this.promoteFilterObjectIds(collection, filter);
-    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
-    const findOpts = { projection };
-    if (runComment) findOpts.comment = runComment;
+    if (!payload.shell) await this.promoteFilterObjectIds(collection, filter);
+    const findOpts = { ...opzioniLettura(parseQueryObject(payload.options, {})), projection };
     // Timeout lato server sulla find: una scansione lenta (es. skip profondo)
     // viene interrotta (MaxTimeMSExpired) invece di tenere la connessione
     // occupata all'infinito. Annullabile anche via killOp sul `comment` (runId).
     const maxTimeMS = DbStrategy.queryTimeoutMs(this.env);
-    if (maxTimeMS > 0) findOpts.maxTimeMS = maxTimeMS;
+    opzioniDriver(findOpts, payload, maxTimeMS);
 
     // Keyset (seek) pagination: se richiesta (`payload.keyset`) e l'ordinamento è
     // quello di default, si pagina con `_id > :after` (avanti) / `_id < :before`
@@ -927,7 +930,9 @@ class MongoDbStrategy extends DbStrategy {
     // statistiche del planner SQL.)
     const hasFilter = Object.keys(filter).length > 0;
     let total;
-    if (payload.deferCount) {
+    if (payload.shell || findOpts.session) {
+      total = null;
+    } else if (payload.deferCount) {
       total = hasFilter ? null : await collection.estimatedDocumentCount().catch(() => null);
     } else {
       total = await this.countWithTimeout(collection, filter, hasFilter);
@@ -982,19 +987,55 @@ class MongoDbStrategy extends DbStrategy {
       await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
     );
     const hasFilter = Object.keys(filter).length > 0;
-    if (hasFilter) await this.promoteFilterObjectIds(collection, filter);
-    const total = await this.countWithTimeout(collection, filter, hasFilter);
+    if (hasFilter && !payload.shell) await this.promoteFilterObjectIds(collection, filter);
+    const total = payload.shell || require('./mongoSessioneScript').attiva()
+      ? await collection.countDocuments(filter, opzioniDriver(parseQueryObject(payload.options, {}), payload, DbStrategy.countTimeoutMs(this.env)))
+      : await this.countWithTimeout(collection, filter, hasFilter);
     return { total, timedOut: total === null };
+  }
+
+  async mongoCommand(db, payload) {
+    return require('./mongoComando').esegui(this.requireClient(), db, payload, this.env);
+  }
+
+  async mongoShellRead(db, coll, payload) {
+    return require('./mongoMetadatiShell').leggi(this.requireClient(), db, coll, payload, this.env);
+  }
+
+  async mongoCollectionInfos(db, payload = {}) {
+    const filter = parseQueryObject(payload.filter, {}, false);
+    require('../auth/capabilities').assertNoMongoServerJs(filter, 'Filtro delle collezioni');
+    const options = opzioniDriver({ nameOnly: !!payload.nameOnly, authorizedCollections: !!payload.authorizedCollections }, payload, DbStrategy.queryTimeoutMs(this.env));
+    const result = await DbStrategy.collectCapped(this.requireClient().db(db).listCollections(filter, options), Infinity, DbStrategy.maxResultBytes(this.env));
+    if (result.truncated) throw new Error('Elenco collezioni oltre il limite di byte. Restringi il filtro.');
+    return serialize(result.docs);
+  }
+
+  async mongoDatabaseAggregate(db, payload) {
+    const pipeline = parseQueryObject(payload.pipeline, [], false);
+    require('../auth/capabilities').assertNoMongoServerJs(pipeline, 'Pipeline di database');
+    const options = opzioniDriver(opzioniLettura(parseQueryObject(payload.options, {}, false), true), payload, DbStrategy.aggregateTimeoutMs(this.env));
+    const result = await DbStrategy.collectCapped(this.requireClient().db(db).aggregate(pipeline, options), DbStrategy.resultCap(payload), DbStrategy.maxResultBytes(this.env));
+    return { docs: result.docs.map(serialize), truncated: result.truncated };
+  }
+
+  async mongoShellIndex(db, coll, payload) {
+    return serialize(await require('./mongoMetadatiShell').indici(this.requireClient(), db, coll, payload, this.env));
+  }
+
+  async mongoDistinct(db, coll, payload) {
+    const result = await this.requireClient().db(db).collection(coll).distinct(String(payload.field),
+      parseQueryObject(payload.filter, {}, false), opzioniDriver(parseQueryObject(payload.options, {}, false), payload, DbStrategy.queryTimeoutMs(this.env)));
+    if (Buffer.byteLength(EJSON.stringify(result)) > DbStrategy.maxResultBytes(this.env)) throw new Error('Risultato distinct oltre il limite di byte.');
+    return serialize(result);
   }
 
   async collectionAggregate(db, coll, payload) {
     const client = this.requireClient();
-    const pipeline = parseQueryObject(payload.pipeline, []);
+    const pipeline = parseQueryObject(payload.pipeline, [], false);
     if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
     const cap = DbStrategy.resultCap(payload);
-    const runComment = payload.comment || payload.runId || payload.opHandle?.runId;
-    const aggOpts = {};
-    if (runComment) aggOpts.comment = runComment;
+    const aggOpts = opzioniLettura(parseQueryObject(payload.options, {}), true);
 
     // `$out`/`$merge` DEVONO restare l'ultimo stage: applicare `.limit()` come
     // per le letture vi accodava un `$limit` e MongoDB rifiutava la pipeline
@@ -1012,7 +1053,7 @@ class MongoDbStrategy extends DbStrategy {
     // metà, cioè lo stato incoerente che il timeout dovrebbe evitare. Là il
     // rimedio giusto è l'annullamento esplicito dell'utente (cancelQuery).
     const aggTimeout = DbStrategy.aggregateTimeoutMs(this.env);
-    if (!materializza && aggTimeout > 0) aggOpts.maxTimeMS = aggTimeout;
+    opzioniDriver(aggOpts, payload, materializza ? 0 : aggTimeout);
 
     const agg = client.db(db).collection(coll).aggregate(pipeline, aggOpts);
     const cursor = materializza || !Number.isFinite(cap) ? agg : agg.limit(cap);
@@ -1020,6 +1061,25 @@ class MongoDbStrategy extends DbStrategy {
     const { docs, truncated } = await DbStrategy.collectCapped(cursor, cap, DbStrategy.maxResultBytes(this.env));
     const columns = [...new Set(docs.flatMap((d) => Object.keys(d)))];
     return { docs: docs.map(serialize), columns, total: docs.length, skip: 0, limit: cap, truncated: truncated || undefined, resultSet: true };
+  }
+
+  async mongoSqlRead(db, _coll, payload) {
+    return require('./MongoSqlRuntime').leggi(this.requireClient(), db, payload, this.env);
+  }
+
+  async mongoSqlReturning(db, coll, payload) {
+    return require('./MongoSqlRuntime').scrivi(this.requireClient(), db, coll, payload, this.env);
+  }
+
+  async mongoSqlSchema(db, coll, payload) {
+    return require('./sqlSchemaMongo').crea(this.requireClient(), db, coll, payload, this.env);
+  }
+
+  async mongoSqlProcedure(db, name, payload) {
+    return require('./sqlProcedureMongo').esegui(this.requireClient(), db, name, payload, this.env);
+  }
+  async mongoSqlTrigger(db, coll, payload) {
+    return require('./sqlTriggerMongo').esegui(this.requireClient(), db, coll, payload);
   }
 
   /**
@@ -1048,7 +1108,8 @@ class MongoDbStrategy extends DbStrategy {
       const admin = this.client.db('admin');
       const ops = await admin.aggregate([
         { $currentOp: { allUsers: true, idleConnections: false } },
-        { $match: { $or: [{ "command.comment": opHandle.runId }, { comment: opHandle.runId }] } }
+        { $match: { $or: [{ "command.comment": opHandle.runId }, { comment: opHandle.runId },
+          { 'command.comment.codedbRunId': opHandle.runId }, { 'comment.codedbRunId': opHandle.runId }] } }
       ]).toArray();
 
       if (!ops || ops.length === 0) return { cancelled: false };
@@ -1141,11 +1202,14 @@ class MongoDbStrategy extends DbStrategy {
   async collectionExplain(db, coll, payload) {
     const client = this.requireClient();
     const collection = client.db(db).collection(coll);
+    const verbosity = payload.verbosity || 'executionStats';
+    if (!['queryPlanner', 'executionStats', 'allPlansExecution'].includes(verbosity)) throw new Error('Livello explain non valido.');
+    const opts = opzioniDriver(opzioniLettura(parseQueryObject(payload.options, {}), payload.mode === 'aggregate'), payload, DbStrategy.queryTimeoutMs(this.env));
     let explanation;
     if (payload.mode === 'aggregate') {
-      const pipeline = parseQueryObject(payload.pipeline, []);
+      const pipeline = parseQueryObject(payload.pipeline, [], false);
       if (!Array.isArray(pipeline)) throw new Error('La pipeline deve essere un array JSON.');
-      explanation = await collection.aggregate(pipeline).explain('executionStats');
+      explanation = await collection.aggregate(pipeline, opts).explain(verbosity);
     } else {
       const filter = unisciFiltri(
         filtroDiLettura(payload, {}),
@@ -1155,20 +1219,20 @@ class MongoDbStrategy extends DbStrategy {
       const projection = parseQueryObject(payload.projection, {});
       const limit = Math.min(Math.max(parseInt(payload.limit, 10) || 50, 1), 500);
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
-      await this.promoteFilterObjectIds(collection, filter);
+      if (!payload.shell) await this.promoteFilterObjectIds(collection, filter);
       explanation = await collection
-        .find(filter, { projection })
+        .find(filter, { ...opts, projection })
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .explain('executionStats');
+        .explain(verbosity);
     }
     return { format: 'json', plan: serialize(explanation) };
   }
 
   async docInsert(db, coll, payload) {
     const client = this.requireClient();
-    return require('./insertBson').inserisciBson(client, db, coll, payload.doc);
+    return scritturaVincolata(client, db, coll, payload, this.env, (options, c, triggers) => require('./insertBson').inserisciBson(client, db, coll, payload.doc, options, triggers));
   }
 
   // Aggiornamento di massa per il gateway MCP: $set su tutti i documenti che
@@ -1184,11 +1248,11 @@ class MongoDbStrategy extends DbStrategy {
     if (!set || typeof set !== 'object' || Array.isArray(set) || !Object.keys(set).length) {
       throw new Error('Oggetto "set" mancante o vuoto: indica i campi da aggiornare.');
     }
-    const res = await client.db(db).collection(coll).updateMany(
+    const res = await scritturaVincolata(client, db, coll, payload, this.env, (options, c) => c.updateMany(
       filter,
       { $set: set },
-      { upsert: payload.upsert === true },
-    );
+      { upsert: payload.upsert === true, ...options },
+    ));
     return {
       matched: res.matchedCount,
       modified: res.modifiedCount,
@@ -1208,7 +1272,7 @@ class MongoDbStrategy extends DbStrategy {
       update.$unset = Object.fromEntries(payload.unset.map((f) => [f, '']));
     }
     if (!Object.keys(update).length) throw new Error('Nessuna modifica da applicare.');
-    const res = await client.db(db).collection(coll).updateOne({ _id }, update);
+    const res = await scritturaVincolata(client, db, coll, payload, this.env, (options, c) => c.updateOne({ _id }, update, options));
     return { matched: res.matchedCount, modified: res.modifiedCount };
   }
 
@@ -1220,14 +1284,14 @@ class MongoDbStrategy extends DbStrategy {
       throw new Error('Documento JSON non valido.');
     }
     delete doc._id; // l'_id non è modificabile
-    const res = await client.db(db).collection(coll).replaceOne({ _id }, doc);
+    const res = await scritturaVincolata(client, db, coll, payload, this.env, (options, c) => c.replaceOne({ _id }, doc, options));
     return { matched: res.matchedCount, modified: res.modifiedCount };
   }
 
   async docDelete(db, coll, payload) {
     const client = this.requireClient();
     const _id = parseId(payload.id);
-    const res = await client.db(db).collection(coll).deleteOne({ _id });
+    const res = await scritturaVincolata(client, db, coll, payload, this.env, (options, c) => c.deleteOne({ _id }, options));
     return { deleted: res.deletedCount };
   }
 
@@ -1245,7 +1309,7 @@ class MongoDbStrategy extends DbStrategy {
    */
   async shellWrite(db, coll, payload) {
     const client = this.requireClient();
-    const c = client.db(db).collection(coll);
+    const parse = (text, fallback) => parseQueryObject(text, fallback, !payload.nativeResult);
     const op = String(payload.op || '');
     // Il filtro è OBBLIGATORIO. Senza questa riga `db.c.deleteMany()` — il
     // campo `filter` semplicemente assente nel payload — ripiegava su `{}`, che
@@ -1255,7 +1319,7 @@ class MongoDbStrategy extends DbStrategy {
     // chiamata. Stessa forma di difesa dell'aggiornamento senza operatori qui
     // sotto, e stessa motivazione.
     const filtro = () => {
-      const f = parseQueryObject(payload.filter, null);
+      const f = parse(payload.filter, null);
       if (f === null || f === undefined) {
         throw new Error(`${op} richiede un filtro: per agire su TUTTI i documenti scrivilo esplicitamente, ${op}({}).`);
       }
@@ -1264,14 +1328,22 @@ class MongoDbStrategy extends DbStrategy {
       }
       return f;
     };
-    const opzioni = () => parseQueryObject(payload.options, {}) || {};
+    if (!['insertOne', 'insertMany'].includes(op)) filtro();
+    return scritturaVincolata(client, db, coll, payload, this.env, async (options, c) => {
+    const opzioni = () => ({ ...parse(payload.options, {}), ...options });
 
     // Un "aggiornamento" senza operatori ($set, $inc…) sostituirebbe l'intero
     // documento: in mongosh è un errore, e qui lo è a maggior ragione — è la
     // differenza fra correggere un campo e cancellare tutti gli altri.
     const aggiornamento = () => {
-      const u = parseQueryObject(payload.update, null);
-      if (!u || typeof u !== 'object' || Array.isArray(u)) {
+      const u = parse(payload.update, null);
+      if (Array.isArray(u)) {
+        if (!u.length || u.some(s => !s || typeof s !== 'object' || Array.isArray(s) || Object.keys(s).length !== 1)) {
+          throw new Error('La pipeline di aggiornamento richiede stadi non vuoti con un solo operatore.');
+        }
+        return u;
+      }
+      if (!u || typeof u !== 'object') {
         throw new Error('Aggiornamento non valido: serve un oggetto con operatori (es. { $set: { … } }).');
       }
       if (!Object.keys(u).some((k) => k.startsWith('$'))) {
@@ -1282,54 +1354,60 @@ class MongoDbStrategy extends DbStrategy {
 
     switch (op) {
       case 'insertOne': {
-        const doc = parseQueryObject(payload.doc, null);
+        const doc = parse(payload.doc, null);
         if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('insertOne richiede un documento.');
-        const res = await c.insertOne(doc);
-        return { acknowledged: true, insertedId: EJSON.stringify(res.insertedId), inserted: 1 };
+        const res = await c.insertOne(doc, opzioni());
+        return payload.nativeResult ? serialize(res) : { acknowledged: res.acknowledged, insertedId: EJSON.stringify(res.insertedId), inserted: 1 };
       }
       case 'insertMany': {
-        const docs = parseQueryObject(payload.docs, null);
+        const docs = parse(payload.docs, null);
         if (!Array.isArray(docs) || !docs.length) throw new Error('insertMany richiede un array di documenti non vuoto.');
-        const res = await c.insertMany(docs);
-        return { acknowledged: true, inserted: res.insertedCount };
+        const res = await c.insertMany(docs, opzioni());
+        return payload.nativeResult ? serialize(res) : { acknowledged: res.acknowledged, inserted: res.insertedCount };
       }
       case 'updateOne': {
         const res = await c.updateOne(filtro(), aggiornamento(), opzioni());
-        return { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
+        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
       }
       case 'updateMany': {
         const res = await c.updateMany(filtro(), aggiornamento(), opzioni());
-        return { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
+        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
       }
       case 'replaceOne': {
-        const doc = parseQueryObject(payload.doc, null);
+        const doc = parse(payload.doc, null);
         if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('replaceOne richiede un documento.');
         const res = await c.replaceOne(filtro(), doc, opzioni());
-        return { matched: res.matchedCount, modified: res.modifiedCount };
+        return payload.nativeResult ? serialize(res) : { matched: res.matchedCount, modified: res.modifiedCount, upserted: res.upsertedCount || 0 };
       }
       case 'deleteOne': {
-        const res = await c.deleteOne(filtro());
-        return { deleted: res.deletedCount };
+        const res = await c.deleteOne(filtro(), opzioni());
+        return payload.nativeResult ? serialize(res) : { deleted: res.deletedCount };
       }
       case 'deleteMany': {
-        const res = await c.deleteMany(filtro());
-        return { deleted: res.deletedCount };
+        const res = await c.deleteMany(filtro(), opzioni());
+        return payload.nativeResult ? serialize(res) : { deleted: res.deletedCount };
       }
-      case 'findOneAndUpdate': {
-        const res = await c.findOneAndUpdate(filtro(), aggiornamento(), opzioni());
+      case 'findOneAndUpdate':
+      case 'findOneAndReplace': {
+        const opts = opzioni();
+        const value = op === 'findOneAndUpdate' ? aggiornamento() : parse(payload.doc, null);
+        if (op === 'findOneAndReplace' && (!value || typeof value !== 'object' || Array.isArray(value))) throw new Error('findOneAndReplace richiede un documento.');
+        const res = await c[op](filtro(), value, opts);
         // Driver MongoDB 6: per default torna direttamente il documento;
         // le versioni/configurazioni con includeResultMetadata usano `.value`.
-        const doc = res && Object.prototype.hasOwnProperty.call(res, 'value') ? res.value : res;
-        return { doc: doc ? serialize(doc) : null };
+        const doc = opts.includeResultMetadata ? res?.value : res;
+        return payload.nativeResult ? serialize(doc) : { doc: doc ? serialize(doc) : null };
       }
       case 'findOneAndDelete': {
-        const res = await c.findOneAndDelete(filtro(), opzioni());
-        const doc = res && Object.prototype.hasOwnProperty.call(res, 'value') ? res.value : res;
-        return { doc: doc ? serialize(doc) : null };
+        const opts = opzioni();
+        const res = await c.findOneAndDelete(filtro(), opts);
+        const doc = opts.includeResultMetadata ? res?.value : res;
+        return payload.nativeResult ? serialize(doc) : { doc: doc ? serialize(doc) : null };
       }
       default:
         throw new Error(`Operazione di scrittura non supportata: "${op}".`);
     }
+    });
   }
 
   async collectionDeleteMany(db, coll, payload) {
@@ -1339,7 +1417,7 @@ class MongoDbStrategy extends DbStrategy {
       filtroDiLettura(payload, {}),
       await filtroRicercaGlobale(this, collection, db, coll, payload.cercaOvunque)
     );
-    const res = await collection.deleteMany(filter);
+    const res = await scritturaVincolata(client, db, coll, payload, this.env, (options, c) => c.deleteMany(filter, options));
     return { deleted: res.deletedCount };
   }
 
@@ -1380,7 +1458,8 @@ class MongoDbStrategy extends DbStrategy {
   // JSON serializzati). relaxed: false preserva i tipi BSON ($oid, $date...).
   async collectionImport(db, coll, payload) {
     const client = this.requireClient();
-    if (payload.encoding === require('./mongoBson').ENCODING) return require('./mongoBson').importRows(client, db, coll, payload.docs, payload.upsert);
+    return scritturaVincolata(client, db, coll, payload, this.env, async (options, c, triggers) => {
+    if (payload.encoding === require('./mongoBson').ENCODING) return require('./mongoBson').importRows(client, db, coll, payload.docs, payload.upsert, options, triggers);
     const raw = Array.isArray(payload.docs) ? payload.docs : [];
     if (!raw.length) throw new Error('Nessun documento da importare nel blocco.');
     const errors = [];
@@ -1402,20 +1481,21 @@ class MongoDbStrategy extends DbStrategy {
         if (payload.upsert) {
           const invalid = docs.findIndex((doc) => doc._id == null);
           if (invalid >= 0) throw new Error(`Documento ${invalid + 1}: _id mancante o null.`);
-          const res = await client.db(db).collection(coll).bulkWrite(
+          const res = await c.bulkWrite(
             docs.map((doc) => ({ replaceOne: { filter: { _id: doc._id }, replacement: doc, upsert: true } })),
-            { ordered: false },
+            { ordered: false, ...options },
           );
           inserted = (res.upsertedCount || 0) + (res.modifiedCount || 0) + (res.matchedCount || 0);
           // matchedCount include anche replacement identici: dal punto di vista
           // dell'import sono documenti applicati con successo.
           if (inserted > docs.length) inserted = docs.length;
         } else {
-          const res = await client.db(db).collection(coll).insertMany(docs, { ordered: false });
+          const res = await c.insertMany(docs, { ordered: false, ...options });
           inserted = res.insertedCount;
         }
       } catch (err) {
         // BulkWriteError: alcuni documenti possono comunque essere entrati.
+        if (options.session) throw err;
         assertImportOutcomeKnown(err);
         inserted = (err.result && (err.result.insertedCount ?? err.result.nInserted)) || 0;
         for (const we of (err.writeErrors || []).slice(0, 10)) {
@@ -1425,6 +1505,7 @@ class MongoDbStrategy extends DbStrategy {
       }
     }
     return { inserted, failed: raw.length - inserted, errors: errors.slice(0, 10) };
+    });
   }
 
   // Ogni superficie possiede il suo stream: cambiare un pannello non spegne gli altri.

@@ -1,0 +1,34 @@
+  OK   Varianti ALTER: rinomina vincoli/indici, collisioni, recupero, IF NOT EXISTS, SET DATA TYPE, DROP CHECK
+  OK   WHEN, NULL, NEW modificato dal trigger precedente, eventi multipli e IS DISTINCT FROM
+  OK   Ordine FOLLOWS/PRECEDES confrontato con MySQL e conservato dopo DROP del riferimento
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      n: 4
+    },
+    {
+...
+    {
++     n: 9
++   },
++   {
+      n: 10
+    },
+    {
+      n: 113
+    }
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-varianti.js:11:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-varianti.js:118:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-varianti.js:65:18 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-14T16:53:50.588Z",
+  "findings": [
+    {
+      "id": "postgresql-savepoint-destinazione",
+      "expected": {
+        "A": [],
+        "B": [
+          {
+            "id": 2
+          }
+        ]
+      },
+      "actual": {
+        "A": [
+          {
+            "id": 2
+          }
+        ],
+        "B": []
+      }
+    },
+    {
+      "id": "postgresql-rollback-destinazione",
+      "expected": {
+        "A": [
+          {
+            "id": 2
+          }
+        ],
+        "B": [
+          {
+            "id": 3
+          }
+        ]
+      },
+      "actual": {
+        "A": [
+          {
+            "id": 2
+          },
+          {
+            "id": 3
+          }
+        ],
+        "B": []
+      }
+    },
+    {
+      "id": "mysql-use-destinazione",
+      "expected": {
+        "A": [
+          {
+            "id": 4
+          }
+        ],
+        "B": []
+      },
+      "actual": {
+        "A": [],
+        "B": [
+          {
+            "id": 4
+          }
+        ]
+      }
+    },
+    {
+      "id": "postgresql-connessione-inattiva-interrotta",
+      "expected": {
+        "serverDisponibile": true
+      },
+      "actual": {
+        "serverDisponibile": true,
+        "socketConnesso": true
+      }
+    },
+    {
+      "id": "postgresql-recupero-connessione",
+      "expected": {
+        "secondoTentativo": {
+          "ok": true,
+          "data": [
+            {
+              "n": 1
+            }
+          ]
+        }
+      },
+      "actual": {
+        "tentativi": [
+          {
+            "ok": false,
+            "error": "Client has encountered a connection error and is not queryable"
+          },
+          {
+            "ok": false,
+            "error": "Client has encountered a connection error and is not queryable"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ module.exports = (async () => {
   let mongoOperations = null;
   mongo.client = {
     db() {
-      return { collection() { return {
+      return { listCollections: () => ({ toArray: async () => [] }), collection() { return {
         async bulkWrite(operations) {
           mongoOperations = operations;
           return { upsertedCount: 1, matchedCount: 1, modifiedCount: 1 };

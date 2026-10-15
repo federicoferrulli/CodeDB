@@ -1,0 +1,157 @@
+npm notice run codedb@0.2.1-beta.1 test
+npm notice run node test/unit.js
+--- Test Unitari CodeDB ---
+[Auto-Reconnect] Rilevata perdita di connessione DB. Avvio ripristino connessione...
+  OK   Preproduzione: byte UTF-8, cursori, cronologia, SQL→MQL, JOIN e transazioni isolate
+OK sessioni SQL: identità attraverso i proxy, client guasto, nessun replay, rilascio unico e listener rimossi
+OK audit MQL: escape, campi BSON, risultati parziali non catturabili e conteggio sconosciuto
+SQL→MQL — find semplici
+  ✓ SELECT * FROM users
+  ✓ proiezione colonne esclude _id
+  ✓ WHERE con operatori
+  ✓ WHERE uguaglianza stringa
+  ✓ WHERE != e <>
+  ✓ AND combina in $and
+  ✓ OR combina in $or
+  ✓ precedenza: AND lega più di OR
+  ✓ parentesi forzano il raggruppamento
+  ✓ IN e NOT IN
+  ✓ LIKE ancorato a un prefisso: nessun flag "i", così l'indice è usabile
+  ✓ LIKE con _ singolo carattere (ancorato)
+  ✓ LIKE non ancorato: il flag "i" resta, l'indice non era usabile comunque
+  ✓ ILIKE chiede esplicitamente il confronto insensibile
+  ✓ IS NULL / IS NOT NULL
+  ✓ BETWEEN
+  ✓ NOT su condizione
+  ✓ numeri negativi negli operatori di confronto
+  ✓ numeri negativi in BETWEEN e IN
+  ✓ negativo con notazione esponenziale
+  ✓ l'alias di colonna rinomina la proiezione
+  ✓ ORDER BY e LIMIT/OFFSET
+  ✓ LIMIT offset, count (stile MySQL)
+SQL→MQL — aggregazioni
+  ✓ COUNT(*) senza GROUP BY
+  ✓ GROUP BY con COUNT
+  ✓ GROUP BY con WHERE, SUM e ORDER BY
+  ✓ GROUP BY multiplo
+SQL→MQL — JOIN ($lookup)
+  ✓ INNER JOIN base → $lookup + $unwind
+  ✓ JOIN senza INNER equivale a INNER
+  ✓ LEFT JOIN preserva i documenti senza corrispondenza
+  ✓ LEFT OUTER JOIN accetta OUTER opzionale
+  ✓ JOIN con proiezione di colonne qualificate
+  ✓ JOIN con WHERE su campi base e uniti
+  ✓ ON con ordine invertito (foreign a sinistra)
+  ✓ JOIN + GROUP BY con aggregato su campo unito
+  ✓ due JOIN concatenate
+  ✓ RIGHT JOIN include il ramo anti-join
+  ✓ FULL JOIN conserva il lato sinistro
+  ✓ CROSS JOIN produce un lookup senza filtro
+  ✓ JOIN USING risolve la colonna condivisa
+  ✓ ON non di uguaglianza usa un lookup correlato
+  ✓ ON multi-condizione conserva entrambi i predicati
+  ✓ ON fra colonne locali usa un predicato correlato
+SQL→MQL — DISTINCT e HAVING
+  ✓ SELECT DISTINCT su una colonna
+  ✓ SELECT DISTINCT su più colonne
+  ✓ HAVING su alias di aggregato del SELECT
+  ✓ HAVING con COUNT(*) non presente nel SELECT
+  ✓ HAVING con SUM sintetizzato
+SQL→MQL — UNION ($unionWith)
+  ✓ UNION ALL non deduplica
+  ✓ UNION deduplica sull'intero documento
+  ✓ UNION a tre vie con WHERE su un operando
+  ✓ operando UNION non impone il LIMIT di default
+SQL→MQL — sotto-query (derived table nella FROM)
+  ✓ derived table con GROUP BY interno e WHERE esterno
+  ✓ derived table con ORDER BY e LIMIT esterni
+SQL→MQL — errori attesi
+  ✓ non-SELECT viene rifiutata
+  ✓ DISTINCT * deduplica i documenti
+  ✓ DISTINCT si applica dopo GROUP BY
+  ✓ HAVING senza GROUP BY/aggregato rifiutato
+  ✓ sotto-query IN (SELECT) diventa lookup
+  ✓ sotto-query scalare limita la cardinalità letta
+  ✓ colonna fuori da GROUP BY
+  ✓ manca FROM
+  ✓ Confronto di uguaglianza fra colonne
+  ✓ Confronto ordinato fra colonne
+  ✓ IN accetta espressioni di colonna
+  ✓ NOT IN accetta espressioni di colonna
+  ✓ pattern LIKE non quotato
+  ✓ BETWEEN con colonna come estremo basso
+  ✓ BETWEEN con colonna come estremo alto
+  ✓ Funzioni scalari nei confronti
+  ✓ Letterale a sinistra del confronto
+  ✓ TRUE/FALSE/NULL restano validi in una lista IN
+  ✓ Aritmetica fra letterali nel confronto
+  ✓ LIMIT negativo rifiutato
+  ✓ OFFSET negativo rifiutato
+
+75 test superati.
+  OK   RIGHT e FULL JOIN includono il ramo delle righe destre senza corrispondenza
+  OK   Funzioni finestra e frame ROWS vengono tradotti
+  OK   WITH RECURSIVE produce un programma iterativo senza JavaScript sul server
+  OK   RETURNING fa parte del piano di INSERT, UPDATE e DELETE
+  OK   SELECT senza FROM è indipendente dalle collezioni
+OK SELECT SUM(n*prezzo) AS totale,COUNT(DISTINCT categoria) AS categorie FROM t
+OK SELECT COALESCE(SUM(n),0)+COUNT(*) AS totale FROM t HAVING SUM(n)>0 OR COUNT(*)=0
+OK SELECT SUM(n) FILTER(WHERE valido=TRUE) AS totale FROM t
+OK SELECT UPPER(categoria) AS c,SUM(n) AS n FROM t GROUP BY UPPER(categoria) HAVING SUM(n)>1 ORDER BY SUM(n) DESC
+OK SELECT id FROM t WHERE id IN(SELECT id FROM u)
+OK SELECT id FROM t WHERE EXISTS(SELECT 1 FROM u WHERE u.id=t.id)
+OK SELECT id,(SELECT MAX(n) FROM u WHERE u.id=t.id) AS massimo FROM t
+  OK   CTE: scope verificato su seed, ricorsione e query finale; FULL JOIN include entrambi i lati
+  OK   RETURNING: permessi read e mutazione cumulativi, bersaglio non falsificabile
+  OK   Standalone senza transazioni e annullamento prima della lettura non producono mutazioni
+  OK   Finestre e RETURNING invalidi vengono rifiutati prima dell’esecuzione
+  OK   Precisione JSON e Long annidati conservata senza cambiare numeri piccoli o stringhe
+Error: EPERM: operation not permitted, rename 'C:\Users\Keus\AppData\Local\Packages\sandbox.{eb1ca643-4769-4916-9a4e-71dfaad27bbc}\AC\Temp\codedb-export-test-uCkY9W\caricamenti\e1907b4d-ddd2-4a2e-9de7-91616bf6f745\stato.json.tmp-12468' -> 'C:\Users\Keus\AppData\Local\Packages\sandbox.{eb1ca643-4769-4916-9a4e-71dfaad27bbc}\AC\Temp\codedb-export-test-uCkY9W\caricamenti\e1907b4d-ddd2-4a2e-9de7-91616bf6f745\stato.json'
+    at Object.renameSync (node:fs:1008:11)
+    at scriviAtomico (C:\repository\CodeDB\db\uploadDisco.js:86:6)
+    at Object.avvia (C:\repository\CodeDB\db\uploadDisco.js:272:7)
+    at creaFileExport (C:\repository\CodeDB\db\exportFile.js:9:27)
+    at C:\repository\CodeDB\test\unit-database-export.js:57:32
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\unit.js:23:3 {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'rename',
+  path: 'C:\\Users\\Keus\\AppData\\Local\\Packages\\sandbox.{eb1ca643-4769-4916-9a4e-71dfaad27bbc}\\AC\\Temp\\codedb-export-test-uCkY9W\\caricamenti\\e1907b4d-ddd2-4a2e-9de7-91616bf6f745\\stato.json.tmp-12468',
+  dest: 'C:\\Users\\Keus\\AppData\\Local\\Packages\\sandbox.{eb1ca643-4769-4916-9a4e-71dfaad27bbc}\\AC\\Temp\\codedb-export-test-uCkY9W\\caricamenti\\e1907b4d-ddd2-4a2e-9de7-91616bf6f745\\stato.json'
+}
+  OK   SQL MySQL/PostgreSQL: precisione, COPY, delimitatori, validazione e impronta
+  OK   Import: colonne inattese segnalate, generate escluse, batch limitati in byte e parametri
+OK codec tipi: metadati LO, cast ammessi, warning ENUM per riga e warning troncati.
+OK: query senza limiti impliciti, LIMIT/OFFSET espliciti e griglia paginata.
+  OK   default MySQL conservati fra le colonne scrivibili
+  OK   import BIGINT preserva tutte le cifre sui due motori
+  OK   modifica intera riga con colonne calcolate e BIGINT
+  OK   colonna _id reale distinta dalla chiave di scrittura
+  OK   BIGINT esatto dal driver al file di backup e ritorno
+  OK   Inserimento: sorgente JSON esatta, duplicati, multilinea, bit, binari e limiti BSON.
+  OK   Server modulare: informazioni licenza delle dipendenze installate
+  OK   Server modulare: indici RBAC su un database vuoto e propagazione degli errori reali
+  OK   Server modulare: tetti delle strategie indipendenti dalla configurazione globale
+[RBAC] Control plane pronto; owner: test@locale
+(node:12468) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///C:/repository/CodeDB/public/js/query-history-store.js is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to \\?\C:\repository\CodeDB\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+CodeDB in ascolto su http://127.0.0.1:49845
+
+Suite unitaria FALLITA (codice di uscita 1): cerca "FAIL" o "falliti" qui sopra.
+node:internal/process/promises:324
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+Error: connect EACCES 127.0.0.1:49845
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1705:16) {
+  errno: -4092,
+  code: 'EACCES',
+  syscall: 'connect',
+  address: '127.0.0.1',
+  port: 49845
+}
+
+Node.js v26.2.0

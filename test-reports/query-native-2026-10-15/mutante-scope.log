@@ -1,0 +1,15 @@
+node:internal/process/promises:324
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+AssertionError [ERR_ASSERTION]: Missing expected rejection.
+    at async C:\repository\CodeDB\test\unit-mongo-nativo.js:15:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: undefined,
+  expected: /Permesso negato/,
+  operator: 'rejects',
+  diff: 'simple'
+}
+
+Node.js v26.2.0

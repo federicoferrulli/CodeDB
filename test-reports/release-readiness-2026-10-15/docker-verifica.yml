@@ -1,0 +1,42 @@
+name: codedb-release-verifica
+services:
+  codedb:
+    image: codedb:0.2.1-beta.1-verifica
+    environment:
+      CODEDB_RBAC: 'on'
+      CODEDB_TRUST_PROXY_TLS: '1'
+      CODEDB_PUBLIC_BIND: 0.0.0.0
+      CODEDB_ALLOWED_ORIGINS: https://localhost:33090
+      CODEDB_APP_DB_URI: mongodb://control:27017
+      CODEDB_APP_DB_NAME: codedb_release_test
+      CODEDB_OWNER_EMAIL: release@codedb.test
+      CODEDB_OWNER_PASSWORD: ${CODEDB_TEST_PASSWORD:?Password usa e getta richiesta}
+      CODEDB_UI_AUDIT_FILE: /app/data/ui-audit.log
+      CODEDB_MCP_AUDIT_FILE: /app/data/mcp-audit.log
+    volumes: ['data:/app/data', 'backups:/app/backups']
+    read_only: true
+    tmpfs: ['/tmp']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    depends_on:
+      control: { condition: service_healthy }
+    healthcheck: { interval: 2s, timeout: 5s, retries: 30, start_period: 2s }
+  control:
+    image: mongo:8.0
+    volumes: ['control:/data/db']
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', 'db.adminCommand({ping:1})']
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  proxy:
+    image: caddy:2-alpine
+    ports: ['127.0.0.1:33090:443']
+    volumes: ['./Caddyfile:/etc/caddy/Caddyfile:ro', 'certificati:/data']
+    depends_on:
+      codedb: { condition: service_healthy }
+volumes:
+  data:
+  backups:
+  control:
+  certificati:

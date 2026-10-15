@@ -88,41 +88,12 @@ check('aggregate con catena limit → stadio $limit', () => {
   eq(p.pipeline, [{ $match: { a: 1 } }, { $limit: 3 }]);
 });
 
-check('countDocuments → pipeline $count', () => {
-  const p = translate('db.users.countDocuments({ active: true })');
-  eq(p.kind, 'aggregate');
-  eq(p.pipeline, [{ $match: { active: true } }, { $count: 'count' }]);
-});
-
-check('count() senza filtro', () => {
-  const p = translate('db.users.count()');
-  eq(p.pipeline, [{ $count: 'count' }]);
-});
-
-check('find().count() in catena', () => {
-  const p = translate('db.users.find({ a: 1 }).count()');
-  eq(p.pipeline, [{ $match: { a: 1 } }, { $count: 'count' }]);
-});
-
-check('distinct → pipeline group', () => {
-  const p = translate('db.users.distinct("city", { country: "IT" })');
-  eq(p.kind, 'aggregate');
-  eq(p.pipeline, [
-    { $match: { country: 'IT' } },
-    { $group: { _id: '$city' } },
-    { $project: { _id: 0, city: '$_id' } },
-    { $sort: { city: 1 } },
-  ]);
-});
-
-check('distinct su campo annidato → colonna piatta', () => {
-  const p = translate('db.users.distinct("address.city")');
-  eq(p.pipeline, [
-    { $group: { _id: '$address.city' } },
-    { $project: { _id: 0, address_city: '$_id' } },
-    { $sort: { address_city: 1 } },
-  ]);
-});
+for (const code of ['db.users.countDocuments({active:true})', 'db.users.count()',
+  'db.users.find({a:1}).count()', 'db.users.distinct("city",{country:"IT"})', 'db.users.distinct("address.city")']) {
+  check(`${code}: usa il percorso nativo dello script`, () => {
+    assert.throws(() => translate(code), err => err.metodoSconosciuto === true);
+  });
+}
 
 console.log('MongoShell — euristica ed errori');
 

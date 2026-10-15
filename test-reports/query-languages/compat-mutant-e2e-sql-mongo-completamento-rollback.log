@@ -1,0 +1,31 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+... Skipped lines
+
+  [
+    {
+      id: 1,
+      n: 10
+    },
+...
+    {
++     id: 3,
++     n: 30
++   },
++   {
+      id: 6,
+      n: 60
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-completamento.js:11:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-completamento.js:26:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-completamento.js:61:18 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

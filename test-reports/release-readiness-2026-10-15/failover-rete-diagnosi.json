@@ -1,0 +1,24 @@
+[
+  {
+    "t": {
+      "$date": "2026-10-14T23:59:54.208+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 5579707,
+    "ctx": "ReplCoordExtern-3",
+    "msg": "Denylisting candidate due to error",
+    "attr": {
+      "candidate": "host.docker.internal:27041",
+      "error": {
+        "code": 6,
+        "codeName": "HostUnreachable",
+        "errmsg": "Timed out connecting to host.docker.internal:27041 after 20000ms"
+      },
+      "denylistDurationSeconds": 10,
+      "denylistUntil": {
+        "$date": "2026-10-15T00:00:04.208Z"
+      }
+    }
+  }
+]

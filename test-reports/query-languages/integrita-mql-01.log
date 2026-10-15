@@ -1,0 +1,28 @@
+  OK   Semantica insiemi, sorgenti INSERT, validatore nativo e FK verificate con dati reali
+  OK   Procedure e cascata rispettano rollback, capability e scope di tutte le tabelle
+  OK   Una procedura senza termine scade e annulla le scritture precedenti
+  OK   BIGINT resta esatto nel database e nel protocollo EJSON
+  OK   Dieci competizioni DELETE genitore / INSERT figlio non producono orfani
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /FOREIGN KEY/. Input:
+
+'SyntaxError: "[object Object]" is not valid JSON'
+
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-integrita.js:117:5 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: SyntaxError: "[object Object]" is not valid JSON
+      at JSON.parse (<anonymous>)
+      at Object.parse (C:\repository\CodeDB\node_modules\bson\lib\bson.cjs:4356:17)
+      at parseQueryObject (C:\repository\CodeDB\db\MongoDbStrategy.js:97:24)
+      at C:\repository\CodeDB\db\MongoDbStrategy.js:1310:21
+      at session.withTransaction.readConcern.level (C:\repository\CodeDB\db\sqlScrittureMongo.js:17:28)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async ClientSession.withTransaction (C:\repository\CodeDB\node_modules\mongodb\lib\sessions.js:503:30)
+      at async esegui (C:\repository\CodeDB\db\sqlScrittureMongo.js:15:12)
+      at async waitForActual (node:assert:615:5)
+      at async strict.rejects (node:assert:738:25),
+  expected: /FOREIGN KEY/,
+  operator: 'rejects',
+  diff: 'simple'
+}

@@ -62,7 +62,8 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
   if (isScriptActive(documento.scriptRunId)) abortScript(documento.scriptRunId);
   documento.scriptRunId = runId;
   documento.metrics = ['running'];
-  const totalePrevisto = countStatements(testo);
+  const dbms = engine && engine !== 'auto' ? engine : tab?.dbType;
+  const totalePrevisto = countStatements(testo, { dbms, backslashEscape: dbms === 'mysql' });
 
   const handle = trackPending({
     runId,

@@ -1,0 +1,4 @@
+Error: La CTE c supera 3 iterazioni. Controlla la condizione di arresto o CODEDB_SQL_RECURSION_LIMIT.
+    at Object.leggi (C:\repository\CodeDB\db\MongoSqlRuntime.js:85:44)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-atomicita.js:27:21

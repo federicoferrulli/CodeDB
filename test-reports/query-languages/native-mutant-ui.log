@@ -1,0 +1,14 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
++ actual - expected
+
++ 'SELECT 999 AS bozza'
+- 'CREATE TABLE destinazione_postgresql(id INT)'
+
+    at C:\repository\CodeDB\test\e2e-sql-native-ui.js:65:12 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'SELECT 999 AS bozza',
+  expected: 'CREATE TABLE destinazione_postgresql(id INT)',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

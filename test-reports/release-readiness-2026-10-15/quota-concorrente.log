@@ -1,0 +1,10 @@
+{"quota":100,"byteEffettivi":160,"artefattiFinalizzati":2}
+AssertionError [ERR_ASSERTION]: Due export contemporanei hanno superato la quota del tenant.
+    at C:\repository\CodeDB\test-reports\release-readiness-2026-10-15\quota-concorrente.cjs:35:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

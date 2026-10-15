@@ -1,0 +1,19 @@
+Atlas Local MongoDB 8.0.34
+OK Atlas Local: indici Search/Vector, ricerca testuale, similarità, aggiornamento e rimozione
+OK sharding: due shard, split/migrazione reale, stream su entrambi, resume e transazione distribuita
+AssertionError [ERR_ASSERTION]: const automatico=new Mongo("mongodb://127.0.0.1:27066/",{keyVaultNamespace:opzioni.keyVaultNamespace,kmsProviders:opzioni.kmsProviders,schemaMap:{["codedb_mongosh_adv_csfle_663ba4f367df.automatici"]:{bsonType:"object",properties:{segreto:{encrypt:{keyId:[chiave],bsonType:"string",algorithm:"AEAD_AES_256_CBC_HMAC_SHA_512-Deterministic"}}}}}}); const dati=automatico.getDB("codedb_mongosh_adv_csfle_663ba4f367df"); dati.automatici.insertOne({_id:1,segreto:"cifratura automatica"}); dati.automatici.findOne({segreto:"cifratura automatica"})
+Unable to connect to `mongocryptd`, please make sure it is running or in your PATH for auto-spawn
+
+false !== true
+
+    at Object.q (C:\repository\CodeDB\test\e2e-mongosh-advanced.cjs:23:128)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async verifica (C:\repository\CodeDB\test\e2e-mongosh-advanced.cjs:73:5)
+    at async C:\repository\CodeDB\test\e2e-mongosh-advanced.cjs:89:7 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

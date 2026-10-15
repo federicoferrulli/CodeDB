@@ -1,0 +1,365 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-10-15",
+  "versione_analizzata": "0.2.1-beta.1; checkout locale con modifiche non committate",
+  "tipo": "Valutazione di preparazione alla produzione per server/Docker e desktop Windows",
+  "conclusione": "I due rilievi sono risolti e verificati. Candidato 0.2.1-beta.1 collaudato per Docker e Windows nel perimetro concordato; nessuna pubblicazione. Beta Windows senza firma e senza prova di installazione/aggiornamento su Windows pulito, come richiesto da Keus.",
+  "riepilogo": {
+    "totale": 2,
+    "critica": 0,
+    "alta": 0,
+    "media": 2,
+    "bassa": 0,
+    "risolti": 2,
+    "aperti": 0
+  },
+  "ambito_analizzato": [
+    "Suite unitaria completa sul checkout attuale, typecheck UI, compilazione UI senza scrittura e confronto con gli asset presenti",
+    "Audit npm attuale, configurazione Docker e workflow di rilascio, requisiti Node dei pacchetti installati",
+    "Build locale NSIS Windows x64 senza pubblicazione, inventario ASAR e smoke del server nel runtime distribuito",
+    "Modifiche a guard RBAC, lifecycle delle sessioni SQL, riconnessione, SSH, export su disco e quota tenant",
+    "Lettura mirata del runtime SQL MongoDB e delle routine, destinazione SQL nell'editor, gestione della conferma SSH",
+    "Test SSH reale su loopback e wizard Chromium con server e archivio isolati",
+    "Rapporti precedenti letti come evidenza storica, senza attribuirne le prove a questa esecuzione",
+    "22 suite DB: 21 superate nella prima esecuzione; failover ripetuto e superato dopo diagnosi della rete del fixture",
+    "Docker reale: build, gate TLS/RBAC, HTTPS con CA locale verificata, WebSocket autenticato, MCP anonimo respinto e persistenza dopo ricreazione",
+    "Windows finale: build NSIS su Node 24, 340 file runtime confrontati per SHA-256, avvio del server e della finestra Electron con profilo temporaneo",
+    "Archivi locali di installer, immagine Docker e sorgenti; manifest e SHA-256, senza push, tag o pubblicazione",
+    "22 suite DB: 21 superate nella prima esecuzione; failover ripetuto e superato dopo diagnosi della rete del fixture",
+    "Docker reale: build, gate TLS/RBAC, HTTPS con CA locale verificata, WebSocket autenticato, MCP anonimo respinto e persistenza dopo ricreazione",
+    "Windows finale: build NSIS su Node 24, 340 file runtime confrontati per SHA-256, avvio del server e della finestra Electron con profilo temporaneo",
+    "Archivi locali di installer, immagine Docker e sorgenti; manifest e SHA-256, senza push, tag o pubblicazione"
+  ],
+  "ambito_non_analizzato": [
+    "Infrastruttura effettiva di destinazione: dominio, certificati pubblici, firewall, credenziali e backup operativi non forniti.",
+    "Installazione e aggiornamento su Windows pulito esclusi da Keus; firma non prevista per questa beta per scelta esplicita.",
+    "Esecuzione remota GitHub Actions, macOS, Linux desktop, Android, carico prolungato e ogni combinazione di DBMS/estensione.",
+    "Failover su host fisici distinti: i tre nodi verificati sono container distinti sulla stessa macchina."
+  ],
+  "findings": [
+    {
+      "id": "CDB-R01",
+      "severita": "media",
+      "titolo": "Export concorrenti superano la quota disco del tenant",
+      "categoria": "Concorrenza e risorse",
+      "modulo": "db/uploadDisco.js",
+      "riferimenti": [
+        "db/uploadDisco.js:34",
+        "db/uploadDisco.js:315",
+        "db/uploadDisco.js:360",
+        "test/unit-quota-tenant.js:31"
+      ],
+      "problema": "La mutua esclusione riguarda il singolo upload. Due export dello stesso tenant verificano l'uso disco prima dei rispettivi append asincroni, senza prenotare i byte per il tenant. Entrambi possono superare il controllo e venire finalizzati oltre quota.",
+      "scenario": "Due connessioni dello stesso account esportano contemporaneamente. Riproduzione isolata con quota 100 byte e due contenuti da 80 byte: 160 byte su disco, 2 artefatti finalizzati. Una barriera davanti all'append simula I/O pendente senza alterare la verifica della quota.",
+      "fix": "Coda per radice tenant condivisa fra archivi nello stesso processo: verifica quota e append sono atomici, per import ed export. Anche la rinomina finale è coordinata con la scansione; errori I/O liberano la coda e tenant diversi restano indipendenti.",
+      "verifica": "Test reale su file temporanei fallito prima del fix (2 append anziché 1), superato dopo. Coperti export/export, export/import, quota esatta, errore I/O, retry e tenant indipendenti. Mutazione in memoria che salta la coda fa fallire la stessa asserzione. Log quota-prima.log, quota-dopo.log, quota-mutante.log e unit-node24.log nella cartella di questa verifica.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-R02",
+      "severita": "media",
+      "titolo": "Il workflow di rilascio usa Node 20 fuori dai requisiti delle dipendenze Electron",
+      "categoria": "Build e distribuzione",
+      "modulo": ".github/workflows/release.yml",
+      "riferimenti": [
+        ".github/workflows/release.yml:65",
+        ".github/workflows/release.yml:145",
+        ".github/workflows/release.yml:193"
+      ],
+      "problema": "Verifica e build sono configurate su Node 20. Il lockfile e i manifest installati di electron 43.7.9, @electron/get 5.0.0 e @electron/packager 20.0.4 dichiarano Node >=22.12.0; complessivamente 13 pacchetti non ammettono Node 20. La build locale riuscita con Node 26 non convalida questo workflow.",
+      "scenario": "Un tag di rilascio esegue npm ci e la build in un runtime non supportato dai tool installati. Non è stato eseguito il workflow remoto; il rilievo riguarda il contratto di compatibilità verificato, non un crash remoto osservato.",
+      "fix": "I tre setup-node di verifica/build passano a Node 24. Il runtime specifico Android 18.20.4 resta separato e fuori dal perimetro richiesto.",
+      "verifica": "Suite completa e build NSIS eseguite su Node 24.21.0. Docker esegue npm ci --omit=dev e il runtime finale usa Node 24.22.0. Il workflow GitHub remoto non è stato avviato.",
+      "fonti": [
+        "https://www.electronjs.org/blog/ecosystem-node-22/",
+        "https://nodejs.org/en/about/eol"
+      ],
+      "stato": "risolto"
+    }
+  ],
+  "verifiche": [
+    {
+      "nome": "npm run typecheck:ui",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/typecheck.log"
+    },
+    {
+      "nome": "Compilazione UI",
+      "esito": "superato",
+      "note": "esbuild con write:false; JS, CSS e licenze coincidono con gli asset presenti, normalizzati i fine riga."
+    },
+    {
+      "nome": "npm audit --json",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/npm-audit-final.json",
+      "note": "Zero advisory su dipendenze runtime e sviluppo; non è un audit delle librerie vendorizzate o di Alpine."
+    },
+    {
+      "nome": "SSH forwarding",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/ssh-forward.log"
+    },
+    {
+      "nome": "Wizard SSH Chromium",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/ssh-ui.log"
+    },
+    {
+      "nome": "Suite unitaria completa Node 24.21.0",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/unit-node24.log"
+    },
+    {
+      "nome": "Requisiti Node delle dipendenze",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/compatibilita-node24.json"
+    },
+    {
+      "nome": "Quota tenant corretta",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/quota-dopo.log"
+    },
+    {
+      "nome": "Sensibilità del test quota",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/quota-mutante.log",
+      "note": "Il mutante deve fallire: 2 append accettati anziché 1."
+    },
+    {
+      "nome": "Migrazione e cambio passphrase vault",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/vault-finale.log"
+    },
+    {
+      "nome": "Build Docker finale",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/build-docker.log"
+    },
+    {
+      "nome": "Docker HTTPS/RBAC e persistenza",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/docker-finale.log"
+    },
+    {
+      "nome": "Integrità runtime Docker",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/docker-runtime.json",
+      "note": "340 file; Node 24.22.0, UID 1000."
+    },
+    {
+      "nome": "Build Windows NSIS Node 24.21.0",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/build-windows-node24.log",
+      "note": "Installer finale non firmato, senza pubblicazione. Un precedente tentativo ha incontrato spawn UNKNOWN di Windows; build finale e ripetizione su Node 24 riuscite."
+    },
+    {
+      "nome": "ASAR, server e finestra Windows",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/windows-finale.log",
+      "note": "340 file runtime e 4834 percorsi ASAR. Electron 43.7.9, Node 24.21.0. Sandbox renderer e contextIsolation attivi; nessun errore JavaScript al caricamento."
+    },
+    {
+      "nome": "18 failover su rete Docker interna",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/failover-finale.log"
+    },
+    {
+      "nome": "Archivio dei sorgenti",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/sorgenti-verifica.log",
+      "note": "772 file, compresi i nuovi moduli e le prove; SHA-256 di ogni file verificato dentro lo ZIP."
+    },
+    {
+      "nome": "Sensibilità del failover al quorum errato",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/failover-mutante-finale.log",
+      "note": "Il mutante ripristina votingMembers: il watchdog deve scattare con un nodo offline."
+    },
+    {
+      "nome": "e2e-preproduzione",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-preproduzione.log"
+    },
+    {
+      "nome": "e2e-sql-native",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-native.log"
+    },
+    {
+      "nome": "e2e-sql-native-sessioni",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-native-sessioni.log"
+    },
+    {
+      "nome": "e2e-query-audit",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-query-audit.log"
+    },
+    {
+      "nome": "e2e-sql-native-ui",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-native-ui.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-avanzato",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-avanzato.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-completamento",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-completamento.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-tipi",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-tipi.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-estesi",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-estesi.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-varianti",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-varianti.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-eventi",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-eventi.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-atomicita",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-atomicita.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-integrita",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-integrita.log"
+    },
+    {
+      "nome": "e2e-sql-mongo-migrazioni",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-sql-mongo-migrazioni.log"
+    },
+    {
+      "nome": "e2e-backup",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-backup.log"
+    },
+    {
+      "nome": "e2e-backup-mysql",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-backup-mysql.log"
+    },
+    {
+      "nome": "e2e-dbexport",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-dbexport.log"
+    },
+    {
+      "nome": "e2e-tipi-bson",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-tipi-bson.log"
+    },
+    {
+      "nome": "e2e-tipi-sql",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-tipi-sql.log"
+    },
+    {
+      "nome": "e2e-rbac",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-rbac.log"
+    },
+    {
+      "nome": "e2e-rbac-mcp",
+      "esito": "superato",
+      "log": "test-reports/release-readiness-2026-10-15/e2e-rbac-mcp.log"
+    }
+  ],
+  "prerequisiti_rilascio": [
+    "Distribuire gli artefatti verificati o ricostruire dallo stesso snapshot: il vecchio HEAD non contiene le modifiche e 45 nuovi file runtime. Il manifest congela anche i file non ancora tracciati; non è stato creato alcun commit/tag.",
+    "Docker in rete richiede HTTPS e RBAC con control plane e volumi persistenti. docker-compose.yml è uno stack di sviluppo/prova, non una configurazione di produzione pronta.",
+    "Per le nuove funzioni SQL MongoDB che richiedono transazioni e migrazioni usare MongoDB 8 in replica set; i DB esterni restano da configurare nell’ambiente di destinazione.",
+    "Una sola istanza scrivente per volume degli artefatti: la sincronizzazione della quota coordina archivi dello stesso processo, non più processi o host.",
+    "Installazione/upgrade su Windows pulito non verificati su richiesta; beta senza firma autorizzata."
+  ],
+  "priorita_intervento": [],
+  "note_revisione": "Lo schema e il validatore citati dalla skill non sono presenti nell'installazione locale; il rapporto è validato con un controllo locale di schema minimo, ID, severità, conteggi e riferimenti.",
+  "diagnostica_fixture": {
+    "primoTentativo": "Fallimento della soglia di 20 secondi nella fase prima_riga. Il watchdog ha riavviato il nodo e permesso la conclusione; quel tentativo non convalida i controlli successivi sui dati.",
+    "evidenza": "test-reports/release-readiness-2026-10-15/failover-rete-diagnosi.json",
+    "causaOsservata": "Il secondario non riusciva a collegarsi al nuovo primario via host.docker.internal:27041 per 20000 ms; i commit majority restavano in attesa.",
+    "conferme": [
+      "Fase isolata superata",
+      "Intera sequenza precedente superata con traccia, 18/18",
+      "Intera sequenza finale superata sulla rete interna, 18/18"
+    ],
+    "correzione": "Il fixture annuncia i nomi dei container; il solo processo host li risolve su loopback. Codice applicativo, quorum e controlli su dati, indici e registro invariati. Il watchdog misura 20 secondi senza comandi completati, con tetto totale di 120 secondi; il mutante del quorum resta rilevato.",
+    "file": [
+      "test/fixtures/sql-native-init.cjs",
+      "test/fixtures/sql-native-dns.cjs",
+      "test/e2e-sql-mongo-failover.js"
+    ],
+    "secondoTentativo": "Sulla rete interna la soglia originaria di 20 secondi totali è scattata dopo due createIndexes da circa 14 e 8 secondi, entrambi in avanzamento. Diagnosi in failover-rete-interna-diagnosi.json; fallimento conservato in failover-watchdog-prima.log. La vecchia asserzione confondeva durata complessiva e blocco del quorum."
+  },
+  "interventi_ambiente": [
+    "Docker Desktop ripristinato spostando reversibilmente soltanto directory contenenti endpoint socket vuoti. Le copie *.pre-codedb-20261015* restano in AppData/Local; immagini, volumi e configurazioni preesistenti non sono stati resettati.",
+    "I container e volumi creati da queste prove vengono rimossi al termine; immagine e archivi finali restano locali."
+  ],
+  "artefatti": [
+    {
+      "file": "dist/release-0.2.1-beta.1/CodeDB-0.2.1-beta.1-setup.exe",
+      "byte": 119398553,
+      "sha256": "0496508898a53da7c8fe618667a0d218252e54caeaea77cbf0ef0352348705f9"
+    },
+    {
+      "file": "dist/release-0.2.1-beta.1/CodeDB-0.2.1-beta.1-setup.exe.blockmap",
+      "byte": 126287,
+      "sha256": "5c270a17a7e99cdf440125b14b7cf8aa8ff17f83bb88d015acffbb86d2bd0656"
+    },
+    {
+      "file": "dist/release-0.2.1-beta.1/latest.yml",
+      "byte": 362,
+      "sha256": "71573ee5fce86cf136c7680b465911aae9c1a30e8495627c3cb4ad8f60f799ab"
+    },
+    {
+      "file": "dist/release-0.2.1-beta.1/CodeDB-0.2.1-beta.1-docker.tar",
+      "byte": 91175424,
+      "sha256": "fa9c0f998cf59147c109ae30d52ab62942df8255600d4fb7601455a675108c80"
+    },
+    {
+      "file": "dist/release-0.2.1-beta.1/CodeDB-0.2.1-beta.1-sorgenti.zip",
+      "byte": 5573544,
+      "sha256": "2657f307d86c6a7a90f3145dd5891dc540dd806fbcab884d0e63ba8bceb72812"
+    },
+    {
+      "file": "dist/release-0.2.1-beta.1/sorgenti-manifest.json",
+      "byte": 107111,
+      "sha256": "f315da2c0ce9190d044361d3bb25a57fd9281e59f5cad21d31738c6466b132c5"
+    }
+  ],
+  "candidato": {
+    "versione": "0.2.1-beta.1",
+    "gitHead": "8f5221242fb79103d6314c3ca6098de4874d40e4",
+    "nota": "Snapshot del checkout locale, comprende modifiche non committate e nuovi moduli.",
+    "installer": "C:\\repository\\CodeDB\\dist\\release-0.2.1-beta.1\\CodeDB-0.2.1-beta.1-setup.exe",
+    "installerSha256": "0496508898a53da7c8fe618667a0d218252e54caeaea77cbf0ef0352348705f9",
+    "asarSha256": "bf90604f027d081388bd30c17a2f5f2dfa9d10420a024e9d3372278d037db68c",
+    "fileRuntimeVerificati": 340,
+    "soloBuild": [
+      "package-lock.json",
+      "public/js/viewport.d.ts"
+    ],
+    "percorsiAsar": 4834,
+    "manifestRuntime": "test-reports/release-readiness-2026-10-15/candidato-runtime.json",
+    "manifestSorgenti": "dist/release-0.2.1-beta.1/sorgenti-manifest.json",
+    "dockerTag": "codedb:0.2.1-beta.1",
+    "dockerId": "sha256:edaae88ea87cfe1f3c519e6b38d3b3bc393db6d206c9767716525729a01d0e77"
+  }
+}

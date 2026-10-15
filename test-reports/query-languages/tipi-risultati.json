@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-14T13:59:53.842Z",
+  "databases": {
+    "mongodb": "8.0",
+    "postgresql": "18.4",
+    "mysql": "8.4.11"
+  },
+  "mainSuites": {
+    "mongo": 708,
+    "postgres": 478,
+    "mysql": 319
+  },
+  "postgresConditions": {
+    "names": 247,
+    "states": 251
+  },
+  "realFailovers": 12,
+  "topology": "Tre container MongoDB distinti sullo stesso host Docker",
+  "mutants": 29,
+  "unit": true,
+  "chromium": {
+    "passed": true,
+    "databaseTransport": "simulato"
+  },
+  "realSocket": true,
+  "logs": [
+    "tipi-nuovi.log",
+    "tipi-avanzato.log",
+    "tipi-completamento.log",
+    "tipi-failover.log",
+    "tipi-unita.log",
+    "tipi-browser.log"
+  ],
+  "completeSqlCompatibility": false,
+  "limits": "docs/copertura-linguaggi-query.md"
+}

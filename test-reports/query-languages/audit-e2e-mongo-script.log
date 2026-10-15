@@ -1,0 +1,51 @@
+--- Test E2E interprete script MongoDB ---
+1. Connessione
+  OK   Connessione a MongoDB riuscita
+2. Uno script crea una collezione e inserisce documenti
+  OK   Script eseguito ()
+  OK   print riporta 5 inserimenti (["inseriti 5"])
+  OK   I documenti esistono davvero sul database (5)
+3. Ciclo che legge e riscrive su un'altra collezione
+  OK   Script di copia eseguito ()
+  OK   Copiati i 2 documenti pari (["copiati 2"])
+  OK   La collezione di destinazione ha 2 documenti (2)
+4. updateMany con operatori e deleteMany
+  OK   Script di modifica eseguito ()
+  OK   updateMany ha toccato 3 documenti (["modificati 3","cancellati 1","rimasti 4"])
+  OK   deleteMany ha cancellato 1 documento
+  OK   Il conteggio finale è coerente
+5. Aggregazione e distinct dentro uno script
+  OK   Aggregazione nello script eseguita ()
+  OK   Due gruppi (["gruppi 2","distinti 2"])
+  OK   Due valori distinti
+6. Un aggiornamento senza operatori viene rifiutato
+  OK   Rifiutato con spiegazione (Aggiornamento senza operatori: usa { $set: { … } }. Per sostituire l'intero documento serve replaceOne().)
+7. La sandbox regge anche passando dal socket
+  OK   Bloccato: print([].constructor) (Accesso a "constructor" non consentito negli script)
+  OK   Bloccato: print(require("fs")) (Nome non definito: "require" (riga 1))
+  OK   Bloccato: print(process.env) (Nome non definito: "process" (riga 1))
+  OK   Bloccato: const f = () => 1; print(f.constructor); (Accesso a "constructor" non consentito negli script)
+8. $where resta vietato anche negli script
+  OK   Operatore server-side rifiutato (Operatore $where non consentito: esegue JavaScript lato server MongoDB.)
+9. Un ciclo fuori controllo si ferma da solo
+  OK   Ciclo infinito interrotto (Script troppo lungo: superato il limite di 2000000 operazioni.)
+  OK   Interrotto in tempo ragionevole (1s)
+10. Errori di runtime indicano la riga
+  OK   Errore con numero di riga (Nome non definito: "nonEsiste" (riga 2))
+11. Lo script è tracciato nell'audit come scrittura
+  OK   Voce di audit "Script MongoDB" presente
+  OK   Categorizzato come scrittura (write)
+12. SQL di scrittura e DDL su MongoDB
+  OK   CREATE TABLE tradotto ()
+  OK   La collezione creata via SQL esiste davvero
+  OK   INSERT tradotto ()
+  OK   Due documenti inseriti via SQL (2)
+  OK   UPDATE tradotto ()
+  OK   UPDATE ha modificato il documento giusto
+  OK   DELETE tradotto ()
+  OK   Un documento rimasto (1)
+  OK   ALTER eseguito ()
+  OK   La colonna aggiunta è leggibile e inizializzata a NULL
+13. Pulizia
+
+--- Tutti i test dell'interprete su MongoDB superati! ---

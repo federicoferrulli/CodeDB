@@ -1,0 +1,57 @@
+{
+  "data": "2026-10-15",
+  "esito": "Prove negli ambienti disponibili superate; cloud assente e diagnostica npm residua esplicitati",
+  "prove": {
+    "unitari": { "esito": "superato", "log": "mongosh-advanced-unit.log" },
+    "socketMongocryptd": { "esito": "superato", "esecuzioni": 26, "log": "mongosh-advanced.log" },
+    "socketCryptShared": { "esito": "superato", "esecuzioni": 25, "log": "mongosh-crypt-shared.log" },
+    "kerberos": { "esito": "superato", "log": "mongosh-kerberos.log", "copertura": "MongoDbStrategy e runtime mongosh autenticati GSSAPI, CRUD, identità e rifiuto senza ticket" },
+    "installerMongocryptd": { "esito": "superato", "esecuzioni": 24, "log": "mongosh-electron-final.log", "copertura": "NSIS: installazione, app ASAR reale, database reali, disinstallazione e conservazione del profilo" },
+    "installerCryptShared": { "esito": "superato", "esecuzioni": 27, "log": "mongosh-electron-crypt-shared.log", "copertura": "Stessa prova NSIS, DLL crypt_shared caricata, stato finale degli indici e risultato esatto della query cifrata" },
+    "mutazioneCrittografia": { "esito": "regressione rilevata", "exitCodeAtteso": 1, "log": "mongosh-mutant-crittografia.log" },
+    "mutazioneModuliNativi": { "esito": "regressione rilevata prima del packaging", "exitCodeAtteso": 1, "log": "mongosh-mutant-nativi.log" },
+    "installazionePulita": { "esito": "npm ci completato", "log": "mongosh-ci.log" }
+  },
+  "versioni": {
+    "atlasLocalMongoDB": "8.0.34",
+    "mongoEnterprise": "8.0.34",
+    "mongocryptd": "8.0.34",
+    "shardingMongoDB": "8.0.29",
+    "mitKerberos": "1.19.2-2ubuntu0.10",
+    "nodeKerberos": "24.22.0",
+    "nodeHost": "26.2.0",
+    "electronInstallato": "43.7.9",
+    "nodeElectron": "24.21.0",
+    "shellApi": "5.9.2",
+    "serviceProvider": "5.6.2",
+    "moduliCodeDB": { "kerberos": "2.2.2", "mongodb-client-encryption": "6.5.0" },
+    "moduliMongosh": { "kerberos": "7.0.0", "mongodb-client-encryption": "7.2.1" }
+  },
+  "cryptShared": {
+    "versioneCaricata": "mongo_crypt_v1-dev-8.2.12",
+    "urlUfficiale": "https://downloads.mongodb.com/windows/mongo_crypt_shared_v1-windows-x86_64-enterprise-8.2.12.zip",
+    "sha256ArchivioVerificato": "74446be6074523052897ccd181125edf07503ed1483954eadb4fa4d99aeec763",
+    "inclusaNellInstaller": false
+  },
+  "installer": {
+    "nome": "CodeDBMongoshTest-0.2.1-beta.1-setup.exe",
+    "percorso": ".scratch/mongosh-electron-package/CodeDBMongoshTest-0.2.1-beta.1-setup.exe",
+    "sha256": "1d4f848f0b1a9d1eb6d1db1611813655d623ccfa5aabc01c197296ce8575aaed",
+    "identita": "com.codedb.mongosh-test",
+    "firma": "assente",
+    "pubblicato": false
+  },
+  "diagnosticaResidua": [{
+    "ambito": "npm 12.2.0, npm ls dopo npm ci",
+    "esito": "ELSPROBLEMS non risolto",
+    "dettaglio": "Peer opzionali della copia MongoDB 7 di @mongosh/service-provider-core risolti contro i moduli 2/6 della radice. Il JavaScript di service-provider-core non carica tale driver (dipendenza usata per i tipi). I driver effettivamente eseguiti da CodeDB e dal provider mongosh caricano le rispettive versioni compatibili, verificate dal controllo pre-build e dai test reali.",
+    "log": "npm-peer-diagnostic.log"
+  }],
+  "nonVerificato": [
+    { "ambito": "Atlas cloud, Search/Vector sul servizio gestito e Stream Processing", "motivo": "L'utente ha confermato di non disporre di un progetto/cluster Atlas cloud. Atlas Local non sostituisce queste prove." },
+    { "ambito": "Active Directory/SSPI su Windows", "motivo": "La fixture reale disponibile usa MIT Kerberos su Linux; non è disponibile un dominio AD di test." },
+    { "ambito": "KMS AWS/Azure/GCP e altri KMS esterni", "motivo": "CSFLE verificata con provider locale; nessuna credenziale KMS esterna configurata." },
+    { "ambito": "Installer macOS e Linux", "motivo": "Collaudo di installazione eseguito sull'host Windows disponibile." },
+    { "ambito": "Firma del codice e aggiornamento da release pubblicata", "motivo": "Nessun certificato di firma configurato; pacchetto di prova locale, nessuna pubblicazione." }
+  ]
+}

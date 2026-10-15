@@ -1,0 +1,1397 @@
+[
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:09:48.524+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.indice_commit",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "indice_commit",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "n": 1
+            },
+            "name": "dopo"
+          }
+        ]
+      },
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 20
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 18
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 18
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 16,
+            "R": 1,
+            "W": 2
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 17
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 192
+        }
+      },
+      "cpuNanos": 11020249,
+      "numInterruptChecks": 149,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 19
+        }
+      },
+      "workingMillis": 13889,
+      "durationMillis": 13889
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:03.500+00:00"
+    },
+    "s": "I",
+    "c": "ELECTION",
+    "id": 21450,
+    "ctx": "ReplCoord-1",
+    "msg": "Election succeeded, assuming primary role",
+    "attr": {
+      "term": 8
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:03.500+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-1",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "PRIMARY",
+      "oldState": "SECONDARY"
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:03.774+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21340,
+    "ctx": "RstlKillOpThread",
+    "msg": "State transition ops metrics",
+    "attr": {
+      "metrics": {
+        "lastStateTransition": "stepUp",
+        "totalOpsKilled": 0,
+        "totalOpsRunning": 6
+      }
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:03.893+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21331,
+    "ctx": "OplogApplier-0",
+    "msg": "Transition to primary complete; database writes are now permitted",
+    "attr": {
+      "term": 8
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:17.785+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "nuovo": 1
+            },
+            "name": "dipendenza_primary_1",
+            "partialFilterExpression": {
+              "$and": [
+                {
+                  "nuovo": {
+                    "$type": [
+                      "int",
+                      "long",
+                      "double",
+                      "decimal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "9dadaf4c-675f-4578-b9d0-479807f04426"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023003,
+              "i": 3
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "totalOplogSlotDurationMicros": 67097,
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 8
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 4,
+            "R": 1,
+            "W": 2
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 4
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 385
+        }
+      },
+      "cpuNanos": 6763807,
+      "numInterruptChecks": 46,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 7
+        }
+      },
+      "workingMillis": 13866,
+      "durationMillis": 13866
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:17.924+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn90",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "config.system.indexBuilds",
+      "collectionType": "system",
+      "command": {
+        "voteCommitIndexBuild": {
+          "$uuid": "e35e58bc-9f7f-4692-b63f-aaf35cafe7a1"
+        },
+        "hostAndPort": "codedb-sql-node-27039:27039",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023003,
+              "i": 5
+            }
+          }
+        },
+        "$db": "admin"
+      },
+      "totalOplogSlotDurationMicros": 107,
+      "keysInserted": 0,
+      "keysDeleted": 0,
+      "numYields": 0,
+      "queryFramework": "classic",
+      "reslen": 101,
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 3
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 1
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 1
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 2,
+            "w": 1
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 2
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 1
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 141,
+      "storage": {},
+      "cpuNanos": 985634,
+      "remote": "172.22.0.3:54286",
+      "protocol": "op_msg",
+      "numInterruptChecks": 24,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 4
+        }
+      },
+      "workingMillis": 142,
+      "durationMillis": 142
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:17.932+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn86",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "name": "dipendenza_primary_1",
+            "unique": true,
+            "partialFilterExpression": {
+              "$and": [
+                {
+                  "nuovo": {
+                    "$type": [
+                      "int",
+                      "long",
+                      "double",
+                      "decimal"
+                    ]
+                  }
+                }
+              ]
+            },
+            "key": {
+              "nuovo": 1
+            }
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "9dadaf4c-675f-4578-b9d0-479807f04426"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023003,
+              "i": 3
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "numYields": 0,
+      "reslen": 266,
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 5
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 3
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "w": 1,
+            "W": 1
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 3
+      },
+      "readConcern": {
+        "level": "local",
+        "provenance": "implicitDefault"
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 146,
+      "storage": {},
+      "cpuNanos": 800412,
+      "remote": "172.22.0.1:41914",
+      "protocol": "op_msg",
+      "numInterruptChecks": 28,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 6
+        }
+      },
+      "workingMillis": 14014,
+      "durationMillis": 14014
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:25.788+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "nuovo": 1
+            },
+            "name": "dipendenza_primary_1"
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "9dadaf4c-675f-4578-b9d0-479807f04426"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023018,
+              "i": 1
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "totalOplogSlotDurationMicros": 92509,
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 8
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 4,
+            "R": 1,
+            "W": 2
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 4
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 385
+        }
+      },
+      "cpuNanos": 6184442,
+      "numInterruptChecks": 48,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 7
+        }
+      },
+      "workingMillis": 7730,
+      "durationMillis": 7730
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:25.804+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn86",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "name": "dipendenza_primary_1",
+            "unique": true,
+            "key": {
+              "nuovo": 1
+            }
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "9dadaf4c-675f-4578-b9d0-479807f04426"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023018,
+              "i": 1
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "numYields": 0,
+      "reslen": 266,
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 5
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 3
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "w": 1,
+            "W": 1
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 3
+      },
+      "readConcern": {
+        "level": "local",
+        "provenance": "implicitDefault"
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 14,
+      "storage": {},
+      "cpuNanos": 696271,
+      "remote": "172.22.0.1:41914",
+      "protocol": "op_msg",
+      "numInterruptChecks": 26,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 6
+        }
+      },
+      "workingMillis": 7746,
+      "durationMillis": 7746
+    }
+  },
+  {
+    "port": 27039,
+    "t": {
+      "$date": "2026-10-15T00:10:25.940+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn86",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "codedb_sql_failover_mongo_219467df91f9",
+      "collectionType": "normal",
+      "command": {
+        "dropDatabase": 1,
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "5b778bed-7b31-4d83-9c90-98af46712a0f"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792023025,
+              "i": 6
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "totalOplogSlotDurationMicros": 1211,
+      "numYields": 0,
+      "reslen": 163,
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "W": 2
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 2
+      },
+      "readConcern": {
+        "level": "local",
+        "provenance": "implicitDefault"
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 6,
+      "storage": {
+        "data": {
+          "txnBytesDirty": 257
+        }
+      },
+      "cpuNanos": 4203509,
+      "remote": "172.22.0.1:41914",
+      "protocol": "op_msg",
+      "numInterruptChecks": 15,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 3
+        }
+      },
+      "workingMillis": 105,
+      "durationMillis": 105
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-15T00:09:50.808+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "STARTUP2",
+      "oldState": "STARTUP"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-15T00:09:50.809+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "RECOVERING",
+      "oldState": "STARTUP2"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-15T00:09:50.811+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "SECONDARY",
+      "oldState": "RECOVERING"
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-15T00:10:17.787+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "nuovo": 1
+            },
+            "name": "dipendenza_primary_1",
+            "partialFilterExpression": {
+              "$and": [
+                {
+                  "nuovo": {
+                    "$type": [
+                      "int",
+                      "long",
+                      "double",
+                      "decimal"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 20
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 18
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 18
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 16,
+            "R": 1,
+            "W": 2
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 17
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 192
+        }
+      },
+      "cpuNanos": 10892606,
+      "numInterruptChecks": 147,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 19
+        }
+      },
+      "workingMillis": 13833,
+      "durationMillis": 13833
+    }
+  },
+  {
+    "port": 27040,
+    "t": {
+      "$date": "2026-10-15T00:10:25.792+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.dipendenza",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "dipendenza",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "nuovo": 1
+            },
+            "name": "dipendenza_primary_1"
+          }
+        ]
+      },
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 14
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 12
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 12
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 10,
+            "R": 1,
+            "W": 2
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 11
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 192
+        }
+      },
+      "cpuNanos": 6394462,
+      "numInterruptChecks": 101,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 13
+        }
+      },
+      "workingMillis": 7686,
+      "durationMillis": 7686
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:09:48.523+00:00"
+    },
+    "s": "I",
+    "c": "STORAGE",
+    "id": 51803,
+    "ctx": "IndexBuildsCoordinatorMongod-0",
+    "msg": "Slow query",
+    "attr": {
+      "type": "none",
+      "isFromUserConnection": false,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.indice_commit",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "indice_commit",
+        "indexes": [
+          {
+            "v": 2,
+            "unique": true,
+            "key": {
+              "n": 1
+            },
+            "name": "dopo"
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "40a0b84b-bdf2-4340-b97d-1efb54aefc62"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022974,
+              "i": 2
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "totalOplogSlotDurationMicros": 63270,
+      "numYields": 0,
+      "queryFramework": "classic",
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 8
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "r": 2,
+            "w": 6
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "r": 1,
+            "w": 4,
+            "R": 1,
+            "W": 2
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 4
+      },
+      "storage": {
+        "data": {
+          "txnBytesDirty": 385
+        }
+      },
+      "cpuNanos": 5035898,
+      "numInterruptChecks": 48,
+      "queues": {
+        "ingress": {},
+        "execution": {
+          "admissions": 7
+        }
+      },
+      "workingMillis": 13921,
+      "durationMillis": 13921
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:09:48.532+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn28",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "codedb_sql_failover_mongo_219467df91f9.indice_commit",
+      "collectionType": "normal",
+      "command": {
+        "createIndexes": "indice_commit",
+        "indexes": [
+          {
+            "name": "dopo",
+            "unique": true,
+            "key": {
+              "n": 1
+            }
+          }
+        ],
+        "commitQuorum": "majority",
+        "writeConcern": {
+          "w": "majority"
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "40a0b84b-bdf2-4340-b97d-1efb54aefc62"
+          }
+        },
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022974,
+              "i": 2
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "codedb_sql_failover_mongo_219467df91f9"
+      },
+      "numYields": 0,
+      "reslen": 266,
+      "locks": {
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 5
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 2,
+            "w": 3
+          }
+        },
+        "Database": {
+          "acquireCount": {
+            "w": 2
+          }
+        },
+        "Collection": {
+          "acquireCount": {
+            "w": 1,
+            "W": 1
+          }
+        },
+        "Mutex": {
+          "acquireCount": {
+            "r": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 3
+      },
+      "readConcern": {
+        "level": "local",
+        "provenance": "implicitDefault"
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 0,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 8,
+      "storage": {},
+      "cpuNanos": 548368,
+      "remote": "172.22.0.1:53630",
+      "protocol": "op_msg",
+      "numInterruptChecks": 26,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 6
+        }
+      },
+      "workingMillis": 13930,
+      "durationMillis": 13930
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:09:49.034+00:00"
+    },
+    "s": "I",
+    "c": "COMMAND",
+    "id": 51803,
+    "ctx": "conn28",
+    "msg": "Slow query",
+    "attr": {
+      "type": "command",
+      "isFromUserConnection": true,
+      "ns": "admin.$cmd",
+      "collectionType": "admin",
+      "command": {
+        "abortTransaction": 1,
+        "writeConcern": {
+          "w": "majority",
+          "wtimeout": 10000
+        },
+        "lsid": {
+          "id": {
+            "$uuid": "5b778bed-7b31-4d83-9c90-98af46712a0f"
+          }
+        },
+        "txnNumber": 52,
+        "autocommit": false,
+        "$clusterTime": {
+          "clusterTime": {
+            "$timestamp": {
+              "t": 1792022988,
+              "i": 7
+            }
+          },
+          "signature": {
+            "hash": {
+              "$binary": {
+                "base64": "AAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "subType": "0"
+              }
+            },
+            "keyId": 0
+          }
+        },
+        "$db": "admin"
+      },
+      "totalOplogSlotDurationMicros": 48,
+      "numYields": 0,
+      "ok": 0,
+      "errMsg": "Transaction with { txnNumber: 52 } has been aborted.",
+      "errName": "NoSuchTransaction",
+      "errCode": 251,
+      "reslen": 321,
+      "locks": {
+        "MultiDocumentTransactionsBarrier": {
+          "acquireCount": {
+            "r": 1,
+            "w": 1
+          }
+        },
+        "ReplicationStateTransition": {
+          "acquireCount": {
+            "w": 4
+          }
+        },
+        "Global": {
+          "acquireCount": {
+            "r": 1,
+            "w": 1
+          }
+        }
+      },
+      "flowControl": {
+        "acquireCount": 1
+      },
+      "writeConcern": {
+        "w": "majority",
+        "wtimeout": 10000,
+        "provenance": "clientSupplied"
+      },
+      "waitForWriteConcernDurationMillis": 333,
+      "storage": {
+        "data": {
+          "txnBytesDirty": 193
+        }
+      },
+      "cpuNanos": 521248,
+      "remote": "172.22.0.1:53630",
+      "protocol": "op_msg",
+      "numInterruptChecks": 17,
+      "queues": {
+        "ingress": {
+          "admissions": 1
+        },
+        "execution": {
+          "admissions": 3
+        }
+      },
+      "workingMillis": 333,
+      "durationMillis": 333
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:10:25.509+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "STARTUP2",
+      "oldState": "STARTUP"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:10:25.510+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "RECOVERING",
+      "oldState": "STARTUP2"
+    }
+  },
+  {
+    "port": 27041,
+    "t": {
+      "$date": "2026-10-15T00:10:25.511+00:00"
+    },
+    "s": "I",
+    "c": "REPL",
+    "id": 21358,
+    "ctx": "ReplCoord-0",
+    "msg": "Replica set state transition",
+    "attr": {
+      "newState": "SECONDARY",
+      "oldState": "RECOVERING"
+    }
+  }
+]

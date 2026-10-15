@@ -1,0 +1,6 @@
+FAIL MongoDB: metadati, opzioni di creazione e indici
+TypeError: Cannot read properties of undefined (reading '$jsonSchema')
+    at C:\repository\CodeDB\test\e2e-query-nativo-completo.js:57:45
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:54:3

@@ -45,9 +45,9 @@ function sessioneFinta() {
     strategy: {
       type: 'mongodb',
       currentDb: 'test',
-      async shellWrite(db, coll, payload) {
+      async mongoSqlReturning(db, coll, payload) {
         scritture.push({ db, coll, payload });
-        return { insertedCount: 1 };
+        return { docs: [{ insertedCount: 1 }], columns: ['insertedCount'] };
       },
     },
   };

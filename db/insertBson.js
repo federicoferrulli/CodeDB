@@ -91,21 +91,28 @@ async function preparaDocumenti(text) {
   return { raw, ids, multiplo };
 }
 
-async function inserisciBson(client, db, coll, text) {
+async function inserisciBson(client, db, coll, text, options = {}, triggers = null) {
   const { raw, ids, multiplo } = await preparaDocumenti(text);
   const database = client.db(db);
   const writeConcern = database.writeConcern;
   if (writeConcern?.w === 0) throw new Error('Inserimento senza conferma disabilitato dalla connessione: usa writeConcern w=1 o superiore per conoscere l’esito.');
   let insertedCount = 0;
+  if (triggers) await triggers.statement('BEFORE', 'INSERT');
   for (let offset = 0; offset < raw.length;) {
+    const start = offset;
     const sequence = new DocumentSequence('documents');
     let bytes = 0;
     while (offset < raw.length && sequence.documents.length < 100000 && (bytes === 0 || bytes + raw[offset].length < 32 * 1024 * 1024)) {
+      if (triggers?.hasBefore('INSERT')) {
+        raw[offset] = await triggers.beforeRaw('INSERT', null, raw[offset]);
+        ids[offset] = B.EJSON.serialize(B.deserialize(require('./mongoBson').inspect(raw[offset]).id, { promoteValues: false })._id, { relaxed: false });
+      }
       sequence.push({}, raw[offset]); bytes += raw[offset++].length;
+      if (triggers?.hasBefore('INSERT')) break;
     }
     let result;
     try {
-      result = await database.command({ insert: coll, documents: sequence, ordered: true, ...(writeConcern ? { writeConcern } : {}) });
+      result = await database.command({ insert: coll, documents: sequence, ordered: true, ...(writeConcern && !options.session ? { writeConcern } : {}) }, options);
     } catch (error) {
       error.auditResult = { insertedCount, insertedIds: ids.slice(0, insertedCount).map(id => JSON.stringify(id)) };
       throw error;
@@ -116,7 +123,9 @@ async function inserisciBson(client, db, coll, text) {
       error.auditResult = { insertedCount, insertedIds: ids.slice(0, insertedCount).map(id => JSON.stringify(id)) };
       throw error;
     }
+    if (triggers) await triggers.dopo([], raw.slice(start, offset).map(doc => B.deserialize(require('./mongoBson').inspect(doc).id, { promoteValues: false })._id));
   }
+  if (triggers) await triggers.statement('AFTER', 'INSERT');
   return multiplo ? { insertedCount, insertedIds: ids.map(id => JSON.stringify(id)) }
     : { insertedId: JSON.stringify(ids[0]) };
 }

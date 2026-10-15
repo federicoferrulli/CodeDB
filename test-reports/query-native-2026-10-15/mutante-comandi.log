@@ -1,0 +1,11 @@
+FAIL MongoDB: runCommand conserva il risultato nativo
+AssertionError [ERR_ASSERTION]: db.runCommand({ping:1})
+Mutazione del comando nativo
+
+false !== true
+
+    at q (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:16:10)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:44:15
+    at async prova (C:\repository\CodeDB\test\e2e-query-nativo-completo.js:20:9)
+    at async C:\repository\CodeDB\test\e2e-query-nativo-completo.js:43:3

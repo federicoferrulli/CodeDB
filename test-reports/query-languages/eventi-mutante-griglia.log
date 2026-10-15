@@ -1,0 +1,37 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+  OK   MQL updateMany senza modifiche
+  OK   MQL pipeline e variabili let
+  OK   findOneAndUpdate: OLD proiettato e sort
+  OK   findOneAndUpdate upsert: identità anche con OLD null
+  OK   findOneAndUpdate upsert con metadati
+  OK   replaceOne con upsert
+AssertionError [ERR_ASSERTION]: Griglia: inserimento BSON esatto
++ actual - expected
+
++ []
+- [
+-   {
+-     dopo: 60,
+-     evento: 'INSERT',
+-     id: 6,
+-     prima: null
+-   },
+-   {
+-     dopo: 70,
+-     evento: 'INSERT',
+-     id: 7,
+-     prima: null
+-   }
+- ]
+
+    at check (C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:51:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:64:3 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

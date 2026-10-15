@@ -196,9 +196,11 @@ function conTetti(strategia, opzioni = {}) {
   return new Proxy(strategia, {
     get(bersaglio, prop, ricevente) {
       const valore = Reflect.get(bersaglio, prop, ricevente);
-      if (typeof valore !== 'function' || typeof prop !== 'string' || !soggetto(prop)) {
+      if (typeof valore !== 'function' || typeof prop !== 'string') {
         return valore;
       }
+      // Apertura, query e chiusura devono condividere l'identità della strategia.
+      if (!soggetto(prop)) return valore.bind(bersaglio);
       const spec = LETTURE[prop];
       return async function conTettiApplicati(...args) {
         const esito = await conTettoDiTempo(bersaglio, prop, args, spec, graziaMinima);

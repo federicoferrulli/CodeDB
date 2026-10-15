@@ -9,6 +9,15 @@ const { Client, utils } = require('ssh2');
 
 const MAX_SSH_KEY_BYTES = 64 * 1024;
 
+function portaLocaleSsh(value) {
+  if (value == null || (typeof value === 'string' && !value.trim())) return 0;
+  if (!['string', 'number'].includes(typeof value) || !/^\d+$/.test(String(value).trim())
+    || Number(value) < 1 || Number(value) > 65535) {
+    throw new Error('La porta locale SSH deve essere un numero intero da 1 a 65535, oppure vuota per disattivare il forwarding locale.');
+  }
+  return Number(value);
+}
+
 function sshAuthMode(ssh) {
   if (ssh.sshAuth) {
     if (!['password', 'upload', 'path'].includes(ssh.sshAuth)) throw new Error('Modalità di autenticazione SSH non valida.');
@@ -20,9 +29,9 @@ function sshAuthMode(ssh) {
 /* ---------------------------------------------------------------------------
  * Tunnel SSH condiviso tra le strategie: ortogonale al tipo di database.
  *
- * Apre una connessione SSH e mette in ascolto una porta locale effimera
- * (127.0.0.1:<random>) che inoltra ogni connessione verso target.host:target.port
- * sul lato remoto. La strategia DB si connette poi al capo locale del tunnel.
+ * Apre una connessione SSH e una porta su 127.0.0.1 che inoltra verso
+ * target.host:target.port. Senza sshLocalPort la porta è effimera, altrimenti
+ * quella scelta è utilizzabile anche dagli altri programmi locali.
  *
  * VERIFICA DELLA HOST KEY (`hostVerifier`)
  * Senza, ssh2 accetta qualunque chiave presentata dal server: un attaccante in
@@ -89,6 +98,10 @@ function creaVerificaHostKey(ssh, { persistNewHostKey } = {}) {
           `Chiave del server SSH "${host}" non ancora approvata. Impronta presentata: ${seenFingerprint}. `
           + 'Registrala nella connessione e riprova; nessuna credenziale è stata inviata.',
         );
+        if (!strictHostKey()) {
+          hostKeyError.code = 'SSH_HOST_KEY_UNKNOWN';
+          hostKeyError.sshHostKey = seenFingerprint;
+        }
         return false;
       }
       try {
@@ -109,15 +122,30 @@ function creaVerificaHostKey(ssh, { persistNewHostKey } = {}) {
 
 function openSshTunnel(ssh, target, options = {}) {
   return new Promise((resolve, reject) => {
+    const localPort = portaLocaleSsh(ssh.sshLocalPort);
     const conn = new Client();
     let server = null;
     let settled = false;
+    let closing = null;
+    const sockets = new Set();
+    const tunnelState = { alive: true, lastError: null };
+
+    const close = () => {
+      if (closing) return closing;
+      tunnelState.alive = false;
+      for (const socket of sockets) socket.destroy();
+      conn.end();
+      closing = new Promise(resolve => {
+        if (!server) return resolve();
+        server.close(() => resolve());
+      });
+      return closing;
+    };
 
     const fail = (err) => {
       if (settled) return;
       settled = true;
-      if (server) try { server.close(); } catch { /* ignora */ }
-      conn.end();
+      close();
       reject(err instanceof Error ? err : new Error(String(err)));
     };
 
@@ -127,12 +155,10 @@ function openSshTunnel(ssh, target, options = {}) {
     // strategia DB vedrebbe solo un ECONNREFUSED generico sulla porta locale
     // ormai orfana, invece di un messaggio che spieghi che è il tunnel a
     // essere caduto.
-    const tunnelState = { alive: true, lastError: null };
-
     conn.on('error', (err) => {
       if (settled) {
-        tunnelState.alive = false;
         tunnelState.lastError = errText(err);
+        close();
         return;
       }
       // Se l'handshake è stato interrotto da hostVerifier, ssh2 riporta un
@@ -141,27 +167,39 @@ function openSshTunnel(ssh, target, options = {}) {
         ? new Error('Autenticazione SSH rifiutata. Verifica l’utente SSH e la password, oppure che la chiave pubblica corrispondente sia autorizzata sul server.') : err));
     });
     conn.on('close', () => {
-      tunnelState.alive = false;
+      close();
+      if (!settled) fail(hostKeyCheck.error || new Error('Il server SSH ha chiuso la connessione prima di aprire il tunnel.'));
     });
 
     conn.on('ready', () => {
       server = net.createServer((socket) => {
+        sockets.add(socket);
+        socket.on('close', () => sockets.delete(socket));
+        socket.on('error', () => socket.destroy());
         if (!tunnelState.alive) {
           socket.destroy();
           return;
         }
         conn.forwardOut('127.0.0.1', socket.remotePort || 0, target.host, target.port, (err, stream) => {
-          if (err) {
+          if (err || socket.destroyed || !tunnelState.alive) {
+            stream?.destroy();
             socket.destroy();
             return;
           }
           socket.pipe(stream).pipe(socket);
           stream.on('error', () => socket.destroy());
+          stream.on('close', () => socket.destroy());
           socket.on('error', () => stream.destroy());
+          socket.on('close', () => stream.destroy());
         });
       });
-      server.on('error', fail);
-      server.listen(0, '127.0.0.1', () => {
+      server.on('error', err => {
+        if (localPort && ['EADDRINUSE', 'EACCES'].includes(err.code)) {
+          fail(new Error(`La porta locale 127.0.0.1:${localPort} ${err.code === 'EADDRINUSE' ? 'è già in uso' : 'non è disponibile per questo utente'}. Scegli un’altra porta oppure lascia vuoto il forwarding locale.`));
+        } else fail(err);
+      });
+      server.listen(localPort, '127.0.0.1', () => {
+        if (!tunnelState.alive) { server.close(); return; }
         settled = true;
         const { port } = server.address();
         resolve({
@@ -174,10 +212,7 @@ function openSshTunnel(ssh, target, options = {}) {
           hostKeyNew: hostKeyCheck.newlyPersisted,
           get alive() { return tunnelState.alive; },
           get lastError() { return tunnelState.lastError; },
-          close() {
-            try { server.close(); } catch { /* ignora */ }
-            conn.end();
-          },
+          close,
         });
       });
     });
@@ -250,4 +285,4 @@ function openSshTunnel(ssh, target, options = {}) {
   });
 }
 
-module.exports = { openSshTunnel, hostKeyFingerprint, sameFingerprint, creaVerificaHostKey, sshAuthMode, MAX_SSH_KEY_BYTES };
+module.exports = { openSshTunnel, hostKeyFingerprint, sameFingerprint, creaVerificaHostKey, sshAuthMode, portaLocaleSsh, MAX_SSH_KEY_BYTES };

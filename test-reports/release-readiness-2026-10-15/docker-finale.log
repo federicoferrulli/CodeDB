@@ -1,0 +1,4 @@
+OK immagine: avvio di rete rifiutato senza TLS o autenticazione
+OK immagine: runtime, HTTP, asset, licenze e filtro Origin
+OK HTTPS verificato con CA locale, login, WebSocket autenticato e MCP anonimo respinto
+OK ricreazione container: dati e account conservati, utente non root, filesystem in sola lettura, backend non pubblicato

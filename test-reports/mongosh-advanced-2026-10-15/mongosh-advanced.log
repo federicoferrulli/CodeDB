@@ -1,0 +1,5 @@
+Atlas Local MongoDB 8.0.34
+OK Atlas Local: indici Search/Vector, ricerca testuale, similarità, aggiornamento e rimozione
+OK sharding: due shard, split/migrazione reale, stream su entrambi, resume e transazione distribuita
+OK CSFLE: key vault, cifratura esplicita/automatica, query cifrata, dati BSON cifrati sul server, chiave errata rifiutata
+PASS 26 esecuzioni reali avanzate

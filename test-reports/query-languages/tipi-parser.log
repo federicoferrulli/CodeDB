@@ -1,0 +1,84 @@
+SQL→MQL — find semplici
+  ✓ SELECT * FROM users
+  ✓ proiezione colonne esclude _id
+  ✓ WHERE con operatori
+  ✓ WHERE uguaglianza stringa
+  ✓ WHERE != e <>
+  ✓ AND combina in $and
+  ✓ OR combina in $or
+  ✓ precedenza: AND lega più di OR
+  ✓ parentesi forzano il raggruppamento
+  ✓ IN e NOT IN
+  ✓ LIKE ancorato a un prefisso: nessun flag "i", così l'indice è usabile
+  ✓ LIKE con _ singolo carattere (ancorato)
+  ✓ LIKE non ancorato: il flag "i" resta, l'indice non era usabile comunque
+  ✓ ILIKE chiede esplicitamente il confronto insensibile
+  ✓ IS NULL / IS NOT NULL
+  ✓ BETWEEN
+  ✓ NOT su condizione
+  ✓ numeri negativi negli operatori di confronto
+  ✓ numeri negativi in BETWEEN e IN
+  ✓ negativo con notazione esponenziale
+  ✓ l'alias di colonna rinomina la proiezione
+  ✓ ORDER BY e LIMIT/OFFSET
+  ✓ LIMIT offset, count (stile MySQL)
+SQL→MQL — aggregazioni
+  ✓ COUNT(*) senza GROUP BY
+  ✓ GROUP BY con COUNT
+  ✓ GROUP BY con WHERE, SUM e ORDER BY
+  ✓ GROUP BY multiplo
+SQL→MQL — JOIN ($lookup)
+  ✓ INNER JOIN base → $lookup + $unwind
+  ✓ JOIN senza INNER equivale a INNER
+  ✓ LEFT JOIN preserva i documenti senza corrispondenza
+  ✓ LEFT OUTER JOIN accetta OUTER opzionale
+  ✓ JOIN con proiezione di colonne qualificate
+  ✓ JOIN con WHERE su campi base e uniti
+  ✓ ON con ordine invertito (foreign a sinistra)
+  ✓ JOIN + GROUP BY con aggregato su campo unito
+  ✓ due JOIN concatenate
+  ✓ RIGHT JOIN include il ramo anti-join
+  ✓ FULL JOIN conserva il lato sinistro
+  ✓ CROSS JOIN produce un lookup senza filtro
+  ✓ JOIN USING risolve la colonna condivisa
+  ✓ ON non di uguaglianza usa un lookup correlato
+  ✓ ON multi-condizione conserva entrambi i predicati
+  ✓ ON fra colonne locali usa un predicato correlato
+SQL→MQL — DISTINCT e HAVING
+  ✓ SELECT DISTINCT su una colonna
+  ✓ SELECT DISTINCT su più colonne
+  ✓ HAVING su alias di aggregato del SELECT
+  ✓ HAVING con COUNT(*) non presente nel SELECT
+  ✓ HAVING con SUM sintetizzato
+SQL→MQL — UNION ($unionWith)
+  ✓ UNION ALL non deduplica
+  ✓ UNION deduplica sull'intero documento
+  ✓ UNION a tre vie con WHERE su un operando
+  ✓ operando UNION non impone il LIMIT di default
+SQL→MQL — sotto-query (derived table nella FROM)
+  ✓ derived table con GROUP BY interno e WHERE esterno
+  ✓ derived table con ORDER BY e LIMIT esterni
+SQL→MQL — errori attesi
+  ✓ non-SELECT viene rifiutata
+  ✓ DISTINCT * deduplica i documenti
+  ✓ DISTINCT si applica dopo GROUP BY
+  ✓ HAVING senza GROUP BY/aggregato rifiutato
+  ✓ sotto-query IN (SELECT) diventa lookup
+  ✓ sotto-query scalare limita la cardinalità letta
+  ✓ colonna fuori da GROUP BY
+  ✓ manca FROM
+  ✓ Confronto di uguaglianza fra colonne
+  ✓ Confronto ordinato fra colonne
+  ✓ IN accetta espressioni di colonna
+  ✓ NOT IN accetta espressioni di colonna
+  ✓ pattern LIKE non quotato
+  ✓ BETWEEN con colonna come estremo basso
+  ✓ BETWEEN con colonna come estremo alto
+  ✓ Funzioni scalari nei confronti
+  ✓ Letterale a sinistra del confronto
+  ✓ TRUE/FALSE/NULL restano validi in una lista IN
+  ✓ Aritmetica fra letterali nel confronto
+  ✓ LIMIT negativo rifiutato
+  ✓ OFFSET negativo rifiutato
+
+75 test superati.

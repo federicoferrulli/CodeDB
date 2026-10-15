@@ -1,6 +1,6 @@
 {
   "name": "codedb",
-  "version": "0.2.0-beta.1",
+  "version": "0.2.1-beta.1",
   "description": "DBeaver-like web GUI for MongoDB with real-time socket updates",
   "license": "AGPL-3.0-only",
   "author": "Federico 'Keus' Ferrulli",
@@ -35,6 +35,11 @@
     "backup": "node backup/cli.js",
     "test": "node test/unit.js",
     "test:unit": "node test/unit.js",
+    "sql:native:up": "node tools/sql-native.js up",
+    "sql:native:stop": "node tools/sql-native.js stop",
+    "sql:native:status": "node tools/sql-native.js status",
+    "test:e2e:sql-native": "node test/e2e-sql-native.js && node test/e2e-sql-native-sessioni.js",
+    "test:e2e:query-audit": "node test/e2e-query-audit.js",
     "test:e2e": "node test/e2e.js",
     "test:e2e:all": "node test/all-e2e.js",
     "test:all": "npm test && npm run test:e2e:all",
@@ -71,15 +76,29 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
+    "@mongosh/service-provider-node-driver": "5.6.2",
+    "@mongosh/shell-api": "5.9.2",
+    "@mongosh/shell-evaluator": "5.9.2",
     "bson": "^6.10.0",
     "electron-updater": "^6.8.9",
     "express": "^4.21.0",
     "mongodb": "^6.12.0",
     "mysql2": "^3.22.5",
-    "pg": "^8.13.0",
+    "pg": "^8.22.0",
     "socket.io": "^4.8.0",
     "ssh2": "^1.17.0",
     "zod": "^3.25.76"
+  },
+  "optionalDependencies": {
+    "kerberos": "2.2.2",
+    "mongodb-client-encryption": "6.5.0"
+  },
+  "allowScripts": {
+    "electron": true,
+    "esbuild": true,
+    "ssh2": true,
+    "kerberos": true,
+    "mongodb-client-encryption": true
   },
   "devDependencies": {
     "@electron/packager": "^20.0.4",
@@ -112,6 +131,7 @@
       "buildResources": "build"
     },
     "npmRebuild": false,
+    "beforePack": "./tools/verifica-mongosh-nativi.cjs",
     "publish": [
       {
         "provider": "github",

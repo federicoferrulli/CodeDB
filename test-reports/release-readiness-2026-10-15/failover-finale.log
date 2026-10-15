@@ -1,0 +1,38 @@
+  OK   barriera: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27039:27039
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27040:27040
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27039:27039
+  OK   indice: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice_commit: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27041:27041
+  OK   indice_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dipendenza: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   dipendenza: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dipendenza_commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   dipendenza_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   savepoint: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   savepoint: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dominio: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27039:27039
+  OK   dominio: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dominio_commit: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27040:27040
+  OK   dominio_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   routine_commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   routine_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   native_savepoint: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27039:27039
+  OK   native_savepoint: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_state_commit: arrestato codedb-sql-node-27039:27039, eletto codedb-sql-node-27041:27041
+  OK   trigger_state_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   routine_nested_commit: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   routine_nested_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dominio_validate_commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   dominio_validate_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   cascade_before: arrestato codedb-sql-node-27041:27041, eletto codedb-sql-node-27040:27040
+  OK   cascade_before: CASCADE atomico, dati conservati e cataloghi recuperati
+  OK   cascade_commit: arrestato codedb-sql-node-27040:27040, eletto codedb-sql-node-27041:27041
+  OK   cascade_commit: CASCADE atomico, dati conservati e cataloghi recuperati
+
+18 failover reali con arresto del container primario (tre container distinti) superati.

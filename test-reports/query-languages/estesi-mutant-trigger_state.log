@@ -1,0 +1,37 @@
+AssertionError [ERR_ASSERTION]: SELECT id,d FROM trigger_bounds_log ORDER BY id
++ actual - expected
+
+  [
+    {
+      d: '[-2:0]',
+      id: 1
+    },
+    {
+      d: '[-2:0]',
++     id: 2
++   },
++   {
++     d: '[-2:0]',
+      id: 3
+    },
+    {
+      d: '[-2:0]',
++     id: 4
++   },
++   {
++     d: '[-2:0]',
+      id: 5
+    }
+  ]
+
+    at rows (C:\repository\CodeDB\test\sql-mongo-estesi.js:6:59)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async module.exports (C:\repository\CodeDB\test\sql-mongo-estesi.js:74:3)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-estesi.js:119:18 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

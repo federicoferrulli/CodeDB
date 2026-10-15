@@ -1,0 +1,6 @@
+  OK   Semantica insiemi, sorgenti INSERT, validatore nativo e FK verificate con dati reali
+  OK   Procedure e cascata rispettano rollback, capability e scope di tutte le tabelle
+  OK   Una procedura senza termine scade e annulla le scritture precedenti
+  OK   BIGINT resta esatto nel database e nel protocollo EJSON
+  OK   Dieci competizioni DELETE genitore / INSERT figlio non producono orfani
+PASS: integrità SQL, concorrenza, precisione, procedure e RBAC su MongoDB reale.

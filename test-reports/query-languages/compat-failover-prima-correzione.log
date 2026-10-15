@@ -1,0 +1,194 @@
+  OK   barriera: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   barriera: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   prima_riga: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   prima_riga: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   commit: arrestato host.docker.internal:27041, eletto host.docker.internal:27039
+  OK   commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   trigger_mql: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   trigger_mql: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   indice: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   indice_commit: arrestato host.docker.internal:27041, eletto host.docker.internal:27040
+  OK   indice_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dipendenza: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   dipendenza: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dipendenza_commit: arrestato host.docker.internal:27041, eletto host.docker.internal:27039
+  OK   dipendenza_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   savepoint: arrestato host.docker.internal:27039, eletto host.docker.internal:27040
+  OK   savepoint: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dominio: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   dominio: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   dominio_commit: arrestato host.docker.internal:27041, eletto host.docker.internal:27040
+  OK   dominio_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   routine_commit: arrestato host.docker.internal:27040, eletto host.docker.internal:27041
+  OK   routine_commit: conversione applicata una volta, registro vuoto, indici e scritture ripristinati
+  OK   native_savepoint: arrestato host.docker.internal:27041, eletto host.docker.internal:27040
+MongoWriteConcernError: operation was interrupted
+    at throwIfWriteConcernError (C:\repository\CodeDB\node_modules\mongodb\lib\write_concern.js:96:19)
+    at Server.command (C:\repository\CodeDB\node_modules\mongodb\lib\sdam\server.js:195:62)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:213:32)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async dropCollections (C:\repository\CodeDB\node_modules\mongodb\lib\operations\drop.js:72:12)
+    at async Db.dropCollection (C:\repository\CodeDB\node_modules\mongodb\lib\db.js:261:16)
+    at async Collection.drop (C:\repository\CodeDB\node_modules\mongodb\lib\collection.js:304:16)
+    at async Object.verifica (C:\repository\CodeDB\db\sqlPreflightIndici.js:30:26)
+    at async validate (C:\repository\CodeDB\db\sqlSavepointMongo.js:87:149) {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    code: 11602,
+    codeName: 'InterruptedDueToReplStateChange',
+    errmsg: 'operation was interrupted',
+    errInfo: { writeConcern: [Object] },
+    nIndexesWas: 3,
+    ns: 'codedb_sql_failover_mongo_ce9b660d5208._codedb_sql_probe_eeab56be11bd470fbac79288d3455329',
+    writeConcernError: {
+      code: 11602,
+      codeName: 'InterruptedDueToReplStateChange',
+      errmsg: 'operation was interrupted',
+      errInfo: [Object]
+    },
+    ok: 1,
+    topologyVersion: { processId: new ObjectId('6acfa4a1db040c264cdb7e7b'), counter: 8 },
+    '$clusterTime': {
+      clusterTime: new Timestamp({ t: 1791993000, i: 2 }),
+      signature: [Object]
+    },
+    operationTime: new Timestamp({ t: 1791993000, i: 2 })
+  },
+  code: 11602,
+  codeName: 'InterruptedDueToReplStateChange',
+  errInfo: {
+    writeConcern: { w: 'majority', wtimeout: 0, provenance: 'clientSupplied' }
+  },
+  nIndexesWas: 3,
+  ns: 'codedb_sql_failover_mongo_ce9b660d5208._codedb_sql_probe_eeab56be11bd470fbac79288d3455329',
+  writeConcernError: {
+    code: 11602,
+    codeName: 'InterruptedDueToReplStateChange',
+    errmsg: 'operation was interrupted',
+    errInfo: { writeConcern: [Object] }
+  },
+  ok: 1,
+  topologyVersion: { processId: new ObjectId('6acfa4a1db040c264cdb7e7b'), counter: 8 },
+  '$clusterTime': {
+    clusterTime: new Timestamp({ t: 1791993000, i: 2 }),
+    signature: {
+      hash: Binary.createFromBase64('AAAAAAAAAAAAAAAAAAAAAAAAAAA=', 0),
+      keyId: 0
+    }
+  },
+  operationTime: new Timestamp({ t: 1791993000, i: 2 }),
+  result: {
+    nIndexesWas: 3,
+    ns: 'codedb_sql_failover_mongo_ce9b660d5208._codedb_sql_probe_eeab56be11bd470fbac79288d3455329',
+    writeConcernError: {
+      code: 11602,
+      codeName: 'InterruptedDueToReplStateChange',
+      errmsg: 'operation was interrupted',
+      errInfo: [Object]
+    },
+    ok: 1,
+    topologyVersion: { processId: new ObjectId('6acfa4a1db040c264cdb7e7b'), counter: 8 },
+    '$clusterTime': {
+      clusterTime: new Timestamp({ t: 1791993000, i: 2 }),
+      signature: [Object]
+    },
+    operationTime: new Timestamp({ t: 1791993000, i: 2 })
+  },
+  Symbol(istruzione SQL da annullare): true
+}
+C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:306
+                    throw new error_1.MongoServerError((object ??= document.toObject(bsonOptions)));
+                          ^
+
+MongoServerError: dropDatabase codedb_sql_failover_mongo_ce9b660d5208 failed waiting for 25 collection drop(s) (most recent drop optime: { ts: Timestamp(1791993009, 27), t: 17 }) to replicate. :: caused by :: operation was interrupted
+    at Connection.sendCommand (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:306:27)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Connection.command (C:\repository\CodeDB\node_modules\mongodb\lib\cmap\connection.js:334:26)
+    at async Server.command (C:\repository\CodeDB\node_modules\mongodb\lib\sdam\server.js:194:29)
+    at async tryOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:213:32)
+    at async executeOperation (C:\repository\CodeDB\node_modules\mongodb\lib\operations\execute_operation.js:78:16)
+    at async Db.dropDatabase (C:\repository\CodeDB\node_modules\mongodb\lib\db.js:269:16)
+    at async C:\repository\CodeDB\test\e2e-sql-mongo-failover.js:249:45 {
+  errorLabelSet: Set(0) {},
+  errorResponse: {
+    writeConcernError: {
+      code: 11602,
+      codeName: 'InterruptedDueToReplStateChange',
+      errmsg: 'operation was interrupted',
+      errInfo: {
+        writeConcern: { w: 'majority', wtimeout: 0, provenance: 'clientSupplied' }
+      }
+    },
+    topologyVersion: {
+      processId: ObjectId {
+        buffer: Buffer(12) [Uint8Array] [
+          106, 207, 164, 161, 219,
+            4,  12,  38,  76, 219,
+          126, 123
+        ]
+      },
+      counter: 24
+    },
+    ok: 0,
+    errmsg: 'dropDatabase codedb_sql_failover_mongo_ce9b660d5208 failed waiting for 25 collection drop(s) (most recent drop optime: { ts: Timestamp(1791993009, 27), t: 17 }) to replicate. :: caused by :: operation was interrupted',
+    code: 11602,
+    codeName: 'InterruptedDueToReplStateChange',
+    '$clusterTime': {
+      clusterTime: Timestamp { low: 27, high: 1791993009, unsigned: true },
+      signature: {
+        hash: Binary {
+          sub_type: 0,
+          buffer: Buffer(20) [Uint8Array] [
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0
+          ],
+          position: 20
+        },
+        keyId: 0
+      }
+    },
+    operationTime: Timestamp { low: 27, high: 1791993009, unsigned: true }
+  },
+  writeConcernError: {
+    code: 11602,
+    codeName: 'InterruptedDueToReplStateChange',
+    errmsg: 'operation was interrupted',
+    errInfo: {
+      writeConcern: { w: 'majority', wtimeout: 0, provenance: 'clientSupplied' }
+    }
+  },
+  topologyVersion: {
+    processId: ObjectId {
+      buffer: Buffer(12) [Uint8Array] [
+        106, 207, 164, 161, 219,
+          4,  12,  38,  76, 219,
+        126, 123
+      ]
+    },
+    counter: 24
+  },
+  ok: 0,
+  code: 11602,
+  codeName: 'InterruptedDueToReplStateChange',
+  '$clusterTime': {
+    clusterTime: Timestamp { low: 27, high: 1791993009, unsigned: true },
+    signature: {
+      hash: Binary {
+        sub_type: 0,
+        buffer: Buffer(20) [Uint8Array] [
+          0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0, 0,
+          0, 0, 0, 0, 0, 0
+        ],
+        position: 20
+      },
+      keyId: 0
+    }
+  },
+  operationTime: Timestamp { low: 27, high: 1791993009, unsigned: true }
+}
+
+Node.js v26.2.0

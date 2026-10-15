@@ -1,0 +1,26 @@
+  OK   Risultati reali: finestre, ramo anti-join e deduplicazione ricorsiva
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      _id: 1,
++     n: 2
+-     n: 1
+    },
+    {
+      _id: 2,
++     n: 2
+-     n: 1
+    }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-atomicita.js:35:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

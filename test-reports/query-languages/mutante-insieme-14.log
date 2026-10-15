@@ -1,0 +1,21 @@
+AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
++ actual - expected
+
+  [
+    {
+      n: 1
+    },
++   {
++     n: 1
++   }
+  ]
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-integrita.js:53:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [Array],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

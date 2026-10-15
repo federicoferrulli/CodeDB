@@ -1,0 +1,225 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-10-14",
+  "versione_analizzata": "Checkout locale con modifiche precedenti; manifest 0.2.0-beta.1",
+  "tipo": "Audit approfondito dei percorsi SQL e MQL, correzioni e test reali isolati",
+  "conclusione": "Dieci classi di difetti confermate e corrette. La verifica non certifica ogni sintassi, versione, estensione o configurazione possibile.",
+  "riepilogo": {
+    "totale": 10,
+    "critica": 0,
+    "alta": 4,
+    "media": 6,
+    "bassa": 0,
+    "risolti": 10,
+    "aperti": 0
+  },
+  "ambito_analizzato": [
+    "query:execute e ScriptRunner, riconoscimento SQL/MQL/Virtual JOIN, payload server e bersagli",
+    "Strategie native PostgreSQL/MySQL, lease, protocollo, transazioni, recupero, diagnostica, precisione e riconnessione",
+    "Shell e interprete MQL, AST, marcatori, escape, cursori, budget, scritture e annullamento",
+    "Guard RBAC, scope, pipeline annidate, host degli script e autorizzazione di routine/trigger/FK",
+    "SQL→MongoDB: lettura mirata di runtime, savepoint, dipendenze e transazioni; matrici reali di tutti i moduli avanzati precedenti",
+    "Gateway MCP e frontend query/script/destinazione: lettura mirata, suite RBAC/MCP e browser"
+  ],
+  "ambito_non_analizzato": [
+    "Resto della piattaforma: backup/export, vault e packaging non sottoposti a un nuovo audit completo",
+    "Penetration test esterno, installazione/distribuzione e rinnovo dello stack SQL persistente",
+    "Versioni DBMS diverse dalle tre provate, estensioni opzionali e cluster su macchine diverse",
+    "Prova esaustiva di tutte le sintassi PostgreSQL/MySQL o delle API mongosh: valgono i limiti documentati del traduttore e della shell"
+  ],
+  "findings": [
+    {
+      "id": "CDB-Q01",
+      "severita": "alta",
+      "titolo": "La lettura protetta poteva confermare una transazione MySQL",
+      "categoria": "SQL/MQL",
+      "modulo": "db/MySqlStrategy.js",
+      "riferimenti": [
+        "db/MySqlStrategy.js:969"
+      ],
+      "problema": "SET @@SESSION.autocommit=0 e INSERT non venivano riconosciuti dal tracciamento testuale; START TRANSACTION READ ONLY confermava implicitamente il lavoro precedente. Il DDL poteva invece lasciare un falso stato di transazione aperta.",
+      "scenario": "SET @@SESSION.autocommit=0 e INSERT non venivano riconosciuti dal tracciamento testuale; START TRANSACTION READ ONLY confermava implicitamente il lavoro precedente. Il DDL poteva invece lasciare un falso stato di transazione aperta.",
+      "fix": "Stato ricavato dai flag OK/EOF del server, anche dopo DDL riuscito o fallito; il controllo precede qualsiasi lettura protetta.",
+      "verifica": "e2e-query-audit: autocommit qualificato, DDL con commit implicito ed errore DDL; mutazioni stato_mysql e stato_select.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q02",
+      "severita": "media",
+      "titolo": "COMMIT PostgreSQL fallito lasciava la sessione in uno stato errato",
+      "categoria": "SQL/MQL",
+      "modulo": "db/PostgreSqlStrategy.js",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:982"
+      ],
+      "problema": "Un vincolo differito che fallisce al COMMIT chiude la transazione sul server, mentre CodeDB continuava a rifiutare le letture protette. SET TRANSACTION READ WRITE non aggiornava la modalità locale.",
+      "scenario": "Un vincolo differito che fallisce al COMMIT chiude la transazione sul server, mentre CodeDB continuava a rifiutare le letture protette. SET TRANSACTION READ WRITE non aggiornava la modalità locale.",
+      "fix": "ReadyForQuery/getTransactionStatus e transaction_read_only riallineano lo stato effettivo; il lease viene liberato anche se il controllo fallisce.",
+      "verifica": "e2e-query-audit: vincolo UNIQUE DEFERRABLE e cambio READ ONLY→READ WRITE; mutazione stato_pg.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q03",
+      "severita": "media",
+      "titolo": "Una colonna affectedRows veniva scambiata per un risultato di scrittura",
+      "categoria": "SQL/MQL",
+      "modulo": "db/MySqlStrategy.js",
+      "riferimenti": [
+        "db/MySqlStrategy.js:911"
+      ],
+      "problema": "SELECT 7 AS affectedRows restituiva un riepilogo di sette righe modificate anziché il dato richiesto.",
+      "scenario": "SELECT 7 AS affectedRows restituiva un riepilogo di sette righe modificate anziché il dato richiesto.",
+      "fix": "Distinzione dei result set attraverso la struttura dei metadati del driver, senza interpretare i nomi delle colonne.",
+      "verifica": "e2e-query-audit: SELECT e UNION ALL con affectedRows, insertId e serverStatus; mutazione colonne.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q04",
+      "severita": "media",
+      "titolo": "Il testo virtualJoin deviava normali query SQL e MQL",
+      "categoria": "SQL/MQL",
+      "modulo": "server/query.js",
+      "riferimenti": [
+        "server/query.js:343"
+      ],
+      "problema": "Una stringa SQL contenente \"virtualJoin\" o un normale filtro con quel campo veniva interpretato come specifica Cross-DB.",
+      "scenario": "Una stringa SQL contenente \"virtualJoin\" o un normale filtro con quel campo veniva interpretato come specifica Cross-DB.",
+      "fix": "Cross-DB esplicito oppure riconoscimento strutturale di un documento completo in modalità auto; i motori espliciti mantengono il loro significato.",
+      "verifica": "e2e-query-audit: SQL, filtro, shell, pipeline, JOIN automatico ed esplicito reali; mutazioni instradamento e join_auto.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q05",
+      "severita": "alta",
+      "titolo": "USE poteva lasciare un bersaglio errato dopo un errore",
+      "categoria": "SQL/MQL",
+      "modulo": "server/query.js",
+      "riferimenti": [
+        "server/query.js:429"
+      ],
+      "problema": "USE seguito da testo non valido cambiava currentDb prima della verifica. USE con commenti riusciva sul server senza aggiornare il bersaglio dell'editor o dello script.",
+      "scenario": "USE seguito da testo non valido cambiava currentDb prima della verifica. USE con commenti riusciva sul server senza aggiornare il bersaglio dell'editor o dello script.",
+      "fix": "Lo stato cambia solo dopo l'esecuzione riuscita; il database effettivo viene letto dai metadati MySQL. Eliminato il cambio anticipato per prefisso.",
+      "verifica": "e2e-query-audit ed e2e-sql-native-sessioni: commenti, ritorno al database iniziale e batch rifiutato senza modifica del bersaglio; mutazioni bersaglio, use_fallito e database_cache.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q06",
+      "severita": "media",
+      "titolo": "I comandi interni MySQL alteravano conteggi e avvisi",
+      "categoria": "SQL/MQL",
+      "modulo": "db/mysqlSessioneNativa.js",
+      "riferimenti": [
+        "db/mysqlSessioneNativa.js:1"
+      ],
+      "problema": "USE/SET e SELECT CONNECTION_ID anteposti alle query sostituivano la diagnostica della query precedente; ROW_COUNT e SHOW WARNINGS non descrivevano il comando dell'utente.",
+      "scenario": "USE/SET e SELECT CONNECTION_ID anteposti alle query sostituivano la diagnostica della query precedente; ROW_COUNT e SHOW WARNINGS non descrivevano il comando dell'utente.",
+      "fix": "Osservazione del protocollo, threadId già noto e preparazione del database solo quando necessario; nessun comando SQL aggiuntivo dopo un risultato ordinario.",
+      "verifica": "e2e-query-audit: ROW_COUNT=2, FOUND_ROWS, warning 1292 ed errore 1054 conservati; mutazione diagnostica.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q07",
+      "severita": "alta",
+      "titolo": "Gli script MQL elaboravano letture parziali come complete",
+      "categoria": "SQL/MQL",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:486",
+        "db/MongoScriptRunner.js:363"
+      ],
+      "problema": "find senza limit ereditava la pagina da 50 righe; i flag truncated venivano ignorati. Un conteggio scaduto diventava zero. Il risultato poteva alimentare scritture successive.",
+      "scenario": "find senza limit ereditava la pagina da 50 righe; i flag truncated venivano ignorati. Un conteggio scaduto diventava zero. Il risultato poteva alimentare scritture successive.",
+      "fix": "Limite esplicito con riga sentinella, errore di budget non catturabile per troncamenti di righe/byte e conteggio sconosciuto segnalato. Il budget di chiamate si applica centralmente a tutti i metodi host, compresi DDL, indici ed explain.",
+      "verifica": "101 e 10001 documenti MongoDB reali; nessuna scrittura dopo lettura parziale; unitari per byte, timeout e quota DDL; mutazioni lettura, budget, byte, conteggio e quota_host.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q08",
+      "severita": "media",
+      "titolo": "Campi BSON ordinari collidevano con marcatori dell'interprete",
+      "categoria": "SQL/MQL",
+      "modulo": "db/mongoScriptValori.js",
+      "riferimenti": [
+        "db/mongoScriptValori.js:1"
+      ],
+      "problema": "Campi __host, __funzione, __chiamabile o __bson venivano scambiati per valori dell'ambiente, bloccando o reinterpretando documenti legittimi.",
+      "scenario": "Campi __host, __funzione, __chiamabile o __bson venivano scambiati per valori dell'ambiente, bloccando o reinterpretando documenti legittimi.",
+      "fix": "Marcatori Symbol non producibili dal testo; copia dei campi con proprietà proprie, senza assegnamenti al prototipo.",
+      "verifica": "Inserimento e rilettura MongoDB dei campi omonimi, round trip JSON con __proto__ e suite sandbox; mutazione marcatori.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q09",
+      "severita": "alta",
+      "titolo": "Gli escape Unicode ed esadecimali modificavano i dati MQL",
+      "categoria": "SQL/MQL",
+      "modulo": "db/mongoStringhe.js",
+      "riferimenti": [
+        "db/mongoStringhe.js:1"
+      ],
+      "problema": "Shell e script trasformavano \\u00e8 e \\x41 nel testo u00e8 e x41, causando filtri e valori diversi da quelli scritti.",
+      "scenario": "Shell e script trasformavano \\u00e8 e \\x41 nel testo u00e8 e x41, causando filtri e valori diversi da quelli scritti.",
+      "fix": "Decodifica condivisa di Unicode, code point, esadecimali, continuazioni di riga ed escape semplici; rifiuto degli escape non validi.",
+      "verifica": "Filtri e INSERT reali con caffè, A ed emoji; template, coppie surrogate e continuazioni nei test; mutazione escape.",
+      "fonti": [],
+      "stato": "risolto"
+    },
+    {
+      "id": "CDB-Q10",
+      "severita": "media",
+      "titolo": "I cursori MQL non mantenevano la posizione di consumo",
+      "categoria": "SQL/MQL",
+      "modulo": "db/MongoScriptRunner.js",
+      "riferimenti": [
+        "db/MongoScriptRunner.js:256"
+      ],
+      "problema": "toArray e itcount rileggevano i valori già consumati, hasNext non progrediva e count dipendeva dal limite materializzato. Mancava next; il risultato del cursore e di explain nello script poteva mostrare la lettura sottostante.",
+      "scenario": "toArray e itcount rileggevano i valori già consumati, hasNext non progrediva e count dipendeva dal limite materializzato. Mancava next; il risultato del cursore e di explain nello script poteva mostrare la lettura sottostante.",
+      "fix": "Posizione condivisa fra next/tryNext/toArray/forEach/map/for…of/itcount, count distinto dal consumo e applicazione esplicita di skip/limit; risultato aggiornato nell'interprete.",
+      "verifica": "Cursori reali con next, esaurimento, break, count(true), risultato singolo ed explain; mutazioni cursore e risultato_cursore.",
+      "fonti": [],
+      "stato": "risolto"
+    }
+  ],
+  "priorita_intervento": [],
+  "verifiche": {
+    "motori": {
+      "postgresql": "18.6",
+      "mysql": "8.4.11",
+      "mongodb": "8.0.29"
+    },
+    "regressioni_reali_nuove": 15,
+    "regressioni_sessione": 12,
+    "istruzioni_native": 117,
+    "matrici_precedenti": {
+      "mongodb": 993,
+      "confronti_postgresql": 715,
+      "confronti_mysql": 319
+    },
+    "varianti_aggiuntive": {
+      "mongodb": 73,
+      "postgresql": 35,
+      "mysql": 52
+    },
+    "mutazioni_nuove": 18,
+    "mutazioni_storiche_aggiornate": 2,
+    "failover_reali": 18,
+    "failover_topologia": "Tre container sullo stesso host; arresto del primario ed elezione, nessuna prova multi-host",
+    "report": "test-reports/query-languages/quality-audit-completo.md"
+  },
+  "fonti_tecniche": [
+    "https://node-postgres.com/apis/client",
+    "https://www.mongodb.com/docs/v7.0/reference/method/cursor.count/",
+    "https://www.mongodb.com/docs/v8.0/reference/method/cursor.toarray/"
+  ],
+  "note_revisione": "Corretti anche due test storici superati: ALTER TABLE SQL→MongoDB ora supportato e DATETIME nativo conservato come testo con microsecondi. Le fixture non toccano il vault o i database dell'utente. Rimossi i cinque container di test dopo verifica delle etichette; nessun residuo del progetto codedb-sql-test. Lo stack SQL persistente resta attivo e sano."
+}

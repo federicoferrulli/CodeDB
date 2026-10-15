@@ -1,0 +1,41 @@
+  OK   MQL insertMany
+  OK   MQL updateOne sort: solo la riga scelta
+  OK   Opzioni della scrittura non possono nascondere OLD/NEW
+  OK   MQL updateMany senza modifiche
+  OK   MQL pipeline e variabili let
+  OK   findOneAndReplace: OLD e trigger
+  OK   findOneAndUpdate: OLD proiettato e sort
+  OK   findOneAndUpdate upsert: identità anche con OLD null
+  OK   findOneAndUpdate upsert con metadati
+  OK   Upsert con identità BSON null
+  OK   Eliminazione con identità BSON null
+  OK   replaceOne con upsert
+  OK   Griglia: inserimento BSON esatto
+  OK   Griglia: modifica
+  OK   Griglia: sostituzione
+  OK   MCP: aggiornamento di massa
+  OK   Import EJSON: upsert ripetuti conservano ogni OLD/NEW
+  OK   Import BSON: upsert ripetuti conservano ogni OLD/NEW
+  OK   Import BSON: inserimento
+  OK   Griglia: elimina
+  OK   MQL deleteOne
+  OK   MQL findOneAndDelete sort
+  OK   MQL deleteMany
+  OK   MQL nessuna corrispondenza: nessun evento
+  OK   Trigger MQL rispetta gli scope
+  OK   Trigger fallito annulla updateMany e tutti gli audit
+  OK   Trigger fallito annulla import BSON e tutti gli audit
+  OK   Eliminazione di massa della griglia
+AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+10 !== 11
+
+    at C:\repository\CodeDB\test\e2e-sql-mongo-eventi.js:101:10
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 10,
+  expected: 11,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

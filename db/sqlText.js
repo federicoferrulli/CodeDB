@@ -78,7 +78,18 @@ function literalConEscape(s, i, backslashEscape) {
  * una parola chiave: `SELECT "update" FROM t` è una lettura, e senza questa
  * sostituzione verrebbe scambiata per una scrittura.
  */
-function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false } = {}) {
+function fineCommentoBlocco(s, i, annidati) {
+  i += 2;
+  let profondita = 1;
+  while (i < s.length && profondita) {
+    if (annidati && s.slice(i, i + 2) === '/*') { profondita++; i += 2; }
+    else if (s.slice(i, i + 2) === '*/') { profondita--; i += 2; }
+    else i++;
+  }
+  return i;
+}
+
+function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false, dbms = '' } = {}) {
   const s = String(sql == null ? '' : sql);
   let out = '';
   let i = 0;
@@ -87,12 +98,10 @@ function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false }
     const c = s[i];
     const next = s[i + 1];
 
-    if (c === '-' && next === '-') { while (i < s.length && s[i] !== '\n') i++; out += ' '; continue; }
-    if (c === '#') { while (i < s.length && s[i] !== '\n') i++; out += ' '; continue; }
+    if (c === '-' && next === '-' && (dbms !== 'mysql' || !s[i + 2] || /\s/.test(s[i + 2]))) { while (i < s.length && s[i] !== '\n') i++; out += ' '; continue; }
+    if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') { while (i < s.length && s[i] !== '\n') i++; out += ' '; continue; }
     if (c === '/' && next === '*') {
-      i += 2;
-      while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++;
-      i += 2;
+      i = fineCommentoBlocco(s, i, dbms === 'postgresql');
       out += ' ';
       continue;
     }
@@ -161,11 +170,13 @@ function stripSqlNoise(sql, { keepIdentifiers = false, backslashEscape = false }
  *   `start`/`end` = offset nel sorgente; `line` = riga 1-based del primo
  *   carattere non bianco (serve a puntare l'errore nell'editor).
  */
-function splitStatementsDetailed(sql, { backslashEscape = false } = {}) {
+function splitStatementsDetailed(sql, { backslashEscape = false, dbms = '' } = {}) {
+  let blocchi = require('../public/js/sql-blocchi.mjs').blocchiSql();
   const s = String(sql == null ? '' : sql);
   const out = [];
   let i = 0;
   let stmtStart = 0;
+  let delimitatore = ';', haCodice = false;
 
   // Riga del carattere `pos` (1-based).
   //
@@ -201,16 +212,26 @@ function splitStatementsDetailed(sql, { backslashEscape = false } = {}) {
     const c = s[i];
     const next = s[i + 1];
 
-    if (c === '-' && next === '-') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '#') { while (i < s.length && s[i] !== '\n') i++; continue; }
-    if (c === '/' && next === '*') {
-      i += 2;
-      while (i < s.length && !(s[i] === '*' && s[i + 1] === '/')) i++;
-      i += 2;
+    if (dbms === 'mysql' && !haCodice && (i === 0 || s[i - 1] === '\n')) {
+      const direttiva = /^[ \t]*DELIMITER[ \t]+(\S+)[ \t]*(?:\r?\n|$)/i.exec(s.slice(i));
+      if (direttiva) { delimitatore = direttiva[1]; i += direttiva[0].length; stmtStart = i; continue; }
+    }
+    if (delimitatore !== ';' && s.startsWith(delimitatore, i)) {
+      push(i); i += delimitatore.length; stmtStart = i; haCodice = false;
+      blocchi = require('../public/js/sql-blocchi.mjs').blocchiSql();
       continue;
     }
 
-    if (c === '$') {
+    if (c === '-' && next === '-' && (dbms !== 'mysql' || !s[i + 2] || /\s/.test(s[i + 2]))) { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '#' && dbms !== 'postgresql' && next !== '>' && next !== '-') { while (i < s.length && s[i] !== '\n') i++; continue; }
+    if (c === '/' && next === '*') {
+      if (s[i + 2] === '!') haCodice = true;
+      i = fineCommentoBlocco(s, i, dbms === 'postgresql');
+      continue;
+    }
+    if (!/\s/.test(c)) haCodice = true;
+
+    if (c === '$' && dbms !== 'mysql') {
       const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(s.slice(i));
       if (m) {
         const tag = m[0];
@@ -229,16 +250,23 @@ function splitStatementsDetailed(sql, { backslashEscape = false } = {}) {
       const close = c === '[' ? ']' : c;
       i++;
       while (i < s.length) {
+        if (c === '"' && backslashEscape && s[i] === '\\') { i += 2; continue; }
         if (s[i] === close) { if (s[i + 1] === close) { i += 2; continue; } i++; break; }
         i++;
       }
       continue;
     }
 
-    if (c === ';') {
+    if (/[A-Za-z_]/.test(c)) {
+      let token = /^[A-Za-z_][A-Za-z0-9_$]*/.exec(s.slice(i))[0];
+      if (delimitatore !== ';' && token.includes(delimitatore)) token = token.slice(0, token.indexOf(delimitatore));
+      blocchi.parola(token); i += token.length; continue;
+    }
+    if (c === ';' && delimitatore === ';' && blocchi.separa()) {
       push(i);
       i++;
       stmtStart = i;
+      haCodice = false;
       continue;
     }
 
