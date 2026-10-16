@@ -18,16 +18,17 @@ ai database, tunnel SSH, backup e processi mongosh.
 Aprire [storedeveloper.microsoft.com](https://storedeveloper.microsoft.com/) e
 completare registrazione e verifica dell'identità. Il nuovo percorso offre
 registrazione gratuita; scegliere il tipo di account appropriato all'attività.
-Riservare il nome **CodeDB** e aprire la pagina **Identità prodotto**.
+Il nome riservato è **CodeDB Database Manager**. In Partner Center, aprire
+**Gestione prodotto → Identità prodotto** per consultare i valori assegnati.
 
 Creare l'environment GitHub **microsoft-store** e queste **Variables**, non Secrets:
 
 | Variabile | Valore |
 | --- | --- |
-| `MICROSOFT_STORE_IDENTITY_NAME` | `Package/Identity/Name`, copiato esattamente |
-| `MICROSOFT_STORE_PUBLISHER` | `Package/Identity/Publisher`, compreso `CN=` |
-| `MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME` | Nome visualizzato dell'editore registrato |
-| `MICROSOFT_STORE_VERSION` | Versione numerica crescente, per esempio `1.0.0.0` |
+| `MICROSOFT_STORE_IDENTITY_NAME` | `Keus.CodeDBManager` |
+| `MICROSOFT_STORE_PUBLISHER` | `CN=60BDE555-366B-4374-9514-5F0B9271A94A` |
+| `MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME` | `Keus` |
+| `MICROSOFT_STORE_VERSION` | `1.0.0.0` per il primo invio; incrementare per i successivi |
 
 Nessun certificato, password o token Store serve alla compilazione. La versione
 del pacchetto Store è indipendente dalla SemVer di CodeDB: il primo intero deve
@@ -128,8 +129,8 @@ rimuovendo temporaneamente il controllo Store e osservando il fallimento atteso.
 Le release GitHub esistenti sono rimaste invariate.
 
 Non sono stati provati un aggiornamento completo fra due versioni installate,
-connessioni a database reali o Windows ARM64. Identità definitiva, certificazione,
-firma Microsoft e aggiornamenti dal vero Store richiedono l'account e un invio
+connessioni a database reali o Windows ARM64. Certificazione,
+firma Microsoft e aggiornamenti dal vero Store richiedono un invio
 successivo a Partner Center; l'AppX di prova non è un pacchetto da inviare.
 
 ## Riferimenti
