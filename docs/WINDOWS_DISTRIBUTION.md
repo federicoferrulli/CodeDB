@@ -88,6 +88,9 @@ L'EXE indipendente rimane utilizzabile senza Store. Con `CODEDB_WINDOWS_SIGNING=
 Windows può mostrare editore sconosciuto e avvisi SmartScreen. Il feed resta HTTPS,
 con verifica dei digest dei download; senza certificato manca la verifica dell'editore.
 Non viene disabilitata la verifica Authenticode delle distribuzioni firmate.
+I criteri di controllo applicazioni possono anche impedirne l'avvio: nel collaudo
+locale del 16 ottobre 2026 Device Guard ha bloccato l'EXE non firmato. Lo stesso
+pacchetto si avvia sul runner; non sono stati modificati i criteri del PC.
 
 `windows-indipendente` contiene installer, blockmap, metadati di aggiornamento e
 SHA256SUMS. La pubblicazione rimane una fase distinta: per gli aggiornamenti GitHub
@@ -108,6 +111,26 @@ Non vengono copiati o cancellati
 connessioni, password e backup durante il passaggio. Per migrare un profilo,
 chiudere entrambe le app ed esportare/importare esplicitamente i dati desiderati;
 conservare insieme file connessioni, cartella connessioni e vault, con la passphrase.
+
+## Verifica del 16 ottobre 2026
+
+La [pipeline Windows 38910297175](https://github.com/federicoferrulli/CodeDB/actions/runs/38910297175)
+è riuscita sul codice `1b6a61a`, Windows Server 2022 x64. Ha costruito NSIS e AppX,
+avviato entrambi i contenuti, installato e attivato l'AppX con identità Windows reale,
+caricato Kerberos/CSFLE e verificato scrittura/rilettura cifrata del vault nel profilo
+di prova. Per installare AppX sul runner serve Windows PowerShell 5.1: il modulo
+Appx di Server 2022 non si carica in PowerShell 7.
+
+Sono disponibili gli artefatti `windows-indipendente` e `windows-store-prova`,
+conservati per 14 giorni. Sono passati anche `npm test` locale, `test:release` e
+actionlint; la sensibilità del test che separa gli aggiornamenti è stata verificata
+rimuovendo temporaneamente il controllo Store e osservando il fallimento atteso.
+Le release GitHub esistenti sono rimaste invariate.
+
+Non sono stati provati un aggiornamento completo fra due versioni installate,
+connessioni a database reali o Windows ARM64. Identità definitiva, certificazione,
+firma Microsoft e aggiornamenti dal vero Store richiedono l'account e un invio
+successivo a Partner Center; l'AppX di prova non è un pacchetto da inviare.
 
 ## Riferimenti
 
