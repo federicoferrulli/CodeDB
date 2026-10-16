@@ -325,6 +325,7 @@ function segnaVista() {
 
 function apriBenvenuto() {
   apriModale(`
+    <div class="onb-benvenuto">
     <div class="onb-hero">
       <i data-lucide="database-zap"></i>
       <h2>Benvenuto in CodeDB</h2>
@@ -348,6 +349,7 @@ function apriBenvenuto() {
         <span class="onb-scelta-titolo">Esploro da solo</span>
         <span class="onb-scelta-nota">Riapri la guida dal menu Impostazioni quando ti serve.</span>
       </button>
+    </div>
     </div>
   `);
 }

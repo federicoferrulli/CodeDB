@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="codedb_background">#ffffff</color>
+    <style name="CodeDBBase" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/codedb_background</item>
+        <item name="android:colorAccent">#585aee</item>
+    </style>
+    <style name="CodeDBTheme" parent="CodeDBBase" />
+</resources>

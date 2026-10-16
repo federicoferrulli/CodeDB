@@ -399,6 +399,10 @@
 .modal-header h2 { margin-bottom: 0; }
 /* Guida: il percorso reale fa da orientamento, il tour è l'unica azione in evidenza. */
 .onboarding-modal:has(.onb-hub) { padding: 0; overflow: auto; }
+.onb-benvenuto .onb-scelta { min-height: 76px; height: auto; padding: var(--space-md); }
+.onb-benvenuto .onb-scelta.primaria { background: var(--accent); color: var(--on-accent); border-color: transparent; }
+.onb-benvenuto .onb-scelta.primaria :is(svg, .onb-scelta-nota) { color: inherit; }
+.onb-benvenuto .onb-scelta.primaria:hover { background: var(--accent-2); box-shadow: none; }
 .onboarding-modal:has(.onb-hub) > .onb-chiudi-modale { top: var(--space-lg); right: var(--space-lg); width: 32px; height: 32px; display: grid; place-items: center; }
 .onb-hub { padding: var(--space-xl); }
 .onb-hub-head { padding-right: var(--space-2xl); }
@@ -448,6 +452,11 @@
   #onboarding-overlay .arc-dialog-sheet[data-fit-content] .arc-panel-slot { display: block; flex: none; }
   #onboarding-overlay .arc-dialog-sheet[data-fit-content] .onboarding-modal { height: auto !important; max-height: none !important; overflow: visible; flex: none; }
   .arc-dialog-sheet .onboarding-modal:has(.onb-hub) > .onb-chiudi-modale { display: none; }
+  .arc-dialog-sheet .onboarding-modal:has(.onb-benvenuto) > .onb-chiudi-modale { display: none; }
+  .onb-benvenuto .onb-hero { text-align: left; padding: 0; }
+  .onb-benvenuto .onb-hero > :is(i, svg) { display: none; }
+  .onb-benvenuto .onb-hero p { max-width: none; font-size: var(--text-sm); }
+  .onb-benvenuto .onb-scelte { margin-top: var(--space-lg); }
   .onb-hub { padding: var(--space-lg); }
   .onb-hub-head { padding-right: 0; }
   .onb-hub-journey { margin-block: var(--space-lg); }
@@ -1742,6 +1751,7 @@ body:has(#workspace.split-active) .workspace-head .view-tabs { display: none; }
 #query-schema-tree { padding: 0 9px 12px; font-family: var(--font-sans); }
 #query-schema-tree .schema-node { margin: 2px 0; }
 #query-schema-tree .schema-node-label { min-height: 30px; padding: 6px 7px; border-radius: var(--radius-control); gap: 7px; }
+#query-schema-tree .schema-node-label { touch-action: manipulation; }
 #query-schema-tree .schema-node-label > span:first-child { display: inline-flex; align-items: center; gap: 7px; min-width: 0; overflow-wrap: anywhere; }
 #query-schema-tree .schema-node-label svg { width: 14px; height: 14px; flex: none; color: var(--text-secondary); }
 #query-schema-tree .schema-node-label strong { font-size: 12px; font-weight: 500; }

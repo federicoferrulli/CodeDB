@@ -1,0 +1,18 @@
+OK benvenuto mobile: descrizioni larghe e allineate
+OK temi chiaro/scuro/personalizzato/automatico e segnale di interfaccia pronta
+Errori browser: []
+AssertionError [ERR_ASSERTION]: Nessun doppione dal dblclick sintetizzato dalla WebView
++ actual - expected
+
++ 'SELECT * FROM "Ordini""Ordini"'
+- 'SELECT * FROM "Ordini"'
+                         ^
+
+    at C:\repository\CodeDB\test\e2e-mobile-shell.js:109:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'SELECT * FROM "Ordini""Ordini"',
+  expected: 'SELECT * FROM "Ordini"',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

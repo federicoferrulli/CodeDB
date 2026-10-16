@@ -1,0 +1,16 @@
+OK benvenuto mobile: descrizioni larghe e allineate
+OK temi chiaro/scuro/personalizzato/automatico e segnale di interfaccia pronta
+OK doppio tocco su tabelle e campi: quoting, toast, stato modificato e nessun duplicato
+Errori browser: []
+AssertionError [ERR_ASSERTION]: Swipe verso sinistra chiude lo schema
+
+1 !== 0
+
+    at C:\repository\CodeDB\test\e2e-mobile-shell.js:136:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 1,
+  expected: 0,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

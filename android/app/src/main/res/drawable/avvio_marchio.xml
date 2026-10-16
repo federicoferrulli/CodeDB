@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lo stesso simbolo geometrico della scena nativa, dentro l'area sicura Android. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="288dp" android:height="288dp"
+    android:viewportWidth="288" android:viewportHeight="288">
+    <path android:strokeColor="#665EF2" android:strokeWidth="1.5" android:strokeAlpha="0.25"
+        android:pathData="M52,180 C24,147 192,60 233,103 C270,142 101,222 52,180" />
+    <path android:fillColor="#252541" android:strokeColor="#7776F6" android:strokeWidth="2"
+        android:pathData="M87,154 L87,174 C87,195 201,195 201,174 L201,154 Z" />
+    <path android:fillColor="#35345C" android:strokeColor="#7776F6" android:strokeWidth="2"
+        android:pathData="M87,154 C87,134 201,134 201,154 C201,174 87,174 87,154" />
+    <path android:fillColor="#252541" android:strokeColor="#7776F6" android:strokeWidth="2"
+        android:pathData="M87,126 L87,146 C87,167 201,167 201,146 L201,126 Z" />
+    <path android:fillColor="#35345C" android:strokeColor="#7776F6" android:strokeWidth="2"
+        android:pathData="M87,126 C87,106 201,106 201,126 C201,146 87,146 87,126" />
+    <path android:fillColor="#252541" android:strokeColor="#7776F6" android:strokeWidth="2"
+        android:pathData="M87,98 L87,118 C87,139 201,139 201,118 L201,98 Z" />
+    <path android:fillColor="#35345C" android:strokeColor="#67C3E9" android:strokeWidth="2"
+        android:pathData="M87,98 C87,78 201,78 201,98 C201,118 87,118 87,98" />
+    <path android:fillColor="#67C3E9" android:pathData="M61,171 A3,3 0,1 0,67 171 A3,3 0,1 0,61 171 M219,111 A3,3 0,1 0,225 111 A3,3 0,1 0,219 111" />
+</vector>

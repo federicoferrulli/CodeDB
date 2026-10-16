@@ -1,0 +1,10 @@
+Errori browser: []
+AssertionError [ERR_ASSERTION]: Descrizioni del benvenuto leggibili nella colonna del titolo: [{"note":28,"title":290,"aligned":false},{"note":28,"title":290,"aligned":false},{"note":28,"title":290,"aligned":false}]
+    at C:\repository\CodeDB\test\e2e-mobile-shell.js:34:5 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}

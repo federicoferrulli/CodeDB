@@ -117,6 +117,16 @@ export function applicaTema(id) {
   // I moduli che disegnano su canvas (grafici, grafo 3D, mappe) non ereditano
   // nulla dal CSS: si ridisegnano quando sentono questo evento.
   document.dispatchEvent(new CustomEvent('codedb:tema', { detail: { id, base } }));
+  sincronizzaCornice(id);
+}
+
+function sincronizzaCornice(id, anteprima = false) {
+  const css = getComputedStyle(document.documentElement);
+  const background = css.getPropertyValue('--bg-surface').trim();
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', background);
+  window.CodeDBShell?.postMessage(JSON.stringify({ op: 'theme', background,
+    foreground: css.getPropertyValue('--fg').trim(), accent: css.getPropertyValue('--accent').trim(),
+    automatic: id === 'auto', persist: !anteprima }));
 }
 
 function iniettaCss(css) {
@@ -518,6 +528,7 @@ function applicaAnteprima() {
   iniettaCss(cssDelTema(inModifica));
   document.dispatchEvent(new CustomEvent('codedb:tema',
     { detail: { id: inModifica.id, base: inModifica.base } }));
+  sincronizzaCornice(inModifica.id, true);
 }
 
 /** `subito`: per i gesti singoli (apertura, cambio base, ripristino), dove non

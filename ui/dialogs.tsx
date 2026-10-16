@@ -98,7 +98,7 @@ function Finestra({ open, panel, overlay, dismiss, restoreFocus, onExitComplete 
   const onOpenChange = (value: boolean) => { if (!value) dismiss(); };
   return mobile
     ? <BottomSheet open={open} onOpenChange={onOpenChange} onExitComplete={onExitComplete} container={overlay} title={title}
-        fitContent={overlay.id === 'modal-health' || (overlay.id === 'onboarding-overlay' && !!panel.querySelector('.onb-hub'))}
+        fitContent={overlay.id === 'modal-health' || (overlay.id === 'onboarding-overlay' && !!panel.querySelector('.onb-hub, .onb-benvenuto'))}
         dismissible={!barriers.includes(overlay.id)} detents={[.7, .94]}
         initialDetent={['geomap-overlay', 'geomulti-overlay', 'modal-theme', 'modal-backup-manager', 'modal-sessions', 'modal-pending', 'session-query-overlay'].includes(overlay.id) || (window.visualViewport?.height ?? window.innerHeight) < 600 ? 1 : 0}
         className="arc-dialog-sheet" closeLabel="Chiudi finestra" {...events}>{children}</BottomSheet>

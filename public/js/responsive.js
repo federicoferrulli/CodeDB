@@ -116,6 +116,14 @@ export function toggleDrawer(sel) {
 }
 
 export function initResponsive() {
+  collegaGestiSchema();
+  // Android invia Indietro al livello aperto, usando gli stessi annullamenti di Escape.
+  window.__codedbBack = () => {
+    const layer = document.querySelector('.overlay:not(.hidden), .palette-overlay:not(.hidden), .arc-navigation-sheet, #query-schema-sidebar.open, #context-menu:not(.hidden), .toolbar-dropdown-menu:not(.hidden), [role="menu"][data-state="open"], [data-arc-select-popup], .ac-list:not(.hidden), .onb-fumetto, #fk-pannello[aria-hidden="false"]');
+    if (!layer) return false;
+    (document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true }));
+    return true;
+  };
   initViewport();
   $('#navigator').classList.toggle('collapsed', localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true');
   syncDrawers();
@@ -159,4 +167,43 @@ export function initResponsive() {
   mq.addEventListener('change', () => closeDrawers({ immediate: true }));
   // Su mobile lo split lascia il posto a una scheda singola.
   mq.addEventListener('change', notificaCambioLarghezza);
+}
+
+function collegaGestiSchema() {
+  const panel = $('#query-schema-sidebar');
+  let gesto = null;
+  const ripristina = () => {
+    gesto = null;
+    panel.style.removeProperty('transform');
+    panel.style.removeProperty('transition');
+  };
+  panel.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) { ripristina(); return; }
+    if (!mq.matches || !panel.classList.contains('open') || e.pointerType !== 'touch'
+        || e.target.closest('button, input, textarea, select, a, [contenteditable]')) return;
+    gesto = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, attivo: false };
+  });
+  panel.addEventListener('pointermove', e => {
+    if (!gesto || e.pointerId !== gesto.id) return;
+    const dx = e.clientX - gesto.x, dy = e.clientY - gesto.y;
+    if (!gesto.attivo) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) { ripristina(); return; }
+      if (dx >= -10 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+      gesto.attivo = true;
+      panel.setPointerCapture(e.pointerId);
+      panel.style.transition = 'none';
+    }
+    gesto.dx = Math.min(0, dx);
+    panel.style.transform = `translateX(${gesto.dx}px)`;
+  });
+  panel.addEventListener('pointerup', e => {
+    if (!gesto || e.pointerId !== gesto.id) return;
+    const chiudi = gesto.dx < -Math.min(96, panel.clientWidth * .25);
+    ripristina();
+    if (panel.hasPointerCapture(e.pointerId)) panel.releasePointerCapture(e.pointerId);
+    if (chiudi) closeDrawers({ restoreFocus: true });
+  });
+  panel.addEventListener('pointercancel', ripristina);
+  panel.addEventListener('lostpointercapture', e => { if (e.target === panel) ripristina(); });
+  mq.addEventListener('change', ripristina);
 }

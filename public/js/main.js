@@ -270,3 +270,5 @@ if (contestoIncorporato) {
     startWatch();
   }
 }
+
+if (!contestoIncorporato) window.CodeDBShell?.postMessage(JSON.stringify({ op: 'ready' }));

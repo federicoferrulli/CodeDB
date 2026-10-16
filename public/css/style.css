@@ -7468,7 +7468,7 @@ button.linklike:hover {
 
 .onb-scelta {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 28px minmax(0, 1fr);
   grid-template-rows: auto auto;
   align-items: center;
   gap: 2px var(--space-md);
@@ -7485,10 +7485,10 @@ button.linklike:hover {
 .onb-scelta:hover { background: var(--bg-4); border-color: var(--border-3); }
 .onb-scelta.primaria { border-color: var(--accent); }
 .onb-scelta.primaria:hover { box-shadow: var(--shadow-glow-indigo); }
-.onb-scelta i { grid-row: 1 / span 2; width: 20px; height: 20px; color: var(--accent-hover); }
-.onb-scelte.orizzontali .onb-scelta i { grid-row: 1; }
-.onb-scelta-titolo { font-weight: 600; font-size: 0.88rem; }
-.onb-scelta-nota { font-size: 0.76rem; color: var(--fg-dim); }
+.onb-scelta :is(i, svg) { grid-column: 1; grid-row: 1 / span 2; width: 20px; height: 20px; color: var(--accent-fg); }
+.onb-scelte.orizzontali .onb-scelta :is(i, svg) { grid-row: 1; }
+.onb-scelta-titolo { grid-column: 2; min-width: 0; white-space: normal; font-weight: 600; font-size: 0.88rem; }
+.onb-scelta-nota { grid-column: 2; min-width: 0; white-space: normal; font-size: 0.81rem; line-height: 1.5; color: var(--fg-dim); }
 
 .onb-novita { margin-top: var(--space-md); max-height: 46vh; overflow-y: auto; }
 .onb-novita-blocco h3 { margin: 0 0 var(--space-xs); font-size: 0.85rem; color: var(--accent-hover); }

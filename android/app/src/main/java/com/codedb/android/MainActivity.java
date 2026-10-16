@@ -3,14 +3,19 @@ package com.codedb.android;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
+import android.graphics.Color;
+import android.os.Build;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Base64;
 import android.webkit.*;
-import android.widget.TextView;
 import android.widget.FrameLayout;
+import android.view.View;
+import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
@@ -35,17 +40,19 @@ public class MainActivity extends Activity {
     private final ExecutorService fileExecutor = Executors.newSingleThreadExecutor();
     private boolean saving;
     private JavaScriptReplyProxy saveReply;
-    private TextView status;
     private FrameLayout content;
+    private AvvioView splash;
+    private int surfaceColor;
+    private int launchTheme;
+    private boolean ready;
+    private final Runnable loadTimeout = () -> showStartupError("Il caricamento sta impiegando più del previsto. Riprova ad aprire l'interfaccia.");
     private boolean destroyed;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
-        // Le barre poggiano sulla superficie chiara del tema nativo, fuori dalla WebView.
-        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(true);
-        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightNavigationBars(true);
         content = new FrameLayout(this);
+        showSplash();
         // Il contenitore restringe anche le WebView precedenti al supporto CSS
         // degli inset. L'unione prende il massimo, senza sommare tastiera e barra.
         ViewCompat.setOnApplyWindowInsetsListener(content, (view, insets) -> {
@@ -57,22 +64,86 @@ public class MainActivity extends Activity {
             // nella WebView, e il CSS non applica una seconda volta gli inset.
             return new WindowInsetsCompat.Builder(insets).setInsets(types, Insets.NONE).build();
         });
-        status = new TextView(this);
-        status.setText("Avvio di CodeDB sul telefono…");
-        status.setTextSize(18);
-        status.setPadding(24, 64, 24, 24);
-        content.addView(status, new FrameLayout.LayoutParams(-1, -1));
         setContentView(content);
+        applyAppearance(surfaceColor);
+        if (Build.VERSION.SDK_INT >= 33) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
+        }
         Runtime.start(this);
         waitForServer();
     }
 
+    private void showSplash() {
+        SharedPreferences prefs = getSharedPreferences("appearance", MODE_PRIVATE);
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES;
+        boolean cached = !prefs.getBoolean("automatic", true) || prefs.getBoolean("systemDark", dark) == dark;
+        int background = cached ? prefs.getInt("background", dark ? 0xff1b1e25 : Color.WHITE) : dark ? 0xff1b1e25 : Color.WHITE;
+        int foreground = cached ? prefs.getInt("foreground", dark ? 0xffe2e8f0 : 0xff1f2937) : dark ? 0xffe2e8f0 : 0xff1f2937;
+        int accent = cached ? prefs.getInt("accent", 0xff585aee) : 0xff585aee;
+        splash = new AvvioView(this, background, foreground, accent, () -> {
+            if (web != null && web.getUrl() != null && Runtime.error == null) { armLoadTimeout(); web.reload(); }
+            else {
+                if (web != null) { content.removeView(web); web.destroy(); web = null; }
+                waitForServer();
+            }
+        });
+        content.addView(splash, new FrameLayout.LayoutParams(-1, -1));
+        surfaceColor = background;
+        rememberLaunchAppearance(prefs.getBoolean("automatic", true), background);
+    }
+
+    private void rememberLaunchAppearance(boolean automatic, int background) {
+        if (Build.VERSION.SDK_INT < 31) return;
+        // Android disegna lo starting window prima del processo: conserva il tema anche lì.
+        // I colori personalizzati esatti arrivano poi dalla scena nativa.
+        int theme = automatic ? R.style.CodeDBTheme : ColorUtils.calculateLuminance(background) > .179
+            ? R.style.CodeDBAvvioChiaro : R.style.CodeDBAvvioScuro;
+        if (theme == launchTheme) return;
+        getSplashScreen().setSplashScreenTheme(theme);
+        launchTheme = theme;
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // Android può riapplicare gli attributi del tema quando collega la finestra.
+        if (hasFocus && content != null) applyAppearance(surfaceColor);
+    }
+
+    private void applyAppearance(int background) {
+        surfaceColor = background;
+        content.setBackgroundColor(background);
+        if (splash != null) splash.setBackgroundColor(background);
+        if (web != null) web.setBackgroundColor(background);
+        boolean light = ColorUtils.calculateLuminance(background) > .179;
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightStatusBars(light);
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView()).setAppearanceLightNavigationBars(light);
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        // Prima di API 26 la barra di navigazione non supporta icone scure.
+        getWindow().setNavigationBarColor(Build.VERSION.SDK_INT < 26 && light ? Color.BLACK : Color.TRANSPARENT);
+        if (Build.VERSION.SDK_INT >= 29) {
+            getWindow().setStatusBarContrastEnforced(false);
+            getWindow().setNavigationBarContrastEnforced(false);
+        }
+    }
+
+    private void armLoadTimeout() {
+        handler.removeCallbacks(loadTimeout);
+        handler.postDelayed(loadTimeout, 30000);
+    }
+
+    private void showStartupError(String message) {
+        if (destroyed) return;
+        handler.removeCallbacks(loadTimeout);
+        splash.errore(message);
+    }
+
     private void waitForServer() {
         if (destroyed) return;
-        if (Runtime.error != null) { status.setText(Runtime.error); return; }
+        if (Runtime.error != null) { showStartupError(Runtime.error); return; }
         if (Runtime.url == null) { handler.postDelayed(this::waitForServer, 100); return; }
         try { open(); }
-        catch (Exception failure) { status.setText("Impossibile aprire CodeDB: " + failure.getMessage()); }
+        catch (Exception failure) { showStartupError("Impossibile aprire CodeDB: " + failure.getMessage()); }
     }
 
     private boolean local(Uri uri) {
@@ -85,7 +156,9 @@ public class MainActivity extends Activity {
             || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             throw new IOException("Aggiorna Android System WebView per usare CodeDB e salvare i file.");
         }
+        splash.caricamento("Apertura del tuo spazio…");
         web = new WebView(this);
+        web.setBackgroundColor(surfaceColor);
         web.getSettings().setJavaScriptEnabled(true);
         web.getSettings().setDomStorageEnabled(true);
         web.getSettings().setAllowFileAccess(false);
@@ -103,11 +176,44 @@ public class MainActivity extends Activity {
                 return true;
             }
             @Override public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
+                if (request.isForMainFrame() && !ready) { showStartupError("Impossibile caricare CodeDB: " + error.getDescription()); return; }
                 if (request.isForMainFrame()) new AlertDialog.Builder(MainActivity.this)
                     .setMessage("Connessione a CodeDB interrotta: " + error.getDescription())
                     .setPositiveButton("Riprova", (dialog, which) -> web.reload()).show();
             }
         });
+        WebViewCompat.addWebMessageListener(web, "CodeDBShell", Collections.singleton(Runtime.url),
+            (view, message, origin, mainFrame, reply) -> {
+                if (destroyed || !mainFrame || !local(origin)) return;
+                try {
+                    String raw = message.getData();
+                    if (raw == null || raw.length() > 1024) return;
+                    JSONObject command = new JSONObject(raw);
+                    if ("theme".equals(command.optString("op"))) {
+                        String bg = command.getString("background"), fg = command.getString("foreground"), accent = command.getString("accent");
+                        if (!bg.matches("#[0-9a-fA-F]{6}") || !fg.matches("#[0-9a-fA-F]{6}") || !accent.matches("#[0-9a-fA-F]{6}")) return;
+                        applyAppearance(Color.parseColor(bg));
+                        splash.palette(Color.parseColor(bg), Color.parseColor(fg), Color.parseColor(accent));
+                        if (command.optBoolean("persist")) {
+                            getSharedPreferences("appearance", MODE_PRIVATE).edit()
+                                .putInt("background", Color.parseColor(bg)).putInt("foreground", Color.parseColor(fg)).putInt("accent", Color.parseColor(accent))
+                                .putBoolean("automatic", command.optBoolean("automatic"))
+                                .putBoolean("systemDark", (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES).apply();
+                            rememberLaunchAppearance(command.optBoolean("automatic"), Color.parseColor(bg));
+                        }
+                    } else if ("ready".equals(command.optString("op"))) {
+                        // Il primo fotogramma completo sostituisce lo splash, senza lampi bianchi.
+                        view.postVisualStateCallback(0, new WebView.VisualStateCallback() {
+                            @Override public void onComplete(long requestId) {
+                                if (destroyed || ready) return;
+                                ready = true;
+                                handler.removeCallbacks(loadTimeout);
+                                splash.completa(() -> { if (!destroyed) content.removeView(splash); });
+                            }
+                        });
+                    }
+                } catch (Exception ignored) { /* Un messaggio malformato non modifica la cornice nativa. */ }
+            });
         web.setWebChromeClient(new WebChromeClient() {
             @Override public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
                 if (chooser != null) chooser.onReceiveValue(null);
@@ -189,10 +295,10 @@ public class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
         CookieManager.getInstance().setCookie(Runtime.url, "codedb_mobile=" + Runtime.secret + "; Path=/; HttpOnly; SameSite=Strict", accepted -> {
             if (destroyed) return;
-            if (!accepted) { status.setText("Impossibile inizializzare l'accesso privato a CodeDB."); return; }
-            content.removeAllViews();
-            content.addView(web, new FrameLayout.LayoutParams(-1, -1));
+            if (!accepted) { showStartupError("Impossibile inizializzare l'accesso privato a CodeDB."); return; }
+            content.addView(web, 0, new FrameLayout.LayoutParams(-1, -1));
             ViewCompat.requestApplyInsets(content);
+            armLoadTimeout();
             web.loadUrl(Runtime.url);
         });
     }
@@ -249,7 +355,14 @@ public class MainActivity extends Activity {
         download = null;
     }
     @Override public void onBackPressed() {
-        if (web != null && web.canGoBack()) web.goBack(); else moveTaskToBack(true);
+        handleBack();
+    }
+    private void handleBack() {
+        if (web == null || !ready) { moveTaskToBack(true); return; }
+        web.evaluateJavascript("window.__codedbBack?.() === true", handled -> {
+            if (destroyed || "true".equals(handled)) return;
+            if (web.canGoBack()) web.goBack(); else moveTaskToBack(true);
+        });
     }
     @Override protected void onDestroy() {
         destroyed = true;

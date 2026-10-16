@@ -265,16 +265,25 @@ export function initQueryTab() {
   const closeSchemaBtn = $('#query-schema-close');
   const schemaSidebar = $('#query-schema-sidebar');
   const schemaMobile = window.matchMedia('(max-width: 900px)');
-  const aggiornaSchemaEspanso = () => toggleSchemaBtn?.setAttribute('aria-expanded', String(
-    schemaMobile.matches ? schemaSidebar?.classList.contains('open') : !schemaSidebar?.classList.contains('collapsed')
-  ));
+  const aggiornaSchemaEspanso = () => {
+    toggleSchemaBtn?.setAttribute('aria-expanded', String(
+      schemaMobile.matches ? schemaSidebar?.classList.contains('open') : !schemaSidebar?.classList.contains('collapsed')
+    ));
+    const hint = schemaSidebar?.querySelector('.query-schema-hint');
+    if (hint) hint.textContent = schemaMobile.matches
+      ? 'Tocca due volte un nome per inserirlo nella query. Scorri a sinistra per chiudere.'
+      : 'Doppio clic per inserire un nome nell’editor.';
+  };
   schemaMobile.addEventListener('change', aggiornaSchemaEspanso);
   aggiornaSchemaEspanso();
 
   if (toggleSchemaBtn && schemaSidebar) {
     toggleSchemaBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (schemaMobile.matches) toggleDrawer('#query-schema-sidebar');
+      if (schemaMobile.matches) {
+        if (!schemaSidebar.classList.contains('open')) ricordaCursoreSchema();
+        toggleDrawer('#query-schema-sidebar');
+      }
       else schemaSidebar.classList.toggle('collapsed');
       aggiornaSchemaEspanso();
     });
@@ -1497,9 +1506,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
       e.dataTransfer.setData('text/plain', nomePerEditor(collName));
     });
 
-    collLabel.addEventListener('dblclick', () => {
-      insertTextInEditor(nomePerEditor(collName));
-    });
+    collegaInserimentoSchema(collLabel, collName);
 
     const fieldsContainer = document.createElement('div');
     fieldsContainer.className = 'schema-node-children hidden';
@@ -1525,9 +1532,7 @@ function renderSchemaTreeForDb(dbName, container, collections) {
           e.dataTransfer.setData('text/plain', nomePerEditor(fieldName));
         });
 
-        fieldLabel.addEventListener('dblclick', () => {
-          insertTextInEditor(nomePerEditor(fieldName));
-        });
+        collegaInserimentoSchema(fieldLabel, fieldName);
 
         fieldNode.appendChild(fieldLabel);
         fieldsContainer.appendChild(fieldNode);
@@ -1745,16 +1750,51 @@ function nomePerEditor(nome) {
   return quotaIdentificatore(nome, dbmsCorrente(scelto));
 }
 
-function insertTextInEditor(text) {
+let ultimoToccoSchema = null;
+let inserimentoTouchAlle = -Infinity;
+let cursoreSchema = null;
+
+function ricordaCursoreSchema() {
+  const input = $('#query-editor-input');
+  cursoreSchema = { codice: input.value, start: input.selectionStart, end: input.selectionEnd };
+}
+
+function collegaInserimentoSchema(label, nome) {
+  label.addEventListener('click', e => {
+    if (e.pointerType !== 'touch') return;
+    const precedente = ultimoToccoSchema;
+    ultimoToccoSchema = { label, tempo: e.timeStamp, x: e.clientX, y: e.clientY };
+    if (precedente?.label !== label || e.timeStamp - precedente.tempo > 400
+        || Math.hypot(e.clientX - precedente.x, e.clientY - precedente.y) > 24) return;
+    ultimoToccoSchema = null;
+    inserimentoTouchAlle = performance.now();
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    insertTextInEditor(nomePerEditor(nome), true);
+  });
+  label.addEventListener('dblclick', () => {
+    // Alcune WebView emettono anche dblclick dopo il secondo tocco.
+    if (performance.now() - inserimentoTouchAlle < 500) return;
+    insertTextInEditor(nomePerEditor(nome));
+  });
+}
+
+function insertTextInEditor(text, touch = false) {
   const input = $('#query-editor-input');
   if (!input) return;
-  const start = input.selectionStart || 0;
-  const end = input.selectionEnd || 0;
+  // Chrome touch può azzerare la selezione del textarea sfocato fra due tocchi.
+  const salvato = $('#query-schema-sidebar')?.classList.contains('open') && cursoreSchema?.codice === input.value;
+  const start = salvato ? cursoreSchema.start : input.selectionStart || 0;
+  const end = salvato ? cursoreSchema.end : input.selectionEnd || 0;
   const val = input.value;
   input.value = val.substring(0, start) + text + val.substring(end);
   input.selectionStart = input.selectionEnd = start + text.length;
-  input.focus();
-  updateEditorHighlight();
+  ricordaCursoreSchema();
+  const mobile = touch || window.matchMedia('(max-width: 900px)').matches;
+  // Nel drawer l'editor è coperto: aprire qui la tastiera nasconderebbe lo schema.
+  if (!mobile) input.focus();
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  if (mobile) toast(`Inserito «${text}» nella query.`);
 }
 
 // Il run appartiene al documento: due schede della stessa connessione possono eseguire insieme.

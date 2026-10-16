@@ -338,6 +338,7 @@ function agganciaMotore(campo, opts) {
   }
 
   function apri(forzato) {
+    if (document.activeElement !== campo) { chiudi(); return; }
     const cursore = campo.selectionStart ?? 0;
     const prefisso = /[\w$.]$/.test(campo.value.slice(0, cursore));
     // Senza niente di scritto il dropdown si apre SOLO su richiesta esplicita:

@@ -1,0 +1,125 @@
+{
+  "data": "2026-10-16",
+  "esito": "superato",
+  "interventi": [
+    "Swipe verso sinistra per chiudere lo schema, scorrimento verticale conservato e annullamento sicuro dei trascinamenti dei pannelli",
+    "Indietro Android chiude prima il livello aperto senza perdere il lavoro",
+    "Splash nativo animato: composizione del database, orbite di dati, marchio, uscita a interfaccia pronta, movimento ridotto, temi e Riprova",
+    "Doppio tocco nello schema con toast, cursore conservato, stato modificato aggiornato e nessun inserimento duplicato",
+    "Benvenuto leggibile su mobile, con descrizioni nella colonna corretta e azioni accessibili",
+    "Barre native e colore del browser sincronizzati con temi chiaro, scuro, automatico, personalizzati e anteprime"
+  ],
+  "verifiche": [
+    {
+      "comando": "npm run build:ui",
+      "esito": "superato"
+    },
+    {
+      "comando": "npm run typecheck:ui",
+      "esito": "superato"
+    },
+    {
+      "comando": "node test/unit-tema.js",
+      "esito": "superato"
+    },
+    {
+      "comando": "node test/unit-onboarding.js",
+      "esito": "superato"
+    },
+    {
+      "comando": "node test/unit-intellisense.js",
+      "esito": "superato"
+    },
+    {
+      "comando": "node test/e2e-mobile-shell.js",
+      "esito": "superato",
+      "prova": "dopo/verifica.log"
+    },
+    {
+      "comando": "node test/e2e-query-languages.js",
+      "esito": "superato"
+    },
+    {
+      "comando": "node test/e2e-guida-design.js --checks-only",
+      "esito": "superato",
+      "prova": "regressioni/guida.json"
+    },
+    {
+      "comando": "node test/e2e-dialog-motion.js --checks-only",
+      "esito": "superato",
+      "prova": "regressioni/motion.json"
+    },
+    {
+      "comando": "node test/e2e-dialog-drawer.js",
+      "esito": "superato",
+      "copertura": "40 dialog a 320×650, 390×844 e 844×390; bozze, focus, annullamenti e barriere",
+      "prova": "regressioni/dialog/report.json"
+    },
+    {
+      "comando": "gradle -p android connectedDebugAndroidTest lintDebug",
+      "esito": "superato",
+      "copertura": "Android 15: splash, temi e icone native, persistenza, anteprima, Indietro, inset e tastiera; accesso privato, Socket.IO e download",
+      "prova": "android/strumentazione.log"
+    },
+    {
+      "comando": "gradle -p android assembleDebug lintDebug",
+      "esito": "superato",
+      "prova": "android/build.log"
+    },
+    {
+      "comando": "node test/e2e-mobile-android.js",
+      "esito": "superato",
+      "copertura": "APK definitivo: barre nei tre temi, gesti reali da entrambi i bordi e splash al riavvio",
+      "prova": "android/verifica.log"
+    },
+    {
+      "comando": "node test/e2e-splash-android.js",
+      "esito": "superato",
+      "copertura": "Avvii reali nei temi chiaro, scuro e personalizzato; persistenza; orizzontale; caratteri 160%; movimento ridotto; video fino all’app pronta",
+      "prova": "../splash-mobile/verifica.log"
+    }
+  ],
+  "controprove": [
+    {
+      "mutazione": "welcome",
+      "difetto_rilevato": "Descrizioni ridotte a 28 pixel nella colonna dell'icona"
+    },
+    {
+      "mutazione": "theme",
+      "difetto_rilevato": "Colore inviato al contenitore diverso dal tema attivo"
+    },
+    {
+      "mutazione": "schema",
+      "difetto_rilevato": "Inserimento duplicato dal dblclick della WebView"
+    },
+    {
+      "mutazione": "swipe",
+      "difetto_rilevato": "Lo swipe non chiude lo schema"
+    },
+    {
+      "mutazione": "cancel",
+      "difetto_rilevato": "Un gesto annullato chiude il pannello"
+    },
+    {
+      "mutazione": "Android: sfondo nativo forzato al bianco",
+      "difetto_rilevato": "Le aree delle barre non hanno il colore dell'app",
+      "prova": "android/controprova.log"
+    },
+    {
+      "mutazione": "Animazione del simbolo bloccata",
+      "difetto_rilevato": "Il confronto dei fotogrammi rileva che la scena non evolve",
+      "prova": "../splash-mobile/controprova.log"
+    }
+  ],
+  "note": [
+    "Le mutazioni sono state rimosse; le suite normali sono tornate verdi.",
+    "Il test del browser usa uno schema simulato: copre l'interazione nell'editor, non l'esecuzione su DB reali.",
+    "Dopo touchMove CDP, Chromium può assorbire il tap successivo anche su una pagina vuota: la suite apre il pannello successivo con Invio e verifica trascinamenti e annullamenti con eventi touch.",
+    "Verificato su Chromium ed emulatore Android 15; non verificato su un telefono fisico o iOS.",
+    "Lint Android completato senza errori; restano avvisi del progetto.",
+    "Al riavvio System UI anima il colore delle icone: misurato il colore richiesto alla finestra e verificato lo splash a transizione conclusa. La cattura intermedia resta in android/splash-transizione.png.",
+    "Lo splash animato e il tema iniziale Android sono stati ricompilati e verificati nell’APK identificato da questo SHA-256; dettagli in ../splash-mobile/report.json."
+  ],
+  "apk": "android/app/build/outputs/apk/debug/app-debug.apk",
+  "sha256Apk": "68e9f67fc2688607b4612cc6cd582b68b6ae70da5f4508ba1f046bd5338e6d3f"
+}

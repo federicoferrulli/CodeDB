@@ -69,6 +69,41 @@ per prove locali usa `npm run build:android` oppure `assembleDebug`.
 
 ## Dati, file e ciclo di vita
 
+All'avvio una scena Canvas nativa compone i tre livelli del database, con
+orbite di dati e ingresso del marchio. Al primo fotogramma dell'interfaccia
+pronta lascia spazio all'app con un'uscita di 360 ms, senza attese minime
+aggiunte. Rispetta la scala delle animazioni Android: con animazioni rimosse
+mostra il simbolo fermo e passa subito all'app; in background interrompe il
+disegno. Il layout si adatta all'orientamento e ai caratteri ingranditi.
+Un errore ferma l'animazione e offre «Riprova». Le barre di stato e navigazione seguono il tema scelto, compresi
+i temi personalizzati e le anteprime; l'ultimo tema salvato viene ricordato
+anche per lo splash successivo. I colori delle icone si adattano allo sfondo.
+Su Android 12+ anche lo starting window del sistema ricorda la scelta chiara
+o scura; segue Android in modalità automatica. Per un tema personalizzato usa
+questa base nei primissimi istanti, poi la scena nativa applica i colori esatti.
+La scelta viene comunicata tramite l'API Android
+[`setSplashScreenTheme`](https://developer.android.com/reference/android/window/SplashScreen#setSplashScreenTheme(int)),
+senza ricreare l'Activity quando l'utente cambia tema.
+
+Indietro chiude prima la finestra, il menu o il pannello aperto e poi torna
+al sistema. I pannelli inferiori si trascinano dalla testata; lo schema delle
+query si chiude scorrendo verso sinistra e conserva lo scorrimento verticale.
+Un doppio tocco su una tabella o un campo inserisce il nome nel punto scelto
+dell'editor e mostra una conferma, senza aprire la tastiera dietro lo schema.
+
+`node test/e2e-mobile-shell.js` verifica layout, temi, doppio tocco e gesti
+touch nel browser; `connectedDebugAndroidTest` verifica anche splash,
+barre native, persistenza del tema, Indietro e inset sulla WebView Android.
+Confronta inoltre i fotogrammi per verificare movimento, animazioni rimosse,
+errore e ripresa, e controlla la conclusione unica della transizione e i testi
+su schermi piccoli, orizzontali e con font ingranditi al 160%.
+`node test/e2e-mobile-android.js` installa l'APK debug nell'emulatore dedicato
+`emulator-5580` (1080×2400), prova Indietro da entrambi i bordi e salva
+le schermate native in `test-reports/mobile-shell/android`.
+Con quell'app già avviata, `node test/e2e-splash-android.js` acquisisce anche
+gli avvii nei tre temi, in orizzontale e con animazioni rimosse, e registra
+il video dell'apertura reale in `test-reports/splash-mobile`.
+
 Vault, connessioni, backup, log e risultati persistono nella directory privata
 `files/data`; i sorgenti vengono estratti in una directory privata distinta per
 versione (non nella cache eliminabile da Android) e sostituiti

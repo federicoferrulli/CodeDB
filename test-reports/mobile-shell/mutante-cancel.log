@@ -1,0 +1,16 @@
+OK benvenuto mobile: descrizioni larghe e allineate
+OK temi chiaro/scuro/personalizzato/automatico e segnale di interfaccia pronta
+OK doppio tocco su tabelle e campi: quoting, toast, stato modificato e nessun duplicato
+Errori browser: []
+AssertionError [ERR_ASSERTION]: Gesto interrotto non chiude il pannello
+
+0 !== 1
+
+    at C:\repository\CodeDB\test\e2e-mobile-shell.js:146:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 0,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

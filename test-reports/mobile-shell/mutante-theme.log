@@ -1,0 +1,16 @@
+OK benvenuto mobile: descrizioni larghe e allineate
+Errori browser: []
+AssertionError [ERR_ASSERTION]: Colore inoltrato al contenitore Android
++ actual - expected
+
++ '#1b1e25'
+- '#ffffff'
+
+    at C:\repository\CodeDB\test\e2e-mobile-shell.js:70:14 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: '#1b1e25',
+  expected: '#ffffff',
+  operator: 'strictEqual',
+  diff: 'simple'
+}

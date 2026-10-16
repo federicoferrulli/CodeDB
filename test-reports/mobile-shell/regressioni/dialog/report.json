@@ -1,0 +1,15 @@
+{
+  "checks": [
+    "40 dialog nel BottomSheet Arc a 320×650: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 390×844: identità, larghezza, limiti e scroll",
+    "40 dialog nel BottomSheet Arc a 844×390: identità, larghezza, limiti e scroll",
+    "Cambio desktop/mobile: stesso input, bozza, selezione; dialog annidato e focus restituito",
+    "Palette dinamica nel drawer: chiusura dal pulsante e con Escape, riapertura del controller",
+    "Conferma mobile: nessuna cancellazione prima del consenso; annullamento e bersaglio conservato durante l’attesa",
+    "Scarto bozza e disconnessione: annullamento conserva i dati, chiusura solo dopo conferma",
+    "Vault nel drawer: la barriera non viene aggirata con Escape o chiusura"
+  ],
+  "errors": [],
+  "defects": [],
+  "phase": "session-query-overlay 844×390"
+}

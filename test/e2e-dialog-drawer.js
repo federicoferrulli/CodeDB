@@ -27,12 +27,13 @@ fs.mkdirSync(dir, { recursive: true });
         }, id);
         const sheet = page.locator(`#${id} .arc-dialog-sheet`);
         await sheet.waitFor();
-        await sheet.locator('[data-grabber]').press('Home');
+        if (!await sheet.evaluate(el => el.hasAttribute('data-fit-content'))) await sheet.locator('[data-grabber]').press('Home');
         await page.waitForTimeout(160);
         if (mutant) await sheet.evaluate(el => el.style.width = '180px');
         const geometry = await sheet.evaluate(el => {
           const r = el.getBoundingClientRect(), panel = el.querySelector('.modal'), p = panel.getBoundingClientRect();
-          return { width: r.width, top: r.top, bottom: p.bottom, same: panel === window.drawerPanel, overflow: panel.scrollWidth > panel.clientWidth + 1 };
+          const viewport = el.hasAttribute('data-fit-content') ? el.children[1].getBoundingClientRect() : p;
+          return { width: r.width, top: r.top, bottom: viewport.bottom, same: panel === window.drawerPanel, overflow: panel.scrollWidth > panel.clientWidth + 1 };
         });
         if (!(geometry.same && !geometry.overflow && geometry.width >= width - 2 && geometry.top >= 0 && geometry.bottom <= height + 1)) {
           report.defects.push({ phase: report.phase, geometry });

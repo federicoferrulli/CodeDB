@@ -35,7 +35,7 @@ export interface BottomSheetProps {
 }
 
 type Stop = number | "closed";
-type Drag = { startY: number; origin: number; from: number; moved: boolean; samples: { t: number; y: number }[] };
+type Drag = { id: number; startY: number; origin: number; from: number; moved: boolean; samples: { t: number; y: number }[] };
 
 const EXTENSION = 160;
 
@@ -99,6 +99,8 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
   const detentRef = useRef(detent);
   const aim = useRef<Stop>(detent);
   const drag = useRef<Drag | null>(null);
+  const releaseListeners = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => releaseListeners.current?.(), []);
   const arrive = useRef<(() => void) | undefined>(undefined);
   const suppressClick = useRef(false);
   const mounted = useRef(false);
@@ -176,11 +178,11 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
     return () => observer.disconnect();
   }, [go, height, offset, y]);
 
-  const beginDrag = useCallback((clientY: number, time: number) => {
+  const beginDrag = useCallback((id: number, clientY: number, time: number) => {
     
     y.stop();
     const current = y.get();
-    drag.current = { startY: clientY, origin: current < 0 ? -unrubber(-current) : current, from: detentRef.current, moved: false, samples: [{ t: time, y: clientY }] };
+    drag.current = { id, startY: clientY, origin: current < 0 ? -unrubber(-current) : current, from: detentRef.current, moved: false, samples: [{ t: time, y: clientY }] };
   }, [y]);
 
   const moveDrag = useCallback((clientY: number, time: number) => {
@@ -233,9 +235,10 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
 
   function headerDown(event: ReactPointerEvent<HTMLDivElement>) {
     const target = event.target instanceof Element ? event.target : null;
-    if (event.button !== 0 || !event.isPrimary) return;
+    if (event.button !== 0 || !event.isPrimary || drag.current) return;
     if (target?.closest("button, a, input, select, textarea, [role='button']") && !target.closest("[data-grabber]")) return;
-    beginDrag(event.clientY, event.timeStamp);
+    releaseListeners.current?.();
+    beginDrag(event.pointerId, event.clientY, event.timeStamp);
 
     const header = event.currentTarget, id = event.pointerId;
     const outside = (next: PointerEvent) => next.pointerId === id && !(next.target instanceof Node && header.contains(next.target));
@@ -244,12 +247,16 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
       moveDrag(next.clientY, next.timeStamp);
       if (drag.current?.moved && !header.hasPointerCapture(id)) { try { header.setPointerCapture(id); } catch { /* Il puntatore è già terminato. */ } }
     };
-    const up = (next: PointerEvent) => {
-      if (next.pointerId !== id) return;
+    releaseListeners.current = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
-      if (outside(next)) endDrag(next.timeStamp);
+    };
+    const up = (next: PointerEvent) => {
+      if (next.pointerId !== id) return;
+      releaseListeners.current?.();
+      if (next.type === 'pointercancel') cancelDrag();
+      else if (outside(next)) endDrag(next.timeStamp);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -257,14 +264,23 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
   }
   
   function headerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!drag.current) return;
+    if (!drag.current || event.pointerId !== drag.current.id) return;
     if (event.pointerType === "mouse" && event.buttons === 0) { endDrag(event.timeStamp); return; }
     moveDrag(event.clientY, event.timeStamp);
     if (drag.current.moved && !event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.setPointerCapture(event.pointerId);
   }
   function headerUp(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (!drag.current || event.pointerId !== drag.current.id) return;
     endDrag(event.timeStamp);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+  function cancelDrag() {
+    const state = drag.current;
+    drag.current = null;
+    sheetRef.current?.removeAttribute('data-dragging');
+    releaseListeners.current?.();
+    // Un gesto preso dal sistema o interrotto da un secondo dito non è una chiusura.
+    if (state) rest(state.from);
   }
 
   function grabberClick() {
@@ -318,7 +334,7 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
       onPointerDownOutside={event => { onPointerDownOutside?.(event); const { present, at } = presenceChange.current; if (!dismissible || !present || event.detail.originalEvent.timeStamp < at) event.preventDefault(); }}
     >
       <motion.div ref={sheetRef} className={[styles.sheet, className].filter(Boolean).join(" ")} style={style} data-expanded={expanded ? "" : undefined} data-fit-content={fitContent ? "" : undefined} onKeyDown={sheetKey}>
-        <div className={styles.header} onPointerDown={headerDown} onPointerMove={headerMove} onPointerUp={headerUp} onPointerCancel={headerUp}>
+        <div className={styles.header} onPointerDown={headerDown} onPointerMove={headerMove} onPointerUp={headerUp} onPointerCancel={cancelDrag} onLostPointerCapture={event => { if (event.target === event.currentTarget) cancelDrag(); }}>
           {fitContent ? <span className={styles.compactGrabber} aria-hidden="true"><span className={styles.grabberBar} /></span> : <button type="button" className={styles.grabber} data-grabber="" aria-label={expanded ? "Riduci pannello" : "Espandi pannello"} aria-expanded={expanded} onClick={grabberClick} onKeyDown={grabberKey}>
             <span className={styles.grabberBar} aria-hidden="true" />
           </button>}

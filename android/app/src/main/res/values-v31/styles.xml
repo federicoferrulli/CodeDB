@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="CodeDBTheme" parent="CodeDBBase">
+        <item name="android:windowSplashScreenBackground">@color/codedb_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/avvio_marchio</item>
+    </style>
+    <style name="CodeDBAvvioChiaro" parent="CodeDBTheme">
+        <item name="android:windowSplashScreenBackground">#ffffff</item>
+        <item name="android:windowBackground">#ffffff</item>
+        <item name="android:statusBarColor">#ffffff</item>
+        <item name="android:navigationBarColor">#ffffff</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+    <style name="CodeDBAvvioScuro" parent="CodeDBTheme">
+        <item name="android:windowSplashScreenBackground">#1b1e25</item>
+        <item name="android:windowBackground">#1b1e25</item>
+        <item name="android:statusBarColor">#1b1e25</item>
+        <item name="android:navigationBarColor">#1b1e25</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,65 @@
+{
+  "data": "2026-10-16",
+  "esito": "superato",
+  "apk": "android/app/build/outputs/apk/debug/app-debug.apk",
+  "sha256Apk": "68e9f67fc2688607b4612cc6cd582b68b6ae70da5f4508ba1f046bd5338e6d3f",
+  "scena": [
+    "Tre livelli del database in composizione con orbite di dati",
+    "Marchio in ingresso, shader e geometria nativi senza dipendenze aggiunte",
+    "Uscita di 360 ms al primo fotogramma della WebView pronta, senza attese minime aggiunte",
+    "Simbolo statico e uscita immediata con animazioni rimosse",
+    "Arresto quando nascosto, su errore e alla rimozione; Riprova riavvia la scena",
+    "Tema scelto anche nelle barre; Android 12+ ricorda la base chiara/scura del proprio starting window"
+  ],
+  "verifiche": [
+    {
+      "comando": "gradle connectedDebugAndroidTest assembleDebug lintDebug",
+      "esito": "superato",
+      "prova": "strumentazione.log",
+      "copertura": "Runtime Node, HTTP privato, Socket.IO, temi e persistenza, barre, Indietro, inset/IME, download; movimento e arresto con confronto pixel, ripresa, conclusione unica, distacco, layout 320×480 e 640×320, font 160%"
+    },
+    {
+      "comando": "node test/e2e-mobile-android.js",
+      "esito": "superato",
+      "prova": "../mobile-shell/android/verifica.log",
+      "copertura": "Gesti Indietro reali da entrambi i bordi e barre nei tre temi"
+    },
+    {
+      "comando": "node test/e2e-splash-android.js",
+      "esito": "superato",
+      "prova": "verifica.log",
+      "copertura": "Riavvii reali e preferenza tema conservata, orientamento, movimento ridotto, caratteri grandi e registrazione nativa"
+    }
+  ],
+  "controprova": {
+    "esito": "difetto rilevato",
+    "mutazione": "nucleo.movimento forzato a false",
+    "asserzione": "La scena evolve durante il caricamento",
+    "prova": "controprova.log",
+    "ripristino": "Sorgente ripristinato e suite definitiva superata"
+  },
+  "revisioneVisiva": {
+    "video": "avvio-reale.mp4",
+    "startingWindowScuro": "sistema.png",
+    "scena": "finale-7s.png",
+    "uscita": "finale-23s.png",
+    "appPronta": "app-pronta.png",
+    "temi": [
+      "splash-light.png",
+      "splash-dark.png",
+      "splash-custom.png"
+    ],
+    "adattamenti": [
+      "splash-orizzontale.png",
+      "splash-caratteri-grandi.png",
+      "splash-movimento-ridotto.png"
+    ]
+  },
+  "limiti": [
+    "Prove su Chromium ed emulatore Android 15 x86_64; nessuna prova su telefono fisico o iOS",
+    "Il video mostra i tempi reali dell’emulatore con GPU software, non una misura delle prestazioni su telefono",
+    "Nei primissimi istanti gestiti da Android, un tema personalizzato usa una base chiara/scura; la scena nativa applica poi i colori esatti",
+    "Lint senza errori, con 14 avvisi; le stringhe italiane e i costruttori programmatici seguono la struttura del contenitore Android"
+  ],
+  "riferimentoApi": "https://developer.android.com/reference/android/window/SplashScreen#setSplashScreenTheme(int)"
+}
