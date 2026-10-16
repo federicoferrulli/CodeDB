@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       pubblica:
-        description: 'Prepara la release firmata in bozza (pubblicazione manuale)'
+        description: 'Prepara la bozza multipiattaforma (firma Windows opzionale, pubblicazione manuale)'
         type: boolean
         default: false
 permissions:
@@ -99,6 +99,7 @@ jobs:
     env:
       CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
       CODEDB_BUILD_ARCH: x64
+      CODEDB_WINDOWS_SIGNING: ${{ needs.verifica.outputs.pubblica == 'true' && vars.CODEDB_WINDOWS_SIGNING || 'unsigned' }}
       AZURE_CORE_OUTPUT: none
     steps:
       - uses: actions/checkout@v4
@@ -110,7 +111,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Prerequisiti Azure
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: env.CODEDB_WINDOWS_SIGNING == 'azure'
         run: node tools/firma.cjs win --release
         env:
           AZURE_CODE_SIGNING_ENDPOINT: ${{ vars.AZURE_CODE_SIGNING_ENDPOINT }}
@@ -121,14 +122,14 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Accesso federato Azure
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: env.CODEDB_WINDOWS_SIGNING == 'azure'
         uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
       - name: Build firmata con timestamp
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: env.CODEDB_WINDOWS_SIGNING == 'azure'
         run: npm run release:win
         env:
           AZURE_CODE_SIGNING_ENDPOINT: ${{ vars.AZURE_CODE_SIGNING_ENDPOINT }}
@@ -138,11 +139,11 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Build locale senza certificati
-        if: needs.verifica.outputs.pubblica != 'true'
+      - name: Installer indipendente senza certificati
+        if: env.CODEDB_WINDOWS_SIGNING != 'azure'
         run: npm run build:win
       - name: Verifica firme PE e installer
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: env.CODEDB_WINDOWS_SIGNING == 'azure'
         run: ./tools/verifica-firma-win.ps1
         env:
           AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}

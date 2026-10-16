@@ -20,6 +20,8 @@
     "electron:start": "electron .",
     "electron:icons": "node tools/genera-icona.js",
     "build:win": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs win",
+    "build:store": "npm run build:ui && npm run electron:icons && node tools/build-release.cjs store",
+    "build:store:test": "npm run build:ui && npm run electron:icons && node tools/build-release.cjs store --prova",
     "build:mac": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs mac",
     "build:linux": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs linux",
     "prepare:android": "npm run build:ui && node android/prepare.cjs",

@@ -210,12 +210,12 @@ function generateTransparentLogo() {
     return Buffer.concat([len, td, crc]);
   }
 
-  function encodePNG(rgbaBuf, S) {
+  function encodePNG(rgbaBuf, S, altezza = S) {
     const ihdr = Buffer.alloc(13);
-    ihdr.writeUInt32BE(S, 0); ihdr.writeUInt32BE(S, 4);
+    ihdr.writeUInt32BE(S, 0); ihdr.writeUInt32BE(altezza, 4);
     ihdr[8] = 8; ihdr[9] = 6;
-    const raw = Buffer.alloc(S * (S * 4 + 1));
-    for (let y = 0; y < S; y++) {
+    const raw = Buffer.alloc(altezza * (S * 4 + 1));
+    for (let y = 0; y < altezza; y++) {
       raw[y * (S * 4 + 1)] = 0;
       rgbaBuf.copy(raw, y * (S * 4 + 1) + 1, y * S * 4, (y + 1) * S * 4);
     }

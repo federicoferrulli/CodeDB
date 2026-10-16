@@ -312,6 +312,19 @@ function creaGestoreAggiornamenti({ getWindow }) {
    * @param {boolean} manuale true = voce di menu (parla sempre), false = controllo all'avvio (parla solo se c'è un aggiornamento)
    */
   async function controlla(manuale) {
+    // Un AppX si aggiorna tramite Store; NSIS installerebbe una seconda copia.
+    if (process.windowsStore) {
+      if (manuale) {
+        try {
+          await shell.openExternal('ms-windows-store://downloadsandupdates');
+        } catch (err) {
+          await msg({ type: 'warning', title: 'CodeDB — Aggiornamenti',
+            message: 'Apri Microsoft Store e cerca gli aggiornamenti nella raccolta.',
+            detail: `Impossibile aprire lo Store: ${err.message}`, buttons: ['Ok'] });
+        }
+      }
+      return;
+    }
     if (inCorso) {
       if (manuale) {
         await msg({
@@ -400,6 +413,7 @@ function creaGestoreAggiornamenti({ getWindow }) {
 
   /** Controllo silenzioso all'avvio, disattivabile con CODEDB_NO_UPDATE_CHECK=1. */
   function avviaControlloDifferito() {
+    if (process.windowsStore) return;
     if (String(process.env.CODEDB_NO_UPDATE_CHECK || '') === '1') return;
     const t = setTimeout(() => { controlla(false); }, RITARDO_AVVIO_MS);
     if (t.unref) t.unref();

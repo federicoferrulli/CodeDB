@@ -61,6 +61,15 @@ function generateIconAssets() {
   // public/codedb.png è 128x128: sufficiente per la UI, respinto dalla build.
   fs.writeFileSync(path.join(buildDir, 'icon.png'), encodePNG(resize(squareBuf, side, 512), 512));
   console.log('Generato build/icon.png (512x512, per Linux/macOS)');
+  const storeDir = path.join(buildDir, 'appx');
+  fs.mkdirSync(storeDir, { recursive: true });
+  for (const [nome, size] of [['StoreLogo', 50], ['Square44x44Logo', 44], ['Square150x150Logo', 150]]) {
+    fs.writeFileSync(path.join(storeDir, `${nome}.png`), encodePNG(resize(squareBuf, side, size), size));
+  }
+  const wide = Buffer.alloc(310 * 150 * 4), logo = resize(squareBuf, side, 150);
+  for (let y = 0; y < 150; y++) logo.copy(wide, (y * 310 + 80) * 4, y * 150 * 4, (y + 1) * 150 * 4);
+  fs.writeFileSync(path.join(storeDir, 'Wide310x150Logo.png'), encodePNG(wide, 310, 150));
+  console.log('Generate le quattro icone AppX del Microsoft Store');
 }
 
 if (require.main === module) {

@@ -5,13 +5,17 @@ macOS DMG/ZIP x64 e arm64, Linux AppImage/DEB/RPM x64, Android APK/AAB con
 runtime autonomo. Tutti questi target sono obbligatori. iOS non è ancora un
 progetto compilabile e non compare come job riuscito.
 
+Windows offre ora due canali: **installer indipendente senza firma** e **AppX
+per Microsoft Store**, con workflow dedicato che non crea release.
+Configurazione e collaudi: [Distribuzioni Windows](WINDOWS_DISTRIBUTION.md).
+
 ## Modalità
 
 | Modalità | Desktop | Android | GitHub |
 | --- | --- | --- | --- |
 | Locale / workflow manuale con `pubblica=false` | Windows senza firma; macOS ad hoc; Linux | APK debug installabile, ID `.debug` | Soli artefatti CI, nessuna release |
 | Credenziali parziali o non valide | Errore; nessun ripiego senza firma | Errore di configurazione/firma | Nessuna bozza completa |
-| Tag o workflow con `pubblica=true` | Azure su Windows; Developer ID e notarizzazione su macOS | APK e AAB con chiave persistente | Unica bozza, pubblicazione manuale |
+| Tag o workflow con `pubblica=true` | Windows senza firma oppure Azure esplicito; Developer ID e notarizzazione su macOS | APK e AAB con chiave persistente | Unica bozza, pubblicazione manuale |
 
 `npm run release:win|mac|linux` **prepara soltanto** il pacchetto di distribuzione.
 Il caricamento è stato spostato nel job finale: i singoli builder non ricevono
@@ -64,6 +68,7 @@ solo il job `bozza` ha `contents: write`.
 
 | Nome esatto | Tipo | Piattaforma | Obbligatorietà e formato |
 | --- | --- | --- | --- |
+| `CODEDB_WINDOWS_SIGNING` | Variable | Windows | `unsigned` (default) oppure `azure`; le variabili Azure seguenti servono solo con `azure` |
 | `AZURE_CODE_SIGNING_ENDPOINT` | Variable | Windows | Release: URL regionale HTTPS `https://<regione>.codesigning.azure.net/` |
 | `AZURE_CODE_SIGNING_ACCOUNT` | Variable | Windows | Release: nome account Artifact Signing |
 | `AZURE_CERT_PROFILE` | Variable | Windows | Release: nome certificate profile pubblico |
@@ -94,6 +99,11 @@ file decodificato in `RUNNER_TEMP`; `ANDROID_VERSION_CODE` è calcolato dal work
 Per GPG locale si possono indicare `GPG_BINARY` e `GPGCONF_BINARY` se non sono nel PATH.
 
 ## Windows: Azure Artifact Signing
+
+Percorso opzionale: la distribuzione indipendente senza firma non richiede queste
+credenziali. Impostare `CODEDB_WINDOWS_SIGNING=azure` per richiedere la firma;
+credenziali parziali non causano mai un ripiego senza firma. Per il Microsoft Store
+usare il percorso AppX distinto descritto in [WINDOWS_DISTRIBUTION.md](WINDOWS_DISTRIBUTION.md).
 
 Occorrono un account Artifact Signing, verifica dell'identità completata, un
 profilo **Public Trust** e un principal Entra con ruolo **Artifact Signing

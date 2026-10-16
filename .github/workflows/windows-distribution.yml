@@ -1,0 +1,86 @@
+name: Distribuzioni Windows
+on:
+  push:
+    branches: [develop, main, 'codex/**']
+    paths:
+      - '.github/workflows/windows-distribution.yml'
+      - 'tools/store.cjs'
+      - 'tools/build-release.cjs'
+      - 'tools/electron-builder.cjs'
+      - 'tools/firma.cjs'
+      - 'tools/genera-icona.js'
+      - 'tools/genera-logo-trasparente.js'
+      - 'electron-*.js'
+      - 'test/*store*'
+      - 'package*.json'
+  workflow_dispatch:
+    inputs:
+      prova:
+        description: 'Usa identità di collaudo; false prepara AppX per Partner Center'
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: windows-distribution-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  windows:
+    name: Installer indipendente e pacchetto Store
+    runs-on: windows-2022
+    environment: microsoft-store
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      CODEDB_WINDOWS_SIGNING: unsigned
+      CODEDB_STORE_TEST: ${{ github.event_name != 'workflow_dispatch' || inputs.prova }}
+      MICROSOFT_STORE_IDENTITY_NAME: ${{ vars.MICROSOFT_STORE_IDENTITY_NAME }}
+      MICROSOFT_STORE_PUBLISHER: ${{ vars.MICROSOFT_STORE_PUBLISHER }}
+      MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.MICROSOFT_STORE_PUBLISHER_DISPLAY_NAME }}
+      MICROSOFT_STORE_VERSION: ${{ vars.MICROSOFT_STORE_VERSION }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+          cache: npm
+      - run: npm ci
+      - name: Verifica identità prima del packaging
+        run: node -e "require('./tools/store.cjs').identita()"
+      - run: npm run test:release
+      - name: Installer senza certificato per sito e GitHub
+        run: npm run build:win
+      - name: Avvio dell'app indipendente
+        run: node test/e2e-release-desktop.cjs dist/win-unpacked/CodeDB.exe
+      - name: Metadati di aggiornamento e checksum indipendenti
+        run: |
+          node tools/release-assets.cjs stage dist staged/win win
+          node tools/release-assets.cjs manifest staged/win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-indipendente
+          path: staged/win/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: AppX senza firma per Microsoft Store
+        run: npm run build:store
+      - name: Manifest, icone e avvio del contenuto AppX
+        run: ./test/e2e-windows-store.ps1
+      - name: Installazione e runtime Store con certificato usa e getta
+        if: env.CODEDB_STORE_TEST == 'true'
+        run: ./test/e2e-windows-store.ps1 -Installa
+      - name: Checksum AppX
+        run: |
+          $pacchetto = Get-ChildItem dist/store/*.appx
+          if ($pacchetto.Count -ne 1) { throw 'Atteso un solo AppX' }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $pacchetto.FullName).Hash.ToLowerInvariant()
+          "$hash  $($pacchetto.Name)" | Set-Content -Encoding utf8 dist/store/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-${{ env.CODEDB_STORE_TEST == 'true' && 'prova' || 'partner-center' }}
+          path: |
+            dist/store/*.appx
+            dist/store/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

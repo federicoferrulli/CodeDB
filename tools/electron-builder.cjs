@@ -4,6 +4,7 @@ const { valida } = require('./firma.cjs');
 function configurazione(piattaforma, env = process.env) {
   const release = env.CODEDB_RELEASE === 'true';
   if (env.CODEDB_RELEASE && !['true', 'false'].includes(env.CODEDB_RELEASE)) throw new Error('CODEDB_RELEASE accetta true o false.');
+  if (piattaforma === 'store') return require('./store.cjs').configura(structuredClone(require('../package.json').build), env);
   const firmata = valida(piattaforma, env, release);
   const base = structuredClone(require('../package.json').build);
   base.forceCodeSigning = firmata;

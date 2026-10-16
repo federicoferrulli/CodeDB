@@ -12,8 +12,12 @@ function gruppo(env, nomi, obbligatorio) {
 
 function valida(piattaforma, env = process.env, release = false, controllaFile = true) {
   if (piattaforma === 'win') {
-    const attiva = gruppo(env, ['AZURE_CODE_SIGNING_ENDPOINT', 'AZURE_CODE_SIGNING_ACCOUNT', 'AZURE_CERT_PROFILE',
-      'AZURE_PUBLISHER_NAME', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_SUBSCRIPTION_ID'], release);
+    const nomi = ['AZURE_CODE_SIGNING_ENDPOINT', 'AZURE_CODE_SIGNING_ACCOUNT', 'AZURE_CERT_PROFILE',
+      'AZURE_PUBLISHER_NAME', 'AZURE_TENANT_ID', 'AZURE_CLIENT_ID', 'AZURE_SUBSCRIPTION_ID'];
+    const modalita = env.CODEDB_WINDOWS_SIGNING || (nomi.some(k => env[k]) ? 'azure' : 'unsigned');
+    if (!['unsigned', 'azure'].includes(modalita)) throw new Error('CODEDB_WINDOWS_SIGNING accetta unsigned o azure.');
+    if (modalita === 'unsigned' && nomi.some(k => env[k])) throw new Error('Firma Windows unsigned incompatibile con credenziali Azure presenti.');
+    const attiva = gruppo(env, nomi, modalita === 'azure');
     if (attiva && !/^https:\/\/[a-z0-9-]+\.codesigning\.azure\.net\/?$/i.test(env.AZURE_CODE_SIGNING_ENDPOINT)) {
       throw new Error('AZURE_CODE_SIGNING_ENDPOINT deve essere un endpoint HTTPS regionale di Azure Artifact Signing.');
     }
@@ -61,7 +65,7 @@ function versione(version, tag) {
 module.exports = { gruppo, valida, versione };
 if (require.main === module) {
   try {
-    valida(process.argv[2], process.env, process.argv.includes('--release'), !process.argv.includes('--senza-file'));
-    console.log('Prerequisiti di firma completi; autenticità e validità saranno controllate durante la firma.');
+    const attiva = valida(process.argv[2], process.env, process.argv.includes('--release'), !process.argv.includes('--senza-file'));
+    console.log(attiva ? 'Prerequisiti di firma completi; autenticità e validità saranno controllate durante la firma.' : 'Firma non attiva per questo pacchetto.');
   } catch (e) { console.error(e.message); process.exitCode = 1; }
 }

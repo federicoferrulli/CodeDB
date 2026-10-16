@@ -8,6 +8,7 @@ const { pubblica } = require('../tools/pubblica-bozza.cjs');
 const assets = require('../tools/release-assets.cjs');
 module.exports = (async () => {
   const signingTests = require('./unit-code-signing.cjs'); await signingTests;
+  await require('./unit-windows-store.cjs');
   const workflow = yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows/release.yml'), 'utf8'));
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.jobs.bozza.permissions.contents, 'write');

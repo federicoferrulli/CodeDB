@@ -6,6 +6,7 @@
 # CodeDB
 
 Firma degli installer e pipeline di release: [guida operativa](docs/CODE_SIGNING.md).
+Windows su Microsoft Store, sito e GitHub: [configurazione dei due canali](docs/WINDOWS_DISTRIBUTION.md).
 
 CodeDB was born taking inspiration from modern software, with the vision of being the tool that anyone can use in their unique workflow—human developers and AI agents alike.
 

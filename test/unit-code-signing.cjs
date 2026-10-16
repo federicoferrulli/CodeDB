@@ -30,7 +30,10 @@ module.exports = (async () => {
     fs.writeFileSync(android.ANDROID_KEYSTORE_PATH, 'fixture senza chiave privata');
     for (const [platform, env] of [['win', win], ['mac', mac], ['android', android]]) {
       assert.equal(valida(platform, {}), false);
-      assert.throws(() => valida(platform, {}, true), /incompleta/i);
+      if (platform === 'win') {
+        assert.equal(valida(platform, {}, true), false);
+        assert.throws(() => valida(platform, { CODEDB_WINDOWS_SIGNING: 'azure' }, true), /incompleta/i);
+      } else assert.throws(() => valida(platform, {}, true), /incompleta/i);
       assert.equal(valida(platform, env, true), true);
       for (const key of Object.keys(env).filter(k => k !== 'ANDROID_VERSION_CODE')) {
         const incomplete = { ...env }; delete incomplete[key];
@@ -40,6 +43,9 @@ module.exports = (async () => {
     assert.throws(() => valida('android', { ...android, ANDROID_KEYSTORE_PATH: path.join(temp, 'assente') }, true), /esistente/);
     for (const code of ['0', '-1', '2100000001', 'abc']) assert.throws(() => valida('android', { ...android, ANDROID_VERSION_CODE: code }, true), /VERSION_CODE/);
     assert.throws(() => valida('win', { ...win, AZURE_CODE_SIGNING_ENDPOINT: 'http://example.test' }, true), /HTTPS/);
+    assert.throws(() => valida('win', { ...win, CODEDB_WINDOWS_SIGNING: 'unsigned' }, true), /incompatibile/);
+    assert.throws(() => valida('win', { CODEDB_WINDOWS_SIGNING: 'unsignd' }, true), /unsigned o azure/);
+    assert.equal(configurazione('win', { CODEDB_RELEASE: 'true', CODEDB_WINDOWS_SIGNING: 'unsigned' }).forceCodeSigning, false);
     assert.throws(() => valida('mac', { ...mac, APPLE_TEAM_ID: 'errato' }, true), /10 caratteri/);
     assert.throws(() => valida('gpg', { CODEDB_REQUIRE_GPG: 'true' }, true), /incompleta/);
     assert.throws(() => valida('gpg', { GPG_PRIVATE_KEY: 'fixture' }), /incompleta/);
