@@ -129,6 +129,14 @@ actionlint; la sensibilità del test che separa gli aggiornamenti è stata verif
 rimuovendo temporaneamente il controllo Store e osservando il fallimento atteso.
 Le release GitHub esistenti sono rimaste invariate.
 
+Con i dati definitivi è riuscita anche la
+[pipeline 38922235330](https://github.com/federicoferrulli/CodeDB/actions/runs/38922235330)
+su `93bc3ae`, avviata con `prova=false`. Ha prodotto
+`CodeDB-1.0.0.0-store-x64.appx` nell'artefatto `windows-store-partner-center`,
+verificando identità `Keus.CodeDBManager`, nome **CodeDB Manager**, editore,
+versione, icone e avvio del contenuto con addon nativi. Il pacchetto definitivo
+non è stato installato con un certificato locale né inviato a Partner Center.
+
 Non sono stati provati un aggiornamento completo fra due versioni installate,
 connessioni a database reali o Windows ARM64. Certificazione,
 firma Microsoft e aggiornamenti dal vero Store richiedono un invio
