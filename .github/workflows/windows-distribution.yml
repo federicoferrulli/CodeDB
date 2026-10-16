@@ -69,6 +69,8 @@ jobs:
         run: ./test/e2e-windows-store.ps1
       - name: Installazione e runtime Store con certificato usa e getta
         if: env.CODEDB_STORE_TEST == 'true'
+        # Appx su Windows Server 2022 richiede Windows PowerShell 5.1.
+        shell: powershell
         run: ./test/e2e-windows-store.ps1 -Installa
       - name: Checksum AppX
         run: |

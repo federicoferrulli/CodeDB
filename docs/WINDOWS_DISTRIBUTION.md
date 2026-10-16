@@ -56,7 +56,7 @@ L'AppX non firmato non è un installer da distribuire direttamente agli utenti.
 Il test predefinito verifica manifest, versione, quattro icone, assenza del feed
 NSIS e avvio del contenuto estratto con frontend e addon nativi. **Non equivale
 all'installazione AppX.** Con `-Installa`, in una macchina di prova Windows con SDK
-e PowerShell amministrativa, firma una copia con certificato usa e getta, installa
+e Windows PowerShell 5.1 amministrativa, firma una copia con certificato usa e getta, installa
 il pacchetto, lo attiva tramite Windows e verifica identità AppX reale, server
 autonomo, frontend, addon e scrittura/rilettura cifrata del vault. Infine rimuove
 pacchetto e certificati temporanei. L'artefatto originale resta senza firma.

@@ -14,7 +14,7 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($pacchetti[0].FullName, $estratti)
     [xml]$manifest = Get-Content -Raw -LiteralPath (Join-Path $estratti 'AppxManifest.xml')
-    $atteso = node -e 'console.log(JSON.stringify(require("./tools/store.cjs").identita()))' | ConvertFrom-Json
+    $atteso = node -e 'console.log(JSON.stringify(require(process.argv[1]).identita()))' "$PSScriptRoot/../tools/store.cjs" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Identità Store non valida' }
     if ($manifest.Package.Identity.Name -ne $atteso.identityName -or $manifest.Package.Identity.Publisher -ne $atteso.publisher -or $manifest.Package.Identity.Version -ne $atteso.version) { throw 'Identità/versione AppX diversa dalla configurazione' }
     if ($manifest.Package.Applications.Application.EntryPoint -ne 'Windows.FullTrustApplication') { throw 'Runtime full trust mancante' }
