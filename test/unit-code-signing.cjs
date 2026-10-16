@@ -7,12 +7,12 @@ const yaml = require('js-yaml');
 const { valida, versione } = require('../tools/firma.cjs');
 const { configurazione } = require('../tools/electron-builder.cjs');
 const assets = require('../tools/release-assets.cjs');
-function fixture(root, version = '1.2.3-beta.1') {
+function fixture(root, version = '1.2.3-beta.1', release = true) {
   const incoming = path.join(root, 'incoming');
   for (const target of ['win', 'mac-x64', 'mac-arm64', 'linux', 'android']) {
     const dir = path.join(incoming, target); fs.mkdirSync(dir, { recursive: true });
-    for (const name of assets.richiesti(target, version, true)) fs.writeFileSync(path.join(dir, name), `fixture ${name}`);
-    const files = assets.richiesti(target, version, true).filter(n => /\.(exe|zip|AppImage)$/.test(n)).map(url => ({ url,
+    for (const name of assets.richiesti(target, version, release)) fs.writeFileSync(path.join(dir, name), `fixture ${name}`);
+    const files = assets.richiesti(target, version, release).filter(n => /\.(exe|zip|AppImage)$/.test(n)).map(url => ({ url,
       sha512: assets.hash(path.join(dir, url), 'sha512', 'base64'), size: fs.statSync(path.join(dir, url)).size }));
     if (files.length) fs.writeFileSync(path.join(dir, target.startsWith('mac') ? 'latest-mac.yml' : target === 'win' ? 'latest.yml' : 'latest-linux.yml'),
       yaml.dump({ version, files, path: files[0].url, sha512: files[0].sha512 }));

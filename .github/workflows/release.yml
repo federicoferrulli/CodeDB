@@ -1,4 +1,4 @@
-# Firma nei job nativi; un solo job finale prepara la bozza, mai pubblicata automaticamente.
+# Tutti gli asset sono verificati in bozza prima della pubblicazione finale.
 name: Build e release
 on:
   push:
@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       pubblica:
-        description: 'Prepara la bozza multipiattaforma (firma Windows opzionale, pubblicazione manuale)'
+        description: 'Pubblica su GitHub tutti i pacchetti dopo le verifiche'
+        type: boolean
+        default: false
+      firma:
+        description: 'Usa Developer ID/notarizzazione e chiave Android persistente (obbligatorio per stabili)'
         type: boolean
         default: false
 permissions:
@@ -27,6 +31,7 @@ jobs:
       pubblica: ${{ steps.versione.outputs.pubblica }}
       versione: ${{ steps.versione.outputs.versione }}
       android-code: ${{ steps.versione.outputs.android_code }}
+      firmata: ${{ steps.versione.outputs.firmata }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,21 +46,23 @@ jobs:
         id: versione
         env:
           PUBBLICA: ${{ github.event_name == 'push' || inputs.pubblica == true }}
+          FIRMA: ${{ inputs.firma == true || vars.CODEDB_BETA_SIGNED == 'true' }}
           ANDROID_VERSION_CODE_BASE: ${{ vars.ANDROID_VERSION_CODE_BASE || '0' }}
         run: |
           node <<'NODE'
           const fs = require('fs');
-          const { versione } = require('./tools/firma.cjs');
+          const { versione, modalitaRelease } = require('./tools/firma.cjs');
           const v = require('./package.json').version;
           const tag = process.env.GITHUB_REF.startsWith('refs/tags/') ? process.env.GITHUB_REF.slice(10) : null;
           versione(v, tag);
+          const mode = modalitaRelease(v, process.env.PUBBLICA === 'true', process.env.FIRMA === 'true');
           const chosen = tag || `v${v}`;
           const tags = require('child_process').execFileSync('git', ['tag', '--list'], {encoding:'utf8'}).trim().split('\n');
           if (tags.some(t => t !== chosen && t.replace(/^v/i, '').toLowerCase() === v.toLowerCase())) throw Error('Tag duplicati per la stessa versione: risolverli prima della release.');
           if (!/^\d+$/.test(process.env.ANDROID_VERSION_CODE_BASE)) throw Error('ANDROID_VERSION_CODE_BASE deve essere un intero non negativo.');
           const code = Number(process.env.ANDROID_VERSION_CODE_BASE) + Number(process.env.GITHUB_RUN_NUMBER);
           if (!Number.isSafeInteger(code) || code < 1 || code > 2100000000) throw Error('versionCode Android fuori intervallo.');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `versione=${v}\npubblica=${process.env.PUBBLICA}\nandroid_code=${code}\n`);
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `versione=${v}\npubblica=${mode.pubblica}\nfirmata=${mode.firmata}\nandroid_code=${code}\n`);
           NODE
       - run: npm test
       - run: npm run build:ui
@@ -68,7 +75,7 @@ jobs:
     name: Prerequisiti GPG e prova crittografica
     needs: verifica
     runs-on: ubuntu-24.04
-    environment: ${{ needs.verifica.outputs.pubblica == 'true' && 'release' || 'build-test' }}
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -79,7 +86,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Validazione anticipata della policy GPG
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         run: node tools/firma.cjs gpg --release
         env:
           CODEDB_REQUIRE_GPG: ${{ vars.CODEDB_REQUIRE_GPG || 'false' }}
@@ -92,14 +99,14 @@ jobs:
     name: Windows NSIS x64
     needs: [verifica, integrita]
     runs-on: windows-2022
-    environment: ${{ needs.verifica.outputs.pubblica == 'true' && 'release' || 'build-test' }}
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     permissions:
       contents: read
       id-token: write
     env:
-      CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
+      CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
       CODEDB_BUILD_ARCH: x64
-      CODEDB_WINDOWS_SIGNING: ${{ needs.verifica.outputs.pubblica == 'true' && vars.CODEDB_WINDOWS_SIGNING || 'unsigned' }}
+      CODEDB_WINDOWS_SIGNING: ${{ needs.verifica.outputs.firmata == 'true' && vars.CODEDB_WINDOWS_SIGNING || 'unsigned' }}
       AZURE_CORE_OUTPUT: none
     steps:
       - uses: actions/checkout@v4
@@ -171,9 +178,9 @@ jobs:
             arch: arm64
             app: dist/mac-arm64/CodeDB.app/Contents/MacOS/CodeDB
     runs-on: ${{ matrix.os }}
-    environment: ${{ needs.verifica.outputs.pubblica == 'true' && 'release' || 'build-test' }}
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     env:
-      CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
+      CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
       CODEDB_BUILD_ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +199,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/codedb-signing"
           echo "APP_BUILDER_TMP_DIR=$RUNNER_TEMP/codedb-signing" >> "$GITHUB_ENV"
       - name: Prerequisiti Apple
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         run: node tools/firma.cjs mac --release
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -201,7 +208,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       - name: Firma Developer ID e notarizzazione integrata
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         run: npm run release:mac
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -210,10 +217,10 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       - name: Build ad hoc senza credenziali Apple
-        if: needs.verifica.outputs.pubblica != 'true'
+        if: needs.verifica.outputs.firmata != 'true'
         run: npm run build:mac
       - name: Firma e Gatekeeper sugli archivi definitivi
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         run: bash tools/verifica-firma-mac.sh dist
         env:
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
@@ -239,7 +246,7 @@ jobs:
     needs: [verifica, integrita]
     runs-on: ubuntu-24.04
     env:
-      CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
+      CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
       CODEDB_BUILD_ARCH: x64
     steps:
       - uses: actions/checkout@v4
@@ -277,9 +284,9 @@ jobs:
     name: Android autonomo APK e AAB
     needs: [verifica, integrita]
     runs-on: ubuntu-24.04
-    environment: ${{ needs.verifica.outputs.pubblica == 'true' && 'release' || 'build-test' }}
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     env:
-      CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
+      CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
       ANDROID_VERSION_CODE: ${{ needs.verifica.outputs.android-code }}
     steps:
       - uses: actions/checkout@v4
@@ -306,7 +313,7 @@ jobs:
       - name: SDK e compilatore Android
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;27.2.12479018' 'cmake;3.22.1'
       - name: Prepara firma persistente fuori dal checkout
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/codedb.jks
@@ -325,7 +332,7 @@ jobs:
       - run: node android/test.cjs
       - run: node android/test-moduli.cjs
       - name: APK e AAB di distribuzione, lint e verifica delle due firme
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/codedb.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -340,7 +347,7 @@ jobs:
           cp android/app/build/outputs/apk/release/app-release.apk "dist/CodeDB-$VERSIONE-android.apk"
           cp android/app/build/outputs/bundle/release/app-release.aab "dist/CodeDB-$VERSIONE-android.aab"
       - name: APK debug installabile senza credenziali
-        if: needs.verifica.outputs.pubblica != 'true'
+        if: needs.verifica.outputs.firmata != 'true'
         env:
           VERSIONE: ${{ needs.verifica.outputs.versione }}
         run: |
@@ -382,9 +389,9 @@ jobs:
     name: Asset definitivi e checksum globali
     needs: [verifica, windows, mac, linux, android]
     runs-on: ubuntu-24.04
-    environment: ${{ needs.verifica.outputs.pubblica == 'true' && 'release' || 'build-test' }}
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     env:
-      CODEDB_RELEASE: ${{ needs.verifica.outputs.pubblica }}
+      CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -399,10 +406,10 @@ jobs:
           pattern: '{win,mac-x64,mac-arm64,linux,android}'
           path: incoming
       - name: Raccogli senza firma GPG nelle prove
-        if: needs.verifica.outputs.pubblica != 'true'
+        if: needs.verifica.outputs.firmata != 'true'
         run: node tools/release-assets.cjs raccogli incoming release-assets
       - name: Manifest e firma GPG opzionale o obbligatoria
-        if: needs.verifica.outputs.pubblica == 'true'
+        if: needs.verifica.outputs.firmata == 'true'
         run: node tools/release-assets.cjs raccogli incoming release-assets
         env:
           CODEDB_REQUIRE_GPG: ${{ vars.CODEDB_REQUIRE_GPG || 'false' }}
@@ -417,11 +424,11 @@ jobs:
           retention-days: 14
 
   bozza:
-    name: Unica bozza completa, pubblicazione manuale
+    name: Pubblicazione dopo verifica di tutti gli asset
     needs: [verifica, raccogli]
     if: needs.verifica.outputs.pubblica == 'true'
     runs-on: ubuntu-24.04
-    environment: release
+    environment: ${{ needs.verifica.outputs.firmata == 'true' && 'release' || 'build-test' }}
     permissions:
       contents: write
     steps:
@@ -437,9 +444,11 @@ jobs:
         with:
           name: release-completa
           path: release-assets
-      - name: Riconcilia e verifica la bozza sul server
+      - name: Carica in bozza, verifica e pubblica
         run: node tools/pubblica-bozza.cjs release-assets
         env:
+          CODEDB_PUBLISH: 'true'
+          CODEDB_RELEASE: ${{ needs.verifica.outputs.firmata }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CODEDB_REQUIRE_GPG: ${{ vars.CODEDB_REQUIRE_GPG || 'false' }}
           GPG_KEY_FINGERPRINT: ${{ vars.GPG_KEY_FINGERPRINT }}

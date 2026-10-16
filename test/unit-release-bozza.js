@@ -9,11 +9,20 @@ const assets = require('../tools/release-assets.cjs');
 module.exports = (async () => {
   const signingTests = require('./unit-code-signing.cjs'); await signingTests;
   await require('./unit-windows-store.cjs');
+  await require('./unit-pubblica-beta.cjs');
   const workflow = yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows/release.yml'), 'utf8'));
   assert.equal(workflow.permissions.contents, 'read');
   assert.equal(workflow.jobs.bozza.permissions.contents, 'write');
   assert.deepEqual(workflow.jobs.raccogli.needs, ['verifica', 'windows', 'mac', 'linux', 'android']);
   assert.equal(workflow.on.workflow_dispatch.inputs.pubblica.default, false);
+  assert.equal(workflow.on.workflow_dispatch.inputs.firma.default, false);
+  assert.equal(workflow.jobs.bozza.if, "needs.verifica.outputs.pubblica == 'true'");
+  const finalStep = workflow.jobs.bozza.steps.find(s => s.run?.includes('tools/pubblica-bozza.cjs'));
+  assert.equal(finalStep.env.CODEDB_PUBLISH, 'true');
+  assert.equal(finalStep.env.CODEDB_RELEASE, '${{ needs.verifica.outputs.firmata }}');
+  for (const name of ['windows', 'mac', 'linux', 'android', 'raccogli']) {
+    assert.equal(workflow.jobs[name].env.CODEDB_RELEASE, '${{ needs.verifica.outputs.firmata }}');
+  }
   assert.deepEqual(workflow.on.push.tags, ['v*', '[0-9]*']);
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
   for (const [name, job] of Object.entries(workflow.jobs)) {

@@ -13,9 +13,17 @@ Configurazione e collaudi: [Distribuzioni Windows](WINDOWS_DISTRIBUTION.md).
 
 | Modalità | Desktop | Android | GitHub |
 | --- | --- | --- | --- |
-| Locale / workflow manuale con `pubblica=false` | Windows senza firma; macOS ad hoc; Linux | APK debug installabile, ID `.debug` | Soli artefatti CI, nessuna release |
+| Locale / workflow manuale con `pubblica=false`, `firma=false` | Windows senza firma; macOS ad hoc; Linux | APK debug installabile, ID `.debug` | Soli artefatti CI, nessuna release |
 | Credenziali parziali o non valide | Errore; nessun ripiego senza firma | Errore di configurazione/firma | Nessuna bozza completa |
-| Tag o workflow con `pubblica=true` | Windows senza firma oppure Azure esplicito; Developer ID e notarizzazione su macOS | APK e AAB con chiave persistente | Unica bozza, pubblicazione manuale |
+| Beta con `pubblica=true`, `firma=false`, oppure push tag beta | Windows senza firma; macOS ad hoc; Linux | APK debug, soltanto per prove | Pre-release pubblica dopo verifica di tutti gli asset, con limiti dichiarati |
+| `pubblica=true`, `firma=true`, oppure versione stabile da pubblicare | Windows senza firma oppure Azure esplicito; Developer ID e notarizzazione su macOS | APK e AAB con chiave persistente | Release pubblica dopo verifica di tutti gli asset |
+
+Firma e pubblicazione sono scelte distinte. `pubblica=false`, `firma=true` permette
+il collaudo dei pacchetti firmati senza creare una release. Le versioni stabili da
+pubblicare richiedono sempre il percorso firmato. Per firmare anche i tag beta,
+impostare la variable di repository `CODEDB_BETA_SIGNED=true`; senza quella
+variabile i tag beta usano i pacchetti di prova. Non si effettua un ripiego quando
+la modalità firmata è richiesta ma le credenziali non sono valide.
 
 `npm run release:win|mac|linux` **prepara soltanto** il pacchetto di distribuzione.
 Il caricamento è stato spostato nel job finale: i singoli builder non ricevono
@@ -273,18 +281,34 @@ output pulita per ogni build: la raccolta rifiuta asset duplicati o metadati di
 versioni precedenti. `build:all` è soltanto una sequenza dei tre comandi e non
 sostituisce i runner nativi richiesti dai moduli.
 
-1. Configurare identità/secret/variables e protezioni dell'environment release.
-2. Eseguire Actions → Build e release → Run workflow con `pubblica=false`.
+1. Per il percorso firmato configurare identità/secret/variables nell'environment release.
+2. Eseguire Actions → Build e release → Run workflow con `pubblica=false`,
+   scegliendo `firma` in base al tipo di pacchetti da provare.
    Controllare tutti i target, compreso l'avvio nativo e l'emulatore Android.
-3. Per la prima prova firmata usare `pubblica=true` su un commit fidato, oppure
+3. Per compilare e pubblicare usare `pubblica=true` su un commit fidato, oppure
    inviare un tag SemVer uguale a package.json. Restano accettati `v*` e `[0-9]*`;
    viene usato il tag effettivo, senza crearne uno alternativo per la stessa versione.
-4. Attendere `bozza`: la release resta draft; stable/prerelease deriva da SemVer.
+4. Il job `bozza` carica in privato, verifica e **pubblica automaticamente** solo
+   quando tutti gli asset sono completi; stable/prerelease deriva da SemVer.
    `INCOMPLETA` significa che caricamento/verifica non sono conclusi. Un retry
    rimuove il vecchio manifest e riconcilia tutti gli asset. Una release già
    pubblicata viene rifiutata prima di ogni modifica.
-5. Scaricare e provare gli installer, confrontare firme e checksum, quindi
-   pubblicare manualmente la bozza su GitHub. Non modificare gli asset dopo i checksum.
+5. Verificare gli URL pubblici, scaricare gli installer e provare l'aggiornamento.
+   Non modificare gli asset dopo i checksum. Un tag preesistente deve puntare
+   esattamente al commit compilato, controllato prima e dopo gli upload.
+
+### Pubblicare una beta già compilata
+
+Actions → **Pubblica beta già compilata** → Run workflow su `main` → inserire
+l'ID della run **Build e release** riuscita con pacchetti di prova. Il workflow
+recupera l'artifact `release-completa` originale, senza ricompilare. Verifica
+repository, workflow, esito, commit già integrato in `main`, versione pre-release,
+provenienza dell'artifact, metadati e checksum. Carica tutto in bozza, controlla
+i digest remoti e solo allora rende pubblica la pre-release. La release dichiara
+Windows senza firma, macOS senza notarizzazione e Android debug.
+
+Questo recupero è destinato agli artifact di prova; le distribuzioni firmate
+passano dal workflow principale. Una release già pubblicata non viene sovrascritta.
 
 ### Tag senza pacchetti e controlli degli aggiornamenti
 
@@ -303,8 +327,9 @@ Per mantenere funzionanti anche i client precedenti, avviare la compilazione dal
 branch con `workflow_dispatch` e pubblicare il tag insieme ai pacchetti pronti.
 Se si rinvia la compilazione, conservare il tag soltanto in locale. Un commit con
 `[skip ci]` salta anche i workflow su push del tag: l'avvio manuale resta disponibile.
-Il percorso `pubblica=false` produce artefatti Actions (macOS ad hoc e Android debug),
-senza release; `pubblica=true` richiede le credenziali indicate sopra. I pacchetti
+Il percorso `pubblica=false` produce soltanto artefatti Actions. `firma=false`
+usa macOS ad hoc e Android debug; `firma=true` richiede le credenziali indicate
+sopra. `pubblica=true` rende pubblici i pacchetti verificati. I pacchetti
 negli artefatti Actions e nelle bozze non sono aggiornamenti disponibili per i client.
 
 La raccolta conserva le blockmap e fonde **solo** i metadati Mac omonimi delle due

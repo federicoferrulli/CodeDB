@@ -62,7 +62,12 @@ function versione(version, tag) {
   return { version, prerelease: semver.prerelease(version) !== null };
 }
 
-module.exports = { gruppo, valida, versione };
+function modalitaRelease(version, pubblica, firmaRichiesta) {
+  const { prerelease } = versione(version);
+  return { pubblica, firmata: firmaRichiesta || (pubblica && !prerelease) };
+}
+
+module.exports = { gruppo, valida, versione, modalitaRelease };
 if (require.main === module) {
   try {
     const attiva = valida(process.argv[2], process.env, process.argv.includes('--release'), !process.argv.includes('--senza-file'));

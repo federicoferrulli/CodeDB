@@ -1,0 +1,46 @@
+name: Pubblica beta già compilata
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'ID di Build e release riuscita con pacchetti di prova (pubblica=false, firma=false)'
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: codedb-release
+  cancel-in-progress: false
+jobs:
+  pubblica:
+    name: Verifica provenienza, allegati e pubblica la beta
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CODEDB_BUILD_RUN: ${{ inputs.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Test pubblicazione e protezioni
+        run: node test/unit-pubblica-beta.cjs
+      - name: Verifica run riuscita e commit integrato in main
+        id: provenienza
+        run: node tools/promuovi-beta.cjs prepara
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: ${{ steps.provenienza.outputs.artifact-id }}
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          merge-multiple: true
+          path: release-assets
+      - name: Verifica checksum, carica in bozza e pubblica tutti i pacchetti
+        run: node tools/promuovi-beta.cjs pubblica release-assets
