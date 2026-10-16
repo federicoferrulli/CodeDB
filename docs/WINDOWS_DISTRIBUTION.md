@@ -18,10 +18,11 @@ ai database, tunnel SSH, backup e processi mongosh.
 Aprire [storedeveloper.microsoft.com](https://storedeveloper.microsoft.com/) e
 completare registrazione e verifica dell'identità. Il nuovo percorso offre
 registrazione gratuita; scegliere il tipo di account appropriato all'attività.
-Il nome riservato è **CodeDB Database Manager**. In Partner Center, aprire
+Il nome riservato è **CodeDB Manager**. In Partner Center, aprire
 **Gestione prodotto → Identità prodotto** per consultare i valori assegnati.
 
-Creare l'environment GitHub **microsoft-store** e queste **Variables**, non Secrets:
+L'environment GitHub **microsoft-store** contiene queste **Variables**, non Secrets
+(configurate e rilette tramite API il 16 ottobre 2026):
 
 | Variabile | Valore |
 | --- | --- |

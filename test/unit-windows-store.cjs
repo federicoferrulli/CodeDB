@@ -46,8 +46,8 @@ module.exports = (async () => {
     const xml = fs.readFileSync(file, 'utf8');
     assert.match(xml, /<Identity[\s\S]*?Version="1\.2\.37\.0"/);
     assert.match(xml, /Editore di prova &amp; soci/);
-    assert.match(xml, /<DisplayName>CodeDB Database Manager<\/DisplayName>/);
-    assert.match(xml, /DisplayName="CodeDB Database Manager"/);
+    assert.match(xml, /<DisplayName>CodeDB Manager<\/DisplayName>/);
+    assert.match(xml, /DisplayName="CodeDB Manager"/);
     assert.match(xml, /EntryPoint="Windows.FullTrustApplication"/);
     assert.match(xml, /runFullTrust/);
     assert.match(xml, /Language="it-IT"/);

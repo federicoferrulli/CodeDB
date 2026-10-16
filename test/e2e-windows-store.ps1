@@ -17,7 +17,7 @@ try {
     $atteso = node -e 'console.log(JSON.stringify(require(process.argv[1]).identita()))' "$PSScriptRoot/../tools/store.cjs" | ConvertFrom-Json
     if ($LASTEXITCODE -ne 0) { throw 'Identità Store non valida' }
     if ($manifest.Package.Identity.Name -ne $atteso.identityName -or $manifest.Package.Identity.Publisher -ne $atteso.publisher -or $manifest.Package.Identity.Version -ne $atteso.version) { throw 'Identità/versione AppX diversa dalla configurazione' }
-    $nome = if ($atteso.prova) { 'CodeDB - prova Store' } else { 'CodeDB Database Manager' }
+    $nome = if ($atteso.prova) { 'CodeDB - prova Store' } else { 'CodeDB Manager' }
     if ($manifest.Package.Properties.DisplayName -ne $nome -or $manifest.Package.Applications.Application.VisualElements.DisplayName -ne $nome) { throw 'Nome AppX diverso dal nome riservato nello Store' }
     if ($manifest.Package.Properties.PublisherDisplayName -ne $atteso.publisherDisplayName) { throw 'Nome editore AppX diverso dalla configurazione' }
     if ($manifest.Package.Applications.Application.EntryPoint -ne 'Windows.FullTrustApplication') { throw 'Runtime full trust mancante' }

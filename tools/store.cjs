@@ -41,7 +41,7 @@ function configura(base, env) {
   base.win.artifactName = `CodeDB-${id.version}-store${id.prova ? '-prova' : ''}-\${arch}.\${ext}`;
   base.appx = {
     identityName: id.identityName, publisher: id.publisher, publisherDisplayName: id.publisherDisplayName,
-    applicationId: 'CodeDB', displayName: id.prova ? 'CodeDB - prova Store' : 'CodeDB Database Manager',
+    applicationId: 'CodeDB', displayName: id.prova ? 'CodeDB - prova Store' : 'CodeDB Manager',
     languages: ['it-IT'], minVersion: '10.0.19041.0', maxVersionTested: '10.0.26100.0',
     capabilities: ['runFullTrust'], electronUpdaterAware: false, setBuildNumber: false,
   };
