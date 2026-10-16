@@ -53,6 +53,14 @@ module.exports = (async () => {
       if (platform === 'mac') { assert.equal(cfg.mac.notarize, release); if (!release) assert.equal(cfg.mac.identity, '-'); }
       if (platform === 'win') { assert.equal(cfg.win.signExecutable, release); if (release) assert.equal(cfg.win.azureSignOptions.publisherName, 'CodeDB'); }
     }
+    const { computeArchToTargetNamesMap } = require('app-builder-lib/out/targets/targetFactory');
+    const { Arch } = require('builder-util');
+    for (const arch of ['x64', 'arm64']) {
+      const targets = computeArchToTargetNamesMap(new Map([[Arch[arch], []]]), {
+        platformSpecificBuildOptions: configurazione('mac', {}).mac,
+      });
+      assert.deepEqual([...targets], [[Arch[arch], ['dmg', 'zip']]], 'Ogni runner deve costruire soltanto la CPU selezionata dalla CLI.');
+    }
     await assert.rejects(() => schema({ ...configurazione('win', {}), opzioneInesistente: true }), /unknown property/);
     assert.throws(() => require('../tools/build-release.cjs').main(['win'], { CODEDB_RELEASE: 'tru' }), /true o false/);
     assert.throws(() => require('../tools/verifica-mongosh-nativi.cjs')({ electronPlatformName: 'piattaforma-errata', arch: 1 }), /runner/);
