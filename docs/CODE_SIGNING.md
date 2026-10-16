@@ -286,6 +286,27 @@ sostituisce i runner nativi richiesti dai moduli.
 5. Scaricare e provare gli installer, confrontare firme e checksum, quindi
    pubblicare manualmente la bozza su GitHub. Non modificare gli asset dopo i checksum.
 
+### Tag senza pacchetti e controlli degli aggiornamenti
+
+Un tag Git non contiene gli installer: i due archivi sorgente mostrati da GitHub
+non sostituiscono gli asset della release. Inoltre il feed `releases.atom` elenca
+anche tag senza release. Le versioni desktop precedenti che usano quel feed possono
+fermarsi con `Cannot find latest.yml` se il tag più recente è ancora senza pacchetti.
+Il gestore aggiornato interroga invece le release pubblicate tramite API, seleziona
+il canale e richiede i metadati per la piattaforma corrente. Bozze e release senza
+quei metadati vengono escluse; errori di rete, file dichiarati ma non scaricabili e
+metadati non validi restano errori. Download, SHA-512 e blockmap sono gestiti da
+electron-updater. Il controllo usa l'API pubblica senza credenziali ed è soggetto
+ai limiti di GitHub; un limite raggiunto non viene presentato come app aggiornata.
+
+Per mantenere funzionanti anche i client precedenti, avviare la compilazione dal
+branch con `workflow_dispatch` e pubblicare il tag insieme ai pacchetti pronti.
+Se si rinvia la compilazione, conservare il tag soltanto in locale. Un commit con
+`[skip ci]` salta anche i workflow su push del tag: l'avvio manuale resta disponibile.
+Il percorso `pubblica=false` produce artefatti Actions (macOS ad hoc e Android debug),
+senza release; `pubblica=true` richiede le credenziali indicate sopra. I pacchetti
+negli artefatti Actions e nelle bozze non sono aggiornamenti disponibili per i client.
+
 La raccolta conserva le blockmap e fonde **solo** i metadati Mac omonimi delle due
 architetture. Controlla versione, nomi/URL relativi, SHA-512 e dimensioni dove il
 builder le emette, percorso/hash legacy e presenza degli asset obbligatori. Con il

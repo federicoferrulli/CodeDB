@@ -197,6 +197,52 @@ function noteRilascio(info, maxLen) {
   return testo.length > limite ? `${testo.slice(0, limite)}…` : testo;
 }
 
+// Il feed Atom di GitHub include anche tag senza release: cercarvi latest.yml
+// blocca tutti i client durante una build. L'API elenca solo release pubblicate.
+function providerGitHub() {
+  const { GitHubProvider } = require('electron-updater/out/providers/GitHubProvider');
+  const { parseUpdateInfo } = require('electron-updater/out/providers/Provider');
+  const { CancellationToken, newError } = require('builder-util-runtime');
+  const semver = require('semver');
+
+  return class extends GitHubProvider {
+    async getLatestVersion() {
+      const token = new CancellationToken();
+      const canaleCorrente = this.updater.channel || semver.prerelease(this.updater.currentVersion)?.[0] || null;
+      for (let pagina = 1; ; pagina++) {
+        const url = new URL(`/repos/${this.options.owner}/${this.options.repo}/releases?per_page=100&page=${pagina}`, this.baseApiUrl);
+        const releases = JSON.parse(await this.httpRequest(url, { Accept: 'application/vnd.github+json' }, token));
+        if (!Array.isArray(releases)) throw new Error('Elenco delle release GitHub non valido.');
+        for (const release of releases) {
+          const versione = semver.valid(release.tag_name);
+          if (release.draft || !versione) continue;
+          const canale = semver.prerelease(versione)?.[0] || null;
+          if (!this.updater.allowPrerelease && (release.prerelease || canale)) continue;
+          if (this.updater.allowPrerelease && canaleCorrente) {
+            // Beta accetta beta/stabili; alpha anche beta; i canali personalizzati restano isolati.
+            const ammesso = ['alpha', 'beta'].includes(canaleCorrente)
+              ? (!canale || canale === 'beta' || (canaleCorrente === 'alpha' && canale === 'alpha'))
+              : canale === canaleCorrente;
+            if (!ammesso) continue;
+          }
+          const nomeCanale = this.updater.allowPrerelease && canale ? this.getCustomChannelName(String(canale)) : this.channel;
+          const nomi = [`${nomeCanale}.yml`, ...(this.updater.allowPrerelease ? [`${this.getDefaultChannelName()}.yml`] : [])];
+          const file = nomi.find(nome => release.assets?.some(asset => asset.name === nome));
+          if (!file) continue; // Release ancora incompleta o destinata a un'altra piattaforma.
+          const download = new URL(this.getBaseDownloadPath(release.tag_name, file), this.baseUrl);
+          const info = parseUpdateInfo(await this.httpRequest(download, null, token), file, download);
+          if (info?.version !== versione) throw new Error('La versione dei metadati di aggiornamento non corrisponde al tag pubblicato.');
+          // Download, verifica SHA-512 e blockmap restano quelli di electron-updater.
+          return { ...info, tag: release.tag_name, releaseName: info.releaseName ?? release.name,
+            releaseNotes: info.releaseNotes ?? release.body };
+        }
+        if (releases.length < 100) break;
+      }
+      throw newError('Nessuna release pubblicata con aggiornamenti per questa piattaforma e questo canale.', 'ERR_UPDATER_NO_PUBLISHED_VERSIONS');
+    }
+  };
+}
+
 /**
  * Crea il gestore degli aggiornamenti.
  *
@@ -227,6 +273,7 @@ function creaGestoreAggiornamenti({ getWindow }) {
     const feed = feedPersonalizzato();
     if (feed && feed.errore) throw new Error(feed.errore);
     if (feed) autoUpdater.setFeedURL(feed);
+    else autoUpdater.setFeedURL({ provider: 'custom', ...REPO, updateProvider: providerGitHub() });
 
     // Canale esplicito (`beta`, `alpha`, `latest`…): con il provider GitHub non
     // arriva dal feed, che lì non si imposta, quindi va detto all'updater. Vale

@@ -1029,6 +1029,7 @@ console.log('--- Test Unitari CodeDB ---');
     console.log('  OK   Electron: aggiornamenti (feed, versioni, note, menu) passed');
     console.log('  OK   Workflow di release: runner per piattaforma e script npm coerenti passed');
     await require('./unit-release-bozza');
+    await require('./unit-aggiornamenti-github.cjs');
   }
 
   // Test 6: Controllo presenza file di configurazione ed eseguibili principali
