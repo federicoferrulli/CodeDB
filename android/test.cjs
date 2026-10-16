@@ -133,9 +133,10 @@ async function main() {
 if (process.argv[2]) {
   const jar = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', process.platform === 'win32' ? 'jar.exe' : 'jar') : 'jar';
   const entries = execFileSync(jar, ['tf', path.resolve(process.argv[2])], { encoding: 'utf8' }).split(/\r?\n/);
+  const prefix = process.argv[2].endsWith('.aab') ? 'base/' : '';
   for (const abi of ['arm64-v8a', 'armeabi-v7a', 'x86_64']) {
-    for (const library of ['libnode.so', 'libcodedb.so', 'libc++_shared.so']) assert.ok(entries.includes(`lib/${abi}/${library}`), `${abi}: manca ${library}`);
+    for (const library of ['libnode.so', 'libcodedb.so', 'libc++_shared.so']) assert.ok(entries.includes(`${prefix}lib/${abi}/${library}`), `${abi}: manca ${library}`);
   }
-  for (const asset of ['runtime.zip', 'download.js', 'LICENSE-nodejs-mobile.txt']) assert.ok(entries.includes(`assets/${asset}`), asset);
-  console.log('OK APK: runtime, ponte, libreria C++ e asset presenti per tutte le architetture.');
+  for (const asset of ['runtime.zip', 'download.js', 'LICENSE-nodejs-mobile.txt']) assert.ok(entries.includes(`${prefix}assets/${asset}`), asset);
+  console.log('OK pacchetto Android: runtime, ponte, libreria C++ e asset presenti per tutte le architetture.');
 } else main().catch(error => { console.error(error); process.exitCode = 1; });

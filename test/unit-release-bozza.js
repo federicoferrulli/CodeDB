@@ -1,69 +1,61 @@
 'use strict';
-
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const vm = require('node:vm');
-const { createRequire } = require('node:module');
-const { GitHubPublisher } = require('electron-publish/out/gitHubPublisher');
 const yaml = require('js-yaml');
-
+const { pubblica } = require('../tools/pubblica-bozza.cjs');
+const assets = require('../tools/release-assets.cjs');
 module.exports = (async () => {
-  const radice = path.join(__dirname, '..');
-  const workflow = yaml.load(fs.readFileSync(path.join(radice, '.github/workflows/release.yml'), 'utf8'));
-  const passo = workflow.jobs.build.steps.find(s => s.run?.startsWith('npm run release:'));
-  const sorgente = path.join(radice, 'tools/pubblica.js');
-  const requireReale = createRequire(sorgente);
-
-  for (const versione of ['1.0.0', '1.0.0-beta.1']) {
-    for (const { piattaforma } of workflow.jobs.build.strategy.matrix.include) {
-      let ambienteBuilder;
-      const modulo = { exports: {} };
-      const requireFinto = nome => {
-        if (nome === 'child_process') return { spawnSync: (comando, argomenti, opzioni) => {
-          if (comando === 'git') return { status: 0, stdout: '' };
-          assert.deepEqual(Array.from(argomenti).slice(1), [`--${piattaforma}`, '--publish', 'always']);
-          ambienteBuilder = opzioni.env;
-          return { status: 0 };
-        } };
-        if (nome === path.join(radice, 'package.json')) return { version: versione };
-        return requireReale(nome);
-      };
-      requireFinto.main = modulo;
-      requireFinto.resolve = requireReale.resolve;
-      vm.runInNewContext(fs.readFileSync(sorgente, 'utf8'), {
-        module: modulo, require: requireFinto, __dirname: path.dirname(sorgente),
-        console: { log() {}, warn() {}, error() {} },
-        process: {
-          argv: [process.execPath, sorgente, piattaforma], execPath: process.execPath,
-          env: { ...passo.env }, exit: codice => assert.equal(codice, 0),
-        },
-      }, { filename: sorgente });
-      assert.ok(ambienteBuilder, 'lo script deve avviare electron-builder');
-
-      // Il publisher reale costruisce il payload; soltanto la richiesta HTTP è sostituita.
-      const chiavi = ['EP_DRAFT', 'EP_PRE_RELEASE', 'EP_PRELEASE', 'GITHUB_RELEASE_TOKEN'];
-      const precedenti = Object.fromEntries(chiavi.map(k => [k, process.env[k]]));
-      let publisher;
-      try {
-        for (const k of chiavi) {
-          if (ambienteBuilder[k] === undefined) delete process.env[k];
-          else process.env[k] = ambienteBuilder[k];
-        }
-        publisher = new GitHubPublisher({}, {
-          ...require('../package.json').build.publish[0], token: '__test__',
-        }, versione, { publish: 'always' });
-      } finally {
-        for (const k of chiavi) {
-          if (precedenti[k] === undefined) delete process.env[k];
-          else process.env[k] = precedenti[k];
-        }
-      }
-      publisher.githubRequest = async (_url, _token, dati) => dati;
-      const richiesta = await publisher.createRelease();
-      assert.equal(richiesta.draft, true, `${piattaforma} ${versione}: GitHub deve ricevere una bozza`);
-      assert.equal(richiesta.tag_name, `v${versione}`);
-    }
+  const signingTests = require('./unit-code-signing.cjs'); await signingTests;
+  const workflow = yaml.load(fs.readFileSync(path.join(__dirname, '../.github/workflows/release.yml'), 'utf8'));
+  assert.equal(workflow.permissions.contents, 'read');
+  assert.equal(workflow.jobs.bozza.permissions.contents, 'write');
+  assert.deepEqual(workflow.jobs.raccogli.needs, ['verifica', 'windows', 'mac', 'linux', 'android']);
+  assert.equal(workflow.on.workflow_dispatch.inputs.pubblica.default, false);
+  assert.deepEqual(workflow.on.push.tags, ['v*', '[0-9]*']);
+  assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    if (name !== 'bozza') assert.notEqual(job.permissions?.contents, 'write');
+    for (const step of job.steps) assert(!/--publish\s+always/.test(step.run || ''), 'Nessun job deve pubblicare direttamente dal builder');
   }
-  console.log('  OK   Release in bozza: workflow → script → payload GitHub, stabili e beta su tre piattaforme');
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'codedb-bozza-'));
+  try {
+    for (const version of ['1.2.3', '1.2.3-beta.1']) {
+      const dir = path.join(temp, version); fs.mkdirSync(dir);
+      const source = signingTests.fixture(dir, version), final = path.join(dir, 'final');
+      assets.raccogli(source, final, version, true); assets.manifest(final);
+      for (const tag of [version, `v${version}`]) {
+        let state = null, uploaded = [], next = 1, failUpload = false, mutations = 0;
+        const request = async (method, route, data) => {
+          if (method === 'GET' && route.includes('/assets?')) return uploaded;
+          if (method === 'GET') return state;
+          mutations++;
+          if (method === 'POST') return (state = { ...data, id: 42 });
+          if (method === 'PATCH') return (state = { ...state, ...data });
+          if (method === 'DELETE') { uploaded = uploaded.filter(a => a.id !== Number(route.split('/').pop())); return; }
+          if (method === 'UPLOAD') {
+            if (failUpload) { failUpload = false; throw new Error('rete interrotta'); }
+            uploaded.push({ id: next++, name: path.basename(data), size: fs.statSync(data).size, digest: `sha256:${assets.hash(data)}`, state: 'uploaded' });
+          }
+        };
+        await pubblica(final, version, tag, request);
+        assert.equal(state.draft, true); assert.equal(state.prerelease, version.includes('-')); assert.equal(state.tag_name, tag);
+        assert.equal(state.name, `CodeDB ${version}`);
+        failUpload = true; await assert.rejects(() => pubblica(final, version, tag, request), /rete interrotta/);
+        assert.match(state.name, /INCOMPLETA/); assert(!uploaded.some(a => a.name === 'SHA256SUMS'));
+        await pubblica(final, version, tag, request);
+        assert.equal(state.name, `CodeDB ${version}`); assert.equal(uploaded.length, assets.elenco(final).length);
+        const prior = mutations; state.draft = false;
+        await assert.rejects(() => pubblica(final, version, tag, request), /già pubblicata/); assert.equal(mutations, prior);
+        state.draft = true;
+        await assert.rejects(() => pubblica(final, version, tag, async (...args) => {
+          const result = await request(...args);
+          return args[0] === 'GET' && args[1].includes('/assets?') && result.length ? result.map(a => ({ ...a, digest: 'alterato' })) : result;
+        }), /remota fallita/);
+        assert.match(state.name, /INCOMPLETA/);
+      }
+    }
+    console.log('OK release: bozza unica, stabili/beta, tag con/senza v, caricamento parziale, retry e digest remoto alterato.');
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 })();

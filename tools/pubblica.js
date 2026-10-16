@@ -1,44 +1,7 @@
 'use strict';
 
-/* ---------------------------------------------------------------------------
- * Pubblicazione di una release su GitHub (electron-builder --publish always),
- * con il TIPO di release deciso dalla VERSIONE invece che a mano.
- *
- * Perché esiste. `build.publish[0].releaseType` in package.json è un valore
- * fisso: con `release` ogni pacchetto caricato diventa la release corrente del
- * repository, cioè la `/releases/latest` — e `electron-updater`, per chi NON ha
- * chiesto le pre-release, guarda esattamente quella. Pubblicare `0.2.0-beta.1`
- * con quel valore significa quindi offrire una beta a tutti gli utenti della
- * versione stabile: nessun errore visibile in fase di build, nessun modo di
- * accorgersene se non dalle segnalazioni. L'alternativa — ricordarsi di
- * cambiare `releaseType` a ogni cambio di versione e di rimetterlo a posto
- * dopo — è la classica cosa che si dimentica proprio alla release importante.
- *
- * Qui la regola è una sola e deriva dalla sola fonte di verità che c'è già: se
- * `package.json` → `version` contiene una componente di pre-release
- * (`-beta.1`, `-b`, `-rc.2`), la release viene marcata come **prerelease** su
- * GitHub tramite `EP_PRE_RELEASE`, che ha la precedenza su `releaseType` nel
- * publisher di electron-builder. È la METÀ SERVER del canale beta: l'altra sta
- * in `electron-aggiornamenti.js` (`permettePreRelease`), che decide chi quelle
- * beta le riceve. Senza questa metà, la scelta lato client non protegge nessuno.
- *
- * TAG DOPPI, il difetto che questa guardia impedisce. electron-builder aggancia
- * la release al tag `v${version}`; se nel repository esiste ANCHE un tag scritto
- * altrimenti per la stessa versione (`0.1.3-beta.1` senza la `v`, creato a mano
- * prima della pubblicazione), l'aggiornamento si rompe in un modo che dalla
- * build non si vede: `releases.atom` — il feed da cui `electron-updater` sceglie
- * la versione — elenca anche i TAG SENZA RELEASE, il tag nudo vi compare per
- * primo, e l'updater ci cerca dentro `latest.yml` trovando un 404. È successo
- * con la 0.1.3-beta.1: release completa, artefatti al loro posto, e ogni utente
- * con "Controllo degli aggiornamenti non riuscito".
- *
- * Uso:  node tools/pubblica.js win|mac|linux
- * Env:  CODEDB_RELEASE_PRERELEASE=1|0 forza il tipo (per un rilascio fuori
- *       regola: una stabile pubblicata come prova, o una beta pubblicata come
- *       definitiva). `EP_DRAFT=1` continua a valere e vince su tutto, come da
- *       electron-builder.
- *       CODEDB_RELEASE_IGNORA_TAG=1 salta il controllo dei tag doppi.
- * ------------------------------------------------------------------------- */
+// Prepara una build di distribuzione firmata. Il caricamento della bozza completa
+// avviene soltanto nel job finale, tramite pubblica-bozza.cjs.
 
 const { spawnSync } = require('child_process');
 const path = require('path');
@@ -46,7 +9,7 @@ const path = require('path');
 const RADICE = path.join(__dirname, '..');
 const PIATTAFORME = { win: '--win', mac: '--mac', linux: '--linux' };
 
-/** Il tag a cui electron-builder aggancia la release GitHub. */
+/** Tag predefinito per una release avviata senza un tag esplicito. */
 function tagDiRilascio(versione) {
   return `v${String(versione || '').trim().replace(/^v/i, '')}`;
 }
@@ -135,13 +98,14 @@ function verificaTag(versione) {
   const { tag, avviso } = elencoTag();
   if (avviso) console.warn(`[pubblica] ${avviso}`);
 
-  const doppi = tagDuplicati(tag, versione);
+  const scelto = process.env.GITHUB_REF?.startsWith('refs/tags/') ? process.env.GITHUB_REF.slice(10) : tagDiRilascio(versione);
+  const doppi = tag.filter(t => t !== scelto && t.replace(/^v/i, '').toLowerCase() === versione.toLowerCase());
   if (doppi.length === 0) return;
 
-  const atteso = tagDiRilascio(versione);
+  const atteso = scelto;
   console.error(`\n[pubblica] INTERROTTO: esiste già un tag doppio per la versione ${versione}.\n`);
   console.error(`  Trovati: ${doppi.join(', ')}`);
-  console.error(`  Atteso:  ${atteso} (è quello a cui electron-builder aggancia la release)\n`);
+  console.error(`  Atteso:  ${atteso} (tag scelto per la bozza finale)\n`);
   console.error('  Il feed https://github.com/…/releases.atom elenca anche i tag SENZA release:');
   console.error('  il tag doppio vi comparirebbe per primo ed electron-updater cercherebbe');
   console.error(`  latest.yml sotto /releases/download/${doppi[0]}/, dove non c'è nulla → 404\n`);
@@ -160,28 +124,22 @@ function main() {
   }
 
   const { version } = require(path.join(RADICE, 'package.json'));
-  verificaTag(version);
-  const pre = preRelease(process.env, version);
+  require('./firma.cjs').valida(piattaforma, process.env, true);
+  verificaTag(version); // prima di electron-builder/cli.js, invocato da build-release.cjs
+  const pre = require('./firma.cjs').versione(version).prerelease;
 
-  console.log(`[pubblica] CodeDB ${version} → ${pre ? 'PRE-RELEASE' : 'release stabile'} su GitHub`);
+  console.log(`[pubblica] CodeDB ${version} → ${pre ? 'PRE-RELEASE' : 'release stabile'} da raccogliere nella bozza`);
   if (pre) {
     console.log('[pubblica] la riceverà solo chi ha una versione di prova installata '
       + 'o ha impostato CODEDB_UPDATE_PRERELEASE=1');
   }
 
-  const cli = require.resolve('electron-builder/cli.js');
-  const r = spawnSync(process.execPath, [cli, flag, '--publish', 'always'], {
-    stdio: 'inherit',
-    cwd: RADICE,
-    env: { ...process.env, ...(pre ? { EP_PRE_RELEASE: 'true' } : {}) }
-  });
-  if (r.error) {
-    console.error(`[pubblica] impossibile eseguire electron-builder: ${r.error.message}`);
-    process.exit(1);
-  }
-  process.exit(r.status === null ? 1 : r.status);
+  // Nessun token GitHub viene passato al builder e nessun asset è caricato qui.
+  require('./build-release.cjs').main([piattaforma, '--release']);
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+  try { main(); } catch (e) { console.error(e.message); process.exitCode = 1; }
+}
 
 module.exports = { versioneDiPreRelease, preRelease, tagDiRilascio, tagDuplicati };

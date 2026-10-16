@@ -42,5 +42,13 @@ import_*
 
 # File temporanei, prove e pacchetti locali: non versionare.
 /.scratch/
+# Materiale di firma: conservare fuori dal repository.
+*.p12
+*.pfx
+*.jks
+*.keystore
+/release-assets/
+/staged/
+/incoming/
 video
 /test-reports/**/win-unpacked/

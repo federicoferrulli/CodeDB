@@ -5,6 +5,8 @@
 
 # CodeDB
 
+Firma degli installer e pipeline di release: [guida operativa](docs/CODE_SIGNING.md).
+
 CodeDB was born taking inspiration from modern software, with the vision of being the tool that anyone can use in their unique workflow—human developers and AI agents alike.
 
 It is a **multi-database** web-based application: explore databases, collections, and tables, view documents/rows in a spreadsheet-like grid, run custom queries, and edit data in real time.

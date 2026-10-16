@@ -19,13 +19,13 @@
     "dev": "node --watch server.js",
     "electron:start": "electron .",
     "electron:icons": "node tools/genera-icona.js",
-    "build:win": "npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder --win --publish never",
-    "build:mac": "npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder --mac --publish never",
-    "build:linux": "npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder --linux --publish never",
+    "build:win": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs win",
+    "build:mac": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs mac",
+    "build:linux": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs linux",
     "prepare:android": "npm run build:ui && node android/prepare.cjs",
-    "build:android": "npm run prepare:android && gradle -p android assembleRelease",
-    "build:all": "npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder -mwl --publish never",
-    "build:dir": "npm run build:ui && npm run electron:icons && npm run electron:licenza && electron-builder --dir --publish never",
+    "build:android": "npm run prepare:android && gradle -p android assembleDebug lintDebug",
+    "build:all": "npm run build:win && npm run build:mac && npm run build:linux",
+    "build:dir": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/build-release.cjs dir",
     "release:win": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/pubblica.js win",
     "release:mac": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/pubblica.js mac",
     "release:linux": "npm run build:ui && npm run electron:icons && npm run electron:licenza && node tools/pubblica.js linux",
@@ -72,7 +72,9 @@
     "typecheck:ui": "tsc -p ui/tsconfig.json",
     "test:e2e:arc": "node test/e2e-arc.js && node test/e2e-arc-griglia.js && node test/e2e-arc-campi.js",
     "test:e2e:arc:regressioni": "node test/arc-regressions.cjs",
-    "test:e2e:design": "node test/e2e-design.js"
+    "test:e2e:design": "node test/e2e-design.js",
+    "release:android": "npm run prepare:android && gradle -p android assembleRelease bundleRelease lintRelease",
+    "test:release": "node test/unit-release-bozza.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",
@@ -101,6 +103,7 @@
     "mongodb-client-encryption": true
   },
   "devDependencies": {
+    "@babel/parser": "7.29.9",
     "@electron/packager": "^20.0.4",
     "@radix-ui/react-checkbox": "^1.3.12",
     "@radix-ui/react-dialog": "^1.2.0",
@@ -117,6 +120,7 @@
     "playwright": "^1.62.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "regexpu-core": "6.5.3",
     "socket.io-client": "^4.8.3",
     "typescript": "^7.0.2"
   },
@@ -137,7 +141,7 @@
         "provider": "github",
         "owner": "federicoferrulli",
         "repo": "CodeDB",
-        "releaseType": "release"
+        "releaseType": "draft"
       }
     ],
     "files": [
@@ -207,7 +211,12 @@
         }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "${productName}-${version}-setup.${ext}"
+      "artifactName": "${productName}-${version}-setup.${ext}",
+      "signExts": [
+        ".dll",
+        ".node"
+      ],
+      "verifyUpdateCodeSignature": true
     },
     "nsis": {
       "oneClick": false,
@@ -229,11 +238,22 @@
             "x64",
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ],
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "${productName}-${version}-${arch}.${ext}",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.inherit.plist",
+      "hardenedRuntime": true,
+      "notarize": false
     },
     "dmg": {
       "title": "CodeDB ${version}"
@@ -241,7 +261,8 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb"
+        "deb",
+        "rpm"
       ],
       "icon": "build/icon.png",
       "category": "Development",

@@ -8,10 +8,12 @@ con CodeDB avviato. I database devono essere raggiungibili dal telefono:
 
 ## Release GitHub
 
+Per firma multipiattaforma, variabili e prima release vedere [CODE_SIGNING.md](../docs/CODE_SIGNING.md).
+
 Il workflow `.github/workflows/release.yml` costruisce anche Android al push
 dei tag esistenti (`v*` e `[0-9]*`). La versione viene da `package.json`;
-`versionCode` usa il numero crescente della run del workflow. L'APK viene
-allegato alla stessa release `vVERSIONE` dopo le build desktop e la prova
+`versionCode` somma ANDROID_VERSION_CODE_BASE al numero crescente della run del workflow. L'APK viene
+allegato insieme all’AAB alla bozza del tag effettivo dopo le build desktop e la prova
 su emulatore. Non modifica il modo in cui la release viene pubblicata.
 
 Prima del primo tag configura in GitHub → Settings → Secrets and variables →
@@ -39,7 +41,7 @@ Su PowerShell, per ottenere il valore del primo secret:
 Conserva chiave e password fuori dal repository, con una copia di sicurezza.
 Android accetta un aggiornamento solo se firmato dalla stessa chiave. Non
 generiamo una nuova chiave a ogni tag. Se manca un secret, il job di release
-Android fallisce con un messaggio esplicito; i job desktop restano indipendenti.
+Android fallisce con un messaggio esplicito; la bozza finale richiede il successo di tutti i target.
 L'avvio manuale senza pubblicazione produce un APK debug installabile come
 app separata (`com.codedb.android.debug`), senza richiedere secret.
 
@@ -61,9 +63,9 @@ gradle -p android connectedDebugAndroidTest
 
 Per la release locale imposta `ANDROID_VERSION_CODE` a un intero crescente,
 `ANDROID_KEYSTORE_PATH` al percorso assoluto e le tre variabili della firma
-come i secret sopra, quindi `npm run build:android`.
-Senza configurazione di firma Gradle produce una release **non installabile**:
-per prove locali usa `assembleDebug`.
+come i secret sopra, quindi `npm run release:android` (APK e AAB).
+Senza configurazione completa Gradle rifiuta i task release;
+per prove locali usa `npm run build:android` oppure `assembleDebug`.
 
 ## Dati, file e ciclo di vita
 
@@ -123,7 +125,15 @@ il pan sono simulati tramite `visualViewport`; il pinch zoom non ridispone
 il layout. Su browser mobile gli stessi limiti proteggono anche la barra
 inferiore, la palette e il pannello delle relazioni.
 
-Per Node 18 il bootstrap precarica il modulo condiviso degli identificatori
-con `import()` e lo espone al ponte CommonJS esistente; la preparazione assegna
+Per Node 18 il bootstrap precarica i moduli condivisi di identificatori, funzioni SQL e blocchi SQL
+con `import()` e li espone al ponte CommonJS esistente; la preparazione assegna
 inoltre l'estensione `.mjs` alla copia Android del modulo di analisi MCP.
 I sorgenti e il comportamento del desktop restano invariati.
+
+Il libnode incluso non dispone di ICU/`Intl` e rifiuta le proprietà Unicode nelle
+regex. `prepare.cjs` le espande con `unicode.cjs` nella sola copia delle dipendenze
+Android, conservando identificatori Unicode e controlli URI; comprende i pattern
+emoji dinamici di Zod e rifiuta nuovi pattern dinamici non riconosciuti. Le versioni
+degli strumenti e i dati Unicode sono fissati nel lockfile. La verifica di avvio
+sull'emulatore rimane obbligatoria: il solo Node 18 del computer dispone di ICU
+e non riproduce questa differenza.

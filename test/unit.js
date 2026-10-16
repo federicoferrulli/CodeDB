@@ -1006,15 +1006,15 @@ console.log('--- Test Unitari CodeDB ---');
       const wf = path.join(__dirname, '..', '.github', 'workflows', 'release.yml');
       assert.ok(fs.existsSync(wf), '.github/workflows/release.yml deve esistere');
       const testo = fs.readFileSync(wf, 'utf8');
-      for (const runner of ['windows-latest', 'macos-latest', 'ubuntu-latest']) {
+      for (const runner of ['windows-2022', 'macos-15', 'macos-15-intel', 'ubuntu-24.04']) {
         assert.ok(testo.includes(runner), `il workflow deve costruire su ${runner}`);
       }
       // Gli script sono referenziati con la variabile di matrice: qui si
       // verifica che ESISTANO tutti e sei quelli che quella variabile può
       // produrre.
-      assert.ok(/npm run release:\$\{\{ matrix\.piattaforma \}\}/.test(testo)
-        && /npm run build:\$\{\{ matrix\.piattaforma \}\}/.test(testo),
-      'il workflow deve invocare gli script npm per piattaforma');
+      for (const comando of ['release:win', 'release:mac', 'build:linux', 'build:win', 'build:mac']) {
+        assert.ok(testo.includes('npm run ' + comando), 'Il workflow deve invocare ' + comando);
+      }
       for (const p of ['win', 'mac', 'linux']) {
         for (const k of ['build', 'release']) {
           assert.ok(pkg.scripts[`${k}:${p}`], `il workflow richiede lo script ${k}:${p} in package.json`);

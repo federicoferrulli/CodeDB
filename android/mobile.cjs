@@ -24,6 +24,18 @@ function proteggi(server, secret) {
   }
 }
 
+async function precaricaModuliCondivisi() {
+  // Node Mobile 18 supporta import(), ma non require(ESM). Il ponte conserva
+  // la stessa implementazione usata da backend e frontend senza trascriverla.
+  for (const name of ['identificatori', 'sql-mongo-funzioni', 'sql-blocchi']) {
+    const file = path.join(__dirname, `public/js/${name}.mjs`);
+    const modulo = new (require('node:module'))(file);
+    modulo.exports = await import(require('node:url').pathToFileURL(file).href);
+    modulo.loaded = true;
+    require.cache[file] = modulo;
+  }
+}
+
 async function avvia({ data, ready, secret, dns = [] }) {
   if (!path.isAbsolute(data) || !path.isAbsolute(ready) || !/^[a-f0-9]{64}$/.test(secret)) {
     throw new Error('Configurazione Android non valida.');
@@ -47,13 +59,7 @@ async function avvia({ data, ready, secret, dns = [] }) {
     CODEDB_SCRIPT_RESULTS_DIR: path.join(data, 'risultati-script'),
   });
   if (dns.length) require('node:dns').setServers(dns);
-  // Node Mobile 18 supporta import(), ma non require(ESM). Il modulo condiviso
-  // resta unico: si carica prima del backend e si rende disponibile al suo ponte CJS.
-  const identifierFile = path.join(__dirname, 'public/js/identificatori.mjs');
-  const identifierModule = new (require('node:module'))(identifierFile);
-  identifierModule.exports = await import(require('node:url').pathToFileURL(identifierFile).href);
-  identifierModule.loaded = true;
-  require.cache[identifierFile] = identifierModule;
+  await precaricaModuliCondivisi();
   const { createServer } = require('./server/createServer');
   const app = createServer();
   proteggi(app.server, secret);
@@ -81,4 +87,4 @@ if (require.main === module) {
     console.error(error);
   });
 }
-module.exports = { avvia, proteggi };
+module.exports = { avvia, proteggi, precaricaModuliCondivisi };

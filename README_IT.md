@@ -5,6 +5,8 @@
 
 # CodeDB (Italiano)
 
+Firma degli installer e pipeline di release: [guida operativa](docs/CODE_SIGNING.md).
+
 CodeDB nasce prendendo ispirazione dai software moderni, con la visione di essere lo strumento che chiunque può usare valorizzando le proprie unicità — sviluppatori umani e agenti AI compresi.
 
 È un'applicazione web **multi-database**: esplora database e collection/tabelle,

@@ -51,13 +51,15 @@ npm run electron:start     # Avvia app desktop Electron (server incorporato + fi
 npm run electron:icons     # Rigenera icone (public/codedb.ico, public/codedb.png, build/icon.*)
 npm run electron:licenza   # Rigenera build/license.txt per installer NSIS da MANLEVA.md
 npm run build:win          # Installer Windows (.exe NSIS) in dist/
-npm run build:mac          # Installer macOS (.dmg)
-npm run build:linux        # Installer Linux (.AppImage + .deb)
+npm run build:mac          # Pacchetti macOS (.dmg + .zip), CPU del runner
+npm run build:linux        # Pacchetti Linux (.AppImage + .deb + .rpm)
 npm run build:linux:docker # Build Linux da Windows tramite container Docker
 npm run build:all          # Build per tutte le piattaforme
 npm run build:dir          # Solo cartella spacchettata
 npm run dist:win|mac|linux # Eseguibile portatile (.zip) tramite @electron/packager
-npm run release:win|mac|linux # Build e pubblicazione release su GitHub (richiede GH_TOKEN)
+npm run release:win|mac|linux # Build di distribuzione; la bozza completa passa dal workflow
+
+# Firma, credenziali, CI e prima release: docs/CODE_SIGNING.md
 
 # Collegamenti Launcher
 npm run shortcut           # Crea collegamenti "CodeDB (sorgenti)" su Desktop e Start (Windows)
