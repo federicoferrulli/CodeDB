@@ -4,8 +4,8 @@ connections.ini
 connections*
 vault.json
 vault*
-vault*
-!server/vault.js
+# I moduli applicativi del vault non sono archivi di credenziali.
+!**/vault.js
 connections.ini.bak
 connections.ini.bak2
 # Audit log delle scritture eseguite via MCP.
@@ -22,9 +22,24 @@ backups/
 # Output di electron-builder (npm run dist:*): eseguibili/installer generati.
 dist/
 .agents
-# Variabili d'ambiente per Docker Compose (puo' contenere GUI_MONGO_PASSPHRASE).
+# Configurazioni d'ambiente private; mantenere versionabile il modello senza segreti.
 .env
-.env.sql-native
+.env.*
+!.env.example
+
+# Credenziali locali di servizi cloud, SSH e gestori di pacchetti.
+.aws/
+.ssh/
+.gnupg/
+.npmrc
+.pypirc
+.netrc
+_netrc
+credentials.json
+credentials-*.json
+client_secret*.json
+service-account*.json
+service_account*.json
 
 conns/
 
@@ -45,10 +60,21 @@ import_*
 # Materiale di firma: conservare fuori dal repository.
 *.p12
 *.pfx
+*.pkcs12
 *.jks
 *.keystore
+*.pem
+*.key
+*.p8
+*.ppk
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
 /release-assets/
 /staged/
 /incoming/
 video
 /test-reports/**/win-unpacked/
+# I dump della tastiera Android possono contenere chiavi API di applicazioni terze.
+/test-reports/**/android-ime*.txt
