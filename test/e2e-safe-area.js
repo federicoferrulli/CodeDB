@@ -70,8 +70,27 @@ const { startTestServer } = require('./e2e-harness');
       for (const modal of modals) {
         await modal.evaluate(el => { el.style.animation = 'none'; el.closest('.overlay').classList.remove('hidden'); });
         if (width <= 900) { await modal.locator('xpath=ancestor::*[@role="dialog"]').waitFor(); await page.waitForTimeout(160); }
-        const rect = await modal.boundingBox();
-        if (rect) dentro(rect, area, await modal.evaluate(el => el.closest('.overlay').id));
+        const nome = await modal.evaluate(el => el.closest('.overlay').id);
+        const sheet = modal.locator('xpath=ancestor::*[@data-fit-content]');
+        if (await sheet.count()) {
+          // Nei pannelli adattati al contenuto scorre il corpo del drawer:
+          // la modale può essere più alta della sua finestra visibile.
+          const corpo = sheet.locator(':scope > div:nth-child(2)');
+          dentro(await sheet.locator(':scope > div:first-child').boundingBox(), area, `${nome}: intestazione`);
+          const visibile = await corpo.boundingBox();
+          dentro(visibile, area, `${nome}: area scorrevole`);
+          const areaCorpo = { left: visibile.x, top: visibile.y, right: visibile.x + visibile.width, bottom: visibile.y + visibile.height };
+          const scroll = await corpo.evaluate(el => ({
+            necessario: el.scrollHeight > el.clientHeight + 1,
+            overflow: getComputedStyle(el).overflowY,
+          }));
+          if (scroll.necessario) assert(['auto', 'scroll'].includes(scroll.overflow), `${nome}: il contenuto deve essere scorribile`);
+          for (const azione of await modal.locator('button, input, select, textarea, a[href], [tabindex="0"]').all()) {
+            if (!await azione.isVisible()) continue;
+            await azione.scrollIntoViewIfNeeded();
+            dentro(await azione.boundingBox(), areaCorpo, `${nome}: azione raggiungibile`);
+          }
+        } else dentro(await modal.boundingBox(), area, nome);
         await modal.evaluate(el => el.closest('.overlay').classList.add('hidden'));
       }
       await page.evaluate(async () => {
