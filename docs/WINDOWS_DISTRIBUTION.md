@@ -103,7 +103,8 @@ Il pacchetto Store non contiene `app-update.yml` e non carica electron-updater:
 Le variabili del feed indipendente non cambiano questo comportamento.
 
 Le due installazioni usano profili separati: `CodeDB` per NSIS, `CodeDB Store` per
-AppX (soggetto alla virtualizzazione Windows). Non vengono copiati o cancellati
+AppX e `CodeDB Store Prova` per il collaudo (soggetti alla virtualizzazione Windows).
+Non vengono copiati o cancellati
 connessioni, password e backup durante il passaggio. Per migrare un profilo,
 chiudere entrambe le app ed esportare/importare esplicitamente i dati desiderati;
 conservare insieme file connessioni, cartella connessioni e vault, con la passphrase.

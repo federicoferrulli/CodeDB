@@ -60,7 +60,7 @@ const { setTimeout: pausa } = require('node:timers/promises');
     assert.equal(risposta.packaged, true);
     assert.equal(new URL(risposta.pagina).hostname, '127.0.0.1');
     assert.equal(risposta.valido, true);
-    assert.match(risposta.userData, /CodeDB Store$/);
+    assert.match(risposta.userData, /CodeDB Store Prova$/);
     assert.equal(require('node:path').dirname(risposta.connections), risposta.userData);
     console.log('OK AppX installato: identità Store reale, server autonomo, frontend, addon Kerberos/CSFLE e vault cifrato persistente.');
   } finally { socket.close(); }

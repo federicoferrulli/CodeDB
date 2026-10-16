@@ -53,7 +53,10 @@ globalThis.__codedbDesktop = {
 // il nome della cartella dati utente (%APPDATA%/mongo-web-gui): forziamo "CodeDB".
 app.setName(APP_NAME);
 // Le due distribuzioni possono convivere senza scrivere nello stesso vault.
-if (process.windowsStore) app.setPath('userData', path.join(app.getPath('appData'), 'CodeDB Store'));
+if (process.windowsStore) {
+  const profilo = require('./package.json').codedbStoreTest ? 'CodeDB Store Prova' : 'CodeDB Store';
+  app.setPath('userData', path.join(app.getPath('appData'), profilo));
+}
 // Consente profili desktop isolati, anche per collaudare un installer reale.
 if (process.env.CODEDB_ELECTRON_USER_DATA_DIR) {
   app.setPath('userData', path.resolve(process.env.CODEDB_ELECTRON_USER_DATA_DIR));

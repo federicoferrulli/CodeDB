@@ -25,6 +25,8 @@ module.exports = (async () => {
   assert.deepEqual(cfg.win.target, ['appx']);
   assert.equal(cfg.publish, null);
   assert.equal(cfg.forceCodeSigning, false);
+  assert.equal(cfg.extraMetadata.codedbStoreTest, false);
+  assert.equal(configurazione('store', { CODEDB_STORE_TEST: 'true' }).extraMetadata.codedbStoreTest, true);
   assert.equal(cfg.appx.electronUpdaterAware, false);
   assert.deepEqual(cfg.appx.capabilities, ['runFullTrust']);
   assert.equal(cfg.directories.output, 'dist/store');
@@ -47,6 +49,8 @@ module.exports = (async () => {
     assert.match(xml, /EntryPoint="Windows.FullTrustApplication"/);
     assert.match(xml, /runFullTrust/);
     assert.match(xml, /Language="it-IT"/);
+    fs.writeFileSync(file, '<Package Version="1.2.37.0"/>');
+    await assert.rejects(() => cfg.appxManifestCreated(file), /Identity assente/);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 
   // Il gestore vero deve evitare sia richieste di rete sia timer nel canale Store.

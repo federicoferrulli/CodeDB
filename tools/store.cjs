@@ -34,6 +34,7 @@ function configura(base, env) {
   const id = identita(env);
   base.directories.output = 'dist/store';
   base.publish = null;
+  base.extraMetadata.codedbStoreTest = id.prova;
   base.forceCodeSigning = false;
   base.win.target = ['appx'];
   base.win.signExecutable = false;
@@ -47,8 +48,9 @@ function configura(base, env) {
   // La versione Store è indipendente da SemVer: niente collisioni fra beta.1 e beta.2.
   base.appxManifestCreated = async file => {
     const xml = await fs.promises.readFile(file, 'utf8');
-    const nuovo = xml.replace(/(<Identity\b[^>]*\bVersion=")[^"]*(")/, `$1${id.version}$2`);
-    if (nuovo === xml && !xml.includes(`Version="${id.version}"`)) throw new Error('Versione Identity assente dal manifest Store.');
+    const versioneIdentita = /(<Identity\b[^>]*\bVersion=")[^"]*(")/;
+    if (!versioneIdentita.test(xml)) throw new Error('Versione Identity assente dal manifest Store.');
+    const nuovo = xml.replace(versioneIdentita, (_, prima, dopo) => `${prima}${id.version}${dopo}`);
     await fs.promises.writeFile(file, nuovo);
   };
   return base;
