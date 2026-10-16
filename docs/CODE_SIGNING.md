@@ -321,18 +321,39 @@ equivale a distribuirla tramite App Store Connect/TestFlight; gli store restano 
 
 ## Stato delle verifiche
 
-Prove locali del 15 ottobre 2026, con log in `.scratch/code-signing-tools/`:
+Prove locali del 15 ottobre 2026 e sui runner GitHub del 16 ottobre 2026,
+con log locali in `.scratch/code-signing-tools/`:
 
 | Ambito | Esito provato | Verifica ancora necessaria |
 | --- | --- | --- |
-| Configurazioni | Schema builder installato, actionlint 1.7.12, parser PowerShell, sintassi Bash, XML plist e coerenza lockfile | Esecuzione dell'intero workflow su GitHub |
+| Configurazioni | Schema builder installato, actionlint 1.7.12, parser PowerShell, sintassi Bash, XML plist e coerenza lockfile; build native sui cinque runner | Run con credenziali di distribuzione |
 | Regressioni | `npm test`, build e typecheck UI, safe area Chromium; fixture negative per credenziali, schema, asset, canali, checksum, retry e versione desktop | Nessun database remoto esercitato da queste prove |
-| Windows | NSIS senza credenziali costruito; app impacchettata avviata con frontend e addon Kerberos/CSFLE | Firma Azure, timestamp e identità di produzione sul runner Windows |
-| Linux | AppImage, DEB e RPM costruiti in container Linux; controlli rpm/dpkg e metadati riusciti | Avvio grafico sull'host Linux/runner e prova d'installazione nei sistemi destinatari |
-| macOS | Configurazione e schema validi per x64/arm64, verifica degli archivi predisposta | Build nativa, Developer ID, notarizzazione, ticket, Gatekeeper e avvio su entrambi i Mac |
-| Android | APK debug, APK/AAB con chiave usa-e-getta, lint, firme apksigner/jarsigner e contenuto ABI; backend Node 18; avvio e test WebView sull'emulatore API 35 x86_64 | Chiave persistente di produzione, dispositivi ARM e database reali |
+| Windows | NSIS senza credenziali costruito localmente e su Windows 2022; app impacchettata avviata con frontend e addon Kerberos/CSFLE | Firma Azure, timestamp e identità di produzione sul runner Windows |
+| Linux | AppImage, DEB e RPM costruiti in container e sul runner Ubuntu 24.04; controlli rpm/dpkg, metadati e avvio grafico dell'AppImage estratta con addon nativi riusciti | Prova d'installazione nei sistemi destinatari |
+| macOS | DMG/ZIP ad hoc costruiti sui runner macOS 15 Intel e ARM64; app avviata con frontend e caricamento reale degli addon Kerberos/CSFLE su entrambi | Developer ID, notarizzazione, ticket e Gatekeeper con identità di distribuzione |
+| Android | APK debug, lint, backend Node 18 e test WebView sull'emulatore API 35 x86_64 riusciti anche in CI; APK/AAB con chiave usa-e-getta, firme apksigner/jarsigner e contenuto ABI verificati localmente | Chiave persistente di produzione, dispositivi ARM e database reali |
 | GPG | Chiave temporanea, firma e verifica pubblica; manifest alterato e fingerprint errato rifiutati | Identità pubblica/fingerprint di distribuzione da scegliere e conservare |
 | iOS | Assenza di progetto confermata, requisito autonomo e dipendenze da portare documentati | Prototipo Node nativo, progetto Xcode e identità/provisioning reali |
+
+La [run GitHub 38881085878](https://github.com/federicoferrulli/CodeDB/actions/runs/38881085878)
+del 16 ottobre 2026 è terminata con successo sul commit
+`72a3520ce8feaacffb88db6acf57e4cdc0713e8b`, branch `codex/verify-release-actions`,
+avviata manualmente con `pubblica=false`: otto job riusciti, `bozza` escluso.
+L'[artifact release-completa](https://github.com/federicoferrulli/CodeDB/actions/runs/38881085878/artifacts/12037963296)
+contiene i pacchetti di prova, i metadati Mac fusi e `SHA256SUMS`, verificati dal
+job di raccolta; viene conservato per 14 giorni. In questa modalità Android
+produce l'APK debug: l'AAB firmato resta coperto dalle prove locali indicate sopra.
+Il confronto API prima/dopo conferma le sette release esistenti invariate,
+senza creazione di release o bozze.
+
+La prima esecuzione ha evidenziato due difetti corretti prima della run riuscita:
+`setup-android@v3` richiedeva il pacchetto SDK obsoleto `tools` (ora installa
+esplicitamente `platform-tools` con command-line tools fissati); gli array `arch`
+nei target Mac imponevano entrambe le CPU su ciascun runner (ora i target sono
+`dmg` e `zip`, con CPU selezionata dalla CLI). Il test di regressione usa il
+risolutore reale di electron-builder ed è stato visto fallire con la vecchia
+configurazione e passare con quella corretta. `npm run test:release` e actionlint
+sono passati anche localmente prima del secondo invio.
 
 La regressione Unicode Android è stata riprodotta sul libnode originale prima
 della trasformazione e il test nativo è poi passato. Le chiavi temporanee usate
