@@ -3,6 +3,7 @@
 // Espressioni SQL pure: parsing separato dall'emissione dei riferimenti, che
 // si risolvono soltanto dopo aver letto FROM e gli alias delle JOIN.
 const { FUNZIONI_SQL_MONGO, AGGREGATI_SQL_MONGO } = require('../public/js/sql-mongo-funzioni.mjs');
+const objectId = require('./sqlObjectId');
 const precedenza = { OR: 1, AND: 2, '=': 3, '!=': 3, '<>': 3, '>': 3, '<': 3, '>=': 3, '<=': 3,
   '@>': 3, '<@': 3, '&&': 3, '<<':3, '>>':3, '&<':3, '&>':3, '-|-':3, '||': 4, '+': 5, '-': 5, '*': 6, '/': 6, '%': 6 };
 const operatori = { OR: '$or', AND: '$and', '=': '$eq', '!=': '$ne', '<>': '$ne', '>': '$gt', '<': '$lt',
@@ -157,8 +158,9 @@ function emettiEspressione(e, resolve = x => x) {
     return require('./sqlArrayMongo').accesso(emetti(current), indices);
   }
   if (e.tipo === 'quantificata') {
-    const a = emetti(e.a), b = emetti(e.b), all = e.modo === 'ALL';
-    const item = conNull([a, '$$elemento'], { [operatori[e.op]]: [a, '$$elemento'].map(require('./sqlOrdinamentoMongo').chiave) });
+    const a = emetti(e.a), all = e.modo === 'ALL';
+    const b = e.b.tipo === 'array' ? require('./sqlArrayMongo').costruisci(e.b.args.map(v => objectId.operandi(a, emetti(v))[1])) : emetti(e.b);
+    const item = conNull([a, '$$elemento'], { [operatori[e.op]]: objectId.operandi(a, '$$elemento').map(require('./sqlOrdinamentoMongo').chiave) });
     return conNull([b], { $let: { vars: { confronti: { $map: { input: require('./sqlArrayMongo').piatta(b), as: 'elemento', in: item } } }, in: { $cond: [
       { $in: [!all, '$$confronti'] }, !all, { $cond: [{ $in: [null, '$$confronti'] }, null, all] },
     ] } } });
@@ -170,17 +172,19 @@ function emettiEspressione(e, resolve = x => x) {
     return `$risultati.f${e.indice}`;
   }
   if (e.tipo === 'is') return { [e.neg ? '$ne' : '$eq']: [{ $ifNull: [emetti(e.a), null] }, { $literal: e.valore }] };
-  if (e.tipo === 'distinct') return { [e.neg ? '$eq' : '$ne']: [e.a, e.b].map(v => ({ $ifNull: [emetti(v), null] })) };
+  if (e.tipo === 'distinct') return { [e.neg ? '$eq' : '$ne']: objectId.operandi(emetti(e.a), emetti(e.b)).map(v => ({ $ifNull: [v, null] })) };
   if (e.tipo === 'between') {
     const a = emetti(e.a), lo = emetti(e.lo), hi = emetti(e.hi);
     const key = require('./sqlOrdinamentoMongo').chiave;
-    return conNull([a, lo, hi], { $and: [{ $gte: [key(a), key(lo)] }, { $lte: [key(a), key(hi)] }] });
+    return conNull([a, lo, hi], { $and: [{ $gte: objectId.operandi(a, lo).map(key) }, { $lte: objectId.operandi(a, hi).map(key) }] });
   }
   if (e.tipo === 'in') {
     const a = emetti(e.a), valori = e.valori.map(emetti);
     // IN: una corrispondenza vince sui NULL nella lista; in assenza di una
     // corrispondenza un NULL rende il risultato sconosciuto (anche in NOT IN).
-    return conNull([a], { $cond: [{ $in: [a, valori] }, true, { $cond: [{ $or: valori.map(nullo) }, null, false] }] });
+    const haObjectId = [a, ...valori].some(v => objectId.varianti(v?.$literal).length > 1);
+    const confronto = haObjectId ? { $or: valori.map(v => ({ $eq: objectId.operandi(a, v) })) } : { $in: [a, valori] };
+    return conNull([a], { $cond: [confronto, true, { $cond: [{ $or: valori.map(nullo) }, null, false] }] });
   }
   if (e.tipo === 'like') {
     const a = emetti(e.a);
@@ -204,7 +208,9 @@ function emettiEspressione(e, resolve = x => x) {
     return e.op === '-' ? { $multiply: [-1, a] } : conNull([a], { $not: [a] });
   }
   if (e.tipo === 'binaria') {
-    const bind = expression => ({ $let: { vars: { operandoA: emetti(e.a), operandoB: emetti(e.b) }, in: expression } });
+    const valori = [emetti(e.a), emetti(e.b)];
+    const [operandoA, operandoB] = ['=', '!=', '<>', '<', '>', '<=', '>='].includes(e.op) ? objectId.operandi(...valori) : valori;
+    const bind = expression => ({ $let: { vars: { operandoA, operandoB }, in: expression } });
     const a = '$$operandoA', b = '$$operandoB', expr = { [operatori[e.op]]: [a, b] };
     if(['<<','>>','&<','&>','-|-'].includes(e.op))return bind(require('./sqlMultirangeMongo').operatore(e.op,a,b));
     if(['<','>','<=','>='].includes(e.op)) {
@@ -285,16 +291,21 @@ function filtroEspressione(e, resolve = x => x) {
   if (e.tipo === 'binaria' && e.a.tipo === 'colonna' && e.b.tipo === 'valore' && precedenza[e.op] === 3) {
     const col = resolve(e.a.nome), val = e.b.valore;
     if (val === null) return { $expr: false };
-    if (e.op === '=') return { [col]: val };
-    if (e.op === '!=' || e.op === '<>') return { $and: [{ [col]: { $ne: null } }, { [col]: { $ne: val } }] };
-    return { [col]: { [operatori[e.op]]: val } };
+    if (e.op === '=' && objectId.varianti(val).length === 1) return { [col]: val };
+    if (e.op === '!=' || e.op === '<>') return { $and: [{ [col]: { $ne: null } }, objectId.filtro(col, '$ne', val)] };
+    return objectId.filtro(col, operatori[e.op], val);
   }
   if (e.tipo === 'is' && e.a.tipo === 'colonna' && e.valore === null) return { [resolve(e.a.nome)]: e.neg ? { $ne: null } : null };
   if (e.tipo === 'in' && e.a.tipo === 'colonna' && e.valori.every(v => v.tipo === 'valore')) {
-    return { [resolve(e.a.nome)]: { $in: e.valori.map(v => v.valore).filter(v => v !== null) } };
+    return { [resolve(e.a.nome)]: { $in: e.valori.map(v => v.valore).filter(v => v !== null).flatMap(objectId.varianti) } };
   }
   if (e.tipo === 'between' && e.a.tipo === 'colonna' && e.lo.tipo === 'valore' && e.hi.tipo === 'valore') {
-    return e.lo.valore === null || e.hi.valore === null ? { $expr: false } : { [resolve(e.a.nome)]: { $gte: e.lo.valore, $lte: e.hi.valore } };
+    if (e.lo.valore === null || e.hi.valore === null) return { $expr: false };
+    const col = resolve(e.a.nome);
+    if ([e.lo.valore, e.hi.valore].some(v => objectId.varianti(v).length > 1)) return { $and: [
+      objectId.filtro(col, '$gte', e.lo.valore), objectId.filtro(col, '$lte', e.hi.valore),
+    ] };
+    return { [col]: { $gte: e.lo.valore, $lte: e.hi.valore } };
   }
   if (e.tipo === 'like' && e.a.tipo === 'colonna' && e.pattern !== null) return { [resolve(e.a.nome)]: regexLike(e.pattern, e.insensitive) };
   return { $expr: emettiEspressione(e, resolve) };

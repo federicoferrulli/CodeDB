@@ -54,7 +54,7 @@ function espandiSottoquery(expressions, pipeline, resolve, scope, ctes) {
       const a = emettiEspressione(e.a, resolve), b = '$$v';
       const op = { '=': '$eq', '<>': '$ne', '!=': '$ne', '>': '$gt', '<': '$lt', '>=': '$gte', '<=': '$lte' }[e.op];
       const comparisons = { $map: { input: values, as: 'v', in: { $cond: [
-        { $or: [{ $eq: [{ $ifNull: [a, null] }, null] }, { $eq: [b, null] }] }, null, { [op]: [a, b] }] } } };
+        { $or: [{ $eq: [{ $ifNull: [a, null] }, null] }, { $eq: [b, null] }] }, null, { [op]: require('./sqlObjectId').operandi(a, b) }] } } };
       const decisive = e.modo === 'ANY';
       value = { $cond: [{ $in: [decisive, comparisons] }, decisive, { $cond: [{ $in: [null, comparisons] }, null, !decisive] }] };
     }
