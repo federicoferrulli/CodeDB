@@ -1,0 +1,23 @@
+
+com.codedb.android.AvvioFluiditaTest:
+Error in particelleDuranteLavoroUi(com.codedb.android.AvvioFluiditaTest):
+java.lang.AssertionError: Le particelle continuano mentre il thread UI prepara la WebView
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at com.codedb.android.AvvioFluiditaTest.particelleDuranteLavoroUi(AvvioFluiditaTest.java:62)
+
+
+Time: 21.535
+There was 1 failure:
+1) particelleDuranteLavoroUi(com.codedb.android.AvvioFluiditaTest)
+java.lang.AssertionError: Le particelle continuano mentre il thread UI prepara la WebView
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at org.junit.Assert.assertFalse(Assert.java:65)
+	at com.codedb.android.AvvioFluiditaTest.particelleDuranteLavoroUi(AvvioFluiditaTest.java:62)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+

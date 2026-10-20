@@ -1,0 +1,19 @@
+{
+  "ambiente": "Chromium locale, viewport mobile emulati, server usa-e-getta e trasporto simulato; nessun database dell'utente modificato",
+  "controlli": [
+    { "comando": "npm run build:ui", "esito": "superato" },
+    { "comando": "npm run typecheck:ui", "esito": "superato" },
+    { "comando": "node test/e2e-schema-vuoto.js", "esito": "superato", "copertura": "Illustrazione condivisa, quattro configurazioni desktop/mobile fino a 320 px, temi chiaro/scuro/personalizzato, ricarica effettiva, ricerca, reset e terminologia PostgreSQL" },
+    { "comando": "node test/e2e-explore-empty.js", "esito": "superato", "copertura": "Otto layout, immagine, apertura/chiusura tabella, movimento ridotto" },
+    { "comando": "node test/e2e-details-design.js", "esito": "superato", "copertura": "Dettagli vuoti/popolati, campi, indici, risposte superate e layout mobile" },
+    { "comando": "node test/e2e-query-studio.js --checks-only", "esito": "superato", "copertura": "Query, valori esatti, grafico, errore, annullamento, schema, menu e tastiera" },
+    { "comando": "node test/e2e-pending-design.js", "esito": "superato", "copertura": "Dieci layout, filtri, registro vuoto, selezione, focus e virtualizzazione" },
+    { "comando": "node test/e2e-revisione.js", "esito": "superato", "copertura": "Undici viewport e tre temi, reflow, focus, Schede vuote/popolate, scorrimento al documento attivo, cambio connessione e navigazione" }
+  ],
+  "controprove": [
+    { "comando": "EMPTY_SCHEMA_MUTANT=immagine node test/e2e-schema-vuoto.js", "esito": "fallimento atteso: illustrazione nascosta rilevata" },
+    { "comando": "EMPTY_SCHEMA_MUTANT=ricarica node test/e2e-schema-vuoto.js", "esito": "fallimento atteso: lo schema non si aggiorna se la richiesta è bloccata" },
+    { "comando": "node test/e2e-explore-empty.js --mutant", "esito": "fallimento atteso: illustrazione assente rilevata" }
+  ],
+  "limiti": "Queste verifiche non sostituiscono una prova su iPhone fisico/Safari. Le scritture dei test sono simulate."
+}

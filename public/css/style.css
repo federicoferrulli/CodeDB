@@ -1573,18 +1573,7 @@ header {
 /* Database senza collection/tabelle: messaggio esplicito + le sole due azioni
    possibili (aprire il Query Engine sul database, oppure creare la prima
    tabella). Senza questo il nodo espanso restava muto e vuoto. */
-.node-empty { padding: 4px 14px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.node-empty-msg { color: var(--fg-dim); font-size: 0.8rem; font-style: italic; }
-.node-empty-action {
-  background: none;
-  border: none;
-  padding: 2px 0;
-  color: var(--accent-fg);
-  font-size: 0.8rem;
-  cursor: pointer;
-  text-align: left;
-}
-.node-empty-action:hover { text-decoration: underline; }
+.node-empty { padding: 4px 8px 8px; }
 
 /* ---------- Workspace ---------- */
 
@@ -3160,7 +3149,6 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   font-size: 0.75rem;
   padding: 2px 8px;
 }
-.query-history-empty { padding: 14px 10px; color: var(--fg-dim); font-size: 0.85rem; }
 .query-history-item {
   padding: 7px 10px;
   cursor: pointer;
@@ -3785,7 +3773,7 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
 }
 .graph3d-side-panel.hidden {
   transform: translateX(100%);
-  display: flex !important;
+  display: none;
   pointer-events: none;
 }
 .side-panel-header {
@@ -6064,24 +6052,7 @@ body.split-resizing .split-pane {
   .graph3d-bar .grafo-divisore { display: none; }
   .graph3d-bar .grafo-spazio { display: none; }
 
-  /* Graph 3D Side Panel as Bottom Sheet on Mobile */
-  #graph3d-side-panel {
-    position: absolute !important;
-    bottom: 0 !important;
-    left: 0 !important;
-    right: 0 !important;
-    top: auto !important;
-    width: 100% !important;
-    max-height: 55vh !important;
-    overflow-y: auto !important;
-    background: var(--glass-bg) !important;
-    backdrop-filter: blur(16px) !important;
-    border-top: 2px solid var(--accent) !important;
-    border-left: none !important;
-    border-radius: 16px 16px 0 0 !important;
-    box-shadow: 0 -10px 40px var(--sh-800) !important;
-    z-index: 60 !important;
-  }
+  /* I dettagli del grafo vengono ospitati nel drawer Arc, aperto dalla maniglia. */
 
   .modal {
     width: 92vw;

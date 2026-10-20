@@ -5,7 +5,7 @@ import { saveWorkspaceInputs, renderWorkspace } from './workspace.js';
 import { $, showContextMenu, hideContextMenu, reorderById, refreshLucideIcons, toast } from './utils.js';
 import { openConnModal } from './connection.js';
 import { closeDrawers } from './responsive.js';
-import { openNavigationSheet, closeNavigationSheet } from '../arc/ui.js';
+import { openNavigationSheet, closeNavigationSheet, renderDataEmpty, mountArcControls } from '../arc/ui.js';
 
 // Legge il registro esistente: selezione, chiusura e riordino conservano le stesse guardie.
 export function initDocumentSwitcher() {
@@ -13,15 +13,25 @@ export function initDocumentSwitcher() {
   if (!opener) return;
   const panel = document.createElement('div');
   panel.id = 'documents-panel'; panel.className = 'documents-panel hidden';
-  panel.innerHTML = `<div class="documents-list"></div><button type="button" id="documents-new-connection" class="ghost"><i data-lucide="plus"></i>Nuova connessione</button>`;
+  panel.innerHTML = `<div class="sidebar-title"><div class="navigator-actions">
+    <button type="button" id="documents-new-connection" title="Nuova connessione" aria-label="Nuova connessione"><i data-lucide="plus" aria-hidden="true"></i></button>
+    </div></div>
+    <div class="navigator-section-body">
+      <div class="sidebar-search navigator-search"><i data-lucide="search" aria-hidden="true"></i><input type="text" id="documents-search" aria-label="Cerca schede aperte" placeholder="Cerca schede aperte…" autocomplete="off" spellcheck="false" /></div>
+      <div class="documents-list"></div>
+    </div>`;
   document.body.append(panel);
+  mountArcControls(panel);
+  const search = $('#documents-search');
   const mq = window.matchMedia('(max-width: 900px)');
   let open = false;
+  let listResize;
   opener.setAttribute('aria-controls', panel.id);
   opener.setAttribute('aria-expanded', 'false');
   const close = () => {
     if (!open) return;
     open = false;
+    listResize?.disconnect();
     hideContextMenu();
     closeNavigationSheet();
     opener.setAttribute('aria-expanded', 'false');
@@ -35,14 +45,24 @@ export function initDocumentSwitcher() {
     close();
   };
   const render = (focusId) => {
-    const list = panel.querySelector('.documents-list'); list.replaceChildren();
+    const list = panel.querySelector('.documents-list');
+    renderDataEmpty(list, null);
+    list.replaceChildren();
     const connected = tabs.list.filter(t => t.state.connected);
-    if (!connected.length) list.innerHTML = '<div class="documents-empty"><i data-lucide="panels-top-left" aria-hidden="true"></i><strong>Nessuna connessione aperta.</strong><p>Apri una connessione per lavorare con database e documenti.</p></div>';
+    const query = search.value.trim().toLocaleLowerCase('it');
+    if (!connected.length) renderDataEmpty(list, {
+      kind: 'connection', compact: true, title: 'Nessuna connessione aperta',
+      description: 'Apri una connessione per lavorare con database e documenti.',
+    });
     for (const tab of connected) {
       const documents = tab.state.collTabs.filter(doc => !doc.isSplitTab);
+      const connectionMatches = `${tab.label} ${tab.dbType}`.toLocaleLowerCase('it').includes(query);
+      const matching = connectionMatches ? documents : documents.filter(doc => `${doc.db} ${doc.coll || ''}`.toLocaleLowerCase('it').includes(query));
+      if (!connectionMatches && !matching.length) continue;
       const group = document.createElement('section');
       group.className = 'document-group'; group.setAttribute('aria-label', tab.label); list.append(group);
-      for (const doc of [null, ...documents]) {
+      const children = document.createElement('div'); children.className = 'document-children';
+      for (const doc of [null, ...matching]) {
         const name = doc ? (doc.isDbTab ? doc.db : doc.coll) : tab.label;
         const context = doc ? `${tab.label} / ${doc.db}` : `${tab.dbType} · ${documents.length} documenti`;
         const dirty = doc?.snapQuery?.dirty || (doc && [...(tab.state.editDrafts?.keys() || [])].some(key => {
@@ -50,9 +70,10 @@ export function initDocumentSwitcher() {
         }));
         const row = document.createElement('div'); row.className = 'document-row';
         row.classList.toggle('document-connection', !doc);
-        const select = document.createElement('button'); select.type = 'button';
+        const select = document.createElement('button'); select.type = 'button'; select.className = 'node-label';
         const current = tab.id === tabs.activeId && (doc ? doc.id === tab.state.activeCollId : !tab.state.activeCollId);
         select.setAttribute('aria-current', String(current));
+        select.classList.toggle('selected', current);
         const icon = document.createElement('i');
         icon.dataset.lucide = !doc ? 'server' : doc.isDbTab ? 'database' : 'table-2';
         icon.setAttribute('aria-hidden', 'true');
@@ -67,7 +88,7 @@ export function initDocumentSwitcher() {
         }
         select.append(icon, text);
         select.addEventListener('click', () => activate(tab, doc));
-        const more = document.createElement('button'); more.type = 'button';
+        const more = document.createElement('button'); more.type = 'button'; more.className = 'node-actions';
         more.dataset.documentId = (doc || tab).id;
         more.setAttribute('aria-label', `Azioni ${name}`); more.setAttribute('aria-haspopup', 'menu');
         more.innerHTML = '<i data-lucide="ellipsis" aria-hidden="true"></i>';
@@ -90,21 +111,37 @@ export function initDocumentSwitcher() {
           } });
           const r = more.getBoundingClientRect(); showContextMenu(r.left, r.bottom, items);
         });
-        row.append(select, more); group.append(row);
+        row.append(select, more); (doc ? children : group).append(row);
       }
+      if (matching.length) group.append(children);
     }
+    if (query && connected.length && !list.children.length) renderDataEmpty(list, {
+      kind: 'search', compact: true, title: 'Nessuna scheda trovata',
+      description: 'Prova il nome della scheda, del database o della connessione.',
+      actionLabel: 'Azzera ricerca', onAction: () => { search.value = ''; render(); search.focus(); },
+    });
     refreshLucideIcons(panel);
     if (focusId) (list.querySelector(`[data-document-id="${CSS.escape(focusId)}"]`) || list.querySelector('button') || $('#documents-new-connection')).focus();
   };
+  search.addEventListener('input', () => render());
   opener.addEventListener('click', () => {
     if (open) { close(); return; }
     closeDrawers({ immediate: true });
-    saveWorkspaceInputs(); render();
+    saveWorkspaceInputs(); search.value = ''; render();
     open = true;
     opener.setAttribute('aria-expanded', 'true');
-    openNavigationSheet(panel, close, { title: 'Schede aperte', description: 'Scegli una connessione o un documento aperto.', tools: false });
-    const current = panel.querySelector('.document-row:has([aria-current="true"])');
+    openNavigationSheet(panel, close, { title: 'Schede aperte', description: 'Scegli una connessione o un documento aperto.' });
     const list = panel.querySelector('.documents-list');
-    if (current) list.scrollTop += current.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    const revealCurrent = () => {
+      const current = panel.querySelector('.document-row:has([aria-current="true"])');
+      if (!open || !current) return;
+      const row = current.getBoundingClientRect(), viewport = list.getBoundingClientRect();
+      if (row.top < viewport.top || row.bottom > viewport.bottom) list.scrollTop += row.top - viewport.top;
+    };
+    // Il detent riduce l'altezza utile dopo il primo layout: lo scroll iniziale
+    // può essere stato limitato quando la lista era ancora più alta.
+    listResize = new ResizeObserver(revealCurrent);
+    listResize.observe(list);
+    revealCurrent();
   });
 }

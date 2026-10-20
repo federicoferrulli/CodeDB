@@ -1,0 +1,13 @@
+{
+  "checks": [
+    "Canvas a tutta larghezza e comandi touch senza sovrapposizioni",
+    "Catalogo ricercabile, centratura della tabella e dettagli leggibili con nomi lunghi",
+    "Dati e dettaglio JSON nel drawer, senza ridurre il diagramma",
+    "Diagrammi salvati, esportazione e aggiornamento raggiungibili dagli strumenti",
+    "Gesti touch reali: pan sullo sfondo e sui nodi, pinch, ritorno a un dito e annullamento",
+    "Schermo intero, temi, verticale/orizzontale e ritorno al desktop conservano i pannelli originali",
+    "L’UML della tabella si apre centrato e leggibile su mobile",
+    "Il cambio vista chiude il drawer UML"
+  ],
+  "errors": []
+}

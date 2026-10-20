@@ -37,8 +37,8 @@ export const CATALOGO = [
   },
   {
     id: 'sidebarConnessioni',
-    etichetta: 'Mostra/nascondi il pannello sinistro',
-    descrizione: 'Apre o chiude il pannello di sinistra; su mobile apre le connessioni salvate (Ctrl+B di default).',
+    etichetta: 'Mostra/nascondi la navigazione',
+    descrizione: 'Apre o chiude la navigazione; su mobile mostra Connessioni, accessibile anche dalla barra in basso (Ctrl+B di default).',
     predefinito: 'Ctrl+B',
   },
   {

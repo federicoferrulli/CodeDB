@@ -23,6 +23,10 @@ import { tokenTema } from './theme.js';
 import { GRAFO_BUDGET, degradaSchemaGrafo, unisciPagineSchema } from './grafo-budget.js';
 // Le regole della barra sono dati puri: chi le usa dipinge, non decide.
 import { tabellaVuota, contaVuote, statoComandi, cercaNodo, messaggioRicerca } from './grafo-comandi.js';
+import { openNavigationSheet, closeNavigationSheet, renderDataEmpty } from '../arc/ui.js';
+
+const mobile = window.matchMedia('(max-width: 900px)');
+let dettagliMobileAperti = false;
 
 let graphInstance = null;
 let graphResizeObserver = null;
@@ -258,8 +262,26 @@ function applicaNavigazione(controlli) {
 function mostraPannelloLaterale(aperto) {
   const panel = $('#graph3d-side-panel');
   const container = panel && panel.closest('.graph3d-container');
-  if (panel) panel.classList.toggle('hidden', !aperto);
-  if (container) container.classList.toggle('pannello-aperto', !!aperto);
+  if (!aperto && dettagliMobileAperti) closeNavigationSheet(true);
+  if (panel) panel.classList.toggle('hidden', !aperto || (mobile.matches && !dettagliMobileAperti));
+  if (container) container.classList.toggle('pannello-aperto', !!aperto && !mobile.matches);
+  $('#graph3d-details-toggle')?.classList.toggle('hidden', !aperto);
+  const label = $('#graph3d-details-label');
+  if (label && aperto) label.textContent = `Dettagli · ${$('#graph3d-panel-title').textContent}`;
+}
+
+function apriDettagliMobile() {
+  if (!mobile.matches || dettagliMobileAperti || !selectedNodeId) return;
+  const panel = $('#graph3d-side-panel'), button = $('#graph3d-details-toggle');
+  panel.classList.remove('hidden');
+  openNavigationSheet(panel, () => {
+    dettagliMobileAperti = false;
+    panel.classList.toggle('hidden', mobile.matches || !selectedNodeId);
+    button.setAttribute('aria-expanded', 'false');
+    if (mobile.matches && !$('#view-graph3d').classList.contains('hidden')) button.focus({ preventScroll: true });
+  }, { title: 'Dettagli della selezione', description: '', tools: false, navigation: false });
+  dettagliMobileAperti = true;
+  button.setAttribute('aria-expanded', 'true');
 }
 
 function updatePathUI() {
@@ -371,12 +393,17 @@ export function loadGraph3d(force) {
 
 export function renderGraph3d({ preserveInstance = false } = {}) {
   const canvas = $('#graph3d-canvas');
+  renderDataEmpty(canvas, null);
   const sourceSchema = state.dbSchema || currentSchemaData;
   const { schema, policy } = degradaSchemaGrafo(sourceSchema);
   if (!schema || !schema.collections || !schema.collections.length) {
     if (canvas) {
       distruggiGrafo();
-      canvas.innerHTML = '<div class="uml-msg" style="color:var(--fg-dim); padding:20px;">Nessuna tabella/collection trovata nello schema.</div>';
+      canvas.replaceChildren();
+      renderDataEmpty(canvas, {
+        kind: 'schema', title: 'Nessuna tabella nello schema',
+        description: 'Il grafo apparirà quando il database conterrà tabelle o collezioni.',
+      });
     }
     return;
   }
@@ -1171,6 +1198,26 @@ function createTextTexture(text) {
 }
 
 export function initGraph3d() {
+  const details = $('#graph3d-details-toggle');
+  details.addEventListener('click', apriDettagliMobile);
+  let startY = null;
+  details.addEventListener('pointerdown', event => {
+    if (!mobile.matches || event.button !== 0) return;
+    startY = event.clientY;
+    details.setPointerCapture(event.pointerId);
+  });
+  details.addEventListener('pointerup', event => {
+    if (startY !== null && startY - event.clientY > 30) apriDettagliMobile();
+    startY = null;
+  });
+  details.addEventListener('pointercancel', () => { startY = null; });
+  mobile.addEventListener('change', () => {
+    if (dettagliMobileAperti) closeNavigationSheet(true);
+    mostraPannelloLaterale(!!selectedNodeId);
+  });
+  new MutationObserver(() => {
+    if ($('#view-graph3d').classList.contains('hidden') && dettagliMobileAperti) closeNavigationSheet(true);
+  }).observe($('#view-graph3d'), { attributes: true, attributeFilter: ['class'] });
   /*
    * Al cambio tema il grafo va RICOSTRUITO, non solo ridisegnato: i colori
    * spenti e quelli degli archi vengono letti una volta sola quando si crea

@@ -1,6 +1,6 @@
 import { createRoot, type Root } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, type ButtonProps } from './components/arc/button/button';
 import { Input, type InputProps } from './components/arc/input/input';
 import { Textarea, type TextareaProps } from './components/arc/textarea/textarea';
@@ -62,9 +62,21 @@ export function createArcButton(props: ButtonProps = {}) {
 export function mountArcEditActions(cell: HTMLElement, field: string, save: () => void, cancel: () => void) {
   function Actions() {
     const anchor = useRef(cell), panel = useRef<HTMLDivElement>(null);
+    const [picker, setPicker] = useState(false);
+    useLayoutEffect(() => {
+      const fk = document.getElementById('fk-pannello');
+      const mobile = matchMedia('(max-width: 900px)');
+      const update = () => setPicker(mobile.matches && fk?.getAttribute('aria-hidden') === 'false');
+      const observer = new MutationObserver(update);
+      if (fk) observer.observe(fk, { attributes: true, attributeFilter: ['aria-hidden'] });
+      mobile.addEventListener('change', update);
+      update();
+      return () => { observer.disconnect(); mobile.removeEventListener('change', update); };
+    }, []);
     // Nascondere una vista non equivale ad annullare la bozza della cella.
-    useAnchoredPopover(true, anchor, panel, () => {});
-    return <div ref={panel} popover="manual" className="inline-edit-actions" role="group" aria-label={`Modifica ${field}`}
+    // Nel selettore mobile conferma/chiusura appartengono al foglio FK; la bozza resta intatta.
+    useAnchoredPopover(!picker, anchor, panel, () => {});
+    return <div ref={panel} popover="manual" className="inline-edit-actions" style={picker ? { display: 'none' } : undefined} role="group" aria-label={`Modifica ${field}`}
       onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); cancel(); } }}>
       {([['Applica', save], ['Annulla', cancel]] as const).map(([label, action]) => <Button key={label} type="button" variant="ghost" size="sm"
         aria-label={`${label} modifica`} onPointerDown={event => event.preventDefault()} onClick={action}>{label}</Button>)}

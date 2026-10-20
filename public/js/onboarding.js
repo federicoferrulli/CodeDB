@@ -46,7 +46,7 @@ const PASSI = [
   {
     sel: '#conn-sidebar',
     mobile: { sel: '#mobile-nav-conns', titolo: 'Le tue connessioni',
-      testo: 'Tocca Connessioni per aprire quelle salvate o aggiungerne una nuova. In fondo al pannello trovi Strumenti: backup, impostazioni e questa guida.' },
+      testo: 'Tocca Connessioni nella barra in basso per aprire quelle salvate o aggiungerne una nuova. In fondo al pannello trovi Strumenti: backup, impostazioni e questa guida.' },
     titolo: 'Le tue connessioni',
     testo: 'Qui stanno le connessioni salvate, raggruppabili in cartelle. Le credenziali non passano mai dal browser: '
       + 'restano sul server, cifrate nel vault.',
@@ -59,7 +59,7 @@ const PASSI = [
   {
     sel: '#tab-bar',
     mobile: { sel: '#documents-open', titolo: 'Le tue schede',
-      testo: 'Tocca Schede per passare tra le connessioni e i documenti aperti. Ogni connessione conserva la propria sessione e il proprio lavoro.' },
+      testo: 'Tocca Schede nella barra in basso per passare tra le connessioni e i documenti aperti. Ogni connessione conserva la propria sessione e il proprio lavoro.' },
     opzionale: true,
     titolo: 'Un tab per connessione',
     testo: 'Ogni tab ha la propria sessione sul server: puoi lavorare su più database insieme senza che si disturbino.',
@@ -67,7 +67,7 @@ const PASSI = [
   {
     sel: '#sidebar',
     mobile: { sel: '#mobile-nav-dbs', titolo: 'Database e tabelle',
-      testo: 'Tocca Database per esplorare tabelle e collezioni della connessione attiva. Su PostgreSQL questo livello corrisponde agli schemi.' },
+      testo: 'Tocca Database nella barra in basso per esplorare tabelle e collezioni della connessione attiva. Su PostgreSQL questo livello corrisponde agli schemi.' },
     opzionale: true,
     titolo: 'Database e tabelle',
     testo: 'L\'albero dei database della connessione aperta. Tasto destro per creare, rinominare, eliminare. '

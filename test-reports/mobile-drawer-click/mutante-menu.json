@@ -1,0 +1,972 @@
+{
+  "results": [
+    {
+      "panel": "844-connessioni",
+      "label": "Riduci pannello",
+      "points": [
+        {
+          "x": 422,
+          "y": 46.40625,
+          "ok": true,
+          "blocker": "SPAN#.xr"
+        },
+        {
+          "x": 402.8,
+          "y": 46.40625,
+          "ok": true,
+          "blocker": "BUTTON#.M"
+        },
+        {
+          "x": 441.2,
+          "y": 46.40625,
+          "ok": true,
+          "blocker": "BUTTON#.M"
+        }
+      ],
+      "width": 64,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Chiudi",
+      "points": [
+        {
+          "x": 675,
+          "y": 90.40625,
+          "ok": true,
+          "blocker": "path#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 661.8,
+          "y": 90.40625,
+          "ok": true,
+          "blocker": "BUTTON#.I"
+        },
+        {
+          "x": 688.2,
+          "y": 90.40625,
+          "ok": true,
+          "blocker": "BUTTON#.I"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "conn-add-btn",
+      "points": [
+        {
+          "x": 679,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "path#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 665.8,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "BUTTON#conn-add-btn.j R Br"
+        },
+        {
+          "x": 692.2,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "BUTTON#conn-add-btn.j R Br"
+        }
+      ],
+      "width": 44,
+      "height": 40,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "conn-search",
+      "points": [
+        {
+          "x": 396,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        },
+        {
+          "x": 244.2,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        },
+        {
+          "x": 547.8,
+          "y": 151.40625,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        }
+      ],
+      "width": 506,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Sviluppo",
+      "points": [
+        {
+          "x": 422,
+          "y": 203.40625,
+          "ok": true,
+          "blocker": "DIV#.node-label folder-label"
+        },
+        {
+          "x": 254.60000000000002,
+          "y": 203.40625,
+          "ok": true,
+          "blocker": "DIV#.node-label folder-label"
+        },
+        {
+          "x": 589.4000000000001,
+          "y": 203.40625,
+          "ok": true,
+          "blocker": "DIV#.node-label folder-label"
+        }
+      ],
+      "width": 558,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 0, localhost. Connessione attiva",
+      "points": [
+        {
+          "x": 431.5,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 269.8,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 593.2,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 539,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 0",
+      "points": [
+        {
+          "x": 677,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 227.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 1, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 431.5,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 269.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 593.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 539,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 1",
+      "points": [
+        {
+          "x": 677,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 2, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 431.5,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 269.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 593.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 539,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 2",
+      "points": [
+        {
+          "x": 677,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 3, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 422,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 254.60000000000002,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 589.4000000000001,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 558,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 3",
+      "points": [
+        {
+          "x": 677,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 4, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 422,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 254.60000000000002,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 589.4000000000001,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 558,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 4",
+      "points": [
+        {
+          "x": 677,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Connessione 5, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 422,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 254.60000000000002,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 589.4000000000001,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 558,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "Azioni Connessione 5",
+      "points": [
+        {
+          "x": 677,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 663.8,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 690.2,
+          "y": 223.40625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "conn-settings-btn",
+      "points": [
+        {
+          "x": 422,
+          "y": 296,
+          "ok": true,
+          "blocker": "BUTTON#conn-settings-btn.s"
+        },
+        {
+          "x": 254.60000000000002,
+          "y": 296,
+          "ok": true,
+          "blocker": "BUTTON#conn-settings-btn.s"
+        },
+        {
+          "x": 589.4000000000001,
+          "y": 296,
+          "ok": true,
+          "blocker": "BUTTON#conn-settings-btn.s"
+        }
+      ],
+      "width": 558,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "mobile-nav-conns",
+      "points": [
+        {
+          "x": 232.6640625,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        },
+        {
+          "x": 177.665625,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        },
+        {
+          "x": 287.6625,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 183.328125,
+      "height": 51,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "mobile-nav-dbs",
+      "points": [
+        {
+          "x": 422,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        },
+        {
+          "x": 366.996875,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        },
+        {
+          "x": 477.003125,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 183.34375,
+      "height": 51,
+      "clicked": true
+    },
+    {
+      "panel": "844-connessioni",
+      "label": "documents-open",
+      "points": [
+        {
+          "x": 611.3359375,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        },
+        {
+          "x": 556.3375,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        },
+        {
+          "x": 666.334375,
+          "y": 358.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 183.328125,
+      "height": 51,
+      "clicked": true
+    },
+    {
+      "panel": "844-menu-connessione",
+      "label": "Apri un’altra sessione",
+      "points": [
+        {
+          "x": 732.09375,
+          "y": 215.3671875,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 672.75,
+          "y": 215.3671875,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 791.4375,
+          "y": 215.3671875,
+          "ok": true,
+          "blocker": "LI#."
+        }
+      ],
+      "width": 197.8125,
+      "height": 43.609375,
+      "clicked": true
+    },
+    {
+      "panel": "844-menu-connessione",
+      "label": "Testa connessione",
+      "points": [
+        {
+          "x": 732.09375,
+          "y": 258.9765625,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 672.75,
+          "y": 258.9765625,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 791.4375,
+          "y": 258.9765625,
+          "ok": true,
+          "blocker": "LI#."
+        }
+      ],
+      "width": 197.8125,
+      "height": 43.609375,
+      "clicked": true
+    },
+    {
+      "panel": "844-menu-connessione",
+      "label": "Modifica…",
+      "points": [
+        {
+          "x": 732.09375,
+          "y": 311.5859375,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 672.75,
+          "y": 311.5859375,
+          "ok": true,
+          "blocker": "LI#."
+        },
+        {
+          "x": 791.4375,
+          "y": 311.5859375,
+          "ok": true,
+          "blocker": "LI#."
+        }
+      ],
+      "width": 197.8125,
+      "height": 43.609375,
+      "clicked": true
+    },
+    {
+      "panel": "844-menu-connessione",
+      "label": "Elimina…",
+      "points": [
+        {
+          "x": 732.09375,
+          "y": 355.1953125,
+          "ok": true,
+          "blocker": "LI#.danger"
+        },
+        {
+          "x": 672.75,
+          "y": 355.1953125,
+          "ok": true,
+          "blocker": "LI#.danger"
+        },
+        {
+          "x": 791.4375,
+          "y": 355.1953125,
+          "ok": true,
+          "blocker": "LI#.danger"
+        }
+      ],
+      "width": 197.8125,
+      "height": 43.609375,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Esporta connessioni",
+      "points": [
+        {
+          "x": 605,
+          "y": -227,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 551,
+          "y": -227,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 659,
+          "y": -227,
+          "ok": false,
+          "blocker": null
+        }
+      ],
+      "width": 180,
+      "height": 44
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Importa connessioni",
+      "points": [
+        {
+          "x": 605,
+          "y": -183,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 551,
+          "y": -183,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 659,
+          "y": -183,
+          "ok": false,
+          "blocker": null
+        }
+      ],
+      "width": 180,
+      "height": 44
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Backup & Restore",
+      "points": [
+        {
+          "x": 605,
+          "y": -130,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 551,
+          "y": -130,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 659,
+          "y": -130,
+          "ok": false,
+          "blocker": null
+        }
+      ],
+      "width": 180,
+      "height": 44
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Storico Azioni",
+      "points": [
+        {
+          "x": 605,
+          "y": -86,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 551,
+          "y": -86,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 659,
+          "y": -86,
+          "ok": false,
+          "blocker": null
+        }
+      ],
+      "width": 180,
+      "height": 44
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Salute Connessioni",
+      "points": [
+        {
+          "x": 605,
+          "y": -42,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 551,
+          "y": -42,
+          "ok": false,
+          "blocker": null
+        },
+        {
+          "x": 659,
+          "y": -42,
+          "ok": false,
+          "blocker": null
+        }
+      ],
+      "width": 180,
+      "height": 44
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Sessioni & Query",
+      "points": [
+        {
+          "x": 605,
+          "y": 2,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 2,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 2,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Cambia Passphrase",
+      "points": [
+        {
+          "x": 605,
+          "y": 55,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 55,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 55,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Scorciatoie da tastiera",
+      "points": [
+        {
+          "x": 605,
+          "y": 99,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 99,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 99,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Guida Introduttiva",
+      "points": [
+        {
+          "x": 605,
+          "y": 152,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 152,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 152,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Tema",
+      "points": [
+        {
+          "x": 605,
+          "y": 196,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 196,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 196,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "844-strumenti",
+      "label": "Informazioni & Licenza",
+      "points": [
+        {
+          "x": 605,
+          "y": 240,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 551,
+          "y": 240,
+          "ok": true,
+          "blocker": "DIV#.k"
+        },
+        {
+          "x": 659,
+          "y": 240,
+          "ok": true,
+          "blocker": "DIV#.k"
+        }
+      ],
+      "width": 180,
+      "height": 44,
+      "clicked": true
+    }
+  ],
+  "errors": []
+}

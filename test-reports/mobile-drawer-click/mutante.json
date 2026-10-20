@@ -1,0 +1,571 @@
+{
+  "results": [
+    {
+      "panel": "390-connessioni",
+      "label": "Espandi pannello",
+      "points": [
+        {
+          "x": 195,
+          "y": 276.10870361328125,
+          "ok": true,
+          "blocker": "SPAN#.xr"
+        },
+        {
+          "x": 175.8,
+          "y": 276.10870361328125,
+          "ok": true,
+          "blocker": "BUTTON#.M"
+        },
+        {
+          "x": 214.2,
+          "y": 276.10870361328125,
+          "ok": true,
+          "blocker": "BUTTON#.M"
+        }
+      ],
+      "width": 64,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Chiudi",
+      "points": [
+        {
+          "x": 355,
+          "y": 320.10870361328125,
+          "ok": true,
+          "blocker": "path#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 341.8,
+          "y": 320.10870361328125,
+          "ok": true,
+          "blocker": "BUTTON#.I"
+        },
+        {
+          "x": 368.2,
+          "y": 320.10870361328125,
+          "ok": true,
+          "blocker": "BUTTON#.I"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "conn-add-btn",
+      "points": [
+        {
+          "x": 359,
+          "y": 381.10870361328125,
+          "ok": false,
+          "blocker": "DIV#.sidebar-search navigator-search"
+        },
+        {
+          "x": 345.8,
+          "y": 381.10870361328125,
+          "ok": false,
+          "blocker": "DIV#.sidebar-search navigator-search"
+        },
+        {
+          "x": 372.2,
+          "y": 381.10870361328125,
+          "ok": false,
+          "blocker": "DIV#.sidebar-search navigator-search"
+        }
+      ],
+      "width": 44,
+      "height": 40
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "conn-search",
+      "points": [
+        {
+          "x": 169,
+          "y": 381.10870361328125,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        },
+        {
+          "x": 73,
+          "y": 381.10870361328125,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        },
+        {
+          "x": 265,
+          "y": 381.10870361328125,
+          "ok": true,
+          "blocker": "INPUT#conn-search.c"
+        }
+      ],
+      "width": 320,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Sviluppo",
+      "points": [
+        {
+          "x": 195,
+          "y": 230.640625,
+          "ok": true,
+          "blocker": "DIV#.node-label folder-label"
+        },
+        {
+          "x": 83.4,
+          "y": 230.640625,
+          "ok": true,
+          "blocker": "SPAN#."
+        },
+        {
+          "x": 306.6,
+          "y": 230.640625,
+          "ok": true,
+          "blocker": "DIV#.node-label folder-label"
+        }
+      ],
+      "width": 372,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 0, localhost. Connessione attiva",
+      "points": [
+        {
+          "x": 204.5,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 98.60000000000001,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 310.40000000000003,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 353,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 0",
+      "points": [
+        {
+          "x": 357,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 286.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 1, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 204.5,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 98.60000000000001,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 310.40000000000003,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 353,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 1",
+      "points": [
+        {
+          "x": 357,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 350.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 2, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 204.5,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 98.60000000000001,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 310.40000000000003,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 353,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 2",
+      "points": [
+        {
+          "x": 357,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 414.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 3, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 195,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 83.4,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 306.6,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 372,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 3",
+      "points": [
+        {
+          "x": 357,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 478.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 4, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 195,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 83.4,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 306.6,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 372,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 4",
+      "points": [
+        {
+          "x": 357,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 542.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Connessione 5, localhost. Connessione salvata",
+      "points": [
+        {
+          "x": 195,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 83.4,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        },
+        {
+          "x": 306.6,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "SPAN#.conn-name"
+        }
+      ],
+      "width": 372,
+      "height": 60,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "Azioni Connessione 5",
+      "points": [
+        {
+          "x": 357,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "circle#.[object SVGAnimatedString]"
+        },
+        {
+          "x": 343.8,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        },
+        {
+          "x": 370.2,
+          "y": 606.640625,
+          "ok": true,
+          "blocker": "BUTTON#.node-actions"
+        }
+      ],
+      "width": 44,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "conn-settings-btn",
+      "points": [
+        {
+          "x": 195,
+          "y": 750,
+          "ok": true,
+          "blocker": "BUTTON#conn-settings-btn.s"
+        },
+        {
+          "x": 83.4,
+          "y": 750,
+          "ok": true,
+          "blocker": "SPAN#.Gr"
+        },
+        {
+          "x": 306.6,
+          "y": 750,
+          "ok": true,
+          "blocker": "BUTTON#conn-settings-btn.s"
+        }
+      ],
+      "width": 372,
+      "height": 44,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "mobile-nav-conns",
+      "points": [
+        {
+          "x": 67.6640625,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        },
+        {
+          "x": 31.265625,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        },
+        {
+          "x": 104.0625,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-conns.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 121.328125,
+      "height": 51,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "mobile-nav-dbs",
+      "points": [
+        {
+          "x": 195,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        },
+        {
+          "x": 158.596875,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        },
+        {
+          "x": 231.403125,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#mobile-nav-dbs.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 121.34375,
+      "height": 51,
+      "clicked": true
+    },
+    {
+      "panel": "390-connessioni",
+      "label": "documents-open",
+      "points": [
+        {
+          "x": 322.3359375,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        },
+        {
+          "x": 285.9375,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        },
+        {
+          "x": 358.734375,
+          "y": 812.5,
+          "ok": true,
+          "blocker": "BUTTON#documents-open.j R Br mobile-nav-item"
+        }
+      ],
+      "width": 121.328125,
+      "height": 51,
+      "clicked": true
+    }
+  ],
+  "errors": []
+}

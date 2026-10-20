@@ -1,5 +1,5 @@
 import { chiediConferma } from './conferma.js';
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
 import { $, esc, toast, lucideIconHtml as ICO, refreshLucideIcons } from './utils.js';
 import { socket } from './socket.js';
 import { tabs, switchTab, activeTab, allaChiusura } from './tabs.js';
@@ -457,10 +457,16 @@ function renderPendingDetail(animate = false) {
   const detail = $('#pending-detail');
   if (!detail) return;
   const restoreFocus = detail.contains(document.activeElement);
+  renderDataEmpty(detail, null);
   const item = activeFilteredItems.find(q => q.id === selectedPendingId);
   if (!item) {
     const empty = !currentPendingItems.length;
-    detail.innerHTML = `<div class="pending-empty">${ICO(empty ? 'circle-check' : 'search')}<h3 tabindex="-1">${empty ? 'Tutto in ordine' : 'Nessuna corrispondenza'}</h3><p>${empty ? 'Le query completate escono dal registro. Qui ritroverai quelle in corso o da riprendere.' : 'Prova un altro termine o scegli un filtro diverso.'}</p></div>`;
+    detail.replaceChildren();
+    renderDataEmpty(detail, {
+      kind: empty ? 'query' : 'search', title: empty ? 'Tutto in ordine' : 'Nessuna corrispondenza',
+      description: empty ? 'Le query completate escono dal registro. Qui ritroverai quelle in corso o da riprendere.' : 'Prova un altro termine o scegli un filtro diverso.',
+    });
+    detail.querySelector('h3').tabIndex = -1;
   } else {
     const latest = currentPendingItems.find(q => q.status !== 'running')?.id === item.id;
     const editorOnly = item.status === 'running' || (item.kind === 'script' && !knowsScriptRun(item.runId));

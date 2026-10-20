@@ -71,7 +71,7 @@ const fixture = [
     assert.equal(await page.locator('.pending-item').count(), 1);
     assert.equal(await page.locator('#pending-detail h3').textContent(), 'eventi');
     await page.locator('#pending-search-input').fill('nessuna-corrispondenza');
-    assert.match(await page.locator('.pending-empty').textContent(), /Nessuna corrispondenza/);
+    assert.match(await page.locator('#pending-detail .data-empty').textContent(), /Nessuna corrispondenza/);
     await page.locator('#pending-search-input').fill('');
     await page.locator('[data-pending-filter="all"]').click();
     await page.locator('.pending-item[data-id="errore"]').click();
@@ -138,7 +138,7 @@ const fixture = [
     assert.deepEqual(await page.evaluate(() => pending.listPending().map(q => q.id)), ['live']);
     page.once('dialog', d => d.accept());
     await page.locator('#btn-clear-all-pending').click();
-    assert.match(await page.locator('.pending-empty').textContent(), /Tutto in ordine/);
+    assert.match(await page.locator('#pending-detail .data-empty').textContent(), /Tutto in ordine/);
     assert(await page.locator('#btn-clear-all-pending').isDisabled());
     await page.screenshot({ path: `${dir}/vuoto.png` });
     await page.evaluate(() => {

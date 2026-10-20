@@ -13,10 +13,12 @@ export { createArcInput, createArcTextarea, createArcButton, createArcSelect, cr
 export { initControls as mountArcControls } from './controls';
 export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
 export { removeDialog } from './dialogs';
-import { renderDataEmpty } from './data-empty';
+import { DataEmptyArt, renderDataEmpty } from './data-empty';
 export { renderDataEmpty };
 import { initGridFields } from './editor-controls';
 import { observeFields } from './fields';
+import { Button } from './components/arc/button/button';
+import { Database } from 'lucide-react';
 
 initControls();
 initGridFields();
@@ -36,9 +38,19 @@ if (welcome) {
   });
 }
 const placeholder = document.getElementById('placeholder');
-if (placeholder) flushSync(() => createRoot(placeholder).render(<EmptyState className="explore-empty" title="Esplora i dati"
-  description="Seleziona una collection o tabella dalla barra laterale per visualizzare le righe o eseguire query avanzate."
-  icon={<svg className="explore-art" viewBox="0 0 192 152" aria-hidden="true" focusable="false"><use href="/explore-data.svg#explore-data" /></svg>} label="Esplora i dati" />));
+if (placeholder) {
+  const root = createRoot(placeholder);
+  const mobile = window.matchMedia('(max-width: 900px)');
+  const render = () => flushSync(() => root.render(<EmptyState className="explore-empty" title="Esplora i dati"
+    description={mobile.matches
+      ? 'Apri lo schema e scegli una tabella o collezione. Lo ritrovi sempre in Database nella barra in basso.'
+      : 'Seleziona una tabella o collezione dalla barra laterale per visualizzare le righe o eseguire query avanzate.'}
+    action={mobile.matches ? <Button id="explore-schema-open" type="button" variant="primary" size="md" aria-controls="sidebar" aria-expanded="false"
+      onClick={() => document.getElementById('mobile-nav-dbs')?.click()}><Database size={18} aria-hidden="true" />Apri schema database</Button> : undefined}
+    icon={<DataEmptyArt kind="schema" />} label="Esplora i dati" />));
+  render();
+  mobile.addEventListener('change', render);
+}
 
 initPrompt();
 

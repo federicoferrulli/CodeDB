@@ -1,0 +1,10 @@
+locator.waitFor: Timeout 7000ms exceeded.
+Call log:
+  - waiting for locator('.arc-navigation-sheet #db-tree') to be visible
+
+    at C:\repository\CodeDB\test\e2e-mobile-esplora.js:48:60 {
+  log: [
+    "  - waiting for locator('.arc-navigation-sheet #db-tree') to be visible"
+  ],
+  name: 'TimeoutError'
+}

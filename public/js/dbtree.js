@@ -8,6 +8,7 @@ import { addOrSplitPane, splitDisponibile } from './splitview.js';
 import { activeTab, tabs } from './tabs.js';
 import { openDbTab } from './colltabs.js';
 import { preparaTransizioneAlbero } from './navigator-motion.js';
+import { renderDataEmpty } from '../arc/ui.js';
 
 function renderCount(label, coll) {
   if (coll.type === 'view') { label.querySelector('.count')?.remove(); return; }
@@ -65,16 +66,27 @@ export function dbWord(capital) {
   return capital ? w[0].toUpperCase() + w.slice(1) : w;
 }
 
-export function renderDbTree(databases) {
+export function renderDbTree(databases, { query = '' } = {}) {
   state.databases = databases; // cache per il ri-render al cambio tab
   const tree = $('#db-tree');
   const completaTransizione = preparaTransizioneAlbero(tree, activeTab()?.id);
   tree.innerHTML = '';
   if (!databases || databases.length === 0) {
     const emptyLi = document.createElement('li');
-    emptyLi.className = 'node-label loading';
-    emptyLi.textContent = `Nessuno ${dbWord()} trovato.`;
     tree.appendChild(emptyLi);
+    renderDataEmpty(emptyLi, {
+      kind: query ? 'search' : 'schema', compact: true,
+      title: query ? 'Nessun risultato' : dbWord() === 'schema' ? 'Nessuno schema visibile' : 'Nessun database visibile',
+      description: query ? 'Prova un altro nome o rimuovi la ricerca.'
+        : `Qui appariranno ${dbWord() === 'schema' ? 'gli schemi' : 'i database'} accessibili. Se ne aspettavi, verifica i permessi della connessione.`,
+      actionLabel: query ? 'Azzera ricerca' : 'Aggiorna elenco',
+      onAction: query ? () => {
+        const search = $('#db-search');
+        search.value = '';
+        search.dispatchEvent(new Event('input', { bubbles: true }));
+        search.focus();
+      } : refreshDbTree,
+    });
     completaTransizione();
     return;
   }
@@ -184,27 +196,14 @@ export function renderCollectionsList(dbName, container, collections) {
     const li = document.createElement('li');
     li.className = 'node-empty';
 
-    const msg = document.createElement('div');
-    msg.className = 'node-empty-msg';
-    msg.textContent = `Nessuna ${collWord()} in questo ${dbWord()}.`;
-    li.appendChild(msg);
-
-    const query = document.createElement('button');
-    query.type = 'button';
-    query.className = 'node-empty-action';
-    query.textContent = 'Apri Query & Aggregate';
-    query.title = `Esegui query sul ${dbWord()} "${dbName}" senza aprire una ${collWord()}`;
-    query.addEventListener('click', (e) => { e.stopPropagation(); openDbTab(dbName); });
-    li.appendChild(query);
-
-    const crea = document.createElement('button');
-    crea.type = 'button';
-    crea.className = 'node-empty-action';
-    crea.textContent = `＋ Nuova ${collWord()}…`;
-    crea.addEventListener('click', (e) => { e.stopPropagation(); openCreateColl(dbName); });
-    li.appendChild(crea);
-
     container.appendChild(li);
+    renderDataEmpty(li, {
+      kind: 'data', compact: true,
+      title: `Nessuna ${collWord()}`,
+      description: `Crea una ${collWord()} o esegui una query su questo ${dbWord()}.`,
+      actionLabel: 'Apri Query & Aggregate', onAction: () => openDbTab(dbName),
+      secondaryAction: { label: `＋ Nuova ${collWord()}…`, onAction: () => openCreateColl(dbName) },
+    });
     completaTransizione();
     return;
   }
@@ -294,7 +293,7 @@ export function loadCollections(dbName, container) {
 }
 
 export function refreshDbTree() {
-  emit('db:list', {}).then((res) => {
+  return emit('db:list', {}).then((res) => {
     // Elenco di un tab non più in primo piano: aggiorna solo la sua cache, che
     // verrà usata al ritorno; ridipingere sostituirebbe l'albero di un'altra
     // connessione con i database di questa.
@@ -331,7 +330,7 @@ export function initDbTree() {
       $('#db-tree').innerHTML = '<li class="node-label loading">ricerca in corso…</li>';
       emit('db:search', { tabId: originTab.id, query: q }).then((res) => {
         if (!isForActiveTab(res)) return; // risultati di un'altra connessione
-        renderDbTree(res.databases);
+        renderDbTree(res.databases, { query: q });
       }).catch((err) => { if (isForActiveTab(err)) toast(err.message, true); });
     }, 300);
   });

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/avvio_particelle_vettore">
+    <target android:name="prima" android:animation="@animator/avvio_orbita_prima" />
+    <target android:name="seconda" android:animation="@animator/avvio_orbita_seconda" />
+    <target android:name="terza" android:animation="@animator/avvio_orbita_terza" />
+</animated-vector>

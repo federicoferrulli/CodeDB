@@ -1,0 +1,9 @@
+FAIL fk: Applica/Annulla non coprono il selettore FK
+Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   'fk: Applica/Annulla non coprono il selettore FK'
++ ]
+- []
+

@@ -644,11 +644,12 @@
 
         <div id="welcome" class="placeholder">
           <div class="empty-state-card">
-            <div class="empty-state-icon">
-              <i data-lucide="database" style="width: 48px; height: 48px; stroke-width: 1.5px;"></i>
+            <div class="data-empty-art" aria-hidden="true">
+              <div class="data-empty-table"><div class="data-empty-table-head"><i></i><i></i><i></i></div><div class="data-empty-table-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div>
+              <span class="data-empty-symbol"><i data-lucide="database"></i></span>
             </div>
             <h3>Nessuna connessione aperta</h3>
-            <p class="placeholder-hint">Seleziona una connessione salvata dal menu a sinistra oppure clicca su <strong>＋
+            <p class="placeholder-hint">Apri una connessione salvata da Connessioni oppure scegli <strong>＋
                 Aggiungi connessione</strong> per iniziare.</p>
           </div>
         </div>
@@ -658,10 +659,10 @@
             <div id="placeholder" class="placeholder">
               <section class="explore-empty" aria-label="Esplora i dati">
                 <div aria-hidden="true">
-                  <svg class="explore-art" viewBox="0 0 192 152" focusable="false"><use href="/explore-data.svg#explore-data"></use></svg>
+                  <div class="data-empty-art"><div class="data-empty-table"><div class="data-empty-table-head"><i></i><i></i><i></i></div><div class="data-empty-table-rows"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div></div><span class="data-empty-symbol"><i data-lucide="database"></i></span></div>
                 </div>
                 <h3>Esplora i dati</h3>
-                <p class="placeholder-hint">Seleziona una collection o tabella dalla barra laterale per visualizzare le
+                <p class="placeholder-hint">Apri Database e scegli una tabella o collezione per visualizzare le
                   righe o eseguire query avanzate.</p>
               </section>
             </div>
@@ -1234,6 +1235,10 @@
                     </button>
                   </div>
 
+                  <button type="button" id="graph3d-details-toggle" class="hidden" aria-controls="graph3d-side-panel" aria-expanded="false">
+                    <span class="graph3d-details-grab" aria-hidden="true"></span>
+                    <span id="graph3d-details-label">Dettagli della selezione</span>
+                  </button>
                   <aside id="graph3d-side-panel" class="graph3d-side-panel hidden">
                     <div class="side-panel-header">
                       <h3 id="graph3d-panel-title">Nome Tabella</h3>

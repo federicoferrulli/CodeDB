@@ -10,7 +10,6 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.graphics.Color;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.provider.Settings;
 import android.graphics.drawable.ColorDrawable;
 import android.widget.TextView;
@@ -81,17 +80,48 @@ public class AvvioTest {
         verificaAspettoEGesti(activity, instrumentation);
         instrumentation.runOnMainSync(() -> verificaInset(activity));
         verificaDownload(activity, instrumentation);
-        verificaAnimazione(activity, instrumentation);
     }
 
-    private Bitmap fotogramma(View view, android.app.Instrumentation instrumentation) {
-        AtomicReference<Bitmap> image = new AtomicReference<>();
+    @Test public void testCicloAnimazione() throws Exception {
+        android.app.Instrumentation instrumentation = InstrumentationRegistry.getInstrumentation();
+        MainActivity activity = (MainActivity) instrumentation.startActivitySync(new Intent(instrumentation.getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            for (int i = 0; i < 1200 && Runtime.url == null && Runtime.error == null; i++) Thread.sleep(100);
+            assertNull(Runtime.error);
+            assertNotNull("Il server incorporato non è partito", Runtime.url);
+            attendiJs(activity, "document.documentElement.dataset.arcReady === 'true'");
+            AtomicInteger viste = new AtomicInteger();
+            for (int i = 0; i < 100; i++) {
+                instrumentation.runOnMainSync(() -> viste.set(((ViewGroup) ((ViewGroup) activity.findViewById(android.R.id.content)).getChildAt(0)).getChildCount()));
+                if (viste.get() == 1) break;
+                Thread.sleep(100);
+            }
+            assertEquals("L'avvio reale è terminato prima della scena di prova", 1, viste.get());
+            verificaAnimazione(activity, instrumentation);
+        }
+        finally { instrumentation.runOnMainSync(activity::finish); }
+    }
+
+    private Bitmap fotogramma(View view, android.app.Instrumentation instrumentation) throws Exception {
+        Field campoNucleo = AvvioView.class.getDeclaredField("nucleo");
+        campoNucleo.setAccessible(true);
+        View nucleo = (View) campoNucleo.get(view);
+        int[] posizione = new int[2], misura = new int[2];
+        CountDownLatch presentato = new CountDownLatch(1);
         instrumentation.runOnMainSync(() -> {
-            Bitmap frame = Bitmap.createBitmap(view.getWidth(), view.getHeight(), Bitmap.Config.ARGB_8888);
-            view.draw(new Canvas(frame));
-            image.set(frame);
+            assertTrue("La scena deve essere visibile senza dialoghi di sistema sopra", view.hasWindowFocus());
+            // Si misura il simbolo: le animazioni di stato del pulsante Riprova sono indipendenti.
+            nucleo.getLocationOnScreen(posizione);
+            misura[0] = nucleo.getWidth(); misura[1] = nucleo.getHeight();
+            // Il Canvas software non legge le proprietà animate sul RenderThread.
+            view.postOnAnimation(() -> view.postOnAnimation(presentato::countDown));
         });
-        return image.get();
+        assertTrue("Il fotogramma deve essere presentato", presentato.await(5, TimeUnit.SECONDS));
+        Bitmap screen = instrumentation.getUiAutomation().takeScreenshot();
+        assertNotNull(screen);
+        Bitmap frame = Bitmap.createBitmap(screen, posizione[0], posizione[1], misura[0], misura[1]);
+        screen.recycle();
+        return frame;
     }
 
     private void scalaAnimazioni(android.app.Instrumentation instrumentation, String value) throws Exception {
@@ -110,7 +140,13 @@ public class AvvioTest {
         String scala = Settings.Global.getString(activity.getContentResolver(), Settings.Global.ANIMATOR_DURATION_SCALE);
         AtomicReference<AvvioView> scena = new AtomicReference<>();
         AtomicInteger retries = new AtomicInteger(), completamenti = new AtomicInteger();
-        FrameLayout root = (FrameLayout) ((ViewGroup) activity.findViewById(android.R.id.content)).getChildAt(0);
+        FrameLayout host = (FrameLayout) ((ViewGroup) activity.findViewById(android.R.id.content)).getChildAt(0);
+        FrameLayout root = new FrameLayout(activity);
+        instrumentation.runOnMainSync(() -> {
+            // Quando la scena è invisibile si osserva uno sfondo fermo, non la WebView sottostante.
+            root.setBackgroundColor(0xff1b1e25);
+            host.addView(root, new FrameLayout.LayoutParams(-1, -1));
+        });
         try {
             scalaAnimazioni(instrumentation, "1");
             instrumentation.runOnMainSync(() -> {
@@ -151,6 +187,11 @@ public class AvvioTest {
             prima = fotogramma(scena.get(), instrumentation);
             Thread.sleep(300);
             dopo = fotogramma(scena.get(), instrumentation);
+            if (!prima.sameAs(dopo)) {
+                for (int i = 0; i < 2; i++) try (java.io.OutputStream file = new java.io.FileOutputStream(new java.io.File(activity.getExternalFilesDir(null), "splash-errore-" + i + ".png"))) {
+                    (i == 0 ? prima : dopo).compress(Bitmap.CompressFormat.PNG, 100, file);
+                }
+            }
             assertTrue("Un errore ferma l'animazione di attesa", prima.sameAs(dopo));
             prima.recycle(); dopo.recycle();
             instrumentation.runOnMainSync(() -> {
@@ -185,6 +226,7 @@ public class AvvioTest {
             verificaLayoutSplash(activity, instrumentation);
         } finally {
             instrumentation.runOnMainSync(() -> { if (scena.get() != null) root.removeView(scena.get()); });
+            instrumentation.runOnMainSync(() -> host.removeView(root));
             scalaAnimazioni(instrumentation, scala);
         }
     }
@@ -249,6 +291,7 @@ public class AvvioTest {
         CountDownLatch done = new CountDownLatch(1);
         activity.runOnUiThread(() -> {
             FrameLayout root = (FrameLayout) ((ViewGroup) activity.findViewById(android.R.id.content)).getChildAt(0);
+            if (!(root.getChildAt(0) instanceof WebView)) { done.countDown(); return; }
             ((WebView) root.getChildAt(0)).evaluateJavascript(script, result -> { value.set(result); done.countDown(); });
         });
         assertTrue("Risposta JavaScript", done.await(30, TimeUnit.SECONDS));

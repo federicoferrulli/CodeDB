@@ -16,7 +16,6 @@ fs.mkdirSync(dir, { recursive: true });
   try {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
     page.on('pageerror', error => errors.push(error.message));
-    if (mutant) await page.route('**/explore-data.svg', route => route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" id="explore-data" viewBox="0 0 192 152" />' }));
     await page.addInitScript(versione => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: versione, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
@@ -34,13 +33,12 @@ fs.mkdirSync(dir, { recursive: true });
     });
     const placeholder = page.locator('#placeholder');
     await placeholder.waitFor({ state: 'visible' });
-    const asset = await page.request.get(`${server.url}/explore-data.svg`);
-    assert(asset.ok());
     await page.waitForTimeout(200);
-    const glyph = await placeholder.locator('use').evaluate(el => { const b = el.getBBox(); return { width: b.width, height: b.height }; });
-    assert(glyph.width > 140 && glyph.height > 100, 'L’icona esterna deve essere effettivamente disegnata');
+    if (mutant) await placeholder.locator('.data-empty-art').evaluate(el => { el.style.display = 'none'; });
+    const glyph = await placeholder.locator('.data-empty-art').evaluate(el => { const b = el.getBoundingClientRect(); return { width: b.width, height: b.height }; });
+    assert(glyph.width === 132 && glyph.height === 88, 'L’illustrazione condivisa deve essere effettivamente disegnata');
     assert.equal(await placeholder.getByRole('heading', { name: 'Esplora i dati' }).count(), 1);
-    assert.equal(await placeholder.locator('.explore-art').evaluate(el => el.getAnimations().length), 0, 'Il movimento ridotto evita l’ingresso animato');
+    assert.equal(await placeholder.locator('.data-empty-art').evaluate(el => el.getAnimations().length), 0, 'Il movimento ridotto evita l’ingresso animato');
 
     for (const theme of ['dark', 'light']) {
       await page.evaluate(async theme => (await import('/js/theme.js')).scegliTema(theme), theme);
@@ -65,16 +63,16 @@ fs.mkdirSync(dir, { recursive: true });
     const motion = await page.evaluate(async () => {
       const tabs = await import('/js/colltabs.js');
       tabs.closeCollTab(tabs.currentCollTab().id);
-      const icon = document.querySelector('#placeholder .explore-art');
+      const icon = document.querySelector('#placeholder .data-empty-art');
       getComputedStyle(icon).animationName;
       return icon.getAnimations().map(a => a.effect.getTiming().iterations);
     });
     await placeholder.waitFor({ state: 'visible' });
     assert.deepEqual(motion, [1], 'La ricomparsa anima l’icona una volta, senza cicli continui');
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    assert.equal(await placeholder.locator('.explore-art').evaluate(el => el.getAnimations().length), 0);
+    assert.equal(await placeholder.locator('.data-empty-art').evaluate(el => el.getAnimations().length), 0);
     assert.deepEqual(errors, []);
     fs.writeFileSync(`${dir}/checks.json`, JSON.stringify({ layouts, glyph, errors, motion }, null, 2));
-    console.log('OK: icona SVG, 8 layout chiaro/scuro, apertura/chiusura tabella e movimento ridotto');
+    console.log('OK: illustrazione condivisa, 8 layout chiaro/scuro, apertura/chiusura tabella e movimento ridotto');
   } finally { await browser.close(); await server.stop(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

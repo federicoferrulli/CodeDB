@@ -91,7 +91,7 @@ function databaseSuccessivo() {
 /** Le voci della palette: comandi fissi + connessioni + database + tabelle. */
 function raccogliVoci() {
   const voci = [
-    { tipo: 'Comando', etichetta: 'Mostra/nascondi il pannello sinistro', esegui: mostraBarraConnessioni },
+    { tipo: 'Comando', etichetta: window.matchMedia('(max-width: 900px)').matches ? 'Apri/chiudi Connessioni' : 'Mostra/nascondi la navigazione', esegui: mostraBarraConnessioni },
     { tipo: 'Comando', etichetta: 'Nuova connessione', esegui: () => openConnModal() },
   ];
   for (const conn of elencoConnessioni()) {

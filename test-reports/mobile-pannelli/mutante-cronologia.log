@@ -1,0 +1,9 @@
+FAIL cronologia: Cronologia contenuta nel telefono: {"left":-78,"right":382,"top":319.5,"bottom":759.5,"overflow":0}
+Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   'cronologia: Cronologia contenuta nel telefono: {"left":-78,"right":382,"top":319.5,"bottom":759.5,"overflow":0}'
++ ]
+- []
+

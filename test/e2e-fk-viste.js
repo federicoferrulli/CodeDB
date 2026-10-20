@@ -282,6 +282,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
     /* --- Due riquadri Split-View reali su connessioni diverse ---------- */
 
     const paginaSplit = await browser.newPage();
+    await paginaSplit.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
     paginaSplit.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
     await paginaSplit.goto(server.url, { waitUntil: 'domcontentloaded' });
     await paginaSplit.waitForSelector('#fk-pannello', { state: 'attached', timeout: 15000 });
@@ -310,6 +311,7 @@ const ok = (cond, etichetta, dettaglio = '') => {
       };
       const richieste = [];
       impostaSocket({
+        connected: true,
         emit: (evento, msg, cb) => {
           richieste.push({ evento, msg: structuredClone(msg) });
           if (!cb) return;
@@ -345,25 +347,24 @@ const ok = (cond, etichetta, dettaglio = '') => {
       host.state.db = null;
       host.state.coll = null;
       tabs.activeId = host.id;
+      document.getElementById('welcome').classList.add('hidden');
+      document.getElementById('tab-body').classList.remove('hidden');
 
       sv.initSplitView();
-      sv.addOrSplitPane(null, 'right', {
+      await sv.addOrSplitPane(null, 'right', {
         tabId: tabA.id, db: 'vendite_a', coll: 'ordini_a',
       });
-      await new Promise((r) => setTimeout(r, 80));
       const primo = sv.getSplitStateSnapshot().panes.find(([, p]) => p.coll === 'ordini_a')[0];
-      sv.addOrSplitPane(primo, 'right', {
+      await sv.addOrSplitPane(primo, 'right', {
         tabId: tabB.id, db: 'vendite_b', coll: 'ordini_b',
       });
-      await new Promise((r) => setTimeout(r, 150));
-
-      const snap = sv.getSplitStateSnapshot();
       const cellaDi = (coll, campoIdx) => {
-        const voce = snap.panes.find(([, p]) => p.coll === coll);
-        return voce && document.querySelector(
-          `.split-pane[data-pane-id="${voce[0]}"] td[data-r="0"][data-c="${campoIdx}"]`,
-        );
+        const frame = [...document.querySelectorAll('iframe.pane-runtime')].find(frame => frame.codedbPanel.coll === coll);
+        return frame?.contentDocument?.querySelector(`#grid td[data-r="0"][data-c="${campoIdx}"]`);
       };
+      // Ogni riquadro ha il proprio documento: aspetta le righe, non un ritardo fisso.
+      const deadline = performance.now() + 15000;
+      while ((!cellaDi('ordini_a', 1) || !cellaDi('ordini_b', 1)) && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
       const cellaA = cellaDi('ordini_a', 1);
       const cellaB = cellaDi('ordini_b', 1);
       if (!cellaA || !cellaB) return { assente: true, richieste };
@@ -377,8 +378,9 @@ const ok = (cond, etichetta, dettaglio = '') => {
         bTitle: cellaB.title,
       };
       cellaA.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      cellaA.querySelector('.fk-apri-btn')?.click(); // Il singolo riquadro può avere larghezza mobile.
       await new Promise((r) => setTimeout(r, 80));
-      const titolo = document.querySelector('#fk-title').textContent;
+      const titolo = cellaA.ownerDocument.querySelector('#fk-title').textContent;
       const richiesteCandidati = richieste.filter((r) =>
         r.evento === 'collection:find' && r.msg.coll === 'clienti_a');
       impostaSocket(null);

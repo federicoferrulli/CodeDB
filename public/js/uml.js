@@ -21,7 +21,7 @@ import { selectCollection } from './grid.js';
 import { addOrSplitPane, splitDisponibile } from './splitview.js';
 import { getCurrentUser } from './auth.js';
 import { socket } from './socket.js';
-import { openNavigationSheet, closeNavigationSheet } from '../arc/ui.js';
+import { openNavigationSheet, closeNavigationSheet, renderDataEmpty } from '../arc/ui.js';
 import { closeDrawers } from './responsive.js';
 
 // Il tetto più alto che `limitaSchema` concede: l'UML è la vista in cui
@@ -878,11 +878,16 @@ async function leggiPaginaDati() {
 function disegnaDati() {
   const d = V.dati;
   const corpo = $('#uml-dati-corpo');
+  renderDataEmpty(corpo, null);
   const colonne = d.columns && d.columns.length
     ? d.columns
     : [...new Set(d.docs.flatMap((r) => Object.keys(r)))];
   if (!d.docs.length) {
-    corpo.innerHTML = '<div class="uml-msg">Nessuna riga in questa pagina.</div>';
+    corpo.replaceChildren();
+    renderDataEmpty(corpo, {
+      kind: 'data', compact: true, title: 'Nessuna riga in questa pagina',
+      description: 'Scegli un’altra pagina o una tabella con dati.',
+    });
   } else {
     corpo.innerHTML = `<table class="uml-dati-tab"><thead><tr>${colonne.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead>
       <tbody>${d.docs.map((r, i) => `<tr data-riga="${i}" class="${d.rigaScelta === i ? 'scelta' : ''}">${colonne.map((c) => {

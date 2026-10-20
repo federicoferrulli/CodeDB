@@ -1,6 +1,6 @@
 import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
-import { mountArcControls } from '../arc/ui.js';
+import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
 import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext, dbTypeIcon, refreshLucideIcons } from './utils.js';
 
 let indexCreateContext = null;
@@ -108,7 +108,11 @@ export function renderDetails({ stats, indexes, fields, sampled }, dbType = stat
                  `<td role="cell" class="details-index-constraint"><span class="details-constraint">${i.unique || protectedIndex ? 'Unico' : 'Non univoco'}</span></td><td role="cell" class="row-actions">${del}</td></tr>`;
         })
         .join('')
-    : '<tr class="details-empty-row"><td colspan="4"><div class="details-empty"><i data-lucide="fingerprint" aria-hidden="true"></i><strong>Nessun indice</strong><span>Crea un indice per supportare le ricerche sui tuoi dati.</span></div></td></tr>';
+    : '<tr class="details-empty-row"><td colspan="4"><div class="details-empty"></div></td></tr>';
+  if (!indexes.length) renderDataEmpty($('#index-table .details-empty'), {
+    kind: 'schema', compact: true, title: 'Nessun indice',
+    description: 'Crea un indice per supportare le ricerche sui tuoi dati.',
+  });
 
   $('#schema-title').textContent = isMysql ? 'Colonne' : 'Schema rilevato';
   $('#schema-count').textContent = fields.length;
@@ -133,7 +137,11 @@ export function renderDetails({ stats, indexes, fields, sampled }, dbType = stat
           return `<tr role="row"><td role="cell" class="details-field-name">${esc(f.name)}</td><td role="cell" class="details-field-types">${f.types.map(type => `<code class="details-type">${esc(type)}</code>`).join('')}</td><td role="cell" class="details-field-presence">${third}</td>${actions}</tr>`;
         })
         .join('')
-    : `<tr class="details-empty-row"><td colspan="4"><div class="details-empty"><i data-lucide="list-tree" aria-hidden="true"></i><strong>${isMysql ? 'Nessuna colonna' : 'Nessun campo rilevato'}</strong><span>${isMysql ? 'Aggiungi una colonna per definire la struttura.' : 'I campi appariranno quando la collezione conterrà documenti.'}</span></div></td></tr>`;
+    : '<tr class="details-empty-row"><td colspan="4"><div class="details-empty"></div></td></tr>';
+  if (!fields.length) renderDataEmpty($('#schema-table .details-empty'), {
+    kind: 'schema', compact: true, title: isMysql ? 'Nessuna colonna' : 'Nessun campo rilevato',
+    description: isMysql ? 'Aggiungi una colonna per definire la struttura.' : 'I campi appariranno quando la collezione conterrà documenti.',
+  });
   mountArcControls($('#index-table'));
   mountArcControls($('#schema-table'));
   refreshLucideIcons($('#view-details'));

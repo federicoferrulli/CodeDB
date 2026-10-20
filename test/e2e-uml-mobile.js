@@ -18,6 +18,8 @@ fs.mkdirSync(dir, { recursive: true });
   page.on('pageerror', e => report.errors.push(e.message));
   const check = text => { report.checks.push(text); console.log('OK', text); };
   try {
+    // L'onboarding si apre in differita: la fixture lo segna già letto prima dell'avvio.
+    await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({ visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true })), require('../package.json').version);
     if (mutant) await page.route('**/js/uml-paper.js', async route => {
       const response = await route.fetch(), source = await response.text();
       const guard = 'if (this._pizzico.puntatori.size === 2) { this._aggiornaPizzico(); return; }';

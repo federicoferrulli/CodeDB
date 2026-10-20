@@ -1,0 +1,84 @@
+{
+  "layouts": [
+    {
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "dark",
+      "width": 390,
+      "height": 844,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "dark",
+      "width": 320,
+      "height": 640,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "dark",
+      "width": 844,
+      "height": 390,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "13px"
+    },
+    {
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "light",
+      "width": 390,
+      "height": 844,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "light",
+      "width": 320,
+      "height": 640,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "14px"
+    },
+    {
+      "theme": "light",
+      "width": 844,
+      "height": 390,
+      "inside": true,
+      "scrollable": true,
+      "overflow": false,
+      "text": "13px"
+    }
+  ],
+  "glyph": {
+    "width": 132,
+    "height": 88
+  },
+  "errors": [],
+  "motion": [
+    1
+  ]
+}

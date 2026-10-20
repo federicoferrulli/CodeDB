@@ -52,7 +52,7 @@ function animatePanelChange(navigator, change) {
 }
 
 function syncDrawers() {
-  for (const [selector, triggers] of [['#conn-sidebar', ['#menu-conns-btn', '#mobile-nav-conns']], ['#sidebar', ['#menu-dbs-btn', '#mobile-nav-dbs']], ['#query-schema-sidebar', ['#query-toggle-schema-btn']]]) {
+  for (const [selector, triggers] of [['#conn-sidebar', ['#menu-conns-btn', '#mobile-nav-conns']], ['#sidebar', ['#menu-dbs-btn', '#mobile-nav-dbs', '#explore-schema-open']], ['#query-schema-sidebar', ['#query-toggle-schema-btn']]]) {
     const el = $(selector), open = el.classList.contains('open');
     el.inert = mq.matches && !open;
     for (const id of triggers) {

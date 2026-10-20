@@ -25,12 +25,12 @@ export const TRAGUARDI = [
   {
     id: 'connessione',
     etichetta: 'Crea la prima connessione',
-    aiuto: 'Barra sinistra → ＋ Aggiungi connessione. Le credenziali restano sul server, cifrate nel vault: il browser non le vede mai.',
+    aiuto: 'Connessioni → ＋ Aggiungi connessione. Le credenziali restano sul server, cifrate nel vault: il browser non le vede mai.',
   },
   {
     id: 'tabella',
     etichetta: 'Apri una tabella o collection',
-    aiuto: 'Scegli un database nella barra e clicca una tabella: si apre in una scheda con i suoi dati.',
+    aiuto: 'Apri Database e scegli una tabella o collezione: si apre in una scheda con i suoi dati.',
   },
   {
     id: 'query',

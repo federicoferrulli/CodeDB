@@ -11,8 +11,10 @@ function Navigatore({ panel, tools, navigation }: { panel: HTMLElement; tools: b
     const scroll = [...panel.querySelectorAll<HTMLElement>('*')].filter(node => node.scrollTop).map(node => [node, node.scrollTop] as const);
     const body = panel.querySelector<HTMLElement>('.navigator-section-body') || panel;
     const collapsed = body.classList.contains('hidden');
+    const hidden = panel.classList.contains('hidden');
     const width = panel.style.width;
     panel.style.removeProperty('width');
+    panel.classList.remove('hidden');
     body.classList.remove('hidden');
     nodes.forEach(({ node }) => slot.current!.append(node));
     scroll.forEach(([node, top]) => { node.scrollTop = top; });
@@ -23,6 +25,7 @@ function Navigatore({ panel, tools, navigation }: { panel: HTMLElement; tools: b
       });
       panel.style.width = width;
       body.classList.toggle('hidden', collapsed);
+      panel.classList.toggle('hidden', hidden);
       current.forEach(([node, top]) => { node.scrollTop = top; });
     };
   }, [panel, tools, navigation]);
@@ -59,7 +62,16 @@ export function openNavigationSheet(panel: HTMLElement, onClose: () => void, opt
     onOpenChange={open => { if (!open) closeNavigationSheet(); }}
     onCloseAutoFocus={event => event.preventDefault()}
     onEscapeKeyDown={event => {
-      if (document.querySelector('.overlay:not(.hidden), #context-menu:not(.hidden), .toolbar-dropdown-menu:not(.hidden), [data-state="open"][role="menu"]')) event.preventDefault();
+      // Escape chiude prima il menu e restituisce il fuoco al suo pulsante.
+      if (document.querySelector('.toolbar-dropdown-menu:not(.hidden)')) {
+        event.preventDefault();
+        document.querySelectorAll<HTMLElement>('.toolbar-dropdown-menu:not(.hidden)').forEach(menu => {
+          menu.classList.add('hidden');
+          document.getElementById(menu.dataset.dropdownTrigger || '')?.focus({ preventScroll: true });
+        });
+        document.querySelectorAll('[aria-haspopup="true"][aria-expanded="true"]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+      }
+      else if (document.querySelector('.overlay:not(.hidden), #context-menu:not(.hidden), [data-state="open"][role="menu"]')) event.preventDefault();
       else event.stopImmediatePropagation(); // Escape appartiene al drawer, non alla selezione sul canvas sottostante.
     }}>
     <Navigatore panel={panel} tools={options.tools !== false} navigation={options.navigation !== false} />

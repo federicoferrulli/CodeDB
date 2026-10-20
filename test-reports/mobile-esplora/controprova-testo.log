@@ -1,0 +1,20 @@
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Database nella barra in basso/. Input:
+
+'Esplora i dati\n' +
+  '\n' +
+  'Scegli una tabella dalla barra laterale.\n' +
+  '\n' +
+  'Apri schema database'
+
+    at C:\repository\CodeDB\test\e2e-mobile-esplora.js:42:14 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: 'Esplora i dati\n' +
+    '\n' +
+    'Scegli una tabella dalla barra laterale.\n' +
+    '\n' +
+    'Apri schema database',
+  expected: /Database nella barra in basso/,
+  operator: 'match',
+  diff: 'simple'
+}

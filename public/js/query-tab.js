@@ -422,7 +422,14 @@ export function initQueryTab() {
   }
 
   if (schemaRefreshBtn) {
-    schemaRefreshBtn.addEventListener('click', () => renderQuerySchemaBrowser());
+    schemaRefreshBtn.addEventListener('click', async () => {
+      const tab = activeTab();
+      schemaRefreshBtn.disabled = true;
+      try {
+        await refreshDbTree();
+        if (activeTab() === tab) renderQuerySchemaBrowser();
+      } finally { schemaRefreshBtn.disabled = false; }
+    });
   }
 
   const targetReset = $('#query-target-reset');
@@ -1389,11 +1396,17 @@ function renderResultsJsonTree(data) {
 export function renderQuerySchemaBrowser() {
   const container = $('#query-schema-tree');
   if (!container) return;
+  renderDataEmpty(container, null);
   container.innerHTML = '';
 
   const dbs = state.databases || [];
   if (dbs.length === 0) {
-    container.innerHTML = '<div style="color: var(--fg-dim); padding: 10px;">Nessun database caricato.</div>';
+    const postgres = state.dbType === 'postgresql' || state.dbType === 'postgres';
+    renderDataEmpty(container, {
+      kind: 'schema', compact: true, title: postgres ? 'Nessuno schema visibile' : 'Nessun database visibile',
+      description: 'Lo schema della connessione apparirà qui. Ricaricalo per cercare database, tabelle e campi disponibili.',
+      actionLabel: 'Ricarica schema', onAction: () => $('#query-schema-refresh').click(),
+    });
     return;
   }
 

@@ -602,23 +602,39 @@ export function isSqlType(dbType) {
   return dbType === 'mysql' || dbType === 'postgresql' || dbType === 'postgres';
 }
 
+const dropdownOsservati = new WeakSet();
 export function positionFixedDropdown(btn, menu) {
   if (!btn || !menu) return;
   menu.classList.remove('hidden');
+  // Il top layer mantiene le coordinate del viewport anche dentro un drawer trasformato.
+  menu.setAttribute('popover', 'manual');
+  menu.dataset.dropdownTrigger = btn.id;
+  if (!dropdownOsservati.has(menu)) {
+    dropdownOsservati.add(menu);
+    new MutationObserver(() => {
+      if (menu.classList.contains('hidden') && menu.matches(':popover-open')) menu.hidePopover();
+    }).observe(menu, { attributes: true, attributeFilter: ['class'] });
+  }
+  menu.style.margin = '0';
+  menu.style.inset = 'auto';
+  const area = limitiViewport();
+  menu.style.maxWidth = `${Math.max(0, area.right - area.left - 16)}px`;
+  menu.style.maxHeight = `${Math.max(0, area.bottom - area.top - 16)}px`;
+  if (!menu.matches(':popover-open')) menu.showPopover?.();
   const rect = btn.getBoundingClientRect();
   const menuWidth = menu.offsetWidth || 220;
   const menuHeight = menu.offsetHeight || 180;
-  const area = limitiViewport();
 
   menu.style.position = 'fixed';
   menu.style.zIndex = 'var(--z-dropdown)';
 
-  // Posizionamento verticale: sotto il bottone, oppure sopra se in basso non c'è spazio sufficiente
-  let top = rect.bottom + 6;
-  if (top + menuHeight > area.bottom - 8) {
-    top = rect.top - menuHeight - 6;
-  }
-  menu.style.top = `${Math.max(area.top + 8, Math.min(top, area.bottom - menuHeight - 8))}px`;
+  // Se nessun lato basta (telefono orizzontale), scorre il menu senza coprire il pulsante.
+  const sotto = area.bottom - 8 - rect.bottom - 6;
+  const sopra = rect.top - 6 - area.top - 8;
+  const apriSotto = menuHeight <= sotto || sotto >= sopra;
+  menu.style.maxHeight = `${Math.max(0, Math.floor(apriSotto ? sotto : sopra))}px`;
+  const top = apriSotto ? rect.bottom + 6 : rect.top - menu.offsetHeight - 6;
+  menu.style.top = `${Math.max(area.top + 8, top)}px`;
 
   // Posizionamento orizzontale: allinea a destra col bottone, garantendo che sia sempre compreso nello schermo (8px dal bordo)
   let left = rect.right - menuWidth;

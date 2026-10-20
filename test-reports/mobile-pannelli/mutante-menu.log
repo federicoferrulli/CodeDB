@@ -1,0 +1,9 @@
+FAIL menu: Menu adiacente e interamente visibile: {"top":667.2024536132812,"bottom":881.2024536132812,"left":9,"right":211.96875,"gap":260.09375}
+Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   'menu: Menu adiacente e interamente visibile: {"top":667.2024536132812,"bottom":881.2024536132812,"left":9,"right":211.96875,"gap":260.09375}'
++ ]
+- []
+

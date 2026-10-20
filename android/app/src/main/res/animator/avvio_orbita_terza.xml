@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyXName="translateX" android:propertyYName="translateY"
+    android:pathData="M-68.5,-45.899 A137,53 0,1 1,68.5 45.899 A137,53 0,1 1,-68.5 -45.899"
+    android:duration="5600" android:repeatCount="infinite" android:interpolator="@android:interpolator/linear" />

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp" android:height="200dp" android:viewportWidth="320" android:viewportHeight="320">
+    <group android:translateX="160" android:translateY="160">
+        <group android:name="prima" android:translateX="137">
+            <path android:fillColor="#24FFFFFF" android:pathData="M-7,0a7,7 0,1 0,14 0a7,7 0,1 0,-14 0" />
+            <path android:fillColor="#FFFFFFFF" android:pathData="M-2.5,0a2.5,2.5 0,1 0,5 0a2.5,2.5 0,1 0,-5 0" />
+        </group>
+        <group android:name="seconda" android:translateX="-68.5" android:translateY="45.899">
+            <path android:fillColor="#24FFFFFF" android:pathData="M-7,0a7,7 0,1 0,14 0a7,7 0,1 0,-14 0" />
+            <path android:fillColor="#FFFFFFFF" android:pathData="M-2.5,0a2.5,2.5 0,1 0,5 0a2.5,2.5 0,1 0,-5 0" />
+        </group>
+        <group android:name="terza" android:translateX="-68.5" android:translateY="-45.899">
+            <path android:fillColor="#24FFFFFF" android:pathData="M-7,0a7,7 0,1 0,14 0a7,7 0,1 0,-14 0" />
+            <path android:fillColor="#FFFFFFFF" android:pathData="M-2.5,0a2.5,2.5 0,1 0,5 0a2.5,2.5 0,1 0,-5 0" />
+        </group>
+    </group>
+</vector>

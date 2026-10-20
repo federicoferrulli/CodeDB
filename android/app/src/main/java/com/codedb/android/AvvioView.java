@@ -15,6 +15,8 @@ import android.graphics.RadialGradient;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.AnimatedVectorDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -176,6 +178,7 @@ final class AvvioView extends LinearLayout {
     }
 
     private void termina() {
+        nucleo.animaParticelle(false);
         Runnable azione = completamento;
         completamento = null;
         if (azione != null) azione.run();
@@ -193,10 +196,15 @@ final class AvvioView extends LinearLayout {
             return;
         }
         if (scalaAnimazioni == 0 || errore) {
+            nucleo.animaParticelle(false);
             fotogramma(1500, false);
             return;
         }
-        if (!collegato || getWindowVisibility() != VISIBLE || !isShown()) return;
+        if (!collegato || getWindowVisibility() != VISIBLE || !isShown()) {
+            nucleo.animaParticelle(false);
+            return;
+        }
+        nucleo.animaParticelle(true);
         inizio = SystemClock.uptimeMillis() - (long) (tempo * scalaAnimazioni);
         clock = ValueAnimator.ofFloat(0, 1);
         clock.setDuration(5600);
@@ -225,6 +233,7 @@ final class AvvioView extends LinearLayout {
 
     @Override protected void onDetachedFromWindow() {
         collegato = false;
+        nucleo.animaParticelle(false);
         fermaClock();
         getContext().getContentResolver().unregisterContentObserver(preferenze);
         completamento = null;
@@ -269,6 +278,7 @@ final class AvvioView extends LinearLayout {
 
     /** Coordinate normalizzate: geometria e shader riusati, nessuna allocazione per fotogramma. */
     private static final class NucleoView extends View {
+        private final AnimatedVectorDrawable particelle;
         private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Path fianco = new Path();
         private final RectF ellisse = new RectF(-69, -19, 69, 19);
@@ -281,6 +291,9 @@ final class AvvioView extends LinearLayout {
 
         NucleoView(Context context) {
             super(context);
+            particelle = (AnimatedVectorDrawable) context.getDrawable(R.drawable.avvio_particelle).mutate();
+            particelle.setCallback(this);
+            particelle.setBounds(-160, -160, 160, 160);
             fianco.moveTo(-69, 0);
             fianco.cubicTo(-69, 25, 69, 25, 69, 0);
             fianco.lineTo(69, 23);
@@ -289,9 +302,20 @@ final class AvvioView extends LinearLayout {
             p.setStrokeCap(Paint.Cap.ROUND);
         }
 
+        void animaParticelle(boolean attivo) {
+            // L'orbita procede sul RenderThread anche mentre la WebView impegna il thread UI.
+            if (attivo) { if (!particelle.isRunning()) particelle.start(); }
+            else particelle.stop();
+        }
+
+        @Override protected boolean verifyDrawable(Drawable drawable) {
+            return drawable == particelle || super.verifyDrawable(drawable);
+        }
+
         void palette(int bg, int fg, int accent) {
             sfondo = bg;
             accento = accent;
+            particelle.setTint(ColorUtils.blendARGB(accent, 0xff62e6eb, .5f));
             luce = ColorUtils.blendARGB(accent, 0xff62e6eb, .72f);
             segno = ColorUtils.blendARGB(bg, fg, .22f);
             metallo = new LinearGradient(-70, 0, 70, 35,
@@ -362,21 +386,9 @@ final class AvvioView extends LinearLayout {
             c.save(); c.rotate(-24);
             tratto(segno, .85f, (int) ((davanti ? 100 : 60) * ingresso));
             c.drawArc(orbita, davanti ? 0 : 180, 180, false, p);
-            for (int i = 0; i < 3; i++) {
-                float angle = (movimento ? tempo / 5600 * 360 : 32) + i * 120;
-                angle %= 360;
-                if ((angle < 180) != davanti) continue;
-                tratto(i == 1 ? accento : luce, 1.8f, (int) (115 * ingresso));
-                c.drawArc(orbita, angle - 19, 17, false, p);
-                float rad = (float) Math.toRadians(angle);
-                float x = (float) Math.cos(rad) * 137, y = (float) Math.sin(rad) * 53;
-                p.setStyle(Paint.Style.FILL); p.setColor(i == 1 ? accento : luce); p.setAlpha((int) (35 * ingresso));
-                c.drawCircle(x, y, 7, p);
-                p.setAlpha((int) (255 * ingresso));
-                c.drawCircle(x, y, 2.5f, p);
-                p.setColor(Color.WHITE); p.setAlpha((int) (215 * ingresso));
-                c.drawCircle(x, y, 1, p);
-            }
+            c.clipRect(-160, davanti ? 0 : -160, 160, davanti ? 160 : 0);
+            particelle.setAlpha((int) (255 * ingresso));
+            particelle.draw(c);
             c.restore();
         }
     }

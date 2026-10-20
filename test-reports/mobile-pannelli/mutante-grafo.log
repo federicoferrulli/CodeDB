@@ -1,0 +1,9 @@
+FAIL grafo: Il tocco sul nodo lascia libero il grafo
+Expected values to be strictly deep-equal:
++ actual - expected
+
++ [
++   'grafo: Il tocco sul nodo lascia libero il grafo'
++ ]
+- []
+

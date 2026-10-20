@@ -11,6 +11,7 @@ import { state } from './state.js';
 import { activeTab } from './tabs.js';
 import { $, cut, toast } from './utils.js';
 import { CHIAVE_QE } from './query-history-store.js';
+import { renderDataEmpty } from '../arc/ui.js';
 
 const MAX_ENTRIES = 50;
 // Prefisso unificato con il resto dell'applicazione (CDB-64): le chiavi di
@@ -201,9 +202,11 @@ function renderPanel() {
 
   if (!entries.length) {
     const empty = document.createElement('div');
-    empty.className = 'query-history-empty';
-    empty.textContent = 'Nessuna query recente per questa collection.';
     panel.appendChild(empty);
+    renderDataEmpty(empty, {
+      kind: 'query', compact: true, title: 'Nessuna query recente',
+      description: 'Le ricerche eseguite su questa tabella o collezione appariranno qui.',
+    });
     return;
   }
 

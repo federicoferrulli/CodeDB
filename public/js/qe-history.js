@@ -1,4 +1,4 @@
-import { mountArcControls, createArcButton, controlElement } from '../arc/ui.js';
+import { mountArcControls, createArcButton, controlElement, openNavigationSheet, closeNavigationSheet, renderDataEmpty } from '../arc/ui.js';
 'use strict';
 
 /* ---------------------------------------------------------------------------
@@ -23,6 +23,8 @@ const storage = () => window.localStorage;
 // Filtri del pannello: stato effimero, azzerato a ogni apertura.
 let filtroTesto = '';
 let filtroConn = '';
+const mobile = window.matchMedia('(max-width: 900px)');
+let foglioAperto = false;
 
 /**
  * Nome della connessione del tab attivo. Stessa convenzione di `historyKey` in
@@ -61,6 +63,7 @@ function fmtTs(ts) {
 }
 
 function hidePanel() {
+  if (foglioAperto) { closeNavigationSheet(true); return; }
   const p = $('#qe-history-panel');
   if (p) p.classList.add('hidden');
 }
@@ -106,18 +109,18 @@ function badgeEsito(voce) {
 function renderLista() {
   const lista = $('#qe-history-list');
   if (!lista) return;
+  renderDataEmpty(lista, null);
   lista.innerHTML = '';
 
   const tutte = leggiVoci(storage());
   const voci = filtra(tutte, { testo: filtroTesto, conn: filtroConn });
 
   if (!voci.length) {
-    const vuoto = document.createElement('div');
-    vuoto.className = 'query-history-empty';
-    vuoto.textContent = tutte.length
-      ? 'Nessuna query corrisponde ai filtri.'
-      : 'Nessuna query eseguita finora in questa tab.';
-    lista.appendChild(vuoto);
+    renderDataEmpty(lista, {
+      compact: true, kind: tutte.length ? 'search' : 'query',
+      title: tutte.length ? 'Nessuna corrispondenza' : 'Nessuna query recente',
+      description: tutte.length ? 'Prova un altro termine o scegli un’altra connessione.' : 'Le query eseguite appariranno qui, pronte da riaprire nell’editor.',
+    });
     return;
   }
 
@@ -231,7 +234,7 @@ function renderPanel() {
   }
 
   renderLista();
-  if (search) search.focus();
+  if (search && !mobile.matches) search.focus();
 }
 
 export function initQeHistory() {
@@ -253,6 +256,14 @@ export function initQeHistory() {
       filtroConn = '';
       renderPanel();
       panel.classList.remove('hidden');
+      if (mobile.matches) {
+        openNavigationSheet(panel, () => {
+          foglioAperto = false;
+          panel.classList.add('hidden');
+          trigger?.focus({ preventScroll: true });
+        }, { title: 'Cronologia query', description: '', tools: false, navigation: false });
+        foglioAperto = true;
+      }
     } else {
       hidePanel();
     }
@@ -260,6 +271,7 @@ export function initQeHistory() {
 
   // La select apre al pointerdown; il successivo click può arrivare su <html>.
   document.addEventListener('pointerdown', (e) => {
+    if (foglioAperto) return; // Il drawer gestisce backdrop, focus e chiusura.
     if (panel.contains(e.target) || btn.contains(e.target) || e.target.closest('[data-arc-select-popup]')) return;
     hidePanel();
   });
@@ -269,4 +281,5 @@ export function initQeHistory() {
     hidePanel();
     $('#query-editor-more-btn')?.focus();
   });
+  mobile.addEventListener('change', hidePanel);
 }
