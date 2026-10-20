@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { feedbackQuery } from './feedback.js';
 import { renderDataEmpty } from '../arc/ui.js';
 import { configuraColonne } from './table-resize.js';
 import { activeTab } from './tabs.js';
@@ -750,6 +751,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
     else if (status === 'error') statusBadge.textContent = 'Errore';
     else if (status === 'cancelled') statusBadge.textContent = 'Annullata';
+    else if (status === 'paused') statusBadge.textContent = 'In pausa';
   }
 
   // `idle` significa "non c'è nessun risultato": le due metriche vanno
@@ -1919,6 +1921,7 @@ export function cancelActiveQuery() {
     markPaused(runIdToCancel);
     renderResults(currentResults, currentColumns);
     updateQueryMetrics('cancelled');
+    feedbackQuery('cancelled');
     toast('Query annullata dall\'utente');
   }
 }
@@ -1972,6 +1975,7 @@ export function runQuery(opzioni = {}) {
     });
   }
   updateQueryMetrics('running');
+  feedbackQuery('running');
   // Locale al singolo run: due query contemporanee, anche su tab diversi, non
   // devono sovrascriversi l'istante di partenza.
   const executionStartedAt = performance.now();
@@ -2071,6 +2075,7 @@ export function runQuery(opzioni = {}) {
       }
       if (stessoContesto && isForActiveTab(res)) {
         updateQueryMetrics('success', elapsed, rows.length);
+        feedbackQuery('success');
         renderResults(rows, colonne);
       }
       return res;
@@ -2087,6 +2092,7 @@ export function runQuery(opzioni = {}) {
       if (stessoContesto && stopBtn) stopBtn.classList.add('hidden');
       if (stessoContesto && isForActiveTab(err)) {
         updateQueryMetrics('error', elapsed, 0, err.message || 'Errore durante l\'esecuzione della query');
+        feedbackQuery('error');
         renderResults([], []);
         // "… (riga 12)" nel messaggio: la riga viene evidenziata nel gutter e
         // portata in vista, invece di lasciarla cercare a mano.

@@ -627,6 +627,10 @@
           title="Tema chiaro, scuro o personalizzato">
           <i data-lucide="palette"></i> Tema
         </button>
+        <button id="btn-feedback-aptico" class="menu-item hidden" type="button"
+          title="Attiva o disattiva il feedback aptico, rispettando le preferenze Android">
+          <i data-lucide="vibrate"></i> <span>Feedback aptico: di sistema</span>
+        </button>
         <button id="btn-about" class="menu-item" type="button"
           title="Versione, licenza AGPL-3.0 e manleva">
           <i data-lucide="scale"></i> Informazioni &amp; Licenza
@@ -1311,7 +1315,7 @@
                   </div>
 
                   <div id="query-metrics" class="query-metrics" role="status" aria-live="polite">
-                    <span id="query-status-badge" class="badge badge-idle">● In attesa</span>
+                    <span id="query-status-badge" class="badge badge-idle" role="status" aria-atomic="true">● In attesa</span>
                     <span id="query-time-metric" class="metric-item hidden"><i data-lucide="clock"></i> <strong id="query-time-val">0</strong>
                       ms</span>
                     <span id="query-count-metric" class="metric-item hidden"><i data-lucide="bar-chart"></i> <strong id="query-count-val">0</strong>

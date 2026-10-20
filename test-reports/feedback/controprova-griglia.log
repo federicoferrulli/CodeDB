@@ -1,0 +1,14 @@
+OK pulsanti, tastiera, movimento ridotto, preferenza persistente e frequenza
+OK query e script: avvio, successo, errore, annullamento, pausa e ripristino
+AssertionError [ERR_ASSERTION]: The input did not match the regular expression /Selezione in corso/. Input:
+
+'5 celle selezionate · Σ 10 · x̄ 2 · min 0 · max 4 · n 5'
+
+    at C:\repository\CodeDB\test\e2e-feedback.js:247:12 {
+  generatedMessage: true,
+  code: 'ERR_ASSERTION',
+  actual: '5 celle selezionate · Σ 10 · x̄ 2 · min 0 · max 4 · n 5',
+  expected: /Selezione in corso/,
+  operator: 'match',
+  diff: 'simple'
+}

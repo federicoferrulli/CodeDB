@@ -1,4 +1,5 @@
 import { chiediConferma } from './conferma.js';
+import { feedbackQuery } from './feedback.js';
 /**
  * CodeDB — Esecuzione di SCRIPT dalla tab ⚡ Query & Aggregate (lato client)
  *
@@ -95,6 +96,7 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
     mostraPannello();
     aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
     updateQueryMetrics('running');
+    feedbackQuery('running');
   }
 
   return emit('script:execute', {
@@ -124,7 +126,10 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
       if (runVisibile === runId) nascondiPannello();
       if (documento.scriptRunId === runId) {
         documento.metrics = ['error', null, 0, err.message || 'Avvio dello script non riuscito'];
-        if (documentoVisibile(tab, collTabId)) updateQueryMetrics(...documento.metrics);
+        if (documentoVisibile(tab, collTabId)) {
+          updateQueryMetrics(...documento.metrics);
+          feedbackQuery('error');
+        }
       }
       throw err;
     });
@@ -167,12 +172,23 @@ export function pauseScript(runId = runVisibile, force = false) {
 export function resumeScript(runId = runVisibile) {
   if (!runId) return Promise.resolve(null);
   const r = runs.get(runId);
+  const primaDellaRipresa = r?.stato;
   runVisibile = runId;
   mostraPannello();
   return emit('script:resume', { runId, tabId: r && r.tabId })
     .then((res) => {
-      if (res?.stato && runVisibile === runId && documentoVisibile(r.tab, r.collTabId)) aggiornaPannello(res.stato);
-      toast('Script ripreso');
+      // Un push più recente (anche la fine) prevale sull'ack della ripresa.
+      if (r && res?.stato && r.stato === primaDellaRipresa && r.documento.scriptRunId === runId
+          && runVisibile === runId && documentoVisibile(r.tab, r.collTabId)) {
+        aggiornaPannello(res.stato);
+        if (res.stato.status === 'running') {
+          r.stato = res.stato;
+          r.documento.metrics = ['running'];
+          updateQueryMetrics('running');
+          feedbackQuery('running');
+          toast('Script ripreso');
+        }
+      }
       return res;
     })
     .catch((err) => {
@@ -214,6 +230,7 @@ function onProgress(ev) {
   if (ev.avviso) { toast(ev.avviso, true); return; }
 
   const stato = ev.stato || {};
+  const statoPrecedente = r.stato?.status;
   r.stato = stato;
   r.total = stato.total || r.total;
 
@@ -231,7 +248,7 @@ function onProgress(ev) {
     const risultato = haRisultato(ev.ultimoRisultato) ? ev.ultimoRisultato : { docs: [], columns: [] };
     r.documento.results = risultato.docs;
     r.documento.columns = risultato.columns;
-    r.documento.metrics = [stato.falliti ? 'error' : 'success',
+    r.documento.metrics = [ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
       risultato.docs.length, stato.falliti ? `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
     if (ev.risultati) {
@@ -257,6 +274,15 @@ function onProgress(ev) {
   if (runVisibile !== ev.runId || r.documento.scriptRunId !== ev.runId || !documentoVisibile(r.tab, r.collTabId)) return;
 
   aggiornaPannello(stato);
+  if (stato.status === 'running' && statoPrecedente === 'paused') {
+    r.documento.metrics = ['running'];
+    updateQueryMetrics('running');
+    feedbackQuery('running');
+  }
+  if (stato.status !== statoPrecedente && (ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted')) {
+    feedbackQuery(stato.status === 'aborted' ? 'cancelled' : ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success');
+  }
+  if (ev.tipo === 'paused') updateQueryMetrics(...r.documento.metrics);
   if (stato.status === 'aborted') {
     renderResults(r.documento.results || [], r.documento.columns || []);
     updateQueryMetrics('cancelled');

@@ -1,0 +1,16 @@
+AssertionError [ERR_ASSERTION]: La preferenza disattivata blocca gli impulsi
++ actual - expected
+
++ [
++   'conferma'
++ ]
+- []
+
+    at C:\repository\CodeDB\test\e2e-feedback.js:87:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: [Array],
+  expected: [],
+  operator: 'deepStrictEqual',
+  diff: 'simple'
+}

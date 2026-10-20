@@ -859,6 +859,12 @@
 .pending-item { border-radius: var(--radius-control); box-shadow: none; }
 .pending-code, .code-export-textarea { font-size: var(--text-sm); }
 
+/* Il bordo segue subito la cella: durante il trascinamento non si anima la griglia. */
+tbody.cell-selecting td.cell-focus {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+tbody.cell-selecting { cursor: crosshair; }
+
 /* Salute: misure stabili durante il polling, identità e stato sempre vicini. */
 #modal-health .modal { width: min(960px, calc(100vw - 24px)); }
 #modal-health .modal-header { margin-bottom: var(--space-sm); }

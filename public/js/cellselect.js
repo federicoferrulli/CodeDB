@@ -1,4 +1,5 @@
 import { chiediConferma } from './conferma.js';
+import { feedbackAptico, annunciaFeedback } from './feedback.js';
 'use strict';
 
 import { state } from './state.js';
@@ -138,6 +139,7 @@ const MAX_CELLE_RIASSUNTO = 20000;
 // quelle dell'altra.
 function applica(A, { leggero = false } = {}) {
   const s = A.stato();
+  const token = A.seq.nuovo();
   // Chi chiama non sa sempre di essere dentro un trascinamento: mentre la
   // selezione si allarga con lo scorrimento automatico, la griglia rifà da sé
   // la finestra virtuale e ri-applica la selezione (renderVirtualWindow in
@@ -165,7 +167,11 @@ function applica(A, { leggero = false } = {}) {
   });
   const info = A.info();
   if (!info) return;
-  if (s.cells.size <= 1) { info.textContent = ''; return; }
+  if (s.cells.size <= 1 && !A.trascinando) { info.textContent = ''; return; }
+  if (leggero) {
+    info.textContent = `Selezione in corso · ${s.cells.size} celle`;
+    return;
+  }
   const base = `${s.cells.size} celle selezionate`;
 
   // Una selezione di geometrie non ha numeri da sommare: il riassunto utile è
@@ -185,12 +191,9 @@ function applica(A, { leggero = false } = {}) {
   // selezione è cambiata.
   info.textContent = base + codaGeo;
 
-  // Il riassunto si ricalcola a ogni movimento del trascinamento: oltre la
-  // soglia si mostra il solo conteggio e i numeri restano nel pannello 📊,
-  // che gira una volta sola.
+  // Oltre la soglia resta il conteggio; le statistiche complete sono nel pannello 📊.
   if (s.cells.size > MAX_CELLE_RIASSUNTO) return;
 
-  const token = A.seq.nuovo();
   statisticheAsync(valoriSelezionati(A)).then((st) => {
     // Selezione cambiata nel frattempo: questo risultato descrive celle che non
     // sono più quelle scelte, e scriverlo sarebbe peggio del silenzio.
@@ -1056,8 +1059,7 @@ export function creaSelezioneCelle(aggancio) {
     // chiamate di `applica()` che arrivano da fuori, per non pagare il riassunto
     // completo a ogni fotogramma.
     trascinando: false,
-    // Il riassunto è asincrono: durante un trascinamento partono molte richieste
-    // e l'ultima a rispondere non è per forza l'ultima chiesta.
+    // Un risultato asincrono precedente non deve sovrascrivere la selezione attuale.
     seq: sequenziatore(),
   };
 
@@ -1097,6 +1099,23 @@ export function creaSelezioneCelle(aggancio) {
 
   let dragging = false;
   let dragBase = null; // celle già selezionate prima del drag (Ctrl+trascina = aggiunge)
+  let gestoSegnalato = false;
+
+  function segnalaTrascinamento() {
+    if (gestoSegnalato) { feedbackAptico('selezione'); return; }
+    gestoSegnalato = true;
+    tbody.classList.add('cell-selecting');
+    annunciaFeedback('Selezione in corso. Trascina per estenderla.');
+    feedbackAptico('pressione');
+  }
+
+  function chiudiFeedback(confermato) {
+    tbody.classList.remove('cell-selecting');
+    if (!gestoSegnalato) return;
+    gestoSegnalato = false;
+    annunciaFeedback(`${confermato ? 'Selezione completata' : 'Trascinamento interrotto'}: ${A.stato().cells.size} celle selezionate.`);
+    if (confermato) feedbackAptico('conferma');
+  }
 
   /* --------- Scorrimento automatico ai bordi durante il trascinamento -------
    * Trascinando fino al bordo della griglia la selezione si fermava con la
@@ -1154,6 +1173,7 @@ export function creaSelezioneCelle(aggancio) {
     if (!td) return; // riga virtuale non ancora resa: al prossimo fotogramma
     const cella = cellFromTd(td);
     if (s.focus && s.focus.r === cella.r && s.focus.c === cella.c) return;
+    segnalaTrascinamento();
     s.focus = cella;
     const rect = rectKeys(s.anchor, cella);
     s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
@@ -1231,13 +1251,15 @@ export function creaSelezioneCelle(aggancio) {
     const s = A.stato();
     if (!s.anchor) return;
     const cell = cellFromTd(td);
+    if (s.focus && s.focus.r === cell.r && s.focus.c === cell.c) return;
+    segnalaTrascinamento();
     s.focus = cell;
     const rect = rectKeys(s.anchor, cell);
     s.cells = dragBase ? new Set([...dragBase, ...rect]) : new Set(rect);
     applica(A, { leggero: true });
   });
 
-  const fineMouse = () => {
+  const fineMouse = (confermato = true) => {
     // Il riassunto geografico è stato saltato durante il trascinamento (troppo
     // caro per fotogramma): ora che la selezione è ferma si completa.
     if (!dragging) return;
@@ -1246,6 +1268,7 @@ export function creaSelezioneCelle(aggancio) {
     applica(A);
     dragBase = null;
     fermaScorrimento();
+    chiudiFeedback(confermato);
   };
   istanza.fineMouse = fineMouse;
 
@@ -1272,6 +1295,7 @@ export function creaSelezioneCelle(aggancio) {
 
   tbody.addEventListener('pointerdown', (e) => {
     if (e.pointerType === 'mouse') return; // il mouse ha già il suo percorso
+    if (!e.isPrimary || dito) return;
     const td = e.target.closest('td[data-c]');
     if (!td || td.classList.contains('editing')) return;
     // Solo da dentro la selezione: altrimenti questo tocco è uno scorrimento,
@@ -1303,6 +1327,7 @@ export function creaSelezioneCelle(aggancio) {
     if (!dito.mosso
       && Math.abs(e.clientX - dito.x0) <= TOLLERANZA_DITO_PX
       && Math.abs(e.clientY - dito.y0) <= TOLLERANZA_DITO_PX) return;
+    if (!dito.mosso) segnalaTrascinamento();
     dito.mosso = true;
     A.trascinando = true;
     // `elementFromPoint` e non `e.target`: durante un trascinamento tattile il
@@ -1318,22 +1343,24 @@ export function creaSelezioneCelle(aggancio) {
     if (!dito) return;
     if (e && e.pointerId !== undefined && e.pointerId !== dito.id) return;
     const mosso = dito.mosso;
+    dito = null;
     if (e && e.pointerId !== undefined) {
       try { tbody.releasePointerCapture(e.pointerId); } catch { /* già rilasciata */ }
     }
-    dito = null;
     A.trascinando = dragging;
     // Dopo aver spento il flag: ora il riassunto completo (geometrie comprese)
     // si calcola davvero, che è il senso di farlo a gesto finito.
     if (mosso) applica(A);
     fermaScorrimento();
+    chiudiFeedback(e?.type === 'pointerup');
   };
   tbody.addEventListener('pointerup', fineDito);
   tbody.addEventListener('pointercancel', fineDito);
+  tbody.addEventListener('lostpointercapture', fineDito);
   // Rete di sicurezza: se il gesto finisce senza che ce ne accorgiamo (finestra
   // che perde il fuoco, app messa in secondo piano, cattura persa per una
   // ragione qualsiasi), il ciclo di scorrimento non deve restare acceso.
-  istanza.abbandona = () => { fineDito(); fineMouse(); };
+  istanza.abbandona = () => { fineDito(); fineMouse(false); };
 
   // Trascinando piano, la pressione supera comunque la soglia del sistema e il
   // browser emette `contextmenu` a metà gesto: il menu si aprirebbe sopra una

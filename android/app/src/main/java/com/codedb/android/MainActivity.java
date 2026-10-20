@@ -11,10 +11,12 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.util.Base64;
 import android.webkit.*;
 import android.widget.FrameLayout;
 import android.view.View;
+import android.view.HapticFeedbackConstants;
 import androidx.core.graphics.ColorUtils;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
@@ -47,6 +49,7 @@ public class MainActivity extends Activity {
     private boolean ready;
     private final Runnable loadTimeout = () -> showStartupError("Il caricamento sta impiegando più del previsto. Riprova ad aprire l'interfaccia.");
     private boolean destroyed;
+    private long lastHaptic = -1000;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -201,6 +204,22 @@ public class MainActivity extends Activity {
                                 .putBoolean("systemDark", (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES).apply();
                             rememberLaunchAppearance(command.optBoolean("automatic"), Color.parseColor(bg));
                         }
+                    } else if ("haptic".equals(command.optString("op"))) {
+                        if (!view.isShown() || !view.hasWindowFocus()) return;
+                        String kind = command.optString("kind");
+                        int effect;
+                        switch (kind) {
+                            case "pressione": effect = HapticFeedbackConstants.KEYBOARD_TAP; break;
+                            case "selezione": effect = HapticFeedbackConstants.CLOCK_TICK; break;
+                            case "conferma": effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.CONFIRM : HapticFeedbackConstants.CONTEXT_CLICK; break;
+                            case "errore": effect = Build.VERSION.SDK_INT >= 30 ? HapticFeedbackConstants.REJECT : HapticFeedbackConstants.CONTEXT_CLICK; break;
+                            default: return;
+                        }
+                        long now = SystemClock.uptimeMillis();
+                        if (now - lastHaptic < ("selezione".equals(kind) ? 120 : 70)) return;
+                        // Senza flag di forzatura: Android rispetta le preferenze tattili di sistema.
+                        view.performHapticFeedback(effect);
+                        lastHaptic = now;
                     } else if ("ready".equals(command.optString("op"))) {
                         // Il primo fotogramma completo sostituisce lo splash, senza lampi bianchi.
                         view.postVisualStateCallback(0, new WebView.VisualStateCallback() {
