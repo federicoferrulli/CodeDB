@@ -88,6 +88,10 @@ const { startTestServer } = require('./e2e-harness');
 
     await openConnections('keyboard');
     await page.keyboard.press('Home');
+    // Radix sposta il focus in un task successivo: Enter immediato poteva
+    // selezionare ancora Locale. Aspettiamo l'effetto di Home, non un ritardo.
+    await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option'
+      && document.activeElement.textContent === 'Tutte le connessioni');
     await page.keyboard.press('Enter');
     await popup.waitFor({ state: 'detached' });
     assert.equal(await panel.locator('.query-history-item').count(), 2, 'Tutte le connessioni ripristina entrambe le voci');

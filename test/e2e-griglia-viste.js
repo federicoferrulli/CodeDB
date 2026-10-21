@@ -197,6 +197,10 @@ const ok = (cond, etichetta, dettaglio = '') => {
       tab.state.columns = ['_id', 'nome'];
       tab.state.total = 3000;
 
+      // La connessione simulata deve aggiornare anche la cornice reale:
+      // lasciare #welcome visibile sottrae spazio ai pannelli e può ridurre
+      // a zero l'altezza della griglia, pur avendo il tab marcato connesso.
+      (await import('/js/workspace.js')).renderWorkspace();
       sv.initSplitView();
       // Nessun bersaglio: si apre una nuova area promuovendo la collection
       // aperta a primo riquadro.

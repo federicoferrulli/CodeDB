@@ -15,7 +15,7 @@ if (process.argv.includes('--mutant')) require('node:module').registerHooks({ lo
 
 (async () => {
   const { formatCode, minifyCode } = await import('../public/js/query-formatter.js');
-  const my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT || 3306), user: 'root' });
+  const my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT || 3306), user: 'root', password: require('./lab/credenziali.cjs')('mysql') });
   const pg = new Client({ host: '127.0.0.1', port: Number(process.env.PGPORT || 5432), user: 'postgres', database: 'postgres' });
   const mongo = new MongoClient(`mongodb://127.0.0.1:${Number(process.env.MONGO_PORT || 27017)}`);
   try {

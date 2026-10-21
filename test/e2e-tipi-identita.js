@@ -9,7 +9,7 @@ const log = {info(){},error(){}};
   for(const type of ['mysql','postgresql']) {
     const mysql=type==='mysql', port=Number(process.env[mysql?'EXPORT_MYSQL_PORT':'EXPORT_PG_PORT']);assert(port,'Porta isolata obbligatoria');
     const st=new(require(`../db/${mysql?'MySql':'PostgreSql'}Strategy`))();
-    await st.connect({host:'127.0.0.1',port,username:mysql?'root':'postgres',database:mysql?'':'postgres'});
+    await st.connect({host:'127.0.0.1',port,username:mysql?'root':'postgres',password:require('./lab/credenziali.cjs')(mysql?'mysql':'postgresql'),database:mysql?'':'postgres'});
     const conn=mysql?await st.pool.getConnection():await st.pool.connect();
     if(process.argv.includes('--mutant') && mysql) {
       const original=st.pool.getConnection.bind(st.pool);

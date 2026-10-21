@@ -67,7 +67,7 @@ async function elenco(s, db) {
     console.log('OK PostgreSQL reale: statistiche assenti/vecchie, grandi, viste, omonimi, lock e recupero');
 
     const sql = new MySqlStrategy();
-    sql.pool = mysql.createPool({ host: '127.0.0.1', port: sqlPort, user: 'root', password: '', connectionLimit: 5, connectTimeout: 1000 });
+    sql.pool = mysql.createPool({ host: '127.0.0.1', port: sqlPort, user: 'root', password: require('./lab/credenziali.cjs')('mysql'), connectionLimit: 5, connectTimeout: 1000 });
     closers.push(() => sql.pool.end());
     await pronto(() => sql.pool.query('SELECT 1'));
     await sql.pool.query('CREATE DATABASE diego');

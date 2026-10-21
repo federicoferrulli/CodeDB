@@ -6,13 +6,14 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 
 (async () => {
-  const server = await startTestServer({ port: 3167 });
+  const server = await startTestServer({ port: Number(process.env.E2E_SQL_INTEGRITA_PORT) || 3167 });
   let browser;
   try {
     browser = await chromium.launch();
     const page = await browser.newPage();
     const errors = [];
     page.on('pageerror', err => errors.push(err.message));
+    await page.addInitScript(versione=>localStorage.setItem('codedb:onboarding',JSON.stringify({visto:true,versioneVista:versione,traguardi:{},checklistChiusa:true})),require('../package.json').version);
     await page.goto(server.url, { waitUntil: 'networkidle' });
     const result = await page.evaluate(async () => {
       const { impostaSocket } = await import('/js/socket.js');
@@ -57,8 +58,12 @@ const { startTestServer } = require('./e2e-harness');
       await new Promise(resolve => setTimeout(resolve, 50));
       openInsertDocForContext(ctx);
       await new Promise(resolve => setTimeout(resolve, 50));
-      const inputs = [...document.querySelectorAll('#insert-form tbody input')];
-      inputs.find(input => !input.disabled).value = 'nuovo';
+      // TEXT usa una textarea; il controllo si identifica dal campo, non dal
+      // tag HTML. L'evento input riproduce una modifica reale e attiva il valore.
+      const inputs = [...document.querySelectorAll('#insert-form tbody :is(input,textarea,select)[aria-label^="Valore "]')];
+      const nome=inputs.find(input=>input.getAttribute('aria-label')==='Valore nome');
+      if(!nome||nome.disabled)throw new Error('Campo nome assente o non modificabile nella fixture di inserimento');
+      nome.value='nuovo';nome.dispatchEvent(new Event('input',{bubbles:true}));
       return { documentoEditor, calls, id: idOf(doc), inserimento: buildInsertDoc(),
         generateDisabilitate: inputs.filter(input => input.disabled).length };
     });

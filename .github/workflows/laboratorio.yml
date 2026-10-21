@@ -1,0 +1,60 @@
+name: Laboratorio affidabilità
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'db/**'
+      - 'server/**'
+      - 'server.js'
+      - 'electron*.js'
+      - 'bin/**'
+      - 'auth/**'
+      - 'mcp/**'
+      - 'backup/**'
+      - 'public/**'
+      - 'ui/**'
+      - 'test/**'
+      - 'tools/laboratorio.cjs'
+      - 'package*.json'
+      - '.github/workflows/laboratorio.yml'
+permissions:
+  contents: read
+concurrency:
+  group: laboratorio-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  laboratorio:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Database, dipendenze e Chromium isolati
+        id: prepara
+        run: node tools/laboratorio.cjs prepara
+      - name: Test unitari e TypeScript nella copia isolata
+        if: steps.prepara.outcome == 'success'
+        run: |
+          docker compose -f test/lab/compose.yml exec -T prove npm test
+          docker compose -f test/lab/compose.yml exec -T prove npm run typecheck:ui
+      - name: Nuove prove reali e sensibilità
+        if: always() && steps.prepara.outcome == 'success'
+        run: node tools/laboratorio.cjs nuovi
+      - name: Campagna E2E esistente
+        if: always() && steps.prepara.outcome == 'success'
+        run: node tools/laboratorio.cjs test
+      - name: Raccogli risultati anche se rossi
+        if: always() && steps.prepara.outcome == 'success'
+        run: node tools/laboratorio.cjs rapporti
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: laboratorio-${{ github.run_id }}
+          path: .scratch/lab-reports/docker
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Ferma il progetto Docker del laboratorio
+        if: always()
+        run: node tools/laboratorio.cjs down

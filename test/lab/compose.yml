@@ -1,0 +1,110 @@
+name: codedb-affidabilita
+services:
+  rete:
+    image: alpine:3.22
+    command: ["sleep", "infinity"]
+    labels: { codedb.laboratorio: affidabilita }
+    ports:
+      - '127.0.0.1:37017:27017'
+      - '127.0.0.1:33306:3306'
+      - '127.0.0.1:35432:5432'
+  mongo:
+    image: mongo:8.0
+    network_mode: service:rete
+    command: [mongod, --replSet, lab, --bind_ip_all, --setParameter, enableTestCommands=1]
+    labels: { codedb.laboratorio: affidabilita }
+    volumes: [mongo:/data/db]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --eval, 'db.adminCommand({ping:1}).ok']
+      interval: 3s
+      timeout: 10s
+      retries: 60
+  mysql:
+    image: mysql:8.4
+    network_mode: service:rete
+    labels: { codedb.laboratorio: affidabilita }
+    environment:
+      MYSQL_ROOT_PASSWORD: lab_mysql
+      MYSQL_ROOT_HOST: '%'
+    volumes: [mysql:/var/lib/mysql]
+    healthcheck:
+      test: [CMD, mysqladmin, ping, -h, 127.0.0.1, -uroot, -plab_mysql]
+      interval: 3s
+      timeout: 10s
+      retries: 60
+  mongo-auth:
+    image: mongo:8.0
+    labels: { codedb.laboratorio: affidabilita }
+    ports: ['127.0.0.1:37018:27017']
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: labadmin
+      MONGO_INITDB_ROOT_PASSWORD: lab_mongo_auth
+    volumes: [mongo-auth:/data/db]
+    healthcheck:
+      test: [CMD, mongosh, --quiet, --username, labadmin, --password, lab_mongo_auth, --authenticationDatabase, admin, --eval, 'db.adminCommand({ping:1}).ok']
+      interval: 3s
+      timeout: 10s
+      retries: 60
+  postgres:
+    image: postgis/postgis:17-3.5
+    network_mode: service:rete
+    labels: { codedb.laboratorio: affidabilita }
+    environment:
+      POSTGRES_PASSWORD: lab_postgres
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD, pg_isready, -U, postgres]
+      interval: 3s
+      timeout: 10s
+      retries: 60
+  prove:
+    image: codedb-laboratorio:node24
+    build: { context: ., dockerfile: Dockerfile }
+    profiles: [prove]
+    network_mode: service:rete
+    labels: { codedb.laboratorio: affidabilita }
+    working_dir: /laboratorio/repo
+    command: [sleep, infinity]
+    shm_size: 1gb
+    volumes:
+      - ../../.scratch/lab-source:/sorgente:ro
+      - esecuzione:/laboratorio
+    environment:
+      CODEDB_LAB_CONTAINER: '1'
+      CODEDB_E2E_DESTRUCTIVE: '1'
+      MONGO_PORT: '27017'
+      MONGO_URI: mongodb://127.0.0.1:27017/?directConnection=true
+      MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
+      CODEDB_E2E_MONGO_AUTH: '1'
+      MONGO_ADMIN_URI: mongodb://labadmin:lab_mongo_auth@mongo-auth:27017/?authSource=admin
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: '3306'
+      MYSQL_USER: root
+      MYSQL_PASSWORD: lab_mysql
+      MYSQL_ROOT_PASSWORD: lab_mysql
+      PG_HOST: 127.0.0.1
+      PG_PORT: '5432'
+      PG_USER: postgres
+      PG_PASSWORD: lab_postgres
+      PGPASSWORD: lab_postgres
+      PGPORT: '5432'
+      PG_DATABASE: postgres
+      WORKBENCH_MONGO_PORT: '27017'
+      WORKBENCH_MYSQL_PORT: '3306'
+      WORKBENCH_PG_PORT: '5432'
+      WORKBENCH_PG_PASSWORD: lab_postgres
+      EXPORT_MYSQL_PORT: '3306'
+      EXPORT_PG_PORT: '5432'
+      EXPORT_MONGO_PORT: '27017'
+      EXPORT_MONGO_RS_PORT: '27017'
+      INSERT_MYSQL_PORT: '3306'
+      INSERT_PG_PORT: '5432'
+      INSERT_MONGO_PORT: '27017'
+      CODEDB_REPORT_ROOT: /laboratorio/rapporti/visivi
+      PLAYWRIGHT_BROWSERS_PATH: /laboratorio/browser
+volumes:
+  mongo:
+  mongo-auth:
+  mysql:
+  postgres:
+  esecuzione:

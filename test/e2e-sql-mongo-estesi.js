@@ -133,7 +133,7 @@ async function query(text, error) {
     await pg.query(`CREATE SCHEMA "${db}"; SET search_path TO "${db}"`);
   }
   if (process.env.MYSQL_PORT) {
-    my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT), user: 'root', password: '', multipleStatements: true });
+    my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT), user: 'root', password: require('./lab/credenziali.cjs')('mysql'), multipleStatements: true });
     await my.query(`CREATE DATABASE \`${db}\`; USE \`${db}\``);
   }
   const counts = await require(process.argv.includes('--compatibilita') ? './sql-mongo-compatibilita' : './sql-mongo-estesi')({ query, database: client.db(db), strategy, base, pg, my });

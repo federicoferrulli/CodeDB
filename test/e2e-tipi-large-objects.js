@@ -8,7 +8,7 @@ if(process.argv.includes('--mutant')) { process.env.CODEDB_TEST_TYPE_FAULT='lo';
 
 (async()=>{
   const port=Number(process.env.EXPORT_PG_PORT);assert(port,'Porta PostgreSQL usa-e-getta obbligatoria.');
-  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',database:'postgres'});
+  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',password:require('./lab/credenziali.cjs')('postgresql'),database:'postgres'});
   const source='codedb_lo_'+crypto.randomBytes(8).toString('hex'),target=source+'_copy';
   const physicalDb=source+'_physical';let createdDb=false;
   const payload=crypto.randomBytes(1024*1024+137),created=[];
@@ -18,7 +18,7 @@ if(process.argv.includes('--mutant')) { process.env.CODEDB_TEST_TYPE_FAULT='lo';
   try{
     // pg_dump --blobs include tutti i LO del database fisico, anche fuori schema.
     await query(`CREATE DATABASE "${physicalDb}"`);createdDb=true;await st.disconnect();
-    await st.connect({host:'127.0.0.1',port,username:'postgres',database:physicalDb});
+    await st.connect({host:'127.0.0.1',port,username:'postgres',password:require('./lab/credenziali.cjs')('postgresql'),database:physicalDb});
     await query(`CREATE SCHEMA "${source}"`);
     await query(`CREATE DOMAIN "${source}".lo_id AS oid; CREATE TYPE "${source}".ref_record AS (description text, file "${source}".lo_id, others oid[])`);
     await query(`CREATE TABLE "${source}".files (id INT PRIMARY KEY, file oid, files oid[], detail "${source}".ref_record, relation regclass)`);
@@ -70,7 +70,7 @@ if(process.argv.includes('--mutant')) { process.env.CODEDB_TEST_TYPE_FAULT='lo';
     console.log('OK Large Objects errore: rifiuto del vincolo, journal e pulizia dei soli binari dello staging.');
   }finally{
     await st.disconnect();
-    if(createdDb){await st.connect({host:'127.0.0.1',port,username:'postgres',database:'postgres'});try{await query(`DROP DATABASE "${physicalDb}"`);}finally{await st.disconnect();}}
+    if(createdDb){await st.connect({host:'127.0.0.1',port,username:'postgres',password:require('./lab/credenziali.cjs')('postgresql'),database:'postgres'});try{await query(`DROP DATABASE "${physicalDb}"`);}finally{await st.disconnect();}}
     fs.rmSync(root,{recursive:true,force:true});
   }
 })().catch(e=>{console.error(e);process.exitCode=1});

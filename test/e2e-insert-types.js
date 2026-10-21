@@ -16,13 +16,18 @@ async function sql(type) {
   const mysql = type === 'mysql';
   const port = Number(process.env[mysql ? 'INSERT_MYSQL_PORT' : 'INSERT_PG_PORT']);
   assert(port, 'Porte di database usa-e-getta obbligatorie.');
+  const mysqlConfig = { host: '127.0.0.1', port, user: 'root', password: require('./lab/credenziali.cjs')('mysql') };
+  let previousMode;
   if (mysql) {
-    const setup = await require('mysql2/promise').createConnection({ host: '127.0.0.1', port, user: 'root' });
-    await setup.query("SET GLOBAL sql_mode='STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO'");
-    await setup.end();
+    const setup = await require('mysql2/promise').createConnection(mysqlConfig);
+    try {
+      previousMode = (await setup.query('SELECT @@GLOBAL.sql_mode AS mode'))[0][0].mode;
+      await setup.query("SET GLOBAL sql_mode='STRICT_ALL_TABLES,NO_AUTO_VALUE_ON_ZERO'");
+    } finally { await setup.end(); }
   }
+  try {
   const st = new (require(`../db/${mysql ? 'MySql' : 'PostgreSql'}Strategy`))();
-  await st.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: '', database: mysql ? '' : 'postgres' });
+  await st.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: require('./lab/credenziali.cjs')(mysql ? 'mysql' : 'postgresql'), database: mysql ? '' : 'postgres' });
   const conn = mysql ? await st.pool.getConnection() : await st.pool.connect();
   const q = async (s, p) => { const r = await conn.query(s, p); return mysql ? r[0] : r.rows; };
   const schema = 'codedb_insert_' + crypto.randomBytes(5).toString('hex');
@@ -84,6 +89,13 @@ async function sql(type) {
   } finally {
     await q(mysql ? `DROP DATABASE IF EXISTS ${quote(schema)}` : `DROP SCHEMA IF EXISTS ${quote(schema)} CASCADE`);
     conn.release(); await st.disconnect();
+  }
+  } finally {
+    if (mysql && previousMode !== undefined) {
+      const setup = await require('mysql2/promise').createConnection(mysqlConfig);
+      try { await setup.query('SET GLOBAL sql_mode=?', [previousMode]); }
+      finally { await setup.end(); }
+    }
   }
 }
 

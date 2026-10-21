@@ -203,19 +203,8 @@ console.log('--- Test Unitari CodeDB ---');
   assert.ok(/LIMIT \d+\s*$/.test(capturedSql) && !/DROP/i.test(capturedSql), 'maxPayloadSize non numerico non deve iniettare SQL: LIMIT resta un intero, il resto è scartato');
   console.log('  OK   VirtualJoinEngine maxPayloadSize coercito a intero passed');
 
-  // Test 4: Handling errore connessione PostgreSQL server offline
-  try {
-    const pgConn = await pgStrategy.connect({ host: 'localhost', database: 'postgres' });
-    if (pgConn.ok) {
-      console.log('  OK   PostgreSQL connect passed');
-    }
-  } catch (err) {
-    if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || (err.message && err.message.includes('ECONNREFUSED'))) {
-      console.log('  OK   PostgreSQL connect error handled (PostgreSQL server non attivo in ambiente unit test)');
-    } else {
-      throw err;
-    }
-  }
+  // Test 4: handshake interrotto su un endpoint posseduto dalla fixture.
+  await require('./lab/unit-connection.cjs');
 
   // Test 5: SshTunnel check
   assert.strictEqual(typeof SshTunnel.openSshTunnel, 'function', 'openSshTunnel deve essere una funzione');

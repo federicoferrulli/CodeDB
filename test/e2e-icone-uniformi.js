@@ -120,6 +120,11 @@ function emetteSenzaDisegnare() {
     const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
     const errori = [];
     page.on('pageerror', (err) => errori.push(String(err && err.message ? err.message : err)));
+    // La guida già aperta contiene nel portal anche il menu condiviso:
+    // rimuovere l'overlay dal DOM eliminava quel nodo prima della prova.
+    await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({
+      visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true,
+    })), require('../package.json').version);
     await page.goto(server.url, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#grid', { state: 'attached', timeout: 15000 });
     await page.waitForTimeout(2000);
@@ -128,7 +133,6 @@ function emetteSenzaDisegnare() {
     // contenuto poco prima di aprirsi, ed è lì che il disegno si dimentica.
     const apertura = await page.evaluate(async () => {
       const { openModal, showToast, showContextMenu } = await import('/js/utils.js');
-      document.getElementById('onboarding-overlay')?.remove();
       const aperte = [];
       for (const el of document.querySelectorAll('.overlay')) {
         if (!el.id) continue;

@@ -6,11 +6,11 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const mutantTarget = process.argv.includes('--mutant-target');
-const dir = `test-reports/query-select-2026-10-12/${mutant || mutantTarget ? 'mutante' : 'dopo'}`;
+const dir = `${process.env.CODEDB_REPORT_ROOT || 'test-reports'}/query-select-2026-10-12/${mutant || mutantTarget ? 'mutante' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
-  const server = await startTestServer({ port: 3231 });
+  const server = await startTestServer({ port: Number(process.env.E2E_QUERY_SELECT_PORT) || 3231 });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, hasTouch: true });
   const report = { layouts: [], errors: [] };
@@ -32,7 +32,12 @@ fs.mkdirSync(dir, { recursive: true });
     });
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
-    await page.evaluate(() => {
+    await page.evaluate(async () => {
+      // La select mostra solo il motore della connessione attiva. Questa
+      // fixture di layout dichiara il contesto, senza eseguire query o aprire DB.
+      const {createTab,tabs}=await import('/js/tabs.js');
+      const tab=createTab({id:'query-select-fixture'});tabs.activeId=tab.id;
+      tab.dbType='mysql';Object.assign(tab.state,{dbType:'mysql',connected:true});
       for (const id of ['welcome', 'placeholder']) document.getElementById(id).classList.add('hidden');
       for (const id of ['tab-body', 'workspace', 'view-query']) document.getElementById(id).classList.remove('hidden');
       for (const panel of document.querySelectorAll('#workspace .view-panel')) panel.classList.toggle('hidden', panel.id !== 'view-query');
@@ -56,6 +61,10 @@ fs.mkdirSync(dir, { recursive: true });
     assert((await button.getAttribute('aria-labelledby')).includes('query-target-label'));
     const trigger = page.locator('[data-arc-for="query-target-engine"] [role="combobox"]');
     const popup = page.locator('[data-arc-select-popup]');
+    const engineContext=async dbType=>page.evaluate(async dbType=>{
+      const tab=(await import('/js/tabs.js')).activeTab();tab.dbType=dbType;tab.state.dbType=dbType;
+      (await import('/js/query-native.js')).renderNativeTargets();
+    },dbType);
     const open = async (touch = false) => {
       if (!await menu.isVisible()) await button.click();
       if (touch) await trigger.tap(); else await trigger.click();
@@ -75,7 +84,9 @@ fs.mkdirSync(dir, { recursive: true });
       return positions;
     };
     await open(); await checkPosition();
+    assert(await page.getByRole('option',{name:'PostgreSQL nativo',exact:true}).isDisabled(),'Il motore estraneo al contesto resta disabilitato');
     for (const value of ['mysql', 'postgresql', 'mongodb', 'crossdb', 'auto']) {
+      if(['mysql','postgresql','mongodb'].includes(value)) await engineContext(value);
       if (!await popup.count()) await open();
       const label = await page.locator('#query-target-engine').evaluate((el, value) => [...el.options].find(o => o.value === value).label, value);
       await page.getByRole('option', { name: label, exact: true }).click();
@@ -83,6 +94,7 @@ fs.mkdirSync(dir, { recursive: true });
       assert.equal(await page.locator('#query-target-engine').inputValue(), value);
       assert(await menu.isVisible(), 'La scelta mantiene accessibile il controllo');
     }
+    await engineContext('mysql');
     await trigger.focus(); await trigger.press('ArrowDown');
     await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option');
     await page.keyboard.press('ArrowDown');

@@ -51,7 +51,7 @@ async function prova(nome, sql, expected) {
     await pg.query("INSERT INTO a VALUES(1,1),(2,2),(3,NULL),(4,1); INSERT INTO b VALUES(10,1),(11,3),(12,NULL); INSERT INTO t VALUES(1,'a',10),(2,'a',10),(3,'a',20),(4,'b',NULL); INSERT INTO archi VALUES(1,2),(2,3),(3,1); INSERT INTO scritture VALUES(1,1),(2,2)");
   }
   if (process.env.MYSQL_PORT) {
-    my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT), user: 'root', password: '', multipleStatements: true, decimalNumbers: true });
+    my = await mysql.createConnection({ host: '127.0.0.1', port: Number(process.env.MYSQL_PORT), user: 'root', password: require('./lab/credenziali.cjs')('mysql'), multipleStatements: true, decimalNumbers: true });
     await my.query(`CREATE DATABASE \`${db}\``);
     await my.query(`USE \`${db}\``);
     await my.query('CREATE TABLE a(id int,k int); CREATE TABLE b(id int,k int); CREATE TABLE t(id int,g text,n int); CREATE TABLE archi(da int,a int); CREATE TABLE scritture(_id int PRIMARY KEY,n int)');

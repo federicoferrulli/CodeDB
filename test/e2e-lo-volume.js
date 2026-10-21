@@ -3,7 +3,7 @@ const assert=require('node:assert/strict'),crypto=require('node:crypto');
 const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 (async()=>{
   const port=Number(process.env.EXPORT_PG_PORT);assert(port,'Porta PostgreSQL isolata obbligatoria');
-  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',database:'postgres'});
+  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',password:require('./lab/credenziali.cjs')('postgresql'),database:'postgres'});
   const db='codedb_lo_volume_'+crypto.randomBytes(6).toString('hex'),target=db+'_copy';
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'codedb-lo-volume-')),ids=[];
   let timer;

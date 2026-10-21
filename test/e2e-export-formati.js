@@ -44,7 +44,7 @@ async function sql(type, port) {
   const strategy = type === 'mysql' ? new MySql() : new Pg();
   const db = 'codedb_export_' + crypto.randomBytes(6).toString('hex');
   const mysql = type === 'mysql';
-  await strategy.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: '', database: mysql ? '' : 'postgres' });
+  await strategy.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: require('./lab/credenziali.cjs')(mysql ? 'mysql' : 'postgresql'), database: mysql ? '' : 'postgres' });
   const conn = mysql ? await strategy.pool.getConnection() : await strategy.pool.connect();
   const q = async s => { const r = await conn.query(s); return mysql ? r[0] : r.rows; };
   try {
@@ -216,7 +216,7 @@ async function roundtripJson(type, port, db, targetDb, formato = 'codedb-json', 
     try {
       await new Promise((resolve, reject) => { socket.once('connect', resolve); socket.once('connect_error', reject); });
       await emit('mongo:connect', { tabId: 'export', host: '127.0.0.1', port, dbType: type,
-        username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '', password: '', database: type === 'postgresql' ? physicalDb : undefined });
+        username: type === 'mysql' ? 'root' : type === 'postgresql' ? 'postgres' : '', password: require('./lab/credenziali.cjs')(type), database: type === 'postgresql' ? physicalDb : undefined });
       const { plan } = await emit('database:export:plan', { tabId: 'export', db, formato });
       await assert.rejects(emit('database:export:start', { tabId: 'export', fingerprint: 'diversa' }), /piano.*cambiato/i);
       const { operation: start } = await emit('database:export:start', { tabId: 'export', fingerprint: plan.fingerprint });

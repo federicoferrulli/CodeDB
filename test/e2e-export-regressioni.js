@@ -14,7 +14,7 @@ const { splitStatementsDetailed } = require('../db/sqlText');
   for (const mysql of [true, false]) {
     const st = mysql ? new MySql() : new Pg();
     await st.connect({ host: '127.0.0.1', port: Number(process.env[mysql ? 'EXPORT_MYSQL_PORT' : 'EXPORT_PG_PORT']),
-      username: mysql ? 'root' : 'postgres', database: mysql ? '' : 'postgres' });
+      username: mysql ? 'root' : 'postgres', password: require('./lab/credenziali.cjs')(mysql ? 'mysql' : 'postgresql'), database: mysql ? '' : 'postgres' });
     const db = 'codedb_regressioni_' + randomBytes(6).toString('hex');
     const conn = mysql ? await st.pool.getConnection() : await st.pool.connect();
     const q = async (sql) => { const r = await conn.query(sql); return mysql ? r[0] : r.rows; };

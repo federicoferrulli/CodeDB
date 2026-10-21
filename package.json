@@ -77,7 +77,16 @@
     "test:e2e:arc:regressioni": "node test/arc-regressions.cjs",
     "test:e2e:design": "node test/e2e-design.js",
     "release:android": "npm run prepare:android && gradle -p android assembleRelease bundleRelease lintRelease",
-    "test:release": "node test/unit-release-bozza.js"
+    "test:release": "node test/unit-release-bozza.js",
+    "lab:up": "node tools/laboratorio.cjs up",
+    "lab:prepara": "node tools/laboratorio.cjs prepara",
+    "lab:test": "node tools/laboratorio.cjs test",
+    "lab:nuovi": "node tools/laboratorio.cjs nuovi",
+    "lab:rapporti": "node tools/laboratorio.cjs rapporti",
+    "lab:stato": "node tools/laboratorio.cjs stato",
+    "lab:stop": "node tools/laboratorio.cjs stop",
+    "lab:down": "node tools/laboratorio.cjs down",
+    "lab:native": "node test/lab/native.cjs --sensitivity"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.24.3",

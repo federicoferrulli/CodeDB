@@ -11,7 +11,7 @@ const report = { checks: [], coverage: [], layouts: [], errors: [], requests: []
 const ok = name => { report.checks.push(name); console.log('OK', name); };
 
 (async () => {
-  const server = await startTestServer({ port: 3172 });
+  const server = await startTestServer({ port: Number(process.env.E2E_ARC_FIELDS_PORT) || 3172 });
   const browser = await chromium.launch();
   let page;
   try {
@@ -19,6 +19,12 @@ const ok = name => { report.checks.push(name); console.log('OK', name); };
     page.on('pageerror', e => report.errors.push(e.stack));
     page.on('console', m => { if (m.type() === 'error' && !/net::|Failed to load resource/.test(m.text())) report.errors.push(m.text()); });
     page.on('response', r => { if (r.status() >= 400 && r.url().startsWith(server.url)) report.requests.push([r.url(), r.status()]); });
+    // L'onboarding arriva dopo app:info/vault:status: isVisible() subito dopo
+    // Arc-ready poteva saltarlo e trovarlo poi sopra al primo controllo.
+    // Questa suite prova i campi; la guida è coperta da e2e-guida-design.js.
+    await page.addInitScript(version => localStorage.setItem('codedb:onboarding', JSON.stringify({
+      visto: true, versioneVista: version, traguardi: {}, checklistChiusa: true,
+    })), require('../package.json').version);
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
     if (await page.locator('#onboarding-close').isVisible()) await page.locator('#onboarding-close').click();

@@ -19,7 +19,7 @@ const { mysqlTypes, pgTypes } = require('./fixture-tipi-sql');
     if (process.env.TYPE_ONLY && process.env.TYPE_ONLY !== type) continue;
     const mysql = type === 'mysql', port = Number(process.env[mysql ? 'EXPORT_MYSQL_PORT' : 'EXPORT_PG_PORT']); assert(port, 'Porte usa-e-getta obbligatorie.');
     const st = new (require(`../db/${mysql ? 'MySql' : 'PostgreSql'}Strategy`))();
-    await st.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: '', database: mysql ? '' : 'postgres' });
+    await st.connect({ host: '127.0.0.1', port, username: mysql ? 'root' : 'postgres', password: require('./lab/credenziali.cjs')(mysql ? 'mysql' : 'postgresql'), database: mysql ? '' : 'postgres' });
     const conn = mysql ? await st.pool.getConnection() : await st.pool.connect();
     const query = async (s,p) => { const r=await conn.query(s,p); return mysql?r[0]:r.rows; };
     const source = 'codedb_types_' + crypto.randomBytes(5).toString('hex'), target = source + '_copy';

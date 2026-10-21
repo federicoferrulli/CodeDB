@@ -19,7 +19,10 @@ const report={checks:[],errors:[],environment:'Chromium + backend RBAC + MongoDB
     await page.locator('#login-submit').click();await page.locator('#login-error:not(.hidden)').waitFor();
     for(const width of [1440,390]){await page.setViewportSize({width,height:900});await page.screenshot({path:`${dir}/login-errore-${width}.png`});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}
     await page.locator('#login-password').fill(OWNER.password);await page.locator('#login-submit').click();await page.locator('#login-overlay').waitFor({state:'hidden'});
-    await page.locator('#onboarding-close').waitFor({state:'visible'});await page.locator('#onboarding-close').click();
+    // L'ultimo screenshot lascia la viewport mobile: Arc sostituisce la X
+    // desktop della guida con il comando accessibile del BottomSheet.
+    await page.locator('#onboarding-overlay').getByRole('button',{name:'Chiudi finestra',exact:true}).click();
+    await page.waitForFunction(()=>document.getElementById('onboarding-overlay').classList.contains('hidden')&&!document.getElementById('onboarding-overlay').dataset.arcDialog);
     if(await page.getByRole('button',{name:'Nascondi i primi passi'}).isVisible())await page.getByRole('button',{name:'Nascondi i primi passi'}).click();
     await page.locator('#btn-admin-rbac').evaluate(el=>el.click());await page.locator('#subuser-email').fill('fixture-ui@esempio.test');
     await page.locator('#subuser-name').fill('Operatore della fixture');await page.locator('#subuser-password').fill('Password-fixture-123');

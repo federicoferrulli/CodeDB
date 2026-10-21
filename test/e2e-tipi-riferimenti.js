@@ -5,7 +5,7 @@ const aliases=require('../db/pg-alias'),refs=require('../db/pg-references');
 if(process.argv.includes('--mutant')) {process.env.CODEDB_TEST_TYPE_FAULT='nested';process.env.NODE_OPTIONS=`--require "${path.join(__dirname,'fault-tipi.cjs').replace(/\\/g,'/')}"`;}
 (async()=>{
   const port=Number(process.env.EXPORT_PG_PORT);assert(port,'Porta usa-e-getta obbligatoria');
-  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',database:'postgres'});
+  const st=new(require('../db/PostgreSqlStrategy'))();await st.connect({host:'127.0.0.1',port,username:'postgres',password:require('./lab/credenziali.cjs')('postgresql'),database:'postgres'});
   const source='codedb_refs_'+crypto.randomBytes(8).toString('hex'),target=source+'_copy',root=fs.mkdtempSync(path.join(os.tmpdir(),'codedb-refs-'));
   const q=(s,p)=>st.pool.query(s,p),drop=db=>q(`DROP SCHEMA IF EXISTS "${db}" CASCADE`),log={info(){}};
   const snapshot=async db=>{

@@ -6,13 +6,16 @@ const { startTestServer } = require('./e2e-harness');
 const { prepara } = require('../db/umlProgetto');
 
 (async () => {
-  const server = await startTestServer({ port: 3163 });
+  const server = await startTestServer({ port: Number(process.env.E2E_UML_REGRESSIONI_PORT) || 3163 });
   let browser;
   try {
     browser = await chromium.launch();
     for (const type of ['mysql', 'postgresql']) {
       const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
       page.setDefaultTimeout(10000);
+      // Il benvenuto arriva dopo app:info/vault:status: nascondere gli overlay
+      // nel setup non ne impedisce l'apertura tardiva sopra il progettista.
+      await page.addInitScript(versione=>localStorage.setItem('codedb:onboarding',JSON.stringify({visto:true,versioneVista:versione,traguardi:{},checklistChiusa:true})),require('../package.json').version);
       let external = false;
       const reads = [];
       const fields = [{ name: 'id', types: ['integer'], nullable: false, key: 'PRI' }, { name: 'parent_id', types: ['integer'], nullable: true }];

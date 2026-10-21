@@ -20,7 +20,7 @@ const hash = rows => crypto.createHash('sha256').update(EJSON.stringify(rows, { 
     assert(port, 'Indicare porte di server usa-e-getta.');
     const Strategy = require(`../db/${{ mysql: 'MySql', postgresql: 'PostgreSql', mongodb: 'MongoDb' }[type]}Strategy`);
     const st = new Strategy();
-    await st.connect({ host: '127.0.0.1', port, username: type === 'mysql' ? 'root' : 'postgres', password: '', database: type === 'postgresql' ? 'postgres' : undefined,
+    await st.connect({ host: '127.0.0.1', port, username: type === 'mysql' ? 'root' : 'postgres', password: require('./lab/credenziali.cjs')(type), database: type === 'postgresql' ? 'postgres' : undefined,
       ...(type === 'mongodb' ? { username: '', uri: `mongodb://127.0.0.1:${port}` } : {}) });
     const source = 'codedb_volume_' + crypto.randomBytes(6).toString('hex');
     const target = source + '_copy';

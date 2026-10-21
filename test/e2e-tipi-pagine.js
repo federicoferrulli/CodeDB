@@ -4,7 +4,7 @@ const {EJSON}=require('bson'),{runBackup}=require('../backup/lib/engine'),{runRe
 (async()=>{
   for(const mysql of [true,false]){
     const type=mysql?'mysql':'postgresql',port=Number(process.env[mysql?'EXPORT_MYSQL_PORT':'EXPORT_PG_PORT']);assert(port,'Porta isolata obbligatoria');
-    const st=new(require(`../db/${mysql?'MySql':'PostgreSql'}Strategy`))();await st.connect({host:'127.0.0.1',port,username:mysql?'root':'postgres',database:mysql?'':'postgres'});
+    const st=new(require(`../db/${mysql?'MySql':'PostgreSql'}Strategy`))();await st.connect({host:'127.0.0.1',port,username:mysql?'root':'postgres',password:require('./lab/credenziali.cjs')(mysql?'mysql':'postgresql'),database:mysql?'':'postgres'});
     const source='codedb_pages_'+crypto.randomBytes(8).toString('hex'),target=source+'_copy',root=fs.mkdtempSync(path.join(os.tmpdir(),'codedb-pages-'));
     const quote=n=>require('../db/identificatori').quotaSempre(n,type),q=async(s,p)=>{const r=await st.pool.query(s,p);return mysql?r[0]:r.rows;},drop=db=>q(mysql?`DROP DATABASE IF EXISTS ${quote(db)}`:`DROP SCHEMA IF EXISTS ${quote(db)} CASCADE`),log={info(){}};
     try{

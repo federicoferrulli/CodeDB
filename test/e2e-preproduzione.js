@@ -19,7 +19,7 @@ const { startTestServer, createE2eTargetRegistry } = require('./e2e-harness');
     for (const [type, classe, variabile] of [['mongodb', 'MongoDb', 'EXPORT_MONGO_PORT'], ['mysql', 'MySql', 'EXPORT_MYSQL_PORT'], ['postgresql', 'PostgreSql', 'EXPORT_PG_PORT']]) {
       const port = Number(process.env[variabile]);
       assert(port, `${variabile} obbligatoria: usare database dedicati`);
-      const cfg = { dbType: type, host: '127.0.0.1', port, username: type === 'postgresql' ? 'postgres' : type === 'mysql' ? 'root' : '', password: '', database: type === 'postgresql' ? 'postgres' : '' };
+      const cfg = { dbType: type, host: '127.0.0.1', port, username: type === 'postgresql' ? 'postgres' : type === 'mysql' ? 'root' : '', password: require('./lab/credenziali.cjs')(type), database: type === 'postgresql' ? 'postgres' : '' };
       const st = new (require(`../db/${classe}Strategy`))();
       await st.connect(cfg); strategie.push(st);
       await emit('mongo:connect', { ...cfg, tabId: type });
