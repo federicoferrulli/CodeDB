@@ -70,6 +70,13 @@ del catalogo. Gli alias e le parole usate come nomi mantengono la loro grafia.
   `IN`, `BETWEEN`, `LIKE`, `ILIKE`, `IS NULL`, `IS TRUE`, `IS FALSE` e
   `IS [NOT] DISTINCT FROM`, inclusi i confronti con NULL.
   La negazione e le espressioni rispettano il valore sconosciuto dei null.
+- Nei confronti con costanti di 24 cifre esadecimali, SQL→MongoDB riconosce
+  anche gli `ObjectId`, su `_id` e sugli altri campi: `=`, `!=`, intervalli,
+  `IN`/`NOT IN`, `ANY`/`ALL` con array letterali e `IS [NOT] DISTINCT FROM`. Gli ID realmente testuali restano
+  cercabili, anche in collezioni con tipi misti; le stringhe restano sensibili
+  alle maiuscole. La conversione riguarda i confronti con costanti, non i
+  valori restituiti da una SELECT, inseriti o assegnati con SET, né i confronti
+  fra due colonne. Le ricerche semplici mantengono predicati indicizzabili.
 - `WITH` e `WITH RECURSIVE`, anche con elenco dei nomi di colonna; derived table nella `FROM` e nelle
   JOIN; `INNER`, `LEFT`, `RIGHT`, `FULL OUTER`, `CROSS JOIN`, `USING`, condizioni `ON` multiple
   e confronti diversi dall’uguaglianza. I null non si uniscono per uguaglianza.

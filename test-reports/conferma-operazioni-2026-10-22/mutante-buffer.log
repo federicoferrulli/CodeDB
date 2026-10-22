@@ -1,0 +1,17 @@
+Compressione 50.000 righe: 796 ms, 50002 blocchi gzip
+node:internal/process/promises:324
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+AssertionError [ERR_ASSERTION]: Le righe piccole devono raggiungere gzip a blocchi, senza una chiamata nativa per riga
+    at C:\repository\CodeDB\test\unit-backup-buffer.js:38:5
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5) {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: false,
+  expected: true,
+  operator: '==',
+  diff: 'simple'
+}
+
+Node.js v26.2.0

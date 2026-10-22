@@ -104,6 +104,7 @@ function createModule({ config, dependencies, errori }) {
     // il Proxy autorizzante lascia passare invariato: sono perciò autorizzati a
     // parte, sull'intera connessione e senza scope.
     'backup:run': 'accede al driver nativo, autorizzato sull\'intera connessione',
+    'backup:cancel': 'annulla solo un backup del proprio socket, autorizzato sulla connessione di origine',
     'backup:list': 'elenca i backup su disco, fuori dal perimetro di una strategia',
     'backup:restore': 'accede al driver nativo, autorizzato sull\'intera connessione',
     'backup:verify': 'verifica i file di un backup, fuori dal perimetro di una strategia',

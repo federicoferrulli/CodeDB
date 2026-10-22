@@ -1,0 +1,12 @@
+AssertionError [ERR_ASSERTION]: La chiusura deve offrire una conferma, senza restare bloccata in silenzio
+
+0 !== 1
+
+    at C:\repository\CodeDB\test\e2e-chiusura-query.js:56:12 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 0,
+  expected: 1,
+  operator: 'strictEqual',
+  diff: 'simple'
+}

@@ -388,6 +388,20 @@ check('Letterale a sinistra del confronto', () => { const p = translate('SELECT 
 check('TRUE/FALSE/NULL restano validi in una lista IN', () => {
   eq(translate('SELECT * FROM t WHERE a IN (TRUE, FALSE, NULL)').filter, { a: { $in: [true, false] } });
 });
+check('IN esadecimale mantiene stringhe e ObjectId BSON nel piano indicizzabile', () => {
+  const id = '668bde07922aa72f6275dcf5';
+  const p = translate(`SELECT * FROM t WHERE _id IN ('${id}', 'non-valido', NULL)`);
+  const valori = p.filter._id.$in;
+  eq(valori.filter(v => typeof v === 'string'), [id, 'non-valido']);
+  assert.equal(valori[1]._bsontype, 'ObjectId');
+  assert.equal(valori[1].toHexString(), id);
+  assert.equal(p.filter.$expr, undefined);
+});
+check('ObjectId nei confronti anche su campi diversi da _id e con alias', () => {
+  const id = '668bde07922aa72f6275dcf5';
+  const p = translate(`SELECT * FROM t AS g WHERE g.ref = '${id}'`);
+  assert.equal(p.filter.ref.$in[1].toHexString(), id);
+});
 check('Aritmetica fra letterali nel confronto', () => { const p = translate('SELECT * FROM t WHERE a = 1 - 2'); assert(p.filter.$expr); });
 throws('LIMIT negativo rifiutato', 'SELECT * FROM t LIMIT -5', /non può essere negativo/i);
 throws('OFFSET negativo rifiutato', 'SELECT * FROM t LIMIT 10 OFFSET -3', /non può essere negativo/i);

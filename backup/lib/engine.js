@@ -47,7 +47,7 @@ const {
   MANIFEST_VERSION, leggiIdentitaMySql, leggiIdentitaPostgres, validaManifestIdentita, chiaveIdentita,
 } = require('./identity');
 const {
-  dichiarazioneCancellazioni, identitaDellaRiga, applicaTombstone, calcolaTombstone,
+  dichiarazioneCancellazioni, identitaDellaRiga, applicaTombstone,
 } = require('./tombstones');
 
 const TOOL_VERSION = MANIFEST_VERSION;
@@ -164,7 +164,7 @@ function assertUniqueFilePaths(files) {
   }
 }
 
-async function statoIdentitaDellaCatena(backupDir) {
+async function statoIdentitaDellaCatena(backupDir, controllo) {
   const chain = require('./restore').resolveChain(backupDir);
   const stati = new Map();
   for (const layer of chain) {
@@ -173,6 +173,7 @@ async function statoIdentitaDellaCatena(backupDir) {
       if (!stati.has(file.collection)) stati.set(file.collection, new Map());
       const stato = stati.get(file.collection);
       for await (const line of readLines(fileDelBackup(layer.dir, file.path, 'layer identità'))) {
+        await controllo.avanza(file.collection, stato.size, 'identita');
         const row = file.encoding === 'bson-base64' ? JSON.parse(line) : parseRiga(line);
         const riga = ['mongo', 'mongodb'].includes(layer.manifest.dbType) && !file.encoding
           ? { _id: require('../../db/mongoBson').encode({ _id: row._id })._id } : row;
@@ -184,46 +185,52 @@ async function statoIdentitaDellaCatena(backupDir) {
   return stati;
 }
 
-async function identitaSqlNellaSnapshot(conn, mysql, db, file) {
+async function identitaSqlNellaSnapshot(conn, mysql, db, file, controllo) {
   const stato = new Map();
   const add = row => stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
   if (mysql) {
     const meta = await mysqlColumnMeta(conn, db, file.collection, file.identity.columns);
     const stream = conn.connection.query(`SELECT ${meta.select} FROM ${myQid(db)}.${myQid(file.collection)}`).stream();
-    try { for await (const row of stream) add(parseRiga(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema)))); }
-    finally { stream.destroy(); }
+    const rimuovi = controllo.osservaStream(stream);
+    try { for await (const row of stream) {
+      add(parseRiga(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema))));
+      await controllo.avanza(file.collection, stato.size, 'identita');
+    } }
+    finally { rimuovi(); stream.destroy(); }
   } else {
     const meta = await pgColonneDaSalvare((s,p)=>conn.query(s,p), db, file.collection, file.identity.columns);
     await conn.query(`DECLARE codedb_ids NO SCROLL CURSOR FOR SELECT ${meta.select} FROM ${pgQid(db)}.${pgQid(file.collection)}`);
     try {
-      for (;;) { const page=await conn.query('FETCH FORWARD 1000 FROM codedb_ids'); for(const row of page.rows)add(parseRiga(stringifyRiga(require('../../db/pg-alias').encode(row,meta.columnSchema))));if(!page.rows.length)break; }
-    } finally { await conn.query('CLOSE codedb_ids'); }
+      for (;;) { const page=await conn.query('FETCH FORWARD 1000 FROM codedb_ids'); for(const row of page.rows)add(parseRiga(stringifyRiga(require('../../db/pg-alias').encode(row,meta.columnSchema)))); await controllo.avanza(file.collection, stato.size, 'identita', true); if(!page.rows.length)break; }
+    } finally { if (!controllo.signal?.aborted) await conn.query('CLOSE codedb_ids'); }
   }
   return stato;
 }
 
-async function identitaCorrenti(strategy, db, file) {
+async function identitaCorrenti(strategy, db, file, controllo) {
   const stato = new Map();
   if (['mysql', 'postgresql'].includes(strategy.type)) {
     const mysql = strategy.type === 'mysql';
-    const conn = mysql ? await strategy.pool.getConnection() : await strategy.pool.connect();
+    const collegamento = await controllo.acquisisciSql(mysql ? strategy.pool.getConnection() : strategy.pool.connect(), mysql);
+    const { conn } = collegamento;
     try {
       if (!mysql) {
         await conn.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
         await conn.query("SET LOCAL TimeZone='UTC'; SET LOCAL DateStyle='ISO,YMD'; SET LOCAL IntervalStyle='postgres'; SET LOCAL extra_float_digits=3; SET LOCAL search_path TO pg_catalog");
       }
-      const result = await identitaSqlNellaSnapshot(conn, mysql, db, file);
+      const result = await identitaSqlNellaSnapshot(conn, mysql, db, file, controllo);
       if (!mysql) await conn.query('COMMIT');
       return result;
-    } catch (e) { if (!mysql) await conn.query('ROLLBACK').catch(()=>{}); throw e; }
-    finally { conn.release(); }
+    } catch (e) { if (!mysql && !controllo.signal?.aborted) await conn.query('ROLLBACK').catch(()=>{}); throw e; }
+    finally { collegamento.libera(); }
   }
   if (file.encoding === 'bson-base64') {
-    const cursor = strategy.client.db(db).collection(file.collection).find({}, { raw: true, projection: { _id: 1 } }).batchSize(1000);
+    const cursor = strategy.client.db(db).collection(file.collection).find({}, { raw: true, projection: { _id: 1 }, signal: controllo.signal }).batchSize(1000);
     try {
       for await (const raw of cursor) {
         const row = require('../../db/mongoBson').encode(raw);
         stato.set(chiaveIdentita(row, file.identity), identitaDellaRiga(row, file.identity));
+        await controllo.avanza(file.collection, stato.size, 'identita');
       }
     } finally { await cursor.close(); }
     return stato;
@@ -236,6 +243,7 @@ async function identitaCorrenti(strategy, db, file) {
   let total = null;
   const limit = 1000;
   for (;;) {
+    await controllo.avanza(file.collection, skip, 'identita', true);
     const pagina = await strategy.collectionExport(db, file.collection, { format: 'json', skip, after, limit });
     for (const line of pagina.lines || []) {
       const riga = parseRiga(line);
@@ -249,24 +257,30 @@ async function identitaCorrenti(strategy, db, file) {
   return stato;
 }
 
-async function aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level }) {
+async function aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level, controllo }) {
   if (!base) return;
-  const precedenti = await statoIdentitaDellaCatena(path.join(groupDir, base.id));
+  const precedenti = await statoIdentitaDellaCatena(path.join(groupDir, base.id), controllo);
   for (const file of result.files.filter((f) => f.kind === 'data')) {
     if (!file.identity) throw new Error(`Impossibile rappresentare le cancellazioni di "${file.collection}": identità stabile assente.`);
-    const correnti = result.identityStates?.get(file.collection) || await identitaCorrenti(strategy, db, file);
+    const correnti = result.identityStates?.get(file.collection) || await identitaCorrenti(strategy, db, file, controllo);
     if (correnti.size !== file.sourceCardinality) {
       throw new Error(
         `La sorgente "${file.collection}" è cambiata durante il backup: `
         + `${file.sourceCardinality} identità nella snapshot, ${correnti.size} alla verifica. Riprova.`
       );
     }
-    const rimossi = calcolaTombstone(precedenti.get(file.collection) || new Map(), correnti);
+    const rimossi = [];
+    let confrontate = 0;
+    for (const [chiave, identita] of precedenti.get(file.collection) || []) {
+      if (!correnti.has(chiave)) rimossi.push(identita);
+      await controllo.avanza(file.collection, ++confrontate, 'cancellazioni');
+    }
     const rel = `deletions/${safeName(file.collection)}.ndjson${compress ? '.gz' : ''}`;
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let digest;
     try {
-      for (const identita of rimossi) await sink.writeLine(stringifyRiga(identita));
+      let count = 0;
+      for (const identita of rimossi) { await controllo.avanza(file.collection, count++, 'cancellazioni'); await sink.writeLine(stringifyRiga(identita)); }
       digest = await sink.close();
     } catch (err) {
       await sink.abort(err);
@@ -311,7 +325,7 @@ function confineIncrementale(since) {
   return new Date(new Date(since).getTime() - margineIncrementale());
 }
 
-async function dumpMongo({ strategy, db, collections, type, since, sinceField, backupDir, compress, level, log }) {
+async function dumpMongo({ strategy, db, collections, type, since, sinceField, backupDir, compress, level, log, controllo }) {
   const client = strategy.client;
   const files = [];
   const notes = [];
@@ -319,12 +333,16 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
   // Istante e modalità di lettura nel manifest (§5 del piano): il dump legge
   // collection per collection con un cursore ordinario, quindi dichiara la
   // topologia rilevata e l'assenza di snapshot globale invece di tacerle.
-  const lettura = await require('../../db/mongoTopologia').apriLettura(client);
+  const lettura = await controllo.attendi(require('../../db/mongoTopologia').apriLettura(client).then(async lettura => {
+    if (controllo.signal?.aborted) { await lettura.close(); controllo.verifica(); }
+    return lettura;
+  }));
   const {coerenza} = lettura;
   const identityStates = new Map();
   notes.push(coerenza.avviso);
   try {
   for (const coll of collections) {
+    await controllo.avanza(coll, 0, 'dati', true);
     const collection = client.db(db).collection(coll);
     let filter = {};
     let mode = 'full';
@@ -344,7 +362,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
     const sink = createFileSink(path.join(backupDir, rel), { compress, level });
     let count = 0;
     const columns = new Set(['_id']);
-    const cursor = collection.find(filter, { raw: true, ...lettura.options }).batchSize(1000);
+    const cursor = collection.find(filter, { raw: true, ...lettura.options, signal: controllo.signal }).batchSize(1000);
     let digest;
     try {
       for await (const doc of cursor) {
@@ -352,6 +370,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
         for (const column of bson.inspect(Buffer.isBuffer(doc) ? doc : require('bson').serialize(doc)).columns) columns.add(column);
         await sink.writeLine(JSON.stringify(bson.encode(doc)));
         count += 1;
+        await controllo.avanza(coll, count);
       }
       digest = await sink.close();
     } catch (err) {
@@ -360,13 +379,15 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
       throw err;
     }
     const { bytes, sha256 } = digest;
-    const sourceCardinality = await collection.countDocuments({}, lettura.options);
+    await controllo.avanza(coll, count, 'verifica', true);
+    const sourceCardinality = await collection.countDocuments({}, { ...lettura.options, signal: controllo.signal });
     if (since) {
       const ids = new Map();
-      const idCursor = collection.find({}, {raw:true, projection:{_id:1}, ...lettura.options}).batchSize(1000);
+      const idCursor = collection.find({}, {raw:true, projection:{_id:1}, ...lettura.options, signal: controllo.signal}).batchSize(1000);
       try { for await (const raw of idCursor) {
         const row = require('../../db/mongoBson').encode(raw), identity={kind:'mongodb-id',columns:['_id']};
         ids.set(chiaveIdentita(row,identity),identitaDellaRiga(row,identity));
+        await controllo.avanza(coll, ids.size, 'identita');
       }} finally { await idCursor.close(); }
       identityStates.set(coll,ids);
     }
@@ -380,7 +401,7 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
 
     // Gli indici servono solo al restore del layer full.
     if (type === 'full') {
-      const indexes = await collection.indexes();
+      const indexes = await controllo.attendi(collection.indexes());
       const relIdx = `indexes/${safeName(coll)}.json`;
       fs.mkdirSync(path.join(backupDir, 'indexes'), { recursive: true });
       fs.writeFileSync(path.join(backupDir, relIdx), JSON.stringify(serializeConservativo(indexes), null, 2), 'utf8');
@@ -396,7 +417,8 @@ async function dumpMongo({ strategy, db, collections, type, since, sinceField, b
   // incrementali contengono modifiche, non la forma del database.
   if (type === 'full') {
     const oggetti = { views: [], collectionOptions: [] };
-    const tutte = await client.db(db).listCollections().toArray();
+    await controllo.avanza(null, 0, 'struttura', true);
+    const tutte = await client.db(db).listCollections({}, { signal: controllo.signal }).toArray();
     for (const info of tutte) {
       if (info.type === 'view') {
         oggetti.views.push({
@@ -669,10 +691,11 @@ async function mysqlStableIdentity(conn, db, table, columns) {
   return (await leggiIdentitaMySql((sql, params) => conn.query(sql, params), db, table, columns))[0] || null;
 }
 
-async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
+async function dumpMySql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log, controllo }) {
   const mysql = require('mysql2');
   const pool = strategy.pool;
-  const conn = await pool.getConnection();
+  const collegamento = await controllo.acquisisciSql(pool.getConnection(), true);
+  const { conn } = collegamento;
   const files = [];
   const notes = [];
   let inTransaction = false;
@@ -691,6 +714,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
 
     const chiaviEsterne = [];
     for (const table of collections) {
+      await controllo.avanza(table, 0, 'struttura', true);
       // Definizione della tabella, per ricrearla al restore. Le chiavi esterne
       // vengono estratte e applicate alla fine: vedi splitMySqlForeignKeys.
       const create = { 'Create Table': await require('../../db/mysql-ddl').mysqlTableDdl(conn, db, table, pool) };
@@ -772,6 +796,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const stream = conn.connection
         .query({ sql: `SELECT ${selectList} FROM ${myQid(db)}.${myQid(table)}${where}`, values: params })
         .stream();
+      const rimuovi = controllo.osservaStream(stream);
       let digest;
       try {
         for await (const row of stream) {
@@ -780,13 +805,14 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
           // destinazione (vedi mysqlGeoTargetColumns).
           await sink.writeLine(stringifyRiga(require('../../db/mysql-ordinal').encode(row, meta.columnSchema)));
           count += 1;
+          await controllo.avanza(table, count);
         }
         digest = await sink.close();
       } catch (err) {
         stream.destroy();
         await sink.abort(err);
         throw err;
-      }
+      } finally { rimuovi(); }
       const { bytes, sha256 } = digest;
       // Il SRID di ORIGINE di ogni colonna geometrica va nel manifest: il WKB
       // non lo contiene, e senza di esso il restore non saprebbe in quale
@@ -797,6 +823,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       const distinctExpr = identity
         ? `COUNT(DISTINCT ${identity.columns.map(myQid).join(', ')})`
         : 'NULL';
+      await controllo.avanza(table, count, 'verifica', true);
       const [[sourceCounts]] = await conn.query(
         `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS distinctIdentities `
         + `FROM ${myQid(db)}.${myQid(table)}`,
@@ -832,7 +859,7 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
     }
 
     const identityStates = new Map();
-    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(conn,true,db,file));
+    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(conn,true,db,file,controllo));
     await conn.query('COMMIT');
     inTransaction = false;
     return {
@@ -844,13 +871,13 @@ async function dumpMySql({ strategy, db, collections, since, sinceField, backupD
       },
     };
   } catch (err) {
-    if (inTransaction) await conn.query('ROLLBACK').catch(() => {});
+    if (inTransaction && !controllo.signal?.aborted) await conn.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
     try {
-      if (originalTimezone != null) await conn.query('SET SESSION time_zone = ?', [originalTimezone]);
-      conn.release();
+      if (originalTimezone != null && !controllo.signal?.aborted) await conn.query('SET SESSION time_zone = ?', [originalTimezone]);
     } catch (err) { conn.destroy(); throw err; }
+    finally { collegamento.libera(); }
   }
 }
 
@@ -947,12 +974,13 @@ async function pgTableDdl(client, schema, table) {
   return ddl;
 }
 
-async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log }) {
+async function dumpPostgreSql({ strategy, db, collections, since, sinceField, backupDir, compress, level, log, controllo }) {
   const pool = strategy.pool;
   const files = [];
   const notes = [];
   const BATCH = 1000;
-  const client = await pool.connect();
+  const collegamento = await controllo.acquisisciSql(pool.connect(), false);
+  const client = collegamento.conn;
   let inTransaction = false;
   // Indici e chiavi esterne di TUTTE le tabelle, raccolti qui e applicati dal
   // restore dopo tabelle e dati (terza fase).
@@ -987,6 +1015,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
     }
 
     for (const table of collections) {
+    await controllo.avanza(table, 0, 'struttura', true);
     // Schema in cui il nome viene davvero risolto: serve a qualificare le query
     // del dump, a scegliere la colonna incrementale giusta e a registrare nel
     // manifest COSA è stato salvato. `db` è già uno schema (vedi la nota su
@@ -1073,10 +1102,11 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
           captureReferences(encoded);
           await sink.writeLine(stringifyRiga(encoded));
           count += 1;
+          await controllo.avanza(table, count);
         }
         if (res.rows.length < BATCH) break;
       }
-    } finally {await client.query('CLOSE codedb_backup_rows');}
+    } finally {if (!controllo.signal?.aborted) await client.query('CLOSE codedb_backup_rows');}
 
       digest = await sink.close();
     } catch (err) {
@@ -1090,6 +1120,7 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       : identity.columns.length === 1
         ? `COUNT(DISTINCT ${pgQid(identity.columns[0])})`
         : `COUNT(DISTINCT (${identity.columns.map(pgQid).join(', ')}))`;
+    await controllo.avanza(table, count, 'verifica', true);
     const sourceCounts = await client.query(
       `SELECT COUNT(*) AS cardinality, ${distinctExpr} AS "distinctIdentities" FROM ${qualified}`,
     );
@@ -1130,12 +1161,12 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       const rel=`large-objects/${object.oid}.bin`;
       const sink=createFileSink(path.join(backupDir,rel),{compress:false});
       try {
-        for await (const chunk of object.chunks) await sink.writeChunk(chunk);
+        for await (const chunk of object.chunks) { await controllo.avanza(null, 0, 'oggetti'); await sink.writeChunk(chunk); }
         files.push({path:rel,collection:null,kind:'large-object',oid:object.oid,size:object.size,...await sink.close()});
       } catch(e) {await sink.abort(e);throw e;}
     }
     const identityStates = new Map();
-    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(client,false,schema,file));
+    if (since) for (const file of files.filter(f=>f.kind==='data' && f.identity)) identityStates.set(file.collection, await identitaSqlNellaSnapshot(client,false,schema,file,controllo));
     await client.query('COMMIT');
     inTransaction = false;
     return {
@@ -1147,10 +1178,10 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
       },
     };
   } catch (err) {
-    if (inTransaction) await client.query('ROLLBACK').catch(() => {});
+    if (inTransaction && !controllo.signal?.aborted) await client.query('ROLLBACK').catch(() => {});
     throw err;
   } finally {
-    client.release();
+    collegamento.libera();
   }
 }
 
@@ -1162,7 +1193,9 @@ async function dumpPostgreSql({ strategy, db, collections, since, sinceField, ba
 // perche' li' il predefinito e' `true`. Un chiamante che ometteva il parametro
 // otteneva percio' contenuto gzip sotto un nome `.ndjson`, e il ripristino
 // falliva con un errore di JSON illeggibile invece che con «backup corrotto».
-async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress = true, level, log }) {
+async function runBackup({ session, connName, db, type, onlyCollections, sinceField, destRoot, compress = true, level, log, signal, onProgress }) {
+  const controllo = require('./controllo').creaControllo({ signal, onProgress });
+  await controllo.avanza(null, 0, 'preparazione', true);
   const { strategy, dbType } = session;
   const groupDir = backupGroupDir(destRoot, connName, db, dbType);
   const base = resolveBase(groupDir, type, { connName, db, dbType });
@@ -1186,7 +1219,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   //    "cannot write to <db>.system.views": MongoDB non accetta insert diretti
   //    lì. Bastava una view nel database perché il suo backup non fosse più
   //    ripristinabile — e il backup risultava "riuscito".
-  const all = (await strategy.listCollections(db))
+  const all = (await controllo.attendi(strategy.listCollections(db, { includeCounts: false })))
     .filter((c) => c.type !== 'view' && !String(c.name).startsWith('system.'))
     .map((c) => c.name);
   const collections = onlyCollections
@@ -1204,13 +1237,14 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   fs.mkdirSync(backupDir, { recursive: true });
   let result;
   try {
-    const args = { strategy, db, collections, type, since, sinceField, backupDir, compress, level, log };
+    const args = { strategy, db, collections, type, since, sinceField, backupDir, compress, level, log, controllo };
     result = dbType === 'mysql'
       ? await dumpMySql(args)
       : (dbType === 'postgresql' || dbType === 'postgres')
         ? await dumpPostgreSql(args)
         : await dumpMongo(args);
-    await aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level });
+    await aggiungiTombstones({ strategy, db, base, groupDir, result, backupDir, compress, level, controllo });
+    await controllo.avanza(null, 0, 'catalogo', true);
     assertUniqueFilePaths(result.files);
 
     const manifest = {
@@ -1241,7 +1275,7 @@ async function runBackup({ session, connName, db, type, onlyCollections, sinceFi
   } catch (err) {
     // Backup incompleto: la cartella parziale viene rimossa e il catalogo
     // resta intatto, così non potrà mai fare da base a un incrementale.
-    try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch { /* ignora */ }
+    try { await fs.promises.rm(backupDir, { recursive: true, force: true }); } catch { /* ignora */ }
     throw err;
   }
 

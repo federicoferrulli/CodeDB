@@ -40,6 +40,10 @@
     "famiglia": "amministrativo"
   },
   {
+    "evento": "backup:cancel",
+    "famiglia": "safeOn"
+  },
+  {
     "evento": "backup:list",
     "famiglia": "safeOn"
   },
