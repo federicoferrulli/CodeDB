@@ -85,23 +85,26 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
     if (failure) onError(failure);
   });
 
+  // Una chiamata nativa a gzip per riga rallenta i dump: accorpa al massimo 64 KiB.
+  let buffer = [], bufferedBytes = 0;
+  function flush() {
+    if (!bufferedBytes) return;
+    const chunk = Buffer.concat(buffer, bufferedBytes);
+    buffer = []; bufferedBytes = 0;
+    if (!entry.write(chunk)) return attendiDrain();
+  }
+  function writeChunk(chunk) {
+    if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
+    if (failure) throw failure;
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    buffer.push(bytes); bufferedBytes += bytes.length;
+    if (bufferedBytes >= 64 * 1024) return flush();
+  }
+
   return {
-    writeChunk(chunk) {
-      if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
-      if (failure) throw failure;
-      if (!entry.write(chunk)) return attendiDrain();
-    },
+    writeChunk,
     writeLine(line) {
-      if (finalizzato) throw failure || new Error('Sink di backup già chiuso.');
-      // Se la catena è già saltata, fermarsi subito invece di accodare dati che
-      // nessuno scriverà mai.
-      if (failure) throw failure;
-      if (!entry.write(line + '\n')) {
-        // L'attesa del 'drain' va messa in gara con la fine della catena: se la
-      // pipeline salta mentre siamo in attesa, il 'drain' non arriverà mai e
-      // il chiamante resterebbe appeso — lo stesso blocco che si sta correggendo.
-        return attendiDrain();
-      }
+      return writeChunk(line + '\n');
     },
     async close() {
       if (digest) return digest;
@@ -110,12 +113,14 @@ function createFileSink(filePath, { compress = true, level = 1 } = {}) {
         return digest;
       }
       finalizzato = true;
+      await flush();
       entry.end();
       await done;
       digest = { bytes, sha256: hash.digest('hex') };
       return digest;
     },
     async abort(reason) {
+      buffer = []; bufferedBytes = 0;
       if (!finalizzato) {
         finalizzato = true;
         const err = reason instanceof Error ? reason : new Error(String(reason || 'Scrittura del backup annullata.'));

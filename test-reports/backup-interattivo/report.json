@@ -1,0 +1,9 @@
+{
+  "environment": "Chromium, risposte simulate",
+  "checks": [
+    "Avanzamento, lavoro nel workspace, riapertura e annullamento su desktop e mobile"
+  ],
+  "layouts": [],
+  "motion": [],
+  "errors": []
+}

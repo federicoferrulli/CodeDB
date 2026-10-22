@@ -278,6 +278,16 @@ function createWindow() {
   });
 
   const contents = mainWindow.webContents;
+  // Electron rispetta il veto beforeunload, ma non mostra la conferma del browser.
+  contents.on('will-prevent-unload', event => {
+    const scelta = dialog.showMessageBoxSync(mainWindow, {
+      type: 'warning', title: APP_NAME,
+      message: 'Lasciare la pagina con modifiche non salvate?',
+      detail: 'Ci sono query o dati modificati, oppure salvataggi in corso. Restando puoi salvare il lavoro o attendere il loro esito.',
+      buttons: ['Resta', 'Lascia la pagina'], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    if (scelta === 1) event.preventDefault();
+  });
   // Stesso passo dei comandi nativi del menu, anche con tastiere italiane e tastierino.
   contents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || input.alt || (!input.control && !input.meta)) return;

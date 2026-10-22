@@ -15,6 +15,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { pipeline } = require('stream/promises');
 
 function parseStorage(spec) {
   if (!spec || spec === 'local') return null;
@@ -53,48 +54,55 @@ function listFiles(dir, base = dir) {
   return out;
 }
 
-async function uploadS3(store, files, log) {
+async function uploadS3(store, files, log, signal) {
   const { S3Client, PutObjectCommand } = requireOptional('@aws-sdk/client-s3');
   const client = new S3Client({});
-  for (const f of files) {
+  try { for (const f of files) {
+    signal?.throwIfAborted();
     const Key = store.prefix ? `${store.prefix}/${f.rel}` : f.rel;
-    await client.send(new PutObjectCommand({ Bucket: store.bucket, Key, Body: fs.createReadStream(f.full) }));
+    const body = fs.createReadStream(f.full);
+    try { await client.send(new PutObjectCommand({ Bucket: store.bucket, Key, Body: body }), { abortSignal: signal }); }
+    finally { body.destroy(); }
     log.info(`Caricato su S3: s3://${store.bucket}/${Key}`);
-  }
+  } } finally { client.destroy(); }
 }
 
-async function uploadGcs(store, files, log) {
+async function uploadGcs(store, files, log, signal) {
   const { Storage } = requireOptional('@google-cloud/storage');
   const bucket = new Storage().bucket(store.bucket);
   for (const f of files) {
+    signal?.throwIfAborted();
     const destination = store.prefix ? `${store.prefix}/${f.rel}` : f.rel;
-    await bucket.upload(f.full, { destination });
+    await pipeline(fs.createReadStream(f.full), bucket.file(destination).createWriteStream(), { signal });
     log.info(`Caricato su GCS: gs://${store.bucket}/${destination}`);
   }
 }
 
-async function uploadAzure(store, files, log) {
+async function uploadAzure(store, files, log, signal) {
   const { BlobServiceClient } = requireOptional('@azure/storage-blob');
   const cs = process.env.AZURE_STORAGE_CONNECTION_STRING;
   if (!cs) throw new Error('Variabile AZURE_STORAGE_CONNECTION_STRING mancante per lo storage Azure.');
   const container = BlobServiceClient.fromConnectionString(cs).getContainerClient(store.bucket);
   for (const f of files) {
+    signal?.throwIfAborted();
     const name = store.prefix ? `${store.prefix}/${f.rel}` : f.rel;
-    await container.getBlockBlobClient(name).uploadFile(f.full);
+    await container.getBlockBlobClient(name).uploadFile(f.full, { abortSignal: signal });
     log.info(`Caricato su Azure: ${store.bucket}/${name}`);
   }
 }
 
 // Carica l'intera cartella del backup sullo storage remoto, mantenendo la
 // struttura relativa sotto un prefisso che include l'id del backup.
-async function uploadBackupDir(store, backupDir, log) {
+async function uploadBackupDir(store, backupDir, log, { signal } = {}) {
   if (!store) return;
-  const files = listFiles(backupDir);
+  signal?.throwIfAborted();
+  // Il manifest si pubblica per ultimo: una copia remota interrotta non appare completa.
+  const files = listFiles(backupDir).sort((a, b) => Number(a.rel === 'manifest.json') - Number(b.rel === 'manifest.json'));
   const withId = { ...store, prefix: [store.prefix, path.basename(backupDir)].filter(Boolean).join('/') };
   log.info(`Upload di ${files.length} file su ${store.type}://${store.bucket}/${withId.prefix} ...`);
-  if (store.type === 's3') await uploadS3(withId, files, log);
-  else if (store.type === 'gs') await uploadGcs(withId, files, log);
-  else await uploadAzure(withId, files, log);
+  if (store.type === 's3') await uploadS3(withId, files, log, signal);
+  else if (store.type === 'gs') await uploadGcs(withId, files, log, signal);
+  else await uploadAzure(withId, files, log, signal);
 }
 
 module.exports = { parseStorage, uploadBackupDir, listFiles };

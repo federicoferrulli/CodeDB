@@ -12,7 +12,8 @@ const checksOnly = process.argv.includes('--checks-only');
 const mutantSelection = process.argv.includes('--mutant-selection');
 const loadingOnly = process.argv.includes('--loading');
 const mutantLoading = process.argv.includes('--mutant-loading');
-const dir = loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading ? '/mutante' : ''}` : `test-reports/${catalogOnly ? 'catalogo-backup' : 'backup-design'}-2026-10-12/${mutantSelection ? 'mutante-selezione' : mutantHistory ? 'mutante-storico' : mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
+const interattivo = process.argv.includes('--interattivo');
+const dir = interattivo ? 'test-reports/backup-interattivo' : loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading ? '/mutante' : ''}` : `test-reports/${catalogOnly ? 'catalogo-backup' : 'backup-design'}-2026-10-12/${mutantSelection ? 'mutante-selezione' : mutantHistory ? 'mutante-storico' : mutant ? 'mutante' : process.argv.includes('--confirm') ? 'conferma' : 'dopo'}`;
 
 (async () => {
   const server = await startTestServer({ port: 3210 });
@@ -43,7 +44,8 @@ const dir = loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading
     assert.match(await page.locator('#backup-source-hint').textContent(), /Apri una connessione/);
     await close();
     await page.evaluate(async () => {
-      const [{ createTab, tabs }, { impostaSocket }, tabbar, workspace] = await Promise.all(['tabs', 'socket', 'tabbar', 'workspace'].map(name => import(`/js/${name}.js`)));
+      const [{ createTab, tabs }, { impostaSocket, socket }, tabbar, workspace] = await Promise.all(['tabs', 'socket', 'tabbar', 'workspace'].map(name => import(`/js/${name}.js`)));
+      const ricevi = socket.emitEvent.bind(socket);
       const groups = { Collaudo_contabilita: [
         { id: '20261011-full', type: 'full', db: 'contabilita', dbType: 'postgresql', startedAt: '2026-10-11T10:00:00Z' },
         { id: '20261012-inc', type: 'incremental', baseId: '20261011-full', db: 'contabilita', dbType: 'postgresql', startedAt: '2026-10-12T10:00:00Z' },
@@ -53,11 +55,13 @@ const dir = loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading
       groups['Origine_<img src=x>'] = [{ id: 'copia-senza-data', type: 'incremental', baseId: 'mancante', db: 'nome_database_molto_lungo_per_verificare_il_layout', dbType: 'mongodb', startedAt: 'sconosciuta' }];
       groups.Vuoto = [];
       window.backupFixture = { groups, sent: [], pending: {}, lists: [], holdList: false, holdVerify: false, fail: null };
+      window.backupFixture.ricevi = (event, payload) => ricevi([event, payload]);
       window.backupFixture.collections = ['utenti', 'ordini', 'vendite, archivio', 'tabella_con_un_nome_molto_lungo_per_verificare_il_layout_su_mobile', '<img src=x>'];
       window.backupFixture.collectionRequests = [];
       const fake = { connected: true, on() {}, off() {}, timeout() { return { emit: (name, payload, cb) => fake.emit(name, payload, r => cb(null, r)) }; }, emit(name, payload, cb) {
         const f = window.backupFixture; f.sent.push({ name, payload });
         if (['backup:run', 'backup:restore'].includes(name)) { f.pending[name] = cb; return; }
+        if (name === 'backup:cancel') { cb({ ok: true, cancelled: true }); f.pending['backup:run']({ ok: true, cancelled: true }); return; }
         if (f.fail === name) return cb?.({ ok: false, error: 'Permessi insufficienti per questa operazione.' });
         const response = { ok: true, databases: [{ name: 'contabilita' }], collections: payload.db === 'analisi' ? [{ name: 'statistiche' }] : f.collections.map(name => ({ name })),
           ...(name === 'backup:list' ? { groups: f.groups } : {}),
@@ -75,6 +79,34 @@ const dir = loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading
       tabs.activeId = 'a'; tabbar.renderTabBar(); workspace.renderWorkspace();
     });
     await open();
+    if (interattivo) {
+      for (const width of [1440, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.locator('#btn-submit-backup').click();
+        await page.locator('#btn-cancel-backup').waitFor();
+        await page.evaluate(() => {
+          const f = window.backupFixture, run = f.sent.filter(e => e.name === 'backup:run').at(-1);
+          f.ricevi('backup:progress', { tipo: 'backup', tabId: run.payload.tabId, operationId: run.payload.operationId,
+            collection: 'ordini', count: 5000, phase: 'dati' });
+        });
+        assert.match(await page.locator('#backup-status-msg').textContent(), /ordini.*5\.?000/);
+        await page.screenshot({ path: `${dir}/backup-attivo-${width}.png` });
+        assert(await page.locator('#modal-backup-manager .modal').evaluate(el => el.scrollWidth <= el.clientWidth + 1), 'I controlli del backup restano dentro il pannello');
+        await page.locator('#btn-background-backup').click();
+        await page.waitForFunction(() => !document.getElementById('modal-backup-manager').dataset.arcDialog);
+        assert(await page.evaluate(() => !document.getElementById('workspace').closest('[inert]')), 'Il workspace è utilizzabile durante il backup');
+        await open();
+        assert(await page.locator('#btn-submit-backup').isDisabled(), 'Riaprire conserva il backup in corso');
+        assert.match(await page.locator('#backup-status-msg').textContent(), /ordini.*5\.?000/);
+        await page.locator('#btn-cancel-backup').click();
+        await page.getByText('Backup annullato. I file parziali sono stati rimossi.', { exact: true }).first().waitFor();
+        await page.waitForFunction(() => !document.getElementById('btn-submit-backup').disabled);
+        assert(await page.locator('#btn-cancel-backup').isHidden());
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      }
+      ok('Avanzamento, lavoro nel workspace, riapertura e annullamento su desktop e mobile');
+      return;
+    }
     if (loadingOnly) {
       await page.evaluate(() => { window.backupFixture.holdList = true; });
       await page.locator('#tab-btn-backup-catalog').click();
@@ -215,12 +247,15 @@ const dir = loadingOnly ? `test-reports/backup-loading-2026-10-12${mutantLoading
     await page.locator('#backup-slack').fill('https://hooks.slack.com/services/fixture');
     await page.locator('#btn-submit-backup').click();
     await page.waitForFunction(() => window.backupFixture.pending['backup:run']);
-    assert.deepEqual(await page.evaluate(() => window.backupFixture.sent.findLast(r => r.name === 'backup:run').payload), {
+    const { operationId, ...backupPayload } = await page.evaluate(() => window.backupFixture.sent.findLast(r => r.name === 'backup:run').payload);
+    assert.match(operationId, /^[\w-]{1,80}$/);
+    assert.deepEqual(backupPayload, {
       tabId: 'a', db: 'contabilita', type: 'incremental', collections: ['utenti', 'ordini'], sinceField: 'updated_at', noCompress: false, compressLevel: 3, storage: 'archivio-test', slackWebhook: 'https://hooks.slack.com/services/fixture', connName: 'Collaudo',
     });
     await page.evaluate(() => window.backupFixture.pending['backup:run']({ ok: false, error: 'Destinazione non disponibile.' }));
     await page.getByText('Errore: Destinazione non disponibile.', { exact: true }).waitFor();
     await page.locator('#btn-submit-backup').click();
+    assert.notEqual(await page.evaluate(() => window.backupFixture.sent.findLast(r => r.name === 'backup:run').payload.operationId), operationId, 'Ogni tentativo ha un identificatore di annullamento distinto');
     await close();
     await page.evaluate(async () => { (await import('/js/tabs.js')).switchTab('b'); });
     await open();

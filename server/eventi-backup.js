@@ -14,6 +14,7 @@ const { sanitizeImportResult } = require('../db/importOperations');
 
 function createModule({ lock, identita, operazioni, audit, errori, config }) {
   function registra(socketContext, lifecycle) {
+    const backups = new Map();
     // --- Operazioni Backup & Restore -------------------------------------------
 
     lifecycle.safeOn('backup:run', async (payload, cb) => {
@@ -57,24 +58,53 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       // tenant e di aggiungervi backup e voci di catalogo. Quello del client
       // resta solo come etichetta nel log.
       const connName = sess.connName || payload.connName || payload.label || 'ui-session';
+      const operationId = payload.operationId ?? require('crypto').randomUUID();
+      if (typeof operationId !== 'string' || !/^[\w-]{1,80}$/.test(operationId)) throw new Error('Identificatore del backup non valido.');
+      if (backups.has(operationId)) throw new Error('Questo backup è già in corso.');
+      const controller = new AbortController();
+      backups.set(operationId, { controller, sess, tabId });
+      lifecycle.acquisisciLeaseOperazione?.(sess);
+      const onProgress = event => socketContext.socket.emit('backup:progress', { ...event, tabId, operationId, tipo: 'backup' });
+      let copiaLocale = null;
       try {
         const summary = await log.run(`backup ${type} conn=${connName} db=${db} (via UI)`, async () => {
           const result = await runBackup({
             session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, connName, db, type, onlyCollections,
             sinceField: payload.sinceField ? String(payload.sinceField).trim() : null,
-            destRoot, compress, level, log,
+            destRoot, compress, level, log, signal: controller.signal, onProgress,
           });
-          if (storage) await uploadBackupDir(storage, result.backupDir, log);
+          copiaLocale = result;
+          if (storage) {
+            onProgress({ phase: 'upload', count: result.totalDocs });
+            await uploadBackupDir(storage, result.backupDir, log, { signal: controller.signal });
+          }
           return result;
         });
         await notifySlack(webhook, `✅ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe, ${formatBytes(summary.totalBytes)}.`, log);
         audit.auditWrite(sess, 'backup:run', { db }, { op: 'Backup', backupType: type, backupId: summary.id }, 'ok', summary, null);
         cb({ ok: true, summary });
       } catch (err) {
+        if (controller.signal.aborted) {
+          audit.auditWrite(sess, 'backup:run', { db }, { op: 'Backup annullato', backupType: type }, 'error', copiaLocale, err);
+          cb({ ok: true, cancelled: true, summary: copiaLocale });
+          return;
+        }
         await notifySlack(webhook, `❌ CodeDB backup *${type}* di \`${db}\` (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errori.errMsg(err)}`, log);
         audit.auditWrite(sess, 'backup:run', { db }, { op: 'Backup', backupType: type }, 'error', null, err);
         throw err;
+      } finally {
+        backups.delete(operationId);
+        await lifecycle.rilasciaLeaseOperazione?.(sess);
       }
+    });
+
+    lifecycle.safeOn('backup:cancel', (payload, cb) => {
+      const backup = backups.get(payload.operationId);
+      if (!backup || backup.tabId !== lock.normTabId(payload.tabId)) { cb({ ok: true, cancelled: false }); return; }
+      const sess = backup.sess;
+      identita.assertWholeConnection(socketContext.principal, sess.connName, 'read', 'annullare un backup');
+      backup.controller.abort(new Error('Backup annullato.'));
+      cb({ ok: true, cancelled: true });
     });
 
     lifecycle.safeOn('backup:list', ({ dest }, cb) => {

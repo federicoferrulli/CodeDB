@@ -11,6 +11,7 @@ import { segnaTraguardo } from './onboarding-stato.js';
 
 let currentTabMode = 'new'; // 'new' | 'catalog'
 const ripristini = new Map();
+let backupAttivo = null;
 
 // Ultimo catalogo letto dal server e gruppi con lo storico aperto: il filtro
 // ridisegna dai dati già in mano invece di richiedere di nuovo l'elenco.
@@ -30,6 +31,17 @@ const collezioniSelezionate = new Set();
 const MIN_GRUPPI_PER_FILTRO = 4;
 
 export function initBackupManager() {
+  $('#btn-background-backup').addEventListener('click', () => closeModal('#modal-backup-manager'));
+  $('#btn-cancel-backup').addEventListener('click', async () => {
+    const backup = backupAttivo;
+    if (!backup) return;
+    const fine = iniziaCaricamento($('#btn-cancel-backup'), 'Annullamento…');
+    try {
+      const res = await emit('backup:cancel', { tabId: backup.tabId, operationId: backup.id });
+      if (backupAttivo === backup && res.cancelled) $('#backup-status-msg').textContent = 'Annullamento del backup e pulizia dei file parziali…';
+    } catch (err) { toast(`Annullamento non riuscito: ${err.message}`, true); }
+    finally { fine(); }
+  });
   const btnOpen = $('#btn-backup-manager');
   if (btnOpen) btnOpen.addEventListener('click', () => openBackupModal());
 
@@ -117,6 +129,14 @@ export function initBackupManager() {
   // che è unico come tutto il resto del workspace.
   if (socket) {
     socket.on('backup:progress', (ev) => {
+      if (ev.tipo === 'backup') {
+        if (!backupAttivo || ev.operationId !== backupAttivo.id || ev.tabId !== backupAttivo.tabId) return;
+        const fasi = { preparazione: 'Preparazione', dati: 'Copia dei dati', struttura: 'Struttura e indici',
+          verifica: 'Verifica dei conteggi', identita: 'Verifica delle identità', cancellazioni: 'Confronto delle cancellazioni',
+          catalogo: 'Salvataggio nel catalogo', oggetti: 'Copia degli oggetti', upload: 'Invio al cloud' };
+        $('#backup-status-msg').textContent = `${backupAttivo.label} · ${fasi[ev.phase] || ev.phase}${ev.collection ? ` · ${ev.collection}` : ''}${ev.count ? ` · ${ev.count.toLocaleString('it-IT')} elementi` : ''}. Puoi continuare a lavorare.`;
+        return;
+      }
       const progresso = ripristini.get(ev.operationId);
       if (!progresso || ev.tabId !== progresso.tabId) return;
       aggiungiRigaProgresso(progresso.log, ev.riga, ev.errore);
@@ -302,6 +322,7 @@ async function caricaCollezioniBackup() {
 }
 
 async function executeBackup() {
+  if (backupAttivo) return;
   const tab = activeTab();
   if (!tab || !tab.dbType) {
     toast('Nessuna connessione attiva. Connettiti a un database.', true);
@@ -327,14 +348,18 @@ async function executeBackup() {
   // Un backup dura da secondi a minuti: senza segnale sul pulsante l'unico
   // indizio è la riga di stato sotto, che si legge solo se la si sta cercando.
   const fineCaricamento = iniziaCaricamento(btnSubmit, 'Backup in corso…');
+  backupAttivo = { id: safeUUID(), tabId: tab.id, label: `${tab.label} / ${db}` };
+  $('#btn-background-backup').classList.remove('hidden');
+  $('#btn-cancel-backup').classList.remove('hidden');
   if (statusEl) {
     statusEl.classList.remove('hidden', 'error');
-    statusEl.textContent = `Backup ${type} di ${tab.label} / ${db} in corso… Chiudere la finestra non interrompe il backup.`;
+    statusEl.textContent = `Backup ${type} di ${tab.label} / ${db} in corso… Chiudere questo pannello non interrompe il backup.`;
   }
 
   try {
     const res = await emit('backup:run', {
       tabId: tab.id,
+      operationId: backupAttivo.id,
       db,
       type,
       collections: collections.length ? collections : undefined,
@@ -346,6 +371,12 @@ async function executeBackup() {
       connName: tab.label || tab.savedName || 'UI Session',
     });
 
+    if (res.cancelled) {
+      const messaggio = res.summary ? 'Invio al cloud annullato. La copia locale completa è conservata nel catalogo.' : 'Backup annullato. I file parziali sono stati rimossi.';
+      if (statusEl) statusEl.textContent = messaggio;
+      toast(messaggio);
+      return;
+    }
     toast(`Backup completato con successo: ${res.summary.id}`);
     segnaTraguardo('backup'); // primi passi della guida (no-op se già fatto)
     if (statusEl) {
@@ -361,6 +392,9 @@ async function executeBackup() {
       statusEl.textContent = `Errore: ${err.message}`;
     }
   } finally {
+    backupAttivo = null;
+    $('#btn-background-backup').classList.add('hidden');
+    $('#btn-cancel-backup').classList.add('hidden');
     fineCaricamento();
   }
 }

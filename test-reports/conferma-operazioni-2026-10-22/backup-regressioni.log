@@ -1,0 +1,8 @@
+OK Schede animate, tastiera e bozza conservata
+OK Validazione, tutti i parametri, errore/riprova e origine dell’operazione dopo cambio connessione
+OK Verifica, storico e conferma del ripristino: destinazione esplicita, annullamento senza scritture
+OK Storico animato e interrompibile, focus e nodi stabili, esiti conservati, date sconosciute e catene incomplete esplicite
+OK Catalogo vuoto, filtro senza corrispondenze, errore e ricaricamento
+OK Risposta del catalogo superata scartata e verifica in corso recuperata dopo il filtro
+OK Multiselezione: ricerca, tastiera, nomi letterali, tutto il database, caricamento leggero, errori/riprova, vuoto e risposte superate
+OK Chiaro/scuro, 320–1440px, landscape, drawer Arc, touch, moto ridotto e chiusura senza animazioni residue
