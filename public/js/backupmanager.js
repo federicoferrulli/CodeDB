@@ -11,6 +11,10 @@ import { segnaTraguardo } from './onboarding-stato.js';
 
 let currentTabMode = 'new'; // 'new' | 'catalog'
 const ripristini = new Map();
+const TRASPORTO_RIPRISTINO = { bindTab: false, reconnect: false, rejectOnDisconnect: true };
+const STATI_RIPRISTINO_TERMINALI = new Set(['completato', 'ripristinato_dopo_errore', 'intervento_richiesto']);
+let letturaRipristini = null;
+let generazioneRipristini = 0;
 let backupAttivo = null;
 
 // Ultimo catalogo letto dal server e gruppi con lo storico aperto: il filtro
@@ -128,6 +132,17 @@ export function initBackupManager() {
   // ripristinando: i push di un altro tab non devono scrivere in questo pannello,
   // che è unico come tutto il resto del workspace.
   if (socket) {
+    socket.on('disconnect', () => {
+      generazioneRipristini++;
+      letturaRipristini = null;
+      for (const progresso of ripristini.values()) {
+        if (progresso.terminato) continue;
+        progresso.generazione++;
+        progresso.lettura = null;
+        segnalaRipristinoIncerto(progresso, 'Connessione al server persa. L’esito verrà verificato alla riconnessione.');
+      }
+    });
+    socket.on('connect', () => riconciliaRipristini());
     socket.on('backup:progress', (ev) => {
       if (ev.tipo === 'backup') {
         if (!backupAttivo || ev.operationId !== backupAttivo.id || ev.tabId !== backupAttivo.tabId) return;
@@ -138,7 +153,7 @@ export function initBackupManager() {
         return;
       }
       const progresso = ripristini.get(ev.operationId);
-      if (!progresso || ev.tabId !== progresso.tabId) return;
+      if (!progresso || progresso.terminato || ev.tabId !== progresso.tabId) return;
       aggiungiRigaProgresso(progresso.log, ev.riga, ev.errore);
     });
   }
@@ -148,13 +163,15 @@ export function initBackupManager() {
 
 const MAX_RIGHE_PROGRESSO = 200;
 
-function apriProgresso(titolo, tabId) {
+function apriProgresso(titolo, tabId, operation = {}) {
   const box = $('#restore-progress');
   const section = document.createElement('section'); section.className = 'restore-progress';
   const head = document.createElement('div'); head.className = 'restore-progress-head'; head.textContent = titolo;
   const log = document.createElement('div'); log.className = 'restore-progress-log'; log.setAttribute('role', 'log');
   section.append(head, log); box.prepend(section); box.classList.remove('hidden');
-  const progresso = { id: safeUUID(), tabId, section, head, log };
+  const progresso = { id: operation.operationId || safeUUID(), tabId, section, head, log,
+    targetDb: operation.targetDb, connection: operation.connection, backupId: operation.backupId,
+    terminato: false, timer: null, lettura: null, generazione: 0 };
   ripristini.set(progresso.id, progresso);
   return progresso;
 }
@@ -171,11 +188,122 @@ function aggiungiRigaProgresso(log, riga, errore) {
 }
 
 function chiudiProgresso(progresso, titolo, ok) {
+  progresso.terminato = true;
+  progresso.generazione++;
+  clearTimeout(progresso.timer); progresso.timer = null;
+  progresso.fineCaricamento?.(); progresso.fineCaricamento = null;
   progresso.head.textContent = titolo;
   progresso.section.classList.add(ok ? 'esito-ok' : 'esito-ko');
-  ripristini.delete(progresso.id);
+  // Conservare gli esiti visibili evita di duplicarli se ACK, lettura stato
+  // ed elenco arrivano in ordine diverso. Il limite resta di dieci conclusi.
   // Mantiene gli esiti recenti senza rimuovere mai un'attività ancora in corso.
-  [...$('#restore-progress').querySelectorAll('.esito-ok, .esito-ko')].slice(10).forEach(el => el.remove());
+  [...$('#restore-progress').querySelectorAll('.esito-ok, .esito-ko')].slice(10).forEach(el => {
+    for (const [id, item] of ripristini) if (item.section === el) ripristini.delete(id);
+    el.remove();
+  });
+}
+
+function destinazioneRipristino(progresso) {
+  return [progresso.connection, progresso.targetDb].filter(Boolean).join(' / ') || 'destinazione';
+}
+
+function segnalaRipristinoIncerto(progresso, motivo) {
+  if (progresso.terminato) return;
+  clearTimeout(progresso.timer); progresso.timer = null;
+  progresso.head.textContent = `Esito del ripristino su ${destinazioneRipristino(progresso)} da verificare. ${motivo}`;
+}
+
+function programmaStatoRipristino(progresso) {
+  if (progresso.terminato || progresso.timer !== null || progresso.lettura || !socket.connected) return;
+  progresso.timer = setTimeout(() => {
+    progresso.timer = null;
+    leggiStatoRipristino(progresso);
+  }, 600);
+}
+
+function applicaStatoRipristino(progresso, operation) {
+  if (progresso.terminato || !operation || (operation.operationId && operation.operationId !== progresso.id)) return;
+  for (const field of ['targetDb', 'connection', 'backupId']) {
+    if (operation[field] != null) progresso[field] = operation[field];
+  }
+  const destinatario = destinazioneRipristino(progresso);
+  if (operation.status === 'in_corso') {
+    progresso.head.textContent = `Ripristino di ${progresso.backupId || 'backup'} su ${destinatario} in corso. Chiudere la finestra non interrompe il ripristino.`;
+    programmaStatoRipristino(progresso);
+    return;
+  }
+  if (!STATI_RIPRISTINO_TERMINALI.has(operation.status)) {
+    segnalaRipristinoIncerto(progresso, 'Il server non ha ancora comunicato un esito finale.');
+    return;
+  }
+  const ok = operation.status === 'completato';
+  let msg;
+  if (ok) {
+    const quantita = operation.totalDocs == null ? '' : `: ${operation.totalDocs} elementi ripristinati${operation.layers == null ? '' : ` da ${operation.layers} layer`}`;
+    const nota = operation.equivalenza?.completa === false
+      ? ` Verifica incompleta: ${operation.equivalenza.motivo || 'La catena storica non permette di verificare tutti gli oggetti e le cancellazioni.'}` : '';
+    msg = `Ripristino completato su ${destinatario}${quantita}.${nota}`;
+  } else {
+    const conservati = [operation.recovery && `recupero ${operation.recovery.id || 'disponibile'}`,
+      operation.staging && `staging ${operation.staging.db || 'disponibile'}`].filter(Boolean).join(', ');
+    const stato = operation.status === 'ripristinato_dopo_errore'
+      ? 'Ripristino non completato; destinazione recuperata' : 'Ripristino da verificare';
+    msg = `${stato} su ${destinatario}: ${operation.error || 'È richiesto un intervento.'}${conservati ? ` (${conservati})` : ''}`;
+    if (operation.recoveryError) msg += `. Errore di recupero: ${operation.recoveryError}`;
+  }
+  chiudiProgresso(progresso, msg, ok);
+  toast(msg, !ok);
+  // Il tab originale può essere stato chiuso mentre il server lavorava.
+  const tab = tabs.list.find(item => item.id === progresso.tabId);
+  if (tab) {
+    tab.state.schemaDirty = true;
+    if (tabs.activeId === tab.id) { tab.state.schemaDirty = false; refreshDbTree(); }
+  }
+}
+
+function leggiStatoRipristino(progresso) {
+  if (progresso.terminato || progresso.lettura || !socket.connected) return;
+  clearTimeout(progresso.timer); progresso.timer = null;
+  const generazione = progresso.generazione;
+  const lettura = emit('backup:restore:state', { operationId: progresso.id }, { ...TRASPORTO_RIPRISTINO, timeoutMs: 5000 });
+  progresso.lettura = lettura;
+  lettura.then(response => {
+    if (generazione !== progresso.generazione) return;
+    applicaStatoRipristino(progresso, response.operation);
+  }).catch(error => {
+    if (generazione !== progresso.generazione) return;
+    segnalaRipristinoIncerto(progresso, error.message);
+  }).finally(() => {
+    if (progresso.lettura !== lettura) return;
+    progresso.lettura = null;
+    // Un errore lascia il pannello consultabile e non avvia un ciclo di
+    // richieste fallite; apertura e riconnessione riprovano la sola lettura.
+  });
+  lettura.then(response => {
+    if (generazione !== progresso.generazione || response.operation?.status !== 'in_corso') return;
+    // Il finally precedente libera la lettura prima del prossimo controllo.
+    setTimeout(() => programmaStatoRipristino(progresso), 0);
+  }, () => {});
+}
+
+function riconciliaRipristini() {
+  if (!socket.connected) return;
+  for (const progresso of ripristini.values()) if (!progresso.terminato) leggiStatoRipristino(progresso);
+  if (letturaRipristini) return;
+  const generazione = generazioneRipristini;
+  const lettura = emit('backup:restore:list', {}, { ...TRASPORTO_RIPRISTINO, timeoutMs: 5000 });
+  letturaRipristini = lettura;
+  lettura.then(response => {
+    if (generazione !== generazioneRipristini) return;
+    const operations = [...(response.operations || [])].sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)));
+    for (const operation of operations) {
+      if (!operation.operationId) continue;
+      const progresso = ripristini.get(operation.operationId)
+        || apriProgresso('Verifica del ripristino…', operation.tabId, operation);
+      applicaStatoRipristino(progresso, operation);
+    }
+  }).catch(() => { /* Le attività note mostrano l'errore della lettura singola. */ })
+    .finally(() => { if (letturaRipristini === lettura) letturaRipristini = null; });
 }
 
 export function openBackupModal() {
@@ -184,6 +312,7 @@ export function openBackupModal() {
   aggiornaRiepilogoBackup();
   openModal('#modal-backup-manager');
   switchBackupTab(currentTabMode);
+  riconciliaRipristini();
 }
 
 function switchBackupTab(mode) {
@@ -924,10 +1053,12 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
 
   toast(`Ripristino di ${backupId} su "${targetDb}" in corso...`);
   const destinatario = `${tab.label} / ${targetDb}`;
-  const progresso = apriProgresso(`Ripristino di ${backupId} su ${destinatario} in corso… Chiudere la finestra non interrompe il ripristino.`, origin.tabId);
+  const progresso = apriProgresso(`Ripristino di ${backupId} su ${destinatario} in corso… Chiudere la finestra non interrompe il ripristino.`, origin.tabId,
+    { backupId, targetDb, connection: tab.label || tab.savedName || 'UI Session' });
   const fineCaricamento = iniziaCaricamento(bottone, '');
+  progresso.fineCaricamento = fineCaricamento;
   try {
-    const res = await emit('backup:restore', {
+    const richiesta = emit('backup:restore', {
       tabId: origin.tabId,
       operationId: progresso.id,
       group,
@@ -935,38 +1066,14 @@ async function executeRestore(group, backupId, targetDb, drop, bottone, origin) 
       targetDb,
       drop,
       connName: tab.label || tab.savedName || 'UI Session',
-    });
-
-    if (res.summary.status !== 'completato') {
-      const retained = [
-        res.summary.recovery && `recupero ${res.summary.recovery.id || 'disponibile'}`,
-        res.summary.staging && `staging ${res.summary.staging.db || 'disponibile'}`,
-      ].filter(Boolean).join(', ');
-      throw new Error(`${res.summary.status}: ${res.summary.error || 'restore non completato'}${retained ? ` (${retained})` : ''}`);
-    }
-
-    const msg = `Ripristino completato su ${destinatario}: ${res.summary.totalDocs} elementi ripristinati da ${res.summary.layers} layer.`;
-    toast(msg);
-    chiudiProgresso(progresso, msg, true);
-    // Un ripristino crea collection e tabelle che nell'albero non ci sono: senza
-    // questa ricarica la sidebar continua a mostrare lo schema di prima, e
-    // l'unico modo di vedere i dati appena riportati è ricaricare la pagina.
-    tab.state.schemaDirty = true;
-    if (!origin.tabId || tabs.activeId === origin.tabId) {
-      tab.state.schemaDirty = false;
-      refreshDbTree();
-    }
+    }, TRASPORTO_RIPRISTINO);
+    programmaStatoRipristino(progresso);
+    const res = await richiesta;
+    applicaStatoRipristino(progresso, res.summary);
   } catch (err) {
-    toast(`Ripristino fallito: ${err.message}`, true);
-    chiudiProgresso(progresso, `Ripristino fallito su ${destinatario}: ${err.message}`, false);
-    // Anche un ripristino fallito può aver applicato una parte dei layer: lo
-    // schema a sinistra va riletto comunque, non è più quello di prima.
-    tab.state.schemaDirty = true;
-    if (!origin.tabId || tabs.activeId === origin.tabId) {
-      tab.state.schemaDirty = false;
-      refreshDbTree();
-    }
+    if (err.code === 'SOCKET_DISCONNECTED') segnalaRipristinoIncerto(progresso, err.message);
+    else applicaStatoRipristino(progresso, { status: 'intervento_richiesto', error: err.message });
   } finally {
-    fineCaricamento();
+    progresso.fineCaricamento?.(); progresso.fineCaricamento = null;
   }
 }

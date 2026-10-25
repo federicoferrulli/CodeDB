@@ -27,18 +27,21 @@ function stage() {
   const listed = spawnSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' });
   if (listed.status !== 0) throw new Error(listed.stderr);
   const files = new Set(listed.stdout.split('\0').filter(Boolean));
-  function nuovi(base) {
-    verifica(root, path.join(root, base));
-    for (const item of fs.readdirSync(path.join(root, base), { withFileTypes: true })) {
-      const relative = base + '/' + item.name;
-      if (item.isDirectory()) nuovi(relative); else if (item.isFile()) files.add(relative);
-    }
+  // Anche il codice appena creato appartiene alla revisione in prova. Git
+  // applica gli ignore; l'elenco ammesso evita di esportare file locali JSON
+  // arbitrari o configurazioni che non siano sorgenti applicativi.
+  const untracked = spawnSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: root, encoding: 'utf8' });
+  if (untracked.status !== 0) throw new Error(untracked.stderr);
+  for (const relative of untracked.stdout.split('\0').filter(Boolean)) {
+    if (/^(?:db|auth|backup|server|mcp|public|ui|test|tools)\/.+\.(?:[cm]?js|tsx?|jsx|css|html|svg|wasm|png|ico|woff2?)$/.test(relative)
+      || /^[^/]+\.[cm]?js$/.test(relative) || /^package(?:-lock)?\.json$/.test(relative)) files.add(relative);
   }
-  nuovi('test/lab'); files.add('tools/laboratorio.cjs'); files.add('.github/workflows/laboratorio.yml');
+  files.add('tools/laboratorio.cjs'); files.add('.github/workflows/laboratorio.yml');
   const copied = [], hashes = {};
   for (const relative of [...files].sort()) {
     if (/^(?:test-reports|\.agents|\.codex|\.scratch|\.git|conns|data|backups|provenienza)(?:\/|$)/.test(relative)
       || /^(?:connections|vault|\.env)/.test(relative) || /\.(?:p12|pfx|pem|key|p8|jks|keystore)$/.test(relative)) continue;
+    if (/(?:^|\/)(?:\.env(?:\.|$)|(?:vault|connections)\.(?:json|ini)$)/.test(relative)) continue;
     const src = path.resolve(root, relative), dst = path.resolve(dir, relative);
     verifica(root, src); verifica(dir, dst);
     if (!fs.existsSync(src)) continue;
@@ -66,14 +69,16 @@ function verificaCampagna() {
 }
 function up() {
   dc(['up', '-d', '--wait', 'mongo', 'mongo-auth', 'mysql', 'postgres']);
-  dc(['exec', '-T', 'mongo', 'mongosh', '--quiet', '--eval', 'try { rs.status(); } catch(e) { if(e.code!==94) throw e; rs.initiate({_id:"lab",members:[{_id:0,host:"127.0.0.1:27017"}]}); } let ready=false; for(let i=0;i<120;i++){if(db.hello().isWritablePrimary){ready=true;break;} await sleep(500);} if(!ready)throw new Error("Primario MongoDB non pronto"); print("Replica lab pronta: PRIMARY");']);
+  dc(['exec', '-T', 'mongo', 'mongosh', '--quiet', '--eval', '(async()=>{ try { rs.status(); } catch(e) { if(e.code!==94) throw e; rs.initiate({_id:"lab",members:[{_id:0,host:"127.0.0.1:27017"}]}); } let ready=false; for(let i=0;i<120;i++){if(db.hello().isWritablePrimary){ready=true;break;} await sleep(500);} if(!ready)throw new Error("Primario MongoDB non pronto"); print("Replica lab pronta: PRIMARY"); })();']);
   dc(['exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', 'postgres', '-c', 'CREATE EXTENSION IF NOT EXISTS postgis']);
 }
 function copia() { stage(); exec(['node', '/sorgente/test/lab/prepara.cjs']); }
 function rapporti() {
-  const dir = path.join(root, '.scratch', 'lab-reports', 'docker');
+  const selected = process.env.LAB_REPORT_DIR;
+  if (selected && !/^\/laboratorio\/rapporti\/[a-zA-Z0-9_-]+$/.test(selected)) throw new Error('Cartella rapporti fuori dal laboratorio o non valida.');
+  const dir = path.join(root, '.scratch', 'lab-reports', 'docker', ...(selected ? [path.posix.basename(selected)] : []));
   fs.mkdirSync(dir, { recursive: true });
-  dc(['cp', 'prove:/laboratorio/rapporti/.', dir]);
+  dc(['cp', `prove:${selected || '/laboratorio/rapporti'}/.`, dir]);
   const metadata = { data: new Date().toISOString(), container: [] };
   const snapshot = spawnSync('docker', [...compose, 'exec', '-T', 'prove', 'cat', '/laboratorio/file-copiati.json'], { cwd: root, encoding: 'utf8' });
   if (snapshot.status === 0) fs.writeFileSync(path.join(dir, 'sorgenti.json'), snapshot.stdout);
@@ -108,6 +113,10 @@ try {
   else if (action === 'prepara') {
     verificaCampagna(); stage(); up(); dc(['--profile', 'prove', 'up', '-d', '--build', 'prove']); exec(['node', '/sorgente/test/lab/prepara.cjs']);
     exec(['npm', 'ci']);
+    // Electron recente scarica il binario al primo require. La rete appartiene
+    // alla preparazione, non al timeout delle prove di avvio dell'applicazione.
+    exec(['node', 'node_modules/electron/install.js']);
+    exec(['node', '-e', 'const r=require("child_process").spawnSync(require("electron"),["--no-sandbox","--version"],{stdio:"inherit"});if(r.error)throw r.error;process.exit(r.status??1)']);
     exec(['npx', '--no-install', 'playwright', 'install', 'chromium']);
     exec(['npm', 'run', 'build:ui']);
     exec(['node', '-e', 'require("playwright").chromium.launch().then(async b=>{console.log("Chromium pronto");await b.close()})']);

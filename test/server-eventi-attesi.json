@@ -52,6 +52,14 @@
     "famiglia": "safeOn"
   },
   {
+    "evento": "backup:restore:list",
+    "famiglia": "safeOn"
+  },
+  {
+    "evento": "backup:restore:state",
+    "famiglia": "safeOn"
+  },
+  {
     "evento": "backup:run",
     "famiglia": "safeOn"
   },

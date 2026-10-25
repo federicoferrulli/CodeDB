@@ -1,6 +1,7 @@
 'use strict';
 
 const { EJSON } = require('bson');
+const { preparaBinariEjson } = require('./sqlValori');
 
 /* ---------------------------------------------------------------------------
  * Strategy Pattern: interfaccia comune a tutti i DBMS supportati.
@@ -668,7 +669,7 @@ async function collectCapped(cursor, cap, budget = maxResultBytes()) {
   for await (const doc of cursor) {
     if (docs.length >= cap) { truncated = true; break; }
     if (budget > 0) {
-      bytes += Buffer.byteLength(EJSON.stringify(doc, { relaxed: true }), 'utf8') + (docs.length ? 1 : 0);
+      bytes += Buffer.byteLength(EJSON.stringify(preparaBinariEjson(doc), { relaxed: true }), 'utf8') + (docs.length ? 1 : 0);
       if (bytes > budget) { truncated = true; break; }
     }
     docs.push(doc);
@@ -688,7 +689,7 @@ function truncateBySize(rows, budget = maxResultBytes()) {
   if (!budget || !Array.isArray(rows) || !rows.length) return { rows, truncated: false };
   let bytes = 2;
   for (let i = 0; i < rows.length; i++) {
-    bytes += Buffer.byteLength(EJSON.stringify(rows[i], { relaxed: true }), 'utf8') + (i ? 1 : 0);
+    bytes += Buffer.byteLength(EJSON.stringify(preparaBinariEjson(rows[i]), { relaxed: true }), 'utf8') + (i ? 1 : 0);
     if (bytes > budget) return { rows: rows.slice(0, i), truncated: true };
   }
   return { rows, truncated: false };

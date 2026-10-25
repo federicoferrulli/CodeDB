@@ -6,6 +6,7 @@ const { pathToFileURL } = require('url');
 const { BSON } = require('bson');
 const { deserializeClientObject, serializeRow, toSqlValue } = require('../db/sqlValori');
 const MongoDbStrategy = require('../db/MongoDbStrategy');
+const testBinari = require('./unit-sql-binari');
 
 const valori = deserializeClientObject({
   id: { $numberLong: '9007199254740993' },
@@ -21,6 +22,8 @@ assert.deepStrictEqual(serializeRow({ id: '9007199254740993', totale: '0.1000000
 });
 console.log('  OK   parametri SQL esatti: Long e Decimal arrivano al driver come testo canonico');
 module.exports = (async () => {
+  await testBinari;
+  await require('./unit-pg-array');
   const V = await import(pathToFileURL(path.join(__dirname, '..', 'public', 'js', 'valori-esatti.js')).href);
   console.log('--- Test unitari valori esatti SQL e MongoDB ---');
 

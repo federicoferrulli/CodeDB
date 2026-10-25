@@ -29,6 +29,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-sql-integrita-righe');
   await require('./unit-insert-values');
   await require('./unit-server-modulare');
+  await require('./unit-creazione-collection');
   await require('./unit-conteggi-navigatore');
   await require('./unit-ssh-keys');
   await require('./unit-conn-config');
@@ -1398,6 +1399,11 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-backup-reattivo');
   await require('./unit-backup-cloud-annullamento');
   await require('./unit-backup-cancellazioni');
+  await require('./unit-backup-contenuto');
+  require('./unit-pg-schema-compare');
+  await require('./unit-pg-routine-selezione');
+  require('./unit-mcp-esito-scrittura');
+  require('./unit-schema-merge');
   await require('./unit-rinomina-sicura');
   await require('./unit-valori-esatti');
   await require('./unit-sql-valori-esatti');
@@ -1587,6 +1593,7 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-piano-export-evento');
   await require('./unit-wizard-export');
   await require('./unit-import-adapter');
+  await require('./unit-import-conferma');
   await require('./unit-backup-import-regressioni');
   require('./unit-schema-objects');
   await require('./unit-import-uploads');
@@ -1599,6 +1606,11 @@ console.log('--- Test Unitari CodeDB ---');
   // oltre la chiusura del tab e stato recuperato da un nuovo contesto.
   await require('./unit-evento-import');
   await require('./unit-import-status');
+
+  // Il ripristino sopravvive al tab e alla socket senza ripetere le scritture.
+  await require('./unit-backup-lease');
+  await require('./unit-backup-registro');
+  await require('./unit-trasporto-ripristino');
 
   // Ogni database/schema distruttivo E2E porta il marcatore casuale della
   // fixture, richiede un flag esplicito e viene eliminato solo dal suo registro.

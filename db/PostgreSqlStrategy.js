@@ -18,7 +18,8 @@ const { eseguiBatchScritture, conRighe } = require('./sqlWriteBatch');
 const { installaMetadati } = require('./sqlMetadati');
 // Conversione EJSON <-> parametri SQL: è il protocollo del client, non il
 // dialetto del server, quindi vive in un modulo solo (vedi db/sqlValori.js).
-const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow, documentoScrivibile } = require('./sqlValori');
+const { toSqlValue, parseClientValue, deserializeClientObject, serializeRow, documentoScrivibile, preparaBinariEjson } = require('./sqlValori');
+const { tipoDaCatalogo, tipoColonna, valorePostgres, valoreDalJson } = require('./pg-valori');
 const { raggruppaVincoli } = require('./relazioni');
 const { cellaCsv, rigaCsv } = require('./csv');
 // Come si scrive il nome di una tabella o di una colonna: regola unica,
@@ -88,14 +89,15 @@ function qtable(db, table) {
   return quotaQualificato([schemaOf(db), table], 'postgresql');
 }
 
-function whereFromId(id) {
+function whereFromId(id, colonne = []) {
+  const perNome = new Map(colonne.map(c => [c.name, c]));
   const cols = Object.keys(id);
   if (!cols.length) throw new Error('Identificatore di riga mancante.');
   const sqlParts = [];
   const params = [];
   let idx = 1;
   for (const c of cols) {
-    const val = toSqlValue(id[c]);
+    const val = valorePostgres(id[c], perNome.get(c));
     if (val === null) {
       sqlParts.push(`${qid(c)} IS NULL`);
     } else {
@@ -171,15 +173,38 @@ const DIALETTO_METADATI = {
     tentativi: (db, coll) => [{
       // `is_nullable` viaggia con le colonne che si leggevano gia': nessuna
       // lettura di catalogo in piu' (serve a chi compone l'ORDER BY).
-      sql: `SELECT column_name AS name, udt_name AS type, is_nullable AS nullable,
-                   is_generated AS generated
-              FROM information_schema.columns
-             WHERE table_schema = $1 AND table_name = $2
-          ORDER BY ordinal_position`,
+      sql: `WITH RECURSIVE colonne AS (
+              SELECT a.attname, a.atttypid, a.atttypmod, a.attndims
+                FROM pg_catalog.pg_attribute a
+                JOIN pg_catalog.pg_class t ON t.oid = a.attrelid
+                JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
+               WHERE n.nspname = $1 AND t.relname = $2 AND a.attnum > 0 AND NOT a.attisdropped
+            ), tipi AS (
+              SELECT attname, atttypid AS oid, 0 AS depth FROM colonne
+              UNION ALL
+              SELECT p.attname, CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.typelem END, p.depth + 1
+                FROM tipi p JOIN pg_catalog.pg_type t ON t.oid = p.oid
+               WHERE p.depth < 32 AND (t.typtype = 'd' OR t.typcategory = 'A')
+                 AND CASE WHEN t.typtype = 'd' THEN t.typbasetype ELSE t.typelem END <> 0
+            )
+            SELECT c.column_name AS name, c.udt_name AS type, c.is_nullable AS nullable,
+                   c.is_generated AS generated,
+                   pg_catalog.format_type(a.atttypid, a.atttypmod) AS "declaredType", a.attndims AS dimensions,
+                   (SELECT json_agg(json_build_object('oid', t.oid, 'name', t.typname, 'schema', n.nspname,
+                            'kind', t.typtype, 'category', t.typcategory, 'base', t.typbasetype,
+                            'element', t.typelem, 'delimiter', t.typdelim, 'dimensions', t.typndims,
+                            'array', EXISTS (SELECT 1 FROM pg_catalog.pg_type element WHERE element.oid = t.typelem AND element.typarray = t.oid)) ORDER BY p.depth)
+                      FROM tipi p JOIN pg_catalog.pg_type t ON t.oid = p.oid
+                      JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+                     WHERE p.attname = c.column_name) AS type_nodes
+              FROM information_schema.columns c JOIN colonne a ON a.attname = c.column_name
+             WHERE c.table_schema = $1 AND c.table_name = $2
+          ORDER BY c.ordinal_position`,
       params: [schemaOf(db), coll],
     }],
     // Come `is_nullable`: viaggia con le colonne, nessuna lettura in piu'.
     generato: (r) => String(r.generated || '') === 'ALWAYS',
+    dettagli: (r) => ({ pgType: tipoDaCatalogo(r.type_nodes, r.dimensions) }),
     classi: [
       // L'ordine conta: un tipo geometrico NATIVO (point, polygon, box...) non
       // è una geometria PostGIS e non si legge con ST_AsGeoJSON, ma la griglia
@@ -235,6 +260,9 @@ const DIALETTO_METADATI = {
                    c.is_identity AS identity,
                    c.identity_generation,
                    c.is_generated AS generated,
+                   c.generation_expression AS "generationExpression",
+                   a.attgenerated AS "generationCode",
+                   CASE WHEN a.attcollation<>ty.typcollation THEN a.attcollation::regcollation::text END AS collation,
                    pg_catalog.format_type(COALESCE(NULLIF(ty.typbasetype, 0), ty.oid), NULL) AS base_type,
                    (SELECT json_agg(e.enumlabel ORDER BY e.enumsortorder) FROM pg_catalog.pg_enum e
                      WHERE e.enumtypid = COALESCE(NULLIF(ty.typbasetype, 0), ty.oid)) AS enum_values
@@ -251,11 +279,15 @@ const DIALETTO_METADATI = {
       params: [table, schemaOf(db)],
     }),
     tipo: (c) => String(c.ctype || 'varchar'),
-    dettagli: (c) => ({ baseType: c.base_type, enumValues: c.enum_values, identityGeneration: c.identity_generation }),
+    dettagli: (c) => ({ baseType: c.base_type, enumValues: c.enum_values, identityGeneration: c.identity_generation,
+      generationExpression: c.generationExpression == null ? null : String(c.generationExpression),
+      generationKind: c.generationCode === 's' ? 'STORED' : (c.generationCode === 'v' ? 'VIRTUAL' : null),
+      ...(c.collation ? { collation: c.collation } : {}),
+    }),
     // `serial` (nextval) e `GENERATED … AS IDENTITY` sono la stessa promessa:
     // se la colonna non viene scritta, il database produce un valore nuovo.
     autoIncrement: (c) => /nextval/i.test(String(c.cdefault || '')) || String(c.identity || '') === 'YES',
-    // Colonna calcolata (GENERATED ALWAYS AS … STORED): nominarla in un INSERT
+    // Colonna calcolata (STORED o VIRTUAL): nominarla in un INSERT
     // è un errore, il valore lo fa il database.
     generato: (c) => String(c.generated || '') === 'ALWAYS',
     // information_schema.columns non dice se la colonna è nella chiave
@@ -631,11 +663,14 @@ class PostgreSqlStrategy extends DbStrategy {
   // il driver `pg` restituirebbe il WKB esadecimale, inutilizzabile.
   async selectListFor(db, coll, infoPrecaricate = null) {
     const info = infoPrecaricate || await this.tableColumnsInfo(db, coll);
-    if (!info.geo.size && !info.geoNativo.size) {
+    if (!info.geo.size && !info.geoNativo.size && !info.columns.some(c => tipoColonna(c).kind === 'array')) {
       return { list: '*', geo: info.geo, geoNativo: info.geoNativo, colonne: info.columns };
     }
     const list = info.columns
       .map((c) => {
+        // Il parser standard perde limiti, cifre NUMERIC e microsecondi degli
+        // elementi. Il testo nativo è anche un input valido per il binder.
+        if (tipoColonna(c).kind === 'array') return `${qid(c.name)}::text AS ${qid(c.name)}`;
         if (info.geo.has(c.name)) return `ST_AsGeoJSON(${qid(c.name)}) AS ${qid(c.name)}`;
         // I tipi nativi il driver li consegna come oggetti ({x, y}) che non
         // distinguono un lseg da un path: il TESTO di PostgreSQL invece è
@@ -679,7 +714,7 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   // Espressione + parametro per una colonna in scrittura.
-  static geoBinding(col, value, geo, placeholder, geoNativo) {
+  static geoBinding(col, value, geo, placeholder, geoNativo, colonna) {
     const colInfo = geo && geo.get(col);
     if (colInfo && isGeoJson(value)) {
       // Si serializza la forma CANONICA restituita dalla validazione: le
@@ -698,7 +733,7 @@ class PostgreSqlStrategy extends DbStrategy {
       const canonica = isGeoJson(value) ? assertGeoJson(value, `Colonna "${col}"`) : value;
       return { sql: placeholder, param: geoJsonAPgNativo(nativo.type, canonica) };
     }
-    return { sql: placeholder, param: toSqlValue(value) };
+    return { sql: placeholder, param: valorePostgres(value, colonna) };
   }
 
   /**
@@ -718,8 +753,8 @@ class PostgreSqlStrategy extends DbStrategy {
     return `ctid = (SELECT ctid FROM ${qtable(db, coll)} WHERE ${whereSql} LIMIT 1)`;
   }
 
-  parseRowId(rawId) {
-    return TABELLARE.parseRowId(rawId);
+  parseRowId(rawId, colonne) {
+    return TABELLARE.parseRowId(rawId, colonne);
   }
 
   /**
@@ -734,10 +769,12 @@ class PostgreSqlStrategy extends DbStrategy {
   }
 
   buildSelect(db, coll, payload, opzioni = {}) {
+    const perNome = new Map((opzioni.colonne || []).map(c => [c.name, c]));
     // `ordinamento` chiude sul metodo di QUESTA istanza: e' cio' che rende
     // efficace una sovrascrittura di `buildOrderBy` anche per la griglia.
     return TABELLARE.buildSelect(db, coll, payload, {
       ...opzioni,
+      valore: (campo, value) => valorePostgres(value, perNome.get(campo)),
       ordinamento: (testo) => this.buildOrderBy(testo, opzioni),
     });
   }
@@ -762,7 +799,9 @@ class PostgreSqlStrategy extends DbStrategy {
     // OFFSET, costo O(pagina) a qualsiasi profondità. Altrimenti fallback OFFSET.
     // Geometrie lette come GeoJSON: vedi selectListFor.
     const { list: selectList, geo, geoNativo } = sel;
-    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList, whereParams);
+    const perNome = new Map(sel.colonne.map(c => [c.name, c]));
+    const ks = this.buildKeyset(payload, table, whereSql, limit, pk, selectList, whereParams,
+      (campo, value) => valorePostgres(value, perNome.get(campo)));
     // Su PostgreSQL il numero del segnaposto è la POSIZIONE reale del
     // parametro: se il filtro strutturato ne ha già occupati due, il limite
     // è $3 e il salto $4. Lasciarli fissi a $1 e $2 farebbe leggere il
@@ -824,6 +863,9 @@ class PostgreSqlStrategy extends DbStrategy {
 
     const columnMeta = Object.fromEntries(sel.colonne.map((c) => [c.name, {
       type: c.declaredType || c.type, nullable: c.nullable, srid: c.srid, generated: c.generated,
+      // Il nome di un dominio non rivela il tipo: l'editor deve sapere che
+      // anche app."numeric" può contenere un array, senza ricevere il catalogo.
+      ...(tipoColonna(c).kind === 'array' ? { pgType: { kind: 'array' } } : {}),
       // Sottotipo PostGIS: `type` qui e' 'geometry' per ogni colonna
       // geometrica, e la griglia non avrebbe altro modo di sapere che quella
       // colonna vuole un MultiPolygon.
@@ -1201,31 +1243,34 @@ class PostgreSqlStrategy extends DbStrategy {
 
   async docInsert(db, coll, payload) {
     const pool = this.requirePool();
-    const fields = await this.tableFields(db, coll);
-    const doc = await require('./insertValues').parseSqlInsert(payload.doc, fields);
+    const [fields, info] = await Promise.all([this.tableFields(db, coll), this.tableColumnsInfo(db, coll)]);
+    const perNome = new Map(info.columns.map(c => [c.name, c]));
+    const doc = await require('./insertValues').parseSqlInsert(payload.doc, fields,
+      (raw, col) => tipoColonna(perNome.get(col.name)).kind === 'array' ? valoreDalJson(raw, perNome.get(col.name)) : undefined);
     const cols = Object.keys(doc);
     const table = qtable(db, coll);
+    const ritorno = info.columns.some(c => tipoColonna(c).kind === 'array')
+      ? info.columns.map(c => tipoColonna(c).kind === 'array' ? `${qid(c.name)}::text AS ${qid(c.name)}` : qid(c.name)).join(', ') : '*';
     let res;
     if (!cols.length) {
-      res = await pool.query(`INSERT INTO ${table} DEFAULT VALUES RETURNING *`);
+      res = await pool.query(`INSERT INTO ${table} DEFAULT VALUES RETURNING ${ritorno}`);
     } else {
       // Le colonne geometriche non prendono il valore grezzo ma
       // ST_GeomFromGeoJSON col SRID della colonna (vedi geoBinding).
-      const { geo, geoNativo } = await this.tableColumnsInfo(db, coll);
-      const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`, geoNativo));
+      const { geo, geoNativo } = info;
+      const bind = cols.map((c, i) => PostgreSqlStrategy.geoBinding(c, doc[c], geo, `$${i + 1}`, geoNativo, perNome.get(c)));
       const override = fields.some(f => f.identityGeneration === 'ALWAYS' && Object.hasOwn(doc, f.name)) ? ' OVERRIDING SYSTEM VALUE' : '';
-      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')})${override} VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING *`;
+      const sql = `INSERT INTO ${table} (${cols.map(qid).join(', ')})${override} VALUES (${bind.map((b) => b.sql).join(', ')}) RETURNING ${ritorno}`;
       res = await pool.query(sql, bind.map((b) => b.param));
     }
     const insertedRow = res.rows[0] || {};
     const pk = await this.primaryKey(db, coll);
-    const insertedId = JSON.stringify(this.makeId(insertedRow, pk, Object.keys(insertedRow)));
+    const insertedId = JSON.stringify(serializeRow(this.makeId(insertedRow, pk, Object.keys(insertedRow)), fields));
     return { insertedId };
   }
 
   async docUpdate(db, coll, payload) {
     const pool = this.requirePool();
-    const where = this.parseRowId(payload.id);
     const set = deserializeClientObject(payload.set);
     const assignments = [];
     const params = [];
@@ -1234,13 +1279,15 @@ class PostgreSqlStrategy extends DbStrategy {
     let info;
     try { info = await this.tableColumnsInfo(db, coll); }
     catch (err) { throw new Error(ERRORE_SRID, { cause: err }); }
+    const perNome = new Map(info.columns.map(c => [c.name, c]));
+    const where = this.parseRowId(payload.id, info.columns);
     const bersaglio = await this.bersaglioRiga(db, coll, where.sql);
     return modificaConSrid({ pool, mysql: false, info, set, table: qtable(db, coll), where, qid }, async (conn, geo) => {
       const { geoNativo } = info;
 
       for (const [col, val] of Object.entries(set)) {
         if (col === '_id' && !info.columns.some(c => c.name === '_id')) continue;
-        const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo);
+        const b = PostgreSqlStrategy.geoBinding(col, val, geo, `$${idx++}`, geoNativo, perNome.get(col));
         assignments.push(`${qid(col)} = ${b.sql}`);
         params.push(b.param);
       }
@@ -1266,13 +1313,20 @@ class PostgreSqlStrategy extends DbStrategy {
     if (!doc || typeof doc !== 'object' || Array.isArray(doc)) {
       throw new Error('La riga deve essere un oggetto JSON: { "colonna": valore, ... }');
     }
-    documentoScrivibile(doc, (await this.tableColumnsInfo(db, coll)).columns);
+    const { columns } = await this.tableColumnsInfo(db, coll);
+    const perNome = new Map(columns.map(c => [c.name, c]));
+    const { campiJson } = await import('../public/js/insert-json.mjs');
+    for (const [name, raw] of campiJson(payload.doc)) {
+      if (tipoColonna(perNome.get(name)).kind === 'array') doc[name] = valoreDalJson(raw, perNome.get(name));
+    }
+    documentoScrivibile(doc, columns);
     return this.docUpdate(db, coll, { id: payload.id, set: EJSON.serialize(doc, { relaxed: false }) });
   }
 
   async docDelete(db, coll, payload) {
     const pool = this.requirePool();
-    const where = this.parseRowId(payload.id);
+    const { columns } = await this.tableColumnsInfo(db, coll);
+    const where = this.parseRowId(payload.id, columns);
     const res = await pool.query(
       `DELETE FROM ${qtable(db, coll)} WHERE ${await this.bersaglioRiga(db, coll, where.sql)}`,
       where.params
@@ -1363,6 +1417,11 @@ class PostgreSqlStrategy extends DbStrategy {
     const identita = new Map(ident.rows.map((r) => [r.name, String(r.generation || 'BY DEFAULT')]));
 
     const colDefs = fields.map((f) => {
+      if (f.generated) {
+        return require('./pg-ddl').pgGeneratedDdl({ name: f.name, type: f.types[0],
+          expression: f.generationExpression, kind: f.generationKind,
+          nullable: f.nullable, collation: f.collation });
+      }
       const generation = identita.get(f.name);
       if (generation) {
         // L'identità implica già NOT NULL e la propria sequenza.
@@ -1382,6 +1441,7 @@ class PostgreSqlStrategy extends DbStrategy {
         return def;
       }
       let def = `${qid(f.name)} ${f.types[0]}`;
+      if (f.collation) def += ` COLLATE ${f.collation}`;
       if (!f.nullable) def += ' NOT NULL';
       // Il default arriva già come espressione SQL dal catalogo
       // (`now()`, `'x'::text`, `(a + b)`): va riprodotto verbatim, non
@@ -1419,42 +1479,11 @@ class PostgreSqlStrategy extends DbStrategy {
    */
   async tableAuxDdl(db, coll) {
     const schema = schemaOf(db);
-    return this.conSearchPath(schema, async (client) => {
-      const out = { indexes: [], foreignKeys: [] };
-
-      // Solo gli indici NON creati da un vincolo: quelli di PK/UNIQUE sono già
-      // dentro il CREATE TABLE e ricrearli darebbe un errore di duplicato.
-      const idx = await client.query(
-        `SELECT pg_catalog.pg_get_indexdef(x.indexrelid) AS def
-           FROM pg_catalog.pg_index x
-           JOIN pg_catalog.pg_class i ON i.oid = x.indexrelid
-           JOIN pg_catalog.pg_class t ON t.oid = x.indrelid
-           JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-          WHERE n.nspname = $1 AND t.relname = $2
-            AND NOT EXISTS (
-              SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = x.indexrelid
-            )
-       ORDER BY i.relname`,
-        [schema, coll],
-      );
-      for (const r of idx.rows) out.indexes.push(`${String(r.def)};`);
-
-      const fk = await client.query(
-        `SELECT c.conname AS name, pg_catalog.pg_get_constraintdef(c.oid) AS def
-           FROM pg_catalog.pg_constraint c
-           JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
-           JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
-          WHERE n.nspname = $1 AND t.relname = $2 AND c.contype = 'f'
-       ORDER BY c.conname`,
-        [schema, coll],
-      );
-      for (const r of fk.rows) {
-        out.foreignKeys.push(
-          `ALTER TABLE ${qid(coll)} ADD CONSTRAINT ${qid(r.name)} ${String(r.def)};`
-        );
-      }
-      return out;
-    });
+    // Stesso inventario di backup ed export: una FK che usa un UNIQUE
+    // autonomo non ne diventa proprietaria e non deve nasconderlo.
+    return this.conSearchPath(schema, client => require('./pg-ddl').pgAuxDdl(
+      (sql, params) => client.query(sql, params), schema, coll
+    ));
   }
 
   async dbSchema(db) {
@@ -1612,7 +1641,10 @@ class PostgreSqlStrategy extends DbStrategy {
       ? await this.metadatiEsportazione(db, coll, primaPagina)
       : null;
     if(metadati && primaPagina)require('./pg-alias').attach(metadati.info.columns,await require('./pg-references').columnReferences((s,p)=>pool.query(s,p),schemaOf(db),coll));
-    const selectList = metadati ? require('./sqlTransfer').projection(metadati.info, false) : '*';
+    const info = metadati?.info || await this.tableColumnsInfo(db, coll);
+    const perNome = new Map(info.columns.map(c => [c.name, c]));
+    const selectList = metadati ? require('./sqlTransfer').projection(metadati.info, false)
+      : info.columns.map(c => tipoColonna(c).kind === 'array' ? `${qid(c.name)}::text AS ${qid(c.name)}` : qid(c.name)).join(', ') || '*';
 
     let rows;
     let fields;
@@ -1633,7 +1665,7 @@ class PostgreSqlStrategy extends DbStrategy {
           throw new Error('Cursore di paginazione non valido.');
         }
         whereSql = ` WHERE (${pkCols}) > (${pk.map((_, i) => `$${i + 1}`).join(', ')})`;
-        params = afterVals.map(toSqlValue);
+        params = afterVals.map((v, i) => valorePostgres(v, perNome.get(pk[i])));
       }
       params.push(limit);
       const limitIdx = params.length;
@@ -1645,7 +1677,7 @@ class PostgreSqlStrategy extends DbStrategy {
       fields = res.fields;
       if (rows.length) {
         const last = rows[rows.length - 1];
-        nextAfter = EJSON.stringify(pk.map((c) => last[c]), { relaxed: false });
+        nextAfter = EJSON.stringify(preparaBinariEjson(pk.map((c) => last[c])), { relaxed: false });
       }
     } else {
       const skip = Math.max(parseInt(payload.skip, 10) || 0, 0);
@@ -1722,14 +1754,18 @@ class PostgreSqlStrategy extends DbStrategy {
     let geoNativo = new Map();
     let scrivibili = new Set();
     let importColumnTypes = new Map();
+    let perNome = new Map();
     try {
       const info = await this.tableColumnsInfo(db, coll);
+      perNome = new Map(info.columns.map(c => [c.name, c]));
       importColumnTypes = new Map(info.columns.map(c=>[c.name,String(c.type || c.ctype || '').toLowerCase().replace(/^_(regproc|regoper)$/,'$1[]')]));
       colonneReali = new Set(info.columns.map((c) => c.name));
       geo = info.geo || geo;
       geoNativo = info.geoNativo || geoNativo;
       scrivibili = new Set(info.columns.filter(c => !c.generated).map(c => c.name));
-    } catch { /* metadati non leggibili: vale il comportamento storico */ }
+    } catch (err) {
+      throw new Error('Impossibile leggere i tipi delle colonne prima dell’importazione PostgreSQL.', { cause: err });
+    }
 
     if(raw.some(row=>Object.values(row).some(v=>v?.$pgReference?.kind==='nested'))) {
       const shapes=await require('./pg-references').columnReferences((s,p)=>pool.query(s,p),schemaOf(db),coll);
@@ -1780,7 +1816,7 @@ class PostgreSqlStrategy extends DbStrategy {
           const placeholder = `$${valori.length + 1}`;
           const reference = v?.$pgReference && importColumnTypes.get(cols[indice]) === v.$pgReference.kind ? require('./pg-alias').binding(v) : null;
           const bind = reference ? {...reference,sql:reference.sql.replace('$1',placeholder)} : PostgreSqlStrategy.geoBinding(
-            cols[indice], v, geo, placeholder, geoNativo
+            cols[indice], v, geo, placeholder, geoNativo, perNome.get(cols[indice])
           );
           valori.push(bind.param);
           return bind.sql;

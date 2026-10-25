@@ -26,6 +26,14 @@ const assert = require('assert');
 const MySqlStrategy = require('../db/MySqlStrategy');
 const PostgreSqlStrategy = require('../db/PostgreSqlStrategy');
 
+// Il catalogo può contenere SELECT e ORDER BY interni: qui interessa soltanto
+// la lettura dei dati della tabella, senza confonderla con i metadati.
+function queryDatiOrdinata(sql) {
+  return /^\s*SELECT\b/i.test(sql)
+    && /FROM\s+["`]appdb["`]\.["`]utenti["`]/i.test(sql)
+    && /ORDER BY/i.test(sql);
+}
+
 let falliti = 0;
 async function prova(nome, fn) {
   try {
@@ -141,7 +149,7 @@ module.exports = (async () => {
 
       await s.collectionFind('appdb', 'utenti', { sort: '{"nome":1}', limit: 10 });
 
-      const query = viste.map((v) => v.sql).find((sql) => /SELECT .* FROM /i.test(sql) && /ORDER BY/i.test(sql));
+      const query = viste.map((v) => v.sql).find(queryDatiOrdinata);
       assert.ok(query, `nessuna SELECT con ORDER BY fra le query viste:\n${viste.map((v) => v.sql).join('\n')}`);
       assert.ok(
         query.includes('ORDER BY marcatore_del_test'),
@@ -249,7 +257,7 @@ module.exports = (async () => {
     const s = new PostgreSqlStrategy();
     const viste = pooleFinto(s, (sql) => (/information_schema/i.test(sql) ? catalogoColonne('postgresql') : []));
     await s.collectionFind('appdb', 'utenti', { sort: '{"nome":1}' });
-    const query = viste.map((v) => v.sql).find((sql) => /SELECT .* FROM /i.test(sql) && /ORDER BY/i.test(sql));
+    const query = viste.map((v) => v.sql).find(queryDatiOrdinata);
     assert.ok(query, 'nessuna SELECT con ORDER BY');
     assert.ok(query.includes('NULLS FIRST'), `il suffisso non e' arrivato al server:
 ${query}`);
@@ -261,7 +269,7 @@ ${query}`);
     const s = new PostgreSqlStrategy();
     const viste = pooleFinto(s, (sql) => (/information_schema/i.test(sql) ? catalogoColonne('postgresql') : []));
     await s.collectionFind('appdb', 'utenti', { sort: '{"id":1}' });
-    const query = viste.map((v) => v.sql).find((sql) => /SELECT .* FROM /i.test(sql) && /ORDER BY/i.test(sql));
+    const query = viste.map((v) => v.sql).find(queryDatiOrdinata);
     assert.ok(query && !/NULLS/i.test(query), `suffisso di troppo su una colonna NOT NULL:
 ${query}`);
   });

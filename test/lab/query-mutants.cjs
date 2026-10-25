@@ -25,6 +25,11 @@ if (mutant === 'perdita-riga') {
     const viste = new Set();
     return rows.filter(row => { if (viste.has(row.id)) return false; viste.add(row.id); return true; });
   };
+} else if (mutant === 'array-cifre') {
+  const valori = require('../../db/pg-valori');
+  const { parseClientValue } = require('../../db/sqlValori');
+  // Ripristina il parsing approssimato del testo prima del binding array.
+  valori.valoreDalJson = (text, column) => valori.valorePostgres(parseClientValue(text), column);
 } else if (mutant) {
   throw new Error(`Mutazione laboratorio sconosciuta: ${mutant}`);
 }

@@ -93,6 +93,7 @@ async function deleteRows(client, db, coll, rows) {
 
 async function importRows(client, db, coll, rows, upsert = false, options = {}, triggers = null) {
   if (!Array.isArray(rows)) throw new Error('Documenti BSON non validi.');
+  const { preservaIdentita = false, ...writeOptions } = options;
   let inserted = 0;
   const errors = [];
   if (triggers) { await triggers.statement('BEFORE', 'INSERT'); if (upsert) await triggers.statement('BEFORE', 'UPDATE'); }
@@ -109,9 +110,16 @@ async function importRows(client, db, coll, rows, upsert = false, options = {}, 
         if (triggers.hasBefore(old ? 'UPDATE' : 'INSERT')) raw = await triggers.beforeRaw(old ? 'UPDATE' : 'INSERT', old, raw);
       }
       if (triggers) ids.push(BSON.deserialize(inspect(raw).id, { promoteValues: false })._id);
+      // Nel merge una collation può trovare un _id equivalente ma scritto
+      // diversamente. L'identità esistente è immutabile: ometterla dalla sola
+      // replacement la conserva, mentre un upsert nuovo la prende dal filtro.
+      // I byte del filtro restano BSON grezzo, compresi Int64 e documenti _id.
+      const replacement = upsert && preservaIdentita ? document(BSON.onDemand.parseToElements(raw)
+        .filter(element => raw.toString('utf8', element[1], element[1] + element[2]) !== '_id')
+        .map(element => raw.subarray(element[1] - 1, element[3] + element[4]))) : raw;
       const encoded = upsert ? document([
         Buffer.concat([Buffer.from([3, 113, 0]), inspect(raw).id]),
-        Buffer.concat([Buffer.from([3, 117, 0]), raw]),
+        Buffer.concat([Buffer.from([3, 117, 0]), replacement]),
         Buffer.from([8, ...Buffer.from('upsert\0'), 1]),
       ]) : raw;
       sequence.push({}, encoded); bytes += encoded.length; count++; offset++;
@@ -119,7 +127,7 @@ async function importRows(client, db, coll, rows, upsert = false, options = {}, 
       if (triggers) break;
     }
     const previous = triggers && upsert ? await triggers.prima({ _id: { $in: ids } }, options) : [];
-    const response = await client.db(db).command({ [upsert ? 'update' : 'insert']: coll, [sequence.field]: sequence, ordered: false }, options);
+    const response = await client.db(db).command({ [upsert ? 'update' : 'insert']: coll, [sequence.field]: sequence, ordered: false }, writeOptions);
     checkWrite(response);
     if (options.session && response.writeErrors?.length) throw new Error(response.writeErrors[0].errmsg);
     inserted += response.n || 0;

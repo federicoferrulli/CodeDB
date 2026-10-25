@@ -7,8 +7,10 @@ const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const mutantOverlap = process.argv.includes('--mutant-overlap');
 const mutantShift = process.argv.includes('--mutant-shift');
+const sameFrame = process.argv.includes('--same-frame');
+const mutantScroll = process.argv.includes('--mutant-scroll');
 const screenshots = !process.argv.includes('--checks-only');
-const dir = `test-reports/tab-motion-2026-10-12/${mutantShift ? 'mutante-shifting' : mutantOverlap ? 'mutante-sovrapposizione' : mutant ? 'mutante' : 'dopo'}`;
+const dir = process.env.TAB_MOTION_REPORT_DIR || `test-reports/tab-motion-2026-10-12/${mutantShift ? 'mutante-shifting' : mutantOverlap ? 'mutante-sovrapposizione' : mutant ? 'mutante' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
@@ -20,6 +22,17 @@ fs.mkdirSync(dir, { recursive: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.setDefaultTimeout(7000);
     page.on('pageerror', error => report.errors.push(error.message));
+    if (sameFrame || mutantScroll) await page.route('**/js/tab-drag.js', async route => {
+      const response = await route.fetch(); let source = await response.text();
+      assert(source.includes('frame = 0;'));
+      source = source.replace('frame = 0;', 'if (window.__sameFrame && window.__sameFrameCalls++ === 1) tempo = ultimoTempo; frame = 0;');
+      if (mutantScroll) {
+        assert(source.includes('if (velocita && spazio)'));
+        source = source.replace('bar.scrollLeft += velocita *', 'const prima = bar.scrollLeft; bar.scrollLeft += velocita *')
+          .replace('if (velocita && spazio)', 'if (velocita && bar.scrollLeft !== prima)');
+      }
+      await route.fulfill({ response, body: source });
+    });
     if (mutantShift) await page.route('**/js/tab-drag.js', async route => {
       const response = await route.fetch(), source = await response.text();
       assert(source.includes('const passo = larghezza +'));
@@ -243,23 +256,49 @@ fs.mkdirSync(dir, { recursive: true });
       const bar = document.getElementById('coll-tab-bar');
       const order = [...bar.querySelectorAll('[role="tab"]')].map(n => n.dataset.tabId);
       bar.style.maxWidth = '360px'; bar.scrollLeft = 0;
+      window.__sameFrame = true; window.__sameFrameCalls = 0;
       const from = bar.querySelector('[role="tab"]'), r = from.getBoundingClientRect(), b = bar.getBoundingClientRect();
       const transfer = new DataTransfer();
       from.dispatchEvent(new DragEvent('dragstart', { dataTransfer: transfer, bubbles: true, clientX: r.left + 24, clientY: r.top + r.height / 2 }));
       bar.dispatchEvent(new DragEvent('dragover', { dataTransfer: transfer, bubbles: true, cancelable: true, clientX: b.right - 3, clientY: r.top + r.height / 2 }));
-      await aspetta();
+      // L'auto-scroll avanza per fotogrammi: 220 ms di tempo reale non
+      // garantiscono lo stesso numero di frame su host e container carichi.
+      const campioniScroll = [], inizioScroll = performance.now();
+      const attesaScroll = await new Promise(resolve => {
+        let frame;
+        const termina = scaduta => {
+          clearTimeout(timer); cancelAnimationFrame(frame);
+          resolve({ scaduta, durataMs: performance.now() - inizioScroll });
+        };
+        const timer = setTimeout(() => termina(true), 2000);
+        const misura = () => {
+          campioniScroll.push({ ms: performance.now() - inizioScroll, scroll: bar.scrollLeft,
+            larghezza: bar.clientWidth, contenuto: bar.scrollWidth, trascinamento: bar.classList.contains('tab-reordering'),
+            tabTrascinata: !!bar.querySelector('.dragging') });
+          if (bar.scrollLeft > 40) termina(false);
+          else frame = requestAnimationFrame(misura);
+        };
+        frame = requestAnimationFrame(misura);
+      });
       const scroll = bar.scrollLeft;
       window.tabFixture.c.renderCollTabBar();
       const annullato = !document.querySelector('.dragging, .tab-reordering, .split-dragging');
       const invariato = order.join() === [...bar.querySelectorAll('[role="tab"]')].map(n => n.dataset.tabId).join();
+      const diagnosticaScroll = { ...attesaScroll, larghezza: bar.clientWidth, larghezzaContenuto: bar.scrollWidth,
+        puntatoreX: b.right - 3, bordoDestro: b.right, campioni: campioniScroll };
       bar.style.maxWidth = ''; bar.scrollLeft = 0;
-      return { risultati, scroll, annullato, invariato };
+      return { risultati, scroll, annullato, invariato, diagnosticaScroll };
     });
+    report.reversibile = reversibile;
     for (const r of reversibile.risultati) {
       assert(r.shifts.every(dx => Math.abs(dx - r.passo) < 1), `${r.id}: apertura del varco anche verso sinistra`);
       assert(r.tornate && r.pulito, `${r.id}: inversione e annullamento senza segni residui`);
     }
-    assert(reversibile.scroll > 40 && reversibile.annullato && reversibile.invariato, 'Scroll continuo al bordo e ri-render durante il gesto senza cambiare ordine');
+    const diagnosticaScroll = JSON.stringify({ scroll: reversibile.scroll, annullato: reversibile.annullato, invariato: reversibile.invariato,
+      ...reversibile.diagnosticaScroll, campioni: reversibile.diagnosticaScroll.campioni.length });
+    assert(reversibile.scroll > 40, `[QA001-SCROLL] Auto-scroll oltre 40 px entro 2 secondi: ${diagnosticaScroll}`);
+    assert(reversibile.annullato, `[QA001-ANNULLAMENTO] Il re-render annulla il gesto: ${diagnosticaScroll}`);
+    assert(reversibile.invariato, `[QA001-ORDINE] Il re-render conserva l'ordine: ${diagnosticaScroll}`);
     check('Riordino in entrambe le direzioni, inversione, annullamento, auto-scroll e ri-render durante il gesto');
 
     await page.locator('#tab-bar [aria-selected="true"]').press('Home');

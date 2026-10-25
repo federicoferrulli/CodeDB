@@ -12,7 +12,7 @@ process.env.CODEDB_BACKUP_MARGINE_MS = '0';
  * Crea e poi elimina i database gui_mysql_e2e_backup (+ _restore).
  *
  * Flusso: seed → backup full → nuove scritture → backup incremental (colonna
- * updated_at rilevata da sola) → restore della catena su altro schema.
+ * updated_at richiesta esplicitamente) → restore della catena su altro schema.
  * ------------------------------------------------------------------------- */
 
 const assert = require('assert');
@@ -68,13 +68,13 @@ async function main() {
     const outFull = cli('backup', '--conn', 'e2e-backup-mysql', '--db', DB, '--type', 'full', '--dest', destRoot);
     assert.match(outFull, /stato=SUCCESSO/, 'il backup full deve riuscire');
 
-    // 2. Nuove scritture (insert + update), poi incrementale: la colonna
-    // updated_at deve essere rilevata automaticamente.
+    // 2. Modalità temporale esplicita; la modalità automatica confronta ora
+    // il contenuto ed è provata separatamente da backup-incrementali.cjs.
     await new Promise((r) => setTimeout(r, 1100)); // granularità 1s di TIMESTAMP
     await conn.query(`INSERT INTO ${DB}.clienti (nome, saldo) VALUES ('Carla', 30.00)`);
     await conn.query(`UPDATE ${DB}.clienti SET saldo = 11.00 WHERE nome = 'Anna'`);
     await conn.query(`DELETE FROM ${DB}.clienti WHERE nome = 'Bruno'`);
-    const outInc = cli('backup', '--conn', 'e2e-backup-mysql', '--db', DB, '--type', 'incremental', '--dest', destRoot);
+    const outInc = cli('backup', '--conn', 'e2e-backup-mysql', '--db', DB, '--type', 'incremental', '--since-field', 'updated_at', '--dest', destRoot);
     assert.match(outInc, /stato=SUCCESSO/, 'il backup incrementale deve riuscire');
 
     const groupDir = path.join(destRoot, `e2e-backup-mysql_${DB}`);

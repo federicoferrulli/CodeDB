@@ -1,5 +1,5 @@
 import { chiediConferma } from './conferma.js';
-import { mountArcControls, closeNavigationSheet } from '../arc/ui.js';
+import { mountArcControls } from '../arc/ui.js';
 'use strict';
 
 /**
@@ -218,7 +218,8 @@ export function initTheme() {
 function apriModale() {
   const m = $('#modal-theme');
   if (!m) return;
-  closeNavigationSheet(true);
+  // La modale si sovrappone al navigatore: mantenerne l'istanza conserva
+  // pannello, filtro, scorrimento e destinazione del focus alla chiusura.
   chiudiEditor();
   disegnaElenco();
   m.classList.remove('hidden');

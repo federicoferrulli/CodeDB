@@ -335,6 +335,12 @@ const cases = [
 ];
 
 module.exports = (async () => {
+  await require('./unit-backup-confine-temporale');
+  await require('./unit-backup-indici');
+  await require('./unit-backup-oggetti-catena');
+  await require('./unit-backup-validator');
+  await require('./unit-backup-mysql-schema');
+  await require('./unit-pg-generate');
   for (const [name, run] of cases) {
     try { await run(); console.log('  OK  ', name); }
     catch (err) { console.error('  FAIL', name, err.message); process.exitCode = 1; }

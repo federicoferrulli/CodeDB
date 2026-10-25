@@ -162,6 +162,12 @@ async function eseguiPianoImport(plan, { adapter, signal = null, onProgress = ()
       err.verification = final || null;
       throw err;
     }
+    // I motori transazionali possono tenere aperta la promozione fino alla
+    // verifica finale. Il commit non deve precedere questa barriera.
+    if (typeof adapter.finalize === 'function') {
+      annullata(signal);
+      await adapter.finalize(plan, staging, recovery);
+    }
     return congela({
       status: 'completato', fingerprint: plan.fingerprint, recovery, staging,
       verification: final, promotion: plan.promotion,

@@ -52,9 +52,9 @@ BACKUP
   --db <nome>              Database da salvare (obbligatorio).
   --type <tipo>            full | incremental | differential (default: full).
   --collections <a,b,...>  Limita il backup alle collection/tabelle indicate.
-  --since-field <campo>    Campo data che individua le modifiche per incremental/differential
-                           (senza: MongoDB usa il timestamp degli ObjectId — solo nuovi inserimenti;
-                           MySQL cerca updated_at/created_at e simili, altrimenti dump completo della tabella).
+  --since-field <campo>    Filtro temporale esplicito per incremental/differential.
+                           Senza filtro si confronta il contenuto completo e si salvano le righe cambiate.
+                           Con filtro, le modifiche che non aggiornano il campo data restano escluse.
   --no-compress            Disabilita la compressione gzip dei file dati.
   --compress-level <1-9>   Livello gzip (default: 6).
   --storage <dest>         Copia il backup anche su cloud: s3://bucket/prefisso,
@@ -88,8 +88,9 @@ ESEMPI
 
 NOTE
   - I log delle operazioni sono in <dest>/backup.log (inizio/fine, stato, durata, errori).
-  - I nuovi backup incrementali/differenziali v3 catturano le cancellazioni tramite tombstone d'identità.
-    Le catene storiche v1/v2 restano leggibili, ma il restore le classifica come equivalenza incompleta.
+  - I manifest v5 distinguono confronto del contenuto, snapshot completa e filtro temporale esplicito.
+    Le cancellazioni usano tombstone d'identità; senza identità stabile si salva una snapshot completa.
+    Le catene storiche restano leggibili: il restore dichiara i limiti di equivalenza verificabili.
   - Se connections.ini ha segreti cifrati serve la passphrase: env GUI_MONGO_PASSPHRASE o prompt.
 `;
 
@@ -249,7 +250,7 @@ async function cmdRestore(args) {
     const summary = await log.run(label, async () => {
       const session = await establishConnection(cfg);
       try {
-        const source = descriviBackup(backupDir, onlyCollections);
+        const source = descriviBackup(backupDir, onlyCollections, { allowUnsafeSchema: !!args['allow-unsafe-schema'] });
         const plan = creaPianoRestore({
           source, expectedDbType: session.dbType, connection: connName,
           targetDb: args['target-db'] || source.sourceDb, drop: !!args.drop,
@@ -265,7 +266,8 @@ async function cmdRestore(args) {
         });
         const verifiedRows = (result.verification && result.verification.snapshot
           && result.verification.snapshot.counts || []).reduce((sum, item) => sum + item.cardinality, 0);
-        return { ...result, targetDb: plan.targetDb, totalDocs: verifiedRows, layers: source.layers.length };
+        return { ...result, targetDb: plan.targetDb, totalDocs: verifiedRows, layers: source.layers.length,
+          equivalenza: source.equivalenza, equivalenzaDati: source.equivalenzaDati, coerenzaSchema: source.coerenzaSchema };
       } finally {
         await teardownConnection(session);
       }

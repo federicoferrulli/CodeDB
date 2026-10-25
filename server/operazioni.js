@@ -4,6 +4,7 @@
 const path = require('path');
 const crypto = require('crypto');
 const { createImportOperationRegistry } = require('../db/importOperations');
+const { createRestoreOperationRegistry } = require('../db/restoreOperations');
 const { creaDiario } = require('../db/diarioOperazioni');
 const { createImportUploadRegistry } = require('../db/importUploads');
 const { createArchivioUpload } = require('../db/uploadDisco');
@@ -31,6 +32,7 @@ function createModule({ config, identita }) {
     radicePer: (ownerId) => path.join(backupRootOf({ ownerId }), 'import-diario'),
   });
   const importOperations = createImportOperationRegistry({ diario: diarioImport });
+  const restoreOperations = createRestoreOperationRegistry();
 
   const importUploads = createImportUploadRegistry({
     maxBytes: Number(config.env.CODEDB_MAX_IMPORT_BYTES) || 64 * 1024 * 1024,
@@ -205,6 +207,7 @@ function createModule({ config, identita }) {
 
   return {
     importOperations,
+    restoreOperations,
     importUploads,
     archivioUpload,
     artefatti,

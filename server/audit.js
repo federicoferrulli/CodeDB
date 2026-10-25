@@ -107,6 +107,8 @@ function createModule({ config, dependencies, errori }) {
     'backup:cancel': 'annulla solo un backup del proprio socket, autorizzato sulla connessione di origine',
     'backup:list': 'elenca i backup su disco, fuori dal perimetro di una strategia',
     'backup:restore': 'accede al driver nativo, autorizzato sull\'intera connessione',
+    'backup:restore:state': 'legge il registro senza sessione DB, verificando proprietario, attore e permessi correnti sulla connessione',
+    'backup:restore:list': 'elenca il registro senza sessione DB, filtrando proprietario, attore e permessi correnti sulla connessione',
     'backup:verify': 'verifica i file di un backup, fuori dal perimetro di una strategia',
   };
 

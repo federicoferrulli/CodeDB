@@ -8,10 +8,12 @@ function classifica(code, scaduto, content) {
   const errori = lines.filter(s => /^\s*[^\p{L}\p{N}]*(?:FAIL|FAILED|FALLITO)\b/iu.test(s));
   return { esito: scaduto ? 'timeout' : code !== 0 || errori.length ? 'fallito' : saltati.length ? 'incompleto' : 'superato', saltati, errori };
 }
-function runSuite({ file, log, cwd, env = process.env, timeoutMs = 180000, args = [] }) {
+function runSuite({ file, log, cwd, env = process.env, timeoutMs = 180000, args = [], display = false }) {
   return new Promise(resolve => {
     const started = Date.now(), fd = fs.openSync(log, 'w');
-    const child = spawn(process.execPath, [file, ...args], { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', fd, fd] });
+    const child = spawn(display ? 'xvfb-run' : process.execPath,
+      display ? ['-a', process.execPath, file, ...args] : [file, ...args],
+      { cwd, env, detached: process.platform !== 'win32', stdio: ['ignore', fd, fd] });
     const rimuoviFiglio = child.pid ? require('./lock.cjs').registra(child.pid, process.platform !== 'win32') : () => {};
     let scaduto = false, spawnError;
     const termina = () => {

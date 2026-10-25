@@ -7,6 +7,7 @@ const PostgreSqlStrategy = require('../db/PostgreSqlStrategy');
 const { deserializeClientObject, toSqlValue, parseClientValue } = require('../db/sqlValori');
 
 module.exports = (async () => {
+  await require('./unit-pg-array-metadati');
   // DEFAULT_GENERATED descrive un default, non una colonna calcolata.
   const mysql = new MySqlStrategy();
   mysql.pool = { query: async () => [[

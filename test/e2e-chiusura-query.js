@@ -20,7 +20,7 @@ const { _electron } = require('playwright');
   delete env.ELECTRON_RUN_AS_NODE;
   let app;
   try {
-    app = await _electron.launch({ args: [entry, '--headless'], env, timeout: 30000 });
+    app = await _electron.launch({ args: require('./electron-harness').argomentiElectron([entry, '--headless']), env, timeout: 30000 });
     const page = await app.firstWindow();
     page.on('dialog', () => {}); // La conferma Electron è gestita nel processo principale.
     await page.waitForSelector('html[data-arc-ready="true"]');

@@ -33,6 +33,9 @@ export function richiedePrecisioneEsatta(metadato = {}) {
   if (!metadato) return false;
   if (metadato.wrapper === '$numberLong' || metadato.wrapper === '$numberDecimal') return true;
   const tipo = tipoDaMetadato(metadato);
+  // Un array di numeri conserva l'editor strutturato: il codec scalare non
+  // può validare l'intero documento come un singolo BIGINT o NUMERIC.
+  if (metadato.pgType?.kind === 'array' || /\[\s*\]/.test(tipo)) return false;
   return /(^|\W)(bigint|int8|bigserial|serial8|int64|long|decimal|numeric|dec|fixed)(\W|$)/.test(tipo);
 }
 

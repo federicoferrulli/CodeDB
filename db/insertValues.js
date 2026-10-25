@@ -2,7 +2,7 @@
 
 const { parseClientValue } = require('./sqlValori');
 
-async function parseSqlInsert(text, columns) {
+async function parseSqlInsert(text, columns, valoreDalTesto) {
   const { campiJson } = await import('../public/js/insert-json.mjs');
   const fields = campiJson(text);
   const doc = Object.create(null);
@@ -11,6 +11,10 @@ async function parseSqlInsert(text, columns) {
     if (!col) throw new Error(`Colonna "${name}" inesistente: aggiorna lo schema.`);
     if (col.generated) throw new Error(`La colonna "${name}" è calcolata dal database: omettila dall'inserimento.`);
     const type = String(col.baseType || col.type || col.types?.[0] || '').toLowerCase();
+    if (valoreDalTesto) {
+      const converted = valoreDalTesto(raw, col);
+      if (converted !== undefined) { doc[name] = converted; continue; }
+    }
     if (raw === 'null') doc[name] = null;
     else if (/^jsonb?$/.test(type) && raw[0] !== '"') doc[name] = raw;
     else if (/^-?\d/.test(raw)) doc[name] = raw;

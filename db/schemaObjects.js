@@ -3,12 +3,13 @@
 const { mysqlSchemaObjects } = require('../backup/lib/engine');
 const { pgSchemaObjects } = require('./pg-ddl');
 const { quotaSempre } = require('./identificatori');
+const { codificaMetadati, decodificaMetadati, documentoCanonico } = require('./mongoSchemaBson');
 
 /** Legge gli oggetti non-tabella usando gli stessi cataloghi del backup full. */
 async function readSchemaObjects(strategy, dbType, db) {
   const type = dbType === 'postgres' ? 'postgresql' : dbType;
   if (type === 'mongodb') {
-    const infos = await strategy.client.db(db).listCollections().toArray();
+    const infos = await strategy.client.db(db).listCollections({}, { promoteValues: false }).toArray();
     const out = { views: [], collectionOptions: [] };
     for (const info of infos) {
       if (info.type === 'view') {
@@ -24,6 +25,8 @@ async function readSchemaObjects(strategy, dbType, db) {
         if (Object.keys(options).length) out.collectionOptions.push({ name: info.name, options });
       }
     }
+    out.views = out.views.map(codificaMetadati);
+    out.collectionOptions = out.collectionOptions.map(codificaMetadati);
     return out;
   }
   if (type === 'mysql') {
@@ -53,6 +56,27 @@ function canonicalValue(value) {
     return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalValue(value[key])]));
   }
   return value;
+}
+
+// Il catalogo può esprimere una condizione regex come operatori di campo o
+// come BSONRegExp. Sono equivalenti soltanto in quel contesto: sotto $eq/$in
+// un documento con chiavi $regex/$options rimane invece un valore letterale.
+function canonicaValidatorMongo(query) {
+  if (!query || typeof query !== 'object' || Array.isArray(query)) return query;
+  const condizione = value => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    if (value._bsontype || value instanceof Date || value instanceof RegExp) return value;
+    const keys = Object.keys(value);
+    if (typeof value.$regex === 'string' && keys.every(key => key === '$regex' || key === '$options')
+        && (value.$options === undefined || typeof value.$options === 'string')) {
+      return new (require('bson').BSONRegExp)(value.$regex, value.$options || '');
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key,
+      key === '$not' ? condizione(item) : key === '$elemMatch' ? canonicaValidatorMongo(item) : item]));
+  };
+  return Object.fromEntries(Object.entries(query).map(([key, value]) => [key,
+    ['$and', '$or', '$nor'].includes(key) && Array.isArray(value) ? value.map(canonicaValidatorMongo)
+      : !key.startsWith('$') ? condizione(value) : value]));
 }
 
 // Compatta solo lo spazio esterno a stringhe e identificatori quotati: il
@@ -97,6 +121,8 @@ function canonicalSql(sql) {
  * restava — ed era proprio quella che serviva togliere.
  */
 function canonicalSqlForDb(sql, db) {
+  const indice = require('./pg-indici').canonicaIndice(sql, db);
+  if (indice != null) return indice;
   let normalized = canonicalSql(sql);
   const name = String(db || '');
   if (!name) return normalized;
@@ -127,31 +153,77 @@ function canonicalSqlForDb(sql, db) {
  * una differenza e' una differenza vera.
  */
 function canonicalMongoIndex(index) {
-  const semantic = {};
+  const semantic = Object.create(null);
   if (!index) return JSON.stringify(semantic);
-  if (index.name !== undefined) semantic.name = index.name;
-  if (index.key !== undefined) semantic.key = index.key;
-  // Booleane: assente ed esplicitamente falsa sono la stessa cosa.
-  for (const flag of ['unique', 'sparse']) {
-    if (index[flag]) semantic[flag] = true;
+  index = decodificaMetadati(index);
+  const metadati = new Set(['v', 'ns', 'background', 'buildUUID', 'ready', 'dropDups']);
+  const falsePredefinito = new Set(['unique', 'sparse', 'hidden']);
+  for (const [option, value] of Object.entries(index)) {
+    if (value === undefined || metadati.has(option) || (falsePredefinito.has(option) && value === false)) continue;
+    // Nell'indice composto l'ordine delle colonne cambia i prefissi ricercabili.
+    // L'array conserva quell'ordine anche quando ordiniamo il descrittore.
+    semantic[option] = option === 'key' && value && typeof value === 'object'
+      ? Object.entries(value) : value;
   }
-  for (const option of ['expireAfterSeconds', 'partialFilterExpression', 'collation', 'wildcardProjection']) {
-    if (index[option] !== undefined && index[option] !== null) semantic[option] = index[option];
+  // L'elenco chiuso riguarda solo metadati e valori predefiniti: le opzioni
+  // semantiche, comprese quelle introdotte da nuovi server, non vanno perse.
+  // EJSON rende confrontabili numeri del driver e Int32 letti dal backup,
+  // conservando invece Int64, date e altri valori BSON senza arrotondarli.
+  const { EJSON } = require('bson');
+  const serialized = EJSON.serialize(semantic, { relaxed: false });
+  // Nel filtro un oggetto può essere un valore letterale BSON: {a:1,b:2}
+  // non equivale a {b:2,a:1}. Conserviamo prudentemente tutto l'ordine del
+  // filtro, anche annidato, senza dedurne equivalenze da un parser parziale.
+  if (serialized.partialFilterExpression !== undefined) {
+    serialized.partialFilterExpression = documentoCanonico(canonicaValidatorMongo(semantic.partialFilterExpression));
   }
-  return JSON.stringify(canonicalValue(semantic));
+  return JSON.stringify(canonicalValue(serialized));
 }
 
 function canonicalSchemaInventory(objects, { db = null } = {}) {
   const result = {};
   for (const field of ['views', 'collectionOptions', 'routines', 'triggers', 'events', 'sequences', 'sequenceValues', 'types', 'collations', 'extensions']) {
     result[field] = (objects && objects[field] || []).map((item) => {
-      const normalized = { ...item };
+      let normalized = { ...item };
+      // Il normalizzatore degli archivi MongoDB può rendere esplicita l'assenza
+      // di collation con null; listCollections omette invece la proprietà.
+      if (field === 'views' && Object.hasOwn(normalized, 'viewOn')) {
+        normalized = decodificaMetadati(item);
+        if (normalized.collation == null) delete normalized.collation;
+        const pipeline = normalized.pipeline;
+        normalized = require('bson').EJSON.serialize(normalized, { relaxed: false });
+        // $sort e i documenti $literal dipendono dall'ordine dei campi.
+        // La normalizzazione dell'inventario non può riordinarli.
+        if (pipeline !== undefined) normalized.pipeline = documentoCanonico(pipeline);
+      }
+      if (field === 'collectionOptions' && normalized.options) {
+        normalized = decodificaMetadati(item);
+        const options = { ...normalized.options };
+        // collMod rende espliciti i valori predefiniti del validator: la loro
+        // presenza non cambia il vincolo, mentre moderate/off/warn lo cambiano.
+        if (options.validationLevel === 'strict') delete options.validationLevel;
+        if (options.validationAction === 'error') delete options.validationAction;
+        if (options.validator && typeof options.validator === 'object'
+            && !Array.isArray(options.validator) && Object.keys(options.validator).length === 0) delete options.validator;
+        // Senza vincoli né altre opzioni il catalogo può omettere del tutto
+        // l'entry: collMod può invece materializzare soltanto i default.
+        if (Object.keys(options).length === 0 && Object.keys(normalized).every(key => key === 'name' || key === 'options')) return null;
+        const { EJSON } = require('bson');
+        normalized.options = EJSON.serialize(options, { relaxed: false });
+        // EJSON conserva i tipi BSON e gli interi esatti; l'ordine preserva i
+        // documenti letterali annidati nelle espressioni del validator.
+        if (normalized.options.validator !== undefined) {
+          normalized.options.validator = documentoCanonico(canonicaValidatorMongo(options.validator));
+        }
+      }
       if (normalized.ddl != null) normalized.ddl = canonicalSqlForDb(normalized.ddl, db);
       if (normalized.sql != null) normalized.sql = canonicalSqlForDb(normalized.sql, db);
       return JSON.stringify(canonicalValue(normalized));
-    }).sort();
+    }).filter(value => value !== null).sort();
   }
   result.foreignKeys = (objects && objects.foreignKeys || [])
+    .map((sql) => canonicalSqlForDb(sql, db)).sort();
+  result.indexes = (objects && objects.indexes || [])
     .map((sql) => canonicalSqlForDb(sql, db)).sort();
   return result;
 }

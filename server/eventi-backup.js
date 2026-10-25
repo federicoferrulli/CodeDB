@@ -10,9 +10,12 @@ const { notifySlack } = require('../backup/lib/notify');
 const { readCatalog, verifyBackupDir, formatBytes, parseCollectionSelection } = require('../backup/lib/util');
 const fs = require('fs');
 const { runRestoreViaPlan } = require('../db/backupRestoreAdapter');
-const { sanitizeImportResult } = require('../db/importOperations');
+const { createRestoreOperationRegistry, sanitizeRestoreResult, improntaRipristino } = require('../db/restoreOperations');
 
 function createModule({ lock, identita, operazioni, audit, errori, config }) {
+  // Anche le giunture leggere usano un registro per istanza, condiviso fra
+  // socket; il server completo lo possiede e lo chiude in operazioni.
+  const restoreOperations = operazioni.restoreOperations ||= createRestoreOperationRegistry();
   function registra(socketContext, lifecycle) {
     const backups = new Map();
     // --- Operazioni Backup & Restore -------------------------------------------
@@ -126,14 +129,14 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
 
     lifecycle.safeOn('backup:restore', async (payload, cb) => {
       const tabId = lock.normTabId(payload.tabId);
-      const operationId = payload.operationId;
-      if (operationId !== undefined && (typeof operationId !== 'string' || !/^[\w-]{1,80}$/.test(operationId))) {
+      const operationId = payload.operationId ?? require('crypto').randomUUID();
+      if (typeof operationId !== 'string' || !/^[\w-]{1,80}$/.test(operationId)) {
         throw new Error('Identificatore del ripristino non valido.');
       }
       const sess = socketContext.sessions.get(tabId);
-      if (!sess) throw new Error('Nessuna connessione attiva per questo tab.');
+      if (!sess || sess.closed) throw new Error('Nessuna connessione attiva per questo tab.');
       // Il restore riscrive interi database: operazione da amministratore.
-      identita.assertManage(socketContext.principal);
+      identita.assertWholeConnection(socketContext.principal, sess.connName, 'manage', 'ripristinare un backup');
 
       // group/backupId sono nomi restituiti da backup:list, quindi vanno risolti
       // nella radice del tenant: altrimenti basta indicarne uno di un altro owner.
@@ -144,22 +147,44 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         if (!/^[\w.-]+$/.test(group) || !/^[\w.-]+$/.test(backupId)) {
           throw new Error('Parametri "group" o "backupId" non validi.');
         }
-        backupDir = path.join(operazioni.backupRootOf(socketContext.principal), group, backupId);
+        backupDir = operazioni.resolveBackupPath(socketContext.principal,
+          path.join(operazioni.backupRootOf(socketContext.principal), group, backupId), 'origine');
       }
       if (!backupDir || !fs.existsSync(path.join(backupDir, 'manifest.json'))) {
         throw new Error('Cartella backup non valida o manifest.json mancante.');
       }
+      backupDir = fs.realpathSync(backupDir);
 
       const destRoot = operazioni.resolveBackupPath(socketContext.principal, payload.dest, 'destinazione');
       const webhook = resolveSlackWebhook(payload.slackWebhook, config.env);
-      const log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
-      const onlyCollections = parseCollectionSelection(payload.collections);
+      const onlyCollections = parseCollectionSelection(payload.collections)?.sort() || null;
+      const targetDb = String(payload.targetDb || '').trim() || null;
+      const drop = !!payload.drop;
+      const recoveryRoot = path.join(operazioni.backupRootOf(socketContext.principal), 'import-recovery');
 
       const t0 = Date.now();
       // Solo etichetta per il log: il bersaglio del ripristino è `backupDir`, già
       // confinato da resolveBackupPath dentro la radice del tenant.
-      const connName = sess.connName || payload.connName || 'ui-session';
+      const connName = sess.connName || sess.label || 'ui-session';
+      const dbType = sess.dbType || sess.strategy.type;
       const backupId = String(payload.backupId || path.basename(backupDir));
+      const ownerId = socketContext.principal.ownerId, actorId = socketContext.principal.id;
+      const fingerprint = improntaRipristino({ connection: connName, dbType, backupDir, targetDb, drop,
+        collections: onlyCollections, recoveryRoot });
+      const ack = await restoreOperations.start({ operationId, ownerId, actorId, tabId, connection: connName, backupId,
+        targetDb, fingerprint, execute: async progress => {
+      lifecycle.acquisisciLeaseOperazione?.(sess);
+      let log;
+      let redact = value => String(value);
+      try {
+      // Credenziali e percorsi servono soltanto durante l'esecuzione. Si
+      // redigono messaggi e ricevute prima di conservarli nel registro.
+      const secrets = Object.entries(sess.effectiveCfg || {}).filter(([key, value]) => typeof value === 'string' && value
+        && /password|passphrase|secret|token|uri/i.test(key)).map(([, value]) => value);
+      const privatePaths = [backupDir, destRoot, recoveryRoot].filter(Boolean).sort((a, b) => b.length - a.length);
+      redact = value => [...secrets, ...privatePaths].reduce((text, secret) => text.split(secret).join('[riservato]'), String(value))
+        .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[riservato]@');
+      log = createLogger(path.join(destRoot, 'backup.log'), { quiet: true });
 
       // Il ripristino di un database vero dura minuti, e l'ack arriva solo alla
       // fine: senza un segnale intermedio il pulsante gira e basta, e non c'è modo
@@ -169,7 +194,9 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
       // serve: le si intercetta invece di aprire un secondo canale, così
       // backup/lib resta intatto e la CLI si comporta esattamente come prima.
       const inviaProgresso = (riga, errore) => {
-        socketContext.socket.emit('backup:progress', { tabId, backupId, operationId, riga: String(riga), errore: !!errore });
+        const event = { tabId, backupId, operationId, riga: redact(riga), errore: !!errore };
+        progress(event);
+        try { socketContext.socket.emit('backup:progress', event); } catch (_) { /* la UI non governa il lavoro accettato */ }
       };
       const logUi = {
         ...log,
@@ -177,22 +204,17 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
         error: (msg) => { log.error(msg); inviaProgresso(msg, true); },
       };
 
-      try {
         const summary = await log.run(`restore conn=${connName} da=${path.basename(backupDir)} (via UI)`, async () => {
           return await runRestoreViaPlan({
-            session: { strategy: sess.strategy, dbType: sess.dbType || sess.strategy.type }, backupDir,
-            targetDb: payload.targetDb || null,
+            session: { strategy: sess.strategy, dbType }, backupDir,
+            targetDb,
             // Il DDL del backup viene eseguito sul database: dall'interfaccia non
             // si può scavalcare la validazione, la deroga resta solo nella CLI.
-            onlyCollections, drop: !!payload.drop, log: logUi, connName,
-            recoveryRoot: path.join(operazioni.backupRootOf(socketContext.principal), 'import-recovery'),
-            onProgress: (event) => inviaProgresso(`${event.phase} ${event.status}`, false),
+            onlyCollections, drop, log: logUi, connName, recoveryRoot,
+            onProgress: (event) => { progress(event); inviaProgresso(`${event.phase} ${event.status}`, false); },
           });
         });
-        const publicResult = {
-          ...sanitizeImportResult(summary), targetDb: summary.targetDb,
-          totalDocs: summary.totalDocs, layers: summary.layers,
-        };
+        const publicResult = sanitizeRestoreResult(summary, redact);
         if (summary.status === 'completato') {
           await notifySlack(webhook, `✅ CodeDB restore di \`${summary.targetDb}\` (${connName}, via UI) riuscito in ${formatDuration(Date.now() - t0)}: ${summary.totalDocs} documenti/righe.`, log);
           audit.auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'ok', publicResult, null);
@@ -200,15 +222,35 @@ function createModule({ lock, identita, operazioni, audit, errori, config }) {
           await notifySlack(webhook, `❌ CodeDB restore ${summary.status} di \`${summary.targetDb}\` (${connName}, via UI): ${summary.error || 'esito non completato'}`, log);
           audit.auditWrite(sess, 'backup:restore', { db: summary.targetDb }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', publicResult, summary.originalError);
         }
-        cb({ ok: true, summary: publicResult });
+        return { ok: true, summary: publicResult };
       } catch (err) {
-        await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errori.errMsg(err)}`, log);
+        if (log) await notifySlack(webhook, `❌ CodeDB restore (${connName}, via UI) FALLITO dopo ${formatDuration(Date.now() - t0)}: ${errori.errMsg(err)}`, log);
         // Un ripristino incompleto porta con sé il riepilogo parziale (quante righe
         // erano state applicate prima di fermarsi): va nell'audit, serve a capire
         // in che stato è rimasto il database di destinazione.
         audit.auditWrite(sess, 'backup:restore', { db: (err.summary && err.summary.targetDb) || payload.targetDb || null }, { op: 'Ripristino backup', backupId: String(payload.backupId || '').trim() || undefined }, 'error', err.summary || null, err);
-        throw err;
+        return { ok: false, error: redact(errori.errMsg(err)) };
+      } finally {
+        await lifecycle.rilasciaLeaseOperazione?.(sess);
       }
+      } });
+      cb(ack);
+    });
+
+    lifecycle.safeOn('backup:restore:state', (payload, cb) => {
+      const principal = socketContext.principal;
+      const operation = restoreOperations.get(payload.operationId, principal.ownerId, principal.id);
+      identita.assertWholeConnection(principal, operation.connection, 'manage', 'vedere lo stato di un ripristino');
+      cb({ ok: true, operation });
+    });
+
+    lifecycle.safeOn('backup:restore:list', (_payload, cb) => {
+      const principal = socketContext.principal;
+      const operations = restoreOperations.list(principal.ownerId, principal.id).filter(operation => {
+        try { identita.assertWholeConnection(principal, operation.connection, 'manage', 'vedere i ripristini recuperabili'); return true; }
+        catch (_) { return false; }
+      });
+      cb({ ok: true, operations });
     });
 
     lifecycle.safeOn('backup:verify', async (payload, cb) => {

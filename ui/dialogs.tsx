@@ -15,16 +15,8 @@ function Pannello({ panel, overlay }: { panel: HTMLElement; overlay: HTMLElement
     const scroll = panel.scrollTop;
     slot.current!.append(panel);
     panel.scrollTop = scroll;
-    // I popup degli editor fanno parte della finestra attiva: restando nel
-    // body sarebbero fuori dal focus trap Radix e non più utilizzabili.
-    const auxiliary = (overlay.id === 'palette-overlay' ? [] : [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante, #context-menu')])
-      .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
-    for (const { node } of auxiliary) slot.current!.append(node);
     if (focused && panel.contains(focused)) focused.focus({ preventScroll: true });
     return () => {
-      for (const { node, parent, next } of auxiliary) {
-        if (node.parentNode === slot.current) (parent.isConnected ? parent : document.body).insertBefore(node, next?.parentNode === parent && parent.isConnected ? next : null);
-      }
       overlay.prepend(panel);
     };
   }, [panel, overlay]);
@@ -55,10 +47,31 @@ function Finestra({ open, panel, overlay, dismiss, restoreFocus, onExitComplete 
     return () => media.removeEventListener('change', update);
   }, []);
   useLayoutEffect(() => {
+    if (!open || overlay.id === 'palette-overlay') return;
+    const container = overlay.querySelector<HTMLElement>('.arc-panel-slot');
+    if (!container) return;
+    // I popup appartengono al focus trap della finestra attiva. Vanno
+    // restituiti all'inizio della chiusura: muovere un popover già riaperto
+    // al termine dell'animazione lo chiuderebbe nuovamente nel browser.
+    const auxiliary = [...document.querySelectorAll<HTMLElement>('#fk-pannello, .ac-flottante, #context-menu')]
+      .map(node => ({ node, parent: node.parentNode!, next: node.nextSibling }));
+    for (const { node } of auxiliary) container.append(node);
+    return () => {
+      for (const { node, parent, next } of auxiliary) {
+        // Una finestra sovrapposta può aver già preso il popup in consegna.
+        if (node.parentNode !== container) continue;
+        const owner = parent instanceof Element ? parent.closest('.overlay, .palette-overlay') : null;
+        const target = parent.isConnected && !owner?.classList.contains('hidden') ? parent : document.body;
+        target.insertBefore(node, next?.parentNode === target ? next : null);
+      }
+    };
+  }, [open, mobile, overlay]);
+  useLayoutEffect(() => {
+    const finish = complete.current;
     const changedFormat = format.current !== mobile;
     format.current = mobile;
     // Un nuovo contenitore già chiuso non emette un evento di fine uscita.
-    if (!open && changedFormat) { complete.current(); return; }
+    if (!open && changedFormat) { finish(); return; }
     if (mobile) return;
     const running = animations.current.length > 0;
     const opacity = running ? getComputedStyle(overlay).opacity : open ? '0' : '1';
@@ -70,7 +83,7 @@ function Finestra({ open, panel, overlay, dismiss, restoreFocus, onExitComplete 
     if (!reduced) layers.push(panel.animate([{ transform }, { transform: open ? 'none' : 'translateY(6px) scale(.995)' }], options));
     animations.current = layers;
     Promise.all(layers.map(animation => animation.finished)).then(() => {
-      if (!open) complete.current();
+      if (!open) finish();
       layers.forEach(animation => animation.cancel());
       if (animations.current === layers) animations.current = [];
     }).catch(() => { /* Una riapertura riparte dal fotogramma corrente. */ });
@@ -151,9 +164,10 @@ export function initDialogs() {
     const root = createRoot(host);
     const originalZIndex = overlay.style.zIndex;
     let isOpen = false;
+    let revision = 0;
     let returnFocus: HTMLElement | null = null;
-    const finish = () => queueMicrotask(() => {
-      if (isOpen) return;
+    const finish = (version: number) => queueMicrotask(() => {
+      if (isOpen || version !== revision || overlay.dataset.arcDialog !== 'closing') return;
       flushSync(() => root.render(null));
       const index = opened.indexOf(overlay);
       if (index >= 0) opened.splice(index, 1);
@@ -166,14 +180,16 @@ export function initDialogs() {
       const next = !overlay.classList.contains('hidden');
       if (next === isOpen) return;
       isOpen = next;
+      const version = ++revision;
       if (next) {
         const active = document.activeElement as HTMLElement | null;
-        if (!opened.includes(overlay)) {
-          const parent = opened.filter(item => !item.classList.contains('hidden')).at(-1);
-          returnFocus = active && !overlay.contains(active) && active !== document.body
-            ? active : (parent && focusedByOverlay.get(parent)) || outsideFocus;
-          opened.push(overlay);
-        }
+        // Anche una riapertura durante l'uscita è una nuova finestra in cima.
+        const previous = opened.indexOf(overlay);
+        if (previous >= 0) opened.splice(previous, 1);
+        const parent = opened.filter(item => !item.classList.contains('hidden')).at(-1);
+        returnFocus = active && !overlay.contains(active) && active !== document.body
+          ? active : (parent && focusedByOverlay.get(parent)) || outsideFocus;
+        opened.push(overlay);
         restack();
         overlay.dataset.arcDialog = 'open';
       } else {
@@ -185,7 +201,7 @@ export function initDialogs() {
       const heading = panel.querySelector<HTMLElement>('h2, h3');
       if (heading && !heading.id) heading.id = `arc-dialog-title-${++titleSequence}`;
       flushSync(() => root.render(
-        <Finestra open={next} panel={panel} overlay={overlay} dismiss={() => dismiss(overlay)} onExitComplete={finish}
+        <Finestra open={next} panel={panel} overlay={overlay} dismiss={() => dismiss(overlay)} onExitComplete={() => finish(version)}
           restoreFocus={() => {
             const top = opened.filter(item => !item.classList.contains('hidden')).at(-1);
             if (returnFocus?.isConnected && (!top || top.contains(returnFocus))) returnFocus.focus({ preventScroll: true });

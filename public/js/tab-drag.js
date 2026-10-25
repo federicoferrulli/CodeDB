@@ -57,7 +57,6 @@ export function makeDraggable(el, id, onReorder, getPayload) {
       // Scorrimento ai bordi anche quando il puntatore rimane fermo.
       const velocita = x < r.left + 32 ? -Math.min(1, (r.left + 32 - x) / 32)
         : x > r.right - 32 ? Math.min(1, (x - r.right + 32) / 32) : 0;
-      const prima = bar.scrollLeft;
       bar.scrollLeft += velocita * Math.min(32, ultimoTempo ? tempo - ultimoTempo : 16) * .65;
       ultimoTempo = tempo;
       const left = Math.max(posizioni[0].x, Math.min(posizioni.at(-1).x + posizioni.at(-1).width - larghezza,
@@ -72,7 +71,10 @@ export function makeDraggable(el, id, onReorder, getPayload) {
           : i > origine && i <= destinazione ? -passo : i < origine && i >= destinazione ? passo : 0;
         n.style.transform = `translateX(${dx}px)`;
       });
-      if (velocita && bar.scrollLeft !== prima) frame = requestAnimationFrame(aggiorna);
+      // Due frame ravvicinati possono produrre uno spostamento inferiore al
+      // pixel, arrotondato dal browser. Non è il bordo: il gesto deve proseguire.
+      const spazio = velocita < 0 ? bar.scrollLeft > 0 : bar.scrollLeft < bar.scrollWidth - bar.clientWidth;
+      if (velocita && spazio) frame = requestAnimationFrame(aggiorna);
     };
 
     document.addEventListener('dragover', e => {

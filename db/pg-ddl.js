@@ -79,8 +79,11 @@ async function pgColonne(q, schema, table) {
     cdefault: r.cdefault == null ? null : String(r.cdefault),
     // 'a' = GENERATED ALWAYS AS IDENTITY, 'd' = BY DEFAULT, '' = non identità
     identity: r.identity === 'a' ? 'ALWAYS' : (r.identity === 'd' ? 'BY DEFAULT' : null),
-    // 's' = STORED generated. PostgreSQL non ha ancora colonne VIRTUAL.
-    generated: r.generated === 's',
+    // PostgreSQL 18 aggiunge 'v' (VIRTUAL) a 's' (STORED).
+    generated: r.generated === 's' || r.generated === 'v',
+    generationKind: r.generated === 's' ? 'STORED' : (r.generated === 'v' ? 'VIRTUAL' : null),
+    generationExpression: r.generated === 's' || r.generated === 'v'
+      ? (r.cdefault == null ? null : String(r.cdefault)) : null,
   }));
 }
 
@@ -93,6 +96,22 @@ function qualifyType(r) {
   return prefix ? `${qid(r.typeSchema)}.${qid(r.typeName)}${type.slice(prefix.length)}` : type;
 }
 
+/** La stessa definizione calcolata serve al backup e all'export della strategy. */
+function pgGeneratedDdl({ name, type, expression, kind, nullable, collation }) {
+  if (typeof expression !== 'string' || !expression.trim()) {
+    throw new Error(`Espressione della colonna generata "${name}" non leggibile.`);
+  }
+  if (kind !== 'STORED' && kind !== 'VIRTUAL') {
+    throw new Error(`Modalità della colonna generata "${name}" non riconosciuta.`);
+  }
+  let def = `${qid(name)} ${type}`;
+  if (collation) def += ` COLLATE ${collation}`;
+  // L'espressione di catalogo è SQL: non si quota né si riscrive il contenuto.
+  def += ` GENERATED ALWAYS AS (${expression}) ${kind}`;
+  if (!nullable) def += ' NOT NULL';
+  return def;
+}
+
 /**
  * Come leggere le colonne senza perdere nulla, e quali NON leggere affatto.
  *
@@ -103,7 +122,8 @@ function qualifyType(r) {
  */
 async function pgColonneDaSalvare(q, schema, table, onlyColumns = null) {
   const colonne = await pgColonne(q, schema, table);
-  require('./pg-alias').attach(colonne,await require('./pg-references').columnReferences(q,schema,table));
+  const referenceShapes = await require('./pg-references').columnReferences(q,schema,table);
+  require('./pg-alias').attach(colonne, referenceShapes);
   const salvabili = colonne.filter((c) => !c.generated && (!onlyColumns || onlyColumns.includes(c.name)));
   const binarie = new Set();
   const pezzi = [];
@@ -139,6 +159,7 @@ async function pgColonneDaSalvare(q, schema, table, onlyColumns = null) {
       type: String(c.ctype).toLowerCase(),
       nullable: !c.notnull,
         ...(c.references?{references:c.references}:{}),
+        ...(referenceShapes[c.name] ? { referenceShape: referenceShapes[c.name] } : {}),
     })),
     binarie,
     select: pezzi.join(', '),
@@ -172,8 +193,8 @@ async function pgCreateTable(q, schema, table, { qualificato = false } = {}) {
 
   const defs = colonne.map((c) => {
     if (c.generated) {
-      // L'espressione della colonna generata sta nel default del catalogo.
-      return `${qid(c.name)} ${c.ctype} GENERATED ALWAYS AS (${c.cdefault || 'NULL'}) STORED`;
+      return pgGeneratedDdl({ name: c.name, type: c.ctype, expression: c.generationExpression,
+        kind: c.generationKind, nullable: !c.notnull, collation: c.collation });
     }
     if (c.identity) {
       const seq = owned.find(s => s.colonna === c.name);
@@ -229,7 +250,9 @@ async function pgAuxDdl(q, schema, table, { qualificato = false } = {}) {
        JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace
       WHERE n.nspname = $1 AND t.relname = $2
         AND NOT EXISTS (
-          SELECT 1 FROM pg_catalog.pg_constraint c WHERE c.conindid = x.indexrelid
+          SELECT 1 FROM pg_catalog.pg_constraint c
+           WHERE c.conindid = x.indexrelid AND c.conrelid = x.indrelid
+             AND c.contype IN ('p', 'u', 'x')
         )
    ORDER BY i.relname`,
     [schema, table],
@@ -387,6 +410,7 @@ module.exports = {
   qid,
   pgColonne,
   pgColonneDaSalvare,
+  pgGeneratedDdl,
   pgCreateTable,
   pgAuxDdl,
   pgSchemaObjects,

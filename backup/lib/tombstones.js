@@ -31,8 +31,19 @@ function equivalenzaCatena(chain) {
   if (layers.length === 1 && layers[0].manifest && layers[0].manifest.type === 'full') {
     return { completa: true, motivo: null };
   }
-  const incompleto = layers.find((layer) => !semanticaCancellazioni(layer.manifest).completa);
-  return incompleto ? semanticaCancellazioni(incompleto.manifest) : { completa: true, motivo: null };
+  const latest = new Map();
+  for (const layer of layers) for (const file of layer.manifest.files || []) {
+    if (file.kind === 'data') latest.set(file.collection, { file, manifest: layer.manifest });
+  }
+  for (const { file, manifest } of latest.values()) {
+    if (file.mode === 'full') continue;
+    if (!semanticaCancellazioni(manifest).completa) return semanticaCancellazioni(manifest);
+    if (file.content?.version === 1 && file.content.mode === 'content-delta' && file.content.complete === true) continue;
+    return { completa: false, motivo: file.content?.mode === 'explicit-filter'
+      ? 'Il filtro temporale esplicito conserva la selezione richiesta, ma non prova equivalenza con l’intera sorgente.'
+      : 'Il delta storico non dichiara un confronto completo del contenuto: le date e i tombstone non provano tutte le modifiche.' };
+  }
+  return { completa: true, motivo: null };
 }
 
 function identitaDellaRiga(riga, identity) {

@@ -82,4 +82,25 @@ function binding(value) {
   const ref=validate(value);
   return {sql:`$1::pg_catalog.${aliases[ref.kind]}::oid${ref.kind.endsWith('[]')?'[]':''}::pg_catalog.${ref.kind}`,param:ref.value};
 }
-module.exports={projection,encode,validate,binding,attach,resolveNested,sqlNested,parseNested};
+
+// I marker sono un dettaglio di trasporto casuale. Il confronto delle identità
+// usa invece marker ordinali, soltanto quando i metadati della colonna provano
+// che si tratta davvero di un riferimento PostgreSQL composto.
+function identitaStabile(value, shape) {
+  if (!shape || value?.$pgReference?.kind !== 'nested') return value;
+  const ref = validate(value), lookup = new Map(ref.refs.map(item => [item.marker, item]));
+  const refs = [], seen = new Set();
+  const text = require('./pg-references').transform(ref.value, shape, item => item, (item, node) => {
+    if (!ambiguous(node)) return item;
+    const original = lookup.get(item);
+    if (!original || original.kind !== node.type) throw new Error('Identità PostgreSQL: riferimento composto incoerente.');
+    seen.add(item);
+    const marker = `codedb_ref_${'0'.repeat(32)}_${refs.length}`;
+    refs.push({ kind: original.kind, value: original.value, marker });
+    return marker;
+  });
+  if (seen.size !== ref.refs.length) throw new Error('Identità PostgreSQL: riferimenti estranei alla colonna.');
+  return { $pgReference: { ...ref, value: text, refs } };
+}
+
+module.exports={projection,encode,validate,binding,attach,resolveNested,sqlNested,parseNested,identitaStabile};

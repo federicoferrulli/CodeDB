@@ -1412,6 +1412,15 @@ class MySqlStrategy extends DbStrategy {
     return require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
   }
 
+  async tableAuxDdl(db, coll) {
+    const pool = this.requirePool();
+    const ddl = await require('./mysql-ddl').mysqlTableDdl(pool, db, coll, this.metadataPool || pool);
+    const [[count]] = await pool.query(`SELECT COUNT(*) AS n FROM information_schema.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND CONSTRAINT_TYPE = 'FOREIGN KEY'`, [db, coll]);
+    if (!Number.isSafeInteger(Number(count?.n)) || Number(count.n) < 0) throw new Error('Conteggio delle chiavi esterne MySQL non valido.');
+    return { indexes: [], foreignKeys: require('../backup/lib/engine').splitMySqlForeignKeys(ddl, coll, Number(count.n)).foreignKeys };
+  }
+
   async dbSchema(db) {
     const pool = this.requirePool();
     // `TABLE_ROWS` viaggia con lo schema perche' il grafo deve poter nascondere

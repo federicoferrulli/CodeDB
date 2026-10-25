@@ -151,7 +151,8 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       let identity = mongo ? { kind: 'mongodb-id', columns: ['_id'] } : null;
       if (mongo) {
         // La lettura degli indici è obbligatoria: nessun catch che inventa [].
-        if (t.struttura) indexes = (await st.client.db(db).collection(t.nome).indexes()).filter(i => i.name !== '_id_');
+        if (t.struttura) indexes = (await st.client.db(db).collection(t.nome).indexes({ promoteValues: false }))
+          .filter(i => i.name !== '_id_').map(require('./mongoSchemaBson').codificaMetadati);
       } else {
         info = await st.tableColumnsInfo(db, t.nome);
         const primary = await st.primaryKey(db, t.nome);
@@ -240,7 +241,8 @@ async function esportaDatabase({ strategy, plan, write, progress = () => {}, che
       }
     } else {
       await send(JSON.stringify({ formato: 'codedb-database', versione: mongo ? 2 : 1, generatore: 'CodeDB', dbType: plan.dbType, db,
-        creato: new Date().toISOString(), consistenza: mongoRead?.coerenza.avviso || plan.consistenza, objects }).slice(0, -1) + ',"collections":[\n');
+        creato: new Date().toISOString(), consistenza: mongoRead?.coerenza.avviso || plan.consistenza,
+        objects: mongo ? require('./codecFedele').serializeConservativo(objects) : objects }).slice(0, -1) + ',"collections":[\n');
     }
     for (let i = 0; i < tables.length; i++) {
       const t = tables[i], m = meta.get(t.id);

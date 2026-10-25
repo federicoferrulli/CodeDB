@@ -106,7 +106,7 @@ L'AI **non può modificare `connections.ini`**, con una sola eccezione controlla
 
 I tool di backup usano lo stesso motore della CLI (`npm run backup`) e la stessa cartella `backups/` del progetto, quindi CLI e AI vedono lo stesso catalogo:
 
-- `backup_database` — backup `full`, `incremental` o `differential` di un database della connessione aperta. Legge soltanto dal database (scrive file locali sotto `backups/`), quindi **non** richiede conferma né `readOnly=false`. Le modifiche sono individuate da un campo data (`since_field`); nei manifest v3 le cancellazioni viaggiano come tombstone d'identità.
+- `backup_database` — backup `full`, `incremental` o `differential` di un database della connessione aperta. Legge soltanto dal database (scrive file locali sotto `backups/`), quindi **non** richiede conferma né `readOnly=false`. Senza `since_field`, confronta il contenuto completo e salva solo le righe cambiate; senza identità stabile salva una snapshot completa. `since_field` conserva il filtro temporale esplicito: le modifiche che non aggiornano quel campo restano escluse e il ripristino non dichiara equivalenza completa. I manifest v5 distinguono le modalità e le cancellazioni viaggiano come tombstone d'identità.
 - `list_backups` — elenca i backup per gruppo (`connessione_database`), con id, tipo e date.
 - `restore_backup` — ripristina un backup (catena incrementale risolta automaticamente, restore selettivo con `collections`, opzione `drop`). **Scrive sul database**: vale tutto quanto sopra — solo connessioni con `readOnly=false` e doppia conferma con `confirm_token`.
 

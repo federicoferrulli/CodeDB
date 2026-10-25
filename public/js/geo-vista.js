@@ -114,6 +114,8 @@ export function creaVistaGeo(el = {}) {
   let gruppo = null;
   let renderer = null;
   let stato = null; // { st, disegnate, evidenziato }
+  let inquadraturaPendente = null; // 'tutto' oppure l'indice della geometria
+  let fotogramma = 0;
   const layers = new Map();
 
   /* ------------------------------ Disegno -------------------------------- */
@@ -186,7 +188,13 @@ export function creaVistaGeo(el = {}) {
     });
   }
 
-  function inquadraTutto() {
+  function paddingInquadratura(margine) {
+    // Durante un collasso il canvas può essere positivo ma più piccolo dei
+    // margini: Leaflet deve avere almeno un pixel utile per calcolare lo zoom.
+    return [Math.min(margine, (canvas.clientWidth - 1) / 2), Math.min(margine, (canvas.clientHeight - 1) / 2)];
+  }
+
+  function applicaInquadraturaTutto() {
     if (!mappa || !stato) return;
     const punti = [];
     for (const g of stato.disegnate) {
@@ -200,11 +208,11 @@ export function creaVistaGeo(el = {}) {
     if (b.getNorth() === b.getSouth() && b.getEast() === b.getWest()) {
       mappa.setView(b.getCenter(), Math.max(mappa.getZoom(), 13), opzioni);
     } else {
-      mappa.fitBounds(b, { padding: [30, 30], ...opzioni });
+      mappa.fitBounds(b, { padding: paddingInquadratura(30), ...opzioni });
     }
   }
 
-  function inquadraGeometria(g) {
+  function applicaInquadraturaGeometria(g) {
     if (!g || !g.bbox || !mappa) return;
     const b = L.latLngBounds([[g.bbox[1], g.bbox[0]], [g.bbox[3], g.bbox[2]]]);
     const opzioni = { animate: !window.matchMedia('(prefers-reduced-motion: reduce)').matches, duration: .35 };
@@ -212,8 +220,45 @@ export function creaVistaGeo(el = {}) {
     if (g.bbox[0] === g.bbox[2] && g.bbox[1] === g.bbox[3]) {
       mappa.setView([g.bbox[1], g.bbox[0]], Math.max(mappa.getZoom(), 14), opzioni);
     } else {
-      mappa.fitBounds(b, { padding: [40, 40], ...opzioni });
+      mappa.fitBounds(b, { padding: paddingInquadratura(40), ...opzioni });
     }
+  }
+
+  // La richiesta resta valida mentre un pannello o un dialogo è nascosto.
+  // Un resize rimisura soltanto: non deve annullare lo zoom scelto dall'utente.
+  function rimisura() {
+    if (!mappa || !canvas.clientWidth || !canvas.clientHeight) return;
+    mappa.invalidateSize({ animate: false, debounceMoveend: true });
+    const richiesta = inquadraturaPendente;
+    inquadraturaPendente = null;
+    if (richiesta === 'tutto') applicaInquadraturaTutto();
+    else if (richiesta !== null) applicaInquadraturaGeometria(stato?.disegnate.find(g => g.indice === richiesta));
+  }
+
+  function programmaRimisura() {
+    if (fotogramma) return;
+    fotogramma = requestAnimationFrame(() => {
+      fotogramma = 0;
+      rimisura();
+    });
+  }
+
+  function richiediInquadratura(richiesta) {
+    inquadraturaPendente = richiesta;
+    rimisura();
+    // Un hide/show nello stesso task può lasciare immutata la misura osservata.
+    // Basta un tentativo al frame seguente; se resta nascosta, attende l'observer.
+    if (inquadraturaPendente !== null) programmaRimisura();
+  }
+
+  function inquadraTutto() {
+    if (!mappa || !stato) return;
+    richiediInquadratura('tutto');
+  }
+
+  function inquadraGeometria(g) {
+    if (!g?.bbox || !mappa) return;
+    richiediInquadratura(g.indice);
   }
 
   function evidenzia(indice, { inquadra = true } = {}) {
@@ -342,20 +387,13 @@ export function creaVistaGeo(el = {}) {
     // Leaflet ascolta il resize della finestra, ma non quello dei pannelli:
     // divisori trascinabili, sidebar e modali cambiano il canvas da soli.
     // Si rimisura una volta per fotogramma, senza rifare geometrie o zoom.
-    let fotogramma = 0;
-    const osservatore = new ResizeObserver(() => {
-      if (fotogramma) return;
-      fotogramma = requestAnimationFrame(() => {
-        fotogramma = 0;
-        if (canvas.clientWidth && canvas.clientHeight) {
-          mappa.invalidateSize({ animate: false, debounceMoveend: true });
-        }
-      });
-    });
+    const osservatore = new ResizeObserver(programmaRimisura);
     osservatore.observe(canvas);
     mappa.once('unload', () => {
       osservatore.disconnect();
       cancelAnimationFrame(fotogramma);
+      fotogramma = 0;
+      inquadraturaPendente = null;
     });
   }
 
@@ -397,6 +435,7 @@ export function creaVistaGeo(el = {}) {
       if (isCurrent && !isCurrent()) return null;
       if (!st.totale) {
         stato = null;
+        inquadraturaPendente = null;
         if (gruppo) gruppo.clearLayers();
         layers.clear();
         return null;
@@ -433,6 +472,7 @@ export function creaVistaGeo(el = {}) {
       }
 
       stato = { st, disegnate, evidenziato: null };
+      inquadraturaPendente = null;
       renderRiepilogo(st);
       renderElenco(st);
       renderAvvisi(st, disegnate, motivo);
@@ -441,21 +481,20 @@ export function creaVistaGeo(el = {}) {
 
     /**
      * Crea la mappa (se serve), la rimisura e disegna.
-     * Va chiamata quando il contenitore è VISIBILE: Leaflet legge le dimensioni
-     * del div, e su uno ancora nascosto (0×0) disegna una mappa grigia che non
-     * si riprende più da sola.
+     * Se il contenitore è nascosto, l'inquadratura attende la prima misura
+     * visibile rilevata dall'observer, anche senza altre chiamate del pannello.
      */
     aggiorna({ inquadra = true } = {}) {
       if (!L || !stato) return;
       creaMappa();
       if (!mappa) return;
-      mappa.invalidateSize();
       disegna();
-      if (inquadra) inquadraTutto();
+      if (inquadra) richiediInquadratura('tutto');
+      else rimisura();
     },
 
     /** Rimisura la mappa dopo un cambio di dimensioni del contenitore. */
-    invalidateSize() { if (mappa) mappa.invalidateSize(); },
+    invalidateSize: rimisura,
 
     inquadraTutto,
     applicaTile,
@@ -463,6 +502,7 @@ export function creaVistaGeo(el = {}) {
     /** Svuota mappa e pannelli (cambio di risultati o di contesto). */
     pulisci() {
       stato = null;
+      inquadraturaPendente = null;
       if (gruppo) gruppo.clearLayers();
       layers.clear();
       if (riepilogo) riepilogo.innerHTML = '';

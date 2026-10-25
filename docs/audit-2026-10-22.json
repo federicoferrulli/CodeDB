@@ -1,0 +1,2528 @@
+{
+  "progetto": "CodeDB",
+  "data": "2026-10-22",
+  "revisione": "3a7d7ff82ffa8f8b78351a8f901d0fbaaf76080f",
+  "branch": "fix_audit_22.10.2026",
+  "versione": "0.2.2-beta.1",
+  "tipo": "Riesecuzione suite complete e nuove su database reali, audit dei difetti aperti",
+  "conclusione": "Baseline conservata; tutti i finding del registro fix sono corretti e verificati. Campagne complete eseguite con ripetizioni documentate e limiti espliciti.",
+  "riepilogo": {
+    "difetti_prodotto_confermati": 15,
+    "priorita": {
+      "P1": 8,
+      "P2": 7
+    }
+  },
+  "ambiente": {
+    "query": {
+      "node": "v24.22.0",
+      "piattaforma": "linux",
+      "architettura": "x64",
+      "mongodb": "8.0.34",
+      "mysql": "8.4.11",
+      "postgresql": "17.5 (Debian 17.5-1.pgdg110+1)"
+    },
+    "integrita": {
+      "mongodb": "8.0.34",
+      "mysql": {
+        "versione": "8.4.11"
+      },
+      "postgresql": {
+        "server_version": "17.5 (Debian 17.5-1.pgdg110+1)"
+      }
+    },
+    "browser": "151.0.7922.34",
+    "metriche": {
+      "nota": "Misure locali con altri test/container potenzialmente attivi: soglie anti-blocco conservative, nessuna promessa SLA.",
+      "campioni": [
+        {
+          "tipo": "mongodb",
+          "righe": 20017,
+          "sha256": "2a43393dc801b3863d3a9cabb515acae0e9c5b8edf34aee6e743f92a394ba5a1",
+          "pagine": {
+            "campioni": 41,
+            "p50ms": 16,
+            "p95ms": 27,
+            "maxms": 32
+          },
+          "query": {
+            "campioni": 48,
+            "p50ms": 17,
+            "p95ms": 28,
+            "maxms": 34
+          },
+          "salute": {
+            "campioni": 9,
+            "p50ms": 4,
+            "p95ms": 32,
+            "maxms": 32
+          },
+          "soglie": {
+            "queryP95ms": 5000,
+            "saluteP95ms": 2000
+          }
+        },
+        {
+          "tipo": "mysql",
+          "righe": 20017,
+          "sha256": "2a43393dc801b3863d3a9cabb515acae0e9c5b8edf34aee6e743f92a394ba5a1",
+          "pagine": {
+            "campioni": 41,
+            "p50ms": 8,
+            "p95ms": 11,
+            "maxms": 12
+          },
+          "query": {
+            "campioni": 48,
+            "p50ms": 32,
+            "p95ms": 33,
+            "maxms": 35
+          },
+          "salute": {
+            "campioni": 19,
+            "p50ms": 1,
+            "p95ms": 3,
+            "maxms": 3
+          },
+          "soglie": {
+            "queryP95ms": 5000,
+            "saluteP95ms": 2000
+          }
+        },
+        {
+          "tipo": "postgresql",
+          "righe": 20017,
+          "sha256": "2a43393dc801b3863d3a9cabb515acae0e9c5b8edf34aee6e743f92a394ba5a1",
+          "pagine": {
+            "campioni": 41,
+            "p50ms": 11,
+            "p95ms": 14,
+            "maxms": 16
+          },
+          "query": {
+            "campioni": 48,
+            "p50ms": 17,
+            "p95ms": 21,
+            "maxms": 23
+          },
+          "salute": {
+            "campioni": 10,
+            "p50ms": 2,
+            "p95ms": 4,
+            "maxms": 4
+          },
+          "soglie": {
+            "queryP95ms": 5000,
+            "saluteP95ms": 2000
+          }
+        }
+      ]
+    }
+  },
+  "verifiche": {
+    "unitarie": {
+      "windows": "superato",
+      "linux": "superato",
+      "tipi_ui_windows": "superato",
+      "tipi_ui_linux": "superato",
+      "gpg_reale": "superato"
+    },
+    "nuove_suite": {
+      "totale": 11,
+      "esiti": {
+        "superato": 6,
+        "fallito": 5
+      },
+      "controlli_applicativi": {
+        "totale": 239,
+        "superati": 207,
+        "falliti": 32
+      },
+      "note": "32 fallimenti in 11 classi già documentate; controlli di sensibilità separati."
+    },
+    "storiche": {
+      "inventario": 173,
+      "selezionate": 151,
+      "eseguite": 151,
+      "esiti": {
+        "superato": 145,
+        "fallito": 6
+      },
+      "inizio": "2026-10-22T20:55:25.952Z",
+      "fine": "2026-10-22T21:22:28.571Z",
+      "risultati": [
+        {
+          "file": "e2e-altezza-riga.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3799
+        },
+        {
+          "file": "e2e-arc-campi.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9982
+        },
+        {
+          "file": "e2e-arc-griglia.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 37361
+        },
+        {
+          "file": "e2e-arc-mongodb.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4661
+        },
+        {
+          "file": "e2e-arc.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 42620
+        },
+        {
+          "file": "e2e-avvio-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3775
+        },
+        {
+          "file": "e2e-backup-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 41084
+        },
+        {
+          "file": "e2e-backup-mysql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2484
+        },
+        {
+          "file": "e2e-backup.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4983
+        },
+        {
+          "file": "e2e-barra-grafo.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 13074
+        },
+        {
+          "file": "e2e-charts-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 35172
+        },
+        {
+          "file": "e2e-chiusura-query.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 11075
+        },
+        {
+          "file": "e2e-collazione-mysql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1354
+        },
+        {
+          "file": "e2e-color-picker-drag.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9971
+        },
+        {
+          "file": "e2e-color-picker.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 11030
+        },
+        {
+          "file": "e2e-conferma-connessione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9568
+        },
+        {
+          "file": "e2e-conteggi-navigatore-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4132
+        },
+        {
+          "file": "e2e-contrasto-viste.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 6800
+        },
+        {
+          "file": "e2e-cronologia-posizione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 6494
+        },
+        {
+          "file": "e2e-data-empty.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8160
+        },
+        {
+          "file": "e2e-dbexport.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1604
+        },
+        {
+          "file": "e2e-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 15664
+        },
+        {
+          "file": "e2e-details-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 16278
+        },
+        {
+          "file": "e2e-dialog-drawer.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 48537
+        },
+        {
+          "file": "e2e-dialog-motion.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 19510
+        },
+        {
+          "file": "e2e-download-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8074
+        },
+        {
+          "file": "e2e-editor-geometrico.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 16323
+        },
+        {
+          "file": "e2e-explore-empty.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5322
+        },
+        {
+          "file": "e2e-export-formati.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 11303
+        },
+        {
+          "file": "e2e-export-regressioni.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2038
+        },
+        {
+          "file": "e2e-feedback.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12658
+        },
+        {
+          "file": "e2e-filtro-rapido-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4837
+        },
+        {
+          "file": "e2e-filtro-strutturato.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1664
+        },
+        {
+          "file": "e2e-fk-inserimento.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12486
+        },
+        {
+          "file": "e2e-fk-viste.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7663
+        },
+        {
+          "file": "e2e-geomap-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 15388
+        },
+        {
+          "file": "e2e-geometrie-viste.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10155
+        },
+        {
+          "file": "e2e-geomulti-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 24946
+        },
+        {
+          "file": "e2e-grafo-camera.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 28577
+        },
+        {
+          "file": "e2e-griglia-fluidita.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 23515
+        },
+        {
+          "file": "e2e-griglia-larghezza.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 6963
+        },
+        {
+          "file": "e2e-griglia-viste.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 6555
+        },
+        {
+          "file": "e2e-guida-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 22368
+        },
+        {
+          "file": "e2e-icone-uniformi.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5361
+        },
+        {
+          "file": "e2e-import-upload-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9145
+        },
+        {
+          "file": "e2e-import-volume.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10915
+        },
+        {
+          "file": "e2e-incolla-esatto-atomico.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4801
+        },
+        {
+          "file": "e2e-insert-studio.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5764
+        },
+        {
+          "file": "e2e-insert-types.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1050
+        },
+        {
+          "file": "e2e-integrita-import.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5238
+        },
+        {
+          "file": "e2e-json-scroll-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10378
+        },
+        {
+          "file": "e2e-json-tree.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3736
+        },
+        {
+          "file": "e2e-lo-volume.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5507
+        },
+        {
+          "file": "e2e-maniglie-tocco.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3977
+        },
+        {
+          "file": "e2e-mappa-resize.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4428
+        },
+        {
+          "file": "e2e-mcp-mysql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1639
+        },
+        {
+          "file": "e2e-mcp.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2156
+        },
+        {
+          "file": "e2e-mobile-crea-database.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10245
+        },
+        {
+          "file": "e2e-mobile-drawer-click.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 179338
+        },
+        {
+          "file": "e2e-mobile-esplora.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 6712
+        },
+        {
+          "file": "e2e-mobile-pannelli.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8089
+        },
+        {
+          "file": "e2e-mobile-schede.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 15085
+        },
+        {
+          "file": "e2e-mobile-shell.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 11694
+        },
+        {
+          "file": "e2e-modifica-connessione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8925
+        },
+        {
+          "file": "e2e-mongo-script.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1819
+        },
+        {
+          "file": "e2e-mongo-snapshot-types.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 632
+        },
+        {
+          "file": "e2e-mysql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2355
+        },
+        {
+          "file": "e2e-navigator-height.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3348
+        },
+        {
+          "file": "e2e-navigator-motion.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 16049
+        },
+        {
+          "file": "e2e-nulli-ordinati.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1743
+        },
+        {
+          "file": "e2e-numeri-esatti-inserimento.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2611
+        },
+        {
+          "file": "e2e-osservazione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12586
+        },
+        {
+          "file": "e2e-paginazione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 13042
+        },
+        {
+          "file": "e2e-pagine-obsolete.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4000
+        },
+        {
+          "file": "e2e-palette-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8275
+        },
+        {
+          "file": "e2e-palette.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4192
+        },
+        {
+          "file": "e2e-panel-toggle.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7927
+        },
+        {
+          "file": "e2e-pending-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 23020
+        },
+        {
+          "file": "e2e-playwright.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10248
+        },
+        {
+          "file": "e2e-postgres.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1302
+        },
+        {
+          "file": "e2e-preproduzione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1424
+        },
+        {
+          "file": "e2e-query-cancel-standalone.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 987
+        },
+        {
+          "file": "e2e-query-cancel.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 997
+        },
+        {
+          "file": "e2e-query-copertura.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2920
+        },
+        {
+          "file": "e2e-query-engine.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1011
+        },
+        {
+          "file": "e2e-query-export-json.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3676
+        },
+        {
+          "file": "e2e-query-languages.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4259
+        },
+        {
+          "file": "e2e-query-map-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 20501
+        },
+        {
+          "file": "e2e-query-select.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 16806
+        },
+        {
+          "file": "e2e-query-studio.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 18085
+        },
+        {
+          "file": "e2e-query-virtual-scroll.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2771
+        },
+        {
+          "file": "e2e-rbac-mcp.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7474
+        },
+        {
+          "file": "e2e-rbac-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 10035
+        },
+        {
+          "file": "e2e-rbac.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7863
+        },
+        {
+          "file": "e2e-revisione.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 18265
+        },
+        {
+          "file": "e2e-ricerca-focus.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 14116
+        },
+        {
+          "file": "e2e-richieste-intellisense.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2089
+        },
+        {
+          "file": "e2e-safe-area.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 32025
+        },
+        {
+          "file": "e2e-salute-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 25412
+        },
+        {
+          "file": "e2e-schema-vuoto.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 13084
+        },
+        {
+          "file": "e2e-scorrimento-bordi.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5963
+        },
+        {
+          "file": "e2e-script-risultati.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1250
+        },
+        {
+          "file": "e2e-script-runner.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2423
+        },
+        {
+          "file": "e2e-script-schede-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5790
+        },
+        {
+          "file": "e2e-selezione-celle-viste.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9148
+        },
+        {
+          "file": "e2e-sessioni-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 23831
+        },
+        {
+          "file": "e2e-sessions.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12432
+        },
+        {
+          "file": "e2e-split-bersaglio-riquadro.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4777
+        },
+        {
+          "file": "e2e-split-completa.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12767
+        },
+        {
+          "file": "e2e-split-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5467
+        },
+        {
+          "file": "e2e-sql-integrita-ui.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3074
+        },
+        {
+          "file": "e2e-sql-mongo-atomicita.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 571
+        },
+        {
+          "file": "e2e-sql-mongo-avanzato.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 13937
+        },
+        {
+          "file": "e2e-sql-mongo-completamento.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3659
+        },
+        {
+          "file": "e2e-sql-mongo-estesi.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5258
+        },
+        {
+          "file": "e2e-sql-mongo-eventi.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2857
+        },
+        {
+          "file": "e2e-sql-mongo-integrita.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1880
+        },
+        {
+          "file": "e2e-sql-mongo-migrazioni.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1401
+        },
+        {
+          "file": "e2e-sql-mongo-varianti.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3086
+        },
+        {
+          "file": "e2e-sql-objectid.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3227
+        },
+        {
+          "file": "e2e-srid-modifiche.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 307
+        },
+        {
+          "file": "e2e-ssh-forward.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 602
+        },
+        {
+          "file": "e2e-ssh-impronta.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 4094
+        },
+        {
+          "file": "e2e-ssh-keys.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8053
+        },
+        {
+          "file": "e2e-ssh-layout.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 24477
+        },
+        {
+          "file": "e2e-superfici.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12490
+        },
+        {
+          "file": "e2e-tab-motion.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 8214
+        },
+        {
+          "file": "e2e-temi-design.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 12821
+        },
+        {
+          "file": "e2e-tetto-scrittura.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5214
+        },
+        {
+          "file": "e2e-tipi-bson.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 9397
+        },
+        {
+          "file": "e2e-tipi-identita.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 808
+        },
+        {
+          "file": "e2e-tipi-large-objects.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3543
+        },
+        {
+          "file": "e2e-tipi-mysql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 332
+        },
+        {
+          "file": "e2e-tipi-pagine.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 1597
+        },
+        {
+          "file": "e2e-tipi-riferimenti.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3019
+        },
+        {
+          "file": "e2e-tipi-sql.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 5842
+        },
+        {
+          "file": "e2e-tocco-griglia.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2113
+        },
+        {
+          "file": "e2e-toolbar-responsive.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 3988
+        },
+        {
+          "file": "e2e-uml-mobile.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7485
+        },
+        {
+          "file": "e2e-uml-modalita.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7601
+        },
+        {
+          "file": "e2e-uml-prestazioni.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 37119
+        },
+        {
+          "file": "e2e-uml-progetto-db.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 2219
+        },
+        {
+          "file": "e2e-uml-progetto-regressioni.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 17953
+        },
+        {
+          "file": "e2e-uml-progetto.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 14517
+        },
+        {
+          "file": "e2e-uml-scenari.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 17888
+        },
+        {
+          "file": "e2e-uml.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 7080
+        },
+        {
+          "file": "e2e-uscita-editing.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 22499
+        },
+        {
+          "file": "e2e-vault-passphrase.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8945
+        },
+        {
+          "file": "e2e-workbench-reale.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 11658
+        },
+        {
+          "file": "e2e-workbench.js",
+          "esito": "superato",
+          "code": 0,
+          "ms": 8626
+        },
+        {
+          "file": "e2e.js",
+          "esito": "fallito",
+          "code": 1,
+          "ms": 8068
+        }
+      ],
+      "esclusioni": [
+        {
+          "file": "e2e-conteggi-navigatore.js",
+          "motivo": "Richiede controllo Docker dall’host; il runner di base non monta il socket Docker."
+        },
+        {
+          "file": "e2e-contenitori.js",
+          "motivo": "Richiede Electron desktop ed emulatore Android dedicato con APK installabile."
+        },
+        {
+          "file": "e2e-harness.js",
+          "motivo": "Infrastruttura condivisa, non una suite."
+        },
+        {
+          "file": "e2e-mobile-android.js",
+          "motivo": "Richiede adb Windows, APK e emulatore Android dedicato emulator-5580."
+        },
+        {
+          "file": "e2e-mongosh-advanced.cjs",
+          "motivo": "Richiede Atlas Search locale, replica multipla e sharding della fixture mongo-advanced."
+        },
+        {
+          "file": "e2e-mongosh-electron.cjs",
+          "motivo": "Richiede pacchetto Electron e ambiente grafico desktop."
+        },
+        {
+          "file": "e2e-mongosh-kerberos.cjs",
+          "motivo": "Richiede KDC Kerberos dedicato e fixture mongo-kerberos."
+        },
+        {
+          "file": "e2e-mongosh-runtime.js",
+          "motivo": "Eseguito nel profilo native: usa il MongoDB dedicato sulla porta 27039."
+        },
+        {
+          "file": "e2e-mongosh-ui.js",
+          "motivo": "Eseguito nel profilo native: usa il MongoDB dedicato sulla porta 27039."
+        },
+        {
+          "file": "e2e-query-audit.js",
+          "motivo": "Richiede lo stack sql-native con alias DNS e replica a tre nodi."
+        },
+        {
+          "file": "e2e-query-dialetti-nativi.js",
+          "motivo": "Confronta il catalogo dichiarato PostgreSQL 18; eseguito nel profilo native con PostgreSQL 18."
+        },
+        {
+          "file": "e2e-query-nativo-completo.js",
+          "motivo": "Richiede lo stack sql-native con alias DNS e replica a tre nodi."
+        },
+        {
+          "file": "e2e-release-desktop.cjs",
+          "motivo": "Richiede un pacchetto Electron compilato per il sistema in prova."
+        },
+        {
+          "file": "e2e-scorciatoie.js",
+          "motivo": "Richiede una sessione desktop Electron; il runner di base usa Chromium headless."
+        },
+        {
+          "file": "e2e-splash-android.js",
+          "motivo": "Richiede adb Windows e emulatore Android dedicato emulator-5580."
+        },
+        {
+          "file": "e2e-sql-mongo-failover.js",
+          "motivo": "Richiede replica MongoDB a tre nodi e controllo Docker per elezione forzata."
+        },
+        {
+          "file": "e2e-sql-mongo-tipi.js",
+          "motivo": "Oracolo delle condizioni SQLSTATE PostgreSQL 18: eseguito nel profilo native con PostgreSQL 18."
+        },
+        {
+          "file": "e2e-sql-native-provisioning.js",
+          "motivo": "Gestisce uno stack Docker persistente separato: da eseguire nel profilo dedicato."
+        },
+        {
+          "file": "e2e-sql-native-sessioni.js",
+          "motivo": "Richiede lo stack sql-native con alias DNS e replica a tre nodi."
+        },
+        {
+          "file": "e2e-sql-native-ui.js",
+          "motivo": "Richiede lo stack sql-native con alias DNS e replica a tre nodi."
+        },
+        {
+          "file": "e2e-sql-native.js",
+          "motivo": "Richiede lo stack sql-native con alias DNS e replica a tre nodi."
+        },
+        {
+          "file": "e2e-zoom.js",
+          "motivo": "Richiede una sessione desktop Electron; il runner di base usa Chromium headless."
+        }
+      ]
+    },
+    "native": {
+      "suite": 9,
+      "failover": 18,
+      "mutante_quorum_rilevato": true,
+      "esclusioni": [],
+      "risultati": [
+        {
+          "name": "stack-up",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "replica-init",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-sql-native",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-sql-native-sessioni",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-query-nativo-completo",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-query-audit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-mongosh-runtime",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-query-dialetti-nativi",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-sql-mongo-tipi",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-sql-native-ui",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "e2e-mongosh-ui",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-barriera",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-prima_riga",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-trigger_mql",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-indice",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-indice_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-dipendenza",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-dipendenza_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-savepoint",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-dominio",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-dominio_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-routine_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-native_savepoint",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-trigger_state_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-routine_nested_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-dominio_validate_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-cascade_before",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "failover-cascade_commit",
+          "ok": true,
+          "exitCode": 0
+        },
+        {
+          "name": "mutant-quorum",
+          "ok": true,
+          "exitCode": 1,
+          "expectedFailure": true,
+          "detected": true
+        }
+      ]
+    },
+    "desktop": {
+      "esito": "3 suite funzionali superate e mutante chiusura fallito sul controllo atteso",
+      "suite": [
+        {
+          "id": "e2e-chiusura-query",
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-chiusura-query.js",
+          "esito": "fallito",
+          "saltati": [],
+          "errori": [],
+          "code": 1,
+          "ms": 31044,
+          "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\desktop\\e2e-chiusura-query.log",
+          "atteso": "superato",
+          "coerenteConAtteso": false
+        },
+        {
+          "id": "e2e-chiusura-query-mutante",
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-chiusura-query.js",
+          "esito": "fallito",
+          "saltati": [],
+          "errori": [],
+          "code": 1,
+          "ms": 9027,
+          "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\desktop\\e2e-chiusura-query-mutante.log",
+          "atteso": "fallito",
+          "coerenteConAtteso": true
+        },
+        {
+          "id": "e2e-scorciatoie",
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-scorciatoie.js",
+          "esito": "superato",
+          "saltati": [],
+          "errori": [],
+          "code": 0,
+          "ms": 22194,
+          "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\desktop\\e2e-scorciatoie.log",
+          "atteso": "superato",
+          "coerenteConAtteso": true
+        },
+        {
+          "id": "e2e-zoom",
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-zoom.js",
+          "esito": "superato",
+          "saltati": [],
+          "errori": [],
+          "code": 0,
+          "ms": 10562,
+          "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\desktop\\e2e-zoom.log",
+          "atteso": "superato",
+          "coerenteConAtteso": true
+        }
+      ],
+      "confermaChiusura": {
+        "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-chiusura-query.js",
+        "esito": "superato",
+        "saltati": [],
+        "errori": [],
+        "code": 0,
+        "ms": 4259,
+        "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\desktop\\e2e-chiusura-query-conferma.log",
+        "motivo": "Ripetizione dopo completamento download automatico del runtime Electron",
+        "atteso": "superato"
+      },
+      "nota": "Il primo avvio chiusura è scaduto durante il download automatico di Electron; rieseguito a runtime pronto. I test Electron simulano le sole risposte DB e verificano UI, lifecycle nativo e scorciatoie reali.",
+      "preservazione": [
+        {
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test-reports\\zoom-2026-10-12\\report.json",
+          "prima": "40b7cd0d131a0e615d2739ad4c63ba6e58bafb8a7cf5e97f2d3bf5e6e8714d35",
+          "dopo": "40b7cd0d131a0e615d2739ad4c63ba6e58bafb8a7cf5e97f2d3bf5e6e8714d35",
+          "identico": true
+        },
+        {
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test-reports\\zoom-2026-10-12\\split-100.png",
+          "prima": "dc4cc21041be66f8bca00bd1b100f8ff20b20f51b971ec3e2f9c622acd379c40",
+          "dopo": "dc4cc21041be66f8bca00bd1b100f8ff20b20f51b971ec3e2f9c622acd379c40",
+          "identico": true
+        },
+        {
+          "file": "D:\\repository\\Nuova cartella\\CodeDB\\test-reports\\zoom-2026-10-12\\split-110.png",
+          "prima": "cf3b3430d64952a38759c2b827d3e8fa9126e78682780aff6281c1841a34eda5",
+          "dopo": "cf3b3430d64952a38759c2b827d3e8fa9126e78682780aff6281c1841a34eda5",
+          "identico": true
+        }
+      ]
+    },
+    "conteggi_reali": {
+      "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-conteggi-navigatore.js",
+      "esito": "superato",
+      "saltati": [],
+      "errori": [],
+      "code": 0,
+      "ms": 15492,
+      "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\conteggi-navigatore.log"
+    },
+    "sensibilita_aggiornamenti": {
+      "data": "2026-10-22T20:59:42.320Z",
+      "node": "v24.17.0",
+      "mutantiAttesi": 4,
+      "mutantiRilevati": 4,
+      "modificheProdotto": false,
+      "ambienteObjectId": "Host Windows, MongoDB laboratorio37017, directConnection via bootstrap; fallimenti prima del browser",
+      "risultati": [
+        {
+          "test": "unit-backup-reattivo",
+          "mutante": "signal rimosso",
+          "exitCode": 1,
+          "log": "backup-reattivo-mutante.log",
+          "atteso": "Missing expected rejection: L’annullamento deve fermare il motore prima della fine del backup",
+          "sensibilita": "rilevato_per_asserzione_prevista"
+        },
+        {
+          "test": "unit-backup-buffer",
+          "mutante": "flush a ogni riga",
+          "exitCode": 1,
+          "log": "backup-buffer-mutante.log",
+          "atteso": "Le righe piccole devono raggiungere gzip a blocchi, senza una chiamata nativa per riga",
+          "blocchiGzip": 50002,
+          "sensibilita": "rilevato_per_asserzione_prevista"
+        },
+        {
+          "test": "e2e-sql-objectid",
+          "mutante": "filtro",
+          "exitCode": 1,
+          "log": "objectid-filtro-mutante.log",
+          "atteso": "La IN dello screenshot deve ritrovare i due ObjectId",
+          "osservato": "0 !== 2",
+          "db": "codedb_sql_objectid_mongo_151b3037de79",
+          "sensibilita": "rilevato_per_asserzione_prevista",
+          "fixtureRimossa": true
+        },
+        {
+          "test": "e2e-sql-objectid",
+          "mutante": "espressione",
+          "exitCode": 1,
+          "log": "objectid-espressione-mutante.log",
+          "atteso": "SELECT n FROM geometries WHERE '668bde07922aa72f6275dcf5' = _id",
+          "osservato": "[] anziche [{n:1}]",
+          "db": "codedb_sql_objectid_mongo_8e8890b3c5af",
+          "sensibilita": "rilevato_per_asserzione_prevista",
+          "fixtureRimossa": true
+        }
+      ]
+    },
+    "dipendenze": {
+      "advisory_unici": 1,
+      "pacchetti_segnalati": 7,
+      "gravita": "high",
+      "id": "GHSA-c475-qrg2-pj4r",
+      "raggiungibilita": "non dimostrata da questo audit",
+      "log": ".scratch/audit-2026-10-22/npm-audit.json"
+    },
+    "impronte": {
+      "esito": "prerequisito assente",
+      "motivo": "Registro privato provenienza/impronte.json non presente; exit2, non una prova superata."
+    },
+    "mongodb_avanzato": {
+      "file": "D:\\repository\\Nuova cartella\\CodeDB\\test\\e2e-mongosh-advanced.cjs",
+      "esito": "superato",
+      "saltati": [],
+      "errori": [],
+      "code": 0,
+      "ms": 35464,
+      "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\advanced\\e2e-mongosh-advanced.log"
+    },
+    "kerberos": {
+      "start": "2026-10-22T21:06:03.0363175Z",
+      "end": "2026-10-22T21:06:09.8910491Z",
+      "exitCode": 0,
+      "container": "codedb-kerberos-audit-8a5bd822",
+      "log": "e2e-mongosh-kerberos.log",
+      "esito": "superato",
+      "saltati": [],
+      "errori": [],
+      "image": "sha256:bd61729ce768e501a01ec29e534ab472acd6afe55a10d5c4c394e30b18fd8339"
+    },
+    "integrita_sorgenti": {
+      "data": "2026-10-22T21:09:10.523Z",
+      "revision": "3a7d7ff82ffa8f8b78351a8f901d0fbaaf76080f",
+      "sourceDigest": "ee3ff4b560878f7bb12a2c219326fc10d8aa2718be0f7977df4c6a5701ed39cc",
+      "fileConfrontati": 997,
+      "differenze": []
+    },
+    "runner_windows": {
+      "created": "2026-10-22T21:08:24.536Z",
+      "platform": "win32",
+      "node": "v24.17.0",
+      "result": {
+        "file": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\runner-windows\\probe-parent.cjs",
+        "esito": "timeout",
+        "saltati": [],
+        "errori": [],
+        "code": null,
+        "ms": 1046,
+        "log": "D:\\repository\\Nuova cartella\\CodeDB\\.scratch\\audit-2026-10-22\\runner-windows\\probe.log"
+      },
+      "descendantPid": 4720,
+      "aliveAfterSuite": false,
+      "cleanupVerified": true,
+      "difettoConfermato": false
+    },
+    "electron_linux_prerequisiti": {
+      "status": 127,
+      "signal": null,
+      "stdout": "",
+      "stderr": "/laboratorio/repo/node_modules/electron/dist/electron: error while loading shared libraries: libgtk-3.so.0: cannot open shared object file: No such file or directory\n"
+    },
+    "ripetizioni_tab_motion": [
+      {
+        "ripetizione": 1,
+        "inizio": "2026-10-22T21:23:58.849Z",
+        "fine": "2026-10-22T21:24:15.692Z",
+        "file": "e2e-tab-motion.js",
+        "esito": "superato",
+        "saltati": [],
+        "errori": [],
+        "code": 0,
+        "ms": 16836,
+        "log": "/laboratorio/rapporti/audit-2026-10-22/tab-motion-rerun-1/e2e-tab-motion.js.log",
+        "evidenza": ".scratch/audit-2026-10-22/docker/tab-motion-rerun-1/esecuzione.json"
+      },
+      {
+        "ripetizione": 2,
+        "inizio": "2026-10-22T21:24:16.158Z",
+        "fine": "2026-10-22T21:24:32.957Z",
+        "file": "e2e-tab-motion.js",
+        "esito": "superato",
+        "saltati": [],
+        "errori": [],
+        "code": 0,
+        "ms": 16792,
+        "log": "/laboratorio/rapporti/audit-2026-10-22/tab-motion-rerun-2/e2e-tab-motion.js.log",
+        "evidenza": ".scratch/audit-2026-10-22/docker/tab-motion-rerun-2/esecuzione.json"
+      }
+    ]
+  },
+  "findings": [
+    {
+      "id": "LAB-001",
+      "priorita": "P1",
+      "categoria": "Integrità dati",
+      "titolo": "I binari SQL perdono il tipo nel trasporto e si corrompono al salvataggio",
+      "riferimenti": [
+        "db/sqlValori.js:100",
+        "db/sqlValori.js:106",
+        "db/sqlValori.js:119",
+        "db/sqlValori.js:39"
+      ],
+      "scenario": "MySQL VARBINARY e PostgreSQL BYTEA letti via socket/MCP diventano oggetti con chiavi numeriche. Salvare senza modifiche converte 00ff80275c0a nel testo JSON dell’oggetto; le PK binarie non identificano più la riga.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/query.json",
+        ".scratch/audit-2026-10-22/docker/nuovi/mcp-sql.json"
+      ],
+      "fix_proposto": "Preservare il tipo Binary/EJSON in tutti i percorsi SQL e ripristinare i Buffer prima di bind, compresi identificatori e MCP.",
+      "verifica": "Riprodotto su entrambi i DBMS reali: lettura, round-trip e PK.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-002",
+      "priorita": "P2",
+      "categoria": "Scritture SQL",
+      "titolo": "Update e replace non conservano gli array PostgreSQL",
+      "riferimenti": [
+        "db/sqlValori.js:29"
+      ],
+      "scenario": "INT[] e TEXT[] vengono convertiti in stringhe JSON; PostgreSQL rifiuta valori come [1,null,3].",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/query.json"
+      ],
+      "fix_proposto": "Conversione guidata dal tipo della colonna: distinguere array SQL da JSON e conservare NULL, Unicode, dimensioni e delimitatori.",
+      "verifica": "Update e replace reali falliti; sola lettura corretta.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-003",
+      "priorita": "P1",
+      "categoria": "Backup",
+      "titolo": "Incrementale PostgreSQL incompleto con TIMESTAMP senza fuso",
+      "riferimenti": [
+        "backup/lib/engine.js:1068",
+        "backup/lib/engine.js:1071",
+        "backup/lib/engine.js:1094",
+        "backup/lib/engine.js:1095"
+      ],
+      "scenario": "Full, poi INSERT con CURRENT_TIMESTAMP; CLI Europe/Rome e sessione UTC. Incrementale riuscito ma zero righe invece di una.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json"
+      ],
+      "fix_proposto": "Definire e applicare un confine temporale coerente con tipo PostgreSQL e fuso della sessione, senza conversioni locali implicite.",
+      "verifica": "Caso minimo su PostgreSQL17 reale; controllo MySQL DATETIME nello stesso scenario superato.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-004",
+      "priorita": "P1",
+      "categoria": "Backup",
+      "titolo": "Gli indici PostgreSQL sono archiviati come chiavi esterne",
+      "riferimenti": [
+        "backup/lib/engine.js:1049",
+        "backup/lib/engine.js:1146"
+      ],
+      "scenario": "Il full viene creato, ma il restore rifiuta CREATE INDEX nella sezione riservata ad ALTER TABLE delle FK.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json"
+      ],
+      "fix_proposto": "Separare indici e FK nel modello dell’archivio e nel ripristino, mantenendo validazione DDL e compatibilità degli archivi esistenti.",
+      "verifica": "Full e catene bloccati su PostgreSQL17 con indice parziale. Il codice usa lo stesso percorso per gli indici ordinari, non provati qui con un caso separato.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-005",
+      "priorita": "P1",
+      "categoria": "Backup",
+      "titolo": "Le catene ricreano le view già presenti",
+      "riferimenti": [
+        "backup/lib/restore.js:661",
+        "backup/lib/restore.js:1401",
+        "backup/lib/restore.js:1420"
+      ],
+      "scenario": "Ogni layer esegue nuovamente CREATE VIEW; incremental/differential falliscono con already exists.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json"
+      ],
+      "fix_proposto": "Ricostruire lo stato finale degli oggetti della catena, applicando aggiornamenti e dipendenze una sola volta o con sostituzione sicura.",
+      "verifica": "Riproduzioni minime indipendenti MySQL e PostgreSQL.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-006",
+      "priorita": "P2",
+      "categoria": "Verifica schema",
+      "titolo": "I default impliciti del validator MongoDB causano falsi rifiuti",
+      "riferimenti": [
+        "db/backupRestoreAdapter.js:190"
+      ],
+      "scenario": "Restore/import materializzano validationLevel=strict e validationAction=error; la verifica li considera diversi dalla loro omissione equivalente.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json"
+      ],
+      "fix_proposto": "Canonicalizzare i default semantici nelle opzioni delle collection, preservando differenze effettive nel validator.",
+      "verifica": "Caso implicito rosso e corrispondente caso esplicito verde su MongoDB8.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-007",
+      "priorita": "P1",
+      "categoria": "Verifica schema",
+      "titolo": "Restore MySQL respinto per inventario FK e DDL equivalenti",
+      "riferimenti": [
+        "db/DbStrategy.js:98",
+        "db/backupRestoreAdapter.js:125",
+        "db/schemaObjects.js:60"
+      ],
+      "scenario": "Tre divergenze verificate separatamente: tableAuxDdl ereditato restituisce FK vuote; il backup separa le FK dalla CREATE TABLE ma il confronto usa SHOW CREATE che le include; CHARACTER SET utf8mb4 esplicito nello staging è considerato diverso dall’equivalente implicito. Cataloghi nativi corretti.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json",
+        ".scratch/audit-2026-10-22/diagnosi/my-fk.json",
+        ".scratch/audit-2026-10-22/diagnosi/my-charset.json"
+      ],
+      "fix_proposto": "Leggere l’inventario MySQL reale completo e confrontare semanticamente charset, FK e definizioni, senza ignorare vincoli mancanti.",
+      "verifica": "Full complesso respinto, più prove minime MySQL separate con sola FK e solo charset/collation. Nessuna perdita di FK o cambio effettivo di charset nello staging.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-008",
+      "priorita": "P2",
+      "categoria": "Verifica schema",
+      "titolo": "DDL PostgreSQL con colonne generate non viene riconosciuta equivalente",
+      "riferimenti": [
+        "db/PostgreSqlStrategy.js:1351"
+      ],
+      "scenario": "Il backup conserva GENERATED ALWAYS AS (... ) STORED e il catalogo dello staging conferma stessa espressione. tableDdl invece ignora generated e tableFields non acquisisce generation_expression: il descrittore emette una normale colonna numeric e la verifica respinge il restore corretto.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/integrita.json",
+        ".scratch/audit-2026-10-22/diagnosi/pg-generata.json"
+      ],
+      "fix_proposto": "Acquisire generation_expression e generare la DDL completa delle colonne generate nello stesso contratto usato da backup e verifica, con confronto semantico.",
+      "verifica": "Prova minima PostgreSQL reale senza indici aggiuntivi: colonna generata identica in origine/staging, differenza solo nel descrittore.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-009",
+      "priorita": "P2",
+      "categoria": "Interfaccia",
+      "titolo": "Il menu della griglia scompare durante la chiusura del dialogo",
+      "riferimenti": [
+        "ui/dialogs.tsx:26",
+        "ui/dialogs.tsx:180"
+      ],
+      "scenario": "Clic destro durante closing di Modifica/Duplica; il menu si apre e poi scompare quando il cleanup lo sposta fuori dal portal.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/dialog-menu.json",
+        ".scratch/audit-2026-10-22/diagnosi/ui-meccanismi.json"
+      ],
+      "fix_proposto": "Coordinare la proprietà del menu e il trasferimento fra portal affinché un popover aperto non venga ricollocato durante lo smontaggio.",
+      "verifica": "Due regressioni fallite, due controlli passati; meccanismo browser riprodotto separatamente con controprova.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-010",
+      "priorita": "P2",
+      "categoria": "Mappe",
+      "titolo": "Aggiornare la mappa nascosta produce zoom infinito e coordinate NaN",
+      "riferimenti": [
+        "public/js/geo-vista.js:448",
+        "public/js/geo-vista.js:458",
+        "public/js/query-map.js:158"
+      ],
+      "scenario": "Cambio viewport/query con canvas nascosto 0×0: fitBounds senza maxZoom finito porta a Infinity; invalidateSize successivo genera Invalid LatLng object (NaN, NaN).",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/browser.json",
+        ".scratch/audit-2026-10-22/diagnosi/ui-meccanismi.json"
+      ],
+      "fix_proposto": "Rinviare fitBounds e resize fino a dimensioni valide, applicare un limite di zoom finito e aggiornare la vista alla riapertura.",
+      "verifica": "Errore nella UI reale e riproduzione minima con Leaflet vendorizzato; controprova su contenitore visibile verde.",
+      "stato": "aperto"
+    },
+    {
+      "id": "LAB-011",
+      "priorita": "P1",
+      "categoria": "Creazione collection",
+      "titolo": "La creazione MongoDB inoltra campi di trasporto al comando nativo",
+      "riferimenti": [
+        "server/eventi-dati.js:117",
+        "db/MongoDbStrategy.js:498"
+      ],
+      "scenario": "db, name e tabId vengono inoltrati fra le opzioni createCollection; MongoDB respinge create.tabId/create.db e non crea la collection.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/nuovi/query.json"
+      ],
+      "fix_proposto": "Separare i parametri del protocollo dalle opzioni ammesse dal driver, preservando validator e opzioni legittime.",
+      "verifica": "Creazione semplice e con validator fallite; catalogo verificato tramite driver indipendente.",
+      "stato": "aperto"
+    },
+    {
+      "id": "AUD-012",
+      "priorita": "P1",
+      "categoria": "Backup",
+      "titolo": "created_at scelto automaticamente fa perdere gli aggiornamenti nell’incrementale",
+      "riferimenti": [
+        "backup/lib/engine.js:62",
+        "backup/lib/engine.js:470",
+        "backup/lib/engine.js:946"
+      ],
+      "scenario": "Full con valore 10, UPDATE a 20, incremental senza sinceField: created_at viene scelto automaticamente e il delta contiene zero righe. verify valido, restore problems:[] ed equivalenza.completa:true, ma valore ripristinato 10.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/diagnosi/created-at-reale.json",
+        ".scratch/audit-2026-10-22/diagnosi/created-at-controllo.json"
+      ],
+      "fix_proposto": "Usare un criterio di modifica affidabile; in assenza di tale garanzia adottare il dump completo/confronto contenuti. Non dedurre un change tracker dalla data di creazione.",
+      "verifica": "Riprodotto su MySQL reale; controllo con fallback full verde. PostgreSQL condivide la selezione, ma il caso reale qui copre MySQL.",
+      "stato": "aperto"
+    },
+    {
+      "id": "AUD-013",
+      "priorita": "P1",
+      "categoria": "Lifecycle ripristino",
+      "titolo": "Chiudere il tab o perdere il socket può distruggere il driver durante il restore",
+      "riferimenti": [
+        "server/eventi-backup.js:182",
+        "server/socket.js:154"
+      ],
+      "scenario": "backup:restore non acquisisce la lease della sessione. closeSession chiude il driver prima della conclusione; il restore fallisce.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/diagnosi/restore-lease.json"
+      ],
+      "fix_proposto": "Acquisire e rilasciare la lease per tutto il ripristino e l’eventuale recupero, con stato osservabile anche dopo la disconnessione.",
+      "verifica": "Registratore e lifecycle reali con adapter sospeso in memoria; errore riprodotto e controllo con lease verde. Nessuna perdita dati reale dimostrata.",
+      "stato": "aperto"
+    },
+    {
+      "id": "AUD-014",
+      "priorita": "P2",
+      "categoria": "Restore selettivo",
+      "titolo": "La verifica respinge le tabelle che il restore selettivo deve preservare",
+      "riferimenti": [
+        "db/backupRestoreAdapter.js:160",
+        "db/backupRestoreAdapter.js:170",
+        "db/backupRestoreAdapter.js:177",
+        "db/backupRestoreAdapter.js:205"
+      ],
+      "scenario": "Backup di scelta e destinazione con preservata: staging corretto con entrambe, ma lo schema atteso contiene solo scelta. Esito ripristinato_dopo_errore per table:preservata.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/diagnosi/restore-selettivo-reale.json",
+        ".scratch/audit-2026-10-22/diagnosi/restore-selettivo.json"
+      ],
+      "fix_proposto": "Calcolare lo schema atteso come composizione dello snapshot preservato e degli oggetti ripristinati, verificando ogni porzione.",
+      "verifica": "MySQL reale e prova pura con due controlli positivi. Fallimento prima della promozione: lo stato ripristinato_dopo_errore non indica in questo caso un rollback effettivamente eseguito. Verificati catalogo/staging; non eseguito un confronto indipendente di tutti i valori finali.",
+      "stato": "aperto"
+    },
+    {
+      "id": "AUD-015",
+      "priorita": "P2",
+      "categoria": "Dialoghi e tastiera",
+      "titolo": "Riaprire un prompt durante la chiusura lascia Escape sul dialogo sbagliato",
+      "riferimenti": [
+        "ui/dialogs.tsx:170",
+        "test/e2e-arc.js:85"
+      ],
+      "scenario": "Un prompt ancora presente in opened durante closing viene riaperto dopo il wizard. Non viene riportato in cima: Escape chiude il wizard e lascia la Promise del prompt pending.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/diagnosi/arc-prompt.json",
+        ".scratch/audit-2026-10-22/docker/storici/e2e-arc.js.log"
+      ],
+      "fix_proposto": "Gestire la riapertura come nuovo ordine di dialogo attivo, cancellando/coordinando la chiusura precedente; instradare Escape e focus al dialogo effettivamente superiore.",
+      "verifica": "Suite storica fallita; riproduzione reale UI con askZ 1002, wizardZ 1004 e Promise pending. Controprova a chiusura completa: ordine corretto, prompt risolto null e wizard conservato.",
+      "stato": "aperto"
+    }
+  ],
+  "problemi_infrastruttura": [
+    {
+      "id": "INF-001",
+      "priorita": "P2",
+      "titolo": "lab:prepara si arresta per top-level await nel comando mongosh",
+      "riferimento": "tools/laboratorio.cjs",
+      "prova": ".scratch/audit-2026-10-22/prepara.log",
+      "seguito": "Rendere il comando compatibile e testarlo; qui stessi passaggi completati con wrapper async, log prepara-ripresa.log. Il workflow laboratorio dipende da questo comando."
+    },
+    {
+      "id": "INF-002",
+      "priorita": "P2",
+      "titolo": "La campagna Linux seleziona e2e-chiusura-query senza ambiente Electron predisposto",
+      "riferimento": "test/lab/manifest.cjs",
+      "prova": ".scratch/audit-2026-10-22/docker/storici/e2e-chiusura-query.js.log",
+      "seguito": "Predisporre un profilo Electron e inserirlo nell’esecuzione completa. La stessa prova è passata su Windows, incluso mutante.",
+      "causa": "Electron --version termina exit127: libgtk-3.so.0 assente nel container"
+    }
+  ],
+  "note_metodo": [
+    "Le suite storiche e nuove girano sequenzialmente nello stesso namespace Docker; il profilo nativo usa porte/database separati.",
+    "I fallimenti attesi dei mutanti non sono regressioni; il report richiede la specifica asserzione prevista.",
+    "Le ripetizioni non cancellano le baseline e non sono sommate come nuova copertura.",
+    "Gli artefatti contengono fixture sintetiche; vault e connessioni personali non sono usati.",
+    "Le prestazioni sono misure locali sotto carico concorrente, non certificazione SLA."
+  ],
+  "candidati": [
+    {
+      "id": "UX-001",
+      "priorita": "da decidere",
+      "titolo": "Ritorno al navigatore dopo Strumenti → Tema",
+      "riferimenti": [
+        "test/e2e-griglia-fluidita.js:264",
+        "public/js/theme.js"
+      ],
+      "problema": "Il test pretende che Database resti aperto; apriModale chiude esplicitamente il navigatore. La suite fallisce ancora su questa aspettativa. Non osservati crash o perdita dati; serve decidere il contratto UX prima di correggere prodotto o test.",
+      "evidenza": ".scratch/audit-2026-10-22/docker/storici/e2e-griglia-fluidita.js.log"
+    },
+    {
+      "id": "QA-001",
+      "priorita": "P2 diagnostica test",
+      "titolo": "Scorrimento schede: fallimento intermittente non attribuito",
+      "riferimenti": [
+        "test/e2e-tab-motion.js:262"
+      ],
+      "problema": "Baseline fallita; due ripetizioni ufficiali nello stesso Chromium/container superate, più replica host superata. L’asserzione combina scorrimento, annullamento e ordine dopo attesa fissa di 220 ms senza registrarne i singoli valori. Causa non dimostrata: non classificato fra i 15 difetti applicativi.",
+      "intervento": "Registrare le tre condizioni e la geometria al fallimento; sostituire l’attesa fissa con osservazione della condizione entro un limite ragionevole. Mantenere gli stessi requisiti e provarne la sensibilità.",
+      "evidenza": [
+        ".scratch/audit-2026-10-22/docker/storici/e2e-tab-motion.js.log",
+        ".scratch/audit-2026-10-22/docker/tab-motion-rerun-1/esecuzione.json",
+        ".scratch/audit-2026-10-22/docker/tab-motion-rerun-2/esecuzione.json",
+        ".scratch/audit-2026-10-22/diagnosi/tab-motion-host-1.log"
+      ]
+    }
+  ],
+  "ambito_non_analizzato": [
+    "e2e-contenitori.js, e2e-mobile-android.js, e2e-splash-android.js: richiedono APK ed emulatore Android dedicato; non predisposti in questa campagna DB.",
+    "e2e-release-desktop.cjs e e2e-mongosh-electron.cjs: pacchetto/installer dedicato della revisione corrente assente; non sostituito con binari storici.",
+    "e2e-sql-native-provisioning.js: riavvia lo stack persistente con configurazione .env.sql-native; non eseguito sulla configurazione personale. SQL nativo e failover sono coperti dalla fixture isolata.",
+    "test/e2e-windows-store.ps1: richiede AppX e collaudo Store; fuori dall’inventario JS/CJS e non eseguito.",
+    "Registro privato delle impronte assente, quindi npm run impronte non verificato.",
+    "Storage cloud con account reali, aggiornamenti distribuiti, macOS/Linux desktop, dispositivi fisici, carico prolungato e interruzione dell’alimentazione non sono certificati da queste prove."
+  ],
+  "copertura_inventario": {
+    "file_e2e_js_cjs": 173,
+    "infrastruttura": 1,
+    "suite_reali": 172,
+    "suite_distinte_esercitate": 166,
+    "suite_con_prerequisiti_non_eseguite": 6,
+    "note": "Chiusura query ripetuta su Windows dopo fallimento nel container; contata una volta. Le 18 fasi di failover sono una suite distinta; nuovi test/lab e unitari sono separati."
+  },
+  "avanzamentoFix": [
+    {
+      "id": "LAB-001",
+      "titolo": "I binari SQL perdono il tipo nel trasporto e si corrompono al salvataggio",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-22T21:40:08.518Z",
+      "prove": {
+        "host": "20 combinazioni unit + budget; 11 casi binari reali; 3 tipi; 42 MCP SQL; regressioni integrità/tabellare",
+        "docker": "unit + mutante rilevato SQL-BINARI-TIPO; 11 casi binari; 3 tipi; 42 MCP SQL; e2e-tipi-identita",
+        "baseline": "5 casi reali falliti prima del fix; unit fallito prima del fix",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-001"
+      },
+      "hashes": {
+        "db/sqlValori.js": "da0bab051aa5f3cc3c4b813c57fcd37c232e40c072e850e84c24923e611897f7",
+        "db/sqlTabellare.js": "a2ff1147cd77e9890b41b84d8fdb25658b5651c10441fb78da18a898e20a9766",
+        "db/DbStrategy.js": "ee27810fe7f07e6e4867a000eb52e4588beaf0b0bd1ade1abee894f63bfaa330",
+        "db/PostgreSqlStrategy.js": "0d11611864de058d514d7d823d9858a8fd0af47409761f5faaca2effda4b6547",
+        "test/lab/query.cjs": "da2c3c4f74f26d23338e630a7107d8c1de15dc9cc060ccb972e707477d686b25",
+        "test/unit-sql-binari.js": "4f8b839a1e3beae03815186fc01e61bb16042a44bb7c1281e81bf7d0e7991343",
+        "test/unit-sql-valori-esatti.js": "769898085b84681214269d0c378d5a0e99ecee611130d592bad8081690914016"
+      }
+    },
+    {
+      "id": "LAB-002",
+      "titolo": "Update e replace non conservano gli array PostgreSQL",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-22T21:58:10.4535577Z",
+      "prove": {
+        "host": "13 scenari reali PostgreSQL; 29 casi unitari + metadati; npm test completo superato; 6 mutanti unitari e mutante reale rilevati",
+        "docker": "13 scenari reali; 29 casi unitari + metadati e 6 mutanti rilevati; mutante reale precisione; npm test completo; 9 suite E2E; regressione 11 binari e 42 MCP SQL",
+        "baseline": "2 casi originali, 9 estesi, 1 export e 1 metadati falliti prima della rispettiva correzione",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-002"
+      },
+      "hashes": {
+        "db/DbStrategy.js": "ee27810fe7f07e6e4867a000eb52e4588beaf0b0bd1ade1abee894f63bfaa330",
+        "db/PostgreSqlStrategy.js": "46fe4160c9057969bc426b3b613151e2e1f2869c3730aa1f17d453c26703bde2",
+        "db/filtro.js": "2692c5bbcb3119c209cff7bf6c174056465a6ef9d5e7ba29891ca63c4baa5c67",
+        "db/insertValues.js": "b957957054debd5cf78757cf6f9eca75c9de0d911161e3d1a67904cb967a37a6",
+        "db/pg-valori.js": "d289b64e8a25fa4c98406b490c50a26bec372d9e81cdbfa0afc20329ce53d23c",
+        "db/sqlMetadati.js": "6fcb230a53e35d6b0298300e9c4ff62a79213c80697ea986f6a5339140b731ab",
+        "db/sqlTabellare.js": "2729621c2610f514b2ecd6c4eb5259a9ea5a8704712c5c3f212494b70e55a5ca",
+        "db/sqlValori.js": "ec33fad618754278816493fd962ee1c89f46df7c1c0ae3a2040e3059720b46af",
+        "public/js/valori-esatti.js": "32d25d330a01b5c3f4636b3ca8ea1bf105857e9606f4a00d86e3a934d8dae3df",
+        "test/lab/query-mutants.cjs": "227be44b76a20927cb54b119a59d90894b8508122657bb813fb89756af8cb63a",
+        "test/lab/query.cjs": "d42d444c658549767ce2ad9dfcd391c2d92887d4b8f7f2a3d55b8fb6b2398c98",
+        "test/unit-ordinamento-strategia.js": "24c340144d29caa3e7bfadf50216ce3e89efa126a4e3d48e1b4a0a8a7d0588fc",
+        "test/unit-pg-array-metadati.js": "cd647bffcdd21958a0749c6a9746c67c4f772ea17373f0686d051c344b775742",
+        "test/unit-pg-array.js": "25cb3a6b5da5dd823d7d495264c2fd90f72859a53d25d1d20b72a83e51bbc31a",
+        "test/unit-sql-binari.js": "4f8b839a1e3beae03815186fc01e61bb16042a44bb7c1281e81bf7d0e7991343",
+        "test/unit-sql-integrita-righe.js": "be230c57d9dad5ef624986c655e16d07800efec10c74f4e7919a84eb53840373",
+        "test/unit-sql-valori-esatti.js": "28af419d99ab95cbbac87c4056b1e96bb806fcc9ceb11894ea1c3ef7f0a27ce1"
+      }
+    },
+    {
+      "id": "LAB-003",
+      "titolo": "Incrementale PostgreSQL incompleto con TIMESTAMP senza fuso",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-22T22:06:16.5978047Z",
+      "prove": {
+        "host": "23 scenari reali, 264 verifiche, 0 fallimenti; 3 mutanti reali rilevati; 2268 combinazioni unitarie, 2 mutanti rilevati; npm test completo",
+        "docker": "Stessi 23 scenari e 264 verifiche, 3 mutanti reali rilevati; unitari completi e mutanti; E2E backup Mongo/MySQL; riproduzione originale CLI PostgreSQL ora superata",
+        "limiti": "Convenzione UTC per timestamp senza fuso già prevista dal dump; DATE ora include intero giorno. Integrita complessiva ancora 15 fallimenti delle altre classi non corrette",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-003"
+      },
+      "hashes": {
+        "backup/lib/confine-sql.js": "d7dce6e6b3ca692b20dbddd9a958a5a54d8b59e6fdb332afbc1248950b3518ed",
+        "backup/lib/engine.js": "6f3df473af8bb22eef65897b371efd1a8fadb7f22c83d984d8cb399f6e1e0c8e",
+        "db/DbStrategy.js": "ee27810fe7f07e6e4867a000eb52e4588beaf0b0bd1ade1abee894f63bfaa330",
+        "db/PostgreSqlStrategy.js": "46fe4160c9057969bc426b3b613151e2e1f2869c3730aa1f17d453c26703bde2",
+        "db/filtro.js": "2692c5bbcb3119c209cff7bf6c174056465a6ef9d5e7ba29891ca63c4baa5c67",
+        "db/insertValues.js": "b957957054debd5cf78757cf6f9eca75c9de0d911161e3d1a67904cb967a37a6",
+        "db/pg-valori.js": "d289b64e8a25fa4c98406b490c50a26bec372d9e81cdbfa0afc20329ce53d23c",
+        "db/sqlMetadati.js": "6fcb230a53e35d6b0298300e9c4ff62a79213c80697ea986f6a5339140b731ab",
+        "db/sqlTabellare.js": "2729621c2610f514b2ecd6c4eb5259a9ea5a8704712c5c3f212494b70e55a5ca",
+        "db/sqlValori.js": "ec33fad618754278816493fd962ee1c89f46df7c1c0ae3a2040e3059720b46af",
+        "public/js/valori-esatti.js": "32d25d330a01b5c3f4636b3ca8ea1bf105857e9606f4a00d86e3a934d8dae3df",
+        "test/lab/backup-tempi.cjs": "745b0c69d19c5b7b14f5f505c3846a9bcadcd5d48529623dcffc04bcd497a53b",
+        "test/lab/query-mutants.cjs": "227be44b76a20927cb54b119a59d90894b8508122657bb813fb89756af8cb63a",
+        "test/lab/query.cjs": "d42d444c658549767ce2ad9dfcd391c2d92887d4b8f7f2a3d55b8fb6b2398c98",
+        "test/unit-backup-confine-temporale.js": "ebd470113c09a792ad97ebc79c80bf4b700e50b207ea19ceea55a8285ea665aa",
+        "test/unit-backup-import-regressioni.js": "5d8d9a95829227f3c5d4d8aad96724b8c3fe3b68738621cd92ab8371951b4a8e",
+        "test/unit-ordinamento-strategia.js": "24c340144d29caa3e7bfadf50216ce3e89efa126a4e3d48e1b4a0a8a7d0588fc",
+        "test/unit-pg-array-metadati.js": "cd647bffcdd21958a0749c6a9746c67c4f772ea17373f0686d051c344b775742",
+        "test/unit-pg-array.js": "25cb3a6b5da5dd823d7d495264c2fd90f72859a53d25d1d20b72a83e51bbc31a",
+        "test/unit-sql-binari.js": "4f8b839a1e3beae03815186fc01e61bb16042a44bb7c1281e81bf7d0e7991343",
+        "test/unit-sql-integrita-righe.js": "be230c57d9dad5ef624986c655e16d07800efec10c74f4e7919a84eb53840373",
+        "test/unit-sql-valori-esatti.js": "28af419d99ab95cbbac87c4056b1e96bb806fcc9ceb11894ea1c3ef7f0a27ce1"
+      }
+    },
+    {
+      "id": "LAB-004",
+      "titolo": "Gli indici PostgreSQL sono archiviati come chiavi esterne",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-22T22:17:50.9013056Z",
+      "prove": {
+        "host": "18 verifiche reali con restore via piano full/legacy/catene, selettivo e catalogo indipendente; mutante rilevato; npm test completo",
+        "docker": "18 verifiche reali e mutante; npm test completo; 7 suite E2E; 3 mutanti unitari rilevati",
+        "baseline": "Snapshot dei 5 sorgenti precedenti rifiuta CREATE INDEX legacy; evidenza e hash conservati",
+        "limiti": "Catene con indici invariati; selettivo lowerlevel per isolare AUD014 ancora aperto",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-004"
+      },
+      "hashes": {
+        "backup/lib/confine-sql.js": "d7dce6e6b3ca692b20dbddd9a958a5a54d8b59e6fdb332afbc1248950b3518ed",
+        "backup/lib/engine.js": "9615e89393baad9a3e7ddf17872010bee8664d84206dcd5ec2a4422b926d3d28",
+        "backup/lib/restore.js": "69747ef60d10e8da4be314ddffbf5d5585ab5f31ff50bf0d6a9cdefdb0082f85",
+        "db/DbStrategy.js": "ee27810fe7f07e6e4867a000eb52e4588beaf0b0bd1ade1abee894f63bfaa330",
+        "db/PostgreSqlStrategy.js": "4486093acba6c76af50f611c768ca83a8bc1fbeaaad91a5fcb2c8e49ec3bcc19",
+        "db/artefatti.js": "48bcec3d5c84cbbb54f84e080e10f22fefdf7c3d55d91057a4a68510a4beddb2",
+        "db/backupRestoreAdapter.js": "816bb6bc2092973a45e60dd162caf863ed8e4945030ca8209ff041f44ea2ff84",
+        "db/filtro.js": "2692c5bbcb3119c209cff7bf6c174056465a6ef9d5e7ba29891ca63c4baa5c67",
+        "db/importArtifactAdapter.js": "427adb5292155a9f7279d9224196a6c59e21830f2f27f944b8d62f542d09a6c3",
+        "db/insertValues.js": "b957957054debd5cf78757cf6f9eca75c9de0d911161e3d1a67904cb967a37a6",
+        "db/pg-ddl.js": "96bf2b90d0c657753e85241a98684a5690bd49f960c76f55551beb42ec0824f5",
+        "db/pg-indici.js": "8f5a49016e83fd589c1a0caa9aef062f023b606ba42574e7c291fb74c78b997a",
+        "db/pg-valori.js": "d289b64e8a25fa4c98406b490c50a26bec372d9e81cdbfa0afc20329ce53d23c",
+        "db/schemaObjects.js": "f933fe6b0c89f7b0901da81e6af20369a497c250b62cdd0ca88f671cf4e92a2b",
+        "db/sqlMetadati.js": "6fcb230a53e35d6b0298300e9c4ff62a79213c80697ea986f6a5339140b731ab",
+        "db/sqlTabellare.js": "2729621c2610f514b2ecd6c4eb5259a9ea5a8704712c5c3f212494b70e55a5ca",
+        "db/sqlValori.js": "ec33fad618754278816493fd962ee1c89f46df7c1c0ae3a2040e3059720b46af",
+        "public/js/valori-esatti.js": "32d25d330a01b5c3f4636b3ca8ea1bf105857e9606f4a00d86e3a934d8dae3df",
+        "test/lab/backup-indici.cjs": "8947a3ca8327d548cd6db95327b14f0f3053c19658100ca718f2bae77db14b32",
+        "test/lab/backup-tempi.cjs": "745b0c69d19c5b7b14f5f505c3846a9bcadcd5d48529623dcffc04bcd497a53b",
+        "test/lab/query-mutants.cjs": "227be44b76a20927cb54b119a59d90894b8508122657bb813fb89756af8cb63a",
+        "test/lab/query.cjs": "d42d444c658549767ce2ad9dfcd391c2d92887d4b8f7f2a3d55b8fb6b2398c98",
+        "test/unit-backup-confine-temporale.js": "ebd470113c09a792ad97ebc79c80bf4b700e50b207ea19ceea55a8285ea665aa",
+        "test/unit-backup-import-regressioni.js": "9d8e03ea0c37b734fd3debaf96eb711d780890f75ab50310ab3a98f65c87e218",
+        "test/unit-backup-indici.js": "84dca450b3b153ce4268a0c6de5960c26e0d7b3a14f37160db1b808415c5ea60",
+        "test/unit-ordinamento-strategia.js": "24c340144d29caa3e7bfadf50216ce3e89efa126a4e3d48e1b4a0a8a7d0588fc",
+        "test/unit-pg-array-metadati.js": "cd647bffcdd21958a0749c6a9746c67c4f772ea17373f0686d051c344b775742",
+        "test/unit-pg-array.js": "25cb3a6b5da5dd823d7d495264c2fd90f72859a53d25d1d20b72a83e51bbc31a",
+        "test/unit-sql-binari.js": "4f8b839a1e3beae03815186fc01e61bb16042a44bb7c1281e81bf7d0e7991343",
+        "test/unit-sql-integrita-righe.js": "be230c57d9dad5ef624986c655e16d07800efec10c74f4e7919a84eb53840373",
+        "test/unit-sql-valori-esatti.js": "28af419d99ab95cbbac87c4056b1e96bb806fcc9ceb11894ea1c3ef7f0a27ce1"
+      }
+    },
+    {
+      "id": "LAB-005",
+      "titolo": "Le catene ricreano le view già presenti",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T20:07:36.332Z",
+      "prove": {
+        "host": "107 verifiche di catena, 51 di merge su MongoDB/MySQL/PostgreSQL reali; 12 mutanti reali rilevati; 13 gruppi unitari e 9 mutanti; npm test completo; UI browser e protocollo con due mutanti rilevati",
+        "docker": "Stesse 107 + 51 verifiche reali, 12 mutanti; npm test completo, 9 mutanti unitari più risposta protocollo; UI browser e mutante; 7 suite storiche backup/export/import",
+        "baseline": "Fallimenti originali preservati. Estensioni hanno riprodotto identità PostgreSQL non bindabili, falsi tombstone su compositi e DELETE senza cast. Il caso timestamp MySQL è provato con mutante, senza attribuirgli una baseline precedente al fix.",
+        "limiti": "Gli archivi storici privi di snapshot completi dichiarano il limite di verifica in CLI, socket e UI. La rimozione degli oggetti obsoleti in merge avviene solo nello staging posseduto dall'adapter, con recupero verificato e corrispondenza della definizione storica. Le altre classi dell'audit restano distinte.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-005"
+      },
+      "hashes": {
+        "backup/cli.js": "fc3372dabb7fccd3d40edc0b9a50a26509d0a7a5d7fa78a5ed797ad8c86c54c9",
+        "backup/lib/engine.js": "fff5696be3e2c2bb5eafa580e522ed72abd66eec2217755b8adb637680b224df",
+        "backup/lib/restore.js": "c5d8003fda7fa498a8a255871016aa0645c1c8e329195b958b0b80cf1439a37d",
+        "backup/lib/schema-snapshot.js": "98bf39f9c3100c61e73be35d82a0ca75f8075d8f6016cb98b04a5c1bee62385b",
+        "backup/lib/merge-identita.js": "ae6f9fb128ae30d128d38b12a61fc5d54cdd3b7ec61e8e954f27c0f2a1422b68",
+        "db/backupRestoreAdapter.js": "d9a7282b8e78161c66781d0664d02809b2dfb1b8f471161c0ea868f7e65439b1",
+        "db/mongoBson.js": "c74aa1c9f6dfb6cd7e07a4f81105c4c1b4bff0d9f0a75fc15744e415c62f8dcc",
+        "db/pg-alias.js": "1d97b76f6baee28c5d67529c5334f4204bc7ec2987bcce32fcced01bdad90eb2",
+        "db/schemaObjects.js": "c20645b88360d4b2de96d5421696c61b22718dad4ed889105da5bcd6741fff03",
+        "public/js/backupmanager.js": "e5bbb4acf285f5051cd4c8c5918b136ec85b7503f657d8e0f94c7224b4ebfaf4",
+        "server/eventi-backup.js": "8e0dd59b2598efdeb4ebb111e2ee3fbf01b62471682bb596ea4af149ab2b57b7",
+        "test/e2e-backup-design.js": "839960aec52dcc481b0c523ec513e6adaeffeb23d27353a9ba039c875880ab40",
+        "test/unit-backup-selection.js": "53e44134c5b512a8ccc4f7b72e415de39dda300f353a330855802c6761db10e4",
+        "test/unit-backup-oggetti-catena.js": "8b1eec6adc46fa92c3cec6fa0d1704aa17f8eacb0cbceacb9811cdb6881b5b74",
+        "test/unit-backup-import-regressioni.js": "9054a22ca4b175b70f0fc34d28bc7740ac5dcdd679f6d26354f7038ddf9eae8b",
+        "test/lab/backup-oggetti.cjs": "e076d1ba2c0a826f2b737edceb0cf4baff25c086f6cf1d425cb072165d5cca0e",
+        "test/lab/backup-merge-identita.cjs": "0275bdac84ea88d8078db4ac6b7419ce6f8bbe65512ec70a13aa6092f967de6e",
+        "test/lab/nuovi.cjs": "d253469755e8627709b4fd3b57800a1c9938b28bf7fabcdbd5e6fd8cf6b03b46"
+      }
+    },
+    {
+      "id": "LAB-006",
+      "titolo": "I default impliciti del validator MongoDB causano falsi rifiuti",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T20:39:57.266Z",
+      "prove": {
+        "host": "52 verifiche MongoDB reali, 4 mutanti reali rilevati; 16 gruppi validator con 5 mutanti e 14 gruppi catena con 10 mutanti causali; npm test completo superato.",
+        "docker": "52 verifiche reali e 4 mutanti; npm test completo; 15 mutanti unitari causali; 107 verifiche catena sui tre DBMS e 4 mutanti; 7 suite storiche backup/export/import tutte superate.",
+        "baseline": "Riprodotti default impliciti, ordine BSON, regex e collisioni dei tag EJSON v2 con documenti letterali. Le transizioni su collection esistenti sono provate con mutante causale del confronto EJSON, senza attribuire una baseline precedente al fix.",
+        "limiti": "I nuovi metadati includono BSON fedele per entry con copia EJSON verificata. Gli archivi precedenti restano leggibili; una collisione letterale con un tag v2 in un vecchio file solo EJSON non contiene informazioni sufficienti per ricostruire il tipo originale.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-006",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-006-bson-regressioni/sorgenti.json"
+      },
+      "hashes": {
+        "db/mongoSchemaBson.js": "a5066069b157bde0c503a077c3fe20437af7be060946d0b24ffea9cdab4a37e3",
+        "db/mongoCollectionOptions.js": "a79a7fa0966816604fac95916032149893075781cce4da07bb01154606f27803",
+        "db/schemaObjects.js": "65de81427c0350658f92284a41d402dced910e8446bf25cdc5fac196e3c616c2",
+        "db/artefatti.js": "c643a9420b4b143e6510fb51d0a880a2b6472daeb68397bf12f8ac5f6b111829",
+        "db/databaseExport.js": "8edf6064670efa5c6e203320d56cb280ff19122a0c9cfd20a927959d0bec2f35",
+        "db/backupRestoreAdapter.js": "a201de696c142deec92183799607e031af4e7bdb6e54ea55b1c081b2a81b52e5",
+        "db/importArtifactAdapter.js": "3a2555b0569dc858f1842795578362314ae36c003ff1590ec9f2dbd7382f1464",
+        "db/MongoDbStrategy.js": "7441569b52b6c5df796e878fe646ccdf9719bf0b0edf2b145317a69a2ad57c22",
+        "backup/lib/engine.js": "7edb17daaec0bd4bcc35d4f022baf70ceabe6c429d38d4d3e308d39160baa30e",
+        "backup/lib/schema-snapshot.js": "85d5bee74846568b619dc838f02117cd3f97a40b64de3005c6d92b158183eaf2",
+        "backup/lib/restore.js": "9ba9d2edd2649b9a241a7e54f2346eb38cfc88c8860973f56a03b0d6f684685a",
+        "test/unit-backup-validator.js": "278cc29f47de02498430caf0fdab39b879c8c4ec7584ee3138f2a92d6a649692",
+        "test/unit-backup-oggetti-catena.js": "3a04449ab14d357d6b6b3fccf92f18eff83df82513f6ee7e097c3de037ee5435",
+        "test/unit-backup-import-regressioni.js": "df179626e3844d3038115c481094924256a3e3f5f7937bd86f49f621c8668f44",
+        "test/unit-artefatti.js": "26b47d1437895922bc651b9f58af076402953a9dffb66622cf090b4f56be1a3f",
+        "test/lab/backup-validator.cjs": "9e3af4948272c5b00465d0b000a2b3d6efd5a9e8f76a99ed4b601fdea5894c61",
+        "test/lab/backup-oggetti.cjs": "a7cbdf34e44ae2150d50b5be851a3b91486c4acc697a95f1198b847d1190c39e",
+        "test/lab/nuovi.cjs": "3db90915c8d8a1f5704404289c5e3c1057b23f637460b2ed82d43c9d4af6961f"
+      }
+    },
+    {
+      "id": "LAB-007",
+      "titolo": "Restore MySQL respinto per inventario FK e DDL equivalenti",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T20:51:46.253Z",
+      "prove": {
+        "host": "19 verifiche MySQL reali e 2 mutanti causali; 6 gruppi unitari e 3 mutanti rilevati; npm test completo superato.",
+        "docker": "19 verifiche reali, 2 mutanti reali e 3 unitari; npm test completo; 107 verifiche catena sui tre DBMS e 4 mutanti; 7 suite storiche backup/export/import superate.",
+        "copertura": "Inventario FK con controllo del catalogo, azioni referenziali, charset equivalente e differenze reali; vecchi archivi con FK inline, merge e ripristino diretto selettivo con padre esistente. Il gate pubblico selettivo è ancora seguito separatamente in AUD014.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-007",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-007-finale/sorgenti.json"
+      },
+      "hashes": {
+        "db/MySqlStrategy.js": "8794b78b3248b6aa9dff53cbc52df7fbe8ff1b8f19a8224cec24fafdb42a6e0a",
+        "db/mysql-ddl.js": "eb0010a5074b7647b26f5bff000aa3d8f3cbc99e3c51074ba74856fdb3e4b58a",
+        "db/backupRestoreAdapter.js": "23cfbd9382e17e9b4e576cebbbc897cf45f7e04e15a29a700661c32da2df2d7c",
+        "backup/lib/schema-snapshot.js": "e492e84be54d85aad32a21841aa06cac4d7580ba3f6087c33040bf8469ecdc22",
+        "backup/lib/restore.js": "bd5c30b18f7841d69ca6778135bdb6e8c07fc40ef85d7fad403f03f707aab8db",
+        "backup/lib/engine.js": "2392d823d8ea024dc6cae17371ae8185cfd4ee5f3c54c339c20a08669f820159",
+        "test/unit-backup-mysql-schema.js": "8a740d1e8f27fb55520a4163284d094ac75da50fa3a354a3c8b53df2bb640f54",
+        "test/unit-backup-import-regressioni.js": "1f3f59cd5cf87c6423206257747e774bdb7d3a220c912768672052a853695c81",
+        "test/lab/backup-mysql-schema.cjs": "b41cde50367eb3fb11e02569ea3b5ad3d7c5effed7352f3802b08ba3a6568562"
+      }
+    },
+    {
+      "id": "LAB-008",
+      "titolo": "DDL PostgreSQL con colonne generate non viene riconosciuta equivalente",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T20:59:49.669Z",
+      "prove": {
+        "host": "PostgreSQL 17 STORED e PostgreSQL 18 VIRTUAL: 5 verifiche reali e 2 mutanti causali per versione; 16 unit e 6 mutanti; npm test completo superato.",
+        "docker": "Runner Docker: stessi 5 controlli e 2 mutanti per PostgreSQL 17 e 18; 6 mutanti unitari; npm test completo; 6 suite storiche PostgreSQL/backup/export/import superate.",
+        "copertura": "Catalogo nativo, formula, tipo di generazione, NOT NULL, collation, backup e export/import con INSERT calcolato e rifiuto delle scritture nella colonna generata. PG18 è la fixture Docker sql-native su porta 55439, interrogata anche dal runner Linux.",
+        "baseline": "Entrambe le versioni fallivano 5 verifiche reali; unit 7 PASS e 9 FAIL. Il primo wrapper di sensibilità attendeva erroneamente che il mutante strategy colpisse anche export: aggiunto il mutante distinto del lettore condiviso backup/export, con fallimenti causali esatti separati.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-008",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-008-finale/sorgenti.json"
+      },
+      "hashes": {
+        "db/pg-ddl.js": "dc01ec792dd92d75bc8bc9326cb7b43d1790fda53ce6a4eb7986ea485f7586b1",
+        "db/PostgreSqlStrategy.js": "2808ece8f54e168bcc999d327df29d1ded2341116c226fdf9e366b51024cd78c",
+        "test/unit-pg-generate.js": "6c19c663841fdde6aef123518bd6196f8f82c4f9276377689410309fa9d81821",
+        "test/unit-backup-import-regressioni.js": "008ffe21d508a7b3ba16c5d415b0695cd41f3ad0100954ef360fa7f17ce7b640",
+        "test/lab/backup-pg-generate.cjs": "77a4b4c0e20d19988237f5bb20c705977d807402187b5bc3e4050126a66f0548",
+        "test/lab/nuovi.cjs": "3a98c80f55e6fb7c775ce0075bc5b34a716e976a767eeed12b0e3198504bdb99"
+      }
+    },
+    {
+      "id": "LAB-009",
+      "titolo": "Il menu della griglia scompare durante la chiusura del dialogo",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T21:21:35.654Z",
+      "prove": {
+        "host": "16 controlli browser desktop/mobile, 4 mutanti causali rilevati, typecheck:ui e build:ui superati.",
+        "docker": "16 controlli e 4 mutanti; 6 suite storiche Arc, dialoghi, animazioni e controlli mobili superate, senza errori browser.",
+        "copertura": "Menu griglia durante e dopo chiusura, prompt riaperto sopra wizard, focus/Escape, callback di chiusure precedenti e cambio formato durante uscita. Nessuna funzione rimossa. Le callback vecchie non rimuovono portali né emettono doppie chiusure.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-009",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-009-verificato/sorgenti.json"
+      },
+      "hashes": {
+        "ui/dialogs.tsx": "78757562a18f92e487f49b0d9a615fdaed212d7b0af38d6653244905ba72a3a5",
+        "ui/components/arc/bottom-sheet/bottom-sheet.tsx": "8c7776dd0a0ccc4db066c732b8a7700f447e43c9e8bbcf2f2f341c1d38ef7eb6",
+        "public/arc/ui.js": "2381eb0cf4076e2ade2a8f0791c591881df54e07c848573d1095e955d15b586b",
+        "public/arc/ui.css": "23780d04019817267c02050e58e007639d565c6770d65b8c877e2415623e4b0d",
+        "public/arc/ui.js.LEGAL.txt": "eeee5bdb2ac99e5d18dc395e2aac80b473a66c0bbc79bfbb11e036c43b2fa0a9",
+        "test/e2e-dialog-lifecycle.js": "faadfa03a81e7fad99026a32f780fd6065ca2baae8f01413484f08fde7e192d0"
+      }
+    },
+    {
+      "id": "LAB-010",
+      "titolo": "Aggiornare la mappa nascosta produce zoom infinito e coordinate NaN",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T21:36:01.547Z",
+      "prove": {
+        "host": "10 scenari browser e 6 esecuzioni di mutanti (3 classi per 2 larghezze), tutti superati; unit geo-stats e geo-risultati; regressioni query-map-design 8, geomulti-design 7 e mappa-resize.",
+        "docker": "Stessi 10 scenari, 6 mutanti e 3 suite storiche superati; zero errori browser nei controlli, hash dei sorgenti e della dipendenza di test identici all’host.",
+        "copertura": "Inizializzazione/aggiornamento nascosti, riapertura solo CSS e nello stesso task, canvas 20x20, ultima richiesta geometria indice zero, pulizia e cambio dati, selezione, zoom e centro utente, seconda mappa indipendente. Un solo frame condiviso con ResizeObserver, nessun polling.",
+        "baseline": "Riprodotti separatamente dimensioni nulle, notifica resize assente nello stesso frame e padding superiore al canvas; fallimenti conservati.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-010/evidenze-finali.json"
+      },
+      "hashes": {
+        "public/js/geo-vista.js": "baa9f1d8f60ccc8a265feae1c4149eeea4e8ab317433c20876939f3d39ed627e",
+        "test/e2e-mappa-nascosta.js": "4afd72c318e8d341b7f1f4ae80be10bcd7794d25ae9ec089c16c8d410ec433ad",
+        "test/lab/output-mutanti.cjs": "56818e1f2b1205756e62c8a64cd8b5579db62e39e67a99a60929407ee5030a4f"
+      }
+    },
+    {
+      "id": "LAB-011",
+      "titolo": "La creazione MongoDB inoltra campi di trasporto al comando nativo",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T21:39:26.165Z",
+      "prove": {
+        "host": "6 casi unitari handler MongoDB/MySQL/PostgreSQL; mutante unitario rilevato; 4 scenari MongoDB reali con catalogo e comportamento nativo, 4 controlli nativi indipendenti e mutante reale rilevato nei 4 casi; npm test completo superato.",
+        "docker": "Stessi casi reali e mutanti, unitari completi; 98 scenari query sui tre DBMS e 4 mutanti causali superati, zero errori di pulizia; E2E MongoDB/MySQL/PostgreSQL tutti superati.",
+        "copertura": "Esclusi soltanto campi di protocollo e contesto server: db, name, tabId, runId, opHandle, run, sessions. Opzioni native conservate, inclusi validator BSON, collation, capped e colonne SQL; payload originale immutato.",
+        "baseline": "4 scenari reali e unitario fallivano con metadati di trasporto; i 2 rossi della suite query sono ora verdi.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-011",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-011-finale/sorgenti.json"
+      },
+      "hashes": {
+        "server/eventi-dati.js": "dcaaefd955a39c76adbe72f2871f5f9940280f712dd805bf5fa319856eaa2ff5",
+        "test/unit-creazione-collection.js": "c4c13bbc04a746ac4a3d34888410cf0f6cec31082d3ebe16fc2994f553b6566e",
+        "test/lab/creazione-collection.cjs": "498ebfb148f819c1b0388a2e8a67243202fad9779cbb478935fd825d0e0f812e",
+        "test/unit.js": "3e984a725ba5012297956e9003e2721df85de5ec25c56eac81942196e4cdfe0e",
+        "test/lab/nuovi.cjs": "2f6e1de3fd92d0633555d2e889a353a4cb03b6c8aaef2f3aefd6f75ba7ae673f"
+      }
+    },
+    {
+      "id": "AUD-012",
+      "titolo": "created_at scelto automaticamente fa perdere gli aggiornamenti nell’incrementale",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T22:06:45.890Z",
+      "prove": {
+        "host": "152 controlli reali e 7 mutanti causali su MySQL, PostgreSQL e MongoDB; 51 controlli di volume e 3 mutanti su 10.000 righe per DB; 20 unit e 7 mutanti; npm test completo superato. Confini temporali: 264 controlli e 3 mutanti; aiuto CLI verificato.",
+        "docker": "152 controlli reali e 7 mutanti; 51 controlli di volume su 10.000 righe per DB e 3 mutanti; 20 unit e 7 mutanti; npm test completo; sette suite reali di regressione e rispettivi mutanti superati, hash stabili e nessun residuo delle fixture.",
+        "copertura": "Confronto del contenuto indipendente dalle date, tombstone e catene I/D, filtro temporale esplicito con cardinalità del replay distinta, snapshot senza identità, BSON binario, marcatori PostgreSQL e Large Objects cambiati/troncati/vuoti anche nel restore selettivo.",
+        "limiti": "Il confronto automatico richiede una scansione completa dei dati correnti e mantiene identità/hash della base in memoria; scrive solo righe cambiate. Il filtro temporale esplicito resta disponibile e non dichiara equivalenza completa. I cambi di colonne o identità richiedono tuttora un nuovo full; ora l'archivio incompatibile non entra nel catalogo. I Large Objects PostgreSQL referenziati vengono riletti e salvati in ogni layer, anche se identici.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/aud-012",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/aud-012-finale-2/sorgenti.json",
+        "regressioneFixture": "La nuova validazione cronologica ha rilevato due fixture con base futura rispetto all'orologio del writer. Corretto soltanto l'orologio lessicale del modulo nel test; guardia e oracoli nativi invariati, tutti i 264 controlli ripetuti."
+      },
+      "hashes": {
+        "backup/lib/content-state.js": "46148d1a5d0f258c515b85ff8ba94f62150b1953f89c56f4896db5f47147dde9",
+        "backup/lib/engine.js": "db12370243fd469f2926db90fd1f35e9d42fb52c19388ef9ae39db81b5424465",
+        "backup/lib/identity.js": "38b50e231bfbb7680faceb6070fae46a876d719672ed774c3f1aee1b4a0fef82",
+        "backup/lib/tombstones.js": "a35b23851391c403dd9908bcd78df440d48e0a9b316d213be2e30a2f0099d23b",
+        "backup/lib/restore.js": "164312674c17c7149e83ab91928ffd9e057fc0aac0f1e2a23461f8091c55c078",
+        "db/backupRestoreAdapter.js": "7d36e535f7f1ea7daa77e85a8362e07adba67ebb8fc2ef6dfcf2dcc4a79de281",
+        "test/unit-backup-contenuto.js": "ee0162be890a5d08883b366324180a30f55127664974bf7c966fdd4770125177",
+        "test/unit-identita-backup.js": "52a7e671bc7a5e831cbf2d086c1b1d26e9da59f2ebd9724670c68d0288458eb1",
+        "test/unit.js": "6054c7eb625c33a74081965323df3580b8b389361157e80bce6c3c7929d4773a",
+        "test/lab/backup-tempi.cjs": "b754cb5c51c27e3eb3156779b8bda1d3be1e80c54ed955ebd1178783b8ed0d38",
+        "test/lab/backup-incrementali.cjs": "dae50802b3cec3ba63ff14e5c6ff3fa8f2adb9a4f589d628db81b95c633ff7e4",
+        "test/lab/backup-incrementali-volume.cjs": "013de681d1062e5f6a53231bfbac3f5ad709751e55af87a9a2700a765789ea62",
+        "test/lab/campagna-backup-012.cjs": "e6a54186bc267758683ddf98dc3d79fa8b623830071c9ccc810b2105f0af4e9b",
+        "test/lab/nuovi.cjs": "b43985b43044164cd52554723f0e17e5766833cc64ee75833a56730f4de6674d",
+        "backup/cli.js": "f2ba77091da010effaed359ba97eaa1b92505f600f84f6f71204f8a99d1173f4",
+        "mcp/McpGateway.js": "fab9b409812f794261bc8211085dead5872ebbf8a2bcba3bb2ba2520e320d6ba",
+        "docs/MCP.md": "3b3dac4c604ddb1006fd599f178244399b5d306d40da48567016182efda0c222",
+        "docs/matrice-fedelta-export-import.md": "02ab4053e834c6abbab3b76c5532eeb05ca9320451da4ee5388443bd2ecc9192"
+      }
+    },
+    {
+      "id": "AUD-013",
+      "titolo": "Chiudere il tab o perdere il socket può distruggere il driver durante il restore",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T08:18:24.988Z",
+      "prove": {
+        "host": "npm test completo; 35 controlli unitari + 9 mutanti; 22 controlli MongoDB reali + 3 mutanti; 32 controlli UI + 3 mutanti; regressione CLI MySQL temporale esplicita.",
+        "docker": "npm test completo; 35 controlli unitari + 9 mutanti; 22 controlli MongoDB + 3 mutanti; 32 controlli UI + 3 mutanti; 7 regressioni storiche superate (MySQL rieseguito dopo aggiornamento fixture).",
+        "evidenze": ".scratch/fix-audit-2026-10-22/aud-013",
+        "limiti": "Registro in memoria per istanza: ricevute per 24 ore, massimo 100 terminali. La riconnessione socket è coperta; persistenza dopo riavvio processo non implementata né dichiarata."
+      },
+      "hashes": {
+        "db/restoreOperations.js": "86c5d1e5b3cf4161fcdf115b5fe55c518b91f87921e6be834753d8b3b5739dbc",
+        "server/operazioni.js": "85bdc1a112909b655a5a3186fe5948d674f9622327b955f8222b3e3ebd6a0ffe",
+        "server/createServer.js": "0cb0fed626c12f9a1a7083f4d34feb541d4d4712c9ce731f02f4876e91384aa3",
+        "server/eventi-backup.js": "1f03e59340873171036dce7cb05a6a7ba8aa9e6280f011149185bde1e0785f6e",
+        "server/audit.js": "8d17a0f69d8cf4676e3d1f8a7cc98611a37e95bc3039c4918fe30069730eee15",
+        "public/js/trasporto.js": "78d5524a94535cf35875dfa9741e062864e27bf7a686f1062088d7508c95f5a0",
+        "public/js/backupmanager.js": "e9c53905e91a278c4653b928ffd5992c6e72443c8a9a42f9a77dd8de738b43a2",
+        "test/unit-backup-lease.js": "6acbb9683c4f2757fe6a93210368279bcd673e6c08be7417d56611e41c5ce031",
+        "test/unit-backup-registro.js": "b4c298bee93e0577f4e0f32c274f0b498640cd5c6e0cf2bfcb8c903f35fda889",
+        "test/unit-trasporto-ripristino.js": "cba202ec37dbd54891c38c8ce88d07a229ddec29563d4633cae876a52f630c87",
+        "test/lab/unit-ripristino.cjs": "b9688ff9abfc9a9f9df4d51109ae3d3ceebd7781a04a558a6717eec8f017411c",
+        "test/lab/backup-disconnessione.cjs": "ed9ff9b85e22265a84cf41def22a5c11682c799d211a31abbd66c1b3690048e1",
+        "test/e2e-backup-disconnessione.js": "bf356f17cc3b1660a0a459e0934f35bfba10fe0247fa9d6c1d21d22e85e93e3f",
+        "test/unit.js": "5d4b7284ee2b1bd356dcd6409ed5adc94a472e355491496b2457916c57af4e16",
+        "test/server-fixture.js": "02320e3cb634eb77a9fb194fc5e643b3a2cb150246e1245327f285692c357910",
+        "test/server-eventi-attesi.json": "fbd6394eae9333d850ea03118b1088ce060ebb26b247ee696586376083870c94",
+        "test/unit-backup-selection.js": "0e958d47cf772c848268372c2965dccc3b0198026643cb6d7515144723f9bca5",
+        "test/e2e-backup-mysql.js": "410d0518483e6fab4e88a935d2e244dd4a2315e8fddd7d263c4129d2ac70d6ce",
+        "test/lab/nuovi.cjs": "7f31c6cc28ee68a59857682b78d108b39e536603ff8e897e885f6bee9d201111"
+      }
+    },
+    {
+      "id": "AUD-014",
+      "titolo": "La verifica respinge le tabelle che il restore selettivo deve preservare",
+      "stato": "corretto e verificato",
+      "provePrecedenti": {
+        "host": "45 selettivi; 61 dipendenze + 10 mutanti; 30 promozione + 25 dipendenze esterne + 2 mutanti; 9 riferimenti esterni; 4 gruppi unitari con mutante; npm completo prima ultima estensione reg*",
+        "docker": "stesse prove; 152 incrementali + 7 mutanti; sei regressioni verdi e regressione oggetti riprodotta e corretta con verifica su tutti e tre i motori",
+        "rapporti": ".scratch/fix-audit-2026-10-22/aud-014",
+        "daCompletare": [
+          "Evoluzione strutturale con riferimenti esterni e dipendenze condivise complesse",
+          "Regressioni complete sull’ultima revisione e aggiornamento finale audit"
+        ],
+        "unitaFinali": {
+          "host": ".scratch/fix-audit-2026-10-22/ftp/npm-host-finale.log",
+          "docker": ".scratch/fix-audit-2026-10-22/ftp/npm-docker-finale.log",
+          "esito": "superate dopo riferimenti reg* e aggiornamento FTP"
+        }
+      },
+      "fine": "2026-10-25T15:26:09.818Z",
+      "prove": {
+        "host": "20 controlli evoluzione strutturale + mutante; 30 promozione incluse routine transitive e riferimenti composti; 9 riferimenti esterni con vista materializzata + mutante; cinque gruppi unitari con mutante; suite unitaria completa.",
+        "docker": "Stessi controlli e mutanti; campagna nuovi completa verde, incluse selezioni, dipendenze, incrementali e integrità.",
+        "copertura": "Aggiunta/rimozione colonne, cambio tipo primitivo e vincoli compatibili mantenendo OID, viste/FK e valori reg*. Routine SQL/PLpgSQL transitive, regprocedure annidate, refresh di viste materializzate a definizione invariata. Vincoli esterni incompatibili causano rollback, senza CASCADE.",
+        "evidenze": [
+          ".scratch/fix-audit-2026-10-22/aud-014",
+          ".scratch/lab-reports/docker/finale-nuovi-ultima-25/campagna.json",
+          ".scratch/fix-audit-2026-10-22/pg-mutanti-finale-docker.log",
+          ".scratch/fix-audit-2026-10-22/pg-materializzate-finale-docker.log"
+        ]
+      },
+      "hashes": {
+        "db/pg-evoluzione.js": "3c44c22f3dbecff2da7ce696945bde8eed42e82a0742b828e6db3594f2618f3b",
+        "db/pg-promozione.js": "1bddbf3debf4fa28665760eaa13af0bf515e8956a4bbf8056281099c6842bef0",
+        "db/pg-routine-selezione.js": "8b31cd69d9fe2709f50b83e4858672558af21840a66cb4912d7e936f838c3402",
+        "db/pg-ddl.js": "ae3dca7c5d239f5901d63fff8dadd5f86515a168e6e4b5649213a846904f5b2e",
+        "db/backupRestoreAdapter.js": "1e6d5211bd54a67164f766bbc56d30761722f1ca583183d1baa395c3612df688",
+        "db/importArtifactAdapter.js": "1f43da390f3968ab6a83d6b6740eadaac99368af4c6cf191c2eaf9a4db27630b",
+        "backup/lib/restore.js": "3a2aa1390ebf0cc3da3c567b84f14a3528a3c90ac5fc3e84c01cedeeb6d3c103"
+      }
+    },
+    {
+      "id": "AUD-015",
+      "titolo": "Riaprire un prompt durante la chiusura lascia Escape sul dialogo sbagliato",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-23T21:21:35.760Z",
+      "prove": {
+        "host": "16 controlli browser desktop/mobile, 4 mutanti causali rilevati, typecheck:ui e build:ui superati.",
+        "docker": "16 controlli e 4 mutanti; 6 suite storiche Arc, dialoghi, animazioni e controlli mobili superate, senza errori browser.",
+        "copertura": "Menu griglia durante e dopo chiusura, prompt riaperto sopra wizard, focus/Escape, callback di chiusure precedenti e cambio formato durante uscita. Nessuna funzione rimossa. Le callback vecchie non rimuovono portali né emettono doppie chiusure.",
+        "evidenze": ".scratch/fix-audit-2026-10-22/lab-009",
+        "sorgentiDocker": ".scratch/fix-audit-2026-10-22/lab-009-verificato/sorgenti.json"
+      },
+      "hashes": {
+        "ui/dialogs.tsx": "78757562a18f92e487f49b0d9a615fdaed212d7b0af38d6653244905ba72a3a5",
+        "ui/components/arc/bottom-sheet/bottom-sheet.tsx": "8c7776dd0a0ccc4db066c732b8a7700f447e43c9e8bbcf2f2f341c1d38ef7eb6",
+        "public/arc/ui.js": "2381eb0cf4076e2ade2a8f0791c591881df54e07c848573d1095e955d15b586b",
+        "public/arc/ui.css": "23780d04019817267c02050e58e007639d565c6770d65b8c877e2415623e4b0d",
+        "public/arc/ui.js.LEGAL.txt": "eeee5bdb2ac99e5d18dc395e2aac80b473a66c0bbc79bfbb11e036c43b2fa0a9",
+        "test/e2e-dialog-lifecycle.js": "faadfa03a81e7fad99026a32f780fd6065ca2baae8f01413484f08fde7e192d0"
+      }
+    },
+    {
+      "id": "INF-001",
+      "titolo": "lab:prepara si arresta per top-level await nel comando mongosh",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T09:50:19.303Z",
+      "prove": {
+        "host": "13 controlli infrastruttura: 9 positivi e 4 sensibilità; baseline INF-CORE rossa conservata; npm run lab:up e npm run lab:prepara completati",
+        "docker": "13 controlli infrastruttura superati; bootstrap MongoDB reale PRIMARY; manifest ufficiale di 1056 file include i nuovi sorgenti",
+        "evidenze": ".scratch/fix-audit-2026-10-22/inf-001",
+        "preparazione": ".scratch/fix-audit-2026-10-22/inf-002/prepara.log"
+      },
+      "hashes": {
+        "tools/laboratorio.cjs": "3c89f6b3a0281f515f87801b585f839da8b4ae11c887c0599e60db4e86aaf1b1",
+        "test/lab/unit-infrastruttura.cjs": "fa2fd22b66d101eb1a68f69e7612a46485c7a1bb3ca24423eeebb8eaf1aaeaad"
+      }
+    },
+    {
+      "id": "INF-002",
+      "titolo": "La campagna Linux seleziona e2e-chiusura-query senza ambiente Electron predisposto",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T09:54:23.006Z",
+      "prove": {
+        "host": "Runner 6 controlli; chiusura query, scorciatoie e zoom Electron reali; mutante chiusura rilevato; rapporti zoom originali ripristinati byte per byte",
+        "docker": "Preparazione ufficiale completa; Electron 43.7.9 avviato; tre suite desktop superate via Xvfb nel runner ufficiale; mutante chiusura rilevato con causa esatta",
+        "baseline": "libgtk-3.so.0 mancante; uscita 127",
+        "evidenze": ".scratch/fix-audit-2026-10-22/inf-002"
+      },
+      "hashes": {
+        "test/lab/Dockerfile": "82879b85d4c985398e051fd455ece24f860ca458c390b92fe8865a6d4edd7aad",
+        "test/lab/runner.cjs": "d9c45500177c4eb6f885c9bd05d7652453829c72f932c29ad421f8766c44e743",
+        "test/lab/esegui.cjs": "e2acec9b364e33e93bced3af549734c838a8cd838696c1a1c9e0c52541610782",
+        "test/lab/manifest.cjs": "ab492073f1bfc804865b0402bea0907015b542634dd9d9a6dc4d65b7e487fa46",
+        "test/electron-harness.js": "104c87c28c10c46eb4a020817f24614902c6be67a38c4074b98ddf733eefba34",
+        "test/e2e-chiusura-query.js": "4920c9db0e39a685708819a488e88396024337c6e8c358dcb4da7a62ccd87d8f",
+        "test/e2e-scorciatoie.js": "abe60510fb7dd36885b4db81c1cc2f94709cb338c41f22d5fd102969bd1e925d",
+        "test/e2e-zoom.js": "93512d0f1cf31512a49f75521d98d177a01db784e8df0ab0762a4cabdc1a1cdb"
+      },
+      "confermaRuntimeAggiornato": {
+        "runtime": "Electron 43.8.3",
+        "preparazione": ".scratch/fix-audit-2026-10-22/prepara-conferma-finale.log",
+        "regressioni": ".scratch/lab-reports/docker/finale-conferma-25/esecuzione.json",
+        "causaTimeout": "Download pigro del runtime durante il primo avvio; spostato esplicitamente nella preparazione."
+      }
+    },
+    {
+      "id": "UX-001",
+      "titolo": "Ritorno al navigatore dopo Strumenti → Tema",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T09:57:21.265Z",
+      "prove": {
+        "host": "8 casi desktop/mobile Database/Connessioni, Escape/pulsante, due cicli; filtri, scroll, focus, nodi e bozze conservati; 8 mutanti rilevati; unit-tema verde",
+        "docker": "8 casi e 8 mutanti; nessun errore pagina; regressione dialoghi con sensibilità superata",
+        "baseline": "4 desktop verdi e 4 mobile rossi",
+        "evidenze": ".scratch/fix-audit-2026-10-22/ux-001"
+      },
+      "hashes": {
+        "public/js/theme.js": "f343aaf6f341fe0c8d9a122915d750a4cb0c76bd20e4ecd70f71eade6b01e175",
+        "test/e2e-tema-navigatore.js": "8f98a4f665f67b5645ba264ec65c1d3f2b3c4c920763498a9acc1670322f030a",
+        "test/lab/tema-navigatore.cjs": "ed80c9508c4cb8b089c87b735589c7ce13e5d68d436143efbf8b4f06c3f8e00e",
+        "test/lab/nuovi.cjs": "921275a134c048cf58de8e0efac90cd60e01ecebcc7c9cf93c6cd85a9659d906"
+      }
+    },
+    {
+      "id": "QA-001",
+      "titolo": "Auto-scroll delle schede interrotto dai fotogrammi senza spostamento intero",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T15:26:09.825Z",
+      "prove": {
+        "host": "Riaperto dalla campagna: 9 px e arresto nonostante spazio disponibile e gesto attivo. Corretto il ciclo nel prodotto; dieci controlli completi a ritmo normale e con frame ravvicinati; mutante della vecchia condizione rilevato.",
+        "docker": "Regressione completa e stessi tre scenari: normale, frame ravvicinati e mutante. Ordine, annullamento, bozze, Escape e split view preservati.",
+        "evidenze": [
+          ".scratch/fix-audit-2026-10-22/qa-001",
+          ".scratch/lab-reports/docker/finale-tab-25/esecuzione.json",
+          ".scratch/fix-audit-2026-10-22/tab-scroll-finale-docker.log"
+        ]
+      },
+      "hashes": {
+        "public/js/tab-drag.js": "eb768e3f0175619eee1addc6ce64fcbe06b1e09d8d2b91378db00742086d7552",
+        "test/e2e-tab-motion.js": "121cce7bac20572e748842de25e3da683b4088212128c35df136cd250a78f2b5",
+        "test/lab/tab-scroll.cjs": "7683c402b231194b7f4a615fcad34f1b9bc163c2d14477bdeceadba9d03a84e2"
+      }
+    },
+    {
+      "id": "DEP-001",
+      "titolo": "Parser FTP con consumo CPU quadratico nella catena mongosh/proxy",
+      "stato": "corretto e verificato",
+      "fine": "2026-10-25T10:00:14.000Z",
+      "prove": {
+        "host": "11 controlli FTP/get-uri/PAC, incluse 64 KiB ostili entro 1000 ms; 4 mutanti rilevati",
+        "docker": "npm ci dal lockfile; stessi 11 controlli e 4 mutanti, solo server loopback",
+        "baseline": "basic-ftp 5.3.1: compatibilità verde, parser oltre il limite CPU",
+        "evidenze": ".scratch/fix-audit-2026-10-22/ftp",
+        "nota": "Override ristretto get-uri/basic-ftp 6.2.1; altri avvisi nuovi registrati separatamente in DEP-002"
+      },
+      "hashes": {
+        "package.json": "2e7e616bd5307757cb743a5dd53e1f24bdba3dddd94e89f55abe095e6d25190f",
+        "package-lock.json": "a6ef27a047e098976a6c9f8c4e4cb9d548fcfcf6c2238e9f45e8c420b30f6bb8",
+        "test/lab/ftp-dipendenza.cjs": "283d68b0de777fbcdf56ed4d49c6b823d7bbb7187e324ca931f8bc85331717f9"
+      }
+    },
+    {
+      "id": "DEP-002",
+      "titolo": "Nuovi avvisi dipendenze: body-parser, fast-uri, zod, Electron e undici",
+      "stato": "corretto e verificato",
+      "evidenze": ".scratch/fix-audit-2026-10-22/ftp/audit-completo.json",
+      "nota": "4 nodi segnalati in produzione e 6 totali, non vulnerabilità indipendenti; raggiungibilità da verificare; nessun aggiornamento forzato applicato",
+      "fine": "2026-10-25T15:26:09.823Z",
+      "prove": {
+        "host": "Audit completo e produzione: zero vulnerabilità note. Zod 4 con documenti strutturati, batch MCP e mutante; Electron 43.8.3 con chiusura, scorciatoie e zoom; suite unitaria completa.",
+        "docker": "Installazione da lockfile, audit zero, preparazione esplicita Electron e sei regressioni MCP/desktop verdi. Campagna nuovi, runtime mongosh, CSFLE, Search/Vector e Kerberos reali superati.",
+        "evidenze": [
+          ".scratch/fix-audit-2026-10-22/ftp",
+          ".scratch/lab-reports/docker/finale-conferma-25/esecuzione.json",
+          ".scratch/lab-reports/docker/finale-nuovi-ultima-25/campagna.json",
+          ".scratch/fix-audit-2026-10-22/finale/native/native.json",
+          ".scratch/fix-audit-2026-10-22/finale-advanced.log",
+          ".scratch/fix-audit-2026-10-22/finale-kerberos.log"
+        ]
+      },
+      "hashes": {
+        "package.json": "57ff8e98a257aa50c6fe371e56bb7ef0b45689e8232dd9a0e065b6c1f7534af9",
+        "package-lock.json": "88ecc14dfcad5f0a09c276195e4f5a4bbc4848378ce396c4aeba2c5de3b878b4",
+        "mcp/McpGateway.js": "214181175759cc91ad89b0997102d413e81f6a93fdfb1fb065efc448ac0937e9",
+        "test/lab/dipendenze.cjs": "94deafc8ac8da05ded67feb6428b8d926889e722b624a42d082f5e90d2f56e1b",
+        "tools/laboratorio.cjs": "2ddf1da9d5b51927ecfe87aecf5feee8b56c62f3aa3844fb2f8d397fae592584"
+      }
+    },
+    {
+      "id": "AUD-016",
+      "titolo": "MCP descrive come non applicato un inserimento parziale MongoDB",
+      "stato": "corretto e verificato",
+      "evidenze": ".scratch/fix-audit-2026-10-22/mcp-parziale-host",
+      "fine": "2026-10-25T15:26:09.824Z",
+      "prove": {
+        "host": "28 controlli MCP reali verdi, inserimento parziale singolo e dentro batch; mutante del messaggio rilevato soltanto da MCP-018. Controlli unitari su rollback e risultato sconosciuto.",
+        "docker": "Campagna mcp-parziale con baseline e mutante, MCP MongoDB/MySQL/RBAC e suite unitaria completa superate.",
+        "evidenze": [
+          ".scratch/fix-audit-2026-10-22/mcp-parziale-host",
+          ".scratch/lab-reports/docker/finale-nuovi-ultima-25/campagna.json",
+          ".scratch/lab-reports/docker/finale-conferma-25/esecuzione.json"
+        ]
+      },
+      "hashes": {
+        "mcp/esitoScrittura.js": "a529aa46364a00e6a93ba44794eb50f7d1a43051c36ab7747cd7329c2d47f9a9",
+        "mcp/McpGateway.js": "214181175759cc91ad89b0997102d413e81f6a93fdfb1fb065efc448ac0937e9",
+        "test/lab/mcp.cjs": "6cb0b9ceee86a4830eaece994f99a0cc3579c62f92ddad70be58c7360a3ea195",
+        "test/lab/mcp-parziale.cjs": "4eb627dc4724f78ac4ac2b6208d1324124e7159b085f3972c2384bc4e14524f9",
+        "test/unit-mcp-esito-scrittura.js": "6c8989d5d81b444349af18cf02c0b91c9941697fd95364a4bccc0a8d3a833ea7"
+      }
+    }
+  ],
+  "campagnaFinale": {
+    "fine": "2026-10-25T15:26:09.826Z",
+    "storiche": {
+      "totale": 157,
+      "primaEsecuzione": {
+        "superate": 154,
+        "fallite": 3
+      },
+      "conferma": "Timeout iniziale dovuto al download pigro Electron e arresto auto-scroll su frame senza spostamento intero; entrambi corretti e mutanti rilevati. Sei regressioni MCP/desktop e auto-scroll ripetuti dopo gli ultimi fix.",
+      "report": ".scratch/lab-reports/docker/finale-storici-25/esecuzione.json",
+      "ripetizione": ".scratch/lab-reports/docker/finale-conferma-25/esecuzione.json",
+      "schede": ".scratch/lab-reports/docker/finale-tab-25/esecuzione.json"
+    },
+    "nuove": {
+      "totale": 36,
+      "superate": 36,
+      "report": ".scratch/lab-reports/docker/finale-nuovi-ultima-25/campagna.json"
+    },
+    "temi": {
+      "report": ".scratch/lab-reports/docker/finale-temi-25/esecuzione.json",
+      "causa": "Il test storico pretendeva la rimozione del navigatore aprendo Tema: requisito superato dal fix UX001. Ora verifica conservazione e ritorno alle Connessioni; test completo verde Windows/Docker e sensibilità UX001 confermata."
+    },
+    "native": {
+      "suite": 9,
+      "scenariFailover": 18,
+      "mutanteQuorum": true,
+      "report": ".scratch/fix-audit-2026-10-22/finale/native/native.json"
+    },
+    "aggiuntive": [
+      "28 esecuzioni MongoDB avanzate",
+      "Kerberos reale con rifiuto senza ticket",
+      "Conteggi nativi su tre motori",
+      "Unità complete Windows/Docker",
+      "TypeScript UI e controllo diff"
+    ],
+    "controlloUnitarioNonDisponibile": "Marcatori di provenienza: registro privato assente, SKIP esplicito; non conteggiato come verifica riuscita.",
+    "diagnosiConservate": [
+      ".scratch/fix-audit-2026-10-22/finale-nuovi.log",
+      ".scratch/fix-audit-2026-10-22/integrita-diagnosi-host",
+      ".scratch/fix-audit-2026-10-22/integrita-diagnosi-host.log"
+    ],
+    "integrita": "43/43 dopo confronto indipendente dei default MongoDB impliciti/espliciti; hash dati e indici già identici nella diagnosi, mutanti su validator off/warn/vuoto rilevati.",
+    "limiti": [
+      "Tre suite Android richiedono APK/emulatore dedicato",
+      "Due suite richiedono pacchetti Electron compilati",
+      "Provisioning dello stack SQL personale non eseguito: equivalente funzionale coperto dalle fixture isolate",
+      "AppX/Store e registro privato impronte non disponibili"
+    ]
+  }
+}

@@ -157,10 +157,15 @@ function Sheet({ title, description, fitContent = false, detents = [.45, .92], i
       go(detentRef.current);
       return;
     }
-    if (reduced) { animate(presence, 0, { ...fade, onComplete: safeToRemove }); return; }
+    // Una chiusura interrotta non può rimuovere il pannello della successiva.
+    // Il callback può essere già in coda quando il pannello viene riaperto.
+    let active = true;
+    const completeExit = () => { if (active) safeToRemove?.(); };
+    if (reduced) animate(presence, 0, { ...fade, onComplete: completeExit });
     
-    if (aim.current === "closed" && y.isAnimating()) arrive.current = safeToRemove;
-    else go("closed", undefined, safeToRemove);
+    else if (aim.current === "closed" && y.isAnimating()) arrive.current = completeExit;
+    else go("closed", undefined, completeExit);
+    return () => { active = false; };
   }, [go, height, isPresent, offset, presence, reduced, safeToRemove, y]);
 
   useEffect(() => {
