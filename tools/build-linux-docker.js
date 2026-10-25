@@ -15,7 +15,7 @@ const run = spawnSync('docker', ['run', '--rm',
   '--mount', 'type=volume,source=codedb-electron-builder-cache,target=/root/.cache',
   image, '/bin/bash', '-lc', `set -euo pipefail
     mkdir -p /project
-    cp -a /source/{package.json,package-lock.json,server.js,electron-main.js,electron-aggiornamenti.js,electron-server-auth.js,LICENSE.md,EULA.md,MANLEVA.md,auth,backup,bin,db,mcp,server,public,ui,tools,build} /project/
+    cp -a /source/{package.json,package-lock.json,server.js,electron-main.js,electron-aggiornamenti.js,electron-server-auth.js,electron-chiusura.js,LICENSE.md,EULA.md,MANLEVA.md,auth,backup,bin,db,mcp,server,public,ui,tools,build} /project/
     cd /project
     npm ci
     npm run build:linux

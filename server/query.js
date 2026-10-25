@@ -18,7 +18,7 @@ function documentoMongo(code) {
     return testo;
   } catch {
     try { return JSON.stringify(MongoShell.parseDocument(testo)); }
-    catch (err) { throw new Error(`Documento MongoDB non valido: ${err.message}`); }
+    catch (err) { err.message = `Documento MongoDB non valido: ${err.message}`; throw err; }
   }
 }
 
@@ -326,8 +326,19 @@ function createModule({ config, connessioni, dependencies }) {
   }
 
   async function executeQueryCode(session, payload) {
-    return conSessioneSql(payload.run?.sqlScope || payload.run || session, () => eseguiQueryNelContesto(session, payload),
-      !!payload.run || dependencies.DbFactory.isSqlType(session.strategy.type));
+    try {
+      return await conSessioneSql(payload.run?.sqlScope || payload.run || session, () => eseguiQueryNelContesto(session, payload),
+        !!payload.run || dependencies.DbFactory.isSqlType(session.strategy.type));
+    } catch (err) {
+      if (err.queryError) {
+        const source = String(payload.code || '');
+        const offset = source.length - source.trimStart().length;
+        err.queryError = { ...err.queryError, start: err.queryError.start + offset, end: err.queryError.end + offset };
+      } else if (session.strategy.type === 'mongodb') {
+        require('../db/queryError').annotaErroreQuery(err, payload.code, 'mongodb');
+      }
+      throw err;
+    }
   }
 
   async function eseguiQueryNelContesto(session, payload) {
@@ -575,7 +586,8 @@ function createModule({ config, connessioni, dependencies }) {
               // SCRITTURA (o un metodo che non conosce) non è un errore: è roba
               // da interprete, che la esegue davvero. Prima era un vicolo cieco.
               if (e.scritturaShell || e.metodoSconosciuto) return eseguiScriptMongo();
-              throw new Error('Comando shell MongoDB non valido: ' + e.message);
+              e.message = 'Comando shell MongoDB non valido: ' + e.message;
+              throw e;
             }
             planLabel = 'shell';
           } else if (SqlToMql.looksLikeSql(codeStr)) {
@@ -640,6 +652,10 @@ function createModule({ config, connessioni, dependencies }) {
           }
         }
       } catch (err) {
+        if (err.queryError) {
+          const offset = codeOriginale.length - codeStr.length;
+          err.queryError = { ...err.queryError, start: err.queryError.start + offset, end: err.queryError.end + offset };
+        }
         throw conContesto(err, cat, op, targetDb, queryColl);
       }
       return fatto(res, cat, op, targetDb, queryColl);

@@ -17,6 +17,7 @@ fs.mkdirSync(dir, { recursive: true });
   const failures = [];
   try {
     for (const scenario of ['menu', 'cronologia', 'grafo', 'fk']) {
+      if (process.env.MOBILE_SCENARIO && process.env.MOBILE_SCENARIO !== scenario) continue;
       if (mutant && mutant !== scenario) continue;
       const page = await browser.newPage({ viewport: { width, height }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
       page.setDefaultTimeout(5000);
@@ -117,6 +118,28 @@ fs.mkdirSync(dir, { recursive: true });
           assert(await page.locator('#graph3d-side-panel').isHidden(), 'Il tocco sul nodo lascia libero il grafo');
           await page.locator('#graph3d-details-toggle').tap();
           assert(await page.locator('#graph3d-panel-content').isVisible());
+          const expand = page.getByRole('button', { name: 'Espandi pannello', exact: true });
+          if (await expand.count()) await expand.tap();
+          await page.waitForFunction(() => document.querySelector('.arc-navigation-sheet').getBoundingClientRect().top < innerHeight * .07);
+          const headerVisible = await page.locator('.arc-navigation-sheet').evaluate(sheet => {
+            const title = [...sheet.querySelectorAll('h2')].find(el => el.textContent === 'Dettagli della selezione');
+            const rect = title.getBoundingClientRect();
+            return sheet.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+          });
+          assert(headerVisible, 'La toolbar del grafo non deve coprire la testata del drawer espanso');
+          const toolbarCovered = await page.locator('.arc-navigation-sheet').evaluate(sheet => {
+            const toolbar = document.querySelector('.graph3d-bar');
+            const a = sheet.getBoundingClientRect(), b = toolbar.getBoundingClientRect();
+            const left = Math.max(a.left, b.left), right = Math.min(a.right, b.right);
+            const top = Math.max(a.top, b.top), bottom = Math.min(a.bottom, b.bottom);
+            // Radix disabilita i tocchi sullo sfondo, ma questo non impedisce che venga dipinto sopra.
+            const previous = toolbar.style.pointerEvents;
+            toolbar.style.pointerEvents = 'auto';
+            const covered = top >= bottom || left >= right || sheet.contains(document.elementFromPoint((left + right) / 2, (top + bottom) / 2));
+            toolbar.style.pointerEvents = previous;
+            return covered;
+          });
+          assert(toolbarCovered, 'I comandi del grafo devono restare sotto il drawer, anche fuori dalla testata');
           assertTocchi(await verificaTocchi(page, page.locator('.arc-navigation-sheet'), 'Dettagli grafo'));
           await page.screenshot({ path: `${dir}/grafo-dettagli.png` });
           await page.keyboard.press('Escape');

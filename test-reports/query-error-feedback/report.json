@@ -1,0 +1,22 @@
+{
+  "transport": "ACK/push simulati; controller, editor e Arc reali",
+  "checks": [
+    "Mobile: snackbar centrale, immagine dominante, messaggio sotto, temi chiaro/scuro, riapertura e ritorno all’editor",
+    "Modifiche e nuovo tentativo invalidano i segni; errori senza posizione restano leggibili senza sottolineature arbitrarie",
+    "Errore reale di tabella inesistente senza metadati: nome sottolineato anche nella vista solo editor",
+    "Risposta dopo una modifica: nessuna snackbar o sottolineatura attribuita al nuovo testo",
+    "Desktop: testo inline e sottolineatura precisa nella seconda occorrenza eseguita con Ctrl+Invio, inclusi gli spazi iniziali",
+    "Riesecuzione dello stesso testo: azzeramento immediato, risultato valido senza residui",
+    "Errore in background isolato alla scheda d’origine; ripristino del segno e riapertura manuale del messaggio",
+    "Script: push con offset globale, messaggio dell’istruzione fallita e nessun duplicato a fine esecuzione",
+    "Script con eventi intermedi diradati: errore e posizione recuperati dal solo riepilogo finale",
+    "Pausa/ripresa script: segno azzerato durante il lavoro, ripristinato nel riepilogo senza snackbar duplicata",
+    "Viewport 320×480 e messaggio lungo: immagine sopra, testo scorrevole completo, dialog e azioni entro lo schermo",
+    "Successo: Editor passa a Risultati anche senza righe; Entrambi, Risultati ed errori mantengono la vista",
+    "Una risposta riuscita in background conserva la vista del documento attivo",
+    "Script completato senza errori: passaggio da Editor a Risultati",
+    "Errore mobile/desktop: ritorno Risultati→Editor con token sottolineato; Editor ed Entrambi mantengono la vista",
+    "Errore in background: nessun cambio della vista del documento attivo"
+  ],
+  "errors": []
+}

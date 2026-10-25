@@ -244,6 +244,8 @@ class ScriptRun {
           ok: false,
           ms: Date.now() - t0,
           error: err && err.message ? err.message : String(err),
+          ...(err?.queryError ? { queryError: { ...err.queryError,
+            start: err.queryError.start + (stmt.start || 0), end: err.queryError.end + (stmt.start || 0) } } : {}),
           ...(this._interruptedIndex === index ? { interrupted: true } : {}),
         };
       }

@@ -109,6 +109,7 @@ export function emit(event, payload, { timeoutMs = 0, bindTab = true, reconnect 
     // decidere allo stesso modo se lo stato da toccare è ancora il proprio.
     const fail = (msg, res) => {
       const error = new Error(msg);
+      if (res?.queryError) error.queryError = res.queryError;
       if (res?.code === 'SSH_HOST_KEY_UNKNOWN') {
         error.code = res.code;
         error.sshHostKey = res.sshHostKey;

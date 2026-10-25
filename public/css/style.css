@@ -3304,6 +3304,8 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   flex-direction: column;
   height: 100%;
   position: relative;
+  /* Toolbar e strumenti si sovrappongono nel grafo, senza scavalcare drawer e modali. */
+  isolation: isolate;
   overflow: hidden;
 }
 /* La barra del grafo teneva NOVE comandi allo stesso peso visivo, tutti
@@ -4531,6 +4533,42 @@ tbody.selezione-celle td.cell-focus { outline: 2px solid var(--accent); outline-
   line-height: inherit;
   white-space: inherit;
   word-break: inherit;
+}
+
+.query-editor-highlight .query-error-mark {
+  text-decoration: underline wavy var(--danger);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  background: var(--danger-bg);
+}
+
+.query-editor-highlight .query-error-caret { position: relative; }
+.query-editor-highlight .query-error-caret::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: -3px;
+  width: .6ch;
+  border-bottom: 2px solid var(--danger);
+}
+
+.query-error-tooltip {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+  max-height: min(180px, calc(100dvh - 24px));
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--fg);
+  font: 400 var(--text-xs)/1.45 var(--font-sans);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
 #query-editor-input {

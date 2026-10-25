@@ -1,0 +1,98 @@
+'use strict';
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { chromium } = require('playwright');
+const { startTestServer } = require('./e2e-harness');
+
+(async () => {
+  const server = await startTestServer({ port: 3181 });
+  const browser = await chromium.launch();
+  try {
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    if (process.argv.includes('--mutant')) await page.route('**/js/connection.js', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()).replace('const feedbackMobile = startMobileConnection(', 'const feedbackMobile = null; void (') });
+    });
+    await page.goto(server.url);
+    await page.waitForSelector('html[data-arc-ready="true"]');
+    await page.locator('#onboarding-overlay [data-azione="chiudi"]').click();
+    await page.evaluate(async () => {
+      const { impostaSocket } = await import('/js/socket.js');
+      window.cf = { queue: [], notices: [], results: [] };
+      document.addEventListener('codedb:toast', e => window.cf.notices.push(e.detail.message));
+      const fake = {
+        connected: true, on() { return fake; }, off() { return fake; },
+        emit(name, payload, ack) {
+          if (name === 'mongo:connect') { window.cf.queue.push({ payload, ack }); return; }
+          ack?.({ ok: true, connections: ['Locale', 'Non raggiungibile'].map(name => ({ name, label: name, dbType: 'mongodb' })), databases: [], collections: [] });
+        },
+        timeout() { return { emit(name, payload, ack) { fake.emit(name, payload, res => ack(null, res)); } }; },
+      };
+      impostaSocket(fake);
+      (await import('/js/connmanager.js')).loadSavedConnections();
+      window.cf.start = async name => {
+        const { connectAndOpenTab } = await import('/js/connection.js');
+        connectAndOpenTab({ saved: name }).then(() => window.cf.results.push('ok')).catch(() => window.cf.results.push('error'));
+      };
+      window.cf.answer = ok => window.cf.queue.shift().ack(ok
+        ? { ok: true, dbType: 'mongodb', label: 'Locale', databases: [] }
+        : { ok: false, error: 'Il server non risponde. Verifica host, porta e rete.' });
+    });
+    await page.locator('#mobile-nav-conns').click();
+    await page.locator('#conn-tree .node-label').filter({ hasText: 'Locale' }).click();
+    const progress = page.getByRole('progressbar', { name: 'Connessione in corso' });
+    await progress.waitFor();
+    const geometry = await page.evaluate(() => {
+      const bar = document.querySelector('.mobile-connection-progress');
+      const nav = document.getElementById('mobile-bottom-nav');
+      return { bar: bar.getBoundingClientRect().toJSON(), nav: nav.getBoundingClientRect().toJSON(), animation: getComputedStyle(bar, '::before').animationName };
+    });
+    assert(geometry.bar.height <= 3);
+    assert(Math.abs(geometry.bar.bottom - geometry.nav.top) <= 2);
+    assert.equal(geometry.animation, 'none');
+    assert.deepEqual(await page.evaluate(() => window.cf.notices), []);
+    // Due tentativi sovrapposti: il primo esito non deve spegnere la barra del secondo.
+    await page.evaluate(() => window.cf.start('Non raggiungibile'));
+    await page.waitForFunction(() => window.cf.queue.length === 2);
+    await page.evaluate(() => window.cf.answer(true));
+    await progress.waitFor();
+    await page.evaluate(() => window.cf.answer(false));
+    const dialog = page.getByRole('dialog', { name: 'Connessione non riuscita' });
+    await dialog.waitFor();
+    assert.equal(await progress.count(), 0);
+    assert.equal(await dialog.locator('.data-empty-art').count(), 1);
+    const bounds = await dialog.boundingBox();
+    assert(Math.abs(bounds.y + bounds.height / 2 - 844 / 2) < 2, 'Dialog centrato verticalmente');
+    assert(Math.abs(bounds.x + bounds.width / 2 - 390 / 2) < 2, 'Dialog centrato orizzontalmente');
+    assert((await dialog.locator('.data-empty-art').boundingBox()).width >= 200, 'Illustrazione protagonista');
+    assert.deepEqual(await page.evaluate(() => window.cf.notices), []);
+    fs.mkdirSync('test-reports/connection-feedback', { recursive: true });
+    await page.screenshot({ path: 'test-reports/connection-feedback/mobile-error.png' });
+    await dialog.getByRole('button', { name: 'Ho capito' }).click();
+    await dialog.waitFor({ state: 'detached' });
+    await page.evaluate(async () => (await import('/arc/ui.js')).closeNavigationSheet());
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => window.cf.start('Locale'));
+    await progress.waitFor();
+    assert.equal(await progress.evaluate(el => getComputedStyle(el, '::before').animationName), 'connection-progress');
+    await page.screenshot({ path: 'test-reports/connection-feedback/mobile-loading.png' });
+    await page.evaluate(() => window.cf.answer(true));
+    await progress.waitFor({ state: 'detached' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => window.cf.start('Desktop'));
+    await page.waitForFunction(() => window.cf.queue.length === 1);
+    assert.equal(await progress.count(), 0);
+    assert((await page.evaluate(() => window.cf.notices)).some(message => message.includes('Desktop')));
+    await page.evaluate(() => window.cf.answer(false));
+    await page.waitForFunction(() => window.cf.notices.some(message => message.includes('Il server non risponde')));
+    assert.equal(await dialog.count(), 0);
+    await page.screenshot({ path: 'test-reports/connection-feedback/desktop.png' });
+    assert.deepEqual(errors, []);
+    console.log('OK: mobile, drawer, progress, concorrenza, successo/errore, illustrazione, chiusura, movimento ridotto e desktop');
+  } finally {
+    await browser.close();
+    await server.stop();
+  }
+})().catch(error => { console.error(error); process.exitCode = 1; });

@@ -897,6 +897,7 @@ class MySqlStrategy extends DbStrategy {
           [result, fields] = await query(richiesta, payload.params);
           eseguita = true;
         } catch (err) {
+          require('./queryError').annotaErroreQuery(err, sql, 'mysql');
           if (!MySqlStrategy.isDriverTimeout(err)) throw err;
           avvelenata = true;
           await this.uccidiSulServer(conn.threadId);

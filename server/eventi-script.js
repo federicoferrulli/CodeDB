@@ -233,8 +233,8 @@ function createModule({ lock, query, audit, dependencies, errori }) {
         throw new Error(`Troppi script attivi su questa connessione (max ${query.MAX_SCRIPTS_PER_SESSION}): mettine in pausa o chiudine uno.`);
       }
 
-      const codeStr = String(payload.code || '').trim();
-      if (!codeStr) throw new Error('Script vuoto.');
+      const codeStr = String(payload.code || '');
+      if (!codeStr.trim()) throw new Error('Script vuoto.');
 
       // Uno SCRIPT JavaScript su MongoDB non si divide per `;`: il separatore
       // sta anche dentro i blocchi `{ … }` di cicli e funzioni, e spezzarlo

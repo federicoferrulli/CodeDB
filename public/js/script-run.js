@@ -25,9 +25,10 @@ import { countStatements } from './sql-split.js';
 import {
   trackPending, updateScriptProgress, removePending,
 } from './pending-queries.js';
-import { renderResults, updateQueryMetrics } from './query-tab.js';
+import { renderResults, updateQueryMetrics, contestoErroreQuery, registraErroreQuery, mostraErroreQuery, applicaErroreQuery, mostraRisultatiQueryRiuscita } from './query-tab.js';
 import { refreshDbTree } from './dbtree.js';
-import { segnalaRigaErrore } from './query-editor.js';
+import { segnalaErroreQuery } from './query-editor.js';
+import { clearMobileError, isMobileFeedback } from '../arc/ui.js';
 import {
   unisciLog, righeDaMostrare, haRisultato,
   etichettaScheda, schedaAttiva, notaScartate,
@@ -51,13 +52,17 @@ function nuovoRunId() {
  * Avvia uno script. Ritorna una promise che si risolve all'AVVIO (non alla
  * fine): la fine arriva con gli eventi di progresso.
  */
-export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId } = {}) {
+export function runScript({ code, engine, db, coll, stopOnError = false, previousRunId, keepSqlSession = false, tab = activeTab(), collTabId = tab?.state.activeCollId, sorgenteErrore } = {}) {
   const testo = String(code || '').trim();
   if (!testo) return Promise.resolve(null);
 
   const tabId = tab ? tab.id : undefined;
   const runId = nuovoRunId();
   const documento = queryDocument(tab, collTabId);
+  sorgenteErrore ||= documentoVisibile(tab, collTabId) ? contestoErroreQuery(testo)
+    : { code: documento.code, offset: documento.code?.trim() === testo ? documento.code.length - documento.code.trimStart().length : null,
+      executedCode: testo, dbms: engine && engine !== 'auto' ? engine : tab?.dbType };
+  documento.errorMark = null;
   if (documento.runId) socket.emit('query:cancel', { tabId, runId: documento.runId });
   documento.runId = null;
   if (isScriptActive(documento.scriptRunId)) abortScript(documento.scriptRunId);
@@ -89,9 +94,11 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
   runs.set(runId, {
     runId, tabId, tab, collTabId, documento, total: totalePrevisto, handle, log: [], stato: { status: 'running' }, attesa,
     // Elenco delle schede di risultato (arriva a fine script) e quale è aperta.
-    risultati: null, schedaAperta: null,
+    risultati: null, schedaAperta: null, sorgenteErrore, primoErrore: null, erroreMostrato: false,
   });
   if (documentoVisibile(tab, collTabId)) {
+    segnalaErroreQuery(null);
+    clearMobileError('query');
     runVisibile = runId;
     mostraPannello();
     aggiornaPannello({ status: 'running', cursor: 0, total: totalePrevisto, eseguiti: 0, falliti: 0 });
@@ -113,7 +120,7 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
     .then((res) => {
       const r = runs.get(runId);
       if (r && res && res.total) r.total = res.total;
-      toast(`Script avviato: ${res.total} istruzioni`);
+      if (!isMobileFeedback()) toast(`Script avviato: ${res.total} istruzioni`);
       if (documentoVisibile(tab, collTabId) && runVisibile === runId) aggiornaPannello({ status: 'running', cursor: 0, total: res.total, eseguiti: 0, falliti: 0 });
       return res;
     })
@@ -126,9 +133,11 @@ export function runScript({ code, engine, db, coll, stopOnError = false, previou
       if (runVisibile === runId) nascondiPannello();
       if (documento.scriptRunId === runId) {
         documento.metrics = ['error', null, 0, err.message || 'Avvio dello script non riuscito'];
+        registraErroreQuery(documento, err, sorgenteErrore);
         if (documentoVisibile(tab, collTabId)) {
           updateQueryMetrics(...documento.metrics);
           feedbackQuery('error');
+          mostraErroreQuery(documento.errorMark);
         }
       }
       throw err;
@@ -242,6 +251,14 @@ function onProgress(ev) {
   // per strada, che il diradamento degli eventi lascia incompleto (vedi
   // script-esito.js).
   r.log = unisciLog(r.log, stato, MAX_LOG);
+  // Gli eventi intermedi sono diradati: il riepilogo finale può contenere
+  // il primo errore che questo browser riceve.
+  const errore = ev.result && !ev.result.ok && !ev.result.interrupted ? ev.result
+    : r.log.find(result => !result.ok && !result.interrupted);
+  if (errore && !r.primoErrore && r.documento.scriptRunId === ev.runId) {
+    r.primoErrore = errore;
+    registraErroreQuery(r.documento, { message: errore.error, queryError: errore.queryError, line: errore.line }, r.sorgenteErrore);
+  }
   if ((ev.tipo === 'done' || ev.tipo === 'paused' || stato.status === 'aborted') && r.attesa) r.attesa.resolve(stato);
   if (stato.status === 'aborted' && r.documento.scriptRunId === ev.runId) r.documento.metrics = ['cancelled'];
   if ((ev.tipo === 'done' || ev.tipo === 'paused') && r.documento.scriptRunId === ev.runId) {
@@ -250,7 +267,7 @@ function onProgress(ev) {
     r.documento.columns = risultato.columns;
     r.documento.metrics = [ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
-      risultato.docs.length, stato.falliti ? `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
+      risultato.docs.length, stato.falliti ? r.primoErrore?.error || `Script terminato con ${stato.falliti} istruzioni fallite.` : null];
     if (ev.risultati) {
       r.risultati = ev.risultati;
       r.schedaAperta = schedaAttiva(ev.risultati.schede, ev.ultimoRisultato);
@@ -261,17 +278,15 @@ function onProgress(ev) {
   if (ev.tipo === 'statement' && ev.result) {
     r.log.push(ev.result);
     if (r.log.length > MAX_LOG) r.log.splice(0, r.log.length - MAX_LOG);
-    // Prima istruzione fallita: si evidenzia la riga nel sorgente. È il punto
-    // in cui l'utente deve guardare, e con uno script lungo trovarlo a mano
-    // è il lavoro più noioso.
-    if (!ev.result.ok && !ev.result.interrupted && runVisibile === ev.runId && documentoVisibile(r.tab, r.collTabId)) {
-      segnalaRigaErrore(ev.result.line);
-    }
   }
 
   // Solo il run mostrato tocca il pannello: gli altri aggiornano comunque il
   // registro (badge e modale delle query in sospeso).
   if (runVisibile !== ev.runId || r.documento.scriptRunId !== ev.runId || !documentoVisibile(r.tab, r.collTabId)) return;
+  if (r.primoErrore && !r.erroreMostrato) {
+    r.erroreMostrato = true;
+    mostraErroreQuery(r.documento.errorMark);
+  }
 
   aggiornaPannello(stato);
   if (stato.status === 'running' && statoPrecedente === 'paused') {
@@ -283,6 +298,7 @@ function onProgress(ev) {
     feedbackQuery(stato.status === 'aborted' ? 'cancelled' : ev.tipo === 'paused' ? 'paused' : stato.falliti ? 'error' : 'success');
   }
   if (ev.tipo === 'paused') updateQueryMetrics(...r.documento.metrics);
+  if (ev.tipo === 'paused' || ev.tipo === 'done') applicaErroreQuery(r.documento.errorMark);
   if (stato.status === 'aborted') {
     renderResults(r.documento.results || [], r.documento.columns || []);
     updateQueryMetrics('cancelled');
@@ -331,11 +347,12 @@ function onProgress(ev) {
       falliti ? 'error' : 'success',
       stato.endedAt && stato.startedAt ? stato.endedAt - stato.startedAt : null,
       righeMostrate != null ? righeMostrate : 0,
-      falliti ? `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
+      falliti ? r.primoErrore?.error || `Script terminato con ${falliti} istruzioni fallite su ${stato.eseguiti}.` : null
     );
-    toast(falliti
+    if (!falliti || !isMobileFeedback()) toast(falliti
       ? `Script terminato: ${falliti} istruzioni fallite su ${stato.eseguiti}`
       : `Script completato: ${stato.eseguiti} istruzioni`);
+    if (!falliti && stato.status === 'done') mostraRisultatiQueryRiuscita();
   }
 }
 

@@ -13,6 +13,8 @@ export { createArcInput, createArcTextarea, createArcButton, createArcSelect, cr
 export { initControls as mountArcControls } from './controls';
 export { openNavigationSheet, closeNavigationSheet } from './navigation-sheet';
 export { removeDialog } from './dialogs';
+export { startMobileConnection } from './connection-feedback';
+export { showMobileError, clearMobileError, isMobileFeedback } from './mobile-error';
 import { DataEmptyArt, renderDataEmpty } from './data-empty';
 export { renderDataEmpty };
 import { initGridFields } from './editor-controls';

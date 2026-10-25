@@ -9,6 +9,7 @@ import { restoreSession, persistSession, restoreInProgress } from './session-res
 import { segnaTraguardo } from './onboarding-stato.js';
 import { riepilogoUri } from './riepilogo-uri.mjs';
 import { chiediConferma } from './conferma.js';
+import { startMobileConnection } from '../arc/ui.js';
 
 // Modale di connessione (nuova connessione o modifica di una salvata).
 // L'elenco delle connessioni salvate vive nella sidebar (connmanager.js).
@@ -319,6 +320,8 @@ export function connectAndOpenTab(cfg) {
   const tabId = reuse ? reuse.id : safeUUID();
   saveWorkspaceInputs(); // snapshot del tab che (forse) si lascia
   const request = { ...cfg, tabId };
+  const feedbackMobile = startMobileConnection(cfg.saved || cfg.saveAs || cfg.host || 'database');
+  if (!feedbackMobile && cfg.saved) toast(`Connessione a "${cfg.saved}"…`);
   return conImprontaSsh(request, () => new Promise((resolve, reject) => {
     socket.emit('mongo:connect', request, res => res.ok ? resolve(res)
       : reject(Object.assign(new Error(res.error), { code: res.code, sshHostKey: res.sshHostKey })));
@@ -348,7 +351,16 @@ export function connectAndOpenTab(cfg) {
     startSchemaWatch(); // auto-update della sidebar (db/collection) per questo tab
     segnaTraguardo('connessione'); // primi passi della guida (no-op se già fatto)
     if (cfg.saveAs) loadSavedConnections();
+    if (!feedbackMobile && cfg.saved) toast(`Connesso a "${cfg.saved}"`);
     return res;
+  }).catch(err => {
+    if (feedbackMobile) {
+      feedbackMobile(err.message);
+      err.mobileConnectionFeedback = true;
+    } else if (cfg.saved) toast(err.message, true);
+    throw err;
+  }).finally(() => {
+    feedbackMobile?.();
   });
 }
 
@@ -501,6 +513,7 @@ export function initConnection() {
       cancelEditConn();
       closeConnModal();
     }).catch((err) => {
+      if (err.mobileConnectionFeedback) return;
       const errorEl = $('#connect-error');
       errorEl.textContent = err.message;
       errorEl.classList.remove('hidden');

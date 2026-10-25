@@ -25,6 +25,13 @@ export function initErrors() {
   // Si osserva il solo contenitore, mai i figli React durante le animazioni.
   document.querySelectorAll<HTMLElement>('.error').forEach(element => {
     new MutationObserver(() => {
+      // I riepiloghi con un'azione mantengono il proprio contenuto e listener.
+      if (element.dataset.errorInteractive === 'true') {
+        roots.get(element)?.root.unmount();
+        roots.delete(element);
+        element.classList.remove('arc-inline-alert');
+        return;
+      }
       if (element.firstChild === roots.get(element)?.host) return;
       render(element, element.textContent || '');
     }).observe(element, { childList: true });

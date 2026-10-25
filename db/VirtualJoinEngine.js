@@ -82,7 +82,11 @@ class VirtualJoinEngine {
     }
     const leggi = async (strategy, source, pipeline, params) => {
       const res = await strategy.collectionAggregate(source.db, source.table || source.collection,
-        { pipeline, params, maxRows: maxPayloadSize + 1, readOnly: true });
+        { pipeline, params, maxRows: maxPayloadSize + 1, readOnly: true }).catch(err => {
+          // L'intervallo appartiene alla query interna, non al JSON del Virtual JOIN.
+          delete err.queryError;
+          throw err;
+        });
       if (res.truncated || res.docs?.length > maxPayloadSize) {
         throw new Error(`Virtual JOIN incompleto: una sorgente supera il budget di ${maxPayloadSize} righe o di byte. Restringi le sorgenti o aumenta il budget.`);
       }

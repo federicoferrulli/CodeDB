@@ -74,7 +74,7 @@ const ESCLUSIONI = [
 
 // Le nuove cartelle e gli export locali non diventano automaticamente parte della release.
 const CARTELLE_RUNTIME = ['auth', 'backup', 'db', 'mcp', 'server', 'public', 'bin'];
-const FILE_RUNTIME = ['package.json', 'package-lock.json', 'server.js', 'electron-main.js', 'electron-aggiornamenti.js', 'electron-server-auth.js', 'LICENSE.md', 'EULA.md', 'MANLEVA.md'];
+const FILE_RUNTIME = ['package.json', 'package-lock.json', 'server.js', 'electron-main.js', 'electron-aggiornamenti.js', 'electron-server-auth.js', 'electron-chiusura.js', 'LICENSE.md', 'EULA.md', 'MANLEVA.md'];
 const INCLUSIONI = [...FILE_RUNTIME, ...CARTELLE_RUNTIME.map(dir => `${dir}/**`)];
 
 /**

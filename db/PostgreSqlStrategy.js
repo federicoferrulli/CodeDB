@@ -990,7 +990,8 @@ class PostgreSqlStrategy extends DbStrategy {
       }
       try {
         const cap = DbStrategy.resultCap(payload);
-        const res = await client.query({ text: sql, values: payload.params, types: tipiPostgresNativi });
+        const res = await client.query({ text: sql, values: payload.params, types: tipiPostgresNativi })
+          .catch(err => { throw require('./queryError').annotaErroreQuery(err, sql, 'postgresql'); });
         eseguita = true;
         if (Array.isArray(res)) {
           const lastRes = res[res.length - 1];

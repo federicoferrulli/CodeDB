@@ -44,10 +44,7 @@ function openConn(conn, nuova = false) {
   const esistenti = tabs.list.filter(t => t.connName === conn.name && t.state.connected);
   const aperta = esistenti.find(t => t.id === activeTab()?.id) || esistenti[0];
   if (!nuova && aperta) { saveWorkspaceInputs(); switchTab(aperta.id); return; }
-  toast(`Connessione a "${conn.name}"…`);
-  connectAndOpenTab({ saved: conn.name })
-    .then(() => toast(`Connesso a "${conn.name}"`))
-    .catch((err) => toast(err.message, true));
+  connectAndOpenTab({ saved: conn.name }).catch(() => {}); // Feedback gestito dal flusso di connessione.
 }
 
 function testConn(conn) {

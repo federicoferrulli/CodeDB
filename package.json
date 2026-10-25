@@ -163,6 +163,7 @@
       "electron-main.js",
       "electron-aggiornamenti.js",
       "electron-server-auth.js",
+      "electron-chiusura.js",
       "LICENSE.md",
       "EULA.md",
       "MANLEVA.md",

@@ -101,10 +101,7 @@ function raccogliVoci() {
       etichetta: conn.name,
       nota: conn.dbType || '',
       esegui: () => {
-        toast(`Connessione a "${conn.name}"…`);
-        connectAndOpenTab({ saved: conn.name })
-          .then(() => toast(`Connesso a "${conn.name}"`))
-          .catch((err) => toast(err.message, true));
+        connectAndOpenTab({ saved: conn.name }).catch(() => {}); // Feedback gestito dal flusso di connessione.
       },
     });
   }
