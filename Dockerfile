@@ -1,5 +1,8 @@
 FROM node:24-alpine
 
+# Certificati SSH e dispositivi FIDO usano il client nativo e il suo helper.
+RUN apk add --no-cache openssh-client-default openssh-sk-helper
+
 WORKDIR /app
 
 COPY package*.json ./

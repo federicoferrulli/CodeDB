@@ -401,12 +401,11 @@
               </div>
               <div id="conn-ssh-upload-row" class="hidden">
                 <div class="form-row">
-                  <label>Chiave privata dal dispositivo
+                  <label>File di chiave SSH dal dispositivo
                     <button type="button" id="conn-ssh-key-select" aria-describedby="conn-ssh-key-status">Scegli file…</button>
                   </label>
                   <input type="file" id="conn-ssh-key-upload" class="hidden" tabindex="-1" />
                 </div>
-                <p id="conn-ssh-key-status" class="hint" role="status">Scegli la chiave privata, non il file .pub. Massimo 64 KB.</p>
               </div>
               <div class="form-row hidden" id="conn-ssh-path-row">
                 <label>Percorso della chiave sul server CodeDB
@@ -417,9 +416,16 @@
               <div class="form-row hidden" id="conn-ssh-passphrase-row">
                 <label>Passphrase chiave
                   <input type="password" name="sshPassphrase" placeholder="(se la chiave è protetta)"
-                    autocomplete="off" />
+                    autocomplete="off" aria-describedby="conn-ssh-key-status" />
                 </label>
               </div>
+              <div class="form-row hidden" id="conn-ssh-security-key-pin-row">
+                <label>PIN dispositivo
+                  <input type="password" name="sshSecurityKeyPin" placeholder="Se richiesto dalla chiave hardware"
+                    autocomplete="off" aria-describedby="conn-ssh-key-status" />
+                </label>
+              </div>
+              <p id="conn-ssh-key-status" class="hint hidden" role="status" aria-live="polite">OpenSSH, PEM, PPK, DER o PFX/P12, massimo 64 KB. Le chiavi pubbliche richiedono un agente SSH; quelle hardware un dispositivo o agente sulla macchina CodeDB.</p>
             </fieldset>
             <section class="ssh-section" aria-labelledby="conn-ssh-fingerprint-label">
               <div class="form-row">

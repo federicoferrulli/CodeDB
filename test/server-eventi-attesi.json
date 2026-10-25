@@ -388,6 +388,10 @@
     "famiglia": "operazioneLunga"
   },
   {
+    "evento": "ssh:key:validate",
+    "famiglia": "amministrativo"
+  },
+  {
     "evento": "uml:apply",
     "famiglia": "delegate"
   },

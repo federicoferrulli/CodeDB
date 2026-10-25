@@ -13,8 +13,12 @@ const report = {checks:[],errors:[],environments:[]};
 async function setup(page) {
   await page.waitForSelector('html[data-arc-ready="true"]',{timeout:120000});
   await page.waitForFunction(()=>document.querySelector('#documents-panel'));
-  if(await page.evaluate(()=>!JSON.parse(localStorage.getItem('codedb:onboarding')||'{}').visto))await page.locator('#onboarding-close').waitFor({state:'visible'});
-  if(await page.locator('#onboarding-close').isVisible())await page.locator('#onboarding-close').click();
+  if(await page.evaluate(()=>!JSON.parse(localStorage.getItem('codedb:onboarding')||'{}').visto))await page.locator('#onboarding-overlay').waitFor({state:'visible'});
+  // Escape chiude la guida sia nella modale desktop sia nel pannello mobile.
+  if(await page.locator('#onboarding-overlay').isVisible()){
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(()=>document.getElementById('onboarding-overlay').classList.contains('hidden')&&!document.getElementById('onboarding-overlay').dataset.arcDialog);
+  }
   if(await page.getByRole('button',{name:'Nascondi i primi passi'}).isVisible())await page.getByRole('button',{name:'Nascondi i primi passi'}).click();
   await page.evaluate(async()=>{window.nativeModules=await Promise.all(['tabs','socket','tabbar','workspace','colltabs','main','query-tab'].map(name=>import(`/js/${name}.js`)));});
   await page.evaluate(()=>{

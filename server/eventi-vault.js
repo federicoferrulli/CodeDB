@@ -4,6 +4,8 @@
 const Vault = require('../db/vault');
 const { allowedConnections, canUseConnection, isInstallAdmin } = require('../auth/permissions');
 const crypto = require('crypto');
+const { preparaChiaveSsh, metadatiChiave } = require('../db/SshKey');
+const { sshAuthMode } = require('../db/SshTunnel');
 
 function createModule({ vault, identita, config }) {
   function registra(socketContext, lifecycle) {
@@ -119,6 +121,21 @@ function createModule({ vault, identita, config }) {
     // --- Connessioni salvate ----------------------------------------------------
     // Non richiedono una connessione DB attiva: servono proprio prima di averla.
 
+    lifecycle.amministrativo('ssh:key:validate', async ({ cfg, editName }, cb) => {
+      // Il percorso locale e l'agente appartengono al server: stesso permesso richiesto per configurare una connessione.
+      identita.assertManage(socketContext.principal);
+      try {
+        if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('Configurazione SSH non valida.');
+        const previous = editName ? vault.loadConnections(socketContext.principal.ownerId)[String(editName)] : null;
+        if (editName && !previous) throw new Error('Connessione salvata non trovata.');
+        const effective = vault.sanitizeConnCfg(cfg, previous);
+        if (sshAuthMode(effective) === 'password') throw new Error('Seleziona un file o un percorso di chiave SSH.');
+        cb({ ok: true, ...metadatiChiave(await preparaChiaveSsh(effective, { allowHostAgent: isInstallAdmin(socketContext.principal, config.env) })) });
+      } catch (err) {
+        cb({ ok: false, error: err.message, code: /^SSH_(?:KEY|AGENT|NATIVE)_/.test(err.code || '') ? err.code : 'SSH_KEY_INVALID' });
+      }
+    });
+
     lifecycle.amministrativo('connections:list', (_payload, cb) => {
       const all = vault.loadConnections(socketContext.principal.ownerId);
       // Un sottoutente vede soltanto le connessioni su cui ha un grant.
@@ -156,6 +173,7 @@ function createModule({ vault, identita, config }) {
         hasUri: has('uri'),
         hasSshPassword: has('sshPassword'),
         hasSshPassphrase: has('sshPassphrase'),
+        hasSshSecurityKeyPin: has('sshSecurityKeyPin'),
         hasSshPrivateKey: has('sshPrivateKey'),
       };
       for (const f of vault.SECRET_FIELDS) delete fields[f];
@@ -181,6 +199,10 @@ function createModule({ vault, identita, config }) {
         throw new Error(`Esiste già una connessione chiamata "${name}". Scegli un nome diverso.`);
       }
       const next = vault.sanitizeConnCfg(cfg || {}, previous);
+      if (vault.sshEnabled(next) && sshAuthMode(next) !== 'password'
+        && (!previous || !vault.sshEnabled(previous) || ['sshAuth', 'sshPrivateKey', 'sshKeyFile', 'sshPassphrase', 'sshSecurityKeyPin'].some(field => next[field] !== previous[field]))) {
+        await preparaChiaveSsh(next, { allowHostAgent: isInstallAdmin(socketContext.principal, config.env) });
+      }
       if (vault.connMode(next) === 'uri' && !next.uri) {
         throw new Error('Inserisci la URI MongoDB completa.');
       }

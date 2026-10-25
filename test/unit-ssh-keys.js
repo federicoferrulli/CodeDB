@@ -74,7 +74,7 @@ module.exports = (async () => {
       [{ sshPrivateKey: fixture.encrypted.private, sshPassphrase: 'errata' }, /passphrase/],
       [{ sshKeyFile: path.join(dir, 'inesistente') }, /percorso sul server CodeDB/],
       [{ sshPrivateKey: fixture.key.private, sshHostKey: 'SHA256:errata' }, /NON corrisponde/],
-      [{ sshPrivateKey: 'PuTTY-User-Key-File-3: ssh-ed25519' }, /PuTTYgen/],
+      [{ sshPrivateKey: 'PuTTY-User-Key-File-3: ssh-ed25519' }, /PPK|PuTTY|formato/i],
     ]) await assert.rejects(openSshTunnel({ ...fixture.ssh, ...cfg }, fixture.target), expected);
     assert.equal(fixture.stats.authentications, 6, 'Nessuna autenticazione per chiavi invalide o host non fidato');
     assert.equal(fixture.stats.forwarded, 6);

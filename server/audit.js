@@ -262,6 +262,7 @@ function createModule({ config, dependencies, errori }) {
     // --- Connessioni salvate -------------------------------------------------
     'connections:list': NON_TRACCIATO('elenco, senza effetti'),
     'connections:get': NON_TRACCIATO('lettura di una singola connessione, senza segreti'),
+    'ssh:key:validate': NON_TRACCIATO('verifica del formato e dell’identità SSH senza connessione remota né persistenza di segreti'),
     'connections:save': {
       op: 'Salvataggio di una connessione',
       bersaglio: (payload) => payload && (payload.name || payload.oldName),

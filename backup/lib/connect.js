@@ -32,7 +32,9 @@ async function establishConnection(cfg) {
         host: (cfg.host || 'localhost').trim(),
         port: parseInt(cfg.port, 10) || DbFactory.defaultPort(dbType),
       };
-      tunnel = await openSshTunnel(cfg, target);
+      // Una pianificazione per un tenant non deve usare implicitamente le chiavi dell'agente del servizio.
+      tunnel = await openSshTunnel(cfg, target, { allowHostAgent: String(process.env.CODEDB_RBAC || 'off').toLowerCase() !== 'on'
+        || process.env.CODEDB_SSH_ALLOW_HOST_AGENT === '1' });
       connectCfg = { ...cfg, host: tunnel.host, port: String(tunnel.port) };
       if (dbType === 'mongodb') connectCfg.directConnection = true;
     }
@@ -40,7 +42,7 @@ async function establishConnection(cfg) {
     await strategy.connect(connectCfg);
     return { strategy, tunnel, dbType };
   } catch (err) {
-    if (tunnel) try { tunnel.close(); } catch { /* ignora */ }
+    if (tunnel) try { await tunnel.close(); } catch { /* ignora */ }
     throw err;
   }
 }
@@ -48,7 +50,7 @@ async function establishConnection(cfg) {
 async function teardownConnection({ strategy, tunnel }) {
   await strategy.disconnect().catch(() => {});
   if (tunnel) {
-    try { tunnel.close(); } catch { /* ignora */ }
+    try { await tunnel.close(); } catch { /* ignora */ }
   }
 }
 

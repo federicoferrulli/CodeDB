@@ -23,6 +23,12 @@ let uploadedSshKey = null;
 let sshKeyRead = 0;
 let sshKeyLoading = false;
 let sshKeyError = '';
+let sshKeyReadPromise = Promise.resolve();
+let sshKeyValidation = 0;
+let sshKeyValidationTimer = null;
+let sshKeyCheck = null;
+let sshKeyInfo = null;
+let connFormGeneration = 0;
 let currentStep = 1;
 
 export function setWizardStep(step) {
@@ -79,7 +85,7 @@ function updateWizardSummary() {
   const dbIcon = dbTypeIcon(cfg.dbType);
   const dbTypeName = { mongodb: 'MongoDB', mysql: 'MySQL', postgresql: 'PostgreSQL', postgres: 'PostgreSQL' }[cfg.dbType] || cfg.dbType;
   const secret = field => {
-    const retained = savedSecrets[field] && (field === 'sshPassphrase' ? sameSavedSshKey(cfg) : field !== 'sshPassword' || cfg.sshAuth === savedSshAuth);
+    const retained = savedSecrets[field] && (['sshPassphrase', 'sshSecurityKeyPin'].includes(field) ? sameSavedSshKey(cfg) : field !== 'sshPassword' || cfg.sshAuth === savedSshAuth);
     return cfg[field] ? '•••••• · Inserita' : retained ? 'Invariata · Già salvata' : 'Non impostata';
   };
   const rows = [];
@@ -97,9 +103,10 @@ function updateWizardSummary() {
       ['Utente SSH', cfg.sshUser || 'Non impostato'],
       ['Autenticazione SSH', { password: 'Password', upload: 'File dal dispositivo', path: 'Percorso sul server CodeDB' }[cfg.sshAuth]]);
     if (cfg.sshAuth === 'password') rows.push(['Password SSH', secret('sshPassword')]);
-    else rows.push(['Chiave privata', cfg.sshAuth === 'path' ? cfg.sshKeyFile || 'Non impostata'
-      : cfg.sshKeyName ? `${cfg.sshKeyName} · ${uploadedSshKey ? 'Caricata' : 'Già salvata'}` : savedSecrets.sshPrivateKey ? 'Già salvata' : 'Non selezionata'],
+    else rows.push(['Chiave SSH', cfg.sshAuth === 'path' ? cfg.sshKeyFile || 'Non impostata'
+      : cfg.sshKeyName ? `${cfg.sshKeyName} · ${uploadedSshKey ? sshKeyCheck?.result?.ok ? 'Verificata' : 'Da verificare' : 'Già salvata'}` : savedSecrets.sshPrivateKey ? 'Già salvata' : 'Non selezionata'],
     ['Passphrase chiave', secret('sshPassphrase')]);
+    if (cfg.sshAuth !== 'password' && sshKeyInfo?.securityKey) rows.push(['PIN dispositivo', secret('sshSecurityKeyPin')]);
     rows.push(['Impronta host SSH', cfg.sshHostKey || 'Da rilevare e confermare al collegamento']);
     rows.push(['Forwarding locale', cfg.sshLocalPort ? `127.0.0.1:${cfg.sshLocalPort} → ${cfg.host || 'localhost'}:${cfg.port || { mongodb: '27017', mysql: '3306', postgresql: '5432' }[cfg.dbType]}` : 'Disattivato']);
   }
@@ -161,14 +168,76 @@ function syncSshAuth() {
   $('#conn-ssh-upload-row').classList.toggle('hidden', mode !== 'upload');
   $('#conn-ssh-path-row').classList.toggle('hidden', mode !== 'path');
   $('#conn-ssh-passphrase-row').classList.toggle('hidden', mode === 'password');
-  $('#conn-ssh-key-status').textContent = sshKeyError || (sshKeyLoading ? 'Lettura del file…' : uploadedSshKey
-    ? `Chiave caricata: ${uploadedSshKey.name}. Verrà conservata nel vault solo se salvi la connessione.`
-    : savedSecrets.sshPrivateKey ? `Chiave già salvata: ${savedSshKeyName || 'chiave privata'}. Scegli un file solo per sostituirla.`
-      : 'Scegli la chiave privata, non il file .pub. Massimo 64 KB.');
+  $('#conn-ssh-security-key-pin-row').classList.toggle('hidden', mode === 'password' || !sshKeyInfo?.securityKey);
+  $('#connect-form').elements.sshSecurityKeyPin.placeholder = savedSecrets.sshSecurityKeyPin && sameSavedSshKey(readConnForm())
+    ? '(invariato se lasciato vuoto)' : 'Se richiesto dalla chiave hardware';
+  const status = $('#conn-ssh-key-status');
+  status.classList.toggle('hidden', mode === 'password');
+  const result = sshKeyCheck?.result;
+  const fileError = mode === 'upload' ? sshKeyError : '';
+  const selectedKey = mode === 'upload' ? uploadedSshKey : null;
+  status.dataset.state = sshKeyLoading ? 'reading' : fileError ? 'error' : sshKeyCheck?.pending ? 'checking'
+    : result?.ok ? 'valid' : result?.code === 'SSH_KEY_PASSPHRASE_REQUIRED' ? 'passphrase' : result ? 'error' : 'idle';
+  status.textContent = fileError || (sshKeyLoading ? 'Lettura del file…' : sshKeyCheck?.pending ? 'Verifica del formato e della chiave…'
+    : result?.ok ? `Chiave verificata${selectedKey ? `: ${selectedKey.name}` : ''} · ${[result.format, result.algorithm].filter(Boolean).join(' · ')}.${result.fingerprint ? ` Impronta chiave: ${result.fingerprint}.` : ''}${result.message ? ` ${result.message}` : ''}`
+      : result ? result.error : selectedKey ? `File selezionato: ${selectedKey.name}. Verifica in corso…`
+        : mode === 'path' ? 'Indica il percorso del file: formato e passphrase verranno verificati prima di procedere.'
+          : savedSecrets.sshPrivateKey ? `Chiave già salvata: ${savedSshKeyName || 'chiave SSH'}. Scegli un file solo per sostituirla.`
+            : 'OpenSSH, PEM, PPK, DER o PFX/P12, massimo 64 KB. Le chiavi pubbliche richiedono un agente SSH; quelle hardware un dispositivo o agente sulla macchina CodeDB.');
+}
+
+function resetSshKeyValidation() {
+  sshKeyValidation++;
+  clearTimeout(sshKeyValidationTimer);
+  sshKeyValidationTimer = null;
+  sshKeyCheck = null;
+}
+
+function scheduleSshKeyValidation(event) {
+  if (['sshAuth', 'sshKeyFile'].includes(event?.target?.name)) {
+    sshKeyInfo = null;
+    $('#connect-form').elements.sshSecurityKeyPin.value = '';
+  }
+  resetSshKeyValidation();
+  $('#connect-test-msg').classList.add('hidden');
+  $('#connect-error').classList.add('hidden');
+  syncSshAuth();
+  const cfg = readConnForm();
+  if (cfg.ssh !== 'true' || cfg.sshAuth === 'password' || sshKeyLoading || cfg.sshAuth === 'upload' && sshKeyError) return;
+  if (cfg.sshAuth === 'upload' ? !uploadedSshKey && !(savedSecrets.sshSecurityKeyPin && sameSavedSshKey(cfg)) : !cfg.sshKeyFile.trim()) return;
+  sshKeyValidationTimer = setTimeout(() => { checkSshKey(); }, 300);
+}
+
+function checkSshKey() {
+  clearTimeout(sshKeyValidationTimer);
+  sshKeyValidationTimer = null;
+  if (sshKeyCheck?.pending || sshKeyCheck?.result?.ok) return sshKeyCheck.promise;
+  const revision = sshKeyValidation;
+  const check = { pending: true, result: null, promise: null };
+  sshKeyCheck = check;
+  check.promise = new Promise(resolve => {
+    socket.timeout(30000).emit('ssh:key:validate', { cfg: readConnForm(), editName: editingConn }, (error, result) => {
+      check.pending = false;
+      check.result = error ? { ok: false, error: 'Il server non ha risposto alla verifica della chiave. Riprova.' }
+        : result || { ok: false, error: 'Impossibile verificare la chiave SSH. Riprova.' };
+      // Un cambio di file, passphrase o modalità rende inutilizzabile la risposta precedente.
+      if (revision === sshKeyValidation) {
+        if (check.result.ok) sshKeyInfo = check.result;
+        syncSshAuth();
+        if (currentStep === 3) updateWizardSummary();
+      }
+      resolve(check.result);
+    });
+  });
+  syncSshAuth();
+  return check.promise;
 }
 
 async function readSshKeyFile() {
   const read = ++sshKeyRead;
+  resetSshKeyValidation();
+  sshKeyInfo = null;
+  $('#connect-form').elements.sshSecurityKeyPin.value = '';
   const file = $('#conn-ssh-key-upload').files[0];
   uploadedSshKey = null;
   sshKeyError = '';
@@ -177,31 +246,55 @@ async function readSshKeyFile() {
   try {
     if (!file) return;
     if (!file.size || file.size > 64 * 1024) throw new Error('Scegli un file non vuoto di massimo 64 KB.');
-    const text = await file.text();
+    const bytes = new Uint8Array(await file.arrayBuffer());
     if (read !== sshKeyRead) return;
-    if (!text.trim()) throw new Error('Il file di chiave privata è vuoto.');
-    if (/^(ssh-|ecdsa-|sk-)|BEGIN (?:RSA )?PUBLIC KEY/.test(text.trim())) throw new Error('Hai selezionato una chiave pubblica. Scegli la chiave privata, non il file .pub.');
+    // DER e PKCS#12 sono binari: decodificarli come testo ne altera irrimediabilmente i byte.
+    let text;
+    try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch { /* formato binario */ }
+    if (text !== undefined && !text.trim()) throw new Error('Il file di chiave SSH è vuoto.');
+    if (text === undefined || !/^\s*(?:-----BEGIN |---- BEGIN SSH2 |PuTTY-User-Key-File-|(?:ssh-|ecdsa-|sk-))/.test(text)) {
+      text = 'base64:' + btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join(''));
+    }
     uploadedSshKey = { name: file.name, text };
   } catch (error) {
     if (read === sshKeyRead) sshKeyError = error.message || 'Impossibile leggere il file selezionato.';
   } finally {
     if (read === sshKeyRead) {
       sshKeyLoading = false;
-      syncSshAuth();
+      scheduleSshKeyValidation();
       if (currentStep === 3) updateWizardSummary();
     }
   }
 }
 
-function validateSshKey(cfg) {
-  if (cfg.ssh !== 'true' || cfg.sshAuth !== 'upload') return true;
-  const message = sshKeyLoading ? 'Attendi la lettura della chiave privata.' : sshKeyError
-    || (!uploadedSshKey && !savedSecrets.sshPrivateKey ? 'Scegli il file di chiave privata dal tuo dispositivo.' : '');
-  if (!message) return true;
-  setWizardStep(2);
-  showError('#connect-error', message);
-  $('#conn-ssh-key-select').focus();
-  return false;
+async function validateSshKey(preserveSaved = false) {
+  const generation = connFormGeneration;
+  while (true) {
+    while (sshKeyLoading) await sshKeyReadPromise;
+    if (generation !== connFormGeneration || $('#connect-overlay').classList.contains('hidden')) return false;
+    const cfg = readConnForm();
+    if (cfg.ssh !== 'true' || cfg.sshAuth === 'password') return true;
+    let message = cfg.sshAuth === 'upload' ? sshKeyError
+      || (!uploadedSshKey && !savedSecrets.sshPrivateKey ? 'Scegli il file di chiave SSH dal tuo dispositivo.' : '')
+      : !cfg.sshKeyFile.trim() ? 'Indica il percorso della chiave sul server CodeDB.' : '';
+    // Una chiave salvata invariata può essere mantenuta anche senza il dispositivo hardware collegato.
+    const unchanged = sameSavedSshKey(cfg) && !cfg.sshPassphrase && !cfg.sshSecurityKeyPin;
+    if (!message && unchanged && preserveSaved) return true;
+    const revision = sshKeyValidation;
+    if (!message) {
+      const result = await checkSshKey();
+      if (generation !== connFormGeneration || $('#connect-overlay').classList.contains('hidden')) return false;
+      if (revision !== sshKeyValidation) continue;
+      if (result.ok) return true;
+      message = result.error;
+    }
+    setWizardStep(2);
+    showError('#connect-error', message);
+    const field = sshKeyCheck?.result?.code === 'SSH_KEY_PASSPHRASE_REQUIRED' ? '#connect-form [name="sshPassphrase"]'
+      : cfg.sshAuth === 'path' ? '#connect-form [name="sshKeyFile"]' : '#conn-ssh-key-select';
+    $(field).focus();
+    return false;
+  }
 }
 
 function readConnForm() {
@@ -241,6 +334,7 @@ function readConnForm() {
         cfg.sshKeyName = uploadedSshKey?.name || savedSshKeyName;
       }
       cfg.sshPassphrase = form.elements.sshPassphrase.value;
+      cfg.sshSecurityKeyPin = form.elements.sshSecurityKeyPin.value;
     }
     // Impronta della host key: non è un segreto, viaggia in chiaro col resto
     // della configurazione ed è registrata al primo collegamento riuscito.
@@ -272,7 +366,7 @@ function closeConnModal() {
 // DENTRO la stringa (`mongodb://utente:segreto@host/`): togliere il campo
 // `password` e lasciare l'URI significava dichiarare chiuso un buco che restava
 // aperto per metà degli utenti (CDB-70).
-const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase', 'sshPrivateKey', 'uri'];
+const CAMPI_SEGRETI = ['password', 'sshPassword', 'sshPassphrase', 'sshSecurityKeyPin', 'sshPrivateKey', 'uri'];
 
 /**
  * Configurazione conservabile sul tab: per una connessione salvata resta il
@@ -356,7 +450,7 @@ export function startEditConn(name) {
   emit('connections:get', { name }).then((res) => {
     const f = res.fields;
     clearSshKey();
-    savedSecrets = { password: res.hasPassword, uri: res.hasUri, sshPassword: res.hasSshPassword, sshPassphrase: res.hasSshPassphrase, sshPrivateKey: res.hasSshPrivateKey };
+    savedSecrets = { password: res.hasPassword, uri: res.hasUri, sshPassword: res.hasSshPassword, sshPassphrase: res.hasSshPassphrase, sshSecurityKeyPin: res.hasSshSecurityKeyPin, sshPrivateKey: res.hasSshPrivateKey };
     savedUriPreview = res.uriPreview || '';
     $('#conn-uri-saved').textContent = savedUriPreview;
     $('#conn-uri-saved-info').classList.toggle('hidden', !savedUriPreview);
@@ -390,6 +484,7 @@ export function startEditConn(name) {
     form.elements.sshKeyFile.value = f.sshKeyFile || '';
     form.elements.sshHostKey.value = f.sshHostKey || '';
     form.elements.sshPassphrase.value = '';
+    form.elements.sshSecurityKeyPin.value = '';
     form.elements.sshPassphrase.placeholder = res.hasSshPassphrase ? '(invariata se lasciata vuota)' : '(se la chiave è protetta)';
     form.elements.saveAs.value = name;
     syncConnForm();
@@ -402,11 +497,15 @@ export function startEditConn(name) {
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');
     $('#connect-overlay').classList.remove('hidden');
+    if (savedSecrets.sshSecurityKeyPin) scheduleSshKeyValidation();
   }).catch((err) => toast(err.message, true));
 }
 
 function clearSshKey() {
+  connFormGeneration++;
   sshKeyRead++;
+  resetSshKeyValidation();
+  sshKeyInfo = null;
   uploadedSshKey = null;
   savedSshKeyName = '';
   savedSshAuth = '';
@@ -452,19 +551,16 @@ export function initConnection() {
   $('#wizard-next-btn')?.addEventListener('click', () => setWizardStep(currentStep + 1));
 
   $('#conn-dbtype').addEventListener('change', () => syncConnForm(true));
-  $('#conn-ssh-toggle').addEventListener('change', () => syncConnForm());
-  $('#conn-ssh-auth').addEventListener('change', syncSshAuth);
+  $('#conn-ssh-toggle').addEventListener('change', () => { syncConnForm(); scheduleSshKeyValidation(); });
+  $('#conn-ssh-auth').addEventListener('change', scheduleSshKeyValidation);
   $('#conn-ssh-key-select').addEventListener('click', () => $('#conn-ssh-key-upload').click());
-  $('#conn-ssh-key-upload').addEventListener('change', readSshKeyFile);
+  $('#conn-ssh-key-upload').addEventListener('change', () => { sshKeyReadPromise = readSshKeyFile(); });
   $('#connect-form').addEventListener('input', event => {
-    if (event.target.name === 'sshKeyFile') syncSshAuth();
+    if (['sshKeyFile', 'sshPassphrase', 'sshSecurityKeyPin'].includes(event.target.name)) scheduleSshKeyValidation(event);
     if (currentStep === 3) updateWizardSummary();
   });
 
   $('#conn-test-btn')?.addEventListener('click', () => {
-    const cfg = readConnForm();
-    if (!validateSshKey(cfg)) return;
-    if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#conn-test-btn');
     $('#connect-error').classList.add('hidden');
     $('#connect-test-msg').classList.add('hidden');
@@ -472,8 +568,14 @@ export function initConnection() {
     // Etichetta salvata e ripristinata da `conCaricamento`: prima "⚡ Testa
     // Connessione" era una stringa letterale ripetuta in tre punti, e bastava
     // rinominare il pulsante nell'HTML perché al primo clic cambiasse nome.
-    conCaricamento(btn, () => conImprontaSsh(cfg, () => emit('connections:test', cfg)), 'Verifica…')
+    conCaricamento(btn, async () => {
+      if (!await validateSshKey()) return null;
+      const cfg = readConnForm();
+      if (editingConn) cfg.keepPasswordFrom = editingConn;
+      return conImprontaSsh(cfg, () => emit('connections:test', cfg));
+    }, 'Verifica…')
       .then((res) => {
+        if (!res) return;
         const msg = $('#connect-test-msg');
         msg.textContent = `✓ Connessione riuscita! (${res.dbType.toUpperCase()}, ${res.databases} DB trovati)`;
         msg.classList.remove('hidden');
@@ -492,12 +594,15 @@ export function initConnection() {
       $('#wizard-summary-title').focus();
       return;
     }
-    const cfg = readConnForm();
-    if (!validateSshKey(cfg)) return;
-    if (editingConn) cfg.keepPasswordFrom = editingConn;
     const btn = $('#connect-btn');
     $('#connect-error').classList.add('hidden');
-    conCaricamento(btn, () => connectAndOpenTab(cfg), 'Connessione…').then(() => {
+    conCaricamento(btn, async () => {
+      if (!await validateSshKey()) return null;
+      const cfg = readConnForm();
+      if (editingConn) cfg.keepPasswordFrom = editingConn;
+      return connectAndOpenTab(cfg);
+    }, 'Connessione…').then((res) => {
+      if (!res) { updateWizardActions(); return; }
       cancelEditConn();
       closeConnModal();
     }).catch((err) => {
@@ -522,16 +627,15 @@ export function initConnection() {
   });
 
   $('#conn-save-btn').addEventListener('click', () => {
-    const cfg = readConnForm();
-    if (!validateSshKey(cfg)) return;
-    const name = (cfg.saveAs || '').trim();
-    if (!name) {
-      const err = $('#connect-error');
-      err.textContent = 'Indica un nome nel campo "Salva come".';
-      err.classList.remove('hidden');
-      return;
-    }
-    conCaricamento($('#conn-save-btn'), () => emit('connections:save', { name, oldName: editingConn, cfg }), 'Salvo…').then(() => {
+    conCaricamento($('#conn-save-btn'), async () => {
+      if (!await validateSshKey(true)) return null;
+      const cfg = readConnForm();
+      const name = (cfg.saveAs || '').trim();
+      if (!name) throw new Error('Indica un nome nel campo "Salva come".');
+      await emit('connections:save', { name, oldName: editingConn, cfg });
+      return name;
+    }, 'Salvo…').then((name) => {
+      if (!name) return;
       toast(`Connessione "${name}" salvata`);
       cancelEditConn();
       closeConnModal();

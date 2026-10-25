@@ -3,6 +3,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const dir = path.resolve('test-reports/modifica-connessione-2026-10-12', process.argv.includes('--before') ? 'prima' : 'dopo');
@@ -11,6 +12,12 @@ const dir = path.resolve('test-reports/modifica-connessione-2026-10-12', process
   const server = await startTestServer({ port: 3212 });
   const browser = await chromium.launch();
   try {
+    const pair = crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+    const privateKey = pair.privateKey.export({ format: 'pem', type: 'pkcs8', cipher: 'aes-256-cbc', passphrase: 'passphrase-di-prova' });
+    const keyFile = path.join(server.dir, 'chiave di prova.pem');
+    const otherKeyFile = path.join(server.dir, 'altra chiave.pem');
+    fs.writeFileSync(keyFile, privateKey);
+    fs.writeFileSync(otherKeyFile, crypto.generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({ format: 'pem', type: 'pkcs8' }));
     const vault = require('../server/vault').createModule({
       config: require('../server/configurazione').configurazione({ env: {
         CODEDB_CONNECTIONS_FILE: path.join(server.dir, 'connections.ini'),
@@ -33,11 +40,11 @@ const dir = path.resolve('test-reports/modifica-connessione-2026-10-12', process
     const cfg = { dbType: 'postgresql', connectionMode: 'fields', host: 'db.example.test', port: '27017',
       username: 'utente-prova', password: 'password-di-prova', database: 'archivio', folder: 'Collaudo', readOnly: 'false',
       ssh: 'true', sshHost: 'ssh.example.test', sshPort: '2222', sshUser: 'tunnel-prova', sshAuth: 'path',
-      sshKeyFile: 'C:\\chiavi\\prova', sshPassphrase: 'passphrase-di-prova', sshHostKey: 'SHA256:impronta-di-prova' };
+      sshKeyFile: keyFile, sshPassphrase: 'passphrase-di-prova', sshHostKey: 'SHA256:impronta-di-prova' };
     const fixtures = [
       ['PostgreSQL SSH chiave', cfg],
       ['MySQL SSH password', { ...cfg, dbType: 'mysql', port: '5432', sshAuth: 'password', sshPassword: 'ssh-di-prova' }],
-      ['MongoDB SSH file', { ...cfg, dbType: 'mongodb', port: '27019', database: '', authSource: 'autenticazione', sshAuth: 'upload', sshPrivateKey: 'chiave-privata-di-prova', sshKeyName: 'id_prova' }],
+      ['MongoDB SSH file', { ...cfg, dbType: 'mongodb', port: '27019', database: '', authSource: 'autenticazione', sshAuth: 'upload', sshPrivateKey: privateKey, sshKeyName: 'id_prova' }],
       ['MongoDB URI', { dbType: 'mongodb', connectionMode: 'uri', uri: 'mongodb://utente:segreto-uri@host-a:27017,host-b:27018/archivio?authSource=admin&tls=true&authMechanismProperties=TOKEN:segreto-opzione', folder: 'Collaudo', readOnly: 'false' }],
       ['Postgres alias', { ...cfg, dbType: 'postgres', port: '5544', ssh: '' }],
     ];
@@ -98,7 +105,7 @@ const dir = path.resolve('test-reports/modifica-connessione-2026-10-12', process
     after = vault.loadConnections()[name];
     for (const key of ['username', 'database', 'folder']) assert(!after[key], `Rimozione esplicita di ${key}`);
     assert(after.password === before.password && after.sshPassphrase === before.sshPassphrase, 'I segreti vuoti rimangono invariati');
-    assert.equal((await ack('connections:save', { name, oldName: name, cfg: { password: 'password-sostitutiva', sshKeyFile: 'C:\\chiavi\\altra' } })).ok, true);
+    assert.equal((await ack('connections:save', { name, oldName: name, cfg: { password: 'password-sostitutiva', sshKeyFile: otherKeyFile } })).ok, true);
     after = vault.loadConnections()[name];
     assert(after.password === 'password-sostitutiva' && !after.sshPassphrase, 'Nuova password sostituita e passphrase non riusata su una chiave diversa');
     assert.equal((await ack('connections:save', { name, oldName: name, cfg: { ssh: '' } })).ok, true);

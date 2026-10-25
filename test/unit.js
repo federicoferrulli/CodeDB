@@ -31,6 +31,12 @@ console.log('--- Test Unitari CodeDB ---');
   await require('./unit-server-modulare');
   await require('./unit-conteggi-navigatore');
   await require('./unit-ssh-keys');
+  await require('./unit-ssh-ppk');
+  await require('./unit-ssh-kdf');
+  await require('./unit-ssh-formati');
+  await require('./unit-ssh-public');
+  await require('./unit-ssh-agent');
+  await require('./unit-ssh-config');
   await require('./unit-conn-config');
   await require('./unit-mcp-auth');
   // Test 1: DbFactory instanziamento e helper

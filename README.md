@@ -103,7 +103,7 @@ npm run backup -- help    # Full usage guide
 | Collection/Table Tabs | Open each collection/table in its own secondary tab with isolated query snapshots |
 | Saved Connections | Left sidebar grouped by folders; context menu to open, test, edit, or delete |
 | Import/Export Connections | Export and import full `.ini` files (including encrypted secrets) |
-| SSH Tunneling | Connect via SSH (password or private key + passphrase), available in Parameters mode |
+| SSH Tunneling | Password or OpenSSH, PEM/PKCS#8, PuTTY PPK v2/v3, DER and PKCS#12 key files, with automatic detection and passphrases; public identities, SSH certificates and FIDO via agent/OpenSSH. [Configuration and requirements](README_IT.md#file-chiave-per-ssh) |
 | DB & Collection Tree | Left tree view showing document/row counts |
 | Grid View | Columns dynamically created from keys (MongoDB) or table columns (SQL) |
 | `find` / WHERE Queries | Toolbar filter and sorting (JSON/EJSON for Mongo, WHERE clause + `ORDER BY` for MySQL/Postgres) |

@@ -2,8 +2,9 @@
 
 // CodeDB — connessioni. Stato e dipendenze appartengono alla singola istanza.
 const { guardStrategy } = require('../auth/guardStrategy');
+const { isInstallAdmin } = require('../auth/permissions');
 
-function createModule({ vault, dependencies, errori }) {
+function createModule({ vault, dependencies, errori, config }) {
   /* ---------------------------------------------------------------------------
    * Apertura di una connessione DB (comune a mongo:connect e connections:test)
    * ------------------------------------------------------------------------- */
@@ -61,6 +62,7 @@ function createModule({ vault, dependencies, errori }) {
         };
         const savedName = String(cfg.saved || '').trim();
         tunnel = await dependencies.openSshTunnel(effective, target, {
+          allowHostAgent: isInstallAdmin(guardCtx?.principal, config?.env),
           // ssh2 chiama questa funzione dentro hostVerifier, prima di inviare le
           // credenziali. Il test e la connessione reale passano entrambi da qui.
           persistNewHostKey: savedName ? (fingerprint) => {

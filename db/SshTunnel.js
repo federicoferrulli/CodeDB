@@ -1,13 +1,9 @@
 'use strict';
 
 const net = require('net');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
 const crypto = require('crypto');
-const { Client, utils } = require('ssh2');
-
-const MAX_SSH_KEY_BYTES = 64 * 1024;
+const { Client } = require('ssh2');
+const { preparaChiaveSsh, MAX_SSH_KEY_BYTES } = require('./SshKey');
 
 function portaLocaleSsh(value) {
   if (value == null || (typeof value === 'string' && !value.trim())) return 0;
@@ -120,9 +116,22 @@ function creaVerificaHostKey(ssh, { persistNewHostKey } = {}) {
   };
 }
 
-function openSshTunnel(ssh, target, options = {}) {
+async function openSshTunnel(ssh, target, options = {}) {
+  if (!String(ssh.sshHost || '').trim()) throw new Error('Host SSH mancante.');
+  if (!String(ssh.sshUser || '').trim()) throw new Error('Utente SSH mancante.');
+  const localPort = portaLocaleSsh(ssh.sshLocalPort);
+  const authMode = sshAuthMode(ssh);
+  const credentials = authMode === 'password' ? null : await preparaChiaveSsh(ssh, options);
+  if (credentials?.native) {
+    const check = creaVerificaHostKey(ssh, options);
+    const hostKey = await verificaHostNativo(ssh, check);
+    const tunnel = await require('./SshNativeTunnel').apriTunnelNativo(credentials, {
+      host: String(ssh.sshHost).trim(), port: parseInt(ssh.sshPort, 10) || 22,
+      username: String(ssh.sshUser).trim(), localPort, target, hostKey,
+    });
+    return Object.assign(tunnel, { hostKey: check.seenFingerprint, hostKeyKnown: check.known, hostKeyNew: check.newlyPersisted });
+  }
   return new Promise((resolve, reject) => {
-    const localPort = portaLocaleSsh(ssh.sshLocalPort);
     const conn = new Client();
     let server = null;
     let settled = false;
@@ -237,44 +246,9 @@ function openSshTunnel(ssh, target, options = {}) {
     if (!params.host) return fail(new Error('Host SSH mancante.'));
     if (!params.username) return fail(new Error('Utente SSH mancante.'));
 
-    const authMode = sshAuthMode(ssh);
     if (authMode !== 'password') {
-      let key = ssh.sshPrivateKey;
-      if (authMode === 'path') {
-        let keyFile = String(ssh.sshKeyFile || '').trim().replace(/^(["'])(.*)\1$/, '$2');
-        if (/^~(?:[/\\]|$)/.test(keyFile)) keyFile = path.join(os.homedir(), keyFile.slice(2));
-        let fd;
-        try {
-          fd = fs.openSync(keyFile, 'r');
-          if (!fs.fstatSync(fd).isFile()) throw new Error('Non è un file');
-          const data = Buffer.alloc(MAX_SSH_KEY_BYTES + 1);
-          key = data.subarray(0, fs.readSync(fd, data, 0, data.length, 0));
-        } catch {
-          return fail(new Error('Impossibile leggere la chiave privata dal percorso sul server CodeDB. Controlla percorso e permessi oppure scegli il file dal tuo dispositivo.'));
-        } finally { if (fd !== undefined) fs.closeSync(fd); }
-      }
-      if (typeof key !== 'string' && !Buffer.isBuffer(key)) return fail(new Error('Seleziona un file di chiave privata SSH.'));
-      if (Buffer.byteLength(key) > MAX_SSH_KEY_BYTES) return fail(new Error('La chiave privata SSH supera il limite di 64 KB.'));
-      key = key.toString().replace(/^\uFEFF/, '').trim();
-      if (!key) return fail(new Error('Il file di chiave privata SSH è vuoto.'));
-      if (/^PuTTY-User-Key-File-3:/.test(key)) return fail(new Error('Chiave PuTTY PPK v3 non supportata. Esportala in formato OpenSSH con PuTTYgen e seleziona il file esportato.'));
-      try {
-        if (/-----BEGIN (?:ENCRYPTED )?PRIVATE KEY-----/.test(key)) {
-          const parsed = crypto.createPrivateKey({ key, passphrase: ssh.sshPassphrase || undefined });
-          if (!['rsa', 'ec'].includes(parsed.asymmetricKeyType)) throw new Error('Esporta questa chiave in formato OpenSSH.');
-          key = parsed.export({ format: 'pem', type: parsed.asymmetricKeyType === 'rsa' ? 'pkcs1' : 'sec1' });
-        }
-        const parsed = utils.parseKey(key, ssh.sshPassphrase || undefined);
-        if (parsed instanceof Error) throw parsed;
-        const privateKey = Array.isArray(parsed) ? parsed[0] : parsed;
-        if (!privateKey?.getPrivatePEM()) return fail(new Error('Il file contiene una chiave pubblica. Seleziona la chiave privata, non il file .pub.'));
-      } catch {
-        return fail(new Error(ssh.sshPassphrase
-          ? 'Impossibile aprire la chiave privata SSH. Verifica la passphrase e che il file sia una chiave privata OpenSSH o PEM valida.'
-          : 'Impossibile aprire la chiave privata SSH. Se è protetta, inserisci la passphrase; altrimenti verifica il formato OpenSSH o PEM.'));
-      }
-      params.privateKey = key;
-      if (ssh.sshPassphrase) params.passphrase = ssh.sshPassphrase;
+      if (credentials.agent) params.agent = credentials.agent;
+      else params.privateKey = credentials.privateKey;
     } else if (ssh.sshPassword) {
       params.password = ssh.sshPassword;
     } else {
@@ -282,6 +256,30 @@ function openSshTunnel(ssh, target, options = {}) {
     }
 
     try { conn.connect(params); } catch (err) { fail(err); }
+  });
+}
+
+function verificaHostNativo(ssh, check) {
+  return new Promise((resolve, reject) => {
+    const probe = new Client();
+    let hostKey, done = false;
+    const finish = err => {
+      if (done) return;
+      done = true;
+      probe.destroy();
+      if (check.error || !hostKey) reject(check.error || err || new Error('Impossibile verificare la chiave del server SSH.'));
+      else resolve(hostKey);
+    };
+    probe.on('error', finish);
+    probe.on('close', () => finish());
+    probe.connect({ host: String(ssh.sshHost).trim(), port: parseInt(ssh.sshPort, 10) || 22,
+      username: String(ssh.sshUser).trim(), readyTimeout: 8000, authHandler: [],
+      hostVerifier(key) {
+        if (check.verify(key, String(ssh.sshHost).trim())) hostKey = Buffer.from(key);
+        // Il primo collegamento termina prima dell’autenticazione; OpenSSH riusa il pin verificato.
+        return false;
+      },
+    });
   });
 }
 
