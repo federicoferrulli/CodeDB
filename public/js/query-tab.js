@@ -746,7 +746,7 @@ export function updateQueryMetrics(status, timeMs = null, count = null, errorMsg
       statusBadge.textContent = 'Esecuzione...';
       queryRigheRef = null;
       const tableView = $('#query-table-view');
-      if (tableView) showSkeletonGrid(tableView, 8, 5);
+      if (tableView) showSkeletonGrid(tableView, 10, 5);
     }
     else if (status === 'success') statusBadge.textContent = '✓ Completato';
     else if (status === 'error') statusBadge.textContent = 'Errore';

@@ -349,6 +349,23 @@
 }
 .resizable-grid { table-layout: fixed; }
 .resizable-grid :is(th, td) { box-sizing: border-box; }
+/* Durante il caricamento conta il pannello, non la larghezza delle colonne precedenti. */
+:is(#grid, #query-result-table, .skeleton-grid-table):has(.skeleton) {
+  width: 100% !important;
+  min-width: 100%;
+  height: 100%;
+  table-layout: fixed;
+}
+:is(#grid, #query-result-table, .skeleton-grid-table):has(.skeleton) > colgroup { display: none; }
+:is(#grid, #query-result-table, .skeleton-grid-table):has(.skeleton) :is(th, td) {
+  padding: 4px 10px;
+  line-height: 18px;
+}
+:is(#grid, #query-result-table, .skeleton-grid-table) .skeleton-text {
+  height: 10px;
+  min-height: 10px;
+  border-radius: 3px;
+}
 @media (pointer: coarse), (max-width: 600px) {
   #grid thead th, .pane-grid thead th, #query-result-table thead th, .uml-dati-tab thead th { height: 44px; }
 }
