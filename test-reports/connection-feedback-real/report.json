@@ -1,0 +1,18 @@
+{
+  "checks": [
+    "mongodb: desktop, ok, progress ed esito reale verificati",
+    "mongodb: desktop, errore, progress ed esito reale verificati",
+    "mongodb: mobile, ok, progress ed esito reale verificati",
+    "mongodb: mobile, errore, progress ed esito reale verificati",
+    "mysql: desktop, ok, progress ed esito reale verificati",
+    "mysql: desktop, errore, progress ed esito reale verificati",
+    "mysql: mobile, ok, progress ed esito reale verificati",
+    "mysql: mobile, errore, progress ed esito reale verificati",
+    "postgresql: desktop, ok, progress ed esito reale verificati",
+    "postgresql: desktop, errore, progress ed esito reale verificati",
+    "postgresql: mobile, ok, progress ed esito reale verificati",
+    "postgresql: mobile, errore, progress ed esito reale verificati"
+  ],
+  "trasporto": "TCP reale, latenza iniziale 400 ms",
+  "scrittureDatabase": false
+}

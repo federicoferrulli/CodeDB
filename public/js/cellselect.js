@@ -1447,7 +1447,7 @@ export function creaSelezioneCelle(aggancio) {
       ...(righe.length ? ['---', {
         // Le due voci dirette inseriscono davvero: il documento lo calcola il
         // server dai vincoli della tabella, non c'e' nulla da compilare a mano.
-        label: righe.length === 1 ? '⧉ Duplica riga ▸' : `⧉ Duplica le ${righe.length} righe ▸`,
+        icona: 'copy', label: righe.length === 1 ? 'Duplica riga ▸' : `Duplica le ${righe.length} righe ▸`,
         action: () => setTimeout(() => showContextMenu(x, y, [
           { label: 'Senza chiavi (le genera il database)', action: () => duplicaRighe(A, righe, false) },
           { label: 'Con chiavi (nuova chiave primaria)',   action: () => duplicaRighe(A, righe, true) },

@@ -35,6 +35,7 @@
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 24px;
+  --menu-item-height: 28px;
   --shadow-resting: none;
   --shadow-raised: var(--shadow-md);
   --shadow-floating: var(--shadow-lg);
@@ -131,6 +132,12 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
   flex: 1; margin: 0; border: 0; border-radius: 0; box-shadow: none; animation: none;
   overflow-y: auto; overscroll-behavior: contain;
 }
+/* Un pannello ad altezza naturale misura il form, senza ereditarne il 100%. */
+.arc-dialog-sheet[data-fit-content] > div:nth-child(2) { overflow-y: auto; }
+.arc-dialog-sheet[data-fit-content] .arc-panel-slot { display: block; flex: none; }
+.overlay .arc-dialog-sheet[data-fit-content] .modal {
+  height: auto !important; max-height: none !important; overflow: visible; flex: none;
+}
 .arc-dialog-sheet [data-arc-sheet-heading] { display: none; }
 .arc-dialog-sheet .onb-scelta { white-space: normal; }
 .arc-dialog-sheet .onb-scelta > * { min-width: 0; }
@@ -145,7 +152,50 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--control-on); }
   border-color: var(--border-strong);
   border-radius: var(--radius-panel);
   box-shadow: var(--shadow-floating);
-  padding: var(--space-sm);
+  padding: var(--space-2xs);
+  gap: 0;
+  min-width: 176px;
+  max-width: min(26rem, calc(var(--area-larghezza, 100vw) - 16px));
+}
+/* I menu condividono densità e allineamento; le icone non fanno parte del testo. */
+.context-menu li[role="menuitem"], .toolbar-dropdown-menu .dropdown-item {
+  min-height: var(--menu-item-height);
+  padding: var(--space-2xs) var(--space-sm);
+  gap: var(--space-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  line-height: 20px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-sm);
+}
+.context-menu .menu-label { min-width: 0; flex: 1; }
+.toolbar-dropdown-menu .menu-label { min-width: 0; flex: 1; }
+.toolbar-dropdown-menu .menu-meta { color: var(--text-secondary); white-space: nowrap; }
+/* La label offre il bersaglio completo; la casella non eredita la taglia della toolbar. */
+.toolbar-dropdown-menu .checkbox-item { cursor: pointer; user-select: none; }
+.toolbar-dropdown-menu .checkbox-item [data-arc-component="checkbox"] {
+  width: 16px; min-width: 16px; height: 16px; min-height: 16px;
+  padding: 0; border: 0; background: transparent; box-shadow: none;
+}
+.toolbar-dropdown-menu .checkbox-item [data-arc-component="checkbox"] > span,
+.toolbar-dropdown-menu .checkbox-item [data-arc-component="checkbox"] svg { width: 16px; height: 16px; }
+.toolbar-dropdown-menu .checkbox-item:has(input:checked) { background: var(--accent-soft); color: var(--foreground); }
+.toolbar-dropdown-menu .dropdown-item.danger:hover:not(:disabled) { background: var(--danger-bg); color: var(--danger) !important; }
+.context-menu li > .menu-icona, .toolbar-dropdown-menu .dropdown-item > :is(svg, i) {
+  width: 16px; height: 16px; flex: none;
+}
+.context-menu li[aria-disabled="true"] { opacity: .5; cursor: default; }
+.context-menu li[aria-disabled="true"]:hover { background: transparent; }
+.toolbar-dropdown-menu .dropdown-label {
+  padding: var(--space-xs) var(--space-sm) var(--space-2xs);
+  font-size: var(--text-xs); font-weight: 500; text-transform: none; letter-spacing: 0;
+}
+.context-menu li.separator, .toolbar-dropdown-menu .dropdown-divider { margin: var(--space-2xs) var(--space-sm); }
+@media (pointer: coarse), (max-width: 900px) {
+  :root, :root[data-theme] { --menu-item-height: 44px; }
 }
 :is(.menu-item, .dropdown-item, .ctx-item) { border-radius: var(--radius-control); }
 :is(.menu-item, .dropdown-item, .ctx-item):focus-visible { background: var(--surface-muted); color: var(--foreground); }

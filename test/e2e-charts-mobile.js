@@ -5,19 +5,25 @@ const fs = require('node:fs');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const { scegliArc } = require('./arc-controls');
-const dir = 'test-reports/charts-mobile';
+const dir = process.env.CODEDB_REPORT_DIR || 'test-reports/charts-mobile';
 const mutant = process.argv.includes('--mutant');
 const checksOnly = process.argv.includes('--checks-only');
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
-  const server = await startTestServer({ port: 3247 });
+  const server = await startTestServer({ port: Number(process.env.E2E_PORT) || 3247 });
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, hasTouch: true, serviceWorkers: 'block' });
   page.setDefaultTimeout(8000);
   const errors = [];
   page.on('pageerror', e => errors.push(e.stack));
   try {
+    if (process.argv.includes('--mutant-suggestions')) await page.route('**/js/charts.js', async route => {
+      const response = await route.fetch(), source = await response.text();
+      const original = 'btn.disabled = !lista.length;';
+      assert(source.includes(original));
+      await route.fulfill({ response, body: source.replace(original, 'btn.disabled = false;') });
+    });
     if (mutant) await page.route('**/css/style.css*', async route => {
       const response = await route.fetch(), source = await response.text();
       const body = source.replace('grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));', 'grid-column: 1 / -1; display: flex; overflow-x: auto;');
@@ -42,10 +48,36 @@ fs.mkdirSync(dir, { recursive: true });
       (await import('/js/colltabs.js')).openCollTab('prova', 'bevande');
       (await import('/js/main.js')).setView('query');
       const query = await import('/js/query-tab.js');
-      query.renderResults(Array.from({ length: 10 }, (_, id) => ({ categoria: ['Acqua', 'Caffè', 'Tè'][id % 3], quantita: id + 1,
-        hydrationMultiplier: 0.8, nome_categoria_con_una_etichetta_molto_lunga: `Categoria ${id % 3}` })));
+      window.chartRows = Array.from({ length: 10 }, (_, id) => ({ categoria: ['Acqua', 'Caffè', 'Tè'][id % 3], quantita: id + 1,
+        hydrationMultiplier: 0.8, nome_categoria_con_una_etichetta_molto_lunga: `Categoria ${id % 3}` }));
+      query.renderResults([]);
       query.setResultsViewMode('chart');
     });
+    const suggested = page.locator('#chart-suggest-btn');
+    assert(await suggested.isVisible());
+    assert(await suggested.isDisabled(), 'Senza risultati Suggeriti resta visibile ma disabilitato');
+    await suggested.evaluate(el => el.click());
+    assert(await page.locator('#chart-suggest-menu').isHidden());
+    await page.evaluate(async () => (await import('/js/charts.js')).renderChart([{ _id: 'a' }, { _id: 'b' }]));
+    assert(await suggested.isDisabled(), 'Dati senza proposte non abilitano il pulsante');
+    await page.evaluate(async () => (await import('/js/query-tab.js')).renderResults(window.chartRows));
+    await page.waitForFunction(() => !document.getElementById('chart-suggest-btn').disabled);
+    await suggested.click();
+    await page.locator('#chart-suggest-menu').waitFor({ state: 'visible' });
+    assert(await page.locator('#chart-suggest-menu [data-suggerimento]').count() > 0);
+    await page.evaluate(async () => (await import('/js/charts.js')).renderChart([]));
+    assert(await suggested.isDisabled());
+    assert(await page.locator('#chart-suggest-menu').isHidden(), 'Un risultato vuoto chiude le proposte precedenti');
+    await page.evaluate(async () => {
+      const charts = await import('/js/charts.js');
+      const pending = charts.renderChart(window.chartRows);
+      charts.clearChart();
+      await pending;
+    });
+    assert(await suggested.isDisabled(), 'Un disegno sorpassato non riattiva proposte dopo il reset');
+    await page.evaluate(async () => (await import('/js/query-tab.js')).renderResults(window.chartRows));
+    await page.waitForFunction(() => !document.getElementById('chart-suggest-btn').disabled);
+    console.log('OK: Suggeriti disabilitato senza dati/proposte, riattivato con risultati e azzerato anche durante un disegno pendente.');
     await page.locator('#query-chart-canvas canvas').waitFor();
     await page.locator('#chart-quickbar [role="combobox"]').first().waitFor();
     const geometry = await page.locator('#chart-quickbar').evaluate(el => ({ width: el.clientWidth, overflow: el.scrollWidth - el.clientWidth,
@@ -53,6 +85,8 @@ fs.mkdirSync(dir, { recursive: true });
     assert(geometry.overflow <= 1 && geometry.fields.every(f => f.width >= 120 && f.height >= 44 && f.x >= 0 && f.right <= 390), `Selettori visibili e toccabili: ${JSON.stringify(geometry)}`);
     await scegliArc(page, '#chart-quickbar select[data-path="tipo"]', 'pie');
     await scegliArc(page, '#chart-quickbar select[data-path="campoX"]', 'categoria');
+    // Il risultato senza numeri aveva scelto Conteggio: qui torniamo alla misura.
+    await scegliArc(page, '#chart-quickbar select[data-path="agg"]', 'somma');
     await scegliArc(page, '#chart-quickbar select[data-path="campoY"]', 'quantita');
     assert.equal(await page.evaluate(async () => (await import('/js/state.js')).state.chartCfg.serie[0].tipo), 'pie');
     const checkControl = async selector => {

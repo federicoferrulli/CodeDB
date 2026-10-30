@@ -152,10 +152,10 @@ export function renderDbTree(databases, { query = '' } = {}) {
         // da una tabella, cioe' partendo dal contesto sbagliato.
         { icona: 'network', label: `Diagramma UML del ${dbWord()}`, action: () => { openDbTab(db.name); setView('uml'); } },
         '---',
-        { label: `＋ Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
-        { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
+        { icona: 'plus', label: `Nuova ${collWord()}…`, action: () => openCreateColl(db.name) },
+        { icona: 'plus', label: `Nuovo ${dbWord()}…`, action: openCreateDb },
         { icona: 'square-pen', label: `Rinomina ${dbWord()}…`, action: () => renameDb(db.name) },
-        { label: '⟳ Aggiorna elenco', action: refreshDbTree },
+        { icona: 'refresh-cw', label: 'Aggiorna elenco', action: refreshDbTree },
         '---',
         ...dbExportImportMenuItems(db.name),
         '---',
@@ -253,14 +253,14 @@ export function renderCollectionsList(dbName, container, collections) {
       e.preventDefault();
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
-        { label: '▤ Apri dati', action: () => selectCollection(dbName, coll.name) },
+        { icona: 'table-2', label: 'Apri dati', action: () => selectCollection(dbName, coll.name) },
         ...(splitDisponibile() ? [
           { icona: 'columns-2', label: 'Affianca in Split-View', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }) },
           // La prima voce aggiunge qui; la seconda crea un'altra area.
           { icona: 'square-split-horizontal', label: 'Affianca in una NUOVA area', action: () => addOrSplitPane(null, 'right', { db: dbName, coll: coll.name, tabId: activeTab()?.id }, { nuovaArea: true }) },
         ] : []),
         { icona: 'info', label: `Dettagli ${collWord()}`, action: () => { selectCollection(dbName, coll.name); setView('details'); } },
-        { label: '◫ Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
+        { icona: 'network', label: 'Diagramma UML', action: () => { selectCollection(dbName, coll.name); setView('uml'); } },
         '---',
         ...exportImportMenuItems(dbName, coll.name),
         '---',
@@ -308,9 +308,9 @@ export function initDbTree() {
     if (e.target.closest('.node-label') || e.target.closest('.sidebar-search')) return;
     e.preventDefault();
     showContextMenu(e.clientX, e.clientY, [
-      { label: `＋ Nuovo ${dbWord()}…`, action: openCreateDb },
-      { label: `⤒ Importa ${dbWord()}…`, action: openDbImportModal },
-      { label: '⟳ Aggiorna elenco', action: refreshDbTree },
+      { icona: 'plus', label: `Nuovo ${dbWord()}…`, action: openCreateDb },
+      { icona: 'upload', label: `Importa ${dbWord()}…`, action: openDbImportModal },
+      { icona: 'refresh-cw', label: 'Aggiorna elenco', action: refreshDbTree },
     ]);
   });
   $('#new-db-btn').addEventListener('click', openCreateDb);

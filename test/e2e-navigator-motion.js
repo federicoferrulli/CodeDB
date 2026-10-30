@@ -6,7 +6,7 @@ const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 const mutant = process.argv.includes('--mutant');
 const screenshots = !process.argv.includes('--checks-only');
-const dir = `test-reports/navigatore-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
+const dir = process.env.CODEDB_REPORT_DIR || `test-reports/navigatore-2026-10-12/${mutant ? 'mutante' : 'dopo'}`;
 fs.mkdirSync(dir, { recursive: true });
 
 (async () => {
@@ -18,6 +18,10 @@ fs.mkdirSync(dir, { recursive: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
     page.setDefaultTimeout(7000);
     page.on('pageerror', error => report.errors.push(error.message));
+    if (process.argv.includes('--mutant-density')) await page.route('**/css/workbench.css', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()) + '\n#conn-tree .conn-item > .node-label { min-height: 60px; }' });
+    });
     if (mutant) await page.route('**/js/navigator-motion.js', async route => {
       const response = await route.fetch(), source = await response.text();
       assert(source.includes('if (!ridotto.matches)'));
@@ -58,6 +62,18 @@ fs.mkdirSync(dir, { recursive: true });
     await page.waitForSelector('#conn-tree .conn-item.selected, #conn-tree .node-label.selected');
     const settle = () => page.waitForTimeout(320);
     await settle();
+    const heights = async (selector, expected) => {
+      const values = await page.locator(selector).evaluateAll(nodes => nodes.filter(n => n.getBoundingClientRect().height).map(n => n.getBoundingClientRect().height));
+      assert(values.length && values.every(h => Math.abs(h - expected) < 1), `${selector}: attesi ${expected}px, trovati ${values}`);
+    };
+    await heights('#conn-tree .conn-item > .node-label', 40);
+    await heights('#db-tree .node-label, #conn-tree .folder-label', 28);
+    const fonts = await page.locator('#conn-tree .conn-name, #db-tree .db > .node-label').evaluateAll(nodes => nodes.map(n => {
+      const css = getComputedStyle(n); return [css.fontSize, css.fontWeight];
+    }));
+    assert(fonts.every(([size, weight]) => size === '13px' && weight === '400'), JSON.stringify(fonts));
+    assert(await page.locator('#conn-tree .conn-detail').evaluateAll(nodes => nodes.every(n => n.textContent && n.getBoundingClientRect().height >= 16)));
+    check('Densità condivisa con i menu: connessioni 40px, schemi e tabelle 28px, nomi 13px regolari');
     const allinea = async selector => {
       const delta = await page.locator(selector).evaluate(tree => {
         const a = tree.querySelector('.node-label.selected').getBoundingClientRect();
@@ -166,6 +182,8 @@ fs.mkdirSync(dir, { recursive: true });
     await allinea('#conn-tree');
     const touch = await page.locator('#conn-tree .conn-item .node-actions').evaluateAll(els => els.every(e => e.getBoundingClientRect().height >= 44));
     assert(touch, 'Le azioni rimangono raggiungibili al tocco');
+    await heights('#conn-tree .conn-item > .node-label', 48);
+    await heights('#conn-tree .folder-label', 44);
     for (const theme of ['dark', 'light']) {
       await page.evaluate(async theme => (await import('/js/theme.js')).scegliTema(theme), theme);
       await settle();
@@ -176,6 +194,7 @@ fs.mkdirSync(dir, { recursive: true });
     await page.locator('#mobile-nav-dbs').click();
     await page.locator('.arc-navigation-sheet').waitFor(); await settle();
     await allinea('#db-tree');
+    await heights('#db-tree .node-label', 44);
     if (screenshots) await page.screenshot({ path: `${dir}/database-mobile.png` });
     await page.setViewportSize({ width: 320, height: 740 }); await settle();
     await allinea('#db-tree');

@@ -174,20 +174,14 @@ const seqDisegno = sequenziatore();
 export async function renderChart(righe) {
   righeCorrenti = Array.isArray(righe) ? righe : [];
   const disegno = seqDisegno.nuovo();
+  campiCache = [];
+  costruisciSuggeriti();
   const contenitore = $('#query-chart-canvas');
   if (!contenitore) return;
 
   const vuoto = $('#chart-empty');
   if (!righeCorrenti.length) {
-    // I campi appartengono ai risultati che non ci sono più: lasciarli farebbe
-    // costruire il pannello con le colonne della query precedente.
-    campiRighe = [];
-    if (grafico) { grafico.clear(); }
-    if (vuoto) {
-      vuoto.classList.remove('hidden');
-      vuoto.textContent = 'Esegui una query: i risultati compaiono qui come grafico.';
-    }
-    aggiornaAvvisi([]);
+    clearChart();
     return;
   }
   if (vuoto) vuoto.classList.add('hidden');
@@ -199,6 +193,8 @@ export async function renderChart(righe) {
   const campi = await campiAsync(righeCorrenti);
   if (!seqDisegno.attuale(disegno)) return; // risultati già sostituiti
   campiRighe = campi;
+  campiCache = campi;
+  costruisciSuggeriti();
   autoConfigura(righeCorrenti, c, campiRighe);
 
   let echarts;
@@ -295,8 +291,11 @@ function disegna() {
  * ResizeObserver continuano a funzionare su quella esistente.
  */
 export function clearChart() {
+  seqDisegno.nuovo(); // Un disegno ancora in attesa non deve ripristinare dati o proposte vecchi.
   righeCorrenti = [];
   campiRighe = [];
+  campiCache = [];
+  costruisciSuggeriti();
   // Il precalcolo tenuto da parte punta all'array delle righe: lasciarlo lì
   // significherebbe tenere in memoria un result set che non serve più.
   scordaPrecalcolo();
@@ -421,7 +420,6 @@ function costruisciPannello() {
   if (!host) return;
   const c = cfg();
   campiCache = righeCorrenti.length ? campiRighe : [];
-  costruisciSuggeriti();
   const fam = famigliaDi((c.serie.find((s) => s.visibile !== false) || c.serie[0]).tipo);
   const cartesiano = fam === 'cartesiano';
 
@@ -644,7 +642,11 @@ function costruisciSuggeriti() {
   const btn = $('#chart-suggest-btn');
   if (!menu || !btn) return;
   const lista = suggerimenti(campiCache);
-  btn.classList.toggle('hidden', !lista.length);
+  btn.disabled = !lista.length;
+  btn.title = lista.length ? 'Grafici già pronti, dedotti dalla forma dei risultati'
+    : righeCorrenti.length ? 'Nessun grafico suggerito per questi risultati.'
+      : 'Esegui una query per ottenere grafici suggeriti';
+  if (!lista.length) menu.classList.add('hidden');
   // `approssimato` e' il FATTO dichiarato da `suggerimenti()`; la parola con cui
   // mostrarlo sta qui, dove c'e' il DOM. Un menu che dicesse solo "Totale
   // importo" prometterebbe una precisione che il renderer non ha.

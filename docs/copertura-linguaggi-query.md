@@ -4,8 +4,8 @@ Verifica della versione 0.2.1-beta.1, aggiornata il 15 ottobre 2026.
 
 **Architettura scelta per i dialetti completi: motori SQL nativi.** PostgreSQL
 viene eseguito da PostgreSQL e MySQL da MySQL, sui rispettivi dati autorevoli.
-Il menu del bersaglio apre una copia della query sulla connessione SQL scelta;
-non trasferisce automaticamente dati da MongoDB. Sono disponibili avvio locale
+Le query SQL native si eseguono nella scheda della connessione SQL scelta;
+i dati MongoDB non vengono trasferiti automaticamente. Sono disponibili avvio locale
 con volumi persistenti, sessioni SQL conservate, recupero nativo dai savepoint
 e risultati senza perdita di precisione. Vedi [configurazione e comportamento
 del percorso nativo](sql-nativo.md).

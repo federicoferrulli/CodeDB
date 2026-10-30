@@ -13,11 +13,10 @@
 .trigger[data-state="open"] .chevron { transform: rotate(180deg); }
 /* The menu grows from the trigger edge: offset toward the trigger, scale from the Radix origin, fade quickly.
    Transitions instead of keyframes, so a close that interrupts the open (or a reopen during the close) reverses from where it is. */
-.menu { --menu-x: 0px; --menu-y: -5px; position: relative; z-index: 60; min-width: min(12rem, var(--radix-dropdown-menu-content-available-width)); max-width: var(--radix-dropdown-menu-content-available-width); padding: 5px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-raised); box-shadow: var(--shadow-floating); transform-origin: var(--radix-dropdown-menu-content-transform-origin); transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring); }
+.menu { --menu-x: 0px; --menu-y: -5px; position: relative; z-index: 60; min-width: min(11rem, var(--radix-dropdown-menu-content-available-width)); max-width: min(26rem, var(--radix-dropdown-menu-content-available-width)); padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface-raised); box-shadow: var(--shadow-floating); transform-origin: var(--radix-dropdown-menu-content-transform-origin); transition: opacity var(--duration-fast) var(--ease-enter), transform var(--duration-spring) var(--ease-spring); }
 .menu[data-side="top"] { --menu-y: 5px; }
 /* In landscape o sopra la tastiera tutte le voci restano raggiungibili. */
 .menu { max-height: var(--radix-dropdown-menu-content-available-height); overflow-y: auto; overscroll-behavior: contain; }
-@media (pointer: coarse), (max-width: 900px) { .menu .item { min-height: 44px; } }
 .menu[data-side="left"] { --menu-x: 5px; --menu-y: 0px; }
 .menu[data-side="right"] { --menu-x: -5px; --menu-y: 0px; }
 @starting-style {
@@ -26,10 +25,10 @@
 }
 /* Radix unmounts when the exit animation ends, so a no-op keyframe times the exit while the transition does the visual work. */
 .menu[data-state="closed"] { opacity: 0; transform: translate(calc(var(--menu-x) * .5), calc(var(--menu-y) * .5)) scale(.985); transition: opacity 130ms var(--ease-standard), transform 130ms var(--ease-standard); animation: menu-exit 130ms linear both; pointer-events: none; }
-.highlight { position: absolute; top: 0; right: 5px; left: 5px; border-radius: calc(var(--radius-panel) - 6px); background: var(--surface-muted); opacity: 0; pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
+.highlight { position: absolute; top: 0; right: 4px; left: 4px; border-radius: var(--radius-sm); background: var(--surface-muted); opacity: 0; pointer-events: none; transition: background-color var(--duration-fast) var(--ease-standard); }
 .highlight[data-tone="danger"] { background: color-mix(in oklab, var(--danger) 8%, var(--surface)); }
-.item { position: relative; display: flex; min-height: 36px; align-items: center; gap: 10px; padding: 0 11px; border-radius: calc(var(--radius-panel) - 6px); color: var(--foreground); font-size: var(--text-sm); cursor: pointer; outline: none; transition: color var(--duration-fast) var(--ease-standard), opacity var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms), transform var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms); }
-.icon { display: inline-flex; width: 17px; color: var(--text-secondary); }
+.item { position: relative; display: flex; min-height: var(--menu-item-height, 28px); align-items: center; gap: 8px; padding: 4px 8px; border-radius: var(--radius-sm); color: var(--foreground); font-size: var(--text-sm); font-weight: 400; line-height: 20px; overflow-wrap: anywhere; cursor: pointer; outline: none; transition: color var(--duration-fast) var(--ease-standard), opacity var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms), transform var(--duration-standard) var(--ease-enter) calc(min(var(--i, 0), 4) * 35ms); }
+.icon { display: inline-flex; width: 16px; flex: none; color: var(--text-secondary); }
 .separator { height: 1px; margin: var(--space-1) calc(var(--space-1) * -1); background: var(--border-subtle); }
 .destructive { color: var(--danger); }
 .destructive .icon { color: var(--danger); }

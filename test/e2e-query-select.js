@@ -30,6 +30,10 @@ fs.mkdirSync(dir, { recursive: true });
       assert(source.includes(original));
       await route.fulfill({ response, body: source.replace(original, '${coll}</span>') });
     });
+    if (process.argv.includes('--mutant-width')) await page.route('**/css/workbench.css', async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, body: (await response.text()) + '\n#query-target-menu { width: 780px; }' });
+    });
     await page.goto(server.url);
     await page.waitForSelector('html[data-arc-ready="true"]');
     await page.evaluate(async () => {
@@ -60,6 +64,7 @@ fs.mkdirSync(dir, { recursive: true });
     assert.equal(await button.locator('#query-target-label svg').count(), 1, 'La separazione tra database e collection è visibile');
     assert((await button.getAttribute('aria-labelledby')).includes('query-target-label'));
     const trigger = page.locator('[data-arc-for="query-target-engine"] [role="combobox"]');
+    assert.equal(await trigger.getAttribute('aria-describedby'), 'query-engine-help');
     const popup = page.locator('[data-arc-select-popup]');
     const engineContext=async dbType=>page.evaluate(async dbType=>{
       const tab=(await import('/js/tabs.js')).activeTab();tab.dbType=dbType;tab.state.dbType=dbType;
@@ -80,10 +85,13 @@ fs.mkdirSync(dir, { recursive: true });
       assert(t.width > 0 && p.width > 0, 'Select e lista visibili');
       assert(p.right > t.x && p.x < t.right && Math.min(Math.abs(p.y - t.bottom), Math.abs(t.y - p.bottom)) < 12, `Lista ancorata alla select: ${JSON.stringify(positions)}`);
       assert(p.x >= 0 && p.right <= width + 1 && p.y >= 0 && p.bottom <= height + 1, `Lista dentro la finestra: ${JSON.stringify(positions)}`);
-      assert(await popup.evaluate(el => Number(getComputedStyle(el.parentElement).zIndex) > Number(getComputedStyle(document.getElementById('query-target-menu')).zIndex)), 'La lista deve essere dipinta sopra il menu che la apre');
+      assert(await popup.evaluate(el => el.closest('[popover]')?.matches(':popover-open')), 'La lista resta nel contesto di un popover nativo aperto');
       return positions;
     };
     await open(); await checkPosition();
+    assert((await menu.boundingBox()).width <= 360, 'Il pannello resta compatto anche con note lunghe');
+    assert.equal(await menu.locator('.query-target-section').count(), 1);
+    assert(await menu.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
     assert(await page.getByRole('option',{name:'PostgreSQL nativo',exact:true}).isDisabled(),'Il motore estraneo al contesto resta disabilitato');
     for (const value of ['mysql', 'postgresql', 'mongodb', 'crossdb', 'auto']) {
       if(['mysql','postgresql','mongodb'].includes(value)) await engineContext(value);
@@ -112,6 +120,14 @@ fs.mkdirSync(dir, { recursive: true });
     await open(); await page.mouse.click(1400, 650);
     await popup.waitFor({ state: 'detached' });
     assert(!await menu.isVisible(), 'Il clic esterno chiude entrambi i livelli');
+    await page.evaluate(async () => {
+      Object.assign((await import('/js/state.js')).state, { queryDb: 'altro_schema', queryColl: 'archivio' });
+      (await import('/js/query-tab.js')).renderQueryTarget();
+    });
+    await button.click();
+    await page.locator('#query-target-reset').click();
+    assert.equal(await page.evaluate(async () => (await import('/js/state.js')).state.queryDb), null);
+    assert((await button.textContent()).includes('dailyhydrationstatuses'), 'Il ripristino torna alla collection aperta');
     console.log('OK: tutte le opzioni, tastiera, Escape progressivo, focus e clic esterno.');
     for (const theme of ['dark', 'light']) for (const [width, height] of [[1440, 960], [390, 844], [320, 640], [844, 390]]) {
       await page.setViewportSize({ width, height });
@@ -134,6 +150,10 @@ fs.mkdirSync(dir, { recursive: true });
         `I nomi lunghi danno priorità alla collection: ${JSON.stringify(contextLayout)}`);
       assert((await button.getAttribute('title')).includes('dailyhydrationstatuses_con_un_nome_molto_lungo'));
       await context('dropchecker', 'dailyhydrationstatuses');
+      if (!await menu.isVisible()) await button.click();
+      assert((await menu.boundingBox()).width <= Math.min(360, width - 16));
+      assert(await menu.evaluate(el => el.scrollWidth <= el.clientWidth + 1));
+      if (height > 450) await menu.screenshot({ path: `${dir}/pannello-${theme}-${width}.png`, animations: 'disabled' });
       await open(width < 600);
       report.layouts.push({ theme, ...await checkPosition() });
       const last = page.getByRole('option', { name: 'Cross-DB (Virtual JOIN)', exact: true });

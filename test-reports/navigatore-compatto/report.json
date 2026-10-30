@@ -1,0 +1,32 @@
+{
+  "checks": [
+    "Densità condivisa con i menu: connessioni 40px, schemi e tabelle 28px, nomi 13px regolari",
+    "Cambio connessione immediato, indicatore continuo e contesto coerente",
+    "Interruzioni, tastiera, ricerca, stato vuoto e menu azioni",
+    "Cambi ripetuti con CPU rallentata e preferenza movimento ridotto",
+    "Temi chiaro/scuro, desktop, drawer mobile e ritorno senza perdere la selezione"
+  ],
+  "motion": [
+    {
+      "animated": true,
+      "before": 142,
+      "start": 142,
+      "middle": 213.1989288330078,
+      "end": 226,
+      "keys": [
+        "offset",
+        "easing",
+        "composite",
+        "transform",
+        "computedOffset",
+        "offset",
+        "easing",
+        "composite",
+        "transform",
+        "computedOffset"
+      ],
+      "active": "postgresql"
+    }
+  ],
+  "errors": []
+}

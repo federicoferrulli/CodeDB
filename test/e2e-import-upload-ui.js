@@ -3,6 +3,7 @@
 // Interfaccia e File.stream reali; risposte socket simulate senza scritture DB.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require('playwright');
 const { startTestServer } = require('./e2e-harness');
 
@@ -11,6 +12,7 @@ const { startTestServer } = require('./e2e-harness');
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, hasTouch: true, serviceWorkers: 'block' });
   const errors = [];
+  const reportDir = process.env.CODEDB_TEST_REPORT_DIR || 'test-reports/import-export-2026-10-12';
   page.on('pageerror', e => errors.push(e.message));
   try {
     if (process.argv.includes('--mutant')) await page.route('**/js/exportimport.js', async route => {
@@ -62,8 +64,8 @@ const { startTestServer } = require('./e2e-harness');
     assert.equal(await page.locator('#dbimport-target').inputValue(), 'origine');
     assert.match(await page.locator('#dbimport-file-notes').textContent(), /Privilegi/);
     assert.equal(await page.evaluate(() => window.uploadFixture.sent.find(e => e.name.endsWith('upload:start')).format), 'sql');
-    fs.mkdirSync('test-reports/import-export-2026-10-12', { recursive: true });
-    await page.screenshot({ path: 'test-reports/import-export-2026-10-12/import-desktop.png' });
+    fs.mkdirSync(reportDir, { recursive: true });
+    await page.screenshot({ path: path.join(reportDir, 'import-desktop.png') });
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => window.uploadFixture.sent.some(e => e.name.endsWith('upload:cancel') && e.uploadId === '1'));
     await page.setViewportSize({ width: 390, height: 844 });
@@ -71,7 +73,7 @@ const { startTestServer } = require('./e2e-harness');
     await page.locator('#dbimport-file').setInputFiles({ ...file, name: 'database.codedb.json' });
     await page.waitForFunction(() => document.getElementById('dbimport-progress-label').textContent.includes('File validato'));
     assert.equal(await page.evaluate(() => window.uploadFixture.sent.filter(e => e.name.endsWith('upload:start')).at(-1).format), 'codedb-json');
-    await page.screenshot({ path: 'test-reports/import-export-2026-10-12/import-mobile.png' });
+    await page.screenshot({ path: path.join(reportDir, 'import-mobile.png') });
     await page.locator('#dbimport-file').setInputFiles({ name: 'invalid.sql', mimeType: 'text/plain', buffer: Buffer.from([0xFF, 0xFE, 0x00]) });
     await page.waitForFunction(() => document.getElementById('dbimport-error').textContent.includes('UTF-8'));
     assert.equal(await page.locator('#dbimport-file-notes').textContent(), '');
@@ -132,10 +134,10 @@ const { startTestServer } = require('./e2e-harness');
       };
     });
     await page.locator('#conn-import-file').setInputFiles({ name: 'errore.ini', mimeType: 'text/plain', buffer: Buffer.from('non letto') });
-    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Impossibile importare il file'));
+    await page.waitForFunction(() => document.getElementById('toast-container').textContent.includes('Impossibile importare il file'));
     assert(!await page.evaluate(() => uploadFixture.sent.some(e => e.name === 'connections:import')));
     await page.locator('#diff-file-input').setInputFiles({ name: 'errore.json', mimeType: 'application/json', buffer: Buffer.from('{}') });
-    await page.waitForFunction(() => document.getElementById('toast').textContent.includes('Impossibile leggere il file selezionato'));
+    await page.waitForFunction(() => document.getElementById('toast-container').textContent.includes('Impossibile leggere il file selezionato'));
     await page.evaluate(async () => {
       (await import('/js/workspace.js')).renderWorkspace();
       (await import('/js/colltabs.js')).openDbTab('origine');

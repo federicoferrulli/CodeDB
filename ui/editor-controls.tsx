@@ -101,7 +101,7 @@ export function createArcSelect({ options, value = options[0]?.value || '', labe
   let root: Root;
   const component = (ref: (node: HTMLButtonElement | null) => void) => <Select bare ref={ref}
     label={label} options={encoded} value={encoded[options.findIndex(option => option.value === current)]?.value || ''}
-    open={open} disabled={disabled} portalContainer={control?.closest<HTMLElement>('[role="dialog"]') || undefined}
+    open={open} disabled={disabled} portalContainer={control?.closest<HTMLElement>('[popover], [role="dialog"]') || undefined}
     onOpenChange={next => { open = next; render(); }}
     onValueChange={next => {
       current = options[encoded.findIndex(option => option.value === next)].value;

@@ -1,7 +1,7 @@
 import { chiediConferma } from './conferma.js';
 import { state } from './state.js';
 import { mountArcControls, renderDataEmpty } from '../arc/ui.js';
-import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext, dbTypeIcon, refreshLucideIcons } from './utils.js';
+import { $, emit, fmtBytes, esc, toast, isForActiveTab, conCaricamento, isSqlType, captureContext, dbTypeIcon, refreshLucideIcons, openModal, closeModal, showError } from './utils.js';
 
 let indexCreateContext = null;
 let detailsRequest = 0;
@@ -149,6 +149,7 @@ export function renderDetails({ stats, indexes, fields, sampled }, dbType = stat
 }
 
 export function initDetails() {
+  $('#idxcreate-form').addEventListener('input', () => showError('#idxcreate-error', ''));
   $('#details-retry').addEventListener('click', loadDetails);
   $('#index-table').addEventListener('click', async (e) => {
     const btn = e.target.closest('.idx-del');
@@ -168,40 +169,52 @@ export function initDetails() {
   });
 
   $('#index-add-btn').addEventListener('click', () => {
+    if ($('#idxcreate-options').disabled) return;
     indexCreateContext = captureDetailsTarget();
+    $('#idxcreate-target').textContent = `${$('#details-engine').textContent} · ${indexCreateContext.db} / ${indexCreateContext.coll}`;
     $('#idxcreate-name').value = '';
     $('#idxcreate-fields').value = '';
     $('#idxcreate-unique').checked = false;
-    $('#idxcreate-error').classList.add('hidden');
-    $('#idxcreate-overlay').classList.remove('hidden');
+    showError('#idxcreate-error', '');
+    openModal('#idxcreate-overlay');
     $('#idxcreate-fields').focus();
   });
 
   $('#idxcreate-cancel').addEventListener('click', () => {
     indexCreateContext = null;
-    $('#idxcreate-overlay').classList.add('hidden');
+    closeModal('#idxcreate-overlay');
   });
 
-  $('#idxcreate-save').addEventListener('click', () => {
+  $('#idxcreate-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
     const ctx = indexCreateContext;
-    if (!ctx) return;
-    // La creazione di un indice su una tabella grande può durare minuti.
-    conCaricamento($('#idxcreate-save'), () => emit('index:create', {
-      tabId: ctx.tabId,
-      db: ctx.db,
-      coll: ctx.coll,
-      name: $('#idxcreate-name').value,
-      fields: $('#idxcreate-fields').value,
+    if (!ctx || $('#idxcreate-options').disabled) return;
+    showError('#idxcreate-error', '');
+    if (!$('#idxcreate-fields').value.trim()) {
+      showError('#idxcreate-error', 'Indica almeno un campo da indicizzare, ad esempio {"email": 1}.');
+      $('#idxcreate-fields').focus();
+      return;
+    }
+    const payload = {
+      tabId: ctx.tabId, db: ctx.db, coll: ctx.coll,
+      name: $('#idxcreate-name').value.trim(), fields: $('#idxcreate-fields').value,
       unique: $('#idxcreate-unique').checked,
-    }), 'Creo…').then((res) => {
-      $('#idxcreate-overlay').classList.add('hidden');
+    };
+    $('#idxcreate-options').disabled = true;
+    $('#idxcreate-cancel').disabled = true;
+    // La creazione di un indice su una tabella grande può durare minuti.
+    try {
+      const res = await conCaricamento($('#idxcreate-save'), () => emit('index:create', payload), 'Creo…');
+      closeModal('#idxcreate-overlay');
       indexCreateContext = null;
       toast(`Indice "${res.name}" creato`);
-      if (isForActiveTab(res)) loadDetails();
-    }).catch((err) => {
-      const errorEl = $('#idxcreate-error');
-      errorEl.textContent = err.message;
-      errorEl.classList.remove('hidden');
-    });
+      res._state.dbSchema = null;
+      if (ctx.isStillActive() && state.db === ctx.db && state.coll === ctx.coll) loadDetails();
+    } catch (err) {
+      showError('#idxcreate-error', err.message);
+    } finally {
+      $('#idxcreate-options').disabled = false;
+      $('#idxcreate-cancel').disabled = false;
+    }
   });
 }

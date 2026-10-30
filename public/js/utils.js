@@ -420,7 +420,10 @@ export function showContextMenu(x, y, items) {
         ico.setAttribute('aria-hidden', 'true');
         li.appendChild(ico);
       }
-      li.appendChild(document.createTextNode(item.label));
+      const label = document.createElement('span');
+      label.className = 'menu-label';
+      label.textContent = item.label;
+      li.appendChild(label);
       if (item.disabled) li.setAttribute('aria-disabled', 'true');
       if (item.danger) li.classList.add('danger');
       li.addEventListener('click', () => {

@@ -48,12 +48,10 @@ vault di CodeDB. Non eliminare i volumi per effettuare una rotazione.
 
 ## Query provenienti da un workspace MongoDB
 
-Apri il menu del bersaglio dell'editor, scegli **Apri una copia su SQL nativo**,
-seleziona connessione e database/schema, quindi premi **Apri sul motore nativo**.
-CodeDB apre un nuovo documento sulla connessione scelta. Il testo originale e
-le bozze preesistenti vengono conservati. Premi **Esegui** nella destinazione.
+Apri la connessione PostgreSQL o MySQL, scegli il database/schema nel navigatore
+e apri una scheda Query. Incolla il testo da eseguire e premi **Esegui**.
 
-Il codice opera sui dati della destinazione. Questa azione non migra né
+Il codice opera sui dati della destinazione. Questo percorso non migra né
 sincronizza le collezioni MongoDB. L'importazione dei dati va effettuata
 esplicitamente nel database SQL scelto, definendo lo schema desiderato.
 
@@ -125,7 +123,7 @@ letto né modificato.
 
 `test/e2e-sql-native-ui.js` usa Chromium e tre connessioni reali, compreso il
 replica set MongoDB di test su `27039`. Controlla la destinazione delle DDL,
-le bozze, l'originale MongoDB e il selettore su schermo mobile.
+le bozze, l'originale MongoDB e il selettore del motore su schermo mobile.
 
 Le mutazioni in `test/fixtures/sql-native-mutant.cjs` alterano solo il codice
 caricato nel processo di prova. Il resoconto e i log sono in

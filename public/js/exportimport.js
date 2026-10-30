@@ -453,6 +453,7 @@ export function initExportImport() {
     }
   });
   $('#dbimport-run').addEventListener('click', runDbImport);
+  $('#dbimport-new').addEventListener('click', () => openDbImportModal(false));
   socket.on('database:import:progress', (operation) => {
     if (!dbImportOperationId || operation.operationId !== dbImportOperationId) return;
     renderDbImportState(operation);
@@ -461,16 +462,22 @@ export function initExportImport() {
     const button = event.target.closest('[data-dbimport-cleanup]');
     if (!button || !dbImportOperationId) return;
     const operationId = dbImportOperationId;
-    const tabId = tabs.activeId || (dbImportContext && dbImportContext.tabId);
+    const ctx = dbImportContext;
+    const tabId = ctx && ctx.tabId;
     if (!await chiediConferma('Eliminare definitivamente la copia di recupero e lo staging conservato?')) return;
+    if (operationId !== dbImportOperationId || ctx !== dbImportContext) return;
+    showError('#dbimport-error', '');
     const fine = iniziaCaricamento(button, 'Elimino…');
     try {
       const response = await emit('database:import:cleanup', {
         tabId, operationId,
       });
-      renderDbImportState(response.operation);
+      if (operationId === dbImportOperationId && ctx === dbImportContext) {
+        renderDbImportState(response.operation);
+        $('#dbimport-report').focus();
+      }
     } catch (err) {
-      showError('#dbimport-error', err.message);
+      if (operationId === dbImportOperationId && ctx === dbImportContext) showError('#dbimport-error', err.message);
     } finally { fine(); }
   });
   $('#dbimport-file').addEventListener('change', async (e) => {
@@ -541,8 +548,8 @@ export function initExportImport() {
 // Voci di menu contestuale per un intero database (sidebar).
 export function dbExportImportMenuItems(db) {
   return [
-    { label: '⤓ Esporta database…', action: () => exportDatabase(db) },
-    { label: '⤒ Importa database…', action: openDbImportModal },
+    { icona: 'download', label: 'Esporta database…', action: () => exportDatabase(db) },
+    { icona: 'upload', label: 'Importa database…', action: openDbImportModal },
   ];
 }
 
@@ -730,6 +737,7 @@ let dbImportContext = null;
 let dbImportAperture = 0;
 let dbImportOperationId = null;
 let dbImportFileVersion = 0;
+let dbImportReportedOperation = null;
 
 async function discardDbImportUpload() {
   const uploadId = dbImportUploadId, tabId = dbImportContext?.tabId;
@@ -738,12 +746,17 @@ async function discardDbImportUpload() {
 }
 
 function setDbImportProgress(pct, label) {
-  $('#dbimport-progress').classList.remove('hidden');
-  $('#dbimport-progress-bar').style.width = `${Math.min(100, Math.round(pct))}%`;
+  const progress = $('#dbimport-progress');
+  progress.classList.remove('hidden');
+  progress.classList.toggle('indeterminate', pct == null);
+  const track = progress.querySelector('[role="progressbar"]');
+  if (pct == null) track.removeAttribute('aria-valuenow');
+  else track.setAttribute('aria-valuenow', String(Math.min(100, Math.round(pct))));
+  $('#dbimport-progress-bar').style.width = pct == null ? '35%' : `${Math.min(100, Math.round(pct))}%`;
   $('#dbimport-progress-label').textContent = label || '';
 }
 
-export function openDbImportModal() {
+export function openDbImportModal(recupera = true) {
   if (dbImporting) {
     toast('Attendi il completamento dell’import del database già in corso.', true);
     return;
@@ -754,8 +767,19 @@ export function openDbImportModal() {
   dbImportContext = { ...origin, dbType };
   dbImportAperture++;
   dbImportData = null;
+  dbImportOperationId = null;
+  dbImportReportedOperation = null;
+  $('#dbimport-overlay').dataset.state = 'form';
+  $('#dbimport-form').classList.remove('hidden');
+  $('#dbimport-run').classList.remove('hidden');
+  $('#dbimport-new').classList.add('hidden');
+  $('#dbimport-cancel').disabled = false;
+  $('#dbimport-file').disabled = false;
+  $('#dbimport-file-label').textContent = isSqlType(dbType) ? 'File SQL o CodeDB JSON' : 'File CodeDB JSON';
+  $('#dbimport-file-hint').textContent = isSqlType(dbType)
+    ? 'Scegli un file .sql o .codedb.json. Potrai verificare l’anteprima prima di importare.'
+    : 'Scegli un file .codedb.json. Potrai verificare l’anteprima prima di importare.';
   $('#dbimport-file-notes').textContent = '';
-  $('#dbimport-run').disabled = false;
   $('#dbimport-file').accept = isSqlType(dbType) ? '.sql,.json,application/json,text/plain' : '.json,application/json';
   dbImportUploadId = null;
   dbImporting = false;
@@ -775,15 +799,17 @@ export function openDbImportModal() {
   showError('#dbimport-error', '');
   $('#dbimport-run').disabled = false;
   openModal('#dbimport-overlay');
-  recuperaDbImport().catch((err) => showError('#dbimport-error', err.message));
+  if (recupera) recuperaDbImport().catch((err) => showError('#dbimport-error', err.message));
+  else $('#dbimport-file').focus();
 }
 
 async function recuperaDbImport() {
   const ctx = dbImportContext;
   const apertura = dbImportAperture;
+  const fileVersion = dbImportFileVersion;
   if (!ctx) return;
   const response = await emit('database:import:list', { tabId: ctx.tabId });
-  if (ctx !== dbImportContext || apertura !== dbImportAperture || dbImporting || dbImportUploadId) return;
+  if (ctx !== dbImportContext || apertura !== dbImportAperture || fileVersion !== dbImportFileVersion || dbImporting || dbImportUploadId) return;
   const tab = tabs.list.find((item) => item.id === ctx.tabId);
   const connection = tab && tab.connName;
   const candidates = (response.operations || []).filter((operation) =>
@@ -916,28 +942,60 @@ function renderDbImportState(operation) {
   if (!report) return;
   const description = descriviEsitoImport(operation.status);
   const terminal = description.terminal;
-  setDbImportProgress(
-    terminal ? 100 : Math.min(95, (operation.progress || []).length * 8),
-    operation.phase || description.label
-  );
-  let html = `<strong>${esc(description.label)}</strong>`;
+  const nuovoEsito = dbImportReportedOperation !== `${operation.operationId}:${operation.status}`;
+  $('#dbimport-overlay').dataset.state = terminal ? 'result' : 'running';
+  $('#dbimport-subtitle').textContent = terminal
+    ? 'Controlla l’esito, la destinazione e le risorse di recupero.'
+    : 'Attendi il completamento e la verifica della destinazione.';
+  $('#dbimport-form').classList.add('hidden');
+  $('#dbimport-run').classList.add('hidden');
+  $('#dbimport-new').classList.toggle('hidden', !terminal);
+  $('#dbimport-cancel').disabled = !terminal;
+  if (terminal) $('#dbimport-progress').classList.add('hidden');
+  else {
+    const fasi = {
+      accettata: 'Preparazione dell’importazione…', validazione: 'Validazione del piano…',
+      destinazione: 'Controllo della destinazione…', recupero: 'Creazione della copia di recupero…',
+      staging: 'Preparazione del database di staging…', applicazione: 'Importazione di struttura e dati…',
+      verifica_staging: 'Verifica dei dati importati nello staging…', promozione: 'Aggiornamento della destinazione…',
+      verifica_finale: 'Verifica finale della destinazione…', rollback: 'Ripristino della destinazione originale…',
+    };
+    setDbImportProgress(null, fasi[operation.phase] || description.label);
+  }
+  const simbolo = description.ok ? '✓' : terminal ? '!' : '…';
+  let html = `<div class="dbimport-outcome"><span class="dbimport-status-icon" aria-hidden="true">${simbolo}</span>`
+    + `<strong>${esc(description.label)}</strong></div>`;
+  html += '<dl class="dbimport-summary">';
+  if (operation.targetDb) html += `<div><dt>Destinazione</dt><dd><code>${esc(operation.targetDb)}</code></dd></div>`;
+  if (operation.connection) html += `<div><dt>Connessione</dt><dd>${esc(operation.connection)}</dd></div>`;
+  if (operation.endedAt) {
+    const data = new Date(operation.endedAt);
+    if (!Number.isNaN(data.getTime())) html += `<div><dt>Conclusa il</dt><dd>${esc(data.toLocaleString('it-IT'))}</dd></div>`;
+  }
+  html += '</dl>';
   if (operation.error) html += `<p>${esc(operation.error)}</p>`;
-  if (operation.recovery) {
-    html += `<p>Copia di recupero conservata: <code>${esc(operation.recovery.id || 'disponibile')}</code>.</p>`;
-  }
-  if (operation.staging && operation.staging.retained) {
-    html += `<p>Staging conservato: <code>${esc(operation.staging.db)}</code>.</p>`;
-  }
-  if ((operation.recovery || (operation.staging && operation.staging.retained)) && !operation.cleanupAt && terminal) {
-    html += '<button type="button" class="ghost" data-dbimport-cleanup>Elimina staging e recupero…</button>';
+  if (operation.recoveryError) html += `<p>${esc(operation.recoveryError)}</p>`;
+  const conservato = operation.recovery || operation.staging?.retained;
+  if (conservato && !operation.cleanupAt) {
+    const aperto = !description.ok || report.querySelector('details')?.open;
+    html += `<details class="dbimport-recovery"${aperto ? ' open' : ''}><summary>Risorse di recupero conservate</summary>`
+      + '<p>Puoi conservarle per il recupero oppure eliminarle quando non servono più.</p><dl>';
+    if (operation.recovery) html += `<div><dt>Copia di recupero</dt><dd><code>${esc(operation.recovery.id || 'disponibile')}</code></dd></div>`;
+    if (operation.staging?.retained) html += `<div><dt>Database di staging</dt><dd><code>${esc(operation.staging.db)}</code></dd></div>`;
+    html += '</dl>';
+    if (terminal) html += '<button type="button" class="danger" data-dbimport-cleanup>Elimina risorse di recupero…</button>';
+    html += '</details>';
   } else if (operation.cleanupAt) {
-    html += `<p>Staging e recupero eliminati il ${esc(operation.cleanupAt)}.</p>`;
+    html += '<p class="hint">Risorse di recupero eliminate.</p>';
   }
   report.className = description.className;
   report.innerHTML = html;
   mountArcControls(report);
   report.classList.remove('hidden');
+  dbImportReportedOperation = `${operation.operationId}:${operation.status}`;
+  if (nuovoEsito && !$('#dbimport-overlay').classList.contains('hidden')) report.focus();
   if (!terminal) return;
+  if (!nuovoEsito) return;
   const ok = description.ok;
   toast(description.label, !ok);
   if (ok && dbImportContext) {
@@ -954,12 +1012,12 @@ function renderDbImportState(operation) {
 export function exportImportMenuItems(db, coll) {
   const items = isSqlType(state.dbType)
     ? [
-        { label: '⤓ Esporta CSV (sicuro per fogli di calcolo)', action: () => exportCollection(db, coll, 'csv') },
-        { label: '⤓ Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
-        { label: '⤓ Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
+        { icona: 'download', label: 'Esporta CSV (sicuro per fogli di calcolo)', action: () => exportCollection(db, coll, 'csv') },
+        { icona: 'download', label: 'Esporta CSV letterale', action: () => exportCollection(db, coll, 'csv', { csvMode: 'letterale' }) },
+        { icona: 'download', label: 'Esporta SQL (INSERT)', action: () => exportCollection(db, coll, 'sql') },
       ]
-    : [{ label: '⤓ Esporta EJSON (interoperabilità)', action: () => exportCollection(db, coll, 'json') }];
-  items.unshift({ label: '⤓ Esporta CodeDB · tipi completi…', action: () => exportDatabase(db, coll) });
-  items.push({ label: `⤒ Importa nella ${collWord()}…`, action: () => openImportModal(db, coll) });
+    : [{ icona: 'download', label: 'Esporta EJSON (interoperabilità)', action: () => exportCollection(db, coll, 'json') }];
+  items.unshift({ icona: 'download', label: 'Esporta CodeDB · tipi completi…', action: () => exportDatabase(db, coll) });
+  items.push({ icona: 'upload', label: `Importa nella ${collWord()}…`, action: () => openImportModal(db, coll) });
   return items;
 }

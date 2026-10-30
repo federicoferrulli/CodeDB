@@ -598,7 +598,7 @@ export function renderCollTabBar() {
       // "Split-View", cioè a nulla.
       showContextMenu(e.clientX, e.clientY, ct.isSplitTab ? [
         { icona: 'pencil', label: 'Rinomina area…', action: () => chiediNomeAreaSplit(ct.id) },
-        { label: '⌗ Pareggia i pannelli', action: () => pareggiaPannelli(null, ct.id) },
+        { icona: 'columns-2', label: 'Pareggia i pannelli', action: () => pareggiaPannelli(null, ct.id) },
         '---',
         { icona: 'x', label: 'Chiudi Split-View', action: () => closeCollTab(ct.id) },
       ] : ct.isDbTab ? [

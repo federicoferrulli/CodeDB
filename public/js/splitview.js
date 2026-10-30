@@ -1470,10 +1470,10 @@ function apriMenuPane(paneId, x, y) {
     ...['details', 'uml', 'graph3d'].map((view, i) => ({ icona: ['info', 'network', 'boxes'][i], label: ['Dettagli', 'Diagramma UML', 'Grafo 3D'][i], action: () => setPaneView(paneId, view) })),
     '---',
     { icona: massimizzato ? 'minimize-2' : 'maximize-2', label: massimizzato ? 'Ripristina il layout' : 'Massimizza questo pannello (doppio clic sul titolo)', action: () => massimizzaPane(paneId) },
-    { label: '⌗ Pareggia questo gruppo', action: () => pareggiaPannelli(paneId) },
+    { icona: 'columns-2', label: 'Pareggia questo gruppo', action: () => pareggiaPannelli(paneId) },
     { icona: 'arrow-left-right', label: 'Scambia con il precedente', action: () => scambiaConVicino(paneId, 'prev') },
     { icona: 'arrow-left-right', label: 'Scambia con il successivo', action: () => scambiaConVicino(paneId, 'next') },
-    { label: impilato ? '▤ Disponi affiancati' : '▥ Disponi impilati', action: () => ruotaOrientamento(paneId) },
+    { icona: impilato ? 'columns-2' : 'rows-2', label: impilato ? 'Disponi affiancati' : 'Disponi impilati', action: () => ruotaOrientamento(paneId) },
   ];
   if (altri > 0) {
     voci.push({ icona: 'x', label: `Chiudi gli altri ${altri} ${altri === 1 ? 'pannello' : 'pannelli'}`, action: () => chiudiAltriPane(paneId), danger: true });
@@ -1485,7 +1485,7 @@ function apriMenuPane(paneId, x, y) {
   // sempre presente costava una riga di schermo per un uso occasionale.
   voci.push('---');
   voci.push({ icona: 'pencil', label: `Rinomina l'area…`, action: () => chiediNomeAreaSplit(a.collTabId) });
-  voci.push({ label: '⌗ Pareggia tutta l\'area', action: () => pareggiaPannelli(null, a.collTabId) });
+  voci.push({ icona: 'columns-2', label: 'Pareggia tutta l\'area', action: () => pareggiaPannelli(null, a.collTabId) });
   if (altri > 0) {
     voci.push({ icona: 'git-compare', label: 'Confronta gli schemi dei primi due', action: () => comparePaneSchemas() });
   }

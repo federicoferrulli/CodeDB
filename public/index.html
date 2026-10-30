@@ -778,9 +778,9 @@
                           esecuzione</button>
                         <label id="polling-toggle" class="dropdown-item checkbox-item hidden"
                           title="Aggiorna automaticamente ogni 5 secondi">
-                          <input type="checkbox" id="polling-checkbox">
-                          <i data-lucide="timer"></i>
-                          <span>Aggiornamento automatico (5s)</span>
+                          <i data-lucide="timer" aria-hidden="true"></i>
+                          <span class="menu-label">Aggiornamento automatico <span class="menu-meta">(5 s)</span></span>
+                          <input type="checkbox" id="polling-checkbox" aria-label="Aggiornamento automatico ogni 5 secondi">
                         </label>
                         <div class="dropdown-divider"></div>
                         <!-- Distruttiva e senza bersaglio visibile: sta qui, non a un
@@ -1278,22 +1278,18 @@
                       <i data-lucide="chevron-down" class="query-target-caret" aria-hidden="true"></i>
                     </button>
                     <div id="query-target-menu" class="toolbar-dropdown-menu hidden">
-                      <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
-                      <select id="query-target-engine" class="styled-select">
-                        <option value="auto">Auto-detect (DB corrente)</option>
-                        <option value="mysql">MySQL nativo</option>
-                        <option value="postgresql">PostgreSQL nativo</option>
-                        <option value="mongodb">MongoDB (MQL / SQL tradotto)</option>
-                        <option value="mongosh">mongosh nativo (amministratore)</option>
-                        <option value="crossdb">Cross-DB (Virtual JOIN)</option>
-                      </select>
-                      <p>mongosh mantiene variabili e stream nel tab e può usare Node.js e i file del server.</p>
-                      <label class="dropdown-label" for="query-native-connection">Apri una copia su SQL nativo</label>
-                      <select id="query-native-connection" class="styled-select" aria-describedby="query-native-help"></select>
-                      <label class="dropdown-label" for="query-native-database">Database / schema di destinazione</label>
-                      <select id="query-native-database" class="styled-select"></select>
-                      <p id="query-native-help">Collega PostgreSQL o MySQL dal menu Connessioni. La copia usa i dati della destinazione; i dati MongoDB non vengono trasferiti.</p>
-                      <button id="query-native-open" class="dropdown-item" type="button" disabled>Apri sul motore nativo</button>
+                      <div class="query-target-section">
+                        <label class="dropdown-label" for="query-target-engine">Motore di esecuzione</label>
+                        <select id="query-target-engine" class="styled-select" aria-describedby="query-engine-help">
+                          <option value="auto">Auto-detect (DB corrente)</option>
+                          <option value="mysql">MySQL nativo</option>
+                          <option value="postgresql">PostgreSQL nativo</option>
+                          <option value="mongodb">MongoDB (MQL / SQL tradotto)</option>
+                          <option value="mongosh">mongosh nativo (amministratore)</option>
+                          <option value="crossdb">Cross-DB (Virtual JOIN)</option>
+                        </select>
+                        <p id="query-engine-help" class="query-target-help">mongosh mantiene variabili e stream nel tab e può usare Node.js e i file del server.</p>
+                      </div>
                       <button id="query-target-reset" class="dropdown-item hidden" type="button"
                         title="Torna al contesto della collection aperta"><i data-lucide="undo-2"></i> Torna alla collection aperta</button>
                     </div>
@@ -1521,7 +1517,7 @@
                                 <div id="chart-quickbar" class="chart-quickbar"></div>
                                 <div class="toolbar-dropdown-wrap">
                                   <button type="button" id="chart-suggest-btn" class="mini-btn dropdown-trigger-btn"
-                                    title="Grafici già pronti, dedotti dalla forma dei risultati"><i data-lucide="lightbulb"></i> Suggeriti ▾</button>
+                                    disabled title="Esegui una query per ottenere grafici suggeriti"><i data-lucide="lightbulb"></i> Suggeriti ▾</button>
                                   <div id="chart-suggest-menu" class="toolbar-dropdown-menu hidden"></div>
                                 </div>
                                 <!-- Stesso trattamento dell'export dei risultati:
@@ -1981,17 +1977,20 @@
     </div>
   </div>
 
-  <!-- ===================== Modale aggiungi / modifica colonna (MySQL) ===================== -->
+  <!-- ===================== Modale aggiungi / modifica colonna o campo ===================== -->
   <div id="coledit-overlay" class="overlay hidden">
-    <div class="modal">
+    <form id="coledit-form" class="modal schema-dialog" novalidate>
       <h2 id="coledit-title">Aggiungi colonna</h2>
+      <p id="coledit-target" class="subtitle schema-dialog-target"></p>
+      <fieldset id="coledit-fields" class="schema-dialog-fields">
       <div class="form-row">
         <label>Nome
-          <input type="text" id="coledit-name" spellcheck="false" autocomplete="off" />
+          <input type="text" id="coledit-name" placeholder="es. descrizione" spellcheck="false" autocomplete="off" required />
         </label>
         <label id="coledit-type-row">Tipo
           <input type="text" id="coledit-type" list="mysql-types" placeholder="es. VARCHAR(255)" spellcheck="false"
-            autocomplete="off" />
+            autocomplete="off" aria-describedby="coledit-type-hint" />
+          <span id="coledit-type-hint" class="hint">Scegli un tipo o scrivine uno completo.</span>
         </label>
         <label id="coledit-bsontype-row" class="hidden">Converti in
           <select id="coledit-bsontype">
@@ -2015,21 +2014,23 @@
         </label>
       </div>
       <div class="form-row">
-        <label id="coledit-default-row"><span id="coledit-default-label">Default</span>
+        <label id="coledit-default-row"><span id="coledit-default-label">Valore predefinito</span>
           <input type="text" id="coledit-default" placeholder="(nessuno; testo, numero o CURRENT_TIMESTAMP)"
-            spellcheck="false" autocomplete="off" />
-        </label>
-        <label class="small checkbox-label" id="coledit-null-row">
-          <span>Ammetti NULL</span>
-          <input type="checkbox" id="coledit-null" checked />
+            spellcheck="false" autocomplete="off" aria-describedby="coledit-default-hint" />
+          <span id="coledit-default-hint" class="hint"></span>
         </label>
       </div>
+        <label class="checkbox-label schema-dialog-option" id="coledit-null-row">
+          <input type="checkbox" id="coledit-null" checked />
+          <span>Consenti valori NULL<span class="hint">La colonna può rimanere senza valore.</span></span>
+        </label>
+      </fieldset>
       <div id="coledit-error" class="error hidden"></div>
       <div class="modal-actions">
-        <button id="coledit-cancel" class="ghost">Annulla</button>
-        <button id="coledit-save" class="primary">Salva</button>
+        <button type="button" id="coledit-cancel" class="ghost">Annulla</button>
+        <button type="submit" id="coledit-save" class="primary">Aggiungi colonna</button>
       </div>
-    </div>
+    </form>
   </div>
 
   <!-- ===================== Modale export connessioni ===================== -->
@@ -2081,41 +2082,46 @@
   <!-- ===================== Modale import database intero ===================== -->
   <div id="dbimport-overlay" class="overlay hidden">
     <div class="modal wide">
-      <h2>Importa database</h2>
+      <h2 id="dbimport-title">Importa database</h2>
       <p class="subtitle" id="dbimport-subtitle"></p>
-      <div class="form-row">
-          <label>File SQL o CodeDB JSON
-            <input type="file" id="dbimport-file" accept=".sql,.json,application/json,text/plain" />
-        </label>
+      <div id="dbimport-form">
+        <div class="form-row">
+          <label><span id="dbimport-file-label">File SQL o CodeDB JSON</span>
+            <input type="file" id="dbimport-file" accept=".sql,.json,application/json,text/plain" aria-describedby="dbimport-file-hint" />
+          </label>
+          <p class="hint" id="dbimport-file-hint">Scegli un file .sql o .codedb.json. Potrai verificare l’anteprima prima di importare.</p>
+        </div>
+        <div class="form-row">
+          <label>Database di destinazione
+            <input type="text" id="dbimport-target" placeholder="nome del database" aria-describedby="dbimport-target-hint" />
+          </label>
+          <p class="hint" id="dbimport-target-hint">Puoi indicare un database nuovo o uno già esistente.</p>
+        </div>
+        <div class="form-row">
+          <label class="checkbox-label dbimport-replace">
+            <input type="checkbox" id="dbimport-drop" />
+            <span><strong>Sostituisci gli oggetti già esistenti</strong><span class="hint">Elimina e ricrea le collection o tabelle presenti nel file nella destinazione.</span></span>
+          </label>
+        </div>
+        <!-- Le collisioni di nome si VEDONO prima di scrivere: due oggetti che
+             finiscono sullo stesso nome, o un nome che su PostgreSQL collide con
+             uno esistente perché il motore abbassa gli identificatori non
+             quotati, sono differenze che dopo non si distinguono più. -->
+        <p class="hint" id="dbimport-file-notes" role="status"></p>
+        <ul class="piano-avvisi hidden" id="dbimport-mapping"></ul>
       </div>
-      <div class="form-row">
-        <label>Database di destinazione
-          <input type="text" id="dbimport-target" placeholder="nome del database" />
-        </label>
-      </div>
-      <div class="form-row">
-        <label class="checkbox-label">
-          <input type="checkbox" id="dbimport-drop" />
-          Elimina e ricrea le collection/tabelle già esistenti nella destinazione
-        </label>
-      </div>
-      <!-- Le collisioni di nome si VEDONO prima di scrivere: due oggetti che
-           finiscono sullo stesso nome, o un nome che su PostgreSQL collide con
-           uno esistente perché il motore abbassa gli identificatori non
-           quotati, sono differenze che dopo non si distinguono più. -->
-      <p class="hint" id="dbimport-file-notes" role="status"></p>
-      <ul class="piano-avvisi hidden" id="dbimport-mapping"></ul>
       <div id="dbimport-progress" class="import-progress hidden">
-        <div class="import-progress-track">
+        <div class="import-progress-track" role="progressbar" aria-label="Avanzamento importazione" aria-valuemin="0" aria-valuemax="100">
           <div id="dbimport-progress-bar" class="import-progress-bar"></div>
         </div>
-        <span id="dbimport-progress-label" class="hint"></span>
+        <span id="dbimport-progress-label" class="hint" role="status"></span>
       </div>
-      <div id="dbimport-report" class="import-report hidden"></div>
+      <div id="dbimport-report" class="dbimport-report hidden" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
       <div id="dbimport-error" class="error hidden"></div>
       <div class="modal-actions">
+        <button id="dbimport-new" class="ghost hidden">Nuovo import</button>
         <button id="dbimport-cancel" class="ghost">Chiudi</button>
-        <button id="dbimport-run" class="primary">Importa</button>
+        <button id="dbimport-run" class="primary">Continua con l’anteprima</button>
       </div>
     </div>
   </div>
@@ -2189,30 +2195,32 @@
 
   <!-- ===================== Modale nuovo indice ===================== -->
   <div id="idxcreate-overlay" class="overlay hidden">
-    <div class="modal">
-      <h2>Nuovo indice</h2>
+    <form id="idxcreate-form" class="modal schema-dialog" novalidate>
+      <h2 id="idxcreate-title">Nuovo indice</h2>
+      <p id="idxcreate-target" class="subtitle schema-dialog-target"></p>
+      <fieldset id="idxcreate-options" class="schema-dialog-fields">
       <div class="form-row">
-        <label>Nome
-          <input type="text" id="idxcreate-name" placeholder="(opzionale)" spellcheck="false" autocomplete="off" />
+        <label>Campi da indicizzare
+          <textarea id="idxcreate-fields" rows="3" placeholder='{"email": 1}' spellcheck="false" autocomplete="off" aria-describedby="idxcreate-fields-hint" required></textarea>
+          <span id="idxcreate-fields-hint" class="hint">Usa JSON: 1 per ordine crescente, -1 per decrescente. Per un indice composto, aggiungi più campi nello stesso oggetto.</span>
         </label>
       </div>
       <div class="form-row">
-        <label>Campi (JSON, 1 = crescente, -1 = decrescente)
-          <input type="text" id="idxcreate-fields" placeholder='{"email": 1}' spellcheck="false" autocomplete="off" />
+        <label><span>Nome <span class="schema-dialog-optional">facoltativo</span></span>
+          <input type="text" id="idxcreate-name" placeholder="Generato automaticamente" spellcheck="false" autocomplete="off" />
         </label>
       </div>
-      <div class="form-row">
-        <label class="small checkbox-label">
-          <span>Unico</span>
+        <label class="checkbox-label schema-dialog-option">
           <input type="checkbox" id="idxcreate-unique" />
+          <span>Valori univoci<span class="hint">Impedisce valori duplicati per i campi dell’indice.</span></span>
         </label>
-      </div>
+      </fieldset>
       <div id="idxcreate-error" class="error hidden"></div>
       <div class="modal-actions">
-        <button id="idxcreate-cancel" class="ghost">Annulla</button>
-        <button id="idxcreate-save" class="primary">Crea</button>
+        <button type="button" id="idxcreate-cancel" class="ghost">Annulla</button>
+        <button type="submit" id="idxcreate-save" class="primary">Crea indice</button>
       </div>
-    </div>
+    </form>
   </div>
 
   <!-- ===================== Modale Export Mermaid ===================== -->
