@@ -4,7 +4,8 @@
 const path = require('path');
 const Vault = require('../db/vault');
 const fs = require('fs');
-const { sshAuthMode, portaLocaleSsh, MAX_SSH_KEY_BYTES } = require('../db/SshTunnel');
+const { sshAuthMode, portaLocaleSsh } = require('../db/SshTunnel');
+const { decodificaChiave } = require('../db/SshKey');
 
 function createModule({ config, errori, dependencies }) {
   /* ---------------------------------------------------------------------------
@@ -30,12 +31,12 @@ function createModule({ config, errori, dependencies }) {
     // sshHostKey: impronta SHA256 della host key del bastion. NON è un segreto
     // (è un'impronta pubblica) ma va conservata: è ciò che rende rilevabile un
     // MITM sul tunnel. Registrata al primo collegamento riuscito.
-    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshAuth', 'sshPassword', 'sshKeyFile', 'sshPrivateKey', 'sshKeyName', 'sshPassphrase', 'sshHostKey', 'sshLocalPort',
+    'ssh', 'sshHost', 'sshPort', 'sshUser', 'sshAuth', 'sshPassword', 'sshKeyFile', 'sshPrivateKey', 'sshKeyName', 'sshPassphrase', 'sshSecurityKeyPin', 'sshHostKey', 'sshLocalPort',
   ];
 
   // Campi segreti: mai rimandati al browser, riusati dal valore salvato se il form
   // li lascia vuoti (vedi connections:get/save e mongo:connect con keepPasswordFrom).
-  const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase', 'sshPrivateKey', 'uri'];
+  const SECRET_FIELDS = ['password', 'sshPassword', 'sshPassphrase', 'sshSecurityKeyPin', 'sshPrivateKey', 'uri'];
 
   // Sezione di intestazione dei file esportati con una passphrase scelta: porta
   // il salt e i parametri scrypt con cui ridervare la chiave sull'altra macchina.
@@ -550,8 +551,9 @@ function createModule({ config, errori, dependencies }) {
 
   // Tiene solo i campi noti e non vuoti di una configurazione di connessione.
   function sanitizeConnCfg(cfg, previous = null) {
-    if (cfg.sshPrivateKey != null && (typeof cfg.sshPrivateKey !== 'string' || Buffer.byteLength(cfg.sshPrivateKey) > MAX_SSH_KEY_BYTES)) {
-      throw new Error('La chiave privata SSH deve essere un file di testo di massimo 64 KB.');
+    if (cfg.sshPrivateKey != null && cfg.sshPrivateKey !== '') {
+      if (typeof cfg.sshPrivateKey !== 'string') throw new Error('La chiave SSH deve essere un file di massimo 64 KB.');
+      decodificaChiave(cfg.sshPrivateKey);
     }
     // I parametri omessi dal form restano salvati; un vuoto esplicito li rimuove.
     const fields = { ...Object.fromEntries(CONN_FIELDS.filter(f => !SECRET_FIELDS.includes(f) && previous?.[f] != null)
@@ -598,6 +600,7 @@ function createModule({ config, errori, dependencies }) {
       // SSH irraggiungibili in questa modalità.
       delete merged.sshPassword;
       delete merged.sshPassphrase;
+      delete merged.sshSecurityKeyPin;
       delete merged.sshPrivateKey;
       delete merged.sshKeyName;
       return merged;
@@ -617,6 +620,7 @@ function createModule({ config, errori, dependencies }) {
       if (mode === 'password') {
         if (!merged.sshPassword && sameMode) merged.sshPassword = previous.sshPassword;
         delete merged.sshPassphrase;
+        delete merged.sshSecurityKeyPin;
       } else {
         delete merged.sshPassword;
         const sameKey = sameMode && (mode === 'upload'
@@ -627,12 +631,14 @@ function createModule({ config, errori, dependencies }) {
           merged.sshKeyName = previous.sshKeyName;
         }
         if (!merged.sshPassphrase && sameKey) merged.sshPassphrase = previous.sshPassphrase;
+        if (!merged.sshSecurityKeyPin && sameKey) merged.sshSecurityKeyPin = previous.sshSecurityKeyPin;
       }
       if (mode !== 'upload') { delete merged.sshPrivateKey; delete merged.sshKeyName; }
       if (mode !== 'path') delete merged.sshKeyFile;
     } else {
       delete merged.sshPassword;
       delete merged.sshPassphrase;
+      delete merged.sshSecurityKeyPin;
       delete merged.sshPrivateKey;
       delete merged.sshKeyName;
     }

@@ -89,6 +89,48 @@ node test/e2e-backup.js       # CLI di backup su MongoDB (non richiede il server
 node test/e2e-backup-mysql.js # CLI di backup su MySQL (env MYSQL_PORT/MYSQL_PASSWORD; non richiede il server)
 ```
 
+### File chiave per SSH
+
+Nella configurazione della connessione, abilita SSH e scegli il file dal dispositivo
+oppure indica il suo percorso sulla macchina che esegue CodeDB. Il formato viene
+riconosciuto dal contenuto: non occorre convertire il file o scegliere una codifica.
+Il form verifica la chiave, mostra formato e impronta e chiede la passphrase quando
+serve. Il limite resta 64 KB per file, anche per i formati binari.
+
+Sono supportate le chiavi RSA, DSA, Ed25519 ed ECDSA sulle curve NIST P-256,
+P-384 e P-521 nei formati OpenSSH, PEM, PKCS#8, DER, PuTTY PPK v2/v3 e
+PKCS#12 (`.pfx`/`.p12`), anche cifrate. Un contenitore PKCS#12 deve identificare
+una sola chiave privata; se ne contiene più di una, esporta quella da usare.
+La compatibilità del file non garantisce che il server SSH accetti l'algoritmo:
+per esempio, molti server recenti disabilitano DSA.
+Anche il runtime deve supportare la firma: Electron 43 con BoringSSL non supporta
+DSA, quindi le chiavi DSA non possono autenticarsi nell'app desktop. Questa
+limitazione riguarda anche i formati OpenSSH e PEM già disponibili in precedenza;
+gli stessi file sono verificati con il server Node.js.
+
+I file pubblici (`.pub`, RFC4716, PEM/DER e certificati X.509) selezionano la chiave
+privata corrispondente nell'agente SSH della macchina CodeDB. I certificati X.509
+forniscono l'identità pubblica; l'autenticazione con certificato SSH richiede invece
+un certificato utente OpenSSH valido. Per i certificati SSH e le chiavi FIDO
+(`sk-ssh-ed25519`, `sk-ecdsa-sha2-nistp256`) devono essere disponibili `ssh` e
+`ssh-keygen`. Per usare direttamente un dispositivo FIDO occorre un client OpenSSH
+con supporto FIDO; in alternativa, carica la chiave nell'agente compatibile.
+Quando richiesto, il PIN FIDO ha un campo distinto dalla passphrase del file.
+Il dispositivo e l'agente devono essere raggiungibili dalla macchina che esegue
+CodeDB, anche quando il browser si trova su un'altra macchina.
+
+Con RBAC attivo, l'agente e i dispositivi della macchina sono riservati agli
+amministratori dell'installazione. La CLI di backup richiede inoltre
+`CODEDB_SSH_ALLOW_HOST_AGENT=1` per utilizzarli. Le chiavi private caricate
+continuano a essere disponibili ai rispettivi account e cifrate dal vault.
+
+La suite dedicata non richiede un database e usa chiavi temporanee, server SSH
+locali e un browser Playwright:
+
+```bash
+npm run test:ssh  # Formati, cifratura, firme, tunnel, configurazione e caricamento UI
+```
+
 ### Backup e ripristino
 
 CLI dedicata (non serve il server avviato), stessa per MongoDB e MySQL; riusa le
@@ -130,7 +172,7 @@ npm run backup -- help    # guida completa
 | Tab di collection | ogni collection/tabella aperta in un proprio coll-tab con snapshot di query e vista |
 | Connessioni salvate | sidebar sinistra raggruppata per cartella (`folder`); menu contestuale per aprire/testare/modificare/eliminare |
 | Import/export connessioni | scambio del file `.ini` completo (password incluse) |
-| Tunnel SSH | password, file di chiave privata dal dispositivo o percorso sul server CodeDB; passphrase per chiavi protette, solo in modalità "Parametri" |
+| Tunnel SSH | password o file OpenSSH, PEM/PKCS#8, PuTTY PPK v2/v3, DER e PKCS#12 (PFX/P12); riconoscimento automatico, passphrase, agente SSH, certificati e FIDO |
 | Albero database → collection/tabelle | sidebar, con conteggio documenti/righe |
 | Vista tabellare | colonne = unione delle chiavi (Mongo) o colonne della tabella (MySQL) |
 | Query `find` / WHERE | filtro e sort nella toolbar (JSON/EJSON per Mongo, clausola WHERE + `ORDER BY` per MySQL) |

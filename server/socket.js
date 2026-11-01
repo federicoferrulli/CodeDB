@@ -213,7 +213,8 @@ function createModule({ identita, trasporto, budget, config, connessioni, lock, 
           const ssh = ['mongo:connect', 'connections:test'].includes(event) && err?.code === 'SSH_HOST_KEY_UNKNOWN'
             ? { code: err.code, sshHostKey: err.sshHostKey } : {};
           const queryError = event === 'query:execute' && err.queryError ? { queryError: err.queryError } : {};
-          cb({ ok: false, error: errori.errMsg(err), ...ssh, ...queryError });
+          const key = /^SSH_(?:KEY|AGENT|NATIVE)_/.test(err?.code || '') ? { code: err.code } : {};
+          cb({ ok: false, error: errori.errMsg(err), ...ssh, ...key, ...queryError });
         }
       })()));
     }
